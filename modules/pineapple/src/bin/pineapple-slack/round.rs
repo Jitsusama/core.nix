@@ -45,8 +45,10 @@ pub(super) struct Reader {
 /// and the round says which search is deaf; the other's messages are
 /// judged. What it gave is judged as its ears say it may be: messages a
 /// second ask agreed with in full, any other only for a stop, which may
-/// come from anyone, never for a resume a writer could type. Either way
-/// the next round asks both again, with no rest a poster could stretch.
+/// come from anyone, never for a resume a writer could type. One search
+/// unasked leaves the round counted neither way, though the other's
+/// messages are judged. Either way the next round asks both again, with
+/// no rest a poster could stretch.
 pub(super) fn round(
     ears: &mut dyn Ears,
     reader: &Reader,
@@ -77,24 +79,24 @@ pub(super) fn round(
         phrase => (phrase, ears.search(&tag, &judged.back_to(&tag, now))),
     };
     let unread = Round::Deaf(Deafness::Unreadable);
-    // What a deaf search gave, or a page a search read on past: only a
-    // stop is taken from what no second ask agreed with, and it's judged
-    // again once read; what one agreed with in a deaf search is judged
-    // with the rest, in the order it was said.
-    let mut partly = Vec::new();
-    for (query, answer) in [(PHRASE, &phrase), (tag.as_str(), &tagged)] {
-        let deaf = answer.as_ref().err() == Some(&unread);
-        if deaf || answer.is_ok() {
-            let Unread { agreed, unagreed } = ears.unread(query);
-            for message in &unagreed {
-                if judged.is_new(message) && !alert(&joel, message) {
-                    judge(ears, reader, account, state, &joel, message, false);
-                }
-            }
-            if deaf {
-                partly.extend(agreed);
-            }
+    let answers = [(PHRASE, &phrase), (tag.as_str(), &tagged)];
+    let partly = in_part(ears, reader, account, state, &joel, judged, answers);
+    // One search unasked says nothing new of the other, so the round
+    // counts neither way, but the other's stops are heard as it read them,
+    // as is what the first read in part, and it has read as far as they
+    // reach; when Slack was read whole stays as it was.
+    let alone = match (&phrase, &tagged) {
+        (Ok(read), Err(Round::Unasked)) => Some((PHRASE, read)),
+        (Err(Round::Unasked), Ok(read)) => Some((tag.as_str(), read)),
+        _ => None,
+    };
+    if let Some((query, read)) = alone {
+        judge_each(ears, reader, account, state, &joel, judged, read.iter().chain(&partly));
+        judged.reached(query, read.last());
+        if let Err(error) = judged::write(state, judged, judged::read_at(state)) {
+            eprintln!("<3>couldn't keep how far it has read: {error}");
         }
+        return Round::Unasked;
     }
     let (phrase, tagged, deaf) = match (phrase, tagged) {
         (Ok(phrase), Ok(tagged)) => (phrase, tagged, None),
@@ -142,6 +144,39 @@ pub(super) fn round(
         eprintln!("<3>couldn't keep how far it has read: {error}");
     }
     deaf.map_or(Round::Heard, |search| Round::Deaf(Deafness::Unread(search)))
+}
+
+/// What a deaf search gave, one whose later page went unanswered, or a
+/// page a search read on past, by each search's query and its `answers`:
+/// only a stop is taken from what no second ask agreed with, judged now
+/// and again once read; what one agreed with in a search read in part is
+/// given back to judge with the rest, in the order it was said.
+fn in_part(
+    ears: &mut dyn Ears,
+    reader: &Reader,
+    account: Option<&Account>,
+    state: &Path,
+    joel: &Joel,
+    judged: &Judged,
+    answers: [(&str, &Result<Vec<Message>, Round>); 2],
+) -> Vec<Message> {
+    let unread = Round::Deaf(Deafness::Unreadable);
+    let mut partly = Vec::new();
+    for (query, answer) in answers {
+        let part = matches!(answer, Err(Round::Unasked)) || answer.as_ref().err() == Some(&unread);
+        if part || answer.is_ok() {
+            let Unread { agreed, unagreed } = ears.unread(query);
+            for message in &unagreed {
+                if judged.is_new(message) && !alert(joel, message) {
+                    judge(ears, reader, account, state, joel, message, false);
+                }
+            }
+            if part {
+                partly.extend(agreed);
+            }
+        }
+    }
+    partly
 }
 
 /// Each new message `heard` judged once, in the order they were said, and
