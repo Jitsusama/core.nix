@@ -148,11 +148,11 @@ def answered(desktop: Desktop, ask: str, since: str | None = None) -> dict[str, 
         # diagnosis puts that, or what the read raised, on a line of its own opening "(".
         journal = f"journalctl --user -u quickshell -o cat --after-cursor={shlex.quote(since)}"
         named = f"ask:{ask}"
+        how_it_ended = ("(un", "(ended with ")
         words = [
             line
             for line in desktop.diagnosis(journal).splitlines()
-            if (named in line and "report[showing " not in line) or line.startswith("(un")
-            or line.startswith("(ended with ")
+            if (named in line and "report[showing " not in line) or line.startswith(how_it_ended)
         ]
         said = "\n".join(words)
         never = f"no answer came to {ask}; of it the shell said: {said.strip() or 'nothing'}"
