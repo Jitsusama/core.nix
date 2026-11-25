@@ -184,9 +184,15 @@ pub fn min_free(nix: &Path) -> Result<u64, String> {
         .chain(["config", "show", "min-free"].map(OsStr::new))
         .collect();
     let said = ran(&argv, Duration::from_secs(30), true)?;
-    said.trim()
-        .parse()
-        .map_err(|error| format!("nix config show min-free said {:?}: {error}", said.trim()))
+    // Only its length is told: the guard's log is often readable by any
+    // account, and a Nix printing more than the one value could print
+    // its access tokens.
+    said.trim().parse().map_err(|error| {
+        format!(
+            "nix config show min-free said {} bytes that aren't a number: {error}",
+            said.trim().len()
+        )
+    })
 }
 
 /// What the `nix` command needs to be told before any of the commands the
