@@ -651,6 +651,7 @@ impl Repo {
             autocrlf: self.config.get("core.autocrlf").map(str::to_string),
             filemode: self.config.get_bool("core.filemode").unwrap_or(true),
             trust_ctime: self.config.get_bool("core.trustctime").unwrap_or(true),
+            filters: status::filters_git_runs(&self.config),
             show_untracked: !matches!(
                 self.config
                     .get("status.showuntrackedfiles")

@@ -156,6 +156,15 @@ for r in $(fresh moved) $(fresh moved-watched); do
   touch -d 2020-01-01 $r/lines
 done
 
+# Files under a filter git has no command for, and in UTF-8 by their
+# attributes, whose stat moved: git hashes both as they are.
+for r in $(fresh converted) $(fresh converted-watched); do
+  print 'a filter=nothing\nb working-tree-encoding=UTF-8' > $r/.gitattributes
+  print one > $r/a; print two > $r/b
+  git -C $r add -A; git -C $r commit -qm converted
+  touch -d 2020-01-01 $r/a $r/b
+done
+
 r=$(fresh unborn)
 agree "a repository with no commits" $r
 print one > $r/a
@@ -444,6 +453,18 @@ for r in $work/moved $work/moved-watched; do
   like_git "${r:t}: the moved file read as text by its attributes" $r
   rm $r/.gitattributes
   like_git "${r:t}: the moved file without its attributes" $r
+  [[ $r == *-watched ]] && git -C $r fsmonitor--daemon stop
+done
+
+# Then a clean command for the filter, which git runs and which changes
+# the file: watched, nothing on disk moves, so only the setting can.
+for r in $work/converted $work/converted-watched; do
+  [[ $r == *-watched ]] && watch $r
+  like_git "${r:t}: a filter with no command and an encoding of UTF-8" $r
+  git -C $r config filter.nothing.smudge cat
+  like_git "${r:t}: a filter that only smudges" $r
+  git -C $r config filter.nothing.clean 'tr o O'
+  like_git "${r:t}: a filter git runs" $r
   [[ $r == *-watched ]] && git -C $r fsmonitor--daemon stop
 done
 

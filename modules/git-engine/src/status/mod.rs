@@ -13,7 +13,7 @@ use crate::index::{CacheTree, Entry, Index};
 use crate::odb::{Kind, Odb, TreeEntry, tree_entries};
 use crate::pattern::{Pattern, parse_file};
 use crate::stamp::Stamp;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -22,6 +22,7 @@ use std::sync::Arc;
 mod convert;
 mod untracked;
 
+pub use convert::filters_git_runs;
 use convert::{Conversion, conversion_of, same_contents};
 pub use untracked::untracked;
 
@@ -104,6 +105,8 @@ pub struct Settings {
     pub filemode: bool,
     pub trust_ctime: bool,
     pub show_untracked: bool,
+    /// The filters git would run on the way in, by name.
+    pub filters: BTreeSet<String>,
 }
 
 /// Files read once and kept until their stamp moves: ignore and attributes
@@ -154,7 +157,14 @@ fn identity(entry: &Entry) -> Identity {
     (entry.oid, entry.mode, entry.extended, entry.stat.clone())
 }
 
-type Basis = (Option<String>, bool, bool, Option<Stamp>, Option<Stamp>);
+type Basis = (
+    Option<String>,
+    bool,
+    bool,
+    BTreeSet<String>,
+    Option<Stamp>,
+    Option<Stamp>,
+);
 
 /// What a folder holds: each entry by its path in the worktree, with whether
 /// it's a folder, and whether there's an ignore file or a repository of its
@@ -605,6 +615,7 @@ pub fn unstaged(
             settings.autocrlf.clone(),
             settings.filemode,
             settings.trust_ctime,
+            settings.filters.clone(),
             Stamp::of(&paths.common.join("info/attributes")),
             paths.attributes_file.as_deref().and_then(Stamp::of),
         );

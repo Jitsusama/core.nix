@@ -30,6 +30,15 @@ pub struct Context<'a> {
 }
 
 impl Config {
+    /// A config of one file's text, as a test writes it.
+    #[cfg(test)]
+    pub fn parsed(text: &str) -> Config {
+        Config {
+            entries: parse(text.as_bytes()),
+            ..Config::default()
+        }
+    }
+
     pub fn load(files: &[PathBuf], context: &Context) -> Config {
         let mut config = Config {
             branch: context.branch.map(str::to_string),
@@ -59,6 +68,25 @@ impl Config {
             .iter()
             .filter(move |(k, _)| k == key)
             .filter_map(|(_, v)| v.as_deref())
+    }
+
+    /// The subsections `section` holds keys under, as `foo` is for
+    /// `filter.foo.clean`, each once.
+    pub fn subsections(&self, section: &str) -> Vec<&str> {
+        let mut subsections: Vec<&str> = Vec::new();
+        for (key, _) in &self.entries {
+            let subsection = key
+                .strip_prefix(section)
+                .and_then(|rest| rest.strip_prefix('.'))
+                .and_then(|rest| rest.rsplit_once('.'))
+                .map(|(subsection, _)| subsection);
+            if let Some(subsection) = subsection
+                && !subsections.contains(&subsection)
+            {
+                subsections.push(subsection);
+            }
+        }
+        subsections
     }
 
     pub fn get_bool(&self, key: &str) -> Option<bool> {
@@ -370,6 +398,21 @@ mod tests {
         assert_eq!(
             values("[a]\n x = 1\n y = \"open\n z = 3\n"),
             vec![one("a.x", "1")]
+        );
+    }
+
+    #[test]
+    fn subsections_are_named_once_each_in_the_order_first_given() {
+        let config = Config::parsed(
+            "[filter \"lfs\"]\n clean = c\n smudge = s\n[filters \"near\"]\n x = 1\n\
+             [filter]\n bare = 1\n[filter \"a.b\"]\n process = p\n[diff \"other\"]\n x = 1\n\
+             [filter \"lfs\"]\n required = true\n",
+        );
+        assert_eq!(
+            config.subsections("filter"),
+            ["lfs", "a.b"],
+            "subsections of filter were read wrongly: another section's, the section's own \
+             keys, a dotted name or a repeat"
         );
     }
 
