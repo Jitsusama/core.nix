@@ -249,12 +249,13 @@ in
     jitsusama.quickshell.launcher.providers.passwords = {
       order = 48;
       source = ./Passwords.qml;
-      # On, its entries' Return typing a password into the window the
-      # launcher opened over, with nothing copied while no copier is named,
-      # as copying waits until agents are fenced off the clipboard. Only
-      # Joel's keys in the launcher reach a type, and nothing is typed into
-      # an agent's window (src/typing.rs). A machine sets off to true
-      # for the place to reach no daemon at all.
+      # Off, reaching no daemon, until agents are fenced off Joel's runtime
+      # folder and Wayland: any process of his can write to the daemon
+      # through the shell's own pipes, and drive the launcher through its
+      # IPC and a virtual keyboard, so a type or a read would need no act
+      # of his (ISXEG8's R-type-password-spawned, 2026-11-25). The checks
+      # that walk it turn it on, where no agent runs and no secret is real.
+      off = true;
       managers = map (manager: {
         inherit (manager)
           name
@@ -304,7 +305,8 @@ in
     warnings = lib.optional (config.jitsusama.passwords.releases != [ ] && !answersAsks) ''
       jitsusama.passwords.releases lists releases, but the launcher's
       Passwords place is off, so no secret ask is answered or drawn until
-      jitsusama.quickshell.launcher.providers.passwords.off is false.
+      jitsusama.quickshell.launcher.providers.passwords.off is lib.mkForce false,
+      since this module already sets it to true.
     '';
   };
 }

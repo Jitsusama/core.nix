@@ -9,15 +9,25 @@
 //! which runs its commands, or mycelium, which holds and attaches pi
 //! sessions; the hosted runtime, which runs sessions as node; or anything
 //! in the agents' or jobs' slices, where a hosted session and every
-//! command it runs are kept. A terminal is asked what it runs in its
-//! focused window instead, since every kitty window shares the one kitty
-//! process, which lives in the agents' slice itself: refused when an agent
-//! runs in it, when a multiplexer stands in front, past which kitty can't
-//! see, and when kitty can't say. This is no full guard: an agent set on
-//! hiding can start a window through niri, or into a slice or scope of its
-//! choosing, that nothing here ties to it (ISXEG8's R-type-password-spawned).
-//! The fence that keeps niri's socket and the user bus from agents closes
-//! that; until it lands, Joel still has to choose the window and press Return.
+//! command it runs are kept. Below a window, a session reached by ssh and
+//! a multiplexer, whose sessions run out of sight, are refused too. A
+//! kitty, the one from the package the daemon's kitten comes from and
+//! outside the jobs' slice, is asked what runs in its focused window
+//! instead, since every kitty window shares the one kitty process, which
+//! lives in the agents' slice itself: refused when what it names isn't
+//! its own, when an agent runs in it or below it, when a multiplexer
+//! stands in front, past which kitty can't see, and when kitty can't say.
+//! An X11 window is refused, since niri knows only xwayland-satellite
+//! behind it, and any X program can read its keys.
+//!
+//! This is no full guard, which is why the place stays off until agents
+//! are fenced (ISXEG8's R-type-password-spawned, 2026-11-25). An agent
+//! set on hiding can start a window through niri, or into a slice or
+//! scope of its choosing, that nothing here ties to it; it can write a
+//! type straight to the daemon through the shell's own pipes; and it can
+//! drive the launcher through its IPC and a virtual keyboard, pressing
+//! Return itself. The fence that keeps the shell's pipes, its IPC socket,
+//! Wayland and niri's socket from agents closes all three.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
@@ -62,6 +72,17 @@ const MULTIPLEXERS: [&str; 3] = ["tmux", "zellij", "screen"];
 
 /// kitty's process, by the name Linux gives it: Nix's wrapper renames it.
 const KITTIES: [&str; 2] = ["kitty", ".kitty-wrapped"];
+
+/// The programs behind X11's windows, by the names Linux gives them
+/// (xwayland-satellite cut to 15 letters): niri knows only the one
+/// speaking for every X program, and any X program can read the keys
+/// typed into another's window.
+const X11: [&str; 3] = ["xwayland-satell", "xwayland-satellite", "Xwayland"];
+
+/// Why a window is refused for what runs below it.
+const AGENT_RUNS: &str = "an agent runs in that window";
+const UNSEEN: &str = "a multiplexer runs in that window, past which nothing can see";
+const UNREAD: &str = "what runs in that window can't be read";
 
 /// Why a type is refused while the keys are elsewhere: in no window, as
 /// while 1Password's own prompt for Joel's leave closes, or another one.
@@ -224,13 +245,27 @@ pub fn agents(name: &str, words: &[String], group: &str) -> bool {
     AGENTS.contains(&name) || words.iter().any(|word| word.contains(RUNTIME)) || agents_group(group)
 }
 
-/// Whether the process at `pid` is an agent's, as /proc says.
+/// Whether a control group, as /proc gives it, is in the jobs' slice,
+/// where only an agent's commands run.
+fn in_jobs(group: &str) -> bool {
+    group.lines().any(|line| {
+        line.splitn(3, ':')
+            .nth(2)
+            .unwrap_or("")
+            .contains(JOBS_SLICE)
+    })
+}
+
+/// Whether the process at `pid` is an agent's, as /proc says. kitty's
+/// own is judged by the jobs' slice alone, since the sessions' kitty
+/// lives in the agents' slice.
 fn an_agent(pid: u32) -> bool {
     let name = program(pid);
-    let group = if KITTIES.contains(&name.as_str()) {
+    let group = cgroup(pid);
+    let group = if KITTIES.contains(&name.as_str()) && !in_jobs(&group) {
         String::new()
     } else {
-        cgroup(pid)
+        group
     };
     let mut words = arguments(pid);
     if let Ok(path) = std::fs::read_link(format!("/proc/{pid}/exe")) {
@@ -255,11 +290,29 @@ pub fn session_above(pid: u32) -> Option<u32> {
     None
 }
 
-/// Whether an agent's process runs anywhere below `pid`, as a session in
-/// a terminal other than kitty does, whose own process is no agent's.
-fn agent_below(pid: u32) -> bool {
+/// Whether `pid` descends from `forebear`, as kitty's own window's
+/// processes do.
+fn descends(pid: u32, forebear: u32) -> bool {
+    let mut at = parent(pid);
+    for _ in 0..4096 {
+        match at {
+            Some(up) if up == forebear => return true,
+            Some(up) if up != 0 => at = parent(up),
+            _ => return false,
+        }
+    }
+    false
+}
+
+/// Why nothing may be typed for what runs anywhere below `pid`, or none:
+/// an agent, or a session held or reached by any word naming one, as ssh
+/// running mycelium on another machine does, or a multiplexer, whose
+/// sessions run beside the terminal rather than below it. A terminal
+/// other than kitty can't be asked what it runs, and what kitty says runs
+/// in its window may have more below it, so both are read this way.
+fn below(pid: u32) -> Option<&'static str> {
     let Ok(entries) = std::fs::read_dir("/proc") else {
-        return true;
+        return Some(UNREAD);
     };
     let parents: Vec<(u32, u32)> = entries
         .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse().ok())
@@ -274,15 +327,25 @@ fn agent_below(pid: u32) -> bool {
             .iter()
             .filter(|(child, up)| *up == at && *child != at)
         {
-            if an_agent(*child) {
-                return true;
+            let (name, words) = (program(*child), arguments(*child));
+            if an_agent(*child) || a_sessions(&name, &words) {
+                return Some(AGENT_RUNS);
+            }
+            if multiplexes(&name, &words) {
+                return Some(UNSEEN);
             }
             if !below.contains(child) {
                 below.push(*child);
             }
         }
     }
-    false
+    None
+}
+
+/// Whether a process named so is one of X11's, behind every X window.
+#[must_use]
+pub fn x11s(name: &str) -> bool {
+    X11.contains(&name)
 }
 
 /// Whether a program named so, with these arguments, is a multiplexer,
@@ -310,10 +373,34 @@ pub fn a_sessions(name: &str, words: &[String]) -> bool {
     named(name) || words.iter().any(|word| named(word))
 }
 
-/// Whether the process at `pid` is kitty.
+/// Whether a process named so, run from `exe`, in this control group, is
+/// a kitty to ask what it runs: named as kitty is, run from the package
+/// the daemon's kitten comes from, `from`, and outside the jobs' slice,
+/// where only an agent's commands run. Anything else named kitty, as a
+/// program renamed to answer for it, is refused outright.
 #[must_use]
-pub fn kitty(pid: u32) -> bool {
-    KITTIES.contains(&program(pid).as_str())
+pub fn kitty_believed(name: &str, exe: &str, group: &str, from: Option<&Path>) -> bool {
+    KITTIES.contains(&name)
+        && from.is_some_and(|from| Path::new(exe).starts_with(from))
+        && !in_jobs(group)
+}
+
+/// The package a kitten comes from, two folders above it, which kitty's
+/// own program is in too.
+#[must_use]
+pub fn kittys_package(kitten: &str) -> Option<&Path> {
+    Path::new(kitten)
+        .parent()?
+        .parent()
+        .filter(|from| from.components().count() > 1)
+}
+
+/// Whether the process at `pid` is a kitty to ask, as `kitty_believed` says.
+fn kitty(pid: u32, from: Option<&Path>) -> bool {
+    let exe = std::fs::read_link(format!("/proc/{pid}/exe"))
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    kitty_believed(&program(pid), &exe, &cgroup(pid), from)
 }
 
 /// Where kitty at `pid` listens for remote control: what it was started
@@ -448,18 +535,25 @@ pub fn fit(
     let Some(pid) = focused.pid else {
         return refused("niri didn't say whose window it is");
     };
+    let name = program(pid);
+    if x11s(&name) {
+        return refused("that window is X11's, where any X program can read its keys");
+    }
     if session_above(pid).is_some() {
         return refused("an agent reads that window");
     }
-    if !kitty(pid) {
-        if agent_below(pid) {
-            return refused("an agent runs in that window");
-        }
-        return Ok(app);
-    }
     let Some(kitty_program) = kitty_program else {
-        return refused("kitty can't be asked what runs in it");
+        if KITTIES.contains(&name.as_str()) {
+            return refused("kitty can't be asked what runs in it");
+        }
+        return below(pid).map_or(Ok(app.clone()), refused);
     };
+    if !kitty(pid, kittys_package(kitty_program)) {
+        if KITTIES.contains(&name.as_str()) {
+            return refused("that kitty isn't the one kitten asks");
+        }
+        return below(pid).map_or(Ok(app.clone()), refused);
+    }
     let said = match kitty_says(kitty_program, pid) {
         Ok(said) => said,
         Err(why) => return refused(&why),
@@ -467,6 +561,15 @@ pub fn fit(
     let Some(running) = foreground(&said) else {
         return refused("kitty didn't say what runs in its window");
     };
+    // What kitty says runs there must be kitty's own, each by its id, or
+    // whatever answered as kitty could name anything.
+    if running.is_empty()
+        || running
+            .iter()
+            .any(|(process, _)| process.is_none_or(|process| !descends(process, pid)))
+    {
+        return refused("kitty named nothing of its own running in its window");
+    }
     let named = |pid: &Option<u32>| pid.map(program).unwrap_or_default();
     if running
         .iter()
@@ -480,7 +583,15 @@ pub fn fit(
     if session {
         return refused("an agent runs in that terminal");
     }
-    Ok(app)
+    match running
+        .iter()
+        .find_map(|(process, _)| process.and_then(below))
+    {
+        Some(UNSEEN) => refused("kitty can't see past the multiplexer in that terminal"),
+        Some(UNREAD) => refused(UNREAD),
+        Some(_) => refused("an agent runs in that terminal"),
+        None => Ok(app),
+    }
 }
 
 /// One journal line for one type, as journald's native socket takes it:

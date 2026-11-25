@@ -121,9 +121,6 @@ fn a_secret_goes_only_to_the_ask_for_it() {
     watching.hear();
     let mut client = running.client();
     client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
-    let shown = client.ask(&json!({"id": 2, "ask": "reveal", "key": "entry:keeping:gh"}));
-    assert_eq!(shown["value"], "hunter2");
-    assert_eq!(shown["detail"], "password");
     holds_no_secret(&client.ask(&json!({"id": 3, "ask": "get", "keys": ["entry:keeping:gh"]})));
     holds_no_secret(&client.ask(&json!({"id": 4, "ask": "search", "words": "git"})));
     let health = client.ask(&json!({"id": 5, "ask": "health"}));
@@ -201,12 +198,30 @@ fn a_one_time_codes_detail_gives_its_code_never_its_seed() {
     until("the code is copied", || {
         std::fs::read_to_string(running.copied()).is_ok_and(|copied| copied == "123456")
     });
-    let shown = client.ask(&json!({"id": 3, "ask": "reveal", "key": "entry:keeping:gh",
-                                   "detail": "otp"}));
-    assert_eq!(shown["value"], "123456", "{shown}");
     // The seed was never asked of the manager, so it went nowhere.
     let log = std::fs::read_to_string(running.folder.join("keeping.log")).unwrap();
     assert!(!log.contains("\"reveal\""), "the seed was asked for: {log}");
+}
+
+#[test]
+fn a_secret_is_never_handed_back_on_the_pipe() {
+    // Any process of Joel's can open the shell's end of the daemon's pipes
+    // until agents are fenced, so a reveal is refused before anything is
+    // asked of a manager, a password and a one-time code alike.
+    let running = Running::with("revealed", &[("keeping", KEEPING)]);
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "list", "asked": true}));
+    for (id, detail) in [(2, Value::Null), (3, json!("otp"))] {
+        let refused = client.ask(&json!({"id": id, "ask": "reveal",
+                                         "key": "entry:keeping:gh", "detail": detail}));
+        assert_eq!(refused["error"]["code"], "refused", "{refused}");
+        holds_no_secret(&refused);
+    }
+    let asked = running.asked_of("keeping");
+    assert!(
+        !asked.contains("\"reveal\"") && !asked.contains("\"code\""),
+        "a manager was asked for a secret to hand back: {asked}"
+    );
 }
 
 #[test]

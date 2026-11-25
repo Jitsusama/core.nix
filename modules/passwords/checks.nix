@@ -110,9 +110,10 @@ onLinux {
   # On a machine with 1Password, the launcher's Passwords provider runs the
   # daemon itself, with 1Password's manager, and nothing else can: there's
   # no unit and no socket for it, and no copier is named, so nothing is
-  # copied until agents are fenced off the clipboard. The place is on, its
-  # Return typing through wtype and asking kitty's kitten what a terminal
-  # runs, and the provider knows 1Password's program.
+  # copied until agents are fenced off the clipboard. The place stays off
+  # meanwhile, its Return set to type through wtype and ask kitty's kitten
+  # what a terminal runs once it's on, and the provider knows 1Password's
+  # program.
   passwords-runs-each-password-manager =
     let
       home = account graphical;
@@ -126,7 +127,7 @@ onLinux {
         && !(home.systemd.user.services ? passwords)
         && !(home.systemd.user.sockets ? passwords)
         && !(provider ? copier)
-        && !(provider.off or false)
+        && (provider.off or false)
         && lib.hasSuffix "/bin/wtype" (provider.typist or "")
         && lib.hasSuffix "/bin/kitten" (provider.kitty or "")
         && home.jitsusama.passwords.managers ? "1password"
@@ -153,10 +154,10 @@ onLinux {
             ];
           }
         ]);
-      off = releasing {
-        jitsusama.quickshell.launcher.providers.passwords.off = true;
+      off = releasing { };
+      on = releasing {
+        jitsusama.quickshell.launcher.providers.passwords.off = lib.mkForce false;
       };
-      on = releasing { };
       offProviders = off.jitsusama.quickshell.launcher.providers;
       onProviders = on.jitsusama.quickshell.launcher.providers;
     in
@@ -179,15 +180,7 @@ onLinux {
   # today, until the agent fence covers every session.
   the-passwords-place-off-gives-the-shell-no-daemon =
     let
-      offAccount = account (bareNixos [
-        self.nixosModules.graphical
-        {
-          home-manager.sharedModules = [
-            { jitsusama.quickshell.launcher.providers.passwords.off = true; }
-          ];
-        }
-      ]);
-      shellConfig = offAccount.xdg.configFile."quickshell/Providers.qml".text;
+      shellConfig = (account graphical).xdg.configFile."quickshell/Providers.qml".text;
     in
     holds "the-passwords-place-off-gives-the-shell-no-daemon"
       "The shell's config names the passwords daemon while the Passwords place is off."

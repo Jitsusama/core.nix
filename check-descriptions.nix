@@ -3217,8 +3217,8 @@
   passwords-runs-each-password-manager = ''
     on a machine with 1Password, the launcher's Passwords place runs the passwords daemon as the
     shell's own child with 1Password's manager through the system's op, with no unit and no
-    socket, names no copier, is on, types through wtype and asks kitty through kitten, and knows
-    1Password's program
+    socket, names no copier, stays off until agents are fenced, would type through wtype and ask
+    kitty through kitten once on, and knows 1Password's program
   '';
   pause-all-agents-asks-once-on-a-second-return = ''
     in a nested niri, Pause All Agents is found by typing, arms on a first Return asking nothing,
@@ -5587,12 +5587,12 @@
   '';
   the-passwords-answer-no-ipc = ''
     nothing of the Passwords place, the daemon interface it asks through, nor Asks, how it says a
-    line was shown and the ready rows it acts through answers the shell's IPC, so no IPC reaches
-    typing a password
+    line was shown and the ready rows it acts through answers the shell's IPC, so no handler of
+    its own reaches typing a password
   '';
   the-passwords-daemon-binds-no-socket = ''
-    none of the passwords daemon's source binds a socket of any kind, so only the shell that
-    runs it, through its standard input, can ask it to type a password
+    none of the passwords daemon's own source binds a socket of any kind, so it's asked only
+    through its standard input, the shell's pipe, which agents reach until they're fenced
   '';
   the-passwords-place-copies-through-its-daemon-on-niri = ''
     on a nested niri, the Passwords place runs the passwords daemon as the shell's own child and
@@ -5617,7 +5617,7 @@
     whose Return, with nothing to open, puts the keys in its drawer, which says why
   '';
   the-passwords-place-says-why-its-off-on-niri = ''
-    on a nested niri, with the Passwords place set off, Home's Passwords row
+    on a nested niri, with the Passwords place off as the module leaves it, Home's Passwords row
     and the place's one row each have a drawer saying why it's off and that Return opens a
     stand-in Chrome, where 1Password's extension fills in sign-ins
   '';
@@ -5628,7 +5628,8 @@
     order, each only where it has what it needs, opening it in the browser its manager fills in
     only on an http or https website, its manager's link is filled only where the entry
     says every part, Type the Password leads only where there's a window under the launcher and
-    the entry has a password, the foot saying why a type was refused, its drawer's eyebrow says its vault and kind, and its facts every figure but
+    the entry has a password, the foot saying why a type was refused, its drawer's eyebrow says
+    its vault and kind, and its facts every figure but
     its username and its password, the design's first in its order, a hidden detail as hidden and
     never its value, a website sent in the clear as its health and a weak password as its strength,
     each in the warning's role, its password reused or breached as its health once every password

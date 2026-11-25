@@ -117,14 +117,14 @@ Provider {
     readonly property bool answersAsks: settings.answersAsks === true
     readonly property var asksLink: answersAsks ? daemon : null
 
-    // Whether the place is off, as a machine may set it. It's on by default:
-    // the daemon is the shell's own child with no socket, and no IPC reaches
-    // what asks it, so an agent running as Joel's uid has neither to ask it
-    // through (2026-11-10, Joel: "we can't have a password backdoor here";
-    // ISXEG8's R-type-password holds what's left, keys typed into the
-    // launcher by another program).
-    // Off, it holds one row, saying so and opening the browser his
-    // manager's own extension fills in.
+    // Whether the place is off, as it is until agents are fenced off Joel's
+    // runtime folder and Wayland: every agent runs as his uid, so it could
+    // write asks to the daemon through the shell's own pipes, or drive the
+    // launcher through its IPC and a virtual keyboard, and a daemon his
+    // manager let in would answer (2026-11-10, Joel: "we can't have a
+    // password backdoor here"; ISXEG8's R-type-password-spawned). It then
+    // holds one row, saying so and opening the browser his manager's own
+    // extension fills in.
     readonly property bool off: settings.off === true
     // Whether the launcher is walked from outside it, as `qs ipc call
     // launcher run`, `doing` and `show` walk it for any process of the
@@ -714,6 +714,9 @@ Provider {
     // The last type asked of the daemon: { key, title, detail, why, done },
     // as Passwords.js's typeTold reads it, never the secret.
     property var typed: null
+    // The window niri gave the keys as the launcher last opened, the one
+    // a type may go into (typeSecret), or null over none.
+    property var openedOver: null
 
     // Asks the daemon to type an entry's password, or a detail of it, into
     // the window the launcher opened over, niri's by its id, which the
@@ -735,6 +738,12 @@ Provider {
         const window = Niri.current;
         if (window === null) {
             provider.typed = Object.assign(typing, { why: said.nowhere ?? "" });
+            return;
+        }
+        // The window Joel opened the launcher over is the one he chose; a
+        // focus moved meanwhile, by a pointer or another program, isn't.
+        if (window !== provider.openedOver) {
+            provider.typed = Object.assign(typing, { why: said.moved ?? "" });
             return;
         }
         provider.typed = typing;
@@ -926,7 +935,9 @@ Provider {
         }
 
         function onOpenChanged() {
-            if (!provider.launcher.open) {
+            if (provider.launcher.open) {
+                provider.openedOver = Niri.current;
+            } else {
                 provider.listedThisTime = false;
                 provider.gotThisTime = {};
             }

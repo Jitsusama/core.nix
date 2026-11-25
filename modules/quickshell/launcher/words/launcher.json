@@ -1152,6 +1152,7 @@
         "typing": "typing {title}'s {detail}\u2026",
         "untyped": "{title}'s {detail} not typed \u00b7 {why}",
         "nowhere": "no window to type into",
+        "moved": "another window has the keys than the launcher opened over",
         "walked": "a password is typed only by your own keys in the launcher",
         "away": "not answering",
         "offNote": "use {manager}'s browser extension",

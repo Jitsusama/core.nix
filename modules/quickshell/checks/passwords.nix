@@ -50,13 +50,12 @@
     };
   };
 
-  # Off, as a machine may set it, Home's Passwords row and the place's one
-  # row each have a drawer saying why and what Return opens meanwhile
-  # (modules/quickshell/tests/passwords-off-on-niri-test.py).
+  # Off, as the module leaves it until agents are fenced off, Home's Passwords
+  # row and the place's one row each have a drawer saying why and what Return
+  # opens meanwhile (modules/quickshell/tests/passwords-off-on-niri-test.py).
   the-passwords-place-says-why-its-off-on-niri = launcherOnNiri {
     name = "the-passwords-place-says-why-its-off-on-niri";
     tests = ../tests/passwords-off-on-niri-test.py;
-    shell.launcher.providers.passwords.off = true;
   };
 
   # Off, with no password manager set up, the place's one row can open
@@ -65,9 +64,6 @@
   the-passwords-place-off-goes-into-its-drawer-on-niri = launcherOnNiri {
     name = "the-passwords-place-off-goes-into-its-drawer-on-niri";
     tests = ../tests/passwords-off-into-its-drawer-on-niri-test.py;
-    shell.launcher.providers.passwords = {
-      off = true;
-      managers = lib.mkForce [ ];
-    };
+    shell.launcher.providers.passwords.managers = lib.mkForce [ ];
   };
 }

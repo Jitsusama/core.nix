@@ -1021,11 +1021,11 @@ fn answer(shared: &Shared, asked: Ask, told: &Sender<String>) -> Value {
         Ask::Search { id, words, limit } => {
             json!({"id": id, "records": lock(shared).held.search(&words, limit)})
         }
-        Ask::Reveal { id, key, detail } => match secret(shared, &key, detail.as_deref()) {
-            Ok(secret) => secret.lasting(json!({"id": id, "value": secret.value,
-                                                "detail": secret.label})),
-            Err((code, message)) => error(&id, code, &message),
-        },
+        // Refused, reading nothing: a secret handed back on the pipe would
+        // reach any process of Joel's that opens the shell's end of it, which
+        // copying and typing never hand back (ISXEG8, 2026-11-25), and
+        // nothing in the shell asks it.
+        Ask::Reveal { id, .. } => error(&id, "refused", REVEALS_NOTHING),
         Ask::Copy { id, key, detail } => copied(shared, &id, &key, detail.as_deref()),
         Ask::Type {
             id,
@@ -1346,6 +1346,12 @@ fn copy(shared: &Shared, value: &str) -> Result<u64, String> {
 /// name none.
 const TYPE_OFF: &str = "typing is off, since no typist is named";
 
+/// Held while a secret is typed, so no other type starts meanwhile.
+static TYPING: Mutex<()> = Mutex::new(());
+
+/// Why no secret is handed back: only copied or typed, never on the pipe.
+const REVEALS_NOTHING: &str = "a secret is only copied or typed, never handed back";
+
 /// The program that types what it reads on its standard input into the
 /// window with the keys, `$PASSWORDS_TYPIST` (wtype, given `-`), or none
 /// while typing is off.
@@ -1359,6 +1365,11 @@ fn typist() -> Option<String> {
 /// the one the launcher opened over, and tells the journal one line of
 /// it, whether it was typed or why not, never the secret (typing.rs).
 fn type_in(shared: &Shared, id: &Value, key: &str, detail: Option<&str>, window: u64) -> Value {
+    // One type at a time: two at once would each check the window, then
+    // type into it together, one secret's keys among the other's.
+    let _one = TYPING
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let title = lock(shared)
         .held
         .get(key)

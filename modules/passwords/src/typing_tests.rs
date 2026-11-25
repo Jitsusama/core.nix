@@ -172,12 +172,55 @@ fn a_journal_line_names_the_entry_and_window_on_one_line_each() {
 }
 
 #[test]
-fn pi_is_found_at_a_process_or_above_it() {
-    // This test's own process is no pi, though it may run beneath one, so
-    // a process that has pi nowhere above it is the first's.
-    assert_eq!(session_above(1), None);
+fn an_x11_window_is_known_by_what_speaks_for_every_x_program() {
+    for name in ["xwayland-satell", "xwayland-satellite", "Xwayland"] {
+        assert!(x11s(name), "{name} wasn't taken for X11's");
+    }
+    for name in ["foot", "kitty", "xwayland"] {
+        assert!(!x11s(name), "{name} was taken for X11's");
+    }
+}
+
+#[test]
+fn a_kitty_is_believed_only_from_kittens_package_and_outside_the_jobs_slice() {
+    let kitten = "/nix/store/abc-kitty-0.50.0/bin/kitten";
+    let from = kittys_package(kitten);
+    assert_eq!(from, Some(Path::new("/nix/store/abc-kitty-0.50.0")));
+    let exe = "/nix/store/abc-kitty-0.50.0/bin/.kitty-wrapped";
+    let joels = "0::/agents.slice/sessions-kitty.service";
     assert!(
-        !kitty(std::process::id()),
-        "this test's own process was taken for a kitty"
+        kitty_believed(".kitty-wrapped", exe, joels, from),
+        "Joel's kitty"
     );
+    assert!(
+        kitty_believed("kitty", exe, joels, from),
+        "kitty by its own name"
+    );
+    let renamed = [
+        (
+            ".kitty-wrapped",
+            exe,
+            "0::/jobs.slice/jobs-work.slice/work-1.scope",
+            "in jobs",
+        ),
+        ("kitty", "/tmp/kitty", joels, "from elsewhere"),
+        (
+            "kitty",
+            "/nix/store/abc-kitty-0.50.0-evil/bin/kitty",
+            joels,
+            "a lookalike",
+        ),
+        ("foot", exe, joels, "another name"),
+    ];
+    for (name, exe, group, which) in renamed {
+        assert!(
+            !kitty_believed(name, exe, group, from),
+            "{which} was believed"
+        );
+    }
+    assert!(
+        !kitty_believed("kitty", exe, joels, None),
+        "a kitty was believed with no kitten named"
+    );
+    assert_eq!(kittys_package("kitten"), None, "a bare name has no package");
 }
