@@ -59,6 +59,8 @@ EMPTIED = "{}"
 PAST_THE_READING = 1.0
 # How long the daemon may take to write an ask's answer on a quiet host.
 ANSWER_WRITTEN = dt.timedelta(seconds=30)
+# Why the shell says a yes whose line had no time shown didn't become the ask.
+UNREAD = "press Escape, then j or k on it, and read it before you release it"
 
 
 @pytest.fixture
@@ -158,10 +160,28 @@ def answered(desktop: Desktop, ask: str, since: str | None = None) -> dict[str, 
             or line.startswith(how_it_ended)
         ]
         said = "\n".join(words)
-        never = f"no answer came to {ask}; of it the shell said: {said.strip() or 'nothing'}"
+        never = (
+            f"no answer came to {ask}, {why_unanswered(said, ask)}; "
+            f"of it the shell said: {said.strip() or 'nothing'}"
+        )
         raise AssertionError(never) from unanswered
     answer: dict[str, object] = json.loads(desktop.as_account(f"cat {path}"))
     return answer
+
+
+def why_unanswered(said: str, ask: str) -> str:
+    """Name what the shell's words say kept the answer, so a failure reads without a guide.
+
+    A move read in one turn with the Return leaves the line untimed, yet the yes still goes:
+    the shell says it's becoming the ask, then that it didn't, refused as unread.
+    """
+    if f"not become ask:{ask}: {UNREAD}" in said:
+        return "refused as unread, so the move before it wasn't timed"
+    if f"not become ask:{ask}" in said:
+        return "refused for another reason, or the daemon slower than the shell waits"
+    if f"becoming ask:{ask}" in said:
+        return "asked, and the daemon never answered"
+    return "never asked: the second Return didn't release it"
 
 
 def selects(shown: dict[str, object], why: str) -> bool:
@@ -217,7 +237,7 @@ def refused_unread(desktop: Desktop, ask: str, since: str) -> None:
     """
     desktop.reported(
         f"not become ask:{ask}: ",
-        lambda why: why == "press Escape, then j or k on it, and read it before you release it",
+        lambda why: why == UNREAD,
         since,
     )
     desktop.as_account(f"test -e {ASKS}/{ask}.ask.json && ! test -e {ASKS}/{ask}.answer.json")
