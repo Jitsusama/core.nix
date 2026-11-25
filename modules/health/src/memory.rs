@@ -13,12 +13,14 @@ use serde::{Deserialize, Serialize};
 /// The programs watched, by the last part of the path each was started by,
 /// since the shell's own name in `/proc` is its wrapper's, cut short; and
 /// the pi host and each conversation's own process, which are started by
-/// the host's node, so they are known by the program it runs (`HOST`).
+/// the host's node, so they are known by the program it runs (`HOSTS`).
 pub const WATCHED: [&str; 4] = ["pi", "quickshell", "pi-host", "pi-conversation"];
 
-/// The harness's program a pi host's node runs, for the host and, with
-/// `--child` after it, for each conversation's own process.
-const HOST: &str = "pi-host.ts";
+/// The harness's programs a pi host's node runs, for the host and, with
+/// `--child` after it, for each conversation's own process: the entry a
+/// host's unit starts, and the one it started before, which a host and
+/// its conversations keep until they next start.
+const HOSTS: [&str; 2] = ["pi-host.mjs", "pi-host.ts"];
 
 /// The ages copies are grouped by, in seconds: under an hour, under six
 /// hours, under a day, and older.
@@ -144,7 +146,7 @@ fn started_by(process: &Path) -> Option<String> {
         let mut after = words.skip_while(|word| word.starts_with('-'));
         if after
             .next()
-            .is_some_and(|program| last_part(&program) == HOST)
+            .is_some_and(|program| HOSTS.contains(&last_part(&program).as_str()))
         {
             let child = after.any(|word| word == "--child");
             return Some(if child { "pi-conversation" } else { "pi-host" }.to_owned());
@@ -402,6 +404,27 @@ mod tests {
             Some(100_000),
             0,
         );
+        process(
+            proc.path(),
+            30,
+            &format!("{node}\0{flags}\0/srv/harness/scripts/pi-host.mjs\0--child\0"),
+            Some(500_000),
+            0,
+        );
+        process(
+            proc.path(),
+            31,
+            &format!("{node}\0{flags}\0scripts/pi-host.mjs\0realm\0"),
+            Some(600_000),
+            0,
+        );
+        process(
+            proc.path(),
+            32,
+            &format!("{node}\0scripts/not-pi-host.mjs\0--child\0"),
+            Some(75),
+            0,
+        );
         process(proc.path(), 27, "vim\0scripts/pi-host.ts\0", Some(80), 0);
         process(
             proc.path(),
@@ -426,14 +449,15 @@ mod tests {
         };
         assert_eq!(
             kib("pi-conversation"),
-            vec![100_000, 200_000, 300_000],
+            vec![100_000, 200_000, 300_000, 500_000],
             "each conversation's own process, by the host's program and --child, \
-             whatever its node is called"
+             either entry, whatever its node is called"
         );
         assert_eq!(
             kib("pi-host"),
-            vec![400_000, 900_000],
-            "the host, by its program alone, a --child before it being node's"
+            vec![400_000, 600_000, 900_000],
+            "the host, by its program alone, either entry, a --child before it \
+             being node's"
         );
         assert_eq!(
             seen.len(),

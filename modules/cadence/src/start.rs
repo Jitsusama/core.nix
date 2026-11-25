@@ -384,13 +384,19 @@ pub fn is_pi(pid: u32) -> bool {
     fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|c| c.trim() == "pi")
 }
 
-/// Whether `pid` is a shared pi host: node running the harness's
-/// `scripts/pi-host.ts`, rather than gone or reused by another program.
+/// Whether `pid` is a shared pi host, rather than gone or reused by
+/// another program.
 pub fn is_host(pid: u32) -> bool {
-    fs::read(format!("/proc/{pid}/cmdline")).is_ok_and(|line| {
-        line.split(|&b| b == 0)
-            .any(|arg| arg.ends_with(b"/scripts/pi-host.ts"))
-    })
+    fs::read(format!("/proc/{pid}/cmdline")).is_ok_and(|line| hosts(&line))
+}
+
+/// Whether a command line, its words split by NUL, is a shared pi host's:
+/// node running the harness's `scripts/pi-host.mjs`, the entry its unit
+/// starts, or `scripts/pi-host.ts`, the one a host started before it
+/// keeps until it next starts.
+fn hosts(line: &[u8]) -> bool {
+    line.split(|&b| b == 0)
+        .any(|arg| arg.ends_with(b"/scripts/pi-host.mjs") || arg.ends_with(b"/scripts/pi-host.ts"))
 }
 
 /// What the machine's node holds, by `mycelium holds`, or none when it
@@ -638,6 +644,32 @@ fn windows() -> Vec<Window> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_host_is_known_by_either_entry() {
+        for host in [
+            b"node\0--disable-sigusr1\0/h/agentic-harness.pi/scripts/pi-host.mjs\0attended\0"
+                .as_slice(),
+            b"node\0/h/agentic-harness.pi/scripts/pi-host.ts\0background\0",
+        ] {
+            assert!(
+                hosts(host),
+                "a host not counted as one: {}",
+                String::from_utf8_lossy(host)
+            );
+        }
+        for other in [
+            b"node\0/h/agentic-harness.pi/scripts/host-join.ts\0--session\0s\0".as_slice(),
+            b"node\0/h/agentic-harness.pi/scripts/not-pi-host.mjs\0",
+            b"vim\0scripts/pi-host.mjs\0",
+        ] {
+            assert!(
+                !hosts(other),
+                "not a host, yet counted as one: {}",
+                String::from_utf8_lossy(other)
+            );
+        }
+    }
 
     #[test]
     fn a_hosted_sessions_viewer_counts_as_showing_it() {

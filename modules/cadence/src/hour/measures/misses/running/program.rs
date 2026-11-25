@@ -1,7 +1,8 @@
 //! Which of the harness's files a pi host's own program loads, and when
 //! pi-packages last pointed `current` at the version installed. A host,
 //! and each conversation's own process beside it, resolves its program,
-//! `scripts/pi-host.ts`, through `current` once, as it starts, so it keeps
+//! `scripts/pi-host.mjs` or before it `scripts/pi-host.ts`, through
+//! `current` once, as it starts, so it keeps
 //! the version it started with through an update (core's `host.nix` says
 //! so) until it next starts: a harness change to that program runs only
 //! once every running host and conversation started after it was
@@ -13,8 +14,12 @@ use std::path::Path;
 
 use crate::command;
 
-/// The pi host's program, from which every file it loads is imported.
-const PROGRAM: &str = "scripts/pi-host.ts";
+/// The pi host's programs, from which every file it loads is imported:
+/// the entry a host's unit starts, which imports the other, and the one a
+/// host started before it, which a commit made before the first holds
+/// alone. A host started by either loads no more than both reach, so
+/// counting both errs toward a change waiting on the hosts.
+const PROGRAMS: [&str; 2] = ["scripts/pi-host.mjs", "scripts/pi-host.ts"];
 
 /// The files naming the packages the program imports by name, which a
 /// change to loads into the next host to start as surely as its own code.
@@ -61,11 +66,11 @@ pub fn files(path: &str, sha: &str) -> Option<BTreeSet<String>> {
     Some(files)
 }
 
-/// Every file `PROGRAM` imports, itself and through what it imports, from
-/// `found`'s lines, each `SHA:FILE`, a NUL, then the import, as
-/// `git grep --null -o` writes them for the commit `sha`; `None` when no
-/// line comes from `PROGRAM`, or it reaches a file not `held`, or one
-/// loading by a template's path or a `#` name.
+/// Every file each of `PROGRAMS` imports, itself and through what it
+/// imports, from `found`'s lines, each `SHA:FILE`, a NUL, then the import,
+/// as `git grep --null -o` writes them for the commit `sha`; `None` when
+/// no line comes from any of `PROGRAMS`, or one reaches a file not
+/// `held`, or one loading by a template's path or a `#` name.
 fn imported(found: &str, sha: &str, held: &BTreeSet<&str>) -> Option<BTreeSet<String>> {
     let mut imports: BTreeMap<&str, Vec<String>> = BTreeMap::new();
     let mut unfollowed: BTreeSet<&str> = BTreeSet::new();
@@ -90,9 +95,14 @@ fn imported(found: &str, sha: &str, held: &BTreeSet<&str>) -> Option<BTreeSet<St
         };
         imports.entry(file).or_default().push(target);
     }
-    imports.contains_key(PROGRAM).then_some(())?;
-    let mut loaded = BTreeSet::from([PROGRAM.to_owned()]);
-    let mut next = VecDeque::from([PROGRAM.to_owned()]);
+    let programs: Vec<String> = PROGRAMS
+        .iter()
+        .filter(|program| imports.contains_key(**program))
+        .map(|program| (*program).to_owned())
+        .collect();
+    (!programs.is_empty()).then_some(())?;
+    let mut loaded: BTreeSet<String> = programs.iter().cloned().collect();
+    let mut next = VecDeque::from(programs);
     while let Some(file) = next.pop_front() {
         if unfollowed.contains(file.as_str()) {
             return None;
@@ -224,6 +234,29 @@ mod tests {
             imported("f00d:host/a.ts\0from \"./b.ts\"\n", "f00d", &held),
             None,
             "a program importing nothing, as one moved away, read as loading only itself"
+        );
+        let entered = format!(
+            "{found}{}",
+            concat!(
+                "f00d:scripts/pi-host.mjs\0import \"../lib/core/start.mjs\"\n",
+                "f00d:scripts/pi-host.mjs\0import(\"./pi-host.ts\"\n",
+            ),
+        );
+        let with_entry: BTreeSet<&str> = held
+            .iter()
+            .copied()
+            .chain(["scripts/pi-host.mjs", "lib/core/start.mjs"])
+            .collect();
+        assert_eq!(
+            imported(&entered, "f00d", &with_entry),
+            Some(
+                loaded
+                    .into_iter()
+                    .chain(["scripts/pi-host.mjs", "lib/core/start.mjs"])
+                    .map(str::to_owned)
+                    .collect()
+            ),
+            "the host's new entry, or what it imports before the old one, wasn't followed"
         );
         let unheld: BTreeSet<&str> = held
             .iter()
