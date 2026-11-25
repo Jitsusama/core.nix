@@ -478,10 +478,35 @@ fn a_builds_first_process_is_its_own_else_the_nearest_under_it() {
     let deeper = first_process(&root);
     procs(&deep, "");
     let none = first_process(&root);
+    // A file system listing by its names' hashes, as ext4 and ZFS do, could
+    // still list the one sorting first first by chance. Among 32 siblings,
+    // named for the clock's nanoseconds so their hashes change from run to
+    // run, even in a build's sandbox, where a process's id barely does, and
+    // made from the middle, 7 apart, so `w00` is made neither first nor
+    // last, an unsorted walk lists it first one run in 32.
+    let run = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("the clock is past 1970")
+        .subsec_nanos();
+    for made in 0..32 {
+        let sibling = (made * 7 + 16) % 32;
+        let cgroup = root.join(format!("w{sibling:02}-{run}"));
+        fs::create_dir(&cgroup).expect("the temp folder takes a folder");
+        procs(&cgroup, &format!("{}\n", 100 + sibling));
+    }
+    let widest = first_process(&root);
     fs::remove_dir_all(&root).expect("the temp folder gives its folder back");
     assert_eq!(
-        (own, sorted, nearest, next, deeper, none),
-        (Some(10), Some(30), Some(35), Some(40), Some(50), None),
+        (own, sorted, nearest, next, deeper, none, widest),
+        (
+            Some(10),
+            Some(30),
+            Some(35),
+            Some(40),
+            Some(50),
+            None,
+            Some(100)
+        ),
         "a build's first process wasn't its own, else the nearest under it, by name"
     );
 }
