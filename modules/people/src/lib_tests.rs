@@ -224,13 +224,13 @@ fn a_source_signed_out_or_refused_is_never_waited_on_and_one_started_again_is() 
     assert_eq!(
         book.waiting("person:ada@example.com").collect::<Vec<_>>(),
         ["slack"],
-        "Ada should wait on Slack alone while Vault's program is stopped"
+        "Ada wasn't waiting on Slack alone while Vault's program was stopped"
     );
     book.restarted("vault");
     assert_eq!(
         book.waiting("person:ada@example.com").collect::<Vec<_>>(),
         ["slack", "vault"],
-        "Ada should wait on Slack and Vault once Vault's program starts again"
+        "Ada wasn't waiting on just Slack and Vault once Vault's program started again"
     );
     assert_eq!(book.standings()["vault"].word(), "answering");
 }
@@ -264,12 +264,12 @@ fn a_source_that_says_its_a_roster_isnt_waited_on_and_knows_some_by_its_own_id()
         },
     );
     // Slack is answering, and has nothing to say of Ada yet, so she still
-    // waits on it until it's asked again.
+    // waits on it until it says something of her.
     assert_eq!(book.standings()["slack"].word(), "answering");
     assert_eq!(
         book.waiting("person:ada@example.com").collect::<Vec<_>>(),
         ["slack"],
-        "Ada wasn't waiting on Slack once it had nothing to say of her yet"
+        "Ada wasn't waiting on Slack alone once it had nothing to say of her yet"
     );
     book.take(
         "slack",
