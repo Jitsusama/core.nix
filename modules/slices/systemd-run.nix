@@ -84,11 +84,10 @@ let
   # Each reason is told what to match for it, so a patched or re-sourced
   # systemd isn't pointed at override arguments that set no patch or source.
   kept = lib.filter (reason: reason != "flags") differs;
+  flagsMatched = "its flags, an override argument such as withTimedated showing as its flag";
   matching =
     lib.optional (kept != [ ]) "its ${lib.concatStringsSep " and " kept}"
-    ++ lib.optional (lib.elem "flags" differs) (
-      "its flags, an override argument such as withTimedated showing as its flag"
-    );
+    ++ lib.optional (lib.elem "flags" differs) flagsMatched;
   why =
     if canHave then
       "has none built alike, since the machine's differs in its ${whatDiffers}; build it on "
