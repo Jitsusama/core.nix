@@ -219,6 +219,24 @@ QtObject {
             Expect.same("and one whose Talk drew nothing yet",
                 Answers.answering("ASKS", "ASKS", {}, second), second);
 
+            // What a Talk drew its Return answering (Agents.qml's answerTalks).
+            Expect.same("a Talk that drew the question answers it",
+                Answers.drawn({ by: "them" }, first), first);
+            Expect.same("one that drew no question answers nothing, though it asks",
+                Answers.drawn(null, first), null);
+            Expect.same("as does one asking nothing",
+                Answers.drawn({ by: "them" }, undefined), null);
+
+            // What his Return does (Agents.qml's given).
+            Expect.same("his own Return answers what the Talk drew",
+                Answers.onReturn(first, true), { act: "answer", answers: first });
+            Expect.same("a walk that would answer is refused",
+                Answers.onReturn(second, false), { act: "refused" });
+            Expect.same("his Return to a Talk that drew no question talks",
+                Answers.onReturn(null, true), { act: "talk" });
+            Expect.same("as does a walk to one asking nothing",
+                Answers.onReturn(undefined, false), { act: "talk" });
+
             // Whether his words stay to be given back (Agents.qml's answerIn).
             Expect.same("words refused under the same ask stay",
                 Answers.keepsWords(false, first, first), true);

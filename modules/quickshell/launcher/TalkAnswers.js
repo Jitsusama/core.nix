@@ -153,8 +153,27 @@ function shownWant(now, answers) {
 // none, what it asks `now`. Null where it asks nothing he can answer, and his words go as a
 // talk.
 function answering(heldDraft, draft, drawnBy, now) {
-    const drawn = heldDraft === draft && draft in (drawnBy ?? {});
-    return drawn ? drawnBy[draft] : now;
+    const held = heldDraft === draft && draft in (drawnBy ?? {});
+    return held ? drawnBy[draft] : now;
+}
+
+// What a Talk drew its Return answering: `answers` (asked's) where it drew the question
+// (`drawnQuestion`, question's), null where it drew none, so he never answers a question he
+// wasn't shown, and his words go as a talk.
+function drawn(drawnQuestion, answers) {
+    return drawnQuestion === null || drawnQuestion === undefined ? null : answers ?? null;
+}
+
+// What Joel's Return in a Talk does with his words, given what they answer (`answering`'s):
+// `{ act: "talk" }` where they answer nothing, and go to the session's inbox;
+// `{ act: "answer", answers }` where they answer what it asks and come from his own Return
+// (`fromJoel`, Sprouting.js's); `{ act: "refused" }` where they'd answer it from anywhere
+// else, since an answer goes as his.
+function onReturn(answers, fromJoel) {
+    if (answers === null || answers === undefined) {
+        return { act: "talk" };
+    }
+    return fromJoel === true ? { act: "answer", answers } : { act: "refused" };
 }
 
 // Whether his words to `answers` stay to be given back once the node has said of them: only
