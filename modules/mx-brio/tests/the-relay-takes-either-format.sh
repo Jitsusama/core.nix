@@ -35,9 +35,11 @@ done
 # run ending in a sink can't show: the parser takes bare caps only between
 # two elements. Run alone, it stops at its unlinked end, and only one
 # that can't be made, in part or at all, is called erroneous or said
-# not to be constructed.
+# not to be constructed. One that can't be made says so at once, so a
+# run that doesn't stop within half a minute was made, and is ended
+# rather than left to hold a builder.
 # shellcheck disable=SC2086 # gst-launch takes a pipeline word by word.
-alone=$(gst-launch-1.0 -q $picture,format=NV12 $rest 2>&1 || true)
+alone=$(timeout 30 gst-launch-1.0 -q $picture,format=NV12 $rest 2>&1 || true)
 if [[ $alone == *"erroneous pipeline"* || $alone == *"could not be constructed"* ]]; then
   echo "the relay can't make its input, ending as it does: $alone"
   exit 1

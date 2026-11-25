@@ -11,7 +11,8 @@
 # kernel's own keys, as udev deletes its record, or unplugs the node when
 # after/ holds a .unplugged for it; an add takes the node's record from
 # after/. A file named fails makes every trigger fail, adds-fail only each
-# add, and hangs every settle; adds-partly refuses an add once its first
+# add, hangs every settle and hangs-once only the first, before it handles
+# what's queued; adds-partly refuses an add once its first
 # node's add is queued all the same; a refused trigger says why, as
 # udevadm does; lags has an add queued and not yet handled, its settle
 # running out; killed has the first settle end the give-back with the TERM
@@ -116,6 +117,10 @@ settle)
     kill -TERM "${PPID}"
   fi
   [[ ! -e "${root}/hangs" ]] || exit 1
+  if [[ -e "${root}/hangs-once" ]]; then
+    rm "${root}/hangs-once"
+    exit 1
+  fi
   # The adds queued before the give-back, handled once udev settles.
   if [[ -d "${root}/queued" ]]; then
     for queued in "${root}/queued"/*; do
