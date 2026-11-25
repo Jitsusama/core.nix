@@ -194,6 +194,12 @@ pub(super) fn stand(
         if let Some(&known) = known.get(commit) {
             return known;
         }
+        // An ask that couldn't end by the run's end for them waits for the
+        // next run, as the run must write what it heard.
+        if Instant::now() + ASK_AT_MOST > ears.asks_end {
+            unclosed = Some("the run's time for asking git ran out".into());
+            return false;
+        }
         let child = Command::new(&ears.git)
             .arg("--git-dir")
             .arg(&ears.core)
@@ -472,8 +478,7 @@ fn git_said(child: std::io::Result<Child>, limit: Duration) -> Result<i32, Strin
             Ok(Some(status)) => return status.code().ok_or_else(|| format!("ended by {status}")),
             Ok(None) if started.elapsed() < limit => std::thread::sleep(Duration::from_millis(50)),
             _ => {
-                let _ = child.kill();
-                let _ = child.wait();
+                super::node::stop(&mut child);
                 return Err(format!("ran past {} s", limit.as_secs()));
             }
         }

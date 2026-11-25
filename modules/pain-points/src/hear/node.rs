@@ -1,7 +1,8 @@
 //! Asking the machine's mycelium within a run's time. Each command has its
 //! own limit, and a run's sends end by `SENDS_END`, so a node slow to
-//! answer, as one is while a switch restarts it, leaves what's left for the
-//! next run rather than holding this one past its unit's limit.
+//! answer, as one is while a switch's writes hold the disk, leaves what's
+//! left for the next run rather than holding this one past its unit's
+//! limit.
 
 use std::io::Read;
 use std::path::PathBuf;
@@ -17,8 +18,12 @@ pub const SEND_AT_MOST: Duration = Duration::from_secs(20);
 
 /// How far into a run its sends may go: a send starts only while it could
 /// end by then, a minute short of the four minutes pain-hear's unit allows
-/// in home.nix, so what a run writes after its sends has its time.
-const SENDS_END: Duration = Duration::from_secs(180);
+/// in home.nix, so what a run asks and writes after its sends has its time.
+pub const SENDS_END: Duration = Duration::from_secs(180);
+
+/// How long a stopped child is given to end: one held in the kernel, as a
+/// read of a disk a switch is writing holds it, is left to end alone.
+const STOPPING_AT_MOST: Duration = Duration::from_secs(1);
 
 /// How a send came out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,33 +32,37 @@ pub enum Sent {
     /// Tried and not taken, which spends one of the pain's tries.
     Failed,
     /// Not tried this run, its tries kept: the node had stopped answering,
-    /// or no send could end by `SENDS_END`.
+    /// or no send could end by the run's end for sends.
     Held,
 }
 
-/// The machine's mycelium, sending as `from`. Once one send outruns its
-/// limit the node isn't answering, so the rest of the run's are held.
+/// The machine's mycelium, sending as `from`. Once one ask outruns its
+/// limit the node isn't answering, so the rest of the run's sends are
+/// held.
 pub struct Node {
     mycelium: PathBuf,
     from: Option<String>,
-    begun: Instant,
+    ends: Instant,
     limit: Duration,
     silent: bool,
-    /// How many sends the run held for the next.
+    /// How many sends were held as the node had stopped answering.
     pub held: usize,
+    /// How many were held as none could end by `ends`.
+    pub out_of_time: usize,
 }
 
 impl Node {
-    /// The node at `mycelium`, for a run begun at `begun`, each send given
-    /// `limit`.
-    pub fn new(mycelium: PathBuf, from: Option<String>, begun: Instant, limit: Duration) -> Self {
+    /// The node at `mycelium`, for a run whose sends end by `ends`, each
+    /// ask given `limit`.
+    pub fn new(mycelium: PathBuf, from: Option<String>, ends: Instant, limit: Duration) -> Self {
         Self {
             mycelium,
             from,
-            begun,
+            ends,
             limit,
             silent: false,
             held: 0,
+            out_of_time: 0,
         }
     }
 
@@ -76,8 +85,12 @@ impl Node {
     /// lands; the keeper is told, with an fyi, of what its list leaves to
     /// their owners, so it needn't answer.
     pub fn send(&mut self, to: &str, text: &str, put: Put) -> Sent {
-        if self.silent || self.begun.elapsed() + self.limit > SENDS_END {
+        if self.silent {
             self.held += 1;
+            return Sent::Held;
+        }
+        if Instant::now() + self.limit > self.ends {
+            self.out_of_time += 1;
             return Sent::Held;
         }
         let Some(from) = self.from.as_deref() else {
@@ -144,10 +157,23 @@ fn answer_within(command: &mut Command, limit: Duration) -> Result<Option<String
     match ended_within(&mut child, limit) {
         None => Err(Late),
         Some(false) => Ok(None),
-        Some(true) => reading
+        // One that ended well isn't late, though a child it left holds
+        // the pipe: the node answered, so what it said is all there is.
+        Some(true) => Ok(reading
             .recv_timeout(limit.saturating_sub(started.elapsed()))
-            .map_err(|_| Late)
-            .map(|text| text.filter(|s| !s.is_empty())),
+            .ok()
+            .flatten()
+            .filter(|s| !s.is_empty())),
+    }
+}
+
+/// Stops a child, and waits a moment for it to end: a kill is never
+/// refused, but a child held in the kernel ends only once it is let go.
+pub fn stop(child: &mut Child) {
+    let _ = child.kill();
+    let started = Instant::now();
+    while matches!(child.try_wait(), Ok(None)) && started.elapsed() < STOPPING_AT_MOST {
+        std::thread::sleep(Duration::from_millis(10));
     }
 }
 
@@ -160,8 +186,7 @@ fn ended_within(child: &mut Child, limit: Duration) -> Option<bool> {
             Ok(Some(status)) => return Some(status.success()),
             Ok(None) if started.elapsed() < limit => std::thread::sleep(Duration::from_millis(50)),
             running => {
-                let _ = child.kill();
-                let _ = child.wait();
+                stop(child);
                 return running.is_err().then_some(false);
             }
         }

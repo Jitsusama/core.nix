@@ -48,6 +48,7 @@ impl Place {
             switches: self.root.join("switches.jsonl"),
             core: self.root.join("core.git"),
             git: "git".into(),
+            asks_end: Instant::now() + Duration::from_secs(3600),
             at: AT,
             offset_s: -5 * 3600,
         }

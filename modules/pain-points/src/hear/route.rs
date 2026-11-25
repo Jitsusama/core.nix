@@ -359,6 +359,7 @@ mod tests {
             to: None,
             routed_at: None,
             tries: 0,
+            unnoted_since: None,
             taken_by: None,
             answered_at: None,
             closed_by: None,
