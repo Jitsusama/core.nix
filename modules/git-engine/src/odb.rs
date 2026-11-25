@@ -271,16 +271,31 @@ impl Store {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Where in a pack this thread's reads are refused memory for what a
+    /// stream inflates to, as an allocator out of it would refuse it, which
+    /// the tests set since nothing here asks for more than they can give.
+    static STARVED: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
+}
+
 /// Inflates the zlib stream at `offset`, which inflates to `size` bytes.
 ///
 /// What it inflates to is grown as the stream fills it rather than made
 /// at the size its header says, so a size no stream fills, however large,
 /// takes at most twice what the stream gives, or 64 KiB, before it ends,
-/// and memory the allocator won't give is refused rather than ending the
-/// program. As git's `unpack_compressed_entry` does, it makes room for
+/// and memory the allocator won't give for it is refused rather than
+/// ending the program. As git's `unpack_compressed_entry` does, it makes room for
 /// one byte past the size, and takes the object only where its stream
 /// ends there, so a stream giving more, or ending wrongly, is refused.
 fn inflate_at(file: &File, mut offset: u64, size: usize) -> io::Result<Vec<u8>> {
+    #[cfg(test)]
+    if STARVED.with(std::cell::Cell::get) == Some(offset) {
+        return Err(io::Error::new(
+            io::ErrorKind::OutOfMemory,
+            "no memory for a pack object",
+        ));
+    }
     let mut state = InflateState::new_boxed(DataFormat::Zlib);
     let room = size
         .checked_add(1)

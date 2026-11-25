@@ -15,11 +15,11 @@ use std::os::unix::fs::FileExt;
 type Skipped = HashMap<Place, (io::ErrorKind, String)>;
 
 /// The bases a find spent every copy of, each with whether one was passed
-/// over and what refused it. Copies stay marked bad, and passed over, for
+/// over, whether one was refused memory, and what refused it. Copies stay marked bad, and passed over, for
 /// the rest of the find, so a base spent once would be spent again just
 /// as it was: a copy naming it again ends as the first did, without its
 /// copies looked up again.
-type Spent = HashMap<Oid, (bool, io::ErrorKind, String)>;
+type Spent = HashMap<Oid, (bool, bool, io::ErrorKind, String)>;
 
 #[cfg(test)]
 thread_local! {
@@ -43,6 +43,10 @@ struct Search {
     /// Whether a copy was passed over for this find alone, its chain
     /// coming round or running too long, rather than refused.
     skipped: bool,
+    /// Whether a copy was refused memory the allocator wouldn't give,
+    /// which says nothing of it, so a copy naming this object as its base
+    /// is left unmarked too should no copy read.
+    starved: bool,
     /// The copy being read, and the deltas read down from it toward its
     /// base so far, nearest the copy first.
     copy: Option<Place>,
@@ -70,6 +74,7 @@ impl Search {
             loose: 0,
             refused: None,
             skipped: false,
+            starved: false,
             copy: None,
             deltas: Vec::new(),
             above,
@@ -100,6 +105,9 @@ enum Reached {
     /// A named base whose copies were spent with one passed over, which
     /// says nothing of the copy whose delta named it.
     Skipped(io::Error),
+    /// A named base whose copies were spent with one refused memory, which
+    /// says nothing of the copy whose delta named it either.
+    Starved(io::Error),
 }
 
 impl Odb {
@@ -110,7 +118,9 @@ impl Odb {
     /// once every other place the object may lie has been read. A copy that
     /// won't read is marked bad for as long as the store is open, as git
     /// marks a copy bad and looks again, so a sound copy in another pack is
-    /// read and no copy is unpacked to its failure twice. A copy whose
+    /// read and no copy is unpacked to its failure twice; a copy refused
+    /// memory, or naming a base whose copies were, is left to be read
+    /// again, since that says nothing of the copy. A copy whose
     /// chain comes round to an object already being found, or runs past
     /// `CHAIN_LIMIT`, may be sound under another copy of a base on the
     /// way, so it's only passed over, for this find alone, and the next
@@ -146,10 +156,17 @@ impl Odb {
                             .unwrap_or_else(|| invalid("delta base missing"));
                         spent.insert(
                             ended.oid,
-                            (ended.skipped, refused.kind(), refused.to_string()),
+                            (
+                                ended.skipped,
+                                ended.starved,
+                                refused.kind(),
+                                refused.to_string(),
+                            ),
                         );
                         if ended.skipped {
                             Ok(Reached::Skipped(refused))
+                        } else if ended.starved {
+                            Ok(Reached::Starved(refused))
                         } else {
                             Err(refused)
                         }
@@ -167,13 +184,16 @@ impl Odb {
                     );
                 }
                 Ok(Reached::Skipped(error)) => skip(&mut searches[at], &mut skipped, &error),
+                Ok(Reached::Starved(error)) => leave(&mut searches[at], &error),
                 Ok(Reached::Named(base)) => {
                     if let Some(tree) = self.tree(&base) {
                         handed = Some(tree);
-                    } else if let Some((passed_over, kind, said)) = spent.get(&base) {
+                    } else if let Some((passed_over, starved, kind, said)) = spent.get(&base) {
                         let error = io::Error::new(*kind, said.clone());
                         if *passed_over {
                             skip(&mut searches[at], &mut skipped, &error);
+                        } else if *starved {
+                            leave(&mut searches[at], &error);
                         } else {
                             self.fail(&mut searches[at], &error);
                         }
@@ -334,12 +354,13 @@ impl Odb {
     /// Ends the copy `search` was reading, which won't read for `error`:
     /// marks it bad, keeps the refusal should it be the first, and leaves
     /// the next copy to be read. Memory the allocator wouldn't give says
-    /// nothing of the copy, so a copy refused for it is left to be read
-    /// again rather than passed over until its pack folder changes.
+    /// nothing of the copy, so a copy refused for it is left, unmarked.
     fn fail(&mut self, search: &mut Search, error: &io::Error) {
-        if let Some(copy) = search.copy.take()
-            && error.kind() != io::ErrorKind::OutOfMemory
-        {
+        if error.kind() == io::ErrorKind::OutOfMemory {
+            leave(search, error);
+            return;
+        }
+        if let Some(copy) = search.copy.take() {
             self.bad.insert(copy, (error.kind(), error.to_string()));
         }
         refuse(search, error);
@@ -407,6 +428,17 @@ fn refuse(search: &mut Search, error: &io::Error) {
         .refused
         .get_or_insert_with(|| io::Error::new(error.kind(), error.to_string()));
     search.deltas.clear();
+}
+
+/// Ends the copy `search` was reading without marking it bad, for `error`
+/// that says nothing of it: memory refused it, or a base it named, whose
+/// copies were spent with one refused memory. The copy is left to be read
+/// again by a later find, and a copy naming this search's object as its
+/// base is left unmarked in turn.
+fn leave(search: &mut Search, error: &io::Error) {
+    search.copy = None;
+    search.starved = true;
+    refuse(search, error);
 }
 
 /// Takes the search on top off, no longer being found.

@@ -401,6 +401,46 @@ fn a_copy_marked_bad_stays_bad_while_the_store_is_open() {
     );
 }
 
+#[test]
+fn a_copy_refused_memory_is_left_unmarked_as_is_a_delta_naming_it() {
+    let names = names(2);
+    // names[0] a delta over names[1] in each pack, names[1]'s copy in the
+    // first spoilt and in the second sound, so the second copy of the
+    // delta meets a base already spent. The spoilt one's size takes two
+    // bytes, so its stream starts past where the sound one's does.
+    let mut spoilt = [vec![0xb1, 0x00], blob(b"a")[1..].to_vec()].concat();
+    *spoilt.last_mut().expect("a stream ends in its checksum") ^= 1;
+    // The pack's 12 bytes of header, the delta, then the blob's one.
+    let sound = 12 + over(names[1]).len() as u64 + 1;
+    let folders = packed_as(&[
+        (names.clone(), vec![over(names[1]), spoilt]),
+        (names.clone(), vec![over(names[1]), blob(b"a")]),
+    ]);
+    let objects = folders.0[0].clone();
+    let read = within(20, move || {
+        let mut odb = Odb::open(&objects);
+        let mut read = || {
+            let read = odb
+                .read(&Oid(names[0]))
+                .map(|object| object.map(|object| object.data))
+                .map_err(|error| error.to_string());
+            (read, odb.bad.len())
+        };
+        STARVED.with(|starved| starved.set(Some(sound)));
+        let starved = read();
+        STARVED.with(|starved| starved.set(None));
+        (starved, read())
+    });
+    assert_eq!(
+        read,
+        Ok((
+            (Err("pack object's stream".into()), 1),
+            (Ok(Some(b"x".to_vec())), 1)
+        )),
+        "a copy refused memory, or a delta over its object, was marked bad and not read again"
+    );
+}
+
 /// What reading each of `names` from a store opened once answers, and how
 /// many copies it marked bad by the end.
 pub(super) fn read_each(objects: &std::path::Path, names: &[[u8; 20]]) -> (Vec<Read>, usize) {

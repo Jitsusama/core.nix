@@ -169,13 +169,25 @@ fn an_object_is_taken_only_where_its_stream_ends_at_its_size() {
     let mut spoilt = stream(b"x");
     *spoilt.last_mut().expect("a stream ends in its checksum") ^= 1;
     let size = || Err("pack object's size".to_string());
+    // Each is read under a clock, since a stream filling the room made for
+    // it before it ends would, unrefused, be read again and again.
     for (entry, read, what) in [
         (entry(0x31, stream(b"x")), Ok(Some(b"x".to_vec())), "sound"),
+        (
+            entry(0x30, stream(b"")),
+            Ok(Some(Vec::new())),
+            "sound of no bytes",
+        ),
         (entry(0x30, stream(b"x")), size(), "of no bytes giving one"),
         (
             entry(0x31, stream(b"xy")),
             size(),
-            "giving more than its size",
+            "giving one past its size",
+        ),
+        (
+            entry(0x31, stream(b"xyz")),
+            size(),
+            "giving more past its size than the room made",
         ),
         (
             entry(0x31, spoilt),
@@ -184,9 +196,10 @@ fn an_object_is_taken_only_where_its_stream_ends_at_its_size() {
         ),
     ] {
         let folders = packed(&[name], &[vec![entry]]);
+        let objects = folders.0[0].clone();
         assert_eq!(
-            read_from(&folders.0[0], name),
-            read,
+            within(20, move || read_from(&objects, name)),
+            Ok(read),
             "an object {what} wasn't taken only where its stream ends at its size"
         );
     }
