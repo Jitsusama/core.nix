@@ -1,4 +1,4 @@
-use disk_guard::garbage::{Batch, Dead, Listing, list, parse, temp_roots};
+use disk_guard::garbage::{Batch, Dead, Listing, list, min_free, parse, temp_roots};
 use disk_guard::units::float;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -152,6 +152,41 @@ fn a_listing_that_fails_says_why() {
         list(&fake_nix(none.path(), 0), Path::new(STORE), false).unwrap(),
         []
     );
+}
+
+/// The guard's log is often readable by any account, and a Nix printing
+/// its whole config, or refusing a nix.conf line, could quote an access
+/// token on either stream, so a read of min-free that isn't a number, or
+/// that fails, is told by its length alone.
+#[test]
+fn a_min_free_read_tells_none_of_what_nix_printed() {
+    let asked = "--extra-experimental-features nix-command config show min-free";
+    for (printed, told) in [
+        (
+            "echo 'access-tokens = github.com=SECRET'\n",
+            "said 33 bytes",
+        ),
+        (
+            "echo \"error: illegal configuration line 'access-tokens github.com=SECRET'\" >&2\n\
+             exit 1\n",
+            "saying 67 bytes",
+        ),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        script(
+            &dir.path().join("nix"),
+            &format!("[ \"$*\" = '{asked}' ] || exit 9\n{printed}"),
+        );
+        let failed = min_free(&dir.path().join("nix")).unwrap_err();
+        assert!(
+            !failed.contains("SECRET"),
+            "told what Nix printed: {failed}"
+        );
+        assert!(
+            failed.contains(told),
+            "didn't tell how much Nix printed: {failed}"
+        );
+    }
 }
 
 const DAY: f64 = 86400.0;

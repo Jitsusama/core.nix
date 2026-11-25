@@ -2497,23 +2497,34 @@ fn a_failing_min_free_read_keeps_its_floor_and_is_asked_less_and_less() {
 
 /// A guard that has read no floor yet, as after a switch restarts it on a
 /// loaded Mac, is told from its bands alone, so it asks every five minutes
-/// until Nix answers rather than backing off.
+/// until Nix answers rather than backing off, and no sooner, since each
+/// read can hold a step for its 30 s timeout.
 #[test]
 fn a_min_free_never_read_is_asked_every_five_minutes() {
     let store = Store::new();
     let mut guard = store.guard(user_config(&store, "0%"));
     let start = tick();
-    for (step, seconds) in [0.0, 301.0, 602.0, 903.0, 1204.0].into_iter().enumerate() {
+    let mut step_at = |seconds: f64| {
         let at = Tick {
             wall: start.wall + seconds,
             monotonic: start.monotonic + seconds,
             ..start.clone()
         };
         guard.step(&at, &CALM).unwrap();
+    };
+    for (step, seconds) in [0.0, 301.0, 602.0, 903.0, 1204.0].into_iter().enumerate() {
+        step_at(seconds);
         assert_eq!(
             min_free_asked(&store),
             step + 1,
             "a guard with no floor wasn't asked again five minutes on, at {seconds} s"
+        );
+        step_at(seconds + 150.0);
+        assert_eq!(
+            min_free_asked(&store),
+            step + 1,
+            "a guard with no floor was asked again within five minutes, at {} s",
+            seconds + 150.0
         );
     }
 }

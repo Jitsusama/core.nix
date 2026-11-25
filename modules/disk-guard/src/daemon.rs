@@ -3701,6 +3701,21 @@ fn restamp(path: &Path, now: f64) -> io::Result<()> {
             // A guard only starting has no pass at work, whatever the one
             // before was doing as it left.
             left.remove("passing");
+            // Nor is a moment the last guard told still to come once it
+            // has passed, which the broker would pass on as if it were.
+            if let Some(serde_json::Value::Array(filesystems)) = left.get_mut("filesystems") {
+                for filesystem in filesystems
+                    .iter_mut()
+                    .filter_map(serde_json::Value::as_object_mut)
+                {
+                    for moment in ["full_at", "floor_at"] {
+                        let at = filesystem.get(moment).and_then(serde_json::Value::as_f64);
+                        if at.is_some_and(|at| at <= now) {
+                            filesystem.insert(moment.to_owned(), serde_json::Value::Null);
+                        }
+                    }
+                }
+            }
             state::save(path, &left)
         }
         _ => Ok(()),

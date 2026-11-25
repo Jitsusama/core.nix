@@ -1040,6 +1040,39 @@ fn a_restarted_guard_beats_without_the_pass_the_last_one_left() {
     );
 }
 
+/// A restarted guard's first beats, on the status the last one left,
+/// never pass on a moment it told that has since passed, which the broker
+/// would forward as still to come; one still to come is kept.
+#[test]
+fn a_restarted_guard_beats_without_the_last_one_s_passed_moments() {
+    let home = Home::new();
+    let ahead = wall() + 3600.0;
+    fs::write(
+        home.root.join("status.json"),
+        format!(
+            r#"{{ "version": 2, "heartbeat": 1, "says": "left by the last guard",
+                  "filesystems": [{{ "path": "/", "full_at": 2, "floor_at": 3 }},
+                                   {{ "path": "/b", "full_at": {ahead}, "floor_at": {ahead} }}] }}"#
+        ),
+    )
+    .unwrap();
+    let guard = home.guard(home.config("0%", "0%"));
+    guard.beating()();
+    let status = home.status();
+    let filesystems = &status["filesystems"];
+    for moment in ["full_at", "floor_at"] {
+        assert!(
+            filesystems[0][moment].is_null(),
+            "beat on with a passed {moment}: {filesystems}"
+        );
+        assert_eq!(
+            filesystems[1][moment].as_f64(),
+            Some(ahead),
+            "dropped a {moment} still to come: {filesystems}"
+        );
+    }
+}
+
 /// A pass says it's at work in the status for as long as it judges, so
 /// the desktop and the notice it withholds read it, and says so no longer
 /// once it's done.
