@@ -524,9 +524,10 @@ in
   # fragmented, asking reclaim and compaction again for every block size
   # that had failed, for every piece. Read from the patched source, a size
   # that failed isn't asked for again, and blocks above a page are asked
-  # for without retrying. No test runs the fallback itself: it needs memory
-  # fragmented on cue, and no VM here has a camera on videobuf2's scattered
-  # allocator (tests/camera-buffers-never-ask-twice.sh).
+  # for without retrying, each line checked where it sits. No test runs
+  # the fallback itself: it needs memory fragmented on cue, and no VM here
+  # has a camera on videobuf2's scattered allocator
+  # (tests/camera-buffers-never-ask-twice.sh).
   camera-buffers-never-ask-twice-for-big-pages =
     let
       allocator = "drivers/media/common/videobuf2/videobuf2-dma-sg.c";
