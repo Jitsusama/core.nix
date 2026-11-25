@@ -89,12 +89,12 @@ rec {
         default = false;
         description = ''
           Whether pi here lays a sandbox profile round each command it runs,
-          as a Mac's pi does from its harness, so pi or the realm's agent
-          program, held fenced or strict, starts alone rather than within
-          the fence's launcher, told which fence to keep. Then the fence
-          rests on that program: only the commands it runs are fenced, and
-          only as it fences them itself, as pi does, never its own reads
-          and calls. Refused on Linux, whose pi fences
+          as a Mac's pi does from its harness, so the realm's agent program,
+          as `agents` names it or else pi, held fenced or strict, starts
+          alone rather than within the fence's launcher, told which fence to
+          keep. Then the fence rests on that program: only the commands it
+          runs are fenced, and only as it fences them itself, as pi does,
+          never its own reads and calls. Refused on Linux, whose pi fences
           each command with Landlock instead, and whose node holds it so
           unasked.
         '';
@@ -159,7 +159,7 @@ rec {
           where Linux's reads only what it lists, and it writes the account's
           temporary folder, yet both say strict. So a carry from Linux to a
           Mac lands looser in what its commands may read and write. Where
-          pi or the realm's agent program is held alone, on Linux and on a
+          the realm's agent program is held alone, on Linux and on a
           Mac declaring piFencesItself, the kind fences only the commands
           it runs, as it fences them itself, while its own reads, writes
           and calls stand outside it. So a carry from a Mac that doesn't

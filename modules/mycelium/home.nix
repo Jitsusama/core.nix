@@ -598,8 +598,8 @@ in
         strict, on Linux and on a Mac, whose strict reads the home folder
         but what it hides, where Linux's reads only what it lists. A held
         fenced or strict start goes after them too, except, on Linux and on a
-        Mac declaring `declares.piFencesItself`, pi or the agent program, told
-        its fence and fenced as it fences itself. Null refuses what goes after.
+        Mac declaring `declares.piFencesItself`, the realm's `agents` program or
+        pi, told its fence, fenced as it fences itself. Null refuses what goes after.
       '';
     };
   }
