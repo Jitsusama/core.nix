@@ -26,11 +26,13 @@
 //! anyone else's words go in the log alone, and an outsider's opening
 //! names no place, so it can't steer a stop elsewhere.
 //!
-//! A round spends Joel's rate limit, which gh and his agents share: two
+//! A round spends Joel's rate limits, which gh and his agents share: two
 //! requests and a search, two to four more for each pull request or
-//! issue that changed, one more for each repository where something on
-//! one is to be judged, and a page more for each hundred of a long list. One his limit
-//! refuses is tried again whole, so nothing it couldn't read is skipped.
+//! issue that changed (one the search finds, only when it says it has
+//! changed since it was read), one more for each repository where
+//! something on one is to be judged, and a page more for each hundred of
+//! a long list. One his limit refuses is tried again whole, so nothing it
+//! couldn't read is skipped.
 //!
 //! Unless `run` is given `--live`, it is in shadow: every stop's record
 //! says so, and nothing acting on records takes a shadow one for a stop.
@@ -55,7 +57,9 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use pineapple::github::{self, Kind, Said, Thread, add_page, found, notified, worth_judging};
+use pineapple::github::{
+    self, Kind, Said, Thread, add_page, found, found_when, notified, worth_judging,
+};
 use pineapple::progress::{self, Judged};
 use pineapple::sign_in::{self, SignIn};
 use pineapple::{Context, Joel};
@@ -367,6 +371,10 @@ fn run(how: &Run) -> Result<(), Failure> {
         since: seconds().saturating_sub(LOOK_BACK),
         keys: Vec::new(),
     });
+    let mut own = Searched {
+        from: judged.since,
+        read: HashMap::new(),
+    };
     let agent: Agent = Agent::config_builder()
         .timeout_global(Some(PATIENCE))
         .http_status_as_error(false)
@@ -382,7 +390,7 @@ fn run(how: &Run) -> Result<(), Failure> {
                     token: &token,
                     agent: &agent,
                 };
-                round(&github, how, &state, &mut judged);
+                round(&github, how, &state, &mut judged, &mut own);
             }
             SignIn::Missing => eprintln!("<4>no {name} sign-in yet, so nothing is read"),
             // A locked keyring prompts each time it's asked (RAN_OVER_REST).
@@ -528,7 +536,7 @@ fn changed(github: &GitHub<'_>, how: &Run, since: &str) -> Result<Vec<Thread>, U
         let mut threads = Vec::new();
         for repo in &how.repos {
             let query = format!("is:pr repo:{repo} author:{address} updated:>={since}");
-            threads.extend(searched(github, &query, &how.site)?);
+            threads.extend(found(&searched(github, &query)?, &how.site));
         }
         return Ok(threads);
     }
@@ -542,21 +550,37 @@ fn changed(github: &GitHub<'_>, how: &Run, since: &str) -> Result<Vec<Thread>, U
     Ok(notified(&answer, &how.site))
 }
 
-/// The pull requests and issues a search of the site finds.
-fn searched(github: &GitHub<'_>, query: &str, site: &str) -> Result<Vec<Thread>, Unread> {
+/// What a search of the site's pull requests and issues answers, failing
+/// on one GitHub says it couldn't finish in time.
+fn searched(github: &GitHub<'_>, query: &str) -> Result<Value, Unread> {
     let asked = [
         ("q", query),
         ("sort", "updated"),
         ("order", "desc"),
         ("per_page", PAGE),
     ];
-    Ok(found(&github.all("/search/issues", &asked)?, site))
+    let answer = github.all("/search/issues", &asked)?;
+    if answer["incomplete_results"].as_bool() == Some(true) {
+        return Err(Unread::Failed(format!(
+            "{}'s search came back incomplete",
+            github.name
+        )));
+    }
+    Ok(answer)
+}
+
+/// Where Joel's own words were last searched from whole, which a failed
+/// search leaves where it was, and when each pull request or issue that
+/// search found had last changed, so one is read again only once it has.
+struct Searched {
+    from: u64,
+    read: HashMap<String, String>,
 }
 
 /// One round: what changed since the last, judged oldest first, and how
 /// far it has read moved on only once every pull request and issue it
-/// named was read.
-fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged) {
+/// named was read; Joel's own search only once it was whole too.
+fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own: &mut Searched) {
     let began = seconds();
     let Some(login) = who(github, how) else {
         return;
@@ -577,27 +601,38 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged) {
     };
     // GitHub never notifies Joel of what he says himself, so his own stop
     // where nobody else said anything is found by searching for the word,
-    // from as far back as a search's index lags.
-    let mut threads = Vec::new();
+    // from as far back as a search's index lags. One that fails doesn't
+    // cost what notified him: it's searched from as far back next round.
+    let (mut threads, mut whole, mut seen) = (Vec::new(), true, HashMap::new());
     if how.authored_by.is_none() {
-        let lagged = judged.since.saturating_sub(INDEX_LAG);
+        let lagged = own.from.saturating_sub(INDEX_LAG);
         let query = format!(
             "pineapple involves:{login} updated:>={}",
             github::stamp(lagged)
         );
-        match searched(github, &query, &how.site) {
-            Ok(own) => threads.extend(own.into_iter().map(|thread| (thread, lagged))),
+        match searched(github, &query) {
+            Ok(answer) => {
+                // One read since and unchanged holds nothing new.
+                for (thread, at) in found_when(&answer, &how.site) {
+                    let key = thread.key();
+                    if own.read.get(&key) != Some(&at) {
+                        threads.push((thread, lagged));
+                    }
+                    seen.insert(key, at);
+                }
+            }
             Err(Unread::Gone(why) | Unread::Failed(why)) => {
                 eprintln!(
-                    "<4>couldn't search {} for what Joel said: {why}",
+                    "<4>couldn't search {} for what Joel said, so it's searched from as \
+                     far back next round: {why}",
                     github.name
                 );
-                return;
+                whole = false;
             }
         }
     }
     for thread in notified {
-        if !threads.iter().any(|(own, _)| *own == thread) {
+        if !threads.iter().any(|(listed, _)| *listed == thread) {
             threads.push((thread, from));
         }
     }
@@ -638,6 +673,10 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged) {
         judged.keys.push(said.key);
     }
     judged.since = began;
+    if whole {
+        own.from = began;
+        own.read = seen;
+    }
     let over = judged.keys.len().saturating_sub(KEPT);
     judged.keys.drain(..over);
     progress::write(state, &how.site, judged, millis());

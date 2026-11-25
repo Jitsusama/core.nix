@@ -158,7 +158,17 @@ pub fn notified(answer: &Value, site: &str) -> Vec<Thread> {
 /// what Joel opened instead.
 #[must_use]
 pub fn found(answer: &Value, site: &str) -> Vec<Thread> {
-    let mut threads: Vec<Thread> = Vec::new();
+    found_when(answer, site)
+        .into_iter()
+        .map(|(thread, _)| thread)
+        .collect()
+}
+
+/// What [`found`] names, each with when the search says it last changed,
+/// as GitHub writes it, or empty where it doesn't say.
+#[must_use]
+pub fn found_when(answer: &Value, site: &str) -> Vec<(Thread, String)> {
+    let mut threads: Vec<(Thread, String)> = Vec::new();
     for one in answer["items"].as_array().into_iter().flatten() {
         let repo = one["repository_url"].as_str().and_then(|url| {
             let mut parts = url.rsplit('/');
@@ -174,8 +184,9 @@ pub fn found(answer: &Value, site: &str) -> Vec<Thread> {
             number,
             pull: one.get("pull_request").is_some(),
         };
-        if !threads.contains(&thread) {
-            threads.push(thread);
+        if !threads.iter().any(|(known, _)| *known == thread) {
+            let at = one["updated_at"].as_str().unwrap_or_default();
+            threads.push((thread, at.to_owned()));
         }
     }
     threads
