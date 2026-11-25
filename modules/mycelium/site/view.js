@@ -612,7 +612,7 @@ import {
       const parent = hubs.get(grown.from);
       h.within = parent.key;
       const named = (addresses) => addresses.map((a) => cellNamed.get(a)).sort((a, b) => collate(a.short, b.short));
-      h.grown = { by: named(grown.by), cells: grown.cells, split: grown.split ? { from: named(grown.split.from), cells: grown.split.cells } : null };
+      h.grown = { by: named(grown.by), cells: grown.cells, started: grown.started, split: grown.split ? { from: named(grown.split.from), cells: grown.split.cells } : null };
       parent.children.push(h);
     }
     for (const h of loose.values()) hubs.set(h.key, h);
@@ -3560,7 +3560,7 @@ import {
     const ofIts = (n) => (n === h.cells.length ? (n === 1 ? "its cell" : `all ${NUMBER.format(n)} of its cells`) : `${NUMBER.format(n)} of its ${plural(h.cells.length, "cell")}`);
     const split = h.grown.split;
     const lines = [`Grown out of <button type="button" class="inline" data-go="net=${esc(up.key)}">${esc(up.name)}</button>`];
-    if (h.grown.by.length) lines.push(`Started by ${whoOf(h.grown.by)}: ${ofIts(h.grown.cells - (split?.cells || 0))}`);
+    if (h.grown.started && h.grown.by.length) lines.push(`Started by ${whoOf(h.grown.by)}: ${ofIts(h.grown.started)}`);
     if (split) lines.push(`Split from ${whoOf(split.from)}: ${ofIts(split.cells)}`);
     return lines;
   };

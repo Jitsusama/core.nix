@@ -37,13 +37,16 @@ interface Origin {
 
 /**
  * What a network grew out of, the cells there that started its own, how
- * many of its cells grew it, and, where any split from one there rather
- * than being said to be started, those cells and how many split.
+ * many of its cells grew it and how many of those were started, and,
+ * where any split from one there rather than being said to be started,
+ * those cells and how many split. `started` and the split's `cells` add
+ * up to `cells`, so a drawer can say each without counting them itself.
  */
 interface Grown {
   readonly from: string;
   readonly by: readonly string[];
   readonly cells: number;
+  readonly started: number;
   readonly split?: { readonly from: readonly string[]; readonly cells: number };
 }
 
@@ -125,17 +128,22 @@ function startedOf(cells: readonly Fields[], forages: Held | undefined): Started
 /**
  * What each cell split from, which only its forage says, and so only for
  * this machine's cells: its own split_from, else the first forage here
- * listing it in split_into, as the forage page reads either end. A split
- * naming the cell itself, a blank or anything but words names nothing.
+ * listing it in split_into, as the forage page reads either end. A cell
+ * listed is one only with a forage of its own here, so a forage can't say
+ * what a cell on another machine, or one it never held, came from. A
+ * split naming the cell itself, a blank or anything but words names
+ * nothing.
  */
 function splitsOf(forages: Held | undefined): Split[] {
   const from = new Map<string, string>();
   const listed = new Map<string, string>();
+  const here = new Set<string>();
   for (const record of forages?.all() ?? []) {
     const cell = text(record, "cell");
     if (!cell) {
       continue;
     }
+    here.add(cell);
     const lineage = object(record, "lineage") ?? {};
     const own = text(lineage, "split_from");
     if (own && own !== cell && !from.has(cell)) {
@@ -149,7 +157,7 @@ function splitsOf(forages: Held | undefined): Split[] {
     }
   }
   for (const [cell, by] of listed) {
-    if (!from.has(cell)) {
+    if (here.has(cell) && !from.has(cell)) {
       from.set(cell, by);
     }
   }
@@ -157,15 +165,19 @@ function splitsOf(forages: Held | undefined): Split[] {
 }
 
 /**
- * Where each cell came from, for growing branches: who started it, else
- * what its purpose split from, one edge a cell. A sprout's start often
- * names the cell it split from, but not always: the node's book lets a
- * start go after a day and finds none where no session, or two, claim the
- * asker, while a split stays said for as long as its forage is.
+ * Where each cell came from, for growing branches: who started it, then
+ * what its purpose split from, the starts first, so grownOf grows a cell's
+ * branch from its start where that can grow one and from its split where
+ * it can't, as for a start from a receptor or from inside its own
+ * network. A split naming the cell its start names is said once. A
+ * sprout's start often names the cell it split from, but not always: the
+ * node's book lets a start go after a day and finds none where no
+ * session, or two, claim the asker, while a split stays said for as long
+ * as its forage is.
  */
 function originsOf(started: readonly Started[], splits: readonly Split[]): Origin[] {
-  const named = new Set(started.map((start) => start.cell));
-  const split = splits.filter((each) => !named.has(each.cell));
+  const startOf = new Map(started.map((start) => [start.cell, start.by]));
+  const split = splits.filter((each) => startOf.get(each.cell) !== each.from);
   const splitOff = split.map((each) => ({ cell: each.cell, by: each.from, split: true as const }));
   return [...started, ...splitOff];
 }
@@ -206,6 +218,8 @@ function came(): Came {
  * each other's cells the one that started more is the trunk, and no
  * branch is grown that would loop back round to itself. A split counts as
  * a start does, and is said apart, since nobody is said to have started it.
+ * Of a cell's origins the first that can grow a branch grows it, one edge
+ * a cell.
  */
 function grownOf(
   networks: readonly Network[],
@@ -213,7 +227,10 @@ function grownOf(
   origins: readonly Origin[],
 ): Map<string, Grown> {
   const named = new Map(networks.map((network) => [network.key, network]));
-  const originOf = new Map(origins.map((origin) => [origin.cell, origin]));
+  const originsOfCell = new Map<string, Origin[]>();
+  for (const origin of origins) {
+    originsOfCell.set(origin.cell, [...(originsOfCell.get(origin.cell) ?? []), origin]);
+  }
   const grown = new Map<string, Grown>();
   const within = (key: string): string | null =>
     named.get(key)?.within ?? grown.get(key)?.from ?? null;
@@ -234,14 +251,16 @@ function grownOf(
     }
     const from = new Map<string, Came>();
     for (const cell of network.cells) {
-      const origin = originOf.get(cell);
-      const hub = origin === undefined ? undefined : hubOf.get(origin.by);
-      if (origin === undefined || hub === undefined) {
+      const grew = (originsOfCell.get(cell) ?? [])
+        .map((each) => ({ origin: each, hub: hubOf.get(each.by) }))
+        .find(
+          (pair) => pair.hub !== undefined && named.has(pair.hub) && !sitsIn(pair.hub, network.key),
+        );
+      if (grew === undefined || grew.hub === undefined) {
         continue;
       }
-      if (!named.has(hub) || sitsIn(hub, network.key)) {
-        continue;
-      }
+      const { origin } = grew;
+      const hub = grew.hub;
       const had = from.get(hub) ?? came();
       (origin.split ? had.splitters : had.starters).add(origin.by);
       if (origin.split) {
@@ -260,7 +279,11 @@ function grownOf(
       const by = [...starters].sort(collate);
       const splits =
         split.size > 0 ? { split: { from: [...splitters].sort(collate), cells: split.size } } : {};
-      offered.push({ key: network.key, grown: { from: key, by, cells: cells.size, ...splits } });
+      const started = cells.size - split.size;
+      offered.push({
+        key: network.key,
+        grown: { from: key, by, cells: cells.size, started, ...splits },
+      });
     }
   }
   offered.sort((one, other) => other.grown.cells - one.grown.cells || collate(one.key, other.key));

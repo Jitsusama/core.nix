@@ -224,10 +224,11 @@ it("a cell nobody started, or one said to have started itself, names no starter"
 
 it("a cell's forage says what it split from, else the first forage listing it split into", () => {
   const these = [
-    forage("KESTRL", { split_into: ["TERNAA", "SKIFFS", "GULL01"] }),
+    forage("KESTRL", { split_into: ["TERNAA", "SKIFFS", "GULL01", "AWAY01"] }),
     forage("OSPREY", { split_into: ["SKIFFS"] }),
     forage("TERNAA", { split_from: "KESTRL" }),
     forage("GULL01", { split_from: "OSPREY" }),
+    forage("SKIFFS", {}),
   ];
   assert.deepEqual(
     nowOf(told(these), AT).split,
@@ -236,7 +237,8 @@ it("a cell's forage says what it split from, else the first forage listing it sp
       { cell: "GULL01", from: "OSPREY" },
       { cell: "SKIFFS", from: "KESTRL" },
     ],
-    "a cell's own split_from should stand, and a cell naming none take its first lister",
+    "a cell's own split_from should stand, a cell naming none take its first lister, and a cell" +
+      " with no forage here, as one on another machine, take none",
   );
 });
 
@@ -252,14 +254,20 @@ it("a split naming the cell itself, a blank or anything but words names nothing"
   assert.deepEqual(nowOf(told(undefined), AT).split, [], "a node serving no forage says no split");
 });
 
-it("a cell's origin is who started it, else what it split from, one a cell", () => {
-  const started = [{ cell: "HERON1", by: "SKIFF1" }];
+it("a cell's origins are its start, then its split, said once where both name one cell", () => {
+  const started = [
+    { cell: "HERON1", by: "SKIFF1" },
+    { cell: "TERN01", by: "SKIFF1" },
+  ];
   const splits = [
     { cell: "HERON1", from: "GULL01" },
     { cell: "TERNAA", from: "KESTRL" },
+    { cell: "TERN01", from: "SKIFF1" },
   ];
   assert.deepEqual(originsOf(started, splits), [
     { cell: "HERON1", by: "SKIFF1" },
+    { cell: "TERN01", by: "SKIFF1" },
+    { cell: "HERON1", by: "GULL01", split: true },
     { cell: "TERNAA", by: "KESTRL", split: true },
   ]);
 });
@@ -289,7 +297,36 @@ it("a network whose cell split from another's, no start said, grows out of it", 
   const networks = [network("skiff", ["SKIFF1"]), network("heron", ["HERON1", "HERON2"])];
   const origins = originsOf([], [{ cell: "HERON1", from: "SKIFF1" }]);
   assert.deepEqual(grown(networks, origins), {
-    heron: { from: "skiff", by: [], cells: 1, split: { from: ["SKIFF1"], cells: 1 } },
+    heron: { from: "skiff", by: [], cells: 1, started: 0, split: { from: ["SKIFF1"], cells: 1 } },
+  });
+});
+
+it("a start from inside or from a receptor leaves the cell's split to grow its branch", () => {
+  const networks = [network("skiff", ["SKIFF1"]), network("heron", ["HERON1", "HERON2"])];
+  const origins = originsOf(
+    [...startedBy("HERON2", "HERON1"), ...startedBy("calls@kestrel", "HERON2")],
+    [
+      { cell: "HERON1", from: "SKIFF1" },
+      { cell: "HERON2", from: "SKIFF1" },
+    ],
+  );
+  assert.deepEqual(grown(networks, origins), {
+    heron: { from: "skiff", by: [], cells: 2, started: 0, split: { from: ["SKIFF1"], cells: 2 } },
+  });
+});
+
+it("splits count as starts do in choosing the trunk, and a start elsewhere is not said", () => {
+  const networks = [
+    network("skiff", ["SKIFF1"]),
+    network("gull", ["GULL01"]),
+    network("heron", ["HERON1", "HERON2", "HERON3"]),
+  ];
+  const origins = originsOf(startedBy("SKIFF1", "HERON1"), [
+    { cell: "HERON2", from: "GULL01" },
+    { cell: "HERON3", from: "GULL01" },
+  ]);
+  assert.deepEqual(grown(networks, origins), {
+    heron: { from: "gull", by: [], cells: 2, started: 0, split: { from: ["GULL01"], cells: 2 } },
   });
 });
 
@@ -303,14 +340,20 @@ it("a network some of whose cells were started there and some split from it says
     { cell: "HERON2", from: "SKIFF2" },
   ]);
   assert.deepEqual(grown(networks, origins), {
-    heron: { from: "skiff", by: ["SKIFF1"], cells: 2, split: { from: ["SKIFF2"], cells: 1 } },
+    heron: {
+      from: "skiff",
+      by: ["SKIFF1"],
+      cells: 2,
+      started: 1,
+      split: { from: ["SKIFF2"], cells: 1 },
+    },
   });
 });
 
 it("a network whose cell another network's cell started grows out of that network", () => {
   const networks = [network("skiff", ["SKIFF1"]), network("heron", ["HERON1", "HERON2"])];
   assert.deepEqual(grown(networks, startedBy("SKIFF1", "HERON1")), {
-    heron: { from: "skiff", by: ["SKIFF1"], cells: 1 },
+    heron: { from: "skiff", by: ["SKIFF1"], cells: 1, started: 1 },
   });
 });
 
@@ -355,8 +398,8 @@ it("a network grows out of the one that started more of its cells, a tie by name
     ...startedBy("BRANT1", "DUNLN2"),
   ];
   assert.deepEqual(grown(networks, started), {
-    ccc: { from: "bbb", by: ["BRANT1", "BRANT2"], cells: 2 },
-    ddd: { from: "bbb", by: ["BRANT1"], cells: 1 },
+    ccc: { from: "bbb", by: ["BRANT1", "BRANT2"], cells: 2, started: 2 },
+    ddd: { from: "bbb", by: ["BRANT1"], cells: 1, started: 1 },
   });
 });
 
@@ -370,7 +413,7 @@ it("of two that started each other's cells, the one that started more is the tru
     ...startedBy("BRANT4", "AUK002"),
   ];
   assert.deepEqual(grown(networks, started), {
-    bbb: { from: "aaa", by: ["AUK001"], cells: 3 },
+    bbb: { from: "aaa", by: ["AUK001"], cells: 3, started: 3 },
   });
 });
 
@@ -386,7 +429,7 @@ it("no branch is grown that would loop back round to the network it grows from",
     ...startedBy("AUK001", "CRANE1"),
   ];
   assert.deepEqual(grown(networks, started), {
-    aaa: { from: "bbb", by: ["BRANT1"], cells: 1 },
-    bbb: { from: "ccc", by: ["CRANE1"], cells: 1 },
+    aaa: { from: "bbb", by: ["BRANT1"], cells: 1, started: 1 },
+    bbb: { from: "ccc", by: ["CRANE1"], cells: 1, started: 1 },
   });
 });
