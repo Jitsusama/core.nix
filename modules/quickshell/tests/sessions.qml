@@ -1620,6 +1620,37 @@ ShellRoot {
         Niri.windows = unforged;
         expect("a window refused once reads no file as it changes",
             Sessions.sessionsKittyPid === "7171", Sessions.sessionsKittyPid);
+        // A start pi's host took reads the pid first, as Go To does, so a
+        // viewer drawn by a kitty started again since is raised, not
+        // another opened beside it.
+        const startedViewer = "pi-hosted.s-started";
+        const footedStart = { address: "q-started", machine: "", name: "Reef" };
+        kittyPidFile.setText("8282\n");
+        const startedSince = { id: 86, pid: 8282, opened: startedViewer };
+        Niri.windows = Object.assign({}, unforged, { "86": startedSince });
+        Niri.acted = null;
+        const startedFrom = Niri.spawns.length;
+        Sessions.viewStarted("harbour-attended", "s-started", startedViewer, "Reef", "/tmp",
+            footedStart);
+        expect("a start raises its viewer drawn by a kitty started again since",
+            focused(86) && Niri.spawns.length === startedFrom,
+            `${JSON.stringify(Niri.acted)} ${Niri.spawns.slice(startedFrom).join(" | ")}`);
+        // One whose viewer came refused, that window still listed, is said
+        // disowned, opening none, as a press of it is.
+        const disownedStart = "pi-hosted.s-disowned-start";
+        const refusedStart = { id: 84, pid: 880, opened: disownedStart };
+        Niri.windows = Object.assign({}, unforged, { "84": refusedStart });
+        Sessions.refusedAsks = Object.assign({}, Sessions.refusedAsks, { [disownedStart]: "84" });
+        root.unhosted = "";
+        root.unhostedWhy = "";
+        Sessions.viewStarted("harbour-attended", "s-disowned-start", disownedStart, "Reef",
+            "/tmp", footedStart);
+        expect("a start whose viewer came refused is said disowned, opening none",
+            root.unhosted === "q-started" && root.unhostedWhy === "disowned"
+            && Niri.spawns.length === startedFrom,
+            `${root.unhosted} ${root.unhostedWhy} ${Niri.spawns.slice(startedFrom).join(" | ")}`);
+        Sessions.forgetAsk(disownedStart);
+        Niri.windows = unforged;
         kittyPidFile.setText("");
         Sessions.kittyPidRead = "";
         if (failed.length > 0)
