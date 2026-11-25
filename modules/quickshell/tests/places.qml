@@ -191,8 +191,8 @@ QtObject {
         givenNone("left as kept on another screen's connector", { "Virtual-2": panel }, null);
         // A window put back gives the connector it's found on only while
         // that shows its screen: a twin's, one kept before screens were
-        // named, never last boot's with no screen said, nor one not heard
-        // yet, nor a prototype's name, nor any with no screens at all.
+        // named, never last boot's with no screen said, nor a twin's on one
+        // not heard yet, nor a prototype's name, nor any with no screens.
         const windowOn = (at, screens, inUse) => Reopening.givenOn(at.screen,
             Places.whereKept(at, twins, screens, { given: [], inUse }), screens) ?? "none";
         const unnamed = { output: "Virtual-3", workspace: 1, column: 1, tile: 1 };
@@ -916,6 +916,8 @@ QtObject {
         expect("with none in use as its sessions were placed, a window goes by the one now",
             [Reopening.inUseFor(null, "eDP-1", twoThere),
                 Reopening.inUseFor(undefined, "eDP-1", twoThere)], ["eDP-1", "eDP-1"]);
+        expect("a prototype's name is never the screen in use a window goes by",
+            Reopening.inUseFor("constructor", "eDP-1", twoThere), "eDP-1");
         expect("kept somewhere, it opens there, not at its orchestrator's",
             Reopening.broughtBack(true, keptHere, true, true), { window: true, home: false });
         expect("kept nowhere, it comes back held without a window",

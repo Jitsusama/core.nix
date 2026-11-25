@@ -1628,7 +1628,7 @@ Singleton {
             // said, no session tells its windows which twin is its own.
             if (Object.keys(connectedNow).length === 0)
                 console.info("sessions: no screen said as Reopen Them All placed its "
-                    + "sessions, so its windows go back by their own places alone");
+                    + "sessions, so they give their windows no connector");
         }
         const queue = Reopening.leadersFirst(here.map((one, at) => ({ one, at: places[at],
             kept: placeable[at], unplaced: keptPlaces[at]?.unplaced === true, gone, told,
