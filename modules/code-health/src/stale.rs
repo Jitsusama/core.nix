@@ -50,6 +50,16 @@ pub struct Stale {
 /// Every comment of `files` naming a path `paths` doesn't hold, and every
 /// file whose comments can't be known.
 pub fn stale(paths: &[String], files: &[File]) -> Stale {
+    stale_by(paths, files, comments)
+}
+
+/// What reads a file's comments, each by its line, or None when they
+/// can't be known.
+type Reader = fn(&File) -> Option<Vec<(usize, &str)>>;
+
+/// The same, each file's comments read by `comments`, so a test can give
+/// one that can't be known, which no file known reads as.
+fn stale_by(paths: &[String], files: &[File], comments: Reader) -> Stale {
     let mut there: HashSet<&str> = HashSet::new();
     let mut tops: HashSet<&str> = HashSet::new();
     for path in paths {

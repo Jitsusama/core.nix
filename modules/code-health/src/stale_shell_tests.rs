@@ -431,9 +431,36 @@ fn a_case_past_a_reserved_word_opens_as_one_at_a_commands_start() {
 
 /// What a line of shell, read from outside everything, leaves open.
 fn left_open(line: &str) -> Vec<Shell> {
+    left_open_by(&[line])
+}
+
+/// What lines of shell, read in turn from outside everything, leave open.
+fn left_open_by(lines: &[&str]) -> Vec<Shell> {
     let mut within = Vec::new();
-    shell_line(line, &mut within, true);
+    for line in lines {
+        shell_line(line, &mut within, true);
+    }
     within
+}
+
+#[test]
+fn a_cases_in_may_open_a_later_line_past_its_subject() {
+    use Shell::{Branch, Case, Command};
+    // Bash takes a case's `in` past newlines, blank lines too, and a
+    // subject that reads `in` is still the subject.
+    let cases: [(&[&str], &[Shell]); 4] = [
+        (&["x=$(case a", "in a) echo"], &[Command, Branch]),
+        (&["x=$(case a", "", "  in a) echo;; esac)"], &[]),
+        (&["x=$(case in", "in in) echo"], &[Command, Branch]),
+        (&["x=$(case a", ""], &[Command, Case]),
+    ];
+    for (lines, open) in cases {
+        assert_eq!(
+            left_open_by(lines),
+            open,
+            "{lines:?} left open other than bash does"
+        );
+    }
 }
 
 #[test]
@@ -442,7 +469,7 @@ fn each_line_leaves_open_what_bash_leaves_open() {
         Ansi, Arithmetic, Backtick, Branch, Case, Command, Double, Grouping, Parameter, Pattern,
         Single, Subshell,
     };
-    let cases: [(&str, &[Shell]); 78] = [
+    let cases: [(&str, &[Shell]); 77] = [
         ("echo $'it\\'s", &[Ansi]),
         ("x=\"$(echo \"it's", &[Double, Command, Double]),
         ("y=\"${z:-\"it's", &[Double, Parameter, Double]),
@@ -494,7 +521,6 @@ fn each_line_leaves_open_what_bash_leaves_open() {
         ("x=$(case in in a) echo", &[Command, Branch]),
         ("x=$(case esac in a) echo", &[Command, Branch]),
         ("x=$(case if in a) echo", &[Command, Branch]),
-        ("x=$(case a inn b in a) echo", &[Command, Branch]),
         ("x=$(if true; then case a in a)", &[Command, Branch]),
         ("x=$(while x; do case a in a)", &[Command, Branch]),
         ("x=$({ case a in a)", &[Command, Branch]),

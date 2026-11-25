@@ -85,8 +85,10 @@ pub(super) fn shell_line(
     // Whether a command may begin here: where a word does, but not past a
     // word and blanks, so `case` opens a case and `echo case` doesn't, nor
     // past a redirection, whose word is its target. In a case's patterns,
-    // where a pattern list may begin.
-    let mut command_starts = true;
+    // where a pattern list may begin. A line inside a case before its `in`
+    // starts past the case's subject, since bash takes the subject only on
+    // the case's own line and its `in` past any newlines.
+    let mut command_starts = within.last() != Some(&Shell::Case);
     // Whether the character before was a redirection's, which `>|`, `>&`
     // and `<&` run on through.
     let mut redirected = false;

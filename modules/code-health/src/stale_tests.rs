@@ -24,6 +24,29 @@ fn stale(paths: &[String], files: &[File]) -> Vec<String> {
 mod shell;
 
 #[test]
+fn a_file_whose_comments_cant_be_known_is_named_apart_from_what_is_gone() {
+    let files = [
+        file("modules/a/x.sh", "# Read by modules/a/gone.sh.\n"),
+        file("modules/a/y.sh", "# Read by modules/a/gone.sh.\n"),
+    ];
+    let found = stale_by(&paths(&files), &files, |file| {
+        if file.path.ends_with("x.sh") {
+            None
+        } else {
+            comments(file)
+        }
+    });
+    assert_eq!(
+        (found.gone, found.unread),
+        (
+            vec!["modules/a/y.sh:1: modules/a/gone.sh".to_string()],
+            vec!["modules/a/x.sh".to_string()]
+        ),
+        "a file whose comments can't be known wasn't named alone, apart from what's gone"
+    );
+}
+
+#[test]
 fn a_comment_naming_a_path_gone_is_stale() {
     let files = [
         file(
