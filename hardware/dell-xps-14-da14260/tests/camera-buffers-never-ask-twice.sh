@@ -43,7 +43,8 @@ at() {
 # changed upstream, and the patch needs reading against it again.
 for line in 'order = get_order(size);' 'while (size > 0) {' 'while (!pages) {' \
   'split_page(pages, order);'; do
-  if [ "$(count "$line")" != 1 ]; then
+  found=$(count "$line")
+  if [ "$found" != 1 ]; then
     echo "videobuf2's allocator no longer reads '$line' once: upstream changed it," \
       "so the camera patch needs reading against it again."
     exit 1
@@ -73,9 +74,12 @@ stepped=$(at 'order--;' 2)
 kept=$(at 'max_order = order;')
 split=$(at 'split_page(pages, order);')
 
-[ "$(count 'alloc_pages(')" = 1 ] || fail "are asked for in more than one place"
-[ "$(count 'order--;')" = 2 ] || fail "step down from a size in a place the patch doesn't read"
-[ "$(count 'max_order =')" = 2 ] || fail "keep which size failed in a second place"
+asks=$(count 'alloc_pages(')
+steps=$(count 'order--;')
+keeps=$(count 'max_order =')
+[ "$asks" = 1 ] || fail "are asked for in more than one place"
+[ "$steps" = 2 ] || fail "step down from a size in a place the patch doesn't read"
+[ "$keeps" = 2 ] || fail "keep which size failed in a second place"
 [ "$flags" -lt "$pieces" ] || fail "lose the allocator's own flags before the first piece"
 [ "$asked" -gt "$tries" ] || fail "retry for blocks above a page"
 if [ "$held" -le "$shrunk" ] || [ "$held" -ge "$tries" ]; then
