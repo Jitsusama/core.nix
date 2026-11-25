@@ -81,9 +81,10 @@ rec {
         default = false;
         description = "Whether work on this machine costs money.";
       };
-      # A Mac's pi in pi-fence's launcher can't reach its own state, so pi
-      # held there for a fenced kind starts alone once it lays its own
-      # sandbox profile round each command it runs.
+      # A Mac's pi in pi-fence's launcher can't reach its own state, so the
+      # realm's agent program, pi unless `agents` names another, held there
+      # for a fenced kind starts alone once it lays its own sandbox profile
+      # round each command it runs.
       piFencesItself = lib.mkOption {
         type = lib.types.bool;
         default = false;
