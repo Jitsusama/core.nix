@@ -210,10 +210,20 @@ holding a space, as one broken across two lines does, is counted too.
 
 - Measures: `slips`, `slips-derived`
 - Target: 0 dates that passed in the last day without landing, or passed since with no landing,
-  meeting or move from their owner, nor the ask put down.
+  meeting or move from their owner, nor the ask put down or parked on a ruling.
 - Joel, 11 Nov 16:4x: "i need for you to make faster progress. i don't understand why so much
   has not been completed."
 - Over costs him: a date he was given passed, and what was promised isn't there.
+
+## Slips Parked
+
+- Measures: `slips-parked`, `slips-parked-derived`
+- Target: none, since an ask parked on a ruling waits on that ruling, not its owner, and each is
+  named by the ruling's message id so the parking itself is read.
+- Joel, 22 Nov 15:2x: "WE NEED TO FOCUS ON SPREADING LOAD NOW! WE NEED TO QUICKEN MOVING STUFF
+  INTO THE CLOUD!"
+- Over costs him: nothing judged. An ask parked and forgotten would never slip, so the count
+  by ruling stays on the card.
 
 ## Broken on Main
 

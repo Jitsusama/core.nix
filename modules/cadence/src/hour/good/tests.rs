@@ -32,6 +32,8 @@ fn every_measure_the_hour_shows_has_a_line_that_holds_it_to_its_target() {
     let mut shown = vec![
         measures::slips("", NOW, Tracking::His),
         measures::slips("", NOW, Tracking::Derived),
+        measures::parked("", Tracking::His),
+        measures::parked("", Tracking::Derived),
         measures::to_first_slice("", NOW, Tracking::His),
         measures::to_first_slice("", NOW, Tracking::Derived),
         measures::undated("", "2026-11-24", "OWNER"),

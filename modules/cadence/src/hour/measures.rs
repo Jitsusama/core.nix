@@ -22,6 +22,7 @@ pub mod locked;
 mod misses;
 mod owner;
 mod pains;
+mod parked;
 mod promised;
 pub mod queues;
 mod reports;
@@ -47,6 +48,7 @@ pub use misses::{
     untested,
 };
 pub use pains::{keeper, pains};
+pub use parked::parked;
 pub use reports::{REPORTS_SINCE, Report, report, unasked};
 
 const DAY: i64 = 86_400;
@@ -166,7 +168,7 @@ type Slip = (i64, String, String);
 /// landing or a move said by `now`, or by any later date the ask was
 /// given, since a date moved by `expected` alone says no time it moved.
 /// An older slip's line says how long ago it was due, so one stuck for
-/// weeks reads apart from yesterday's.
+/// weeks reads apart from yesterday's; an ask [`parked`] on a ruling is out.
 #[must_use]
 pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
     // The list writes an ask again to move its date, or to re-mark, land
@@ -178,7 +180,7 @@ pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
     // while a latest line with no date it can read moves none.
     let mut dated: BTreeMap<[String; 2], Vec<i64>> = BTreeMap::new();
     for (order, ask) in lines(text).enumerate() {
-        let ours = tracking::of(&ask) == Some(which);
+        let ours = tracking::of(&ask) == Some(which) && parked::ruling(&ask).is_none();
         let landed = seconds(&ask["landed"]);
         let given = promised(&ask);
         let asked = [ask["at"].to_string(), ask["words"].to_string()];
