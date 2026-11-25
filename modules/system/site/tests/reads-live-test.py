@@ -365,6 +365,8 @@ THUMB = 44
 
 # A why told afresh, so the list redraws under a focused act.
 ANEW = "What ran there may have ended without warning, as it did again."
+# The look's words told afresh, which changes the key its row is found by.
+REWORDED = "booted 2 hours ago after a firmware error"
 # The key of the row after kestrel's look among every row the keys step
 # through, or its own where it is the last.
 AFTER_KESTREL = """() => {
@@ -420,6 +422,18 @@ def test_a_machines_look_says_why_it_matters_and_opens_it_in_the_launcher(
         )
         expect(why, "the look's why wasn't redrawn").to_contain_text(ANEW, timeout=PACE_MS)
         expect(launch, "a redraw took focus off the look's act").to_be_focused()
+        # Its words changed too, which changes the row's key: the act under the
+        # row in its place keeps focus, so Return still opens the launcher.
+        system_daemon.tell(
+            "machine",
+            changed=[{"key": "machine:kestrel", "looks": [{"side": REWORDED, "matters": ANEW}]}],
+        )
+        expect(row, "the look wasn't reworded").to_contain_text(REWORDED, timeout=PACE_MS)
+        expect(launch, "rewording the look took focus off its act").to_be_focused()
+        # A step back from the act lands on its own look, which it stands after.
+        page.keyboard.press("k")
+        expect(row.locator("a.look"), "k from the act left its look").to_be_focused()
+        launch.focus()
         after = page.evaluate(AFTER_KESTREL)
         page.keyboard.press("j")
         held = page.evaluate("document.activeElement?.dataset?.row ?? null")

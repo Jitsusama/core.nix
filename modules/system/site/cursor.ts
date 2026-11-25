@@ -63,7 +63,11 @@ function cursorOver(selector: string, sections: ParentNode): Cursor {
     land,
     move: (by) => {
       const all = rows();
-      const at = placeOf(all, document.activeElement);
+      const found = placeOf(all, document.activeElement);
+      // An act stands after the row it sits under, so a step back from it
+      // lands on that row rather than the one before.
+      const onAct = found >= 0 && all[found] !== document.activeElement;
+      const at = onAct && by < 0 ? found + 1 : found;
       if (by === Number.POSITIVE_INFINITY) {
         land(all.at(-1));
       } else if (by === Number.NEGATIVE_INFINITY || at < 0) {
@@ -104,14 +108,14 @@ function cursorOver(selector: string, sections: ParentNode): Cursor {
       if (region === null) {
         return;
       }
-      const same = rows().find((row) => row.dataset["row"] === key);
-      const again = [...(same?.parentElement?.querySelectorAll<HTMLAnchorElement>("a") ?? [])].find(
-        (link) => link !== same && link.href === under,
-      );
+      // The row by its key, or where its words changed, the row now in its
+      // place; either way the act under it keeps focus if it is still there.
       const now = inRegion();
-      (again ?? same ?? now[Math.min(focused, now.length - 1)] ?? region).focus({
-        preventScroll: true,
-      });
+      const kept = rows().find((each) => each.dataset["row"] === key);
+      const standing = kept ?? now[Math.min(focused, now.length - 1)];
+      const links = standing?.parentElement?.querySelectorAll<HTMLAnchorElement>("a") ?? [];
+      const again = [...links].find((link) => link !== standing && link.href === under);
+      (again ?? standing ?? region).focus({ preventScroll: true });
     },
   };
 }
