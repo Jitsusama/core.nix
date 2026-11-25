@@ -539,6 +539,32 @@ mod tests {
     }
 
     #[test]
+    fn a_line_is_read_with_the_file_from_its_own_start() {
+        // The character wider than a byte puts each later line's start in
+        // bytes past its start in characters, so a cut counted in characters
+        // lands in the wrong place. The attribute runs across lines, so a
+        // line read alone, or from the next, misses it.
+        let files = [file(
+            "x.rs",
+            concat!(
+                "fn a() {}\n",
+                "// \u{e9}\n",
+                "#[cfg_attr(\n",
+                "    test,\n",
+                "    allow(x)\n",
+                ")]\n",
+                "fn b() {}\n",
+            ),
+        )];
+        let health = measure(&paths(&files), &files);
+        assert_eq!(
+            health.named["suppressions"],
+            ["x.rs:3"],
+            "a line was read from other than its own start, or numbered as another"
+        );
+    }
+
+    #[test]
     fn a_crowded_folder_counts_only_without_its_reason() {
         let mut all: Vec<String> = (0..=CROWDED).map(|n| format!("many/{n}.txt")).collect();
         all.extend((0..=CROWDED).map(|n| format!("said/{n}/x.txt")));
