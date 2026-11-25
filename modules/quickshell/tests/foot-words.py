@@ -342,6 +342,27 @@ def refuses_what_it_should() -> list[str]:
             "a quote in a comment in the handler, read as opening a string",
         ),
         (
+            passes_on(
+                "function onUnhosted(session, why) {\n    // was elsewhere(why, session)\n"
+                '    tell(elsewhere("x", session)); }'
+            ),
+            False,
+            "a call in a comment in the handler, read as passing the why on",
+        ),
+        (
+            passes_on(
+                "function onUnhosted(session, why) { /* } elsewhere(why, session) */\n"
+                '    tell(elsewhere("x", session)); }'
+            ),
+            False,
+            "a call and a brace in a block comment in the handler, read as code",
+        ),
+        (
+            passes_on("function onUnhosted(session, why) { tell(/'/);\nelsewhere(why, session);"),
+            False,
+            "a body never closed, as a quote in a regex leaves it, read to the file's end",
+        ),
+        (
             unworded({"hosted", "opening", "unnamed"}, said(vocabulary)),
             ["opening", "unnamed"],
             "a why worded empty or not at all",
