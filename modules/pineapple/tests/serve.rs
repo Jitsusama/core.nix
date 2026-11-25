@@ -2,8 +2,9 @@
 //! alert are served as rows titled in the vocabulary's words, a shadow
 //! stop isn't and is only written down as what it would have told, and
 //! a press from anything but Joel's shell, as this test is, is refused
-//! and changes nothing; and a live stop's notice is closed once it's
-//! resumed.
+//! and changes nothing; a live stop's row names a machine that couldn't
+//! take it as soon as that's known; and a live stop's notice is closed
+//! once it's resumed.
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -102,6 +103,48 @@ fn live_rows_are_served_shadow_ones_written_down_and_a_stranger_refused() {
     assert!(
         !dir.join("pineapple/paused").exists(),
         "and nothing was paused"
+    );
+    drop(daemon);
+}
+
+#[test]
+fn a_stop_names_a_machine_that_couldnt_take_it_as_soon_as_its_known() {
+    let dir = state("unreached");
+    let vocabulary = json!({"things": [{"id": "for-you:source:pineapple", "said": {
+        "someone": "someone", "stopped": "{who} stopped agents on {reach}",
+        "unreached": ", not yet on {machines}", "reach:pr": "pull request {repo}#{number}"}}]});
+    fs::write(dir.join("words.json"), vocabulary.to_string()).expect("words are written");
+    let socket = dir.join("pineapple.sock");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_pineapple"));
+    command
+        .args(["serve", "--socket"])
+        .arg(&socket)
+        .arg("--vocabulary")
+        .arg(dir.join("words.json"))
+        .args(["--every", "50"])
+        .env("XDG_STATE_HOME", &dir)
+        .env("PINEAPPLE_PAUSE", dir.join("no-plan.json"));
+    let daemon = Daemon::start(&mut command, socket, dir.clone());
+    // Each look asks afresh, since `until` looks without changing anything.
+    let title = |client: &mut daemon_client::Client| {
+        let listed = client.ask(&json!({"id": 1, "ask": "list", "kind": "pineapple"}));
+        listed["records"][0]["title"]
+            .as_str()
+            .unwrap_or_default()
+            .to_owned()
+    };
+    let plain = "Someone stopped agents on pull request example/shop#12";
+    until("the live stop was never served", || {
+        title(&mut daemon.client()) == plain
+    });
+    let carried = dir.join("pineapple/carried");
+    fs::create_dir_all(&carried).expect("a carried folder");
+    let given = json!({"machines": [{"machine": "far", "realm": null, "asked": false,
+        "holds": null}]});
+    fs::write(carried.join("live.json"), given.to_string()).expect("what was given");
+    until(
+        "the row never named the machine that couldn't take it",
+        || title(&mut daemon.client()) == format!("{plain}, not yet on far"),
     );
     drop(daemon);
 }
