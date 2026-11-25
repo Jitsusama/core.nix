@@ -226,7 +226,13 @@ pub struct Door {
     held: Vec<Held>,
     /// Each scope let in, with when.
     admitted: HashMap<PathBuf, Instant>,
+    /// Each scope let in capped past what a start is counted to grow by,
+    /// with its cap, which it's counted to grow to instead.
+    capped: HashMap<PathBuf, u64>,
     waited_in: Option<Instant>,
+    /// Whether the last rank asked of a start that waited [`LONGEST`] was
+    /// refused, so the rest come in one each [`SPACED`] until one holds.
+    rank_refused: bool,
     /// Whether a call was on at the last look.
     calling: bool,
     /// When the last call ended, from which a start it held counts its
@@ -297,6 +303,14 @@ impl Machine {
     pub fn floor(self) -> u64 {
         self.total / 16
     }
+
+    /// The most a start let in late is capped to and counted to grow to: a
+    /// quarter of the machine's memory, 16 GiB of 64, past the 11 GB an
+    /// evaluation grows to, so one let in with plenty free doesn't count
+    /// as taking all of it.
+    pub fn most(self) -> u64 {
+        self.total / 4
+    }
 }
 
 /// What the door does to a start's scope.
@@ -339,16 +353,11 @@ impl Door {
         uptime: u64,
         mut act: impl FnMut(&Path, Act) -> bool,
     ) -> Vec<Done> {
-        let here: HashSet<(u32, u64)> = coming.iter().map(|it| (it.pid, it.start)).collect();
-        let pids: HashSet<u32> = coming.iter().map(|it| it.pid).collect();
         let memory: HashMap<&Path, u64> = coming
             .iter()
             .map(|it| (it.scope.as_path(), it.memory))
             .collect();
-        self.seen.retain(|it| here.contains(it));
-        self.held.retain(|held| pids.contains(&held.pid));
-        self.admitted
-            .retain(|scope, _| memory.contains_key(scope.as_path()));
+        self.forget_gone(coming, &memory);
         self.follow_call(machine, now);
         self.settle_pace(now);
         // Let in before the room is counted, so it counts as growing.
@@ -491,10 +500,11 @@ impl Door {
         // Those coming in together share the room past what's kept
         // evenly, so all of them still fit: a cap lasts its scope's life,
         // and one of GROWS alone would push an evaluation that grows past
-        // it into swap with room to spare.
+        // it into swap with room to spare. Each is counted at its share
+        // while it ramps, and none is given past what one could use.
         let due = self.held.iter().take_while(|held| waited(held)).count();
         let fit = room.saturating_sub(need) / grows.max(1);
-        let share = room.saturating_sub(need) / fit.min(due as u64).max(1);
+        let share = (room.saturating_sub(need) / fit.min(due as u64).max(1)).min(machine.most());
         while let Some(held) = self.held.first() {
             if !waited(held) {
                 break;
@@ -507,7 +517,7 @@ impl Door {
             // stall reading lags a rush, so what it takes past that it
             // reclaims from itself. Short of room or in a stall, main's one
             // each SPACED.
-            let together = room >= grows + need && machine.stalled <= STALLED;
+            let together = room >= grows + need && machine.stalled <= STALLED && !self.rank_refused;
             let spaced = self
                 .waited_in
                 .is_none_or(|at| now.saturating_duration_since(at) >= SPACED);
@@ -515,19 +525,43 @@ impl Door {
                 break;
             }
             let high = if together { share } else { grows };
+            let scope = held.scope.clone();
             let Some(came) = self.come_in(Some(high), now, act) else {
                 break;
             };
-            // Let in uncapped, its rank refused, it ends the rush.
-            let unranked = matches!(came, Done::LetIn(_));
+            // Let in uncapped, its rank refused, it ends the rush until a
+            // rank holds again.
+            self.rank_refused = matches!(came, Done::LetIn(_));
             done.push(came);
-            room = room.saturating_sub(grows);
-            if !together || unranked {
-                self.waited_in = Some(now);
+            if self.rank_refused {
+                room = room.saturating_sub(grows);
+            } else {
+                // Counted at its cap, so a later look doesn't give away
+                // the room it may still grow into.
+                self.capped.insert(scope, high);
+                room = room.saturating_sub(high);
+            }
+            // The next one SPACED comes that long after the rush's last,
+            // so none follows a rush that filled the room on its look.
+            self.waited_in = Some(now);
+            if !together || self.rank_refused {
                 break;
             }
         }
         done
+    }
+
+    /// Forgets each process seen or held that isn't among `coming`, and
+    /// each scope let in that `memory` no longer has.
+    fn forget_gone(&mut self, coming: &[Coming], memory: &HashMap<&Path, u64>) {
+        let here: HashSet<(u32, u64)> = coming.iter().map(|it| (it.pid, it.start)).collect();
+        let pids: HashSet<u32> = coming.iter().map(|it| it.pid).collect();
+        self.seen.retain(|it| here.contains(it));
+        self.held.retain(|held| pids.contains(&held.pid));
+        self.admitted
+            .retain(|scope, _| memory.contains_key(scope.as_path()));
+        let admitted = &self.admitted;
+        self.capped.retain(|scope, _| admitted.contains_key(scope));
     }
 
     /// What the starts let in within [`RAMP`] of `now` are yet to grow to,
@@ -537,7 +571,10 @@ impl Door {
         self.admitted
             .iter()
             .filter(|(_, at)| now.saturating_duration_since(**at) < RAMP)
-            .map(|(scope, _)| grows.saturating_sub(memory[scope.as_path()]))
+            .map(|(scope, _)| {
+                let counted = self.capped.get(scope).copied().unwrap_or(grows);
+                counted.saturating_sub(memory[scope.as_path()])
+            })
             .sum()
     }
 
@@ -1501,16 +1538,48 @@ mod tests {
         let came = door.look(work, free(ROOM + 3 * GROWS), longest, 1002, |_, _| true);
         assert_eq!(
             came,
-            [
-                Done::LetIn(100),
-                Done::LetIn(101),
-                Done::Ranked(102, GROWS),
-                Done::Ranked(103, GROWS),
-            ],
-            "the pace's two come in, then one ranked while there's room for it, then one \
-             SPACED, ranked"
+            [Done::LetIn(100), Done::LetIn(101), Done::Ranked(102, GROWS),],
+            "the pace's two come in, then one ranked while there's room for it, and none \
+             SPACED behind a rush that filled the room"
         );
-        assert_eq!(door.held.len(), 2, "the rest wait for room or SPACED");
+        assert_eq!(door.held.len(), 3, "the rest wait for room or SPACED");
+        let spaced = longest + SPACED;
+        assert_eq!(
+            door.look(work, free(ROOM + 3 * GROWS), spaced, 1003, |_, _| true),
+            [Done::Ranked(103, GROWS)],
+            "SPACED after the rush's last, one comes in ranked"
+        );
+    }
+
+    // A rushed start's cap is what it may grow to, so later looks count it
+    // at that, or they'd give the room it was promised away again.
+    #[test]
+    fn a_rushed_start_is_counted_at_its_share_on_later_looks() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let work = &thirteen()[..6];
+        let calling = Machine {
+            calling: true,
+            ..free(ROOM + GROWS)
+        };
+        assert_eq!(held(&door.look(work, calling, at, 1000, |_, _| true)), 6);
+        let short = free(1 << 30);
+        assert_eq!(door.look(work, short, at + MINUTE, 1001, |_, _| true), []);
+        let longest = at + MINUTE + LONGEST;
+        let roomy = free(ROOM + 12 * GROWS);
+        assert_eq!(
+            let_in(&door.look(work, roomy, longest, 1002, |_, _| true)),
+            6
+        );
+        // A minute on, the pace has a turn again and none has grown yet,
+        // so the room left is what's free past the two plain and the four
+        // shares: the room kept, and no more.
+        let later = &thirteen()[..7];
+        assert_eq!(
+            door.look(later, roomy, longest + MINUTE, 1003, |_, _| true),
+            [Done::Ranked(106, ROOM - FLOOR)],
+            "a new start finds only the room kept, so it comes in ranked behind the rest"
+        );
     }
 
     // A late start's cap lasts its scope's life, so one sized to GROWS
@@ -1571,6 +1640,50 @@ mod tests {
             "the first let in uncapped ends the rush"
         );
         assert_eq!(door.held.len(), 3, "the rest wait SPACED");
+    }
+
+    // A rank refused once is likely refused again, so the rush stays over
+    // until one holds: a look a second later lets none in uncapped.
+    #[test]
+    fn a_refused_rank_keeps_the_rest_spaced_until_a_rank_holds() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let work = &thirteen()[..6];
+        let calling = Machine {
+            calling: true,
+            ..free(ROOM + GROWS)
+        };
+        assert_eq!(held(&door.look(work, calling, at, 1000, |_, _| true)), 6);
+        let short = free(1 << 30);
+        assert_eq!(door.look(work, short, at + MINUTE, 1001, |_, _| true), []);
+        let longest = at + MINUTE + LONGEST;
+        let roomy = free(ROOM + 12 * GROWS);
+        let refuses = |_: &Path, act: Act| !matches!(act, Act::Rank { .. });
+        assert_eq!(let_in(&door.look(work, roomy, longest, 1002, refuses)), 3);
+        let second = longest + Duration::from_secs(1);
+        assert_eq!(
+            door.look(work, roomy, second, 1003, refuses),
+            [],
+            "a second on, the rush is still over"
+        );
+        let spaced = longest + SPACED;
+        assert_eq!(
+            door.look(work, roomy, spaced, 1004, |_, _| true),
+            [Done::Ranked(103, GROWS)],
+            "SPACED on, one comes in, and its rank holds"
+        );
+        // Four counted at GROWS leave eight past what's kept, for two.
+        assert_eq!(
+            door.look(
+                work,
+                roomy,
+                spaced + Duration::from_secs(1),
+                1005,
+                |_, _| true
+            ),
+            [Done::Ranked(104, 4 * GROWS), Done::Ranked(105, 4 * GROWS)],
+            "with a rank held, the rest come in together again"
+        );
     }
 
     #[test]
