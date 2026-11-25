@@ -5,7 +5,7 @@
 //! into, each base took more than 2 KiB of stack, so a chain a pack may
 //! hold overflowed the 8 MiB a process's first thread has.
 
-use super::{CHAIN_LIMIT, Kind, Object, Odb, Place, apply_delta, inflate_at, invalid};
+use super::{CHAIN_LIMIT, Kind, Mark, Object, Odb, Place, apply_delta, inflate_at, invalid};
 use crate::hash::Oid;
 use std::collections::{HashMap, HashSet};
 use std::io;
@@ -100,6 +100,11 @@ enum Reached {
     /// A named base whose copies were spent with one passed over, which
     /// says nothing of the copy whose delta named it.
     Skipped(io::Error),
+    /// A named base whose copies were spent, each refused, or which no
+    /// store holds: the copy whose delta named it reads no better this
+    /// answer, though the base may be written, or read once memory is
+    /// there, by the next.
+    Unbased(io::Error),
 }
 
 impl Odb {
@@ -108,14 +113,12 @@ impl Odb {
     ///
     /// What a store's indexes, packs or loose objects refuse stands only
     /// once every other place the object may lie has been read. A copy that
-    /// won't read is marked bad until the packs change, as git marks a
-    /// copy bad and looks again, so a sound copy in another pack is read
-    /// and no copy is unpacked to its failure twice. A copy refused memory
-    /// is marked too, with that refusal, since only a stream truly
-    /// inflating that far is refused it, and unpacking it on every find
-    /// would cost the same each time. The marks outlast the error they
-    /// end in, since a repository started afresh keeps its store, and go
-    /// only once the packs change and the store is opened again. A copy
+    /// won't read is marked bad, as git marks a copy bad and looks again,
+    /// so a sound copy in another pack is read and no copy is unpacked to
+    /// its failure twice an answer. A copy refused memory is marked too,
+    /// since only a stream truly inflating that far is refused it, and
+    /// unpacking it on every find would cost the same each time. How long
+    /// a mark lasts is `Mark`'s to say. A copy
     /// whose chain comes round to an object already being found, or runs past
     /// `CHAIN_LIMIT`, may be sound under another copy of a base on the
     /// way, so it's only passed over, for this find alone, and the next
@@ -156,14 +159,15 @@ impl Odb {
                         if ended.skipped {
                             Ok(Reached::Skipped(refused))
                         } else {
-                            Err(refused)
+                            Ok(Reached::Unbased(refused))
                         }
                     }
                 }
             };
             let at = searches.len() - 1;
             match reached {
-                Err(error) => self.fail(&mut searches[at], &error),
+                Err(error) => self.fail(&mut searches[at], &error, true),
+                Ok(Reached::Unbased(error)) => self.fail(&mut searches[at], &error, false),
                 Ok(Reached::TooLong) => {
                     skip(
                         &mut searches[at],
@@ -180,7 +184,7 @@ impl Odb {
                         if *passed_over {
                             skip(&mut searches[at], &mut skipped, &error);
                         } else {
-                            self.fail(&mut searches[at], &error);
+                            self.fail(&mut searches[at], &error, false);
                         }
                     } else if searching.insert(base) {
                         let above = searches[at].depth();
@@ -194,7 +198,7 @@ impl Odb {
                     }
                 }
                 Ok(Reached::Base(base)) => match self.apply(&mut searches[at], base) {
-                    Err(error) => self.fail(&mut searches[at], &error),
+                    Err(error) => self.fail(&mut searches[at], &error, true),
                     Ok(object) => {
                         let found = end(&mut searches, &mut searching);
                         self.keep_tree(&found.oid, &object);
@@ -226,10 +230,10 @@ impl Odb {
             };
             search.passed.push(pack);
             let place = (search.store, pack, offset);
-            if let Some((kind, said)) = self.bad.get(&place) {
+            if let Some(mark) = self.bad.get(&place) {
                 search
                     .refused
-                    .get_or_insert_with(|| io::Error::new(*kind, said.clone()));
+                    .get_or_insert_with(|| io::Error::new(mark.kind, mark.said.clone()));
             } else if let Some((kind, said)) = skipped.get(&place) {
                 search.skipped = true;
                 search
@@ -339,10 +343,16 @@ impl Odb {
     /// Ends the copy `search` was reading, which won't read for `error`:
     /// marks it bad, keeps the refusal should it be the first, and leaves
     /// the next copy to be read. The mark keeps the error's kind, so a copy
-    /// refused memory is never taken for a corrupt one.
-    fn fail(&mut self, search: &mut Search, error: &io::Error) {
+    /// refused memory is never taken for a corrupt one, and lasts while
+    /// the packs hold only where the copy's `own` bytes were found invalid.
+    fn fail(&mut self, search: &mut Search, error: &io::Error, own: bool) {
         if let Some(copy) = search.copy.take() {
-            self.bad.insert(copy, (error.kind(), error.to_string()));
+            let mark = Mark {
+                kind: error.kind(),
+                said: error.to_string(),
+                lasts: own && error.kind() == io::ErrorKind::InvalidData,
+            };
+            self.bad.insert(copy, mark);
         }
         refuse(search, error);
     }

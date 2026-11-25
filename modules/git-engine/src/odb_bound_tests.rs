@@ -294,14 +294,14 @@ fn an_object_grows_to_one_byte_past_its_size_and_no_further() {
         (read(100_001), read(100_000)),
         (
             Ok(Ok(Some(100_000))),
-            Ok(Err("no memory for a pack object of 100001 bytes".into()))
+            Ok(Err("no memory to grow a pack object to 100001 bytes".into()))
         ),
         "an object grew past one byte beyond its size, or short of it"
     );
 }
 
 #[test]
-fn a_copy_refused_memory_is_marked_with_that_refusal_until_the_store_opens_again() {
+fn a_copy_refused_memory_is_marked_with_that_refusal_for_that_answer_alone() {
     const COPIES: usize = 21;
     let names = names(2);
     // names[1] a blob past the first 64 KiB its stream is given, and
@@ -326,20 +326,20 @@ fn a_copy_refused_memory_is_marked_with_that_refusal_until_the_store_opens_again
     // Where each lies in the pack, past its 12 bytes of header.
     let (at_delta, at_blob) = (12, 12 + first.len() as u64);
     let folders = packed(&names, &[vec![first, big_blob(&base)]]);
-    let starved_blob = "no memory for a pack object of 100001 bytes";
+    let starved_blob = "no memory to grow a pack object to 100001 bytes";
     for (name, limit, refusal, marked, size) in [
         (names[1], 80_000, starved_blob, vec![at_blob], base.len()),
         (
             names[0],
             1_500_000,
-            "no memory for a delta of 2000000 bytes",
+            "no memory to grow a delta to 2000000 bytes",
             vec![at_delta],
             COPIES * base.len(),
         ),
         (
             names[0],
             1_000_000,
-            "no memory for a delta of 1048576 bytes",
+            "no memory to grow a delta to 1048576 bytes",
             vec![at_delta],
             COPIES * base.len(),
         ),
@@ -365,15 +365,16 @@ fn a_copy_refused_memory_is_marked_with_that_refusal_until_the_store_opens_again
             let mut marks: Vec<_> = odb
                 .bad
                 .iter()
-                .map(|(&(_, _, offset), &(kind, _))| (offset, kind))
+                .map(|(&(_, _, offset), mark)| (offset, mark.kind, mark.lasts))
                 .collect();
             marks.sort_unstable();
             let again = read(&mut odb);
-            (starved, marks, again, read(&mut Odb::open(&objects)))
+            odb.forget_passing_marks();
+            (starved, marks, again, read(&mut odb))
         });
         let marks = marked
             .into_iter()
-            .map(|offset| (offset, io::ErrorKind::OutOfMemory))
+            .map(|offset| (offset, io::ErrorKind::OutOfMemory, false))
             .collect();
         assert_eq!(
             read,
@@ -384,7 +385,7 @@ fn a_copy_refused_memory_is_marked_with_that_refusal_until_the_store_opens_again
                 Ok(Some(size))
             )),
             "a copy refused memory past {limit} bytes wasn't marked where it lies with that \
-             refusal alone, or stayed marked once the store was opened again"
+             refusal alone, or stayed marked past its answer"
         );
     }
 }

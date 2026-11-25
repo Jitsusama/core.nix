@@ -287,7 +287,7 @@ fn reserve(out: &mut Vec<u8>, more: usize, what: &str) -> io::Result<()> {
     let refused = || {
         io::Error::new(
             io::ErrorKind::OutOfMemory,
-            format!("no memory for {what} of {total} bytes"),
+            format!("no memory to grow {what} to {total} bytes"),
         )
     };
     #[cfg(test)]
@@ -306,7 +306,7 @@ fn reserve(out: &mut Vec<u8>, more: usize, what: &str) -> io::Result<()> {
 /// at the size its header says, so a size no stream fills, however large,
 /// takes at most twice what the stream gives, or 64 KiB, before it ends.
 /// Memory the allocator won't give for it fails the read rather than
-/// ending the program, and the copy is marked with that refusal. As git's
+/// ending the program, and the copy is marked for that answer. As git's
 /// `unpack_compressed_entry` does, it makes room for one byte past the
 /// size, and takes the object only where its stream ends there, so a
 /// stream giving more, or ending wrongly, is refused.
@@ -467,16 +467,28 @@ pub struct Odb {
     /// they hold.
     trees: HashMap<Oid, Vec<u8>>,
     tree_bytes: usize,
-    /// The copies that wouldn't unpack, and what each said, passed over
-    /// from then on as git passes over a copy it has marked bad for as
-    /// long as it runs. Each copy is unpacked to its failure once, so a
-    /// chain of failing deltas, each with several copies, costs one
-    /// unpacking a copy rather than one for every path down to it. A copy
-    /// refused memory is marked with that refusal too. The marks outlast a
-    /// repository started afresh after an error, which keeps its store
-    /// through `reopen`, and every mark goes once the packs change, since
-    /// the store is then opened again.
-    bad: HashMap<Place, (io::ErrorKind, String)>,
+    /// The copies that wouldn't unpack, and why, passed over from then on
+    /// as git passes over a copy it has marked bad for as long as it runs.
+    /// Each copy is unpacked to its failure once an answer, so a chain of
+    /// failing deltas, each with several copies, costs one unpacking a
+    /// copy rather than one for every path down to it.
+    bad: HashMap<Place, Mark>,
+}
+
+/// Why a copy is marked bad, and whether the mark lasts past the answer
+/// that made it.
+///
+/// A copy whose own bytes won't read, its data corrupt or its deltas
+/// running past their sizes, reads no better while the packs hold, so its
+/// mark lasts until they change, through a repository started afresh
+/// after an error too, which keeps its store. A copy refused memory, an
+/// I/O error, or a base no copy of which read may read on the next answer
+/// (once memory is there, or the base is written), so its mark lasts that
+/// answer alone.
+struct Mark {
+    kind: io::ErrorKind,
+    said: String,
+    lasts: bool,
 }
 
 /// The most deltas a chain may run through to its base, its bases named
@@ -541,8 +553,8 @@ impl Odb {
     }
 
     /// The store `kept` from a repository started afresh, while it reads
-    /// `objects` and its packs are as it read them, so the copies it
-    /// marked bad stay marked and its caches stay warm; else `objects`
+    /// `objects` and its packs are as it read them, so the copies whose
+    /// marks last stay marked and its caches stay warm; else `objects`
     /// opened again.
     pub fn reopen(kept: Option<Odb>, objects: &Path) -> Odb {
         match kept {
@@ -554,6 +566,12 @@ impl Odb {
             }
             _ => Odb::open(objects),
         }
+    }
+
+    /// Forgets the marks that last one answer, as the next begins, so the
+    /// copies they marked are read again.
+    pub fn forget_passing_marks(&mut self) {
+        self.bad.retain(|_, mark| mark.lasts);
     }
 
     /// The object, or None when no store here has it (a partial clone's

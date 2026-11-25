@@ -537,7 +537,7 @@ fn a_refusal_kept_before_a_copy_that_wont_unpack_is_the_one_that_stands() {
     assert_eq!(
         odb.bad
             .values()
-            .map(|(_, said)| said.as_str())
+            .map(|mark| mark.said.as_str())
             .collect::<Vec<_>>(),
         ["pack entry"],
         "pack-a's copy was never found and tried, so its refusal was never in question"

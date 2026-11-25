@@ -363,12 +363,16 @@ fn a_copy_that_wont_unpack_is_unpacked_once_however_many_deltas_lie_over_it() {
             .read(&Oid(names[0]))
             .map(|object| object.map(|object| object.data))
             .map_err(|error| error.to_string());
-        (read, odb.bad.len())
+        let lasting = odb.bad.values().filter(|mark| mark.lasts).count();
+        (read, odb.bad.len(), lasting)
     });
+    // Only the three entries of no kind are wrong in themselves; the
+    // deltas over them may yet read over a base written elsewhere.
     assert_eq!(
         read,
-        Ok((Err("pack entry kind".into()), 3 * 17)),
-        "a chain of copies that won't unpack didn't end in its first refusal, each copy once"
+        Ok((Err("pack entry kind".into()), 3 * 17, 3)),
+        "a chain of copies that won't unpack didn't end in its first refusal, each copy \
+         once, or a delta was marked for good for its base's fault"
     );
 }
 
@@ -402,27 +406,37 @@ fn a_copy_marked_bad_stays_bad_while_the_store_is_open() {
 }
 
 #[test]
-fn a_store_kept_keeps_its_marks_while_its_packs_hold_and_is_opened_again_once_they_change() {
-    let names = names(2);
-    // names[0] a delta over names[1], which nothing holds yet, and another
-    // folder whose names[0] is a blob.
-    let folders = packed(&names[..1], &[vec![over(names[1])]]);
+fn a_store_kept_keeps_the_marks_that_last_while_what_it_reads_holds() {
+    let names = names(3);
+    // names[0] a delta over names[1], which nothing holds yet, and
+    // names[2] an entry of a kind git has none of; and another folder
+    // whose names[0] is a blob.
+    let folders = packed(
+        &[names[0], names[2]],
+        &[vec![over(names[1]), vec![0x50 | 1, 0]]],
+    );
     let other = packed(&names[..1], &[vec![blob(b"y")]]);
     let objects = &folders.0[0];
-    // Settled stamps, so only a change to the packs moves them.
+    // Settled stamps, so only a change to what the store reads moves them.
     crate::stamp::tests::ahead(3);
-    let read = |odb: &mut Odb| {
-        odb.read(&Oid(names[0]))
+    let read = |odb: &mut Odb, name| {
+        odb.read(&Oid(name))
             .map(|object| object.map(|object| object.data))
             .map_err(|error| error.to_string())
     };
     let marked = || {
         let mut odb = Odb::open(objects);
-        let _ = read(&mut odb);
+        let _ = read(&mut odb, names[0]);
+        let _ = read(&mut odb, names[2]);
         odb
     };
-    // Each store marks its copy before the base it lacks is written loose,
-    // which a store opened again then reads.
+    let said = |odb: &Odb| {
+        let mut said: Vec<_> = odb.bad.values().map(|mark| mark.said.clone()).collect();
+        said.sort_unstable();
+        said
+    };
+    // Each store marks both copies before the base names[0] lacks is
+    // written loose, which the next answer then reads.
     let (kept, elsewhere, changed) = (marked(), marked(), marked());
     let hex = Oid(names[1]).hex();
     std::fs::create_dir_all(objects.join(&hex[..2])).expect("the temp folder takes a folder");
@@ -431,20 +445,25 @@ fn a_store_kept_keeps_its_marks_while_its_packs_hold_and_is_opened_again_once_th
         miniz_oxide::deflate::compress_to_vec_zlib(b"blob 1\0a", 1),
     )
     .expect("the temp folder takes a file");
-    let kept = read(&mut Odb::reopen(Some(kept), objects)).err();
-    let elsewhere = read(&mut Odb::reopen(Some(elsewhere), &other.0[0]));
+    let mut kept = Odb::reopen(Some(kept), objects);
+    let held = said(&kept);
+    kept.forget_passing_marks();
+    let kept = (said(&kept), read(&mut kept, names[0]));
+    let elsewhere = read(&mut Odb::reopen(Some(elsewhere), &other.0[0]), names[0]);
     std::fs::create_dir_all(objects.join("info")).expect("the temp folder takes a folder");
     std::fs::write(objects.join("info/alternates"), b"").expect("the temp folder takes a file");
-    let changed = read(&mut Odb::reopen(Some(changed), objects));
+    let changed = said(&Odb::reopen(Some(changed), objects));
     assert_eq!(
-        (kept, elsewhere, changed),
+        (held, kept, elsewhere, changed),
         (
-            Some("delta base missing".into()),
+            vec!["delta base missing".into(), "pack entry kind".into()],
+            (vec!["pack entry kind".into()], Ok(Some(b"x".to_vec()))),
             Ok(Some(b"y".to_vec())),
-            Ok(Some(b"x".to_vec()))
+            vec![]
         ),
-        "a store kept lost its marks while its packs held, answered for another folder, \
-         or kept them once its packs changed"
+        "a store kept lost its marks while what it reads held, kept a base's refusal past \
+         the next answer, answered for another folder, or kept marks once what it reads \
+         changed"
     );
 }
 

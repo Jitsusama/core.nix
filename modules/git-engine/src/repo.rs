@@ -195,13 +195,15 @@ fn map_refspec(refspec: &str, name: &str) -> Option<String> {
 
 impl Repo {
     /// The repository at `location`, reading its objects through the store
-    /// `kept` from one started afresh, while that store still holds.
-    pub fn open(location: Location, kept: Option<Odb>) -> io::Result<Repo> {
+    /// `kept` from one started afresh, while that store still holds. The
+    /// store is taken only once nothing else can refuse the opening, so a
+    /// refusal leaves it, and its marks, in `kept` for the next try.
+    pub fn open(location: Location, kept: &mut Option<Odb>) -> io::Result<Repo> {
         let home = std::env::var_os("HOME").map(PathBuf::from);
         let config = load_config(&location, home.as_deref(), None);
         let refs = Refs::open(&location.git_dir, &location.common, is_reftable(&config))?;
         let objects = location.common.join("objects");
-        let odb = Odb::reopen(kept, &objects);
+        let odb = Odb::reopen(kept.take(), &objects);
         let graph = Graph::open(&objects);
         let walks = Walks::new(Walks::folder(home.as_deref()), &location.common);
         Ok(Repo {
@@ -500,6 +502,7 @@ impl Repo {
     }
 
     pub fn answer(&mut self, options: &Options, diff: bool) -> io::Result<Answer> {
+        self.odb.forget_passing_marks();
         self.refresh()?;
         let reftable = is_reftable(&self.config);
         let head = head(&self.location, &self.refs, reftable);

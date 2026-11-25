@@ -120,8 +120,8 @@ fn fields(answer: &Answer) -> Vec<String> {
 struct Engine {
     repos: HashMap<PathBuf, Repo>,
     /// The object stores of repositories started afresh after an error,
-    /// by their git folder, so a copy they marked bad isn't unpacked to
-    /// its failure again on the next question.
+    /// by their git folder, so a copy whose own bytes won't read isn't
+    /// unpacked to its failure again on the next question.
     kept: HashMap<PathBuf, odb::Odb>,
 }
 
@@ -134,10 +134,14 @@ impl Engine {
             .get(&key)
             .is_none_or(|repo| repo.location != location)
         {
-            let repo = match Repo::open(location, self.kept.remove(&key)) {
+            let mut kept = self.kept.remove(&key);
+            let repo = match Repo::open(location, &mut kept) {
                 Ok(repo) => repo,
                 Err(error) => {
                     eprintln!("git-engine: can't open {}: {error}", key.display());
+                    if let Some(odb) = kept {
+                        self.kept.insert(key, odb);
+                    }
                     return None;
                 }
             };
@@ -151,7 +155,7 @@ impl Engine {
                 // Whatever went wrong may have been read part-way; start
                 // this repository afresh next time, all but its objects,
                 // whose store keeps only what it read whole and the marks
-                // on copies that wouldn't read.
+                // on copies whose own bytes won't read.
                 if let Some(repo) = self.repos.remove(&key) {
                     self.kept.insert(key, repo.into_odb());
                 }
@@ -490,6 +494,12 @@ mod tests {
         crate::stamp::tests::ahead(3);
         let mut engine = Engine::default();
         let refused = engine.ask(&dir, &options(&[]), false).is_none();
+        // Its refs, kept in a reftable that isn't there, refuse the next
+        // opening, which leaves the store kept rather than dropping it.
+        let config = dir.join(".git/config");
+        std::fs::write(&config, "[extensions]\n\trefStorage = reftable\n").unwrap();
+        let unopened = engine.ask(&dir, &options(&[]), false).is_none();
+        std::fs::remove_file(&config).unwrap();
         let blob = [
             &[0x31][..],
             &miniz_oxide::deflate::compress_to_vec_zlib(b"a", 1),
@@ -502,10 +512,58 @@ mod tests {
         std::fs::write(packs.join("pack-new.idx"), b"").unwrap();
         engine.let_go_of_changed();
         assert_eq!(
-            (refused, again, kept, afresh, engine.kept.len()),
-            (true, true, 1, true, 0),
+            (refused, unopened, again, kept, afresh, engine.kept.len()),
+            (true, true, true, 1, true, 0),
             "a repository started afresh unpacked a copy its store had marked again, \
-             or kept its store past a change to the packs"
+             dropped its store when its refs wouldn't open, or kept it past a change to \
+             the packs"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_copy_marked_for_a_base_no_store_held_is_read_again_once_the_base_is_written() {
+        let dir = repository("unbased");
+        let (name, base) = ([7; 20], [8; 20]);
+        std::fs::write(
+            dir.join(".git/refs/heads/main"),
+            format!("{}\n", hash::Oid(name).hex()),
+        )
+        .unwrap();
+        // HEAD's one copy, a delta over a base nothing holds, which turns
+        // its one byte into an x.
+        let delta = miniz_oxide::deflate::compress_to_vec_zlib(&[1, 1, 1, b'x'], 1);
+        let entry = [&[0x74][..], &base, &delta].concat();
+        let packs = dir.join(".git/objects/pack");
+        std::fs::write(
+            packs.join("pack-00.idx"),
+            pack_index::tests::version_2_at(&[name], &[12]),
+        )
+        .unwrap();
+        std::fs::write(
+            packs.join("pack-00.pack"),
+            [b"PACK\0\0\0\x02\0\0\0\x01", &entry[..], &[0; 20]].concat(),
+        )
+        .unwrap();
+        crate::stamp::tests::ahead(3);
+        let mut engine = Engine::default();
+        let refused = engine.ask(&dir, &options(&[]), false).is_none();
+        // The base written loose, which moves none of the stamps the store
+        // watches, so only a mark that passes lets the copy read.
+        let hex = hash::Oid(base).hex();
+        let loose = dir.join(".git/objects").join(&hex[..2]);
+        std::fs::create_dir_all(&loose).unwrap();
+        std::fs::write(
+            loose.join(&hex[2..]),
+            miniz_oxide::deflate::compress_to_vec_zlib(b"blob 1\0a", 1),
+        )
+        .unwrap();
+        let answered = engine.ask(&dir, &options(&[]), false).is_some();
+        assert_eq!(
+            (refused, answered),
+            (true, true),
+            "a copy whose base no store held was answered before the base was written, \
+             or stayed marked once it was"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
