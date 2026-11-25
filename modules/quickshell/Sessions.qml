@@ -3102,6 +3102,11 @@ Singleton {
             { [back.id]: Object.assign({}, back.place, { keptUnder: back.under }) }));
         console.info(`sessions: ${back.id}'s kept place kept again, as no kitty took its viewer, `
             + `to be asked for once a kitty other than ${back.under} draws`);
+        // A kitty started again while the script waited said so before
+        // this give-up (kittyStarted), so it's asked now, as nothing else
+        // would while niri is quiet.
+        if (back.under !== sessionsKittyPid)
+            viewKept();
     }
     // Keeps where the window of the session here that pi knows as `id`
     // sits, answering "kept", or "no window to keep" for one with no
@@ -3214,14 +3219,15 @@ Singleton {
         // What's let go is said, so a viewer Joel asked for that never
         // opens can be found in the journal.
         const opened = due.open.map(one => one.id ?? one.session?.presence?.session);
-        // One kept again lapses only while its kitty, alive under the pid
-        // asked, never drew the ask's window, said as such.
+        // One kept again lapses only while no kitty other than the one
+        // asked was heard from: alive, it never drew the ask's window, or
+        // the shell missed the unit's word (home.nix journals that).
         for (const id of Object.keys(keptPlaces).filter(id => kept[id] === undefined
             && !opened.includes(id)))
             console.info(`sessions: ${id}'s kept place let go: its viewer is open, `
                 + "its session is back as a plain pi, or it lapsed"
                 + (keptPlaces[id]?.keptUnder === undefined ? ""
-                    : `, no kitty other than ${keptPlaces[id].keptUnder} having drawn`));
+                    : `, no kitty other than ${keptPlaces[id].keptUnder} heard from`));
         // A sleeper first seen asleep is marked so in its place, which is
         // kept as any other change is.
         if (JSON.stringify(kept) !== JSON.stringify(keptPlaces))
