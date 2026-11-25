@@ -50,6 +50,8 @@ pub fn shut(niri: &Path, unasked: &Unasked, told: &mut Told) -> bool {
                     "--app-name=Windows",
                     "--urgency=critical",
                     "--icon=dialog-password",
+                    // Ends the flags, so words opening with "-" are said.
+                    "--",
                 ])
                 .args([summary, body])
                 .status();

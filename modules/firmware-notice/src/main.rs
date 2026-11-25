@@ -182,6 +182,8 @@ fn say(notify_send: &str, notice: &Notice) -> bool {
         .args([
             "--app-name=Firmware",
             "--urgency=normal",
+            // Ends the flags, so a device's name opening with "-" is said.
+            "--",
             &notice.summary,
             &notice.body,
         ])

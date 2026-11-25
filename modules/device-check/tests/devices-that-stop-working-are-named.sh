@@ -61,7 +61,9 @@ grep -qxF "<4>0000:00:05.0 (intel-ipu7) failed a power change and won't wake unt
 grep -qxF "<4>Bluetooth is missing" out || fail "it didn't warn of the missing device"
 grep -qxF "<4>The disk /dev/nvme0 reports $fault" out || fail "it didn't warn of the disk's fault"
 [ "$(wc -l < out)" = 3 ] || fail "it named more than what's wrong"
-[ "$(grep -c '^-u critical -a Devices ' notified)" = 3 ] || fail "it didn't notify of all three"
+# Each finding follows a -- ending notify-send's flags, so one opening with
+# "-" is said rather than read as a flag.
+[ "$(grep -c '^-u critical -a Devices -- ' notified)" = 3 ] || fail "it didn't notify of all three"
 grep -qF "Bluetooth is missing" answer || fail "it didn't answer what's wrong now"
 wrong=$(wc -l < answer)
 [ "$wrong" = 3 ] || fail "its answer held more than what's wrong now"
@@ -82,7 +84,7 @@ grep -qxF "<5>0000:00:05.0 (intel-ipu7) wakes again" out || fail "it didn't say 
 grep -qxF "<5>Bluetooth is back" out || fail "it didn't say the device is back"
 grep -qxF "<5>The disk /dev/nvme0 no longer reports $fault" out \
   || fail "it didn't say the disk's fault cleared"
-[ "$(grep -c '^-u normal -a Devices ' notified)" = 3 ] || fail "it didn't notify of the fixes"
+[ "$(grep -c '^-u normal -a Devices -- ' notified)" = 3 ] || fail "it didn't notify of the fixes"
 grep -qF "Nothing has stopped working" answer || fail "it didn't answer that nothing's wrong"
 
 # Run by a person, outside the journal, it tells the desktop what changed
