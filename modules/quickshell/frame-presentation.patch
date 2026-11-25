@@ -29,7 +29,9 @@ the time from a swap to the screen counts as whole compositor frames.
 timesOf also says whether the frame took an ask. The render thread
 begins a frame after its sync, while the GUI thread runs on, so an ask
 made as framesBegun is read can be taken by a frame synced before it;
-only the frame itself can say it took it.
+only the frame itself can say it took it. The margin cat's rest
+(MarginCat.restFrom) asks again only on that word, so a rebase that
+loses it leaves the rest, and every pet on that screen, waiting.
 
 ---
 diff --git a/src/wayland/CMakeLists.txt b/src/wayland/CMakeLists.txt

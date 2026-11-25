@@ -396,9 +396,10 @@ function strokes(was, at, rested) {
 // still on its way, whose answer asking again for would draw a frame of its own. Only the frame
 // can say it took the ask: the render thread counts a frame begun before it takes the ask, so
 // frame `satFrom` may have taken it. One begun before that took any ask before the cat counted,
-// and so before it asked: of those, one nothing was kept of, its times overwritten by 16 newer,
-// still waits. Any later one nothing was kept of, as one niri never had a surface for, begins
-// it rather than asking for frame after frame.
+// and so before it asked, so it waits: one nothing was kept of, its times overwritten by 16
+// newer, and one that took an earlier sitting's ask, as the cat stopped and sat again before
+// niri answered for it. From frame `satFrom` on, one nothing was kept of, as one niri never had
+// a surface for, begins it rather than asking for frame after frame.
 function restFrom(frame, times, satFrom, satAt) {
     if (times.synchronizing === undefined) {
         return frame < satFrom ? "waits" : "begins";
@@ -406,7 +407,7 @@ function restFrom(frame, times, satFrom, satAt) {
     if (times.synchronizing >= satAt) {
         return "begins";
     }
-    return times.asked ? "asks" : "waits";
+    return times.asked && frame >= satFrom ? "asks" : "waits";
 }
 
 // Which way a cat `size` across leans into a pointer `across` it: -1 to its left, 1 to its right.

@@ -65,9 +65,11 @@ QtObject {
             [rest(41, 999.9, true), rest(40, 0, true)], ["asks", "asks"]);
         expect("a walk's frame synced before it sat is only heard, the 40th too",
             [rest(40, 990, false), rest(39, 0, false)], ["waits", "waits"]);
+        expect("one begun before the 40th that took an earlier sitting's ask is only heard",
+            [rest(39, 990, true), rest(39, 0, true)], ["waits", "waits"]);
         expect("a walk's frame begun before the 40th, its times overwritten, is only heard",
             MarginCat.restFrom(39, {}, 40, 1000), "waits");
-        expect("a later one nothing was kept of begins it rather than asking on",
+        expect("from the 40th on, one nothing was kept of begins it rather than asking on",
             [MarginCat.restFrom(40, {}, 40, 1000), MarginCat.restFrom(41, {}, 40, 1000)],
             ["begins", "begins"]);
     }
