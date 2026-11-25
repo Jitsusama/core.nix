@@ -104,6 +104,7 @@ onLinux {
         "ReadyRows.qml"
         "ReadyRows.js"
         "Presented.js"
+        "KeysSaid.js"
         "ActForms.js"
         "Moved.js"
         "Beneath.js"
