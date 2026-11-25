@@ -315,6 +315,30 @@ fn what_works_is_unread_until_a_first_reading_answers() {
 }
 
 #[test]
+fn a_walk_that_cannot_read_proc_says_what_works_unread_not_idle() {
+    // A unit with /proc hidden answers at once, and fresh, with nothing
+    // read: said as nothing working, it would read as a measurement of
+    // none, however often it's taken.
+    let (at, record) = one_checkout("hidden");
+    let folders = folders_of(&record);
+    let mut working = Working::start(BRISK, ROOMY, folders.clone(), |_: &[PathBuf]| {
+        Sample::default()
+    });
+    for _ in 0..3 {
+        working.read(folders.clone());
+        std::thread::sleep(BRISK);
+    }
+    assert!(!working.unread(), "a fresh reading went stale");
+    let said = working.said(&record);
+    let using = said.iter().find(|said| said["kind"] == "using");
+    assert!(
+        using.is_some_and(|using| using["processes"].is_null()),
+        "a walk that read nothing says nothing works: {using:?}"
+    );
+    let _ = fs::remove_dir_all(&at);
+}
+
+#[test]
 fn a_first_reading_that_never_answers_is_said_late_as_one_that_stopped() {
     // The restart above leaves the page unread, and the journal must say
     // why and which process holds it, as it does for a reading that stops.
@@ -403,39 +427,38 @@ fn a_reading_stuck_in_proc_never_holds_up_the_loop() {
     // leave it unsaid.
     let (at, record) = one_checkout("stuck");
     let folders = folders_of(&record);
-    let mut working = Working::start(
-        BRISK,
-        BRISK * STALE,
-        folders.clone(),
-        move |folders: &[PathBuf]| {
-            let call = calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            if call > 0 {
-                let _ = freed.lock().map(|freed| freed.recv_timeout(SAMPLED * 4));
-            }
-            // As `sample` does, a reading held up says so, and each after the
-            // first is held, however late this thread wakes (using.rs's own
-            // tests time a real walk).
-            Sample {
-                at: 100 + call * 6_000,
-                awake: (call == 0).then_some(100),
-                processes: vec![Process {
-                    pid: 1,
-                    parent: 0,
-                    folder: Some(folders[0].clone()),
-                    started: 1,
-                    own: call * 600,
-                    children: 0,
-                    memory: Some(4_096),
-                }],
-            }
-        },
-    );
+    // Old only after a late wake's whole margin, so the first reading is
+    // taken however late this thread wakes, and stale well before the
+    // held reading is freed.
+    let old = LATE;
+    let mut working = Working::start(BRISK, old, folders.clone(), move |folders: &[PathBuf]| {
+        let call = calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if call > 0 {
+            let _ = freed.lock().map(|freed| freed.recv_timeout(SAMPLED * 4));
+        }
+        // As `sample` does, a reading held up says so, and each after the
+        // first is held, however late this thread wakes (using.rs's own
+        // tests time a real walk).
+        Sample {
+            at: 100 + call * 6_000,
+            awake: (call == 0).then_some(100),
+            processes: vec![Process {
+                pid: 1,
+                parent: 0,
+                folder: Some(folders[0].clone()),
+                started: 1,
+                own: call * 600,
+                children: 0,
+                memory: Some(4_096),
+            }],
+        }
+    });
     working.read(folders.clone());
     assert_eq!(working.used.len(), 1, "the first reading wasn't taken");
 
     // Only the first is waited on: each after takes what's there, or
-    // nothing, until the last grows STALE paces old.
-    let until = Instant::now() + BRISK * STALE + LATE;
+    // nothing, until the last grows old.
+    let until = Instant::now() + old + LATE;
     let mut slowest = Duration::ZERO;
     while !working.used.is_empty() && Instant::now() < until {
         let began = Instant::now();

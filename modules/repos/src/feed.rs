@@ -127,13 +127,14 @@ pub fn using(
             continue;
         }
         let mut whole = Use::default();
-        // A folder's share goes unsaid where the reading before didn't
-        // look in it, and so does its repository's, which would be of
-        // only some of what works there.
+        // A folder's share goes unsaid where this reading or the one
+        // before didn't look in it, and so does its repository's, which
+        // would be of only some of what works there.
         let mut untold = false;
         let mut folders = Vec::new();
         for path in paths() {
             if !looked(&path) {
+                untold = true;
                 folders.push(json!({
                     "path": path,
                     "processes": null,

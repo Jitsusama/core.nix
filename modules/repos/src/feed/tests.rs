@@ -343,7 +343,8 @@ fn a_repository_nothing_works_in_says_so_and_its_processor_waits_for_a_second_re
 fn a_tree_newer_than_the_reading_is_said_unread_and_its_repository_as_read() {
     // The reading placed processes in the folders the disk held before the
     // tree say-trees was made, so whatever works there wasn't looked for,
-    // and what works in the rest was.
+    // and what works in the rest was, though its share would read as the
+    // whole repository's.
     let mut before = placed();
     before.remove(&PathBuf::from("/home/joel/trees/say-trees"));
     let used = BTreeMap::from([(
@@ -353,8 +354,8 @@ fn a_tree_newer_than_the_reading_is_said_unread_and_its_repository_as_read() {
     let said = &using(&record(), &used, true, &before)[0];
     assert_eq!(
         (&said["processes"], &said["memory"], &said["cpu"]),
-        (&json!(2), &json!(3_000), &json!(0.25)),
-        "a new tree blanked what was read of the rest: {said}"
+        (&json!(2), &json!(3_000), &Value::Null),
+        "a new tree blanked what was read of the rest, or a share left it out: {said}"
     );
     let new = said["folders"]
         .as_array()

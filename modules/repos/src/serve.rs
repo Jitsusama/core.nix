@@ -303,7 +303,13 @@ impl Working {
                         one.cpu = None;
                     }
                 }
-                looked = folders.into_iter().collect();
+                // A walk that couldn't read /proc looked nowhere, so what
+                // works is said unread rather than as nothing working.
+                looked = if now.at == 0 {
+                    BTreeSet::new()
+                } else {
+                    folders.into_iter().collect()
+                };
                 // Its age counts from when its walk began, so one held up
                 // for minutes is as old as the first process it read.
                 let reading = Sampled {
