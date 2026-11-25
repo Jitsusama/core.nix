@@ -247,6 +247,45 @@ fn test_names_a_misses_test_in_the_missions_ledger_or_says_why_not() {
     );
 }
 
+#[test]
+fn test_writes_a_miss_its_owner_says_nothing_heard_then_names_its_test() {
+    let mission = std::env::temp_dir().join(format!("pain-points-owned-{}", std::process::id()));
+    std::fs::create_dir_all(&mission).expect("a folder");
+    let kept = mission.join("misses.jsonl");
+    std::fs::write(&kept, "").expect("a ledger");
+    let at = "2026-11-24T20:38:19-05:00";
+    let folder = mission.to_str().expect("a folder named in UTF-8");
+    let what = "a du walked his guarded folders";
+    let owned = ran(&[
+        "test",
+        "--miss",
+        at,
+        "--owner",
+        "0FX11G",
+        "--what",
+        what,
+        "--ledgers",
+        folder,
+    ]);
+    let test = "core modules/du/tests/du.sh du-leaves-guarded-folders-alone";
+    let named = ran(&["test", "--miss", at, "--test", test, "--ledgers", folder]);
+    let ledger = std::fs::read_to_string(&kept).unwrap_or_default();
+    let _ = std::fs::remove_dir_all(&mission);
+    for (output, act) in [(&owned, "writing the miss"), (&named, "naming its test")] {
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "{act} ended {:?}: {}",
+            output.status,
+            said(&output.stderr)
+        );
+    }
+    assert!(
+        ledger.contains(what) && ledger.contains(test) && ledger.contains("0FX11G"),
+        "the ledger doesn't hold the owner's miss and its test: {ledger}"
+    );
+}
+
 /// pain-points hear over a home of its own, at 20:00 UTC on 16 November.
 fn heard_in(home: &std::path::Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_pain-points"))

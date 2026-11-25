@@ -9,9 +9,13 @@
 //! one, such as his reassurance, can't name a test, so its owner says why
 //! as `none` instead, which the hour shows for a day: as a finding closes
 //! on its owner's word of why it's expected, a miss closes only on its
-//! owner's word, never by going quiet. pain-points stays the ledger's only
-//! writer, so the line is changed under the ledger's lock and the ledger
-//! written whole.
+//! owner's word, never by going quiet. A miss nothing heard, such as one a
+//! cell owns up to that Joel said nothing of, is written by its owner with
+//! what went wrong, at the time it happened, with its test or with none
+//! yet, so the hour asks for it as for the rest; it keeps no `words`, which
+//! the card quotes as his. pain-points stays the ledger's only writer, so
+//! the line is changed under the ledger's lock and the ledger written
+//! whole.
 
 use super::held;
 use serde_json::{Value, json};
@@ -21,7 +25,17 @@ use std::path::{Path, PathBuf};
 use terminal_kit::{Exit, Failure, Help};
 
 /// The flags `test` takes, each with a value.
-pub const FLAGS: [&str; 4] = ["--miss", "--test", "--none", "--ledgers"];
+pub const FLAGS: [&str; 6] = [
+    "--miss",
+    "--test",
+    "--none",
+    "--owner",
+    "--what",
+    "--ledgers",
+];
+
+/// What heard a miss its owner wrote, as its line's `heard_by` says.
+const OWNER: &str = "its owner";
 
 /// What `pain-points test --help` says.
 #[must_use]
@@ -35,13 +49,23 @@ pub fn help() -> Help {
             "pain-points test --miss AT --none \"he was reassuring, not hurt\"",
             "as its owner says a pain heard as a miss was none",
         )
+        .example(
+            "pain-points test --miss AT --owner CELL --what \"a search walked his folders\"",
+            "as a cell writes a miss of its own that nothing heard",
+        )
         .option("--miss AT", "the miss's time, as its line has it")
         .option("--test TEST", "its test, as REPO PATH NAME")
         .option("--none WHY", "why it was no miss, in place of a test")
+        .option(
+            "--owner CELL",
+            "whose miss it is, to write one nothing heard",
+        )
+        .option("--what WORDS", "what went wrong for him, with --owner")
         .option("--ledgers DIR", "its ledger's folder, or the mission's")
         .exit(
             Exit::Usage,
-            "no miss, a test and why it's none both or neither, a test not REPO PATH NAME",
+            "no miss, a test and why it's none both or neither, a test not REPO PATH NAME, \
+             or a miss its owner writes half said, said none or at a time taken",
         )
         .exit(Exit::NotFound, "no ledger, or no one miss at that time")
         .exit(Exit::TryAgain, "the ledger stayed locked")
@@ -92,9 +116,21 @@ impl Said<'_> {
     }
 }
 
+/// A miss nothing heard, as its owner writes it: whose it is, and what
+/// went wrong for him in the owner's words.
+#[derive(Debug, Clone, Copy)]
+struct Owned<'a> {
+    owner: &'a str,
+    what: &'a str,
+}
+
+/// The ledger as a change leaves it, when it changes, and what to say.
+type Changed = Result<(Option<String>, String), Failure>;
+
 /// Names the test `--test` gives, or why `--none` says it was no miss, on
 /// the line of the miss at `--miss`, in the ledger in `--ledgers`, or the
-/// mission's, and says so.
+/// mission's, and says so. With `--owner` and `--what`, it writes the miss
+/// at `--miss` first, which nothing heard, with its test if one is given.
 ///
 /// # Errors
 ///
@@ -104,21 +140,24 @@ pub fn named(given: &BTreeMap<&str, String>) -> Result<String, Failure> {
     let at = given
         .get("--miss")
         .ok_or_else(|| wrongly("--miss names the miss"))?;
+    let written = owned(given, at).map_err(|what| wrongly(&what))?;
+    let neither = "give --test, or --none with why it was no miss";
     let said = match (given.get("--test"), given.get("--none")) {
-        (Some(test), None) => Said::Test(test.trim()),
-        (None, Some(why)) => Said::NoMiss {
+        (Some(test), None) => Some(Said::Test(test.trim())),
+        (None, Some(why)) => Some(Said::NoMiss {
             why: why.trim(),
             at_ms: crate::millis_now(),
-        },
-        _ => return Err(wrongly("give --test, or --none with why it was no miss")),
+        }),
+        (None, None) => None,
+        (Some(_), Some(_)) => return Err(wrongly(neither)),
     };
     match said {
-        Said::Test(test) if !shaped(test) => {
+        Some(Said::Test(test)) if !shaped(test) => {
             return Err(wrongly(&format!(
                 "\"{test}\" isn't REPO PATH NAME, such as \"core modules/x/src/y.rs a_test\""
             )));
         }
-        Said::NoMiss { why, .. } if why.is_empty() || why.contains(char::is_control) => {
+        Some(Said::NoMiss { why, .. }) if why.is_empty() || why.contains(char::is_control) => {
             return Err(wrongly("--none says why on one line"));
         }
         _ => {}
@@ -126,7 +165,51 @@ pub fn named(given: &BTreeMap<&str, String>) -> Result<String, Failure> {
     let folder = given
         .get("--ledgers")
         .map_or_else(|| crate::state_home().join("mission"), PathBuf::from);
-    name_in(&folder.join("misses.jsonl"), at, said)
+    let ledger = folder.join("misses.jsonl");
+    match (written, said) {
+        (Some(_), Some(Said::NoMiss { .. })) => Err(wrongly(
+            "a miss its owner writes was one, so --none can't say it wasn't",
+        )),
+        (Some(miss), Some(Said::Test(test))) => own_in(&ledger, at, miss, Some(test)),
+        (Some(miss), None) => own_in(&ledger, at, miss, None),
+        (None, Some(said)) => name_in(&ledger, at, said),
+        (None, None) => Err(wrongly(neither)),
+    }
+}
+
+/// The miss `--owner` and `--what` write at `at`, if they're given, or why
+/// they can't: each said on a line of its own, together, and at a time as
+/// the ledger writes one.
+fn owned<'a>(given: &'a BTreeMap<&str, String>, at: &str) -> Result<Option<Owned<'a>>, String> {
+    let (owner, what) = match (given.get("--owner"), given.get("--what")) {
+        (Some(owner), Some(what)) => (owner.trim(), what.trim()),
+        (None, None) => return Ok(None),
+        _ => return Err("--owner and --what write a miss together".to_owned()),
+    };
+    if [owner, what]
+        .iter()
+        .any(|said| said.is_empty() || said.contains(char::is_control))
+    {
+        return Err("--owner and --what each say theirs on one line".to_owned());
+    }
+    if !stamped(at) {
+        return Err(format!(
+            "--miss takes when it happened as 2026-11-24T20:38:19-05:00, not {at}"
+        ));
+    }
+    Ok(Some(Owned { owner, what }))
+}
+
+/// Whether `at` is a time as the ledger writes one, to the second with its
+/// offset, so cadence reads it and the owner can name it again.
+fn stamped(at: &str) -> bool {
+    let shape = "dddd-dd-ddTdd:dd:dd+dd:dd";
+    at.len() == shape.len()
+        && at.chars().zip(shape.chars()).all(|(c, s)| match s {
+            'd' => c.is_ascii_digit(),
+            '+' => c == '+' || c == '-',
+            _ => c == s,
+        })
 }
 
 /// Whether `test` reads as cadence reads one: a repository, a path git
@@ -143,6 +226,90 @@ fn shaped(test: &str) -> bool {
 
 /// Puts what's `said` on the line of the one miss at `at` in `ledger`.
 fn name_in(ledger: &Path, at: &str, said: Said<'_>) -> Result<String, Failure> {
+    changed_in(ledger, |before, name| {
+        let mut found = 0;
+        let mut already = false;
+        let mut lines: Vec<String> = before
+            .lines()
+            .map(|line| {
+                let Ok(mut read) = serde_json::from_str::<Value>(line) else {
+                    return line.to_owned();
+                };
+                if read["at"].as_str() != Some(at) {
+                    return line.to_owned();
+                }
+                found += 1;
+                already = said.on(&mut read);
+                read.to_string()
+            })
+            .collect();
+        if found != 1 {
+            let what = format!("{found} misses in {name} are at {at}, not one");
+            let failed = Failure::new(Exit::NotFound, what);
+            return Err(failed.try_this("its time as its line has it"));
+        }
+        if already {
+            let said = format!("pain-points: the miss at {at} already {}", said.says());
+            return Ok((None, said));
+        }
+        lines.push(String::new());
+        let said = format!("pain-points: the miss at {at} now {}", said.says());
+        Ok((Some(lines.join("\n")), said))
+    })
+}
+
+/// Writes `miss`, nothing heard, at `at` in `ledger`, naming its
+/// `test` if one is given. A time another miss holds is refused, as the
+/// owner names a miss by its time; the same miss written again is left.
+fn own_in(ledger: &Path, at: &str, miss: Owned<'_>, test: Option<&str>) -> Result<String, Failure> {
+    let Owned { owner, what } = miss;
+    changed_in(ledger, |before, name| {
+        let taken: Vec<Value> = before
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter(|line| line["at"].as_str() == Some(at))
+            .collect();
+        let same = |line: &Value| {
+            line["heard_by"] == OWNER && line["owner"] == owner && line["what"] == what
+        };
+        match taken.as_slice() {
+            [] => {}
+            [line] if same(line) => {
+                let said = format!("pain-points: {owner}'s miss at {at} is written already");
+                return Ok((None, said));
+            }
+            _ => {
+                let refused = format!("a miss in {name} is at {at} already");
+                let failed = Failure::new(Exit::Usage, refused);
+                return Err(failed.try_this("pain-points test --miss AT --test TEST, for it"));
+            }
+        }
+        let mut line = json!({"at": at, "what": what, "owner": owner, "heard_by": OWNER});
+        if let Some(test) = test {
+            line["test"] = json!(test);
+        }
+        let gap = if before.is_empty() || before.ends_with('\n') {
+            ""
+        } else {
+            "\n"
+        };
+        let tested = test.map_or_else(
+            || ", owing its test".to_owned(),
+            |test| format!(", naming its test, {test}"),
+        );
+        let said = format!("pain-points: wrote {owner}'s miss at {at}{tested}");
+        Ok((Some(format!("{before}{gap}{line}\n")), said))
+    })
+}
+
+/// Changes `ledger` as `change` says, given what it holds and its name,
+/// under its lock, and says what `change` says. It is written whole only
+/// when it changes, once it reads again as it did before, as `write` does,
+/// so a line a hand added without the lock isn't lost.
+fn changed_in(
+    ledger: &Path,
+    change: impl FnOnce(&str, &str) -> Changed,
+) -> Result<String, Failure> {
     if !ledger.is_file() {
         let what = format!("no misses ledger at {}", ledger.display());
         return Err(Failure::new(Exit::NotFound, what).try_this("the mission's folder"));
@@ -153,41 +320,16 @@ fn name_in(ledger: &Path, at: &str, said: Said<'_>) -> Result<String, Failure> {
     let failed = |why: String| Failure::new(Exit::Failed, "the misses ledger").because(why);
     let read = || fs::read_to_string(ledger).map_err(|e| failed(format!("{name}: {e}")));
     let before = read()?;
-    let mut found = 0;
-    let mut already = false;
-    let mut lines: Vec<String> = before
-        .lines()
-        .map(|line| {
-            let Ok(mut read) = serde_json::from_str::<Value>(line) else {
-                return line.to_owned();
-            };
-            if read["at"].as_str() != Some(at) {
-                return line.to_owned();
-            }
-            found += 1;
-            already = said.on(&mut read);
-            read.to_string()
-        })
-        .collect();
-    if found != 1 {
-        let what = format!("{found} misses in {name} are at {at}, not one");
-        return Err(Failure::new(Exit::NotFound, what).try_this("its time as its line has it"));
-    }
-    if already {
-        return Ok(format!(
-            "pain-points: the miss at {at} already {}",
-            said.says()
-        ));
-    }
-    lines.push(String::new());
-    // Read again before it's written whole, as `write` does, so a line a
-    // hand added without the lock isn't lost.
+    let (after, said) = change(&before, &name)?;
+    let Some(after) = after else {
+        return Ok(said);
+    };
     if read()? != before {
-        let what = format!("{name} changed as its miss was named");
+        let what = format!("{name} changed as its miss was written");
         return Err(Failure::new(Exit::TryAgain, what).try_this("pain-points test again"));
     }
-    crate::write_whole(ledger, &lines.join("\n")).map_err(failed)?;
-    Ok(format!("pain-points: the miss at {at} now {}", said.says()))
+    crate::write_whole(ledger, &after).map_err(failed)?;
+    Ok(said)
 }
 
 #[cfg(test)]
@@ -350,6 +492,149 @@ mod tests {
             "\"\" a.rs a",
         ] {
             assert!(!shaped(test), "\"{test}\" was taken as a test");
+        }
+    }
+
+    const DU: Owned<'static> = Owned {
+        owner: "0FX11G",
+        what: "a du walked his guarded folders",
+    };
+
+    #[test]
+    fn an_owner_writes_a_miss_nothing_heard_in_its_own_words_never_as_his() {
+        let other = r#"{"at":"2026-11-15T00:28:00-05:00","owner":"5FWIUS"}"#;
+        let path = ledger("owned", other);
+        let said = own_in(&path, AT, DU, None).expect("written");
+        assert!(
+            said.contains("owing its test"),
+            "it didn't say a test is owed: {said}"
+        );
+        let kept = fs::read_to_string(&path).expect("the ledger");
+        let lines: Vec<&str> = kept.lines().collect();
+        assert_eq!(lines[0], other, "another miss's line changed");
+        let line: Value = serde_json::from_str(lines[1]).expect("the miss's line");
+        assert_eq!(
+            (&line["at"], &line["owner"], &line["what"]),
+            (&json!(AT), &json!(DU.owner), &json!(DU.what)),
+            "the miss isn't its owner's, at its time: {line}"
+        );
+        assert_eq!(
+            (&line["heard_by"], &line["words"], &line["test"]),
+            (&json!(OWNER), &Value::Null, &Value::Null),
+            "the miss reads as heard of him, or as tested: {line}"
+        );
+        assert!(kept.ends_with('\n'), "the ledger lost its last line's end");
+        let again = own_in(&path, AT, DU, None).expect("written again");
+        assert!(
+            again.contains("already"),
+            "writing it twice said nothing of it: {again}"
+        );
+        assert_eq!(
+            fs::read_to_string(&path).expect("the ledger"),
+            kept,
+            "writing it twice changed the ledger"
+        );
+        name_in(&path, AT, Said::Test("core a b")).expect("its test named after");
+        let tested = fs::read_to_string(&path).expect("the ledger");
+        assert!(
+            tested.contains(r#""test":"core a b""#),
+            "its test wasn't named: {tested}"
+        );
+    }
+
+    #[test]
+    fn an_owner_writes_its_test_with_its_miss_when_it_has_one() {
+        let path = ledger("owned-tested", "");
+        let said = own_in(&path, AT, DU, Some("core a b")).expect("written");
+        assert!(
+            said.contains("core a b"),
+            "it didn't say the test it named: {said}"
+        );
+        let kept = fs::read_to_string(&path).expect("the ledger");
+        let line: Value = serde_json::from_str(kept.trim()).expect("the miss's line");
+        assert_eq!(
+            line["test"], "core a b",
+            "the miss doesn't name its test: {line}"
+        );
+    }
+
+    #[test]
+    fn a_miss_its_owner_writes_at_a_time_another_holds_is_refused() {
+        for (text, what) in [
+            (
+                format!("{{\"at\":\"{AT}\",\"words\":\"stop\"}}\n"),
+                "a heard miss",
+            ),
+            (
+                format!(r#"{{"at":"{AT}","owner":"0FX11G","what":"else","heard_by":"{OWNER}"}}"#),
+                "another of its own",
+            ),
+        ] {
+            let path = ledger("owned-taken", &text);
+            let failed = own_in(&path, AT, DU, None).expect_err("written");
+            assert!(
+                matches!(failed.exit, Exit::Usage),
+                "{what} at its time wasn't refused as usage"
+            );
+            assert_eq!(
+                fs::read_to_string(&path).expect("the ledger"),
+                text,
+                "{what}: the ledger was changed"
+            );
+        }
+    }
+
+    #[test]
+    fn an_owners_miss_half_said_said_none_or_at_a_time_not_the_ledgers_is_refused() {
+        let nowhere = std::env::temp_dir().join(format!("owned-refused-{}", std::process::id()));
+        let what = ("--what", "a du walked his folders");
+        for (at, given, refused) in [
+            (AT, &[("--owner", "0FX11G")][..], "an owner alone"),
+            (AT, &[what][..], "what went wrong alone"),
+            (
+                AT,
+                &[("--owner", "0FX11G"), what, ("--none", "x")][..],
+                "none",
+            ),
+            (AT, &[("--owner", " "), what][..], "an empty owner"),
+            (
+                AT,
+                &[("--owner", "0FX11G"), ("--what", "a\nb")][..],
+                "two lines",
+            ),
+            (
+                "2026-11-24 20:38",
+                &[("--owner", "0FX11G"), what][..],
+                "a loose time",
+            ),
+        ] {
+            let mut flags: BTreeMap<&str, String> = given
+                .iter()
+                .map(|&(flag, value)| (flag, value.to_owned()))
+                .collect();
+            flags.insert("--miss", at.to_owned());
+            flags.insert("--ledgers", nowhere.display().to_string());
+            let failed = named(&flags).expect_err("it was taken");
+            assert!(
+                matches!(failed.exit, Exit::Usage),
+                "{refused} wasn't refused as usage"
+            );
+        }
+    }
+
+    #[test]
+    fn a_miss_is_at_a_time_to_the_second_with_its_offset() {
+        for at in [AT, "2026-11-24T20:38:19+01:00"] {
+            assert!(stamped(at), "{at} was refused");
+        }
+        for at in [
+            "",
+            "2026-11-24T20:38-05:00",
+            "2026-11-24T20:38:19Z",
+            "2026-11-24 20:38:19-05:00",
+            "2026-11-24T20:38:19-05:00 ",
+        ] {
+            assert!(!stamped(at), "\"{at}\" was taken as a time");
         }
     }
 }
