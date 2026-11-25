@@ -2771,12 +2771,17 @@ Provider {
         const to = String(address).toUpperCase();
         // An answer goes as Joel's, so it goes only from his own Return, whichever row gives it
         // (Sprouting.fromJoel), and only his first to an ask, For You's choices too; refused,
-        // the foot says why and nothing is kept, so its Talk shows no words he didn't send.
-        const refused = TalkAnswers.answerRefused(Sprouting.fromJoel(launcher), answeredTo[to],
+        // the foot says why and nothing is kept, so its Talk shows no words he didn't send. A
+        // walk is told so (Launcher.qml's walkedRun); his own Return reads it on the foot, as
+        // For You's second choice says nothing else.
+        const fromJoel = Sprouting.fromJoel(launcher);
+        const refused = TalkAnswers.answerRefused(fromJoel, answeredTo[to],
             chose.answers.want, Date.now(), Words.of("verb:agent:talk").said ?? {},
             sessionAt(address)?.title ?? to);
         if (refused !== null) {
             launcher?.walkRefused?.(refused);
+            if (fromJoel)
+                launcher?.say?.([[refused, ""]], true);
             then(false, refused, false);
             return;
         }
