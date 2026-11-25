@@ -43,13 +43,86 @@ fn delta_over(base: [u8; 20], base_size: u8) -> Vec<u8> {
     entry
 }
 
+/// A delta's data over a base of `base_size` bytes, copying it whole and
+/// adding `c`.
+fn appending(base_size: u8, c: u8) -> [u8; 6] {
+    [base_size, base_size + 1, 0x90, base_size, 1, c]
+}
+
+/// A delta naming its base, `base`, as a pack's entry over `delta`.
+fn named(base: [u8; 20], delta: &[u8]) -> Vec<u8> {
+    let mut entry = vec![0x70 | u8::try_from(delta.len()).expect("a short delta")];
+    entry.extend(base);
+    entry.extend(miniz_oxide::deflate::compress_to_vec_zlib(delta, 1));
+    entry
+}
+
+/// A pack's entries in order, knowing how far past the first each starts,
+/// so a delta may place its base by offset as git writes one.
+struct Entries {
+    entries: Vec<Vec<u8>>,
+    starts: Vec<u64>,
+}
+
+impl Entries {
+    fn new() -> Entries {
+        Entries {
+            entries: Vec::new(),
+            starts: vec![0],
+        }
+    }
+
+    fn push(&mut self, entry: Vec<u8>) {
+        let end = self.starts[self.entries.len()] + entry.len() as u64;
+        self.starts.push(end);
+        self.entries.push(entry);
+    }
+
+    /// Adds a delta over `delta` placing its base, the entry at `base`, by
+    /// how far back it lies, in git's own sum of seven-bit groups.
+    fn place_over(&mut self, base: usize, delta: &[u8]) {
+        let mut back = self.starts[self.entries.len()] - self.starts[base];
+        let mut distance = vec![low_seven(back)];
+        back >>= 7;
+        while back > 0 {
+            back -= 1;
+            distance.push(0x80 | low_seven(back));
+            back >>= 7;
+        }
+        distance.reverse();
+        let mut entry = vec![0x60 | u8::try_from(delta.len()).expect("a short delta")];
+        entry.extend(distance);
+        entry.extend(miniz_oxide::deflate::compress_to_vec_zlib(delta, 1));
+        self.push(entry);
+    }
+}
+
+fn low_seven(value: u64) -> u8 {
+    u8::try_from(value & 0x7f).expect("seven bits fit a byte")
+}
+
 /// An objects folder of packs, each holding its `entries` in order, the
 /// one at each place named by `names` at that place, through an index of
 /// its own.
 fn packed(names: &[[u8; 20]], packs: &[Vec<Vec<u8>>]) -> Removed {
+    let listed: Vec<_> = packs
+        .iter()
+        .map(|entries| (names[..entries.len()].to_vec(), entries.clone()))
+        .collect();
+    packed_as(&listed)
+}
+
+/// A pack's entries, and the name of each.
+type Pack = (Vec<[u8; 20]>, Vec<Vec<u8>>);
+
+/// What reading an object answers: its data, or what refused it.
+type Read = Result<Option<Vec<u8>>, String>;
+
+/// The same, each pack's entries named by the names beside them.
+fn packed_as(packs: &[Pack]) -> Removed {
     let mut indexed = Vec::new();
     let mut bytes = Vec::new();
-    for (at, entries) in packs.iter().enumerate() {
+    for (at, (names, entries)) in packs.iter().enumerate() {
         let mut pack = b"PACK".to_vec();
         pack.extend(2u32.to_be_bytes());
         let count = u32::try_from(entries.len()).expect("a test's few entries");
@@ -63,7 +136,7 @@ fn packed(names: &[[u8; 20]], packs: &[Vec<Vec<u8>>]) -> Removed {
         let name = format!("pack-{at:02}");
         indexed.push((
             name.clone(),
-            crate::pack_index::tests::version_2_at(&names[..entries.len()], &offsets),
+            crate::pack_index::tests::version_2_at(names, &offsets),
         ));
         bytes.push((name, pack));
     }
@@ -80,14 +153,25 @@ fn packed(names: &[[u8; 20]], packs: &[Vec<Vec<u8>>]) -> Removed {
 }
 
 /// What `read` answers, on a thread with as much stack as a process's
-/// first, where the engine reads, or None should it take past `seconds`.
-fn within<T: Send + 'static>(seconds: u64, read: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+/// first, where the engine reads, or whether it panicked or took past
+/// `seconds`. A panic's own message prints with the test's output, as the
+/// thread's does. A read that takes too long is left to run: a thread
+/// can't be stopped from outside, and the test's process ends it.
+fn within<T: Send + 'static>(
+    seconds: u64,
+    read: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, &'static str> {
     let (send, answer) = mpsc::channel();
     std::thread::Builder::new()
         .stack_size(8 << 20)
         .spawn(move || send.send(read()))
         .expect("the test starts a thread");
-    answer.recv_timeout(Duration::from_secs(seconds)).ok()
+    answer
+        .recv_timeout(Duration::from_secs(seconds))
+        .map_err(|error| match error {
+            mpsc::RecvTimeoutError::Timeout => "took too long",
+            mpsc::RecvTimeoutError::Disconnected => "panicked",
+        })
 }
 
 #[test]
@@ -231,7 +315,7 @@ fn a_chain_of_named_bases_is_read_to_its_limit_and_refused_past_it() {
         });
         assert_eq!(
             read,
-            Some((top.clone(), Ok(Some(b"x".to_vec())))),
+            Ok((top.clone(), Ok(Some(b"x".to_vec())))),
             "a chain of named bases past its limit wasn't refused, or hid a sound copy, \
              or a chain to it wasn't read (the top: {top:?})"
         );
@@ -278,7 +362,7 @@ fn a_copy_that_wont_unpack_is_unpacked_once_however_many_deltas_lie_over_it() {
     });
     assert_eq!(
         read,
-        Some((Err("pack entry kind".into()), 3 * 17)),
+        Ok((Err("pack entry kind".into()), 3 * 17)),
         "a chain of copies that won't unpack didn't end in its first refusal, each copy once"
     );
 }
@@ -310,4 +394,173 @@ fn a_copy_marked_bad_stays_bad_while_the_store_is_open() {
         "a copy marked bad was unpacked again before its store was opened again, \
          or stayed bad past it"
     );
+}
+
+/// What reading each of `names` from a store opened once answers, and how
+/// many copies it marked bad by the end.
+fn read_each(objects: &std::path::Path, names: &[[u8; 20]]) -> (Vec<Read>, usize) {
+    let mut odb = Odb::open(objects);
+    let read = names
+        .iter()
+        .map(|&name| {
+            odb.read(&Oid(name))
+                .map(|object| object.map(|object| object.data))
+                .map_err(|error| error.to_string())
+        })
+        .collect();
+    (read, odb.bad.len())
+}
+
+#[test]
+fn a_copy_whose_chain_comes_round_leaves_a_base_read_from_its_other_copy() {
+    let names = names(2);
+    // names[0]'s only copy a delta over names[1], whose copy beside it is a
+    // delta over names[0], and whose copy in the second pack is sound.
+    let folders = packed_as(&[
+        (names.clone(), vec![over(names[1]), over(names[0])]),
+        (vec![names[1]], vec![blob(b"a")]),
+    ]);
+    let objects = folders.0[0].clone();
+    assert_eq!(
+        within(20, move || read_each(&objects, &names)),
+        Ok((vec![Ok(Some(b"x".to_vec())), Ok(Some(b"a".to_vec()))], 0)),
+        "a chain coming round refused an object a sound copy of its base reads, \
+         or marked a copy on the way"
+    );
+}
+
+#[test]
+fn a_base_whose_copies_were_passed_over_passes_over_the_next_copy_naming_it() {
+    let names = names(2);
+    // names[0] a delta over names[1] in each pack, and names[1]'s only copy
+    // a delta over names[0]: the second copy of names[0] finds names[1]
+    // again once its one copy was passed over, which marks nothing.
+    let folders = packed_as(&[
+        (names.clone(), vec![over(names[1]), over(names[0])]),
+        (vec![names[0]], vec![over(names[1])]),
+    ]);
+    let objects = folders.0[0].clone();
+    let (read, bad) = within(20, move || read_each(&objects, &names)).expect("the reads ended");
+    assert_eq!(
+        (read.iter().all(Result::is_err), bad),
+        (true, 0),
+        "a chain coming round read an object no copy holds, or marked a copy \
+         whose base was passed over: {read:?}"
+    );
+}
+
+#[test]
+fn a_copy_passed_over_is_read_once_a_find_however_many_copies_name_its_object() {
+    // Each name a delta over the next in both packs, the last over the
+    // first in one: read again for each copy naming it, the chain's copies
+    // would be read 2^40 times over.
+    let names = names(40);
+    let over_next: Vec<Vec<u8>> = (0..names.len())
+        .map(|at| over(names[(at + 1) % names.len()]))
+        .collect();
+    let folders = packed_as(&[
+        (names.clone(), over_next.clone()),
+        (names[..39].to_vec(), over_next[..39].to_vec()),
+    ]);
+    let objects = folders.0[0].clone();
+    let (read, bad) = within(20, move || read_each(&objects, &names[..1])).expect("the read ended");
+    assert_eq!(
+        (read.iter().all(Result::is_err), bad),
+        (true, 0),
+        "a chain coming round read an object no copy holds, or marked a copy: {read:?}"
+    );
+}
+
+#[test]
+fn a_chain_too_long_leaves_a_shorter_copy_of_a_base_on_the_way_read() {
+    // names[0] the top of a chain of CHAIN_LIMIT + 1 deltas, each over the
+    // name after it, with names[1] sound in a second pack.
+    let names = names(CHAIN_LIMIT + 2);
+    let mut entries: Vec<Vec<u8>> = names[1..].iter().map(|&base| over(base)).collect();
+    entries.push(blob(b"a"));
+    let folders = packed_as(&[(names.clone(), entries), (vec![names[1]], vec![blob(b"b")])]);
+    let objects = folders.0[0].clone();
+    let read = within(60, move || read_each(&objects, &names[..1]));
+    assert_eq!(
+        read,
+        Ok((vec![Ok(Some(b"x".to_vec()))], 0)),
+        "a chain too long refused an object a shorter copy of its base reads, \
+         or marked a copy on the way"
+    );
+}
+
+#[test]
+fn deltas_placed_by_offset_are_applied_in_order_alone_and_among_named_ones() {
+    let names = names(5);
+    // "a", then each a delta adding a letter over the one before it: by
+    // offset, by offset, by name and by offset again.
+    let mut entries = Entries::new();
+    entries.push(blob(b"a"));
+    entries.place_over(0, &appending(1, b'b'));
+    entries.place_over(1, &appending(2, b'c'));
+    entries.push(named(names[2], &appending(3, b'd')));
+    entries.place_over(3, &appending(4, b'e'));
+    let folders = packed(&names, &[entries.entries]);
+    let (read, _) = read_each(&folders.0[0], &names);
+    assert_eq!(
+        read,
+        ["a", "ab", "abc", "abcd", "abcde"].map(|data| Ok(Some(data.as_bytes().to_vec()))),
+        "deltas placed by offset, or among named ones, weren't applied nearest the base first"
+    );
+}
+
+#[test]
+fn a_chain_placed_or_mixed_is_read_to_its_limit_and_refused_past_it() {
+    // The blob names[0], then CHAIN_LIMIT + 1 deltas, each over the entry
+    // before it, placed by offset, then naming every other base.
+    let names = names(CHAIN_LIMIT + 2);
+    for mixed in [false, true] {
+        let mut entries = Entries::new();
+        entries.push(blob(b"a"));
+        for at in 1..names.len() {
+            let delta = [1, 1, 1, b'x'];
+            if mixed && at % 2 == 0 {
+                entries.push(named(names[at - 1], &delta));
+            } else {
+                entries.place_over(at - 1, &delta);
+            }
+        }
+        let folders = packed(&names, &[entries.entries]);
+        let objects = folders.0[0].clone();
+        let tops = [names[CHAIN_LIMIT + 1], names[CHAIN_LIMIT]];
+        let read = within(60, move || read_each(&objects, &tops));
+        assert_eq!(
+            read,
+            Ok((
+                vec![
+                    Err("delta chain too long".to_string()),
+                    Ok(Some(b"x".to_vec()))
+                ],
+                0
+            )),
+            "a chain past its limit wasn't refused, marked a copy, or one at it wasn't read \
+             (named bases among placed ones: {mixed})"
+        );
+    }
+}
+
+#[test]
+fn a_size_or_base_distance_past_64_bits_is_refused() {
+    let names = names(1);
+    // A blob whose size runs on past 64 bits, then a delta whose base
+    // lies further back than 64 bits can say.
+    let mut size = vec![0xbf];
+    size.extend([0xff; 10]);
+    size.push(1);
+    let mut distance = vec![0x64];
+    distance.extend([0xff; 10]);
+    distance.push(0x7f);
+    for (entry, refused) in [(size, "pack entry size"), (distance, "delta offset")] {
+        let folders = packed(&names, &[vec![entry]]);
+        assert_eq!(
+            read_from(&folders.0[0], names[0]),
+            Err(refused.into()),
+            "an entry past 64 bits wasn't refused as its {refused}"
+        );
+    }
 }

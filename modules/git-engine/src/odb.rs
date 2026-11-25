@@ -372,7 +372,10 @@ pub fn apply_delta(base: &[u8], delta: &[u8]) -> io::Result<Vec<u8>> {
 pub struct Odb {
     stores: Vec<Store>,
     pub stamps: Stamps,
+    /// Bases read for the deltas over them, by where each lies, and how
+    /// many bytes they hold.
     bases: HashMap<Place, Arc<(Kind, Vec<u8>)>>,
+    base_bytes: usize,
     /// Trees already read, which the staged comparison asks for again on
     /// every question while a folder differs from HEAD, and how many bytes
     /// they hold.
@@ -394,6 +397,10 @@ const CHAIN_LIMIT: usize = 10_000;
 
 /// How many bytes of trees are kept before starting again.
 const TREE_BUDGET: usize = 32 << 20;
+
+/// How many bytes of bases are kept before starting again: git's own
+/// `core.deltaBaseCacheLimit` by default.
+const BASE_BUDGET: usize = 96 << 20;
 
 /// Where an object sits in a pack: the store, the pack and its offset.
 type Place = (usize, usize, u64);
@@ -432,6 +439,7 @@ impl Odb {
             stores: dirs.iter().map(|dir| Store::open(dir)).collect(),
             stamps,
             bases: HashMap::new(),
+            base_bytes: 0,
             trees: HashMap::new(),
             tree_bytes: 0,
             bad: HashMap::new(),
@@ -474,11 +482,20 @@ impl Odb {
         if object.kind == Kind::Blob {
             return;
         }
-        if self.bases.len() > 4096 {
-            self.bases.clear();
+        if object.data.len() > BASE_BUDGET {
+            return;
         }
-        self.bases
-            .insert(place, Arc::new((object.kind, object.data.clone())));
+        if self.base_bytes + object.data.len() > BASE_BUDGET {
+            self.bases.clear();
+            self.base_bytes = 0;
+        }
+        self.base_bytes += object.data.len();
+        if let Some(was) = self
+            .bases
+            .insert(place, Arc::new((object.kind, object.data.clone())))
+        {
+            self.base_bytes -= was.1.len();
+        }
     }
 }
 
