@@ -6397,7 +6397,15 @@ mod tests {
                 "{shell}: a Mac didn't keep its two readings: {kept_lines:?}"
             );
 
-            let minutes_ago = format!("{} 40\n{} 90\n{} 95\n", now - 900, now - 120, now - 10);
+            // Kept as each ask appends them: past ten minutes, two in the
+            // span, the newer last, and one too new.
+            let minutes_ago = format!(
+                "{} 40\n{} 80\n{} 90\n{} 95\n",
+                now - 900,
+                now - 300,
+                now - 120,
+                now - 10
+            );
             let said = mac.read(shell, memory_read(), ["41", "100", "200"], &minutes_ago);
             let read_over = memory(&said);
             assert!(
@@ -6438,8 +6446,9 @@ mod tests {
                 "",
                 "{shell}: a Mac whose vm_stat failed said its memory"
             );
+            // From 0, so zsh's empty-as-0 in `-ge` would pass it.
             assert_eq!(
-                mac.read(shell, memory_read(), ["41", "100", ""], ""),
+                mac.read(shell, memory_read(), ["41", "0", ""], ""),
                 "",
                 "{shell}: a Mac whose vm_stat failed after its wait said its memory"
             );
