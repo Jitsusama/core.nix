@@ -10,14 +10,16 @@
 # lasts can't have it and macOS trading the name (keep.sh says why). A Mac
 # that declares no local name is left as it is.
 #
-# Nothing here advertises a service to make name.local answer, so it
-# answers from other machines only while something else does. macOS puts
-# its address records on every interface, loopback aliases too, only while
-# some service names the host as its target. A job here did so from 23
-# November: on a Mac with about 370 loopback aliases, each became a record
-# its name service probed, and when its cable came out, the service spun a
-# core on their conflicts. Any service advertised for the host, Remote
-# Login's included, brings the records back.
+# A second job makes name.local answer the other machines on its network,
+# which it does only while some service names the Mac itself as its host.
+# macOS then puts its address records on every interface, loopback aliases
+# too. A job here did that from 23 November: on a Mac with about 370
+# loopback aliases, each became a record its name service probed, and when
+# its cable came out, the service spun a core on their conflicts. So the
+# job registers one address record of its own instead, naming a host of
+# its own, on the one link the network reaches the Mac by (answer.sh says
+# how), and nothing names the Mac's own host. Any service advertised for
+# the host, Remote Login's included, would still bring the records back.
 {
   config,
   lib,
@@ -47,5 +49,43 @@ in
       # in five minutes, so at most twenty-four lines an hour.
       StandardErrorPath = "/var/log/local-name.log";
     };
+  };
+
+  config.launchd.daemons.local-name-answers = lib.mkIf (name != null) {
+    serviceConfig = {
+      # Reading its link every fifteen seconds, so a Mac that moves to
+      # another network answers there within that, and launchd's ten
+      # seconds between starts.
+      ProgramArguments = [
+        (lib.getExe pkgs.bash)
+        "${./answer.sh}"
+        name
+        "15"
+      ];
+      # scutil, dns-sd, date and sleep, from macOS itself, where only root
+      # can write, since the job runs as root.
+      EnvironmentVariables.PATH = "/usr/sbin:/usr/bin:/bin";
+      # Started again whenever it ends, which it does to answer on a link
+      # or address that changed, or when its answer ended.
+      KeepAlive = true;
+      RunAtLoad = true;
+      # Each address it answers, each move and each answer that ended, with
+      # when.
+      StandardErrorPath = "/var/log/local-name-answers.log";
+    };
+  };
+
+  # A line each time the answer starts is the usual, but an answer that
+  # keeps ending, as one refused for a name another machine holds would,
+  # has launchd start it every ten seconds, two lines each time. So macOS's
+  # newsyslog moves each log aside past 512 KB, keeping three before it. It
+  # sends no signal, since neither job takes one: launchd opens a job's log
+  # anew each time it starts it.
+  config.environment.etc."newsyslog.d/local-name.conf" = lib.mkIf (name != null) {
+    text = ''
+      # logfilename                    mode count size(KB) when flags
+      /var/log/local-name.log          644  3     512      *    N
+      /var/log/local-name-answers.log  644  3     512      *    N
+    '';
   };
 }
