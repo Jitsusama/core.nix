@@ -6,7 +6,9 @@ AGENTS is the vocabulary's own file for agents (launcher/words/agents.json),
 SESSIONS the shell's Sessions.qml, LAUNCHER the launcher's Agents.qml and ROWS
 its SessionRow.js, whose WHY_TONES says how the foot says each why, plainly
 or as an alert: its whys must be the shell's, both ways, so a why added or
-renamed fails until its colour is chosen. Each why Sessions says a session
+renamed fails until its colour is chosen, and the launcher's onUnhosted must
+colour the foot by it (`viewedWhy(why)`, in its code), or the colour chosen
+would go unused. Each why Sessions says a session
 by (`unhosted(session, "why")`, a word or a choice of words, nested or not)
 and each key the launcher names to its foot (`elsewhere("key", ...)`)
 must have words in agents:machine's `said`: the launcher reads them there and
@@ -20,9 +22,10 @@ the why the launcher's onUnhosted is given, inside that handler, may be a
 name, and that handler must pass it on to elsewhere, in its code rather than
 a string or comment there, or every why the shell gives would meet an empty
 foot; a handler whose body never closes, or that holds a regex, whose quote
-could widen it, is none. A word a choice is made by is no why. The
-check first proves it finds a why in a choice or a wrapped call and refuses a
-why with no words, so a rule that stopped finding or refusing fails it too.
+could widen it, is none, said as such. A word a choice is made by is no why.
+The check first proves it finds a why in a choice or a wrapped call and
+refuses a why with no words, so a rule that stopped finding or refusing fails
+it too.
 """
 
 from __future__ import annotations
@@ -51,6 +54,8 @@ WORD = re.compile(r'"((?:[^"\\]|\\.)*)"')
 TONES = re.compile(r"\bconst WHY_TONES = \{([^}]*)\}")
 # One why's bare name and its tone there, up to its comma or the end.
 TONE = re.compile(r'\s*(\w+)\s*:\s*"(plain|alert)"\s*(?:,|\Z)')
+# The launcher choosing the foot's colour by the why's tone, given a name.
+COLOURED = re.compile(r"\bviewedWhy\(\s*(\w+)\s*\)")
 OPENS = "([{"
 CLOSES = ")]}"
 QUOTES = "\"'`"
@@ -218,7 +223,7 @@ def comment_end(source: str, at: int) -> int | None:
     return None
 
 
-def handler(source: str) -> Handler | None:
+def handler(source: str) -> Handler | str:
     """Give onUnhosted's name for the shell's why, its body, and the strings and comments there.
 
     A brace inside a string or a comment is none of the body's, and a quote
@@ -226,11 +231,11 @@ def handler(source: str) -> Handler | None:
     holding a / that opens no comment is none, as a regex's quote, read as
     opening a string, would widen it past its end to excuse names beyond,
     and a regex can't be told from a division without parsing; so is one
-    that never closes.
+    that never closes. Where there's none, it says why.
     """
     found = HANDLER.search(source)
     if found is None:
-        return None
+        return "has no onUnhosted taking the shell's why"
     unread: list[tuple[int, int]] = []
     depth, quote, opened, at = 1, "", 0, found.end()
     while depth and at < len(source):
@@ -245,15 +250,25 @@ def handler(source: str) -> Handler | None:
             unread.append((at, ends))
             at = ends - 1
         elif one == "/":
-            return None
+            line = source.count("\n", 0, at) + 1
+            return (
+                f"has a / on line {line} of onUnhosted's code, a regex or a division,"
+                " which the check can't tell apart, so it reads no handler there"
+            )
         elif one in QUOTES:
             quote, opened = one, at
         else:
             depth += {"{": 1, "}": -1}.get(one, 0)
         at += 1
     if depth:
-        return None
+        return "has an onUnhosted whose body never closes"
     return Handler(found.group(1), found.end(), at, tuple(unread))
+
+
+def held_in(source: str) -> Handler | None:
+    """Give onUnhosted where the check can read it, or None."""
+    found = handler(source)
+    return found if isinstance(found, Handler) else None
 
 
 def firsts(source: str) -> list[tuple[int, str]]:
@@ -277,7 +292,7 @@ def unkeyed(source: str) -> list[str]:
     handler, is read where the shell gives it (whys), so only it may be a
     name.
     """
-    held = handler(source)
+    held = held_in(source)
     return [
         first
         for at, first in firsts(source)
@@ -288,8 +303,16 @@ def unkeyed(source: str) -> list[str]:
 
 def passes_on(source: str) -> bool:
     """Say whether onUnhosted passes the shell's why on to elsewhere, so it reaches the foot."""
-    held = handler(source)
+    held = held_in(source)
     return any(shells(held, at, first) for at, first in firsts(source))
+
+
+def coloured(source: str) -> bool:
+    """Say whether onUnhosted chooses the foot's colour by the shell's why's tone, in its code."""
+    held = held_in(source)
+    return held is not None and any(
+        one.group(1) == held.name and held.holds(one.start()) for one in COLOURED.finditer(source)
+    )
 
 
 def tones(rows: str) -> dict[str, str] | None:
@@ -460,12 +483,53 @@ def refuses_what_it_should() -> list[str]:
             "a tone it can't read, taken as none rather than refused",
         ),
         (
+            tones('const WHY_TONES = { opening: "plain", opening: "alert" };'),
+            None,
+            "a why toned twice, whose last tone JS keeps, taken as its first",
+        ),
+        (
+            mistoned({"a": "plain"}, {"a", "b"}),
+            (["b"], []),
+            "a why the shell gives with no tone",
+        ),
+        (
+            mistoned({"a": "plain", "c": "alert"}, {"a"}),
+            ([], ["c"]),
+            "a tone for no why the shell gives",
+        ),
+        (
+            coloured(
+                "function onUnhosted(session, why) {\n"
+                "    tell(SessionRow.viewedWhy(why) ? Theme.text : Theme.alert); }"
+            ),
+            True,
+            "a handler colouring the foot by the why's tone, taken for none",
+        ),
+        (
+            coloured(
+                "function onUnhosted(session, why) {\n    // was viewedWhy(why)\n"
+                '    tell(why === "opening" ? Theme.text : Theme.alert); }'
+            ),
+            False,
+            "a handler colouring the foot its own way, the tones in a comment",
+        ),
+        (
+            "on line 2 " in str(handler("x;\nfunction onUnhosted(s, why) { at(width / 2); }")),
+            True,
+            "a handler refused for a /, said as some other gap",
+        ),
+        (
             unworded({"hosted", "opening", "unnamed"}, said(vocabulary)),
             ["opening", "unnamed"],
             "a why worded empty or not at all",
         ),
     ]
     return [rule for given, wanted, rule in held if given != wanted]
+
+
+def mistoned(toned: dict[str, str], given: set[str]) -> tuple[list[str], list[str]]:
+    """Give each why the shell gives with no tone, and each toned that it doesn't give."""
+    return sorted(given - toned.keys()), sorted(toned.keys() - given)
 
 
 def toned_wrong(name: str, rows: str, given: set[str]) -> bool:
@@ -479,13 +543,35 @@ def toned_wrong(name: str, rows: str, given: set[str]) -> bool:
     if toned is None:
         print(f"foot-words: {name} has no WHY_TONES it can read", file=sys.stderr)
         return True
-    untoned = sorted(given - toned.keys())
+    untoned, ungiven = mistoned(toned, given)
     for why in untoned:
         print(f"foot-words: {why} has no tone in WHY_TONES, its colour unchosen", file=sys.stderr)
-    ungiven = sorted(toned.keys() - given)
     for why in ungiven:
         print(f"foot-words: {why} has a tone but is no why the shell gives", file=sys.stderr)
     return bool(untoned or ungiven)
+
+
+def handled(name: str, launcher: str) -> bool:
+    """Say whether onUnhosted passes the why on and colours the foot by it, saying where not."""
+    found = handler(launcher)
+    if isinstance(found, str):
+        print(f"foot-words: {name} {found}", file=sys.stderr)
+        return False
+    passed = passes_on(launcher)
+    if not passed:
+        print(
+            f"foot-words: {name} has no onUnhosted passing the shell's why to elsewhere,"
+            " so a why the shell gives would meet an empty foot",
+            file=sys.stderr,
+        )
+    shaded = coloured(launcher)
+    if not shaded:
+        print(
+            f"foot-words: {name}'s onUnhosted doesn't colour the foot by viewedWhy,"
+            " so a why's tone goes unused",
+            file=sys.stderr,
+        )
+    return passed and shaded
 
 
 def main(arguments: list[str]) -> int:
@@ -507,13 +593,7 @@ def main(arguments: list[str]) -> int:
     unasked = unkeyed(launcher)
     for key in unasked:
         print(f"foot-words: a key given as {key or 'nothing'} can't be read", file=sys.stderr)
-    passed = passes_on(launcher)
-    if not passed:
-        print(
-            f"foot-words: {arguments[2]} has no onUnhosted passing the shell's why to elsewhere,"
-            " so a why the shell gives would meet an empty foot",
-            file=sys.stderr,
-        )
+    passed = handled(arguments[2], launcher)
     if not given:
         print(
             f"foot-words: {arguments[1]} gives no why, so the check reads it wrong", file=sys.stderr

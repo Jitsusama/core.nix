@@ -1348,7 +1348,7 @@
     every why the shell's sessions say a press they can't answer by, and every key the agents'
     list names to its foot through its elsewhere words, has words in the machine vocabulary, so
     none of those presses goes unsaid in the foot, and each why the shell gives has its colour
-    chosen, plain or alert, and none other has
+    chosen, plain or alert, and none other has, the agents' list colouring the foot by it
   '';
   every-window-says-what-it-holds = ''
     the reader on a page and a kitty running the account's shell, opened on the account's niri,
@@ -4643,7 +4643,8 @@
   '';
   the-sessions-kitty-says-its-pid = ''
     the kitty every session's window is drawn by writes its pid beside its socket, which names
-    none, so the shell can find a session's window among those that kitty draws
+    none, so the shell can find a session's window among those that kitty draws, and then tells
+    the shell it started, so a viewer kept for a kitty come back is asked of it
   '';
   the-sessions-kitty-comes-before-its-sessions = ''
     the kitty every session's window is drawn by sits in agents.slice above its sessions' weight,

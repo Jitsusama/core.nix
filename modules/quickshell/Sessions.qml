@@ -617,6 +617,7 @@ Singleton {
     function reopenWaiting(lost) {
         readKittyPid();
         const named = viewerNamed(lost.id);
+        raisedOwn(named);
         const words = Viewers.waitingWords(lost);
         const listed = listedNamed(named);
         if (listed) {
@@ -654,7 +655,9 @@ Singleton {
     // titles it, rather than a bare attach whose window reads "mycelium".
     // What's said of its viewer is led by the start (startedInHost, a mark
     // no session or row carries), so the foot never reads as the start not
-    // taking. Answers the listed one, if any.
+    // taking. Answers the listed one, if any. Its caller holds `host` and
+    // `id` to what mycelium can't take for a flag (hostly, viewerNamed),
+    // and `named` is viewerNamed(id): none is checked again here.
     function viewStarted(host, id, named, title, folder, footed) {
         readKittyPid();
         raisedOwn(named);
@@ -3153,17 +3156,13 @@ Singleton {
                 listed: window => root.listedNow(window) });
         // One waiting for its host, asked of moments ago, stays kept.
         const kept = due.kept;
-        // A kitty started again writes its pid in a folder made anew, which
-        // the watch misses, and draws nothing till asked, so the file is
-        // read here while any place waits on it, as none other may be.
-        const waitsOnPid = Object.values(keptPlaces).some(place => place?.keptUnder !== undefined);
-        const kittyNow = waitsOnPid ? kittyPidNow() || sessionsKittyPid : sessionsKittyPid;
         for (const one of due.open) {
             // Kept again after a give-up, it waits for a kitty under another
-            // pid (keepAgain), unasked and unsaid with every move of niri's.
+            // pid (keepAgain), unasked and unsaid with every move of niri's,
+            // a kitty started again telling the shell so (kittyStarted).
             const keptId = String(one.id ?? one.session?.presence?.session ?? "");
             const under = keptPlaces[keptId]?.keptUnder;
-            if (under !== undefined && under === kittyNow) {
+            if (under !== undefined && under === sessionsKittyPid) {
                 kept[keptId] = keptPlaces[keptId];
                 continue;
             }
@@ -3215,10 +3214,14 @@ Singleton {
         // What's let go is said, so a viewer Joel asked for that never
         // opens can be found in the journal.
         const opened = due.open.map(one => one.id ?? one.session?.presence?.session);
+        // One kept again lapses only while its kitty, alive under the pid
+        // asked, never drew the ask's window, said as such.
         for (const id of Object.keys(keptPlaces).filter(id => kept[id] === undefined
             && !opened.includes(id)))
             console.info(`sessions: ${id}'s kept place let go: its viewer is open, `
-                + "its session is back as a plain pi, or it lapsed");
+                + "its session is back as a plain pi, or it lapsed"
+                + (keptPlaces[id]?.keptUnder === undefined ? ""
+                    : `, no kitty other than ${keptPlaces[id].keptUnder} having drawn`));
         // A sleeper first seen asleep is marked so in its place, which is
         // kept as any other change is.
         if (JSON.stringify(kept) !== JSON.stringify(keptPlaces))
@@ -3664,6 +3667,11 @@ Singleton {
         function untaken(named: string, asked: string): void {
             root.untaken(named, asked);
         }
+
+        // kittyStarted, as the sessions kitty's unit says it started.
+        function kittyStarted(): void {
+            root.kittyStarted();
+        }
     }
 
     // Whether a session's want is truly on Joel, rather than one its
@@ -3722,8 +3730,9 @@ Singleton {
     readonly property var kittySocket: /^unix:@kitty-(\d+)$/
     // The sessions' kitty listens on a path that names no pid, so its unit
     // writes the pid beside it (home.nix's sessions-kitty). Read again as
-    // it's written and as windows come, since a unit started again makes
-    // its folder anew, which a watch on the old file misses.
+    // it's written, as windows come and as the unit says it started
+    // (kittyStarted), since a unit started again makes its folder anew,
+    // which a watch on the old file misses.
     readonly property string sessionsSocket:
         `unix:${Quickshell.env("XDG_RUNTIME_DIR")}/pi-sessions/kitty.sock`
     FileView {
@@ -3752,6 +3761,16 @@ Singleton {
         if (pid !== "")
             kittyPidRead = pid;
         return pid;
+    }
+    // A sessions kitty started, as its unit says once it has written its
+    // pid (home.nix's sessions-kitty): its pid is read, and a place kept
+    // for a kitty other than the one that didn't take its viewer is asked
+    // for (viewKept). A unit started again makes its folder anew, which
+    // the watch on the file misses, and its kitty draws nothing till
+    // asked, so with Joel away and niri quiet nothing else would ask.
+    function kittyStarted() {
+        readKittyPid();
+        viewKept();
     }
     // The pid the file says now, read without taking it as the one
     // windows are judged by, so a read can't change what's running while
