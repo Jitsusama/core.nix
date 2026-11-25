@@ -26,10 +26,7 @@ const jiti = source.endsWith(".ts")
 function loadModule(path) {
   return jiti ? jiti.import(path) : import(path);
 }
-function loadMode() {
-  return loadModule(source);
-}
-const { InteractiveMode } = await loadMode();
+const { InteractiveMode } = await loadModule(source);
 const themeSource = join(dirname(source), `theme/theme${source.endsWith(".ts") ? ".ts" : ".js"}`);
 const { onThemeChange, setThemeInstance } = await loadModule(themeSource);
 
@@ -149,8 +146,7 @@ function startingScreen(quitAt) {
     setupEditorSubmitHandler: mock.fn(),
     applyRuntimeSettings: mock.fn(),
     bindCurrentSessionExtensions: () => quit("extensions"),
-    // A hosted screen draws its conversation before it binds
-    // (pi-host-draws-before-it-binds.patch); what it draws isn't this check's.
+    // Drawn before the bind (pi-host-draws-before-it-binds.patch).
     renderCurrentSessionState: mock.fn(),
     subscribeToAgent: mock.fn(),
     updateAvailableProviderCount: () => {
@@ -202,11 +198,10 @@ for (const quitAt of ["colors", "tools", "extensions", "providers"]) {
     // No theme listener outlives it in the host's one theme: its stop has
     // run, so one still held here would never be released.
     assert.equal(mode.themeChangeUnsubscribe, undefined, "a theme listener was left behind");
-    // A subscription made before the quit is the screen's stop to release;
-    // none is made after, and nothing is prompted or drawn.
-    // A hosted screen subscribes as it starts to bind, before the bind waits.
-    const bindBegan = quitAt === "extensions" || quitAt === "providers";
-    assert.equal(mode.subscribeToAgent.mock.callCount(), bindBegan ? 1 : 0);
+    // A subscription made before the quit, as a hosted bind's first step, is
+    // the screen's stop to release; none is made after, nor anything drawn.
+    const subscribed = quitAt === "extensions" || quitAt === "providers" ? 1 : 0;
+    assert.equal(mode.subscribeToAgent.mock.callCount(), subscribed);
     assert.equal(mode.runtimeHost.session.prompt.mock.callCount(), 0);
     assert.equal(mode.ui.renderNow.mock.callCount(), 0);
     // A late event never starts it again.

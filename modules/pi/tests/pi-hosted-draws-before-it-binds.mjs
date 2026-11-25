@@ -24,7 +24,7 @@ const jiti = source.endsWith(".ts")
 const { InteractiveMode } = await (jiti ? jiti.import(source) : import(source));
 
 /** How long a window may stay blank while its extensions bind. */
-const DRAWN_WITHIN_MS = 1_000;
+const DRAWN_WITHIN_MS = 1000;
 /** How often the check looks at what the screen drew. */
 const LOOK_MS = 10;
 
@@ -118,7 +118,10 @@ function startingScreen(hosted) {
 async function drawnWithin(mode, ms) {
   const until = Date.now() + ms;
   while (Date.now() < until) {
-    if (mode.renderInitialMessages.mock.callCount() > 0) return true;
+    if (mode.renderInitialMessages.mock.callCount() > 0) {
+      return true;
+    }
+    // Polled, since the draw it waits for comes from startup's own chain.
     await wait(LOOK_MS);
   }
   return mode.renderInitialMessages.mock.callCount() > 0;
