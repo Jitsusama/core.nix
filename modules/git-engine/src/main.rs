@@ -119,6 +119,10 @@ fn fields(answer: &Answer) -> Vec<String> {
 #[derive(Default)]
 struct Engine {
     repos: HashMap<PathBuf, Repo>,
+    /// The object stores of repositories started afresh after an error,
+    /// by their git folder, so a copy they marked bad isn't unpacked to
+    /// its failure again on the next question.
+    kept: HashMap<PathBuf, odb::Odb>,
 }
 
 impl Engine {
@@ -130,7 +134,7 @@ impl Engine {
             .get(&key)
             .is_none_or(|repo| repo.location != location)
         {
-            let repo = match Repo::open(location) {
+            let repo = match Repo::open(location, self.kept.remove(&key)) {
                 Ok(repo) => repo,
                 Err(error) => {
                     eprintln!("git-engine: can't open {}: {error}", key.display());
@@ -145,8 +149,12 @@ impl Engine {
             Err(error) => {
                 eprintln!("git-engine: can't answer for {}: {error}", key.display());
                 // Whatever went wrong may have been read part-way; start
-                // this repository afresh next time.
-                self.repos.remove(&key);
+                // this repository afresh next time, all but its objects,
+                // whose store keeps only what it read whole and the marks
+                // on copies that wouldn't read.
+                if let Some(repo) = self.repos.remove(&key) {
+                    self.kept.insert(key, repo.into_odb());
+                }
                 None
             }
         }
@@ -158,6 +166,7 @@ impl Engine {
     /// keep its space for as long as this engine runs.
     fn let_go_of_changed(&mut self) {
         self.repos.retain(|_, repo| !repo.holds_changed_files());
+        self.kept.retain(|_, odb| stamp::still(&odb.stamps));
     }
 }
 
@@ -455,6 +464,49 @@ mod tests {
         std::fs::write(dir.join(".git/objects/pack/pack-new.idx"), b"").unwrap();
         engine.let_go_of_changed();
         assert!(engine.repos.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_repository_started_afresh_after_an_error_keeps_the_copies_its_store_marked() {
+        let dir = repository("marked");
+        let name = [7; 20];
+        std::fs::write(
+            dir.join(".git/refs/heads/main"),
+            format!("{}\n", hash::Oid(name).hex()),
+        )
+        .unwrap();
+        // HEAD's one copy, first of a kind git has none of, then rewritten
+        // in place as a blob, which moves none of the stamps the store
+        // watches; a store opened again reads it, one kept passes it over.
+        let pack = |entry: &[u8]| [b"PACK\0\0\0\x02\0\0\0\x01", entry, &[0; 20]].concat();
+        let packs = dir.join(".git/objects/pack");
+        std::fs::write(
+            packs.join("pack-00.idx"),
+            pack_index::tests::version_2_at(&[name], &[12]),
+        )
+        .unwrap();
+        std::fs::write(packs.join("pack-00.pack"), pack(&[0x51, 0])).unwrap();
+        crate::stamp::tests::ahead(3);
+        let mut engine = Engine::default();
+        let refused = engine.ask(&dir, &options(&[]), false).is_none();
+        let blob = [
+            &[0x31][..],
+            &miniz_oxide::deflate::compress_to_vec_zlib(b"a", 1),
+        ]
+        .concat();
+        std::fs::write(packs.join("pack-00.pack"), pack(&blob)).unwrap();
+        let again = engine.ask(&dir, &options(&[]), false).is_none();
+        let kept = engine.kept.len();
+        let afresh = Engine::default().ask(&dir, &options(&[]), false).is_some();
+        std::fs::write(packs.join("pack-new.idx"), b"").unwrap();
+        engine.let_go_of_changed();
+        assert_eq!(
+            (refused, again, kept, afresh, engine.kept.len()),
+            (true, true, 1, true, 0),
+            "a repository started afresh unpacked a copy its store had marked again, \
+             or kept its store past a change to the packs"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

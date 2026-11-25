@@ -8,19 +8,28 @@ use super::delta_tests::{
 use super::tests::{Removed, objects_over, read_from};
 use super::*;
 
+/// A pack entry's header of type `kind` for `size` bytes: the low four
+/// bits of the size first, then the rest in seven-bit groups, as git
+/// writes one.
+fn header(kind: u8, mut size: usize) -> Vec<u8> {
+    let mut header = vec![kind << 4 | u8::try_from(size & 15).expect("four bits fit a byte")];
+    size >>= 4;
+    while size > 0 {
+        *header.last_mut().expect("a header has a first byte") |= 0x80;
+        header.push(low_seven(size as u64));
+        size >>= 7;
+    }
+    header
+}
+
 /// A blob of any size, as a pack's entry, its size in as many bytes as
 /// it takes.
 fn big_blob(data: &[u8]) -> Vec<u8> {
-    let mut size = data.len();
-    let mut entry = vec![0x30 | u8::try_from(size & 15).expect("four bits fit a byte")];
-    size >>= 4;
-    while size > 0 {
-        *entry.last_mut().expect("an entry's first byte") |= 0x80;
-        entry.push(low_seven(size as u64));
-        size >>= 7;
-    }
-    entry.extend(miniz_oxide::deflate::compress_to_vec_zlib(data, 1));
-    entry
+    [
+        header(3, data.len()),
+        miniz_oxide::deflate::compress_to_vec_zlib(data, 1),
+    ]
+    .concat()
 }
 
 /// `count` bytes that won't compress, the same each time.
@@ -246,6 +255,138 @@ fn a_delta_grows_toward_its_size_and_copies_from_where_it_says() {
         read[base.len()..] == base[1..=1 << 20],
         "a delta's copy didn't start at the offset it says"
     );
+}
+
+#[test]
+fn a_delta_makes_room_for_twice_what_it_holds_never_past_its_size() {
+    // Room for four bytes, all held, then one more written of eight, and
+    // of five.
+    let grown = |size| {
+        let mut out = Vec::with_capacity(4);
+        out.extend(b"abcd");
+        write_within(&mut out, b"e", size)
+            .map(|()| out.capacity())
+            .ok()
+    };
+    let (doubled, capped) = (grown(8), grown(5));
+    assert!(
+        doubled.is_some_and(|room| room >= 8) && capped == Some(5),
+        "a delta's room grew by less than what it held, or past its size: {doubled:?}, \
+         {capped:?}"
+    );
+}
+
+#[test]
+fn an_object_grows_to_one_byte_past_its_size_and_no_further() {
+    // A blob past the first 64 KiB its stream is given, read where memory
+    // ends one byte past it, then at it.
+    let name = names(1)[0];
+    let data = noise(100_000);
+    let folders = packed(&[name], &[vec![big_blob(&data)]]);
+    let read = |limit| {
+        let objects = folders.0[0].clone();
+        within(20, move || {
+            STARVED.with(|starved| starved.set(Some(limit)));
+            read_from(&objects, name).map(|object| object.map(|object| object.len()))
+        })
+    };
+    assert_eq!(
+        (read(100_001), read(100_000)),
+        (
+            Ok(Ok(Some(100_000))),
+            Ok(Err("no memory for a pack object of 100001 bytes".into()))
+        ),
+        "an object grew past one byte beyond its size, or short of it"
+    );
+}
+
+#[test]
+fn a_copy_refused_memory_is_marked_with_that_refusal_until_the_store_opens_again() {
+    const COPIES: usize = 21;
+    let names = names(2);
+    // names[1] a blob past the first 64 KiB its stream is given, and
+    // names[0] a delta over it copying it whole again and again, past the
+    // 1 MiB a delta's result is first given. Each is read where memory
+    // ends short of the blob, of the delta's first room, and of the
+    // delta's growth past it.
+    let base = noise(100_000);
+    let copy = [&[0xf0][..], &base.len().to_le_bytes()[..3]].concat();
+    let delta = [
+        delta_size(base.len()),
+        delta_size(COPIES * base.len()),
+        copy.repeat(COPIES),
+    ]
+    .concat();
+    let first = [
+        header(7, delta.len()),
+        names[1].to_vec(),
+        miniz_oxide::deflate::compress_to_vec_zlib(&delta, 1),
+    ]
+    .concat();
+    // Where each lies in the pack, past its 12 bytes of header.
+    let (at_delta, at_blob) = (12, 12 + first.len() as u64);
+    let folders = packed(&names, &[vec![first, big_blob(&base)]]);
+    let starved_blob = "no memory for a pack object of 100001 bytes";
+    for (name, limit, refusal, marked, size) in [
+        (names[1], 80_000, starved_blob, vec![at_blob], base.len()),
+        (
+            names[0],
+            1_500_000,
+            "no memory for a delta of 2000000 bytes",
+            vec![at_delta],
+            COPIES * base.len(),
+        ),
+        (
+            names[0],
+            1_000_000,
+            "no memory for a delta of 1048576 bytes",
+            vec![at_delta],
+            COPIES * base.len(),
+        ),
+        (
+            names[0],
+            80_000,
+            starved_blob,
+            vec![at_delta, at_blob],
+            COPIES * base.len(),
+        ),
+    ] {
+        let objects = folders.0[0].clone();
+        let read = within(20, move || {
+            let read = |odb: &mut Odb| {
+                odb.read(&Oid(name))
+                    .map(|object| object.map(|object| object.data.len()))
+                    .map_err(|error| error.to_string())
+            };
+            let mut odb = Odb::open(&objects);
+            STARVED.with(|starved| starved.set(Some(limit)));
+            let starved = read(&mut odb);
+            STARVED.with(|starved| starved.set(None));
+            let mut marks: Vec<_> = odb
+                .bad
+                .iter()
+                .map(|(&(_, _, offset), &(kind, _))| (offset, kind))
+                .collect();
+            marks.sort_unstable();
+            let again = read(&mut odb);
+            (starved, marks, again, read(&mut Odb::open(&objects)))
+        });
+        let marks = marked
+            .into_iter()
+            .map(|offset| (offset, io::ErrorKind::OutOfMemory))
+            .collect();
+        assert_eq!(
+            read,
+            Ok((
+                Err(refusal.into()),
+                marks,
+                Err(refusal.into()),
+                Ok(Some(size))
+            )),
+            "a copy refused memory past {limit} bytes wasn't marked where it lies with that \
+             refusal alone, or stayed marked once the store was opened again"
+        );
+    }
 }
 
 #[test]

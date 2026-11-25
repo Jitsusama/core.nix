@@ -108,14 +108,15 @@ impl Odb {
     ///
     /// What a store's indexes, packs or loose objects refuse stands only
     /// once every other place the object may lie has been read. A copy that
-    /// won't read is marked bad for as long as the store is open, as git
-    /// marks a copy bad and looks again, so a sound copy in another pack is
-    /// read and no copy is unpacked to its failure twice. A copy refused
-    /// memory is marked too, with that refusal, since only a stream truly
+    /// won't read is marked bad until the packs change, as git marks a
+    /// copy bad and looks again, so a sound copy in another pack is read
+    /// and no copy is unpacked to its failure twice. A copy refused memory
+    /// is marked too, with that refusal, since only a stream truly
     /// inflating that far is refused it, and unpacking it on every find
-    /// would cost the same each time; a change to the packs clears every
-    /// mark, as the store is opened again. A copy whose
-    /// chain comes round to an object already being found, or runs past
+    /// would cost the same each time. The marks outlast the error they
+    /// end in, since a repository started afresh keeps its store, and go
+    /// only once the packs change and the store is opened again. A copy
+    /// whose chain comes round to an object already being found, or runs past
     /// `CHAIN_LIMIT`, may be sound under another copy of a base on the
     /// way, so it's only passed over, for this find alone, and the next
     /// copy read; a base spent with a copy passed over passes over the

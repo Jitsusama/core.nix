@@ -281,13 +281,19 @@ thread_local! {
 }
 
 /// Makes room for `more` bytes past what `out` holds, refused as `what`
-/// should the memory not be there.
+/// and the bytes it would then hold should the memory not be there.
 fn reserve(out: &mut Vec<u8>, more: usize, what: &str) -> io::Result<()> {
-    let refused = || io::Error::new(io::ErrorKind::OutOfMemory, format!("no memory for {what}"));
+    let total = out.len().saturating_add(more);
+    let refused = || {
+        io::Error::new(
+            io::ErrorKind::OutOfMemory,
+            format!("no memory for {what} of {total} bytes"),
+        )
+    };
     #[cfg(test)]
     if STARVED
         .with(std::cell::Cell::get)
-        .is_some_and(|cap| out.len().saturating_add(more) > cap)
+        .is_some_and(|cap| total > cap)
     {
         return Err(refused());
     }
@@ -385,7 +391,8 @@ pub fn apply_delta(base: &[u8], delta: &[u8]) -> io::Result<Vec<u8>> {
     if base_size != base.len() {
         return Err(invalid("delta's base size"));
     }
-    let mut out = Vec::with_capacity(out_size.min(TRUSTED_SIZE));
+    let mut out = Vec::new();
+    reserve(&mut out, out_size.min(TRUSTED_SIZE), "a delta")?;
     while at < delta.len() {
         let cmd = delta[at];
         at += 1;
@@ -465,8 +472,10 @@ pub struct Odb {
     /// long as it runs. Each copy is unpacked to its failure once, so a
     /// chain of failing deltas, each with several copies, costs one
     /// unpacking a copy rather than one for every path down to it. A copy
-    /// refused memory is marked with that refusal too, and every mark goes
-    /// once the packs change, since the store is then opened again.
+    /// refused memory is marked with that refusal too. The marks outlast a
+    /// repository started afresh after an error, which keeps its store
+    /// through `reopen`, and every mark goes once the packs change, since
+    /// the store is then opened again.
     bad: HashMap<Place, (io::ErrorKind, String)>,
 }
 
@@ -528,6 +537,22 @@ impl Odb {
             trees: HashMap::new(),
             tree_bytes: 0,
             bad: HashMap::new(),
+        }
+    }
+
+    /// The store `kept` from a repository started afresh, while it reads
+    /// `objects` and its packs are as it read them, so the copies it
+    /// marked bad stay marked and its caches stay warm; else `objects`
+    /// opened again.
+    pub fn reopen(kept: Option<Odb>, objects: &Path) -> Odb {
+        match kept {
+            Some(odb)
+                if odb.stores.first().is_some_and(|store| store.dir == objects)
+                    && crate::stamp::still(&odb.stamps) =>
+            {
+                odb
+            }
+            _ => Odb::open(objects),
         }
     }
 

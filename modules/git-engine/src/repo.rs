@@ -194,12 +194,14 @@ fn map_refspec(refspec: &str, name: &str) -> Option<String> {
 }
 
 impl Repo {
-    pub fn open(location: Location) -> io::Result<Repo> {
+    /// The repository at `location`, reading its objects through the store
+    /// `kept` from one started afresh, while that store still holds.
+    pub fn open(location: Location, kept: Option<Odb>) -> io::Result<Repo> {
         let home = std::env::var_os("HOME").map(PathBuf::from);
         let config = load_config(&location, home.as_deref(), None);
         let refs = Refs::open(&location.git_dir, &location.common, is_reftable(&config))?;
         let objects = location.common.join("objects");
-        let odb = Odb::open(&objects);
+        let odb = Odb::reopen(kept, &objects);
         let graph = Graph::open(&objects);
         let walks = Walks::new(Walks::folder(home.as_deref()), &location.common);
         Ok(Repo {
@@ -217,6 +219,11 @@ impl Repo {
             tags: None,
             monitor: None,
         })
+    }
+
+    /// Its object store, kept while the rest is started afresh.
+    pub fn into_odb(self) -> Odb {
+        self.odb
     }
 
     /// Whether the packs or commit-graph it holds open have changed on disk

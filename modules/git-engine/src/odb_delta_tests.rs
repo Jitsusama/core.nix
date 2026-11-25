@@ -401,97 +401,51 @@ fn a_copy_marked_bad_stays_bad_while_the_store_is_open() {
     );
 }
 
-/// A pack entry's header of type `kind` for `size` bytes: the low four
-/// bits of the size first, then the rest in seven-bit groups, as git
-/// writes one.
-fn header(kind: u8, size: usize) -> Vec<u8> {
-    let low = u8::try_from(size & 0xf).expect("four bits fit a byte");
-    let mut header = vec![kind << 4 | low];
-    let mut rest = size >> 4;
-    while rest > 0 {
-        *header.last_mut().expect("a header has a first byte") |= 0x80;
-        header.push(low_seven(rest as u64));
-        rest >>= 7;
-    }
-    header
-}
-
-/// A size within a delta's data, in seven-bit groups, the lowest first.
-fn delta_size(mut size: usize) -> Vec<u8> {
-    let mut bytes = Vec::new();
-    loop {
-        let low = low_seven(size as u64);
-        size >>= 7;
-        if size == 0 {
-            bytes.push(low);
-            return bytes;
-        }
-        bytes.push(0x80 | low);
-    }
-}
-
 #[test]
-fn a_copy_refused_memory_is_marked_with_that_refusal_until_the_store_opens_again() {
-    const COPIES: usize = 21;
+fn a_store_kept_keeps_its_marks_while_its_packs_hold_and_is_opened_again_once_they_change() {
     let names = names(2);
-    // names[1] a blob past the first 64 KiB its stream is given, and
-    // names[0] a delta over it copying it whole again and again, past the
-    // 1 MiB a delta's result is first given.
-    let base: Vec<u8> = (0..100_000u32).map(|at| low_seven(u64::from(at))).collect();
-    let copy = [&[0xf0][..], &base.len().to_le_bytes()[..3]].concat();
-    let delta = [
-        delta_size(base.len()),
-        delta_size(COPIES * base.len()),
-        copy.repeat(COPIES),
-    ]
-    .concat();
-    let compressed = |data: &[u8]| miniz_oxide::deflate::compress_to_vec_zlib(data, 1);
-    let entries = vec![
-        [
-            header(7, delta.len()),
-            names[1].to_vec(),
-            compressed(&delta),
-        ]
-        .concat(),
-        [header(3, base.len()), compressed(&base)].concat(),
-    ];
-    let folders = packed_as(&[(names.clone(), entries)]);
-    for (name, limit, refusal, size) in [
-        (names[1], 80_000, "no memory for a pack object", base.len()),
+    // names[0] a delta over names[1], which nothing holds yet, and another
+    // folder whose names[0] is a blob.
+    let folders = packed(&names[..1], &[vec![over(names[1])]]);
+    let other = packed(&names[..1], &[vec![blob(b"y")]]);
+    let objects = &folders.0[0];
+    // Settled stamps, so only a change to the packs moves them.
+    crate::stamp::tests::ahead(3);
+    let read = |odb: &mut Odb| {
+        odb.read(&Oid(names[0]))
+            .map(|object| object.map(|object| object.data))
+            .map_err(|error| error.to_string())
+    };
+    let marked = || {
+        let mut odb = Odb::open(objects);
+        let _ = read(&mut odb);
+        odb
+    };
+    // Each store marks its copy before the base it lacks is written loose,
+    // which a store opened again then reads.
+    let (kept, elsewhere, changed) = (marked(), marked(), marked());
+    let hex = Oid(names[1]).hex();
+    std::fs::create_dir_all(objects.join(&hex[..2])).expect("the temp folder takes a folder");
+    std::fs::write(
+        objects.join(&hex[..2]).join(&hex[2..]),
+        miniz_oxide::deflate::compress_to_vec_zlib(b"blob 1\0a", 1),
+    )
+    .expect("the temp folder takes a file");
+    let kept = read(&mut Odb::reopen(Some(kept), objects)).err();
+    let elsewhere = read(&mut Odb::reopen(Some(elsewhere), &other.0[0]));
+    std::fs::create_dir_all(objects.join("info")).expect("the temp folder takes a folder");
+    std::fs::write(objects.join("info/alternates"), b"").expect("the temp folder takes a file");
+    let changed = read(&mut Odb::reopen(Some(changed), objects));
+    assert_eq!(
+        (kept, elsewhere, changed),
         (
-            names[0],
-            1_500_000,
-            "no memory for a delta",
-            COPIES * base.len(),
+            Some("delta base missing".into()),
+            Ok(Some(b"y".to_vec())),
+            Ok(Some(b"x".to_vec()))
         ),
-    ] {
-        let objects = folders.0[0].clone();
-        let read = within(20, move || {
-            let read = |odb: &mut Odb| {
-                odb.read(&Oid(name))
-                    .map(|object| object.map(|object| object.data.len()))
-                    .map_err(|error| error.to_string())
-            };
-            let mut odb = Odb::open(&objects);
-            STARVED.with(|starved| starved.set(Some(limit)));
-            let starved = read(&mut odb);
-            STARVED.with(|starved| starved.set(None));
-            let kinds: Vec<_> = odb.bad.values().map(|(kind, _)| *kind).collect();
-            let again = read(&mut odb);
-            (starved, kinds, again, read(&mut Odb::open(&objects)))
-        });
-        assert_eq!(
-            read,
-            Ok((
-                Err(refusal.into()),
-                vec![io::ErrorKind::OutOfMemory],
-                Err(refusal.into()),
-                Ok(Some(size))
-            )),
-            "a copy refused memory past {limit} bytes wasn't marked with that refusal alone, \
-             or stayed marked once the store was opened again"
-        );
-    }
+        "a store kept lost its marks while its packs held, answered for another folder, \
+         or kept them once its packs changed"
+    );
 }
 
 /// What reading each of `names` from a store opened once answers, and how
