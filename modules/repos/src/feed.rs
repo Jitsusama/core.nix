@@ -100,9 +100,11 @@ pub fn records(record: &Record) -> Vec<Value> {
 
 /// What works in each repository of `record`, from `used`, each folder's;
 /// its processor time only where `measured`, two readings having been
-/// taken, and none otherwise rather than nothing. A repository with a
-/// folder the reading didn't place processes in, being newer than it, is
-/// said unread, since what works there wasn't looked for.
+/// taken, and none otherwise rather than nothing. A folder the reading
+/// didn't place processes in, being newer than it, is said unread, since
+/// what works there wasn't looked for, and its repository as the rest of
+/// it was read, so a busy repository's row never blanks for each tree
+/// made in it; one with no folder the reading looked in is unread whole.
 pub fn using(
     record: &Record,
     used: &BTreeMap<PathBuf, Use>,
@@ -117,14 +119,23 @@ pub fn using(
                 std::iter::once(&checkout.path).chain(checkout.trees.iter().map(|tree| &tree.path))
             })
         };
-        if !paths().all(|path| placed.contains(Path::new(path))) {
+        let looked = |path: &&String| placed.contains(Path::new(path.as_str()));
+        if !paths().any(|path| looked(&path)) {
             said.push(unread_one(repository));
             continue;
         }
-        let paths = paths();
         let mut whole = Use::default();
         let mut folders = Vec::new();
-        for path in paths {
+        for path in paths() {
+            if !looked(&path) {
+                folders.push(json!({
+                    "path": path,
+                    "processes": null,
+                    "memory": null,
+                    "cpu": null,
+                }));
+                continue;
+            }
             let Some(one) = used.get(Path::new(path)) else {
                 continue;
             };

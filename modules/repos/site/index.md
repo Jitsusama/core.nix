@@ -76,8 +76,11 @@ nowhere, and a Mac says none of it. Where the daemon can't say, the page
 says nothing of it, and the rest of the page stands as it was; until its
 reading of `/proc` first answers, and once its last reading is three
 minutes old with none newer, each repository says its processes are
-unread rather than that nothing works in it. So does a repository with a
-tree newer than the last reading, until the next looks in it.
+unread rather than that nothing works in it. That's judged as each
+reading of the disk ends, so on a disk slower than a minute it's said
+late by one reading at most. A tree newer than the last reading says
+its own unread until the next looks in it, and its repository says
+what was read of the rest.
 
 ## Keys
 
@@ -110,9 +113,10 @@ read. Each `tree:<path>` has `repository`, `checkout`, `path`,
 `title`, `branch`, `checks` and `review`. Each `using:<key>` has its
 `repository`, its `processes`, `memory` in bytes and `cpu` as a share of
 one core, null until two readings are a minute apart and after a reading
-held up, all three null while the reading has stopped answering, and
-`folders`, each checkout or tree anything works in with its `path` and
-the same three.
+held up, all three null while the reading has stopped answering or
+looked in none of its folders, and `folders`, each checkout or tree
+anything works in with its `path` and the same three, null for a tree
+newer than the reading.
 Times are RFC 3339, UTC.
 
 `repos --json` says the same as one record, and `repos <name>` one

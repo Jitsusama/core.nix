@@ -176,8 +176,9 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
 const SAMPLED: Duration = Duration::from_secs(1);
 
 /// How many of its paces old the reading of `/proc` may grow, with none
-/// newer, before what it read goes unsaid. Counted on its own clock, so
-/// how long the disk takes to read never stretches it.
+/// newer, before what it read goes unsaid. Counted on its own clock
+/// rather than in readings of the disk, though judged as each of those
+/// ends, so a disk slower than a pace says it late by one at most.
 const STALE: u32 = 3;
 
 /// Every checkout's and tree's folder `record` holds.
@@ -264,7 +265,9 @@ impl Working {
         let shared = Arc::clone(&held);
         std::thread::spawn(move || {
             let mut last: Option<Sample> = None;
-            let mut measuring = false;
+            // None until two readings have said whether a share is
+            // measured, so the first says why it isn't.
+            let mut measuring: Option<bool> = None;
             // Only the loop and this thread hold it, so it alone means
             // the loop has gone.
             while Arc::strong_count(&shared) > 1 {
@@ -272,10 +275,12 @@ impl Working {
                 let folders = holding(&shared.0).folders.clone();
                 let now = sample(&folders);
                 let measured = using::measured(last.as_ref(), &now);
-                if measured != measuring && last.is_some() {
-                    eprintln!("repos: {}", measures(last.as_ref(), &now, measured));
+                if last.is_some() && measuring != Some(measured) {
+                    if let Some(why) = measures(last.as_ref(), &now, measuring) {
+                        eprintln!("repos: {why}");
+                    }
+                    measuring = Some(measured);
                 }
-                measuring = measured;
                 let reading = Sampled {
                     used: using::using(last.as_ref(), &now),
                     measured,
@@ -304,7 +309,8 @@ impl Working {
     /// the next ones `folders`. Only the first is waited on, `SAMPLED` at
     /// most, so one stuck holds up the loop once. Its processor time is
     /// measured over the pace before it, and what was read goes unsaid once
-    /// it's `STALE` paces old with none newer.
+    /// it's `STALE` paces old with none newer, judged as it's taken too, so
+    /// a reading that waited in the slot past that is never said as now.
     fn read(&mut self, folders: Vec<PathBuf>) {
         let (lock, ready) = &*self.held;
         let mut held = holding(lock);
@@ -319,32 +325,38 @@ impl Working {
         let found = held.newest.take();
         drop(held);
         if let Some(found) = found {
-            if self.stale {
-                eprintln!("repos: the reading of /proc answers again");
-            }
             self.used = found.used;
             self.measured = found.measured;
             self.placed = found.placed;
             self.at = Some(found.at);
+        }
+        let Some(at) = self.at else {
+            return;
+        };
+        let age = at.elapsed();
+        if age < self.pace * STALE {
+            if self.stale {
+                eprintln!("repos: the reading of /proc answers again");
+            }
             self.stale = false;
             return;
         }
-        let old = self.pace * STALE;
-        if self.stale || self.at.is_none_or(|at| at.elapsed() < old) {
-            return;
-        }
+        let was = self.stale;
         self.stale = true;
         self.used.clear();
         self.measured = false;
+        if was {
+            return;
+        }
         // A restart reads the same process again, and waits on it again,
         // so the line names it rather than offering one.
         let held = using::reading().map_or(String::new(), |pid| {
             format!(", held up reading the memory of process {pid}")
         });
         eprintln!(
-            "repos: the reading of /proc has read nothing new for {} s{held}, so what works \
-             in each repository is said unread until it answers",
-            old.as_secs()
+            "repos: the reading of /proc is {} s old with none newer{held}, so what works in \
+             each repository is said unread until it answers",
+            age.as_secs()
         );
     }
 
@@ -367,27 +379,39 @@ impl Working {
     }
 }
 
-/// Why a share of processor time is, or is no longer, measured by `now`,
-/// for the journal: a share said as null tells no one why.
-fn measures(before: Option<&Sample>, now: &Sample, measured: bool) -> String {
-    if measured {
-        return "the share of a core is measured again".to_owned();
+/// Why a share of processor time is, or is no longer, measured by `now`
+/// after `before`, where `was` says whether the readings before measured
+/// one, for the journal: a share said as null tells no one why. Nothing
+/// where nothing changed worth saying: a share measured from the start,
+/// or `/proc` missing where it never is, as on a Mac.
+fn measures(before: Option<&Sample>, now: &Sample, was: Option<bool>) -> Option<String> {
+    if using::measured(before, now) {
+        return (was == Some(false)).then(|| "the share of a core is measured again".to_owned());
     }
     let seconds = |ticks: u64| ticks / using::TICKS;
-    let why = match (before.and_then(|before| before.awake), now.awake) {
+    let why = match (before.map(|before| before.awake), now.awake) {
+        _ if now.at == 0 => {
+            if !cfg!(target_os = "linux") {
+                return None;
+            }
+            "/proc couldn't be read".to_owned()
+        }
+        (_, None) if now.processes.is_empty() => "/proc listed no process".to_owned(),
         (_, None) => format!("this walk of /proc took over {} s", seconds(using::EVEN)),
-        (None, _) => format!(
-            "the walk of /proc before this one took over {} s",
+        (None | Some(None), _) => format!(
+            "the walk of /proc before this one wasn't read whole within {} s",
             seconds(using::EVEN)
         ),
-        (Some(before), Some(now)) => format!(
-            "{} s of waking time passed since the reading before, where a share is measured \
-             over at most {} s",
-            seconds(now.saturating_sub(before)),
+        (Some(Some(before)), Some(now)) if now <= before => {
+            "no waking time passed since the reading before".to_owned()
+        }
+        (Some(Some(_)), Some(_)) => format!(
+            "more than {} s of waking time passed since the reading before, the most a share \
+             is measured over",
             seconds(using::LONGEST)
         ),
     };
-    format!("the share of a core goes unmeasured, as {why}")
+    Some(format!("the share of a core goes unmeasured, as {why}"))
 }
 
 /// Code's homes, at the file `REPOS_HOMES` names, where it names one.
