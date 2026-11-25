@@ -248,24 +248,31 @@ Singleton {
     // there, or stops his camera; Tuple's stream says which it is after.
     // The launcher has closed by the time Tuple answers, so a refusal, or
     // no answer at all with tuple-call gone, is told as a notice of
-    // Tuple's, with Tuple's reason. A stop that didn't happen is kept and
-    // offers the call's window, where the camera stops by hand, since his
-    // face may still be in the call; a picker that didn't open isn't
-    // kept, as nothing was shared.
+    // Tuple's, with the reason given. A stop that didn't happen is kept
+    // and offers the call's window, where the camera stops by hand, since
+    // his face may still be in the call, until the call ends or his camera
+    // is said off; a picker that didn't open isn't kept, as nothing was
+    // shared.
     function camera(on) {
         calls.ask({ ask: "camera", on: on }, answer => {
             if (answer?.done === true)
                 return;
             const why = answer === null ? "Tuple's call daemon didn't answer"
-                : `Tuple said: ${answer?.error?.message ?? answer?.error?.code ?? "no"}`;
+                : plain(answer?.error?.message ?? answer?.error?.code ?? "It wasn't done");
             console.warn(`tuple: the camera's ${on ? "picker" : "stop"} didn't happen: ${why}`);
             if (on)
                 notify("Tuple's camera picker didn't open", why, [], false);
             else
                 notify("Your camera may still be in the call", why, [
-                    ["show", "Go To the Call"]
+                    ["camera", "Go To the Call"]
                 ], true);
         });
+    }
+
+    // Text from elsewhere, as a notice's body says it rather than reading
+    // it as markup, which the notices daemon does.
+    function plain(text) {
+        return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
     // Once Tuple says it's done, the record says so.
@@ -309,6 +316,8 @@ Singleton {
         call = now;
         if (was && !is)
             withdraw("leave");
+        if ((was && !is) || (before.camera && !now.camera))
+            withdraw("camera");
         if (before.ringing !== null && now.ringing === null)
             withdraw("show");
         const ring = now.ringing;
@@ -348,7 +357,8 @@ Singleton {
     property var offering: ({})
 
     // Puts away Tuple's notices that offer what can't be done any more,
-    // leaving a call that's over or showing a ring that's stopped. Each is
+    // leaving a call that's over, showing a ring that's stopped, or
+    // stopping a camera that's off or whose call is over. Each is
     // closed as its program would close it, by its id, which counts it
     // read.
     function withdraw(key) {
@@ -393,7 +403,7 @@ Singleton {
                                 { [said]: asking.offers });
                     } else if (said === "leave")
                         root.leave();
-                    else if (said === "show")
+                    else if (said === "show" || said === "camera")
                         root.show();
                 }
             }

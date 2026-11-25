@@ -210,20 +210,25 @@
       '';
       # Tuple's stream says each line of the runtime folder's stream as
       # it's written; `new` opens a room, and every other command is kept.
-      # A camera stop is refused, as Tuple refuses one, once the test has
-      # written `refuses` beside the stream. Kept in Nix because it names
-      # coreutils' tail by its store path, the build sandbox having no PATH
-      # to find it on, and it's a stand-in of a few lines, not a program.
+      # Each camera command is refused, as Tuple refuses one, the second
+      # time it's asked, which the list of asks says without a race. Kept
+      # in Nix because it names coreutils' tail and grep by their store
+      # paths, the build sandbox having no PATH to find them on, and it's
+      # a stand-in of a few lines, not a program.
       tuple = pkgs.writeShellScript "tuple" ''
         if [ "$3 $4" = "state follow" ]; then
           exec ${pkgs.coreutils}/bin/tail -n +1 -f "$XDG_RUNTIME_DIR/stream"
         fi
         echo "$*" >> "$XDG_RUNTIME_DIR/asked"
         if [ "$*" = new ]; then echo "Joining https://tuple.app/c/opened"; fi
-        if [ "$*" = "webcam stop" ] && [ -e "$XDG_RUNTIME_DIR/refuses" ]; then
-          echo "no webcam to stop" >&2
-          exit 1
-        fi
+        case "$*" in
+          "webcam stop" | "webcam start")
+            if [ "$(${pkgs.gnugrep}/bin/grep -cx "$*" "$XDG_RUNTIME_DIR/asked")" -gt 1 ]; then
+              echo "no webcam to $2" >&2
+              exit 1
+            fi
+            ;;
+        esac
       '';
       # Tuple's state as its stream opens: someone signed in, one contact,
       # and Joel's own rooms, the newest of which is his. Tuple names a

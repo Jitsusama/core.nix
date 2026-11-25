@@ -8,12 +8,12 @@
 // going is told once the call has settled; muting, opening the room and
 // Joel's camera are asked of the daemon, which runs Tuple for each, a
 // camera stopped turning the row back to the picker before Tuple's stream
-// says so, and a stop Tuple refuses told as a kept notice; the call
-// ending ends it and is kept in Recent with everyone who was in it,
-// though they'd left; and a ring and a missed call, from Tuple's log, are told, the missed
-// call kept in Recent ahead of the call; and a call in the room Joel
-// opened is kept as his, where the first was kept with nobody seen to
-// ring. It exits 0 once
+// says so, a stop Tuple refuses told as a kept notice, and a picker it
+// refuses told as a passing one; the call ending ends it and is kept in
+// Recent with everyone who was in it, though they'd left; and a ring and
+// a missed call, from Tuple's log, are told, the missed call kept in
+// Recent ahead of the call; and a call in the room Joel opened is kept as
+// his, where the first was kept with nobody seen to ring. It exits 0 once
 // every case holds, and otherwise 1, saying which didn't.
 pragma ComponentBehavior: Bound
 import qs
@@ -236,10 +236,9 @@ ShellRoot {
     }
 
     // Tuple's stream still says the camera's on, so only the stop done
-    // can say it's off. The stand-in refuses the next stop, told well
-    // before it's asked, as each write is a process of its own.
+    // can say it's off. The stand-in refuses each camera command the
+    // second time it's asked.
     function stopped() {
-        root.write(`${root.runtime}/refuses`, "");
         root.step("my camera off, ahead of Tuple's stream", () => !Tuple.filming, root.off);
     }
 
@@ -252,21 +251,47 @@ ShellRoot {
     }
 
     function refusing() {
-        root.camera()?.run();
+        const row = root.camera();
+        expect("my camera stopped again from the call",
+            row?.name === "Stop My Camera in the Call", JSON.stringify(row));
+        row?.run();
         root.step("told my camera may still be in the call",
             () => /Your camera may still be in the call/.test(root.told), root.refused);
     }
 
+    // The line Tuple's notice was told in, saying what's given.
+    function noticeSaying(said) {
+        return root.told.split("\n").find(line => line.includes(said)) ?? "";
+    }
+
     // A stop Tuple refused is told with its reason, kept, offering the
-    // call's window, and leaves the camera said on.
+    // call's window under a key of its own, and leaves the camera said on.
     function refused() {
-        const told = root.told.split("\n")
-            .find(line => /may still be in the call/.test(line)) ?? "";
+        const told = root.noticeSaying("may still be in the call");
         expect("told why, kept, offering the call's window",
-            told.includes("Tuple said: no webcam to stop") && !told.includes("--transient")
-            && told.includes("--action=show=Go To the Call"), told);
+            told.includes("no webcam to stop") && !told.includes("--transient")
+            && told.includes("--action=camera=Go To the Call"), told);
         expect("a refused stop leaves the camera on", Tuple.filming, Tuple.filming);
         root.says(root.call("connected", root.started, [false, false, false], []));
+        root.step("my camera off, as Tuple's stream says", () => !Tuple.filming, root.picking);
+    }
+
+    function picking() {
+        const row = root.camera();
+        expect("the camera's picker offered once Tuple says it's off",
+            row?.name === "Show My Camera in the Call", JSON.stringify(row));
+        row?.run();
+        root.step("told the camera's picker didn't open",
+            () => /camera picker didn't open/.test(root.told), root.unpicked);
+    }
+
+    // A picker Tuple didn't open is told with its reason and goes, since
+    // nothing was shared, offering nothing.
+    function unpicked() {
+        const told = root.noticeSaying("camera picker didn't open");
+        expect("told why, not kept, offering nothing",
+            told.includes("no webcam to start") && told.includes("--transient")
+            && !told.includes("--action"), told);
         Tuple.mute(true);
         root.step("asked to mute", () => /^call mute$/m.test(root.asked), root.muting);
     }

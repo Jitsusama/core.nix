@@ -69,7 +69,7 @@ const DOMAIN: Domain = Domain {
     named_only: &[],
 };
 use tuple_call::recent::Recent;
-use tuple_call::stream::{self, Line, Live};
+use tuple_call::stream::{self, Line, Live, Person};
 
 /// What follows the tuple command for its stream.
 const STATE: [&str; 5] = ["--format", "json", "state", "follow", "--raw"];
@@ -353,12 +353,18 @@ fn follow_tuple(shared: &Shared, tuple: &str, socket: &Path, woken: &Receiver<()
 /// says it. Whether Tuple's Linux build says so at all is yet to be
 /// seen (package.nix), and the launcher's camera row turns to Stop only
 /// if it does, so a call's journal answers it with no camera opened to
-/// find out.
-fn says_camera(was: Option<&Live>, is: Option<&Live>) {
-    let on = |call: Option<&Live>| call.is_some_and(|live| live.joel.camera);
-    if on(was) != on(is) {
-        let now = if on(is) { "on" } else { "off" };
-        eprintln!("<6>Tuple says Joel's camera is {now} in the call");
+/// find out. It keeps what the stream last said apart from the record,
+/// which a stop marks off ahead of the stream, so the stream's own off is
+/// journaled too; a call ending says nothing of the camera.
+fn says_camera(said: &mut bool, call: Option<&Live>) {
+    let Some(live) = call else {
+        *said = false;
+        return;
+    };
+    if live.joel.camera != *said {
+        *said = live.joel.camera;
+        let how = if *said { "on" } else { "off" };
+        eprintln!("<6>Tuple says Joel's camera is {how} in the call");
     }
 }
 
@@ -383,6 +389,7 @@ fn follow(shared: &Shared, tuple: &str) -> String {
     // The first line holds every contact, over two megabytes.
     let mut input = BufReader::with_capacity(1 << 20, stdout);
     let mut line = Vec::new();
+    let mut camera_said = false;
     loop {
         line.clear();
         match input.read_until(b'\n', &mut line) {
@@ -403,7 +410,7 @@ fn follow(shared: &Shared, tuple: &str) -> String {
                 daemon.held.contacts = contacts;
                 daemon.held.personal = room;
                 if let Some(call) = call {
-                    says_camera(daemon.held.live.as_ref(), call.as_ref());
+                    says_camera(&mut camera_said, call.as_ref());
                     daemon.held.follow(call, now());
                 }
                 let standing = if signed_in {
@@ -418,7 +425,7 @@ fn follow(shared: &Shared, tuple: &str) -> String {
             }
             Line::Call(call) => {
                 let mut daemon = lock(shared);
-                says_camera(daemon.held.live.as_ref(), call.as_ref());
+                says_camera(&mut camera_said, call.as_ref());
                 daemon.held.follow(call, now());
                 changed(shared, &mut daemon);
             }
@@ -613,6 +620,16 @@ struct Doing {
     room: PathBuf,
 }
 
+/// Sets how Joel stands in the call held now, ahead of Tuple's stream,
+/// and says it to those watching.
+fn ahead(shared: &Shared, set: impl FnOnce(&mut Person)) {
+    let mut daemon = lock(shared);
+    if let Some(live) = &mut daemon.held.live {
+        set(&mut live.joel);
+    }
+    changed(shared, &mut daemon);
+}
+
 /// What answers the call's acts, each on a thread of its own (ask's
 /// `ACTS`), which daemon-serve asks as a client asks one; it answers
 /// none of the interface's own asks, which daemon-serve answers.
@@ -647,15 +664,10 @@ fn act(shared: &Shared, doing: &Doing, asked: &Act) -> Value {
             // camera stopped is off as well, so the launcher offers the
             // picker again at once; a picker opened shares nothing until
             // he picks, so only the stream says his camera is on.
-            if matches!(asked, Act::Mute { .. } | Act::Camera { on: false }) {
-                let mut daemon = lock(shared);
-                if let Some(live) = &mut daemon.held.live {
-                    match asked {
-                        Act::Mute { muted } => live.joel.muted = *muted,
-                        _ => live.joel.camera = false,
-                    }
-                }
-                changed(shared, &mut daemon);
+            match asked {
+                Act::Mute { muted } => ahead(shared, |joel| joel.muted = *muted),
+                Act::Camera { on: false } => ahead(shared, |joel| joel.camera = false),
+                _ => {}
             }
             json!({"done": true})
         }
