@@ -872,19 +872,24 @@ Singleton {
         function onRevisionChanged() {
             root.viewKept();
         }
-        // The window a session being reopened opens in, placed once niri
-        // has laid it out, and the next begun; never a terminal of Joel's.
         function onWindowOpenedOrChanged(window) {
-            root.heardWindow(window);
-            root.viewerCame(window);
-            root.focusOpened(window);
-            if (root.reopening && window.session === true)
-                root.reopenedWindow(window.id);
-            root.placeOpened();
-            root.settleReopenedSoon();
-            if (root.puttingBack !== null && !root.placingNow())
-                root.putBack(window);
+            root.windowHeard(window);
         }
+    }
+    // The window a session being reopened opens in, placed once niri has
+    // laid it out, and the next begun; never a terminal of Joel's. Called
+    // by the signal's handler, and by a test, where a throw from a signal
+    // is only warned of.
+    function windowHeard(window) {
+        heardWindow(window);
+        viewerCame(window);
+        focusOpened(window);
+        if (reopening && window.session === true)
+            reopenedWindow(window.id);
+        placeOpened();
+        settleReopenedSoon();
+        if (puttingBack !== null && !placingNow())
+            putBack(window);
     }
     // Whose a new window is: the session's opened with its app id
     // (inSessions), the one being reopened now or one given up on before
