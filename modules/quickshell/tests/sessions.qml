@@ -1321,6 +1321,34 @@ ShellRoot {
         expect("once the window that came closes, Go To opens its own again, said so",
             Niri.spawns.length === goneFrom + 2 && root.unhostedWhy === "unowned",
             `${root.unhostedWhy} ${Niri.spawns.slice(goneFrom).join(" | ")}`);
+        // No kitty took the ask whose window came refused, so that window
+        // was another program's, not its own drawn by a pid read wrong: the
+        // refusal goes, and Go To opens its own beside it, saying why,
+        // rather than holding it unopenable while that window stays. A
+        // give-up older than the ask is another's and leaves it.
+        const untook = "pi-hosted.s-untook";
+        const untookWords = view.slice(0, -1).concat(["s-untook"]);
+        const untookSession = { address: "UNTOOK", presence: { hosted: true,
+            session: "s-untook" }, attach: untookWords, here: true };
+        Sessions.viewWith(untookWords, untook, null, "untook");
+        const untookAsked = Number(Sessions.attaching[untook]);
+        const untookStray = { id: 102, pid: 880, opened: untook };
+        Niri.windows = Object.assign({}, unforged, { "102": untookStray });
+        Sessions.windowHeard(untookStray);
+        const refusedBefore = Sessions.refusedOwn(untook);
+        Sessions.untaken(untook, String(untookAsked - 1));
+        const keptOnOlder = Sessions.refusedOwn(untook);
+        Sessions.untaken(untook, String(untookAsked));
+        const untookFrom = Niri.spawns.length;
+        root.unhostedWhy = "";
+        Sessions.goTo(untookSession);
+        expect("a refusal goes once no kitty took its ask, so Go To opens its own, said so",
+            refusedBefore && keptOnOlder && !Sessions.refusedOwn(untook)
+            && Niri.spawns.length === untookFrom + 1 && root.unhostedWhy === "unowned",
+            `${refusedBefore} ${keptOnOlder} ${root.unhostedWhy} `
+                + Niri.spawns.slice(untookFrom).join(" | "));
+        Sessions.forgetAsk(untook);
+        Niri.windows = Object.assign({}, unforged, { "88": forged });
         // A stray come long after an ask that never came isn't taken for
         // that ask's own refused, so Go To would open its own beside it.
         const stale = "pi-hosted.s-stale";
