@@ -1344,6 +1344,11 @@
     kinds past treefmt-nix's own and the ripgrep exclusions of tests/repository's scripts and checks
     give matches a file the repository holds
   '';
+  every-why-in-the-foot-has-words = ''
+    every why the shell's sessions say a press they can't answer by, and every key the agents'
+    list names to its foot through its elsewhere words, has words in the machine vocabulary, so
+    none of those presses goes unsaid in the foot
+  '';
   every-window-says-what-it-holds = ''
     the reader on a page and a kitty running the account's shell, opened on the account's niri,
     are each titled by more than their app id or the name of a program running in them
