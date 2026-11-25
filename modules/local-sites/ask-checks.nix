@@ -89,12 +89,14 @@ in
             ];
           }
         );
-      # What the home module says refusing renamed acts, or none.
-      refusedBy =
-        user:
-        lib.findFirst (
-          check: !check.assertion && lib.hasInfix "renames the launcher's acts" check.message
-        ) null (sites user).assertions;
+      # What the home module says refusing, in words holding `infix`, or none.
+      failing =
+        infix: user:
+        lib.findFirst (check: !check.assertion && lib.hasInfix infix check.message) null
+          (sites user).assertions;
+      # The refusal of renamed acts, and of a words file it can't read.
+      refusedBy = failing "renames the launcher's acts";
+      unreadBy = failing "is given as a source";
       # The same, the launcher saying `said`.
       refused = said: refusedBy { jitsusama.quickshell.launcher.words = said; };
       # A word core has that's no act on a look, renamed beside one.
@@ -206,23 +208,24 @@ in
       };
       # A machine writing the file Words.qml reads itself, an act renamed
       # there though its launcher's words are core's.
-      forced = refusedBy {
+      writing = {
         xdg.configFile."quickshell/launcher/words.json".text = lib.mkForce (builtins.toJSON inPlace);
       };
+      forced = refusedBy writing;
       # One giving the file as a source, which wins over the text the module
-      # would read, so the module can't see what it renames.
-      sourced =
-        lib.findFirst (check: !check.assertion && lib.hasInfix "is given as a source" check.message) null
-          (sites {
-            xdg.configFile."quickshell/launcher/words.json".source = lib.mkForce (
-              pkgs.writeText "words.json" (builtins.toJSON inPlace)
-            );
-          }).assertions;
+      # would read, so the module can't see what it renames; and the file made
+      # from its text, by core or by a machine, which it reads and so lets by.
+      sourced = unreadBy {
+        xdg.configFile."quickshell/launcher/words.json".source = lib.mkForce (
+          pkgs.writeText "words.json" (builtins.toJSON inPlace)
+        );
+      };
+      readable = unreadBy { } == null && unreadBy writing == null;
       says = name: refusal: refusals.${name} != null && lib.hasInfix refusal refusals.${name}.message;
       lookActs = import ./look-acts.nix;
     in
     holds "local-sites-refuses-renamed-look-acts"
-      "local-sites' home module lets a machine rename one of the launcher's acts on a look (in place, by a later entry keyed by a list of one or a set words.json writes as the id, by a whole entry so written, or to no name, or in the file the launcher reads), lets that file be given as a source it can't read, refuses core's own words or ids Words.qml keys as no act (objects, lists of several or none, a stored path), or doesn't name only the act's old and new word."
+      "local-sites' home module lets a machine rename one of the launcher's acts on a look (in place, by a later entry keyed by a list of one or a set words.json writes as the id, by a whole entry so written, or to no name, or in the file the launcher reads), lets that file be given as a source it can't read or refuses it made from its text, refuses core's own words or ids Words.qml keys as no act (objects, lists of several or none, a stored path), or doesn't name only the act's old and new word."
       (
         refusals.core == null
         && refusals.odd == null
@@ -233,5 +236,6 @@ in
         && forced != null
         && lib.hasInfix "acts on a look (${clear} from Clear It to Drop It)," forced.message
         && sourced != null
+        && readable
       );
 }
