@@ -13,10 +13,11 @@ agents:machine by name elsewhere, as SessionRow.js's unsteered does, aren't
 read here. A call is read to its closing paren, however it's wrapped. Each why
 or key missing, or worded "", fails, printed, and so does a why or key that can
 come to anything but a word, as one held in a name, which can't be read; only
-the launcher's `why`, a why the shell gave, may be a name. A word a
-choice is made by is no why. The check first proves it finds a why in a choice
-or a wrapped call and refuses a why with no words, so a rule that stopped
-finding or refusing fails it too.
+the why the launcher's onUnhosted is given, inside that handler, may be a
+name, and that handler must pass it on to elsewhere, or every why the shell
+gives would meet an empty foot. A word a choice is made by is no why. The
+check first proves it finds a why in a choice or a wrapped call and refuses a
+why with no words, so a rule that stopped finding or refusing fails it too.
 """
 
 from __future__ import annotations
@@ -34,8 +35,9 @@ UNHOSTED = re.compile(r"(?<!signal )\bunhosted\(")
 # The launcher saying a key of agents:machine's in its foot, not the
 # function's own declaration.
 ELSEWHERE = re.compile(r"(?<!function )\belsewhere\(")
-# The name Agents.qml keeps a why the shell gave in, as it passes it on.
-SHELLS_WHY = "why"
+# The launcher's handler of the shell's unhosted, whose second parameter
+# holds the why the shell gave, up to its body's opening brace.
+HANDLER = re.compile(r"\bfunction onUnhosted\(\s*\w+\s*,\s*(\w+)\s*\)[^{]*\{")
 # A string in double quotes, as each why and key is said, "" too, so the
 # quote that closes one is never read as opening the next.
 WORD = re.compile(r'"((?:[^"\\]|\\.)*)"')
@@ -179,18 +181,52 @@ def keys(source: str) -> set[str]:
     return found
 
 
+def handler(source: str) -> tuple[str, int, int] | None:
+    """Give the name onUnhosted keeps the shell's why in, and where its body begins and ends."""
+    found = HANDLER.search(source)
+    if found is None:
+        return None
+    depth, at = 1, found.end()
+    while depth and at < len(source):
+        depth += {"{": 1, "}": -1}.get(source[at], 0)
+        at += 1
+    return found.group(1), found.end(), at
+
+
+def firsts(source: str) -> list[tuple[int, str]]:
+    """Give where each call of elsewhere stands, with its first argument."""
+    found: list[tuple[int, str]] = []
+    for one in ELSEWHERE.finditer(source):
+        given = given_to(source, one.end())
+        found.append((one.start(), given[0] if given else ""))
+    return found
+
+
+def shells(held: tuple[str, int, int] | None, at: int, first: str) -> bool:
+    """Say whether a call at `at` passes on the shell's why, inside the handler given it."""
+    return held is not None and first.strip() == held[0] and held[1] <= at < held[2]
+
+
 def unkeyed(source: str) -> list[str]:
     """Give each key elsewhere is asked for that can come to anything but a word.
 
-    A key held in `why`, the name the launcher keeps the shell's why in, is
-    read where the shell gives it (whys), so only it may be a name.
+    A key held in the name onUnhosted keeps the shell's why in, inside that
+    handler, is read where the shell gives it (whys), so only it may be a
+    name.
     """
+    held = handler(source)
     return [
         first
-        for first in argument(source, ELSEWHERE, 0)
-        if first.strip() != SHELLS_WHY
+        for at, first in firsts(source)
+        if not shells(held, at, first)
         and not all(WORD.fullmatch(outcome) for outcome in outcomes(first))
     ]
+
+
+def passes_on(source: str) -> bool:
+    """Say whether onUnhosted passes the shell's why on to elsewhere, so it reaches the foot."""
+    held = handler(source)
+    return any(shells(held, at, first) for at, first in firsts(source))
 
 
 def said(vocabulary: object) -> dict[str, object]:
@@ -250,9 +286,25 @@ def refuses_what_it_should() -> list[str]:
             "a key the launcher names",
         ),
         (
-            unkeyed('elsewhere(why, session); elsewhere(reason, session); elsewhere("a", s);'),
-            ["reason"],
-            "a key held in a name other than the shell's why",
+            unkeyed(
+                "function onUnhosted(session, why) { tell(elsewhere(why, session)); }\n"
+                'elsewhere(reason, session); elsewhere(why, s); elsewhere("a", s);'
+            ),
+            ["reason", "why"],
+            "a key held in a name, but the shell's why in its own handler",
+        ),
+        (
+            passes_on("function onUnhosted(session, why) { tell(elsewhere(why, session)); }"),
+            True,
+            "a handler passing the shell's why on, taken for none",
+        ),
+        (
+            passes_on(
+                'function onUnhosted(session, why) { tell(elsewhere("x", session)); }\n'
+                "elsewhere(why, session);"
+            ),
+            False,
+            "a handler not passing the shell's why on, its name used elsewhere",
         ),
         (
             unworded({"hosted", "opening", "unnamed"}, said(vocabulary)),
@@ -282,6 +334,13 @@ def main(arguments: list[str]) -> int:
     unasked = unkeyed(launcher)
     for key in unasked:
         print(f"foot-words: a key given as {key or 'nothing'} can't be read", file=sys.stderr)
+    passed = passes_on(launcher)
+    if not passed:
+        print(
+            f"foot-words: {arguments[2]} has no onUnhosted passing the shell's why to elsewhere,"
+            " so a why the shell gives would meet an empty foot",
+            file=sys.stderr,
+        )
     if not given:
         print(
             f"foot-words: {arguments[1]} gives no why, so the check reads it wrong", file=sys.stderr
@@ -289,7 +348,8 @@ def main(arguments: list[str]) -> int:
     missing = unworded(given | asked, said(vocabulary))
     for key in missing:
         print(f"foot-words: {key} has no words in agents:machine's said", file=sys.stderr)
-    return 1 if let_through or missing or named or unasked or not given else 0
+    unheld = let_through or missing or named or unasked or not passed or not given
+    return 1 if unheld else 0
 
 
 if __name__ == "__main__":
