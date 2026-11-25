@@ -86,7 +86,7 @@ fn a_heredocs_body_is_no_comment() {
         file(
             "tests/h.sh",
             "#!/bin/sh\n\
-             cat << EOF > out.sh\n\
+             cat << EOF>out.sh\n\
              #!/usr/bin/env tests/kept/bang\n\
              # tests/kept/heredoc.sh, in a heredoc\n\
              EOF\n\
@@ -98,17 +98,30 @@ fn a_heredocs_body_is_no_comment() {
              cat <<\\STOP\n\
              # tests/kept/slashed.sh, in an escaped one\n\
              STOP\n\
-             # tests/kept/unslashed.sh, past that\n\
-             cat <<<x\n\
-             # tests/kept/herestring.sh, past a here-string\n\
-             echo $((x << y))\n\
-             # tests/kept/shift.sh, past a shift\n\
-             echo \"a <<b\"\n\
-             # tests/kept/quoted.sh, past a quoted one\n\
-             echo 'a <<c'\n\
-             # tests/kept/single.sh, past a single-quoted one\n\
-             let x=1<<2\n\
-             # tests/kept/let.sh, past a shift onto a digit\n",
+             cat <<END-OF-HELP\n\
+             # tests/kept/hyphen.sh, in a hyphenated one\n\
+             END-OF-HELP\n\
+             echo \"it's\" <<'my doc'\n\
+             # tests/kept/spaced.sh, in one named with a space\n\
+             my doc\n\
+             cat <<A <<B\n\
+             # tests/kept/a.sh, in the first of two\n\
+             A\n\
+             # tests/kept/b.sh, in the second\n\
+             B\n\
+             echo $((1 << 2)); cat <<C\n\
+             # tests/kept/c.sh, in one past a shift\n\
+             C\n\
+             echo \\\"x <<F\n\
+             # tests/kept/escaped.sh, in one past an escaped quote\n\
+             F\n\
+             echo \"\\\"\" <<G\n\
+             # tests/kept/inquote.sh, in one past an escape in quotes\n\
+             G\n\
+             echo a#b <<K\n\
+             # tests/kept/hash.sh, in one past a hash inside a word\n\
+             K\n\
+             # tests/kept/past.sh, past them all\n",
         ),
         file("tests/kept/x.nix", "{ }\n"),
     ];
@@ -117,15 +130,51 @@ fn a_heredocs_body_is_no_comment() {
         [
             "tests/h.sh:6: tests/kept/after.sh",
             "tests/h.sh:10: tests/kept/untabbed.sh",
-            "tests/h.sh:14: tests/kept/unslashed.sh",
-            "tests/h.sh:16: tests/kept/herestring.sh",
-            "tests/h.sh:18: tests/kept/shift.sh",
-            "tests/h.sh:20: tests/kept/quoted.sh",
-            "tests/h.sh:22: tests/kept/single.sh",
-            "tests/h.sh:24: tests/kept/let.sh"
+            "tests/h.sh:37: tests/kept/past.sh"
         ],
-        "a heredoc's body was read as comment, one spaced, tabbed, quoted or escaped was \
-         missed, or a here-string, a shift or a quoted `<<` was taken for one"
+        "a heredoc's body was read as comment, or one spaced, tabbed, escaped, hyphenated, \
+         quoted, second on its line, past a shift, an escaped quote or a hash inside a \
+         word, or its word before an operator, was missed"
+    );
+}
+
+#[test]
+fn only_a_heredocs_own_less_thans_open_one() {
+    let files = [
+        file(
+            "tests/p.sh",
+            "cat <<<x\n\
+             # tests/kept/herestring.sh, past a here-string\n\
+             x\n\
+             echo hi # feeds <<D\n\
+             # tests/kept/comment.sh, past a comment's\n\
+             D\n\
+             echo \"a <<E\"\n\
+             # tests/kept/double.sh, past a double-quoted one\n\
+             E\n\
+             echo 'a <<H'\n\
+             # tests/kept/single.sh, past a single-quoted one\n\
+             H\n\
+             echo $((x << y))\n\
+             # tests/kept/shift.sh, past a shift\n\
+             y\n\
+             cat <<NEVER\n\
+             # tests/kept/rest.sh, past one never closed\n",
+        ),
+        file("tests/kept/x.nix", "{ }\n"),
+    ];
+    assert_eq!(
+        stale(&paths(&files), &files),
+        [
+            "tests/p.sh:2: tests/kept/herestring.sh",
+            "tests/p.sh:5: tests/kept/comment.sh",
+            "tests/p.sh:8: tests/kept/double.sh",
+            "tests/p.sh:11: tests/kept/single.sh",
+            "tests/p.sh:14: tests/kept/shift.sh",
+            "tests/p.sh:17: tests/kept/rest.sh"
+        ],
+        "a here-string, a `<<` in a comment, in quotes or shifting in arithmetic opened a \
+         heredoc, or one never closed hid the rest of its file"
     );
 }
 
@@ -175,7 +224,7 @@ fn block_comments_and_every_docstring_are_read_whole() {
 }
 
 #[test]
-fn a_docstring_or_block_the_file_never_closes_is_none() {
+fn an_opening_the_file_never_closes_hides_nothing() {
     let files = [
         file(
             "tests/o.py",
@@ -187,7 +236,12 @@ fn a_docstring_or_block_the_file_never_closes_is_none() {
         ),
         file(
             "tests/p.nix",
-            "# Naming tests/kept/top.nix.\n{ }\n/* Opens,\n   naming tests/kept/block.nix\n",
+            "# Naming tests/kept/top.nix.\n{ }\n/* Opens,\n   naming tests/kept/block.nix\n\
+             # tests/kept/after.nix, past it\n",
+        ),
+        file(
+            "tests/w.nix",
+            "{ x = ''\n  /* in a string\n''; }\n# tests/kept/string.nix, past it\n",
         ),
         file(
             "tests/q.py",
@@ -205,11 +259,13 @@ fn a_docstring_or_block_the_file_never_closes_is_none() {
             "tests/o.py:1: tests/kept/first.nix",
             "tests/o.py:3: tests/kept/closed.nix",
             "tests/p.nix:1: tests/kept/top.nix",
+            "tests/p.nix:5: tests/kept/after.nix",
+            "tests/w.nix:4: tests/kept/string.nix",
             "tests/q.py:1: tests/kept/before.nix",
             "tests/u.py:1: tests/kept/u.nix"
         ],
-        "a docstring or block comment the file never closes was read, or the comments \
-         before it, or before a string it never closes, were dropped"
+        "a docstring or block comment the file never closes was read, or it hid what \
+         came before or after it, or a string never closed hid what came before it"
     );
 }
 
@@ -446,7 +502,9 @@ fn a_docstring_may_stand_on_its_headers_own_line() {
              \x20   a,\n\
              ): \"\"\"Naming tests/kept/wrapped.nix.\"\"\"\n\
              def k(x=\"\"\"a\n\
-             b\"\"\"): \"\"\"Naming tests/kept/handed.nix.\"\"\"\n",
+             b\"\"\"): \"\"\"Naming tests/kept/handed.nix.\"\"\"\n\
+             def l(): d = {\n\
+             }; f = lambda: \"\"\"tests/kept/none.py\"\"\"\n",
         ),
         file("tests/kept/x.nix", "{ }\n"),
     ];
@@ -461,8 +519,8 @@ fn a_docstring_may_stand_on_its_headers_own_line() {
             "tests/r.py:12: tests/kept/handed.nix"
         ],
         "a docstring on its def's or class's own line was missed, a default was read, a \
-         parameter's or a lambda's colon was taken for the header's, or a return's or an \
-         if's string was read as a docstring"
+         parameter's or a lambda's colon, or one past the header's, was taken for it, or a \
+         return's or an if's string was read as a docstring"
     );
 }
 
