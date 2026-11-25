@@ -130,7 +130,8 @@ fn what_a_source_says_is_held_whole_under_its_name_changing_only_when_it_does() 
     );
     assert!(
         book.ready("person:ada@example.com"),
-        "Ada wasn't ready once Slack and Vault had both answered"
+        "Ada waited on {:?} once Slack and Vault had both answered",
+        book.waiting("person:ada@example.com").collect::<Vec<_>>()
     );
     let record = book.record("person:ada@example.com").unwrap();
     let served = record.json();
@@ -185,12 +186,13 @@ fn a_calendars_address_is_no_one_and_answers_at_once() {
     assert_eq!(book.everyone().count(), 0, "a calendar is held as no one");
     assert!(
         book.ready(&key(dates)),
-        "a step-in on it isn't left waiting"
+        "a step-in on a calendar was left waiting on {:?}",
+        book.waiting(&key(dates)).collect::<Vec<_>>()
     );
 }
 
 #[test]
-fn a_source_signed_out_is_never_waited_on_and_one_started_again_is() {
+fn a_source_signed_out_or_refused_is_never_waited_on_and_one_started_again_is() {
     let mut book = Book::of(&["slack".to_owned(), "vault".to_owned()]);
     book.take(
         "slack",
@@ -217,6 +219,20 @@ fn a_source_signed_out_is_never_waited_on_and_one_started_again_is() {
         "Ada wasn't waiting on Slack alone, though it had started again and not yet answered"
     );
     assert_eq!(book.standings()["slack"].word(), "answering");
+    // One refused, its program stopped, is asked again once restarted.
+    book.stand("vault", Standing::Refused("it stopped".to_owned()));
+    assert_eq!(
+        book.waiting("person:ada@example.com").collect::<Vec<_>>(),
+        ["slack"],
+        "Ada waited on Vault, though its program had stopped"
+    );
+    book.restarted("vault");
+    assert_eq!(
+        book.waiting("person:ada@example.com").collect::<Vec<_>>(),
+        ["slack", "vault"],
+        "Ada wasn't waiting on Vault once its stopped program started again"
+    );
+    assert_eq!(book.standings()["vault"].word(), "answering");
 }
 
 fn tuple(address: &str, id: u32, name: &str, favourite: bool) -> Heard {
@@ -228,7 +244,7 @@ fn tuple(address: &str, id: u32, name: &str, favourite: bool) -> Heard {
 }
 
 #[test]
-fn a_roster_is_never_waited_on_and_knows_some_by_its_own_id() {
+fn a_source_that_says_its_a_roster_isnt_waited_on_and_knows_some_by_its_own_id() {
     let mut book = Book::of(&["slack".to_owned(), "tuple".to_owned()]);
     book.take("tuple", Heard::Roster);
     book.take("tuple", tuple("", 7, "Gus", false));
@@ -246,6 +262,13 @@ fn a_roster_is_never_waited_on_and_knows_some_by_its_own_id() {
         Heard::Later {
             address: "ada@example.com".to_owned(),
         },
+    );
+    // Slack is answering, and has said it will answer for Ada later.
+    assert_eq!(book.standings()["slack"].word(), "answering");
+    assert_eq!(
+        book.waiting("person:ada@example.com").collect::<Vec<_>>(),
+        ["slack"],
+        "Ada wasn't waiting on Slack once it said it would answer later"
     );
     book.take(
         "slack",
