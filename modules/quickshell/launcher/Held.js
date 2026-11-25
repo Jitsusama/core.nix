@@ -226,24 +226,29 @@ function landedAfter(before, from, landed, now) {
 }
 
 // Whether a key taken moves the clock the launcher times a change from
-// (Pacing.sinceKey): a modifier pressed `alone`, as the Shift before a
-// capital, acted on nothing, and a letter typed into the find (`typing`,
-// its `name` one character) changes only what's typed, so a change
-// beside either is timed from the key that acted before it.
+// (Pacing.sinceKey), by its `name` as the key table has it: a modifier
+// pressed `alone`, as the Shift before a capital, acted on nothing, and
+// a key the field types itself while `typing`, a letter, a Space or one
+// the table can't name ("", as é), changes only what's typed, so a change
+// beside either is timed from the key that acted before it. An edit by
+// name, as Backspace, may act, since on an empty find it leaves for
+// normal, so it moves the clock.
 function movesClock(alone, typing, name) {
-    return !alone && !(typing && name.length === 1);
+    const typed = name.length <= 1 || name === "Space";
+    return !alone && !(typing && typed);
 }
 
-// Whether the key the clock is timed from, taken at `taken` and done at
-// `done`, only moved: the prompt's word for its last key (`live`) while
-// that key's work is under way, since nothing else is taken meanwhile,
-// and once it's done the word as it stood then (`kept`), since a
-// modifier alone or a letter typed after it sets the prompt's word
-// afresh without moving the clock. Read live, a Shift after j left j's
-// clock standing with its move forgotten, so a share's change beside j
-// was taken for an act.
-function movedOnly(taken, done, kept, live) {
-    return done < taken ? live : kept;
+// Whether the key the clock is timed from only moved, from `word`, as it
+// stood, once the prompt says it `moved` with `keys` taken (its
+// keysTaken), the clock's key having been the `heard`th. The prompt
+// clears its word as each key comes, before counting it, and says a move
+// once the key is read, so only a move said while the clock's own key
+// is the last counted is that key's: a Shift after j clears the word
+// without moving the clock, and read then, j's move was forgotten and a
+// share's change beside j taken for an act. A held key's repeat is
+// counted once read, so its word is the prompt's as its clock moves.
+function movedSaid(word, heard, keys, moved) {
+    return moved && keys === heard ? true : word;
 }
 
 // What a source's change does to the acts waiting on its refresh, as the
@@ -257,15 +262,21 @@ function movedOnly(taken, done, kept, live) {
 // already waits will be taken into the same refresh; not shown, it's
 // "kept", recording nothing and leaving the key's acts be. Any other
 // change, a daemon's answer past `within` too, "joins" each act of its
-// source (mixIn), so the leave that refresh makes is guessed.
+// source (mixIn), so the leave that refresh makes is guessed. What
+// waits isn't asked who queued it, so Joel's own key just before, its
+// refresh not yet run, makes his next key's act joined too: a Return
+// held that needn't have been, the side this errs on. It answers what
+// it `says`, whether the change `joins` and whether an act it records
+// is `mixed`, so the launcher matches no words.
 function changeDoes(change) {
+    const said = says => ({ says, joins: says === "joins", mixed: says === "joined act" });
     if (change.moved || change.ago >= change.within) {
-        return "joins";
+        return said("joins");
     }
     if (!change.shown) {
-        return "kept";
+        return said("kept");
     }
-    return change.waiting ? "joined act" : "act";
+    return said(change.waiting ? "joined act" : "act");
 }
 
 // What a leave of `source` was, by `acts`, the launcher's keyedActs, and
@@ -308,6 +319,8 @@ function mixIn(acts, source) {
 // after it, holds the Return pressed next, as returnUnder would answer
 // it, since a key's act may still leave one an earlier leave left
 // pending, and one by no key that lands back on its row holds nothing.
+// It's a forecast for a Return pressed next with no words asked for; one
+// pressed where the line asks for words is answered, and never held.
 function leaveSaid(act, guess) {
     const next = { keys: guess.keys + 1, at: 0, depth: guess.depth, asking: false };
     const holds = returnUnder(guess, next, 0).holds;

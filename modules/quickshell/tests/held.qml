@@ -367,26 +367,30 @@ QtObject {
                 + " | no key's act; nothing holds | a key's act, joined; a Return next holds");
 
         // Held.movesClock: only a key that may act moves the clock; a
-        // modifier alone and a letter typed into the find leave it at the
+        // modifier alone and a key the find types itself leave it at the
         // key before them.
-        check("a modifier alone and a letter in the find keep the clock",
-            [Held.movesClock(true, false, ""), Held.movesClock(false, true, "a")].join(" "),
-            "false false");
-        check("Escape in the find, j in normal and an unnamed key move it",
-            [Held.movesClock(false, true, "Esc"), Held.movesClock(false, false, "j"),
-                Held.movesClock(false, true, "")].join(" "), "true true true");
-        // Held.movedOnly: j taken at 1000, done at 1070 having moved; a Shift
-        // after it says it moved nothing, but leaves j's clock, so j's word
-        // is the one read.
-        check("while a key's work runs, the prompt's word for it is read",
-            Held.movedOnly(1000, 900, false, true), true);
-        check("once it's done, its word as it was, not a modifier's after it",
-            Held.movedOnly(1000, 1070, true, false), true);
+        check("a modifier alone, and a letter, Space or é in the find, keep the clock",
+            [Held.movesClock(true, false, ""), Held.movesClock(false, true, "a"),
+                Held.movesClock(false, true, "Space"), Held.movesClock(false, true, "")]
+                .join(" "), "false false false false");
+        // Backspace on an empty find leaves it for normal, so it may act.
+        check("Escape and Backspace in the find, j and an unnamed key in normal move it",
+            [Held.movesClock(false, true, "Escape"), Held.movesClock(false, true, "Backspace"),
+                Held.movesClock(false, false, "j"), Held.movesClock(false, false, "")]
+                .join(" "), "true true true true");
+        // Held.movedSaid: j the 4th key taken, the clock's. The prompt
+        // clears its word as each key comes, and says a move once it's read.
+        check("a move said of the clock's own key is its",
+            Held.movedSaid(false, 4, 4, true), true);
+        check("a Shift after j, clearing the prompt's word, leaves j's move",
+            Held.movedSaid(true, 4, 5, false), true);
+        check("a move said of another key isn't the clock's key's",
+            Held.movedSaid(false, 4, 5, true), false);
 
         // Held.changeDoes, as refreshed and reanswer ask it of each change
         // and answer heard, keyedWithin 50 ms.
         const does = more => Held.changeDoes(Object.assign(
-            { ago: 10, moved: false, within: 50, shown: true, waiting: false }, more));
+            { ago: 10, moved: false, within: 50, shown: true, waiting: false }, more)).says;
         check("a change shown within keyedWithin of an acting key is its act, to 49 ms",
             [does({}), does({ ago: 49 })].join(" "), "act act");
         check("one at 50 ms or after a move joins the source's acts",
@@ -402,6 +406,16 @@ QtObject {
         check("one not shown within keyedWithin is kept, past it joins",
             [does({ shown: false }), does({ shown: false, ago: 50 })].join(" "),
             "kept joins");
+        // A move or lateness outranks what waits, and not being shown does.
+        check("a move joins whatever waits, and one not shown is kept though one waits",
+            [does({ moved: true, waiting: true }), does({ shown: false, waiting: true })]
+                .join(" "), "joins kept");
+        check("what it says is told apart for the launcher, which matches no words",
+            ["joins", "joined act", "act"].map(says => {
+                const change = Held.changeDoes({ ago: says === "joins" ? 50 : 10,
+                    moved: false, within: 50, shown: true, waiting: says === "joined act" });
+                return `${change.joins} ${change.mixed}`;
+            }).join(" | "), "true false | false true | false false");
 
         // Held.actOf, Held.keyed and Held.mixIn, as the launcher's keyedActs
         // hold a key's act until the refresh that shows it, each case on
@@ -425,6 +439,13 @@ QtObject {
         check("a change the key doesn't own, joining its act, makes the leave no key's",
             [Held.actOf(joined, asks, 40), Held.keyed(joined, asks, 40)].join(" | "),
             "a key's act, joined | false");
+        // The chain heldAgain runs: a share's change joins the key's act,
+        // so the leave its refresh makes off its row is guessed, and the
+        // journal says a Return next holds.
+        const chained = landing(none, "copies", { byKey: Held.keyed(joined, asks, 40) });
+        check("a joined act's leave off its row is guessed, and journalled as holding",
+            Held.leaveSaid(Held.actOf(joined, asks, 40), chained),
+            "a key's act, joined; a Return next holds");
 
         // Held.returnUnder, as the field's Return asks it: 2 deep, no words
         // asked for, and the key-timing wait 300 ms.

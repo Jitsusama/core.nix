@@ -599,15 +599,16 @@ Scope {
         // nothing new is let go untimed, as a refresh's is.
         const place = source.settings.name;
         updatedFrom(source);
-        // Asked again at once, so it waits on no pace. An answer is never
-        // a key's act; one heard past keyedWithin of the key, or after a
-        // move, isn't the key's at all, so it joins the key's acts
-        // (Held.changeDoes), and a step its refresh leaves is guessed.
+        // Asked again at once, so it waits on no pace. An answer records
+        // no act here: one heard within keyedWithin of an acting key
+        // leaves the key's acts as they stood, and one past it, or after a
+        // move, joins them (Held.changeDoes), so a step its refresh leaves
+        // is guessed.
         const refreshedAt = KeyTimes.now();
         const answered = Held.changeDoes({
             ago: Pacing.sinceKey(refreshedAt, keyHeardAt, keyDoneAt), moved: keyMovedOnly(),
             within: keyedWithin, shown: false, waiting: false });
-        if (answered === "joins")
+        if (answered.joins)
             Held.mixIn(keyedActs, source);
         Report.say(`asked again by ${place}`);
         if (held.length > 0) {
@@ -5880,7 +5881,7 @@ Scope {
         // (Held.changeDoes), so a share's change never rides on his key.
         const does = Held.changeDoes({ ago, moved, within: keyedWithin, shown: byKey,
             waiting: refreshing.includes(source) });
-        if (does === "joins")
+        if (does.joins)
             Held.mixIn(keyedActs, source);
         // One just past it is said, so a key's change left to the pace is
         // seen for what it was, and one drawn nowhere says so.
@@ -5897,7 +5898,7 @@ Scope {
             // a daemon was late or the shell was (Pacing.actSaid).
             const act = { source: source, name: source.settings.name, key: keyHeardName,
                 heard: keyHeardAt, at: now, done: Infinity, by: Hearing.heardBy(),
-                collected: keyCollectedAt, mixed: does === "joined act",
+                collected: keyCollectedAt, mixed: does.mixed,
                 why: Pacing.movedFor("", source.changedWhy, refreshedFor, 0) };
             keyedActs = keyedActs.filter(one => one.heard === keyHeardAt).concat([act]);
             // When the key's own work is done, and the change could be shown.
@@ -5969,9 +5970,11 @@ Scope {
     readonly property int keyedWithin: 50
     property real keyHeardAt: -Infinity
     property real keyDoneAt: -Infinity
-    // Whether that key only moved, as the prompt said once its work was
-    // done, kept since a modifier alone after it says afresh (keyMovedOnly).
-    property bool keyDoneMoved: false
+    // Which of the prompt's keys that was, and whether it only moved, as
+    // the prompt said of it (Held.movedSaid), so a modifier alone after
+    // it, clearing the prompt's word, leaves its move standing.
+    property int keyHeardKeys: 0
+    property bool keyHeardMoved: false
     // The last such key by name, and the collector's count as it was heard,
     // so a slow act says which key it was and what collecting took of it.
     property string keyHeardName: ""
@@ -5979,9 +5982,9 @@ Scope {
     property var keyedActs: []
     property var actsDrawing: Pacing.unframed()
 
-    // Whether the key the clock is timed from only moved (Held.movedOnly).
+    // Whether the key the clock is timed from only moved.
     function keyMovedOnly(): bool {
-        return Held.movedOnly(keyHeardAt, keyDoneAt, keyDoneMoved, prompt.keyMoved);
+        return keyHeardMoved;
     }
 
     Connections {
@@ -6000,13 +6003,19 @@ Scope {
             root.keyHeardAt = heard;
             root.keyHeardName = prompt.keyTaken;
             root.keyCollectedAt = Heap.collected();
+            root.keyHeardKeys = prompt.keysTaken;
+            root.keyHeardMoved = Held.movedSaid(false, prompt.keysTaken, prompt.keysTaken,
+                prompt.keyMoved);
             // Its work is done once its handler has returned.
             Qt.callLater(() => {
-                if (root.keyHeardAt === heard) {
+                if (root.keyHeardAt === heard)
                     root.keyDoneAt = KeyTimes.now();
-                    root.keyDoneMoved = prompt.keyMoved;
-                }
             });
+        }
+
+        function onKeyMovedChanged() {
+            root.keyHeardMoved = Held.movedSaid(root.keyHeardMoved, root.keyHeardKeys,
+                prompt.keysTaken, prompt.keyMoved);
         }
     }
 
@@ -6541,10 +6550,12 @@ Scope {
         // whose source was already waiting on a refresh is recorded
         // joined, either way no longer his alone (Held.changeDoes). A
         // change heard within keyedWithin of an acting key is his
-        // whoever made it, a share's too: the one way a leave off its row
-        // goes unheld. An answer never records an act, so a daemon's, as
-        // Release It's may be, holds one Return should it land off its
-        // row.
+        // whoever made it, a share's too, and so is an answer heard so,
+        // which leaves his acts as they stood: either way a leave off its
+        // row goes unheld. An answer records an act only through a hold it
+        // agrees to (heldAgreed), whose refresh is heard as a change is;
+        // past keyedWithin, a daemon's, as Release It's may be, holds one
+        // Return should it land off its row.
         const act = Held.actOf(keyedActs, source, keyHeardAt);
         const byKey = Held.keyed(keyedActs, source, keyHeardAt);
         try {
