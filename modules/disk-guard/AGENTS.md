@@ -446,7 +446,8 @@ or launchd, and [`home.nix`][2] the account's.
   tells `floor_at` rather than when it fills, since Nix collects before
   it does. `Fill::ahead` in `src/decide.rs` works both moments out, and
   `band_in` leaves out a band that starts under the floor. A beat drops
-  either moment once it has passed. A disk whose last pass, in its
+  either moment once it has passed, a restarted guard's first beats on
+  the status the last one left included. A disk whose last pass, in its
   band or a worse one, found nothing more to clear is `exhausted`, and its
   sentence says so rather than that the guard is clearing. A pass is
   `passing` from its start, the survey before it included, with its
