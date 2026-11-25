@@ -12,7 +12,7 @@
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { type Actions, listen, toggle } from "../../local-sites/kit/keys.ts";
 import type { Held, Moved } from "../../local-sites/kit/records.ts";
-import { said } from "../../local-sites/kit/status.ts";
+import { show, tell } from "../../local-sites/kit/status.ts";
 import { pressable } from "../../local-sites/kit/steps.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { escaped, murmurRow, skyOf } from "./draw.ts";
@@ -86,8 +86,13 @@ function troubles(): readonly string[] {
 function sayWhen(): void {
   const problems = troubles();
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
-  asof.textContent = `${standing === undefined ? "Reaching the mycelium node." : said(standing)}${trouble}`;
-  asof.setAttribute("data-state", standing?.state ?? "connecting");
+  // Through the kit, which writes the line only when its words change, so a
+  // screen reader isn't told the same standing at every reading.
+  if (standing === undefined) {
+    tell(asof, `Reaching the mycelium node.${trouble}`, "connecting");
+  } else {
+    show(asof, standing, trouble);
+  }
   // A broken node the page never heard live has said nothing, whatever empty
   // list the server held for it.
   if (!fromLive && murmurs.length === 0 && standing?.state === "broken") {
