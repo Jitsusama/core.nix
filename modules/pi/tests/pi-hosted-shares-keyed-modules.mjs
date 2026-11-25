@@ -10,7 +10,9 @@
 // link moved to or once its modules are let go. While a turn is held too
 // long, loads go on unshared, and nothing kept is let go of. A failed
 // load's retry evaluates again every module it was first to import, however
-// deep, but none another extension was first to import. Without the patch,
+// deep, but none another extension was first to import, and a load after
+// an import made as an extension ran that threw goes on unshared rather
+// than be given what the module left. Without the patch,
 // a keyed package's library is evaluated once for each of its extensions;
 // sharing every package's modules lets one extension's module state reach
 // another's.
@@ -21,6 +23,7 @@ import { join } from "node:path";
 import {
   aPackage,
   beforeTheBound,
+  breakingPackage,
   afresh,
   cached,
   clearExtensionCache,
@@ -36,7 +39,9 @@ import {
   library,
   loadExtensionsCached,
   manifest,
+  mixedPackage,
   open,
+  opensWhileHeld,
   pendingAfter,
   pointAt,
   scratch,
@@ -257,38 +262,7 @@ assert.deepEqual(
 // waits, stays, and so does one that module imports, so each is evaluated
 // once.
 afresh();
-const mixedAt = join(scratch, "mixed");
-write(join(mixedAt, "package.json"), manifest(keyedManifest));
-write(join(mixedAt, "lib", "deeper.ts"), library("mixed-deeper", "deeper"));
-write(
-  join(mixedAt, "lib", "late.ts"),
-  `import { version as deeper } from "./deeper.ts";\n${library("mixed-late", "late")}export const deep = deeper;\n`,
-);
-write(join(mixedAt, "lib", "waits.ts"), gated("wait", "waited"));
-write(
-  join(mixedAt, "lib", "throws.ts"),
-  'throw new Error("never loads");\nexport const never = 1;\n',
-);
-const runsLate = join(mixedAt, "extensions", "late", "index.ts");
-write(
-  runsLate,
-  [
-    "export default function (pi) {",
-    '  pi.registerCommand("mixed-late", { description: "", handler: async () => (await import("../../lib/late.ts")).version });',
-    "}",
-    "",
-  ].join("\n"),
-);
-const fails = join(mixedAt, "extensions", "fails", "index.ts");
-write(
-  fails,
-  [
-    'import { wait } from "../../lib/waits.ts";',
-    'import { never } from "../../lib/throws.ts";',
-    "export default function () { return [wait, never]; }",
-    "",
-  ].join("\n"),
-);
+const { runsLate, fails } = mixedPackage(join(scratch, "mixed"));
 const mixed = await open("mixed", [runsLate]);
 const waitGate = gate("wait");
 const failing = loadExtensionsCached([fails], folder("mixed-failing"));
@@ -303,6 +277,17 @@ assert.deepEqual(
   { "mixed-late": 1, "mixed-deeper": 1 },
   "a failed load forgot a module another extension imported meanwhile",
 );
+
+// A module an extension imports as it runs that throws stays unfinished, so
+// a load after it goes on unshared and fails as the module does, rather
+// than be given what the module defined before it threw.
+afresh();
+const breaking = breakingPackage(join(scratch, "breaking"));
+const late = await open("breaking-late", [breaking.late]);
+assert.equal(await late("breaks-late"), "breaks part-way", "a late import that throws loaded");
+const afterBreak = await loadExtensionsCached([breaking.loads], folder("breaking-loads"));
+assert.equal(afterBreak.errors.length, 1, "a load was given a module left unfinished");
+assert.equal(evaluations().breaks, 2, "a load after an unfinished module didn't evaluate it");
 
 // A link that moves on lets go of the copy it pointed at, once no extension
 // resolves into it still, though one of the link's extensions last loaded
@@ -359,8 +344,9 @@ assert.equal(
 
 // A load that never ends holds up the package's loads behind it until its
 // modules are let go, by a reload or by a link moving off its copy to a
-// keyed copy or an unkeyed one, and those then load as an unkeyed package's do, evaluating afresh what the load
-// that never ends had finished. One a link let go of, ending after the
+// keyed copy or an unkeyed one, and those then load as an unkeyed
+// package's do, evaluating afresh what the load that never ends had
+// finished. One a link let go of, ending after the
 // moved link's own load, isn't kept for the copy the link moved to.
 afresh();
 await heldUpUntil("reload", hungPackage(join(scratch, "hung"), true), () => clearExtensionCache());
@@ -434,10 +420,13 @@ await within(
   open("stalled-again", [stall.behind, stall.meanwhile]),
   "a load after loads that went on unshared never ended",
 );
+// The held load's factory is kept too, so it opens while another load
+// holds the package's turn.
+await opensWhileHeld("stalled", stall.holds, stall.hangs);
 assert.deepEqual(
   stalledCounts(),
-  [3, 1, 1, 1, 1, 1],
-  "loads while a turn was held too long shared its modules, a factory they gave wasn't kept, or later loads didn't share again",
+  [3, 1, 1, 1, 1, 1, 1],
+  "loads in a turn held too long shared, lost a factory, or didn't share after",
 );
 
 // A load in flight as its link moves to another copy, while the copy it

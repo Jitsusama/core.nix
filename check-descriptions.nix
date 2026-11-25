@@ -3540,9 +3540,10 @@
     a reload or a moved link reads the files afresh, a load begun before a reload hands a later
     load nothing, loads take turns, a reload or a moved link lets go of loads queued behind one
     that never ends, keeping none it let go of for the copy it moved to, a turn held too long
-    lets loads go on unshared while it lasts, keeping every factory, and a failed load's retry
+    lets loads go on unshared while it lasts, keeping every factory, a failed load's retry
     evaluates afresh every module, however deep, the failed load was first to import and none
-    another extension was first to import
+    another extension was first to import, and a load after an import made as an extension ran
+    that threw goes on unshared and fails as that module does
   '';
   pi-hosted-keeps-each-conversations-keys = ''
     pi built with the host's patches, applied exactly, marks a model runtime that reads keys and
