@@ -233,7 +233,7 @@ Scope {
     // each change would be made with nobody seeing it.
     property bool madeAhead: false
     // The rows owed so, by key, and how many are made a turn, at least one, which a case sets
-    // lower to see a batch span turns.
+    // lower to see a batch span turns; no place sets it.
     readonly property var owedAhead: ({})
     property int aheadEachTurn: 8
     // Elsewhere is a step held in another place, settled, not only these rows unwanted: they're
@@ -297,10 +297,7 @@ Scope {
             try {
                 rowAt(key);
             } catch (error) {
-                const said = `${error?.message ?? error}`.split("\n")[0];
-                const at = `${error?.stack ?? ""}`.split("\n")[0];
-                console.warn(`${place}: ${key} not made ahead: ${said}`
-                    + (at === "" ? "" : ` at ${at}`));
+                console.warn(`${place}: ${key} not made ahead: ${Presented.thrownShown(error)}`);
                 unmade(key);
             }
         }
@@ -404,7 +401,8 @@ Scope {
     }
     // What it made of a row let go, so the next to want it makes it afresh.
     function unmade(key) {
-        delete madeOf[made[key]?.key];
+        if (made[key])
+            delete madeOf[made[key].key];
         delete made[key];
         delete madeFrom[key];
         delete lending[key];

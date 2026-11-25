@@ -253,6 +253,7 @@
   ];
   "launcher/Pacing.js" = [
     "launcher/Order.js"
+    "launcher/Presented.js"
     "launcher/Thread.js"
   ];
   "launcher/PastNotices.qml" = [

@@ -1,5 +1,6 @@
 .pragma library
 .import "Order.js" as Order
+.import "Presented.js" as Presented
 .import "Thread.js" as Thread
 
 // When an open launcher next refreshes a source that said it changed. The
@@ -175,17 +176,9 @@ function runEach(due, said) {
         try {
             then();
         } catch (error) {
-            said(threw(error));
+            said(Presented.thrownShown(error));
         }
     }
-}
-
-// A throw in one line, its message's first line and where it was thrown, as the journal's
-// other warnings are one each.
-function threw(error) {
-    const at = `${error?.stack ?? ""}`.split("\n")[0];
-    const message = `${error?.message ?? error}`.split("\n")[0];
-    return at === "" ? message : `${message} at ${at}`;
 }
 
 // A drawer coming the frame after its key's waited one whole refresh for

@@ -14164,9 +14164,11 @@ Scope {
             // said as the key's (Joel's down onto Slack, 28 ms before the
             // shell heard its frame swapped, as the drawer made in 28,
             // 2026-11-13). Their own handlers then find nothing to time.
+            // Each is run as what waits on the frame is, so a throw timing
+            // one holds none of it back.
             function onFrameSwapped() {
-                root.keysFrameSwapped();
-                root.actsFrameSwapped();
+                Pacing.runEach([() => root.keysFrameSwapped(), () => root.actsFrameSwapped()],
+                    said => console.warn(`launcher: timing a frame threw: ${said}`));
                 const due = root.afterFramesDrawing;
                 root.afterFramesDrawing = [];
                 root.afterFramesRun(due);
