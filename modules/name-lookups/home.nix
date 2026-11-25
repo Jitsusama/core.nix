@@ -32,8 +32,8 @@ in
       description = ''
         DNS servers each name is also asked of directly, by address, so a
         slow lookup is told apart from a slow server. Every name goes to
-        every server, in plain DNS, so name only servers that may see them
-        all and can answer them all.
+        every server, in plain DNS, for its IPv4 address alone, so name only
+        servers that may see them all and names that each have one.
       '';
     };
     slow = lib.mkOption {
