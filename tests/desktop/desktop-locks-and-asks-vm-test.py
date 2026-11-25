@@ -25,6 +25,8 @@ if TYPE_CHECKING:
 LOCKED = "$XDG_RUNTIME_DIR/quickshell-locked"
 # The file that makes the lock's next password check stall (tests/desktop/desktop.nix).
 STALLS = "/run/lock-stalls/once"
+# A little past the 10 s a new shell once asked polkit for its agent in before giving up.
+HELD_ASKED = timedelta(seconds=12)
 
 
 # Each test closes the launcher after it, so one failing with it open fails alone.
@@ -261,51 +263,85 @@ def test_polkits_prompt_comes_up_after_polkit_restarts(desktop: Desktop) -> None
     """Polkit's prompt still comes up after polkit's service restarts beneath the shell.
 
     The shell registers its agent with polkit as it starts, and a switch can restart polkit
-    under it without restarting the shell, which then has to register again.
+    under it without restarting the shell, which then has to register again. On 23 Nov polkit
+    had restarted three times under one shell before its prompts stopped coming up.
     """
-    machine = desktop.machine
-    machine.succeed("rm -f /run/polkit-allowed", "systemctl restart polkit.service")
-    machine.wait_for_unit("polkit.service")
+    for _ in range(3):
+        polkit_restarted(desktop)
     polkit_asked_again(desktop)
 
 
-def test_polkits_prompt_comes_up_after_a_switch_restarts_polkit_and_hands_over(
-    desktop: Desktop,
-) -> None:
-    """Polkit's prompt still comes up after a switch restarts polkit and hands the shell over.
+def test_polkits_prompt_comes_up_after_a_hand_over_that_waited(desktop: Desktop) -> None:
+    """Polkit's prompt still comes up after a hand-over that waited on the launcher closing.
 
-    The new shell asks polkit for the agent while the old one still holds it, and takes it as
-    the old one ends. On 23 Nov polkit had restarted three times under one shell, the last 12 s
-    before a switch handed it over, and the new shell took the agent but drew no prompt for
-    the three asks before the next hand-over.
+    The new shell can take polkit's agent only once the old one has ended, and a hand-over
+    puts that off while the launcher is open, for up to a minute (shell-hands-over.sh). A new
+    shell that asked for the agent for 10 s from its start and then gave up held none after a
+    longer wait, so every ask after found no agent, so it asks again once it's released.
     """
     machine = desktop.machine
-    machine.succeed("rm -f /run/polkit-allowed")
-    for _ in range(3):
-        machine.succeed("systemctl restart polkit.service")
-        machine.wait_for_unit("polkit.service")
     main = "systemctl --user show quickshell -p MainPID --value"
     old = desktop.as_account(main).strip()
-    desktop.as_account("systemctl --user reload quickshell")
-    machine.wait_until_succeeds(desktop.in_session(f'test "$({main})" != {old}'), timeout=STARTING)
+    desktop.as_account("qs ipc call launcher toggle")
+    desktop.launcher_ready()
+    since = desktop.mark()
+    journal = f"journalctl --user -u quickshell -o cat --after-cursor={shlex.quote(since)}"
+    desktop.as_account("systemctl --user --no-block reload quickshell")
+    said = f"{journal} | grep -qF"
+    machine.wait_until_succeeds(
+        desktop.in_session(f"{said} 'Held until released'"), timeout=STARTING
+    )
+    # Past the 10 s a held shell once asked for the agent in, the old launcher still open.
+    machine.sleep(HELD_ASKED.total_seconds())
+    # Two shells run now, so the old one's launcher is closed by its own process.
+    desktop.as_account(f"qs ipc --pid {old} call launcher toggle")
+    # Handed over, the unit's main process is the new shell, never none (0).
+    handed = f'pid="$({main})"; test "$pid" != {old} && test "$pid" != 0'
+    machine.wait_until_succeeds(desktop.in_session(handed), timeout=STARTING)
+    machine.wait_until_succeeds(
+        desktop.in_session(f'{said} "took polkit\'s agent after"'), timeout=STARTING
+    )
     polkit_asked_again(desktop)
+
+
+def polkit_restarted(desktop: Desktop) -> None:
+    """Restart polkit's service, and wait for the shell's agent to register with it again.
+
+    polkit says so as an agent registers, and an ask before then finds no agent at all, which
+    would fail as a prompt that never came up.
+    """
+    machine = desktop.machine
+    machine.succeed("systemctl restart polkit.service")
+    machine.wait_for_unit("polkit.service")
+    started = "$(systemctl show -p InvocationID --value polkit.service)"
+    machine.wait_until_succeeds(
+        f"journalctl -b _SYSTEMD_INVOCATION_ID={started} -o cat"
+        " | grep -q 'Registered Authentication Agent'",
+        timeout=STARTING,
+    )
 
 
 def polkit_asked_again(desktop: Desktop) -> None:
     """Asks polkit to start a system service, and answers its prompt, which must come up."""
     machine = desktop.machine
     asked = "polkit asked by systemctl start polkit-allowed.service"
-    drawn = False
+    # The service only ever makes the file, so one left by an earlier ask would pass this.
+    machine.succeed("rm -f /run/polkit-allowed")
+    answered = False
     try:
-        with desktop.told("keys polkit"), desktop.told(asked):
+        with desktop.told("keys polkit"), desktop.told("drawn polkit"), desktop.told(asked):
             desktop.as_account("niri msg action spawn -- systemctl start polkit-allowed.service")
-        drawn = True
         machine.send_chars(f"{desktop.values['secret']}\n")
         machine.wait_for_file("/run/polkit-allowed", timeout=timedelta(seconds=30))
+        answered = True
     finally:
-        # A shell that drew no prompt drew none for later asks on 23 Nov either, so it starts
-        # again and the tests after it run as they would alone.
-        if not drawn:
+        # What niri held and what polkit said are read before anything changes them, since
+        # a prompt that never came up is what's still unexplained from 23 Nov. A shell that
+        # drew none then drew none for later asks either, and one left asking would take the
+        # keys from the tests after, so it starts again and they run as they would alone.
+        if not answered:
+            print(desktop.diagnosis("niri msg layers"))
+            print(machine.execute("journalctl -b -u polkit.service -n 20 -o cat")[1])
             desktop.as_account("systemctl --user restart quickshell")
             machine.wait_until_succeeds(
                 desktop.in_session("qs ipc show | grep -q askpass"), timeout=STARTING
