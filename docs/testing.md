@@ -644,15 +644,14 @@ that ran on one builder, one after the other, are compared.
 Each boots a machine under QEMU, which takes minutes, so each covers what only
 a running system shows.
 
-While changing what one covers, run only the subtests the change touches.
-A test's driver builds in seconds once its machines are built, and runs
-whatever script it's given; `run-subtests`, in the dev shell, builds it and
-runs everything outside a subtest (the boot, the helpers) and the subtests
-whose names hold the words given, in under half a minute for one desktop
-subtest, boot included:
+While changing what one covers, run only the tests the change touches.
+A test's driver builds in seconds once its machines are built; `run-subtests`,
+in the dev shell, builds it and runs the tests whose names hold the words
+given, with only the fixtures they ask for, in under half a minute for one
+desktop test, boot included:
 
 ```sh
-run-subtests vm-desktop-launcher-moves-windows                   # list its subtests
+run-subtests vm-desktop-launcher-moves-windows                   # list its tests
 run-subtests vm-desktop-launcher-moves-windows "opens kitty"     # run those named
 run-subtests -I vm-desktop-launcher-moves-windows "opens kitty"  # then a Python prompt
 run-subtests -K vm-desktop-launcher-moves-windows "opens kitty"  # keep the disks for next time
@@ -666,8 +665,8 @@ pictures back. That build runs `run-subtests --driver` on the check's own
 driver. With no builder to take it, nix-offload builds it here; one that
 can't take it at all leaves run-subtests to run the driver here.
 
-Each subtest makes what it needs, a window or a notice, when an earlier one
-hasn't, so it runs alone. Each run has its own short runtime folder, since the
+Each test asks for what it needs, a window or a notice, as a fixture, so it
+runs alone. Each run has its own short runtime folder, since the
 driver keeps its network switch's socket and the machines' state under
 `XDG_RUNTIME_DIR`, so two runs at once don't collide; the folder has to be
 short, as a socket's path can't pass 108 bytes. The pictures land in the
@@ -708,17 +707,15 @@ Nix string, so a linter reads it.
 `run-subtests` knows such a test by its `vm_pytest.run` and runs its script
 whole, telling pytest to pick the tests whose function names hold the words
 (a word's spaces read as underscores); with no words, pytest lists the tests
-and nothing boots. Any `PYTEST_ADDOPTS` of your own still holds:
+and nothing boots. A script without that call, which the driver would run top
+to bottom, has no tests to pick, so `run-subtests` refuses it; every VM test
+is written for pytest. Any `PYTEST_ADDOPTS` of your own still holds:
 
 ```sh
 run-subtests vm-network-revives-units           # list its tests
 run-subtests vm-network-revives-units reload    # run those named, and what they need
 PYTEST_ADDOPTS=-x run-subtests vm-commits-are-signed terminal
 ```
-
-One older test, usb-wake, is still a script the driver runs top to bottom:
-one check and no subtests, so `run-subtests` has nothing in it to pick. It
-moves to pytest in its turn, and nothing new is written that way.
 
 A selection that picks no test fails the run, so a mistyped name can't pass
 for a proof. A failed assert says what each side held, and the run ends by

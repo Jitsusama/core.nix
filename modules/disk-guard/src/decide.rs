@@ -223,6 +223,21 @@ pub fn overloaded(pressure: Pressure) -> bool {
         .any(|&stall| stall >= OVERLOAD)
 }
 
+/// The share of the last minute, in percent, all tasks may stall at once
+/// on memory, and on the disk, before a listing of a store short of nearly
+/// full waits. On 23 November listings of 10 to 15 minutes ran at io full
+/// 17 to 36 over the minute, beside sessions that already stalled; these
+/// are the bars the machine's other heavy work starts under.
+const ROOMY_MEMORY: f64 = 5.0;
+const ROOMY_IO: f64 = 10.0;
+
+/// Whether the machine has room for a listing of the store that can wait:
+/// all tasks stalled at once over the last minute no more than
+/// `ROOMY_MEMORY` on memory and `ROOMY_IO` on the disk.
+pub fn roomy(pressure: Pressure) -> bool {
+    pressure.memory.full_minute <= ROOMY_MEMORY && pressure.io.full_minute <= ROOMY_IO
+}
+
 /// Whether tasks stall on the disk and on memory little enough for work
 /// that can be skipped altogether, such as deduplicating the store.
 pub fn calm(pressure: Pressure) -> bool {

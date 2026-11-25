@@ -35,7 +35,9 @@
 //! call-transcripts score MODEL_DIR SET [CEILING]
 //!     write down each meeting in SET as a call and print the share of
 //!     its words each side got wrong, written down and heard alone
-//!     (score.rs); fail when the set's, written down, is above CEILING
+//!     (score.rs); fail when the set's, written down, is above CEILING,
+//!     or when the far end's word times stray from their takes or their
+//!     speech (times.rs)
 //! call-transcripts mark TRANSCRIPT.md REFERENCE [MINE]
 //!     print the share of its words each side of a call's file got wrong
 //!     against REFERENCE, a reference as a meeting's is, whose speaker
@@ -98,6 +100,7 @@ mod score;
 mod split;
 mod summarizer;
 mod summary;
+mod times;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

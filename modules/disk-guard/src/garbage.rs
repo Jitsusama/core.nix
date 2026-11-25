@@ -246,49 +246,47 @@ pub fn parse(json: &str) -> Result<Vec<Dead>, String> {
 
 /// How many paths one `nix path-info` is asked about, so its arguments
 /// stay well inside what the kernel lets a program be given.
-const CHUNK: usize = 1000;
+pub(crate) const CHUNK: usize = 1000;
 /// How long listing the dead may take: about a minute on a store of
 /// 240 GiB of garbage, and far longer at idle priority on a busy disk.
-const LIST_TIMEOUT: Duration = Duration::from_mins(30);
+pub(crate) const LIST_TIMEOUT: Duration = Duration::from_mins(30);
 /// How long describing one chunk may take.
 const DESCRIBE_TIMEOUT: Duration = Duration::from_mins(5);
 /// The most of a command's output read: a listing of 12,000 paths is
 /// 4 MiB, and a chunk's description about 3.
 const OUTPUT_LIMIT: usize = 256 << 20;
 
-/// Every dead path, through `nix-store --gc --print-dead` beside `nix`,
-/// and what each weighs and refers to, through `nix path-info`. With
-/// `idle`, at idle priority. A path that died since is found at the next
-/// listing; one that came alive is refused by Nix when it's deleted.
+/// Every dead path in the store at `store`, and what each weighs and
+/// refers to, through `nix path-info` beside `nix`. With `idle`, at idle
+/// priority. A path that died since is found at the next listing; one
+/// that came alive is refused by Nix when it's deleted, since deleting
+/// takes Nix's lock and looks again.
 ///
-/// The listing asks for no experimental features. With content-addressed
+/// The dead are worked out without Nix's garbage collector lock
+/// (`crate::dead`), and asked of `nix-store --gc --print-dead` only
+/// where Nix keeps the outputs of what's live, or can't say whether it
+/// does. The lock is the one every other collection waits on,
+/// Nix's own near `min-free` included, and the listing held it for up to
+/// `LIST_TIMEOUT`: on 24 November a laptop's ran 24 minutes, with its
+/// builds and tests waiting on the lock behind it.
+///
+/// The locked listing asks for no experimental features. With content-addressed
 /// derivations on and `keep-outputs`, Nix parses and hashes every
 /// derivation the trace meets to look up its outputs' realisations: on 7
 /// November a store of 101,000 paths, none of them floating or impure,
 /// took 675 s of CPU to list that way and 137 s without. A floating
 /// output that only a realisation keeps is listed dead, and Nix, deleting
 /// with the machine's own settings, refuses it as alive.
-pub fn list(nix: &Path, idle: bool) -> Result<Vec<Listed>, String> {
-    let store = nix.with_file_name("nix-store");
-    let listed = ran(
-        &[
-            store.as_os_str(),
-            "--option".as_ref(),
-            "experimental-features".as_ref(),
-            "".as_ref(),
-            "--gc".as_ref(),
-            "--print-dead".as_ref(),
-        ],
-        LIST_TIMEOUT,
-        idle,
-    )?;
+pub fn list(nix: &Path, store: &Path, idle: bool) -> Result<Vec<Listed>, String> {
+    let listed = crate::dead::dead(nix, store, idle)?;
     // Nix's own temporary files in the store's directory, its .tmp-link-s
     // and the tmp- folders it adds a path through, are listed too and gone
     // a moment later, and asking about one fails the whole listing: on 9
     // November the system guard's failed 44 times so. A store path's name
     // starts with its hash, never a dot or tmp-.
     let paths: Vec<&str> = listed
-        .lines()
+        .iter()
+        .map(String::as_str)
         .filter(|line| line.starts_with('/'))
         .filter(|line| {
             Path::new(line).file_name().is_some_and(|name| {

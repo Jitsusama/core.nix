@@ -158,6 +158,7 @@
     "launcher/Presented.js"
     "launcher/Seen.js"
   ];
+  "launcher/EmojiSearch.js" = [ "Fuzzy.js" ];
   "launcher/Explainer.qml" = [ "launcher/Explaining.js" ];
   "launcher/Explaining.js" = [ "launcher/OnSelection.js" ];
   "launcher/Firmware.qml" = [ "launcher/Seen.js" ];

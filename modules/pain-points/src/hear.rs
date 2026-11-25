@@ -358,7 +358,7 @@ pub fn hear(
                 || h.closed_at.is_some_and(|at| at >= ears.at - DAY_MS)
         })
         .collect();
-    let ledgers: Vec<String> = ears
+    let ledgers: Vec<heard::Line> = ears
         .ledgers
         .iter()
         .flat_map(|path| heard::ledger(&fs::read_to_string(path).unwrap_or_default()))
@@ -419,9 +419,11 @@ pub fn hear(
         landed::keep_read(&ears.state, read)?;
     }
     // A listener nobody set up writes nothing of his.
+    let (offset_s, from) = (ears.offset_s, ears.misses_from);
+    let owning = missed::owning(&ledgers, &routes);
     let ledgered = routes
         .sends()
-        .then(|| missed::write(&ears.misses, &kept, ears.offset_s, ears.misses_from).err())
+        .then(|| missed::write(&ears.misses, &kept, &owning, offset_s, from).err())
         .flatten();
     let mut hour = hour_of(&kept, ears.at);
     hour.unclosed = stood.unclosed;
@@ -449,7 +451,7 @@ fn hear_logs(
     ears: &Ears,
     following: &mut BTreeMap<String, Following>,
     kept: &mut Vec<Heard>,
-    (ledgers, cells, routes): (&[String], &BTreeMap<String, Cell>, &Routes),
+    (ledgers, cells, routes): (&[heard::Line], &BTreeMap<String, Cell>, &Routes),
     since: i64,
 ) {
     let mut present = Vec::new();

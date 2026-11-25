@@ -1450,14 +1450,7 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
             writeback: own.writeback,
         });
     }
-    ranks.fitting.held.clone_from(ranks.holding.scopes());
-    fit_floors(
-        &mut ranked,
-        windows.prefixes,
-        &ranks.hosts,
-        &mut ranks.fitting,
-        now,
-    );
+    fit_ranked(&mut ranked, windows.prefixes, ranks, now);
     let control =
         kitty::me().map(|uid| PathBuf::from(format!("/run/user/{uid}/systemd/user.control")));
     give_ranks(ranked, &mut ranks.hosts, control.as_deref());
@@ -1830,8 +1823,38 @@ struct Fitting {
     overrun: HashSet<String>,
     /// Each window's claim at its peak within the minute.
     peaks: budget::Peaks,
-    /// The windows the sorter holds, as of the last look.
+    /// The scopes the sorter floors itself, as of this look.
+    floored: Floored,
+}
+
+/// The scopes the sorter floors itself: the windows it holds, each with its
+/// pi, and those keep.rs keeps. Both claim first within the windows' joint
+/// cap, those it holds ahead of those it keeps ([`claims`]): those it holds
+/// are up to twice [`focus::MOST`] scopes, and more while a give-back
+/// fails, and those it keeps are every window running a pi, so neither is
+/// bounded by its count.
+#[derive(Debug, Default)]
+struct Floored {
     held: HashSet<PathBuf>,
+    /// Those keep.rs keeps, by unit.
+    kept: HashSet<String>,
+}
+
+impl Floored {
+    /// Takes this look's floors from what `holding` holds and `keeping`
+    /// keeps.
+    fn take(&mut self, holding: &holds::Holding, keeping: &keep::Keeping) {
+        self.held.clone_from(holding.scopes());
+        self.kept = keeping.units().map(str::to_owned).collect();
+    }
+
+    /// Whether keep.rs keeps `scope`'s floor.
+    fn keeps(&self, scope: &Path) -> bool {
+        scope
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| self.kept.contains(name))
+    }
 }
 
 impl Fitting {
@@ -1886,7 +1909,7 @@ fn claims(
     low: u64,
     prefixes: &[String],
     mine: &[&Path],
-    held: &HashSet<PathBuf>,
+    floored: &Floored,
     peaks: &mut budget::Peaks,
     now: std::time::Instant,
 ) -> (u64, Vec<(String, u64)>) {
@@ -1906,16 +1929,24 @@ fn claims(
         let name = path.file_name()?.to_string_lossy().into_owned();
         Some((name, holds::current(path)?, memory_low(path)?))
     };
-    // A scope counts as a window by its name alone, and the sorter holds no more than
-    // focus::MOST windows at focus::FLOOR each, so what the windows claim past that is claimed
-    // as a stray's is, after the units Joel is at, and isn't held: an agent naming scopes as
-    // windows and asking for max would otherwise take their floors. Each window claims what it
-    // held at its peak within the minute, so a window paging out doesn't hand the units room it
-    // takes back a look later, but never past its floor now: one the sorter has let go claims
-    // its new floor at once. The windows the sorter holds take the room first, so scopes only
-    // named as windows can't push them out of it, then the rest by name, so a look's order is
-    // the next one's.
-    windows.sort_by_key(|path| (!held.contains(path), path.clone()));
+    // Every scope counts as a window by its name, and together they claim no more than
+    // focus::MOST windows at focus::FLOOR, the share the slice's floor is sized for: first
+    // those the sorter holds, a window and its pi each, so up to twice focus::MOST and more
+    // while a give-back fails; then those keep.rs keeps, every window running a pi; then those
+    // named alone; each by name so a look's order is the next one's. Past that they claim as
+    // strays do, after the units Joel is at, and aren't held: an agent naming scopes as
+    // windows and asking for max would otherwise take the units' floors, or push the sorter's
+    // own floors out. Each window claims what it held at
+    // its peak within the minute, so a window paging out doesn't hand the units room it takes
+    // back a look later, but never past its floor now: one the sorter has let go claims its
+    // new floor at once.
+    windows.sort_by_cached_key(|path| {
+        (
+            !floored.held.contains(path),
+            !floored.keeps(path),
+            path.clone(),
+        )
+    });
     let mut left = focus::FLOOR.saturating_mul(u64::try_from(focus::MOST).unwrap_or(u64::MAX));
     let mut kept = Vec::new();
     let mut strays: Vec<(String, u64)> = Vec::new();
@@ -1924,10 +1955,10 @@ fn claims(
             continue;
         };
         let claims = current.min(floor);
-        let held = peaks
+        let peak = peaks
             .hold(&path.display().to_string(), claims.min(focus::FLOOR), now)
-            .min(floor)
-            .min(left);
+            .min(floor);
+        let held = peak.min(left);
         left -= held;
         kept.push(held);
         strays.push((name, claims.saturating_sub(held)));
@@ -1941,6 +1972,18 @@ fn claims(
             .map(|(name, current, floor)| (name, current.min(floor))),
     );
     (room, strays)
+}
+
+/// Fits the `ranked` units' floors ([`fit_floors`]) beside the scopes the
+/// sorter floors itself as `ranks` holds and keeps them this look.
+fn fit_ranked(
+    ranked: &mut [Ranked],
+    prefixes: &[String],
+    ranks: &mut Ranks,
+    now: std::time::Instant,
+) {
+    ranks.fitting.floored.take(&ranks.holding, &ranks.keeping);
+    fit_floors(ranked, prefixes, &ranks.hosts, &mut ranks.fitting, now);
 }
 
 /// Fits the floors the `ranked` units would be given into what each one's
@@ -1991,7 +2034,7 @@ fn fit_floors(
             low,
             prefixes,
             &paths,
-            &fitting.held,
+            &fitting.floored,
             &mut fitting.peaks,
             now,
         );
@@ -2227,13 +2270,17 @@ fn unslotted_session(
         return None;
     }
     // The words are the process's own to choose, so neither starts a
-    // journal line of its own nor fills it.
+    // journal line of its own nor fills it: the cap counts what the journal
+    // gets, escapes and all, and stops before an escape it can't fit whole.
     let said = |word: &str| {
-        word.chars()
-            .take(SAID_MOST)
-            .collect::<String>()
-            .escape_debug()
-            .to_string()
+        let mut said = String::new();
+        for escaped in word.chars().map(|char| char.escape_debug().to_string()) {
+            if said.chars().count() + escaped.chars().count() > SAID_MOST {
+                break;
+            }
+            said.push_str(&escaped);
+        }
+        said
     };
     Some((said(&key), said(&session)))
 }
@@ -2242,32 +2289,50 @@ fn unslotted_session(
 /// characters: a session is a 36-character UUID.
 const SAID_MOST: usize = 64;
 
+/// How long every look must find a session unslotted before it's said.
+const UNSLOTTED_FOR: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// The unslotted sessions the looks before found, each a host's key and a
 /// session.
 #[derive(Default)]
 struct Unslotted {
-    /// Those the last look found.
-    last: HashSet<(String, String)>,
+    /// Those the last look found, each with when the looks first found it,
+    /// every look since finding it too.
+    last: HashMap<(String, String), std::time::Instant>,
     /// Those said, and found by every look since.
     said: HashSet<(String, String)>,
 }
 
 impl Unslotted {
-    /// From this look's `now`, the sessions to say are unslotted and those
-    /// said before that no longer are. A session is said at its second
-    /// look in a row, as [`focus::says_alone`] says a window, so a slot
-    /// read as the host rewrites it isn't said; and once, until it clears.
-    fn look(&mut self, now: Vec<(String, String)>) -> UnslottedSaid {
-        let now: HashSet<(String, String)> = now.into_iter().collect();
+    /// From this look's `now`, taken `at`, the sessions to say are
+    /// unslotted and those said before that no longer are. A session is
+    /// said once every look has found it for [`UNSLOTTED_FOR`], so a slot
+    /// read as the host rewrites it isn't said, however fast marks bring
+    /// looks; and once, until it clears.
+    fn look(&mut self, now: Vec<(String, String)>, at: std::time::Instant) -> UnslottedSaid {
+        let now: HashMap<(String, String), std::time::Instant> = now
+            .into_iter()
+            .map(|session| {
+                let since = self.last.get(&session).copied().unwrap_or(at);
+                (session, since)
+            })
+            .collect();
         let mut missing: Vec<_> = now
             .iter()
-            .filter(|session| self.last.contains(*session) && !self.said.contains(*session))
+            .filter(|(session, since)| {
+                at.duration_since(**since) >= UNSLOTTED_FOR && !self.said.contains(*session)
+            })
+            .map(|(session, _)| session.clone())
+            .collect();
+        let mut found: Vec<_> = self
+            .said
+            .iter()
+            .filter(|session| !now.contains_key(*session))
             .cloned()
             .collect();
-        let mut found: Vec<_> = self.said.difference(&now).cloned().collect();
         missing.sort();
         found.sort();
-        self.said.retain(|session| now.contains(session));
+        self.said.retain(|session| now.contains_key(session));
         self.said.extend(missing.iter().cloned());
         self.last = now;
         (missing, found)
@@ -2279,7 +2344,7 @@ type UnslottedSaid = (Vec<(String, String)>, Vec<(String, String)>);
 
 /// Says what this look found of the unslotted sessions `said` holds.
 fn say_unslotted(said: &mut Unslotted, now: Vec<(String, String)>) {
-    let (missing, found) = said.look(now);
+    let (missing, found) = said.look(now, std::time::Instant::now());
     for (key, session) in missing {
         eprintln!(
             "Ranking host {key} in place of session {session}'s conversation: no slot holds \
@@ -3386,6 +3451,9 @@ struct Doorway {
     elsewhere: Option<elsewhere::Elsewhere>,
     /// Where builds and jobs stand braked for a call (src/brake.rs).
     brake: brake::Brake,
+    /// Whether memory's pressure couldn't be read when last looked at, so
+    /// the pace's stall gate going off is said once, not every look.
+    unstalled: bool,
 }
 
 impl Doorway {
@@ -3396,6 +3464,7 @@ impl Doorway {
             calls: pw_dump.map(calls::Calls::follow),
             elsewhere: None,
             brake: brake::Brake::default(),
+            unstalled: false,
         }
     }
 }
@@ -3491,10 +3560,19 @@ fn watch_door(doorway: &mut Doorway, root: &Path, cgroup: Option<&str>, uptime: 
         return;
     };
     let now = std::time::Instant::now();
+    let stalled = door::stalled(&fs::read_to_string("/proc/pressure/memory").unwrap_or_default());
+    if stalled.is_none() && !doorway.unstalled {
+        eprintln!(
+            "Can't read memory's pressure from /proc/pressure/memory, so paced starts aren't \
+             held for a stall."
+        );
+    }
+    doorway.unstalled = stalled.is_none();
     let machine = door::Machine {
         total,
         free,
         calling: doorway.calls.as_mut().is_some_and(|calls| calls.on(now)),
+        stalled: stalled.unwrap_or(0.0),
     };
     let read: Vec<(u32, u64, String, PathBuf)> = real_time::processes_under(&cgroup)
         .into_iter()
@@ -3537,6 +3615,14 @@ fn watch_door(doorway: &mut Doorway, root: &Path, cgroup: Option<&str>, uptime: 
                 door::tell(pid, machine);
                 let call = if machine.calling { ", a call on" } else { "" };
                 eprintln!("Held {pid} at the door, with {free} bytes available{call}.");
+            }
+            door::Done::Paced(pid) => {
+                door::tell_paced(pid);
+                eprintln!(
+                    "Held {pid} at the door for its turn, with starts paced and memory full {}% \
+                     over a minute.",
+                    machine.stalled
+                );
             }
             door::Done::LetIn(pid) => eprintln!("Let {pid} in."),
             door::Done::Ranked(pid, high) => eprintln!(
@@ -3609,7 +3695,8 @@ mod tests {
             Some("kitty-1-4.scope") => vec![attach("a", "s1"), attach("a", "s7")],
             // A second window on s2, and a session spelled to start a journal line.
             Some("kitty-1-5.scope") => vec![attach("a", "s2"), attach("a", "x\nRanked")],
-            Some("mycelium-pi-x.scope") => vec![attach("d", "s5")],
+            // No slot holds s5 and a runs conversations apart, so only being a pi's keeps it out.
+            Some("mycelium-pi-x.scope") => vec![attach("a", "s5")],
             _ => Vec::new(),
         };
         let units: Vec<PathBuf> = [
@@ -3667,15 +3754,63 @@ mod tests {
                 ("a".to_owned(), "x\\nRanked".to_owned())
             ],
             "only sessions no slot holds are found, s2 once for its two windows, and a session's \
-             newline can't start a journal line; s1 runs in its unit, and s7's slot holds it"
+             newline can't start a journal line; s1 runs in its unit, s7's slot holds it, and \
+             s5's viewer is a pi's own agent"
         );
     }
 
     #[test]
-    fn an_unslotted_session_is_said_at_its_second_look_once_and_again_when_it_clears() {
+    fn a_said_session_is_cut_to_its_most_once_escaped_and_never_inside_an_escape() {
+        let session = "\n".repeat(SAID_MOST);
+        let words = ["mycelium", "attach", "--host", "a", "--session", &session]
+            .map(str::to_owned)
+            .to_vec();
+        let names: HashSet<&str> = ["pi-conversation-a@s1.service"].into_iter().collect();
+        let slots = std::env::temp_dir().join(format!("no-slots-{}", std::process::id()));
+        let conversations = Some(("pi-conversation-", slots.as_path()));
+        let (_, said) = unslotted_session(&words, "pi-host-a.service", conversations, &names)
+            .expect("no slot holds the session");
+        assert_eq!(
+            said,
+            "\\n".repeat(SAID_MOST / 2),
+            "the journal gets at most {SAID_MOST} characters, in whole escapes"
+        );
+    }
+
+    #[test]
+    fn an_unslotted_session_is_said_only_once_it_has_stayed_so_for_a_while() {
+        let x = ("a".to_owned(), "x".to_owned());
+        let mut unslotted = Unslotted::default();
+        let start = std::time::Instant::now();
+        let at = |millis| start + std::time::Duration::from_millis(millis);
+        let looks: Vec<_> = [0, 1, 2, 4_999, 5_000, 6_000]
+            .into_iter()
+            .map(|millis| unslotted.look(vec![x.clone()], at(millis)))
+            .collect();
+        let none = (vec![], vec![]);
+        assert_eq!(
+            looks,
+            [
+                none.clone(),
+                none.clone(),
+                none.clone(),
+                none.clone(),
+                (vec![x.clone()], vec![]),
+                none,
+            ],
+            "looks milliseconds apart, as a burst of marks makes them, could all fall in one \
+             rewrite of a slot, so a session is said only once every look has found it for \
+             {UNSLOTTED_FOR:?}"
+        );
+    }
+
+    #[test]
+    fn an_unslotted_session_is_said_once_and_again_when_it_clears() {
         let x = ("a".to_owned(), "x".to_owned());
         let y = ("a".to_owned(), "y".to_owned());
         let mut unslotted = Unslotted::default();
+        let start = std::time::Instant::now();
+        let mut look = 0;
         let looks: Vec<_> = [
             vec![x.clone()],
             vec![x.clone(), y.clone()],
@@ -3685,7 +3820,10 @@ mod tests {
             vec![x.clone()],
         ]
         .into_iter()
-        .map(|now| unslotted.look(now))
+        .map(|now| {
+            look += 1;
+            unslotted.look(now, start + UNSLOTTED_FOR * look)
+        })
         .collect();
         let none = (vec![], vec![]);
         assert_eq!(
@@ -3698,8 +3836,8 @@ mod tests {
                 none,
                 (vec![x.clone()], vec![]),
             ],
-            "a session is said at its second look in a row and once, said cleared when it \
-             goes, and said again when it comes back; y, for one look, is never said"
+            "a session found by looks spanning {UNSLOTTED_FOR:?} is said once, said cleared \
+             when it goes, and said again when it comes back; y, for one look, is never said"
         );
     }
 
@@ -5229,25 +5367,32 @@ mod tests {
     }
 
     #[test]
-    fn the_windows_the_sorter_holds_are_held_first_and_scopes_named_as_windows_after() {
+    fn within_the_cap_held_floors_claim_first_then_kept_ones_then_scopes_only_named() {
         const MIB: u64 = 1 << 20;
-        let slice = slice_with(
-            "fit-held-first",
-            8192 * MIB,
-            &[
-                ("kitty-1-1.scope", 2048 * MIB, "max"),
-                ("kitty-1-2.scope", 2048 * MIB, "max"),
-                ("kitty-1-3.scope", 2048 * MIB, "max"),
-                ("kitty-1-4.scope", 2048 * MIB, "max"),
-            ],
-        );
-        let held: HashSet<PathBuf> = [slice.join("kitty-1-4.scope")].into();
-        let (_, strays) = claims(
+        let held = ["kitty-1-1.scope", "mycelium-pi-1.scope"];
+        let named = [
+            "kitty-0-1.scope",
+            "kitty-0-2.scope",
+            "kitty-0-3.scope",
+            "kitty-0-4.scope",
+        ];
+        let children: Vec<(&str, u64, &str)> = held
+            .iter()
+            .map(|&name| (name, 1024 * MIB, "max"))
+            .chain(named.iter().map(|&name| (name, 2048 * MIB, "max")))
+            .chain([("kitty-1-9.scope", 512 * MIB, "536870912")])
+            .collect();
+        let slice = slice_with("fit-floored-first", 32768 * MIB, &children);
+        let floored = Floored {
+            held: held.iter().map(|name| slice.join(name)).collect(),
+            kept: ["kitty-1-9.scope".to_owned()].into(),
+        };
+        let (room, strays) = claims(
             &slice,
-            8192 * MIB,
-            &["kitty-".to_owned()],
+            32768 * MIB,
+            &["kitty-".to_owned(), "mycelium-pi-".to_owned()],
             &[],
-            &held,
+            &floored,
             &mut budget::Peaks::default(),
             std::time::Instant::now(),
         );
@@ -5258,9 +5403,130 @@ mod tests {
             .map(|(name, _)| name.as_str())
             .collect();
         assert_eq!(
+            room,
+            32768 * MIB - focus::FLOOR * focus::MOST as u64,
+            "the windows together took the units Joel is at more than the cap"
+        );
+        // 2 GiB held and 512 MiB kept leave the named 3.5 GiB of the cap: all
+        // of the first, 1.5 GiB of the second, and none of the rest.
+        assert_eq!(
             past,
-            ["kitty-1-3.scope"],
-            "a window the sorter holds was left past the cap, or the rest weren't taken by name"
+            ["kitty-0-2.scope", "kitty-0-3.scope", "kitty-0-4.scope"],
+            "a held window's floor or its pi's didn't come first within the cap, the one keep.rs \
+             keeps didn't come next, or scopes only named as windows weren't capped by name"
+        );
+    }
+
+    // Held scopes are a window and its pi, so up to twice focus::MOST, and
+    // more while a give-back fails: outside the cap, six at their floor took
+    // 12 GiB ahead of the units Joel is at, against a cap of 6 sized to fit
+    // the slice's floor.
+    #[test]
+    fn held_floors_past_the_cap_claim_after_the_units_joel_is_at() {
+        const MIB: u64 = 1 << 20;
+        let held = [
+            "kitty-1-1.scope",
+            "mycelium-pi-1.scope",
+            "kitty-1-2.scope",
+            "mycelium-pi-2.scope",
+            "kitty-1-3.scope",
+            "mycelium-pi-3.scope",
+        ];
+        let children: Vec<(&str, u64, &str)> =
+            held.iter().map(|&name| (name, 2048 * MIB, "max")).collect();
+        let slice = slice_with("fit-held-capped", 32768 * MIB, &children);
+        let floored = Floored {
+            held: held.iter().map(|name| slice.join(name)).collect(),
+            kept: HashSet::new(),
+        };
+        let (room, strays) = claims(
+            &slice,
+            32768 * MIB,
+            &["kitty-".to_owned(), "mycelium-pi-".to_owned()],
+            &[],
+            &floored,
+            &mut budget::Peaks::default(),
+            std::time::Instant::now(),
+        );
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert_eq!(
+            room,
+            32768 * MIB - focus::FLOOR * focus::MOST as u64,
+            "held floors took the units Joel is at more than the windows' cap"
+        );
+        let past: u64 = strays.iter().map(|(_, claim)| claim).sum();
+        assert_eq!(
+            past,
+            focus::FLOOR * focus::MOST as u64,
+            "what the held floors claim past the cap isn't claimed after the units"
+        );
+    }
+
+    // keep.rs floors every window running a pi, however many there are, so
+    // what it keeps can't claim ahead of the units Joel is at without a
+    // bound: on 21 November 17 of his 20 windows ran a pi.
+    #[test]
+    fn the_floors_keep_rs_keeps_claim_first_within_the_cap_however_many() {
+        const MIB: u64 = 1 << 20;
+        let kept: Vec<String> = (10..30).map(|n| format!("kitty-2-{n}.scope")).collect();
+        let children: Vec<(&str, u64, &str)> = kept
+            .iter()
+            .map(|name| (name.as_str(), 512 * MIB, "536870912"))
+            .chain([("kitty-0-1.scope", 2048 * MIB, "max")])
+            .collect();
+        let slice = slice_with("fit-kept-capped", 32768 * MIB, &children);
+        let floored = Floored {
+            held: HashSet::new(),
+            kept: kept.iter().cloned().collect(),
+        };
+        let (room, strays) = claims(
+            &slice,
+            32768 * MIB,
+            &["kitty-".to_owned()],
+            &[],
+            &floored,
+            &mut budget::Peaks::default(),
+            std::time::Instant::now(),
+        );
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        let past: Vec<&str> = strays
+            .iter()
+            .filter(|(_, claim)| *claim > 0)
+            .map(|(name, _)| name.as_str())
+            .collect();
+        assert_eq!(
+            room,
+            32768 * MIB - focus::FLOOR * focus::MOST as u64,
+            "the floors keep.rs keeps took the units Joel is at more than the windows' cap"
+        );
+        assert_eq!(
+            past.len(),
+            9,
+            "twelve kept floors fit the cap, and the rest and the named scope claim after the \
+             units: {past:?}"
+        );
+        assert!(
+            past.contains(&"kitty-0-1.scope"),
+            "a scope only named as a window came before the floors keep.rs keeps: {past:?}"
+        );
+    }
+
+    #[test]
+    fn a_look_fits_the_floors_beside_what_the_sorter_holds_and_keeps_now() {
+        let mut ranks = Ranks::default();
+        let held = Path::new("/sys/fs/cgroup/agents.slice/mycelium-pi-1.scope");
+        let kept = Path::new("/sys/fs/cgroup/agents.slice/kitty-1-9.scope");
+        let other = Path::new("/sys/fs/cgroup/agents.slice/kitty-0-1.scope");
+        ranks.holding.done(held, Some(0));
+        ranks.keeping.done("kitty-1-9.scope", keep::Floor::Pi);
+        fit_ranked(&mut [], &[], &mut ranks, std::time::Instant::now());
+        assert!(
+            ranks.fitting.floored.held.contains(held) && ranks.fitting.floored.keeps(kept),
+            "a look fitted the floors without the scopes the sorter holds and keeps"
+        );
+        assert!(
+            !ranks.fitting.floored.held.contains(other) && !ranks.fitting.floored.keeps(other),
+            "a scope the sorter neither holds nor keeps was taken as one it floors"
         );
     }
 

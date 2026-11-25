@@ -256,7 +256,8 @@
     pi's sessions are those whose records name a process running on this boot since when they
     say, never found by a window's title, each with its window found by the app id it opened with,
     or else through the kitty it runs in, and gone once its record or its process is; and those to reopen are the last boot's until
-    put off, then those another machine carried here, newest first, never put off
+    put off, then those another machine carried here, newest first, never put off; and Reopen
+    Them All's lists given before niri says its screens count what they find gone as one walk
   '';
   a-shut-launcher-makes-no-document-rows = ''
     the launcher's Documents make no row while it's shut, as the clock's minute passes or the
@@ -1159,8 +1160,11 @@
     within its own lowest and highest clock, frees each to its full clock, refuses words it doesn't
     take, and holds nothing on a processor with no efficient cores
   '';
+  elsewhere-compiles-for-macos = ''
+    elsewhere and its tests compile for macOS, clean, read from Linux
+  '';
   elsewhere-passes-clippy = ''
-    clippy finds nothing in elsewhere or its tests
+    clippy finds nothing in elsewhere or its tests, on a Mac as on Linux
   '';
   elsewhere-reads-what-a-machine-declares = ''
     the machines and kinds of job a machine repository declares reach elsewhere's settings in the
@@ -1790,6 +1794,11 @@
     the jobs broker makes a scope only into agents' own work, for a process already an agent's and
     named by the kernel, refuses a status of anything not a unit's name, and knows no stop or start
   '';
+  jobs-sorter-knows-pi-units-by-their-names = ''
+    each pi host's unit and each conversation's that host.nix renders for a realm, on a machine
+    with the sorter, is named exactly as the sorter joins it: the name it is told to find that
+    kind by, then the realm and kind, and a conversation's slot after an @
+  '';
   jobs-sorter-passes-clippy = ''
     clippy finds nothing in the jobs sorter or its tests
   '';
@@ -1978,6 +1987,12 @@
   linux-builder-collects-only-what-it-is-asked = ''
     the Linux VM's collection, run for a collecting key, collects all that's dead, or at most the
     GiB asked, or nothing for free, prints the store's free bytes, and refuses anything else
+  '';
+  linux-builder-gives-up-on-a-guest-that-stops-answering = ''
+    the Mac's ssh to the Linux VM waits five minutes for a guest to greet it and, once in, gives
+    up after four asks 15 seconds apart go unanswered, each setting said once in the entry in any
+    case, indent or with =, so a build sent to a guest that stopped answering fails and frees its
+    locks; it reads the entry's settings, not ssh's acts or any file ssh reads before it
   '';
   linux-builder-lets-collecting-keys-only-collect = ''
     a Mac's Linux VM lets a collecting key in only restricted to its collection, never plainly as
@@ -2292,6 +2307,16 @@
     value where its line gives one and none where it doesn't, so a flag can't reach the node's
     service before the mycelium that reads it
   '';
+  mycelium-surfaces-stay-even = ''
+    every act Joel takes on his cells is on the mycelium command, a pi session, the map and the
+    launcher, or owed by a cell by a time, or waived with a reason: a file said to have it holds
+    its words and the locked mycelium's help says a command's, and an act the launcher's session
+    row or the map's cell drawer lists is one of the table's; a clean act passing, and a surface
+    left out, two standings, a missing file or word, a help that fails, an owing with no cell,
+    time or why, a waiver with no reason, an act naming no way to it, an act a surface lists that
+    the table doesn't, no longer lists or maps to no act, and a list read as holding none, each
+    failing first
+  '';
   mycelium-completes-its-teams-in-zsh = ''
     mycelium swarm completes in zsh with its acts and the teams the line's realm's node names, a
     team after an act, an act after a team, and nothing for the words said to one
@@ -2380,7 +2405,8 @@
     from the balance's latest reading, none when it is past three minutes old, has no time or is
     not served, what a receptor fed a cell, kept for ten minutes and up to a minute ahead, the
     map drawing again when the first balance or feeding ends, who started each cell from its
-    forage, none where no forage is served and none for a cell started by itself or by nobody,
+    own record on any machine, else its forage, none where neither says and none for a cell
+    started by itself or by nobody,
     a network the node sets within none growing out of the one whose cells started more of its
     cells than any other, a tie going by name, where the node sets a network standing, no start
     from inside it counting, of two that started each other's cells the stronger the trunk and
@@ -2395,13 +2421,16 @@
     its day only off the reading's and a lease's time left, and how each set of cells and each
     machine stands and why, worst first, its form, its share and the balance's flags, what each
     set of cells, receptor and cell is doing and how much of the talk asked or found something,
-    what each spent today, most first, ten to a list and the rest counted and summed, and what
-    waits on each cell and what holds stand, oldest first, said as the page names each
+    what each spent today, most first, ten to a list and the rest counted and summed, what
+    waits on each cell and what holds stand, oldest first, said as the page names each, and a
+    cell drawer's acts in order, Go to It first, and its question whole, paragraphs and lines kept
   '';
   mycelium-site-reads-live = ''
     the mycelium map, served by the local sites' server beside a stand-in node through the node feed
     as home.nix declares it for a machine in a realm, reads live in headless Chromium: the realm
-    drawn and counted, a cell moving and one going, broken while the node is away with the realm
+    drawn and counted, its networks, a branch and lines across them in one window that opens a cell
+    clicked, a cell moving and one going, two cells sharing a title moving with a question waiting
+    on them, broken while the node is away with the realm
     kept drawn and live once it's back, stale once the server goes with the realm kept, a record's
     words drawn as words and never as markup, what each spent today listed most first in Now, a
     machine's drawer and a network's, what waits on a cell and what holds stand said as the node
@@ -2411,8 +2440,11 @@
     feeding of a cell drawn with both drawers saying it and leaving once its ten minutes end or the
     node drops it, a network grown out of another as its branch once a forage says a cell of the
     other started one of its own, its hub laid out again as a branch, both drawers saying so and
-    the branch going with the forage, the builders standing under the machines in rounded boxes,
+    the branch going with the forage, and grown across machines once a cell's own record names
+    its starter on another, going once it stops, the builders standing under the machines in
+    rounded boxes,
     dashed while taking no builds, their words read unopened, opened by link and let go by m,
+    an asking cell's drawer saying its question whole and leading with Go to It, which g follows,
     a key of each
     kind keys.ts decides answering (the keys dialog, find and a letter typed into it, n and N,
     Escape in its order, the walk, the machines, Now and Escape closing it, the view zoomed in
@@ -2471,16 +2503,21 @@
     the worker machines it made as that file in the Nix store, rather than one in the account's
     config folder, its fields exactly those the locked mycelium's lender parses the file into, by
     name and type, from structs that derive Deserialize with only deny_unknown_fields over them
-    and no field attribute but default, which a scan shown to refuse eight other layouts reads,
-    and the lender joins a relative upstream onto its runtime folder; a budget with no key is
-    written with none, a further realm's node and a machine lending nothing are given no lend, a
-    Mac's lend is refused by a message naming it and its node given none,
-    plain prefixes and dotted paths and key packages are taken, and a lend with no realm, naming a
-    budget it lacks, with a prefix that is empty, starts another, either way round, or is named
-    twice, a key that is empty or whose program is outside the store, climbs out of it with .. or
-    is named as text no package keeps alive, a whole upstream or one with a dot part, a host with
-    a scheme, a header holding a space, or a path of / or /* alone or holding .. is refused, each
-    by its own message or the option's type
+    and no field attribute but default, which a scan shown to refuse eleven other layouts reads,
+    and the lender joins a relative upstream onto its runtime folder; the budget kinds the lend
+    takes, and the one it writes where none is said, are the lowercased variants of the lender's
+    Kind and the one marked default, read from an enum that derives Deserialize with one lowercase
+    rename over it and plain variants, by a scan shown to refuse ten other layouts; a lend
+    leaving a machine's also and a budget's kind unsaid is written with them filled in as the
+    lender takes them, beside a forge budget a machine names; a budget with no key is written with
+    none, a further realm's node and a machine lending nothing are given no lend, a Mac's lend is
+    refused by a message naming it and its node given none, plain prefixes and dotted paths and
+    key packages are taken, and a lend with no realm, naming a budget it lacks, with a prefix that
+    is empty, starts another, either way round, or is named twice, a key that is empty or whose
+    program is outside the store, climbs out of it with .. or is named as text no package keeps
+    alive, a whole upstream or one with a dot part, a host with a scheme, a header holding a
+    space, a budget of a kind the lender lacks, or a path of / or /* alone or holding .. is
+    refused, each by its own message or the option's type
   '';
   mycelium-node-reads-its-declaration-from-the-store = ''
     each realm's mycelium node, on NixOS and nix-darwin, is given what its machine declares as a
@@ -3319,10 +3356,11 @@
   pi-conversations-run-apart = ''
     each realm-kind pi host gets the template pi-conversation-KEY@.service its conversations'
     own processes start from, run by the host's program with --child for the host's key, its
-    socket in the slot systemd names under the host's runtime folder, with the host's
-    environment, proof, node, frame flag and SSH agent, the browser its account names in
-    place of Chromium where the machine names one, but a plain pi's pools, its realm's
-    conversation heap, its inspector shut and the variables that load code cleared, glibc's
+    socket in the slot systemd names under the host's runtime folder, with the host's proof,
+    node, frame flag and SSH agent, and the host's environment and the browser its account
+    names in place of Chromium where the machine names one, each of those two with its % as
+    written, but a plain pi's pools, its realm's conversation heap, its inspector shut and the
+    variables that load code cleared, glibc's
     trim threshold fixed at 128 KiB beside its realm's own allocator tuning, unless the realm
     names its own threshold there or in glibc's older variable, whichever of the two neither
     the realm nor the trim sets dropped from the unit, the realm's tuning kept for its hosts too, in
@@ -3337,7 +3375,8 @@
     inspector shut to SIGUSR1 and opened or undone by none of its options, started plainly or
     through env, with just the eight variables that load code into it, as
     pi-hosts-refuse-code-loading-variables names them, and the TPM agent's cleared, ready once it
-    says so, in agents.slice with its realm's environment and its folders first on its PATH, left
+    says so, in agents.slice with its realm's environment as written, a % and a quote in it
+    included, and its folders first on its PATH, left
     stopped after refusing what it was given and left running through a switch and through the
     kernel killing one of its commands for memory, watched by a two-minute watchdog whose abort is followed by a kill 10 s
     on, given 20 minutes to start and 150 s to park its conversations
@@ -3692,7 +3731,11 @@
     the one kept above it in its column, and a window already where it goes left there; and those
     that orchestrate are begun first, the next session only while the machine queue says the
     memory and the processors have room and the disk isn't stalling, a queue unread or gone quiet
-    holding nothing back
+    holding nothing back; and a Reopen Them All list counts what it finds gone in the walk's tally
+    while the walk may still find one of that tally's folders gone, else in one of its own, as
+    once only a window given up on or the harness's sessions keep the walk, each session once by
+    the id it was asked by, whichever list queued it, and told again as a list joins a tally
+    already told of one gone
   '';
   repos-is-told-every-realms-owners = ''
     the refresh's unit gives repos every realm's declared owners as one word that systemd passes
@@ -3737,9 +3780,9 @@
     clippy finds nothing in rhythm or its tests
   '';
   run-subtests-keeps-what-is-named = ''
-    run-subtests keeps a script's boot and helpers and only the subtests named, and runs a pytest
-    test whole with pytest picking the tests named, refusing a word pytest would read as more,
-    refuses a check that isn't a VM test rather than letting the quarantine call it a pass, and
+    run-subtests runs a VM test whole with pytest picking the tests named, refusing a word pytest
+    would read as more and a script that doesn't hand its tests to pytest, refuses a check that
+    isn't a VM test rather than letting the quarantine call it a pass, and
     lets a test's entries naming subtests excuse only a run whose every failed test they name
     between them, saying each one's owner
   '';
@@ -4079,6 +4122,14 @@
   '';
   surface-clock-passes-clippy = ''
     clippy finds nothing in surface-clock or its tests
+  '';
+  svgtext-probe-measures-a-drawings-words = ''
+    the web-design skill's drawing words probe, in headless Chromium over small pages of its own,
+    names light words on a shape whose fill fell back to paper in the dark look, as the forage
+    research page's diagram did on 15 November 2026, faint words on the page alone and dark words
+    faded by their group, holds its bar of 7:1 from both sides, passes words on a shape filled with
+    a colour the page defines and strong words, and names a drawing kept in an image 65 px wide
+    while passing one 64 px wide
   '';
   swayimg-accepts-its-configuration = ''
     swayimg draws a picture with the account's settings and the machine's fonts without a complaint,
@@ -4676,9 +4727,12 @@
     the launcher reads the open and ended quests the node serves, each with its own kind rather
     than the node's, lists open ones driving first, finds finished ones and ids, opens pi on one
     in the folder the harness names or goes to its session, offers the machines the node places on,
-    each saying how it stands as Machines does, and sees one made since, remaking only the quests
-    a change names and none a list written again leaves the same, and breaking each title into
-    the pieces A to Z reads once, again only when it changes
+    each saying how it stands as Machines does, makes a quest's row told while it's open elsewhere
+    ahead of the step back, after a frame, and one told while already there, making no row on the
+    step back, though none as an opening fills in at home or in another place, under a viewer's
+    command line, or shut with a step held, and sees one made since, remaking only the quests a change
+    names and none a list written again leaves the same, and breaking each title into the pieces
+    A to Z reads once, again only when it changes
   '';
   the-launcher-finds-the-queue = ''
     the launcher's queue names each job in words, running first, says its time against its last
@@ -4872,7 +4926,8 @@
   the-launcher-says-how-each-session-stands = ''
     a pi session offers its acts in their order, as the agents daemon says how it stands, its
     drawer's times are worded by the clock, the sessions beside the one drawn are found
-    to watch their drawers ahead, and what it landed is kept past its end
+    to watch their drawers ahead, what it landed is kept past its end, and what a Reopen Them
+    All walk found gone is said as one folder gone or many, then how many reopened
   '';
   pi-tells-of-its-sessions-as-an-agent-source = ''
     pi, as an agent source, sorts the node's sessions into those running, parked and closed this
@@ -5128,9 +5183,9 @@
     only that one's row again; and Now, stepped into For You since it last said what it shows,
     says it changed only where For You's rows differ from those the launcher shows; and the
     notices moving, by their rows or their history, each heard outright with nothing held, aren't
-    said outright as they move with For You held, so a session's notice updated just after Return
-    into For You isn't said as Return's act then, while with Desktop, Slack's notices or what's on
-    screen held right under Now they are said outright
+    said outright as they move with For You held, in that turn, a say put off to the next unread,
+    while with Desktop, Slack's notices or what's on screen held right under Now, Now's own
+    noticesMoved says them outright, though not with Mail there
   '';
   the-launcher-sums-within-a-key = ''
     the launcher's sums and measures, worked out by libqalculate in the shell's own process, take a
@@ -5285,20 +5340,25 @@
   '';
   the-mx-brio-is-the-seats = ''
     a graphical machine runs no relay on the MX Brio, has no udev rule marking a camera relayed
-    however it's assigned or taking the Brio's seat tag off as the sharing's rule does, as a
+    by any of udev's assignments or taking the Brio's seat tag off as the sharing's rule does, as a
     search with each pattern shown to find its line says, and starts at every boot, and at a
     switch bringing it in, the give-back of a Brio a relay held, so the seat opens the Brio itself
-    while its relay gives no picture
+    while no role takes its relay in
   '';
   the-mx-brio-give-back-never-fails = ''
     the MX Brio's give-back, run under set -e against a stand-in udevadm, replays both of the
     Brio's nodes and never another camera a relay holds, even of its maker or model number, never
-    triggers with no device, bounds each wait on udev to a second or more and to fit twice, and
-    every wait together once, within its unit's limit, ends well when udev refuses a replay, never
-    settles, loses the Brio's record or can't be read, adds the Brio back when its unit's timeout
-    ends the run, says a Brio unplugged midway is the seat's once plugged in, and says it gave the
-    Brio back only when udev's record of every node shows it tagged for the seat and unmarked,
-    warning with the way out otherwise
+    triggers with no device, bounds each wait on udev to a second or more and to fit three times,
+    and every wait together once, within its unit's limit, ends well when udev refuses a replay,
+    queues part of a refused add, never settles, hasn't handled the arrival yet, loses the Brio's
+    record or can't be read, naming the restart that looks again, adds the Brio back when its
+    unit's timeout ends the run, says a Brio unplugged midway is the seat's once plugged in, skips
+    a node unplugged as it's read, says it gave the Brio back only when udev's record of every node
+    shows it tagged for the seat and unmarked, and that the seat has it only when udev recorded
+    every camera, warning with the way out, named for its nodes, otherwise, waits out adds the boot
+    still has queued rather than calling them lost, points at udevadm's own words, which it keeps,
+    for an add it refused, and warns nothing, udevadm included, on a machine with no camera, a boot
+    whose adds came late or a run that went right
   '';
   a-reply-to-the-void-says-where-it-went = ''
     Joel's line to the void is found in the talk it began and read once replied whole, where the
@@ -6122,7 +6182,7 @@
     downloading and uploading and an app downloading, two calls both ways at 2.5 Mbit/s, one in
     the video tin and one to 443, lose at most a hundredth of their datagrams coming down before
     the client's socket while a call is on, the shaper holding the download to nine tenths of
-    the line's declared 90 Mbit/s while they run, its own queue dropping what the router's
+    the line's declared 75 Mbit/s while they run, its own queue dropping what the router's
     would, and letting it go straight in once the call ends; with the upload held
     at 6 Mbit/s and an app uploading beside its video call, the shaper drops at most a hundredth
     of the call going up; and while a call is on, an app's call to 443 goes in the video tin and
@@ -6701,6 +6761,11 @@
     the sleep, a power off stops it after a service that stops late, a machine reset while frozen
     in a sleep leaves its boot said asleep, and a machine killed as a reset
     kills it leaves its boot said cut short, its last second read kept
+  '';
+  vm-the-relay-waits-out-a-frameless-camera = ''
+    the shared cameras' relay, read by a client, makes a camera that never frames again after
+    90 s and ends 90 s later, saying so each time, and makes one whose frames stop again after
+    10 s, each time it stops, never ending it
   '';
   vm-root-builds-only-where-it-trusts = ''
     nix-offload's lines start as their own account with their settings, read the token the

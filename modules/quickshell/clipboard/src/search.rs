@@ -98,9 +98,11 @@ impl Index {
 
     /// What a search the shell asks is answered with: the keys of what it
     /// finds, best first, at most as many as it says or `FOUND`, the
-    /// letters of each name to bring forward, and its grade, 1 where the
-    /// best was found only loosely, as Fuzzy.js grades a match. A search of
-    /// another place is refused, so the shell matches its rows itself.
+    /// letters of each name to bring forward, how many it found in all, so
+    /// the launcher's head says those past the keys ("100 of 838"), and its
+    /// grade, 1 where the best was found only loosely, as Fuzzy.js grades a
+    /// match. A search of another place is refused, so the shell matches its
+    /// rows itself.
     pub fn answer(&self, said: &Value) -> Value {
         let (place, words) = (text(&said["place"]), text(&said["words"]));
         if place != PLACE {
@@ -119,6 +121,7 @@ impl Index {
         let typed = Typed::of(&read);
         let found = self.found(&read, &typed, said["within"].as_str());
         let grade = u8::from(found.first().is_some_and(|(score, _)| *score < WORTH_SCALE));
+        let all = found.len();
         let mut keys = Vec::new();
         let mut marks = Map::new();
         for (_, emoji) in found.into_iter().take(most) {
@@ -127,7 +130,7 @@ impl Index {
             }
             keys.push(emoji.key.as_str());
         }
-        json!({"words": words, "keys": keys, "marks": marks, "grade": grade})
+        json!({"words": words, "keys": keys, "marks": marks, "found": all, "grade": grade})
     }
 
     /// Every emoji what's typed finds, best first, those alike in score in
@@ -214,19 +217,36 @@ mod tests {
         Index::of(&records(list, &words()))
     }
 
+    /// A list's index, with its records, so what's found is named as its
+    /// row shows it rather than as the index folds it to match.
+    struct Listed {
+        index: Index,
+        records: Vec<Value>,
+    }
+
+    fn listed(list: &str) -> Listed {
+        let records = records(list, &words());
+        Listed {
+            index: Index::of(&records),
+            records,
+        }
+    }
+
     fn asked(index: &Index, words: &str) -> Value {
         index.answer(&json!({ "ask": "search", "place": "emoji", "words": words }))
     }
 
-    /// The names of what's found for `words`, best first.
-    fn names(index: &Index, words: &str) -> Vec<String> {
-        let answer = asked(index, words);
+    /// The names of what's found for `words`, best first, as each one's row
+    /// says it; a key with no row reads as none, which no name matches.
+    fn names(listed: &Listed, words: &str) -> Vec<String> {
+        let answer = asked(&listed.index, words);
         let names = |key: &Value| {
-            index
-                .emoji
+            listed
+                .records
                 .iter()
-                .find(|emoji| emoji.key == text(key))
-                .map(|emoji| emoji.named.trim().to_owned())
+                .map(|record| &record["row"])
+                .find(|row| row["key"] == *key)
+                .map(|row| text(&row["name"]).to_owned())
                 .unwrap_or_default()
         };
         answer["keys"]
@@ -240,8 +260,8 @@ mod tests {
     #[test]
     fn a_name_whole_comes_before_one_with_words_left_over() {
         assert_eq!(
-            names(&index(LIST), "cat"),
-            ["cat", "grinning cat with smiling eyes"]
+            names(&listed(LIST), "cat"),
+            ["Cat", "Grinning cat with smiling eyes"]
         );
     }
 
@@ -255,8 +275,8 @@ mod tests {
             "[\"😺\", \"grinning cat\", \"grin\", \"Smileys & Emotion\"]\n",
         );
         assert_eq!(
-            names(&index(tied), "grin"),
-            ["grinning face", "grinning cat"]
+            names(&listed(tied), "grin"),
+            ["Grinning face", "Grinning cat"]
         );
     }
 
@@ -265,9 +285,9 @@ mod tests {
         // "trex" starts no word of "t rex", and is found only as the
         // name's letters close up across its hyphen.
         let list = "[\"🦖\", \"T-Rex\", \"dinosaur\", \"Animals & Nature\"]\n";
-        let index = index(list);
-        let answer = asked(&index, "trex");
-        assert_eq!(names(&index, "trex"), ["t rex"], "{answer}");
+        let listed = listed(list);
+        let answer = asked(&listed.index, "trex");
+        assert_eq!(names(&listed, "trex"), ["T-Rex"], "{answer}");
         assert_eq!(answer["grade"], 1, "found only loosely: {answer}");
     }
 
@@ -286,9 +306,9 @@ mod tests {
 
     #[test]
     fn a_keyword_finds_what_an_emoji_means_marking_none_of_its_name() {
-        let index = index(LIST);
-        let answer = asked(&index, "tada");
-        assert_eq!(names(&index, "tada"), ["party popper"]);
+        let listed = listed(LIST);
+        let answer = asked(&listed.index, "tada");
+        assert_eq!(names(&listed, "tada"), ["Party popper"]);
         assert_eq!(answer["grade"], 0, "found by where a word starts: {answer}");
         assert_eq!(
             answer["marks"],
@@ -326,6 +346,16 @@ mod tests {
     }
 
     #[test]
+    fn it_says_how_many_it_found_past_those_it_answers() {
+        let answer = index(LIST).answer(&json!({
+            "ask": "search", "place": "emoji", "words": "grin", "most": 1,
+        }));
+        assert_eq!(answer["found"], 2, "{answer}");
+        let none = asked(&index(LIST), "zzzz");
+        assert_eq!(none["found"], 0, "{none}");
+    }
+
+    #[test]
     fn another_place_is_refused_so_the_shell_matches_its_own() {
         let answer =
             index(LIST).answer(&json!({ "ask": "search", "place": "clipboard", "words": "a" }));
@@ -345,38 +375,38 @@ mod tests {
             return;
         };
         let list = std::fs::read_to_string(&list).expect("EMOJI_LIST names a readable list");
-        let index = index(&list);
+        let listed = listed(&list);
         assert!(
-            index.emoji.len() >= 1800,
+            listed.index.emoji.len() >= 1800,
             "only {} emoji were listed",
-            index.emoji.len()
+            listed.index.emoji.len()
         );
         let firsts = [
-            ("fire", "fire"),
-            ("thumbs", "thumbs up"),
-            ("shrug", "person shrugging"),
-            ("clap", "clapping hands"),
-            ("red heart", "red heart"),
-            ("canada", "flag canada"),
-            ("tada", "party popper"),
-            ("party", "party popper"),
-            ("cat", "cat"),
-            ("rocket", "rocket"),
-            ("eyes", "eyes"),
-            ("skull", "skull"),
-            ("think", "thinking face"),
-            ("grin", "grinning face"),
-            ("joy", "face with tears of joy"),
-            ("100", "hundred points"),
-            ("warn", "warning"),
-            ("check", "check mark"),
-            ("smiling cat", "grinning cat with smiling eyes"),
-            ("kitty", "cat face"),
+            ("fire", "Fire"),
+            ("thumbs", "Thumbs up"),
+            ("shrug", "Person shrugging"),
+            ("clap", "Clapping hands"),
+            ("red heart", "Red heart"),
+            ("canada", "Flag: Canada"),
+            ("tada", "Party popper"),
+            ("party", "Party popper"),
+            ("cat", "Cat"),
+            ("rocket", "Rocket"),
+            ("eyes", "Eyes"),
+            ("skull", "Skull"),
+            ("think", "Thinking face"),
+            ("grin", "Grinning face"),
+            ("joy", "Face with tears of joy"),
+            ("100", "Hundred points"),
+            ("warn", "Warning"),
+            ("check", "Check mark"),
+            ("smiling cat", "Grinning cat with smiling eyes"),
+            ("kitty", "Cat face"),
         ];
         let wrong: Vec<String> = firsts
             .iter()
             .filter_map(|(query, first)| {
-                let found = names(&index, query);
+                let found = names(&listed, query);
                 (found.first().map(String::as_str) != Some(*first)).then(|| {
                     format!(
                         "{query:?} put first {:?}, not {first:?}",
@@ -388,13 +418,13 @@ mod tests {
         assert!(wrong.is_empty(), "{wrong:#?}");
         for query in ["tada", "party pop"] {
             assert_eq!(
-                asked(&index, query)["grade"],
+                asked(&listed.index, query)["grade"],
                 0,
                 "{query:?} is found by where words start"
             );
         }
         for query in ["zzzz", "qxj", "kitty litter box", "thup"] {
-            let found = names(&index, query);
+            let found = names(&listed, query);
             assert!(
                 found.is_empty(),
                 "{query:?} found {found:?}, but nothing should"

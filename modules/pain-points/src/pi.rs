@@ -142,6 +142,8 @@ pub struct Log {
     /// after the ask is pi's.
     #[serde(default)]
     pub compacting: Option<i64>,
+    /// Where his turn stands after an error, kept between reads with the
+    /// rest, so a retry or a peer's message read later is judged by it.
     #[serde(default)]
     pub errored: Errored,
     /// The entry of the call that errored, which pi's retry edits out.

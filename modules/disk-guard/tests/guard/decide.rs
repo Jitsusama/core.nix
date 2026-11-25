@@ -1,6 +1,6 @@
 use disk_guard::band::{Band, Thresholds};
 use disk_guard::clock::{Awake, Tick};
-use disk_guard::decide::{Decision, Fill, Situation, calm, decide, overloaded, spare};
+use disk_guard::decide::{Decision, Fill, Situation, calm, decide, overloaded, roomy, spare};
 use disk_guard::moments::{Power, Pressure, Stall};
 use disk_guard::units::{float, whole};
 
@@ -263,12 +263,43 @@ fn routine_work_waits_ten_minutes_after_boot_or_resume() {
 }
 
 #[test]
+fn room_is_a_minute_of_memory_stalling_all_tasks_at_most_5_and_the_disk_10() {
+    let full_for_a_minute = |memory, io| Pressure {
+        memory: Stall {
+            full_minute: memory,
+            ..Stall::default()
+        },
+        io: Stall {
+            full_minute: io,
+            ..Stall::default()
+        },
+        ..Pressure::default()
+    };
+    assert!(roomy(full_for_a_minute(5.0, 10.0)), "at both bars");
+    assert!(!roomy(full_for_a_minute(5.1, 0.0)), "memory past its bar");
+    assert!(
+        !roomy(full_for_a_minute(0.0, 10.1)),
+        "the disk past its bar"
+    );
+    let spiking = Pressure {
+        memory: Stall {
+            some: 90.0,
+            full: 60.0,
+            full_minute: 1.0,
+        },
+        ..Pressure::default()
+    };
+    assert!(roomy(spiking), "ten seconds' spike within a quiet minute");
+}
+
+#[test]
 fn only_stalls_on_the_disk_or_memory_keep_a_moment_from_being_calm() {
     assert!(calm(Pressure::default()));
     let disk = Pressure {
         io: Stall {
             some: 15.0,
             full: 2.0,
+            full_minute: 0.0,
         },
         ..Pressure::default()
     };
@@ -277,6 +308,7 @@ fn only_stalls_on_the_disk_or_memory_keep_a_moment_from_being_calm() {
         memory: Stall {
             some: 15.0,
             full: 0.0,
+            full_minute: 0.0,
         },
         ..Pressure::default()
     };
@@ -286,6 +318,7 @@ fn only_stalls_on_the_disk_or_memory_keep_a_moment_from_being_calm() {
         cpu: Stall {
             some: 90.0,
             full: 0.0,
+            full_minute: 0.0,
         },
         ..Pressure::default()
     };
@@ -295,7 +328,10 @@ fn only_stalls_on_the_disk_or_memory_keep_a_moment_from_being_calm() {
 /// A moment whose tasks stall `some` percent of the time on each of the
 /// disk, memory and the processors.
 fn stalling(io: f64, memory: f64, cpu: f64) -> Pressure {
-    let stall = |some| Stall { some, full: 0.0 };
+    let stall = |some| Stall {
+        some,
+        ..Stall::default()
+    };
     Pressure {
         io: stall(io),
         memory: stall(memory),

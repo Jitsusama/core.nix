@@ -151,6 +151,15 @@ fn a_machine_with_room_everywhere_says_so_by_its_system_disk() {
         machine(&disks[..1], None),
         "Plenty of room: 400.0 GiB free on the disk."
     );
+    let disks = [
+        room("/", Band::Healthy, 300 * GIB, None),
+        room("/scratch", Band::Healthy, 20 * GIB, Some(-3600.0)),
+    ];
+    assert_eq!(
+        machine(&disks, None),
+        "Plenty of room: 300.0 GiB free on the disk.",
+        "a forecast whose moment passed doesn't put the small disk first"
+    );
 }
 
 #[test]

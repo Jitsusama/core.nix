@@ -15,6 +15,7 @@ pub mod config;
 pub mod coredumps;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod daemon;
+pub mod dead;
 pub mod decide;
 pub mod dedupe;
 #[cfg(target_os = "linux")]

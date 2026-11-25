@@ -12,6 +12,11 @@
 //! time it looks; once the stop is resumed, however, it undoes what the
 //! stop paused (src/pause.rs).
 //!
+//! On a thread of its own, it gives each other machine running agents
+//! every live stop the readers keep here, its resume, and its end once
+//! it is kept here no longer (src/pause/carry.rs), so a stop said in Slack or on GitHub holds the
+//! sessions there too; a machine slow to answer never holds up a row.
+//!
 //! While the safe word is in shadow, every stop and alert is too, and
 //! the daemon serves none of them and sends no notice: it writes each row
 //! it would have shown, once, to would-tell.jsonl, with the message it
@@ -89,6 +94,16 @@ const PAUSE: &str = "pause";
 /// time however a machine named fails to.
 const STEP: Duration = Duration::from_secs(6);
 
+/// How often the other machines are given the stops they lack: a stop
+/// heard reaches them within this and a run, and a run more for each
+/// machine that hangs, which then waits a minute, well inside the five
+/// minutes a stop has to land in.
+const CARRY_EVERY: Duration = Duration::from_secs(5);
+
+/// How long each machine is given to take a stop, longer than a pause's
+/// step since nobody waits on its answer.
+const CARRY_STEP: Duration = Duration::from_secs(30);
+
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -139,6 +154,14 @@ pub fn serve(serving: Serving) -> std::io::Result<()> {
         );
     }
     shared.change(Vec::new(), json!({"stops": "answering"}));
+    if let Some(plan) = pause
+        .as_ref()
+        .clone()
+        .filter(|plan| plan.mycelium.is_some())
+    {
+        let (state, host) = (state.clone(), host.clone());
+        std::thread::spawn(move || carry_each(&plan, &state, &host));
+    }
     let listener = listen(&socket)?;
     accept(Arc::clone(&shared), listener);
     let mut told = read_told(&state);
@@ -185,6 +208,38 @@ fn hold_paused(plan: &pause::Plan, state: &Path, host: &str) {
             }
         }
         Err(error) => eprintln!("<4>couldn't tend what a stop paused: {error}"),
+    }
+}
+
+/// Gives the other machines the stops they lack, as long as the daemon
+/// serves, journalling each it gave or couldn't, and why the machines
+/// couldn't all be listed each time that changes, not each time it looks.
+fn carry_each(plan: &pause::Plan, state: &Path, host: &str) {
+    let mut carrier = pause::carry::Carrier::default();
+    let mut unlisted = Vec::new();
+    loop {
+        let mut runs = pause::System { limit: CARRY_STEP };
+        let (gives, listing) = carrier.carry(plan, state, host, now_ms(), &mut runs);
+        if listing != unlisted {
+            for why in &listing {
+                eprintln!("<4>couldn't list every machine to give a stop: {why}");
+            }
+            unlisted = listing;
+        }
+        for one in gives {
+            let what = one.gift.said();
+            match one.failed {
+                None => eprintln!("gave {} {what} {}", one.machine, one.name),
+                Some(why) if one.machine.is_empty() => {
+                    eprintln!("<4>gave {what} {}, but {why}", one.name);
+                }
+                Some(why) => eprintln!(
+                    "<4>couldn't give {} {what} {}, tried again in a minute: {why}",
+                    one.machine, one.name
+                ),
+            }
+        }
+        std::thread::sleep(CARRY_EVERY);
     }
 }
 

@@ -1,9 +1,9 @@
-# Some of a VM test's subtests, or the tests pytest picks of it, as a build
-# of their own: the check, its build running run-subtests on the check's own
-# driver instead of the driver on the whole script. `run-subtests --there`
-# has nix-offload build this where the VM can run, so neither the machines
-# nor the VM are made on the machine asking. The pictures are the output, and
-# with no words the subtests' names are, in `subtests`.
+# The tests pytest picks of a VM test, as a build of their own: the check,
+# its build running run-subtests on the check's own driver instead of the
+# driver on the whole script. `run-subtests --there` has nix-offload build
+# this where the VM can run, so neither the machines nor the VM are made on
+# the machine asking. The pictures are the output, and with no words the
+# names of the tests pytest collects are, in `subtests`.
 { pkgs, checks }:
 {
   check,
