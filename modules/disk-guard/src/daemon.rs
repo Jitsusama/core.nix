@@ -794,17 +794,17 @@ fn say_pass(
     when: &str,
 ) -> Option<crate::pass::Failing> {
     if let Some(line) = crate::pass::told(report, seconds, when) {
-        eprintln!("{line}");
+        say!("{line}");
     }
     if scan.went_unheard() {
-        eprintln!(
+        say!(
             "{WARNING_LEVEL}{}",
             crate::pass::unheard_line(scan.unheard(), when)
         );
     }
     let failing = crate::pass::failing(report);
     if let Some(failing) = &failing {
-        eprintln!(
+        say!(
             "{ERROR_LEVEL}{}",
             crate::pass::failed_line(failing, report, when)
         );
@@ -979,7 +979,7 @@ impl Guard {
                 // A ledger that won't write leaves the holders unsaid only
                 // in how much they grew.
                 let grew = crate::ledger::record(&state, now, &sized).unwrap_or_else(|error| {
-                    eprintln!("disk-guard: keeping the ledger: {error}");
+                    say!("disk-guard: keeping the ledger: {error}");
                     crate::ledger::Grown::new()
                 });
                 *measured.lock().unwrap_or_else(PoisonError::into_inner) = Some((now, sized, grew));
@@ -987,7 +987,7 @@ impl Guard {
             });
         match started {
             Ok(thread) => self.measuring = Some(thread),
-            Err(error) => eprintln!("disk-guard: measuring what holds the disks: {error}"),
+            Err(error) => say!("disk-guard: measuring what holds the disks: {error}"),
         }
     }
 
@@ -1200,7 +1200,7 @@ impl Guard {
         impl Drop for Deafens {
             fn drop(&mut self) {
                 if std::thread::panicking() {
-                    eprintln!("disk-guard: hearing opens panicked, so builds keep the hour");
+                    say!("disk-guard: hearing opens panicked, so builds keep the hour");
                 }
                 self.0.store(false, Ordering::SeqCst);
                 if let Some(uses) = self.1.upgrade() {
@@ -1237,13 +1237,13 @@ impl Guard {
                                 .unwrap_or_else(PoisonError::into_inner)
                                 .lost(now);
                             if failed >= LISTEN_TRIES {
-                                eprintln!(
+                                say!(
                                     "disk-guard: stopped hearing opens ({error}), \
                                      so builds keep the hour"
                                 );
                                 return;
                             }
-                            eprintln!("disk-guard: reading opens failed ({error}), trying again");
+                            say!("disk-guard: reading opens failed ({error}), trying again");
                             drop(uses);
                             std::thread::sleep(LISTEN_PAUSE);
                             continue;
@@ -1324,7 +1324,7 @@ impl Guard {
             }
         }
         if let Some(why) = why {
-            eprintln!(
+            say!(
                 "disk-guard: {unmarked} build folders couldn't be marked ({why}, the first), \
                  so their builds keep the hour"
             );
@@ -1455,7 +1455,7 @@ impl Guard {
             // disk too full to hold the status is the one the pass is for,
             // so a status unwritten stops nothing but the telling.
             if let Err(error) = self.write_status(tick.wall) {
-                eprintln!("disk-guard: writing the status before a pass: {error}");
+                say!("disk-guard: writing the status before a pass: {error}");
             }
             self.passes(tick, &due)?;
         }
@@ -1587,7 +1587,7 @@ impl Guard {
         // Joel asks most as the disk fills, when the status may not fit:
         // the clear goes on, and so does every pass after it.
         if let Err(error) = self.write_status(tick.wall) {
-            eprintln!("disk-guard: writing the status before a clear: {error}");
+            say!("disk-guard: writing the status before a clear: {error}");
         }
         let folders: Vec<PathBuf> = asks.iter().map(|(_, ask)| ask.path.clone()).collect();
         let scoped = crate::survey::within(&self.config, &folders);
@@ -1628,7 +1628,7 @@ impl Guard {
         producers.sources.retain(|name, _| names.contains(name));
         // Its news is already taken, so a failed write would lose it.
         if let Err(error) = self.write_status(tick.wall) {
-            eprintln!("disk-guard: writing the status before a producer: {error}");
+            say!("disk-guard: writing the status before a producer: {error}");
         }
         let (mut scan, offers, surveyed) = self.offers(tick, Some(&producers))?;
         let devices: BTreeSet<u64> = offers.iter().map(|offer| offer.device).collect();
@@ -1756,12 +1756,12 @@ impl Guard {
         let held = mark.is_some();
         if held != self.held {
             match mark {
-                Some(mark) => eprintln!(
+                Some(mark) => say!(
                     "disk-guard: {} stands, so no pass, listing or collection starts short of \
                      nearly full",
                     mark.display()
                 ),
-                None => eprintln!("disk-guard: the writers' hold is over"),
+                None => say!("disk-guard: the writers' hold is over"),
             }
         }
         self.held = held;
@@ -1797,7 +1797,7 @@ impl Guard {
                 // Kept for this run though the disk can't hold it: thrown
                 // away, it would be listed again five minutes on.
                 if let Err(error) = state::save(&self.listing_path, &listing) {
-                    eprintln!("disk-guard: saving the listing of Nix's garbage: {error}");
+                    say!("disk-guard: saving the listing of Nix's garbage: {error}");
                 }
                 self.collect = true;
                 self.stale_listing = false;
@@ -1808,7 +1808,7 @@ impl Guard {
             }
             // Tried again once it has rested, an hour on at most short of
             // pressure; until then the listing before stands.
-            Err(why) => eprintln!("disk-guard: listing Nix's garbage: {why}"),
+            Err(why) => say!("disk-guard: listing Nix's garbage: {why}"),
         }
     }
 
@@ -2108,7 +2108,7 @@ impl Guard {
         self.held_ended = false;
         match listing {
             Ok(_) => self.listing_out = Some((now, out)),
-            Err(error) => eprintln!("disk-guard: listing Nix's garbage: {error}"),
+            Err(error) => say!("disk-guard: listing Nix's garbage: {error}"),
         }
     }
 
@@ -2191,7 +2191,7 @@ impl Guard {
             });
         match running {
             Ok(_) => self.dedupe_out = Some((tick.wall, stop, out)),
-            Err(error) => eprintln!("disk-guard: linking the store's files: {error}"),
+            Err(error) => say!("disk-guard: linking the store's files: {error}"),
         }
         Ok(())
     }
@@ -2566,7 +2566,7 @@ impl Guard {
             // the next plan surveys for itself.
             let kept = crate::surveyed::Surveyed::new(tick.wall, &offers);
             if let Err(error) = crate::surveyed::save(self.state(), &kept) {
-                eprintln!("disk-guard: keeping the survey: {error}");
+                say!("disk-guard: keeping the survey: {error}");
             }
             (scan, offers, Some(seconds))
         };
@@ -2910,7 +2910,7 @@ impl Guard {
             why: why.word().to_owned(),
         });
         if let Err(error) = self.write_status(tick.wall) {
-            eprintln!("disk-guard: telling the pass at work: {error}");
+            say!("disk-guard: telling the pass at work: {error}");
             self.end_passing();
         }
     }
@@ -3016,7 +3016,7 @@ impl Guard {
             surveyed,
         };
         if let Err(error) = self.journal.write(&line) {
-            eprintln!("disk-guard: journalling a pass: {error}");
+            say!("disk-guard: journalling a pass: {error}");
         }
         let last = LastPass {
             at: tick.wall,
@@ -3054,7 +3054,7 @@ impl Guard {
                 bytes,
             };
             if let Err(error) = self.journal.write(&line) {
-                eprintln!("disk-guard: journalling the builds taken from {from}: {error}");
+                say!("disk-guard: journalling the builds taken from {from}: {error}");
             }
         }
     }
@@ -3367,7 +3367,7 @@ impl Guard {
         match crate::pace::SyncedWrite::open(state, "probe") {
             Ok(probe) => Some(Box::new(probe)),
             Err(error) => {
-                eprintln!("disk-guard: opening its probe: {error}");
+                say!("disk-guard: opening its probe: {error}");
                 None
             }
         }
@@ -3419,7 +3419,7 @@ impl Guard {
                 }
             };
             if let Err(error) = saved {
-                eprintln!("disk-guard: writing its status: {error}");
+                say!("disk-guard: writing its status: {error}");
             }
         })
     }

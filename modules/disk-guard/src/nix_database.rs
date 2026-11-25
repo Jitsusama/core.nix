@@ -82,7 +82,7 @@ fn write_lock() -> libc::c_short {
 /// written, and why, and answers that nobody is.
 fn blind(path: &Path, why: &str) -> bool {
     if !BLIND.swap(true, Ordering::Relaxed) {
-        eprintln!(
+        say!(
             "disk-guard: can't tell whether another process writes Nix's database, \
              so deletes wait for none: {}: {why}",
             path.display()
