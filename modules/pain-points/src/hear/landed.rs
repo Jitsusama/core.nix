@@ -113,6 +113,24 @@ pub struct Standing {
     pub closed_by: Option<String>,
 }
 
+/// Why no pain can close this run, if one can't: no messages to read, no
+/// switch naming the core the machine runs, when `switched` is false, or
+/// no core to ask of it.
+fn unreadable(ears: &Ears, switched: bool) -> Option<String> {
+    if !ears.messages.is_dir() {
+        Some(format!("no messages are at {}", ears.messages.display()))
+    } else if !switched {
+        Some(format!(
+            "no switch's core is in {}",
+            ears.switches.display()
+        ))
+    } else if !ears.core.is_dir() {
+        Some(format!("no core is at {}", ears.core.display()))
+    } else {
+        None
+    }
+}
+
 /// Takes up and closes, from the mesh and the machine, each pain sent and
 /// still open, however old; `asker` is who sent the questions, and `read`
 /// where the last run's reading ended. Says why none can close when the
@@ -165,17 +183,7 @@ pub(super) fn stand(
         .is_dir()
         .then(|| read_after(read, from, ears.at, &batch));
     let core = core_on(&fs::read_to_string(&ears.switches).unwrap_or_default());
-    let mut unclosed = match &core {
-        _ if !ears.messages.is_dir() => {
-            Some(format!("no messages are at {}", ears.messages.display()))
-        }
-        None => Some(format!(
-            "no switch's core is in {}",
-            ears.switches.display()
-        )),
-        Some(_) if !ears.core.is_dir() => Some(format!("no core is at {}", ears.core.display())),
-        Some(_) => None,
-    };
+    let mut unclosed = unreadable(ears, core.is_some());
     let entries: Vec<String> = kept.iter().map(|h| h.entry.clone()).collect();
     let held: Vec<&str> = entries.iter().map(String::as_str).collect();
     let sent: BTreeSet<&str> = batch.iter().filter_map(|(_, m)| short(&m.id)).collect();

@@ -382,9 +382,9 @@ pub fn hear_putting(
         if routes.refuses(to) {
             return Sent::Failed;
         }
-        let sent = send(to, text, put);
-        failed += usize::from(sent == Sent::Failed);
-        sent
+        let answer = send(to, text, put);
+        failed += usize::from(answer == Sent::Failed);
+        answer
     };
     let mut asked = |to: &str, text: &str| guarded(to, text, Put::Asked);
     let owned = route_waiting(ears, &routes, &cells, &mut kept, &mut asked, &heard_at);
@@ -690,8 +690,8 @@ fn note_for_keeper(
     // node that wasn't answering goes with the next run's note.
     if !told.is_empty() {
         let note = ledger_note_of(kept, &told, cells, ears.offset_s, false);
-        let sent = send(keeper, &note, Put::Told);
-        wait_for_note(kept, &told, sent, ears.at);
+        let answer = send(keeper, &note, Put::Told);
+        wait_for_note(kept, &told, answer, ears.at);
     }
     if noted.is_empty() {
         return;
@@ -701,11 +701,11 @@ fn note_for_keeper(
     // wait for the next run until the note goes.
     // A late pain has its keeper's own tries, after any its owner had.
     let note = ledger_note_of(kept, &noted, cells, ears.offset_s, true);
-    let sent = send(keeper, &note, Put::Asked);
+    let answer = send(keeper, &note, Put::Asked);
     let owners: Vec<usize> = noted.into_iter().filter(|n| !late.contains(n)).collect();
-    wait_for_note(kept, &owners, sent, ears.at);
+    wait_for_note(kept, &owners, answer, ears.at);
     for n in late {
-        match sent {
+        match answer {
             Sent::Went => {
                 kept[n].to = Some(keeper.clone());
                 kept[n].routed_at = Some(ears.at);
