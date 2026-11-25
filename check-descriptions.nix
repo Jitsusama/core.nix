@@ -1482,14 +1482,15 @@
   '';
   find-leaves-guarded-folders-alone = ''
     a Mac's account has its own find, running macOS's with the ignore file and the data volume, and
-    a search from the home folder, from Library or from above it and the data volume's name for it
-    never opens the folders ripgrep's ignore file guards, yet lists them where they match, once, as
-    the expression's own action prints, says it left them unsearched and finds the rest, a
-    project's folder named like a guarded one included, keeping -empty and an -exec, which would
-    open them, off them and saying it left them out, reading the file's last line unended, searching
-    a guarded folder named, started in or named beside its parent; a search find can't prune runs
-    as given, with no note; every line of the ignore file names a folder find can guard; Linux's
-    account gets no such find
+    with GNU find standing in for macOS's, a search from the home folder, from Library or from above
+    it and the data volume's name for it never opens the folders ripgrep's ignore file guards, yet
+    lists them where they match, once, as the expression's own action prints, says it left them
+    unsearched and finds the rest, a project's folder named like a guarded one included, keeping
+    -empty, -exec and -execdir, which would open them, off them and saying it left them out,
+    reading a primary's operand as no primary, reading the file's last line unended, searching a
+    guarded folder named, started in or named beside its parent; one a -maxdepth keeps find out of
+    runs as given, with no note, as does a search find can't prune, -delete's among them; every
+    line of the ignore file names a folder find can guard; Linux's account gets no such find
   '';
   firmware-errors-passes-clippy = ''
     clippy finds nothing in firmware-errors or its tests

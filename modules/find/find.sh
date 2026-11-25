@@ -8,7 +8,9 @@
 # parent without opening it, unless the expression would open it (-empty, or
 # an -exec, -execdir, -ok or -okdir given it), when it isn't listed at all.
 # Either way find says on stderr that it left folders unsearched, or left them
-# out, so an empty answer never reads as nothing there. A folder listed can
+# out, so an empty answer needn't read as nothing there, though a search
+# sending stderr to /dev/null drops that too. A folder a -maxdepth keeps find
+# from opening is left as find leaves it, with no note. A folder listed can
 # still be opened by what its answer is piped to.
 # A search naming a guarded folder, or starting inside one, still searches it,
 # as with ripgrep and fd. A search find can't prune runs as given: one going
@@ -99,10 +101,13 @@ starts+=(${paths[@]+"${paths[@]}"})
 # guarded folder there is never pruned. A command an -exec runs is its own
 # words, read no further than its ; or {} +, so its -d is never find's. -empty
 # reads a folder to test it, and a command given a folder may open it, so
-# either opens a guarded folder it's run on.
+# either opens a guarded folder it's run on. A primary's operand, such as
+# -name's pattern, is its own word, never a primary, so -name -empty opens
+# nothing. find opens no folder at its -maxdepth, and reaches none past it.
 acts=false
 opens=false
 mindepth=0
+maxdepth=''
 for ((at = 0; at < ${#expression[@]}; at++)); do
   arg=${expression[at]}
   next=${expression[at + 1]-}
@@ -113,6 +118,19 @@ for ((at = 0; at < ${#expression[@]}; at++)); do
       if [[ ${next} =~ ^[0-9]+$ ]]; then
         mindepth=${next}
       fi
+      at=$((at + 1))
+      ;;
+    -maxdepth)
+      if [[ ${next} =~ ^[0-9]+$ ]]; then
+        maxdepth=${next}
+      fi
+      at=$((at + 1))
+      ;;
+    -name | -iname | -path | -ipath | -wholename | -iwholename | -regex | -iregex | -lname \
+      | -ilname | -type | -size | -perm | -user | -group | -uid | -gid | -links | -inum \
+      | -samefile | -fstype | -flags | -xattrname | -newer | -anewer | -cnewer | -mnewer \
+      | -Bnewer | -newer[aBcmt][aBcmt] | -[aBcm]time | -[aBcm]min)
+      at=$((at + 1))
       ;;
     -empty) opens=true ;;
     -exec | -execdir | -ok | -okdir)
@@ -126,7 +144,15 @@ for ((at = 0; at < ${#expression[@]}; at++)); do
         at=$((at + 1))
       done
       ;;
-    -print | -print0 | -printf | -fprint | -fprint0 | -fprintf | -ls | -fls) acts=true ;;
+    -print | -print0 | -ls) acts=true ;;
+    -printf | -fprint | -fprint0 | -fls)
+      acts=true
+      at=$((at + 1))
+      ;;
+    -fprintf)
+      acts=true
+      at=$((at + 2))
+      ;;
     *) ;;
   esac
 done
@@ -193,7 +219,12 @@ for ((at = 0; at < ${#starts[@]}; at++)); do
     fi
     [ -n "${starting[${target,,}]-}" ] && continue
     slashes=${rest//[^\/]/}
-    if [ $((${#slashes} + 1)) -lt "${mindepth}" ]; then
+    deep=$((${#slashes} + 1))
+    if [ -n "${maxdepth}" ] && { [ "${deep}" -gt "${maxdepth}" ] \
+      || { [ "${deep}" -eq "${maxdepth}" ] && [ "${opens}" = false ]; }; }; then
+      continue
+    fi
+    if [ "${deep}" -lt "${mindepth}" ]; then
       pruned=false
     fi
     [ ${#prunes[@]} -gt 0 ] && prunes+=(-o)
