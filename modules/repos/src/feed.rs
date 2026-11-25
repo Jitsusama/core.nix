@@ -105,6 +105,8 @@ pub fn records(record: &Record) -> Vec<Value> {
 /// what works there wasn't looked for, and its repository as the rest of
 /// it was read, so a busy repository's row never blanks for each tree
 /// made in it; one with no folder the reading looked in is unread whole.
+/// A folder's share is none where `used` tells none, as for one the
+/// reading before didn't look in, and so is its repository's then.
 pub fn using(
     record: &Record,
     used: &BTreeMap<PathBuf, Use>,
@@ -125,6 +127,10 @@ pub fn using(
             continue;
         }
         let mut whole = Use::default();
+        // A folder's share goes unsaid where the reading before didn't
+        // look in it, and so does its repository's, which would be of
+        // only some of what works there.
+        let mut untold = false;
         let mut folders = Vec::new();
         for path in paths() {
             if !looked(&path) {
@@ -141,12 +147,15 @@ pub fn using(
             };
             whole.processes += one.processes;
             whole.memory += one.memory;
-            whole.cpu = Some(whole.cpu.unwrap_or(0.0) + one.cpu.unwrap_or(0.0));
+            match one.cpu {
+                Some(share) => whole.cpu = Some(whole.cpu.unwrap_or(0.0) + share),
+                None => untold = true,
+            }
             folders.push(json!({
                 "path": path,
                 "processes": one.processes,
                 "memory": one.memory,
-                "cpu": cpu(one.cpu),
+                "cpu": measured.then_some(one.cpu).flatten(),
             }));
         }
         said.push(json!({
@@ -155,7 +164,7 @@ pub fn using(
             "repository": repository.key,
             "processes": whole.processes,
             "memory": whole.memory,
-            "cpu": cpu(whole.cpu),
+            "cpu": if untold { None } else { cpu(whole.cpu) },
             "folders": folders,
         }));
     }

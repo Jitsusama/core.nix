@@ -342,10 +342,10 @@ fn a_repository_nothing_works_in_says_so_and_its_processor_waits_for_a_second_re
 #[test]
 fn a_tree_newer_than_the_reading_is_said_unread_and_its_repository_as_read() {
     // The reading placed processes in the folders the disk held before the
-    // tree pinned was made, so whatever works there wasn't looked for, and
-    // what works in the rest was.
+    // tree say-trees was made, so whatever works there wasn't looked for,
+    // and what works in the rest was.
     let mut before = placed();
-    before.remove(&PathBuf::from("/home/joel/trees/pinned"));
+    before.remove(&PathBuf::from("/home/joel/trees/say-trees"));
     let used = BTreeMap::from([(
         PathBuf::from("/home/joel/src/core.nix"),
         used(2, 3_000, 0.25),
@@ -356,15 +356,46 @@ fn a_tree_newer_than_the_reading_is_said_unread_and_its_repository_as_read() {
         (&json!(2), &json!(3_000), &json!(0.25)),
         "a new tree blanked what was read of the rest: {said}"
     );
-    let pinned = said["folders"]
+    let new = said["folders"]
         .as_array()
         .into_iter()
         .flatten()
-        .find(|folder| folder["path"] == "/home/joel/trees/pinned");
+        .find(|folder| folder["path"] == "/home/joel/trees/say-trees");
     assert_eq!(
-        pinned.map(|folder| &folder["processes"]),
+        new.map(|folder| &folder["processes"]),
         Some(&Value::Null),
         "a tree the reading never looked in reads as idle: {said}"
+    );
+}
+
+#[test]
+fn a_folder_whose_share_went_untold_says_none_and_its_repository_too() {
+    // As for a tree only one reading has looked in: a share of some of
+    // what works in a repository would read as all of it.
+    let used = BTreeMap::from([
+        (
+            PathBuf::from("/home/joel/src/core.nix"),
+            used(2, 3_000, 0.25),
+        ),
+        (
+            PathBuf::from("/home/joel/trees/say-trees"),
+            Use {
+                processes: 1,
+                memory: 1_000,
+                cpu: None,
+            },
+        ),
+    ]);
+    let said = &using(&record(), &used, true, &placed())[0];
+    assert_eq!(
+        (&said["processes"], &said["memory"], &said["cpu"]),
+        (&json!(3), &json!(4_000), &Value::Null),
+        "a share of part of a repository was said as its whole: {said}"
+    );
+    assert_eq!(
+        said["folders"][1],
+        json!({"path": "/home/joel/trees/say-trees", "processes": 1, "memory": 1_000, "cpu": null}),
+        "a folder with no share told said one"
     );
 }
 

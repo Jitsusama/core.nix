@@ -77,10 +77,11 @@ says nothing of it, and the rest of the page stands as it was; until its
 reading of `/proc` first answers, and once its last reading is three
 minutes old with none newer, each repository says its processes are
 unread rather than that nothing works in it. That's judged as each
-reading of the disk ends, so on a disk slower than a minute it's said
-late by one reading at most. A tree newer than the last reading says
-its own unread until the next looks in it, and its repository says
-what was read of the rest.
+reading of the disk ends, at least once a minute, so it's said late by
+a minute, or by one reading of a disk slower than that, at most. A
+tree newer than the last reading says its own unread until the next
+looks in it, and its repository says what was read of the rest, with
+no share of a core until a second reading has looked in the tree.
 
 ## Keys
 
