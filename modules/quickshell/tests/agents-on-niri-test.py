@@ -4538,9 +4538,10 @@ def test_a_talk_to_an_asking_cell_shows_its_question_and_answers_it_from_return(
         said = json.loads(told[0].read_text())
         assert (said["act"], said["value"], said["from"]) == ("answer", "right", "joel"), said
         assert str(said["want"]).startswith("question@"), said
+        # The Talk says the choice his words picked, by its label, so he sees which it took.
         shell.launcher_until(
             lambda shown: any(
-                (one.get("line"), one.get("stands")) == ("right", "answered")
+                (one.get("line"), one.get("stands")) == ("Right", "answered")
                 for one in cast("list[Json]", shown["talks"] or [])
             )
         )
