@@ -47,6 +47,8 @@ const keys = element("#keys", HTMLDialogElement);
 const RING = { out: 4, round: 8 } as const;
 /** The worst standing first, the one the page says. */
 const WORST_FIRST = ["broken", "stale", "connecting", "live"];
+/** The lede while net has never answered and is no longer being reached. */
+const UNANSWERED = "Net hasn't answered, so no device is drawn.";
 const MAP_ITEM = ".n-item";
 const FOUND_ROW = "#found .row";
 
@@ -73,10 +75,15 @@ let saidNothing = false;
 const now = (): number => Date.now() / 1000;
 
 /** Says whether the map is live, and what couldn't be read. */
-function sayWhen(): void {
-  const stands = [...standings.values()].sort(
+/** How the worst of net's feeds stands, or undefined before any has said. */
+function worst(): Standing | undefined {
+  return [...standings.values()].sort(
     (one, other) => WORST_FIRST.indexOf(one.state) - WORST_FIRST.indexOf(other.state),
   )[0];
+}
+
+function sayWhen(): void {
+  const stands = worst();
   const problems = [...(network?.unread ?? []), ...heard.values()];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
   tell(
@@ -154,6 +161,7 @@ function render(): void {
   network = networkOf(watched, told);
   sayWhen();
   if (network === undefined) {
+    sayUnanswered();
     return;
   }
   shape = study(network);
@@ -172,6 +180,17 @@ function render(): void {
     showPanel();
   }
   landFirst();
+}
+
+/**
+ * Says in the lede that net hasn't answered once its feeds stop reaching it,
+ * rather than that it's still being reached; the standing line says why.
+ */
+function sayUnanswered(): void {
+  const state = worst()?.state;
+  if ((state === "broken" || state === "stale") && lede.textContent !== UNANSWERED) {
+    lede.textContent = UNANSWERED;
+  }
 }
 
 /** The devices on the way from the opened one to the internet. */

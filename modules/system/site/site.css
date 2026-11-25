@@ -163,7 +163,12 @@ html:not(.js) .page-head .keys {
 }
 
 /* The lede's turn says how the machines stand in the worst health's own
-   colour, the words saying it too. */
+   colour, the words saying it too, and in the page's own when all is well:
+   the lede is italic already, so the colour is what sets the turn apart. */
+.page-head .lede em {
+  color: var(--said);
+}
+
 .page-head .lede em.watch {
   color: var(--warning);
 }

@@ -41,8 +41,8 @@ COUNTED = "Two machines, both worth a look."
 # about 437 KB and 397 elements since the list of what is worth a look, six to a row,
 # and since no comment is sent, its styles' included; about 445 KB since machines
 # out of reach are named apart, a cost worth the page reading well with many down. One file
-# and one element are the kit's head, which every live page shares: head.css, and the quiet
-# row that holds its keys.
+# is the kit's head.css, the head every live page shares; its parts are four elements more in
+# the markup, and the budget rose by one, the rest within its room.
 BUDGET = Budget(files=26, kilobytes=450, elements=401)
 
 
