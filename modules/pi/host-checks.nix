@@ -1,6 +1,8 @@
 # The checks of pi's shared hosts, which pi's checks.nix gathers beside its
 # own: the units host.nix renders for each realm and the proof each realm's pi
 # needs, kept apart since they change with host.nix and nothing else.
+# Long because each check builds its own machine around one of host.nix's
+# units, and splitting them would split what one change to host.nix reaches.
 {
   account,
   bareDarwin,
@@ -181,7 +183,9 @@ in
   # it's given in slices/nixos.nix (`--hosts`, `--conversations`), and ranks
   # and sorts nothing it can't join by name, saying nothing: so each name
   # host.nix renders for a realm's hosts and conversations, on a machine
-  # with both, is what the sorter is told for that kind, then the key.
+  # with both, is what the sorter is told for that kind, then the key. Each
+  # runs in a slice the sorter looks in, each conversation's socket sits
+  # where it reads slots, and nothing else there starts as they do.
   jobs-sorter-knows-pi-units-by-their-names =
     let
       runtime = builtins.unsafeDiscardStringContext "${pkgs.emptyDirectory}";
@@ -196,9 +200,12 @@ in
           };
         }
       ];
+      # Its paths' context dropped, since lib.splitString gives each word
+      # the whole line's, so naming a word in the message would build the
+      # sorter only to say it failed.
+      sorter = machine.config.systemd.user.services.jobs-sorter.serviceConfig;
       words = lib.splitString " " (
-        lib.replaceStrings [ "'" ] [ "" ]
-          machine.config.systemd.user.services.jobs-sorter.serviceConfig.ExecStart
+        lib.replaceStrings [ "'" ] [ "" ] (builtins.unsafeDiscardStringContext sorter.ExecStart)
       );
       # The word after a flag, or null when the sorter isn't given it.
       after =
@@ -209,6 +216,7 @@ in
         if at == null || at + 1 >= lib.length words then null else lib.elemAt words (at + 1);
       hosts = after "--hosts";
       conversations = after "--conversations";
+      slots = after "--slots";
       # Each unit known by what it says it holds, not by its name, so a
       # rename on one side alone is what fails. home-manager keeps a unit's
       # settings as lists.
@@ -233,21 +241,105 @@ in
         map (kind: "one-${kind}") (lib.attrNames (import ./host-launch.nix { inherit lib; }).kinds)
       );
       named = prefix: end: lib.sort lib.lessThan (map (key: "${toString prefix}${key}${end}") keys);
+      found = units: if units == [ ] then "none" else lib.concatStringsSep ", " units;
+      # The sorter finds the slot a window's session is in under
+      # `--slots`, in a folder named for the host's key, so each
+      # conversation's socket is where it looks.
+      socketOf =
+        key:
+        let
+          unit = (account machine).systemd.user.services."${toString conversations}${key}@" or { };
+          service = unit.Service or { };
+        in
+        lib.findFirst (lib.hasPrefix ''"PI_HOST_CHILD_SOCKET='') null (
+          lib.toList (service.Environment or [ ])
+        );
+      # Unasked without --conversations, whose own way says it.
+      socketIn = key: ''"PI_HOST_CHILD_SOCKET=${toString slots}/${key}.d/%i.sock"'';
+      misplaced = lib.optionals (conversations != null) (
+        lib.filter (key: socketOf key != socketIn key) keys
+      );
+      # The sorter looks for a host's or a conversation's unit only directly
+      # under each slice it's given with `--under`, the part before any =.
+      under = lib.concatLists (
+        lib.imap1 (
+          at: word:
+          lib.optional (word == "--under" && at < lib.length words) (
+            lib.head (lib.splitString "=" (lib.elemAt words at))
+          )
+        ) words
+      );
+      services = (account machine).systemd.user.services;
+      sliceOf = name: lib.head (lib.toList (services.${name}.Service.Slice or "none"));
+      pis = hostUnits ++ conversationUnits;
+      unscanned = lib.filter (name: !lib.elem (sliceOf name) under) pis;
+      # And it takes every unit there that starts with a prefix it's given
+      # for one, so no other unit may sit there with that start.
+      starts = lib.filter (prefix: prefix != null) [
+        hosts
+        conversations
+      ];
+      strays = lib.filter (
+        name:
+        !lib.elem name pis
+        && lib.elem (sliceOf name) under
+        && lib.any (prefix: lib.hasPrefix prefix name) starts
+      ) (lib.attrNames services);
+      # Each way it can fail, said apart, so the message names the one met.
+      ways = [
+        {
+          when = hosts == null;
+          say = "jobs-sorter isn't given --hosts";
+        }
+        {
+          when = conversations == null;
+          say = "jobs-sorter isn't given --conversations";
+        }
+        {
+          when = slots == null;
+          say = "jobs-sorter isn't given --slots";
+        }
+        {
+          when = keys == [ ];
+          say = "host-launch.nix names no kind of host";
+        }
+        {
+          when = hostUnits == [ ];
+          say = "no unit says it holds a host in the one realm, so that description changed";
+        }
+        {
+          when = conversationUnits == [ ];
+          say = "no unit says it holds one of a host's conversations in the one realm";
+        }
+        {
+          when = hosts != null && lib.sort lib.lessThan hostUnits != named hosts "";
+          say = "told hosts start ${toString hosts}, it found hosts ${found hostUnits}";
+        }
+        {
+          when = conversations != null && sortedConversations != named conversations "@";
+          say = "told conversations start ${conversations}, it found ${foundConversations}";
+        }
+        {
+          when = slots != null && conversationUnits != [ ] && misplaced != [ ];
+          say = "told slots are in ${slots}, conversations of ${found misplaced} sit elsewhere";
+        }
+        {
+          when = unscanned != [ ];
+          say = "${found unscanned} run outside the slices it looks in, ${found under}";
+        }
+        {
+          when = strays != [ ];
+          say = "it would rank ${found strays} as a host or conversation, by its name's start";
+        }
+      ];
+      sortedConversations = lib.sort lib.lessThan conversationUnits;
+      foundConversations = found conversationUnits;
+      wrong = map (way: way.say) (lib.filter (way: way.when) ways);
+      why = lib.concatStringsSep "; " wrong;
     in
     holds "jobs-sorter-knows-pi-units-by-their-names"
-      (
-        "A pi host's or a conversation's unit is named otherwise than jobs-sorter is told to "
-        + "find it: told ${toString hosts} and ${toString conversations}, it found hosts "
-        + "${lib.concatStringsSep ", " hostUnits} and conversations "
-        + "${lib.concatStringsSep ", " conversationUnits}."
-      )
-      (
-        hosts != null
-        && conversations != null
-        && lib.length keys == 2
-        && lib.sort lib.lessThan hostUnits == named hosts ""
-        && lib.sort lib.lessThan conversationUnits == named conversations "@"
-      );
+      "jobs-sorter can't find a pi host's or a conversation's unit: ${why}."
+      (wrong == [ ]);
 
   # A realm's pi reaches its hosts only with a proof that pnpm test:host passed
   # on the runtime it is in: a proof of another runtime, of one whose name
