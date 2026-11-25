@@ -258,7 +258,7 @@ in
         && lib.hasSuffix "/scripts/pi-host.ts --child" start;
       # Whether a unit is there and its command leaves V8 its own growth.
       keepsOwnGrowth =
-        unit: services ? ${unit} && !(lib.hasInfix "--heap-growing-percent" (startOf services unit));
+        unit: services ? ${unit} && !lib.hasInfix "--heap-growing-percent" (startOf services unit);
       # How a realm naming this percent evaluates its conversation's command.
       tried =
         percent:
