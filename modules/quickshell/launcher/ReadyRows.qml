@@ -640,10 +640,10 @@ Scope {
             }
             return;
         }
-        if (reasked === words) {
+        // Answered once asked again, its words get one more asking again if lost later. Nothing
+        // for them is ever on its way once they're lost twice, so that waits on what's searched.
+        if (reasked === words)
             reasked = "";
-            lostTwice = "";
-        }
         if (answer.error) {
             if (!searchless)
                 console.warn(`launcher: ${place}'s daemon can't search, asked again a `

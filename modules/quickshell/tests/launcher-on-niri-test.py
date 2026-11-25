@@ -2739,6 +2739,15 @@ def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
     again = shell.rows_made("emoji") - before - stepped
     assert again > 0, "closing kept every emoji the first step made, so the second made none"
     shell.close_launcher()
+
+
+def test_emoji_finds_a_whole_word_typed_in_it(shell: Shell) -> None:
+    """A word typed into Super+E is found by the clipboard's history, its emoji first.
+
+    Each letter asks the history again (launcher/Emoji.qml's search), so the rows a word's first
+    letter found must give way to the word's own. It stands apart from the rows case above so
+    a quarantine of it excuses only this search, not the bounds on what Emoji makes.
+    """
     shell.as_account(shell.ipc("collection", "emoji"))
     shell.launcher_ready()
     # Twice a failure here showed the rows held from "t" and never tada's, with nothing in the
@@ -2771,8 +2780,16 @@ def test_emoji_says_how_many_it_found_past_those_it_answers(shell: Shell) -> Non
     # Emoji lists nothing for an f until the history answers, which type_in takes as settled.
     shell.launcher_until(lambda shown: shown["count"] > 0)
     shell.normal()
-    shell.launcher_until(lambda shown: shown["found"] != "")
-    said = shell.showing()["found"]
+    # The head judged is the one the wait passed on, as a later showing() could come after the
+    # answer was let go and say nothing.
+    heads: list[str] = []
+
+    def says_found(shown: Json) -> bool:
+        heads.append(cast("str", shown["found"]))
+        return heads[-1] != ""
+
+    shell.launcher_until(says_found)
+    said = heads[-1]
     shell.close_launcher()
     counted = FOUND_OF.fullmatch(said)
     assert counted, f"Emoji's head never said how many it found past those it shows: {said}"

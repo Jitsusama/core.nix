@@ -341,6 +341,18 @@ ShellRoot {
             borrower.search("road");
             Expect.expect("answered once asked again, its words are asked anew",
                 link.asked === unheld + 1, link.asked - unheld);
+            // Its answer let go of what was asked again, so lost now, it waits for the next
+            // hello as any lost search does rather than being held back as lost twice.
+            link.gone();
+            Expect.expect("lost after its answer, it waits for the hello as any lost search does",
+                borrower.searchState().lost === "road" && borrower.lostTwice === "",
+                JSON.stringify(borrower.searchState()));
+            link.wire = { write: line => {}, flush: () => {} };
+            const regained = link.asked;
+            hello();
+            Expect.expect("and is asked once it says hello",
+                link.asked === regained + 1 && borrower.asking === "road",
+                JSON.stringify([link.asked - regained, borrower.asking]));
             const roadAgain = `find-${link.asked}`;
             link.awaited[roadAgain]({ id: roadAgain, words: "road", keys: ["row:calendar:own"] });
             const unasked = (what, set) => {
@@ -405,6 +417,37 @@ ShellRoot {
             Expect.expect("while typed again, it's asked again once more",
                 link.asked === retyped + 1 && borrower.asking === "ride",
                 JSON.stringify([link.asked - retyped, borrower.asking]));
+            // Held back once lost twice, its words searched after the search ends, or after the
+            // rows go undrawn and are drawn again, are a new search: lost, they're asked again
+            // once the daemon says hello, as any are.
+            const anewOnce = (what, renew) => {
+                link.gone();
+                Expect.expect(`${what}: lost twice first`, borrower.lostTwice === "ride",
+                    JSON.stringify(borrower.searchState()));
+                renew();
+                Expect.expect(`${what}, nothing is held back or was asked again`,
+                    borrower.lostTwice === "" && borrower.reasked === "",
+                    JSON.stringify(borrower.searchState()));
+                link.wire = { write: line => {}, flush: () => {} };
+                const renewed = link.asked;
+                borrower.search("ride");
+                Expect.expect(`${what}, its words are asked`, link.asked === renewed + 1,
+                    link.asked - renewed);
+                link.gone();
+                Expect.expect(`${what}, lost, they wait for the hello`,
+                    borrower.searchState().lost === "ride", JSON.stringify(borrower.searchState()));
+                link.wire = { write: line => {}, flush: () => {} };
+                const rehello = link.asked;
+                hello();
+                Expect.expect(`${what}, and are asked once it says hello`,
+                    link.asked === rehello + 1 && borrower.asking === "ride",
+                    JSON.stringify([link.asked - rehello, borrower.asking]));
+            };
+            anewOnce("once the search ended", () => borrower.ended());
+            anewOnce("once the rows went undrawn and came back", () => {
+                borrower.drawn = false;
+                borrower.drawn = true;
+            });
             borrower.ended();
             borrower.drawn = false;
             link.wire = null;
