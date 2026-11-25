@@ -619,13 +619,17 @@ mod tests {
     fn a_walk_kept_for_main_as_it_stands_asks_git_nothing() {
         let kept = kept_at("kept");
         let walk = Walk {
-            merges: "m1 200000 First".into(),
+            merges: "m1 200000 First\nm0 100000 Too old".into(),
             locks: String::new(),
         };
         keep_walk(&kept, "new", DOTS, &walk);
         let asked = std::sync::Mutex::new(Vec::new());
         let git = answering(&asked, &[]);
-        assert_eq!(walked(&git, &kept, "new", DOTS, NOW), walk);
+        assert_eq!(
+            walked(&git, &kept, "new", DOTS, NOW).merges,
+            "m1 200000 First",
+            "a kept merge older than the window was still shown"
+        );
         assert_eq!(
             asked.lock().expect("no ask panicked").clone(),
             Vec::<String>::new(),
@@ -637,8 +641,8 @@ mod tests {
     fn main_moved_on_from_the_kept_walk_walks_only_what_it_gained() {
         let kept = kept_at("gained");
         let before = Walk {
-            merges: "m1 200000 First".into(),
-            locks: String::new(),
+            merges: "m1 200000 First\nm0 150000 Lock bump\nmz 100000 Too old".into(),
+            locks: "@m0\nhome/a/dots/flake.lock".into(),
         };
         keep_walk(&kept, "old", DOTS, &before);
         let asked = std::sync::Mutex::new(Vec::new());
@@ -656,10 +660,12 @@ mod tests {
         assert_eq!(
             walk,
             Walk {
-                merges: "m3 400000 Take a core\nm2 300000 Second\nm1 200000 First".into(),
-                locks: "@m3\nhome/a/dots/flake.lock".into(),
+                merges: "m3 400000 Take a core\nm2 300000 Second\nm1 200000 First\nm0 150000 \
+                         Lock bump"
+                    .into(),
+                locks: "@m3\nhome/a/dots/flake.lock\n@m0\nhome/a/dots/flake.lock".into(),
             },
-            "what main gained comes first, over what was kept"
+            "what main gained comes first, over what was kept within the window"
         );
         let asked = asked.lock().expect("no ask panicked").clone();
         assert!(
@@ -677,7 +683,7 @@ mod tests {
         assert_eq!(
             log_of(&kept_walk(&kept, DOTS).unwrap_or_default().1, DOTS).main,
             "m2 300000 Second\nm1 200000 First",
-            "the lock's lone move is still left out"
+            "a lock's lone move, new or kept, is still left out"
         );
     }
 
@@ -707,6 +713,11 @@ mod tests {
                 asked.iter().any(|ask| ask.ends_with(" new -- home/a/dots"))
                     && !asked.iter().any(|ask| ask.contains("..new")),
                 "{why}, so the whole window is walked: {asked:?}"
+            );
+            assert_eq!(
+                kept_walk(&kept, DOTS),
+                Some(("new".to_owned(), walk)),
+                "{why}, and the whole walk wasn't kept, so the next hour walks it all again"
             );
         }
     }
@@ -846,6 +857,22 @@ mod tests {
             kept_walk(&kept, DOTS),
             None,
             "another folder's merges were taken as this one's"
+        );
+        let asked = std::sync::Mutex::new(Vec::new());
+        let answers = [
+            ("new -- home/a/dots/flake.lock", ""),
+            ("new -- home/a/dots", "m2 300000 Second"),
+        ];
+        let git = answering(&asked, &answers);
+        let walk = walked(&git, &kept, "new", DOTS, NOW);
+        assert_eq!(
+            walk.merges, "m2 300000 Second",
+            "main unmoved since another folder's walk showed that folder's merges"
+        );
+        assert_eq!(
+            kept_walk(&kept, DOTS),
+            Some(("new".to_owned(), walk)),
+            "this folder's walk wasn't kept in the other's place"
         );
     }
 
