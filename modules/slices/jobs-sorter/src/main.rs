@@ -2299,8 +2299,10 @@ struct Unslotted {
     /// Those the last look found, each with when the looks first found it,
     /// every look since finding it too.
     last: HashMap<(String, String), std::time::Instant>,
-    /// Those said, and found by every look since.
-    said: HashSet<(String, String)>,
+    /// Those said and not yet said cleared, each with when the looks
+    /// first missed it, every look since missing it too; none while the
+    /// last look found it.
+    said: HashMap<(String, String), Option<std::time::Instant>>,
 }
 
 impl Unslotted {
@@ -2308,7 +2310,9 @@ impl Unslotted {
     /// unslotted and those said before that no longer are. A session is
     /// said once every look has found it for [`UNSLOTTED_FOR`], so a slot
     /// read as the host rewrites it isn't said, however fast marks bring
-    /// looks; and once, until it clears.
+    /// looks; and once, until it clears. It's said cleared once every look
+    /// has missed it for as long, so a viewer or a conversation unit
+    /// restarting isn't said either.
     fn look(&mut self, now: Vec<(String, String)>, at: std::time::Instant) -> UnslottedSaid {
         let now: HashMap<(String, String), std::time::Instant> = now
             .into_iter()
@@ -2320,20 +2324,30 @@ impl Unslotted {
         let mut missing: Vec<_> = now
             .iter()
             .filter(|(session, since)| {
-                at.duration_since(**since) >= UNSLOTTED_FOR && !self.said.contains(*session)
+                at.duration_since(**since) >= UNSLOTTED_FOR && !self.said.contains_key(*session)
             })
             .map(|(session, _)| session.clone())
             .collect();
+        for (session, gone) in &mut self.said {
+            *gone = if now.contains_key(session) {
+                None
+            } else {
+                Some(gone.unwrap_or(at))
+            };
+        }
         let mut found: Vec<_> = self
             .said
             .iter()
-            .filter(|session| !now.contains_key(*session))
-            .cloned()
+            .filter(|(_, gone)| gone.is_some_and(|gone| at.duration_since(gone) >= UNSLOTTED_FOR))
+            .map(|(session, _)| session.clone())
             .collect();
         missing.sort();
         found.sort();
-        self.said.retain(|session| now.contains_key(session));
-        self.said.extend(missing.iter().cloned());
+        for session in &found {
+            self.said.remove(session);
+        }
+        self.said
+            .extend(missing.iter().map(|session| (session.clone(), None)));
         self.last = now;
         (missing, found)
     }
@@ -3761,7 +3775,9 @@ mod tests {
 
     #[test]
     fn a_said_session_is_cut_to_its_most_once_escaped_and_never_inside_an_escape() {
-        let session = "\n".repeat(SAID_MOST);
+        // One plain character first puts the cap inside the last escape, so cutting the
+        // escaped word at the cap would end on a lone backslash.
+        let session = format!("a{}", "\n".repeat(SAID_MOST));
         let words = ["mycelium", "attach", "--host", "a", "--session", &session]
             .map(str::to_owned)
             .to_vec();
@@ -3772,7 +3788,7 @@ mod tests {
             .expect("no slot holds the session");
         assert_eq!(
             said,
-            "\\n".repeat(SAID_MOST / 2),
+            format!("a{}", "\\n".repeat(SAID_MOST / 2 - 1)),
             "the journal gets at most {SAID_MOST} characters, in whole escapes"
         );
     }
@@ -3805,6 +3821,43 @@ mod tests {
     }
 
     #[test]
+    fn a_said_session_is_said_cleared_only_once_it_has_stayed_so_for_a_while() {
+        let x = ("a".to_owned(), "x".to_owned());
+        let mut unslotted = Unslotted::default();
+        let start = std::time::Instant::now();
+        let at = |millis| start + std::time::Duration::from_millis(millis);
+        let looks: Vec<_> = [
+            (vec![x.clone()], 0),
+            (vec![x.clone()], 5_000),
+            (vec![], 6_000),
+            (vec![x.clone()], 7_000),
+            (vec![], 8_000),
+            (vec![], 12_999),
+            (vec![], 13_000),
+            (vec![], 14_000),
+        ]
+        .into_iter()
+        .map(|(now, millis)| unslotted.look(now, at(millis)))
+        .collect();
+        let none = (vec![], vec![]);
+        assert_eq!(
+            looks,
+            [
+                none.clone(),
+                (vec![x.clone()], vec![]),
+                none.clone(),
+                none.clone(),
+                none.clone(),
+                none.clone(),
+                (vec![], vec![x.clone()]),
+                none,
+            ],
+            "a viewer or a conversation unit restarting misses a look or two, so a said session \
+             is said cleared only once every look has missed it for {UNSLOTTED_FOR:?}"
+        );
+    }
+
+    #[test]
     fn an_unslotted_session_is_said_once_and_again_when_it_clears() {
         let x = ("a".to_owned(), "x".to_owned());
         let y = ("a".to_owned(), "y".to_owned());
@@ -3815,6 +3868,7 @@ mod tests {
             vec![x.clone()],
             vec![x.clone(), y.clone()],
             vec![x.clone()],
+            vec![],
             vec![],
             vec![x.clone()],
             vec![x.clone()],
@@ -3832,12 +3886,14 @@ mod tests {
                 none.clone(),
                 (vec![x.clone()], vec![]),
                 none.clone(),
+                none.clone(),
                 (vec![], vec![x.clone()]),
                 none,
                 (vec![x.clone()], vec![]),
             ],
             "a session found by looks spanning {UNSLOTTED_FOR:?} is said once, said cleared \
-             when it goes, and said again when it comes back; y, for one look, is never said"
+             once looks spanning as long miss it, and said again when it comes back; y, for \
+             one look, is never said"
         );
     }
 
