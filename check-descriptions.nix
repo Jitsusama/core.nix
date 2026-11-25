@@ -608,18 +608,26 @@
     an app's audio thread can take SCHED_RR 8, below PipeWire's, for at most 200 ms at a time
   '';
   sound-services-are-what-runs-a-pipewire-or-sits-beside-it = ''
-    sound-services.nix counts a unit that runs a PipeWire of its own wherever it sits, and one
-    PipeWire wants in session.slice by a list or one name, but not one it wants in app.slice, a
-    program named like it, or a NixOS unit switched off, and a home's only for its account
+    sound-services.nix counts a unit that runs a PipeWire of its own wherever it sits, as one
+    command, a line of several after a reset or with a prefix systemd takes, and one PipeWire
+    wants in session.slice by a list or one name, but not one it wants in app.slice, a program
+    named like it, one naming PipeWire past its own program, or a NixOS unit switched off, and a
+    home's only for its account, in whatever order it chooses them
+  '';
+  sound-services-are-read-from-the-machine = ''
+    the sound services are chosen by the PipeWire a machine runs, a stand-in's program counted
+    where nixpkgs' isn't, and a home's are granted under the login name polkit asks with, where
+    it differs from the home's attribute
   '';
   sound-takes-real-time-before-the-seat = ''
     PipeWire's three units, each tuning chain and each service PipeWire wants in session.slice,
     by name in the account's session.slice or app.slice and nothing below them, are granted
     rtkit's real time and high priority before the seat has a session, a home's service for its
     own account alone, PipeWire's grant logged with what it runs and one ps can't read as
-    unknown, while a watcher in app.slice, an app's scope, the system's units, another service
-    and a near name keep rtkit's own answer with no grant logged, and agents' places are still
-    refused
+    unknown, while a watcher in app.slice, an app's scope, the system's units, another service,
+    a near name and another account's own manager asking for the home's service keep rtkit's own
+    answer with no grant logged, a rule that throws failing its case, and agents' places are
+    still refused
   '';
   call-transcripts-hears-echoed-meetings-as-well-as-it-did = ''
     three AMI meetings laid out as calls, the far end heard again in Joel's microphone 20 dB down

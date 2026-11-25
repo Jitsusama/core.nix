@@ -1,10 +1,12 @@
 # The checks of pipewire, which checks.nix gathers with every other folder's;
 # its opening comment says what each kind of check proves.
 {
+  bareNixos,
   graphical,
   holds,
   lib,
   pkgs,
+  self,
   ...
 }:
 {
@@ -32,10 +34,13 @@
 
   # The sound services sound-services.nix chooses from stand-in units, each
   # half of its choice alone: a NixOS unit or home-manager's that runs a
-  # PipeWire of its own, wherever it sits, and one PipeWire wants in
-  # session.slice, by a list or one name, while one PipeWire wants in
-  # app.slice, one that runs another program whose path begins the same, and
-  # a NixOS unit switched off are none, and a home's are its account's alone.
+  # PipeWire of its own, wherever it sits, as one command, one line of
+  # several after a reset, or with a prefix systemd takes, and one PipeWire
+  # wants in session.slice, by a list or, as home-manager allows, one name,
+  # while one PipeWire wants in app.slice, one that runs another program
+  # whose path begins the same or names PipeWire past its program, and a
+  # NixOS unit switched off are none, and a home's are its account's alone.
+  # Read as sets, since the order they're chosen in grants nothing.
   sound-services-are-what-runs-a-pipewire-or-sits-beside-it =
     let
       pipewire = "/nix/store/x-pipewire/bin/pipewire";
@@ -57,8 +62,10 @@
         inherit pipewire;
         system = {
           chain = nixos "${pipewire} -c chain.conf" [ ] "app.slice";
+          reset = nixos [ "" "${pipewire} -c reset.conf" ] [ ] "app.slice";
+          prefixed = nixos "-${pipewire} -c prefixed.conf" [ ] "app.slice";
+          passed = nixos "/bin/env ${pipewire} -c passed.conf" [ ] "app.slice";
           beside = nixos "/bin/beside" [ "pipewire.service" ] "session.slice";
-          named = nixos "/bin/named" "pipewire.service" "session.slice";
           watcher = nixos "/bin/watcher" [ "pipewire.service" ] "app.slice";
           unsliced = nixos "/bin/unsliced" [ "pipewire.service" ] null;
           pulse = nixos "${pipewire}-pulse" [ ] "session.slice";
@@ -68,8 +75,9 @@
         };
         homes = {
           one = {
-            own = home [ "${pipewire}" "-c" "own.conf" ] [ ] null;
+            own = home "${pipewire} -c own.conf" [ ] null;
             cancelled = home "/bin/cancelled" [ "pipewire.service" ] "session.slice";
+            named = home "/bin/named" "pipewire.service" "session.slice";
             paused = home "/bin/paused" [ "pipewire.service" ] null;
           };
           other = { };
@@ -79,23 +87,61 @@
     holds "sound-services-are-what-runs-a-pipewire-or-sits-beside-it"
       "sound-services.nix chose ${builtins.toJSON chosen}, not by what each runs and where."
       (
-        chosen == {
-          system = [
-            "pipewire"
-            "pipewire-pulse"
-            "wireplumber"
+        lib.mapAttrs (_: lib.sort lib.lessThan) chosen.homes == {
+          one = [
+            "cancelled"
+            "named"
+            "own"
+          ];
+          other = [ ];
+        }
+        &&
+          lib.sort lib.lessThan chosen.system == [
             "beside"
             "chain"
-            "named"
-          ];
-          homes = {
-            one = [
-              "cancelled"
-              "own"
-            ];
-            other = [ ];
+            "pipewire"
+            "pipewire-pulse"
+            "prefixed"
+            "reset"
+            "wireplumber"
+          ]
+      );
+
+  # nixos.nix chooses from what the machine runs: the PipeWire it's given,
+  # so a stand-in's program is a sound service where nixpkgs' isn't, and a
+  # home by the login name polkit asks with, where it differs from the
+  # home's attribute.
+  sound-services-are-read-from-the-machine =
+    let
+      standIn = pkgs.runCommandLocal "a-pipewire" { } "mkdir -p $out/bin";
+      machine = bareNixos [
+        self.nixosModules.pipewire
+        {
+          services.pipewire.package = standIn;
+          systemd.user.services = {
+            ours.serviceConfig.ExecStart = "${standIn}/bin/pipewire -c ours.conf";
+            nixpkgs.serviceConfig.ExecStart = "${pkgs.pipewire}/bin/pipewire -c theirs.conf";
           };
+          # The account logs in as joel, which its home takes for its own.
+          users.users.someone.name = "joel";
+          home-manager.users.someone.systemd.user.services.own.Service.ExecStart =
+            "${standIn}/bin/pipewire -c own.conf";
         }
+      ];
+      rules = machine.config.security.polkit.extraConfig;
+      found = lib.filter lib.isList (builtins.split "var soundServices = ([^\n]*);" rules);
+      chosen = if found == [ ] then null else builtins.fromJSON (lib.head (lib.head found));
+    in
+    holds "sound-services-are-read-from-the-machine"
+      "nixos.nix chose ${builtins.toJSON chosen}, not by the machine's PipeWire and login names."
+      (
+        chosen != null
+        && lib.elem "ours" chosen.system
+        && !lib.elem "nixpkgs" chosen.system
+        &&
+          chosen.homes == {
+            joel = [ "own" ];
+          }
       );
 
   # The graphical role's polkit rules, with its tuning chains and

@@ -11,13 +11,26 @@
   pipewire,
   # NixOS's systemd.user.services, every account's.
   system,
-  # Each account's home-manager systemd.user.services, by its name.
+  # Each account's home-manager systemd.user.services, by its login name.
   homes,
 }:
 let
-  # The program and a space, so pipewire-pulse, or another program whose
-  # path begins the same, is none.
-  runsPipewire = start: lib.hasPrefix "${pipewire} " (toString start);
+  # A list is several commands, one ExecStart= line each, as NixOS and
+  # home-manager both write it, and an empty one resets those before it.
+  # Each is read without the prefixes systemd takes for how it runs one
+  # (-, @, :, +, !, |), and as the program alone or with a space after, so
+  # pipewire-pulse, or another program whose path begins the same, is none.
+  # A chain a NixOS unit declares through script runs a script of its own,
+  # so it's none either, and is granted only if PipeWire wants it beside it.
+  runsPipewire =
+    start:
+    lib.any (
+      command:
+      let
+        bare = lib.head (builtins.match "[-@:+!|]*(.*)" (toString command));
+      in
+      bare == pipewire || lib.hasPrefix "${pipewire} " bare
+    ) (lib.toList start);
   # A unit may name what wants it as a list or as one name.
   wanted = units: lib.elem "pipewire.service" (lib.toList units);
   sound =
