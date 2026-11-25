@@ -147,26 +147,39 @@ fn run_within(mut command: Command, log: &Path, wait: Duration) -> io::Result<Ex
 /// Copy `from`'s lines to `to`, each opened by its time since `began`, a
 /// line longer than [`LONGEST_PIECE`] in pieces. Each is written whole
 /// under the lock, so the output's and the errors' lines never interleave
-/// within one. Bytes that aren't UTF-8 pass through as they are.
+/// within one. Bytes that aren't UTF-8 pass through as they are. A stream
+/// that can't be read ends the copy with what was read of it written and
+/// the error kept, so the gate isn't taken as heard whole.
 fn copy(from: impl Read, to: &Log, began: Instant) {
     let mut from = BufReader::new(from);
     let mut piece = Vec::new();
+    // Whether the last piece was cut from a longer line, so a newline that
+    // comes alone after it ends that line rather than stamping an empty one.
+    let mut cut = false;
     loop {
         piece.clear();
-        match from
+        let read = from
             .by_ref()
             .take(LONGEST_PIECE)
-            .read_until(b'\n', &mut piece)
-        {
-            Ok(0) | Err(_) => return,
+            .read_until(b'\n', &mut piece);
+        let ends_the_cut = cut && piece == b"\n";
+        cut = piece.last() != Some(&b'\n') && u64::try_from(piece.len()) == Ok(LONGEST_PIECE);
+        if !piece.is_empty() && !ends_the_cut {
+            if piece.last() != Some(&b'\n') {
+                piece.push(b'\n');
+            }
+            let mut said = stamp(began.elapsed().as_secs()).into_bytes();
+            said.extend_from_slice(&piece);
+            to.write(&said);
+        }
+        match read {
+            Ok(0) => return,
+            Err(error) => {
+                to.kept(Err(error));
+                return;
+            }
             Ok(_) => {}
         }
-        if piece.last() != Some(&b'\n') {
-            piece.push(b'\n');
-        }
-        let mut said = stamp(began.elapsed().as_secs()).into_bytes();
-        said.extend_from_slice(&piece);
-        to.write(&said);
     }
 }
 

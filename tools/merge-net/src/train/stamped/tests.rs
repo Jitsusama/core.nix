@@ -78,8 +78,8 @@ fn every_line_of_both_streams_is_stamped_and_the_exit_kept() {
     );
 }
 
-// A stamp is the time since the gate began, not since the line or its
-// copier, so a gate that waits shows the wait.
+// A stamp is the time since the gate began rather than a count started
+// afresh for each line, so a gate that waits shows the wait.
 #[test]
 fn stamps_count_from_the_gates_start() {
     let (_, bytes) = gated_by("forward", "sleep 1; echo a; sleep 1; echo b", LAST_WORDS);
@@ -100,23 +100,23 @@ fn stamps_count_from_the_gates_start() {
 // train: the wait ends, the log says so, and nothing said later is kept.
 #[test]
 fn a_gate_whose_output_outlives_it_is_left_after_the_wait() {
+    let log = log_for("outlives");
+    let mut command = Command::new("sh");
+    command.args(["-c", "echo said; (sleep 3; echo later) & exit 4"]);
     let began = Instant::now();
-    let (status, _) = gated_by(
-        "outlives",
-        "echo said; (sleep 1; echo later) & exit 4",
-        Duration::from_millis(200),
-    );
+    let status =
+        run_within(command, &log, Duration::from_millis(200)).expect("the gate should run");
+    // The leftover speaks at 3 s; a run held past 2 s waited on it rather
+    // than its 200 ms, with room left for a busy builder's slow start.
     assert!(
-        began.elapsed() < Duration::from_millis(900),
+        began.elapsed() < Duration::from_secs(2),
         "the gate was waited for past its wait: {:?}",
         began.elapsed()
     );
     assert_eq!(status.code(), Some(4), "the gate's own exit was lost");
-    let log = log_for("outlives-late");
-    let mut command = Command::new("sh");
-    command.args(["-c", "echo said; (sleep 1; echo later) & exit 4"]);
-    run_within(command, &log, Duration::from_millis(200)).expect("the gate should run");
-    thread::sleep(Duration::from_millis(1_500));
+    // Past the leftover's word, which its copier is still alive to hear,
+    // so a log that kept it would show it now.
+    thread::sleep(Duration::from_millis(3_500));
     let said: Vec<String> = said_lines(&std::fs::read(&log).expect("a log"))
         .into_iter()
         .map(|(_, s)| s)
@@ -209,14 +209,77 @@ fn an_odd_byte_and_a_long_line_pass_through() {
     );
 }
 
+// A line exactly a piece long ends with its newline, not with an empty
+// stamped line after it.
+#[test]
+fn a_line_a_piece_long_is_one_line() {
+    let (_, bytes) = gated_by(
+        "piece",
+        &format!("head -c {LONGEST_PIECE} /dev/zero | tr '\\0' x; echo; echo after"),
+        LAST_WORDS,
+    );
+    let lines = said_lines(&bytes);
+    let lengths: Vec<usize> = lines.iter().map(|(_, said)| said.len()).collect();
+    let piece = usize::try_from(LONGEST_PIECE).expect("a piece fits in memory");
+    assert_eq!(lengths, [piece, 5], "a piece-long line wasn't one line");
+}
+
+/// A stream that says `said` and then can't be read.
+struct Breaks(&'static [u8]);
+
+impl Read for Breaks {
+    fn read(&mut self, into: &mut [u8]) -> io::Result<usize> {
+        if self.0.is_empty() {
+            return Err(io::Error::other("the stream broke"));
+        }
+        let length = self.0.len().min(into.len());
+        into[..length].copy_from_slice(&self.0[..length]);
+        self.0 = &self.0[length..];
+        Ok(length)
+    }
+}
+
+// A stream that breaks keeps what was read of it, and its error, so the
+// gate isn't taken as heard whole.
+#[test]
+fn a_stream_that_breaks_keeps_its_words_and_its_error() {
+    let log = log_for("breaks");
+    let shared = Log {
+        file: Mutex::new(File::create(&log).expect("a log")),
+        closed: AtomicBool::new(false),
+        lost: Mutex::new(None),
+    };
+    copy(Breaks(b"said\nhal"), &shared, Instant::now());
+    let said: Vec<String> = said_lines(&std::fs::read(&log).expect("a log"))
+        .into_iter()
+        .map(|(_, s)| s)
+        .collect();
+    let _ = std::fs::remove_file(&log);
+    assert_eq!(
+        said,
+        ["said", "hal"],
+        "the words before the break were lost"
+    );
+    let lost = shared.lost.lock().expect("the lock").take();
+    assert!(
+        lost.is_some_and(|error| error.to_string() == "the stream broke"),
+        "the break wasn't kept"
+    );
+}
+
 // A log that can't be written fails the gate, as a full disk failed the
-// gate's own writes before the stamps.
+// gate's own writes before the stamps. The gate says more than a pipe
+// holds, so a copier that stopped reading at the failed write would hold
+// the gate, and the test, for good.
 #[test]
 fn a_log_that_cant_be_written_fails_the_gate() {
     let mut command = Command::new("sh");
-    command.args(["-c", "echo said"]);
+    command.args(["-c", "seq 1 200000"]);
+    let gated = run(command, Path::new("/dev/full"));
     assert!(
-        run(command, Path::new("/dev/full")).is_err(),
-        "a gate whose words were lost read as heard"
+        gated
+            .as_ref()
+            .is_err_and(|error| error.to_string().starts_with("the gate's log lost words")),
+        "a gate whose words were lost read as heard: {gated:?}"
     );
 }

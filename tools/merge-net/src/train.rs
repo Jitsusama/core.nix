@@ -738,14 +738,25 @@ fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &
 }
 
 /// Run the gate in `checkout`, its words going to `log`, each line stamped
-/// with its time into the gate: how it ended.
+/// with its time into the gate: how it ended. A gate whose log lost words
+/// is red, as one whose own writes failed on a full disk was before the
+/// stamps, and the train's log says why, since its riders' reason can't.
 fn gate(checkout: &Path, log: &Path) -> Gated {
     let mut command = Command::new("nix-offload");
     command
         .args(["there", "--lent-only", "--changed"])
         .current_dir(checkout)
         .env_remove("SSH_AUTH_SOCK");
-    stamped::run(command, log).map_or(Gated::Red, |status| gated(status.code(), &words_of(log)))
+    match stamped::run(command, log) {
+        Ok(status) => gated(status.code(), &words_of(log)),
+        Err(error) => {
+            println!(
+                "merge-net: the gate logging to {} wasn't heard whole, so it's red: {error}",
+                log.display()
+            );
+            Gated::Red
+        }
+    }
 }
 
 /// `owner/name` of the repository at `url`.
