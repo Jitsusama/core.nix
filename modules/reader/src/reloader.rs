@@ -72,8 +72,7 @@ pub(crate) fn reload_on_save(
 /// One ask's set: on the setter `kept`, or one `make` makes, readied for
 /// the file and width asked for, with a panic anywhere in it told as the
 /// set failing. A setter unwound part-way may hold what that set left
-/// half-made, its fonts' files behind a lock the panic poisoned, so it's
-/// dropped and the next ask makes its own. A file that panics at every set
+/// half-made, so it's dropped and the next ask makes its own. A file that panics at every set
 /// makes one at every ask, its fonts read again each time; nothing sets it
 /// again but a save or the pictures it waits on.
 fn step<S, T>(
