@@ -188,14 +188,19 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
 fn say_each<const N: usize>(
     verdicts: [Option<Result<String, String>>; N],
 ) -> (Vec<String>, Result<(), String>) {
-    let mut passed = Vec::new();
+    let (mut passed, mut failed) = (Vec::new(), Vec::new());
     for verdict in verdicts.into_iter().flatten() {
         match verdict {
             Ok(said) => passed.push(said),
-            Err(why) => return (passed, Err(why)),
+            Err(why) => failed.push(why),
         }
     }
-    (passed, Ok(()))
+    let failed = if failed.is_empty() {
+        Ok(())
+    } else {
+        Err(failed.join("; "))
+    };
+    (passed, failed)
 }
 
 /// Hears `meeting` with `speech` and says its errors, its far end's word
