@@ -771,6 +771,65 @@ fn a_filling_disk_whose_passes_twice_running_leave_nothing_to_clear_rests_an_hou
 }
 
 #[test]
+fn passes_kept_short_by_an_unheard_system_daemon_never_rest_a_filling_disk_an_hour() {
+    // What they kept wanted only the system daemon's word, which a restart
+    // of it gives back in a minute or two, so they found nothing left only
+    // in that they couldn't ask.
+    let home = Home::new();
+    home.cold_scratch("run-1");
+    home.hidden(300, 77);
+    let sockets = socket_dir();
+    let socket = sockets.path().join("system.socket");
+    let places = Places {
+        system: Some(socket.clone()),
+        ..home.places()
+    };
+    let mut guard = Guard::new(crate::unpaced(home.config("100%", "100%")), &places).unwrap();
+    let _heard = fake_system_vouching_nothing(&socket);
+    let passes = || {
+        home.journal()
+            .iter()
+            .filter(|line| line["event"] == "pass")
+            .count()
+    };
+    let mut seen = Vec::new();
+    for at in [3600.0, 3661.0, 3790.0] {
+        guard.step(&tick_at(at), &CALM).unwrap();
+        seen.push(passes());
+    }
+    assert_eq!(
+        seen,
+        [1, 2, 3],
+        "two unheard passes rested the disk longer than two minutes"
+    );
+}
+
+#[test]
+fn passes_that_find_nothing_far_apart_are_not_two_in_a_row() {
+    // A hold of hours between them lets builds leave garbage the second
+    // is the first to see, as after expiring generations.
+    let home = Home::new();
+    fs::create_dir_all(home.root.join("scratch")).unwrap();
+    let mut guard = home.guard(home.config("100%", "100%"));
+    let passes = || {
+        home.journal()
+            .iter()
+            .filter(|line| line["event"] == "pass")
+            .count()
+    };
+    let mut seen = Vec::new();
+    for at in [3600.0, 5000.0, 5130.0] {
+        guard.step(&tick_at(at), &CALM).unwrap();
+        seen.push(passes());
+    }
+    assert_eq!(
+        seen,
+        [1, 2, 3],
+        "passes 23 minutes apart counted as two in a row"
+    );
+}
+
+#[test]
 fn each_pass_journals_what_set_it_going_what_it_was_offered_and_its_survey() {
     // In the day to 03:00 on 21 November half the passes freed nothing,
     // and their lines couldn't say whether each reached, upkept or

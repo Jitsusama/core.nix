@@ -183,10 +183,12 @@ or launchd, and [`home.nix`][2] the account's.
   that falls short rests before the next, doubling from a minute to fifteen
   while filling, five when nearly full and one when critically full. One
   on a filling disk that finds nothing left to clear, after one before it
-  that found nothing too, rests it an hour, since each pass reads the
-  metadata of all it judges: one 17 minutes after such a pass read 15 GB of
-  it on 25 November. The first rests a minute, as expiring generations or
-  a build ending leaves garbage only the next pass can take. Its status
+  that found nothing too and whose rest ended at most fifteen minutes
+  before, rests it an hour, since each pass reads the metadata of all it
+  judges: one 17 minutes after such a pass read 15 GB of it on 25
+  November. The first rests a minute, as expiring generations or a build
+  ending leaves garbage only the next pass can take, and one that couldn't
+  ask the system daemon never counts, having lacked only its word. Its status
   says it has cleared all it may for that hour. A worse band ends any
   rest, and a restart forgets it. One
   that kept things only for want of the system guard's word ends its rest

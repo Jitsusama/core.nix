@@ -77,8 +77,9 @@ struct Rest {
     /// twice in a row, so a daemon whose word keeps failing costs a survey
     /// a rest, not one a step.
     unvouched: bool,
-    /// Whether the pass ended with nothing left it may clear, so a second
-    /// such pass in a row on a filling disk empties it.
+    /// Whether the pass ended with nothing left it may clear, the system
+    /// daemon having answered, so a second such pass in a row on a filling
+    /// disk empties it.
     exhausted: bool,
     /// Whether a second pass in a row found nothing left to clear on a
     /// filling disk, so the disk rests the hour and the status says it has
@@ -2651,11 +2652,19 @@ impl Guard {
                 // stop or to its own length fell short of nothing; its disk
                 // is due again.
                 let fell_short = !matches!(end, End::Reached | End::Stopped | End::Unfinished);
-                let exhausted = matches!(end, End::Exhausted);
+                // One that couldn't ask the system daemon found nothing
+                // left only for want of its word, which comes back in a
+                // minute or two.
+                let exhausted = matches!(end, End::Exhausted) && !unheard;
                 // Filling only: a healthy disk's rest goes at its next
-                // measure, so an hour promised there would never hold.
+                // measure, so an hour promised there would never hold. In
+                // a row only when its rest ended within the longest rest
+                // before this pass: one after hours of holding off judges
+                // what those hours built.
                 let emptied = exhausted
-                    && watched.rest.is_some_and(|rest| rest.exhausted)
+                    && watched.rest.is_some_and(|rest| {
+                        rest.exhausted && tick.monotonic - rest.until <= longest_rest(band)
+                    })
                     && band <= Band::Filling
                     && watched.band == Band::Filling;
                 watched.rest = fell_short.then(|| {
