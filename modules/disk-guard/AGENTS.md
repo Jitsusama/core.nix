@@ -265,7 +265,15 @@ or launchd, and [`home.nix`][2] the account's.
   each once, taken, kept or failed, and how long the survey that offered
   them took, which its own seconds leave out, or null when none did. Each
   pass a survey served carries its seconds, so passes at one time and the
-  same seconds shared one walk. Judged reads beside the line's end: a pass
+  same seconds shared one walk. It says too what it read from disk
+  (`read`) and what its survey did (`survey_read`), from Linux's count for
+  the thread each ran on, or null on a Mac; what a pass hands a thread of
+  its own, a command, a Nix delete or an ask of the system daemon, isn't
+  counted. The two walks no pass takes, measuring what holds the disks
+  and marking the builds, each journal a `walk` line saying which, its
+  seconds and what it read. On 25 November the account's guard read
+  15.4 GB of the disk in 24 minutes, and no line said which walk it was.
+  Judged reads beside the line's end: a pass
   that ended `exhausted` having judged none had nothing due, and one that
   judged some and freed nothing kept or failed all it judged, which its
   action lines tell apart. A reach that ended `reached` having judged none
@@ -590,6 +598,7 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/store_roots.rs`      | the links a tool keeps its builds by, found through Nix  |
 | `src/surveyed.rs`         | the last pass's survey, kept for `disk-guard plan` to read |
 | `src/holders.rs`          | what holds each disk, and whose it is                    |
+| `src/disk_reads.rs`       | what a walk read from disk, by its thread's count        |
 | `src/disks.rs`            | how hard each disk is written, and how worn              |
 | `src/keeps.rs`            | the folders Joel keeps, and why                          |
 | `src/ledger.rs`           | what held each disk over two days, and what grew         |
