@@ -137,6 +137,15 @@ WORKS_ON = (
     " spent and what it needs from Joel, from the node, with nothing guessed and nothing"
     " said twice, held to the launcher's family and its keys."
 )
+# What the paused one works on, as long. Its drawer keeps some of it over its fold opened,
+# since its four acts stand on one line, where the listening one's five (Park among them)
+# take two and leave its prose no line to keep.
+PAUSED_ON = (
+    "Paused Quest: A reviewer under the owner's plan, which reads each change the builders"
+    " put up against the plan it serves: whether its tests pin what it says, whether its"
+    " names read as the code does, and whether its description says why, before any of it"
+    " goes on the merge train, its findings kept for the builder to settle."
+)
 # They landed minutes before the walk, inside the day a landing waits in To Try for.
 LANDED = datetime.now(UTC)
 LANDINGS = [
@@ -314,7 +323,13 @@ def shell() -> Iterator[Shell]:
     lay(
         "PAUSED",
         "Paused Quest",
-        {**under, "state": "paused", "landings": LANDINGS, "groups": ["#repo/core-nix"]},
+        {
+            **under,
+            "state": "paused",
+            "landings": LANDINGS,
+            "groups": ["#repo/core-nix"],
+            "worksOn": PAUSED_ON,
+        },
     )
     lay("CLOSED", "Closed Quest", {"state": "idle", "repo": "tidepool"}, closed=True)
     lost_on_the_last_boot()
@@ -901,7 +916,7 @@ def test_za_shows_a_sessions_fold_above_its_more_line_its_prose_giving_way(shell
     sight, and z a would change nothing seen. The prose gives up whole lines from its end for
     the fold instead, its rest counted under the more line (VKCF3Z, bfdad751).
     """
-    found(shell, "listening quest", "Listening Quest")
+    found(shell, "paused quest", "Paused Quest")
     shell.launcher_until(lambda shown: shown["drawer"]["shown"] and shown["drawer"]["nerd"])
     shell.normal()
     shell.send_chars("za")
@@ -1556,9 +1571,9 @@ def test_an_orchestrators_acts_split_evenly_none_alone_on_a_line(shell: Shell) -
     laid = cast("list[int]", drawer["actsLaid"])
     assert sum(laid) == len(drawer["acts"]), f"its acts aren't all laid: {drawer}"
     # Its step into its sessions, last, is too wide to share a line with
-    # Close, so it stands alone; the five before it split evenly over two,
-    # Return's act leading the longer.
-    assert laid == [3, 2, 1], f"its acts aren't split evenly, one alone only as it must: {drawer}"
+    # Close, so it stands alone; the six before it, Park among them, split
+    # evenly over two.
+    assert laid == [3, 3, 1], f"its acts aren't split evenly, one alone only as it must: {drawer}"
 
 
 def test_an_identifier_in_a_fold_is_never_broken_its_name_standing_above_it(shell: Shell) -> None:
