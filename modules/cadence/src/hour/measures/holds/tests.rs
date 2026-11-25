@@ -4,15 +4,10 @@ use std::fs;
 
 use serde_json::Value;
 
+use super::super::slipped::at;
 use super::*;
 
 const NOW: i64 = 1_795_600_000;
-
-fn at(seconds: i64) -> String {
-    Timestamp::from_second(seconds)
-        .map(|t| t.to_string())
-        .unwrap_or_default()
-}
 
 fn id(short: &str, ago: i64, from: &str) -> String {
     format!("{}-{from}-1-{short}", (NOW - ago) * 1000)
