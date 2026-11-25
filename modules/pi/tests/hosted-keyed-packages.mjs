@@ -174,7 +174,8 @@ export const aPackage = (where, name, pi, version = "first") => {
 /** A keyed package at `where` whose `hangs` extension waits at the gate
  * `hang` when `hangs`, and whose `behind` extension's library counts under
  * `behind`, then waits at the gate `release` should a test set one; or,
- * not `hangs`, one that waits at neither, declaring `pi`. Its entries. */
+ * not `hangs`, one that waits at neither, declaring `pi`. Its `early`
+ * extension imports only that library. Its entries. */
 export const hungPackage = (where, hangs, pi = keyedManifest) => {
   write(join(where, "package.json"), manifest(pi));
   write(
@@ -207,7 +208,9 @@ export const hungPackage = (where, hangs, pi = keyedManifest) => {
       "",
     ].join("\n"),
   );
-  return ["hangs", "behind"].map((one) => join(where, "extensions", one, "index.ts"));
+  const early = 'import { version } from "../../lib/shared.ts";\nexport default () => version;\n';
+  write(join(where, "extensions", "early", "index.ts"), early);
+  return ["hangs", "behind", "early"].map((one) => join(where, "extensions", one, "index.ts"));
 };
 /** A keyed package at `where` whose `slow` extension imports a library
  * that waits at the gate `name` and says it is `version`, which the
@@ -231,8 +234,8 @@ export const gatedPackage = (where, name, version) => {
   return where;
 };
 /** A keyed package at `where` whose library counts under `stalled`, with
- * the extensions `early`, `hangs`, `behind`, `meanwhile`, `after` and
- * `holds`, each counting under `stalled-<name>`; `hangs` waits at the gate
+ * the extensions `early`, `hangs`, `behind`, `meanwhile`, `after`, `holds`
+ * and `waits`, each counting under `stalled-<name>`; `hangs` waits at the gate
  * `hang`, `behind` at the gate `lag` and `holds` at the gate `hold`. Its
  * entries by name, and its counts, the library's first. */
 export const stalledPackage = (where) => {
@@ -241,7 +244,7 @@ export const stalledPackage = (where) => {
   write(join(where, "lib", "hangs.ts"), gated("hang", "hung"));
   write(join(where, "lib", "lags.ts"), gated("lag", "lagged"));
   write(join(where, "lib", "holds.ts"), gated("hold", "held"));
-  const names = ["early", "hangs", "behind", "meanwhile", "after", "holds"];
+  const names = ["early", "hangs", "behind", "meanwhile", "after", "holds", "waits"];
   const entries = {};
   for (const one of names) {
     entries[one] = join(where, "extensions", one, "index.ts");
@@ -264,29 +267,112 @@ export const stalledPackage = (where) => {
 };
 /** Has `holder`, which waits at the gate `hold`, take its package's turn,
  * then expects `kept` to open meanwhile without waiting, as a factory kept
- * for it does, where a load that must take the turn would wait. */
-export const opensWhileHeld = async (what, holder, kept) => {
+ * for it does, and `waiting`, which must take the turn, to wait. */
+export const opensWhileHeld = async (what, holder, kept, waiting) => {
   const holdGate = gate("hold");
   const holding = open(`${what}-holding`, [holder]);
   await holdGate.reached;
   const reopened = open(`${what}-reopened`, [kept]);
+  const waited = open(`${what}-waited`, [waiting]);
   assert.equal(await pendingAfter(reopened, 200), false, `${what}: a kept factory waited a turn`);
+  assert.equal(await pendingAfter(waited, 200), true, `${what}: a load didn't wait its turn`);
   holdGate.putAway();
   holdGate.open();
-  await within(Promise.all([holding, reopened]), `${what}: a load holding its turn never ended`);
+  const all = Promise.all([holding, reopened, waited]);
+  await within(all, `${what}: a load holding its turn never ended`);
 };
-/** A keyed package at `where` whose `late` extension's `breaks-late`
- * imports, as it runs, a library that counts under `breaks` and throws
- * part-way through, answering with its error's message, and whose `loads`
- * extension imports that library as it loads. Its two entries. */
+/** A library counting under `name` that throws part-way through. */
+const breaks = (name) =>
+  [
+    counted(name),
+    'export const before = "before";',
+    'throw new Error("breaks part-way");',
+    "",
+  ].join("\n");
+/** A keyed package at `where` whose `late`, `again` and `caught`
+ * extensions each import, as they run, a library counting under `breaks`
+ * that throws part-way through, with `breaks-<extension>`, and require one
+ * counting under `breaks-required`, with `requires-<extension>`, answering
+ * with the error's message; whose `caught` extension imports the first as
+ * it loads and catches what it throws; and whose `loads` extension imports
+ * the first as it loads. Its entries by name. */
 export const breakingPackage = (where) => {
   write(join(where, "package.json"), manifest(keyedManifest));
+  write(join(where, "lib", "breaks.ts"), breaks("breaks"));
+  write(join(where, "lib", "required.ts"), breaks("breaks-required"));
+  const entries = {};
+  for (const one of ["late", "again", "caught"]) {
+    entries[one] = join(where, "extensions", one, "index.ts");
+    const catches = 'try { await import("../../lib/breaks.ts"); } catch { /* Left unfinished. */ }';
+    write(
+      entries[one],
+      [
+        one === "caught" ? catches : "",
+        "export default function (pi) {",
+        `  pi.registerCommand("breaks-${one}", { description: "", handler: () => import("../../lib/breaks.ts").then(() => "loaded", (error) => error.message) });`,
+        `  pi.registerCommand("requires-${one}", { description: "", handler: async () => { try { require("../../lib/required.ts"); return "loaded"; } catch (error) { return error.message; } } });`,
+        "}",
+        "",
+      ].join("\n"),
+    );
+  }
+  entries.loads = join(where, "extensions", "loads", "index.ts");
   write(
-    join(where, "lib", "breaks.ts"),
+    entries.loads,
+    'import { before } from "../../lib/breaks.ts";\nexport default function () { return before; }\n',
+  );
+  return entries;
+};
+/** A keyed package at `where` whose one extension's `natives` imports and
+ * requires, as it runs, what jiti doesn't evaluate itself: a builtin by
+ * either name, a data URL, JSON and a module it leaves to Node, written as
+ * ESM, which counts its evaluations, answering what each gave. Its entry. */
+export const nativesPackage = (where) => {
+  write(join(where, "package.json"), manifest(keyedManifest));
+  write(join(where, "lib", "data.json"), '{ "version": "json" }\n');
+  const typescript = join(where, "node_modules", "typescript");
+  write(join(typescript, "package.json"), '{ "name": "typescript", "main": "index.js" }\n');
+  write(
+    join(typescript, "index.js"),
+    "export const native = (globalThis.nativeEvaluations = (globalThis.nativeEvaluations ?? 0) + 1);\n",
+  );
+  const entry = join(where, "extensions", "one", "index.ts");
+  write(
+    entry,
     [
-      counted("breaks"),
-      'export const before = "before";',
-      'throw new Error("breaks part-way");',
+      "export default function (pi) {",
+      '  pi.registerCommand("natives", { description: "", handler: async () => [',
+      '    (await import("node:path")).sep, (await import("path")).sep, (await import("path/posix")).sep,',
+      '    (await import("data:text/javascript,export default 1")).default,',
+      '    (await import("../../lib/data.json")).version, require("node:path").sep, require("path").sep,',
+      '    require("../../lib/data.json").version, (await import("typescript")).native,',
+      '    require("typescript").native,',
+      "  ] });",
+      "}",
+      "",
+    ].join("\n"),
+  );
+  return entry;
+};
+/** A keyed package at `where` whose `loads` extension imports a library
+ * waiting at the gate `first`, then one counting under `raced` that waits
+ * at the gate `raced`, answering what the second said as its factory ran
+ * with `raced-loads`; and whose `late` extension imports the second as it
+ * runs, answering what it says at once with `raced-late`. Its two entries. */
+export const racingPackage = (where) => {
+  write(join(where, "package.json"), manifest(keyedManifest));
+  write(join(where, "lib", "first.ts"), gated("first", "first"));
+  write(join(where, "lib", "raced.ts"), `${counted("raced")}\n${gated("raced", "whole")}`);
+  const loads = join(where, "extensions", "loads", "index.ts");
+  write(
+    loads,
+    [
+      'import { first } from "../../lib/first.ts";',
+      'import { raced } from "../../lib/raced.ts";',
+      "export default function (pi) {",
+      "  const seen = first && raced;",
+      '  pi.registerCommand("raced-loads", { description: "", handler: async () => seen });',
+      "}",
       "",
     ].join("\n"),
   );
@@ -295,17 +381,48 @@ export const breakingPackage = (where) => {
     late,
     [
       "export default function (pi) {",
-      '  pi.registerCommand("breaks-late", { description: "", handler: () => import("../../lib/breaks.ts").then(() => "loaded", (error) => error.message) });',
+      '  pi.registerCommand("raced-late", { description: "", handler: async () => (await import("../../lib/raced.ts")).raced });',
       "}",
       "",
     ].join("\n"),
   );
-  const loads = join(where, "extensions", "loads", "index.ts");
+  return { loads, late };
+};
+/** A keyed package at `where` whose one extension imports a library that
+ * imports one counting under `parented`, then one waiting at the gate
+ * `parented`. The first library sets `globalThis.parentedLater`, which
+ * imports, as the extension runs, a third library that imports the second
+ * and answers what that says, and `globalThis.parentedWaits`, which imports
+ * the one waiting and answers what it says. Its entry. */
+export const parentedPackage = (where) => {
+  write(join(where, "package.json"), manifest(keyedManifest));
+  write(join(where, "lib", "counted.ts"), library("parented", "parented"));
   write(
-    loads,
-    'import { before } from "../../lib/breaks.ts";\nexport default function () { return before; }\n',
+    join(where, "lib", "early.ts"),
+    [
+      'import { version } from "./counted.ts";',
+      'globalThis.parentedLater = async () => (await import("./uses.ts")).used;',
+      'globalThis.parentedWaits = async () => (await import("./waits.ts")).parented;',
+      "export const early = version;",
+      "",
+    ].join("\n"),
   );
-  return { late, loads };
+  write(
+    join(where, "lib", "uses.ts"),
+    'import { version } from "./counted.ts";\nexport const used = version;\n',
+  );
+  write(join(where, "lib", "waits.ts"), gated("parented", "waited"));
+  const entry = join(where, "extensions", "one", "index.ts");
+  write(
+    entry,
+    [
+      'import { early } from "../../lib/early.ts";',
+      'import { parented } from "../../lib/waits.ts";',
+      "export default function () { return [early, parented]; }",
+      "",
+    ].join("\n"),
+  );
+  return entry;
 };
 /** A keyed package at `where` whose `late` extension's `mixed-late`
  * imports, as it runs, a library counting under `mixed-late` that imports
@@ -346,11 +463,12 @@ export const mixedPackage = (where) => {
   );
   return { runsLate, fails };
 };
-/** Hangs a load of `hangs`, queues one of `behind`, then lets go as `what`
- * does and expects the queued load to end before the bound on a held turn
- * could let it go on, evaluating afresh what the hung load had finished, so
- * only `letGo` can end the wait. */
-export const heldUpUntil = async (what, [hangs, behind], letGo) => {
+/** Loads `early`, hangs a load of `hangs`, queues one of `behind`, then
+ * lets go as `what` does and expects the queued load to end before the
+ * bound on a held turn could let it go on, evaluating afresh what the
+ * package had finished, so only `letGo` can end the wait. */
+export const heldUpUntil = async (what, [hangs, behind, early], letGo) => {
+  await within(open(`${what}-early`, [early]), `a load before ${what} never ended`);
   const hangGate = gate("hang");
   const inTime = beforeTheBound();
   const hanging = open(`${what}-hanging`, [hangs]);

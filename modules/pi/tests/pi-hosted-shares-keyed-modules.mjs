@@ -8,14 +8,12 @@
 // another is still evaluating; a reload or a moved link lets go of loads
 // waiting behind one that never ends, and none is kept for the copy the
 // link moved to or once its modules are let go. While a turn is held too
-// long, loads go on unshared, and nothing kept is let go of. A failed
-// load's retry evaluates again every module it was first to import, however
-// deep, but none another extension was first to import, and a load after
-// an import made as an extension ran that threw goes on unshared rather
-// than be given what the module left. Without the patch,
-// a keyed package's library is evaluated once for each of its extensions;
-// sharing every package's modules lets one extension's module state reach
-// another's.
+// long, loads go on without waiting their turn, sharing what the package
+// finished, and nothing kept is let go of. Without the patch, a keyed
+// package's library is evaluated once for each of its extensions; sharing
+// every package's modules lets one extension's module state reach
+// another's. The late-imports test covers failed loads and imports made as
+// extensions run.
 // Run as: node THIS PI_ROOT, with the helper beside it.
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
@@ -23,13 +21,11 @@ import { join } from "node:path";
 import {
   aPackage,
   beforeTheBound,
-  breakingPackage,
   afresh,
   cached,
   clearExtensionCache,
   counted,
   evaluations,
-  folder,
   gate,
   gated,
   gatedPackage,
@@ -37,9 +33,7 @@ import {
   hungPackage,
   keyedManifest,
   library,
-  loadExtensionsCached,
   manifest,
-  mixedPackage,
   open,
   opensWhileHeld,
   pendingAfter,
@@ -209,86 +203,6 @@ assert.equal(
   "an extension loading twice at once was evaluated twice",
 );
 
-// A failed load forgets every module it was first to import, through any
-// module it imported, so a retry evaluates again what it left unfinished
-// and what it finished alike.
-afresh();
-const flakyAt = join(scratch, "flaky");
-write(join(flakyAt, "package.json"), manifest(keyedManifest));
-write(join(flakyAt, "lib", "deep.ts"), library("deep", "deep"));
-write(
-  join(flakyAt, "lib", "steady.ts"),
-  `import { version as deep } from "./deep.ts";\n${library("steady", "steady")}export const deeper = deep;\n`,
-);
-write(
-  join(flakyAt, "lib", "flaky.ts"),
-  [
-    counted("flaky"),
-    'if (globalThis.flakyFails) throw new Error("not yet");',
-    'export const flaky = "recovered";',
-    "",
-  ].join("\n"),
-);
-const flaky = join(flakyAt, "extensions", "flaky", "index.ts");
-write(
-  flaky,
-  [
-    'import { version } from "../../lib/steady.ts";',
-    'import { flaky } from "../../lib/flaky.ts";',
-    "export default function (pi) {",
-    '  pi.registerCommand("flaky-version", { description: "", handler: async () => version + " " + flaky });',
-    "}",
-    "",
-  ].join("\n"),
-);
-globalThis.flakyFails = true;
-const failed = await loadExtensionsCached([flaky], folder("failed"));
-assert.equal(failed.errors.length, 1, "a load whose library throws didn't fail");
-globalThis.flakyFails = false;
-const retried = await open("retried", [flaky]);
-assert.equal(
-  await retried("flaky-version"),
-  "steady recovered",
-  "a retry was given what a failed load left unfinished",
-);
-assert.deepEqual(
-  evaluations(),
-  { steady: 2, flaky: 2, deep: 2 },
-  "a retry was given a module a failed load added",
-);
-
-// A failed load forgets only what it was first to import: a module another
-// of the package's extensions imports as it runs, while the failed load
-// waits, stays, and so does one that module imports, so each is evaluated
-// once.
-afresh();
-const { runsLate, fails } = mixedPackage(join(scratch, "mixed"));
-const mixed = await open("mixed", [runsLate]);
-const waitGate = gate("wait");
-const failing = loadExtensionsCached([fails], folder("mixed-failing"));
-await waitGate.reached;
-assert.equal(await mixed("mixed-late"), "late", "an import beside a waiting load failed");
-waitGate.putAway();
-waitGate.open();
-assert.equal((await failing).errors.length, 1, "a load whose library throws didn't fail");
-assert.equal(await mixed("mixed-late"), "late", "an import after a failed load failed");
-assert.deepEqual(
-  evaluations(),
-  { "mixed-late": 1, "mixed-deeper": 1 },
-  "a failed load forgot a module another extension imported meanwhile",
-);
-
-// A module an extension imports as it runs that throws stays unfinished, so
-// a load after it goes on unshared and fails as the module does, rather
-// than be given what the module defined before it threw.
-afresh();
-const breaking = breakingPackage(join(scratch, "breaking"));
-const late = await open("breaking-late", [breaking.late]);
-assert.equal(await late("breaks-late"), "breaks part-way", "a late import that throws loaded");
-const afterBreak = await loadExtensionsCached([breaking.loads], folder("breaking-loads"));
-assert.equal(afterBreak.errors.length, 1, "a load was given a module left unfinished");
-assert.equal(evaluations().breaks, 2, "a load after an unfinished module didn't evaluate it");
-
 // A link that moves on lets go of the copy it pointed at, once no extension
 // resolves into it still, though one of the link's extensions last loaded
 // from it, so moving back reads that copy as it is now.
@@ -345,9 +259,9 @@ assert.equal(
 // A load that never ends holds up the package's loads behind it until its
 // modules are let go, by a reload or by a link moving off its copy to a
 // keyed copy or an unkeyed one, and those then load as an unkeyed
-// package's do, evaluating afresh what the load that never ends had
-// finished. One a link let go of, ending after the
-// moved link's own load, isn't kept for the copy the link moved to.
+// package's do, evaluating afresh what the package had finished. One a
+// link let go of, ending after the moved link's own load, isn't kept for
+// the copy the link moved to.
 afresh();
 await heldUpUntil("reload", hungPackage(join(scratch, "hung"), true), () => clearExtensionCache());
 afresh();
@@ -355,7 +269,9 @@ const stuck = join(scratch, "links", "hung");
 hungPackage(join(scratch, "hung-first"), true);
 hungPackage(join(scratch, "hung-second"), false);
 pointAt(stuck, join(scratch, "hung-first"));
-const throughStuck = ["hangs", "behind"].map((one) => join(stuck, "extensions", one, "index.ts"));
+const throughStuck = ["hangs", "behind", "early"].map((one) =>
+  join(stuck, "extensions", one, "index.ts"),
+);
 const releaseGate = gate("release");
 await heldUpUntil("link", throughStuck, async () => {
   pointAt(stuck, join(scratch, "hung-second"));
@@ -374,7 +290,7 @@ const toUnkeyed = join(scratch, "links", "unkeyed");
 hungPackage(join(scratch, "unkeyed-first"), true);
 hungPackage(join(scratch, "unkeyed-second"), false, { extensions: ["./extensions"] });
 pointAt(toUnkeyed, join(scratch, "unkeyed-first"));
-const throughUnkeyed = ["hangs", "behind"].map((one) =>
+const throughUnkeyed = ["hangs", "behind", "early"].map((one) =>
   join(toUnkeyed, "extensions", one, "index.ts"),
 );
 await heldUpUntil("a link to an unkeyed copy", throughUnkeyed, async () => {
@@ -382,10 +298,10 @@ await heldUpUntil("a link to an unkeyed copy", throughUnkeyed, async () => {
   await within(open("unkeyed-moved", throughUnkeyed), "a load through a moved link never ended");
 });
 // While a load holds its turn too long, the load waiting behind it and one
-// begun meanwhile load as an unkeyed package's do, and a factory kept
-// before stays kept. Every factory those loads give is kept, the held
-// load's once it ends, and later loads share the package's modules again,
-// without waiting for one that went on unshared.
+// begun meanwhile go on without waiting their turn, sharing what the
+// package finished, and a factory kept before stays kept. Every factory
+// those loads give is kept, the held load's once it ends, and later loads
+// share the package's modules, without waiting for one that went on.
 afresh();
 const { entries: stall, counts: stalledCounts } = stalledPackage(join(scratch, "stalled"));
 await open("stalled-early", [stall.early]);
@@ -405,28 +321,30 @@ await within(lagGate.reached, "a turn held too long held up the load behind it",
 await within(
   open("stalled-meanwhile", [stall.meanwhile, stall.early]),
   "a load begun while a turn was held too long waited for it",
+  5000,
 );
 stallGate.putAway();
 stallGate.open();
 await within(stallHanging, "a load that held its turn too long never ended");
 await within(
   open("stalled-after", [stall.hangs, stall.after]),
-  "a load after a turn held too long waited for one that went on unshared",
+  "a load after a turn held too long waited for one that went on without it",
 );
 lagGate.putAway();
 lagGate.open();
 await within(stallWaiting, "a load that went on behind a turn held too long never ended");
 await within(
   open("stalled-again", [stall.behind, stall.meanwhile]),
-  "a load after loads that went on unshared never ended",
+  "a load after loads that went on without their turn never ended",
 );
 // The held load's factory is kept too, so it opens while another load
-// holds the package's turn.
-await opensWhileHeld("stalled", stall.holds, stall.hangs);
+// holds the package's turn, and a load behind that one waits its turn
+// again.
+await opensWhileHeld("stalled", stall.holds, stall.hangs, stall.waits);
 assert.deepEqual(
   stalledCounts(),
-  [3, 1, 1, 1, 1, 1, 1],
-  "loads in a turn held too long shared, lost a factory, or didn't share after",
+  [1, 1, 1, 1, 1, 1, 1, 1],
+  "loads past a turn held too long didn't share what was finished, or lost a factory",
 );
 
 // A load in flight as its link moves to another copy, while the copy it

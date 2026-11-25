@@ -3539,11 +3539,16 @@
     and each extension of an unkeyed one evaluate their own, and puts none in Node's module cache;
     a reload or a moved link reads the files afresh, a load begun before a reload hands a later
     load nothing, loads take turns, a reload or a moved link lets go of loads queued behind one
-    that never ends, keeping none it let go of for the copy it moved to, a turn held too long
-    lets loads go on unshared while it lasts, keeping every factory, a failed load's retry
-    evaluates afresh every module, however deep, the failed load was first to import and none
-    another extension was first to import, and a load after an import made as an extension ran
-    that threw goes on unshared and fails as that module does
+    that never ends, which evaluate afresh what the package finished, keeping none it let go of
+    for the copy it moved to, and a turn held too long lets loads go on without it, sharing only
+    what the package finished and keeping every factory, until it ends and loads wait again;
+    a failed load's retry evaluates afresh every module, however deep, that the failed load
+    evaluated and none another extension finished, and is shared after; an import made as an
+    extension runs is given only finished modules, so one that threw, or whose throw its load
+    caught, is evaluated afresh by its own import or require again, a sibling's and a later load,
+    a load and a late import racing each evaluate their own, an import during its own load shares
+    what that load finished and is given part-way what it is still evaluating, and a builtin, a
+    data URL, JSON and a module jiti leaves to Node are jiti's own, evaluated no second time
   '';
   pi-hosted-keeps-each-conversations-keys = ''
     pi built with the host's patches, applied exactly, marks a model runtime that reads keys and
