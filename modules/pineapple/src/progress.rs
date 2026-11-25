@@ -3,9 +3,11 @@
 //! of what it judged, so a restart neither judges anything twice nor
 //! misses what was said while it was down; how far back Joel's own words
 //! were searched, so a restart neither judges past where a first start
-//! chose not to nor forgets a search held back, which taking `own` out of
-//! the file lets go of; and when it last read the site whole, which
-//! `pineapple-github` says (src/bin/pineapple-github/).
+//! chose not to nor forgets a search held back; and when it last read the
+//! site whole, which `pineapple-github` says (src/bin/pineapple-github/).
+//! A search held back by days of failing is let go by taking `own` out of
+//! the file with its reader stopped, as a running one writes it back each
+//! round; that lets go of a first start's floor too.
 
 use std::path::Path;
 

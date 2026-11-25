@@ -292,7 +292,7 @@ fn github_a_search_that_keeps_failing_keeps_its_hour_across_a_restart() {
     let said = journal(&home);
     assert!(
         said.contains(&warned),
-        "the journal says how far back it has fallen: {said}"
+        "the warning names the hour it's searched from, as the search does: {said}"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }

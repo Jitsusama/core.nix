@@ -5,11 +5,14 @@
 //! before the last whole one, and a stop it indexed that late is still
 //! heard. A stop of his that a read finds from the hour before then stops
 //! nothing, and the journal says so once a run. Indexed more than an hour
-//! late, it's said only when something else changes its thread after it
-//! and within about two hours of it, as a search finds a thread by its
-//! last change and reads it back two hours; on a thread nothing else
-//! changes by then, it's missed unsaid. How far it reached is kept across
-//! a restart (src/progress.rs).
+//! late, it's heard only if the search finds its thread by a later change
+//! within the hour of it, and told of within two, as a search finds a
+//! thread by its last change and reads it back two hours; it must see
+//! that change, and the word already indexed there, in time, so on a
+//! thread nothing brings back by then it's missed unsaid. A thread run
+//! past 30 pages is read without its newest, so a stop there is missed,
+//! the journal saying only that the read was cut. How far it reached is
+//! kept across a restart (src/progress.rs).
 
 use std::collections::{HashMap, HashSet};
 
@@ -210,7 +213,7 @@ mod tests {
         assert_eq!(
             searched.reach(),
             SINCE - 3 * OWN_LAG,
-            "an hour before the search it held back, not before the rounds begin"
+            "an hour before the search it held back, not an hour before the rounds begin"
         );
     }
 
