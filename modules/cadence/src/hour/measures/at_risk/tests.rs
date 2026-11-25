@@ -327,6 +327,36 @@ fn no_record_no_line_or_a_stale_one_is_unread_not_none_shared() {
 }
 
 #[test]
+fn a_line_dated_ahead_is_passed_over_for_the_fresh_ones_after_it() {
+    let refusals = list(&[
+        gate_line("gates", NOW + DAY, "drift", &[]),
+        gate_line("gates", NOW - 60, "drift", &["README.md"]),
+    ]);
+    assert_eq!(
+        drifted(Some(&refusals), "gates", NOW),
+        Ok(vec!["README.md".to_owned()]),
+        "one line dated a day ahead hid the fresh line written after it"
+    );
+}
+
+#[test]
+fn a_part_naming_no_change_leaves_the_whole_piece_unread() {
+    let text = list(&[ask_waiting(
+        "two halves",
+        "A",
+        (NOW + 600, "core.nix#6000, Org/world#123"),
+        &json!({"branch": "halves"}),
+    )]);
+    let m = read(&text);
+    assert!(
+        m.says.ends_with("(1 unread)") && m.target.is_none(),
+        "a half naming no change was dropped and the rest judged safe: {} {:?}",
+        m.says,
+        m.target
+    );
+}
+
+#[test]
 fn an_ask_is_read_from_its_latest_line_and_the_list_s_own_apart() {
     let waiting = ask_waiting("a fix", "A", (NOW + 600, "core.nix#6595"), &json!({}));
     let mut landed = waiting.clone();

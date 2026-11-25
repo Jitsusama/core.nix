@@ -99,22 +99,30 @@ const AHEAD: i64 = 5 * 60;
 /// The files `branch` shares with main by the latest line for it in the
 /// zone gate's `refusals` at `now`, its hourly drift or a refusal,
 /// whichever came last: each line holds the branch, when it was `at` and
-/// the `overlap`. No record, no line for the branch, none in the last
-/// two hours, one dated ahead or one naming no overlap is unread, never
-/// none shared.
+/// the `overlap`. A line dated ahead is passed over, so one bad clock
+/// can't hide the lines written after it. No record, no line for the
+/// branch, none in the last two hours, only lines dated ahead or one
+/// naming no overlap is unread, never none shared.
 pub fn drifted(refusals: Option<&str>, branch: &str, now: i64) -> Shared {
     let text = refusals.ok_or_else(|| "the zone's merge gate keeps no record yet".to_owned())?;
-    let line = lines(text)
+    let theirs: Vec<Value> = lines(text)
         .filter(|line| line["branch"].as_str() == Some(branch))
+        .collect();
+    let line = theirs
+        .iter()
+        .filter(|line| seconds(&line["at"]).is_none_or(|at| at <= now + AHEAD))
         .max_by_key(|line| seconds(&line["at"]))
-        .ok_or_else(|| format!("the zone's gate wrote no line for {branch}"))?;
+        .ok_or_else(|| {
+            if theirs.is_empty() {
+                format!("the zone's gate wrote no line for {branch}")
+            } else {
+                format!("its every line for {branch} is dated ahead")
+            }
+        })?;
     let at = seconds(&line["at"]).unwrap_or_default();
     if at < now - DRIFT_LASTS {
         let hours = (now - at) / 3600;
         return Err(format!("its latest line for {branch} is {hours} h old"));
-    }
-    if at > now + AHEAD {
-        return Err(format!("its latest line for {branch} is dated ahead"));
     }
     let Some(overlap) = line["overlap"].as_array() else {
         return Err(format!("its latest line for {branch} names no overlap"));
@@ -149,6 +157,11 @@ fn shared(piece: &Value, core: &dyn Fn(u32) -> Shared, world: &dyn Fn(&str) -> S
     let named = changes(pr);
     if named.is_empty() {
         return Err(format!("{pr} names no change that can be found"));
+    }
+    // One part naming nothing leaves the piece unread, as it would alone,
+    // rather than judged on the parts that could be read.
+    if let Some(part) = unfound(pr) {
+        return Err(format!("{part} in {pr} names no change that can be found"));
     }
     let mut files = BTreeSet::new();
     let numbers = named.iter().filter(|(repo, _)| *repo == Repo::Core);
@@ -249,25 +262,43 @@ impl Repo {
 /// once.
 pub fn changes(pr: &str) -> Vec<(Repo, u32)> {
     let mut named = Vec::new();
-    let mut last = None;
-    for part in pr.split(',').map(str::trim) {
-        let (repo, number) = match part.split_once("/pull/") {
-            Some((repo, number)) => (Repo::named(repo), number),
-            None => match part.rsplit_once('#') {
-                Some(("", number)) => (last, number),
-                Some((repo, number)) => (Repo::named(repo), number),
-                None => (None, ""),
-            },
-        };
-        last = repo;
-        let number = number.split('/').next().and_then(|n| n.parse::<u32>().ok());
-        if let (Some(repo), Some(number)) = (repo, number)
-            && !named.contains(&(repo, number))
-        {
-            named.push((repo, number));
+    for change in parts(pr).into_iter().filter_map(|(_, change)| change) {
+        if !named.contains(&change) {
+            named.push(change);
         }
     }
     named
+}
+
+/// The first part of `pr` that names no change that can be found, as
+/// [`changes`] reads it.
+fn unfound(pr: &str) -> Option<&str> {
+    parts(pr)
+        .into_iter()
+        .find_map(|(part, change)| change.is_none().then_some(part))
+}
+
+/// Each part of `pr`, empty ones left out, with the change it names when
+/// it names one that can be found, as [`changes`] says.
+fn parts(pr: &str) -> Vec<(&str, Option<(Repo, u32)>)> {
+    let mut last = None;
+    pr.split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let (repo, number) = match part.split_once("/pull/") {
+                Some((repo, number)) => (Repo::named(repo), number),
+                None => match part.rsplit_once('#') {
+                    Some(("", number)) => (last, number),
+                    Some((repo, number)) => (Repo::named(repo), number),
+                    None => (None, ""),
+                },
+            };
+            last = repo;
+            let number = number.split('/').next().and_then(|n| n.parse::<u32>().ok());
+            (part, repo.zip(number))
+        })
+        .collect()
 }
 
 #[cfg(test)]
