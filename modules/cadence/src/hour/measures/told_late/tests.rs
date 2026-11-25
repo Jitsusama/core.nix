@@ -24,16 +24,12 @@ fn ask_moved(words: &str, owner: &str, (first, moved): (i64, i64), more: &Value)
     ask
 }
 
-/// Joel's ask `words`, due at `due` and never moved, with `more` fields.
-fn ask_due(words: &str, due: i64, more: &Value) -> Value {
-    let mut ask = json!({
+/// Joel's ask `words`, due at `due` and never moved.
+fn ask_due(words: &str, due: i64) -> Value {
+    json!({
         "at": at(NOW - DAY), "words": words, "owner": "OWNER1", "expected": at(due),
         "promised": [{"expected": at(due), "given": at(NOW - DAY)}],
-    });
-    if let (Some(ask), Some(more)) = (ask.as_object_mut(), more.as_object()) {
-        ask.extend(more.clone());
-    }
-    ask
+    })
 }
 
 /// On 25 November a look guard's date was moved at 04:24 for 04:30, six
@@ -93,17 +89,28 @@ fn a_date_moved_in_good_time_or_over_a_day_ago_is_not_told_late() {
 }
 
 #[test]
-fn an_open_date_a_quarter_hour_away_with_no_move_is_told_late() {
+fn a_move_with_a_quarter_hour_left_is_late_and_a_second_more_is_not() {
     let text = list(&[
-        ask_due("near", NOW + 600, &json!({})),
-        ask_due("further", NOW + 1200, &json!({})),
-        ask_due("landed", NOW + 600, &json!({"landed": at(NOW - 60)})),
+        ask_moved("at the edge", "A", (NOW - 1000, NOW - 1900), &json!({})),
+        ask_moved("just in time", "B", (NOW - 1000, NOW - 1901), &json!({})),
     ]);
     let m = told_late(&text, NOW, Tracking::His);
     assert_eq!(
         m.behind,
-        ["near, due in 10 min with no move · OWNER1"],
-        "only the open date within a quarter hour counts"
+        ["at the edge, moved 15 min before its date · A"],
+        "a move with 15 minutes left is late, one with a second more isn't"
+    );
+}
+
+/// A date that passes with no move is the slips measure's to count.
+#[test]
+fn a_near_or_passed_date_with_no_move_is_left_to_the_slips() {
+    let text = list(&[ask_due("near", NOW + 600), ask_due("passed", NOW - 600)]);
+    let m = told_late(&text, NOW, Tracking::His);
+    assert!(
+        m.behind.is_empty(),
+        "a date never moved counted as told late: {:?}",
+        m.behind
     );
 }
 

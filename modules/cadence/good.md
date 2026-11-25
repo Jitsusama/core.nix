@@ -229,7 +229,7 @@ holding a space, as one broken across two lines does, is counted too.
 
 - Measures: `dates-told-late`, `dates-told-late-derived`
 - Target: 0 dates moved in the last day with 15 minutes or less left, or after they passed,
-  nor open dates 15 minutes or less away with no move, unless landed or met before the move.
+  unless landed or met before the move.
 - Joel, 22 Nov 18:10: "don't wait till monday to ask on shit."
 - Over costs him: whoever waits on a date learns it moved only once it was too late to plan
   around.
