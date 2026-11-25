@@ -8,14 +8,16 @@
 # file through a link or by the data volume's name, is left out of the count
 # and said, judged before it's opened, du not run when none is left, and
 # that a start after it that looks like an option reaches du as a path; that
-# a link to a file or a folder that can't be entered is left out and said
-# apart; that a start named - is that folder and CDPATH moves none; that
-# only a home's own guarded folders are left out by name; that du's own
-# nonzero end is kept; that -L, alone or among letters, is taken out and
-# said unless -P follows it; that the account's home is guarded whatever HOME
-# says, HOME's too, an unset one, and a home named through a link; that a
-# working folder gone still counts a whole path; that a home that can't be
-# found is said; that du's options and their values, joined or apart, are
+# a start that is a link is judged by its folder unless -H follows it; that
+# a link to a file -H follows or a folder that can't be entered is left out
+# and said apart; that a start named - is that folder and CDPATH moves none;
+# that only a home's own guarded folders are left out by name; that du's own
+# nonzero end is kept; that -L, alone or among letters, is taken out, given
+# as -H and said unless -H or -P follows it; that the account's home is
+# guarded whatever HOME says, HOME's too, one whose name begins another's, an
+# unset one, and a home named through a link; that a working folder gone
+# still counts a whole path; that a home that can't be found, or holds no
+# guarded folder, is said; that du's options and their values, joined or apart, are
 # read past to the paths, from a folder below the home so a skipped path
 # would show; that a count above no guarded folder runs as given, says
 # nothing and ends 0; and that --help answers without running du. A
@@ -115,8 +117,8 @@ names_left() {
   echo "note: du left out, uncounted, every folder named ${all} beneath its starts, a project's" \
     "own too, since macOS asks about those in the home folder"
 }
-unfollowed="note: du counted without following links, since a link may reach a folder macOS asks"
-unfollowed+=" about under a name of its own"
+unfollowed="note: du followed only the links it was named, as -H, since a link beneath may reach"
+unfollowed+=" a folder macOS asks about under a name of its own"
 
 # What du was given ahead of the words typed: -I and a name, for each name.
 masks() {
@@ -211,14 +213,16 @@ leaves_all "a count of / from inside Documents" -sh /
 count "${home}/Documents/inside" -sh ../..
 leaves_all "a count of ../.. from inside Documents" -sh ../..
 
-# -L is taken out, alone or among letters, and said, unless -P follows it;
-# an L that is -I's value is a name.
+# -L is taken out, alone or among letters, given as -H and said, unless -H
+# or -P follows it; an L that is -I's value is a name.
 count "${work}" -L -sh "${project}"
-gives "a count asked to follow links, from a project" "${unfollowed}" -sh "${project}"
+gives "a count asked to follow links, from a project" "${unfollowed}" -sh -H "${project}"
 count "${work}" -sLh "${project}"
-gives "a count asked to follow links by -sLh" "${unfollowed}" -sh "${project}"
+gives "a count asked to follow links by -sLh" "${unfollowed}" -sh -H "${project}"
 count "${work}" -L -P "${project}"
 gives "a count asked to follow links, then not" "" -P "${project}"
+count "${work}" -L -H "${project}"
+gives "a count asked to follow links, then only those named" "" -H "${project}"
 count "${work}" -ILx "${project}"
 gives "a count whose -I names Lx" "" -ILx "${project}"
 
@@ -240,12 +244,26 @@ two_masks=$(masks Desktop Documents)
 gives "a count of the home HOME names, holding two" "${two_names}" "${two_masks}" \
   -sh "${moved}"
 rmdir "${moved}/Documents" "${moved}/Desktop"
+# A home whose name begins the account's, which a match within the names
+# would take for one already found.
+moved="${work}/a"
+mkdir -p "${moved}/Documents"
+count "${work}" -sh "${moved}/Documents"
+runs_nothing "a count of Documents in a home whose name begins the account's" \
+  "${moved}/Documents"
+rm -r "${moved}"
 account=/nonexistent
 moved=/nonexistent
 count "${work}" -sh "${project}"
 ends=0
 gives "a count with no home to be found, which leaves nothing out" \
   "note: du found no home folder to guard, so it guards nothing" -sh "${project}"
+account=${project}
+moved=${project}
+count "${work}" -sh "${project}"
+gives "a count whose home holds no guarded folder, which leaves nothing out" \
+  "note: du found no folder to guard in the home folder, so it guards nothing" \
+  -sh "${project}"
 ends=""
 account=""
 moved=""
@@ -289,9 +307,16 @@ count "${work}" -sh "${home}/src/../Documents"
 runs_nothing "a count reaching Documents through .." "${home}/src/../Documents"
 count "${home}/Documents/inside" -sh ..
 runs_nothing "a count of .. from inside Documents" ..
+# A start that is a link is counted as the link alone, as macOS's du
+# counts one unless -H follows it, so it's judged by the folder holding it;
+# with -H, or a / after it, by the folder it reaches.
 ln -s "${home}/Documents" "${home}/src/notes"
 count "${work}" -sh "${home}/src/notes"
-runs_nothing "a count of a link to Documents" "${home}/src/notes"
+gives "a count of a link to Documents" "" -sh "${home}/src/notes"
+count "${work}" -shH "${home}/src/notes"
+runs_nothing "a count of a link to Documents that -H follows" "${home}/src/notes"
+count "${work}" -sh "${home}/src/notes/"
+runs_nothing "a count of a link to Documents with a / after it" "${home}/src/notes/"
 : >"${home}/Documents/inside/file"
 count "${work}" -sh "${home}/src/notes/inside/file"
 runs_nothing "a count of a file reached through a link to Documents" \
@@ -300,15 +325,25 @@ rm "${home}/src/notes"
 count "${work}" -sh "${data}${home}/Documents"
 runs_nothing "a count of Documents by the data volume's name" "${data}${home}/Documents"
 
-# A start that can't be judged, a link to a file or a folder that can't be
-# entered, is left out and said apart.
-ln -s "${home}/Documents/inside/file" "${home}/src/note"
-unjudged="note: du left out 1 start(s) it couldn't judge, a link to a file or a folder it"
-unjudged+=" can't enter, uncounted:"
-count "${home}" -sh src/note src
-gives "a count of a link to a file in Documents" "${unjudged} src/note" -sh src
-rm "${home}/src/note" "${home}/Documents/inside/file"
+# A start that can't be judged, a link to a file -H follows or a folder
+# that can't be entered, is left out and said apart. Root enters any
+# folder, so the test needs an account that can't.
 mkdir "${home}/src/locked"
+chmod 000 "${home}/src/locked"
+if (cd "${home}/src/locked" 2>/dev/null); then
+  echo "a folder can still be entered after chmod 000, as root can, so this tests nothing" >&2
+  exit 1
+fi
+chmod 755 "${home}/src/locked"
+ln -s "${home}/Documents/inside/file" "${home}/src/note"
+unjudged="note: du left out 1 start(s) it couldn't judge, a link to a file -H follows or a"
+unjudged+=" folder it can't enter, uncounted:"
+count "${home}" -sh src/note src
+gives "a count of a link to a file in Documents" "" -sh src/note src
+count "${home}" -shH src/note src
+gives "a count of a link to a file in Documents that -H follows" "${unjudged} src/note" \
+  -shH src
+rm "${home}/src/note" "${home}/Documents/inside/file"
 chmod 000 "${home}/src/locked"
 count "${home}" -sh src/locked src
 gives "a count of a folder that can't be entered" "${unjudged} src/locked" -sh src
@@ -343,10 +378,6 @@ ends=""
 # plainly, however it's spelt, or passed through, is still left out, as is
 # one named through a link to the home folder, the account's home named so.
 chmod 000 "${home}/Documents" "${home}/Downloads"
-if (cd "${home}/Documents" 2>/dev/null); then
-  echo "Documents can still be entered after chmod 000, as root can, so this tests nothing" >&2
-  exit 1
-fi
 count "${work}" -sh "${home}/Documents"
 runs_nothing "a count of a Documents that can't be entered" "${home}/Documents"
 count "${home}" -sh ./Documents

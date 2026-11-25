@@ -12,9 +12,10 @@
 # Downloads. A start above one leaves out, by -I, every folder of that name
 # beneath it, since macOS's du leaves a folder out by its name alone, not
 # its path: a project's own Documents goes too. A count asked to follow
-# links (-L) counts without following them, since macOS's du matches -I
-# against the name a link has, not the folder it reaches (ignorep in its
-# du.c), so a link named otherwise would walk into one. Each is said on
+# links (-L) follows only those it was named, as -H does, since macOS's du
+# matches -I against the name a link has, not the folder it reaches
+# (ignorep in its du.c), so a link beneath named otherwise would walk into
+# one. Each is said on
 # stderr, and du then ends 1, so a smaller total never reads as the whole.
 # Neither names a way round, since an agent reads a named way as the next
 # thing to run.
@@ -22,8 +23,10 @@
 # and the one HOME names when that's elsewhere, each as named and by its
 # real path. A guarded folder reached through a link in a start's path is
 # resolved by bash, which looks inside it once; a file is judged by its
-# folder's real path. A start that is a link to a file, or a folder that
-# can't be entered, can't be judged, so it's left out and said apart.
+# folder's real path, as is a start that is a link, which macOS's du counts
+# as the link alone unless -H follows it. A link to a file that -H follows,
+# or a folder that can't be entered, can't be judged, so it's left out and
+# said apart.
 # Another du ahead of this one on PATH, as a dev shell's is, isn't reached,
 # and folders outside the home folder, as on /Volumes, aren't guarded.
 # usage: du.sh <du> <ignore file> <data volume> <home> [du's arguments...]
@@ -46,8 +49,8 @@ du  macOS's du, leaving guarded folders alone
   the home folder's .ignore guards: a start that
   is one, lies in one or passes through one is
   left out, a count starting above one leaves out
-  every folder of that name, and links aren't
-  followed. Each is said on stderr.
+  every folder of that name, and -L follows only
+  the links named, as -H. Each is said on stderr.
 
 EXAMPLES
   du -sh ~
@@ -55,7 +58,7 @@ EXAMPLES
 
 EXIT
   du's own, or 1 when anything was left out or
-  a link not followed
+  -L taken as -H
 EOF
   exit 0
 fi
@@ -65,8 +68,11 @@ args=("$@")
 # to the first path. Only the options it takes are read: -B, -I, -d and -t
 # take a value, joined to them or as the next word, and -- ends them. Of -H,
 # -L and -P the last given wins, as in du; -L is taken out, wherever it
-# sits among a word's letters, and said when it would have won.
+# sits among a word's letters, and when it would have won, -H is given
+# last in its place and said. -H is kept as `heads`, since it decides how a
+# start that is a link is judged.
 follows=""
+heads=""
 dashed=""
 options=()
 at=0
@@ -74,7 +80,6 @@ while [ "${at}" -lt "${#args[@]}" ]; do
   arg=${args[at]}
   at=$((at + 1))
   if [ "${arg}" = -- ]; then
-    options+=(--)
     dashed=yes
     break
   elif [[ ${arg} == --?* ]]; then
@@ -93,7 +98,14 @@ while [ "${at}" -lt "${#args[@]}" ]; do
           follows=yes
           continue
           ;;
-        H | P) follows="" ;;
+        H)
+          follows=""
+          heads=yes
+          ;;
+        P)
+          follows=""
+          heads=""
+          ;;
         *) ;;
       esac
       kept_letters+=${letter}
@@ -111,6 +123,10 @@ while [ "${at}" -lt "${#args[@]}" ]; do
   fi
 done
 starts=("${args[@]:at}")
+if [ -n "${follows}" ]; then
+  options+=(-H)
+  heads=yes
+fi
 # No path is du's ., judged as one but not named to du, as it wasn't typed.
 unnamed=""
 if [ ${#starts[@]} -eq 0 ]; then
@@ -208,7 +224,12 @@ for home in "${account}" "${HOME-}"; do
     if [ -z "${one}" ] || [ "${one}" = / ]; then
       continue
     fi
-    [[ " ${homes[*]-} " == *" ${one} "* ]] || homes+=("${one}")
+    # Compared whole, since a home's name may hold spaces.
+    known=""
+    for had in ${homes[@]+"${homes[@]}"}; do
+      [ "${had}" != "${one}" ] || known=yes
+    done
+    [ -n "${known}" ] || homes+=("${one}")
   done
 done
 targets=()
@@ -243,6 +264,15 @@ leave() {
   leaving[${name}]=yes
   names+=("${name}")
 }
+# Sets real to start `path`'s real path, by its folder's with its name,
+# clearing judged when that folder can't be entered.
+by_folder() {
+  local folder=.
+  [[ ${path} != */* ]] || folder=${path%/*}
+  real "${folder:-/}"
+  [ -z "${real}" ] || real=${real%/}/${path##*/}
+  [ -n "${real}" ] || judged=""
+}
 for path in "${starts[@]}"; do
   if [[ ${path} == /* ]]; then
     plain "" "${path}"
@@ -256,22 +286,21 @@ for path in "${starts[@]}"; do
     continue
   fi
   # Then by its real path: a folder's own, and a file's by its folder's
-  # with its name. A folder that can't be entered, or a link that isn't a
-  # folder's, can't be judged, so it's left out too, said apart; one that
-  # isn't there is du's to say.
+  # with its name, as is a link's that -H doesn't follow, since du counts
+  # the link alone. A folder that can't be entered, or a link -H follows
+  # that isn't a folder's, can't be judged, so it's left out too, said
+  # apart; one that isn't there is du's to say.
   real=""
   judged=yes
-  if [ -d "${path}" ]; then
+  if [ -L "${path}" ] && [ -z "${heads}" ]; then
+    by_folder
+  elif [ -d "${path}" ]; then
     real "${path}"
     [ -n "${real}" ] || judged=""
   elif [ -L "${path}" ]; then
     judged=""
   elif [ -e "${path}" ]; then
-    folder=.
-    [[ ${path} != */* ]] || folder=${path%/*}
-    real "${folder:-/}"
-    [ -z "${real}" ] || real=${real%/}/${path##*/}
-    [ -n "${real}" ] || judged=""
+    by_folder
   fi
   if [ -z "${judged}" ]; then
     unjudged+=("${path}")
@@ -301,8 +330,10 @@ listed() {
   done
 }
 short=""
-if [ ${#targets[@]} -eq 0 ]; then
+if [ ${#homes[@]} -eq 0 ]; then
   echo "note: du found no home folder to guard, so it guards nothing" >&2
+elif [ ${#targets[@]} -eq 0 ]; then
+  echo "note: du found no folder to guard in the home folder, so it guards nothing" >&2
 fi
 if [ ${#left[@]} -gt 0 ]; then
   listed "${left[@]}"
@@ -312,8 +343,8 @@ if [ ${#left[@]} -gt 0 ]; then
 fi
 if [ ${#unjudged[@]} -gt 0 ]; then
   listed "${unjudged[@]}"
-  echo "note: du left out ${#unjudged[@]} start(s) it couldn't judge, a link to a file or a" \
-    "folder it can't enter, uncounted: ${all}" >&2
+  echo "note: du left out ${#unjudged[@]} start(s) it couldn't judge, a link to a file -H" \
+    "follows or a folder it can't enter, uncounted: ${all}" >&2
   short=yes
 fi
 if [ ${#kept[@]} -eq 0 ]; then
@@ -333,23 +364,21 @@ if [ ${#names[@]} -gt 0 ]; then
   short=yes
 fi
 if [ -n "${follows}" ]; then
-  echo "note: du counted without following links, since a link may reach a folder" \
-    "macOS asks about under a name of its own" >&2
+  echo "note: du followed only the links it was named, as -H, since a link beneath" \
+    "may reach a folder macOS asks about under a name of its own" >&2
   short=yes
 fi
-# A kept start that looks like an option, as one behind a start left out
-# can, is put past --, so du reads it as a path.
-if [ -z "${dashed}" ]; then
-  for path in ${kept[@]+"${kept[@]}"}; do
-    if [[ ${path} == -* ]]; then
-      options+=(--)
-      break
-    fi
-  done
-fi
+# The starts go past -- when one was typed, and when a kept start looks
+# like an option, as one behind a start left out can, so du reads it as a
+# path; the -H given for -L goes ahead of it.
+past=()
+for path in ${kept[@]+"${kept[@]}"}; do
+  [[ ${path} != -* ]] || dashed=yes
+done
+[ -z "${dashed}" ] || past=(--)
 ended=0
-"${du}" ${masks[@]+"${masks[@]}"} ${options[@]+"${options[@]}"} ${kept[@]+"${kept[@]}"} ||
-  ended=$?
+"${du}" ${masks[@]+"${masks[@]}"} ${options[@]+"${options[@]}"} ${past[@]+"${past[@]}"} \
+  ${kept[@]+"${kept[@]}"} || ended=$?
 if [ -n "${short}" ] && [ "${ended}" -eq 0 ]; then
   ended=1
 fi
