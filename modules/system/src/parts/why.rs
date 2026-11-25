@@ -335,6 +335,18 @@ mod tests {
             ),
             "going back's error isn't said as the switch's cause"
         );
+        let old = json!({"step": "failed", "why": "building the system failed (exit status: 1)",
+                         "lines": ["error: builder for '/nix/store/x.drv' failed with exit \
+                                    code 1;"]});
+        assert_eq!(
+            why_of(&old),
+            json!("builder for '/nix/store/x.drv' failed with exit code 1"),
+            "an error's own closing mark is dropped, so the page's isn't doubled"
+        );
+    }
+
+    #[test]
+    fn a_switch_with_nothing_to_go_back_to_says_its_own_error() {
         let gone = json!({"step": "failed", "lines": ["error: the switch was cut off"],
                           "why": "switching failed (exit status: 4); there was no system to go \
                                   back to"});
@@ -350,14 +362,6 @@ mod tests {
             why_of(&mute),
             json!("switching failed (exit status: 4), there was no system to go back to"),
             "and the step that failed when its lines say nothing"
-        );
-        let old = json!({"step": "failed", "why": "building the system failed (exit status: 1)",
-                         "lines": ["error: builder for '/nix/store/x.drv' failed with exit \
-                                    code 1;"]});
-        assert_eq!(
-            why_of(&old),
-            json!("builder for '/nix/store/x.drv' failed with exit code 1"),
-            "an error's own closing mark is dropped, so the page's isn't doubled"
         );
     }
 
