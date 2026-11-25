@@ -182,13 +182,32 @@ def keys(source: str) -> set[str]:
 
 
 def handler(source: str) -> tuple[str, int, int] | None:
-    """Give the name onUnhosted keeps the shell's why in, and where its body begins and ends."""
+    """Give the name onUnhosted keeps the shell's why in, and where its body begins and ends.
+
+    A brace inside a string or a comment is none of the body's, and a quote
+    inside a comment opens no string, so neither moves where it ends.
+    """
     found = HANDLER.search(source)
     if found is None:
         return None
-    depth, at = 1, found.end()
+    depth, quote, at = 1, "", found.end()
     while depth and at < len(source):
-        depth += {"{": 1, "}": -1}.get(source[at], 0)
+        one = source[at]
+        if quote:
+            if one == "\\":
+                at += 1
+            elif one == quote:
+                quote = ""
+        elif source.startswith("//", at):
+            at = source.find("\n", at)
+            at = len(source) if at < 0 else at
+        elif source.startswith("/*", at):
+            at = source.find("*/", at)
+            at = len(source) if at < 0 else at + 1
+        elif one in QUOTES:
+            quote = one
+        else:
+            depth += {"{": 1, "}": -1}.get(one, 0)
         at += 1
     return found.group(1), found.end(), at
 

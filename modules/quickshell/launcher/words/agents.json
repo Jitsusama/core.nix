@@ -332,6 +332,8 @@
         "startedUntaken": "started in its host \u00b7 its window didn't open when asked",
         "cameAfter": "viewed \u00b7 its own window came after the one not seen as its own",
         "startedCameAfter": "started in its host \u00b7 viewed, its own window came after the one not seen as its own",
+        "ownAfterAll": "viewed \u00b7 the window that came was its own after all",
+        "startedOwnAfterAll": "started in its host \u00b7 viewed, the window that came was its own after all",
         "unopened": "not opened \u00b7 it runs in a terminal the launcher can't reach",
         "untold": "not told, {why}",
         "refused": "{act} refused, {why}",
