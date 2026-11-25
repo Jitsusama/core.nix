@@ -39,7 +39,7 @@ const REACH: Duration = Duration::from_secs(3);
 /// How long the TV may take to say the channel is open. Its Allow prompt
 /// waits about 30 s for a press on its remote, so a first key waits that
 /// long; a TV that knows the token answers at once.
-const ALLOWED: Duration = Duration::from_secs(35);
+pub const ALLOWED: Duration = Duration::from_secs(35);
 
 /// How long the TV has to answer the channel's close once the key is
 /// sent: the close is WebSocket's own handshake, so the key is read
@@ -54,11 +54,14 @@ pub enum Why {
     /// Something answered with a certificate other than the one pinned:
     /// not the TV this machine was allowed by, or the TV was reset.
     NotTheTv,
-    /// The TV refused the asker at once: it was told Deny, or it forgot
-    /// the token it handed.
+    /// The TV refused an asker carrying no token: it was told Deny.
     Refused,
-    /// Nobody pressed Allow before the TV stopped asking, or the TV said
-    /// nothing before the deadline.
+    /// The TV refused the token it handed: it forgot this machine, or
+    /// was told Deny since. What it allowed is forgotten but its pin, so
+    /// the next key asks Allow again of the same TV.
+    Forgotten,
+    /// Asked for the first time, the TV stopped asking before anybody
+    /// pressed Allow, or said nothing before the deadline.
     Unanswered,
     /// The TV answered, then broke off or stopped answering: why. Trying
     /// again may reach it.
@@ -225,36 +228,67 @@ fn base64(bytes: &[u8]) -> String {
     out
 }
 
+/// Why a key didn't go, and the token the TV handed before it failed,
+/// which is kept all the same, since the TV holds it as given.
+#[derive(Debug, PartialEq)]
+pub struct Unsent {
+    pub why: Why,
+    pub handed: Option<String>,
+}
+
+impl From<Why> for Unsent {
+    fn from(why: Why) -> Self {
+        Unsent { why, handed: None }
+    }
+}
+
 /// Waits on `socket` until the TV says the channel is open, then presses
-/// `code`, answering the token the TV handed, if it handed a new one. A
-/// read that times out is waited past until `until`; a socket held to
-/// `until` by `Due` fails each read past it, so no read outlasts it.
+/// `code`, answering the token the TV handed, if it handed a new one.
+/// `carried` says whether the asker carried a token: only a TV asked for
+/// the first time waits on a press of Allow, so only then is a silence
+/// to the deadline a missing Allow, and a refusal a Deny. A read that
+/// times out is waited past until `until`; a socket held to `until` by
+/// `Due` fails each read past it, so no read outlasts it.
 pub fn talk<S: Read + Write>(
     socket: &mut WebSocket<S>,
     code: &str,
     until: Instant,
-) -> Result<Option<String>, Why> {
+    carried: bool,
+) -> Result<Option<String>, Unsent> {
+    let quiet = || {
+        if carried {
+            Why::Broke("it stopped answering".into())
+        } else {
+            Why::Unanswered
+        }
+    };
     let token = loop {
         if Instant::now() >= until {
-            return Err(Why::Unanswered);
+            return Err(quiet().into());
         }
         match socket.read() {
             Ok(Message::Text(text)) => match told(text.as_str()) {
                 Told::Connected { token } => break token,
-                Told::Unauthorized => return Err(Why::Refused),
-                Told::TimedOut => return Err(Why::Unanswered),
+                Told::Unauthorized if carried => return Err(Why::Forgotten.into()),
+                Told::Unauthorized => return Err(Why::Refused.into()),
+                Told::TimedOut => return Err(Why::Unanswered.into()),
                 Told::Other => {}
             },
-            Ok(Message::Close(_)) => return Err(Why::Broke("it closed the channel".into())),
+            Ok(Message::Close(_)) => {
+                return Err(Why::Broke("it closed the channel".into()).into());
+            }
             Ok(_) => {}
             Err(tungstenite::Error::Io(error)) if waited(&error) => {}
-            Err(error) => return Err(broke(error)),
+            Err(error) => return Err(broke(error).into()),
         }
     };
-    socket
-        .send(Message::text(press_message(code)))
-        .map_err(broke)?;
-    Ok(token)
+    match socket.send(Message::text(press_message(code))) {
+        Ok(()) => Ok(token),
+        Err(error) => Err(Unsent {
+            why: broke(error),
+            handed: token,
+        }),
+    }
 }
 
 /// Ends the channel as WebSocket does: says it's closing, then reads
@@ -311,6 +345,36 @@ pub fn kept_after(handed: Option<String>, carried: Option<&str>, pin: Pin) -> Ke
     }
 }
 
+/// A key that didn't go, and what to keep of the TV all the same, where
+/// that differs from what the key carried.
+#[derive(Debug, PartialEq)]
+pub struct Missed {
+    pub why: Why,
+    pub kept: Option<Kept>,
+}
+
+impl From<Why> for Missed {
+    fn from(why: Why) -> Self {
+        Missed { why, kept: None }
+    }
+}
+
+/// What to keep of the TV once a key didn't go: a token it handed first,
+/// which it now expects; none but the pin once it refused the token
+/// carried, so the next key asks Allow afresh of the same TV; and
+/// otherwise nothing new.
+pub fn kept_unsent(unsent: Unsent, carried: Option<&str>, pin: Pin) -> Missed {
+    let kept = match (&unsent.why, unsent.handed) {
+        (Why::Forgotten, _) => Some(Kept { token: None, pin }),
+        (_, Some(handed)) => Some(kept_after(Some(handed), carried, pin)),
+        (_, None) => None,
+    };
+    Missed {
+        why: unsent.why,
+        kept,
+    }
+}
+
 /// Whether a read stopped only because its timeout passed.
 fn waited(error: &io::Error) -> bool {
     matches!(
@@ -319,18 +383,22 @@ fn waited(error: &io::Error) -> bool {
     )
 }
 
-/// Presses `code` on the TV at `address`, as `asker`, carrying what was
-/// kept of it, if anything was. Answers what to keep of it afterwards:
-/// its pin, and its token, the new one where it handed one.
-pub fn press(address: IpAddr, asker: &str, code: &str, kept: Option<&Kept>) -> Result<Kept, Why> {
-    let pinned = Arc::new(Pinned::new(kept.map(|kept| kept.pin)));
-    let stream = TcpStream::connect_timeout(&SocketAddr::new(address, PORT), REACH)
-        .map_err(|error| Why::Unreachable(error.to_string()))?;
-    // One deadline holds the TLS and WebSocket handshakes and the wait
-    // for Allow alike, so a TV slow anywhere fails once, at the end.
-    let until = Instant::now() + ALLOWED;
+/// The channel to the TV, over TLS on a socket held to one deadline.
+type Channel<S> = WebSocket<StreamOwned<ClientConnection, Due<S>>>;
+
+/// Opens the channel at `address` on `stream`, as `asker` carrying
+/// `token`, through the TLS and WebSocket handshakes, held to `until`,
+/// and answers it with the pin of the certificate the TV showed.
+fn opened<S: Read + Write + Waits>(
+    stream: S,
+    address: IpAddr,
+    asker: &str,
+    token: Option<&str>,
+    pinned: &Arc<Pinned>,
+    until: Instant,
+) -> Result<(Channel<S>, Pin), Why> {
     let name = ServerName::IpAddress(address.into());
-    let connection = ClientConnection::new(configured(Arc::clone(&pinned))?, name)
+    let connection = ClientConnection::new(configured(Arc::clone(pinned))?, name)
         .map_err(|error| Why::Unlike(error.to_string()))?;
     let tls = StreamOwned::new(
         connection,
@@ -339,13 +407,12 @@ pub fn press(address: IpAddr, asker: &str, code: &str, kept: Option<&Kept>) -> R
             until,
         },
     );
-    let token = kept.and_then(|kept| kept.token.as_deref());
     let request = url(address, asker, token)
         .into_client_request()
         .map_err(|error| Why::Unlike(error.to_string()))?;
-    let mut socket = match tungstenite::client::client(request, tls) {
+    let socket = match tungstenite::client::client(request, tls) {
         Ok((socket, _)) => socket,
-        Err(HandshakeError::Failure(error)) => return Err(not_opened(&pinned, error)),
+        Err(HandshakeError::Failure(error)) => return Err(not_opened(pinned, error)),
         // A socket that would block is told as timed out by `Due`, so the
         // handshake is never left halfway; this is only for its type.
         Err(HandshakeError::Interrupted(_)) => {
@@ -355,7 +422,29 @@ pub fn press(address: IpAddr, asker: &str, code: &str, kept: Option<&Kept>) -> R
     let pin = pinned
         .seen()
         .ok_or_else(|| Why::Unlike("it showed no certificate".into()))?;
-    let handed = talk(&mut socket, code, until)?;
+    Ok((socket, pin))
+}
+
+/// Presses `code` on the TV at `address`, as `asker`, carrying what was
+/// kept of it, if anything was. Answers what to keep of it afterwards:
+/// its pin, and its token, the new one where it handed one; a key that
+/// didn't go says what to keep all the same.
+pub fn press(
+    address: IpAddr,
+    asker: &str,
+    code: &str,
+    kept: Option<&Kept>,
+) -> Result<Kept, Missed> {
+    let pinned = Arc::new(Pinned::new(kept.map(|kept| kept.pin)));
+    let stream = TcpStream::connect_timeout(&SocketAddr::new(address, PORT), REACH)
+        .map_err(|error| Why::Unreachable(error.to_string()))?;
+    // One deadline holds the TLS and WebSocket handshakes and the wait
+    // for Allow alike, so a TV slow anywhere fails once, at the end.
+    let until = Instant::now() + ALLOWED;
+    let token = kept.and_then(|kept| kept.token.as_deref());
+    let (mut socket, pin) = opened(stream, address, asker, token, &pinned, until)?;
+    let handed = talk(&mut socket, code, until, token.is_some())
+        .map_err(|unsent| kept_unsent(unsent, token, pin))?;
     let lingered = Instant::now() + LINGER;
     socket.get_mut().sock.until = lingered;
     close(&mut socket, lingered);

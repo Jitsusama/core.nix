@@ -220,20 +220,33 @@ address in the record. They answer `net.pressed/1` (`device`, `key`,
   write only what's left of it, so a TV slow to answer or trickling a
   byte at a time fails once, at the end. After the key the channel
   closes as WebSocket does, waiting up to 1 s for the TV's close.
-- A TV that refuses at once (told Deny, or it forgot the token) and one
-  nobody answered are told apart, and only a broken socket offers a
-  retry: TLS or WebSocket spoken otherwise than a TV speaks it fails
-  as `Failed`, since a retry reaches the same.
+- Only a first press, carrying no token, waits on Allow, so only then is
+  a refusal a Deny (`Refused`) and a silence to the deadline a missing
+  Allow (`Unanswered`). A TV refusing the token it handed (`Forgotten`)
+  has its token forgotten and its pin kept, so the next press asks Allow
+  of the same TV; one going quiet after a token was carried broke off.
+  A token the TV hands is kept even when the key then fails to go.
+  TLS or WebSocket spoken otherwise than a TV speaks it fails as
+  `Failed` with no retry, since a retry reaches the same.
 - The TV's certificate is self-signed, so it's pinned on first use by
   its SHA-256 and any other is refused (`NotTheTv`), rather than any
   certificate being trusted each time. A reset TV shows a new one; the
-  refusal says which file to remove to allow it again.
+  refusal names the file to remove once the TV was reset, and offers no
+  command, since forgetting the pin trusts whatever answers next. Only a
+  kept file that won't open as a TV's is offered `rm`; one net can't look
+  at, or a `systemd-creds` that won't run, says so instead.
+- Try lines name the TV by its id, which `views::find` takes first, so
+  they reach it even where another device shares its name. While neither
+  the modem nor the switch answers net, a TV that isn't heard isn't
+  blamed: the failure says this machine is likely away from home.
 - The token and the pin are sealed with `systemd-creds --user` under
   `$XDG_STATE_HOME/net/televisions/`, one file named by the TV's hardware
   address and sealed under a name of its own, as eero-daemon seals its
   session, so a fenced agent can't read them and one TV's file can't
   stand in for another's. A half-made file goes when sealing fails, and
-  one a stopped net left goes the next time its TV is kept.
+  one a stopped net left goes the next time its TV is kept, once it's
+  older than any press takes, so a net sealing in another pid namespace,
+  whose pid /proc here doesn't show, keeps its own.
 - A TV in standby answers nothing, so `wake` sends Wake-on-LAN to its
   hardware address, broadcast and to its last address, then asks its
   page about once a second, each ask at most 2 s, until it says `on` or
