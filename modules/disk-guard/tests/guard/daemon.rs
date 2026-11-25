@@ -283,6 +283,51 @@ fn the_system_daemon_vouches_for_what_this_account_cant_read() {
     );
 }
 
+/// A config whose disk is filling, or nearly full where `nearly_full` is
+/// `100%`, and which heeds the writers' hold `mark`.
+fn held_by(home: &Home, mark: &Path, nearly_full: &str) -> Config {
+    Config::parse(&format!(
+        r#"{{ "version": 1, "scope": "user", "status_file": true,
+             "bands": {{ "filling": "100%", "nearly_full": "{nearly_full}",
+                        "critically_full": "0%", "target": "100%" }},
+             "holds": ["{1}"],
+             "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
+             "sources": {{ "scratch": {{ "kind": "scratch", "path": "{0}/scratch" }} }} }}"#,
+        home.root.display(),
+        mark.display()
+    ))
+    .unwrap()
+}
+
+#[test]
+fn a_writers_hold_stops_a_pass_until_the_disk_is_nearly_full() {
+    // A cell holding heavy disk writers, as while Joel is on a call, leaves
+    // a mark; only its presence counts, never what it says.
+    let home = Home::new();
+    let mark = home.root.join("velocity-hold/disk-writers");
+    fs::create_dir_all(mark.parent().unwrap()).unwrap();
+    fs::write(&mark, "a call is on").unwrap();
+    let cold = home.cold_scratch("run-1");
+    let mut guard = home.guard(held_by(&home, &mark, "0%"));
+    guard.step(&tick_at(0.0), &CALM).unwrap();
+    assert!(
+        cold.exists(),
+        "a filling disk passed under the writers' hold"
+    );
+    fs::remove_file(&mark).unwrap();
+    guard.step(&tick_at(60.0), &CALM).unwrap();
+    assert!(!cold.exists(), "no pass came once the writers' hold ended");
+
+    fs::write(&mark, "").unwrap();
+    let cold = home.cold_scratch("run-2");
+    let mut nearly_full = home.guard(held_by(&home, &mark, "100%"));
+    nearly_full.step(&tick_at(0.0), &CALM).unwrap();
+    assert!(
+        !cold.exists(),
+        "a nearly full disk waited on the writers' hold"
+    );
+}
+
 #[test]
 fn a_directory_is_begun_in_the_journal_before_it_is_moved() {
     let home = Home::new();

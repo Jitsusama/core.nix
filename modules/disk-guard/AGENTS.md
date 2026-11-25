@@ -521,6 +521,16 @@ or launchd, and [`home.nix`][2] the account's.
   the same set, so what a clear offers to free is what it takes, and a
   pass drops what it reclaimed from it at once. The command refuses a
   kept folder. `src/clears.rs` holds the asks.
+- **Holds.** `holds` in the config names marks another program leaves
+  while the disk's writes must wait for what Joel is using, as one did on
+  24 November while Chrome stalled for seconds at a time. While any of
+  them exists, a daemon starts no pass, listing of Nix's garbage, delete
+  batch, store dedupe or producer short of nearly full, and refuses a user
+  daemon's ask to collect, since each writes the disk for minutes. Only a
+  mark's presence counts, never what it says. A nearly full disk is
+  answered as ever, as is a clear Joel asked for, and what is already
+  running goes on. The log says when a hold begins and ends. A machine
+  names its marks itself: core knows no program that leaves one.
 - **Notices.** The account's guard shows one desktop notice, and only once
   a disk is nearly full: a filling disk is the launcher's to show. The
   exception is the guard itself failing: a pass on a filling disk whose

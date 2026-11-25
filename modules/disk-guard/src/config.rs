@@ -659,6 +659,10 @@ pub struct Config {
     /// What the machine keeps, by path, each with its reason: never
     /// offered to clear, and never asked about.
     pub keep: BTreeMap<PathBuf, String>,
+    /// Marks another program leaves while the disk's writes must wait, as
+    /// while Joel is on a call: while any exists, the guard starts no
+    /// pass, listing or collection short of nearly full.
+    pub holds: Vec<PathBuf>,
 }
 
 /// Where the guard looks for what holds a disk, beside its sources.
@@ -698,6 +702,8 @@ struct Rendered {
     holders: Holders,
     #[serde(default)]
     keep: BTreeMap<PathBuf, String>,
+    #[serde(default)]
+    holds: Vec<PathBuf>,
 }
 
 fn yes() -> bool {
@@ -791,6 +797,7 @@ impl Config {
             budget: rendered.budget,
             holders: rendered.holders,
             keep: rendered.keep,
+            holds: rendered.holds,
         })
     }
 }

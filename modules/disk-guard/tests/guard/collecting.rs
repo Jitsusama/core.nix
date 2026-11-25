@@ -1205,6 +1205,38 @@ fn a_listing_the_disk_cant_save_is_kept_all_the_same() {
 }
 
 #[test]
+fn a_writers_hold_stops_a_listing_until_the_store_is_nearly_full() {
+    // A listing reads the whole store, the writes a cell holds off while
+    // Joel's apps need the disk.
+    let store = Store::new();
+    store.dead("aaa-old", 10.0 * DAY, 4096);
+    fs::write(store.root.join("listed"), "").unwrap();
+    let mark = store.root.join("velocity-hold/disk-writers");
+    fs::create_dir_all(mark.parent().unwrap()).unwrap();
+    fs::write(&mark, "").unwrap();
+    let holds = format!(r#""holds": ["{}"],"#, mark.display());
+    let mut guard = store.guard(store.config_keeping("100%", "0%", &holds));
+    step_later(&mut guard, 0.0, &CALM);
+    step_later(&mut guard, 600.0, &CALM);
+    assert_eq!(
+        lists(&store),
+        0,
+        "a filling store was listed under the writers' hold: {:?}",
+        store.log()
+    );
+    fs::remove_file(&mark).unwrap();
+    step_later_until(&store, &mut guard, 660.0, &CALM, |store, _| {
+        lists(store) == 1
+    });
+
+    fs::write(&mark, "").unwrap();
+    let mut nearly_full = store.guard(store.config_keeping("100%", "100%", &holds));
+    step_later_until(&store, &mut nearly_full, 0.0, &CALM, |store, _| {
+        lists(store) == 2
+    });
+}
+
+#[test]
 fn a_nearly_full_store_s_listing_that_was_kept_is_not_rested() {
     // Only one that failed rests there: a kept half-hour listing would
     // otherwise hold the next back four and a half hours, as the store fills.
