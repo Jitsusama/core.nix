@@ -67,17 +67,26 @@ let
     else
       null;
   named = if systemd ? version then "systemd ${systemd.version}" else "one of unknown version";
-  # The first few flags only one side has, so a reader sees what to drop.
-  ownFlags = lib.take 3 (lib.subtractLists (alike builders) (alike systemd));
-  missing = lib.take 3 (lib.subtractLists (alike systemd) (alike builders));
-  flagsSaid = lib.concatStringsSep ", " (ownFlags ++ map (flag: "no ${flag}") missing);
+  # The first few flags only one side has, so a reader sees what to match,
+  # and how many more; flags both have, in another order or count, are
+  # said as such, since no one flag then differs.
+  ownFlags = lib.subtractLists (alike builders) (alike systemd);
+  missing = lib.subtractLists (alike systemd) (alike builders);
+  shown = lib.take 3 ownFlags ++ map (flag: "no ${flag}") (lib.take 3 missing);
+  more = lib.length ownFlags + lib.length missing - lib.length shown;
+  flagsSaid =
+    if shown == [ ] then
+      "the same flags in another order or count"
+    else
+      lib.concatStringsSep ", " shown + lib.optionalString (more > 0) ", and ${toString more} more";
   whatDiffers =
     lib.concatStringsSep ", " differs
     + lib.optionalString (lib.elem "flags" differs && flagsSaid != "") " (${flagsSaid})";
   why =
     if canHave then
       "has none built alike, since the machine's differs in its ${whatDiffers}; build it on "
-      + "${stdenv.hostPlatform.system}, or drop what differs from nixpkgs' systemd, to hold it"
+      + "${stdenv.hostPlatform.system}, or match the builder's systemd where it differs, "
+      + "an override argument such as withTimedated showing as its flag, to hold it"
     else
       "can't build systemd at all; build it on ${stdenv.hostPlatform.system} to hold it";
   unheld =
