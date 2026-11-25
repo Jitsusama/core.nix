@@ -415,6 +415,16 @@ export const grewWords = <T>(
 };
 
 /**
+ * The cell a cell's drawer says it split from: none where the split names
+ * the cell that started it, since that is said once, as Started, the way a
+ * network's drawer and lineage.ts's originsOf say it.
+ */
+export const splitSaid = (
+  split: string | undefined,
+  start: string | undefined,
+): string | undefined => (split && split !== start ? split : undefined);
+
+/**
  * What each kind of shared thing a network gathers round is called in words.
  * The model keeps only the networks whose kind is named here, so the panel
  * and the map's drawing never meet a kind without its word.

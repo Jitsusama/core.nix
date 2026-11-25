@@ -37,19 +37,21 @@ Nothing on it acts on the network.
   So does a network grown out of another, one whose cells were started by
   cells of the other: it branches from the network whose cells started
   more of its cells than any other, and its drawer names them. A branch
-  lasts only while the cell that started it is on the map, since that
-  cell's network is known from where it is drawn. Who started a cell is
+  lasts only while the cell that started it, or that it split from, is on
+  the map, since that cell's network is known from where it is drawn. Who started a cell is
   said by the node that started it and carried to every machine, so a
   branch grows across machines alike. A node too old to say so of its
   cells says it only of its own machine's, so a realm with such a node in
   it grows branches from that machine's cells only on that machine's map.
   A cell whose purpose split from another's, as a cell sprouted from
-  another's work does, grows the same branch where no start is said, or
-  where its start grows none, as one from a receptor, from inside its own
-  network or from a branch of it. A cell started from one network and
-  split from another counts toward both, and the drawer of the network it
-  grows out of says how it came. Both drawers say it split rather than
-  that anybody started it, since a split is not a start. Only a forage here says a split, and
+  another's work does, counts toward a branch as a start does, so it grows
+  one where no start is said, or where its start grows none, as one from a
+  receptor, from inside its own network or from a branch of it. A cell
+  started from one network and split from another counts toward both, and
+  the drawer of the network it grows out of says how it came. Both drawers
+  say it split rather than that anybody started it, since a split is not a
+  start, and a cell's drawer says a split from the cell that started it
+  only once. Only a forage here says a split, and
   only of a cell with a forage here, so only this machine's splits are
   drawn, and a network can grow out of one network here and another on a
   machine that can't read its splits.

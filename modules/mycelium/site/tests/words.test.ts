@@ -30,6 +30,7 @@ import {
   spends,
   spentOf,
   spentWords,
+  splitSaid,
   toldApart,
 } from "../words.ts";
 
@@ -161,6 +162,13 @@ it("says a branch's starts and splits apart, each out of all its cells", () => {
     ["Started by SKIFF1: its cell"],
     "a branch only started says no split",
   );
+});
+
+it("a cell says what it split from only where its start doesn't name it", () => {
+  assert.equal(splitSaid("SKIFF1", undefined), "SKIFF1", "a split with no start should be said");
+  assert.equal(splitSaid("GULL01", "SKIFF1"), "GULL01", "a split from another cell is said");
+  assert.equal(splitSaid("SKIFF1", "SKIFF1"), undefined, "a split from its starter is said once");
+  assert.equal(splitSaid(undefined, "SKIFF1"), undefined, "no split, nothing said");
 });
 
 it("says what a cell is doing and what waits on it or it holds", () => {

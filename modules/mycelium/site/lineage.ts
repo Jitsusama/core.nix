@@ -3,8 +3,9 @@
 // presence names. Each cell's own record says so on every machine, since
 // links carry it; a node too old to say it there says it only in its
 // forages (the node's `forage` kind), which never cross a link, so only
-// this machine's cells are known that way. From that, which network grows
-// out of which, as a hypha branches from another.
+// this machine's cells are known that way. What each cell's purpose split
+// from, which only forages say, so only of this machine's cells. From both,
+// which network grows out of which, as a hypha branches from another.
 
 import { type Fields, type Held, object, text } from "../../local-sites/kit/records.ts";
 
@@ -166,10 +167,11 @@ function splitsOf(forages: Held | undefined): Split[] {
 
 /**
  * Where each cell came from, for growing branches: who started it, then
- * what its purpose split from, the starts first, so grownOf grows a cell's
- * branch from its start where that can grow one and from its split where
- * it can't, as for a start from a receptor or from inside its own
- * network. A split naming the cell its start names is said once. A
+ * what its purpose split from, the starts first, so where a start and a
+ * split come from one network the cell counts there once, as started. Each
+ * counts toward its own network in grownOf, so a split still grows a
+ * branch where the start grows none, as one from a receptor or from inside
+ * its own network. A split naming the cell its start names is said once. A
  * sprout's start often names the cell it split from, but not always: the
  * node's book lets a start go after a day and finds none where no
  * session, or two, claim the asker, while a split stays said for as long
@@ -291,7 +293,7 @@ function grownOf(
       collate(nameOf(one.choice.from), nameOf(other.choice.from)),
   );
   for (const { key, choice } of choices) {
-    if (!grown.has(key) && !sitsIn(choice.from, key)) {
+    if (!(grown.has(key) || sitsIn(choice.from, key))) {
       grown.set(key, choice);
     }
   }
