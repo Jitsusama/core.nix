@@ -157,19 +157,9 @@ let
   homeRealm = lib.attrByPath [ "jitsusama" "mycelium" "realm" ] null config;
   further = lib.attrNames (lib.attrByPath [ "jitsusama" "mycelium" "alsoJoins" ] { } config);
 
-  # The fence's SSH agent, run only where it has hosts to sign logins to.
-  # It depends on the hosts alone, since the upstreams' default looks at
-  # which sockets are declared, these among them.
-  agentProxy = pkgs.callPackage ./agent-proxy/package.nix { };
-
   # The door the fence's gh and git reach GitHub through, on every Linux
   # machine, since the fence runs on each.
   githubDoor = pkgs.callPackage ./github-door/package.nix { };
-  proxied =
-    pkgs.stdenv.hostPlatform.isLinux
-    && (
-      config.jitsusama.pi.agentProxy.machines != [ ] || config.jitsusama.pi.agentProxy.builderKey != null
-    );
 
   # Each plan's small, quick model, for answers that take a second or two.
   quickModels = {
@@ -186,6 +176,7 @@ let
 in
 {
   imports = [
+    ./agent-proxy/home.nix
     ./agents.nix
     ./compile-cache.nix
     ./fence.nix
@@ -226,55 +217,6 @@ in
       Each `git:` one is installed by pi-packages, which follows its branch
       and swaps each new commit in whole, and pi is given its current link.
     '';
-  };
-
-  options.jitsusama.pi.agentProxy = {
-    machines = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      default = [ ];
-      example = [ "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... builder" ];
-      description = ''
-        The host keys, as OpenSSH public keys, of the machines a fenced pi
-        command may log in to through pi-agent-proxy (agent-proxy/src).
-        With none, and no builderKey, no proxy runs and fenced commands
-        reach no SSH agent.
-      '';
-    };
-    builderKey = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
-      default = null;
-      example = "/home/me/.local/state/nix-offload/store_ed25519";
-      description = ''
-        The private key nix-offload logs in to the builders it's lent with,
-        which the proxy holds for fenced commands so the key itself stays
-        hidden from them. It signs with it only a login as nix-offload to a
-        builder a file in lentFiles names now, never any other.
-      '';
-    };
-    lentFiles = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      default = [ ];
-      example = [ "/run/nix-offload-lines/lent" ];
-      description = ''
-        The files root writes of the builders it vouches for now, read
-        afresh at each login, one builder a line as `<lender> <instance>
-        <key-type> <base64-key>`: a nix-offload lender's ed25519 host key
-        is lent to builderKey's logins. Never a file the account can write,
-        or a command could lend itself a host of its own.
-      '';
-    };
-    upstreams = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      default = lib.optional (config.systemd.user.sockets ? agent-signing) "%t/agent-signing.sock";
-      defaultText = lib.literalExpression ''[ "%t/agent-signing.sock" ], where the agents' key is served, else [ ]'';
-      description = ''
-        The agents' sockets, `%t` for the runtime folder, whose keys the
-        proxy lists and signs logins with. Only the agents' own by default:
-        the person's key asks a confirmation on every signature, so an agent
-        that offered it while they were away would hold every other
-        signature until they came back.
-      '';
-    };
   };
 
   options.jitsusama.pi.chime = lib.mkOption {
@@ -392,17 +334,6 @@ in
             && lib.elem config.jitsusama.pi.claude.realm further;
         message = "jitsusama.pi.claude.realm names no realm of jitsusama.mycelium.alsoJoins.";
       }
-      {
-        assertion =
-          config.jitsusama.pi.agentProxy.machines != [ ] -> config.jitsusama.pi.agentProxy.upstreams != [ ];
-        message = "jitsusama.pi.agentProxy.machines names machines, but no agent's socket is given in jitsusama.pi.agentProxy.upstreams to sign their logins with.";
-      }
-      {
-        assertion =
-          config.jitsusama.pi.agentProxy.builderKey != null
-          -> config.jitsusama.pi.agentProxy.lentFiles != [ ];
-        message = "jitsusama.pi.agentProxy.builderKey is given, but no file in jitsusama.pi.agentProxy.lentFiles names the builders it may sign for.";
-      }
     ];
 
     home.file.".pi/agent/themes/jitsusama.json".text = builtins.toJSON theme;
@@ -447,61 +378,6 @@ in
         # and the fence keeps the account's PATH.
         githubDoor
       ];
-
-    # The one SSH agent the agent fence lets in, at %t/pi-agent/agent.sock:
-    # it signs, with the agents' key, only logins to the hosts named in
-    # jitsusama.pi.agentProxy.machines, and with the builders' key only
-    # nix-offload's logins to the builders lent now, each proved by the
-    # machine's own signature over the session (agent-proxy/src/bind.rs).
-    # Started by the first ssh that asks; every refusal says why in the
-    # journal. The socket sits in a folder of its own so the fence can let
-    # the folder in, which still holds the socket systemd makes anew when
-    # the socket unit restarts; %t/pi-agent.sock links to it meanwhile.
-    # systemd never makes a link over a file already there, and a machine
-    # switched from the socket's old place keeps its old, dead socket at
-    # that path until it boots, so the old path refused every client on
-    # 14 November 2026 until it was cleared by hand. Clearing it before
-    # the socket starts lets systemd make the link.
-    systemd.user.sockets.pi-agent-proxy = lib.mkIf proxied {
-      Unit.Description = "The SSH agent pi's fenced commands reach, signing only logins to the hosts it's told of";
-      Socket = {
-        ListenStream = "%t/pi-agent/agent.sock";
-        SocketMode = "0600";
-        DirectoryMode = "0700";
-        ExecStartPre = "${pkgs.coreutils}/bin/rm -f %t/pi-agent.sock";
-        Symlinks = [ "%t/pi-agent.sock" ];
-        Service = "pi-agent-proxy.service";
-      };
-      Install.WantedBy = [ "sockets.target" ];
-    };
-    systemd.user.services.pi-agent-proxy = lib.mkIf proxied {
-      Unit = {
-        Description = "The SSH agent pi's fenced commands reach, signing only logins to the hosts it's told of";
-        Requires = [ "pi-agent-proxy.socket" ];
-        After = [ "pi-agent-proxy.socket" ];
-      };
-      Service.ExecStart = lib.escapeShellArgs (
-        [
-          (lib.getExe agentProxy)
-          "--hosts"
-          "${pkgs.writeText "pi-agent-proxy-hosts" (lib.concatLines config.jitsusama.pi.agentProxy.machines)}"
-        ]
-        ++ lib.concatMap (socket: [
-          "--upstream"
-          socket
-        ]) config.jitsusama.pi.agentProxy.upstreams
-        ++ lib.optionals (config.jitsusama.pi.agentProxy.builderKey != null) (
-          [
-            "--key"
-            config.jitsusama.pi.agentProxy.builderKey
-          ]
-          ++ lib.concatMap (file: [
-            "--lent"
-            file
-          ]) config.jitsusama.pi.agentProxy.lentFiles
-        )
-      );
-    };
 
     # The door a fenced gh or git reaches GitHub through, since the token
     # lives in the keyring the fence hides. The harness asks it over the

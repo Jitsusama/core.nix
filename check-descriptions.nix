@@ -4955,16 +4955,39 @@
   '';
   pi-agent-proxy-runs-only-with-machines = ''
     pi's SSH agent proxy runs only where it's given machines or the builders' key, never on a Mac,
-    started by the first ssh that asks on a socket in a folder only the account reaches, told of
+    started with the session where it makes an OS Login key and otherwise by the first ssh that
+    asks, on a socket in a folder only the account reaches, told of
     those hosts and the agents behind it, or of the builders' key and root's file of builders lent
+  '';
+  pi-agent-proxy-reaches-os-login-machines = ''
+    where pi's SSH agent proxy runs, by default, it makes a key for the OS Login hosts gcloud
+    knows, started with the session, never in a core dump or swap short of a hibernation image;
+    the account's gcloud registers each key it writes, once the proxy lists it, for twelve hours,
+    and again as the desktop starts, renews it each quarter hour by the wall clock, every call
+    bounded and a removal's tighter, tries a failed registration, or a proxy it couldn't ask or
+    that never answers, again from half a minute on in growing steps, never giving up, and
+    removes it as the proxy stops, keeping the file; only while the proxy runs is it registered
+    or renewed, from the one line the proxy lists under its OS Login comment, copied beside the
+    key and never into the temporary folder, a removal sending the same line, never a key in the
+    file the proxy doesn't hold or holds for another use, even beside its own, and only a key whose file is the proxy's is
+    removed; no gcloud, no gcloud login or a gcloud that can't say is warned of and passed over;
+    the machine's ssh names it for compute.* hosts; and with no known-hosts file named,
+    there's no such key
   '';
   pi-agent-proxy-signs-only-logins = ''
     pi-agent-proxy lists the keys of the agents behind it and signs a login only once the host it
     names, one it's told of, signed the session; with no session, another host, a forged binding,
     a commit, another session or key, or a forwarded agent, nothing reaches the agent behind; it
     never adds, removes or locks keys, and answers at most 64 clients at once; it signs with the
-    builders' key only nix-offload's login to a builder lent now, and no agent's key for one; and it
-    says each login signed and each refusal in one line of a fixed shape, its host and why as a word
+    builders' key only nix-offload's login to a builder lent now, and no agent's key for one; it
+    signs with a key made in memory only a login to a session an OS Login host signed, one
+    gcloud's known hosts name and neither told nor lent, and no other key for one, looking at
+    those hosts only in a plain file, a line at a time, and its first 8 MiB, making the key only
+    once it's listening, keeping its memory from the account's other processes, and going on
+    without it, saying so and taking a previous key's file away, when it can't be made, but
+    failing when nothing else was asked of it, and refusing one OS Login flag without the other;
+    and it says each login signed and each refusal in one line of a fixed shape, its host and why
+    as a word
   '';
   pi-clipboard-door-keeps-secrets = ''
     pi-clipboard-door answers a client only when the kernel puts it below a bubblewrap of this
