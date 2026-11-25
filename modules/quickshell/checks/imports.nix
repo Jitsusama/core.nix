@@ -49,6 +49,7 @@
     "Bands.js"
     "Confirm.js"
     "Editing.js"
+    "KeyActs.js"
     "KeyNames.js"
     "MarkSize.js"
     "Measures.js"

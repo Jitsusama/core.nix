@@ -5990,14 +5990,15 @@ Scope {
     Connections {
         target: prompt
 
-        // Only a key that may act moves the clock (Held.movesClock): a
-        // modifier alone, as the Shift before a capital, or a letter
-        // typed into the find leaves it at the key before, so a source
-        // changing beside one is left to the pacing, as Slack's answers
-        // arriving while Joel types are.
+        // Only a key that acted moves the clock, as the prompt says it
+        // (its keyActed, before counting the key): a modifier alone, as
+        // the Shift before a capital, a letter typed into the find or a
+        // count begun leaves it at the key before, so a source changing
+        // beside one is left to the pacing, as Slack's answers arriving
+        // while Joel types are.
         function onKeysTakenChanged() {
             root.guessed = Held.passedOver(root.guessed, prompt.keyAlone);
-            if (!Held.movesClock(prompt.keyAlone, prompt.typingNow, prompt.keyTaken))
+            if (!prompt.keyActed)
                 return;
             const heard = KeyTimes.now();
             root.keyHeardAt = heard;
@@ -6542,13 +6543,17 @@ Scope {
         // one he watched, so it guesses nothing new (Held.keyed).
         // refreshed records an act for a source's change to a place on
         // screen heard within keyedWithin of the work of the key the clock
-        // is timed from, that key not a move (Pacing.keyed). A modifier
-        // alone or a letter typed into the find leaves the clock at the
-        // key before (Held.movesClock), so such an act stays his across
-        // one; any other key ends it. A change heard past keyedWithin or
-        // after a move, or an answer heard so, joins the act, and an act
-        // whose source was already waiting on a refresh is recorded
-        // joined, either way no longer his alone (Held.changeDoes). A
+        // is timed from, that key not a move (Pacing.keyed). A key that
+        // acted on nothing leaves the clock at the key before, as the
+        // prompt reads it (KeyActs.acts): a modifier alone, a letter or
+        // Shift+Left typed into the find, a caret move or an edit on it, a
+        // count or a sequence begun. So such an act stays his across one,
+        // and only a key that acted ends it, but for Tab into a row with
+        // no parts, which acts by the table and opens nothing. A change
+        // heard past keyedWithin or after a move, or an answer heard so,
+        // joins the act, and an act whose source was already waiting on
+        // a refresh is recorded joined, either way no longer his alone
+        // (Held.changeDoes). A
         // change heard within keyedWithin of an acting key is his
         // whoever made it, a share's too: the leave off its row goes
         // unheld. An answer heard so records nothing and leaves his acts

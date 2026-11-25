@@ -5617,7 +5617,8 @@
     action and copy, the ask once before what costs a lot and can't be put back, the rest done
     at once, and yG or dG over 400 rows
     within half a key's 4 ms, u and Ctrl+R taking back and doing again as many changes as counted,
-    and a page's search by smartcase
+    a page's search by smartcase, and which keys act: a letter, a caret move, an edit, a count or
+    a sequence begun on the line acting on nothing, Backspace leaving an empty find acting
   '';
   the-queue-is-heard-from-the-node = ''
     the machine queue is the harness's file as the node's record holds it, none of a version it
