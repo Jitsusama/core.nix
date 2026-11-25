@@ -10164,6 +10164,12 @@ Scope {
                 ? root.sourcesNamed.asks.armed !== ""
                     && root.sourcesNamed.asks.seen[root.sourcesNamed.asks.armed] !== undefined
                 : null,
+            // Whether a move of his has armed an ask's line at all, set as
+            // Asks reads the key and owing nothing to a frame, so a test can
+            // say nothing was armed however late the screen draws. Null
+            // where asksUnread is.
+            asksArmed: root.sourcesNamed.asks?.overPasswords
+                ? root.sourcesNamed.asks.armed !== "" : null,
             // Super+S's talk line (TalkLine.qml).
             line: talkLine.shown(),
             // How many rows' keys the foot has weighed afresh (noteKeys).

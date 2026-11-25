@@ -420,9 +420,10 @@ def test_an_agents_ask_after_his_escape_leaves_his_move_untimed(desktop: Desktop
     desktop.launcher_until(lambda shown: selects(shown, why) and shown["asksUnread"] == 0)
     # Past the reading, so a move wrongly taken as his would have timed the line long enough.
     time.sleep(PAST_THE_READING)
-    # Nothing armed, so nothing noted: a move wrongly taken as his fails here by its own name,
-    # rather than passing below on a refusal its frame came too late to stop.
-    assert desktop.showing()["asksNoted"] is False, "the agent's opening let his move time the line"
+    # Nothing armed: Asks arms as it reads a key, owing nothing to a frame, so a move wrongly
+    # taken as his fails here by its own name however late the screen draws, rather than
+    # passing below on a refusal its frame came too late to stop.
+    assert desktop.showing()["asksArmed"] is False, "the agent's opening let his move arm the line"
     refused_unread(desktop, ask, say_yes(desktop))
 
 
