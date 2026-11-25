@@ -12,8 +12,7 @@ const TIME_SAID = {
     none: "nothing keeps the clock true"
 };
 const TIME_NAMES = {
-    title: "Time", zone: "Zone", utc: "UTC", clock: "Clock", unix: "Unix Time",
-    julian: "Julian Day"
+    title: "Time", zone: "Zone", utc: "UTC", clock: "Clock", unix: "Unix Time", tai: "TAI"
 };
 const DATE_SAID = {
     lead: "week {week}, day {day} of {days}, with {left} left in the year; "
@@ -59,7 +58,7 @@ function toronto(clock, clockSide) {
     return NowDrawers.time({
         time: "18:59", zone: "America/Toronto", zoneNote: "EST, UTC\u22125",
         offset: "UTC\u22125", utc: "23:59", clock, clockSide,
-        unix: "1794441540", julian: "2461356.49931",
+        unix: "1794441540", tai: "23:59:37",
         said: TIME_SAID, names: TIME_NAMES
     });
 }
@@ -91,7 +90,7 @@ function run(failures) {
     same("Time's drawer is prose under its title", [unkept.title, unkept.prose], ["Time", true]);
     // Its raw figures are its nerdy bits, never its facts.
     same("Time's nerdy bits", nerd(unkept),
-        ["Unix Time: 1794441540", "Julian Day: 2461356.49931"]);
+        ["Unix Time: 1794441540", "TAI: 23:59:37"]);
     same("a kept clock says so", toronto("kept", "synchronised").body,
         "18:59 in Toronto's zone, UTC\u22125; the clock is kept true.");
 
@@ -128,6 +127,12 @@ function run(failures) {
         "Quarter: Q4 \u00b7 day 42 of 92"
     ]);
     same("Date's nerdy bits", nerd(date), ["ISO Week Date: 2026-W46-3", "Julian Day: 2461356"]);
+    // No field is said by both Time and Date (Joel: no field shown twice
+    // between them), so Time says no Julian Day.
+    const labels = drawer => drawer.facts.concat(drawer.nerd).map(fact => fact.label);
+    const timeLabels = labels(toronto("kept", "synchronised"));
+    same("no field is both Time's and Date's",
+        labels(date).filter(label => timeLabels.indexOf(label) >= 0), []);
 
     // One day is said as one, in the sentence and the facts alike.
     const last = NowDrawers.date(Object.assign({}, wednesday, { day: 364, seasonLeft: 1 }));

@@ -650,6 +650,15 @@ ShellRoot {
         expect("the zone's next change is a day and its time, then what it turns to",
             /^\d{1,2} [A-Z][a-z]{2}( \d{4})? \d{2}:\d{2}( \u00b7 .+)?$/.test(next?.value),
             JSON.stringify(next));
+        // And the change after it, so a zone that changes twice a year
+        // shows its whole year, after Next Change.
+        const labels = plate.facts.map(fact => fact.label);
+        const after = plate.facts.find(fact => fact.label === Words.name("time:zone:after"));
+        expect("the change after the next follows it, said the same way",
+            labels.indexOf(after?.label) === labels.indexOf(next?.label) + 1
+                && /^\d{1,2} [A-Z][a-z]{2}( \d{4})? \d{2}:\d{2}( \u00b7 .+)?$/.test(after?.value)
+                && after?.value !== next?.value,
+            JSON.stringify(plate.facts));
         expect("the zone's plate has an eyebrow", (plate.eyebrow ?? "") !== "",
             JSON.stringify(plate));
         const numbers = ["today:unix-day", "today:julian", "today:mjd"].map(id => Words.name(id));

@@ -50,7 +50,6 @@ import "Zones.js" as Zones
 import "Ago.js" as Ago
 import "Moment.js" as Moment
 import "NowDrawers.js" as NowDrawers
-import "Numbers.js" as Numbers
 import "Keeping.js" as Keeping
 
 Provider {
@@ -199,13 +198,15 @@ Provider {
             clock: keptAs.clock,
             clockSide: keptAs.side,
             // Raw, as the nerdy bits are: Time's own rows group the
-            // seconds, and these copy as a program would read them.
+            // seconds, and these copy as a program would read them. The
+            // Julian Day is Date's, so Time never says it too (Joel: no
+            // field shown twice between Time and Date).
             unix: String(Moment.unix(now)),
-            julian: Numbers.format(Moment.julian(now), 5, "", settings.point ?? "."),
+            tai: Moment.tai(now),
             said: Words.of("time").said ?? {},
             names: { title: Words.name("time"), zone: Words.name("time:zone"),
                 utc: Words.name("time:utc"), clock: Words.name("time:clock"),
-                unix: Words.name("time:unix"), julian: Words.name("today:julian") }
+                unix: Words.name("time:unix"), tai: Words.name("time:tai") }
         });
     }
 
@@ -219,14 +220,19 @@ Provider {
         const minutes = -new Date(now).getTimezoneOffset();
         const standing = zone ? Zones.standing(zone, Math.floor(now / 1000)) : [minutes, ""];
         const next = zone ? Zones.nextChange(zone, Math.floor(now / 1000)) : null;
+        // The change after it too, so a zone's whole year shows, as the
+        // design has it (VKCF3Z: "next two changes").
+        const after = next ? Zones.nextChange(zone, next.when / 1000) : null;
         const abbreviation = /^[A-Za-z]/.test(standing[1]) ? standing[1] : "";
+        const turnsTo = change => [/^[A-Za-z]/.test(change.abbreviation) ? change.abbreviation
+            : "", Zones.offset(change.minutes)].filter(one => one !== "").join(", ");
         const parts = [
             { id: "offset", side: Zones.offset(standing[0]), note: "" },
             { id: "abbreviation", side: abbreviation, note: "" },
             { id: "next", side: next ? Moment.dayAndClock(next.when, now)
-                : timeWord("time:zone", "never"),
-                note: next ? [/^[A-Za-z]/.test(next.abbreviation) ? next.abbreviation : "",
-                    Zones.offset(next.minutes)].filter(one => one !== "").join(", ") : "" },
+                : timeWord("time:zone", "never"), note: next ? turnsTo(next) : "" },
+            { id: "after", side: after ? Moment.dayAndClock(after.when, now) : "",
+                note: after ? turnsTo(after) : "" },
             { id: "database", side: settings.tzdata ?? "", note: timeWord("time:zone", "iana") }
         ].filter(part => part.side !== "");
         const name = said ? said.text : Zones.offset(standing[0]);
@@ -245,7 +251,7 @@ Provider {
                 // comes, as its row's note said it; the database's note
                 // only says what tzdata is.
                 facts: parts.map(part => ({ label: Words.name(`time:zone:${part.id}`),
-                    value: part.id === "next" && part.note !== ""
+                    value: (part.id === "next" || part.id === "after") && part.note !== ""
                         ? `${part.side} \u00b7 ${part.note}` : part.side }))
             })
         });
