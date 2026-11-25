@@ -267,7 +267,9 @@ def test_return_goes_into_an_answer_with_parts_and_y_copies_it(shell: Shell) -> 
     shell.answer("memory")
     shell.launcher_until(lambda shown: "B used" in (shown["selected"] or {}).get("name", ""))
     shell.normal()
-    assert "y copy" in shell.showing()["selected"]["told"], shell.showing()["selected"]
+    # y is told once the answer's parts are in (Launcher.qml's selectedKeys), which on a loaded
+    # builder can be after normal has come, so it's waited for rather than read once.
+    shell.launcher_until(lambda shown: "y copy" in (shown["selected"] or {}).get("told", []))
     since = shell.mark()
     shell.send_chars("yy")
     shell.reported("yanked 1", lambda rest: rest == "", since)
