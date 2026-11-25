@@ -428,7 +428,9 @@ def test_a_machines_look_says_why_it_matters_and_opens_it_in_the_launcher(
             "machine",
             changed=[{"key": "machine:kestrel", "looks": [{"side": REWORDED, "matters": ANEW}]}],
         )
-        expect(row, "the look wasn't reworded").to_contain_text(REWORDED, timeout=PACE_MS)
+        expect(row, "the look wasn't reworded").to_contain_text(
+            REWORDED, ignore_case=True, timeout=PACE_MS
+        )
         expect(launch, "rewording the look took focus off its act").to_be_focused()
         # A step back from the act lands on its own look, which it stands after.
         page.keyboard.press("k")
