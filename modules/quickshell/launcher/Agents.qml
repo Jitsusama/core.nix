@@ -1923,13 +1923,16 @@ Provider {
             }
             const how = Sprouting.ended(answer, sproutWords());
             sproutTokens[token] = "ended";
-            if (answer !== null)
-                delete sproutUnanswered[token];
-            if (sprout === sprouts && sprouting !== "") {
+            const late = sproutUnanswered[token];
+            delete sproutUnanswered[token];
+            if (sprout === sprouts && sprouting !== "")
                 sprouted(how);
-            } else {
-                lateEnded(how, token, { key, asked: pressed });
-            }
+            else if (late !== undefined)
+                lateEnded(how, late);
+            else
+                // Its record ended it first (sproutsKept), and was told then.
+                sproutJournal(`answered after its record, ${Sprouting.reach(how,
+                    sproutWords()).journal}`);
             sproutTold([token]);
         };
         // With no daemon to send it to, nothing is kept, so none is to come.
@@ -1943,8 +1946,12 @@ Provider {
         id: sproutPatience
         interval: Sprouting.PATIENCE_MS
         onTriggered: {
-            if (provider.sprouting !== "")
-                provider.sprouted(Sprouting.ended(null, provider.sproutWords()));
+            if (provider.sprouting === "")
+                return;
+            // Ended here unanswered, so it may yet end, late (lateEnded).
+            provider.sproutUnanswered[provider.sproutToken] = { key: provider.sprouting,
+                asked: provider.sproutGiven.at };
+            provider.sprouted(Sprouting.ended(null, provider.sproutWords()));
         }
     }
     function sproutWords() {
@@ -1965,9 +1972,10 @@ Provider {
     // daemon is answered by its record. A told the daemon didn't take is
     // said again (sproutAgain).
     property var sproutTokens: ({})
-    // Those the patience ended unanswered (sprouted), by token, each the act
-    // it was asked from (`{ key, asked }`): one whose answer went with the
-    // daemon is answered late by its record (lateEnded).
+    // Those the patience ended unanswered (sproutPatience), by token, each the
+    // act it was asked from (`{ key, asked }`): each is ended late, once, by
+    // whichever of its answer and its record comes first (lateEnded). One the
+    // daemon said unanswered, or its record ended, was told as it ended.
     property var sproutUnanswered: ({})
     property var sproutSeen: ({})
     // The tokens of those to tell being asked for again (sproutsChecked).
@@ -1984,7 +1992,7 @@ Provider {
         answeredLate.forEach(one => {
             const act = sproutUnanswered[one.token];
             delete sproutUnanswered[one.token];
-            lateEnded(Sprouting.ended(one.ended, sproutWords()), one.token, act);
+            lateEnded(Sprouting.ended(one.ended, sproutWords()), act);
         });
         stood.waiting.forEach(token => {
             if (!Object.keys(sproutSeen).includes(token))
@@ -2042,20 +2050,14 @@ Provider {
         openings = openings.concat([one]);
         return true;
     }
-    // Those whose late end was said (lateEnded), by token, so a late answer
-    // and its record, which may both come in either order, say it once.
-    property var sproutLate: ({})
-    // How a start ended after its minute, or after a later start, `token`,
-    // asked from `act` (`{ key, asked }`): no act waits on it, so it's said
-    // on its act unless that was pressed since, refused or unheld it's told
-    // as a notice, and held it's watched as a kept one is, so Joel hears when
-    // it's up; its keys long given back, it's said as one that shows in Agents.
-    function lateEnded(how, token, act) {
-        if (Object.keys(sproutLate).includes(token))
-            return;
-        sproutLate[token] = true;
+    // How a start the patience ended ended after all, asked from `act`
+    // (`{ key, asked }`): no act waits on it, so it's said on its act unless
+    // that was pressed since, refused or unheld it's told as a notice, and
+    // held it's watched as a kept one is, so Joel hears when it's up; its
+    // keys long given back, it's said as one that shows in Agents.
+    function lateEnded(how, act) {
         const reach = Sprouting.reach(how, sproutWords());
-        console.info(`launcher: late, ${reach.journal}`);
+        sproutJournal(`late, ${reach.journal}`);
         if (Openings.saysOnAct(sproutPressed, act.key, act.asked))
             sproutSays(act.key, Sprouting.told(Openings.promised(how, { keys: -1 }),
                 sproutWords()));
@@ -2106,8 +2108,6 @@ Provider {
         // daemon's record of it, heard already or to come, is said told.
         if (sproutTokens[sproutToken] === "asking") {
             sproutTokens[sproutToken] = "ended";
-            if (how.unanswered === true)
-                sproutUnanswered[sproutToken] = { key, asked: sproutGiven.at };
         }
         sproutToken = "";
         const where = Sprouting.asksWhere(how) && askWhere(key);
