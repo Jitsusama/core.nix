@@ -6,8 +6,8 @@
 # name, given it here, and is built only once that table holds to the
 # options the given systemd takes. A machine built elsewhere, for a
 # platform its builder can't run, has the table held to the builder's own
-# systemd instead where that's built from the same source and patches,
-# since run.c lists the same options on every platform. Where it's neither,
+# systemd instead where that's built from the same source, patches and
+# flags, since run.c lists the same options on every platform. Where it's neither,
 # or the builder can't have systemd at all, the wrapper says it isn't held
 # (held, and unheld for the warning a machine raises), so a machine's
 # evaluation warns. Where the hold runs, any difference fails the machine's
@@ -42,26 +42,34 @@ let
     "@shorts@" = shorts;
     "@longs@" = longs;
   };
+  # The build's flags that name no platform: a store path, such as
+  # util-linux's mount, is the platform's own build, so it differs between
+  # a machine's systemd and a builder's built alike, while a feature turned
+  # off, through the flags or the override argument that sets one, doesn't.
+  alike = drv: lib.filter (flag: !builtins.hasContext flag) (map toString (drv.mesonFlags or [ ]));
   asked =
     if stdenv.buildPlatform.canExecute stdenv.hostPlatform then
       systemd
-    # Source and patches are compared, not postPatch or the build's flags:
-    # nixpkgs' postPatch names each platform's own compiler and readelf, so
-    # it differs between a machine's systemd and a builder's built alike. A
-    # change to run.c's options through them is the hold's blind spot.
+    # Source, patches and those flags are compared, not postPatch: nixpkgs'
+    # postPatch names each platform's own compiler and readelf, so it differs
+    # between a machine's systemd and a builder's built alike. A change to
+    # run.c's options through it is the hold's blind spot.
     else if
       lib.meta.availableOn stdenv.buildPlatform buildPackages.systemd
       && (buildPackages.systemd.src or null) == (systemd.src or null)
       && (buildPackages.systemd.patches or [ ]) == (systemd.patches or [ ])
+      && alike buildPackages.systemd == alike systemd
     then
       buildPackages.systemd
     else
       null;
   named = if systemd ? version then "systemd ${systemd.version}" else "one of unknown version";
   unheld =
-    "systemd-run's wrapper isn't held to ${named}: the builder can't run "
-    + "it and has no systemd built as it is, so a call it misreads goes unseen; "
-    + "build it where its systemd runs, or on a builder with one built alike, to hold it";
+    "systemd-run's wrapper isn't held to ${named}: ${stdenv.buildPlatform.system}, "
+    + "which builds it, can't run ${stdenv.hostPlatform.system}'s and has no systemd "
+    + "built from the same source, patches and flags, so a call it misreads goes unseen; "
+    + "build it on ${stdenv.hostPlatform.system}, or take the patches or flags "
+    + "that differ from nixpkgs' systemd, to hold it";
   # Only a wrapper something holds has a hold, so reading one never throws.
   holds =
     if asked == null then
@@ -78,11 +86,12 @@ lib.hiPrio (writeShellApplication {
   # Asked for so the wrapper can't be built while its table doesn't hold. The
   # hold runs where the machine is built, so its bash is the builder's.
   derivationArgs = lib.optionalAttrs (asked != null) { inherit holds; };
+  # Only a wrapper nothing holds says so, so a check of what it says can't
+  # pass on one that's held.
   passthru = {
     held = asked != null;
-    inherit unheld;
   }
-  // lib.optionalAttrs (asked != null) { inherit holds; };
+  // (if asked != null then { inherit holds; } else { inherit unheld; });
   text = builtins.replaceStrings (lib.attrNames filled) (lib.attrValues filled) (
     builtins.readFile ./systemd-run.sh
   );
