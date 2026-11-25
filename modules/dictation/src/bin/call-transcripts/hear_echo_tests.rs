@@ -127,6 +127,23 @@ fn each_echo_cut_from_joels_words_is_told_once_and_without_them() {
 }
 
 #[test]
+fn each_line_of_joels_left_out_whole_as_their_echo_is_told_once_and_without_it() {
+    let mut writing = ada_then_bo();
+    hear_take(&mut writing, 49, &[BO], &[("Sounds", 0), ("good.", 1)]);
+    writing.lines.push(joels(49, 51, "Sounds good."));
+    assert_eq!(
+        writing.untold_cuts(),
+        ["call-transcripts: a line of Joel's, 2 words at 0:49, left out whole as their echo"],
+        "the line left out wasn't told, or was told with the call's words"
+    );
+    hear_take(&mut writing, 60, &[ADA], &[("Right.", 0)]);
+    assert!(
+        writing.untold_cuts().is_empty(),
+        "a line told when it was left out was told again with the next take"
+    );
+}
+
+#[test]
 fn joels_answer_to_a_split_take_stays_written_after_a_restart() {
     let folder = tempfile::tempdir().unwrap();
     let file = folder.path().join("transcript.md");
