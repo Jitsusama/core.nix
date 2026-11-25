@@ -191,6 +191,30 @@ function behind(frame, kind) {
     return Math.round(HEARS + frame + (kind === "resize" ? RESIZES : 0));
 }
 
+// How far niri moved the window `id` between two of a workspace's tilings, `was` and `now`
+// (MarginCatTiles.js's of), as { x, y }: null where it's in only one, or where it hasn't moved.
+// niri lays a workspace's columns out on one strip and scrolls it, so as the keys go to a column
+// off the screen's edge the window the cat sits on goes the other way (Joel, 2026-11-14 17:24:
+// "focusing to a window off the left or right edge").
+function carries(was, now, id) {
+    const before = (was ?? []).find(one => one.id === id);
+    const after = (now ?? []).find(one => one.id === id);
+    if (!before || !after) {
+        return null;
+    }
+    const by = { x: after.left - before.left, y: after.top - before.top };
+    return Math.abs(by.x) < 0.01 && Math.abs(by.y) < 0.01 ? null : by;
+}
+
+// How far from its place the cat is drawn `t` ms after niri set off the scroll that carried it,
+// `from` that far as it did: all of it at once, none once niri's spring settles, on that spring,
+// so it goes with its window as niri draws it rather than ahead of it. niri's
+// `horizontal-view-movement` rides the theme's spring, as its slide does (modules/niri).
+function lags(from, t, spring) {
+    const left = 1 - slid(Math.max(0, t), spring);
+    return { x: from.x * left, y: from.y * left };
+}
+
 // Whether it's drawn over the windows rather than under them: on a leg
 // of a walk `aboard` a floating window, onto it, along it or off it
 // (MarginCatFloats.js), in front of the tiled window behind, which would

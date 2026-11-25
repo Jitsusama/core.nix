@@ -23,6 +23,7 @@
 .import "MarginCatWays.js" as Ways
 .import "MarginCatFalls.js" as Falls
 .import "MarginCatFloats.js" as Floats
+.import "MarginCatLedges.js" as Ledges
 
 // How far above where it's first seen it drops from, in its heights, once
 // out of sight: so it comes in already falling, about a quarter of a
@@ -96,6 +97,66 @@ function risesOnto(place, at) {
     Ways.leap(way, { x: place.x, y: Routes.floor(at) }, 0, "springs");
     Ways.holds(way, "lands", MarginCat.LANDS);
     return Ways.timed(way);
+}
+
+// A walk from `from` to `to` over `at`'s columns, as MarginCatPaths.js's
+// walk(): from off the screen's side, where the window it sat on carried it
+// as niri scrolled the strip (MarginCatScreen.qml's carried), it comes back
+// in at that edge first (comesIn()).
+function walk(from, to, at) {
+    const now = Paths.closing(at);
+    const coming = comesIn(from, now);
+    if (coming === null) {
+        return Paths.walk(from, to, at);
+    }
+    return Ways.timed(Paths.onward(coming.way, to, Object.assign({}, now,
+        { hurried: true, facing: coming.way.facing })));
+}
+
+// Its way back onto the screen from `from`, off its side: null where it's
+// on the screen, or where no screen is given. niri lays a workspace's
+// columns on one strip, so it comes in at the edge the strip carried it
+// off, as it would walk the strip were it all on the screen (Joel,
+// 2026-11-14 17:24: "focusing to a window off the left or right edge").
+// Out of sight, it comes in head first, as it does between workspaces: on
+// the top of the window past the edge, its head over the edge, its paws
+// moving, it peers and looks about (Joel, Sun 15 21:20: "poke its head up
+// and then come in"). Then it comes on facing the way in, leaping the gap
+// between that window and the one inside the edge, if there's one, and
+// walks on from there without thinking again. Partly on the screen, it
+// walks on from where it's drawn.
+function comesIn(from, at) {
+    if (at.across === undefined || Routes.onScreen(from.x, at)) {
+        return null;
+    }
+    const side = from.x < 0 ? -1 : 1;
+    const cols = at.cols ?? [];
+    const seen = side > 0 ? from.x < at.across : from.x + at.wide > 0;
+    const peeks = side > 0 ? at.across - PEEKS * at.cell : PEEKS * at.cell - at.wide;
+    const past = seen ? null : Routes.columnAt(cols, peeks, at.wide);
+    const y = past ? Routes.stands(past.top, at) : from.y;
+    const way = Ways.begun(at, { x: seen ? from.x : side > 0 ? at.across : -at.wide, y });
+    way.facing = -side;
+    way.turn = 0;
+    if (seen) {
+        return { way, side };
+    }
+    Ways.leg(way, "climbs", { x: peeks, y },
+        { name: "peeks", ms: (PEEKS * CREEPS * MarginCat.MS) / 60, bounds: PEEKS / 2 });
+    Ways.holds(way, "peers", PEERS);
+    Ways.holds(way, "looks", LOOKS);
+    // The window inside the edge, nearest it, and the gap to it.
+    const inside = past === null ? null : cols.filter(one => side > 0
+        ? one.right <= past.left : one.left >= past.right)
+        .sort((one, other) => (other.right - one.right) * side)[0];
+    if (inside && (side > 0 ? past.left - inside.right : inside.left - past.right) > 0) {
+        const onto = { x: side > 0 ? inside.right - at.wide : inside.left,
+            y: Routes.stands(inside.top, at) };
+        Ways.holds(way, "crouches", MarginCat.CROUCHES);
+        Ways.across(way, onto, undefined, Ledges.ceiling(cols, way, onto, at.wide));
+        Ways.holds(way, "lands", MarginCat.LANDS);
+    }
+    return { way, side };
 }
 
 // A move between workspaces, `at.way` 1 to the one below and -1 to the
