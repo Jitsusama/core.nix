@@ -97,7 +97,10 @@ fn unlocked_dead(
         .filter_map(|line| line.rsplit_once(" -> "))
         .filter_map(|(_, path)| store_path(store, path))
         .collect();
-    if roots.is_empty() && !entries.is_empty() {
+    // Only a root among what was read counts: one naming a path already
+    // collected, or one still building, keeps none of it.
+    let rooted = roots.iter().any(|root| entries.binary_search(root).is_ok());
+    if !rooted && !entries.is_empty() {
         return Err(format!(
             "nix-store --gc --print-roots named no root in {}, so all of it would read dead",
             store.display()

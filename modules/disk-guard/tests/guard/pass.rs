@@ -4,7 +4,7 @@
 use disk_guard::band::{Band, Space, Thresholds};
 use disk_guard::decide::Decision;
 use disk_guard::pass::{
-    Disk, End, Goal, Learned, Outcome, Reclaimer, left_to_judge, pass, skipped_after,
+    Disk, End, Goal, Learned, Outcome, Reclaimer, judged_all, left_to_judge, pass, skipped_after,
 };
 use disk_guard::plan::{Candidate, Class};
 use disk_guard::units::float;
@@ -709,6 +709,30 @@ fn a_reach_skips_what_was_judged_unless_that_leaves_it_nothing() {
         left_to_judge(&offers, None, path),
         offers,
         "nothing skipped"
+    );
+}
+
+#[test]
+fn a_reach_that_had_judged_everything_starts_afresh() {
+    // Kept, its skip set would cover the same offers next time, and every
+    // reach after would judge the same two hours.
+    let offers: Vec<PathBuf> = ["/d/cache", "/d/logs"].map(PathBuf::from).to_vec();
+    assert!(
+        judged_all(
+            &offers,
+            Some(&paths(&["/d/cache", "/d/logs", "/d/gone"])),
+            path
+        ),
+        "every offer was judged"
+    );
+    assert!(
+        !judged_all(&offers, Some(&paths(&["/d/cache"])), path),
+        "one is left to judge"
+    );
+    assert!(!judged_all(&offers, None, path), "nothing was skipped");
+    assert!(
+        !judged_all(&[], Some(&paths(&["/d/cache"])), path),
+        "a reach offered nothing has nothing to start afresh on"
     );
 }
 

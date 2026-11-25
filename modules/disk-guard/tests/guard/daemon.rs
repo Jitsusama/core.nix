@@ -1080,6 +1080,13 @@ fn a_status_the_disk_cant_hold_stops_no_pass() {
     assert!(stepped.is_err(), "the status was written into a folder");
     let runs = fs::read_to_string(&ran).unwrap_or_default().lines().count();
     assert_eq!(runs, 1, "an unwritable status stopped the pass");
+    // A clear Joel asked for, standing as the disk filled, writes the
+    // status before it clears, and stops neither the clear nor the step.
+    let scratch = home.cold_scratch("build");
+    disk_guard::clears::ask(&home.root.join("state"), scratch.parent().unwrap(), 3600.0).unwrap();
+    let stepped = guard.step(&tick_at(7200.0), &CALM);
+    assert!(stepped.is_err(), "the status was written into a folder");
+    assert!(!scratch.exists(), "an unwritable status stopped the clear");
 }
 
 /// A restarted guard's first measure of home takes minutes, in which its

@@ -1388,9 +1388,6 @@ impl Guard {
             watched.space = Some(space);
             if watched.band == Band::Healthy {
                 watched.rest = None;
-                // The spell a cut reach belonged to is over, and what it
-                // judged kept may be free to clear when the disk fills again.
-                self.reached_short.remove(&device);
             }
             let decision = decide(&Situation {
                 band: watched.band,
@@ -1402,6 +1399,12 @@ impl Guard {
                 now: tick.wall,
                 spare: spare_moment,
             });
+            // The spell a cut reach belonged to is over, and what it judged
+            // kept may be free to clear when the disk fills again; not while
+            // a healthy disk still reaches, as it does when forecast to fill.
+            if watched.band == Band::Healthy && !matches!(decision, Decision::Reach(_)) {
+                self.reached_short.remove(&device);
+            }
             let resting = watched.rest.is_some_and(|rest| {
                 tick.monotonic < rest.until
                     && !(rest.unvouched && heard)
@@ -1571,7 +1574,11 @@ impl Guard {
         if asks.is_empty() {
             return Ok(false);
         }
-        self.write_status(tick.wall)?;
+        // Joel asks most as the disk fills, when the status may not fit:
+        // the clear goes on, and so does every pass after it.
+        if let Err(error) = self.write_status(tick.wall) {
+            eprintln!("disk-guard: writing the status before a clear: {error}");
+        }
         let folders: Vec<PathBuf> = asks.iter().map(|(_, ask)| ask.path.clone()).collect();
         let scoped = crate::survey::within(&self.config, &folders);
         let (mut scan, offers, surveyed) = self.offers(tick, Some(&scoped))?;
@@ -1608,7 +1615,10 @@ impl Guard {
         let mut producers = self.config.clone();
         let names = std::mem::take(&mut self.produced);
         producers.sources.retain(|name, _| names.contains(name));
-        self.write_status(tick.wall)?;
+        // Its news is already taken, so a failed write would lose it.
+        if let Err(error) = self.write_status(tick.wall) {
+            eprintln!("disk-guard: writing the status before a producer: {error}");
+        }
         let (mut scan, offers, surveyed) = self.offers(tick, Some(&producers))?;
         let devices: BTreeSet<u64> = offers.iter().map(|offer| offer.device).collect();
         for device in devices {
@@ -1731,7 +1741,17 @@ impl Guard {
         };
         let begun = *begun;
         self.listing_out = None;
-        self.listing_ended = Some((now, (now - begun).max(0.0)));
+        // Heard only at the step after it ended, a listing seems to take as
+        // long as any pass between; one that failed rests by no more than a
+        // listing runs, or a quick failure heard after a three-hour pass
+        // would rest a nearly full store's listing for a day.
+        let took = (now - begun).max(0.0);
+        let rests_for = if heard.is_err() {
+            took.min(garbage::LIST_TIMEOUT.as_secs_f64())
+        } else {
+            took
+        };
+        self.listing_ended = Some((now, rests_for));
         self.listing_failed = heard.is_err();
         match heard {
             Ok(dead) => {
@@ -1740,7 +1760,11 @@ impl Guard {
                     took: Some((now - begun).max(0.0)),
                     dead,
                 };
-                state::save(&self.listing_path, &listing)?;
+                // Kept for this run though the disk can't hold it: thrown
+                // away, it would be listed again five minutes on.
+                if let Err(error) = state::save(&self.listing_path, &listing) {
+                    eprintln!("disk-guard: saving the listing of Nix's garbage: {error}");
+                }
                 self.collect = true;
                 self.stale_listing = false;
                 if self.batches(&listing, now).iter().any(|batch| !batch.kept) {
@@ -2537,7 +2561,11 @@ impl Guard {
                 .filter(|offer| !self.taken(offer))
                 .cloned()
                 .collect();
+            let afresh = crate::pass::judged_all(&here, judged, |offer| &offer.candidate.path);
             let here = crate::pass::left_to_judge(&here, judged, |offer| &offer.candidate.path);
+            if afresh {
+                self.reached_short.remove(&device);
+            }
             let offered = if decision == Decision::Collect {
                 self.collect_offers(tick.wall)
             } else {
@@ -2940,7 +2968,10 @@ impl Guard {
         let end = ending(&report.end);
         let seconds = started.elapsed().as_secs_f64();
         let failing = say_pass(&report, scan, seconds, &crate::clock::stamp(tick.wall));
-        self.journal.write(&Line::Pass {
+        // A journal on a full disk is told of and the step goes on, as each
+        // action's line already does, so the other disks still get their
+        // passes and this one's rest is still noted.
+        let line = Line::Pass {
             at: tick.wall,
             band: report.band,
             end: end.clone(),
@@ -2950,7 +2981,10 @@ impl Guard {
             offered: here.len(),
             judged: report.actions.len(),
             surveyed,
-        })?;
+        };
+        if let Err(error) = self.journal.write(&line) {
+            eprintln!("disk-guard: journalling a pass: {error}");
+        }
         let last = LastPass {
             at: tick.wall,
             path,

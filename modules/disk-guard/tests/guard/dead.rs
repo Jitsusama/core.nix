@@ -165,9 +165,13 @@ fn a_root_reading_with_no_root_in_the_store_fails_the_listing() {
     // that runs always has some, its own system's at least.
     let dir = tempfile::tempdir().unwrap();
     let (nix, store) = unlocked_nix(dir.path(), &["aaaa-system", "cccc-dead"]);
+    let s = store.display();
+    // A root naming a path already gone keeps nothing that was read.
     fs::write(
         dir.path().join("roots"),
-        "/proc/1/maps -> /elsewhere/tool\nsomething Nix said otherwise\n",
+        format!(
+            "/proc/1/maps -> /elsewhere/tool\nsomething Nix said otherwise\n/r -> {s}/zzzz-gone\n"
+        ),
     )
     .unwrap();
     let listed = list(&nix, &store, false);

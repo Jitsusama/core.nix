@@ -548,7 +548,9 @@ fn failed(mut report: Report, error: &io::Error) -> Report {
 ///
 /// Only a reach its length cuts, one no worse than filling, skips what a
 /// cut one judged, so none judges the same two hours of offers again. One
-/// cut adds the files it tried; one that waited, stalled or was stopped
+/// cut adds the files every pass in its step tried, which for a disk an
+/// image is backed by may hold a few its own pass never judged; one that
+/// waited, stalled or was stopped
 /// keeps what was skipped, and so does a collection of Nix's garbage,
 /// which runs in a reach's rest. Anything else (a reach that got through
 /// or ran at a worse band, or upkeep, which a healthy disk alone gets)
@@ -604,4 +606,18 @@ pub fn left_to_judge<T: Clone>(
     } else {
         left
     }
+}
+
+/// Whether a reach skipping `skipped` had judged every one of `offers`,
+/// each found at `path`, so `left_to_judge` gives it all of them. It then
+/// starts afresh: kept, the skip set would cover the same offers again,
+/// and every reach after would judge the same two hours.
+pub fn judged_all<T>(
+    offers: &[T],
+    skipped: Option<&BTreeSet<PathBuf>>,
+    path: impl Fn(&T) -> &Path,
+) -> bool {
+    skipped.is_some_and(|skipped| {
+        !offers.is_empty() && offers.iter().all(|offer| skipped.contains(path(offer)))
+    })
 }

@@ -220,7 +220,8 @@ or launchd, and [`home.nix`][2] the account's.
   nothing. A reach that gets through its offers starts afresh, as does
   a reach at a worse band, which sees every offer and so never calls
   the disk exhausted over offers it wasn't shown, a reach that would
-  be offered nothing, upkeep, and a disk measured healthy. What was
+  be offered nothing, upkeep, and a disk measured healthy and not
+  reaching on a forecast. What was
   judged lives only in memory, so a guard started again judges
   everything. One cut short teaches nothing of how
   long a pass takes, and its notice says it ran as long as a pass may.
@@ -328,7 +329,10 @@ or launchd, and [`home.nix`][2] the account's.
   until the last has rested nine times its own length, a rest a restart
   keeps, so listing takes at most a tenth of its time. A listing that
   failed rests the same however full the store, since it freed nothing,
-  and Nix's locked one held the lock all along. It lists without
+  and Nix's locked one held the lock all along. Its length counts at most
+  the half hour a listing may run, since it is heard only at the step
+  after it ends, and a pass between may have taken hours. A failed
+  listing is saved nowhere, so a restart forgets its rest. It lists without
   Nix's garbage collector lock, which every other collection waits on,
   Nix's own near `min-free` included, and which a laptop's listing held
   24 minutes on 24 November: the store's entries are read first, then
