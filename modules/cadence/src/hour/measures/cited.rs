@@ -549,7 +549,7 @@ fn for_you(note: &str) -> Vec<String> {
 /// The owner and message the last comment in an item names, as
 /// `<!-- owner: CELL id -->`.
 fn owner_comment(item: &str) -> Option<(&str, &str)> {
-    item.match_indices("<!--").rev().find_map(|(at, _)| {
+    item.rmatch_indices("<!--").find_map(|(at, _)| {
         let (named, _) = item[at + 4..].split_once("-->")?;
         let mut parts = named.trim().strip_prefix("owner:")?.split_whitespace();
         let found = (parts.next()?, parts.next()?);
