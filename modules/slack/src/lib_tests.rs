@@ -1,3 +1,5 @@
+//! The look-up's tests, beside it: who Slack knows by an email address.
+
 use super::*;
 use serde_json::json;
 

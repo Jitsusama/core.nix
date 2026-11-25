@@ -28,11 +28,12 @@ struct File {
     token: Account,
 }
 
-/// How long a program rests from the keyring once its sign-in ran over,
-/// or the keyring gave none: long enough that a keyring's unlock prompt isn't raised again each
-/// round, and with the 30 seconds it ran and pineapple's Slack reader's
-/// 30-second round, four minutes, leaving one of the five a stop said in
-/// Slack is to land in for its search and the enforcer.
+/// How long a program rests from the keyring once its sign-in ran over
+/// or was locked: long enough that a keyring's unlock prompt isn't raised
+/// again each round, and with the at most 30 seconds the sign-in ran
+/// first and pineapple's Slack reader's 30-second round, at most four
+/// minutes, leaving one of the five a stop said in Slack is to land in
+/// for its search and the enforcer.
 pub const REST: Duration = Duration::from_mins(3);
 
 /// When this program's keyring sign-in last ran over or was locked,
