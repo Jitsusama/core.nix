@@ -35,7 +35,8 @@
 // reads when its line was heard, and one of a watch's whole answer, or one
 // it puts off, reads none. Each daemon's lines and their length are
 // counted by its name, for the launcher's census, and begun again once
-// said. A client
+// said. A going says the asks it left unanswered, apart where the shell
+// let the connection go itself. A client
 // holding its wire watches neither its socket nor its folder. A socket that refuses is tried again twice as late
 // each time, a minute at most, counted again from its next answer. Each
 // step waits on what the client says, at most ten seconds.
@@ -693,6 +694,26 @@ ShellRoot {
                     && after.said === "" && after.minutes === 3 && after.lines === 0
                     && names === "machine eero mycelium/personal clipboard-history wifid/rows"
                         + " passwords-child x/y a child";
+            }
+        },
+        {
+            // A connection the shell let go itself, as OnSelection's does
+            // once nothing needs it, was said as one gone wrong (#6287's
+            // F31), so a journal read for a daemon's faults found ones
+            // nobody had.
+            what: "a going says its asks unanswered, apart where the shell let the"
+                + " connection go, and nothing where none was",
+            holds: () => {
+                const ids = Array.from({ length: 9 }, (_, at) => String(at + 1));
+                return Hearing.goneSaid("people", ["7"], false)
+                        === "people: the connection went with 1 ask unanswered: 7"
+                    && Hearing.goneSaid("people", ids, false)
+                        === "people: the connection went with 9 asks unanswered:"
+                            + " 1, 2, 3, 4, 5, 6, 7, 8"
+                    && Hearing.goneSaid("people", ["7", "8"], true)
+                        === "people: let its connection go with 2 asks unanswered: 7, 8"
+                    && Hearing.goneSaid("people", [], false) === ""
+                    && Hearing.goneSaid("people", [], true) === "";
             }
         },
         {
