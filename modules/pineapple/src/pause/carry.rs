@@ -182,12 +182,23 @@ impl Carrier {
             Gift::Resume
         };
         let mut carried = Vec::new();
+        let mut waiting = false;
         for target in one_each(&targets) {
             let holds = held
                 .iter()
                 .find(|(reached, _)| reached.machine == target.machine)
                 .map(|(_, holds)| holds);
-            if holds == Some(record) || self.waits(&target.machine, here.at) {
+            if holds == Some(record) {
+                continue;
+            }
+            if self.waits(&target.machine, here.at) {
+                // A machine waiting out its minute after another stop is
+                // noted as lacking this one too, so Joel's row names it
+                // until it takes it.
+                if holds.is_none() {
+                    held.push((target.clone(), Value::Null));
+                    waiting = true;
+                }
                 continue;
             }
             let failed = give(here.plan, runs, &target, &script(name, record, here.host)).err();
@@ -209,7 +220,7 @@ impl Carrier {
                 failed,
             });
         }
-        if !carried.is_empty()
+        if (waiting || !carried.is_empty())
             && let Err(error) = keep_given(here.state, name, &held)
         {
             carried.push(unnoted(name, gift, &error));

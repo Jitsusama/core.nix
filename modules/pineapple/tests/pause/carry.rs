@@ -201,6 +201,11 @@ fn a_machine_that_cant_take_a_stop_is_tried_again_after_a_minute() {
         ["mac"],
         "the stop names the machine that couldn't take it, for Joel's row"
     );
+    assert_eq!(
+        unreached(&state, "slack-C2-2.000000"),
+        ["mac"],
+        "the other stop names it too, though it waits out its minute untried"
+    );
     let early = carry(&mut carrier, &state, AGAIN_MS - 1, &mut here);
     assert!(
         early.is_empty(),
@@ -219,8 +224,9 @@ fn a_machine_that_cant_take_a_stop_is_tried_again_after_a_minute() {
         "after a minute it's tried again, and takes both"
     );
     assert!(
-        unreached(&state, "slack-C1-1.000000").is_empty(),
-        "and names it no more once it has taken it"
+        unreached(&state, "slack-C1-1.000000").is_empty()
+            && unreached(&state, "slack-C2-2.000000").is_empty(),
+        "and neither names it once it has taken both"
     );
 }
 
