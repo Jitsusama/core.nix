@@ -346,6 +346,40 @@ PATH=${{PATH#*:}} exec mkdir "$@""#
 }
 
 #[test]
+fn a_link_put_at_the_job_s_tree_is_refused_before_an_archive_is_taken_through_it() {
+    // A mkdir that, making the copy's folder once the archive has
+    // arrived, moves the job's tree aside and puts a link to it at its
+    // name, so a rename through the link would take the archive from
+    // wherever it points.
+    let swapping = format!(
+        r#"case " $* " in *"/.s/1 "*)
+  PATH=${{PATH#*:}} at='{FIRST}'
+  tree="$HOME/${{at%/*}}"
+  mv "$tree" "$HOME/aside" && ln -s "$HOME/aside" "$tree" && : > "$HOME/swapped" ;;
+esac
+PATH=${{PATH#*:}} exec mkdir "$@""#
+    );
+    let archive = archive_of("a", "inside");
+    let list = format!("{}\t0.tar\nend\n", archive.len());
+    let (code, err, home) = reading(&list, &[("0.tar", &archive)], &[("mkdir", &swapping)]);
+    assert!(
+        home.join("swapped").exists(),
+        "the stand-in never put a link at the job's tree ({code:?}): {err}"
+    );
+    assert!(
+        code == Some(77) && err.contains("tree in its handover isn't a folder of its own"),
+        "a link at the job's tree wasn't refused ({code:?}): {err}"
+    );
+    assert!(
+        home.join("aside").join("0.tar").exists()
+            && !home.join("read").exists()
+            && !work(&home).join("ran").exists(),
+        "an archive was taken through the link at the job's tree, read, or its job ran"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
 fn a_size_rewritten_into_the_list_after_it_arrived_is_read_as_digits_never_run() {
     // A cat that, as the copy reads the list, first gives its archive a
     // size that, read as arithmetic, runs a command or marks it plain.

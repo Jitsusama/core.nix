@@ -252,8 +252,11 @@ cleared() {
 /// be made. A job with no file that travels sends none, and its tree is
 /// made empty.
 ///
-/// Each archive is taken from the handover by renaming it to the copy's
-/// own `.tar`, once, so the archive checked is the very one unpacked:
+/// An archive is taken only while the job's tree is a folder of its own,
+/// since through a link put at its name the rename would take a file
+/// from wherever it points; such a tree is the job's fault. Each archive
+/// is taken from the handover by renaming it to the copy's own `.tar`,
+/// once, so the archive checked is the very one unpacked:
 /// a share writes a file by renaming a new one over its name, which
 /// leaves the one taken as it was, and where the two lie on different
 /// disks the rename copies it, and what's read after is the copy. The
@@ -310,6 +313,12 @@ pub(super) fn copying() -> String {
   done) || return
   printf '%s\n' "$left" | (while IFS="$tab" read -r size part; do
     [ "$size" = {END} ] && break
+    # Taken only from the job's own folder, never through a link put at
+    # its name, which would take a file from wherever it points.
+    [ -d "$job/{TREE}" ] && [ ! -L "$job/{TREE}" ] || {{
+      printf "elsewhere: the job's tree in its handover isn't a folder of its own\n" >&2
+      exit 1
+    }}
     # Taken once, so what a share puts at its name after is never read.
     cleared "$work.tar" && mv -f "$job/{TREE}/$part" "$work.tar" || exit 2
     # A plain file of the size the list gives, holding a whole header,
