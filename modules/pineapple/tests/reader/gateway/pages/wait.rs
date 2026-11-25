@@ -199,4 +199,12 @@ fn a_first_page_blinking_between_two_waits_neither_counts_nor_ends_their_row() {
          tells of the gap: {}",
         came.journal
     );
+    // The tenth wait is the twentieth opening; blinks counted as waits
+    // would bring it about the eleventh.
+    assert!(
+        TAGS.load(Ordering::SeqCst) >= 20,
+        "blinks between waits aren't counted, so the tenth comes only at the twentieth \
+         opening: {}",
+        came.journal
+    );
 }
