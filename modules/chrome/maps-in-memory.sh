@@ -335,6 +335,11 @@ while :; do
     using=$(let_go "$real/$folder")
     [ -n "$using" ] || gone=yes
   done
-  [ -n "$gone" ] || exit 0
+  if [ -z "$gone" ]; then
+    # Said, so a log that ends on a wait says how it ended.
+    echo "Chrome still had what it kept after the last look, so that stays on the disk"
+    echo "until Chrome next quits or the account's manager next starts"
+    exit 0
+  fi
   echo "Chrome quit as this ran, so it starts over"
 done

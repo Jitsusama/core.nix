@@ -11,7 +11,8 @@
 # maps can't be read; that a Chrome started again while the old one quits
 # stops the move; that one still quitting after the half minute, with a
 # histogram mapped, is given up on for BrowserMetrics and the caches
-# alike, and the run looks once more and starts over once it has quit;
+# alike, and the run looks once more and starts over once it has quit,
+# or ends within its minute, moving nothing, if it quits only after;
 # and that while a Chrome holds the profile nothing in it is touched,
 # though the folders in memory are still made, but for BrowserMetrics,
 # which Chrome deletes itself as it runs and which moves whenever nothing
@@ -310,11 +311,20 @@ quit_later "$work/quit"
 run "quitting Chrome's" &
 running=$!
 reached_caches "a quitting Chrome that still mapped the profile"
-waiting "a quitting Chrome that still mapped the profile"
+# Five seconds more before it quits, so a wait in the pass cut short has
+# given up by then, and says so below, rather than the last look catching
+# the quit for it.
+sleep 5
+waiting "a quitting Chrome that still mapped the profile, five seconds on"
 untouched "while a quitting Chrome still mapped the profile"
 touch "$work/quit"
 wait "$quitting"
 wait "$running"
+if grep -q -e 'holds the profile' -e 'starts over' run.log; then
+  echo "the command gave up on a quitting Chrome within the pass's half minute, saying:"
+  cat run.log
+  exit 1
+fi
 in_memory "once a quitting Chrome has gone"
 
 # So is a Chrome process of this account whose maps can't be read, as a
@@ -360,8 +370,8 @@ untouched "with Chrome started again as the old one quit"
 # A Chrome still quitting after the half minute, mapping a histogram, is
 # given up on for BrowserMetrics and then the caches, in one half minute
 # between them, and when it quits as the run looks once more, the run
-# starts over and moves them all. This one case waits the whole half
-# minute, since that's what it proves.
+# starts over and moves them all. It waits the whole half minute, since
+# that's what it proves, as the two cases after it do.
 fill
 quit_later "$work/quit" BrowserMetrics
 started=$SECONDS
@@ -434,6 +444,50 @@ wait "$quitting"
 wait "$running"
 said "starts over" "when a Chrome mapping only its histograms quit as the run looked once more"
 in_memory "once a Chrome that mapped only its histograms had gone"
+
+# A Chrome still quitting through the last look too, mapping a histogram,
+# ends the run within its minute, half for the pass and half for the last
+# look, with everything it kept still on the disk, each wait said once with
+# no more than its half minute. Then, once it has quit, a run moves it all.
+fill
+quit_later "$work/quit" BrowserMetrics
+started=$SECONDS
+run "outlasting Chrome's"
+# A minute of looks a second apart, less five seconds since the clock
+# counts whole seconds, and a quarter minute over for a loaded builder.
+took=$((SECONDS - started))
+if [ "$took" -lt 55 ] || [ "$took" -gt 75 ]; then
+  echo "the command ended after $took s on a Chrome quitting through the last look, not a minute"
+  exit 1
+fi
+if ! kill -0 "$quitting" 2>/dev/null; then
+  echo "the quitting stand-in ended before the run did, so nothing outlasted the last look"
+  exit 1
+fi
+metrics_kept "while a Chrome mapping a histogram was still quitting after the last look"
+caches_untouched "while a Chrome was still quitting after the last look"
+said "still had what it kept after the last look" "with a Chrome quitting through the last look"
+if grep -q 'starts over' run.log; then
+  echo "the command started over with a Chrome still quitting, saying:"
+  cat run.log
+  exit 1
+fi
+for line in 'as it quits, so this waits' 'still quitting, so this waits'; do
+  if [ "$(grep -c "$line" run.log)" != 1 ]; then
+    echo "the command didn't say once that it waits, as '$line', saying:"
+    cat run.log
+    exit 1
+  fi
+done
+if grep -o 'so this waits up to [0-9]* s' run.log | grep -q -v -E 'to ([0-9]|[12][0-9]|30) s'; then
+  echo "the command said it waits longer than its half minute, saying:"
+  cat run.log
+  exit 1
+fi
+touch "$work/quit"
+wait "$quitting"
+run "outlasting Chrome's second"
+in_memory "once a Chrome that outlasted the last look had gone"
 
 # A running Chrome mapping a file in BrowserMetrics, as its browser maps
 # its histograms, keeps it on the disk, and the run says why.
