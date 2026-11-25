@@ -37,6 +37,31 @@ let
       null
     ]
   ) timed;
+  services = config.systemd.user.services;
+  # A timed service saying something the defaults below would quietly
+  # overrule: a legacy restart or reload at a switch under the default
+  # keep-old, or a TimeoutSec whose start half the default hour replaces.
+  overruled = lib.filter (
+    name:
+    let
+      unit = services.${name}.Unit or { };
+      service = services.${name}.Service or { };
+    in
+    (
+      (unit.X-SwitchMethod or null) == "keep-old"
+      && ((unit.X-RestartIfChanged or null) == true || (unit.X-ReloadIfChanged or null) == true)
+    )
+    || (service ? TimeoutSec && (service.TimeoutStartSec or null) == "1h" && service.TimeoutSec != "1h")
+  ) (lib.subtractLists bare timed);
+  # A name the machine says the account doesn't write that it does write.
+  written' = lib.filter (
+    name:
+    !(lib.elem (services.${name}.Service.ExecStart or [ ]) [
+      [ ]
+      ""
+      null
+    ])
+  ) cfg.unwritten;
 in
 {
   options.jitsusama.timedRuns.unwritten = lib.mkOption {
@@ -46,8 +71,8 @@ in
       Services a timer runs that the account doesn't write, such as a
       package's own unit, by name without .service, and a template's
       instance by its template, such as backup@. The switch's setting and
-      the hour-long bound on a run leave them out, so neither hides the
-      unit the timer runs.
+      the bounds on a run leave them out, so neither hides the unit the
+      timer runs. Naming one the account writes is refused.
     '';
   };
 
@@ -68,19 +93,35 @@ in
     # means the same as keep-old.
     #
     # A switch no longer ends a run that hangs, and a timer starts no run
-    # while its last is still going, so each timed run is given an hour to
-    # end unless its service says its own TimeoutStartSec. The longest timed
-    # run in a day of a loaded machine's journal took 28 minutes, a
-    # ten-minute timer's, so an hour ends only a run that has stopped.
+    # while its last is still going, so each timed run has a bound unless
+    # its service says its own. A oneshot's run is its start, so
+    # TimeoutStartSec ends it after an hour: the longest timed run in a day
+    # of a loaded machine's journal took 28 minutes, a ten-minute timer's,
+    # so an hour ends only a run that has stopped. Any other type has
+    # started once its program runs, so RuntimeMaxSec ends its run, after
+    # three hours, since session-backup's says a run can take most of one;
+    # a oneshot ignores it. Neither is read for its type, since a service's
+    # names can't depend on its own settings.
     systemd.user.services = lib.genAttrs timed (_: {
       Unit.X-SwitchMethod = lib.mkDefault "keep-old";
-      Service.TimeoutStartSec = lib.mkDefault "1h";
+      Service = {
+        TimeoutStartSec = lib.mkDefault "1h";
+        RuntimeMaxSec = lib.mkDefault "3h";
+      };
     });
 
     assertions = [
       {
         assertion = bare == [ ];
-        message = "A timer runs each of these services, which the account doesn't write, so the switch's setting would hide them: ${lib.concatStringsSep ", " bare}. Write each, or name it in jitsusama.timedRuns.unwritten.";
+        message = "A timer runs each of these services, which the account doesn't write, so the switch's setting would hide them: ${lib.concatStringsSep ", " bare}. Write each (an instance as its template, such as backup@), or name it in jitsusama.timedRuns.unwritten if a package writes it.";
+      }
+      {
+        assertion = overruled == [ ];
+        message = "These timed services say something the timed-run defaults would overrule: ${lib.concatStringsSep ", " overruled}. One restarting or reloading at a switch says X-SwitchMethod as well; one with a TimeoutSec says TimeoutStartSec as well.";
+      }
+      {
+        assertion = written' == [ ];
+        message = "jitsusama.timedRuns.unwritten names services the account writes, which would lose the switch's setting and their bound: ${lib.concatStringsSep ", " written'}. Take them out of it.";
       }
     ];
   };

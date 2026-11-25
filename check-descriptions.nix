@@ -287,9 +287,9 @@
   '';
   a-switch-leaves-timed-runs-be = ''
     a timed service saying nothing of its own keeps its run over a switch, which sd-switch reads
-    as keep-old, and its run ends after an hour; one saying its own switch method or bound keeps
-    it, and a timer naming its service, or running a template's instance, sets them on that
-    service
+    as keep-old, and its run ends after an hour as a oneshot or three as another type; one saying
+    its own switch method or bounds keeps them, and a timer naming its service, or running a
+    template's instance, sets them on that service
   '';
   a-talk-answers-what-its-session-asks = ''
     Talk to It on a session asking shows what it asks whole with what it takes; words answer it
@@ -1467,9 +1467,10 @@
     or pytest's or QML's skips, but those still waiting to run where they can
   '';
   every-timer-runs-a-written-service = ''
-    home.nix's assertion refuses a timer whose service the account doesn't write, by name, and
-    leaves out a service a machine names in jitsusama.timedRuns.unwritten, so a switch's setting
-    is never a unit of its own
+    home.nix's assertions refuse, by name, a timer whose service the account doesn't write, a
+    timed service restarting by a legacy key or bounded by TimeoutSec alone, which the defaults
+    would overrule, and a written service named in jitsusama.timedRuns.unwritten; one unwritten
+    is left out, so a switch's setting is never a unit of its own
   '';
   every-vm-test-keeps-to-the-pyramid = ''
     no VM test holds more than twenty subtests, but those past it today, each held to its count

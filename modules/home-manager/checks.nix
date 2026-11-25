@@ -16,76 +16,127 @@ let
     .config.home-manager.users.joel;
   service = home: name: home.systemd.user.services.${name} or { };
   method = home: name: (service home name).Unit.X-SwitchMethod or null;
-  bound = home: name: (service home name).Service.TimeoutStartSec or null;
+  startBound = home: name: (service home name).Service.TimeoutStartSec or null;
+  runBound = home: name: (service home name).Service.RuntimeMaxSec or null;
   true' = "/run/current-system/sw/bin/true";
+  daily.Timer.OnCalendar = "daily";
 
-  # One account holding a probe of each kind of timed service:
+  # One account holding a probe of each kind of timed service. Its
+  # assertions are read, never enforced, so the refused probes sit beside
+  # the rest:
   # - bare-probe says nothing of its own, so it takes the defaults;
-  # - own-probe says its own switch method and bound, which must win;
+  # - own-probe says its own switch method and bounds, which must win;
   # - unit-probe's timer names the service it runs, unit-probe-run;
-  # - probe@one runs an instance of the template probe@.
-  probes = account {
-    systemd.user.timers.bare-probe.Timer.OnCalendar = "daily";
-    systemd.user.services.bare-probe.Service.ExecStart = true';
-    systemd.user.timers.own-probe.Timer.OnCalendar = "daily";
-    systemd.user.services.own-probe = {
-      Unit.X-SwitchMethod = "restart";
-      Service = {
+  # - probe@one runs an instance of the template probe@;
+  # - stray-probe's service nothing writes;
+  # - restart-probe restarts at a switch by the legacy key alone;
+  # - timeout-probe bounds itself by TimeoutSec alone.
+  probes = {
+    systemd.user.timers = {
+      bare-probe = daily;
+      own-probe = daily;
+      unit-probe.Timer = daily.Timer // {
+        Unit = "unit-probe-run.service";
+      };
+      "probe@one" = daily;
+      stray-probe = daily;
+      restart-probe = daily;
+      timeout-probe = daily;
+    };
+    systemd.user.services = {
+      bare-probe.Service.ExecStart = true';
+      own-probe = {
+        Unit.X-SwitchMethod = "restart";
+        Service = {
+          ExecStart = true';
+          TimeoutStartSec = "3h";
+          RuntimeMaxSec = "5h";
+        };
+      };
+      unit-probe-run.Service.ExecStart = true';
+      "probe@".Service.ExecStart = true';
+      restart-probe = {
+        Unit.X-RestartIfChanged = true;
+        Service.ExecStart = true';
+      };
+      timeout-probe.Service = {
         ExecStart = true';
-        TimeoutStartSec = "3h";
+        TimeoutSec = "10min";
       };
     };
-    systemd.user.timers.unit-probe.Timer = {
-      OnCalendar = "daily";
-      Unit = "unit-probe-run.service";
-    };
-    systemd.user.services.unit-probe-run.Service.ExecStart = true';
-    systemd.user.timers."probe@one".Timer.OnCalendar = "daily";
-    systemd.user.services."probe@".Service.ExecStart = true';
   };
+  home = account probes;
+  # The same account naming stray-probe as one it doesn't write, and
+  # bare-probe, which it does.
+  excused = account (
+    probes
+    // {
+      jitsusama.timedRuns.unwritten = [
+        "stray-probe"
+        "bare-probe"
+      ];
+    }
+  );
+
   keeps = {
     "a timed service saying nothing keeps its run over a switch" =
-      method probes "bare-probe" == "keep-old";
-    "a timed run with no bound of its own ends after an hour" = bound probes "bare-probe" == "1h";
-    "a timed service's own switch method wins" = method probes "own-probe" == "restart";
-    "a timed service's own bound wins" = bound probes "own-probe" == "3h";
+      method home "bare-probe" == "keep-old";
+    "a timed oneshot's run with no bound of its own ends after an hour" =
+      startBound home "bare-probe" == "1h";
+    "a timed run of another type with no bound of its own ends after three hours" =
+      runBound home "bare-probe" == "3h";
+    "a timed service's own switch method wins" = method home "own-probe" == "restart";
+    "a timed service's own bounds win" =
+      startBound home "own-probe" == "3h" && runBound home "own-probe" == "5h";
     "a timer's Timer.Unit is the service it keeps" =
-      method probes "unit-probe-run" == "keep-old" && !(probes.systemd.user.services ? unit-probe);
+      method home "unit-probe-run" == "keep-old" && !(home.systemd.user.services ? unit-probe);
     "a template's instance keeps its run on the template" =
-      method probes "probe@" == "keep-old" && !(probes.systemd.user.services ? "probe@one");
+      method home "probe@" == "keep-old" && !(home.systemd.user.services ? "probe@one");
   };
 
-  # home.nix's assertion as an account says it, or null.
+  # The message of home.nix's assertion holding `words`, as an account
+  # says it, or null.
   refusal =
-    home:
-    lib.findFirst (
-      assertion: !assertion.assertion && lib.hasInfix "the switch's setting would hide" assertion.message
-    ) null home.assertions;
-  # A timer whose service nothing writes, and the same timer with its
-  # service named as one the account doesn't write.
-  stray = {
-    systemd.user.timers.stray-probe.Timer.OnCalendar = "daily";
-  };
-  strayRefused = refusal (account stray);
-  strayExcused = account (stray // { jitsusama.timedRuns.unwritten = [ "stray-probe" ]; });
+    words: home':
+    let
+      found = lib.findFirst (
+        assertion: !assertion.assertion && lib.hasInfix words assertion.message
+      ) null home'.assertions;
+    in
+    if found == null then null else found.message;
+  names =
+    words: home': name:
+    lib.hasInfix name (toString (refusal words home'));
+  hidden = "the switch's setting would hide";
+  overruled = "the timed-run defaults would overrule";
+  unwritten = "names services the account writes";
   writes = {
-    "a timer whose service nothing writes is refused, by name" =
-      strayRefused != null && lib.hasInfix "stray-probe" strayRefused.message;
+    "a timer whose service nothing writes is refused, by name" = names hidden home "stray-probe";
     "a service named in jitsusama.timedRuns.unwritten is left out" =
-      refusal strayExcused == null && !(strayExcused.systemd.user.services ? stray-probe);
+      refusal hidden excused == null && !(excused.systemd.user.services ? stray-probe);
+    "a written service named in jitsusama.timedRuns.unwritten is refused, by name" =
+      names unwritten excused "bare-probe" && !(names unwritten excused "stray-probe");
+    "a legacy restart under the default keep-old is refused, by name" =
+      names overruled home
+        "restart-probe";
+    "a TimeoutSec under the default hour is refused, by name" = names overruled home "timeout-probe";
+    "a service saying its own switch method and bounds is not refused" =
+      !(names overruled home "own-probe") && !(names overruled home "bare-probe");
   };
   broken = cases: lib.attrNames (lib.filterAttrs (_: held: !held) cases);
 in
 onLinux {
-  # A timed service keeps its run over a switch and is bounded at an hour,
-  # unless it says its own, found by the service its timer names.
+  # A timed service keeps its run over a switch and is bounded, a oneshot
+  # at an hour and another at three, unless it says its own, found by the
+  # service its timer names.
   a-switch-leaves-timed-runs-be =
     holds "a-switch-leaves-timed-runs-be"
       "home.nix's switch setting doesn't hold: ${lib.concatStringsSep "; " (broken keeps)}"
       (broken keeps == [ ]);
 
-  # home.nix's assertion refuses a timer whose service the account doesn't
-  # write, and lets a machine name such a service.
+  # home.nix's assertions refuse a timer whose service the account doesn't
+  # write, a service the defaults would quietly overrule, and a written
+  # service named as unwritten; a machine may name an unwritten one.
   every-timer-runs-a-written-service =
     holds "every-timer-runs-a-written-service"
       "home.nix's timers don't hold: ${lib.concatStringsSep "; " (broken writes)}"
