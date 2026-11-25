@@ -4481,6 +4481,34 @@ def test_an_asking_sessions_return_goes_to_it_with_its_question_in_sight(shell: 
         left_the_node("s-asking")
 
 
+def answered_once(shell: Shell, inbox: Path, steered: set[Path]) -> list[Path]:
+    """Wait for Joel's answer to reach the asking cell's inbox, the Talk reading it answered.
+
+    It takes his first answer, so a second Return while it still asks goes nowhere. Gives the
+    answer's steer, alone in the inbox beside what was there before.
+    """
+    deadline = time.monotonic() + 10
+    while not (told := sorted(set(inbox.glob("*.json")) - steered)):
+        assert time.monotonic() < deadline, "no answer reached the asking cell's inbox"
+        time.sleep(0.1)
+    # The Talk says the choice his words picked, by its label, so he sees which it took.
+    shell.launcher_until(
+        lambda shown: any(
+            (one.get("line"), one.get("stands")) == ("Right", "answered")
+            for one in cast("list[Json]", shown["talks"] or [])
+        )
+    )
+    shell.launcher_until(lambda shown: shown["typed"] == "")
+    shell.send_chars("left")
+    shell.launcher_until(lambda shown: shown["typed"] == "left")
+    shell.send_key("ret")
+    shell.launcher_until(
+        lambda shown: "you answered this already" in shown["footer"].replace("\xa0", " ")
+    )
+    assert sorted(set(inbox.glob("*.json")) - steered) == told, sorted(inbox.glob("*.json"))
+    return told
+
+
 def test_a_talk_to_an_asking_cell_shows_its_question_and_answers_it_from_return(
     shell: Shell,
 ) -> None:
@@ -4536,34 +4564,16 @@ def test_a_talk_to_an_asking_cell_shows_its_question_and_answers_it_from_return(
         shell.launcher_until(
             lambda shown: shown["asking"] and first(shown).get("line") == "Choosing Quest asks you"
         )
+        # Words kept would be put back as the Talk lays out; a second lets that pass first.
         time.sleep(1)
         assert shell.showing()["typed"] == "", "words that answered nothing came back"
         shell.send_chars("right")
         shell.launcher_until(lambda shown: shown["typed"] == "right")
         shell.send_key("ret")
-        deadline = time.monotonic() + 10
-        while not (told := sorted(set(inbox.glob("*.json")) - steered)):
-            assert time.monotonic() < deadline, "no answer reached the asking cell's inbox"
-            time.sleep(0.1)
+        told = answered_once(shell, inbox, steered)
         said = json.loads(told[0].read_text())
         assert (said["act"], said["value"], said["from"]) == ("answer", "right", "joel"), said
         assert said["want"] == f"question@{since}", said
-        # The Talk says the choice his words picked, by its label, so he sees which it took.
-        shell.launcher_until(
-            lambda shown: any(
-                (one.get("line"), one.get("stands")) == ("Right", "answered")
-                for one in cast("list[Json]", shown["talks"] or [])
-            )
-        )
-        # It takes his first answer, so a second Return while it still asks goes nowhere.
-        shell.launcher_until(lambda shown: shown["typed"] == "")
-        shell.send_chars("left")
-        shell.launcher_until(lambda shown: shown["typed"] == "left")
-        shell.send_key("ret")
-        shell.launcher_until(
-            lambda shown: "you answered this already" in shown["footer"].replace("\xa0", " ")
-        )
-        assert sorted(set(inbox.glob("*.json")) - steered) == told, sorted(inbox.glob("*.json"))
     finally:
         (PRESENCE / "choose.json").unlink(missing_ok=True)
         for one in set(inbox.glob("*.json")) - steered:
