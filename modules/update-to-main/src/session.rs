@@ -167,10 +167,10 @@ fn kept(path: &Path, most: u64) -> Option<String> {
 /// last lines the job had said by then, the newest nearest what it waited
 /// on; or that it had written nothing, which points to a prompt rather
 /// than Nix; or, when neither of its files is there, that it left none,
-/// which a job that never started leaves too. On 24 November three that waited an hour each left only
-/// "didn't end", and whether they waited on a prompt or on Nix couldn't be
-/// read afterwards. A failure with lines of its own, as launchctl's
-/// refusal to start the job, keeps them.
+/// which a job that never started leaves too. On 24 November three that
+/// waited an hour each left only "didn't end", and whether they waited on
+/// a prompt or on Nix couldn't be read afterwards. A failure with lines of
+/// its own, as launchctl's refusal to start the job, keeps them.
 fn said_by(
     ended: Result<i32, Failure>,
     what: &str,
@@ -502,6 +502,18 @@ mod tests {
     }
 
     #[test]
+    fn a_job_that_didnt_end_having_left_one_file_empty_says_it_wrote_nothing() {
+        // A job stopped between making its output and its errors leaves
+        // only the first, which is still a job that started.
+        let told = said_by(Err(Failure::new("didn't end")), "fetching", Some(""), None);
+        assert_eq!(
+            told.unwrap_err().why,
+            "didn't end, the job having written nothing",
+            "a job that left one of its files was told as having left none"
+        );
+    }
+
+    #[test]
     fn a_job_that_didnt_end_having_left_no_files_says_so() {
         let folder = tempfile::tempdir().unwrap();
         let (out, err) = (
@@ -539,7 +551,9 @@ mod tests {
     fn a_jobs_status_is_read_only_to_its_last_bytes() {
         let folder = tempfile::tempdir().unwrap();
         let kept = usize::try_from(STATUS_KEPT).unwrap();
-        fs::write(folder.path().join(STATUS), "y".repeat(kept + 1)).unwrap();
+        // One x ahead of the last bytes, so a read of the first bytes
+        // shows apart from one of the last.
+        fs::write(folder.path().join(STATUS), format!("x{}", "y".repeat(kept))).unwrap();
         let told = wait(folder.path(), "fetching", Duration::ZERO).unwrap_err();
         assert_eq!(
             told.why,
@@ -547,7 +561,7 @@ mod tests {
                 "fetching in the login session ended saying {:?}",
                 "y".repeat(kept)
             ),
-            "a status was read past its last {kept} bytes"
+            "a status wasn't read to its last {kept} bytes alone"
         );
     }
 
