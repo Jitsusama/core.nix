@@ -23,7 +23,9 @@
 //! those words in its field, as `qs ipc call launcher newWork` does, which
 //! the realm's map offers to start work from a cell: the words are decoded
 //! once and folded to one plain line, and the cell is kept only where it's
-//! an address. Nothing starts until Joel's own Return there.
+//! an address. With `&on=<machine>`, or `&on=cloud`, it asks `newWorkOn`
+//! instead, which offers that machine as the place to start it, the name
+//! refused where it isn't one. Nothing starts until Joel's own Return there.
 //!
 //! Any page can write such a link, so it's trusted with a name and one word
 //! more. Only the step after a cell's address is read, and only `go` means

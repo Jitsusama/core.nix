@@ -150,7 +150,9 @@ Nothing on it acts on the network.
   opening one, talk to it in the Launcher and start new work from it;
   one that asks you something leads with those acts, then says what it
   asks, whole, and one with a forage opens the forage page on it,
-  saying what it is for and how far its plans have come.
+  saying what it is for and how far its plans have come. A machine's
+  drawer opens its row in the Launcher's Machines and starts new work
+  on it; a basin's starts it on any of the cloud's machines.
 - **Signal against noise** is said in Now: of the latest messages,
   how many asked or found something, against how many were for context
   only; a network's details count the messages that touch it. A cell's
@@ -231,10 +233,12 @@ The keyboard comes first and the pointer works too.
 - **s** opens new work's line in the find line's place: say the work
   in your words, and Return hands them to the Launcher's Start New
   Work, from the cell open as the line opened unless its tick is
-  cleared. The page starts nothing itself: the Launcher opens with the
-  words filled in, and only your Return there starts the work. Words
-  handed on come back with s, from the same cell, to send again. Escape
-  closes the line, and the control beside Now opens it too.
+  cleared, and on the machine whose drawer is open, under the same
+  kind of tick. The page starts nothing itself: the Launcher opens
+  with the words filled in, and only your Return there starts the
+  work. Words handed on come back with s, from the same cell, to send
+  again. Escape closes the line, and the control beside Now opens it
+  too.
 - **Now holds the same network as a tree**, for a screen reader and
   for anyone who would rather walk a list: j and k step, l opens a branch,
   h closes it or climbs, g and G go to the first and last, and Return
