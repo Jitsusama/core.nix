@@ -1437,6 +1437,9 @@ ShellRoot {
             { waiting: view.slice(0, -1).concat([id]), named: `pi-hosted.${id}` }, marks ?? {});
         const spawnsOf = (named, from) => Niri.spawns.slice(from)
             .filter(command => command.includes(named)).length;
+        // The pid a place was kept under, kept still or asked for since.
+        const keptUnderOf = id => Sessions.keptPlaces[id]?.keptUnder
+            ?? Sessions.keptAsks[`pi-hosted.${id}`]?.place?.keptUnder;
         const downNamed = "pi-hosted.s-kept-down";
         Sessions.keepPlaces({ "s-kept-down": keptOne("s-kept-down") });
         const downFrom = Niri.spawns.length;
@@ -1455,8 +1458,10 @@ ShellRoot {
         Sessions.untaken(downNamed, String(Sessions.attaching[downNamed]));
         Sessions.forgetAsk(downNamed);
         // A kitty started again while the script waited, its pid read
-        // before the give-up is heard, isn't the one the ask went to: the
-        // place is kept under the pid asked, so the new kitty is asked.
+        // before the give-up is heard, as its unit says it started first,
+        // isn't the one the ask went to: the place is kept under the pid
+        // asked, and the new kitty asked as it's kept, as nothing else
+        // would ask while niri is quiet.
         const lateNamed = "pi-hosted.s-kept-late";
         kittyPidFile.setText("4242\n");
         Sessions.readKittyPid();
@@ -1466,8 +1471,7 @@ ShellRoot {
         kittyPidFile.setText("6363\n");
         Sessions.readKittyPid();
         Sessions.untaken(lateNamed, String(Sessions.attaching[lateNamed]));
-        const lateUnder = Sessions.keptPlaces["s-kept-late"]?.keptUnder;
-        Sessions.viewKept();
+        const lateUnder = keptUnderOf("s-kept-late");
         expect("a kitty started again before the give-up is heard is asked, as not the one asked",
             lateUnder === "4242" && spawnsOf(lateNamed, lateFrom) === 2,
             `${lateUnder} ${spawnsOf(lateNamed, lateFrom)}`);

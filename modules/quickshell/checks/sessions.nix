@@ -62,17 +62,22 @@ in
   # and then tells the shell it started, as a watch on the file misses one
   # written in a folder made anew, and a kitty started again draws nothing
   # till asked, so a viewer kept for one would wait on what never comes.
+  # The write first, failing the start where it fails, as a kitty with no
+  # pid beside it would have every window refused; and the call by the
+  # name the shell's IpcHandler answers.
   the-sessions-kitty-says-its-pid =
     let
       service = (account graphical).systemd.user.services.sessions-kitty.Service;
       written = lib.concatStringsSep " " (lib.toList (service.ExecStartPost or [ ]));
+      answered = builtins.readFile ../Sessions.qml;
+      inOrder = ".*%t/pi-sessions/kitty\\.pid \\|\\| exit 1;.*ipc call sessions kittyStarted.*";
     in
     holds "the-sessions-kitty-says-its-pid"
       "The sessions' kitty writes no pid beside its socket, or never tells the shell it started, so the shell can't tell which windows it draws, or waits on a kitty come back."
       (
         lib.hasInfix "$$MAINPID" written
-        && lib.hasInfix "%t/pi-sessions/kitty.pid" written
-        && lib.hasInfix "ipc call sessions kittyStarted" written
+        && builtins.match inOrder written != null
+        && lib.hasInfix "function kittyStarted(): void" answered
       );
 
   # A session's window is asked of the sessions kitty over its socket, or of
