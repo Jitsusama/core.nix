@@ -98,12 +98,19 @@ fn a_word_cut_to_the_hang_still_shares_a_first_line_it_fits() {
     // Ten cells are left beside the first word, under the 24 a word
     // needs to share a line, so it's cut to the ten its own line would
     // give it, and those fit the first line, where it stays. What's left
-    // beside it and its own line's measure are both ten, as they are for
-    // any word but a path cut short of its room, so this pins where the
-    // word stays rather than which of the two it was cut to.
+    // beside a one-cell word and its own line's measure are both ten, as
+    // the hang is two cells, so this pins where the word stays rather
+    // than which of the two it was cut to.
     assert_eq!(
         hanging("a bbbbbbbbbbbbbbbbbbbbb", 0, Room::Cells(12)),
         ["a bbbb\u{2026}bbbbb"]
+    );
+    // Beside a two-cell word nine are left, and it's cut to its own
+    // line's ten, which no longer fit the first line, so it goes down
+    // whole, hung, rather than cut to the nine left.
+    assert_eq!(
+        hanging("ab bbbbbbbbbbbbbbbbbbbbb", 0, Room::Cells(12)),
+        ["ab", "  bbbb\u{2026}bbbbb"]
     );
 }
 
@@ -167,7 +174,7 @@ fn a_hanging_paragraph_keeps_its_first_line_s_room_and_hangs_the_rest() {
     let cases = [
         (words, 2),
         ("aaaa · bbbbbbbbbbb · cc", 0),
-        ("aaaa · bbbbbbbbbbb · cc", 2),
+        ("412 GB free · nvme0n1 · Samsung", 2),
         ("a screen of 1272 × 768 pixels and more", 2),
         ("aa bb cccc dddd", 0),
     ];
@@ -211,11 +218,11 @@ fn a_hanging_paragraph_keeps_its_first_line_s_room_and_hangs_the_rest() {
                     "{said:?} left a line on its dot at {room}: {lines:?}"
                 );
             }
+            // An item breaks only when it's wider than a hung line, so
+            // past that its dots are counted though its words are many.
             let items: Vec<&str> = said.split(ITEMS).collect();
-            if items.len() > 1
-                && !items.iter().any(|item| item.contains(' '))
-                && room >= inset + GAP + longest
-            {
+            let widest = items.iter().map(|item| width(item)).max().unwrap_or(0);
+            if items.len() > 1 && room >= inset + GAP + widest {
                 let dots = lines
                     .iter()
                     .map(|line| line.matches('·').count())
