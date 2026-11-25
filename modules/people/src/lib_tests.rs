@@ -264,7 +264,7 @@ fn a_source_that_says_its_a_roster_isnt_waited_on_and_knows_some_by_its_own_id()
         },
     );
     // Slack is answering, and has nothing to say of Ada yet, so she still
-    // waits on it until it says something of her.
+    // waits on it until it says who she is.
     assert_eq!(book.standings()["slack"].word(), "answering");
     assert_eq!(
         book.waiting("person:ada@example.com").collect::<Vec<_>>(),
