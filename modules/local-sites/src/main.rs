@@ -129,14 +129,18 @@ fn serve(file: &PathBuf) -> Result<(), Failure> {
     })?;
     // Only a kernel that tells who holds a connection lets an answer be
     // known as the person's (peer.rs); elsewhere the pages answer in For You.
-    let processes = Processes::here();
-    if config.answers.is_some() && processes.is_none() {
-        eprintln!("local-sites: takes no answers here, since it can't tell who presses one");
-    }
     let answers = config
         .answers
         .as_ref()
-        .zip(processes)
+        .and_then(|at| {
+            let processes = Processes::under(&at.processes);
+            if processes.is_none() {
+                eprintln!(
+                    "local-sites: takes no answers here, since it can't tell who presses one"
+                );
+            }
+            processes.map(|processes| (at, processes))
+        })
         .map(|(at, processes)| {
             let tell = Box::new(move |peer, server| processes.tell(peer, server));
             Answers::new(at.looks.clone(), at.node.clone(), tell)

@@ -51,6 +51,10 @@ pub struct Answering {
     pub looks: PathBuf,
     /// The node, which carries a steer to the session it names.
     pub node: PathBuf,
+    /// Where the kernel tells who holds each connection (peer.rs): `/proc`,
+    /// unless a test stands a folder laid out as it in, so the guard reads
+    /// the same anywhere the test runs, whatever unit runs the test.
+    pub processes: PathBuf,
 }
 
 /// One daemon a page may read, and how much of it.
@@ -205,9 +209,15 @@ fn answering(said: &Value, runtime: Option<&Path>) -> Result<Answering, String> 
             format!("answers' {name} socket is under the runtime folder, and none is set")
         })
     };
+    let processes = match said.get("processes") {
+        None | Some(Value::Null) => PathBuf::from("/proc"),
+        Some(Value::String(path)) if Path::new(path).is_absolute() => PathBuf::from(path),
+        Some(_) => return Err("answers' processes isn't an absolute folder".to_owned()),
+    };
     Ok(Answering {
         looks: socket("looks")?,
         node: socket("node")?,
+        processes,
     })
 }
 
@@ -338,8 +348,27 @@ mod tests {
             Some(Answering {
                 looks: PathBuf::from("/run/user/1000/daemons/to-do.sock"),
                 node: PathBuf::from("/run/node.sock"),
-            })
+                processes: PathBuf::from("/proc"),
+            }),
+            "the kernel's own was not asked where none is named"
         );
+        let stood_in = answering.replace(
+            r#""/run/node.sock""#,
+            r#""/run/node.sock", "processes": "/tmp/kernel""#,
+        );
+        let config =
+            Config::from_json(&stood_in, Some(Path::new("/run/user/1000"))).expect("it reads");
+        assert_eq!(
+            config.answers.map(|at| at.processes),
+            Some(PathBuf::from("/tmp/kernel")),
+            "a stood-in kernel was not asked"
+        );
+        let relative = answering.replace(
+            r#""/run/node.sock""#,
+            r#""/run/node.sock", "processes": "kernel""#,
+        );
+        let why = Config::from_json(&relative, Some(Path::new("/run"))).expect_err("refused");
+        assert!(why.contains("processes isn't an absolute folder"), "{why}");
         // The feed's socket made absolute, so only the answers' looks socket
         // can need the runtime folder that isn't set.
         let fixed = answering.replace("\"mycelium/work.sock\"", "\"/run/work.sock\"");

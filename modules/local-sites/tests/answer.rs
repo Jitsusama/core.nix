@@ -6,16 +6,20 @@
 //! value the look doesn't offer, not sent as JSON, and a second time.
 //!
 //! The server takes answers only where the kernel tells who holds a
-//! connection (src/peer.rs), so these run on Linux alone, as the build runs
-//! them: there the test, which presses, is the person's, below no agent's
-//! unit and no pi.
-#![cfg(target_os = "linux")]
+//! connection (src/peer.rs). The machine's own would tell the test's
+//! process as whatever unit runs it, an agent's where an agent runs it, so
+//! each server is given a folder laid out as `/proc` instead, telling each
+//! connection the test opens as held by the person's browser, or by an
+//! agent's process where a case says so. They run alike anywhere.
 
+use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::os::unix::fs::{MetadataExt, symlink};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -96,6 +100,108 @@ fn answer(stream: UnixStream, steered: &Mutex<Vec<Value>>) {
     }
 }
 
+/// The person's service manager's unit, as a cgroup path begins below it.
+const MANAGER: &str = "0::/user.slice/user-1000.slice/user@1000.service/";
+
+/// Who holds a connection the test opens, as the stood-in kernel tells it.
+#[derive(Clone, Copy)]
+enum Holder {
+    /// The person's browser, in an app's scope below the service manager.
+    Person,
+    /// A command an agent ran, in the queue agents' commands wait in.
+    Agent,
+    /// Nothing the kernel tells: the connection is in none of its tables.
+    Untold,
+}
+
+impl Holder {
+    /// The process told as holding it, none for a connection untold.
+    const fn pid(self) -> Option<u32> {
+        match self {
+            Self::Person => Some(910),
+            Self::Agent => Some(920),
+            Self::Untold => None,
+        }
+    }
+}
+
+/// A folder laid out as `/proc`, as the server reads the kernel's.
+struct Kernel {
+    root: PathBuf,
+    /// The inode the next connection's socket is given.
+    inode: AtomicU64,
+}
+
+impl Kernel {
+    /// One telling a service manager, the person's browser below it and
+    /// an agent's command, all of this account, and no connection yet.
+    fn new(root: PathBuf) -> Self {
+        std::fs::create_dir_all(root.join("net")).expect("its net folder");
+        std::fs::create_dir_all(root.join("self")).expect("its self");
+        let head = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when \
+                    retrnsmt   uid  timeout inode\n";
+        std::fs::write(root.join("net/tcp"), head).expect("its table");
+        let kernel = Self {
+            root,
+            inode: AtomicU64::new(7000),
+        };
+        kernel.process(900, ("systemd", 1), "init.scope");
+        kernel.process(910, ("chromium", 900), "app.slice/app-chromium.scope");
+        kernel.process(920, ("curl", 900), "jobs.slice/run-u7.service");
+        kernel
+    }
+
+    /// Process `pid`, named and child of the parent `(name, parent)`, in
+    /// the unit `unit` below the service manager.
+    fn process(&self, pid: u32, (name, parent): (&str, u32), unit: &str) {
+        let at = self.root.join(pid.to_string());
+        std::fs::create_dir_all(at.join("fd")).expect("its fd folder");
+        let status = format!("Name:\t{name}\nPPid:\t{parent}\n");
+        std::fs::write(at.join("status"), status).expect("its status");
+        std::fs::write(at.join("cgroup"), format!("{MANAGER}{unit}\n")).expect("its cgroup");
+    }
+
+    /// The connection `stream` entered in the kernel's table as this
+    /// account's, its socket held open by `holder`.
+    fn opened(&self, stream: &TcpStream, holder: Holder) {
+        let Some(pid) = holder.pid() else {
+            return;
+        };
+        let inode = self.inode.fetch_add(1, Ordering::Relaxed);
+        let ends = (stream.local_addr(), stream.peer_addr());
+        let (Ok(own), Ok(server)) = ends else {
+            panic!("the connection has no two ends");
+        };
+        let uid = std::fs::metadata(&self.root)
+            .expect("the kernel's folder")
+            .uid();
+        let (own, server) = (written(own), written(server));
+        let line = format!(
+            "   1: {own} {server} 01 00000000:00000000 00:00000000 00000000 {uid:>5}        0 \
+             {inode} 1 0000000000000000 20 4 30 10 -1\n"
+        );
+        let mut table = OpenOptions::new()
+            .append(true)
+            .open(self.root.join("net/tcp"))
+            .expect("its table");
+        table
+            .write_all(line.as_bytes())
+            .expect("the connection entered");
+        let fd = self.root.join(format!("{pid}/fd/{inode}"));
+        symlink(format!("socket:[{inode}]"), fd).expect("its socket held");
+    }
+}
+
+/// An address as the kernel's table writes one: its address's bytes in the
+/// machine's own order, its port in hexadecimal.
+fn written(address: SocketAddr) -> String {
+    let SocketAddr::V4(address) = address else {
+        panic!("the test connects over IPv4");
+    };
+    let word = u32::from_ne_bytes(address.ip().octets());
+    format!("{word:08X}:{:04X}", address.port())
+}
+
 /// The server, stopped and its folder taken away once it's dropped. A server
 /// that died answers nothing, and must not pass for one that refused.
 struct Served {
@@ -103,6 +209,7 @@ struct Served {
     port: u16,
     folder: PathBuf,
     steered: Arc<Mutex<Vec<Value>>>,
+    kernel: Kernel,
 }
 
 impl Drop for Served {
@@ -125,6 +232,7 @@ fn served(name: &str) -> Served {
     std::fs::write(home.join("index.html"), "<h1>home</h1>").expect("the home's page");
     let socket = folder.join("both.sock");
     let steered = stand_in(&socket);
+    let kernel = Kernel::new(folder.join("proc"));
     let _starting = STARTING
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -140,7 +248,7 @@ fn served(name: &str) -> Served {
         "home": home,
         "mounts": {},
         "feeds": {},
-        "answers": {"looks": socket, "node": socket},
+        "answers": {"looks": socket, "node": socket, "processes": kernel.root},
     });
     let file = folder.join("config.json");
     std::fs::write(&file, config.to_string()).expect("the config");
@@ -163,24 +271,32 @@ fn served(name: &str) -> Served {
         port,
         folder,
         steered,
+        kernel,
     }
 }
 
-/// What a request of `ask` with `extra` header lines and `body` is
-/// answered: its status line, its header lines and its body.
-fn asked(port: u16, ask: &str, extra: &str, body: &str) -> (String, String, String) {
-    asked_at("sites.localhost", port, ask, (extra, body))
+/// What the person's browser asking `ask` with `extra` header lines and
+/// `body` is answered: its status line, its header lines and its body.
+fn asked(served: &Served, ask: &str, extra: &str, body: &str) -> (String, String, String) {
+    asked_by(
+        served,
+        (Holder::Person, "sites.localhost"),
+        ask,
+        (extra, body),
+    )
 }
 
-/// What a request of `ask` naming the server `name` is answered, with
-/// `extra` header lines and `body`.
-fn asked_at(
-    name: &str,
-    port: u16,
+/// What a request of `ask` that `holder` sends naming the server `name` is
+/// answered, with `extra` header lines and `body`.
+fn asked_by(
+    served: &Served,
+    (holder, name): (Holder, &str),
     ask: &str,
     (extra, body): (&str, &str),
 ) -> (String, String, String) {
+    let port = served.port;
     let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("it connects");
+    served.kernel.opened(&stream, holder);
     let length = body.len();
     write!(
         stream,
@@ -196,9 +312,9 @@ fn asked_at(
 
 /// The cookie a page of the sites' own is given once it asks from this
 /// origin, as `name=value`.
-fn given(port: u16) -> String {
+fn given(served: &Served) -> String {
     let ours = "Sec-Fetch-Site: same-origin\r\n";
-    let (status, headers, body) = asked(port, "GET /answer", ours, "");
+    let (status, headers, body) = asked(served, "GET /answer", ours, "");
     assert_eq!(status, "HTTP/1.1 204 No Content", "{body}");
     let given = cookie(&headers, "sites-answer").expect("the page was given nothing");
     given.split(';').next().expect("its value").to_owned()
@@ -231,7 +347,7 @@ fn from_a_page(port: u16, pressed: &str) -> String {
 fn only_a_page_asking_from_this_origin_is_given_what_its_answers_carry() {
     let served = served("given");
     let ours = "Sec-Fetch-Site: same-origin\r\n";
-    let (status, headers, _) = asked(served.port, "GET /answer", ours, "");
+    let (status, headers, _) = asked(&served, "GET /answer", ours, "");
     assert_eq!(status, "HTTP/1.1 204 No Content");
     let given = cookie(&headers, "sites-answer").expect("the page was given nothing");
     assert!(
@@ -240,7 +356,7 @@ fn only_a_page_asking_from_this_origin_is_given_what_its_answers_carry() {
     );
     assert!(given.contains("SameSite=Strict"), "{given}");
     let elsewhere = "Sec-Fetch-Site: cross-site\r\n";
-    let (status, headers, body) = asked(served.port, "GET /answer", elsewhere, "");
+    let (status, headers, body) = asked(&served, "GET /answer", elsewhere, "");
     assert_eq!(status, "HTTP/1.1 403 Forbidden", "{body}");
     assert!(body.contains("\"refused\":\"site\""), "{body}");
     assert_eq!(
@@ -249,7 +365,7 @@ fn only_a_page_asking_from_this_origin_is_given_what_its_answers_carry() {
         "another site was given it"
     );
     for page in ["GET /", "GET /note/"] {
-        let (_, headers, _) = asked(served.port, page, "", "");
+        let (_, headers, _) = asked(&served, page, "", "");
         assert_eq!(
             cookie(&headers, "sites-answer"),
             None,
@@ -261,9 +377,9 @@ fn only_a_page_asking_from_this_origin_is_given_what_its_answers_carry() {
 #[test]
 fn an_answer_pressed_on_a_page_is_carried_once_as_the_launcher_carries_it() {
     let served = served("carried");
-    let pressed = given(served.port);
+    let pressed = given(&served);
     let page = from_a_page(served.port, &pressed);
-    let (status, _, body) = asked(served.port, "POST /answer", &page, &pressing("yes"));
+    let (status, _, body) = asked(&served, "POST /answer", &page, &pressing("yes"));
     assert_eq!(status, "HTTP/1.1 200 OK", "{body}");
     let steers = served.steered.lock().expect("the steers").clone();
     assert_eq!(steers.len(), 1, "{steers:?}");
@@ -292,7 +408,7 @@ fn an_answer_pressed_on_a_page_is_carried_once_as_the_launcher_carries_it() {
         steer["via"], "sites",
         "the steer didn't say it came by the sites"
     );
-    let (status, _, body) = asked(served.port, "POST /answer", &page, &pressing("no"));
+    let (status, _, body) = asked(&served, "POST /answer", &page, &pressing("no"));
     assert_eq!(
         status, "HTTP/1.1 409 Conflict",
         "a look was answered twice: {body}"
@@ -304,9 +420,9 @@ fn an_answer_pressed_on_a_page_is_carried_once_as_the_launcher_carries_it() {
 #[test]
 fn an_answer_whose_session_ended_goes_to_its_quests_as_the_launchers_does() {
     let served = served("ended");
-    let page = from_a_page(served.port, &given(served.port));
+    let page = from_a_page(served.port, &given(&served));
     let pressed = json!({"look": "ended", "value": "yes"}).to_string();
-    let (status, _, body) = asked(served.port, "POST /answer", &page, &pressed);
+    let (status, _, body) = asked(&served, "POST /answer", &page, &pressed);
     assert_eq!(status, "HTTP/1.1 200 OK", "{body}");
     let told: Vec<Value> = served
         .steered
@@ -325,7 +441,7 @@ fn an_answer_whose_session_ended_goes_to_its_quests_as_the_launchers_does() {
 #[test]
 fn an_answer_from_anywhere_else_is_refused_and_never_carried() {
     let served = served("refused");
-    let pressed = given(served.port);
+    let pressed = given(&served);
     let port = served.port;
     let page = from_a_page(port, &pressed);
     let json = "Content-Type: application/json\r\n";
@@ -375,7 +491,7 @@ fn an_answer_from_anywhere_else_is_refused_and_never_carried() {
         (page.clone(), "maybe", "unoffered"),
         (page.clone(), "Merge It", "unoffered"),
     ] {
-        let (status, _, body) = asked(port, "POST /answer", &extra, &pressing(value));
+        let (status, _, body) = asked(&served, "POST /answer", &extra, &pressing(value));
         assert!(status.starts_with("HTTP/1.1 4"), "{word}: {status}");
         assert!(
             body.contains(&format!("\"refused\":\"{word}\"")),
@@ -383,12 +499,12 @@ fn an_answer_from_anywhere_else_is_refused_and_never_carried() {
         );
     }
     let unknown = json!({"look": "l2", "value": "yes"}).to_string();
-    let (status, _, _) = asked(port, "POST /answer", &page, &unknown);
+    let (status, _, _) = asked(&served, "POST /answer", &page, &unknown);
     assert_eq!(
         status, "HTTP/1.1 404 Not Found",
         "a look nobody holds was answered"
     );
-    let (status, _, _) = asked(port, "PUT /answer", &page, "");
+    let (status, _, _) = asked(&served, "PUT /answer", &page, "");
     assert_eq!(status, "HTTP/1.1 405 Method Not Allowed");
     // Under the documents' name a document's own origin is the one asked,
     // so there an answer is never taken, nor its cookie given.
@@ -396,13 +512,18 @@ fn an_answer_from_anywhere_else_is_refused_and_never_carried() {
         "Origin: http://documents.sites.localhost:{port}\r\nSec-Fetch-Site: same-origin\r\n\
          Cookie: {pressed}\r\n{json}"
     );
-    let named = "documents.sites.localhost";
-    let (status, _, _) = asked_at(named, port, "POST /answer", (&documents, &pressing("yes")));
+    let named = (Holder::Person, "documents.sites.localhost");
+    let (status, _, _) = asked_by(
+        &served,
+        named,
+        "POST /answer",
+        (&documents, &pressing("yes")),
+    );
     assert_eq!(
         status, "HTTP/1.1 403 Forbidden",
         "a document pressed an answer"
     );
-    let (status, headers, _) = asked_at(named, port, "GET /answer", (&documents, ""));
+    let (status, headers, _) = asked_by(&served, named, "GET /answer", (&documents, ""));
     assert_eq!(
         status, "HTTP/1.1 403 Forbidden",
         "a document asked for the cookie"
@@ -415,5 +536,34 @@ fn an_answer_from_anywhere_else_is_refused_and_never_carried() {
     assert!(
         served.steered.lock().expect("the steers").is_empty(),
         "a refused answer was carried"
+    );
+}
+
+#[test]
+fn a_press_the_kernel_tells_as_an_agents_or_no_ones_is_refused() {
+    let served = served("agents");
+    let page = from_a_page(served.port, &given(&served));
+    let ours = "Sec-Fetch-Site: same-origin\r\n";
+    for (holder, word) in [(Holder::Agent, "agent"), (Holder::Untold, "untold")] {
+        // Every header a page sends, the cookie included, is an agent's to
+        // copy; only the kernel's word on who holds the connection differs.
+        let by = (holder, "sites.localhost");
+        let (status, _, body) = asked_by(&served, by, "POST /answer", (&page, &pressing("yes")));
+        assert_eq!(status, "HTTP/1.1 403 Forbidden", "{word}: {body}");
+        assert!(
+            body.contains(&format!("\"refused\":\"{word}\"")),
+            "{word}: {body}"
+        );
+        let (status, headers, body) = asked_by(&served, by, "GET /answer", (ours, ""));
+        assert_eq!(status, "HTTP/1.1 403 Forbidden", "{word}: {body}");
+        assert_eq!(
+            cookie(&headers, "sites-answer"),
+            None,
+            "{word}: an agent was given the cookie"
+        );
+    }
+    assert!(
+        served.steered.lock().expect("the steers").is_empty(),
+        "an agent's press was carried"
     );
 }

@@ -22,7 +22,7 @@
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::os::unix::fs::MetadataExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// How the names of the units the machine runs its agents in begin, below
 /// the person's service manager's own unit, as mycelium's asker names them:
@@ -72,15 +72,14 @@ pub struct Processes {
 }
 
 impl Processes {
-    /// This machine's own, where its kernel tells a socket's holder: on
-    /// Linux alone.
+    /// Those the folder `root` tells, laid out as `/proc`, of the account
+    /// its `self` belongs to: this server's, where `root` is the kernel's.
+    /// None where it tells no `self`, as where no kernel tells a socket's
+    /// holder (no `/proc` off Linux).
     #[must_use]
-    pub fn here() -> Option<Self> {
-        if !cfg!(target_os = "linux") {
-            return None;
-        }
-        let uid = fs::metadata("/proc/self").ok()?.uid();
-        Some(Self::at(PathBuf::from("/proc"), uid))
+    pub fn under(root: &Path) -> Option<Self> {
+        let uid = fs::metadata(root.join("self")).ok()?.uid();
+        Some(Self::at(root.to_path_buf(), uid))
     }
 
     /// Those a folder laid out as `/proc` tells, of the account `uid`.
@@ -254,7 +253,6 @@ fn named(status: &str) -> Option<(&str, i32)> {
 mod tests {
     use super::*;
     use std::os::unix::fs::symlink;
-    use std::path::Path;
 
     /// The person's service manager's unit, as a cgroup path begins below it.
     const MANAGER: &str = "0::/user.slice/user-1000.slice/user@1000.service/";
