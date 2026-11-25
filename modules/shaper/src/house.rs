@@ -1703,6 +1703,65 @@ mod tests {
         );
     }
 
+    // A house's refusal is said once a minute however often its reports
+    // fail, and its end once, naming the house, when the next report past
+    // the minute is taken for it, while the keyless address beside it says
+    // nothing more (every verdict round 1's F8).
+    #[test]
+    fn a_house_s_refusal_is_said_once_a_minute_and_its_end_once() {
+        let folder =
+            std::env::temp_dir().join(format!("shaper-taken-again-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let key = folder.join("house.key");
+        let one = "00:00:5e:00:53:01".to_owned();
+        let from: IpAddr = "192.0.2.12".parse().expect("an address");
+        let reporters = Reporters {
+            named: BTreeMap::from([(from, None)]),
+            unnamed: vec![(one.clone(), key.clone())],
+        };
+        let ear = Ear::default();
+        let mut said = Said::default();
+        let at = Instant::now();
+        let mut hear = |s: u64| {
+            let stamp = STAMP + s * 1_000;
+            let report = sign(
+                &format!("{} {}", s * 250_000, s * 1_000),
+                stamp,
+                &vector_key(),
+            );
+            let now = at + Duration::from_secs(s);
+            let verdicts = ear.verdicts(&reporters, from, report.as_bytes(), now, stamp);
+            said.of(from, &verdicts, now)
+        };
+        let unread = hear(0);
+        let still = hear(30);
+        fs::write(&key, vector_key()).expect("a key");
+        let mended = hear(63);
+        let after = hear(64);
+        let _ = fs::remove_dir_all(&folder);
+        let house_one = format!("the house on {one}");
+        assert_eq!(
+            [&unread, &still, &mended, &after].map(Vec::len),
+            [2, 0, 2, 0],
+            "a step said more or less than its lines: {unread:?} {still:?} {mended:?} {after:?}"
+        );
+        assert!(
+            unread
+                .iter()
+                .any(|line| line.contains(&house_one) && line.contains("can't be read")),
+            "the house's unread key went unsaid: {unread:?}"
+        );
+        assert_eq!(
+            mended,
+            [
+                format!("the first report from {from} for {house_one} was heard"),
+                format!("the reports from {from} for {house_one} are taken again"),
+            ],
+            "the house's mended key wasn't said to end its refusal, once and by name"
+        );
+    }
+
     #[test]
     fn a_report_under_a_shared_key_is_every_house_s_that_holds_it() {
         let folder = std::env::temp_dir().join(format!("shaper-one-key-{}", std::process::id()));
