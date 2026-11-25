@@ -16,10 +16,14 @@
 # proxy signs with the key for nothing but an instance gcloud knows.
 #
 # This decides only what gcloud's own ssh offers, which names its key
-# alone. Any ssh asking the proxy is offered every key it lists, so a
-# login to a known instance by its address, past IAP, is signed too: the
-# only gate is the instance's host key in gcloud's file. The block ends with `Host *`, so whatever another module
-# adds after it applies to every host, as it would have without it.
+# alone (IdentitiesOnly). gcloud names the destination compute.<id> only
+# through IAP; by address it names the address, which this block never
+# matches, so its ssh offers only its own key file there. Any ssh asking
+# the proxy is offered every key it lists, so a plain ssh to a known
+# instance by its address is signed too: the only gate is the instance's
+# host key in gcloud's file. The block ends with `Host *`, so whatever
+# another module adds after it applies to every host, as it would have
+# without it.
 {
   programs.ssh.extraConfig = ''
     Host compute.*

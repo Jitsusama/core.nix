@@ -19,6 +19,9 @@
 # comment. These keep out a mistake, not an attacker: the folder is the
 # person's alone, bound read-only inside the agent fence, so whatever can
 # write it already runs as the person, with their gcloud login itself.
+# That bind is the harness's, proven in its fence's tests ("can't remove,
+# move or add anything there, so the proxy's socket stays the proxy's"),
+# and held() trusts the folder's socket on the same bind.
 # The copy is never made in the temporary folder, which a fenced command
 # can write, and so could swap a key of its own in before gcloud reads it.
 #
@@ -27,7 +30,8 @@
 # and ~/.config read-only, and the rest of that PATH is root's, so no
 # fenced command can put a gcloud of its own ahead of the person's. A
 # machine with no gcloud, or a gcloud with no login, registers nothing,
-# and warns so in the journal, naming what would; neither fails the unit, as neither passes by trying again.
+# and warns so in the journal, naming what would; neither fails the
+# unit, as neither passes by trying again.
 # A failed call does, and the unit tries again shortly.
 #
 # Its help takes the shape every command of ours does (docs/commands.md),
@@ -108,8 +112,9 @@ held() {
   echo "$own"
 }
 if ! command -v gcloud >/dev/null; then
-  echo "<4>pi-agent-proxy-os-login: no gcloud on the user manager's PATH, so agents' OS Login" \
-    "logins fail; set jitsusama.pi.agentProxy.osLoginKnownHosts to null where none is wanted"
+  echo "<4>pi-agent-proxy-os-login: no gcloud on the user manager's PATH yet, so agents' OS" \
+    "Login logins fail until one is; the desktop's start brings the session's PATH and tries" \
+    "again, and jitsusama.pi.agentProxy.osLoginKnownHosts = null stops it where none is wanted"
   exit 0
 fi
 # The timer can fire as the proxy starts, a moment before it writes its

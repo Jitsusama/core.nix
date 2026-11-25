@@ -87,7 +87,9 @@ in
         person's login profile for twelve hours at a time, renewed while
         the proxy runs and taken out as it stops (agent-proxy/src/os_login.rs).
         So agents reach, as the person, every instance the file names,
-        which their fence keeps read-only, by IAP or by its address; where
+        which their fence keeps read-only: gcloud's own ssh through IAP
+        (by address it offers only its own key file), and a plain ssh by
+        address too; where
         gcloud-broker gives a fenced agent's gcloud a service account, a
         login naming the person's own user still goes past that account's
         one project. Null for no such key, where the

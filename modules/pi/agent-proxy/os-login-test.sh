@@ -101,9 +101,6 @@ grep -q "registered for 12 hours" "$work/said" || fail "didn't say it registered
 asked "add --key-file=[^ ]+ --ttl=12h" || fail "didn't add a new key for twelve hours"
 grep -qxF "ssh-ed25519 $blob pi-agent-proxy OS Login" "$work/sent" ||
   fail "didn't hand gcloud the proxy's own line"
-grep -qvE "^$work/\.os-login-sent\.[^/]+$" "$work/copies" &&
-  fail "copied the proxy's line outside the key's folder"
-
 touch "$work/there"
 : >"$work/asked"
 run register "$key" || fail "failed renewing a key"
@@ -259,6 +256,10 @@ rm "$work/bin/gcloud"
 run register "$key" || fail "failed with no gcloud"
 grep -q "^<4>.*no gcloud" "$work/said" || fail "didn't warn there's no gcloud"
 
+# Every run's copy, the removals' and the waiting cases' too, since the
+# script's trap would remove a stray one before the folder is listed.
+grep -qvE "^$work/\.os-login-sent\.[^/]+$" "$work/copies" &&
+  fail "copied the proxy's line outside the key's folder"
 left=$(ls -A "$work/shared")
 [[ -z $left ]] || fail "made a file in the temporary folder"
 compgen -G "$work/.os-login-sent.*" >/dev/null && fail "left a copy of the line behind"
