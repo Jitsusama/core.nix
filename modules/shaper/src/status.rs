@@ -682,8 +682,8 @@ mod tests {
 
     #[test]
     fn names_and_a_why_from_outside_draw_no_escape() {
-        // The leader's name sits on a line that fits, and the why below
-        // wraps, so in a terminal both of a hanging paragraph's outcomes
+        // The leader's name sits on a line that fits, and the why set
+        // below wraps, so in a terminal both of a hanging paragraph's outcomes
         // see the controls, and into a pipe its one line does.
         let mut link = LinkStatus {
             name: "wlp0\u{1b}]0;owned\u{7}s20f3".to_owned(),
@@ -714,8 +714,19 @@ mod tests {
                     .all(|line| !line.contains('\u{1b}') && !line.contains('\u{7}')),
                 "into {room:?} a control was drawn: {lines:#?}"
             );
+            // The why's own lines, so another line that hangs, as the
+            // round trips' does, can't stand in for it, and its last word,
+            // past the control, on a line it hangs.
+            let at = lines
+                .iter()
+                .position(|line| line.starts_with("  Upload"))
+                .expect("the why is said");
+            let hung = lines[at + 1..]
+                .iter()
+                .take_while(|line| line.starts_with("    "))
+                .any(|line| line.contains("cleared"));
             assert!(
-                room == Room::Unbounded || lines.iter().any(|line| line.starts_with("    ")),
+                room == Room::Unbounded || hung,
                 "into {room:?} the why didn't hang under its first line: {lines:#?}"
             );
         }
