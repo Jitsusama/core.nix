@@ -19,7 +19,11 @@
 # counts on. It's timed by the time since boot, which no time sync steps,
 # rather than by counting looks, since each look asks systemd and can be
 # slow under a cold boot's load; so each look is cut at 2 s and none
-# begins past 17.7 s, leaving the rest for starting what each look runs.
+# begins once 17 s have passed, leaving a second for starting what each
+# look runs and reading the kitty's command line, which isn't cut. The
+# old kitty's own launch, through systemd-run, isn't cut either, as a cut
+# could end the kitty it starts were the old one gone since; it's reached
+# only until the next login.
 # So a window asked of it meanwhile opens once it's back rather than never;
 # with neither by then, a kitty that turns the launch down or can't be
 # reached, or an old kitty that opens nothing, the journal says why, and
@@ -51,24 +55,30 @@ up() {
   echo $((${since%.*} * 100 + 1${since#*.} - 100))
 }
 
+# Whether a time is a number as this script writes one: digits with no
+# leading zero, few enough for the shell's arithmetic.
+number() {
+  case $1 in
+    '' | 0* | *[!0-9]* | ?????????????????*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
 asked=$(date +%s%3N)
 started=$(up)
-if [ -z "${OPENS_IN_SESSIONS_ASKED:-}" ] && [ /proc/self/fd/2 -ef /dev/null ] &&
-  command -v systemd-cat > /dev/null &&
+# A first start's times are taken only as its run under the journal is
+# given them: both numbers, the start no later than this one's. So any
+# other that set them is never evaluated, never holds the wait past its
+# 17 s, and leaves a run given no output still moving to the journal.
+if number "${OPENS_IN_SESSIONS_ASKED:-}" && number "${OPENS_IN_SESSIONS_STARTED:-}" &&
+  [ "$OPENS_IN_SESSIONS_STARTED" -le "$started" ]; then
+  asked=$OPENS_IN_SESSIONS_ASKED
+  started=$OPENS_IN_SESSIONS_STARTED
+elif [ /proc/self/fd/2 -ef /dev/null ] && command -v systemd-cat > /dev/null &&
   systemd-cat --identifier=opens-in-sessions true 2> /dev/null; then
   exec env "OPENS_IN_SESSIONS_ASKED=$asked" "OPENS_IN_SESSIONS_STARTED=$started" \
     systemd-cat --identifier=opens-in-sessions sh "$0" "$@"
 fi
-# A first start's times are kept only if they're numbers, which this one
-# writes, so whatever else set its environment is never evaluated below.
-case ${OPENS_IN_SESSIONS_ASKED:-} in
-  '' | *[!0-9]*) ;;
-  *) asked=$OPENS_IN_SESSIONS_ASKED ;;
-esac
-case ${OPENS_IN_SESSIONS_STARTED:-} in
-  '' | 0* | *[!0-9]*) ;;
-  *) started=$OPENS_IN_SESSIONS_STARTED ;;
-esac
 unset OPENS_IN_SESSIONS_ASKED OPENS_IN_SESSIONS_STARTED
 sock=$1
 class=$2
@@ -88,12 +98,12 @@ old() {
 
 reached=
 until [ -S "$sock" ]; do
+  now=$(up)
+  [ "$now" -lt $((started + 1700)) ] || break
   if old; then
     reached=old
     break
   fi
-  now=$(up)
-  [ "$now" -lt $((started + 1750)) ] || break
   sleep 0.2
 done
 
