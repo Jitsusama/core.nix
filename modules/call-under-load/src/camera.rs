@@ -447,6 +447,24 @@ fn last_said(child: &mut std::process::Child) -> String {
 
 /// Runs `program` with `args`, done when it exits 0 within `deadline`.
 pub fn within(program: &str, args: &[String], deadline: Duration) -> Result<(), Fault> {
+    within_until(program, args, deadline, None)
+}
+
+/// As `within`, but cut too once the wall clock reaches `cut`, so a read
+/// never runs past the time it had to end by, however slow its start.
+fn within_until(
+    program: &str,
+    args: &[String],
+    deadline: Duration,
+    cut: Option<SystemTime>,
+) -> Result<(), Fault> {
+    // The wall clock's deadline too, since the monotonic one stands still
+    // across a suspend and a read woken by it would light the camera when
+    // the meeting is near. Both are set before the spawn, so a start slowed
+    // by load counts against them rather than after them.
+    let until = Instant::now() + deadline;
+    let latest = SystemTime::now() + deadline;
+    let wall = cut.map_or(latest, |cut| cut.min(latest));
     let mut child = Command::new(program)
         .args(args)
         .stdin(Stdio::null())
@@ -454,10 +472,6 @@ pub fn within(program: &str, args: &[String], deadline: Duration) -> Result<(), 
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|error| Fault::Ended(format!("{program} couldn't run: {error}")))?;
-    // The wall clock's deadline too, since the monotonic one stands still
-    // across a suspend and a read woken by it would light the camera when
-    // the meeting is near.
-    let (until, wall) = (Instant::now() + deadline, SystemTime::now() + deadline);
     loop {
         match child.try_wait() {
             Ok(Some(status)) if status.success() => return Ok(()),
@@ -469,15 +483,14 @@ pub fn within(program: &str, args: &[String], deadline: Duration) -> Result<(), 
                 thread::sleep(Duration::from_millis(100));
             }
             Ok(None) => {
+                // Cut by the wall clock alone means the machine slept, its
+                // clock stepped forward or the time to end by came, not that
+                // the program gave nothing in its time. Judged before the
+                // kill, whose wait can be slow under load.
+                let paused = Instant::now() < until;
                 let _ = child.kill();
                 let _ = child.wait();
-                // Cut by the wall clock alone means the machine slept or
-                // stalled, not that the program gave nothing in its time.
-                return Err(if Instant::now() < until {
-                    Fault::Paused
-                } else {
-                    Fault::Silent
-                });
+                return Err(if paused { Fault::Paused } else { Fault::Silent });
             }
             Err(error) => return Err(Fault::Ended(error.to_string())),
         }
@@ -498,7 +511,8 @@ pub fn gives(camera: &Path, read: bool, by: u64) -> Result<(), Fault> {
     if !in_time(epoch_ms(), by) {
         return Err(Fault::Paused);
     }
-    let gave = within("v4l2-ctl", &asked(camera, true), WAIT);
+    let cut = SystemTime::UNIX_EPOCH.checked_add(Duration::from_millis(by));
+    let gave = within_until("v4l2-ctl", &asked(camera, true), WAIT, cut);
     // A camera silent the whole wait is told whichever run it was on, so
     // the relay isn't asked again and the notice isn't held up.
     if gave == Err(Fault::Silent) {
@@ -1014,6 +1028,26 @@ mod tests {
         assert!(
             started.elapsed() < Duration::from_secs(3),
             "a program past its time was waited on to its end"
+        );
+    }
+
+    #[test]
+    fn a_read_ends_by_its_time_to_end_by_and_is_told_as_paused_not_silent() {
+        let started = Instant::now();
+        let cut = SystemTime::now() + Duration::from_millis(300);
+        assert_eq!(
+            within_until(
+                "sleep",
+                &["5".to_string()],
+                Duration::from_secs(10),
+                Some(cut)
+            ),
+            Err(Fault::Paused),
+            "a read cut at its time to end by was told as a silent camera, or not cut"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "a read ran past its time to end by"
         );
     }
 
