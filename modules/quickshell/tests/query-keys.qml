@@ -1677,13 +1677,15 @@ QtObject {
         holds("a title only part of a value keeps it", shownLabels(given, "Term"),
             ["Name", "Kind", "Port"]);
         holds("and no facts given draws none", shownLabels(undefined, "kitty"), []);
-        // A fact still asked has no value yet, given as nothing or as null.
-        const unanswered = [{ label: "Heading" }, { label: "Asked", value: null },
+        // Facts with no value, given as nothing or as null, and one with a
+        // blank value. The title "null" is what a missing value would read
+        // as were it made text without its fallback.
+        const valueless = [{ label: "Unset" }, { label: "Asked", value: null },
             { label: "Blank", value: "" }];
-        holds("a fact with no value yet is drawn under a title",
-            shownLabels(unanswered, "null"), ["Heading", "Asked", "Blank"]);
-        holds("and under none, every fact is drawn, a blank one too",
-            shownLabels(unanswered, ""), ["Heading", "Asked", "Blank"]);
+        holds("a fact with no value is never taken for a title of null",
+            shownLabels(valueless, "null"), ["Unset", "Asked", "Blank"]);
+        holds("and under no title, every fact is drawn, a blank one too",
+            shownLabels(valueless, ""), ["Unset", "Asked", "Blank"]);
         // Where a fact's figure stands: a stroke of 100 that reads down to
         // 30, a spark of 100 that reads only whole (VKCF3Z, 2026-11-09).
         const stroke = { shape: "stroke", usual: 100, least: 30 };

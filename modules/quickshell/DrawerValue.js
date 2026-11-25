@@ -268,8 +268,9 @@ function leadLine(kept, gives, wide, width) {
 // value only says the `title` again, as a server's name would right under
 // it (VKCF3Z, 2026-11-03). A value is compared as text, so a figure given
 // as a number still matches a title of the same figures. With no title
-// there's nothing to say again, so a fact still asked, with no value yet,
-// is drawn as it is under any title.
+// there's nothing to say again, so a fact with no value, as a heading or
+// one still asked has, or with a blank one, is drawn as it is under any
+// other title.
 function factsDrawn(facts, title) {
     return (facts ?? []).filter(fact => fact
         && (title === "" || String(fact.value ?? "") !== title));
