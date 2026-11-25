@@ -847,14 +847,15 @@ Provider {
     // (Launcher.qml's toldHere), since every act shuts the launcher before
     // it runs, and a why held for its next opening was told to nobody
     // (KP0L6A, 2026-11-24 [00902e94]): a press that did nothing, unsaid.
-    function refused(session, why) {
+    // Not Provider's refused, which takes back a row by its key.
+    function refusedGoing(session, why) {
         const name = provider.footName(session);
         const said = provider.elsewhere(why, session);
         provider.refusedWhy = `${name}: ${said}`;
         provider.launcher?.tellOnOpen([[name, said, Theme.alert]]);
         provider.launcher?.toldHere?.();
     }
-    // The last refusal said, as refused says it, so a Go To asked from
+    // The last refusal said, as refusedGoing says it, so a Go To asked from
     // outside answers with the why it was given (goToFor), never one read
     // back from the launcher's foot, which its opening has taken.
     property string refusedWhy: ""
@@ -881,7 +882,7 @@ Provider {
         }
 
         function onUnjoined(session) {
-            provider.refused(session, session.reachable ? "unheld" : "unreached");
+            provider.refusedGoing(session, session.reachable ? "unheld" : "unreached");
         }
 
         // Said by why it held, in words of its own (Sessions' unhosted),
@@ -892,11 +893,11 @@ Provider {
                 provider.launcher?.tellOnOpen([[provider.footName(session),
                     provider.elsewhere(why, session), Theme.text]]);
             else
-                provider.refused(session, why);
+                provider.refusedGoing(session, why);
         }
 
         function onUnopened(session) {
-            provider.refused(session, "unopened");
+            provider.refusedGoing(session, "unopened");
         }
 
         // A Wake refused or never answered whose row was becoming woken is
