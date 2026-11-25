@@ -4451,8 +4451,8 @@
     any spelling and repeats left out; it says why when it asks nothing, hears both streams before
     saying it started on the node's machine, else the node's or sprout's why; and the words a
     mycelium: link offers are read again as one plain line of at most 1000 characters, its session
-    kept only where one here has that address, named by its quest, the foot saying a page offered it;
-    the same words given the same act within the hour say the time they started rather than
+    kept only where one here has that address, named by its quest, the foot saying a page offered
+    it; the same words given the same act within the hour say the time they started rather than
     starting again, and a start's wait is counted to the second
   '';
   start-new-work-finds-places = ''
