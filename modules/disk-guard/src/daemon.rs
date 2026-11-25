@@ -411,7 +411,8 @@ pub struct Guard {
     listing_failed: bool,
     /// Whether a writers' hold's mark stood when the step began: no pass,
     /// listing or collection starts short of nearly full while one does.
-    held: bool,
+    /// Not `held_ended`, a process that held store paths having ended.
+    writers_held: bool,
     /// Since when a listing that's due has waited for the machine to have
     /// room.
     room_awaited: Option<f64>,
@@ -870,7 +871,7 @@ impl Guard {
             listing_begun: listing.as_ref().map(|listing| listing.listed_at),
             listing_ended: listing.as_ref().and_then(Listing::ended),
             listing_failed: false,
-            held: false,
+            writers_held: false,
             room_awaited: None,
             reached_short: BTreeMap::new(),
             listing,
@@ -1385,7 +1386,7 @@ impl Guard {
             spare(senses.power, senses.saver, &self.memory.awake, tick.wall) && !overload;
         let mut due = Vec::new();
         let heard = self.system_heard;
-        let held = self.held;
+        let writers_held = self.writers_held;
         for (&device, watched) in &mut self.watched {
             let Ok(space) = crate::sys::space(&watched.path) else {
                 watched.space = None;
@@ -1423,7 +1424,7 @@ impl Guard {
             // turn; the system's own upkeep goes on.
             let driven =
                 matches!(decision, Decision::Reach(_)) && spoken_for(self.hearing.as_ref(), device);
-            let waits = held && watched.band < Band::NearlyFull;
+            let waits = writers_held && watched.band < Band::NearlyFull;
             if decision != Decision::Rest && !resting && !driven && !waits {
                 due.push((device, decision, thresholds));
             }
@@ -1444,7 +1445,7 @@ impl Guard {
         // Deduplicating reads every file not yet linked and relinks its
         // twins, and nothing is lost by putting it off, so it alone still
         // waits for a calm disk.
-        let calm_moment = spare_moment && calm(senses.pressure) && !self.held;
+        let calm_moment = spare_moment && calm(senses.pressure) && !self.writers_held;
         self.dedupe(tick, calm_moment, powered(senses.power, senses.saver))?;
         self.collects(tick);
         let asked = self.clear_asked(tick)?;
@@ -1620,7 +1621,7 @@ impl Guard {
     /// did with each move on 29 October.
     fn produce(&mut self, tick: &Tick) -> io::Result<bool> {
         // What they said waits for the hold's end, kept as news.
-        if self.produced.is_empty() || self.held {
+        if self.produced.is_empty() || self.writers_held {
             return Ok(false);
         }
         let mut producers = self.config.clone();
@@ -1711,10 +1712,11 @@ impl Guard {
     /// holding `path`, its generations and its garbage, in `band`, for the
     /// user daemon driving its order.
     fn collect(&mut self, tick: &Tick, path: &Path, band: Band) -> Result<End, String> {
-        if self.held && band < Band::NearlyFull {
-            return Err(
-                "a writers' hold stands, so nothing is collected short of nearly full".to_owned(),
-            );
+        // Answered as the deletes' rest is, so the user daemon's pass waits
+        // with the store's garbage rather than counting a failure and taking
+        // dearer files.
+        if self.writers_held && band < Band::NearlyFull {
+            return Ok(End::Waiting);
         }
         let device = pool(path).map_err(|error| format!("{}: {error}", path.display()))?;
         let mount = match (self.store(), self.watched.get(&device)) {
@@ -1750,11 +1752,11 @@ impl Guard {
     fn heed_holds(&mut self) {
         let mark = self
             .config
-            .holds
+            .writer_holds
             .iter()
             .find(|mark| fs::symlink_metadata(mark).is_ok());
         let held = mark.is_some();
-        if held != self.held {
+        if held != self.writers_held {
             match mark {
                 Some(mark) => say!(
                     "disk-guard: {} stands, so no pass, listing or collection starts short of \
@@ -1764,7 +1766,7 @@ impl Guard {
                 None => say!("disk-guard: the writers' hold is over"),
             }
         }
-        self.held = held;
+        self.writers_held = held;
     }
 
     /// Takes a listing of Nix's garbage that has finished, keeping it for
@@ -1942,7 +1944,7 @@ impl Guard {
         let Some(watched) = self.watched.get(&device) else {
             return;
         };
-        if watched.band < Band::NearlyFull && (self.deletes_resting(now) || self.held) {
+        if watched.band < Band::NearlyFull && (self.deletes_resting(now) || self.writers_held) {
             // Looked at again once the rest is over.
             self.collect = true;
             return;
@@ -2048,7 +2050,7 @@ impl Guard {
             .get(&device)
             .map_or(Band::Healthy, |watched| watched.band);
         let pressed = band > Band::Healthy;
-        if overloaded && !pressed || self.held && band < Band::NearlyFull {
+        if overloaded && !pressed || self.writers_held && band < Band::NearlyFull {
             return;
         }
         let age = |at: Option<f64>| at.map_or(f64::INFINITY, |at| now - at);

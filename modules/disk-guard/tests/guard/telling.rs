@@ -53,11 +53,17 @@ fn the_guard_says_every_line_through_what_lets_a_failed_write_go() {
     );
     let panicking: Vec<String> = found
         .iter()
-        .filter(|path| fs::read_to_string(path).unwrap().contains("eprintln!("))
+        // `print!(` stands in `eprint!(` too, and `println!(` in
+        // `eprintln!(`: each panics on a failed write, and on a Mac both
+        // streams go to the same log on the full disk.
+        .filter(|path| {
+            let text = fs::read_to_string(path).unwrap();
+            text.contains("print!(") || text.contains("println!(")
+        })
         .map(|path| path.display().to_string())
         .collect();
     assert!(
         panicking.is_empty(),
-        "these say lines with eprintln!, which panics on a full disk: {panicking:?}"
+        "these say lines with a print macro, which panics on a full disk: {panicking:?}"
     );
 }

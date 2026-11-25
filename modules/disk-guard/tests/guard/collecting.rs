@@ -1239,7 +1239,7 @@ fn a_writers_hold_stops_a_listing_until_the_store_is_nearly_full() {
     let mark = store.root.join("velocity-hold/disk-writers");
     fs::create_dir_all(mark.parent().unwrap()).unwrap();
     fs::write(&mark, "").unwrap();
-    let holds = format!(r#""holds": ["{}"],"#, mark.display());
+    let holds = writer_holds(&mark);
     let mut guard = store.guard(store.config_keeping("100%", "0%", &holds));
     step_later(&mut guard, 0.0, &CALM);
     step_later(&mut guard, 600.0, &CALM);
@@ -1250,15 +1250,85 @@ fn a_writers_hold_stops_a_listing_until_the_store_is_nearly_full() {
         store.log()
     );
     fs::remove_file(&mark).unwrap();
-    step_later_until(&store, &mut guard, 660.0, &CALM, |store, _| {
-        lists(store) == 1
-    });
+    // Begun at its own moment, which a listing begun under the hold isn't.
+    listed_later(&store, &mut guard, 660.0, &CALM);
 
     fs::write(&mark, "").unwrap();
+    // Without the listing just kept, so only a listing under the hold can
+    // answer the nearly full store.
+    fs::remove_file(store.root.join("state/garbage.json")).unwrap();
     let mut nearly_full = store.guard(store.config_keeping("100%", "100%", &holds));
     step_later_until(&store, &mut nearly_full, 0.0, &CALM, |store, _| {
         lists(store) == 2
     });
+}
+
+/// The config line naming `mark` as a writers' hold.
+fn writer_holds(mark: &Path) -> String {
+    format!(r#""writer_holds": ["{}"],"#, mark.display())
+}
+
+/// A mark, as a cell leaves one while Joel's apps need the disk.
+fn marked(store: &Store) -> PathBuf {
+    let mark = store.root.join("velocity-hold/disk-writers");
+    fs::create_dir_all(mark.parent().unwrap()).unwrap();
+    fs::write(&mark, "").unwrap();
+    mark
+}
+
+#[test]
+fn a_writers_hold_stops_a_kept_listing_s_deletes_until_it_ends() {
+    // Nix deletes under its lock, the heaviest writing the guard does, and
+    // a listing begun before the mark is heard after it.
+    let store = Store::new();
+    let old = store.dead("aaa-old", 10.0 * DAY, 4096);
+    fs::write(store.root.join("listed"), "").unwrap();
+    let mark = store.root.join("velocity-hold/disk-writers");
+    let mut guard = store.guard(store.config_keeping("100%", "0%", &writer_holds(&mark)));
+    guard.step(&tick(), &CALM).unwrap();
+    marked(&store);
+    step_later_until(&store, &mut guard, 0.0, &CALM, |store, _| {
+        kept(store).is_some()
+    });
+    step_later(&mut guard, 600.0, &CALM);
+    assert_eq!(
+        deletes(&store),
+        0,
+        "a filling store's garbage was deleted under the writers' hold: {:?}",
+        store.log()
+    );
+    fs::remove_file(&mark).unwrap();
+    step_later_until(&store, &mut guard, 660.0, &CALM, |_, _| !old.exists());
+}
+
+#[test]
+fn a_collect_asked_under_a_writers_hold_waits_rather_than_failing() {
+    // A refusal reads as a failed pass to the user daemon, which then says
+    // the guard is failing and takes dearer files.
+    let store = Store::new();
+    let old = store.dead("aaa-old", 10.0 * DAY, 4096);
+    let mark = marked(&store);
+    let mut guard = store.guard(store.config_keeping("100%", "0%", &writer_holds(&mark)));
+    let asking = store.spoken_for(&mut guard, Duration::ZERO);
+    let (mut ours, theirs) = UnixStream::pair().unwrap();
+    asking
+        .send((
+            store.root.join("store"),
+            Band::Filling,
+            Responder::new(theirs),
+        ))
+        .unwrap();
+    guard.step(&tick(), &CALM).unwrap();
+    let mut reply = String::new();
+    ours.read_to_string(&mut reply).unwrap();
+    assert!(
+        reply.contains(disk_guard::pass::WAITING) && !reply.contains("Error"),
+        "a collect under the writers' hold wasn't answered as waiting: {reply}"
+    );
+    assert!(
+        old.exists(),
+        "garbage was collected under the writers' hold"
+    );
 }
 
 #[test]

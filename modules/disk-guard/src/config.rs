@@ -661,8 +661,9 @@ pub struct Config {
     pub keep: BTreeMap<PathBuf, String>,
     /// Marks another program leaves while the disk's writes must wait, as
     /// while Joel is on a call: while any exists, the guard starts no
-    /// pass, listing or collection short of nearly full.
-    pub holds: Vec<PathBuf>,
+    /// pass, listing or collection short of nearly full. Named apart from
+    /// `holders`, what fills a disk, and the processes holding the store.
+    pub writer_holds: Vec<PathBuf>,
 }
 
 /// Where the guard looks for what holds a disk, beside its sources.
@@ -703,7 +704,7 @@ struct Rendered {
     #[serde(default)]
     keep: BTreeMap<PathBuf, String>,
     #[serde(default)]
-    holds: Vec<PathBuf>,
+    writer_holds: Vec<PathBuf>,
 }
 
 fn yes() -> bool {
@@ -797,7 +798,7 @@ impl Config {
             budget: rendered.budget,
             holders: rendered.holders,
             keep: rendered.keep,
-            holds: rendered.holds,
+            writer_holds: rendered.writer_holds,
         })
     }
 }

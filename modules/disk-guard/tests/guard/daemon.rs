@@ -290,7 +290,7 @@ fn held_by(home: &Home, mark: &Path, nearly_full: &str) -> Config {
         r#"{{ "version": 1, "scope": "user", "status_file": true,
              "bands": {{ "filling": "100%", "nearly_full": "{nearly_full}",
                         "critically_full": "0%", "target": "100%" }},
-             "holds": ["{1}"],
+             "writer_holds": ["{1}"],
              "nix": {{ "bin": "{0}/no-nix/nix", "store": "{0}/no-nix/store" }},
              "sources": {{ "scratch": {{ "kind": "scratch", "path": "{0}/scratch" }} }} }}"#,
         home.root.display(),
