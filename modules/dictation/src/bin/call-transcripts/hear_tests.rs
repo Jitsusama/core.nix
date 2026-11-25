@@ -535,49 +535,78 @@ fn a_take_that_isnt_heard_says_why() {
 fn the_daemon_leaves_out_a_take_that_isnt_heard() {
     // One take not heard mustn't end the call or stop its thread: the
     // daemon goes on with no line and no words, as for a take of silence.
-    let mut told = HashSet::new();
     let failed = || Err("the encoder failed".to_owned());
     assert_eq!(
-        heard_or_left_out(failed(), &mut told, "call").0,
-        (None, Vec::new()),
-        "a take that wasn't heard wasn't left out"
+        heard_or_left_out(failed()),
+        ((None, Vec::new()), Some("the encoder failed".to_owned())),
+        "a take that wasn't heard wasn't left out, with why"
     );
     let heard = || (Some("Not yet.".to_owned()), vec![word("Not", 40 * SECOND)]);
     assert_eq!(
-        heard_or_left_out(Ok(heard()), &mut told, "call").0,
-        heard(),
-        "what was heard of a take wasn't kept"
+        heard_or_left_out(Ok(heard())),
+        (heard(), None),
+        "what was heard of a take wasn't kept, or was taken for a failure"
     );
 }
 
 #[test]
-fn a_call_is_told_once_when_its_takes_arent_heard() {
-    // A model failing on every take of theirs would leave a transcript of
-    // Joel's lines alone that looks whole, so the first take not heard
-    // says why; the rest don't, nor a take heard, nor another call's
-    // once it has been told.
+fn a_call_is_told_once_whichever_failure_comes_first() {
+    // A model failing on every take of theirs would raise a notice a
+    // take, so a call's first failure is told and the rest aren't, its
+    // model not loading or failing on part of it alike; another call's
+    // first still is.
     let mut told = HashSet::new();
-    let failed = || Err("the encoder failed".to_owned());
-    let heard = || Ok((Some("Not yet.".to_owned()), Vec::new()));
+    let load = || notices::not_transcribed("Standup", "The speech model didn't load: x");
+    let part = || notices::not_all_heard("Standup", "the encoder failed");
+    let heading = |notice: Option<Notice>| notice.map(|notice| notice.heading);
     assert_eq!(
-        heard_or_left_out(heard(), &mut told, "call").1,
+        heading(told_once(&mut told, "call", load)),
+        Some("Standup Couldn't Be Transcribed".to_owned()),
+        "the call's first failure wasn't told"
+    );
+    assert_eq!(
+        heading(told_once(&mut told, "call", part)),
         None,
-        "a take that was heard was told as not heard"
+        "a call told its model didn't load was told again of part not heard"
     );
     assert_eq!(
-        heard_or_left_out(failed(), &mut told, "call").1,
-        Some("the encoder failed".to_owned()),
-        "the call's first take not heard wasn't told, with why"
-    );
-    assert_eq!(
-        heard_or_left_out(failed(), &mut told, "call").1,
-        None,
-        "the call was told again of a take not heard"
-    );
-    assert_eq!(
-        heard_or_left_out(failed(), &mut told, "another").1,
-        Some("the encoder failed".to_owned()),
+        heading(told_once(&mut told, "another", part)),
+        Some("Part of Standup Wasn't Heard".to_owned()),
         "another call wasn't told, since this one was"
+    );
+    assert_eq!(
+        heading(told_once(&mut told, "another", part)),
+        None,
+        "a call was told twice of part not heard"
+    );
+}
+
+#[test]
+fn a_transcript_says_what_wasnt_heard_and_keeps_it_when_taken_up() {
+    // Once the notice is gone, the file is all that says a call's
+    // transcript is missing part of it, so it says so, and a restart
+    // reading it back keeps saying so.
+    let mut writing = Writing {
+        lines: vec![line(Side::Mine, 10, None)],
+        ..Writing::default()
+    };
+    let said = transcript_of(&writing, "Joel", None, Some("Invited: Ada and Bo."));
+    assert_eq!(Unheard::read(said.as_str()), None, "all of it was heard");
+    writing.unheard = Some(unheard::and(None, 750 * SECOND));
+    writing.unheard = Some(unheard::and(writing.unheard, 80 * SECOND));
+    let said = transcript_of(&writing, "Joel", None, Some("Invited: Ada and Bo."));
+    let unheard = Unheard {
+        stretches: 2,
+        first: 80 * SECOND,
+    };
+    assert_eq!(
+        Unheard::read(said.as_str()),
+        Some(unheard),
+        "the transcript doesn't say what wasn't heard: {said}"
+    );
+    assert!(
+        said.contains("Invited: Ada and Bo.") && said.contains("**Joel**, 0:10: Said."),
+        "saying what wasn't heard lost the note or a line: {said}"
     );
 }
 

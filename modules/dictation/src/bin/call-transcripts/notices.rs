@@ -82,22 +82,30 @@ pub fn written_down(title: &str) -> Notice {
     }
 }
 
+/// What failed, said as words in a body, which a notice carries as markup
+/// (the spec's, and the notices daemon's body.rs): an error's `<` or `&`
+/// is shown, never read as a tag or an entity.
+fn plain(why: &str) -> String {
+    why.to_owned()
+}
+
 /// The notice when a call couldn't be heard at all.
 pub fn not_transcribed(title: &str, why: &str) -> Notice {
     Notice {
         heading: format!("{} Couldn't Be Transcribed", named(title, true)),
-        body: why.to_owned(),
+        body: plain(why),
         acts: vec![("forget", "Forget")],
         quiet: true,
     }
 }
 
-/// The notice when a take of a call that's on couldn't be heard, so its
-/// transcript, left without it, isn't taken for whole.
+/// The notice when the speech model failed on part of a call that's on,
+/// saying `why`, so its transcript, left without it, isn't taken for
+/// whole.
 pub fn not_all_heard(title: &str, why: &str) -> Notice {
     Notice {
         heading: format!("Part of {} Wasn't Heard", named(title, false)),
-        body: why.to_owned(),
+        body: format!("The speech model failed on part of it: {}", plain(why)),
         acts: vec![("forget", "Forget")],
         quiet: true,
     }
@@ -400,6 +408,30 @@ mod tests {
         assert_eq!(
             not_all_heard("", "x").heading,
             "Part of the Call Wasn't Heard"
+        );
+    }
+
+    #[test]
+    fn part_of_a_call_not_heard_is_said_quietly_with_why() {
+        let notice = not_all_heard("Standup", "the encoder failed");
+        assert_eq!(notice.heading, "Part of Standup Wasn't Heard");
+        assert_eq!(
+            notice.body,
+            "The speech model failed on part of it: the encoder failed"
+        );
+        assert!(notice.quiet, "it would chime mid-call");
+        let names: Vec<&str> = notice.acts.iter().map(|(name, _)| *name).collect();
+        assert_eq!(names, ["forget"]);
+    }
+
+    #[test]
+    fn why_a_call_failed_is_shown_as_words_not_markup() {
+        let why = "infer failed (-1): <b>Exception</b> from src/ov.cpp & co";
+        let shown = "infer failed (-1): &lt;b&gt;Exception&lt;/b&gt; from src/ov.cpp &amp; co";
+        assert_eq!(not_transcribed("", why).body, shown);
+        assert_eq!(
+            not_all_heard("", why).body,
+            format!("The speech model failed on part of it: {shown}")
         );
     }
 

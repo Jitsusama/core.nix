@@ -101,6 +101,7 @@ mod split;
 mod summarizer;
 mod summary;
 mod times;
+mod unheard;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
