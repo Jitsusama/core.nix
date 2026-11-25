@@ -1616,6 +1616,10 @@ def test_a_basins_machines_are_drawn_as_one(browser: Browser, basins_served: Ser
         body = page.locator("#panel-body")
         said = "A basin, drawn as one machine: 2 machines"
         expect(body, "the drawer didn't say it was a basin").to_contain_text(said)
+        # The Launcher's Machines has a row for each of its machines, none for it.
+        expect(
+            body.locator('a[href^="mycelium:machine/"]'), "the basin linked a row it has none of"
+        ).to_have_count(0)
         for name in BASIN_MACHINES:
             exactly = page.locator(".name", has_text=re.compile(f"^{re.escape(name)}$"))
             row = body.locator(".health .row", has=exactly)
@@ -2163,6 +2167,18 @@ def spent(page: Page) -> list[str]:
     expect(fold.locator("ul.rows").first, "the Spent Today fold never opened").to_be_visible()
     lines = [line for line in fold.inner_text().splitlines() if line.strip()]
     return lines[1:2] + lines[3:]
+
+
+def test_a_machines_drawer_opens_its_row_in_the_launcher(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate("location.hash = '#machine=osprey'")
+    expect(page.locator("#panel-title"), "osprey's drawer never opened").to_have_text("osprey")
+    # Its row's acts are where Joel starts work on it, as the system page's link is.
+    link = page.locator("#panel-body").get_by_role("link", name="Open It in the Launcher")
+    expect(link, "osprey's drawer didn't open its row").to_have_attribute(
+        "href", "mycelium:machine/osprey"
+    )
 
 
 def test_what_each_spent_today_is_listed_most_first(mycelium_opened: Opened) -> None:

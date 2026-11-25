@@ -244,8 +244,27 @@ it("tells a basin's box, a lent machine and bare metal apart by what each declar
   );
   assert.equal(
     sandboxWords(machine({ leaves_at: "2026-11-19T11:00:00" }), AT),
-    "a cloud sandbox, 1 h left, until 11:00",
+    "a cloud machine, 1 h left, until 11:00",
     "a lent machine should say how long it has left",
+  );
+  // node-said.sh declares a machine made for the person to keep as ending
+  // in the year 9999, and one a year out is as good as kept.
+  for (const end of ["9999-01-01T00:00:00Z", "2027-11-19T10:00:00"]) {
+    assert.equal(
+      sandboxWords(machine({ leaves_at: end }), AT),
+      "a cloud machine, kept until you let it go",
+      `a lease ending ${end} should read as kept, not as hours left`,
+    );
+    assert.deepEqual(
+      machineHealth(machine({ leaves_at: end }), AT),
+      { v: 0, words: "kept until you let it go" },
+      `a machine kept till ${end} should be well and say it's kept`,
+    );
+  }
+  assert.equal(
+    sandboxWords(machine({ leaves_at: "2027-11-19T09:59:00" }), AT),
+    "a cloud machine, 8759 h 59 min left, until 19 Nov at 09:59",
+    "a lease ending a minute short of a year out should still count down",
   );
   assert.equal(sandboxWords(machine(), AT), "", "bare metal should be no sandbox");
 });
