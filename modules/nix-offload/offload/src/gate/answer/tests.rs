@@ -213,6 +213,36 @@ fn a_link_in_its_own_state_is_refused_and_what_it_names_untouched() {
 }
 
 #[test]
+fn a_refusal_tells_the_asker_its_kind_and_none_of_this_machines_paths() {
+    let forge = Forge::new();
+    let head = committed(&forge.tree(), "three");
+    let gate = forge.gate(&head, &forge.bundle("origin/main..HEAD"));
+    let state = forge.places().state;
+    fs::create_dir_all(&state).expect("the state folder");
+    std::os::unix::fs::symlink(forge.root.path(), state.join("work")).expect("a link");
+    let (exit, why) = forge
+        .gated(&gate, &head)
+        .expect_err("work as a link should be refused");
+    assert!(
+        why.contains(&*state.to_string_lossy()),
+        "the refusal itself should name the folder, as the journal keeps it: {why}"
+    );
+    let said = refusal_said(exit);
+    assert!(
+        !said.contains('/') && !said.contains(&why),
+        "what goes back to the asker should name no path: {said}"
+    );
+    let kinds = [REFUSED, NOT_NOW, UNREACHED, UNTRUSTED].map(refusal_said);
+    assert!(
+        kinds
+            .iter()
+            .enumerate()
+            .all(|(at, said)| !kinds[..at].contains(said)),
+        "each kind of refusal should say words of its own: {kinds:?}"
+    );
+}
+
+#[test]
 fn a_bundle_of_another_commit_is_refused() {
     let forge = Forge::new();
     committed(&forge.tree(), "three");

@@ -504,8 +504,15 @@ fn carried_log(log: &Path, gate: &GateFolder) {
     }
 }
 
-/// Adds the gate's line to the journal of gates.
-fn journalled(places: &Places, quest: &str, request: Option<&Request>, found: &Found) {
+/// Adds the gate's line to the journal of gates, with `why` it didn't
+/// run where it was refused: the one place a refusal's detail is kept.
+fn journalled(
+    places: &Places,
+    quest: &str,
+    request: Option<&Request>,
+    found: &Found,
+    why: Option<&str>,
+) {
     let line = serde_json::json!({
         "at": SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_or(0, |since| since.as_secs()),
         "quest": quest,
@@ -514,6 +521,7 @@ fn journalled(places: &Places, quest: &str, request: Option<&Request>, found: &F
         "commit": found.commit,
         "exit": found.exit,
         "said": found.said,
+        "why": why,
     });
     let journal = places.state.join("journal.jsonl");
     if let Ok(mut file) = unlinked().create(true).append(true).open(&journal) {
@@ -537,6 +545,21 @@ fn said_of(exit: u8) -> String {
         0 => "the commit's changed checks passed, and the pass is kept for a merge".to_owned(),
         code => format!("the commit's changed checks failed, exiting {code}; the log says which"),
     }
+}
+
+/// What a refusal says to the machine that asked: fixed words for its
+/// kind alone. A refusal's own words can name this machine's paths or
+/// what the forge or git said, and `result.json` goes back through a
+/// scratch another machine reads, so they go to the journal instead
+/// (security review, 24 November).
+fn refusal_said(exit: u8) -> String {
+    let kind = match exit {
+        NOT_NOW => "it couldn't be gated now, being gated already or with no room; ask again",
+        UNREACHED => "the gate couldn't reach the forge or git",
+        UNTRUSTED => "the gate couldn't trust its own state",
+        _ => "the gate refused the request, its bundle or its commit",
+    };
+    format!("{kind}; the journal of gates on the machine that answered says why")
 }
 
 /// `answer`: the gate for `QUEST COMMIT`, its result left beside the
@@ -584,9 +607,9 @@ pub fn answer(arguments: &[String], state: &Path) -> Result<(), Failure> {
         .as_ref()
         .map_err(|why| refused(why.clone()))
         .and_then(|request| gated(&fence, &places, &gate, request, (quest, commit), &mut ran));
-    let (exit, said) = match gone {
-        Ok(exit) => (exit, said_of(exit)),
-        Err((exit, why)) => (exit, why),
+    let (exit, said, why) = match gone {
+        Ok(exit) => (exit, said_of(exit), None),
+        Err((exit, why)) => (exit, refusal_said(exit), Some(why)),
     };
     let request = request.ok();
     if trusted_work(&places, commit) {
@@ -598,7 +621,7 @@ pub fn answer(arguments: &[String], state: &Path) -> Result<(), Failure> {
         said,
     };
     if places.owned().is_ok() {
-        journalled(&places, quest, request.as_ref(), &found);
+        journalled(&places, quest, request.as_ref(), &found, why.as_deref());
     }
     if let Err(error) = gate.write_whole(RESULT, found.json().as_bytes()) {
         eprintln!("nix-offload: answer couldn't leave its result: {error}");
