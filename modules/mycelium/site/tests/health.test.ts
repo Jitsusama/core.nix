@@ -92,7 +92,7 @@ it("says why a set of cells stands as it does, worst first, with what it spent",
     {
       v: 2,
       words:
-        "2 need you, 1 stuck, 2 questions waiting, 1 nearly out of context, " +
+        "2 need you, 1 stuck, 2 answers owed, 1 nearly out of context, " +
         "1 with context filling, 1 moving, 1 quiet, 1 dormant; $1.50 today",
     },
     "the words should name each way the cells stand, in order",
