@@ -602,7 +602,7 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/footprint.rs`        | what files take on a compressed disk, read as root       |
 | `src/activity.rs`, `locks.rs` | whether something is in use                          |
 | `src/host.rs`, `linux.rs`, `macos.rs` | the machine the guard runs on, through `crate::sys` |
-| `src/procargs.rs`, `pmset.rs`, `memorystatus.rs` | what macOS says, parsed where Linux's tests reach it |
+| `src/procargs.rs`, `pmset.rs`, `memorystatus.rs` | what macOS says, parsed for Linux's tests |
 | `src/daemon.rs`, `serve.rs` | a daemon's step and its loop                           |
 | `src/socket.rs`, `vouch.rs` | what the two daemons say to each other                 |
 | `src/garbage.rs`, `generations.rs`, `dedupe.rs` | Nix's garbage, generations and linking |
