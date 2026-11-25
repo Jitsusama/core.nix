@@ -28,7 +28,7 @@ pub enum Call {
 /// How long `a-call-is-on` is given to answer: asked about this machine
 /// alone it reads only PipeWire, at most about 2 s plus a pw-dump, and one
 /// that hangs would leave the call running blind.
-const ASKING: Duration = Duration::from_secs(5);
+pub const ASKING: Duration = Duration::from_secs(5);
 
 /// Asks `a-call-is-on` about this machine alone, since the test call loads
 /// this machine and never the line, so a call on another of Joel's

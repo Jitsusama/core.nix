@@ -670,7 +670,8 @@
     the launcher's openings during the run against the same span before it, writes the hour
     in the shape cadence reads, and sums Joel's own calls' sending threads' waits for a CPU
     into a line the hour reads and no test run is taken for, and checks the camera once
-    between three and six minutes before each meeting, reading only a loopback, its frames
+    between 18 and 22 minutes before each meeting, never during one or the quarter hour
+    before, reading only a loopback, its frames
     to /dev/null, and asking any other camera only whether it answers, and tells plainly
     when it gives nothing
   '';
