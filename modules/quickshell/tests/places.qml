@@ -172,6 +172,12 @@ QtObject {
         expect("nor gives way to another screen's session",
             Places.whereKept(twins[1], twins, panelThere,
                 { given: panelFirst, inUse: "Virtual-1" }).output, "Virtual-4");
+        // Nor to a session of its twin's kept away, which was given no connector.
+        const keptAway = Reopening.givenBy([twins[1]], [{ away: { screen: twin } }],
+            [{ at: twins[1], output: "Virtual-3" }]);
+        expect("nor gives way to its twin's session kept away",
+            Places.whereKept(twins[0], twins, bothBack, { given: keptAway, inUse: "Virtual-3" })
+                .output, "Virtual-4");
         expect("one whose twin's sessions said nothing keeps what it took",
             Places.whereKept(twins[1], twins, bothBack,
                 { given: Reopening.givenBy([], [], early), inUse: "eDP-1" }).output, "Virtual-4");
