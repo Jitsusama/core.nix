@@ -5633,13 +5633,16 @@ pub fn building_read() -> String {
 /// With none kept in that span it reads again ten seconds on, so a Mac
 /// asked rarely is judged on a shorter window rather than none. A reading
 /// past the newest count is an older boot's, which a restart reset. It
-/// says nothing when either figure can't be read.
+/// says nothing when either figure can't be read. Each figure is matched
+/// as digits rather than tested with `-ge`, which zsh, a Mac's login
+/// shell, answers true for an empty string.
 const MEMORY_READ: &str = r#"free=$(sysctl -n kern.memorystatus_level 2>/dev/null)
 swaps() { vm_stat 2>/dev/null | awk '/^Swapouts:/ { gsub(/\./, "", $2); print $2 }'; }
+number() { case "$1" in ''|*[!0-9]*) return 1;; esac; }
 out=$(swaps)
 now=$(date +%s)
 kept="${HOME:-/tmp}/.cache/nix-offload/swapouts"
-if [ "$free" -ge 0 ] 2>/dev/null && [ "$out" -ge 0 ] 2>/dev/null; then
+if number "$free" && number "$out"; then
   base=$(awk -v now="$now" -v out="$out" '
     $1 <= now - 60 && $1 >= now - 600 && $2 <= out + 0 { at = $1; was = $2 }
     END { if (at != "") print now - at, was }' "$kept" 2>/dev/null)
@@ -5648,10 +5651,11 @@ if [ "$free" -ge 0 ] 2>/dev/null && [ "$out" -ge 0 ] 2>/dev/null; then
     window=${base%% *}; was=${base#* }
   else
     was=$out; sleep 10; out=$(swaps); now=$((now + 10)); window=10
-    [ -n "$out" ] && echo "$now $out" >> "$kept"
+    number "$out" && echo "$now $out" >> "$kept"
   fi
   tail -n 200 "$kept" > "$kept.$$" 2>/dev/null && mv "$kept.$$" "$kept"
-  [ "$out" -ge "$was" ] 2>/dev/null && echo "$free $((out - was)) $window"
+  number "$out" && number "$was" && [ "$out" -ge "$was" ] &&
+    echo "$free $((out - was)) $window"
 fi"#;
 
 /// [`MEMORY_READ`], for a test to run.
@@ -6299,63 +6303,84 @@ mod tests {
         }
     }
 
+    /// A Mac's own sysctl, vm_stat and sleep, stood in for in a folder of
+    /// their own: its sysctl says the share free kept in `free`, its vm_stat
+    /// the swap-outs kept in `out`, failing with none, and its sleep takes
+    /// the count to `after`'s, as swapping in those ten seconds.
+    struct MacStandIn {
+        folder: tempfile::TempDir,
+        bin: PathBuf,
+        fake: PathBuf,
+        kept: PathBuf,
+    }
+
+    impl MacStandIn {
+        fn new() -> Self {
+            use std::os::unix::fs::PermissionsExt;
+            let folder = tempfile::tempdir().unwrap();
+            let (bin, fake) = (folder.path().join("bin"), folder.path().join("fake"));
+            fs::create_dir_all(&bin).unwrap();
+            fs::create_dir_all(&fake).unwrap();
+            for (name, script) in [
+                (
+                    "sysctl",
+                    "case \"$*\" in *memorystatus*) cat \"$FAKE/free\";; \
+                     *) printf '{ 20.00 35.00 30.00 }\\n12\\n';; esac",
+                ),
+                (
+                    "vm_stat",
+                    "[ -s \"$FAKE/out\" ] || exit 1; \
+                     printf 'Pages free: 9.\\nSwapouts: %s.\\n' \"$(cat \"$FAKE/out\")\"",
+                ),
+                (
+                    "sleep",
+                    "[ -f \"$FAKE/after\" ] && cp \"$FAKE/after\" \"$FAKE/out\"; :",
+                ),
+            ] {
+                let path = bin.join(name);
+                fs::write(&path, format!("#!/bin/sh\n{script}\n")).unwrap();
+                fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+            }
+            let kept = folder.path().join(".cache/nix-offload/swapouts");
+            Self {
+                folder,
+                bin,
+                fake,
+                kept,
+            }
+        }
+
+        /// What `script` says under `shell`, with these figures and these
+        /// readings kept.
+        fn read(&self, shell: &str, script: &str, figures: [&str; 3], history: &str) -> String {
+            let [free, out, after] = figures;
+            fs::create_dir_all(self.kept.parent().unwrap()).unwrap();
+            fs::write(&self.kept, history).unwrap();
+            fs::write(self.fake.join("free"), free).unwrap();
+            fs::write(self.fake.join("out"), out).unwrap();
+            fs::write(self.fake.join("after"), after).unwrap();
+            let said = Command::new(shell)
+                .args(["-c", &first_on_path(&self.bin, script)])
+                .env("FAKE", &self.fake)
+                .env("HOME", self.folder.path())
+                .env("NIX_OFFLOAD_TURNS", self.folder.path().join("none"))
+                .output()
+                .unwrap();
+            String::from_utf8(said.stdout).unwrap()
+        }
+    }
+
     #[test]
     fn a_macs_memory_is_read_over_a_minute_it_kept_or_ten_seconds_it_waits() {
-        use std::os::unix::fs::PermissionsExt;
-        let folder = tempfile::tempdir().unwrap();
-        let (bin, fake) = (folder.path().join("bin"), folder.path().join("fake"));
-        fs::create_dir_all(&bin).unwrap();
-        fs::create_dir_all(&fake).unwrap();
-        // Stand-ins for a Mac's own: its sysctl says the share free kept in
-        // `free`, its vm_stat the swap-outs kept in `out`, and its sleep
-        // takes the count to `after`'s, as swapping in those ten seconds.
-        for (name, script) in [
-            (
-                "sysctl",
-                "case \"$*\" in *memorystatus*) cat \"$FAKE/free\";; \
-                 *) printf '{ 20.00 35.00 30.00 }\\n12\\n';; esac",
-            ),
-            (
-                "vm_stat",
-                "[ -f \"$FAKE/out\" ] || exit 1; \
-                 printf 'Pages free: 9.\\nSwapouts: %s.\\n' \"$(cat \"$FAKE/out\")\"",
-            ),
-            (
-                "sleep",
-                "[ -f \"$FAKE/after\" ] && cp \"$FAKE/after\" \"$FAKE/out\"; :",
-            ),
-        ] {
-            let path = bin.join(name);
-            fs::write(&path, format!("#!/bin/sh\n{script}\n")).unwrap();
-            fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
-        }
-        let kept = folder.path().join(".cache/nix-offload/swapouts");
+        let mac = MacStandIn::new();
+        let memory = |said: &str| Memory::parse(said.trim());
         for shell in ["dash", "zsh"] {
-            let read = |script: &str, free: &str, out: &str, after: &str, history: &str| {
-                fs::create_dir_all(kept.parent().unwrap()).unwrap();
-                fs::write(&kept, history).unwrap();
-                fs::write(fake.join("free"), free).unwrap();
-                let _ = fs::remove_file(fake.join("out"));
-                if !out.is_empty() {
-                    fs::write(fake.join("out"), out).unwrap();
-                }
-                fs::write(fake.join("after"), after).unwrap();
-                let said = Command::new(shell)
-                    .args(["-c", &first_on_path(&bin, script)])
-                    .env("FAKE", &fake)
-                    .env("HOME", folder.path())
-                    .env("NIX_OFFLOAD_TURNS", folder.path().join("none"))
-                    .output()
-                    .unwrap();
-                String::from_utf8(said.stdout).unwrap()
-            };
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs();
-            let memory = |said: &str| Memory::parse(said.trim());
 
-            let said = read(memory_read(), "41", "100", "100", "");
+            let said = mac.read(shell, memory_read(), ["41", "100", "100"], "");
             assert_eq!(
                 memory(&said),
                 Some(Memory {
@@ -6365,7 +6390,7 @@ mod tests {
                 }),
                 "{shell}: a Mac with no reading kept wasn't read over ten seconds: {said:?}"
             );
-            let kept_lines = fs::read_to_string(&kept).unwrap();
+            let kept_lines = fs::read_to_string(&mac.kept).unwrap();
             assert_eq!(
                 kept_lines.lines().count(),
                 2,
@@ -6373,7 +6398,7 @@ mod tests {
             );
 
             let minutes_ago = format!("{} 40\n{} 90\n{} 95\n", now - 900, now - 120, now - 10);
-            let said = read(memory_read(), "41", "100", "200", &minutes_ago);
+            let said = mac.read(shell, memory_read(), ["41", "100", "200"], &minutes_ago);
             let read_over = memory(&said);
             assert!(
                 read_over.is_some_and(
@@ -6387,31 +6412,44 @@ mod tests {
             );
 
             let rebooted = format!("{} 5000\n", now - 120);
-            let said = read(memory_read(), "41", "100", "103", &rebooted);
+            let said = mac.read(shell, memory_read(), ["41", "100", "103"], &rebooted);
             assert_eq!(
                 memory(&said).map(|memory| (memory.swapped, memory.window)),
                 Some((3, 10)),
                 "{shell}: a reading from before a restart was read as a baseline: {said:?}"
             );
 
-            let said = read(memory_read(), "30", "100", "100", "");
+            let said = mac.read(shell, memory_read(), ["30", "100", "100"], "");
             assert!(
                 memory(&said).is_some_and(|memory| memory.free == 30 && memory.short()),
                 "{shell}: a Mac 30% free had memory to spare: {said:?}"
             );
+        }
+    }
 
+    #[test]
+    fn a_mac_that_cant_say_its_memory_says_none_and_its_load_ends_with_it() {
+        // zsh, a Mac's login shell, takes an empty figure for 0 in `-ge`,
+        // which once read a failed vm_stat as no swapping.
+        let mac = MacStandIn::new();
+        for shell in ["dash", "zsh"] {
             assert_eq!(
-                read(memory_read(), "41", "", "", ""),
+                mac.read(shell, memory_read(), ["41", "", ""], ""),
                 "",
                 "{shell}: a Mac whose vm_stat failed said its memory"
             );
             assert_eq!(
-                read(memory_read(), "no", "100", "100", ""),
+                mac.read(shell, memory_read(), ["41", "100", ""], ""),
+                "",
+                "{shell}: a Mac whose vm_stat failed after its wait said its memory"
+            );
+            assert_eq!(
+                mac.read(shell, memory_read(), ["no", "100", "100"], ""),
                 "",
                 "{shell}: a Mac whose sysctl failed said its memory"
             );
 
-            let said = read(&load_read(), "41", "100", "100", "");
+            let said = mac.read(shell, &load_read(), ["41", "100", "100"], "");
             assert_eq!(
                 Load::parse(&said).and_then(|load| load.memory),
                 Some(Memory {
