@@ -61,13 +61,16 @@ ShellRoot {
     }
 
     // The cases run once ReadyRows' daemon is loaded, which its LazyLoader may do after the
-    // shell starts, and nothing here waits forever: a daemon that never loads fails, by name.
+    // shell starts, and nothing here waits forever: a daemon that never loads, or a hello
+    // stage never reached, fails, by name.
     property bool begun: false
+    property bool welcomed: false
     Component.onCompleted: begin()
     Timer {
-        running: !root.begun
+        running: !root.welcomed
         interval: 30000
-        onTriggered: Expect.fail("never came: ReadyRows' daemon loaded")
+        onTriggered: Expect.fail(root.begun ? "never came: the history's hello"
+            : "never came: ReadyRows' daemon loaded")
     }
     Connections {
         target: theEmoji.served
@@ -109,10 +112,11 @@ ShellRoot {
                 served.drawn === false && served.lost === null && served.typedLost === null,
                 root.said());
 
+            // Typed inside the group first, then searched at the top, as a step out does.
             theLauncher.open = true;
-            theEmoji.search("turt");
             theEmoji.typedInGroup(root.group, "smil");
-            Expect.expect("open again, both lost are kept",
+            theEmoji.search("turt");
+            Expect.expect("open again, both lost are kept, the typed one past a step out",
                 served.lost?.words === "turt" && served.typedLost?.words === "smil", root.said());
         } catch (error) {
             Expect.fail(Expect.thrown(error));
@@ -130,6 +134,7 @@ ShellRoot {
     }
 
     function helloCases() {
+        welcomed = true;
         Expect.run(() => {
             const served = theEmoji.served;
             const link = served.link;
@@ -142,7 +147,10 @@ ShellRoot {
             // What's typed in the group is asked again first (ReadyRows' onTold).
             root.fresh = [];
             link.said(JSON.stringify({ id: `find-${before + 1}`, keys: [], rows: {} }));
-            Expect.expect("and what's typed in the group, answered, isn't its key's own",
+            Expect.expect("and what's typed in the group is what's answered",
+                served.typing.within === root.group && served.typing.words === "smil"
+                    && served.typedAsking === "" && served.asking === "turt", root.said());
+            Expect.expect("and isn't taken as its key's own",
                 root.fresh.length === 1 && root.fresh[0] === false, JSON.stringify(root.fresh));
         });
     }

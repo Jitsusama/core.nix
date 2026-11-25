@@ -1991,6 +1991,7 @@ def test_a_letter_reordering_a_kept_place_lists_it_afresh_from_its_first_row(
     letter = presented[before]
     # One that let the held answer go waits on its own, up to the launcher's bound, so a quick
     # answer could list the same count; waited says it did, and is None where nothing said.
+    assert letter["waited"] is not None, f"the letter's search recorded no parts: {letter}"
     assert letter["waited"] is False, f"the letter waited on its answers: {letter}"
     assert letter["listed"] == held_count, (
         f"the letter's first frame listed {letter['listed']}, not the {held_count} held: {letter}"
