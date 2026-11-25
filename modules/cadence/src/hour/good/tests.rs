@@ -45,7 +45,7 @@ fn every_measure_the_hour_shows_has_a_line_that_holds_it_to_its_target() {
         measures::unresolved::unresolved(None, None, NOW, "OWNER"),
         measures::carried(&[], &[], "here"),
         measures::mapped(None, "", "OWNER"),
-        measures::cited::uncited(&[], "", "", &std::collections::BTreeMap::new()),
+        measures::cited::unread(""),
         measures::holds::holds(&[], "", NOW),
     ];
     shown.extend(measures::apps::apps(None, NOW));

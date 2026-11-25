@@ -187,6 +187,13 @@ pub struct Message {
     pub ends_hold: bool,
 }
 
+/// A message as [`Mesh::senders`] finds it: who sent it and what it said.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Sent {
+    pub from: String,
+    pub text: String,
+}
+
 #[derive(Deserialize)]
 struct Marker {
     #[serde(default)]
@@ -354,19 +361,47 @@ impl Mesh {
     }
 
     /// Who sent each message sent at `from_ms` or later whose short id,
-    /// the last part of its id, is among `ids`, by that short id. A file's
-    /// name is its message's id, so only those messages are opened.
-    #[must_use]
-    pub fn senders(&self, from_ms: i64, ids: &BTreeSet<String>) -> BTreeMap<String, String> {
-        self.files_since(from_ms)
-            .iter()
-            .filter_map(|p| {
-                let id = p.file_stem()?.to_str()?.rsplit('-').next()?;
-                ids.contains(id).then_some(p)
-            })
-            .filter_map(|p| read_json::<Message>(p))
-            .filter_map(|m| Some((m.id.rsplit('-').next()?.to_owned(), m.from)))
-            .collect()
+    /// the last part of its id, is among `ids`, and what it said, by that
+    /// short id. A file's name is its message's id, `<ms>-<from>-<pid>-<short
+    /// id>`, so only those messages are opened. One whose body names another
+    /// id or sender than its name says is no one's, and so is a short id two
+    /// different messages share. A message among `ids` that can't be read is said why.
+    pub fn senders(
+        &self,
+        from_ms: i64,
+        ids: &BTreeSet<String>,
+    ) -> Result<BTreeMap<String, Sent>, String> {
+        let mut found: BTreeMap<String, Option<Sent>> = BTreeMap::new();
+        for path in self.files_since(from_ms) {
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            let parts: Vec<&str> = stem.split('-').collect();
+            let [_, named, _, short] = parts.as_slice() else {
+                continue;
+            };
+            if !ids.contains(*short) {
+                continue;
+            }
+            let message = read_json::<Message>(&path)
+                .ok_or_else(|| format!("the message {short} cited can't be read"))?;
+            let sent = (message.id == stem && message.from == *named).then(|| Sent {
+                from: message.from,
+                text: message.text,
+            });
+            found
+                .entry((*short).to_owned())
+                .and_modify(|was| {
+                    if *was != sent {
+                        *was = None;
+                    }
+                })
+                .or_insert(sent);
+        }
+        Ok(found
+            .into_iter()
+            .filter_map(|(id, sent)| Some((id, sent?)))
+            .collect())
     }
 
     /// Every message's file whose id is stamped at `from_ms` or later, as
