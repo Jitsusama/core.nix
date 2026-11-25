@@ -224,6 +224,7 @@ mod tests {
         let config = Config {
             listen: "127.0.0.1:8484".parse().expect("an address"),
             names: vec!["localhost".to_owned()],
+            documents_name: "documents.localhost".to_owned(),
             documents,
             home: None,
             mounts: BTreeMap::from([("kit".to_owned(), kit), ("code".to_owned(), code)]),

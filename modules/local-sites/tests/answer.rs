@@ -135,6 +135,7 @@ fn served(name: &str) -> Served {
     let config = json!({
         "listen": format!("127.0.0.1:{port}"),
         "names": ["sites.localhost"],
+        "documentsName": "documents.sites.localhost",
         "documents": documents,
         "home": home,
         "mounts": {},
@@ -168,11 +169,22 @@ fn served(name: &str) -> Served {
 /// What a request of `ask` with `extra` header lines and `body` is
 /// answered: its status line, its header lines and its body.
 fn asked(port: u16, ask: &str, extra: &str, body: &str) -> (String, String, String) {
+    asked_at("sites.localhost", port, ask, (extra, body))
+}
+
+/// What a request of `ask` naming the server `name` is answered, with
+/// `extra` header lines and `body`.
+fn asked_at(
+    name: &str,
+    port: u16,
+    ask: &str,
+    (extra, body): (&str, &str),
+) -> (String, String, String) {
     let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("it connects");
     let length = body.len();
     write!(
         stream,
-        "{ask} HTTP/1.1\r\nHost: sites.localhost:{port}\r\nContent-Length: {length}\r\n{extra}\r\n{body}"
+        "{ask} HTTP/1.1\r\nHost: {name}:{port}\r\nContent-Length: {length}\r\n{extra}\r\n{body}"
     )
     .expect("it asks");
     let mut answer = String::new();
@@ -325,7 +337,7 @@ fn an_answer_from_anywhere_else_is_refused_and_never_carried() {
             "yes",
             "type",
         ),
-        // A document's script runs in an origin of no one's.
+        // A session's file under the sites' names runs in an origin of no one's.
         (
             format!("Origin: null\r\nSec-Fetch-Site: cross-site\r\nCookie: {pressed}\r\n{json}"),
             "yes",
@@ -345,6 +357,14 @@ fn an_answer_from_anywhere_else_is_refused_and_never_carried() {
             ),
             "yes",
             "site",
+        ),
+        // A document, same-site with the sites but never same-origin.
+        (
+            format!(
+                "Origin: http://documents.sites.localhost:{port}\r\nSec-Fetch-Site: same-site\r\nCookie: {pressed}\r\n{json}"
+            ),
+            "yes",
+            "origin",
         ),
         (format!("{ours}{json}"), "yes", "cookie"),
         (
@@ -370,6 +390,28 @@ fn an_answer_from_anywhere_else_is_refused_and_never_carried() {
     );
     let (status, _, _) = asked(port, "PUT /answer", &page, "");
     assert_eq!(status, "HTTP/1.1 405 Method Not Allowed");
+    // Under the documents' name a document's own origin is the one asked,
+    // so there an answer is never taken, nor its cookie given.
+    let documents = format!(
+        "Origin: http://documents.sites.localhost:{port}\r\nSec-Fetch-Site: same-origin\r\n\
+         Cookie: {pressed}\r\n{json}"
+    );
+    let named = "documents.sites.localhost";
+    let (status, _, _) = asked_at(named, port, "POST /answer", (&documents, &pressing("yes")));
+    assert_eq!(
+        status, "HTTP/1.1 403 Forbidden",
+        "a document pressed an answer"
+    );
+    let (status, headers, _) = asked_at(named, port, "GET /answer", (&documents, ""));
+    assert_eq!(
+        status, "HTTP/1.1 403 Forbidden",
+        "a document asked for the cookie"
+    );
+    assert_eq!(
+        cookie(&headers, "sites-answer"),
+        None,
+        "a document was given it"
+    );
     assert!(
         served.steered.lock().expect("the steers").is_empty(),
         "a refused answer was carried"

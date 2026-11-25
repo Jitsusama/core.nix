@@ -10,8 +10,8 @@
 //! hold, each refused with a word the journal keeps:
 //! - its `Origin` is this server's own, at the name it was asked by, and
 //!   the browser says it came from this origin (`Sec-Fetch-Site`), so no
-//!   other site's page, nor a document, which runs in an origin of no
-//!   one's (http.rs), sent it;
+//!   other site's page, nor a document, which runs in the documents' own
+//!   origin, same-site but never same-origin (http.rs), sent it;
 //! - it says it's JSON (`Content-Type`), which no form can send, so an
 //!   injected form can't press;
 //! - it carries the cookie only a page of the sites' own is given, which no
@@ -463,6 +463,15 @@ mod tests {
                 pressed(Some("http://evil.example"), Some("same-origin"), cookie),
                 "origin",
             ),
+            (
+                pressed(
+                    Some("http://documents.sites.localhost:8484"),
+                    Some("same-site"),
+                    cookie,
+                ),
+                "origin",
+            ),
+            (pressed(ours, Some("same-site"), cookie), "site"),
             (pressed(ours, Some("cross-site"), cookie), "site"),
             (pressed(ours, None, cookie), "site"),
             (pressed(ours, Some("same-origin"), None), "cookie"),
@@ -549,6 +558,15 @@ mod tests {
         assert_eq!(
             answers().cookie_for(&elsewhere).map_err(|why| why.word),
             Err("site")
+        );
+        let documents = pressed_here_but(|asked| {
+            asked.origin = Some("http://documents.sites.localhost:8484");
+            asked.fetch_site = Some("same-site");
+        });
+        assert_eq!(
+            answers().cookie_for(&documents).map_err(|why| why.word),
+            Err("site"),
+            "a document was given the cookie"
         );
         let agents = answers_told(Told::Agent("jobs".to_owned()));
         assert_eq!(

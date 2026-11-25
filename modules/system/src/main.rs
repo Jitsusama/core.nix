@@ -181,7 +181,7 @@ pub(crate) fn read() -> (System, Notes) {
     };
     kept::mark(&mut system, &notes);
     if let Some(sites) = sites() {
-        Homes::read(&sites).place(&mut system);
+        Homes::read(&sites, home().as_deref()).place(&mut system);
     }
     (system, notes)
 }
@@ -209,6 +209,15 @@ fn sites() -> Option<PathBuf> {
             std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share"))
         })?;
     Some(data.join("jitsusama/sites"))
+}
+
+/// The folder of its own the sites' home is built into, under the runtime
+/// folder (modules/local-sites/home.nix's homeFolder), where it lists its
+/// rows; none where no runtime folder is set.
+fn home() -> Option<PathBuf> {
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .filter(|run| !run.is_empty())
+        .map(|run| PathBuf::from(run).join("local-sites/home"))
 }
 
 /// When this machine's quest backup last backed up, as the backup writes it

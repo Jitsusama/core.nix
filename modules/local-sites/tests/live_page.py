@@ -43,6 +43,12 @@ if TYPE_CHECKING:
 
 # How long the sites' server has to start listening.
 STARTING_S = 5
+# The name the documents are served under, an origin of their own, as a
+# machine's server names it (home.nix).
+DOCUMENTS_NAME = "documents.sites.localhost"
+# Both names to loopback, since the build sandbox has no resolver to say where
+# either is.
+RESOLVED = f"MAP sites.localhost 127.0.0.1, MAP {DOCUMENTS_NAME} 127.0.0.1"
 # What Playwright says when a tab's renderer died under it, rather than the page
 # failing: the first while it loads, the second to an expect waiting on it.
 # Should a later Playwright word it otherwise, a crash fails the test at once,
@@ -137,6 +143,7 @@ def serving(
     config = {
         "listen": f"127.0.0.1:{port}",
         "names": ["sites.localhost"],
+        "documentsName": DOCUMENTS_NAME,
         "documents": str(documents),
         "mounts": {**mounts, "local-sites": os.environ["LOCAL_SITES_SHARED"]},
         # Every page watches the to-do feed for the looks waiting on Joel, as
@@ -176,7 +183,7 @@ def browser() -> Iterator[Browser]:
             # crashes mid-load ("Page crashed"), so the browser keeps that memory
             # in a temporary file instead. A busy builder still crashes one now
             # and then, which Opened opens once more.
-            args=["--host-resolver-rules=MAP sites.localhost 127.0.0.1", "--disable-dev-shm-usage"]
+            args=[f"--host-resolver-rules={RESOLVED}", "--disable-dev-shm-usage"]
         )
         yield launched
         launched.close()

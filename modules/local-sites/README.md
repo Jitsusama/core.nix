@@ -15,9 +15,12 @@ page reads and never acts; it sees only the kinds and fields its feed
 declares in `jitsusama.local-sites.feeds`. The server answers only its own
 names on loopback, and opens a feed only to its own pages: the live sites
 and the home, which its builder writes into a folder of its own. A document
-a session wrote runs sandboxed, in an origin of no one's, so its script can
-never act as one of those pages, which run only the scripts served beside
-them. It keeps no look between visits and reads no feed, the cost of that.
+a session wrote is served under a name of its own,
+`documents.sites.localhost`, its address under the sites' name sent there,
+so its script runs in the documents' origin and can never act as one of
+those pages, which run only the scripts Nix served beside them. It reads
+what sits beside it, the kit and the home's rows among them, but no feed,
+and keeps its look apart from theirs, the cost of that.
 
 A live site is TypeScript on the kit, built by Nix: [`site.nix`][site]
 typechecks it at its strictest, runs its tests and compiles it beside its
@@ -27,7 +30,8 @@ source sits at `modules/<name>/site/`, served at `/<name>/`, and
 row in `jitsusama.local-sites.rows`, which the home lists in place of any
 row `sites.json` has at its path, so what the home says of a live site is
 built with it. The home writes every row it lists, the declared ones as
-declared, into `rows.json` beside it, for the readers of a row's `homes`
+declared, into `rows.json` in the home's own folder under the runtime
+folder, served at `/rows.json`, for the readers of a row's `homes`
 (the system daemon's, the web-design skill's and Code's). A switch refuses
 declared rows that give one kind two sites as its home, a pattern the
 readers would drop, or one kind two different patterns on one site: the
@@ -41,8 +45,10 @@ in `rows.json`'s `taken`, which the skill's reader names. Each reads
 `rows.json` first and `sites.json` only where it's missing, so `sites.json`
 keeps only the rows nothing declares; a session's edit to a live row there no
 longer reaches the home. A home rolled back
-to before `rows.json` leaves the last one in place, so remove it then, or
-its readers keep its rows. The system page
+to before `rows.json` leaves the last one in the home's folder until a reboot
+empties it, so remove it then, or its readers keep its rows. A `sites.json`
+the builder can't read keeps the last build, or, where a reboot left none,
+builds the home from the declared rows alone. The system page
 ([`modules/system/site`][system]) is the first, and the mycelium map
 ([`modules/mycelium/site`][map]) is fed live by the node. Code
 ([`modules/repos/site`][code]) draws every repository live from the repos
