@@ -237,7 +237,10 @@ mod tests {
         assert_eq!(config.listen.port(), 8484);
         assert_eq!(config.mounts["kit"], PathBuf::from("/nix/store/kit"));
         assert_eq!(config.home, None, "a home among the documents names none");
-        assert_eq!(config.answers, None, "a server that takes no answers names nothing");
+        assert_eq!(
+            config.answers, None,
+            "a server that takes no answers names nothing"
+        );
         let node = &config.feeds["node"];
         assert_eq!(
             node.socket,
@@ -284,7 +287,8 @@ mod tests {
             r#""mounts""#,
             r#""answers": {"looks": "daemons/to-do.sock", "node": "/run/node.sock"}, "mounts""#,
         );
-        let config = Config::from_json(&answering, Some(Path::new("/run/user/1000"))).expect("it reads");
+        let config =
+            Config::from_json(&answering, Some(Path::new("/run/user/1000"))).expect("it reads");
         assert_eq!(
             config.answers,
             Some(Answering {
@@ -292,8 +296,14 @@ mod tests {
                 node: PathBuf::from("/run/node.sock"),
             })
         );
-        let why = Config::from_json(&answering, None).expect_err("refused");
-        assert!(why.contains("looks socket is under the runtime folder"), "{why}");
+        // The feed's socket made absolute, so only the answers' looks socket
+        // can need the runtime folder that isn't set.
+        let fixed = answering.replace("\"mycelium/work.sock\"", "\"/run/work.sock\"");
+        let why = Config::from_json(&fixed, None).expect_err("refused");
+        assert!(
+            why.contains("looks socket is under the runtime folder"),
+            "{why}"
+        );
         let nodeless = WHOLE.replace(
             r#""mounts""#,
             r#""answers": {"looks": "/run/to-do.sock"}, "mounts""#,

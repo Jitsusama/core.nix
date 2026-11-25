@@ -300,10 +300,22 @@ fn told_for(server: &Server, head: &Head, file: &Path, made: files::Made) -> Gua
 /// came by the sites.
 fn press(server: &Server, stream: &mut TcpStream, head: &Head) {
     if head.method != "POST" {
-        return send(stream, 405, "Method Not Allowed", "text/plain", b"an answer is posted\n");
+        return send(
+            stream,
+            405,
+            "Method Not Allowed",
+            "text/plain",
+            b"an answer is posted\n",
+        );
     }
     let Some(answers) = &server.answers else {
-        return send(stream, 404, "Not Found", "text/plain", b"this server takes no answers\n");
+        return send(
+            stream,
+            404,
+            "Not Found",
+            "text/plain",
+            b"this server takes no answers\n",
+        );
     };
     let Some(length) = head.body_length.filter(|length| *length <= answer::LONGEST) else {
         return send(
@@ -329,7 +341,13 @@ fn press(server: &Server, stream: &mut TcpStream, head: &Head) {
     match answers.carry(&asked) {
         Ok(told) => {
             eprintln!("local-sites: carried an answer pressed on the sites: {pressed:?}");
-            send(stream, 200, "OK", "application/json", told.to_string().as_bytes());
+            send(
+                stream,
+                200,
+                "OK",
+                "application/json",
+                told.to_string().as_bytes(),
+            );
         }
         Err(refused) => {
             eprintln!(
@@ -344,7 +362,13 @@ fn press(server: &Server, stream: &mut TcpStream, head: &Head) {
                 409 => "Conflict",
                 _ => "Bad Gateway",
             };
-            send(stream, refused.status, reason, "application/json", said.to_string().as_bytes());
+            send(
+                stream,
+                refused.status,
+                reason,
+                "application/json",
+                said.to_string().as_bytes(),
+            );
         }
     }
 }

@@ -113,10 +113,7 @@ impl Answers {
         self.pressed_here(asked)?;
         let (id, value) = said(asked.body)?;
         // Held while the answer goes, so two presses can't both be carried.
-        let mut answered = self
-            .answered
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
+        let mut answered = self.answered.lock().unwrap_or_else(PoisonError::into_inner);
         if answered.contains(&id) {
             return Err(refused("answered", 409, "this look was answered already"));
         }
@@ -137,7 +134,11 @@ impl Answers {
             .map_err(|why| refused("unreached", 502, &format!("the node doesn't answer: {why}")))?;
         if let Some(error) = told.get("error") {
             let why = error.get("message").and_then(Value::as_str).unwrap_or("");
-            return Err(refused("unsteered", 502, &format!("the node refused it: {why}")));
+            return Err(refused(
+                "unsteered",
+                502,
+                &format!("the node refused it: {why}"),
+            ));
         }
         answered.insert(id.clone());
         Ok(json!({"answered": id, "steered": told.get("steered").cloned().unwrap_or(Value::Null)}))
@@ -154,7 +155,11 @@ impl Answers {
             ));
         }
         if asked.fetch_site != Some("same-origin") {
-            return Err(refused("site", 403, "an answer comes only from this origin"));
+            return Err(refused(
+                "site",
+                403,
+                "an answer comes only from this origin",
+            ));
         }
         let held = asked
             .cookies
@@ -273,28 +278,39 @@ fn when(value: Option<&Value>) -> Option<i64> {
 fn parsed(text: &str) -> Option<i64> {
     let (date, rest) = text.split_once('T')?;
     let mut parts = date.split('-').map(str::parse::<i64>);
-    let (year, month, day) = (parts.next()?.ok()?, parts.next()?.ok()?, parts.next()?.ok()?);
+    let (year, month, day) = (
+        parts.next()?.ok()?,
+        parts.next()?.ok()?,
+        parts.next()?.ok()?,
+    );
     if parts.next().is_some() || !(1..=12).contains(&month) || !(1..=31).contains(&day) {
         return None;
     }
-    let (clock, offset) = match rest.strip_suffix(['Z', 'z']) {
-        Some(clock) => (clock, 0),
-        None => {
-            let at = rest.rfind(['+', '-'])?;
-            let (clock, zone) = rest.split_at(at);
-            let sign = if zone.starts_with('-') { -1 } else { 1 };
-            let (hours, minutes) = zone.get(1..)?.split_once(':')?;
-            let minutes = hours.parse::<i64>().ok()? * 60 + minutes.parse::<i64>().ok()?;
-            (clock, sign * minutes)
-        }
+    let (clock, offset) = if let Some(clock) = rest.strip_suffix(['Z', 'z']) {
+        (clock, 0)
+    } else {
+        let at = rest.rfind(['+', '-'])?;
+        let (clock, zone) = rest.split_at(at);
+        let sign = if zone.starts_with('-') { -1 } else { 1 };
+        let (hours, minutes) = zone.get(1..)?.split_once(':')?;
+        let minutes = hours.parse::<i64>().ok()? * 60 + minutes.parse::<i64>().ok()?;
+        (clock, sign * minutes)
     };
     let (whole, fraction) = clock.split_once('.').unwrap_or((clock, ""));
     let mut parts = whole.split(':').map(str::parse::<i64>);
-    let (hour, minute, second) = (parts.next()?.ok()?, parts.next()?.ok()?, parts.next()?.ok()?);
+    let (hour, minute, second) = (
+        parts.next()?.ok()?,
+        parts.next()?.ok()?,
+        parts.next()?.ok()?,
+    );
     if parts.next().is_some() || !fraction.bytes().all(|digit| digit.is_ascii_digit()) {
         return None;
     }
-    let millis: String = fraction.chars().chain(std::iter::repeat('0')).take(3).collect();
+    let millis: String = fraction
+        .chars()
+        .chain(std::iter::repeat('0'))
+        .take(3)
+        .collect();
     let millis = millis.parse::<i64>().ok()?;
     let days = days_from_civil(year, month, day);
     let seconds = ((days * 24 + hour) * 60 + minute - offset) * 60 + second;
@@ -323,7 +339,11 @@ fn civil_from_days(days: i64) -> (i64, i64, i64) {
     let of_year = of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
     let shifted = (5 * of_year + 2) / 153;
     let day = of_year - (153 * shifted + 2) / 5 + 1;
-    let month = if shifted < 10 { shifted + 3 } else { shifted - 9 };
+    let month = if shifted < 10 {
+        shifted + 3
+    } else {
+        shifted - 9
+    };
     (year_of_era + era * 400 + i64::from(month <= 2), month, day)
 }
 
@@ -340,12 +360,24 @@ fn iso(millis: i64) -> String {
 fn now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| i64::try_from(since.as_millis()).unwrap_or(i64::MAX))
+        .map_or(0, |since| {
+            i64::try_from(since.as_millis()).unwrap_or(i64::MAX)
+        })
 }
 
 /// `bytes` written in hexadecimal.
 fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    bytes
+        .iter()
+        .flat_map(|byte| {
+            [
+                DIGITS[usize::from(byte >> 4)],
+                DIGITS[usize::from(byte & 0xf)],
+            ]
+        })
+        .map(char::from)
+        .collect()
 }
 
 /// Whether `one` is `other`, in a time that doesn't say how much matched.
@@ -374,7 +406,11 @@ mod tests {
         )
     }
 
-    fn pressed<'a>(origin: Option<&'a str>, site: Option<&'a str>, cookies: Option<&'a str>) -> Asked<'a> {
+    fn pressed<'a>(
+        origin: Option<&'a str>,
+        site: Option<&'a str>,
+        cookies: Option<&'a str>,
+    ) -> Asked<'a> {
         Asked {
             host: "sites.localhost:8484",
             origin,
@@ -400,14 +436,29 @@ mod tests {
         for (asked, word) in [
             (pressed(None, Some("same-origin"), cookie), "origin"),
             (pressed(Some("null"), Some("same-origin"), cookie), "origin"),
-            (pressed(Some("http://localhost:8484"), Some("same-origin"), cookie), "origin"),
-            (pressed(Some("http://evil.example"), Some("same-origin"), cookie), "origin"),
+            (
+                pressed(Some("http://localhost:8484"), Some("same-origin"), cookie),
+                "origin",
+            ),
+            (
+                pressed(Some("http://evil.example"), Some("same-origin"), cookie),
+                "origin",
+            ),
             (pressed(ours, Some("cross-site"), cookie), "site"),
             (pressed(ours, None, cookie), "site"),
             (pressed(ours, Some("same-origin"), None), "cookie"),
-            (pressed(ours, Some("same-origin"), Some("sites-answer=c0ffef")), "cookie"),
-            (pressed(ours, Some("same-origin"), Some("sites-answer=c0ffee0")), "cookie"),
-            (pressed(ours, Some("same-origin"), Some("xsites-answer=c0ffee")), "cookie"),
+            (
+                pressed(ours, Some("same-origin"), Some("sites-answer=c0ffef")),
+                "cookie",
+            ),
+            (
+                pressed(ours, Some("same-origin"), Some("sites-answer=c0ffee0")),
+                "cookie",
+            ),
+            (
+                pressed(ours, Some("same-origin"), Some("xsites-answer=c0ffee")),
+                "cookie",
+            ),
         ] {
             let why = answers.carry(&asked).expect_err("refused");
             assert_eq!(why.word, word, "{}", why.why);
@@ -415,13 +466,20 @@ mod tests {
         }
         let pressed_here = pressed(ours, Some("same-origin"), cookie);
         let why = answers.carry(&pressed_here).expect_err("no daemon stands");
-        assert_eq!(why.word, "unreached", "a page's answer passed the door: {}", why.why);
+        assert_eq!(
+            why.word, "unreached",
+            "a page's answer passed the door: {}",
+            why.why
+        );
     }
 
     #[test]
     fn the_cookie_goes_only_to_answers_and_to_no_script() {
         let cookie = answers().cookie();
-        assert_eq!(cookie, "sites-answer=c0ffee; Path=/answer; SameSite=Strict; HttpOnly");
+        assert_eq!(
+            cookie,
+            "sites-answer=c0ffee; Path=/answer; SameSite=Strict; HttpOnly"
+        );
         let drawn = Answers::new(PathBuf::new(), PathBuf::new()).expect("a cookie drawn");
         assert_eq!(drawn.secret.len(), 32, "the cookie is drawn from 16 bytes");
         assert_ne!(drawn.secret, answers().secret);
@@ -429,7 +487,10 @@ mod tests {
 
     #[test]
     fn a_body_names_its_look_and_value_or_is_refused() {
-        assert_eq!(said(br#"{"look": "l1", "value": "yes"}"#), Ok(("l1".to_owned(), "yes".to_owned())));
+        assert_eq!(
+            said(br#"{"look": "l1", "value": "yes"}"#),
+            Ok(("l1".to_owned(), "yes".to_owned()))
+        );
         let bodies: [&[u8]; 4] = [
             b"yes",
             br#"{"look": "l1"}"#,
@@ -445,7 +506,11 @@ mod tests {
     #[test]
     fn a_look_that_waits_and_offers_the_value_takes_it() {
         assert_eq!(offered(&look(), "yes", NOW), Ok(()));
-        assert_eq!(offered(&look(), "no", NOW), Ok(()), "a choice with no label is offered by its value");
+        assert_eq!(
+            offered(&look(), "no", NOW),
+            Ok(()),
+            "a choice with no label is offered by its value"
+        );
     }
 
     #[test]
@@ -468,13 +533,21 @@ mod tests {
             (changed("asks", json!(false)), "yes", "unasked"),
             (changed("expiresAt", json!(iso(NOW))), "yes", "lapsed"),
             (changed("expiresAt", json!(NOW - 1)), "yes", "lapsed"),
-            (changed("at", json!(iso(NOW - QUIET_AFTER - 1))), "yes", "quiet"),
+            (
+                changed("at", json!(iso(NOW - QUIET_AFTER - 1))),
+                "yes",
+                "quiet",
+            ),
         ] {
             let why = offered(&look, value, NOW).expect_err(word);
             assert_eq!(why.word, word, "{}", why.why);
         }
         let unknown_zone = changed("expiresAt", json!("2020-01-01T00:00:00"));
-        assert_eq!(offered(&unknown_zone, "yes", NOW), Ok(()), "a time with no zone says nothing");
+        assert_eq!(
+            offered(&unknown_zone, "yes", NOW),
+            Ok(()),
+            "a time with no zone says nothing"
+        );
     }
 
     #[test]
@@ -482,14 +555,24 @@ mod tests {
         assert_eq!(parsed("1970-01-01T00:00:00Z"), Some(0));
         assert_eq!(parsed("2000-03-01T00:00:00.5Z"), Some(951_868_800_500));
         assert_eq!(parsed("2025-11-24T23:10:00.000Z"), Some(NOW));
-        assert_eq!(parsed("2025-11-24T18:10:00-05:00"), Some(NOW), "an offset is taken off");
+        assert_eq!(
+            parsed("2025-11-24T18:10:00-05:00"),
+            Some(NOW),
+            "an offset is taken off"
+        );
         assert_eq!(parsed("2025-11-25T00:40:00+01:30"), Some(NOW));
         assert_eq!(iso(NOW), "2025-11-24T23:10:00.000Z");
         assert_eq!(iso(951_868_800_500), "2000-03-01T00:00:00.500Z");
         for day in [-800_000, -1, 0, 59, 11_016, 20_416, 2_000_000] {
             assert_eq!(days_from_civil_of(civil_from_days(day)), day, "day {day}");
         }
-        for unread in ["2025-11-24", "2025-11-24T23:10:00", "2025-13-01T00:00:00Z", "x-y-zT00:00:00Z", "2025-11-24T23:10Z"] {
+        for unread in [
+            "2025-11-24",
+            "2025-11-24T23:10:00",
+            "2025-13-01T00:00:00Z",
+            "x-y-zT00:00:00Z",
+            "2025-11-24T23:10Z",
+        ] {
             assert_eq!(parsed(unread), None, "{unread}");
         }
     }

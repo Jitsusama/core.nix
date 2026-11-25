@@ -90,7 +90,8 @@ impl Drop for Served {
 static STARTING: Mutex<()> = Mutex::new(());
 
 fn served(name: &str) -> Served {
-    let folder = std::env::temp_dir().join(format!("local-sites-answer-{name}-{}", std::process::id()));
+    let folder =
+        std::env::temp_dir().join(format!("local-sites-answer-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&folder);
     let (documents, home) = (folder.join("sites"), folder.join("home"));
     std::fs::create_dir_all(documents.join("note")).expect("the documents");
@@ -99,7 +100,9 @@ fn served(name: &str) -> Served {
     std::fs::write(home.join("index.html"), "<h1>home</h1>").expect("the home's page");
     let socket = folder.join("both.sock");
     let steered = stand_in(&socket);
-    let _starting = STARTING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let _starting = STARTING
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let port = TcpListener::bind("127.0.0.1:0")
         .and_then(|free| free.local_addr())
         .expect("a free port")
@@ -122,7 +125,10 @@ fn served(name: &str) -> Served {
         .expect("the server starts");
     let started = Instant::now();
     while TcpStream::connect(("127.0.0.1", port)).is_err() {
-        assert!(child.try_wait().ok().flatten().is_none(), "the server ended");
+        assert!(
+            child.try_wait().ok().flatten().is_none(),
+            "the server ended"
+        );
         assert!(started.elapsed() < PATIENCE, "the server never listened");
         thread::sleep(Duration::from_millis(20));
     }
@@ -178,10 +184,17 @@ fn only_a_page_of_the_sites_own_is_given_what_its_answers_carry() {
     let served = served("given");
     let (_, home, _) = asked(served.port, "GET /", "", "");
     let given = cookie(&home, "sites-answer").expect("the home was given nothing to answer with");
-    assert!(given.contains("Path=/answer") && given.contains("HttpOnly"), "{given}");
+    assert!(
+        given.contains("Path=/answer") && given.contains("HttpOnly"),
+        "{given}"
+    );
     assert!(given.contains("SameSite=Strict"), "{given}");
     let (_, note, _) = asked(served.port, "GET /note/", "", "");
-    assert_eq!(cookie(&note, "sites-answer"), None, "a document was given a page's cookie");
+    assert_eq!(
+        cookie(&note, "sites-answer"),
+        None,
+        "a document was given a page's cookie"
+    );
 }
 
 #[test]
@@ -198,13 +211,29 @@ fn an_answer_pressed_on_a_page_is_carried_once_as_the_launcher_carries_it() {
     assert_eq!(steers[0]["address"], "ABC123", "the steer went elsewhere");
     let steer = &steers[0]["steer"];
     assert_eq!(
-        (&steer["act"], &steer["look"], &steer["value"], &steer["from"]),
-        (&json!("answer"), &json!("l1"), &json!("yes"), &json!("joel")),
+        (
+            &steer["act"],
+            &steer["look"],
+            &steer["value"],
+            &steer["from"]
+        ),
+        (
+            &json!("answer"),
+            &json!("l1"),
+            &json!("yes"),
+            &json!("joel")
+        ),
         "{steer}"
     );
-    assert!(steer["at"].as_str().is_some_and(|at| at.ends_with('Z')), "{steer}");
+    assert!(
+        steer["at"].as_str().is_some_and(|at| at.ends_with('Z')),
+        "{steer}"
+    );
     let (status, _, body) = asked(served.port, "POST /answer", &page, &pressing("no"));
-    assert_eq!(status, "HTTP/1.1 409 Conflict", "a look was answered twice: {body}");
+    assert_eq!(
+        status, "HTTP/1.1 409 Conflict",
+        "a look was answered twice: {body}"
+    );
     assert!(body.contains("\"answered\""), "{body}");
     assert_eq!(served.steered.lock().expect("the steers").len(), 1);
 }
@@ -219,23 +248,58 @@ fn an_answer_from_anywhere_else_is_refused_and_never_carried() {
     let page = from_a_page(port, &pressed);
     for (extra, value, word) in [
         // A document's script runs in an origin of no one's.
-        (format!("Origin: null\r\nSec-Fetch-Site: cross-site\r\nCookie: {pressed}\r\n"), "yes", "origin"),
+        (
+            format!("Origin: null\r\nSec-Fetch-Site: cross-site\r\nCookie: {pressed}\r\n"),
+            "yes",
+            "origin",
+        ),
         // A page elsewhere, carrying the cookie as a form it posts would.
-        (format!("Origin: http://evil.example\r\nSec-Fetch-Site: cross-site\r\nCookie: {pressed}\r\n"), "yes", "origin"),
-        (format!("Origin: http://sites.localhost:{port}\r\nSec-Fetch-Site: same-site\r\nCookie: {pressed}\r\n"), "yes", "site"),
-        (format!("Origin: http://sites.localhost:{port}\r\nSec-Fetch-Site: same-origin\r\n"), "yes", "cookie"),
-        (format!("Origin: http://sites.localhost:{port}\r\nSec-Fetch-Site: same-origin\r\nCookie: sites-answer=0\r\n"), "yes", "cookie"),
+        (
+            format!(
+                "Origin: http://evil.example\r\nSec-Fetch-Site: cross-site\r\nCookie: {pressed}\r\n"
+            ),
+            "yes",
+            "origin",
+        ),
+        (
+            format!(
+                "Origin: http://sites.localhost:{port}\r\nSec-Fetch-Site: same-site\r\nCookie: {pressed}\r\n"
+            ),
+            "yes",
+            "site",
+        ),
+        (
+            format!("Origin: http://sites.localhost:{port}\r\nSec-Fetch-Site: same-origin\r\n"),
+            "yes",
+            "cookie",
+        ),
+        (
+            format!(
+                "Origin: http://sites.localhost:{port}\r\nSec-Fetch-Site: same-origin\r\nCookie: sites-answer=0\r\n"
+            ),
+            "yes",
+            "cookie",
+        ),
         (page.clone(), "maybe", "unoffered"),
         (page.clone(), "Merge It", "unoffered"),
     ] {
         let (status, _, body) = asked(port, "POST /answer", &extra, &pressing(value));
         assert!(status.starts_with("HTTP/1.1 4"), "{word}: {status}");
-        assert!(body.contains(&format!("\"refused\":\"{word}\"")), "{word}: {body}");
+        assert!(
+            body.contains(&format!("\"refused\":\"{word}\"")),
+            "{word}: {body}"
+        );
     }
     let unknown = json!({"look": "l2", "value": "yes"}).to_string();
     let (status, _, _) = asked(port, "POST /answer", &page, &unknown);
-    assert_eq!(status, "HTTP/1.1 404 Not Found", "a look nobody holds was answered");
+    assert_eq!(
+        status, "HTTP/1.1 404 Not Found",
+        "a look nobody holds was answered"
+    );
     let (status, _, _) = asked(port, "GET /answer", &page, "");
     assert_eq!(status, "HTTP/1.1 405 Method Not Allowed");
-    assert!(served.steered.lock().expect("the steers").is_empty(), "a refused answer was carried");
+    assert!(
+        served.steered.lock().expect("the steers").is_empty(),
+        "a refused answer was carried"
+    );
 }
