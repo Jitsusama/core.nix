@@ -27,6 +27,9 @@ LOCKED = "$XDG_RUNTIME_DIR/quickshell-locked"
 STALLS = "/run/lock-stalls/once"
 # A little past the 10 s a new shell once asked polkit for its agent in before giving up.
 HELD_ASKED = timedelta(seconds=12)
+# How long a first ask after polkit restarts is given before it's taken as refused for want
+# of an agent and asked again (polkit_asked_again).
+AGENT_BACK = timedelta(seconds=10)
 
 
 # Each test closes the launcher after it, so one failing with it open fails alone.
@@ -305,20 +308,15 @@ def test_polkits_prompt_comes_up_after_a_hand_over_that_waited(desktop: Desktop)
 
 
 def polkit_restarted(desktop: Desktop) -> None:
-    """Restart polkit's service, and wait for the shell's agent to register with it again.
+    """Restart polkit's service, and wait for it to hold its name on the system bus again.
 
-    The shell says so each time it takes polkit's agent, and an ask before then finds no agent
-    at all, which would fail as a prompt that never came up.
+    The shell's agent is registered again by polkit's own agent library as the name comes back,
+    saying nothing (polkit_asked_again).
     """
     machine = desktop.machine
-    since = desktop.mark()
     machine.succeed("systemctl restart polkit.service")
     machine.wait_for_unit("polkit.service")
-    journal = f"journalctl --user -u quickshell -o cat --after-cursor={shlex.quote(since)}"
-    machine.wait_until_succeeds(
-        desktop.in_session(f'{journal} | grep -qF "took polkit\'s agent after"'),
-        timeout=STARTING,
-    )
+    machine.wait_until_succeeds("busctl --system status org.freedesktop.PolicyKit1 > /dev/null")
 
 
 def polkit_asked_again(desktop: Desktop) -> None:
@@ -327,10 +325,20 @@ def polkit_asked_again(desktop: Desktop) -> None:
     asked = "polkit asked by systemctl start polkit-allowed.service"
     # The service only ever makes the file, so one left by an earlier ask would pass this.
     machine.succeed("rm -f /run/polkit-allowed")
+    ask = "niri msg action spawn -- systemctl start polkit-allowed.service"
     answered = False
     try:
-        with desktop.told("keys polkit"), desktop.told("drawn polkit"), desktop.told(asked):
-            desktop.as_account("niri msg action spawn -- systemctl start polkit-allowed.service")
+        with desktop.told("keys polkit"), desktop.told("drawn polkit"):
+            try:
+                with desktop.told(asked, timeout=AGENT_BACK):
+                    desktop.as_account(ask)
+            except AssertionError:
+                # polkit's agent library registers the shell's agent again once polkit is back,
+                # and polkit says nothing of it at its default log level, so there's nothing to
+                # wait on. An ask just before finds no agent and is refused at once, so it's
+                # asked once more, and that one's prompt must come up.
+                with desktop.told(asked):
+                    desktop.as_account(ask)
         machine.send_chars(f"{desktop.values['secret']}\n")
         machine.wait_for_file("/run/polkit-allowed", timeout=timedelta(seconds=30))
         answered = True
