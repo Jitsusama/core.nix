@@ -120,8 +120,44 @@ function cable(wiring: Wiring, wire: Wire, a: Reached, b: Reached): string {
   return `M${x} ${a.y + a.h}V${b.y}`;
 }
 
-/** Draws each of `wires`, its lanes starting left of the boxes at `boxX`. */
-function drawWires(wiring: Wiring, wires: readonly Wire[], boxX: number): void {
+/** The least a lane keeps from the drawing's left edge. */
+const LANE_EDGE = 2;
+
+/**
+ * The closest two lanes may run: the thickest wire (map.css's `.n-link.all`)
+ * is 3.5 wide, so lanes this far apart still show a gap between them.
+ */
+const LANE_TIGHTEST = 6;
+
+/** Where a map's lanes run: left of the boxes at `box`, each `step` left of the one before. */
+interface Lanes {
+  readonly box: number;
+  readonly step: number;
+}
+
+/**
+ * How many lanes `wires` may take: one for each but the cable down, which
+ * counts a side link too, so the room is never short.
+ */
+function lanesOf(wires: readonly Wire[]): number {
+  return wires.filter((wire) => wire.down !== true).length;
+}
+
+/**
+ * The lanes for `wires` left of boxes at `box`: a lane's usual step apart
+ * where they all fit, closer where not, so a stacked map keeps its width on a
+ * phone, though never closer than LANE_TIGHTEST; `box` is where the boxes
+ * must then start for every lane to stay on the drawing.
+ */
+function lanesWithin(wires: readonly Wire[], box: number): Lanes {
+  const gaps = Math.max(0, lanesOf(wires) - 1);
+  const fits = gaps === 0 ? WIRE.laneStep : (box - WIRE.laneStart - LANE_EDGE) / gaps;
+  const step = Math.min(WIRE.laneStep, Math.max(LANE_TIGHTEST, fits));
+  return { box: Math.max(box, WIRE.laneStart + gaps * step + LANE_EDGE), step };
+}
+
+/** Draws each of `wires`, its lanes run as `lanes` says. */
+function drawWires(wiring: Wiring, wires: readonly Wire[], lanes: Lanes): void {
   const { shape, looks, links, at } = wiring;
   let lane = 0;
   for (const wire of wires) {
@@ -140,7 +176,7 @@ function drawWires(wiring: Wiring, wires: readonly Wire[], boxX: number): void {
       } else if (a.x > b.x + b.w - 1) {
         d = `M${b.x + b.w} ${a.y + WIRE.side}H${a.x}`;
       } else {
-        const x = boxX - WIRE.laneStart - lane * WIRE.laneStep;
+        const x = lanes.box - WIRE.laneStart - lane * lanes.step;
         d = `M${a.x} ${a.y + WIRE.meet}H${x}V${b.y + WIRE.meet + lane * WIRE.meetStep}H${b.x}`;
         lane += 1;
       }
@@ -155,5 +191,5 @@ function drawWires(wiring: Wiring, wires: readonly Wire[], boxX: number): void {
   }
 }
 
-export type { Looks, Wire };
-export { drawWires, looksOf };
+export type { Lanes, Looks, Wire };
+export { drawWires, lanesWithin, looksOf };
