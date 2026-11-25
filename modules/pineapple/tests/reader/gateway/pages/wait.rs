@@ -1,0 +1,147 @@
+//! A search whose later page goes unanswered beside a first page that
+//! blinks: only a round that waited on a later page is heard beside a
+//! search that can't be read, either way round, and a blink between two
+//! waits neither counts nor ends their row.
+
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+
+use super::super::cut::{nothing, opens, tags};
+use super::super::{FAILS, Until, hearing, poisoned, said};
+use super::{began, bounded, in_pages, paged};
+
+#[test]
+fn a_first_page_blinking_after_a_wait_leaves_the_row_as_it_was() {
+    static TAGS: AtomicUsize = AtomicUsize::new(0);
+    static BEGAN: AtomicU64 = AtomicU64::new(0);
+    let came = hearing(
+        |tool, asked, now| {
+            let began = began(&BEGAN, now);
+            if tool != "slack_search_public_and_private" {
+                return said(tool, now);
+            } else if asked["query"] == "pineapple" {
+                return poisoned();
+            } else if asked.get("before").is_some() {
+                return format!("{FAILS}Slack said: ratelimited");
+            }
+            let round = if opens(asked) {
+                TAGS.fetch_add(1, Ordering::SeqCst) + 1
+            } else {
+                TAGS.load(Ordering::SeqCst)
+            };
+            // Read whole, then waiting on its second page a round, then
+            // unreadable three rounds, so the row says both can't be read,
+            // then blinking at its first page every round.
+            match round {
+                1 => tags(asked, &[(began - 300, "a word")], 1),
+                2 => bounded(asked, &paged(began, "a word"), 3, true),
+                3..=5 => poisoned(),
+                _ => format!("{FAILS}Slack said: ratelimited"),
+            }
+        },
+        // Asks enough for the blinks to come after the row says both.
+        &Until {
+            judging: 0,
+            asks: 30,
+            read_at: None,
+        },
+    );
+    // The row says both by the fourth round; the eighth opening means the
+    // sixth and seventh blinked whole, as a stale wait takes two to narrow.
+    assert!(
+        TAGS.load(Ordering::SeqCst) >= 8,
+        "two rounds blinked after the row said both: {}",
+        came.journal
+    );
+    assert!(
+        came.journal.contains("1 of 10 rounds in a row")
+            && came
+                .why
+                .contains("Slack's answers to the safe word can't be read"),
+        "a wait rounds ago doesn't make a first page's blink a wait, so the row still says \
+         both can't be read: {}\n{}",
+        came.why,
+        came.journal
+    );
+}
+
+#[test]
+fn a_search_that_cant_be_read_is_told_while_the_phrase_waits_on_a_later_page() {
+    static PHRASES: AtomicUsize = AtomicUsize::new(0);
+    static BEGAN: AtomicU64 = AtomicU64::new(0);
+    let came = hearing(
+        |tool, asked, now| {
+            let began = began(&BEGAN, now);
+            if tool != "slack_search_public_and_private" {
+                said(tool, now)
+            } else if asked["query"] != "pineapple" {
+                poisoned()
+            } else if asked.get("before").is_some() {
+                format!("{FAILS}Slack said: ratelimited")
+            } else {
+                in_pages(&PHRASES, asked, began, &paged(began, "a word"), 3, true)
+            }
+        },
+        // Only until the row is told.
+        &Until {
+            judging: 0,
+            asks: 0,
+            read_at: None,
+        },
+    );
+    let told = came.journal.find("<5>wrote Joel's row in ");
+    let began_waiting = came.journal.find("1 of 10 rounds in a row");
+    let waiting = came.journal.find("3 of 10 rounds in a row");
+    assert!(
+        came.why
+            .contains("search of Slack for your tag can't be read")
+            && began_waiting.is_some()
+            && told > began_waiting
+            && (waiting.is_none() || told < waiting),
+        "the tag's search, unreadable, is told in its rounds while the phrase's waits on its \
+         second page: {}",
+        came.journal
+    );
+}
+
+#[test]
+fn a_first_page_blinking_between_two_waits_neither_counts_nor_ends_their_row() {
+    static TAGS: AtomicUsize = AtomicUsize::new(0);
+    static BEGAN: AtomicU64 = AtomicU64::new(0);
+    let came = hearing(
+        |tool, asked, now| {
+            let began = began(&BEGAN, now);
+            if tool != "slack_search_public_and_private" {
+                return said(tool, now);
+            } else if asked["query"] == "pineapple" {
+                return nothing();
+            } else if asked.get("before").is_some() {
+                return format!("{FAILS}Slack said: ratelimited");
+            }
+            let round = if opens(asked) {
+                TAGS.fetch_add(1, Ordering::SeqCst) + 1
+            } else {
+                TAGS.load(Ordering::SeqCst)
+            };
+            // Read whole, then waiting on its second page every even
+            // round and blinking at its first page every odd one.
+            match round {
+                1 => tags(asked, &[(began - 300, "a word")], 1),
+                _ if round % 2 == 0 => bounded(asked, &paged(began, "a word"), 3, true),
+                _ => format!("{FAILS}Slack said: ratelimited"),
+            }
+        },
+        // Asks enough for the second wait and more.
+        &Until {
+            judging: 0,
+            asks: 24,
+            read_at: None,
+        },
+    );
+    assert!(
+        came.journal.contains("2 of 10 rounds in a row"),
+        "a blink between two waits neither counts nor ends their row, so the second wait is \
+         the second in a row, as a gateway whose pages take turns failing still reaches its \
+         tenth: {}",
+        came.journal
+    );
+}

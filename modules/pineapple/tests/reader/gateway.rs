@@ -676,6 +676,7 @@ fn a_search_that_blinks_beside_one_that_cant_be_read_isnt_told_as_both() {
 #[test]
 fn a_first_page_blinking_beside_a_search_that_cant_be_read_leaves_the_row_as_it_was() {
     static TAGS: AtomicUsize = AtomicUsize::new(0);
+    static BLINKS: AtomicUsize = AtomicUsize::new(0);
     let came = hearing(
         |tool, asked, now| {
             if tool != "slack_search_public_and_private" {
@@ -687,15 +688,25 @@ fn a_first_page_blinking_beside_a_search_that_cant_be_read_leaves_the_row_as_it_
                 // tag's first page blinks in every round.
                 poisoned()
             } else {
+                if cut::opens(asked) {
+                    BLINKS.fetch_add(1, Ordering::SeqCst);
+                }
                 format!("{FAILS}Slack said: ratelimited")
             }
         },
         // Told, then rounds enough to tell it anew.
         &Until {
             judging: 0,
-            asks: 20,
+            asks: 30,
             read_at: None,
         },
+    );
+    // A blink heard takes two rounds to narrow the row and a third to say
+    // so, so four blinks show it.
+    assert!(
+        BLINKS.load(Ordering::SeqCst) >= 4,
+        "four rounds blinked after the row said both: {}",
+        came.journal
     );
     assert!(
         came.why

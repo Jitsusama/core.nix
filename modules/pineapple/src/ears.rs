@@ -43,9 +43,12 @@ const PAGES: usize = 5;
 /// gap's does. What that page showed
 /// before it failed is still judged for a stop, and only Joel's warning
 /// waits, while a gateway shedding a burst of pages has the time to
-/// answer them again. A round whose first page goes unanswered neither
-/// counts nor ends the row; one that reads back to the last read, or on
-/// past the gap, does.
+/// answer them again. A round that never hears from that later page, its
+/// first page unanswered or unreadable or its sign-in refused, neither
+/// counts nor ends the row, so the row may outlast hours of those and
+/// make the next wait shorter, which errs toward telling Joel as the last
+/// read stays put; one that reads back to the last read, or on past the
+/// gap, ends it.
 const UNANSWERED: u32 = 10;
 
 /// Why a search's pages don't reach back to the last read.
@@ -176,7 +179,8 @@ pub struct Through {
     /// unread what was said since the last read.
     gaps: HashMap<String, u32>,
     /// How many rounds in a row each search's later page, by its query,
-    /// went unanswered.
+    /// went unanswered; a round that never hears from it keeps the count
+    /// as it was ([`UNANSWERED`]).
     unanswered: HashMap<String, u32>,
     /// The searches, by query, whose last round waited on a later page,
     /// as a count of unanswered rounds doesn't say: a round whose first
