@@ -5,7 +5,7 @@ use std::ffi::OsStr;
 use std::path::Path;
 
 use pineapple::deaf::{
-    Change, Deaf, Deafness, ROUNDS, Round, Search, Waiting, keep_missed, make, missed,
+    Change, Deaf, Deafness, MEET, ROUNDS, Round, Search, Waiting, keep_missed, make, missed,
     refuses_the_sign_in, waiting, waits,
 };
 
@@ -583,5 +583,85 @@ fn each_span_never_read_is_kept_a_week_beside_the_others() {
          once, however often it's written, in place of one begun as it was"
     );
     assert_eq!(read["quest"], "pineapple", "in the shape For You reads");
+    let _ = std::fs::remove_dir_all(&folder);
+}
+
+/// The rows `file` holds, read back.
+fn rows_in(file: &Path) -> Vec<serde_json::Value> {
+    let read: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(file).expect("read")).expect("JSON");
+    read["items"].as_array().expect("rows").clone()
+}
+
+#[test]
+fn a_busy_stretch_read_on_round_after_round_is_said_in_one_row() {
+    let folder = std::env::temp_dir().join(format!(
+        "pineapple-missed-meet-{}-{:?}",
+        std::process::id(),
+        std::time::SystemTime::now()
+    ));
+    let file = folder.join("missed.json");
+    std::fs::create_dir_all(&folder).expect("the folder is made");
+    assert_eq!(MEET, 10 * MINUTE, "the nearness this case is written for");
+    let tag = |from: u64, to: u64| missed(Search::Tag, Some(AT - from), Some(AT - to), AT - to);
+    let far = tag(100 * MINUTE, 90 * MINUTE);
+    keep_missed(&file, far.clone(), AT - 90 * MINUTE).expect("written");
+    let phrase = missed(
+        Search::Phrase,
+        Some(AT - 30 * MINUTE),
+        Some(AT - 25 * MINUTE),
+        AT,
+    );
+    keep_missed(&file, phrase.clone(), AT - 25 * MINUTE).expect("written");
+    keep_missed(&file, tag(30 * MINUTE, 25 * MINUTE), AT - 25 * MINUTE).expect("written");
+    keep_missed(&file, tag(26 * MINUTE, 20 * MINUTE), AT - 20 * MINUTE).expect("written");
+    let overlapping = rows_in(&file);
+    assert_eq!(
+        (
+            overlapping.len(),
+            &overlapping[2]["id"],
+            &overlapping[2]["whole"]
+        ),
+        (
+            3,
+            &serde_json::json!(format!(
+                "pineapple-slack-missed-tag-{}-{}",
+                AT - 30 * MINUTE,
+                AT - 20 * MINUTE
+            )),
+            &serde_json::json!(true)
+        ),
+        "spans that overlap are one, said whole: {overlapping:?}"
+    );
+    keep_missed(&file, tag(15 * MINUTE, 12 * MINUTE), AT - 12 * MINUTE).expect("written");
+    let rows = rows_in(&file);
+    assert_eq!(
+        rows.iter().map(|row| row["id"].clone()).collect::<Vec<_>>(),
+        [
+            far["id"].clone(),
+            phrase["id"].clone(),
+            serde_json::json!(format!(
+                "pineapple-slack-missed-tag-{}-{}",
+                AT - 30 * MINUTE,
+                AT - 12 * MINUTE
+            )),
+        ],
+        "one five minutes past joins them, while one farther off and the other search's \
+         stay their own"
+    );
+    assert_eq!(
+        rows[2]["why"],
+        "The safe word never read parts of what tagged you in Slack without saying pineapple \
+         in the 18 minutes before this was raised, as more was said than it could read, so a \
+         stop said in them wasn't heard",
+        "a read stretch lies between, so it's said as parts, raised as the newest was"
+    );
+    assert_eq!(rows[2]["whole"], false, "and kept so as written again");
+    keep_missed(&file, tag(13 * MINUTE, 10 * MINUTE), AT - 10 * MINUTE).expect("written");
+    let again = rows_in(&file);
+    assert!(
+        again.len() == 3 && again[2]["whole"] == false,
+        "a row once said as parts stays so, though the next overlaps it: {again:?}"
+    );
     let _ = std::fs::remove_dir_all(&folder);
 }
