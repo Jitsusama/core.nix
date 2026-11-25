@@ -51,13 +51,8 @@ trap 'kill "\$!" 2> /dev/null; sleep 0.2; exit 0' TERM
 echo "\$*" >> "$work/answers"
 echo "\$\$" > "$work/answering"
 if [ -e "$work/ends" ]; then
-  # Said once the job has said it's offered, as a refusal comes only after
-  # the record is probed, polled in tenths of a second for ten at most.
-  tries=0
-  while ! grep -q "is offered" "$work/said" 2> /dev/null && [ "\${tries}" -lt 100 ]; do
-    sleep 0.1
-    tries=\$((tries + 1))
-  done
+  # Said at once, so only a job that says it's offered before it starts
+  # dns-sd has that line first in its log.
   echo "07:00:00.000 Got a reply for record its-own-name.local: Name in use, please choose another"
   exit 3
 fi

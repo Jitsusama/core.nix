@@ -84,7 +84,8 @@ in
   # before it. It sends no signal, since neither job takes one: launchd
   # opens a job's log anew each time it starts it, which for keep.sh is
   # every minute. answer.sh runs as long as its link holds, so what it
-  # writes after a move lands in the log moved aside, until it starts again.
+  # writes once newsyslog has moved its log aside lands in the old one,
+  # until launchd starts it again.
   config.environment.etc."newsyslog.d/local-name.conf" = lib.mkIf (name != null) {
     text = ''
       # logfilename                    mode count size(KB) when flags

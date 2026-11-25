@@ -34,8 +34,9 @@ say() {
 # Sets link and address to the first en* link macOS lists for IPv4 and its
 # address, from scutil --nwi, or to nothing when it lists none with one,
 # and read to whether scutil could say. When it can't, both are left as
-# they were, so nothing changes: what scutil says then is left out, since
-# it would be said at every read.
+# they were, so nothing changes: scutil's own words are left out, since
+# they'd come at every read, fifteen seconds apart, and macOS's network
+# list says no more than that it couldn't be read.
 pick() {
   local line section="" at="" listed
   if ! listed=$(scutil --nwi 2>/dev/null); then
@@ -93,11 +94,12 @@ while [ -z "${link}" ]; do
   sleep "${every}"
   pick
 done
+# Offered, not yet answering: dns-sd's own line, which comes after this
+# one, says when it's registered, that another machine holds the name or
+# that it couldn't start.
+say "${name}.local is offered as ${address} on ${link}"
 dns-sd -i "${link}" -P "${name}" _workstation._tcp local 9 "${name}.local" "${address}" >&2 &
 answering=$!
-# Offered, not yet answering: dns-sd's own line says when it's registered,
-# or that another machine holds the name.
-say "${name}.local is offered as ${address} on ${link}"
 while true; do
   # The same: a changed address is seen only by reading it again.
   sleep "${every}"
