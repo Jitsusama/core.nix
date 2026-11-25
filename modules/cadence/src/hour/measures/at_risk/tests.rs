@@ -119,6 +119,11 @@ fn a_change_main_left_alone_or_a_date_already_past_is_not_at_risk() {
         "a change main left alone, or a date that's a slip now, counted: {:?}",
         m.behind
     );
+    assert!(
+        m.target == Some(0.0) && !m.says.contains("unread"),
+        "a change main left alone, or a date past, left the hour unjudged: {}",
+        m.says
+    );
 }
 
 #[test]
@@ -144,6 +149,11 @@ fn a_landed_or_closed_piece_or_a_closed_parked_or_confirmed_ask_waits_on_nothing
         m.behind.is_empty(),
         "a piece or ask that waits on no merge counted: {:?}",
         m.behind
+    );
+    assert!(
+        m.target == Some(0.0) && !m.says.contains("unread"),
+        "a piece or ask that waits on no merge was read, and left the hour unjudged: {}",
+        m.says
     );
 }
 
@@ -186,8 +196,8 @@ fn a_world_piece_is_asked_by_its_branch_and_one_with_none_is_unread() {
         "the branch's files, or how many past the first three, read wrong"
     );
     assert!(
-        m.says.ends_with("(1 unread)"),
-        "a piece with no branch passed for none at risk: {}",
+        m.says.contains("(1 unread; the first, no branch: "),
+        "a piece with no branch passed for none at risk, or went unnamed: {}",
         m.says
     );
     assert_eq!(
@@ -209,8 +219,9 @@ fn a_change_that_cannot_be_read_is_said_unread_not_safe() {
     let m = at_risk(&text, NOW, Tracking::His, &unreadable, &|_| Ok(Vec::new()));
     assert!(m.behind.is_empty(), "an unread change counted at risk");
     assert!(
-        m.says.ends_with("(1 unread)"),
-        "an unread change passed for none at risk: {}",
+        m.says
+            .ends_with("(1 unread; the first, a fix: the fetch failed)"),
+        "an unread change passed for none at risk, or went unnamed: {}",
         m.says
     );
     assert_eq!(m.target, None, "an unread change alone was judged met");
@@ -222,7 +233,7 @@ fn a_pr_naming_no_change_that_can_be_found_is_unread_not_safe() {
         let text = list(&[ask_waiting("a fix", "A", (NOW + 600, pr), &json!({}))]);
         let m = read(&text);
         assert!(
-            m.says.ends_with("(1 unread)") && m.target.is_none(),
+            m.says.contains("(1 unread; the first, a fix: ") && m.target.is_none(),
             "{pr} passed for none at risk: {} {:?}",
             m.says,
             m.target
@@ -350,7 +361,7 @@ fn a_part_naming_no_change_leaves_the_whole_piece_unread() {
     )]);
     let m = read(&text);
     assert!(
-        m.says.ends_with("(1 unread)") && m.target.is_none(),
+        m.says.contains("(1 unread; the first, two halves: ") && m.target.is_none(),
         "a half naming no change was dropped and the rest judged safe: {} {:?}",
         m.says,
         m.target

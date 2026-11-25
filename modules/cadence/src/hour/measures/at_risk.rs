@@ -36,8 +36,10 @@ type Risk = (i64, String, String);
 /// confirmed waits on nothing. Each ask is read from its latest line, as
 /// the list writes an ask whole each time. A date whose changes couldn't
 /// be read, or whose `pr` names none that can be found, isn't counted,
-/// and the measure says how many; with none at risk beside them, it goes
-/// unjudged, so a read that fails never passes for none at risk.
+/// and the measure says how many, and the first and why, so a measure
+/// blind for hours shows what to mend on the card itself; with none at
+/// risk beside them, it goes unjudged, so a read that fails never passes
+/// for none at risk.
 #[must_use]
 pub fn at_risk(
     text: &str,
@@ -52,6 +54,7 @@ pub fn at_risk(
     }
     let mut risks: Vec<Risk> = Vec::new();
     let mut unread = 0;
+    let mut first_unread = None;
     for ask in latest.values().filter(|ask| open(ask, which)) {
         for piece in waiting(ask) {
             let Some(due) = seconds(&piece["expected"]).filter(|&due| due > now) else {
@@ -63,8 +66,14 @@ pub fn at_risk(
                 Err(why) => {
                     // The asks list and the gate's record are other
                     // programs' text, so a newline in them can't write a
-                    // journal line that reads as cadence's own.
-                    eprintln!("cadence: at risk: {}", why.replace(char::is_control, "?"));
+                    // journal or card line that reads as cadence's own.
+                    let why = why.replace(char::is_control, "?");
+                    eprintln!("cadence: at risk: {why}");
+                    first_unread.get_or_insert_with(|| {
+                        let what = piece["what"].as_str().or_else(|| ask["words"].as_str());
+                        let what = what.unwrap_or_default().replace(char::is_control, "?");
+                        format!("{}: {}", short(&what), short(&why))
+                    });
                     unread += 1;
                 }
             }
@@ -75,10 +84,9 @@ pub fn at_risk(
     Measure {
         key: which.key(KEY),
         class: Class::Slip,
-        says: if unread == 0 {
-            says.to_owned()
-        } else {
-            format!("{says} ({unread} unread)")
+        says: match first_unread {
+            Some(first) => format!("{says} ({unread} unread; the first, {first})"),
+            None => says.to_owned(),
         },
         now: count(risks.len()),
         target: (unread == 0 || !risks.is_empty()).then_some(0.0),
