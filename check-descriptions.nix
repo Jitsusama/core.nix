@@ -2284,7 +2284,8 @@
   model-relay-runs-in-background-slice = ''
     model-relay is installed only where a machine names an origin, listens where only its account
     may ask, removes its socket when stopped, runs with its socket in background.slice, forwards
-    to the origin named alone, outlasts a switch, stops waiting on its answers in time to leave
+    to the origin named alone, outlasts a switch, its socket's included, stops waiting on its
+    answers in time to leave
     before its stop timeout, and tells every pi where to find it
   '';
   mona-sans-vf-is-the-whole-face = ''

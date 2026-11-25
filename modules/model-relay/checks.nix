@@ -57,8 +57,9 @@ onLinux {
 
   # A workstation that names no origin has no relay and tells pi of none;
   # one that names an origin listens where only the account may ask, in the
-  # agents' lane, forwards to that origin alone, stops before systemd
-  # would kill it, and tells every pi the folder its sockets are in.
+  # agents' lane, forwards to that origin alone, is left be by a switch,
+  # its socket included, stops before systemd would kill it, and tells
+  # every pi the folder its sockets are in.
   model-relay-runs-in-background-slice =
     let
       named = account (bareNixos [
@@ -68,7 +69,8 @@ onLinux {
         }
       ]);
       bare = account workstation;
-      listens = named.systemd.user.sockets.model-relay-agents.Socket;
+      socket = named.systemd.user.sockets.model-relay-agents;
+      listens = socket.Socket;
       unit = named.systemd.user.services.model-relay-agents.Unit;
       service = named.systemd.user.services.model-relay-agents.Service;
       drain = lib.match ".* --drain-within ([0-9]+) --origin https://models\\.example" (
@@ -89,7 +91,7 @@ onLinux {
       needs = lib.toInt (lib.head drain) + lib.toInt (lib.head goodbyes) + spare;
     in
     holds "model-relay-runs-in-background-slice"
-      "model-relay is installed where no origin is named, lets other accounts ask, leaves its socket behind, runs without its socket or outside background.slice, forwards somewhere other than the origin named, sees more of the machine than its origin needs, is restarted by a switch, waits on its answers once stopped past what its stop timeout leaves for its goodbyes, or doesn't tell pi where it is."
+      "model-relay is installed where no origin is named, lets other accounts ask, leaves its socket behind, runs without its socket or outside background.slice, forwards somewhere other than the origin named, sees more of the machine than its origin needs, is restarted by a switch, itself or through its socket, waits on its answers once stopped past what its stop timeout leaves for its goodbyes, or doesn't tell pi where it is."
       (
         !(bare.systemd.user.sockets ? model-relay-agents)
         && !(bare.systemd.user.sessionVariables ? PI_PROXY_RELAY)
@@ -99,6 +101,8 @@ onLinux {
         && listens.RemoveOnStop
         && unit.Requires == [ "model-relay-agents.socket" ]
         && unit.X-SwitchMethod == "keep-old"
+        # Its socket too, as a switch restarting that restarts the relay.
+        && socket.Unit.X-SwitchMethod or null == "keep-old"
         && service.Slice == "background.slice"
         # Its drain, then its goodbyes, end inside the stop timeout, so it
         # leaves on its own and says its counts.

@@ -77,7 +77,16 @@ in
     systemd.user.sessionVariables.PI_PROXY_RELAY = "\${XDG_RUNTIME_DIR}/${folder}";
 
     systemd.user.sockets.model-relay-agents = {
-      Unit.Description = "Where the agents' model requests are relayed from";
+      Unit = {
+        Description = "Where the agents' model requests are relayed from";
+        # The relay requires its socket, so a switch restarting a changed
+        # socket restarts the relay too, past its own keep-old below, and
+        # every agent's answer drains or is cut. On 19 November one did
+        # just that. Left be, a change to the socket takes effect at the
+        # next login or boot, or at systemctl --user restart
+        # model-relay-agents.socket.
+        X-SwitchMethod = "keep-old";
+      };
       # Only the account may ask.
       Socket = {
         ListenStream = "%t/${folder}/agents.sock";
