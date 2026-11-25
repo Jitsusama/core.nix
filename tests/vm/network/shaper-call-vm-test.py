@@ -192,6 +192,28 @@ class Rig:
                 asks.append(step["up"])
         return min(asks, default=None)
 
+    def newest(self) -> tuple[int | None, int | None]:
+        """Give the shaper's newest traced second of eth1, and the ceiling it held the upload under.
+
+        The second as the trace stamps it, in seconds since 1970, and the ceiling in kbit/s, a
+        trial's, the network's or its house's; none if none held it then, and both none while
+        eth1 has no traced second. A line still writing is passed over.
+        """
+        _, text = self.client.execute("cat /var/lib/shaper/heard/*.jsonl 2>/dev/null")
+        newest: tuple[int | None, int | None] = (None, None)
+        for line in text.splitlines():
+            try:
+                step: Json = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(step, dict) and step.get("link") == "eth1":
+                at, ceiling = step.get("at"), step.get("ceiling")
+                newest = (
+                    at if isinstance(at, int) else None,
+                    ceiling if isinstance(ceiling, int) else None,
+                )
+        return newest
+
     def ifb(self) -> str:
         """Give the name of the IFB that carries eth1's downloads."""
         index = int(self.client.succeed("cat /sys/class/net/eth1/ifindex"))
@@ -427,9 +449,10 @@ class Rig:
         """Give what the controller asked each way of eth1 be held to, by the second it stepped on.
 
         From the shaper's own trace, before its floor and the link's most; a way it asked
-        no limit of reads as no limit. The ceiling it held the upload under then, a trial's
-        or the network's, comes after, so a second the trial wasn't in force shows. A line
-        still writing is passed over.
+        no limit of reads as no limit. The ceiling it held the upload under then, a trial's,
+        the network's or its house's, comes after, so a second the trial wasn't in force
+        shows; then what a call's room held the download to, and the controller's reason for
+        the upload's hold. A line still writing is passed over.
         """
         _, text = self.client.execute("cat /var/lib/shaper/heard/*.jsonl 2>/dev/null")
         asked: dict[int, str] = {}
@@ -440,8 +463,11 @@ class Rig:
                 continue
             if isinstance(step, dict) and step.get("link") == "eth1" and "at" in step:
                 up, down = step.get("up", "no limit"), step.get("down", "no limit")
-                ceiling = step.get("ceiling", "none")
-                asked[step["at"]] = f", asked up {up}, down {down}, under {ceiling}"
+                ceiling, room = step.get("ceiling", "none"), step.get("room", "none")
+                why = step.get("why", "none said")
+                asked[step["at"]] = (
+                    f", asked up {up}, down {down}, under {ceiling}, room {room}: {why}"
+                )
         return asked
 
     @staticmethod
@@ -664,6 +690,35 @@ class Filling:
             now=now and given,
             last_try=last_try,
             otherwise="the loads never filled the line" + ("" if given else short),
+        )
+
+
+@dataclass
+class Tuned:
+    """A wait for the shaper to hold the upload under a trial's ceiling, by its newest second.
+
+    The shaper reads the trial each second it looks at the links, so its ceiling holds a step or
+    two after it's written. On 24 November two runs' traces read no ceiling for a minute or more
+    of the seconds the subtest judged, and the controller's own cut in that stretch failed it,
+    so a trial taken late fails here, with the trace, rather than as a cut or a rate it was to
+    hold. The failure says the client's clock beside the newest traced second, since a trace
+    stamped ahead of the clock would read its old seconds as the trial's.
+    """
+
+    rig: Rig
+
+    def __call__(self, last_try: bool) -> bool:
+        """Give whether the ceiling holds, saying otherwise with the trace on its last try."""
+        at, ceiling = self.rig.newest()
+        clock = self.rig.client.succeed("date +%s").strip()
+        return met(
+            self.rig,
+            now=ceiling == HELD_KBIT,
+            last_try=last_try,
+            otherwise=(
+                f"the shaper never held the upload under the trial's {HELD_KBIT} kbit/s: its"
+                f" newest traced second, {at}, under {ceiling}, with the client's clock at {clock}"
+            ),
         )
 
 
@@ -967,6 +1022,9 @@ def test_a_call_goes_ahead_of_its_own_uploads(rig: Rig) -> None:
     """
     try:
         rig.client.succeed(f"echo '{{\"most_kbit\": {HELD_KBIT}}}' > {TRIAL}")
+        # Taken before the loads, the ceiling meets the classes at the resting rate, far over
+        # it, so they move to it whatever `apply`'s hundredth would leave unmoved.
+        retry(Tuned(rig), timeout=COMING_UP)
         before = {what: rig.counts("eth1", what) for what in ("drops", "sent_packets")}
         since = int(rig.client.succeed("date +%s"))
         under_load(rig, app_uploads=APP_UPLOADS, names=["media"])
@@ -1000,14 +1058,16 @@ def test_a_call_goes_ahead_of_its_own_uploads(rig: Rig) -> None:
     # than beside it, the video tin would drop nothing whatever CAKE did; and counts that
     # started again would go back.
     # On 24 November the classes read 6035 kbit/s under the 6000 trial, with no trace to say
-    # whether the trial's ceiling had lapsed or the shaper never moved the classes to it, so a
-    # failure takes the trace, each second's ceiling in it.
+    # whether its ceiling took late, lapsed, or met classes within a hundredth over it, which
+    # `apply` leaves unmoved; the wait for it rules out the first and last, so a failure takes
+    # the trace, each second's ceiling in it.
+    # Each assertion below judges the shaper, so each failure takes the trace (a message is
+    # made only then).
     assert held <= HELD_KBIT, (
         f"the trial never held the upload: its classes at {held} kbit/s\n{rig.trace()}"
     )
     # Held much under it at any moment, the call would outgrow the half that CAKE serves video
     # first, so the least it asked through the loads and the call is what's judged.
-    # Each judges the shaper, so each failure takes the trace (a message is made only then).
     assert least is not None, (
         f"the controller asked the upload no limit under the trial\n{rig.trace()}"
     )
@@ -1020,8 +1080,12 @@ def test_a_call_goes_ahead_of_its_own_uploads(rig: Rig) -> None:
     assert joel == held, (
         f"Joel's CAKE at {joel} kbit/s doesn't follow the classes' {held}\n{rig.trace()}"
     )
-    assert sent["video"] >= CALL_LEAST, f"the call didn't go in the video tin: {sent}"
-    assert min(dropped.values()) >= 0, f"Joel's CAKE started its counts again: {dropped}"
+    assert sent["video"] >= CALL_LEAST, (
+        f"the call didn't go in the video tin: {sent}\n{rig.trace()}"
+    )
+    assert min(dropped.values()) >= 0, (
+        f"Joel's CAKE started its counts again: {dropped}\n{rig.trace()}"
+    )
     assert dropped["best effort"] > 0, (
         f"the app's uploads never filled Joel's lane: {dropped}\n{rig.trace()}"
     )
