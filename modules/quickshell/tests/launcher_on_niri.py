@@ -43,11 +43,13 @@ Json = dict[str, Any]
 # How long the shell may take to start, and what a wait allows by default.
 STARTING = timedelta(seconds=60)
 WAITING = timedelta(seconds=30)
-# How many of the reports a failed wait turned down it names, the last ones, and how much of
+# How many of the reports a failed wait turned down it names, the latest ones, and how much of
 # each: a showing is the launcher's whole state, and the margin cat says where it sits each
-# frame, so all of them would bury the log's tail printed after.
-NEAREST = 5
-NEAR_LONGEST = 200
+# frame, so all of them would bury the log's tail printed after. The latest is named whole, as
+# a showing's rows and selected come past its 3,000th character of about 7,500, and the ones
+# before it only begin, to say what led up to it.
+LATEST = 5
+LATEST_LONGEST = 300
 # How often what the launcher shows is asked again while a wait has heard nothing, and the
 # pause between two keys typed, as the desktop test's keys are.
 POLL = 0.05
@@ -81,6 +83,13 @@ KEYS = {
     "ctrl-y": ["-M", "ctrl", "-k", "y", "-m", "ctrl"],
     "ctrl-bracketright": ["-M", "ctrl", "-k", "bracketright", "-m", "ctrl"],
 }
+
+
+def cut(said: str) -> str:
+    """A report as a failed wait names it, saying how much was cut off its end, if any."""
+    if len(said) <= LATEST_LONGEST:
+        return said
+    return f"{said[:LATEST_LONGEST]}... ({len(said) - LATEST_LONGEST} characters more)"
 
 
 class Shell:
@@ -390,21 +399,28 @@ class Shell:
 
         One that fails names the last reports the prefix began, as the test turned them down,
         and how many it turned down, or that none came, since the log's tail is often only the
-        showings a case asked for (the train, 25 Nov 03:21). Only the last few, each cut short,
-        since a prefix the shell says each frame, as the margin cat's, would fill the message.
+        showings a case asked for (the train, 25 Nov 03:21). Only the last few, all but the
+        latest cut short, since a prefix the shell says each frame, as the margin cat's, would
+        fill the message.
         """
         deadline = time.monotonic() + timeout.total_seconds()
-        near: list[str] = []
+        latest: list[str] = []
         turned = 0
-        while time.monotonic() < deadline:
+        while True:
+            # The deadline is read before the log, so what came during the last pause is
+            # judged too, and "none came" never belies the tail printed under it.
+            last = time.monotonic() >= deadline
             reports, since = self.said_since(since)
             begun = [said[len(prefix) :] for said in reports if said.startswith(prefix)]
             if any(test(rest) for rest in begun):
                 return
             turned += len(begun)
-            near = (near + begun)[-NEAREST:]
+            latest = (latest + begun)[-LATEST:]
+            if last:
+                break
             time.sleep(POLL)
-        heard = "".join(f"\n  {prefix}{rest[:NEAR_LONGEST]}" for rest in near)
+        heard = "".join(f"\n  {prefix}{cut(rest)}" for rest in latest[:-1])
+        heard += "".join(f"\n  {prefix}{rest}" for rest in latest[-1:])
         said = f"it turned down {turned}, the last:{heard}" if turned else "none came"
         failed = (
             f"the shell never reported {prefix!r} as wanted since the mark; {said}\n"
