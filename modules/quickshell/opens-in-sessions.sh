@@ -16,12 +16,11 @@
 # unit's own main process, which nothing else can be. A kitty its unit is
 # starting again, 5 s after it ended, is waited on for up to 20 s from
 # this start, its last look included, which the shell's answerPatience
-# counts on: by the clock rather than by counting looks, since each look
-# asks systemd and can be slow under a cold boot's load, so each is cut
-# at 2 s and none begins past 17.8 s. A time sync stepping the clock back
-# meanwhile leaves a hundred looks to bound it; one stepping it forward
-# gives up early, and the next press asks again. So a window asked of it
-# meanwhile opens once it's back rather than never;
+# counts on. It's timed by the time since boot, which no time sync steps,
+# rather than by counting looks, since each look asks systemd and can be
+# slow under a cold boot's load; so each look is cut at 2 s and none
+# begins past 17.7 s, leaving the rest for starting what each look runs.
+# So a window asked of it meanwhile opens once it's back rather than never;
 # with neither by then, a kitty that turns the launch down or can't be
 # reached, or an old kitty that opens nothing, the journal says why, and
 # the shell is told, so it stops counting a viewer (pi-hosted) as coming
@@ -45,22 +44,32 @@
 # what it was given (its cat.c), which would open no window and tell
 # the shell nothing.
 
+# The time since boot in hundredths of a second, from /proc/uptime,
+# whose first field always has two decimals.
+up() {
+  since=$(cut -d ' ' -f 1 /proc/uptime)
+  echo $((${since%.*} * 100 + 1${since#*.} - 100))
+}
+
 asked=$(date +%s%3N)
+started=$(up)
 if [ -z "${OPENS_IN_SESSIONS_ASKED:-}" ] && [ /proc/self/fd/2 -ef /dev/null ] &&
   command -v systemd-cat > /dev/null &&
   systemd-cat --identifier=opens-in-sessions true 2> /dev/null; then
-  exec env "OPENS_IN_SESSIONS_ASKED=$asked" systemd-cat --identifier=opens-in-sessions \
-    sh "$0" "$@"
+  exec env "OPENS_IN_SESSIONS_ASKED=$asked" "OPENS_IN_SESSIONS_STARTED=$started" \
+    systemd-cat --identifier=opens-in-sessions sh "$0" "$@"
 fi
-asked=${OPENS_IN_SESSIONS_ASKED:-$asked}
-unset OPENS_IN_SESSIONS_ASKED
-# Only digits are a time. Any other, inherited or from a date that has no
-# ms, gives way to the clock in whole seconds, so the arithmetic below
-# never evaluates it as code.
-case $asked in
-  '' | *[!0-9]*) asked=$(date +%s)000 ;;
-  *) ;;
+# A first start's times are kept only if they're numbers, which this one
+# writes, so whatever else set its environment is never evaluated below.
+case ${OPENS_IN_SESSIONS_ASKED:-} in
+  '' | *[!0-9]*) ;;
+  *) asked=$OPENS_IN_SESSIONS_ASKED ;;
 esac
+case ${OPENS_IN_SESSIONS_STARTED:-} in
+  '' | 0* | *[!0-9]*) ;;
+  *) started=$OPENS_IN_SESSIONS_STARTED ;;
+esac
+unset OPENS_IN_SESSIONS_ASKED OPENS_IN_SESSIONS_STARTED
 sock=$1
 class=$2
 shift 2
@@ -78,17 +87,13 @@ old() {
 }
 
 reached=
-looks=0
 until [ -S "$sock" ]; do
   if old; then
     reached=old
     break
   fi
-  looks=$((looks + 1))
-  now=$(date +%s%3N)
-  if [ "$now" -ge $((asked + 17800)) ] || [ "$looks" -ge 100 ]; then
-    break
-  fi
+  now=$(up)
+  [ "$now" -lt $((started + 1750)) ] || break
   sleep 0.2
 done
 
