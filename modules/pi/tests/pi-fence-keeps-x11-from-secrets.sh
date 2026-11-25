@@ -140,6 +140,7 @@ walls() {
 said=
 reached=
 until=$((SECONDS + 40))
+# shellcheck disable=SC2310 # past only compares the clock, which is the loop's test.
 until past "$until"; do
   # A read that succeeds reached X, though what it read was empty.
   if said=$(timeout 5 xclip -o -selection clipboard -display "$display" 2>&1); then
@@ -168,6 +169,7 @@ echo "WALLS HOLD: a fenced command reaches no X11 on $display" >&2
 # X11 client, focused or not: up to 30 seconds.
 focused=
 until=$((SECONDS + 30))
+# shellcheck disable=SC2310 # As above.
 until past "$until"; do
   focused=$(timeout 5 niri msg focused-window 2> /dev/null || true)
   case $focused in
@@ -189,6 +191,7 @@ wl-copy --sensitive "$secret"
 # satellite, once the satellite has been offered it: up to 20 seconds.
 read=
 until=$((SECONDS + 20))
+# shellcheck disable=SC2310 # As above.
 until past "$until"; do
   read=$(timeout 5 xclip -o -selection clipboard -display "$display" 2> /dev/null) || read=
   [ "$read" = "$secret" ] && break

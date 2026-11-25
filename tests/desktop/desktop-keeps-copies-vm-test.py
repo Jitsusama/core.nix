@@ -371,9 +371,6 @@ def test_forget_the_clipboard_forgets_every_copy_and_what_it_held(desktop: Deskt
 # the focus the secret copy's phase needs.
 WALLS_HOLD = "WALLS HOLD: "
 FOCUSED = "FOCUSED: "
-# The one failure the fence's subtest excuses, the focus never coming,
-# which the quarantined subtest above it answers for.
-NO_FOCUS = "FAIL: niri focused no X11 window"
 # Where the script's words are kept as it runs, so a run cut off at the
 # timeout still says which phases held: Joel's runtime folder, his alone.
 X11_SAID = "$XDG_RUNTIME_DIR/x11-fence-said"
@@ -426,13 +423,13 @@ def test_a_fenced_command_reads_no_secret_copy_through_x11(desktop: Desktop) -> 
     # The walls are tried before any window takes the focus, so this
     # proves them in every run, and fails in every run they let X through.
     assert said_line(said, WALLS_HOLD), f"the fence's walls weren't shown to hold: {said}"
-    # Past the focus, the secret copy's phase is this one's too: only a
-    # run whose window never took the focus, the subtest above's failure,
-    # ends there untried, and it shows as a skip, never a pass.
-    if not said_line(said, FOCUSED):
-        assert said_line(said, NO_FOCUS), f"it ended past the walls for another cause: {said}"
-        assert said.rstrip().endswith("ended 1"), f"the script ended past the walls unsaid: {said}"
-        pytest.skip("no X11 window took the focus, so the secret copy's phase went untried")
+    # Past the focus, the secret copy's phase is this one's too, so a run
+    # whose window never took the focus fails here as well, saying the
+    # walls held and what went untried, rather than passing without it.
+    assert said_line(said, FOCUSED), (
+        f"the walls held, but no X11 window took the focus, so the secret copy's phase"
+        f" went untried: {said}"
+    )
     assert said.rstrip().endswith("ended 0"), f"the fence let X11 through: {said}"
 
 
