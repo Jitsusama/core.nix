@@ -47,6 +47,7 @@
       ${copied [
         "launcher/Beneath.js"
         "launcher/EmojiDrawer.js"
+        "launcher/EmojiSearch.js"
         "launcher/Found.js"
         "launcher/Moved.js"
         "launcher/ReadyRows.js"

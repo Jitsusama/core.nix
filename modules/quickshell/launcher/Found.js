@@ -9,18 +9,22 @@
 // the watch never served, as Capture's taken files are, a few thousand of
 // which Recent serves nine. Those come wrapped as the stream wraps a row,
 // so they're read as any record is. Its grade is the daemon's where it
-// says one, as Emoji's says 1 for a best found only loosely, else 0. No
+// says one, as Emoji's says 1 for a best found only loosely, else 0. How
+// many it found is the daemon's where it says, past the keys it answers
+// with, as Emoji's answers a hundred of all it found, else its keys'. No
 // answer yet is `words` null, with nothing found.
 function foundOf(words, answer) {
     const rows = {};
     for (const [key, row] of Object.entries(answer?.rows ?? {})) {
         rows[key] = { key, kind: "row", row };
     }
+    const keys = answer?.keys ?? [];
     return {
         words: answer ? words : null,
-        keys: answer?.keys ?? [],
+        keys,
         marks: answer?.marks ?? {},
         grade: answer?.grade ?? 0,
+        found: answer?.found ?? keys.length,
         rows
     };
 }

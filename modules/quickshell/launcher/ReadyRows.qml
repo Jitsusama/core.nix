@@ -382,6 +382,24 @@ Scope {
         return Ready.rowOf(held[key] ?? typedHeld[key]);
     }
 
+    // What was made of the rows inside others let go, as a place asks once
+    // the launcher closes where those are made only as a step shows them:
+    // the emoji of each of Emoji's groups stepped into were otherwise held
+    // for the shell's life. Its rows and their places stand, so nothing is
+    // placed again, and a row inside is made again once it's shown. The
+    // launcher keeps its last four lists (RowsKept.js's LATELY), and any a
+    // place is kept on, so a list of them shown last goes only once four
+    // more have been; its view keeps only each row's mark, never the row.
+    function letGoInside() {
+        for (const key of Beneath.madeInside(made, served)) {
+            delete madeOf[made[key]?.key];
+            delete made[key];
+            delete madeFrom[key];
+            delete lending[key];
+            delete clocked[key];
+        }
+    }
+
     // Which record each row made was made of, by the row's key, for its
     // stamp. A plain object, so writing it as a row's made notifies nothing.
     readonly property var madeOf: ({})

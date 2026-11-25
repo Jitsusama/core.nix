@@ -2594,10 +2594,8 @@ def test_a_drawer_shown_again_measures_little_anew(shell: Shell) -> None:
 FIRST_GROUP = "Smileys & Emotion"
 # How many of Emoji's rows its start makes and Super+E lists at most: its groups, not 1,914.
 EMOJI_MADE_MOST = 20
-# The start line's count of rows by source, the most first, and Emoji's among them, where it's
-# one of the sources the line names; one it leaves out made fewer than the last it names.
-START_MADE = re.compile(r"places kept as the shell started, \d+ rows made \(([^)]*)\)")
-EMOJI_MADE = re.compile(r"\bemoji (\d+)")
+# How many emoji Desktop's Emoji says it holds at least, though its own rows are its groups.
+EMOJI_LISTED_LEAST = 1000
 
 DRAWER_SAID = re.compile(
     r'launcher: drawer for "((?:[^"\\]|\\.)*)" presented (\d+) ms from the key: a median (\d+) ms '
@@ -2695,23 +2693,85 @@ def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
 
     Every one of Emoji's 1,914 rows was made as the shell started, kept for Super+E and matched
     in the shell, about 30 MB of what its heap held (Y2YBTS's lab, 2026-11-19). The history
-    finds them now (clipboard/src/search.rs), so the start makes only its groups' rows.
+    finds them now (clipboard/src/search.rs), so the start makes only its groups' rows, a
+    group's row moved over makes none of its emoji, and closing lets go of those a step into a
+    group made, which were otherwise held for the shell's life. The tally counts every row since
+    the shell started, and a case before this one in its part steps into a group, so each
+    count here is from this case's start; the start itself is judged by having made fewer than
+    Emoji holds, which a step into one group never reaches.
     """
     launcher_on_niri.warmed(shell)
-    said = shell.log.read_bytes()[shell.launched :].decode(errors="replace")
-    start = START_MADE.search(said)
-    assert start, f"the shell never said what its start made\n{shell.tail()}"
-    made = EMOJI_MADE.search(start.group(1))
-    counted = int(made.group(1)) if made else 0
-    assert counted < EMOJI_MADE_MOST, f"the start made {counted} of Emoji's rows"
+    before = shell.rows_made("emoji")
+    assert before < EMOJI_LISTED_LEAST, (
+        f"Emoji made {before} rows before this case, so its start made every emoji"
+    )
     shell.as_account(shell.ipc("collection", "emoji"))
     shell.launcher_ready()
     shell.launcher_until(lambda shown: shown["rows"][:1] == [FIRST_GROUP])
-    rows = shell.showing()["rows"]
-    # showing() lists at most 20 rows, so 20 or more shows as 20, which this refuses.
-    assert len(rows) < EMOJI_MADE_MOST, f"Super+E listed {rows[:12]}, not Unicode's groups"
+    # Once its groups are listed the history's records have come, so an opening that made
+    # every emoji has made them by now.
+    made = shell.rows_made("emoji") - before
+    assert made < EMOJI_MADE_MOST, f"Emoji made {made} rows before a group was stepped into"
+    listed = shell.showing()
+    assert listed["count"] < EMOJI_MADE_MOST, (
+        f"Super+E listed {listed['count']} rows, {listed['rows'][:12]}, not Unicode's groups"
+    )
+    shell.normal()
+    shell.send_chars("j")
+    shell.launcher_until(lambda shown: (shown.get("selected") or {}).get("name") != FIRST_GROUP)
+    moved = shell.rows_made("emoji") - before
+    assert moved < EMOJI_MADE_MOST, f"moving to the next group made {moved - made} of its emoji"
+    shell.send_chars("k")
+    shell.launcher_until(lambda shown: (shown.get("selected") or {}).get("name") == FIRST_GROUP)
+    shell.step_in()
+    shell.launcher_until(functools.partial(stands_in, FIRST_GROUP))
+    stepped = shell.rows_made("emoji") - before
+    assert stepped > moved, (
+        "a step into the first group made none of its emoji, so they were made before this"
+        " case and kept: a close before it let none go, or the start made them"
+    )
+    shell.close_launcher()
+    shell.as_account(shell.ipc("collection", "emoji"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["rows"][:1] == [FIRST_GROUP])
+    shell.step_in()
+    shell.launcher_until(functools.partial(stands_in, FIRST_GROUP))
+    again = shell.rows_made("emoji") - before - stepped
+    assert again > 0, "closing kept every emoji the first step made, so the second made none"
+    shell.close_launcher()
+    shell.as_account(shell.ipc("collection", "emoji"))
+    shell.launcher_ready()
     shell.type_in("tada", selecting="Party popper")
     shell.close_launcher()
+
+
+# How the head says a find the history answered only in part, in normal: those shown, of all it
+# found (Launcher.qml's narrowed, which showing() gives as `found`).
+FOUND_OF = re.compile(r"(\d+) of (\d+) found")
+
+
+def test_emoji_says_how_many_it_found_past_those_it_answers(shell: Shell) -> None:
+    """A find in Emoji the history answers with its first hundred says how many it found.
+
+    The history answers a find with its best hundred emoji and how many it found
+    (clipboard/src/search.rs), and Emoji passes that on (launcher/Emoji.qml's search), so the
+    head says "100 of 412 found" rather than "100 found" as though that were all. An f finds
+    every flag and face, past a hundred.
+    """
+    shell.as_account(shell.ipc("collection", "emoji"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["rows"][:1] == [FIRST_GROUP])
+    shell.type_in("f")
+    # Emoji lists nothing for an f until the history answers, which type_in takes as settled.
+    shell.launcher_until(lambda shown: shown["count"] > 0)
+    shell.normal()
+    shell.launcher_until(lambda shown: shown["found"] != "")
+    said = shell.showing()["found"]
+    shell.close_launcher()
+    counted = FOUND_OF.fullmatch(said)
+    assert counted, f"Emoji's head never said how many it found past those it shows: {said}"
+    shown, found = (int(part) for part in counted.groups())
+    assert shown < found, f"the head said {shown} of {found} found: {said}"
 
 
 def test_a_cheap_drawer_comes_in_its_keys_own_frame(shell: Shell) -> None:
@@ -3368,6 +3428,13 @@ def test_a_terminal_is_shown_a_place_by_its_names_and_a_miss_the_nearest(shell: 
     grinning = shown("desktop", "emoji", FIRST_GROUP, "grinning face")
     assert "Copy" in [row["name"] for row in grinning["acts"]], grinning
     assert "Copy" not in [row["name"] for row in grinning["rows"]], grinning
+    # Desktop's Emoji says how many emoji it holds, counted from the history's records, though
+    # it lists only Unicode's groups and has made none of the emoji inside them. A place's
+    # figure is its side, as "1,914"; its count is what needs Joel.
+    emoji = next(row for row in shown("desktop")["rows"] if row["name"] == "Emoji")
+    figure = re.match(r"[\d,]+", str(emoji.get("side", "")))
+    held = int(figure.group().replace(",", "")) if figure else 0
+    assert held >= EMOJI_LISTED_LEAST, f"Desktop's Emoji said how many it holds so: {emoji}"
     assert all("drawer" not in row for row in machine["rows"]), machine["rows"]
     # A miss says where, the names it was nearest, and that nothing it was looked among is
     # still being read, so the terminal says it at once rather than asking again.
