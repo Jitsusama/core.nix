@@ -258,21 +258,54 @@ impl Midx {
                 .copied()
                 .ok_or_else(|| invalid("missing chunk"))
         };
-        let names_at = chunk(b"PNAM")?;
+        // Every chunk lies before the checksum git ends the file with. One
+        // said to lie further is a crafted or broken index, refused here
+        // rather than at each lookup, so the store reads each pack's own
+        // index instead. The table just read already holds more than the
+        // checksum's 20 bytes.
+        let body = file.metadata()?.len().saturating_sub(20);
+        let within = |at: u64, len: u64, what: &str| {
+            at.checked_add(len)
+                .filter(|&end| end <= body)
+                .map(|_| at)
+                .ok_or_else(|| invalid(what))
+        };
+        let fanout = within(
+            chunk(b"OIDF")?,
+            1024,
+            "multi-pack-index fan-out past its end",
+        )?;
+        let objects = u64::from(u32_at(&file, fanout + 255 * 4)?);
+        let names = within(
+            chunk(b"OIDL")?,
+            20 * objects,
+            "multi-pack-index object names past its end",
+        )?;
+        let offsets = within(
+            chunk(b"OOFF")?,
+            8 * objects,
+            "multi-pack-index offsets past its end",
+        )?;
+        let large = found
+            .get(b"LOFF")
+            .map(|&at| within(at, 0, "multi-pack-index large offsets past its end"))
+            .transpose()?;
+        let names_at = within(chunk(b"PNAM")?, 0, "multi-pack-index names past its end")?;
         let pack_count = u32::from_be_bytes(head[8..12].try_into().expect("4 bytes")) as usize;
-        // The names run to the next chunk, and never past the file's end, so
-        // a chunk table that says otherwise costs no more than the file.
-        let size = file.metadata()?.len();
+        // The names run to the next chunk or the checksum. No file name
+        // passes 255 bytes, so names longer than that many packs' could be,
+        // with their NULs and padding to four bytes, are refused before a
+        // sparse file's apparent size is ever set aside.
         let end = found
             .values()
             .copied()
             .filter(|&at| at > names_at)
             .min()
-            .map_or(size, |next| next.min(size));
-        let len = end
-            .checked_sub(names_at)
-            .and_then(|len| usize::try_from(len).ok())
-            .ok_or_else(|| invalid("multi-pack-index names past its end"))?;
+            .map_or(body, |next| next.min(body));
+        let len = usize::try_from(end - names_at)
+            .ok()
+            .filter(|&len| len <= 256 * pack_count + 3)
+            .ok_or_else(|| invalid("multi-pack-index names longer than its packs' can be"))?;
         let raw = read_exact_at(&file, len, names_at)?;
         let packs: Vec<String> = raw
             .split(|&b| b == 0)
@@ -286,10 +319,10 @@ impl Midx {
         Ok(Midx {
             file,
             packs,
-            fanout: chunk(b"OIDF")?,
-            names: chunk(b"OIDL")?,
-            offsets: chunk(b"OOFF")?,
-            large: found.get(b"LOFF").copied(),
+            fanout,
+            names,
+            offsets,
+            large,
         })
     }
 
@@ -314,8 +347,9 @@ impl Midx {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     // Names spread over first bytes, one of them sharing a first byte with
     // another, as the fan-out must count.
@@ -326,7 +360,7 @@ mod tests {
         name
     };
 
-    fn sorted() -> Vec<[u8; 20]> {
+    pub(crate) fn sorted() -> Vec<[u8; 20]> {
         let mut names = NAMES.to_vec();
         names.push(SAME_FIRST);
         names.sort_unstable();
@@ -355,9 +389,16 @@ mod tests {
             .collect()
     }
 
+    /// A temp path no other test, nor other run, writes to.
+    pub(crate) fn unique(name: &str) -> std::path::PathBuf {
+        static TAKEN: AtomicUsize = AtomicUsize::new(0);
+        let n = TAKEN.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!("git-engine-{}-{n}-{name}", std::process::id()))
+    }
+
     /// Writes `bytes` where a test alone reads them.
     fn file(name: &str, bytes: &[u8]) -> std::path::PathBuf {
-        let path = std::env::temp_dir().join(format!("git-engine-{}-{name}", std::process::id()));
+        let path = unique(name);
         std::fs::write(&path, bytes).expect("the temp folder takes a file");
         path
     }
@@ -369,15 +410,14 @@ mod tests {
         bytes
     }
 
-    /// Where each name lies in its pack, the last past what four bytes hold.
-    fn offsets(names: &[[u8; 20]]) -> Vec<u64> {
+    /// Where each name lies in its pack, the last two past what four bytes
+    /// hold, so a table of large offsets has more than one entry to step by.
+    pub(crate) fn offsets(names: &[[u8; 20]]) -> Vec<u64> {
         (0..names.len())
-            .map(|at| {
-                if at + 1 == names.len() {
-                    0x1_2345_6789
-                } else {
-                    12 + 100 * at as u64
-                }
+            .map(|at| match names.len() - at {
+                1 => 0x1_2345_6789,
+                2 => 0x1_0000_0004,
+                _ => 12 + 100 * at as u64,
             })
             .collect()
     }
@@ -391,7 +431,7 @@ mod tests {
         trailed(bytes)
     }
 
-    fn version_2(names: &[[u8; 20]]) -> Vec<u8> {
+    pub(crate) fn version_2(names: &[[u8; 20]]) -> Vec<u8> {
         let mut bytes = b"\xfftOc".to_vec();
         bytes.extend(be32(2));
         bytes.extend(fanout(names));
@@ -416,7 +456,7 @@ mod tests {
     /// A multi-pack-index over `packs`, its names spread across them in
     /// turn, claiming `pack_count` packs, with its pack names' chunk at
     /// `names_at` when given and where they lie otherwise.
-    fn midx(packs: &[&str], pack_count: u32, names_at: Option<u64>) -> Vec<u8> {
+    pub(crate) fn midx(packs: &[&str], pack_count: u32, names_at: Option<u64>) -> Vec<u8> {
         let names = sorted();
         let mut pnam = packs.join("\0").into_bytes();
         pnam.push(0);
@@ -483,14 +523,52 @@ mod tests {
     fn a_version_1_index_finds_each_name_where_its_pack_holds_it() {
         let names = sorted();
         let index = Index::open(&file("v1.idx", &version_1(&names))).expect("it opens");
+        // Version 1 holds four bytes of offset, so a larger one reads as
+        // the fixture writes it in their place.
         let mut want: Vec<Option<u64>> = offsets(&names)
             .into_iter()
-            .map(|offset| Some(offset & 0xffff_ffff))
+            .map(|offset| Some(u32::try_from(offset).map_or(0, u64::from)))
             .collect();
-        // Version 1 holds four bytes of offset, so the last reads as written.
-        *want.last_mut().expect("names") = Some(0);
         want.push(None);
         assert_eq!(found(&index), want);
+    }
+
+    /// `count` names sharing one first byte, their leading values spread
+    /// evenly, as random names are.
+    fn crowded(count: u32) -> Vec<[u8; 20]> {
+        let step = (1u64 << 56) / u64::from(count);
+        (0..count)
+            .map(|at| {
+                let mut name = [0; 20];
+                let lead = (0x42u64 << 56) | (u64::from(at) * step + 7);
+                name[..8].copy_from_slice(&lead.to_be_bytes());
+                name[16..].copy_from_slice(&at.to_be_bytes());
+                name
+            })
+            .collect()
+    }
+
+    #[test]
+    fn names_too_many_to_scan_at_once_are_found_by_guessing_where_they_lie() {
+        // More than two windows under one first byte, so the search guesses
+        // rather than reading the whole span.
+        let names = crowded(WINDOW * 5);
+        let index = Index::open(&file("crowded.idx", &version_2(&names))).expect("it opens");
+        for (name, offset) in names.iter().zip(offsets(&names)) {
+            assert_eq!(
+                index.offset(&Oid(*name)).expect("the index reads"),
+                Some(offset),
+                "{name:02x?} wasn't found where its pack holds it"
+            );
+            // Its leading bytes with another tail is no name of the pack.
+            let mut absent = *name;
+            absent[19] ^= 0xff;
+            assert_eq!(
+                index.offset(&Oid(absent)).expect("the index reads"),
+                None,
+                "{absent:02x?} was found, though the pack holds no such name"
+            );
+        }
     }
 
     #[test]
@@ -524,6 +602,14 @@ mod tests {
         );
     }
 
+    /// Why `bytes` aren't taken as a multi-pack-index, as its error says.
+    fn refusal(name: &str, bytes: &[u8]) -> String {
+        match Midx::open(&file(name, bytes)) {
+            Ok(midx) => panic!("{name} was taken, naming {:?}", midx.packs),
+            Err(error) => error.to_string(),
+        }
+    }
+
     #[test]
     fn a_multi_pack_index_naming_a_file_outside_the_pack_folder_is_refused() {
         for name in [
@@ -534,36 +620,80 @@ mod tests {
             "pack-a\\b.idx",
         ] {
             let bytes = midx(&["pack-a.idx", name], 2, None);
-            let opened = Midx::open(&file("named-outside", &bytes));
-            assert!(opened.is_err(), "a pack named {name:?} was taken");
+            assert_eq!(
+                refusal("named-outside", &bytes),
+                "multi-pack-index pack name",
+                "a pack named {name:?} wasn't refused for its name"
+            );
         }
+        let mut unreadable = midx(&["pack-a.idx", "pack-b.idx"], 2, None);
+        let at = unreadable
+            .windows(6)
+            .position(|window| window == b"pack-b")
+            .expect("the fixture names pack-b");
+        unreadable[at + 4] = 0xff;
+        assert_eq!(
+            refusal("named-unreadably", &unreadable),
+            "multi-pack-index pack name",
+            "a pack name that isn't UTF-8 wasn't refused for its name"
+        );
     }
 
     #[test]
     fn a_multi_pack_index_naming_fewer_packs_than_it_holds_is_refused() {
         let bytes = midx(&["pack-a.idx"], 2, None);
-        assert!(
-            Midx::open(&file("named-fewer", &bytes)).is_err(),
-            "one name was taken for two packs"
+        assert_eq!(
+            refusal("named-fewer", &bytes),
+            "multi-pack-index names fewer packs than it holds",
+            "one name wasn't refused for two packs"
+        );
+    }
+
+    /// `bytes` with the chunk at `entry` of its table said to lie at `at`.
+    pub(crate) fn moved(mut bytes: Vec<u8>, entry: usize, at: u64) -> Vec<u8> {
+        let field = 12 + 12 * entry + 4;
+        bytes[field..field + 8].copy_from_slice(&at.to_be_bytes());
+        bytes
+    }
+
+    #[test]
+    fn a_multi_pack_index_with_a_chunk_past_its_end_is_refused_at_open() {
+        let whole = midx(&["pack-a.idx"], 1, None);
+        let body = whole.len() as u64 - 20;
+        // Each said to end one byte into the checksum, with the length it
+        // needs for its five names; the names and large offsets, whose
+        // length the table alone gives, are said to start in it.
+        for (entry, len, why) in [
+            (1, 1024, "multi-pack-index fan-out past its end"),
+            (2, 20 * 5, "multi-pack-index object names past its end"),
+            (3, 8 * 5, "multi-pack-index offsets past its end"),
+            (4, 0, "multi-pack-index large offsets past its end"),
+            (0, 0, "multi-pack-index names past its end"),
+        ] {
+            let at = body + 1 - len;
+            assert_eq!(
+                refusal("chunk-far", &moved(whole.clone(), entry, at)),
+                why,
+                "chunk {entry} at {at} wasn't refused for lying past the end"
+            );
+        }
+        assert_eq!(
+            refusal("chunk-wraps", &moved(whole.clone(), 2, u64::MAX - 1)),
+            "multi-pack-index object names past its end",
+            "a chunk whose end wraps past 64 bits wasn't refused"
         );
     }
 
     #[test]
-    fn a_multi_pack_index_reads_no_further_than_its_own_end() {
-        // The names are said to start past the file's end.
-        let past = midx(&["pack-a.idx"], 1, Some(1 << 40));
-        assert!(
-            Midx::open(&file("names-past", &past)).is_err(),
-            "names past the end were read"
+    fn a_multi_pack_index_with_names_longer_than_its_packs_can_have_is_refused() {
+        // One pack, though its names chunk holds a second of 300 bytes: a
+        // file name never passes 255, so this isn't one pack's name.
+        let long = format!("{}.idx", "x".repeat(296));
+        let bytes = midx(&["pack-a.idx", &long], 1, None);
+        assert_eq!(
+            refusal("names-long", &bytes),
+            "multi-pack-index names longer than its packs' can be",
+            "names beyond what one pack could have were read"
         );
-        // Every chunk after the names is said to lie a terabyte on, so the
-        // file's end is all that bounds them.
-        let mut far = midx(&["pack-a.idx"], 1, None);
-        for entry in 1..5 {
-            let at = 12 + 12 * entry + 4;
-            far[at..at + 8].copy_from_slice(&((1u64 << 40) + entry as u64).to_be_bytes());
-        }
-        let midx = Midx::open(&file("chunk-far", &far)).expect("the names it has are read");
-        assert_eq!(midx.packs, ["pack-a.idx"]);
     }
 }
