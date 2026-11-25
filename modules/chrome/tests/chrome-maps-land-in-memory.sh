@@ -160,7 +160,9 @@ untouched() {
 
 # BrowserMetrics a link into memory, its old files gone.
 metrics() {
-  if [ "$(readlink "$profile/BrowserMetrics")" != "$runtime/chrome/BrowserMetrics" ]; then
+  local link
+  link=$(readlink "$profile/BrowserMetrics" || true)
+  if [ "$link" != "$runtime/chrome/BrowserMetrics" ]; then
     echo "$1, BrowserMetrics isn't a link into memory, though nothing of Chrome's was open in it"
     exit 1
   fi
@@ -339,7 +341,8 @@ chrome=$!
 named "$chrome"
 ln -s "$here-$chrome" "$profile/SingletonLock"
 run "mapping Chrome's"
-if [ -L "$profile/BrowserMetrics" ] || [ "$(cat "$profile/BrowserMetrics/index")" != old ]; then
+index=$(cat "$profile/BrowserMetrics/index" || true)
+if [ -L "$profile/BrowserMetrics" ] || [ "$index" != old ]; then
   echo "the command moved BrowserMetrics from under a Chrome mapping a file in it"
   exit 1
 fi

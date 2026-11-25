@@ -213,7 +213,8 @@ while :; do
       # What sessions before left in memory, which nothing maps any more.
       for left in "$memory/$folder"/*; do
         [ -e "$left" ] || continue
-        using=$(open_in "$(realpath -m -- "$left")")
+        whole=$(realpath -m -- "$left")
+        using=$(open_in "$whole")
         [ -n "$using" ] || rm -rf -- "$left"
       done
     else
