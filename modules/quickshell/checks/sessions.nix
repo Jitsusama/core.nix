@@ -63,22 +63,29 @@ in
   # written in a folder made anew, and a kitty started again draws nothing
   # till asked, so a viewer kept for one would wait on what never comes.
   # The write first, failing the start where it fails, as a kitty with no
-  # pid beside it would have every window refused; and the call by the
-  # name the shell's IpcHandler answers.
+  # pid beside it would have every window refused; then the call, bounded
+  # and only journalled where it fails, as at login the shell may not
+  # listen yet and a failed call would stop the kitty; and by the name the
+  # shell's "sessions" IpcHandler answers.
   the-sessions-kitty-says-its-pid =
     let
       service = (account graphical).systemd.user.services.sessions-kitty.Service;
       written = lib.concatStringsSep " " (lib.toList (service.ExecStartPost or [ ]));
-      answered = builtins.readFile ../Sessions.qml;
-      inOrder = ".*%t/pi-sessions/kitty\\.pid \\|\\| exit 1;.*ipc call sessions kittyStarted.*";
+      inOrder =
+        ".*%t/pi-sessions/kitty\\.pid \\|\\| exit 1;"
+        + " [^;|]*/timeout [0-9]+ [^;|]* ipc call sessions kittyStarted [^;|]*"
+        + "\\|\\| echo [^;|]*>&2'";
+      # The "sessions" IpcHandler, from its target to its closing brace.
+      handler = lib.splitString "target: \"sessions\"" (builtins.readFile ../Sessions.qml);
+      answered =
+        builtins.length handler == 2
+        && lib.hasInfix "function kittyStarted(): void {\n            root.kittyStarted();" (
+          lib.head (lib.splitString "\n    }\n" (lib.last handler))
+        );
     in
     holds "the-sessions-kitty-says-its-pid"
       "The sessions' kitty writes no pid beside its socket, or never tells the shell it started, so the shell can't tell which windows it draws, or waits on a kitty come back."
-      (
-        lib.hasInfix "$$MAINPID" written
-        && builtins.match inOrder written != null
-        && lib.hasInfix "function kittyStarted(): void" answered
-      );
+      (lib.hasInfix "$$MAINPID" written && builtins.match inOrder written != null && answered);
 
   # A session's window is asked of the sessions kitty over its socket, or of
   # the unit's own kitty from before it listened, waiting for one starting

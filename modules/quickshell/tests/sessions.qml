@@ -1477,6 +1477,69 @@ ShellRoot {
             `${lateUnder} ${spawnsOf(lateNamed, lateFrom)}`);
         Sessions.untaken(lateNamed, String(Sessions.attaching[lateNamed]));
         Sessions.forgetAsk(lateNamed);
+        // A kitty down as it's asked, come back while the script waits up
+        // to 20 s for its socket, is the one the script asks: kept under it,
+        // it isn't asked again at once, as it may yet draw the first ask's
+        // window, which a second ask would open another beside.
+        const backNamed = "pi-hosted.s-kept-back";
+        Sessions.keepPlaces({ "s-kept-back": keptOne("s-kept-back") });
+        const backFrom = Niri.spawns.length;
+        kittyPidFile.setText("\n");
+        Sessions.viewKept();
+        kittyPidFile.setText("5454\n");
+        Sessions.kittyStarted?.();
+        Sessions.untaken(backNamed, String(Sessions.attaching[backNamed]));
+        const backUnder = keptUnderOf("s-kept-back");
+        expect("a kitty come back while the script waited is taken as asked, not asked again",
+            backUnder === "5454" && spawnsOf(backNamed, backFrom) === 1,
+            `${backUnder} ${spawnsOf(backNamed, backFrom)}`);
+        Sessions.forgetAsk(backNamed);
+        // A kitty the shell didn't hear start, as when the unit's word is
+        // missed, asked by the pid its file says, isn't taken for another
+        // at the give-up: the file is read again, not the pid last heard.
+        const staleNamed = "pi-hosted.s-kept-stale";
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        Sessions.keepPlaces({ "s-kept-stale": keptOne("s-kept-stale") });
+        const staleFrom = Niri.spawns.length;
+        kittyPidFile.setText("6565\n");
+        Sessions.viewKept();
+        Sessions.untaken(staleNamed, String(Sessions.attaching[staleNamed]));
+        const staleUnder = keptUnderOf("s-kept-stale");
+        expect("a kitty the shell didn't hear start, asked, isn't asked again at the give-up",
+            staleUnder === "6565" && spawnsOf(staleNamed, staleFrom) === 1,
+            `${staleUnder} ${spawnsOf(staleNamed, staleFrom)}`);
+        Sessions.forgetAsk(staleNamed);
+        // A press holding the ask (heldBack), asked again of a kitty come
+        // since, is told it's opening and keeps its focus, as its viewer is
+        // on its way, rather than told that ask is over.
+        const pressedNamed = "pi-hosted.s-kept-pressed";
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        Sessions.keepPlaces({ "s-kept-pressed": keptOne("s-kept-pressed") });
+        const pressedFrom = Niri.spawns.length;
+        Sessions.viewKept();
+        const goingBeforePressed = Sessions.goingTo;
+        Sessions.goTo({ address: "PRESSED",
+            presence: { hosted: true, session: "s-kept-pressed" },
+            attach: keptOne("s-kept-pressed").waiting, here: true });
+        kittyPidFile.setText("6666\n");
+        Sessions.readKittyPid();
+        root.unhosted = "";
+        root.unhostedWhy = "";
+        Sessions.untaken(pressedNamed, String(Sessions.attaching[pressedNamed]));
+        expect("a press asked again of a kitty come since is told it's opening, focus kept",
+            spawnsOf(pressedNamed, pressedFrom) === 2
+            && `${root.unhosted} ${root.unhostedWhy}` === "PRESSED opening"
+            && Sessions.goingTo?.app === pressedNamed
+            && Sessions.pressedFor[pressedNamed]?.address === "PRESSED",
+            `${spawnsOf(pressedNamed, pressedFrom)} ${root.unhosted} ${root.unhostedWhy} `
+                + `${JSON.stringify(Sessions.goingTo)}`);
+        Sessions.goingTo = goingBeforePressed;
+        Sessions.untaken(pressedNamed, String(Sessions.attaching[pressedNamed]));
+        Sessions.forgetAsk(pressedNamed);
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
         // With no kitty's pid ever read, a kitty come again can't be told
         // from the one given up on, so the place is let go, not held unasked.
         const unknownNamed = "pi-hosted.s-kept-unknown";
