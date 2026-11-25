@@ -47,29 +47,43 @@ let
   # a machine's systemd and a builder's built alike, while a feature turned
   # off, through the flags or the override argument that sets one, doesn't.
   alike = drv: lib.filter (flag: !builtins.hasContext flag) (map toString (drv.mesonFlags or [ ]));
+  builders = buildPackages.systemd;
+  canHave = lib.meta.availableOn stdenv.buildPlatform builders;
+  # Source, patches and those flags are compared, and nothing else: not
+  # postPatch, since nixpkgs' names each platform's own compiler and
+  # readelf, so it differs between a machine's systemd and a builder's built
+  # alike; nor the other phases or the compiler's environment; nor a flag
+  # that names a store path, which alike drops whole. A change to run.c's
+  # options through any of them is the hold's blind spot.
+  differs =
+    lib.optional ((builders.src or null) != (systemd.src or null)) "source"
+    ++ lib.optional ((builders.patches or [ ]) != (systemd.patches or [ ])) "patches"
+    ++ lib.optional (alike builders != alike systemd) "flags";
   asked =
     if stdenv.buildPlatform.canExecute stdenv.hostPlatform then
       systemd
-    # Source, patches and those flags are compared, not postPatch: nixpkgs'
-    # postPatch names each platform's own compiler and readelf, so it differs
-    # between a machine's systemd and a builder's built alike. A change to
-    # run.c's options through it is the hold's blind spot.
-    else if
-      lib.meta.availableOn stdenv.buildPlatform buildPackages.systemd
-      && (buildPackages.systemd.src or null) == (systemd.src or null)
-      && (buildPackages.systemd.patches or [ ]) == (systemd.patches or [ ])
-      && alike buildPackages.systemd == alike systemd
-    then
-      buildPackages.systemd
+    else if canHave && differs == [ ] then
+      builders
     else
       null;
   named = if systemd ? version then "systemd ${systemd.version}" else "one of unknown version";
+  # The first few flags only one side has, so a reader sees what to drop.
+  ownFlags = lib.take 3 (lib.subtractLists (alike builders) (alike systemd));
+  missing = lib.take 3 (lib.subtractLists (alike systemd) (alike builders));
+  flagsSaid = lib.concatStringsSep ", " (ownFlags ++ map (flag: "no ${flag}") missing);
+  whatDiffers =
+    lib.concatStringsSep ", " differs
+    + lib.optionalString (lib.elem "flags" differs && flagsSaid != "") " (${flagsSaid})";
+  why =
+    if canHave then
+      "has none built alike, since the machine's differs in its ${whatDiffers}; build it on "
+      + "${stdenv.hostPlatform.system}, or drop what differs from nixpkgs' systemd, to hold it"
+    else
+      "can't build systemd at all; build it on ${stdenv.hostPlatform.system} to hold it";
   unheld =
-    "systemd-run's wrapper isn't held to ${named}: ${stdenv.buildPlatform.system}, "
-    + "which builds it, can't run ${stdenv.hostPlatform.system}'s and has no systemd "
-    + "built from the same source, patches and flags, so a call it misreads goes unseen; "
-    + "build it on ${stdenv.hostPlatform.system}, or take the patches or flags "
-    + "that differ from nixpkgs' systemd, to hold it";
+    "systemd-run's wrapper isn't held to ${named}, so a call it misreads goes unseen: "
+    + "${stdenv.buildPlatform.system}, which builds it, can't run "
+    + "${stdenv.hostPlatform.system}'s systemd and ${why}";
   # Only a wrapper something holds has a hold, so reading one never throws.
   holds =
     if asked == null then

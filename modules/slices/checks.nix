@@ -808,10 +808,22 @@
         cgroup = "cgroup";
       };
       patchedWarnings = crossMachine.config.warnings;
-      # Unheld, saying so, and evaluated whole, so one that throws past what
-      # it offers beside fails here rather than on a machine.
-      unheld = run: !run.held && noHold run && saysSo run && lib.isString run.drvPath;
+      # Unheld and saying so.
+      unheld = run: !run.held && noHold run && saysSo run;
       saysSo = run: lib.hasInfix "isn't held" run.unheld;
+      # The warning's advice is the one that holds it: a Mac is told only to
+      # build on the machine's platform, and one built otherwise what to drop.
+      advises = run: words: lib.all (word: lib.hasInfix word run.unheld) words;
+      macAdvice = advises macRun [ "can't build systemd at all" ] && !advises macRun [ "drop" ];
+      sourceAdvice = advises sourced [ "differs in its source" ];
+      flagAdvice = advises flagged [
+        "in its flags (-Dmode=developer)"
+        "drop"
+      ];
+      argAdvice = advises argued [
+        "its flags ("
+        "timedated"
+      ];
       # Neither asked for by the wrapper's build nor offered beside it.
       noHold = run: !(run.drvAttrs ? holds) && !(run ? holds);
       # A systemd-run that can't list its options, for the hold to refuse.
@@ -855,6 +867,10 @@
       unheld versionless && lib.hasInfix "unknown version" versionless.unheld
     ) "a cross-built systemd-run of no version isn't said unheld";
     assert lib.assertMsg (unheld macRun) "a systemd-run cross-built from a Mac is held";
+    assert lib.assertMsg macAdvice "a Mac's unheld systemd-run is told to drop what doesn't differ";
+    assert lib.assertMsg sourceAdvice "a systemd-run of another source isn't told so";
+    assert lib.assertMsg flagAdvice "a systemd-run with its own flag isn't told which to drop";
+    assert lib.assertMsg argAdvice "a systemd-run with timedated off isn't told which flag differs";
     assert lib.assertMsg (lib.any (lib.hasInfix "isn't held") patchedWarnings)
       "a machine whose systemd-run isn't held doesn't warn of it";
     pkgs.runCommandLocal "an-agents-run-stays-in-its-slice" { nativeBuildInputs = [ pkgs.jq ]; } ''
