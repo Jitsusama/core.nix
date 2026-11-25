@@ -112,11 +112,6 @@ QtObject {
             Shown.keyed(["x", "Return"], false), "resets");
         Expect.same("as does a move read with a key after it, its move unknown",
             Shown.keyed(["Down", "j"], true), "resets");
-        // Return's own move, none, is the one known, so a j and the Return
-        // after it, read in one turn of a busy shell, time nothing: his
-        // yes is refused as unread, and he moves again.
-        Expect.same("and a move read with the Return after it",
-            Shown.keyed(["j", "Return"], false), "resets");
         Expect.same("but Returns before a move leave the move its own",
             Shown.keyed(["Return", "Down"], true), "arms");
     }

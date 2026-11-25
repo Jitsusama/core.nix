@@ -196,9 +196,14 @@ def say_yes(desktop: Desktop, *, unmoved: bool = False) -> str:
     came too late to time it.
     """
     desktop.machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["returned"].get("act") == "armed")
+    # The launcher arms as it takes the Return, and Asks reads it a turn
+    # later, so the wait holds until Asks has read it too.
+    desktop.launcher_until(
+        lambda shown: shown["returned"].get("act") == "armed" and shown["asksUnread"] == 0
+    )
     if unmoved:
-        assert desktop.showing()["asksArmed"] is False, "a Return timed the line"
+        armed = desktop.showing()["asksArmed"]
+        assert armed is False, f"a Return timed the line: asksArmed {armed!r}"
     time.sleep(PAST_THE_READING)
     since = desktop.mark()
     desktop.machine.send_key("ret")
@@ -255,7 +260,7 @@ def test_joels_yes_releases_the_value_into_the_one_command(desktop: Desktop) -> 
     # Asks reads keys only over passwords; elsewhere asksUnread is null, and the waits below
     # would order nothing, so that's said here rather than left to a timeout.
     assert isinstance(desktop.showing()["asksUnread"], int), "Asks isn't reading the keys"
-    escaped = desktop.showing()["taken"]
+    before_escape = desktop.showing()["taken"]
     desktop.machine.send_key("esc")
     # The Escape is seen read by Asks alone too, since read with the j it resets the line: taken,
     # then read, as none is left unread only once it's been taken.
@@ -263,7 +268,7 @@ def test_joels_yes_releases_the_value_into_the_one_command(desktop: Desktop) -> 
         lambda shown: (
             shown["mode"] == "normal"
             and selects(shown, why)
-            and shown["taken"] > escaped
+            and shown["taken"] > before_escape
             and shown["asksUnread"] == 0
         )
     )
@@ -310,8 +315,6 @@ def test_an_asks_opened_from_outside_takes_no_yes_without_a_move(desktop: Deskto
     put_up(desktop, ask, why)
     asks_open_on(desktop, ask, why)
     time.sleep(PAST_THE_READING)
-    # Read untimed whatever the frames' pace, so the refusal below is the launcher's own.
-    assert desktop.showing()["asksArmed"] is False, "opening from outside timed the line"
     refused_unread(desktop, ask, say_yes(desktop, unmoved=True))
 
 
@@ -419,8 +422,19 @@ def test_an_agents_ask_after_his_escape_leaves_his_move_untimed(desktop: Desktop
     asks_open_on(desktop, ask, why)
     # As in the yes case, so a shell where Asks reads no keys fails by name, not by timeout.
     assert isinstance(desktop.showing()["asksUnread"], int), "Asks isn't reading the keys"
+    before_escape = desktop.showing()["taken"]
     desktop.machine.send_key("esc")
-    desktop.launcher_until(lambda shown: shown["mode"] == "normal" and selects(shown, why))
+    # Read by Asks before the agent's opening, so the opening is what
+    # must reset his Escape, rather than coming first and leaving nothing
+    # for the reset to undo.
+    desktop.launcher_until(
+        lambda shown: (
+            shown["mode"] == "normal"
+            and selects(shown, why)
+            and shown["taken"] > before_escape
+            and shown["asksUnread"] == 0
+        )
+    )
     outside_onto_asks(desktop, way)
     # Still normal, so the j and k below move over the rows rather than type into the find.
     desktop.launcher_until(lambda shown: shown["mode"] == "normal" and selects(shown, why))

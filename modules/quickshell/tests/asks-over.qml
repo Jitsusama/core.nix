@@ -290,7 +290,8 @@ ShellRoot {
             returnedInto, returnedIntoShown, steeredOut, walkedInto, walkedIntoShown,
             walkedThenEscaped, walkedThenMoved, walkedThenMovedShown, toldInPlace, typing,
             typedAfter, movedAgain, typedBeforeItsFrame, typedThenShown, movedOnceMore,
-            typedWithReturn, typedWithReturnShown, movedThenOpened, movedThenOpenedShown,
+            typedWithReturn, typedWithReturnShown, movedWithReturn, movedWithReturnShown,
+            movedThenOpened, movedThenOpenedShown,
             overRowsThenTold, toldOverRows, toldOverRowsShown, landed, landedThenMoved,
             landedThenShown, commanded, commandedThenRun, commandedThenMoved,
             commandedThenShown, timedBeforeSharing, timedMove, sharing, sharedYes,
@@ -587,6 +588,19 @@ ShellRoot {
     function typedWithReturnShown() {
         same("a letter read with the Return after it starts the time again", shownNow(),
             undefined);
+    }
+
+    // A move and a Return taken in one turn, as a busy shell takes them,
+    // are read together, so the move arms nothing: a frame after them
+    // times no line, where a move read alone would have armed one.
+    function movedWithReturn() {
+        stage.press("j", true);
+        stage.press("Return", false);
+    }
+
+    function movedWithReturnShown() {
+        stage.present(600);
+        same("a move read with the Return after it arms nothing", shownNow(), undefined);
     }
 
     // A move, and an ask from outside before Asks reads the move.
