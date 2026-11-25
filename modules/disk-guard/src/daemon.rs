@@ -77,6 +77,10 @@ struct Rest {
     /// twice in a row, so a daemon whose word keeps failing costs a survey
     /// a rest, not one a step.
     unvouched: bool,
+    /// Whether the pass found nothing left to clear on a filling disk, so
+    /// the disk rests the hour and the status says it has cleared all it
+    /// may, whatever passes run on other disks meanwhile.
+    emptied: bool,
 }
 
 /// How long a filesystem rests after a pass that fell short, at first and
@@ -85,8 +89,8 @@ struct Rest {
 /// the band, the sooner it looks again, since what's in use there may
 /// stop being so any moment and the disk can't wait long.
 const FIRST_REST: f64 = 60.0;
-/// How long a disk no worse than filling rests once a pass finds nothing
-/// more it may clear there. Each pass reads the metadata of everything it
+/// How long a filling disk rests once a pass finds nothing more it may
+/// clear there. Each pass reads the metadata of everything it
 /// judges, and on 25 November one 17 minutes after a pass that freed
 /// 0 B read 15 GB of it in 24 minutes. A filling disk has a tenth of its
 /// room or more, and a worse band ends the rest at once.
@@ -2642,7 +2646,11 @@ impl Guard {
                 // stop or to its own length fell short of nothing; its disk
                 // is due again.
                 let fell_short = !matches!(end, End::Reached | End::Stopped | End::Unfinished);
-                let emptied = matches!(end, End::Exhausted) && band <= Band::Filling;
+                // Filling only: a healthy disk's rest goes at its next
+                // measure, so an hour promised there would never hold.
+                let emptied = matches!(end, End::Exhausted)
+                    && band <= Band::Filling
+                    && watched.band == Band::Filling;
                 watched.rest = fell_short.then(|| {
                     let seconds = if emptied {
                         EMPTY_REST
@@ -2656,6 +2664,7 @@ impl Guard {
                         seconds,
                         band,
                         unvouched,
+                        emptied,
                     }
                 });
             }
@@ -3243,7 +3252,9 @@ impl Guard {
         Ok((surveyed, previews))
     }
 
-    /// Whether no clear runs on the disk at `path` now.
+    /// Whether no pass is at work on the disk at `path` now. Under a
+    /// writers' hold the only one that can be on a filling disk is a
+    /// clear Joel asked for, or one begun nearly full.
     fn unpassed(&self, path: &Path) -> bool {
         self.passing
             .as_ref()
@@ -3294,7 +3305,9 @@ impl Guard {
                             && last.end == "exhausted"
                             && watched.band != Band::Healthy
                             && last.band >= watched.band
-                    }),
+                    }) || (watched.band == Band::Filling
+                        && self.unpassed(&watched.path)
+                        && watched.rest.is_some_and(|rest| rest.emptied)),
                     // A clear Joel asked for runs under a hold, and is
                     // told as the clear it is.
                     held: self.writers_held && self.unpassed(&watched.path),
@@ -3873,7 +3886,6 @@ fn replaced_taken(here: &[Offer], actions: &[(PathBuf, Outcome)]) -> BTreeMap<Pa
     taken
 }
 
-/// Whether a delete failed for garbage that came alive since the listing.
 /// Whether a writers' hold, when `held`, keeps passes off a disk in
 /// `band`: every band short of nearly full waits for the hold to end.
 /// Passes and the status both ask this, so what the status says is what
@@ -3882,6 +3894,7 @@ pub(crate) fn held_off(held: bool, band: Band) -> bool {
     held && band < Band::NearlyFull
 }
 
+/// Whether a delete failed for garbage that came alive since the listing.
 fn stale(outcome: &Outcome) -> bool {
     matches!(outcome, Outcome::Failed(why) if garbage::stale(why))
 }

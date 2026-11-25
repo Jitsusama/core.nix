@@ -182,10 +182,11 @@ or launchd, and [`home.nix`][2] the account's.
   measures whatever is writing, so it neither counts nor teaches. A pass
   that falls short rests before the next, doubling from a minute to fifteen
   while filling, five when nearly full and one when critically full. One
-  on a disk no worse than filling that finds nothing left to clear rests an
-  hour at once, since each pass reads the metadata of all it judges: one 17
-  minutes after such a pass read 15 GB of it on 25 November. A worse band
-  ends any rest, and a restart forgets it. One
+  on a filling disk that finds nothing left to clear rests it an hour at
+  once, since each pass reads the metadata of all it judges: one 17 minutes
+  after such a pass read 15 GB of it on 25 November. Its status says it has
+  cleared all it may for that hour. A worse band ends any rest, and a
+  restart forgets it. One
   that kept things only for want of the system guard's word ends its rest
   as soon as the system guard answers again, once in a row. A survey counts the
   blocks its candidates share once, for the first it measures, as trees

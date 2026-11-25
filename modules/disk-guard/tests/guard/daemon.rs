@@ -464,6 +464,9 @@ fn a_producer_that_ran_is_not_run_again_within_the_hour_even_by_the_next_guard()
     let home = Home::new();
     let marker = home.root.join("ran");
     let mut config = home.config("100%", "100%");
+    // Nearly full, so a pass that finds nothing rests a minute, not the
+    // hour a filling disk would, and the same guard is asked again.
+    config.bands.nearly_full = disk_guard::units::Size::Percent(100.0);
     config.sources.insert(
         "gc".to_owned(),
         Source::Producer {
@@ -489,14 +492,13 @@ fn a_producer_that_ran_is_not_run_again_within_the_hour_even_by_the_next_guard()
     let mut guard = home.guard(config.clone());
     guard.step(&tick_at(3600.0), &CALM).unwrap();
     assert_eq!((runs(), passes()), (1, 1));
-    // That pass left nothing to clear, so the disk rests the hour.
+    // Past the rest that pass earned, and within the hour.
     guard.step(&tick_at(3661.0), &CALM).unwrap();
-    assert_eq!((runs(), passes()), (1, 1));
+    assert_eq!((runs(), passes()), (1, 2));
     drop(guard);
-    // A restart forgets the rest, but not the producer's hour.
     let mut guard = home.guard(config);
     guard.step(&tick_at(3700.0), &CALM).unwrap();
-    assert_eq!((runs(), passes()), (1, 2), "remembered across guards");
+    assert_eq!((runs(), passes()), (1, 3), "remembered across guards");
     let ran = home
         .journal()
         .into_iter()
@@ -753,6 +755,11 @@ fn a_filling_disks_pass_that_leaves_nothing_to_clear_rests_an_hour() {
     for at in [3600.0, 3661.0, 4600.0, 7199.0, 7201.0] {
         guard.step(&tick_at(at), &CALM).unwrap();
         seen.push(passes());
+        assert_eq!(
+            home.status()["filesystems"][0]["exhausted"],
+            true,
+            "a resting disk didn't say it has cleared all it may at {at} s"
+        );
     }
     assert_eq!(
         seen,
