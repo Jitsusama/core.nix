@@ -41,13 +41,15 @@ pub fn filesystem(room: &Room, home: Option<&Path>) -> String {
     let free = shown(room.free);
     let mut said = match (room.band, room.cleared_all) {
         (Band::Healthy, _) => format!("{name} has {free} free."),
-        (Band::Filling, _) if room.waiting => format!(
-            "{name} is filling, with {free} free. \
-             The guard waits to clear while heavy writing is held off."
-        ),
+        // Clearing all it may stays true under a hold, and says no
+        // clearing is to come when the hold ends.
         (Band::Filling, true) => format!(
             "{name} is filling, with {free} free. \
              The guard has cleared all it may; what's left is in use or kept."
+        ),
+        (Band::Filling, false) if room.waiting => format!(
+            "{name} is filling, with {free} free. \
+             The guard waits to clear while heavy writing is held off."
         ),
         (Band::NearlyFull, true) => format!(
             "{name} is nearly full, with {free} free. \

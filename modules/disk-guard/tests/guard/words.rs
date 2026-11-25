@@ -18,7 +18,7 @@ fn room(path: &str, band: Band, free: u64, full_in: Option<f64>) -> Room<'_> {
 }
 
 #[test]
-fn a_filling_disk_a_writers_hold_keeps_passes_off_says_its_clearing_waits() {
+fn a_filling_disk_a_writers_hold_keeps_passes_off_says_its_clearing_waits_unless_none_is_left() {
     let held = |band, cleared_all| {
         filesystem(
             &Room {
@@ -32,8 +32,24 @@ fn a_filling_disk_a_writers_hold_keeps_passes_off_says_its_clearing_waits() {
     let waits = "The disk is filling, with 200.0 GiB free. \
                  The guard waits to clear while heavy writing is held off.";
     assert_eq!(held(Band::Filling, false), waits);
-    assert_eq!(held(Band::Filling, true), waits);
+    assert!(
+        held(Band::Filling, true).contains("has cleared all it may"),
+        "a held disk with nothing left to clear said clearing was to come: {}",
+        held(Band::Filling, true),
+    );
     assert_eq!(held(Band::Healthy, false), "The disk has 200.0 GiB free.");
+    // A hold waits no pass at nearly full or worse, so they say what
+    // the guard does.
+    assert!(
+        held(Band::NearlyFull, false).contains("is clearing everything"),
+        "a nearly full disk under a hold said: {}",
+        held(Band::NearlyFull, false),
+    );
+    assert!(
+        !held(Band::CriticallyFull, false).contains("waits"),
+        "a critically full disk under a hold said it waits: {}",
+        held(Band::CriticallyFull, false),
+    );
 }
 
 #[test]
