@@ -19,6 +19,7 @@ import "MarginCatFloats.js" as Floats
 import "MarginCatGames.js" as Games
 import "MarginCatPaths.js" as Paths
 import "MarginCatPlays.js" as Plays
+import "MarginCatPuppy.js" as Puppy
 import "MarginCatShown.js" as Shown
 import "MarginCatStacked.js" as Stacked
 import "MarginCatTiles.js" as Tiles
@@ -159,7 +160,8 @@ PanelWindow {
     // stretching, so a pointer may pet it; and since when, so one it
     // came to under isn't one that moved onto it (MarginCat.strokes).
     readonly property bool still: going === null && moving === null && !holding
-        && (yarnAt === null || yarnLies) && window.scene.posed === "" && !window.scene.stretching
+        && (yarnAt === null || yarnLies) && puppyAt === null && window.scene.posed === ""
+        && !window.scene.stretching
     property real stillSince: -1
     // A check waits for its rest to begin before it pets it, since when
     // that comes is niri's to say.
@@ -982,13 +984,15 @@ PanelWindow {
         strolled = spot;
     }
 
-    // A play that moves it (MarginCatGames.js), `asked` by the scene,
-    // its kind and how long it thinks, from where it sits: run on the
-    // walker as a walk is, its seat for the walk back where it lands.
+    // A play that moves it (MarginCatGames.js), or the puppy's visit
+    // (MarginCatPuppy.js), `asked` by the scene, its kind and how long it
+    // thinks, from where it sits: run on the walker as a walk is, its seat
+    // for the walk back where it lands.
     function play(asked: var): void {
         if (asked === null || holding)
             return;
-        const playing = Games.play(asked.kind, playsFrom(asked.pause));
+        const playing = asked.kind === "puppy" ? Puppy.visit(playsFrom(asked.pause))
+            : Games.play(asked.kind, playsFrom(asked.pause));
         if (playing === null)
             return;
         window.scene.strollTaken = true;
@@ -1053,6 +1057,8 @@ PanelWindow {
             yarnFades.resume();
         else if (yarnAt !== null && !yarnFades.running)
             goes(yarnFades);
+        if (puppyFades.paused)
+            puppyFades.resume();
     }
 
     // Held with Joel's hand at `hand`, in the screen's logical pixels.
@@ -1146,6 +1152,8 @@ PanelWindow {
     readonly property bool yarnLies: yarnKept && yarnAt !== null && !yarnFades.running
     onYarnLiesChanged: say()
     onGoingChanged: {
+        if (puppyAt !== null && !puppyFades.running && going?.kind !== "puppy")
+            goes(puppyFades);
         if (yarnAt === null || yarnFades.running)
             return;
         if (going === null ? !yarnKept : going.kind === undefined
@@ -1163,6 +1171,24 @@ PanelWindow {
             window.yarnAt = null;
             window.yarnKept = false;
             window.yarnLeft = 1;
+        }
+    }
+
+    // The puppy where its visit has it, or null (MarginCatPuppy.js); and,
+    // anything cutting the visit short, how much of it is left as it fades
+    // where it stood, as the yarn does. It never stays behind its visit.
+    property var puppyAt: null
+    property real puppyLeft: 1
+    NumberAnimation {
+        id: puppyFades
+        target: window
+        property: "puppyLeft"
+        from: 1
+        to: 0
+        duration: Theme.motion.short
+        onFinished: {
+            window.puppyAt = null;
+            window.puppyLeft = 1;
         }
     }
 
@@ -1218,7 +1244,7 @@ PanelWindow {
             lag = { x: 0, y: 0 };
             say();
         }
-        for (const clock of [walker, mover, yarnFades]) {
+        for (const clock of [walker, mover, yarnFades, puppyFades]) {
             if (stilled && clock.running && !byHand)
                 clock.pause();
             else if (!stilled)
@@ -1249,7 +1275,7 @@ PanelWindow {
         clock.restart();
         if (Launched.up && !byHand) {
             clock.pause();
-            if (clock !== yarnFades && heldAt < 0)
+            if (clock !== yarnFades && clock !== puppyFades && heldAt < 0)
                 heldAt = window.FramePresentation.framesBegun;
         }
     }
@@ -1273,6 +1299,8 @@ PanelWindow {
                 : Games.frame(window.going, t);
             if (kind !== undefined && !yarnFades.running)
                 window.yarnAt = now.yarn;
+            if (kind !== undefined && !puppyFades.running)
+                window.puppyAt = Puppy.frame(window.going, t);
             if (now.done) {
                 // A click's play leaves its yarn lying where it ends.
                 if (window.yarnAt !== null && !yarnFades.running)
@@ -1529,7 +1557,8 @@ PanelWindow {
                 to: going.to.x,
                 beats: going.beats.map(beat => beat.name),
                 play: going.kind ?? null,
-                yarn: yarnAt
+                yarn: yarnAt,
+                puppy: puppyAt
             },
             move: moving === null || stepped === null ? null : {
                 t: Math.round(mover.elapsedTime * 10000) / 10,
@@ -1649,28 +1678,45 @@ PanelWindow {
         }
     }
 
-    // Its ball of yarn, where a play has it, in the cat's own cells and
-    // hue, on the screen's own pixels as the cat is, and drawn only within
-    // its room, so it rolls out from behind the room's edge and back
-    // behind it.
-    Item {
-        x: window.yarnAt ? window.snapped(window.yarnAt.within.left) : 0
-        width: window.yarnAt
-            ? window.snapped(window.yarnAt.within.right) - window.snapped(window.yarnAt.within.left)
-            : 0
+    // Its ball of yarn and the puppy, where a play has them, in the cat's
+    // own cells and hue, on the screen's own pixels as the cat is, and
+    // drawn only within its room, so they come out from behind the room's
+    // edge and go back behind it.
+    Companion {
+        at: window.yarnAt
+        left: window.yarnLeft
+        drawn: window.yarnDrawn
+    }
+    Companion {
+        at: window.puppyAt
+        left: window.puppyLeft
+        drawn: window.puppyDrawn
+    }
+
+    // One of them, `at` where its play has it, `left` of it as it fades
+    // and `drawn` in its pose's cells.
+    component Companion: Item {
+        id: companion
+
+        required property var at
+        required property real left
+        required property var drawn
+
+        x: at ? window.snapped(at.within.left) : 0
+        width: at ? window.snapped(at.within.right) - window.snapped(at.within.left) : 0
         height: parent.height
         clip: true
-        opacity: window.yarnLeft
-        visible: window.yarnAt !== null
+        opacity: left
+        visible: at !== null
 
         Item {
-            x: window.yarnAt ? window.snapped(window.yarnAt.x) - parent.x : 0
-            y: window.yarnAt ? window.snapped(window.yarnAt.y) : 0
+            x: companion.at ? window.snapped(companion.at.x) - companion.x : 0
+            y: companion.at ? window.snapped(companion.at.y) : 0
             width: window.size
             height: window.size
 
             Repeater {
-                model: Pixels.runs(window.yarnDrawn)
+                model: Pixels.runs(companion.drawn)
 
                 Rectangle {
                     required property var modelData
@@ -1707,6 +1753,8 @@ PanelWindow {
     // (the GPU rig, 2026-11-14).
     readonly property string yarnLooks: MarginCat.yarnLooks(yarnAt)
     readonly property var yarnDrawn: MarginCat.yarnDrawn(yarnLooks, Theme.pixels)
+    readonly property string puppyLooks: MarginCat.yarnLooks(puppyAt)
+    readonly property var puppyDrawn: MarginCat.yarnDrawn(puppyLooks, Theme.pixels)
 
     // Where `at` logical pixels falls on one of the screen's own.
     function snapped(at: real): real {

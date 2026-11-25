@@ -74,18 +74,22 @@ const IN_PLACE = {
 // over its column, on the walk's own steps; its ball of yarn rolling up
 // to it, batted, pounced on and sent off; and a pounce at nothing it's
 // sure of (Joel, 2026-11-12: "bat balls of yarn and stuff"), each of the
-// last two walking it back over its column from where it lands. How a hop,
-// the yarn and a pounce move is MarginCatGames.js's; how long it thinks
-// before the last two, in ms, is drawn from between THINKS.
+// last two walking it back over its column from where it lands; and the
+// puppy's visit ("And maybe throw in a little puppy too?"), which it
+// answers with a hop where it sits. How a hop, the yarn and a pounce move
+// is MarginCatGames.js's, and the puppy MarginCatPuppy.js's; how long it
+// thinks before the last three, in ms, is drawn from between THINKS.
 const MOVES = 0.25;
-const MOVING = ["hop", "wander", "yarn", "pounce"];
+const MOVING = ["hop", "wander", "yarn", "pounce", "puppy"];
 const THINKS = [150, 450];
 const WANDERS = [16, 40];
 const WANDER_SITS = 1500;
-// The yarn, the longest of its plays and the costliest, rests between 15
-// and 30 minutes after it plays, drawn each time (VKCF3Z 63b08065: "at
-// most one per 15 minutes idle, randomly spaced").
-const YARN_RESTS = [15 * 60_000, 30 * 60_000];
+// The plays that rest a while once played, and how long, drawn each time:
+// the yarn, the longest of its own and the costliest, 15 to 30 minutes
+// (VKCF3Z 63b08065: "at most one per 15 minutes idle, randomly spaced");
+// and the puppy, 20 to 40, so its visit stays a rare thing, a treat at
+// the edge of his eye rather than a second animal always about.
+const RESTS_BETWEEN = { yarn: [15 * 60_000, 30 * 60_000], puppy: [20 * 60_000, 40 * 60_000] };
 // How long, in ms from the first refusal, the cats may turn down scenes
 // drawn for a play asked for before the ask is let go: a cat walking back
 // refuses for a few seconds (a long gentle walk takes about 8), one with
@@ -93,10 +97,11 @@ const YARN_RESTS = [15 * 60_000, 30 * 60_000];
 // test's pace brings scenes fifteen times sooner but walks no faster.
 const REFUSED_FOR = 20_000;
 
-// How long the yarn rests once it's played, in ms, `chance` (0 to 1)
-// choosing where in YARN_RESTS.
-function yarnRests(chance) {
-    return Math.round(YARN_RESTS[0] + (YARN_RESTS[1] - YARN_RESTS[0]) * chance);
+// How long the play named `play` rests once it's played, in ms, `chance`
+// (0 to 1) choosing where in its RESTS_BETWEEN; 0 for one that never rests.
+function restsFor(play, chance) {
+    const span = RESTS_BETWEEN[play];
+    return span ? Math.round(span[0] + (span[1] - span[0]) * chance) : 0;
 }
 
 // One of `list`, `chance` (0 to 1) choosing which.
@@ -109,17 +114,18 @@ function pick(list, chance) {
 // beats, each a pose held `ms`, after which it sits again. While he types
 // it's a single pose, an ear flick, a tail swish or a blink; paused, one of
 // the plays in place; idle, those three times in four, else a move. A
-// hop, the yarn or a pounce is a beat with `play`, its kind, and how long
-// it thinks (`pause`), the last two then walking back; a wander's
-// walks are beats with `walk`, `to` "wander", its `cells` and `way`, or
-// "column", back. Asleep or still, none. The yarn is drawn only once its
-// rest is over (`more.yarnIn` ms from now, none where it's 0 or less).
+// hop, the yarn, a pounce or the puppy is a beat with `play`, its kind,
+// and how long it thinks (`pause`), the yarn and a pounce then walking
+// back; a wander's walks are beats with `walk`, `to` "wander", its `cells`
+// and `way`, or "column", back. Asleep or still, none. A play that rests
+// is drawn only once its rest is over (`more.restsIn`, by its name, in ms
+// from now, none where it's 0 or less).
 // A play `more.asked` for by name, as a test asks for the one it watches,
 // comes in place of the one drawn where the level has it, the draws taken
 // as ever.
 function scene(lively, draw, last, more) {
     const asked = more?.asked ?? "";
-    const yarned = (more?.yarnIn ?? 0) > 0;
+    const resting = play => (more?.restsIn?.[play] ?? 0) > 0;
     const held = (pose, ms) => ({
         pose,
         ms: Math.max(QUICKEST, Math.round(ms * (1 - VARIES + 2 * VARIES * draw())))
@@ -133,7 +139,7 @@ function scene(lively, draw, last, more) {
     }
     const moving = lively === "idle" && draw() >= 1 - MOVES;
     const names = (moving ? MOVING : Object.keys(IN_PLACE))
-        .filter(play => play !== last && !(yarned && play === "yarn"));
+        .filter(play => play !== last && !resting(play));
     const drawn = pick(names, draw());
     const allowed = lively === "idle" ? [...Object.keys(IN_PLACE), ...MOVING]
         : Object.keys(IN_PLACE);
@@ -141,9 +147,10 @@ function scene(lively, draw, last, more) {
     if (name === "hop") {
         return { name, beats: [{ play: name, pause: 0 }] };
     }
-    if (name === "yarn" || name === "pounce") {
+    if (name === "yarn" || name === "pounce" || name === "puppy") {
         const pause = Math.round(THINKS[0] + (THINKS[1] - THINKS[0]) * draw());
-        return { name, beats: [{ play: name, pause }, { walk: true, to: "column" }] };
+        const back = name === "puppy" ? [] : [{ walk: true, to: "column" }];
+        return { name, beats: [{ play: name, pause }, ...back] };
     }
     if (name === "wander") {
         const cells = Math.round(WANDERS[0] + (WANDERS[1] - WANDERS[0]) * draw());
@@ -168,12 +175,12 @@ function next(lively, draw, last, more) {
 // handed out: whether the scene still `answers` the play `asked` for, its
 // first beat not yet handed out; that play; when a cat first turned down
 // a scene drawn for it (`refusedAt`, by the clock `now`, or null); and
-// whether the yarn's rest starts now (`rests`). A screen's cat took the
+// the play whose rest starts now (`rests`), or "". A screen's cat took the
 // beat or none did (`taken`; a pose is always taken). One none took plays
 // nothing, as a cat still walking or held turns a play down, so the ask
 // waits for a later scene, for REFUSED_FOR, since one no cat can ever
-// take would else take every scene; and the yarn rests only once a cat
-// begins its play.
+// take would else take every scene; and a play that rests does so only
+// once a cat begins it.
 function handed(was, beat, taken, now) {
     const refusedAt = was.answers && !taken && was.refusedAt === null ? now : was.refusedAt;
     const spent = was.answers && (taken || now - refusedAt >= REFUSED_FOR);
@@ -181,7 +188,7 @@ function handed(was, beat, taken, now) {
         answers: false,
         asked: spent ? "" : was.asked,
         refusedAt: spent ? null : refusedAt,
-        rests: taken && beat.play === "yarn"
+        rests: taken && RESTS_BETWEEN[beat.play] !== undefined ? beat.play : ""
     };
 }
 

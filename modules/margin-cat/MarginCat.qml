@@ -90,9 +90,10 @@ Scope {
     property string posed: ""
     // The play under way or last played, so none comes twice running.
     property string played: ""
-    // When the yarn may next be drawn, by the wall clock, so it comes
-    // rarely (Plays.yarnRests); read only as a scene is drawn, so no timer.
-    property real yarnFrom: 0
+    // When each play that rests may next be drawn, by its name, on the
+    // wall clock, so the yarn and the puppy come rarely (Plays.restsFor);
+    // read only as a scene is drawn, so no timer.
+    property var restsUntil: ({})
     // What's left of the scene under way, each beat as Plays.scene says,
     // and the scene waiting comes to, or null where none comes.
     property var beats: []
@@ -129,9 +130,13 @@ Scope {
     }
 
     // What a scene is drawn with besides its level and last play: the play
-    // `asked` for, and how long the yarn rests yet.
+    // `asked` for, and how long each play that rests rests yet.
     function drawsWith(asked: string): var {
-        return { asked, yarnIn: yarnFrom - Date.now() };
+        const now = Date.now();
+        const restsIn = {};
+        for (const play in restsUntil)
+            restsIn[play] = restsUntil[play] - now;
+        return { asked, restsIn };
     }
 
     // Each level a fresh rest, so a key ends whatever scene was under way,
@@ -183,16 +188,19 @@ Scope {
         beating.restart();
     }
 
-    // What handing out a beat leaves of the play asked for and the yarn's
-    // rest, as Plays.handed says, so a play a cat turned down is neither
-    // spent nor rested from.
+    // What handing out a beat leaves of the play asked for and the rests
+    // of the plays that rest, as Plays.handed says, so a play a cat turned
+    // down is neither spent nor rested from.
     function handed(beat: var, taken: bool): void {
         const left = Plays.handed({ answers, asked, refusedAt }, beat, taken, Date.now());
         answers = left.answers;
         asked = left.asked;
         refusedAt = left.refusedAt;
-        if (left.rests)
-            yarnFrom = Date.now() + Plays.yarnRests(Math.random());
+        if (left.rests !== "") {
+            const until = Object.assign({}, restsUntil);
+            until[left.rests] = Date.now() + Plays.restsFor(left.rests, Math.random());
+            restsUntil = until;
+        }
     }
 
     Daemon {

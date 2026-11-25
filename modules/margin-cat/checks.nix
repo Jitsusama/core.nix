@@ -19,8 +19,8 @@ onLinux {
   # screen, as tests/margin-cat-one-screen.qml holds it, how it reads
   # niri's layout, as tests/margin-cat-tiles.qml holds it, how a walk says
   # its frames were shown, as tests/margin-cat-shown.qml holds it, and the
-  # plays that move it, as tests/margin-cat-games.qml holds them, in Qt's
-  # own engine.
+  # plays that move it and the puppy's visit, as tests/margin-cat-games.qml
+  # holds them, in Qt's own engine.
   the-margin-cat-sits-above-its-column =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -34,6 +34,7 @@ onLinux {
           ./MarginCatLedges.js
           ./MarginCatPaths.js
           ./MarginCatPlays.js
+          ./MarginCatPuppy.js
           ./MarginCatRoutes.js
           ./MarginCatShown.js
           ./MarginCatStacked.js
@@ -45,6 +46,7 @@ onLinux {
           ./tests/margin-cat-journeys.qml
           ./tests/margin-cat-one-screen.qml
           ./tests/margin-cat-pets.qml
+          ./tests/margin-cat-puppy.qml
           ./tests/margin-cat-rides.qml
           ./tests/margin-cat-shown.qml
           ./tests/margin-cat-tiles.qml
@@ -53,7 +55,8 @@ onLinux {
       # The theme's drawings of the yarn, which margin-cat-games.qml draws
       # as the screen does, and of the cat sitting, leaning and batting, whose
       # cells margin-cat-pets.qml holds a lean and a swat either way to, and
-      # held by the scruff, which it holds whole.
+      # held by the scruff, which it holds whole; and the puppy's, each of
+      # which margin-cat-puppy.qml holds its visit to drawing.
       glyphs = import ../theme/glyphs.nix { inherit (pkgs) lib; };
       drawings = pkgs.writeText "MarginCatDrawings.js" ''
         .pragma library
@@ -70,6 +73,12 @@ onLinux {
               "batting"
               "leaning"
               "nothingHere"
+              "puppyBowing"
+              "puppySitting"
+              "puppyWalkingA"
+              "puppyWalkingB"
+              "puppyWalkingC"
+              "puppyWalkingD"
               "scruffed"
             ] (name: glyphs.${name}.pixels)
           )

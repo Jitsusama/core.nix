@@ -180,36 +180,50 @@ QtObject {
         const long = beats => beats.reduce((all, beat) => all + (beat.ms ?? 0), 0);
         const chances = [0, 0.2, 0.4, 0.6, 0.8, 0.99];
         expect("the yarn rests 15 to 30 minutes once it's played",
-            [Plays.yarnRests(0), Plays.yarnRests(1)], [15 * 60_000, 30 * 60_000]);
+            [Plays.restsFor("yarn", 0), Plays.restsFor("yarn", 1)], [15 * 60_000, 30 * 60_000]);
+        expect("the puppy 20 to 40, and a play that never rests, none",
+            [Plays.restsFor("puppy", 0), Plays.restsFor("puppy", 1), Plays.restsFor("hop", 1)],
+            [20 * 60_000, 40 * 60_000, 0]);
         const lately = chances.map(chance => Plays.scene("idle", draws(0.8, chance), "",
-            { yarnIn: 1 }).name);
+            { restsIn: { yarn: 1 } }).name);
         expect("while it rests, its other moves, never the yarn",
-            Array.from(new Set(lately)).sort(), ["hop", "pounce", "wander"]);
-        expect("its rest over, the yarn again", Plays.scene("idle", draws(0.8, 0.6), "",
-            { yarnIn: 0 }).name, "yarn");
+            Array.from(new Set(lately)).sort(), ["hop", "pounce", "puppy", "wander"]);
+        const bothRest = chances.map(chance => Plays.scene("idle", draws(0.8, chance), "",
+            { restsIn: { yarn: 1, puppy: 1 } }).name);
+        expect("while both rest, neither",
+            Array.from(new Set(bothRest)).sort(), ["hop", "pounce", "wander"]);
+        expect("its rest over, the yarn again", Plays.scene("idle", draws(0.8, 0.5), "",
+            { restsIn: { yarn: 0 } }).name, "yarn");
         let seed = 11;
         const random = () => {
             seed = (seed * 16_807) % 2_147_483_647;
             return seed / 2_147_483_647;
         };
-        const yarned = [];
+        const played = { yarn: [], puppy: [] };
+        const restsUntil = {};
         let clock = 0;
         let lastPlay = "";
-        let yarnFrom = 0;
         while (clock < 4 * 3_600_000) {
-            const coming = Plays.next("idle", random, lastPlay, { yarnIn: yarnFrom - clock });
+            const restsIn = {};
+            for (const play in restsUntil)
+                restsIn[play] = restsUntil[play] - clock;
+            const coming = Plays.next("idle", random, lastPlay, { restsIn });
             clock += coming.after;
             lastPlay = coming.scene.name;
-            if (lastPlay === "yarn") {
-                yarned.push(clock);
-                yarnFrom = clock + Plays.yarnRests(random());
+            if (played[lastPlay]) {
+                played[lastPlay].push(clock);
+                restsUntil[lastPlay] = clock + Plays.restsFor(lastPlay, random());
             }
             clock += long(coming.scene.beats) + (coming.scene.beats[0]?.play ? 17_000 : 0);
         }
-        const apart = yarned.slice(1).map((at, i) => at - yarned[i]);
+        const apart = times => times.slice(1).map((at, i) => at - times[i]);
+        const spaced = (times, fewest, least) => [times.length >= fewest,
+            apart(times).every(gap => gap >= least),
+            Math.max(...apart(times)) - Math.min(...apart(times)) > 5 * 60_000];
         expect("four idle hours, the yarn a few times, 15 minutes apart at the least, unevenly",
-            [yarned.length >= 4, apart.every(gap => gap >= 15 * 60_000),
-                Math.max(...apart) - Math.min(...apart) > 5 * 60_000], [true, true, true]);
+            spaced(played.yarn, 4, 15 * 60_000), [true, true, true]);
+        expect("and the puppy a few times, 20 minutes apart at the least, unevenly",
+            spaced(played.puppy, 3, 20 * 60_000), [true, true, true]);
     }
 
     // A play a cat turns down, still walking or held as its beat comes, is
@@ -225,18 +239,22 @@ QtObject {
         const answering = { answers: true, asked: "yarn", refusedAt: null };
         const refused = Plays.handed(answering, yarn, false, now);
         expect("the yarn asked for, turned down, still asked, and not rested from",
-            refused, { answers: false, asked: "yarn", refusedAt: now, rests: false });
+            refused, { answers: false, asked: "yarn", refusedAt: now, rests: "" });
         expect("nor spent by the walk back no cat takes after it",
             Plays.handed(refused, back, false, now + 10), refused);
         expect("the yarn asked for, begun, spent, and its rest begun",
             Plays.handed(answering, yarn, true, now),
-            { answers: false, asked: "", refusedAt: null, rests: true });
+            { answers: false, asked: "", refusedAt: null, rests: "yarn" });
+        expect("the puppy, begun, its own rest begun, and a pounce none",
+            [Plays.handed(answering, { play: "puppy", pause: 200 }, true, now).rests,
+                Plays.handed(answering, { play: "pounce", pause: 200 }, true, now).rests],
+            ["puppy", ""]);
         expect("begun after it was turned down, spent and its refusal forgotten",
             Plays.handed(Object.assign({}, answering, { refusedAt: now }), yarn, true,
-                now + 5_000), { answers: false, asked: "", refusedAt: null, rests: true });
+                now + 5_000), { answers: false, asked: "", refusedAt: null, rests: "yarn" });
         expect("a yarn drawn at random, begun, rests and leaves another play asked",
             Plays.handed({ answers: false, asked: "pounce", refusedAt: now }, yarn, true, now),
-            { answers: false, asked: "pounce", refusedAt: now, rests: true });
+            { answers: false, asked: "pounce", refusedAt: now, rests: "yarn" });
         expect("a play asked for in place, spent by its first pose",
             Plays.handed({ answers: true, asked: "batting", refusedAt: null },
                 { pose: "batting" }, true, now).asked, "");
