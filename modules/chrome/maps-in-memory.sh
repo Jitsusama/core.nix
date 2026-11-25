@@ -19,10 +19,13 @@
 #
 # Chrome drops its lock before its last processes are gone, so a Chrome
 # process still mapping a file in the profile holds it too, and is waited
-# for, up to half a minute, rather than left to the next quit. A run that
-# finds the profile held looks once more as it ends, and starts over if
-# the lock went meanwhile: the watch that starts it misses a change made
+# for rather than left to the next quit: up to half a minute in all for a
+# pass over the folders, however many it waits on. A run that left a
+# folder where it was for a Chrome that held or was quitting looks once
+# more as it ends, for up to another half minute, and starts over if that
+# Chrome went meanwhile: the watch that starts it misses a change made
 # while it runs, so a quit landing then would otherwise wait for the next.
+# So a run waits a minute at most before it ends or starts over.
 #
 # A folder named with a leading + is one Chrome empties itself as it runs:
 # BrowserMetrics, which it deletes whole, link and all, a while into each
@@ -35,7 +38,10 @@
 # Only the browser process maps its histograms, and its maps are readable,
 # so a sandboxed process whose maps can't be read doesn't stop it. A file
 # Chrome deleted is in no folder, so its map doesn't count. The files a
-# session left in its folder in memory, which nothing maps, go as it moves.
+# session left in its folder in memory, which nothing maps, go before it's
+# looked at, whatever holds the profile: nothing reads them where it is on
+# the disk, and going first they leave no time between the look that
+# clears the folder and its move for a Chrome to start in.
 #
 # The folders in memory are made first, whatever the lock says, since the
 # runtime folder is empty after each boot and the links from the boot
@@ -136,13 +142,13 @@ quitting() {
   done
 }
 
-# Says what holds the profile once a quitting Chrome has had its half
-# minute, or nothing when nothing does.
+# Says what holds the profile once a quitting Chrome has had until the
+# pass's deadline, or nothing when nothing does.
 # The lock is read last, after the slower look through the processes, so
 # a Chrome starting meanwhile is seen before anything is moved.
 held() {
-  local chrome lock wait
-  for wait in $(seq 30); do
+  local chrome lock first=yes
+  while :; do
     chrome=$(quitting)
     lock=$(holder)
     if [ -n "$lock" ]; then
@@ -150,8 +156,14 @@ held() {
       return 0
     fi
     [ -n "$chrome" ] || return 0
+    [ "$SECONDS" -lt "$deadline" ] || break
+    # Said once, to the log rather than the answer, so a pause is explained.
+    if [ -n "$first" ]; then
+      first=
+      echo "$chrome so this waits up to half a minute for it" >&2
+    fi
     # A second between looks lets Chrome's last processes go.
-    [ "$wait" = 30 ] || sleep 1
+    sleep 1
   done
   echo "$chrome"
 }
@@ -199,20 +211,24 @@ open_in() {
 }
 
 # Says which Chrome process maps or holds open `$1` once a quitting Chrome
-# has had its half minute, or nothing when none does, as held does for the
-# profile. A Chrome that takes the lock again meanwhile is running, not
-# quitting, so it's said at once.
+# has had until the pass's deadline, or nothing when none does, as held
+# does for the profile. A Chrome that takes the lock again meanwhile is
+# running, not quitting, so it's said at once.
 let_go() {
-  local using lock wait
-  for wait in $(seq 30); do
+  local using lock first=yes
+  while :; do
     using=$(open_in "$1")
     [ -n "$using" ] || return 0
     lock=$(holder)
     [ -z "$lock" ] || break
+    [ "$SECONDS" -lt "$deadline" ] || break
     # Said once, to the log rather than the answer, so a pause is explained.
-    [ "$wait" != 1 ] || echo "$using as it quits, so this waits up to half a minute for it" >&2
+    if [ -n "$first" ]; then
+      first=
+      echo "$using as it quits, so this waits up to half a minute for it" >&2
+    fi
     # A second between looks lets Chrome's last processes go.
-    [ "$wait" = 30 ] || sleep 1
+    sleep 1
   done
   echo "$using"
 }
@@ -222,8 +238,12 @@ for folder in "$@"; do
 done
 
 while :; do
+  # The half minute every wait in a pass shares (see the top).
+  deadline=$((SECONDS + 30))
   chrome=
   looked=
+  # The marked folders a quitting Chrome kept, for the last look.
+  kept=()
   for marked in "$@"; do
     folder=${marked#+}
     link=$(readlink "$profile/$folder" 2>/dev/null) || link=
@@ -231,6 +251,13 @@ while :; do
       continue
     fi
     if [ "$marked" != "$folder" ]; then
+      # What sessions before left in memory, which nothing maps any more.
+      for left in "$memory/$folder"/*; do
+        [ -e "$left" ] || continue
+        whole=$(realpath -m -- "$left")
+        using=$(open_in "$whole")
+        [ -n "$using" ] || rm -rf -- "$left"
+      done
       # Another host's Chrome maps its files where this can't look.
       lock=$(holder)
       case $lock in
@@ -248,25 +275,10 @@ while :; do
       fi
       if [ -n "$using" ]; then
         echo "$using, so $folder stays on the disk until nothing of Chrome's is open in it"
+        # A running Chrome keeps it until it next quits, which starts a run.
+        [ -n "$lock" ] || kept+=("$folder")
         continue
       fi
-      # What sessions before left in memory, which nothing maps any more.
-      for left in "$memory/$folder"/*; do
-        [ -e "$left" ] || continue
-        whole=$(realpath -m -- "$left")
-        using=$(open_in "$whole")
-        [ -n "$using" ] || rm -rf -- "$left"
-      done
-      # Another host's Chrome that took the profile during those looks maps
-      # what's on the disk where this can't see, so its lock is read again.
-      lock=$(holder)
-      case $lock in
-      "Chrome on "*)
-        echo "$lock took the profile as this ran, so $folder stays on the disk"
-        continue
-        ;;
-      *) ;;
-      esac
     else
       # The profile is asked about once a pass, and a held one keeps every
       # cache where it is while the marked folders after them still move.
@@ -299,8 +311,19 @@ while :; do
     ln -sT "$memory/$folder" "$profile/$folder"
     echo "$folder is in memory now"
   done
-  [ -n "$chrome" ] || exit 0
-  chrome=$(held)
-  [ -z "$chrome" ] || exit 0
+  [ -n "$chrome" ] || [ "${#kept[@]}" != 0 ] || exit 0
+  # The last look, with a half minute of its own, starts over once
+  # anything that kept a folder where it was has gone.
+  deadline=$((SECONDS + 30))
+  gone=
+  if [ -n "$chrome" ]; then
+    chrome=$(held)
+    [ -n "$chrome" ] || gone=yes
+  fi
+  for folder in "${kept[@]}"; do
+    using=$(let_go "$real/$folder")
+    [ -n "$using" ] || gone=yes
+  done
+  [ -n "$gone" ] || exit 0
   echo "Chrome quit as this ran, so it starts over"
 done

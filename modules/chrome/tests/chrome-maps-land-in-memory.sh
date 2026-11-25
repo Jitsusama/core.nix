@@ -9,18 +9,20 @@
 # another program's, doesn't stop it; that a Chrome which has dropped its
 # lock but still maps a file in the profile is waited for, as is one whose
 # maps can't be read; that a Chrome started again while the old one quits
-# stops the move; that one still quitting after the half minute is given
-# up on, and the run looks once more and starts over once it has quit;
+# stops the move; that one still quitting after the half minute, with a
+# histogram mapped, is given up on for BrowserMetrics and the caches
+# alike, and the run looks once more and starts over once it has quit;
 # and that while a Chrome holds the profile nothing in it is touched,
 # though the folders in memory are still made, but for BrowserMetrics,
 # which Chrome deletes itself as it runs and which moves whenever nothing
 # of Chrome's maps or holds open a file still in it: a file it maps or
-# holds open there keeps it on the disk, one it deleted doesn't, nor one
-# in a folder whose name only begins with it, a quitting Chrome mapping
-# one is waited for, and what a session left in memory goes unless it's
-# mapped; that a Chrome on another host keeps BrowserMetrics too, since
-# its processes can't be seen; and that folders reaching outside the
-# profile are refused. The
+# holds open there keeps it on the disk, one it deleted doesn't, whether
+# mapped or held open, nor one in a folder whose name only begins with
+# it, a quitting Chrome mapping one is waited for, what a session left in
+# memory goes unless it's mapped, and it moves when named after caches a
+# held profile keeps; that a Chrome on another host keeps BrowserMetrics
+# too, since its processes can't be seen; and that folders reaching
+# outside the profile are refused. The
 # folders are those a running Chrome was seen mapping shared and
 # writable, listed here apart from the module so one dropped there is
 # caught, as is BrowserMetrics losing its mark.
@@ -43,7 +45,9 @@ folders=(BrowserMetrics Default/GPUCache Default/DawnWebGPUCache Default/DawnGra
 here=$(uname -n)
 
 fill() {
-  rm -rf "$home" "$runtime"
+  # The last case's log, which a case that reads its run's log as it goes
+  # would otherwise read.
+  rm -rf "$home" "$runtime" "$work/run.log"
   mkdir -p "$runtime"
   for folder in "${folders[@]}"; do
     mkdir -p "$profile/$folder"
@@ -53,9 +57,9 @@ fill() {
 }
 
 # Runs the command, failing rather than hanging the build on a run that
-# never ends: in these cases a run waits at most two half minutes, the
-# give-up and its last look, before it ends or starts over on a profile
-# nothing holds, so two minutes is past any run that stops.
+# never ends: a run waits at most a minute, half for its pass and half
+# for its last look, before it ends or starts over on a profile nothing
+# holds, so two minutes is past any run that stops.
 run() {
   local status=0
   # The command is the unit's, words split as systemd splits them.
@@ -94,13 +98,15 @@ named() {
 # file in the profile: a copy of the shell, named chrome and run from the
 # profile, maps itself there, as Chrome's last processes map their caches.
 # It quits only once the file it's given exists, so a run is seen waiting
-# whatever the machine's load. Its process is left in $quitting.
+# whatever the machine's load. It runs from the folder it's given second,
+# Crashpad unless told, and its process is left in $quitting.
 quit_later() {
-  mkdir -p "$profile/Crashpad"
-  cp "$BASH" "$profile/Crashpad/chrome"
+  local from=$profile/${2:-Crashpad}
+  mkdir -p "$from"
+  cp "$BASH" "$from/chrome"
   rm -f "$1"
   # shellcheck disable=SC2016 # The stand-in expands its own argument.
-  "$profile/Crashpad/chrome" -c 'until [ -e "$0" ]; do sleep 0.1; done' "$1" &
+  "$from/chrome" -c 'until [ -e "$0" ]; do sleep 0.1; done' "$1" &
   quitting=$!
   named "$quitting"
 }
@@ -113,15 +119,17 @@ waiting() {
   fi
 }
 
-# Waits until the run in the background has moved BrowserMetrics, which
-# comes before the caches, so it has reached their wait however loaded
-# the machine is, failing if it ends first or takes a minute.
+# Waits until the run in the background says it waits for a quitting
+# Chrome, so it has reached the caches' wait however loaded the machine
+# is, and a run that skips the wait fails here every time rather than
+# racing the looks after. It fails if the run ends first or takes a
+# minute.
 reached_caches() {
   local started=$SECONDS
-  until [ -L "$profile/BrowserMetrics" ]; do
+  until grep -q 'so this waits up to half a minute' run.log 2>/dev/null; do
     waiting "$1"
     if [ $((SECONDS - started)) -gt 60 ]; then
-      echo "the command hadn't reached the caches a minute into waiting for $1"
+      echo "the command hadn't said it waits a minute into waiting for $1"
       exit 1
     fi
     # A tenth of a second between looks at a move that takes a moment.
@@ -280,7 +288,9 @@ ln -s "elsewhere.example-1" "$profile/SingletonLock"
 run "other host's"
 metrics_kept "with Chrome running on another host, whose processes can't be seen"
 caches_untouched "with Chrome running on another host"
-said "Chrome on elsewhere.example holds the profile" "with Chrome running on another host"
+# The caches' own reason, which BrowserMetrics' line doesn't share.
+said "Chrome on elsewhere.example holds the profile, so its caches stay on the disk" \
+  "with Chrome running on another host"
 # BrowserMetrics' own reason, which the caches' line doesn't share.
 said "holds the profile, whose processes can't be seen from here," \
   "with Chrome running on another host, for its histograms"
@@ -339,11 +349,13 @@ wait "$running"
 kill "$chrome"
 untouched "with Chrome started again as the old one quit"
 
-# A Chrome still quitting after the half minute is given up on, and when
-# it quits as the run looks once more, the run starts over and moves them.
-# This one case waits the whole half minute, since that's what it proves.
+# A Chrome still quitting after the half minute, mapping a histogram, is
+# given up on for BrowserMetrics and then the caches, in one half minute
+# between them, and when it quits as the run looks once more, the run
+# starts over and moves them all. This one case waits the whole half
+# minute, since that's what it proves.
 fill
-quit_later "$work/quit"
+quit_later "$work/quit" BrowserMetrics
 # The last run's log says the same, so it can't be what's read.
 rm -f run.log
 started=$SECONDS
@@ -365,8 +377,16 @@ if [ $((SECONDS - started)) -lt 25 ]; then
   echo "the command gave up on a quitting Chrome after $((SECONDS - started)) s, not half a minute"
   exit 1
 fi
+if [ $((SECONDS - started)) -gt 45 ]; then
+  echo "the command gave up on a quitting Chrome after $((SECONDS - started)) s,"
+  echo "waiting a half minute for BrowserMetrics and another for the caches"
+  exit 1
+fi
 waiting "a Chrome still quitting as it gave up, to see it quit"
-untouched "while a Chrome was still quitting after half a minute"
+metrics_kept "while a Chrome mapping a histogram was still quitting after half a minute"
+caches_untouched "while a Chrome was still quitting after half a minute"
+said "BrowserMetrics stays on the disk until nothing of Chrome's is open in it" \
+  "with a Chrome mapping a histogram still quitting after half a minute"
 touch "$work/quit"
 wait "$quitting"
 wait "$running"
@@ -427,10 +447,42 @@ until [ -e "/proc/$chrome/fd/3" ]; do
 done
 ln -s "$here-$chrome" "$profile/SingletonLock"
 run "holding Chrome's"
-kill "$chrome"
 metrics_kept "with a Chrome holding a file in it open"
 said "process $chrome, holds $profile/BrowserMetrics/index open" \
   "with a Chrome holding a file in it open"
+
+# Once Chrome has deleted the folder, the file it holds open with it, the
+# descriptor names a deleted file, and the folder moves.
+rm -rf "$profile/BrowserMetrics"
+mkdir "$profile/BrowserMetrics"
+echo old >"$profile/BrowserMetrics/index"
+run "deleted open file's"
+kill "$chrome"
+metrics "with Chrome holding open a file it had deleted"
+
+# BrowserMetrics moves while Chrome holds the profile even when named
+# after the caches it keeps, which are passed over rather than ending the
+# pass. The unit names it first, so the command is run here by hand.
+fill
+./chrome &
+chrome=$!
+named "$chrome"
+ln -s "$here-$chrome" "$profile/SingletonLock"
+ordered=0
+"${command%% *}" "$profile" "$runtime/chrome" Default/GPUCache +BrowserMetrics \
+  >run.log 2>&1 || ordered=$?
+kill "$chrome"
+if [ "$ordered" != 0 ]; then
+  echo "the command fails with BrowserMetrics named after a cache, ending $ordered, saying:"
+  cat run.log
+  exit 1
+fi
+metrics "named after a cache a running Chrome keeps"
+index=$(cat "$profile/Default/GPUCache/index" 2>/dev/null) || index=
+if [ -L "$profile/Default/GPUCache" ] || [ "$index" != old ]; then
+  echo "named before BrowserMetrics, the command swapped GPUCache out from under Chrome"
+  exit 1
+fi
 
 # A Chrome mapping a file in a folder whose name only begins with
 # BrowserMetrics doesn't keep BrowserMetrics on the disk: it holds the
