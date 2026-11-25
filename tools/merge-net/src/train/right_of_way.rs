@@ -12,7 +12,13 @@
 //! holding none, and `RIGHT_OF_WAY` after it began whatever happens: it's
 //! given again only by a miss after a landing, so neither a train that
 //! can't land nor one that lands under steady traffic holds main back for
-//! longer than that at a time.
+//! longer than that at a time. Apart from the right of way, a train that
+//! runs with riders aboard takes a change `ready` would merge alone too
+//! (`yields`), since that merge would move main beside its run.
+//!
+//! A train that keeps missing still lets nothing merge alone while it
+//! runs; it ends when its riders land, go red or fall off, and none of
+//! those waits on a change beside it.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -83,26 +89,61 @@ pub fn follow(root: &Path, ended: &Ended, now: u64) -> Option<String> {
     }
 }
 
+/// Why a change that would merge alone boards the train instead.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Yields {
+    /// The train has held the right of way since then.
+    Held(u64),
+    /// The train runs with this many riders aboard.
+    Runs(usize),
+}
+
+/// Whether a change that would merge alone boards the train instead, by
+/// the right of way the train holds since `held`, and whether it runs
+/// with `aboard` riders: while a train runs with riders, a change merged
+/// alone moves main beside its run, and once main moves files a rider
+/// reads the train runs again. On 25 November the right of way given at
+/// 05:19 ran out at 06:04 while the train still ran, so #6593 merged
+/// alone at 07:31 and the train, 18 riders aboard, ran again at
+/// 4b0fe54b742f. Velocity's ruling of that morning already had no change
+/// merge alone while a train ran; this makes `ready` hold to it.
+#[must_use]
+pub fn yields(held: Option<u64>, runs: bool, aboard: usize) -> Option<Yields> {
+    match (held, runs && aboard > 0) {
+        (Some(since), _) => Some(Yields::Held(since)),
+        (None, true) => Some(Yields::Runs(aboard)),
+        (None, false) => None,
+    }
+}
+
 /// What `ready` says of the change at `head`, which would merge alone,
-/// while the train holds the right of way: that it boards the train
-/// instead, so main stays where the train's run is cut; nothing while the
-/// train holds none, or can't take the change, or the change waits on a
-/// run of its own, as `ready` boards none then either.
+/// while the train holds the right of way or runs with riders aboard:
+/// that it boards the train instead, so main stays where the train's run
+/// is cut; nothing while the train neither holds the way nor runs, or
+/// can't take the change, or the change waits on a run of its own, as
+/// `ready` boards none then either.
 #[must_use]
 pub fn gives_way(head: &str) -> Option<String> {
     let root = crate::state::State::from_env().root;
     let now = crate::state::now();
-    let since = holds(&root, now)?;
+    let aboard = super::riders(&root).len();
+    let why = yields(holds(&root, now), aboard > 0 && super::going(), aboard)?;
     if crate::turn::waits_to_run(head).is_some() {
         return None;
     }
     let branch = crate::git(&["symbolic-ref", "--quiet", "--short", "HEAD"]).ok()?;
     let boarded = super::offer(head, (!branch.is_empty()).then_some(branch)?.as_str())?;
+    let since = match why {
+        Yields::Held(since) => format!(
+            "has held the right of way for {} minutes, since main moved beside a run of it \
+             that passed",
+            now.saturating_sub(since) / 60
+        ),
+        Yields::Runs(aboard) => format!("runs with {aboard} riders aboard"),
+    };
     Some(format!(
-        "the merge train has held the right of way for {} minutes, since main moved beside \
-         a run of it that passed, so {} rides it rather than merge alone and move main \
-         again: {boarded}",
-        now.saturating_sub(since) / 60,
+        "the merge train {since}, so {} rides it rather than merge alone and move main \
+         beside it: {boarded}",
         crate::state::short(head)
     ))
 }
@@ -266,6 +307,35 @@ mod tests {
             "giving back one not held said it was given back"
         );
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_change_that_would_merge_alone_boards_while_the_train_runs_with_riders() {
+        assert_eq!(
+            yields(None, true, 18),
+            Some(Yields::Runs(18)),
+            "a change merged alone beside a running train with riders"
+        );
+        assert_eq!(
+            yields(Some(100), false, 0),
+            Some(Yields::Held(100)),
+            "a change merged alone while the train held the right of way"
+        );
+        assert_eq!(
+            yields(Some(100), true, 3),
+            Some(Yields::Held(100)),
+            "the right of way held wasn't said as why"
+        );
+        assert_eq!(
+            yields(None, false, 4),
+            None,
+            "a change boarded a train that has stopped"
+        );
+        assert_eq!(
+            yields(None, true, 0),
+            None,
+            "a change boarded a train with no one aboard"
+        );
     }
 
     #[test]
