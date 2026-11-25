@@ -52,6 +52,31 @@ COUNTED = "Three murmured, two still in the air."
 BUDGET = Budget(files=20, kilobytes=423, elements=147)
 # How long ago each murmur was said, in seconds, oldest first.
 AGES = (40 * 60, 25 * 60, 10 * 60)
+# The newest murmur still in the air, which the lede quotes. Nearly every murmur a cell says
+# runs past the 140 characters the lede quotes before it trims, as this one does, so the lede
+# this draws is the one a first visit usually ends on.
+NEWEST = (
+    "Gulls are back on the breakwater, a week before the almanac said they would be, and "
+    "they're nesting low on the seaward side where the spring tides reach the rocks."
+)
+# A desk as wide as the laptop's monitor shows the page, past SIZES' desk.
+WIDE_DESK = (1920, 1080)
+# The height in pixels each of the head's parts takes with the words index.html opens with and
+# with those the feed wrote, by its id. The opening words are put back for a moment to be
+# measured, so both are laid out in the same box.
+OPENING_AND_LIVE = """async (ids) => {
+  const opening = new DOMParser().parseFromString(
+    await (await fetch(location.href)).text(), "text/html");
+  return Object.fromEntries(ids.map((id) => {
+    const part = document.getElementById(id);
+    const live = part.innerHTML;
+    const liveHeight = part.getBoundingClientRect().height;
+    part.innerHTML = opening.getElementById(id).innerHTML;
+    const openingHeight = part.getBoundingClientRect().height;
+    part.innerHTML = live;
+    return [id, [Math.round(openingHeight), Math.round(liveHeight)]];
+  }));
+}"""
 
 
 def murmur(writer: str, at: int, words: str, **more: object) -> dict[str, object]:
@@ -88,7 +113,7 @@ def murmuring_node(tmp_path: Path, said_at: tuple[int, ...]) -> Iterator[StandIn
         murmur(
             "OSPREY", osprey, "The harbour chart is a day behind.", settled="charted this morning"
         ),
-        murmur("TERNAA", tern, "Gulls are back on the breakwater."),
+        murmur("TERNAA", tern, NEWEST),
     ]
     stand_in = StandIn(tmp_path / "node.sock", "node", {"murmur": murmurs}).start()
     yield stand_in
@@ -543,6 +568,24 @@ def test_the_murmurs_page_keeps_to_its_budget(browser: Browser, murmurs_served: 
         opened.first(drawn)
         opened.keeps_to(BUDGET)
         the_page_stands(opened.page, "live")
+    finally:
+        opened.close()
+
+
+@pytest.mark.parametrize("size", [*SIZES, WIDE_DESK])
+def test_the_opening_words_take_the_lines_the_head_will(
+    browser: Browser, murmurs_served: Served, size: tuple[int, int]
+) -> None:
+    # The words the page opens with must take the lines its headline and lede will once the
+    # node answers, or everything under them moves as it does.
+    root, _ = murmurs_served
+    opened = Opened(browser, f"{root}web/", size, "light")
+    try:
+        opened.first(drawn)
+        opened.page.wait_for_timeout(REDRAWN_MS)
+        heights = opened.page.evaluate(OPENING_AND_LIVE, ["headline", "lede"])
+        moved = {part: each for part, each in heights.items() if each[0] != each[1]}
+        assert not moved, f"at {size} the head's opening and live heights differ: {moved}"
     finally:
         opened.close()
 

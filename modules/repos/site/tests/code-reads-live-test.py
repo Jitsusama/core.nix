@@ -696,6 +696,48 @@ def test_tab_reaches_the_keys_at_the_head_once(code_page: Page) -> None:
     expect(keys.nth(1), "Tab back didn't come to the key last left").to_be_focused()
 
 
+# A desk as wide as the laptop's monitor shows the page, past SIZES' desk.
+WIDE_DESK = (1920, 1080)
+# The height in pixels each of the head's parts takes with the words index.html opens with and
+# with those the feeds wrote, by its id. The opening words are put back for a moment to be
+# measured, so both are laid out in the same box with the room let go.
+OPENING_AND_LIVE = """async (ids) => {
+  const opening = new DOMParser().parseFromString(
+    await (await fetch(location.href)).text(), "text/html");
+  return Object.fromEntries(ids.map((id) => {
+    const part = document.getElementById(id);
+    const live = part.innerHTML;
+    const liveHeight = part.getBoundingClientRect().height;
+    part.innerHTML = opening.getElementById(id).innerHTML;
+    const openingHeight = part.getBoundingClientRect().height;
+    part.innerHTML = live;
+    return [id, [Math.round(openingHeight), Math.round(liveHeight)]];
+  }));
+}"""
+
+
+@pytest.mark.parametrize("size", [*SIZES, WIDE_DESK])
+def test_the_opening_words_take_the_lines_the_head_will(
+    browser: Browser, code_served: Served, size: tuple[int, int]
+) -> None:
+    # A first visit, or one at a width not seen before, has no room kept from the last, so the
+    # words the page opens with must take the lines its headline and lede will, or everything
+    # under them moves as the feeds arrive.
+    root, _ = code_served
+    opened = Opened(browser, f"{root}code/", size, "light")
+    try:
+        page = opened.page
+        says_it_stands(page, "live")
+        expect(row(page, "github:owl/core"), "Code drew no row for core").to_be_visible()
+        # Past the time the room is held, so the head is laid out by its words alone.
+        page.wait_for_timeout(ROOM_HELD_MS)
+        heights = page.evaluate(OPENING_AND_LIVE, ["title", "lede"])
+        moved = {part: each for part, each in heights.items() if each[0] != each[1]}
+        assert not moved, f"at {size} the head's opening and live heights differ: {moved}"
+    finally:
+        opened.close()
+
+
 def test_a_reload_holds_the_page_still(code_page: Page) -> None:
     says_it_stands(code_page, "live")
     expect(row(code_page, "github:owl/core"), "Code drew no row for core").to_be_visible()
