@@ -1554,13 +1554,19 @@ ShellRoot {
         Niri.windows = listedBeforeSlow;
         // Beside another still late, or behind the lock, where the walk is
         // settled once the lock lets go (placeBehind), it goes on without
-        // it: neither late nor begun, so a press asks for it again.
-        const lateGoesOn = (named, others, locked) => {
+        // it: neither late nor begun, so a press asks for it again. The
+        // lock is held (locked) or let go a moment ago, niri not yet given
+        // the keys back (lettingGo); either way the lock's end then settles
+        // the walk, which ends, as reopenSettling's first round finds
+        // nothing to place.
+        const lateGoesOn = (named, others, locked, lettingGo) => {
             const given = { id: named.slice("pi-hosted.".length), classed: named, opened: null };
             Sessions.reopening = { waiting: null, late: [given].concat(others), queue: [],
                 placed: [], behind: [], begun: [given.id].concat(others.map(one => one.id)),
                 looking: null, settling: false, back: null, focused: false };
             Sessions.behindTheLock = locked;
+            if (lettingGo)
+                Sessions.lockLetGo = false;
             Sessions.viewWith(view.slice(0, -1).concat([given.id]), named, null, "walk");
             Sessions.untaken(named, String(Date.now()));
             const going = Sessions.reopening;
@@ -1568,17 +1574,31 @@ ShellRoot {
             const on = going !== null && going.late.length === others.length
                 && !going.begun.includes(given.id)
                 && others.every(one => going.late.includes(one) && going.begun.includes(one.id));
+            let ends = null;
+            if (locked || lettingGo) {
+                Sessions.behindTheLock = false;
+                Sessions.lockGone();
+                // The walk's pace, begun by the cases above, may still be
+                // running, which holds placeBehind's settling to its end:
+                // what it does then is done here.
+                if (Sessions.reopening?.settling !== true)
+                    Sessions.reopenSoon();
+                const settling = Sessions.reopening?.settling === true;
+                Sessions.settleNextReopened();
+                ends = settling && Sessions.reopening === null;
+            }
             // Let go with no walk left for it, and at once, as the cases
             // after it place what they open.
             Sessions.reopening = null;
             Sessions.behindTheLock = false;
             Sessions.lockLetGo = true;
             Sessions.forgetAsk(named);
-            return { on, left };
+            return { on, left, ends };
         };
         const stillLate = { id: "s-still-late", classed: "pi-hosted.s-still-late", opened: null };
         const besideLate = lateGoesOn("pi-hosted.s-late-beside", [stillLate], false);
         const lockedLate = lateGoesOn("pi-hosted.s-late-locked", [], true);
+        const lettingGoLate = lateGoesOn("pi-hosted.s-late-letting-go", [], false, true);
         expect("the walk waits no more on one whose window came refused, nor keeps it",
             goneOnRefused, JSON.stringify(Sessions.reopening ?? waitedRefused));
         expect("nor on one no kitty took, which a press asks for again", goneOnUntaken,
@@ -1599,6 +1619,11 @@ ShellRoot {
             besideLate.left);
         expect("nor behind the lock, the walk left for the lock's end to settle",
             lockedLate.on, lockedLate.left);
+        expect("and the lock's end settles it, the walk ending", lockedLate.ends === true,
+            String(lockedLate.ends));
+        expect("nor as the lock lets go, niri not yet given the keys, the lock's end settling it",
+            lettingGoLate.on && lettingGoLate.ends === true,
+            `${lettingGoLate.left} ${lettingGoLate.ends}`);
         Niri.windows = Object.assign({}, unforged, { "88": forged, "93": cameRefused });
         // A start's window in the sessions kitty is held to its pid too,
         // as any program can name its window as a start's.
