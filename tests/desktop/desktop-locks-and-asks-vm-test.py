@@ -295,7 +295,7 @@ def test_polkits_prompt_comes_up_after_a_hand_over_that_waited(desktop: Desktop)
         desktop.in_session(f"{said} 'Held until released'"), timeout=STARTING
     )
     # Past the 10 s a held shell once asked for the agent in, the old launcher still open.
-    machine.sleep(HELD_ASKED.total_seconds())
+    machine.sleep(duration=HELD_ASKED)
     # Two shells run now, so the old one's launcher is closed by its own process.
     desktop.as_account(f"qs ipc --pid {old} call launcher toggle")
     # Handed over, the unit's main process is the new shell, never none (0).
