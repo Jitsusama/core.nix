@@ -39,6 +39,7 @@ mod painter;
 mod place;
 mod prompt;
 mod reading;
+mod reloader;
 mod search;
 mod select;
 mod showing;
@@ -55,7 +56,7 @@ mod whole;
 mod worker;
 mod world;
 
-use app::{Drawn, Following, Incoming, Loading, ReadsOn, Reload, Spot};
+use app::{Drawn, Following, Incoming, Loading, ReadsOn, Reload, Shown, Spot};
 use painter::{Band, Key, Painter};
 use smithay_client_toolkit::compositor::CompositorState;
 use smithay_client_toolkit::output::OutputState;
@@ -166,6 +167,9 @@ struct App {
     /// screen's page waiting for the rest, so how far down it the view is
     /// can be said.
     whole: bool,
+    /// The words the page shown was set from, which a page set again is
+    /// held against to know whether the file was edited.
+    shown_words: Shown,
     stale: HashSet<Key>,
     jump: Option<motion::Jump>,
     /// Under reduced motion a move cuts straight there.
@@ -466,6 +470,23 @@ fn main() -> ExitCode {
     })
 }
 
+/// Sets `file`'s first screen, reaching as far as `block`, while the GL
+/// driver comes up beside it on `conn`.
+fn set_first_warming(
+    conn: &Connection,
+    file: &str,
+    block: Option<usize>,
+    width: page::Width,
+) -> Result<page::First, String> {
+    // SAFETY: the connection, and so its display, outlives the join below.
+    let warming = unsafe { gl::warm(conn.backend().display_ptr().cast()) };
+    let first = page::set_first(file, block, width);
+    if let Some(warming) = warming {
+        let _ = warming.join();
+    }
+    first
+}
+
 /// Shows `file` in a window until it's closed, or measures its frames.
 fn show(
     measuring: bool,
@@ -492,13 +513,7 @@ fn show(
     let opens_at = opening_at(kept.as_ref(), letter);
     // Connecting before the page is set lets the GL driver come up beside it.
     let conn = Connection::connect_to_env()?;
-    // SAFETY: the connection, and so its display, outlives the join below.
-    let warming = unsafe { gl::warm(conn.backend().display_ptr().cast()) };
-    let first = page::set_first(file, opens_at.map(|opens| opens.block), width);
-    if let Some(warming) = warming {
-        let _ = warming.join();
-    }
-    let first = first?;
+    let first = set_first_warming(&conn, file, opens_at.map(|opens| opens.block), width)?;
     let starts = place::starts(&first.page.frame);
     let start_pt = opens_at.and_then(|opens| opens.at(&starts));
     let kept_marks = kept.as_ref().map(kept_marks).unwrap_or_default();
@@ -508,8 +523,8 @@ fn show(
         rest,
         parts: set_parts,
         title,
+        words,
     } = first;
-
     let (globals, queue) = registry_queue_init::<App>(&conn)?;
     let qh = queue.handle();
     let mut event_loop: EventLoop<App> = EventLoop::try_new()?;
@@ -546,6 +561,7 @@ fn show(
         set_parts,
         width,
         whole: rest.is_none(),
+        words,
     };
     let mut app = App::new(
         &globals,
@@ -559,7 +575,7 @@ fn show(
     if let Some(rest) = rest {
         set_rest(&handle, rest)?;
     }
-    let (reload_to, watch) = reload_on_save(&handle, file, width)?;
+    let (reload_to, watch) = reloader::reload_on_save(&handle, file, width)?;
     app.reload_to = Some(reload_to);
     app.watch = watch;
     app.take_kept_marks();
@@ -700,6 +716,8 @@ struct Opening {
     width: page::Width,
     /// Whether the first set was the whole file.
     whole: bool,
+    /// The words the first set read, hashed.
+    words: u64,
 }
 
 /// Sets the rest of the file on a thread of its own while the first screen
@@ -727,73 +745,4 @@ fn set_rest(
             let _ = failed.send(());
         })?;
     Ok(())
-}
-
-/// Sets the file again on a thread of its own at each save, or once a
-/// batch of web pictures has come, and sets another file when a link or a
-/// jump opens one in the window. The thread's setter is made at the first
-/// ask, so it costs the first screen nothing, and asks that come while one
-/// sets are taken as one: the newest file asked for, as it is now, at the
-/// newest width. Gives back what asks it, and the watch on the file's
-/// saves, which moves with the file shown.
-fn reload_on_save(
-    handle: &LoopHandle<'static, App>,
-    file: &str,
-    width: page::Width,
-) -> Result<(std::sync::mpsc::Sender<Reload>, Option<watch::Watch>), Box<dyn std::error::Error>> {
-    let reset_to = heard(handle, App::saved)?;
-    let (reload_to, asks) = std::sync::mpsc::channel::<Reload>();
-    let first = file.to_string();
-    std::thread::Builder::new()
-        .name("reloader".into())
-        .spawn(move || {
-            let mut setter: Option<page::Setter> = None;
-            while let Ok(ask) = asks.recv() {
-                let (mut open, mut fit, mut saved) = (None, None, false);
-                for ask in std::iter::once(ask).chain(std::iter::from_fn(|| asks.try_recv().ok())) {
-                    match ask {
-                        Reload::Open(file) => open = Some(file),
-                        Reload::Fit(width) => fit = Some(width),
-                        Reload::Saved => saved = true,
-                        Reload::Fetched => (),
-                    }
-                }
-                let setter = setter.get_or_insert_with(|| {
-                    let mut setter = page::Setter::new(&first);
-                    setter.fit(width);
-                    setter
-                });
-                if let Some(file) = open {
-                    setter.open(&file);
-                }
-                if let Some(width) = fit {
-                    setter.fit(width);
-                }
-                let set = setter.set().map(|(page, ms)| {
-                    let lines = text::lines(text::runs(&page.frame));
-                    (page, ms, lines, setter.title().to_string())
-                });
-                // Edited when a save was heard, or when a set for a width
-                // read words a save not heard yet changed.
-                let edited = saved || setter.edited();
-                if reset_to
-                    .send((setter.file().to_string(), edited, set))
-                    .is_err()
-                {
-                    return;
-                }
-            }
-        })?;
-    // Pictures fetched from the web set the page again, the file unedited.
-    let fetched_to = reload_to.clone();
-    web::when_fetched(move || {
-        let _ = fetched_to.send(Reload::Fetched);
-    });
-    let save_to = reload_to.clone();
-    let watch = watch::saves(std::path::Path::new(file), move || {
-        save_to.send(Reload::Saved).is_ok()
-    })
-    .map_err(|error| eprintln!("reader: can't watch {file} for saves: {error}"))
-    .ok();
-    Ok((reload_to, watch))
 }

@@ -101,6 +101,40 @@ fn an_unboxed_pieces_last_stretch_counts_with_the_short_word_held_after_it() {
     );
 }
 
+#[test]
+fn a_stretch_of_wide_characters_past_the_eighth_is_still_measured() {
+    // Thirty stretches of as many clusters as the wide one come before it,
+    // so a count of clusters alone would never measure it; its CJK
+    // characters take two cells each, so it's the widest, and the column
+    // needs it whole.
+    let code = format!("{}-漢漢-x", ["ll"; 30].join("-"));
+    // Boxed, least-code would count the whole piece, wider than any
+    // stretch, and pass without measuring one.
+    let pieces = held(&code, 360.0);
+    assert!(pieces.ends_with('!'), "the span is unboxed: {pieces}");
+    let widths = probed(
+        r#"text(size: 2pt, (least-code(s), raw("漢漢-"), raw("ll-")).map(c => str(calc.round(measure(c).width.pt(), digits: 2))).join(" "))"#,
+        &code,
+        360.0,
+    )
+    .join(" ");
+    let parsed: Vec<f64> = widths
+        .split(' ')
+        .map(|width| width.parse::<f64>().unwrap_or(f64::NAN))
+        .collect();
+    let [counted, wide, narrow] = parsed[..] else {
+        panic!("three widths, not {widths:?}")
+    };
+    assert!(
+        wide > narrow,
+        "the test theme sets 漢漢- ({wide} pt) no wider than ll- ({narrow} pt), so this shows nothing"
+    );
+    assert!(
+        counted >= wide - 0.01,
+        "least-code counts {counted} pt, under the wide stretch's {wide} pt"
+    );
+}
+
 /// The widths, in a 360 pt window, of what least-code counts for `code`,
 /// of the Typst string `joined` set as code, and of "i-" and "l-".
 fn narrow_widths(joined: &str, code: &str) -> [f64; 4] {

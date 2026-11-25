@@ -48,6 +48,11 @@ pub struct Mark {
     pub block: usize,
     pub into_pt: f64,
     pub block_pt: Option<f64>,
+    /// How wide the page was where its distance was measured, so only a
+    /// page set as wide gives one kept without its block's height that
+    /// height. A mark kept before this was written has none, and never
+    /// learns one.
+    pub width_pt: Option<f64>,
     pub said: Said,
 }
 
@@ -192,8 +197,14 @@ pub fn line_at(starts: &[(usize, f64)], line: (f64, f64)) -> (usize, f64) {
 /// line (moves.rs), by `line_at`. And a mark is a point, not a view,
 /// so how far down it is is its line's share of the page's whole height:
 /// a view's share of how far it can go reads every mark on the last
-/// screen as all of it.
-pub fn mark(blocks: &[Block], letter: char, line: (f64, f64), height_pt: Option<f64>) -> Mark {
+/// screen as all of it. The page is `width_pt` wide.
+pub fn mark(
+    blocks: &[Block],
+    letter: char,
+    line: (f64, f64),
+    height_pt: Option<f64>,
+    width_pt: f64,
+) -> Mark {
     let starts: Vec<(usize, f64)> = blocks
         .iter()
         .map(|block| (block.number, block.top_pt))
@@ -204,6 +215,7 @@ pub fn mark(blocks: &[Block], letter: char, line: (f64, f64), height_pt: Option<
         block,
         into_pt,
         block_pt: height_of(&starts, block),
+        width_pt: Some(width_pt),
         said: Said {
             heading: heading_of(blocks, block),
             through: height_pt.map(|height| share(line.0, height)),
@@ -389,15 +401,32 @@ pub fn height_of(starts: &[(usize, f64)], block: usize) -> Option<f64> {
 /// the same page set again `after`, at another width: as far through the
 /// same block, and then on the line of that block nearest it, of the
 /// tops and baselines `lines_after`, or between them while it has none.
+/// The reader itself always lands lines as `moved_into` does, through an
+/// edit's renumbering; this is that with none, which the tests read.
+#[cfg(test)]
 pub fn moved(
     before: &[(usize, f64)],
     after: &[(usize, f64)],
     line: (f64, f64),
     lines_after: &[(f64, f64)],
 ) -> Option<f64> {
+    moved_into(before, after, line, lines_after, |block| block)
+}
+
+/// Where a line lands as `moved` lands it, but in the block `now` says its
+/// block is after, as an edit that adds or takes a block above it
+/// renumbers it.
+pub fn moved_into(
+    before: &[(usize, f64)],
+    after: &[(usize, f64)],
+    line: (f64, f64),
+    lines_after: &[(f64, f64)],
+    now: impl FnOnce(usize) -> usize,
+) -> Option<f64> {
     let (block, into_pt) = line_at(before, line);
-    let pt = pt_of(after, block, into_pt, height_of(before, block))?;
-    Some(line_in(after, block, pt, lines_after).unwrap_or(pt))
+    let into = now(block);
+    let pt = pt_of(after, into, into_pt, height_of(before, block))?;
+    Some(line_in(after, into, pt, lines_after).unwrap_or(pt))
 }
 
 /// The top of the line in `block` nearest `pt`, of `lines` given by their
@@ -506,26 +535,45 @@ pub fn as_read(landed: &[Landed], letter: char, pt: f64) -> Option<&Mark> {
         .map(|one| &one.kept)
 }
 
-/// Takes the kept marks whose blocks the page starting at `starts` has,
-/// `whole` when no block past them comes, into `marks`, each kept as read
-/// in `landed`; the others wait in `kept`. A mark set while it waited is
-/// his, and beats it. One kept before its block's height was would land
-/// unscaled at every width, so it takes the height its block has here,
-/// where its distance is read as it was, once that's known.
+/// How kept marks are taken onto a page: `whole` when no block past the
+/// page's comes, and the page's width, which says whose distances were
+/// kept against the heights its blocks have.
+#[derive(Clone, Copy, Debug)]
+pub struct Taking {
+    pub whole: bool,
+    pub width_pt: f64,
+}
+
+/// Whether a mark's distance was measured on a page `width_pt` wide, where
+/// its block stands as tall as it did for it.
+fn measured_at(mark: &Mark, width_pt: f64) -> bool {
+    mark.width_pt
+        .is_some_and(|kept| (kept - width_pt).abs() < 0.01)
+}
+
+/// Takes the kept marks whose blocks the page starting at `starts` has
+/// into `marks`, each kept as read in `landed`; the others wait in `kept`.
+/// A mark set while it waited is his, and beats it. One kept before its
+/// block's height was would land unscaled at every width, so on a page
+/// as wide as its distance was measured on it takes the height its block
+/// has, once that's known; a page at another width would give it a height
+/// its distance never had.
 pub fn take_kept(
     kept: &mut Vec<Mark>,
     marks: &mut HashMap<char, f64>,
     landed: &mut Vec<Landed>,
     starts: &[(usize, f64)],
-    whole: bool,
+    taking: Taking,
 ) {
     kept.retain(|one| {
-        let Some(pt) = mark_at(starts, whole, one.block, one.into_pt, one.block_pt) else {
+        let Some(pt) = mark_at(starts, taking.whole, one.block, one.into_pt, one.block_pt) else {
             return true;
         };
         if let std::collections::hash_map::Entry::Vacant(mark) = marks.entry(one.letter) {
             mark.insert(pt);
-            let block_pt = one.block_pt.or_else(|| height_of(starts, one.block));
+            let block_pt = one.block_pt.or_else(|| {
+                height_of(starts, one.block).filter(|_| measured_at(one, taking.width_pt))
+            });
             landed.push(Landed {
                 kept: Mark {
                     block_pt,
@@ -537,6 +585,21 @@ pub fn take_kept(
         }
         false
     });
+}
+
+/// Gives each landed mark kept without its block's height the height its
+/// block has on the page starting at `starts`, once that's known, and
+/// leaves every other as it was kept. One in the first screen's last block
+/// lands before the block after it is set, so it learns its height only
+/// from the whole page; without it, a resize would land it unscaled for
+/// good. Only one measured on a page as wide, `width_pt`, learns it.
+pub fn heights_known(landed: &mut [Landed], starts: &[(usize, f64)], width_pt: f64) {
+    for one in landed
+        .iter_mut()
+        .filter(|one| one.kept.block_pt.is_none() && measured_at(&one.kept, width_pt))
+    {
+        one.kept.block_pt = height_of(starts, one.kept.block);
+    }
 }
 
 /// Moves `marks` for the page set again, its blocks starting at `after`:
@@ -607,6 +670,10 @@ fn from_json(kept: &serde_json::Value) -> Option<Place> {
                         block: usize::try_from(mark.get("block")?.as_u64()?).ok()?,
                         into_pt: mark.get("into_pt")?.as_f64()?,
                         block_pt: block_pt_of(mark),
+                        width_pt: mark
+                            .get("width_pt")
+                            .and_then(serde_json::Value::as_f64)
+                            .filter(|pt| pt.is_finite() && *pt > 0.0),
                         said: said_of(mark),
                     })
                 })
@@ -687,6 +754,9 @@ fn write_in(state: &Path, file: &Path, place: &Place) -> std::io::Result<()> {
             });
             if let Some(block_pt) = mark.block_pt {
                 fields["block_pt"] = serde_json::json!(block_pt);
+            }
+            if let Some(width_pt) = mark.width_pt {
+                fields["width_pt"] = serde_json::json!(width_pt);
             }
             with_said(fields, &mark.said)
         })

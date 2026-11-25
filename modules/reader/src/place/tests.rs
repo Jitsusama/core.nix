@@ -1,7 +1,8 @@
 use super::{
-    Block, Landed, Mark, Opens, Place, Said, as_read, at, heading_of, keep_window_in, kept_at,
-    landed_again, letter, line_in, listed_in, mark, mark_at, moved, on_lines, opening, pt_of,
-    read_in, set_again, still_waiting, take_kept, through, window_in, write_in,
+    Block, Landed, Mark, Opens, Place, Said, Taking, as_read, at, heading_of, heights_known,
+    keep_window_in, kept_at, landed_again, letter, line_in, listed_in, mark, mark_at, moved,
+    on_lines, opening, pt_of, read_in, set_again, still_waiting, take_kept, through, window_in,
+    write_in,
 };
 use std::collections::HashMap;
 
@@ -12,6 +13,7 @@ fn marks_still_waiting_are_written_back_whole_only_from_the_first_screen() {
         block: 9,
         into_pt: 20.0,
         block_pt: Some(80.0),
+        width_pt: Some(400.0),
         said: Said {
             heading: Some("Far".into()),
             through: Some(0.9),
@@ -108,8 +110,13 @@ fn a_mark_on_a_headings_line_is_kept_under_that_heading() {
         block(1, None),
         block(2, Some("Further On")),
     ];
-    let kept = mark(&blocks, 'a', (196.0, 210.0), Some(1000.0));
+    let kept = mark(&blocks, 'a', (196.0, 210.0), Some(1000.0), 372.5);
     assert_eq!(kept.said.heading.as_deref(), Some("Further On"), "{kept:?}");
+    assert_eq!(
+        kept.width_pt,
+        Some(372.5),
+        "a mark keeps how wide the page it was measured on was"
+    );
     assert_eq!(kept.block, 2, "{kept:?}");
     assert_eq!(
         pt_of(
@@ -121,7 +128,7 @@ fn a_mark_on_a_headings_line_is_kept_under_that_heading() {
         Some(196.0),
         "it's kept where its line's top is"
     );
-    let words = mark(&blocks, 'b', (120.0, 134.0), Some(1000.0));
+    let words = mark(&blocks, 'b', (120.0, 134.0), Some(1000.0), 372.5);
     assert_eq!(
         (words.block, words.said.heading.as_deref()),
         (1, Some("A Page")),
@@ -139,14 +146,14 @@ fn a_mark_says_its_lines_share_of_the_whole_page() {
     // The view goes no further than 700 down a 1000-point page, so a
     // view's share of 950 would be all of it; a mark there is a point.
     let blocks = [block(0, None), block(9, None)];
-    let kept = mark(&blocks, 'a', (950.0, 964.0), Some(1000.0));
+    let kept = mark(&blocks, 'a', (950.0, 964.0), Some(1000.0), 400.0);
     let share = kept
         .said
         .through
         .expect("a whole page's mark says how far down");
     assert!((share - 0.95).abs() < 1e-9, "{share} isn't 950 of 1000");
     assert_eq!(
-        mark(&blocks, 'a', (950.0, 964.0), None).said.through,
+        mark(&blocks, 'a', (950.0, 964.0), None, 400.0).said.through,
         None,
         "a page not yet set whole can't say"
     );
@@ -184,6 +191,7 @@ fn a_file_opens_at_the_mark_asked_for_or_where_it_was_left() {
             block: 3,
             into_pt: 7.0,
             block_pt: Some(20.0),
+            width_pt: None,
             said: Said::default(),
         }],
         said: Said::default(),
@@ -242,9 +250,9 @@ fn a_place_kept_before_it_said_where_still_reads() {
         "at_end": false,
         "marks": [
             {"letter": "a", "block": 1, "into_pt": 0.0},
-            {"letter": "b", "block": 1, "into_pt": 0.0, "block_pt": 0.5},
-            {"letter": "c", "block": 1, "into_pt": 0.0, "block_pt": -3},
-            {"letter": "d", "block": 1, "into_pt": 0.0, "block_pt": "tall"},
+            {"letter": "b", "block": 1, "into_pt": 0.0, "block_pt": 0.5, "width_pt": 0},
+            {"letter": "c", "block": 1, "into_pt": 0.0, "block_pt": -3, "width_pt": -3},
+            {"letter": "d", "block": 1, "into_pt": 0.0, "block_pt": "tall", "width_pt": "wide"},
         ],
     });
     std::fs::write(&kept, old.to_string()).expect("kept");
@@ -260,6 +268,10 @@ fn a_place_kept_before_it_said_where_still_reads() {
         assert_eq!(
             mark.block_pt, None,
             "a height no block stands is a file gone wrong, read as none: {mark:?}"
+        );
+        assert_eq!(
+            mark.width_pt, None,
+            "a width no page is set at is a file gone wrong, read as none: {mark:?}"
         );
     }
     let listed = listed_in(&state, 9);
@@ -295,6 +307,7 @@ fn the_places_are_listed_newest_left_first_without_a_file_gone() {
                 block: 1,
                 into_pt: 0.0,
                 block_pt: None,
+                width_pt: None,
                 said: said.clone(),
             }],
             said,
@@ -473,6 +486,7 @@ fn a_kept_mark_goes_on_a_line_of_its_block_and_is_kept_as_read_until_he_moves_it
         block,
         into_pt,
         block_pt: Some(80.0),
+        width_pt: Some(400.0),
         said: Said::default(),
     };
     let landed_at = |letter, block, into_pt, pt| Landed {
@@ -533,11 +547,14 @@ fn a_kept_mark_goes_on_a_line_of_its_block_and_is_kept_as_read_until_he_moves_it
 
 #[test]
 fn kept_marks_are_taken_as_read_and_one_kept_without_a_height_takes_its_blocks() {
+    // Each was measured on a page 400 points wide, but f, kept before a
+    // mark said how wide, never learns a height.
     let kept = |letter, block, into_pt, block_pt| Mark {
         letter,
         block,
         into_pt,
         block_pt,
+        width_pt: Some(400.0),
         said: Said::default(),
     };
     // The first screen's page, ending on block 2, whose height isn't known.
@@ -548,15 +565,29 @@ fn kept_marks_are_taken_as_read_and_one_kept_without_a_height_takes_its_blocks()
         kept('c', 2, 10.0, None),
         kept('d', 2, 10.0, Some(50.0)),
         kept('e', 1, 0.0, Some(80.0)),
+        Mark {
+            width_pt: None,
+            ..kept('f', 1, 30.0, None)
+        },
     ];
     let mut marks = HashMap::from([('e', 999.0)]);
     let mut landed = Vec::new();
-    take_kept(&mut waiting, &mut marks, &mut landed, &starts, false);
+    let first = Taking {
+        whole: false,
+        width_pt: 400.0,
+    };
+    take_kept(&mut waiting, &mut marks, &mut landed, &starts, first);
     let letters: Vec<char> = waiting.iter().map(|one| one.letter).collect();
     assert_eq!(letters, ['d'], "d waits for its block's height");
     assert_eq!(
         marks,
-        HashMap::from([('a', 160.0), ('b', 140.0), ('c', 210.0), ('e', 999.0)]),
+        HashMap::from([
+            ('a', 160.0),
+            ('b', 140.0),
+            ('c', 210.0),
+            ('e', 999.0),
+            ('f', 150.0)
+        ]),
         "each lands as far through its block, or as far in; e, set while it waited, is his"
     );
     let heights: Vec<(char, Option<f64>)> = landed
@@ -565,15 +596,86 @@ fn kept_marks_are_taken_as_read_and_one_kept_without_a_height_takes_its_blocks()
         .collect();
     assert_eq!(
         heights,
-        [('a', Some(80.0)), ('b', Some(80.0)), ('c', None)],
-        "b takes its block's height here; c's block's isn't known yet"
+        [
+            ('a', Some(80.0)),
+            ('b', Some(80.0)),
+            ('c', None),
+            ('f', None)
+        ],
+        "b takes its block's height here; c's block's isn't known on the first screen, \
+         and f can't say it was measured at this width"
     );
-    // Set again at another width, block 1 twice as tall: b scales with it.
-    let after = [(0, 36.0), (1, 120.0), (2, 280.0)];
+    // The whole page, at another width, says nothing of c's block.
+    let wider = [(0, 36.0), (1, 120.0), (2, 260.0), (3, 300.0)];
+    heights_known(&mut landed, &wider, 500.0);
+    assert_eq!(
+        landed.get(2).map(|one| one.kept.block_pt),
+        Some(None),
+        "c learns no height from a page set at another width"
+    );
+    // The whole page, at the same width, has the block after c's, and its
+    // block 1 stands taller than a and b were kept against.
+    let whole = [(0, 36.0), (1, 120.0), (2, 220.0), (3, 280.0)];
+    heights_known(&mut landed, &whole, 400.0);
+    let heights: Vec<(char, Option<f64>)> = landed
+        .iter()
+        .map(|one| (one.kept.letter, one.kept.block_pt))
+        .collect();
+    assert_eq!(
+        heights,
+        [
+            ('a', Some(80.0)),
+            ('b', Some(80.0)),
+            ('c', Some(60.0)),
+            ('f', None)
+        ],
+        "c takes its block's height once the whole page has it; a and b keep theirs, \
+         and f still can't say its width"
+    );
+    // Set again at another width, blocks 1 and 2 twice as tall: b and c
+    // scale with them.
+    let after = [(0, 36.0), (1, 120.0), (2, 280.0), (3, 400.0)];
     assert_eq!(
         landed_again(&mut landed, &marks, &after),
-        vec![('a', 200.0), ('b', 160.0), ('c', 290.0)],
-        "b lands as far through its block as a does"
+        vec![('a', 200.0), ('b', 160.0), ('c', 300.0), ('f', 150.0)],
+        "b and c land as far through their blocks as a does; f, as far in as it was kept"
+    );
+}
+
+#[test]
+fn a_page_at_another_width_lends_no_kept_mark_its_blocks_height() {
+    // b, kept without its block's height, first finds its block on a page
+    // set at another width than its distance was kept at.
+    let mut waiting = vec![Mark {
+        letter: 'b',
+        block: 1,
+        into_pt: 20.0,
+        block_pt: None,
+        width_pt: Some(400.0),
+        said: Said::default(),
+    }];
+    let (mut marks, mut landed) = (HashMap::new(), Vec::new());
+    let wider = Taking {
+        whole: true,
+        width_pt: 500.0,
+    };
+    take_kept(
+        &mut waiting,
+        &mut marks,
+        &mut landed,
+        &[(0, 36.0), (1, 120.0), (2, 280.0)],
+        wider,
+    );
+    assert_eq!(
+        landed.first().map(|one| one.kept.block_pt),
+        Some(None),
+        "b takes no height its distance was never kept against"
+    );
+    // Back at the width it was kept at, it lands as far in as it was kept.
+    assert_eq!(
+        landed_again(&mut landed, &marks, &[(0, 36.0), (1, 120.0), (2, 200.0)]),
+        vec![('b', 140.0)],
+        "b lands where it was kept, not scaled by another width's block"
     );
 }
 
@@ -584,6 +686,7 @@ fn a_page_set_again_lands_kept_marks_from_what_was_kept_unless_edited() {
         block: 1,
         into_pt: 40.0,
         block_pt: Some(80.0),
+        width_pt: Some(400.0),
         said: Said::default(),
     };
     let mut landed = vec![Landed {
@@ -603,9 +706,13 @@ fn a_page_set_again_lands_kept_marks_from_what_was_kept_unless_edited() {
         landed.iter().all(|one| !one.on_line),
         "a goes on a line again"
     );
-    set_again(&mut landed, &mut marks, &after, true, |pt| pt);
+    set_again(&mut landed, &mut marks, &after, true, |pt| pt + 1000.0);
     assert!(landed.is_empty(), "an edit lets the kept marks go");
-    assert_eq!(marks.get(&'a'), Some(&200.0), "and a stays where it stands");
+    assert_eq!(
+        marks,
+        HashMap::from([('a', 1200.0), ('z', 2300.0)]),
+        "and a goes as moved, as z does, not from what was kept"
+    );
 }
 
 #[test]
@@ -625,6 +732,7 @@ fn a_place_kept_is_the_place_read_back() {
             block: 3,
             into_pt: 7.0,
             block_pt: Some(21.0),
+            width_pt: Some(372.5),
             said: Said {
                 heading: Some("Before".to_string()),
                 through: Some(0.1),

@@ -2,7 +2,10 @@
 //! in place, or writing a new one beside it and moving it over the old. The
 //! folder is watched rather than the file, since a file moved over is a new
 //! file the old watch never sees. A link followed to another file moves the
-//! watch to it, so only the file shown is ever heard.
+//! watch to it, so only the file shown is ever heard. A file made anew at
+//! its name is heard once it's closed, not when it's made: an editor saving
+//! by a new file makes it empty and writes it after, and a page set from it
+//! between the two would move every mark on it as if its words were gone.
 
 use std::ffi::{OsStr, OsString};
 use std::mem::MaybeUninit;
@@ -42,7 +45,7 @@ fn watch_folder(fd: &OwnedFd, folder: &Path) -> std::io::Result<i32> {
     Ok(inotify::add_watch(
         fd,
         folder,
-        WatchFlags::CLOSE_WRITE | WatchFlags::MOVED_TO | WatchFlags::CREATE,
+        WatchFlags::CLOSE_WRITE | WatchFlags::MOVED_TO,
     )?)
 }
 
@@ -80,9 +83,9 @@ pub fn saves(
                                 && event
                                     .file_name()
                                     .is_some_and(|it| it.to_bytes() == heard.name.as_bytes());
-                            let written = event.events().intersects(
-                                ReadFlags::CLOSE_WRITE | ReadFlags::MOVED_TO | ReadFlags::CREATE,
-                            );
+                            let written = event
+                                .events()
+                                .intersects(ReadFlags::CLOSE_WRITE | ReadFlags::MOVED_TO);
                             ours |= named && written;
                         }
                         Err(rustix::io::Errno::INTR) => {}
@@ -121,6 +124,7 @@ impl Watch {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Write;
     use std::sync::mpsc;
     use std::time::Duration;
 
@@ -153,6 +157,31 @@ mod tests {
         assert!(
             hearing.recv_timeout(Duration::from_secs(5)).is_ok(),
             "a save moved over is heard"
+        );
+        std::fs::remove_dir_all(&dir).expect("cleaned");
+    }
+
+    #[test]
+    fn a_file_made_anew_is_heard_once_closed_and_not_before() {
+        let dir = place("anew");
+        let file = dir.join("page.md");
+        std::fs::write(&file, "one").expect("the file");
+        let (heard, hearing) = mpsc::channel();
+        let _watch = saves(&file, move || heard.send(()).is_ok()).expect("a watch");
+
+        // As an editor saving by a new file does: the old one moved aside,
+        // then a new one made at its name, written and closed.
+        std::fs::rename(&file, dir.join("page.md~")).expect("moved aside");
+        let mut fresh = std::fs::File::create(&file).expect("made anew");
+        assert!(
+            hearing.recv_timeout(Duration::from_millis(500)).is_err(),
+            "a file made but not yet closed isn't heard"
+        );
+        fresh.write_all(b"two").expect("written");
+        drop(fresh);
+        assert!(
+            hearing.recv_timeout(Duration::from_secs(5)).is_ok(),
+            "a file made anew is heard once closed"
         );
         std::fs::remove_dir_all(&dir).expect("cleaned");
     }
