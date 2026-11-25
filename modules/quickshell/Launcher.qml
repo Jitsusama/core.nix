@@ -1636,19 +1636,18 @@ Scope {
             toldGone();
             return { done: false, said: `${gone.gone ?? ""}: ${gone.why ?? ""}` };
         }
-        if (!going.went) {
-            const why = (toldOnOpen[0] ?? []).slice(0, 2).join(": ");
-            toldHere();
-            return { done: false, said: why };
-        }
+        // Agents opened the launcher to say why as it was refused (refused), so only
+        // the why it gave is answered here.
+        if (!going.went)
+            return { done: false, said: going.why };
         return { done: true, said: String(going.session.title ?? "") };
     }
 
     // Opens the launcher on Agents to say what's held for its next opening, a Go To's why it
-    // couldn't go (Sessions.goTo), with Joel's first keys held back, as toldGone does: from a
-    // link, and from a look's Go in Now, which runs once the launcher has shut, neither of
-    // which would otherwise be said until he next opened it himself. Over a launcher in use it
-    // says nothing (inUse). Whether it said so.
+    // couldn't go (Sessions.goTo, said by Agents' refused), with Joel's first keys held back,
+    // as toldGone does: every act shuts the launcher before it runs, and a link comes with it
+    // shut, so the why would otherwise wait until he next opened it himself. Over a launcher
+    // in use it says nothing (inUse), the foot having said it. Whether it said so.
     function toldHere() {
         if (inUse())
             return false;

@@ -293,6 +293,16 @@ ShellRoot {
         // Said false, so a Go To from a link with the launcher shut opens it to say why, rather
         // than telling a launcher nobody opens (KP0L6A, 2026-11-24 [00902e94]).
         expect("and says it didn't go", outWent === false, String(outWent));
+        // Parked on another machine, woken there, its window opens there, which takes Joel
+        // nowhere, so a Go To that can't reach it still says it didn't go, rather than the wake
+        // hiding it (#6519's review).
+        const outParked = Object.assign({}, out, { presence: Object.assign({}, out.presence,
+            { state: "parked" }) });
+        root.unjoined = "";
+        const outWoke = Sessions.wakeToGo(outParked, out);
+        expect("one parked elsewhere and out of reach, woken, still says it didn't go",
+            outWoke === false && root.unjoined === "OUTRCH",
+            JSON.stringify([outWoke, root.unjoined]));
         hosts();
         Sessions.steer("farawy", { act: "pause" }, (put, answer, sent) => {
             root.farawyTold = [put, answer?.error?.message ?? null, sent];

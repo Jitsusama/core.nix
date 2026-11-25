@@ -316,7 +316,7 @@
           property var present: ({})
           property var running: []
           property var parked: []
-          function wakeToGo(resting, session) {}
+          function wakeToGo(resting, session) { return true; }
         '';
         "Words.qml" = singleton "Words.qml" ''
           function of(name) { return { said: {} }; }

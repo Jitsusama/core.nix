@@ -4221,13 +4221,15 @@ Singleton {
     // which opens where Joel is and takes focus: wake's would open where it
     // slept, unfocused, and hold goTo's off while it came. Agents' Go To,
     // What's On's and For You's Deal With It all go through here. Whether it
-    // went, as goTo says, or woke one, since a wake opens its own window,
-    // which goTo can't yet see.
+    // went, as goTo says, or woke one parked here, since that wake opens its
+    // own window here, which goTo can't yet see. One woken on another
+    // machine opens its window there, which takes Joel nowhere, so only
+    // goTo's answer counts for it, and a can't-go is said rather than hidden.
     function wakeToGo(resting, session) {
         const woke = Boolean(resting) && !wokenByViewing(resting);
         if (woke)
             wake(resting);
-        return goTo(session) || woke;
+        return goTo(session) || woke && resting.here !== false;
     }
     // Whether `session` sleeps in pi's host with no window, which only
     // viewing it wakes.

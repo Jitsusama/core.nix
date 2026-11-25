@@ -1247,10 +1247,12 @@ Provider {
             return false;
         }
         if (!Sessions.wakeToGo(Sessions.parkedAs(cell.address), cell)) {
+            // Agents' refused has opened the launcher to say why already; this
+            // opens it for a refusal said no other way.
             const told = provider.launcher?.toldHere() === true;
             console.warn(`Now: look ${JSON.stringify(one.id)}'s session`
                 + ` ${JSON.stringify(cell.address ?? null)} couldn't be gone to,`
-                + ` ${told ? "told" : "not told, in use"}`);
+                + ` ${told ? "told here" : "told already, or the launcher in use"}`);
             return false;
         }
         return true;

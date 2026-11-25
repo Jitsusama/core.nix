@@ -65,9 +65,11 @@ Singleton {
             .some(each => String(each).toUpperCase() === upper)) ?? null;
     }
 
-    // Keeps whom it woke, as the real one wakes only one parked (resting).
+    // Keeps whom it woke, as the real one wakes only one parked (resting),
+    // and says it went where goTo does or it woke one parked here, as the
+    // real one does: one woken elsewhere opens no window here.
     function wakeToGo(resting, session) {
         woke = resting;
-        return goTo(session);
+        return goTo(session) || Boolean(resting) && resting.here !== false;
     }
 }
