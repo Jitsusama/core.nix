@@ -176,13 +176,24 @@ fn a_file_is_gathered_while_its_archive_fits_a_shared_file_and_not_a_byte_past()
 }
 
 #[test]
-fn files_are_gathered_while_their_archives_fit_a_shared_folder_and_not_one_more() {
-    // Each file fills an archive of its own, so fifteen, with their
-    // closes, come within what a shared folder carries, and sixteen past.
-    let size = LARGEST_FILE - archive::CLOSED - 512;
-    for (count, takes) in [(15, true), (16, false)] {
+fn files_are_gathered_while_their_archives_fit_a_shared_folder_and_not_a_byte_past() {
+    // Fifteen files each fill an archive's room, and a sixteenth takes
+    // what, with every archive's close, comes to just what a shared
+    // folder carries; a byte more takes another block.
+    let full = LARGEST_FILE - archive::CLOSED - 512;
+    let last = LARGEST_FILE - 18 * archive::CLOSED - 512;
+    let count = 16;
+    let taken = 15 * archive::taken("00", full) + archive::taken("15", last);
+    assert_eq!(
+        archive::archived(taken, LARGEST_FILE),
+        MOST_BYTES,
+        "the files no longer come to just what a shared folder carries"
+    );
+    for (size, takes) in [(last, true), (last + 1, false)] {
         let root = scratch("gathered-most");
-        let files: Vec<_> = (0..count).map(|at| (format!("{at:02}"), size)).collect();
+        let files: Vec<_> = (0..count)
+            .map(|at| (format!("{at:02}"), if at + 1 < count { full } else { size }))
+            .collect();
         tracking(&root, &files);
         let found = gathered(&root, &kind(""));
         if takes {
