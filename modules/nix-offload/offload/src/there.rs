@@ -6303,8 +6303,8 @@ mod tests {
         }
     }
 
-    /// A Mac's own sysctl, vm_stat and sleep, stood in for in a folder of
-    /// their own: its sysctl says the share free kept in `free`, its vm_stat
+    /// A Mac's own `sysctl`, `vm_stat` and `sleep`, stood in for in a folder
+    /// of their own: its `sysctl` says the share free kept in `free`, its `vm_stat`
     /// the swap-outs kept in `out`, failing with none, and its sleep takes
     /// the count to `after`'s, as swapping in those ten seconds.
     struct MacStandIn {
