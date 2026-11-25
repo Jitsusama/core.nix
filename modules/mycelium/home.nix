@@ -596,13 +596,10 @@ in
         fence here, the first a program in the Nix store, as each fenced
         and strict fence the machine declares says them: pi's own fence,
         strict, on Linux and on a Mac, whose strict reads the home folder
-        but what it hides, where Linux's reads only what it lists. A
-        fenced or strict held start an agent asks for is put after them
-        too, except the realm's agent program (`agents`), which the node
-        starts told the fence to keep instead: on Linux, and on a Mac
-        with `declares.piFencesItself`.
-        Null says none, so every agent's run is refused, and each held
-        start that would be put after them.
+        but what it hides, where Linux's reads only what it lists. An
+        agent's fenced or strict held start goes after them too, except
+        `agents`, which is told the fence to keep, on Linux and on a Mac
+        with `declares.piFencesItself`. Null refuses every such run and start.
       '';
     };
   }
