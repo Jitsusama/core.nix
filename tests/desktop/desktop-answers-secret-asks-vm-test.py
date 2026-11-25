@@ -188,13 +188,17 @@ def selected_or_told(desktop: Desktop, ask: str, why: str) -> None:
         raise AssertionError(message) from unselected
 
 
-def say_yes(desktop: Desktop) -> str:
+def say_yes(desktop: Desktop, *, unmoved: bool = False) -> str:
     """Press Return twice on the selected line, as Joel says yes: the first arms it.
 
-    Gives the shell's journal's mark from just before the second, the yes.
+    Gives the shell's journal's mark from just before the second, the yes. Unmoved, the first
+    Return is asserted to have left Asks' line untimed, so a refusal can't rest on a frame that
+    came too late to time it.
     """
     desktop.machine.send_key("ret")
     desktop.launcher_until(lambda shown: shown["returned"].get("act") == "armed")
+    if unmoved:
+        assert desktop.showing()["asksArmed"] is False, "a Return timed the line"
     time.sleep(PAST_THE_READING)
     since = desktop.mark()
     desktop.machine.send_key("ret")
@@ -275,7 +279,12 @@ def test_joels_yes_releases_the_value_into_the_one_command(desktop: Desktop) -> 
     # frame is refused as unread too, as niri presents it a turn or more later.
     desktop.launcher_until(
         lambda shown: (
-            shown["taken"] > taken and shown["asksUnread"] == 0 and shown["asksNoted"] is True
+            shown["taken"] > taken
+            and shown["asksUnread"] == 0
+            and shown["asksNoted"] is True
+            # Seen True once his move arms it, so the agents' case reading it False shows a
+            # field that can be either.
+            and shown["asksArmed"] is True
         )
     )
     since = say_yes(desktop)
@@ -301,7 +310,9 @@ def test_an_asks_opened_from_outside_takes_no_yes_without_a_move(desktop: Deskto
     put_up(desktop, ask, why)
     asks_open_on(desktop, ask, why)
     time.sleep(PAST_THE_READING)
-    refused_unread(desktop, ask, say_yes(desktop))
+    # Read untimed whatever the frames' pace, so the refusal below is the launcher's own.
+    assert desktop.showing()["asksArmed"] is False, "opening from outside timed the line"
+    refused_unread(desktop, ask, say_yes(desktop, unmoved=True))
 
 
 def test_r_refuses_an_ask(desktop: Desktop) -> None:
@@ -406,6 +417,8 @@ def test_an_agents_ask_after_his_escape_leaves_his_move_untimed(desktop: Desktop
     put_up(desktop, beneath, f"To rake the ash, by {way}.")
     put_up(desktop, ask, why)
     asks_open_on(desktop, ask, why)
+    # As in the yes case, so a shell where Asks reads no keys fails by name, not by timeout.
+    assert isinstance(desktop.showing()["asksUnread"], int), "Asks isn't reading the keys"
     desktop.machine.send_key("esc")
     desktop.launcher_until(lambda shown: shown["mode"] == "normal" and selects(shown, why))
     outside_onto_asks(desktop, way)
@@ -424,7 +437,7 @@ def test_an_agents_ask_after_his_escape_leaves_his_move_untimed(desktop: Desktop
     # taken as his fails here by its own name however late the screen draws, rather than
     # passing below on a refusal its frame came too late to stop.
     assert desktop.showing()["asksArmed"] is False, "the agent's opening let his move arm the line"
-    refused_unread(desktop, ask, say_yes(desktop))
+    refused_unread(desktop, ask, say_yes(desktop, unmoved=True))
 
 
 def scene_warnings(desktop: Desktop) -> str:

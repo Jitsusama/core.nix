@@ -10167,7 +10167,12 @@ Scope {
             // Whether a move of his has armed an ask's line at all, set as
             // Asks reads the key and owing nothing to a frame, so a test can
             // say nothing was armed however late the screen draws. Null
-            // where asksUnread is.
+            // where asksUnread is. The three are read over the launcher's
+            // ungated ipc, by any process of his, and that's accepted: they
+            // say only when his own move timed a line, and an ask from
+            // outside forgets that arming (Asks.qml's forget) while a
+            // changed row starts its clock afresh, so knowing the moment
+            // releases nothing. selected, armed and returned told as much.
             asksArmed: root.sourcesNamed.asks?.overPasswords
                 ? root.sourcesNamed.asks.armed !== "" : null,
             // Super+S's talk line (TalkLine.qml).
