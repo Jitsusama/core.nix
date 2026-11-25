@@ -39,6 +39,7 @@ import copy
 import json
 import os
 import re
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -50,7 +51,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from stand_in_daemon import StandIn, standing_in
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 HERE = Path(__file__).parent
 # The map redraws at most every 2 seconds, so a change must show well inside this.
@@ -1937,6 +1938,51 @@ def test_the_map_reaches_every_cell_of_ten_thousand(browser: Browser, twin_serve
     judged = TWIN_CELLS + TWIN_RECEPTORS
     assert said["cells"] == judged, f"the map judged {said['cells']} of {judged} cells"
     assert said["failures"] == [], f"the map misses {said['failures'][:5]} of {said['count']}"
+
+
+# Every long task the page runs from here on, in milliseconds.
+WATCH_LONG = """() => {
+  window.longTasks = [];
+  new PerformanceObserver((list) => {
+    for (const task of list.getEntries()) window.longTasks.push(task.duration);
+  }).observe({ type: "longtask" });
+}"""
+
+
+def answered_in(page: Page, keys: str, check: Callable[[], None]) -> dict[str, float]:
+    """How long the keys took to be answered as check sees, and the longest task in it."""
+    page.evaluate("() => { window.longTasks = []; }")
+    began = time.monotonic()
+    for key in keys.split():
+        page.keyboard.press(key)
+    check()
+    took = (time.monotonic() - began) * 1000
+    longest = page.evaluate("() => Math.max(0, ...window.longTasks)")
+    return {"took": round(took), "longest": round(longest)}
+
+
+def test_the_map_answers_its_keys_at_ten_thousand(browser: Browser, twin_served: Served) -> None:
+    root, _ = twin_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    try:
+        page = opened.page
+        the_map_stands(page, "live", TWIN_MS)
+        drawn = round(page.evaluate("() => performance.now()"))
+        page.evaluate(WATCH_LONG)
+        where = page.locator("#where")
+        page.locator("#map-view").focus()
+        first = answered_in(
+            page, "Enter", lambda: expect(where, "Return opened nothing").to_contain_text("Opened")
+        )
+        at = where.inner_text()
+        step = answered_in(
+            page, "j Enter", lambda: expect(where, "j walked nowhere").not_to_have_text(at)
+        )
+        title = page.locator("#panel-title")
+        now = answered_in(page, ".", lambda: expect(title, ". opened no Now").to_have_text("Now"))
+        pytest.fail(f"drawn at {drawn} ms; Return {first}; j Return {step}; . {now}")
+    finally:
+        opened.close()
 
 
 def test_a_cell_that_needs_you_takes_a_name_before_the_networks(
