@@ -1481,11 +1481,13 @@ Provider {
             const words = {
                 unsent: "never sent, with no node connected",
                 dropped: "sent, but the node went before saying it took it",
-                // The node's refusal by its kind, never its words, which the
-                // journal doesn't keep (#5949).
-                untaken: answer?.error?.code
-                    ? `not given by the node, which refused it as ${JSON.stringify(
-                        String(answer.error.code))}`
+                // The node's refusal by its codes, its words said only by how
+                // many letters while reports are off, which the journal
+                // doesn't keep (#5949); one with words and no code is still
+                // a refusal that said why.
+                untaken: answer?.error
+                    ? `not given by the node, which refused it as ${Presented.errorShown(
+                        answer.error, Options.reports)}`
                     : "not given by the node, which said nothing of why"
             };
             console.warn(`Now: the answer to look ${JSON.stringify(one.id)} for`
