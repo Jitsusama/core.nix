@@ -137,8 +137,17 @@ it("lists no kept answer, and says the machines' where the page says how it was 
   );
   assert.deepEqual(
     listed(machinesOf([], []), part("network", "watch", ["the hall point is weak", net])),
-    [["watch", "Network", "The hall point is weak"]],
-    "a part read from a kept answer lists its looks, never its note",
+    [["watch", "Network", "The hall point is weak, as read at 11:56"]],
+    "a part read from a kept answer lists its looks, saying when, never its note",
+  );
+  const rows = (side: string[]): (string | undefined)[] =>
+    looksOf({ ...system([]), parts: [part("network", "watch", side)] }, 8).looks.map(
+      (look) => look.row,
+    );
+  assert.deepEqual(
+    rows(["the hall point is weak", net]),
+    rows(["the hall point is weak"]),
+    "a look keeps its row whether or not it stands on a kept answer",
   );
   assert.deepEqual(
     listed(machinesOf([], [note], "good"), part("network", "bad", ["down"])),

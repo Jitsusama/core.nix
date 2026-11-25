@@ -33,8 +33,6 @@ const OUT_OF_REACH = "out of reach";
 /** The most machines out of reach the one look for them names, the rest counted. */
 const AWAY_LISTED = 3;
 
-/** The item a side ends with when it had more than it lists, as the daemon says it. */
-const MORE = /^and \d+ more worth a look$/u;
 // The note a part carries when read from its owner's last answer, as
 // modules/system/src/kept.rs words it.
 const KEPT = /^as read at /u;
@@ -123,10 +121,10 @@ function keptOf(system: System): string {
   if (part === undefined || part.health === "unread") {
     return "";
   }
-  const machines = part.named.map((name) => `${name} `);
-  const own = part.side.filter(
-    (words) => !(MORE.test(words) || machines.some((name) => words.startsWith(name))),
-  );
+  // Matched by kept.rs's own words rather than by what isn't a machine's,
+  // so a machine named in the side the page doesn't know yet never reads as
+  // the note.
+  const own = part.side.filter((words) => KEPT.test(words));
   return own.length === 0 ? "" : `Machines ${own.join("; ")}.`;
 }
 
@@ -240,6 +238,9 @@ function lookOf(part: Part, health: Health, words: string, key: string): Look {
  * note a part carries when it was read from its owner's last answer is
  * none, at any health: it no more wants a look than the machines' does, and
  * its own section across the machines says it. A good part has no other.
+ * Each look standing on that answer says when it was read, as up to ten
+ * minutes old it may no longer hold, keyed by its own words so the row
+ * stays the same row as the clock moves.
  */
 function partLooks(part: Part): readonly Look[] {
   if (part.health === "unread") {
@@ -248,8 +249,10 @@ function partLooks(part: Part): readonly Look[] {
   if (part.health === "good") {
     return [];
   }
+  const kept = part.side.find((words) => KEPT.test(words));
+  const asRead = kept === undefined ? "" : `, ${kept.split(";")[0]}`;
   const own = part.side.filter((words) => !KEPT.test(words));
-  return keyed(own).map(({ words, key }) => lookOf(part, part.health, words, key));
+  return keyed(own).map(({ words, key }) => lookOf(part, part.health, `${words}${asRead}`, key));
 }
 
 /**

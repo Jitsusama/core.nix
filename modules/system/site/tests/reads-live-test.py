@@ -351,6 +351,12 @@ def test_a_kept_answer_is_no_look(system_page: Page, system_daemon: StandIn) -> 
     expect(system_page.locator("#looks"), "a kept answer was listed as a look").to_have_text(
         "Nothing is worth a look."
     )
+    # An answer the keys ask for is said before the note, never in its place.
+    system_page.locator('#places a[data-place="machine-2"]').click()
+    system_page.keyboard.press("y")
+    expect(system_page.locator("#note"), "y's answer hid the kept note").to_have_text(
+        re.compile(rf"^(Copied|Couldn't copy).* Machines {re.escape(machines)}\.$")
+    )
 
 
 # A thumb's target, as WCAG 2.5.5 sizes one, in CSS pixels.
@@ -593,7 +599,7 @@ WORDS_ROOM = """(() => {
 })()"""
 
 
-def test_a_long_name_leaves_its_words_room_on_a_phone(
+def test_a_long_name_leaves_its_words_room_at_every_size(
     system_page: Page, system_daemon: StandIn
 ) -> None:
     says_it_stands(system_page, "live")
