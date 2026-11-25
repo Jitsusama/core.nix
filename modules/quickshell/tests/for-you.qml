@@ -514,14 +514,14 @@ QtObject {
             [true, true, true, true, false, false]);
         // And a look's own act can't pass for a choice, nor a choice for it,
         // once either is cut short.
-        const offering = labels => second({ act: "Review It",
+        const offeringOf = labels => second({ act: "Review It",
             choices: labels.map(label => ({ value: label, label: label })),
             wants: { choices: labels.map(label => ({ label: label })) } });
         expect("its act is never a choice's words, cut short either way",
-            [LookForm.actOf(offering(["Review It Now"])),
-                LookForm.actOf(offering(["Review"])),
-                LookForm.actOf(offering(["Review It\nfor good"])),
-                LookForm.actOf(offering(["Keep It", "Roll It Back"]))],
+            [LookForm.actOf(offeringOf(["Review It Now"])),
+                LookForm.actOf(offeringOf(["Review"])),
+                LookForm.actOf(offeringOf(["Review It\nfor good"])),
+                LookForm.actOf(offeringOf(["Keep It", "Roll It Back"]))],
             ["", "", "", "Review It"]);
         // A verb draws on one line, cut short where it runs out of room, so
         // what follows a line break, or a run of spaces past its room, never
