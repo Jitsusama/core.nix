@@ -97,7 +97,10 @@ fn github_joels_stop_older_than_the_hour_stops_nothing_and_is_told_of_once() {
     until_decided(&home, 1);
     let began = Instant::now();
     while searches(&asked).len() < 3 {
-        assert!(began.elapsed() < PATIENCE, "it never read the busy thread thrice");
+        assert!(
+            began.elapsed() < PATIENCE,
+            "it never read the busy thread thrice"
+        );
         // It asks every tenth of a second, so a short wait sees each round.
         thread::sleep(Duration::from_millis(50));
     }
