@@ -499,6 +499,21 @@ QtObject {
                 LookForm.poses("\u202etI raelC", [])],
             [true, true, true, true, true, true, true, true, true, true, true, true, true,
                 true, true, false, false, false]);
+        // A verb draws on one line, cut short where it runs out of room, so
+        // what follows a line break, or a run of spaces past its room, never
+        // shows: a name whose words before either read as an act poses as it.
+        expect("a choice whose words before a line break or a run of spaces read as an act"
+            + " poses as it",
+            [LookForm.poses("Clear It\nfor good", ["Clear It"]),
+                LookForm.poses("Clear It\r\nnow", ["Clear It"]),
+                LookForm.poses("Talk\u2028to it", ["Talk"]),
+                LookForm.poses(`Clear It${" ".repeat(40)}Away`, ["Clear It"]),
+                LookForm.poses("Clear It\u3000\u3000Away", ["Clear It"]),
+                LookForm.poses("Clear\u200b  It  Away", ["Clear"]),
+                LookForm.poses("Keep It\nClear It", ["Clear It"]),
+                LookForm.poses("Clear  It", ["Clear It"]),
+                LookForm.poses("Clear It Away", ["Clear It"])],
+            [true, true, true, true, true, true, false, true, false]);
         // Explain It is told a terminal look's Open beside its cell's acts, by
         // the name its row shows, as that Open goes to the cell's window; any
         // other look's Open answers the look, so it is told none.

@@ -19,6 +19,9 @@ const UNSEEN = /[\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff\ufff0-\ufff8]/gu;
 const UNMARKED = /[\u00ad\u061c\u180e]|\u034f/gu;
 const FILLERS = /[\u115f\u1160\u2800\u3164\uffa0]/gu;
 const STOPS = /[\s.!?,;:\u2026]+$/u;
+// Where a verb's one line stops showing what follows: a line break, or two
+// spaces or more, past which the rest may run out of room.
+const CUTS = /[\n\r\v\f\u0085\u2028\u2029]|\s{2,}/u;
 // What turns the letters after it around, a mark, an embedding, an override
 // or an isolate: left out of a name it's read as nothing, yet "\u202etI
 // raelC" still draws as Clear It, so a name holding one is never trusted.
@@ -94,13 +97,23 @@ function actOf(one, taken = []) {
         || (one.offers ?? []).some(choice => readAs(choice.label) === read) ? "" : act;
 }
 
+// The words of a name before a line break or a run of spaces, which is
+// all a verb drawn on one line shows once the rest is cut short.
+function headOf(name) {
+    return drawnOf(String(name)).replace(UNSEEN, "").replace(UNMARKED, "")
+        .replace(FILLERS, " ").trim().split(CUTS)[0];
+}
+
 // Whether a name reads as one of `taken`, however it's spaced, stopped or
-// hides what draws as nothing, so a choice can't pass for Clear It; one
-// that turns its letters around poses as any, since it can draw as either.
+// hides what draws as nothing, or as one once what follows a line break or
+// a run of spaces is cut from sight, so a choice can't pass for Clear It;
+// one that turns its letters around poses as any, since it can draw as
+// either.
 function poses(name, taken) {
     const read = readAs(name);
-    return taken.length > 0
-        && (TURNS.test(String(name)) || taken.some(each => readAs(each) === read));
+    const head = readAs(headOf(name));
+    return taken.length > 0 && (TURNS.test(String(name))
+        || taken.some(each => readAs(each) === read || readAs(each) === head));
 }
 
 // What Explain It is told a look's row offers, by the names the row shows

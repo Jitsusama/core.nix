@@ -2148,7 +2148,15 @@ ShellRoot {
                 follows: "It stays as it is." }, { value: "Roll It Back", label: "Roll It Back" }],
                 wants: { choices: [{ label: "Keep It", follows: "It stays as it is." }] } }),
             "f.json": secondText("f", { happened: "" }),
-            "c.json": secondText("c", { act: "Clear It" }) });
+            "c.json": secondText("c", { act: "Clear It" }),
+            // And one whose choices are named as the launcher's own acts, one
+            // of them only where a line break hides the rest.
+            "p.json": secondText("p", { choices: [
+                { value: "clear", label: now.lookActNames[2], follows: "It goes." },
+                { value: "talk", label: now.lookActNames[5], follows: "You talk." },
+                { value: "hid", label: `${now.lookActNames[2]}\nfor good`, follows: "Gone." },
+                { value: "Keep It", label: "Keep It", follows: "It stays as it is." }],
+                wants: undefined }) });
         const secondRow = () => looked().find(row => row.key === "on:look:s");
         const seconds = secondRow();
         const informing = looked().find(row => row.key === "on:look:i");
@@ -2193,6 +2201,17 @@ ShellRoot {
         expect("an act named as another act is, named as the launcher names it",
             posing !== undefined && posing.name === firstOpen?.name,
             JSON.stringify([posing?.name, firstOpen?.name]));
+        const posed = looked().find(row => row.key === "on:look:p");
+        const posedAnswers = (posed?.verbs() ?? []).map(act => act.key)
+            .filter(key => key.startsWith("verb:on:look:answer:p:"));
+        const posedFacts = (posed?.drawer().facts ?? []).map(each => each.label);
+        expect("a choice named as one of the launcher's own acts is left out of its row's acts"
+            + " and drawer, however its name hides the rest",
+            JSON.stringify(posedAnswers) === JSON.stringify(["verb:on:look:answer:p:Keep It"])
+                && posedFacts.includes("Keep It")
+                && !posedFacts.some(label => label.startsWith(now.lookActNames[2])
+                    || label === now.lookActNames[5]),
+            JSON.stringify([now.lookActNames, posedAnswers, posedFacts]));
         const secondOpen = secondActs.find(act => act.key === "verb:on:look:open:s");
         expect("its act named in its own words, its verb the launcher's",
             secondOpen?.name === "Review It" && secondOpen?.verb === firstOpen?.verb
