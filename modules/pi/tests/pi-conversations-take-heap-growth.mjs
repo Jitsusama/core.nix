@@ -29,9 +29,9 @@ process.stdout.write(String(kept.length + churned > 0));
 `;
 
 // The factor V8 traced before setting a limit.
-const FACTOR = /\[HeapController\] factor ([\d.]+) based on/;
+const FACTOR = /\[HeapController\] factor ([\d.]+) based on/u;
 // A heap limit V8 traced, with the factor node 22's V8 prints on its line.
-const LIMIT = /\[HeapController\] Limit: old size: \d+ KB, new limit: \d+ KB(?: \(([\d.]+)\))?$/;
+const LIMIT = /\[HeapController\] Limit: old size: \d+ KB, new limit: \d+ KB(?: \(([\d.]+)\))?$/u;
 
 // The factor each heap limit in a trace was grown by. Node 22's V8 prints
 // it on the limit's line, after its own choice on the line before; node
