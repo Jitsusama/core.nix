@@ -12,6 +12,9 @@
 //! A merge that only moves the folder's lock is left out: those take a
 //! new core, whose changes core's count already holds. So is a revert,
 //! which brings nothing new and counts against the merge it undoes.
+//!
+//! Long because its cases are over a third of it: each way the kept walk
+//! is read, joined, aged out or refused, with a git that answers or fails.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -87,11 +90,12 @@ pub fn gather(now: i64, kept: &Path) -> Sources {
         return Sources::default();
     };
     let since = format!("--since=@{}", now - DAYS * DAY);
-    let git = |args: &[&str]| {
+    let tried = |args: &[&str]| {
         let mut all = vec!["-C", &at.checkout];
         all.extend_from_slice(args);
-        command("git", &all).unwrap_or_default()
+        command("git", &all).ok()
     };
+    let git = |args: &[&str]| tried(args).unwrap_or_default();
     let (log, journal) = std::thread::scope(|s| {
         let journal = s.spawn(|| {
             command(
@@ -108,7 +112,7 @@ pub fn gather(now: i64, kept: &Path) -> Sources {
             )
             .unwrap_or_default()
         });
-        let log = log_of(&walked(&git, kept, &main, &at.folder, now), &at.folder);
+        let log = log_of(&walked(&tried, kept, &main, &at.folder, now), &at.folder);
         let journal = journal
             .join()
             .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
@@ -159,29 +163,41 @@ struct Walk {
 /// hour at its memory limit for five minutes. So when main has only
 /// moved on from the commit kept, only what it gained is walked; when it
 /// moved anywhere else, or nothing is kept, the whole window is. What
-/// falls out of the window is let go either way.
+/// falls out of the window is let go either way. A walk git fails in is
+/// never kept, so the next read walks again rather than missing merges
+/// for ten days: until then the walk kept shows, true as far as it goes,
+/// where main only gained, and nothing where it moved elsewhere, as a
+/// failed walk showed before walks were kept.
 fn walked(
-    git: &(impl Fn(&[&str]) -> String + Sync),
+    git: &(impl Fn(&[&str]) -> Option<String> + Sync),
     kept: &Path,
     main: &str,
     folder: &str,
     now: i64,
 ) -> Walk {
     let since = now - DAYS * DAY;
-    let (at, before) = kept_walk(kept).unwrap_or_default();
-    let walk = if at == main {
-        before
-    } else if !at.is_empty() && git(&["merge-base", at.as_str(), main]).trim() == at {
-        let gained = walk_of(git, &format!("{at}..{main}"), since, folder);
+    let (at, before) = kept_walk(kept, folder).unwrap_or_default();
+    if at == main {
+        return within(&before, since);
+    }
+    let gained = !at.is_empty()
+        && git(&["merge-base", at.as_str(), main]).is_some_and(|base| base.trim() == at);
+    let walk = if gained {
+        let Some(new) = walk_of(git, &format!("{at}..{main}"), since, folder) else {
+            return within(&before, since);
+        };
         Walk {
-            merges: joined(&gained.merges, &before.merges),
-            locks: joined(&gained.locks, &before.locks),
+            merges: joined(&new.merges, &before.merges),
+            locks: joined(&new.locks, &before.locks),
         }
     } else {
-        walk_of(git, main, since, folder)
+        let Some(whole) = walk_of(git, main, since, folder) else {
+            return Walk::default();
+        };
+        whole
     };
     let walk = within(&walk, since);
-    keep_walk(kept, main, &walk);
+    keep_walk(kept, main, folder, &walk);
     walk
 }
 
@@ -226,13 +242,13 @@ fn within(walk: &Walk, since: i64) -> Walk {
 }
 
 /// The folder's merges and the lock's moves in `range` made since `from`,
-/// from git.
+/// from git, or none when git fails at any of it.
 fn walk_of(
-    git: &(impl Fn(&[&str]) -> String + Sync),
+    git: &(impl Fn(&[&str]) -> Option<String> + Sync),
     range: &str,
     from: i64,
     folder: &str,
-) -> Walk {
+) -> Option<Walk> {
     let since = format!("--since=@{from}");
     let since = since.as_str();
     let lock = format!("{folder}/flake.lock");
@@ -251,10 +267,10 @@ fn walk_of(
                 range,
                 "--",
                 &lock,
-            ]);
+            ])?;
             let shas: Vec<&str> = moved.split_whitespace().collect();
             if shas.is_empty() {
-                String::new()
+                Some(String::new())
             } else {
                 let mut args = vec![
                     "log",
@@ -270,7 +286,10 @@ fn walk_of(
         },
         || (),
     );
-    Walk { merges, locks }
+    Some(Walk {
+        merges: merges?,
+        locks: locks?,
+    })
 }
 
 /// The folder's log from its walk: the lock's lone moves and the reverts
@@ -285,11 +304,15 @@ fn log_of(walk: &Walk, folder: &str) -> Log {
     }
 }
 
-/// The walk kept, and main's commit it was kept for. A walk kept before
-/// walks were kept whole reads as none, so the window is walked once.
-fn kept_walk(kept: &Path) -> Option<(String, Walk)> {
+/// The walk kept for `folder`, and main's commit it was kept for. A walk
+/// kept before walks were kept whole, or for another folder, reads as
+/// none, so the window is walked once.
+fn kept_walk(kept: &Path, folder: &str) -> Option<(String, Walk)> {
     let all: Value = serde_json::from_str(&fs::read_to_string(kept).ok()?).ok()?;
     let words = |key: &str| all[key].as_str().map(str::to_owned);
+    if words("folder")? != folder {
+        return None;
+    }
     Some((
         words("at")?,
         Walk {
@@ -299,10 +322,15 @@ fn kept_walk(kept: &Path) -> Option<(String, Walk)> {
     ))
 }
 
-/// Keeps the walk for main's commit `at`; a failure only costs the next
-/// read its git.
-fn keep_walk(kept: &Path, at: &str, walk: &Walk) {
-    let all = serde_json::json!({"at": at, "merges": walk.merges, "locks": walk.locks});
+/// Keeps `folder`'s walk for main's commit `at`; a failure only costs the
+/// next read its git.
+fn keep_walk(kept: &Path, at: &str, folder: &str, walk: &Walk) {
+    let all = serde_json::json!({
+        "at": at,
+        "folder": folder,
+        "merges": walk.merges,
+        "locks": walk.locks,
+    });
     if let Some(folder) = kept.parent() {
         let _ = fs::create_dir_all(folder);
     }
@@ -534,19 +562,24 @@ mod tests {
         folder.join("cadence/repository.json")
     }
 
+    /// The answer that makes the git below fail.
+    const FAILS: &str = "<git fails>";
+
     /// A git that gives the first answer whose words its ask holds, or
-    /// nothing, and keeps each ask.
+    /// nothing, failing where that answer is `FAILS`, and keeps each ask.
     fn answering<'a>(
         asked: &'a std::sync::Mutex<Vec<String>>,
         answers: &'a [(&'a str, &'a str)],
-    ) -> impl Fn(&[&str]) -> String + Sync + 'a {
+    ) -> impl Fn(&[&str]) -> Option<String> + Sync + 'a {
         move |args: &[&str]| {
             let ask = args.join(" ");
             let answer = answers.iter().find(|(words, _)| ask.contains(*words));
             asked.lock().expect("no ask panicked").push(ask);
-            answer
-                .map(|(_, said)| (*said).to_owned())
-                .unwrap_or_default()
+            match answer {
+                Some((_, said)) if *said == FAILS => None,
+                Some((_, said)) => Some((*said).to_owned()),
+                None => Some(String::new()),
+            }
         }
     }
 
@@ -557,7 +590,7 @@ mod tests {
             merges: "m1 200000 First".into(),
             locks: String::new(),
         };
-        keep_walk(&kept, "new", &walk);
+        keep_walk(&kept, "new", DOTS, &walk);
         let asked = std::sync::Mutex::new(Vec::new());
         let git = answering(&asked, &[]);
         assert_eq!(walked(&git, &kept, "new", DOTS, NOW), walk);
@@ -575,7 +608,7 @@ mod tests {
             merges: "m1 200000 First".into(),
             locks: String::new(),
         };
-        keep_walk(&kept, "old", &before);
+        keep_walk(&kept, "old", DOTS, &before);
         let asked = std::sync::Mutex::new(Vec::new());
         let answers = [
             ("merge-base old new", "old\n"),
@@ -605,12 +638,12 @@ mod tests {
             "each walk starts where the kept one ended: {asked:?}"
         );
         assert_eq!(
-            kept_walk(&kept),
+            kept_walk(&kept, DOTS),
             Some(("new".to_owned(), walk)),
             "the joined walk is kept for main as it now stands"
         );
         assert_eq!(
-            log_of(&kept_walk(&kept).unwrap_or_default().1, DOTS).main,
+            log_of(&kept_walk(&kept, DOTS).unwrap_or_default().1, DOTS).main,
             "m2 300000 Second\nm1 200000 First",
             "the lock's lone move is still left out"
         );
@@ -623,7 +656,7 @@ mod tests {
             merges: "m1 200000 Dropped by a force push".into(),
             locks: String::new(),
         };
-        keep_walk(&kept, "old", &before);
+        keep_walk(&kept, "old", DOTS, &before);
         let answers = [
             ("merge-base old new", "base\n"),
             ("new -- home/a/dots/flake.lock", ""),
@@ -644,6 +677,60 @@ mod tests {
                 "{why}, so the whole window is walked: {asked:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_walk_git_fails_in_is_never_kept_and_shows_only_what_is_known() {
+        let kept = kept_at("fails");
+        let before = Walk {
+            merges: "m1 200000 First".into(),
+            locks: String::new(),
+        };
+        keep_walk(&kept, "old", DOTS, &before);
+        let answers = [
+            ("merge-base old new", "old\n"),
+            ("old..new -- home/a/dots", FAILS),
+        ];
+        let asked = std::sync::Mutex::new(Vec::new());
+        let git = answering(&asked, &answers);
+        assert_eq!(
+            walked(&git, &kept, "new", DOTS, NOW),
+            before,
+            "a failed walk of what main gained hid what was kept"
+        );
+        assert_eq!(
+            kept_walk(&kept, DOTS),
+            Some(("old".to_owned(), before)),
+            "a failed walk was kept, so the next read wouldn't walk again"
+        );
+        let none = kept_at("fails-whole");
+        let answers = [("new -- home/a/dots", FAILS)];
+        let git = answering(&asked, &answers);
+        assert_eq!(
+            walked(&git, &none, "new", DOTS, NOW),
+            Walk::default(),
+            "a failed walk of the whole window showed merges git never gave"
+        );
+        assert_eq!(
+            kept_walk(&none, DOTS),
+            None,
+            "a failed walk of the whole window was kept"
+        );
+    }
+
+    #[test]
+    fn a_walk_kept_for_another_folder_reads_as_none() {
+        let kept = kept_at("folder");
+        let walk = Walk {
+            merges: "m1 200000 First".into(),
+            locks: String::new(),
+        };
+        keep_walk(&kept, "new", "home/b/dots", &walk);
+        assert_eq!(
+            kept_walk(&kept, DOTS),
+            None,
+            "another folder's merges were taken as this one's"
+        );
     }
 
     #[test]
@@ -670,7 +757,7 @@ mod tests {
         }
         let _ = fs::write(&kept, r#"{"at":"main1","main":"aaa 1 A","reverts":""}"#);
         assert_eq!(
-            kept_walk(&kept),
+            kept_walk(&kept, DOTS),
             None,
             "its merges aren't kept whole, so the window is walked once afresh"
         );
