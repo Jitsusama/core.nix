@@ -416,8 +416,11 @@
     can't list its options, failing its build, while it holds a stand-in saying them unchanged;
     that the wrapper isn't built without the hold, which is to the systemd it wraps, or for an
     aarch64 machine built here to the builder's own systemd built alike; and that one with a
-    patched systemd, or one of no version, or cross-built from a Mac, is built unheld with no
-    hold to read and says so, and that a machine cross-built with a patched systemd warns of it
+    patched systemd, one from another source, one built with a flag or an override argument of
+    its own, one of no version, or one cross-built from a Mac, is built unheld with no hold to
+    read and says so where a held one says nothing, a Mac told only to build on the machine's
+    platform and the rest what differs, the flags by name, and that a machine cross-built with
+    a patched systemd warns of it
   '';
   an-arrival-is-said-once-each-time = ''
     what comes true by itself is said once, and nothing of what stood as the shell started; a

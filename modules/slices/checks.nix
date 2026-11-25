@@ -745,36 +745,59 @@
   # and a hold over a systemd-run that can't list its options fails its
   # build, saying so. Cross-built for aarch64 it holds the table to the
   # builder's own systemd, built as the machine's is; with the machine's
-  # systemd patched, or of no version, it's built unheld and says so for
-  # the machine's warnings, never throwing, and such a machine warns of it.
+  # systemd patched, from another source, built with a flag or an override
+  # argument of its own, or of no version, it's built unheld and says so
+  # for the machine's warnings, never throwing, and such a machine warns of
+  # it. Every unheld one is evaluated whole, not only read beside.
   # Cross-built from a Mac, whose nixpkgs has no systemd, it's unheld too.
   # Those are read as evaluated, here on Linux, since nixpkgs for a Mac
   # alone has no systemd to wrap.
   an-agents-run-stays-in-its-slice =
     let
-      cross = pkgs.pkgsCross.aarch64-multiplatform;
-      crossRun = cross.callPackage ./systemd-run.nix {
-        real = "/x";
-        cgroup = "cgroup";
-      };
+      # An aarch64 machine built here, with its systemd patched, whose
+      # nixpkgs every cross-built case shares. A whole machine cross-built
+      # from a Mac stops in nixpkgs, on tools its initrd asks for, before
+      # any warning is read, so this is the machine that warns.
+      crossMachine = bareNixos [
+        self.nixosModules.nix-daemon
+        self.nixosModules.slices
+        (
+          { pkgs, ... }:
+          {
+            nixpkgs.buildPlatform = "x86_64-linux";
+            nixpkgs.hostPlatform = "aarch64-linux";
+            systemd.package = pkgs.systemd.overrideAttrs (old: {
+              patches = (old.patches or [ ]) ++ [ ./systemd-run-options.txt ];
+            });
+          }
+        )
+      ];
+      cross = crossMachine.pkgs;
+      crossWith =
+        systemd:
+        cross.callPackage ./systemd-run.nix {
+          inherit systemd;
+          real = "/x";
+          cgroup = "cgroup";
+        };
+      crossRun = crossWith cross.systemd;
       builders = builtins.unsafeDiscardStringContext (
         lib.getExe' cross.buildPackages.systemd "systemd-run"
       );
       # The hold the wrapper's own build asks for, not the one it offers.
       askedOf = crossRun.drvAttrs.holds.drvAttrs.buildCommand or "";
-      heldToBuilders = crossRun.held && lib.hasInfix builders askedOf;
-      patchedCross = cross.callPackage ./systemd-run.nix {
-        systemd = cross.systemd.overrideAttrs (old: {
-          patches = (old.patches or [ ]) ++ [ ./systemd-run-options.txt ];
-        });
-        real = "/x";
-        cgroup = "cgroup";
-      };
-      versionless = cross.callPackage ./systemd-run.nix {
-        systemd = pkgs.runCommandLocal "a-systemd" { } "mkdir $out";
-        real = "/x";
-        cgroup = "cgroup";
-      };
+      heldToBuilders = crossRun.held && !(crossRun ? unheld) && lib.hasInfix builders askedOf;
+      patchedCross = crossWith crossMachine.config.systemd.package;
+      # Each built as the builder's is but for the one thing it names.
+      another = pkgs.runCommandLocal "another-source" { } "mkdir $out";
+      sourced = crossWith (cross.systemd.overrideAttrs { src = another; });
+      flagged = crossWith (
+        cross.systemd.overrideAttrs (old: {
+          mesonFlags = old.mesonFlags ++ [ (lib.mesonOption "mode" "developer") ];
+        })
+      );
+      argued = crossWith (cross.systemd.override { withTimedated = false; });
+      versionless = crossWith (pkgs.runCommandLocal "a-systemd" { } "mkdir $out");
       # nixpkgs as a Mac cross-builds an aarch64 machine with, only evaluated.
       fromAMac = import pkgs.path {
         localSystem = "aarch64-darwin";
@@ -784,25 +807,23 @@
         real = "/x";
         cgroup = "cgroup";
       };
-      # A whole machine cross-built from a Mac stops in nixpkgs, on tools its
-      # initrd asks for, before any warning is read, so the machine that
-      # warns is an aarch64 one built here with its systemd patched.
-      patchedWarnings =
-        (bareNixos [
-          self.nixosModules.nix-daemon
-          self.nixosModules.slices
-          (
-            { pkgs, ... }:
-            {
-              nixpkgs.buildPlatform = "x86_64-linux";
-              nixpkgs.hostPlatform = "aarch64-linux";
-              systemd.package = pkgs.systemd.overrideAttrs (old: {
-                patches = (old.patches or [ ]) ++ [ ./systemd-run-options.txt ];
-              });
-            }
-          )
-        ]).config.warnings;
-      unheld = run: !run.held && noHold run && lib.hasInfix "isn't held" run.unheld;
+      patchedWarnings = crossMachine.config.warnings;
+      # Unheld and saying so.
+      unheld = run: !run.held && noHold run && saysSo run;
+      saysSo = run: lib.hasInfix "isn't held" run.unheld;
+      # The warning's advice is the one that holds it: a Mac is told only to
+      # build on the machine's platform, and one built otherwise what to drop.
+      advises = run: words: lib.all (word: lib.hasInfix word run.unheld) words;
+      macAdvice = advises macRun [ "can't build systemd at all" ] && !advises macRun [ "drop" ];
+      sourceAdvice = advises sourced [ "differs in its source" ];
+      flagAdvice = advises flagged [
+        "in its flags (-Dmode=developer)"
+        "drop"
+      ];
+      argAdvice = advises argued [
+        "its flags ("
+        "timedated"
+      ];
       # Neither asked for by the wrapper's build nor offered beside it.
       noHold = run: !(run.drvAttrs ? holds) && !(run ? holds);
       # A systemd-run that can't list its options, for the hold to refuse.
@@ -839,17 +860,23 @@
     assert lib.assertMsg heldToPatched "systemd-run's hold isn't to the systemd it wraps";
     assert lib.assertMsg heldToBuilders "a cross-built systemd-run isn't held to the builder's";
     assert lib.assertMsg (unheld patchedCross) "a cross-built, patched systemd-run is held";
+    assert lib.assertMsg (unheld sourced) "a systemd-run cross-built from another source is held";
+    assert lib.assertMsg (unheld flagged) "a systemd-run cross-built with its own flag is held";
+    assert lib.assertMsg (unheld argued) "a systemd-run cross-built with timedated off is held";
     assert lib.assertMsg (
       unheld versionless && lib.hasInfix "unknown version" versionless.unheld
     ) "a cross-built systemd-run of no version isn't said unheld";
     assert lib.assertMsg (unheld macRun) "a systemd-run cross-built from a Mac is held";
+    assert lib.assertMsg macAdvice "a Mac's unheld systemd-run is told to drop what doesn't differ";
+    assert lib.assertMsg sourceAdvice "a systemd-run of another source isn't told so";
+    assert lib.assertMsg flagAdvice "a systemd-run with its own flag isn't told which to drop";
+    assert lib.assertMsg argAdvice "a systemd-run with timedated off isn't told which flag differs";
     assert lib.assertMsg (lib.any (lib.hasInfix "isn't held") patchedWarnings)
       "a machine whose systemd-run isn't held doesn't warn of it";
     pkgs.runCommandLocal "an-agents-run-stays-in-its-slice" { nativeBuildInputs = [ pkgs.jq ]; } ''
-      grep -q "can't list its options" ${refused}/testBuildFailure.log
       ${pkgs.bash}/bin/bash ${./systemd-run-test.sh} ${lib.getExe run} \
         ${./systemd-run-options.txt} ${./systemd-run-options-hold.sh} \
-        ${pkgs.systemd}/bin/systemd-run
+        ${pkgs.systemd}/bin/systemd-run ${refused}/testBuildFailure.log
       touch $out
     '';
 
