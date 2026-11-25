@@ -1044,12 +1044,15 @@ ShellRoot {
             if (!tried(() => expect("unwatched, it's kept only for what's left of its time",
                 Timekeeping.reading === null, read)))
                 return;
-            // Stepped out and back within its time, with no answer after:
-            // a reader that takes the connection and says nothing, which
-            // only the timer the watch change set lets go.
-            Timekeeping.keptFor = 300;
+            // Stepped out and back near the end of its time, with no answer
+            // after: a reader that takes the connection and says nothing,
+            // which only the timer the watch change set lets go. Read 1.8 s
+            // into a 2 s minute, it goes in what's left, well before a
+            // fresh minute from the step back would let it.
+            Timekeeping.keptFor = 2000;
             Timekeeping.watching = 1;
             answerTime();
+            Timekeeping.heardAt = Date.now() - 1800;
             Timekeeping.watching = 0;
             Timekeeping.watching = 1;
             if (!tried(() => expect("watched again within its time, it's still read",
@@ -1058,10 +1061,10 @@ ShellRoot {
             keptStage.step = 3;
             keptStage.at = Date.now();
         } else {
-            if (Timekeeping.reading !== null && since < 3000)
+            if (Timekeeping.lettingGo() && since < 3000)
                 return;
             if (!tried(() => expect("watched again, a reader quiet since has its reading let go",
-                Timekeeping.reading === null, read)))
+                Timekeeping.reading === null && since < 1000, `${since} ms ${read}`)))
                 return;
             waiting = "";
             Timekeeping.watching = 0;
