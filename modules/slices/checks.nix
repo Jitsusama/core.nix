@@ -674,7 +674,8 @@
 
   # writeback-goal and disk-order, on a stand-in sysfs, take each exit they
   # say they take, give back what a disk's throttle had before its first
-  # goal, and stand the throttle down beside io.cost and up after it.
+  # goal, and stand the throttle down beside io.cost and give back what it
+  # read before after it.
   disk-throttles-come-back-as-they-were =
     pkgs.runCommandLocal "disk-throttles-come-back-as-they-were" { }
       ''

@@ -1050,8 +1050,10 @@
     on a stand-in sysfs, writeback-goal refuses a wrong call with 64 before it looks for the
     disk, fails on a name that reaches no throttle, gives back a disk that's gone quietly, and
     gives back what the throttle had before its first goal, or the kernel's default where none
-    was recorded; disk-order stands the throttle down beside io.cost and gives the kernel's
-    default back as it hands the disk back
+    was recorded; disk-order refuses a wrong call with 64 before it looks for the disk, fails
+    with 1 on a disk that isn't there or a setting refused, naming the setting, stands the
+    throttle down beside io.cost, and gives back what it read before as it hands the disk back,
+    or the kernel's default where none was recorded
   '';
   disks-are-scrubbed = ''
     the disk's Btrfs is scrubbed monthly, from its root
@@ -6193,8 +6195,9 @@
   '';
   vm-a-measured-disk-shares-by-its-model = ''
     with a disk named with a model, io.cost holds its model and qos, no slice holds a latency
-    target, one left from before is cleared as io.cost turns on, and stopping its
-    `disk-order-<disk>` unit turns io.cost off
+    target, one left from before is cleared as io.cost turns on, the writeback throttle reads 0
+    beside it, and stopping its `disk-order-<disk>` unit turns io.cost off and gives the
+    throttle back what it read before
   '';
   vm-a-call-is-on-reads-every-account = ''
     root's a-call-is-on says a call is on while a call program records in an account's PipeWire, and
