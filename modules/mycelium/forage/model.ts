@@ -340,7 +340,7 @@ function grouped(count: number): string {
 interface Headline {
   readonly cells: number;
   readonly without: number;
-  /** "38 cells here at work on a quest," or "One cell here ...," or "No cells here". */
+  /** "38 cells on quests," or "One cell on a quest," or "No cells". */
   readonly lead: string;
   /** "4 without purpose." or "each with its purpose." */
   readonly turn: string;
@@ -348,17 +348,18 @@ interface Headline {
 
 /**
  * The whole in a sentence's two parts: how many cells, and how many have no
- * purpose written. The count names the set it counts, this machine's cells
- * at work on a quest, since "cells" alone means every session a node holds.
+ * purpose written. The count names the set it counts, cells on quests, since
+ * "cells" alone means every session a node holds; the eyebrow above says they
+ * stand on this machine. index.html's first words, "Asking the node for cells
+ * on quests.", take the lines a count takes, so its arrival moves nothing.
  */
 function headline(forages: readonly Forage[]): Headline {
   const cells = forages.length;
   const without = forages.filter(unwritten).length;
   if (cells === 0) {
-    return { cells, without, lead: "No cells here", turn: "at work on a quest." };
+    return { cells, without, lead: "No cells", turn: "on a quest here." };
   }
-  const many = cells === 1 ? "One cell" : `${grouped(cells)} cells`;
-  const lead = `${many} here at work on a quest,`;
+  const lead = cells === 1 ? "One cell on a quest," : `${grouped(cells)} cells on quests,`;
   if (without === 0) {
     return {
       cells,
