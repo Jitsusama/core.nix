@@ -32,6 +32,7 @@ mod daemon;
 mod figures;
 mod history;
 pub mod model;
+mod record;
 mod room;
 mod serve;
 mod sources;

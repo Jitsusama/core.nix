@@ -32,6 +32,7 @@ use ureq::Agent;
 use crate::collect::{self, Said};
 use crate::history::{self, Moment};
 use crate::model::{self, Kept};
+use crate::record::Record;
 use crate::room;
 use crate::serve as served;
 use crate::sources::{airplay, hp, modem, samsung, sony, switch};
@@ -96,6 +97,7 @@ pub fn run() -> Result<(), String> {
     let mut tvs = samsung::Heard::new();
     // Each source as the last minute that named it said it.
     let mut kept = last_sources(&record);
+    let mut record = Record::at(record);
     loop {
         let heard = read_eero(&eero);
         let receivers = heard
@@ -141,8 +143,9 @@ pub fn run() -> Result<(), String> {
             eprintln!("can't keep the minute's figures: {error}");
         }
         let written = serde_json::to_string_pretty(&network).map_err(|error| error.to_string())?;
-        write(&record, &(written + "\n"))
-            .map_err(|error| format!("can't write the record: {error}"))?;
+        if let Some(said) = record.keep(&(written + "\n")) {
+            eprintln!("{said}");
+        }
         held.network(&network);
         thread::sleep(EVERY);
     }
@@ -313,11 +316,4 @@ fn read_receiver(agent: &Agent, address: &str) -> Result<sony::Answers, String> 
     }
     answers.insert("description".into(), description);
     Ok(answers)
-}
-
-/// Writes a file whole, so a view never reads half of one.
-fn write(file: &Path, contents: &str) -> io::Result<()> {
-    let fresh = file.with_extension("json.new");
-    fs::write(&fresh, contents)?;
-    fs::rename(fresh, file)
 }
