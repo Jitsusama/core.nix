@@ -7,8 +7,8 @@ arrow and the letters of the row it named, and a key the launcher names itself, 
 since nobody wrote it. Each of Launcher.qml's callers of keyTimed says which its key is, which
 no case in Qt's engine reaches, so these press each kind and read its line. A key listed
 without a daemon's answer, and the answer that comes late, count its letters the same way, and
-a lagging program's drawer is said by its desktop entry's id (Presented.rowShown), which no title
-is, so each program's drawer is timed apart.
+a lagging program's drawer is said by its desktop entry's id (Presented.rowShown), never the
+name its window shows, so each program's drawer is timed apart.
 """
 
 from __future__ import annotations
@@ -46,8 +46,9 @@ UNNAMED = "zygodactyl"
 # shaped as an app's (Presented.js's appWord), so RTOIMQ can time Chrome's drawer apart from
 # kitty's (2026-11-24), and never more of the key.
 PROGRAMS_DRAWER = re.compile(r'drawer for "program:([A-Za-z0-9][A-Za-z0-9.-]*)"')
-# How any program's drawer line begins, shaped as PROGRAMS_DRAWER or not.
-A_PROGRAMS_DRAWER = 'drawer for "program'
+# Any program's drawer line, shaped as PROGRAMS_DRAWER or said by its kind alone, but not one of
+# another kind that begins with program's word.
+A_PROGRAMS_DRAWER = re.compile(r'drawer for "program[:"]')
 
 # The shell, started once for the file's cases.
 shell = launcher_on_niri.shell
@@ -197,7 +198,7 @@ def test_a_programs_lagging_drawer_is_said_by_its_id(shell: Shell) -> None:
         shell.close_launcher()
 
     said = said_by(shell, drawn, lambda keys: any(PROGRAMS_DRAWER.fullmatch(key) for key in keys))
-    programs = [key for key in said if key.startswith(A_PROGRAMS_DRAWER)]
+    programs = [key for key in said if A_PROGRAMS_DRAWER.match(key)]
     assert programs, f"no program's drawer was said: {said}"
     unshaped = [key for key in programs if not PROGRAMS_DRAWER.fullmatch(key)]
     assert not unshaped, f"a program's drawer was said without its id, or with more: {unshaped}"

@@ -260,25 +260,22 @@ function intoKept(keyAt, into, whole) {
     return whole || keyAt - into < intoSoon ? into : undefined;
 }
 
-// The kinds of key whose rest is an id of the launcher's own, which says nothing a person or
-// another program wrote, so it's said whole: a collection's is the name its place has in the Nix
-// config.
+// The kinds of key whose rest is an id of the launcher's own, said whole since no person or
+// other program wrote it: a collection's is the name its place has in the Nix config.
 const keysOwn = ["place:", "category:", "collection:"];
 
 // How many letters of such a key are said with reports off, since its kind alone vouches for
 // it, and a daemon's row may be keyed so as well.
 const ownLength = 64;
 
-// A kind's word, as the launcher and its daemons write one, at most 32 letters, and the keys
-// whose kind keyShown says, as actShown leaves them, since their later parts may be someone's
-// words.
+// A kind's word, as the launcher and its daemons write one, at most 32 letters: what keyShown
+// says of a key whose later parts may be someone's words.
 const kindWord = /^[a-z][a-z0-9-]{0,31}$/;
 
 // The words a key may say after its kind with reports off: the acts the daemons and the launcher
-// build their keys from, as `verb:agent:close`'s close or `displays:sleep`'s sleep, and what some
-// act on, as `verb:recent:site:open`'s site. A part's shape can't tell an act from a lowercase
-// name, a person's in `person:ada` or a hex id (PV3TE0's F12), so only these are said, and a new
-// act is said by its kind alone until it's named here.
+// build their keys from, as `verb:agent:close`'s close, and what some act on, as
+// `verb:recent:site:open`'s site. A part's shape can't tell an act from a lowercase name or a hex
+// id (PV3TE0's F12), so only these are said; a new act is said by its kind until it's named here.
 const actWords = new Set(`act add address afresh again ahead archive ask attachments audit awake
     back bluetooth branches call cancel changes clear close code copied copy copy-marked copy-name
     device download drawing edit end expect favourite file find folder follow-room forget further
@@ -295,17 +292,15 @@ const actWords = new Set(`act add address afresh again ahead archive ask attachm
 // title. A `verb:` key needs no place here, since keyShown already keeps as much of it.
 const keysSaidByKind = /^(row|window):/;
 
-// A program's own id, as kitty, 1Password or org.gnome.Evolution. A browser's app window may build
-// one from a page's address, with underscores for its slashes, so one that isn't shaped like this
-// is said as no app at all, as is a window that names none: niri's records leave its app empty,
-// and a key built from a window read past them would say null or undefined.
+// A program's own id, as kitty, 1Password or org.gnome.Evolution. One not shaped so, as a
+// browser's app window may build from a page's address, is said as no app at all, as is a window
+// naming none, whose key built past niri's empty app would say null or undefined.
 const appWord = /^[A-Za-z0-9][A-Za-z0-9.-]*$/;
 const appsUnnamed = ["null", "undefined"];
 
-// A program's own id, as a power profile's hold names it: whole where `whole`, or where it's
-// shaped as an app's name, as a window's app is said, and otherwise as app, since a program
-// may give any words as its id; bare, with what quoting escapes escaped, as actShown's, so a
-// line break in an id can't forge another line.
+// A program's own id, as a power profile's hold names it: whole where `whole`, else where it's
+// shaped as an app's, and otherwise as app, since a program may give any words as its id; bare,
+// with what quoting escapes escaped, as actShown's, so a line break in it can't forge a line.
 function appShown(app, whole) {
     const text = String(app ?? "");
     return whole ? quoted(text).slice(1, -1)
@@ -322,15 +317,13 @@ function kindsLed(parts, kinds) {
 
 // A row's key as a line in the journal may say it: whole where `whole`, as while reports are on;
 // otherwise its kind, after a record's `row:`, as wifid's `row:wifi:network:<name>` is `wifi`,
-// since most keys carry what someone else wrote, a network's name or a window's title. The
-// launcher's own ids are whole, `window:<app>:<title>` is `window:<app>`, or `window` where that
-// isn't a program's id or nothing follows it, `program:<desktop entry's id>` whole where the id
-// is shaped as an app's and nothing follows it, so each program's drawer is timed apart (RTOIMQ,
-// 2026-11-24), and `program` otherwise, and a `verb:` key, its daemon's own words, goes to
-// its kind, and its act where that's one of actWords: `verb:agent:close` whole,
-// `verb:disk:nvme0:/home` as `verb:disk`, `verb:notice:offer:<sender's id>` as
+// since most keys carry what someone else wrote. The launcher's own ids are whole;
+// `window:<app>:<title>` is `window:<app>`, and the launcher's own `program:<desktop entry's id>`
+// whole, so each program's drawer is timed apart (RTOIMQ, 2026-11-24), each only where its id is
+// shaped as an app's and else by its kind. A `verb:` key goes to its kind and its act where that's
+// one of actWords: `verb:agent:close` whole, `verb:notice:offer:<sender's id>` as
 // `verb:notice:offer`. A new kind says nothing more until it's named here, and a first part that
-// isn't a kind's word, as a name with a colon in it, nothing at all. A number is read as text.
+// isn't a kind's word nothing at all. A number is read as text.
 function keyShown(key, whole) {
     const text = String(key);
     if (whole) {
@@ -339,12 +332,13 @@ function keyShown(key, whole) {
     if (keysOwn.some(own => text.startsWith(own))) {
         return [...text].slice(0, ownLength).join("");
     }
-    const parts = (text.startsWith("row:") ? text.slice(4) : text).split(":");
+    const record = text.startsWith("row:");
+    const parts = (record ? text.slice(4) : text).split(":");
     if (parts[0] === "window") {
         const app = parts.length > 2 ? parts[1] : "";
         return appWord.test(app) && !appsUnnamed.includes(app) ? `window:${app}` : "window";
     }
-    if (parts[0] === "program") {
+    if (parts[0] === "program" && !record) {
         const id = parts.length === 2 ? parts[1] : "";
         return appWord.test(id) && !appsUnnamed.includes(id) ? `program:${id}` : "program";
     }

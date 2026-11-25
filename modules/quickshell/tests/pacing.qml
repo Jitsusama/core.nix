@@ -1098,9 +1098,9 @@ QtObject {
             Presented.keyShown("row:wifi:network:Harbour", true), "row:wifi:network:Harbour");
         check(failures, "a record's window by its app",
             Presented.keyShown("row:window:kitty:~/src", false), "window:kitty");
-        // A program's row is keyed by its desktop entry's id, which no
-        // title is, so each program's drawer can be timed on its own
-        // (RTOIMQ, 2026-11-24), as a window's app is said.
+        // A program's row is keyed by its desktop entry's id, never the
+        // name its window shows, so each program's drawer can be timed on
+        // its own (RTOIMQ, 2026-11-24), as a window's app is said.
         check(failures, "a program's key is said with its desktop entry's id",
             Presented.keyShown("program:org.inkscape.Inkscape", false),
             "program:org.inkscape.Inkscape");
