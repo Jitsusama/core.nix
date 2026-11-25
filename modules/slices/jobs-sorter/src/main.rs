@@ -6226,6 +6226,43 @@ mod tests {
         );
     }
 
+    // At agents.slice's own floor, a tenth of 62 GiB, a held window holding past a window's
+    // floor with its memory.low raised claims that floor first and the rest as strays do.
+    #[test]
+    fn a_held_window_claims_first_no_more_than_a_windows_floor() {
+        const MIB: u64 = 1 << 20;
+        let slice = slice_with(
+            "fit-held-past",
+            6348 * MIB,
+            &[("kitty-3-1.scope", 3072 * MIB, "max")],
+        );
+        let floored = Floored {
+            held: [slice.join("kitty-3-1.scope")].into(),
+            order: vec![slice.join("kitty-3-1.scope")],
+            kept: HashMap::new(),
+        };
+        let (room, strays) = claims(
+            &slice,
+            6348 * MIB,
+            &["kitty-".to_owned()],
+            &[],
+            &floored,
+            &mut budget::Peaks::default(),
+            std::time::Instant::now(),
+        );
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert_eq!(
+            strays,
+            [("kitty-3-1.scope".to_owned(), 1024 * MIB)],
+            "the held window claimed first past a window's floor"
+        );
+        assert_eq!(
+            room,
+            (6348 - 2048) * MIB,
+            "the held window's floor didn't come out of the units' room"
+        );
+    }
+
     // Within the kept tier an orchestrator's window, kept at a gigabyte and
     // oomd's avoid, comes ahead of a plain pi's, whatever their names.
     #[test]
@@ -6274,23 +6311,40 @@ mod tests {
         );
     }
 
+    // The unit Joel is at is fitted beside a window only this look keeps: fitted against the
+    // last look's floors, or none, the kept window would claim its whole 2 GiB of the cap.
     #[test]
     fn a_look_fits_the_floors_beside_what_the_sorter_holds_and_keeps_now() {
-        let mut ranks = Ranks::default();
-        let held = Path::new("/sys/fs/cgroup/agents.slice/mycelium-pi-1.scope");
-        let kept = Path::new("/sys/fs/cgroup/agents.slice/kitty-1-9.scope");
-        let other = Path::new("/sys/fs/cgroup/agents.slice/kitty-0-1.scope");
-        ranks.holding.done(held, Some(0));
-        ranks.keeping.done("kitty-1-9.scope", keep::Floor::Pi);
-        fit_ranked(&mut [], &[], &mut ranks, std::time::Instant::now());
-        assert!(
-            ranks.fitting.floored.held.contains(held) && ranks.fitting.floored.kept(kept).is_some(),
-            "a look fitted the floors without the scopes the sorter holds and keeps"
+        const MIB: u64 = 1 << 20;
+        let unit = "pi-conversation-b@1.service";
+        let slice = slice_with(
+            "fit-wired",
+            4096 * MIB,
+            &[
+                ("kitty-1-1.scope", 2048 * MIB, "max"),
+                ("kitty-1-2.scope", 2048 * MIB, "max"),
+                (unit, 0, "0"),
+            ],
         );
-        assert!(
-            !ranks.fitting.floored.held.contains(other)
-                && ranks.fitting.floored.kept(other).is_none(),
-            "a scope the sorter neither holds nor keeps was taken as one it floors"
+        let mut ranks = Ranks::default();
+        ranks.keeping.done("kitty-1-2.scope", keep::Floor::Pi);
+        let viewed = hosts::Signs {
+            viewed: 1,
+            current: Some(0),
+            ..hosts::Signs::default()
+        };
+        let mut ranked = [ranked_in(&slice, unit, 0, 2048 * MIB, viewed)];
+        fit_ranked(
+            &mut ranked,
+            &["kitty-".to_owned()],
+            &mut ranks,
+            std::time::Instant::now(),
+        );
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert_eq!(
+            ranked[0].rank.floor / MIB,
+            1536,
+            "the unit wasn't fitted beside the 512 MiB this look keeps the window at"
         );
     }
 
