@@ -32,9 +32,10 @@ pub struct Judged {
     pub owed: Vec<Owed>,
 }
 
-/// A pull request or issue a round couldn't read, read again each round
-/// from where it was to be until it is: what's judged on it from `from`,
-/// in seconds since the epoch, read from `read_from`, owed since `at`.
+/// A pull request or issue a round couldn't read, read again from where it
+/// was to be until it is: what's judged on it from `from`, in seconds
+/// since the epoch, read from `read_from`, owed since `at`, asked and
+/// failed `tries` times, and asked again after `skip` more rounds.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Owed {
     /// What's owed.
@@ -45,6 +46,10 @@ pub struct Owed {
     pub read_from: u64,
     /// When a round first couldn't read it.
     pub at: u64,
+    /// How many asks for it failed, not counting asks a spent limit kept.
+    pub tries: u32,
+    /// How many rounds it waits before it's asked again.
+    pub skip: u32,
 }
 
 /// How far a search for Joel's own words reached, in seconds since the
@@ -102,6 +107,8 @@ pub fn read(state: &Path, site: &str) -> Option<Judged> {
                 from: owed.get("from")?.as_u64()?,
                 read_from: owed.get("read_from")?.as_u64()?,
                 at: owed.get("at")?.as_u64()?,
+                tries: count(owed, "tries"),
+                skip: count(owed, "skip"),
             })
         })
         .collect();
@@ -111,6 +118,14 @@ pub fn read(state: &Path, site: &str) -> Option<Judged> {
         own,
         owed,
     })
+}
+
+/// The count `owed` keeps under `name`, none where an older file kept none.
+fn count(owed: &Value, name: &str) -> u32 {
+    owed.get(name)
+        .and_then(Value::as_u64)
+        .and_then(|count| u32::try_from(count).ok())
+        .unwrap_or(0)
 }
 
 /// Each site kept in `state`, by name, and when it was last read whole, in
@@ -160,7 +175,8 @@ pub fn write(state: &Path, site: &str, judged: &Judged, read_at: u64) {
             .map(|owed| {
                 json!({ "repo": owed.thread.repo, "number": owed.thread.number,
                     "pull": owed.thread.pull, "from": owed.from,
-                    "read_from": owed.read_from, "at": owed.at })
+                    "read_from": owed.read_from, "at": owed.at,
+                    "tries": owed.tries, "skip": owed.skip })
             })
             .collect();
         kept["owed"] = Value::Array(owed);
@@ -261,6 +277,8 @@ mod tests {
                 from: 1_699_999_940,
                 read_from: 1_699_996_340,
                 at: 1_700_000_000,
+                tries: 2,
+                skip: 1,
             }],
         };
         write(&state, "github", &owing, 1_700_000_100_000);

@@ -33,7 +33,9 @@ use super::{GitHub, Unread, searched};
 /// and judged, and how far before that a thread found is read, in
 /// seconds. A stop heard an hour late beats one never heard,
 /// while one older than that he may have moved past. What that finds
-/// again is known by its key, so nothing is judged twice.
+/// again is known by its key, so nothing is judged twice. A thread GitHub
+/// wouldn't let a round read is judged from where it was owed (owed.rs),
+/// however late: a stop the reader never saw leans to stopping.
 const OWN_LAG: u64 = 60 * 60;
 
 /// How many searches a round makes for Joel's words: one cut short at
@@ -61,9 +63,10 @@ pub(super) struct Searched {
 }
 
 /// What one search found: each pull request or issue to read, when each
-/// it named had last changed, whether its first search answered, so the
-/// round moves on, as it does from one cut short, and what it left out,
-/// for the journal once the round knows where the next reaches.
+/// it named had last changed, whether the round may move on from it (not
+/// when its first search failed, or was cut short giving nothing it could
+/// read, which holds as an outage does), and what it left out, for the
+/// journal once the round knows where the next reaches.
 pub(super) struct Found {
     pub(super) threads: Vec<Thread>,
     pub(super) seen: HashMap<String, String>,

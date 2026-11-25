@@ -1,8 +1,11 @@
 //! A round that can't read every pull request and issue it named: it
-//! judges what it did read, moves on, and owes the rest, read again each
-//! round from where it was to be, so one that keeps failing holds back
-//! nothing and is judged once it reads; a spent rate limit stops the round
-//! at once; and one owed for hours is let go, said loudly.
+//! judges what it did read, moves on, and owes the rest, read again from
+//! where each was to be, less often while one keeps failing, merged with
+//! a fresh listing by the farther back, and judged once; a spent rate limit
+//! or three failures stop the round's reads, search hits read first; and
+//! one failing in every try is let go, the journal naming the span unread.
+//! Each case waits a round past what it counts, so stopping the reader
+//! can't cut short a read it counts.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -13,7 +16,7 @@ use pineapple::github::stamp;
 use serde_json::{Value, json};
 
 use super::{LOGIN, MARK, answer_with, commented, github_reader, journal, read_lately, searches};
-use crate::{Answered, PATIENCE, answering_whole, decisions, each, home};
+use crate::{Answered, PATIENCE, answering_whole, decisions, each};
 
 /// When every thread a search gives last changed: a minute before its
 /// first answer, and the same in every round after, as nothing changes.
@@ -33,35 +36,73 @@ fn found(numbers: &[u64], now: u64) -> Value {
     json!({ "items": items })
 }
 
-/// Where Joel said the safe word a minute back on example/shop#12, which
-/// he was notified of, and his search gives `numbers`.
-fn spoke(line: &str, now: u64, numbers: &[u64]) -> Answered {
-    if line.contains(" /search/issues?") {
-        return Answered::ok(found(numbers, now));
+/// What a case's stand-in of GitHub answers.
+#[derive(Default)]
+struct Case {
+    /// The pull requests Joel's search gives.
+    found: &'static [u64],
+    /// Those whose comments fail on every ask.
+    failing: &'static [u64],
+    /// Whether #12 is left out of his notifications.
+    quiet: bool,
+    /// When Joel said the safe word on #12, or a minute before each answer.
+    said: Option<u64>,
+    /// Which of the asks for #12's comments fails, counting from one.
+    twelve_fails: Option<usize>,
+    /// How many of the first asks for comments a spent limit refuses.
+    refused: usize,
+}
+
+/// A stand-in answering as `case` says, with #12's opening, a review on it
+/// asking Joel to stop without the phrase, and his own stop there.
+fn stand_in(case: Case) -> impl Fn(&str, u64) -> Answered + Send + 'static {
+    let (comments, twelve) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+    move |line, now| {
+        if line.contains("/comments?") && comments.fetch_add(1, Ordering::SeqCst) < case.refused {
+            return Answered {
+                status: 403,
+                headers: vec![("x-ratelimit-remaining", "0".to_owned())],
+                body: json!({"message": "API rate limit exceeded"}),
+            };
+        }
+        let failing = case
+            .failing
+            .iter()
+            .any(|number| asks_comments_of(line, *number));
+        let twelfth = asks_comments_of(line, 12).then(|| twelve.fetch_add(1, Ordering::SeqCst) + 1);
+        if failing || (twelfth.is_some() && twelfth == case.twelve_fails) {
+            return Answered {
+                status: 500,
+                headers: Vec::new(),
+                body: json!({"message": "Server Error"}),
+            };
+        }
+        if line.contains(" /search/issues?") {
+            return Answered::ok(found(case.found, now));
+        }
+        if case.quiet && line.contains(" /notifications?") {
+            return Answered::ok(json!([]));
+        }
+        let ago = case.said.map_or(60, |at| now - at);
+        let his = commented(5, LOGIN, "OWNER", "pineapple override", (now, ago));
+        Answered::ok(answer_with(line, now, &[his]))
     }
-    let his = commented(5, LOGIN, "OWNER", "pineapple override", (now, 60));
-    Answered::ok(answer_with(line, now, &[his]))
 }
 
-/// Whether `line` asks for the comments of a pull request but #12.
-fn others_comments(line: &str) -> bool {
-    line.contains("/comments?") && !line.contains("/12/comments?")
+/// Whether `line` asks for the comments of example/shop#`number`.
+fn asks_comments_of(line: &str, number: u64) -> bool {
+    line.contains(&format!(" /repos/example/shop/issues/{number}/comments?"))
 }
 
-/// An answer GitHub gives for a thread it fails on.
-fn failing() -> Answered {
-    Answered {
-        status: 500,
-        headers: Vec::new(),
-        body: json!({"message": "Server Error"}),
-    }
-}
-
-/// How many times `asked` holds a request for the comments of
-/// example/shop#`number`.
-fn read(asked: &[String], number: u64) -> usize {
-    let comments = format!(" /repos/example/shop/issues/{number}/comments?");
-    asked.iter().filter(|line| line.contains(&comments)).count()
+/// Each time `asked` holds a request for the comments of
+/// example/shop#`number`, from when it asked, as its stamp reads.
+fn reads(asked: &[String], number: u64) -> Vec<String> {
+    let from = |line: &String| {
+        let since = line.split("since=").nth(1)?.split(['&', ' ']).next()?;
+        Some(since.replace("%3A", ":"))
+    };
+    let of = asked.iter().filter(|line| asks_comments_of(line, number));
+    of.map(|line| from(line).unwrap_or_default()).collect()
 }
 
 /// Lets the reader search `count` times, then stops it, giving what it
@@ -84,154 +125,247 @@ fn until_searched(
     asked.lock().expect("what was asked").clone()
 }
 
-/// Each verdict of what was judged, in order of name, so a saying judged
-/// twice shows.
-fn verdicts(home: &std::path::Path) -> Vec<String> {
-    let said = decisions(home);
+/// What the reader judged in `case` over `rounds` rounds, the verdicts
+/// sorted so a saying judged twice shows, what it asked and its journal,
+/// its case's home gone.
+fn run(case: Case, rounds: usize, seeded: Option<Value>) -> (Vec<String>, Vec<String>, String) {
+    let (origin, asked) = answering_whole(stand_in(case));
+    let (home, _) = read_lately();
+    if let Some(seeded) = seeded {
+        std::fs::write(home.join("state/pineapple").join(MARK), seeded.to_string())
+            .expect("the mark");
+    }
+    let mut reading = github_reader(&home, &origin, &[]);
+    // The round after the last counted begins with its search.
+    let seen = until_searched(&asked, &mut reading, rounds + 1);
+    let said = decisions(&home);
     let mut verdicts: Vec<String> = each(&said, "verdict")
         .into_iter()
         .map(str::to_owned)
         .collect();
     verdicts.sort();
-    verdicts
+    let journal = journal(&home);
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+    (verdicts, seen, journal)
 }
 
-/// What the reader keeps of how far it read, as `home` holds it.
-fn kept(home: &std::path::Path) -> Value {
-    let text = std::fs::read_to_string(home.join("state/pineapple").join(MARK)).expect("the mark");
-    serde_json::from_str(&text).expect("the mark is JSON")
+/// When the reader was last read, as [`read_lately`] marks it: half a
+/// minute before now, to the second.
+fn last() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("after 1970")
+        .as_secs()
+        - 30
 }
 
 #[test]
-fn github_a_thread_that_keeps_failing_is_owed_and_the_round_moves_on() {
-    let (origin, asked) = answering_whole(|line, now| {
-        if others_comments(line) {
-            return failing();
-        }
-        spoke(line, now, &[14, 12])
-    });
-    let (home, _) = read_lately();
+fn github_a_thread_that_keeps_failing_is_owed_asked_less_often_and_holds_back_nothing() {
+    let (origin, asked) = answering_whole(stand_in(Case {
+        found: &[14, 12],
+        failing: &[14],
+        ..Case::default()
+    }));
+    let (home, last) = read_lately();
     let mut reading = github_reader(&home, &origin, &[]);
-    let seen = until_searched(&asked, &mut reading, 3);
+    let seen = until_searched(&asked, &mut reading, 6);
 
+    let said = decisions(&home);
+    let mut verdicts = each(&said, "verdict");
+    verdicts.sort_unstable();
     assert_eq!(
-        verdicts(&home),
+        verdicts,
         ["stop", "stop-asked"],
-        "Joel's stop after a thread that fails every round is judged, and once"
+        "Joel's stop beside a thread that fails every round is judged, and once"
     );
     let notified: Vec<&String> = seen
         .iter()
         .filter(|line| line.contains(" /notifications?"))
         .collect();
     assert!(
-        notified.len() >= 3 && notified.first() != notified.last(),
+        notified.first() != notified.last(),
         "how far it has read moves on though a thread fails: {notified:?}"
     );
-    assert!(
-        read(&seen, 14) >= 3,
-        "the thread it couldn't read is read again each round"
-    );
-    let kept = kept(&home);
     assert_eq!(
-        (kept["owed"][0]["number"].as_u64(), kept.get("read_at")),
-        (Some(14), None),
+        reads(&seen, 14),
+        [stamp(last - 7200), stamp(last - 7200), stamp(last - 7200)],
+        "the thread it owes is asked in rounds one, two and four, as its wait doubles, each \
+         time from where it was to be read: {seen:?}"
+    );
+    let text = std::fs::read_to_string(home.join("state/pineapple").join(MARK)).expect("the mark");
+    let kept: Value = serde_json::from_str(&text).expect("the mark is JSON");
+    assert_eq!(
+        (
+            kept["owed"][0]["number"].as_u64(),
+            kept["owed"][0]["tries"].as_u64(),
+            kept.get("read_at")
+        ),
+        (Some(14), Some(3), None),
         "what it couldn't read is kept as owed, and the site isn't said to be read whole: {kept}"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
 #[test]
-fn github_a_spent_limit_stops_the_round_and_what_it_owes_is_judged_once_it_lifts() {
-    let refused = Arc::new(AtomicUsize::new(0));
-    let refusing = Arc::clone(&refused);
-    let (origin, asked) = answering_whole(move |line, now| {
-        if line.contains("/comments?") && refusing.fetch_add(1, Ordering::SeqCst) < 3 {
-            return Answered {
-                status: 403,
-                headers: vec![("x-ratelimit-remaining", "0".to_owned())],
-                body: json!({"message": "API rate limit exceeded"}),
-            };
-        }
-        if line.contains(" /notifications?") {
-            return Answered::ok(json!([]));
-        }
-        spoke(line, now, &[14, 15, 16, 12])
-    });
-    let (home, _) = read_lately();
-    let mut reading = github_reader(&home, &origin, &[]);
-    let seen = until_searched(&asked, &mut reading, 5);
+fn github_a_spent_limit_stops_the_round_at_a_search_hit_and_what_it_owes_is_judged_once() {
+    let case = Case {
+        found: &[14, 15, 16],
+        refused: 3,
+        ..Case::default()
+    };
+    let (verdicts, seen, said) = run(case, 4, None);
 
-    let first = seen
-        .iter()
-        .position(|line| line.contains(" /search/issues?"));
-    let second = seen
+    let searched: Vec<usize> = seen
         .iter()
         .enumerate()
         .filter(|(_, line)| line.contains(" /search/issues?"))
-        .nth(1)
-        .map(|(place, _)| place);
-    let (Some(first), Some(second)) = (first, second) else {
-        panic!("it searched twice: {seen:?}");
+        .map(|(place, _)| place)
+        .collect();
+    let first: Vec<&String> = seen[searched[0]..searched[1]]
+        .iter()
+        .filter(|line| line.contains("/comments?"))
+        .collect();
+    assert!(
+        first.len() == 1 && asks_comments_of(first[0], 14),
+        "a spent limit stops the round at once, at the search's first hit, not at what \
+         notified Joel: {seen:?}"
+    );
+    assert_eq!(
+        verdicts,
+        ["stop", "stop-asked"],
+        "what it owed is judged once the limit lifts, and once"
+    );
+    assert!(
+        said.contains("read 0 of the 4 it named, so the rest is read again later"),
+        "the journal says what it owes: {said}"
+    );
+}
+
+#[test]
+fn github_a_round_stops_reading_at_its_third_failure_and_reads_what_it_kept_back_first() {
+    let case = Case {
+        found: &[14, 15, 16, 17, 12],
+        failing: &[14, 15, 16, 17],
+        ..Case::default()
     };
-    let asked_first = seen[first..second]
+    let (verdicts, seen, _) = run(case, 2, None);
+
+    let searched: Vec<usize> = seen
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| line.contains(" /search/issues?"))
+        .map(|(place, _)| place)
+        .collect();
+    let first = seen[searched[0]..searched[1]]
         .iter()
         .filter(|line| line.contains("/comments?"))
         .count();
     assert_eq!(
-        asked_first, 1,
-        "a spent limit stops the round at once: {seen:?}"
+        first, 3,
+        "a round that fails three times asks no more: {seen:?}"
+    );
+    assert!(
+        seen[searched[1]..searched[2]]
+            .iter()
+            .any(|line| asks_comments_of(line, 12)),
+        "the next round reads what it kept back before what keeps failing: {seen:?}"
     );
     assert_eq!(
-        verdicts(&home),
+        verdicts,
         ["stop", "stop-asked"],
-        "what it owed is judged once the limit lifts, and once"
+        "and judges Joel's stop there, once"
     );
-    let said = journal(&home);
-    assert!(
-        said.contains("read 0 of the 4 it named, so the rest is read again next round"),
-        "the journal says what it owes: {said}"
-    );
-    std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
 #[test]
-fn github_one_owed_for_two_hours_is_let_go_and_said_so() {
-    let (origin, asked) = answering_whole(|line, now| {
-        if others_comments(line) {
-            return failing();
-        }
-        if line.contains(" /notifications?") {
-            return Answered::ok(json!([]));
-        }
-        spoke(line, now, &[])
-    });
-    let home = home();
-    let last = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("after 1970")
-        .as_secs()
-        - 30;
-    let state = home.join("state/pineapple");
-    std::fs::create_dir_all(&state).expect("the state folder");
-    let owed = json!({"repo": "example/shop", "number": 14, "pull": true,
-        "from": last - 60, "read_from": last - 60, "at": last - 3 * 60 * 60});
-    let judged = json!({"since": last, "keys": [], "owed": [owed]});
-    std::fs::write(state.join(MARK), judged.to_string()).expect("the mark");
-    let mut reading = github_reader(&home, &origin, &[]);
-    let seen = until_searched(&asked, &mut reading, 3);
+fn github_a_thread_owed_and_notified_again_is_read_once_from_where_it_was_owed() {
+    let case = Case {
+        found: &[],
+        said: Some(last() - 50),
+        twelve_fails: Some(1),
+        ..Case::default()
+    };
+    let (verdicts, _, _) = run(case, 3, None);
 
     assert_eq!(
-        read(&seen, 14),
-        1,
-        "one owed past two hours is read no more: {seen:?}"
+        verdicts,
+        ["stop", "stop-asked"],
+        "a stop said before the next round's minute of overlap is judged, from where it was \
+         owed, and once though the thread is both owed and notified"
     );
-    let said = journal(&home);
+}
+
+#[test]
+fn github_a_thread_owed_after_its_stop_was_judged_is_read_again_without_judging_it_twice() {
+    let case = Case {
+        found: &[],
+        said: Some(last() - 20),
+        twelve_fails: Some(2),
+        ..Case::default()
+    };
+    let (verdicts, seen, _) = run(case, 3, None);
+
     assert!(
-        said.contains(
-            "<3>couldn't read github:example/shop#14 for two hours, so it's read again only once \
-             it changes"
-        ),
-        "the journal says so, loudly: {said}"
+        reads(&seen, 12).len() >= 3,
+        "read, then failing, then read again: {seen:?}"
     );
-    std::fs::remove_dir_all(&home).expect("the case's home goes");
+    assert_eq!(
+        verdicts,
+        ["stop", "stop-asked"],
+        "what it judged before it owed the thread isn't judged again"
+    );
+}
+
+#[test]
+fn github_an_owed_stop_judged_late_is_not_also_told_of_as_too_old() {
+    let case = Case {
+        found: &[12],
+        quiet: true,
+        said: Some(last() - 3590),
+        twelve_fails: Some(1),
+        ..Case::default()
+    };
+    let (verdicts, _, said) = run(case, 2, None);
+
+    assert_eq!(
+        verdicts,
+        ["stop", "stop-asked"],
+        "Joel's stop on a thread owed from the search's reach is judged"
+    );
+    assert!(
+        !said.contains("holds Joel's pineapple override from"),
+        "a stop it judges isn't also told of as older than the search reaches: {said}"
+    );
+}
+
+#[test]
+fn github_one_failing_in_every_try_is_let_go_naming_the_span_nobody_read() {
+    let last = last();
+    let owed = json!({"repo": "example/shop", "number": 14, "pull": true,
+        "from": last - 60, "read_from": last - 60, "at": last - 3 * 60 * 60,
+        "tries": 11, "skip": 0});
+    let case = Case {
+        found: &[],
+        failing: &[14],
+        quiet: true,
+        ..Case::default()
+    };
+    let seeded = json!({"since": last, "keys": [], "owed": [owed]});
+    let (_, seen, said) = run(case, 2, Some(seeded));
+
+    assert_eq!(
+        reads(&seen, 14).len(),
+        1,
+        "one failing in every try is asked no more: {seen:?}"
+    );
+    let gone = format!(
+        "<3>couldn't read github:example/shop#14 in 12 tries since {}, so what was said there \
+         from {} on goes unjudged: look there for a stop",
+        stamp(last - 3 * 60 * 60),
+        stamp(last - 60)
+    );
+    assert!(
+        said.contains(&gone),
+        "the journal says so, loudly, naming the span: {said}"
+    );
 }
