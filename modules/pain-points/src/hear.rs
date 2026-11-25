@@ -31,6 +31,7 @@ mod counted;
 pub mod heard;
 pub mod landed;
 pub mod missed;
+mod node;
 pub mod route;
 pub mod said;
 pub mod sore;
@@ -39,16 +40,17 @@ pub mod troubles;
 
 use counted::hour_of;
 use heard::Heard;
+pub use node::Sent;
+use node::{Node, SEND_AT_MOST, output_within};
 use route::{Cell, Routes};
 use said::Carried;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
 use std::fs::TryLockError;
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
+use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::mpsc;
+use std::process::Command;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 use troubles::{CELLLESS_AT_MOST_MS, cellless_since, troubles};
 
@@ -61,10 +63,6 @@ const HOUR_MS: i64 = 3_600_000;
 /// ledgers' keeper alone: its cell has moved on, and a first run over a
 /// day of logs would otherwise send every cell a day of old pains.
 pub const FRESH_MS: i64 = 2 * HOUR_MS;
-
-/// The longest a send may take: the node answers in well under a second,
-/// and a run every five minutes must end long before the next begins.
-const SEND_AT_MOST: Duration = Duration::from_secs(20);
 
 /// How long a quick question of the machine, its time zone, may take.
 const ASK_AT_MOST: Duration = Duration::from_secs(5);
@@ -166,6 +164,7 @@ pub fn listen(
     home: &Path,
     given: &mut BTreeMap<&'static str, String>,
 ) -> Result<(String, bool), String> {
+    let begun = Instant::now();
     let mut take = |flag: &str| given.remove(flag);
     let state = crate::state_home();
     let own = state.join("pain-points");
@@ -220,28 +219,20 @@ pub fn listen(
     // trouble, rather than holding every later run behind this one.
     let cells =
         output_within(Command::new(&mycelium).arg("sessions"), SEND_AT_MOST).unwrap_or_default();
+    // A node that never answers would hold every later run behind this
+    // one, so a send that hangs is stopped, and the run's sends after it
+    // wait for the next run, their tries kept.
     let from = Routes::read(&ears.state).from;
-    let hour = hear_putting(&ears, &cells, &mut |to, text, put| {
-        let Some(from) = &from else { return false };
-        // An owner is asked, as it must say when its fix lands; a finding
-        // would want nothing back. The keeper is told, with an fyi, of
-        // what its list leaves to their owners, so it needn't answer.
-        let intent = match put {
-            Put::Asked => "question",
-            Put::Told => "fyi",
-        };
-        // A node that never answers would hold every later run behind this
-        // one, so a send that hangs is stopped and tried again next run.
-        output_within(
-            Command::new(&mycelium)
-                .args(["send", "--from", from, "--intent", intent, "--text", text])
-                .arg(format!("peer.{}", to.to_lowercase())),
-            SEND_AT_MOST,
-        )
-        .is_some_and(|answer| node_took(&answer))
-    })?;
+    let mut node = Node::new(mycelium, from, begun, SEND_AT_MOST);
+    let hour = hear_putting(&ears, &cells, &mut |to, text, put| node.send(to, text, put))?;
     drop(lock);
-    Ok((said(&hour), !hour.troubles.is_empty()))
+    // Held sends are no trouble, as a node slow in a switch holds them,
+    // but they are said, so a quiet line isn't read as nothing to send.
+    let held = match node.held {
+        0 => String::new(),
+        held => format!("; {held} sends wait for the next run, as the mycelium was slow"),
+    };
+    Ok(([said(&hour), held].concat(), !hour.troubles.is_empty()))
 }
 
 /// The hour in a line for the journal.
@@ -279,57 +270,6 @@ fn said(hour: &Hour) -> String {
     )
 }
 
-/// Whether the node's answer to a send says it took it: the mycelium
-/// exits well on a send it refused, and says so only in its answer.
-fn node_took(answer: &str) -> bool {
-    answer.trim_start().starts_with(r#"{"Ok""#)
-}
-
-/// What a command printed, when it ended within `limit`.
-fn output_within(command: &mut Command, limit: Duration) -> Option<String> {
-    let mut child = command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
-    let mut out = child.stdout.take()?;
-    // Read beside the wait, so a command printing more than a pipe holds
-    // isn't stopped waiting on its reader; and read with the same limit,
-    // as a child it left behind may hold the pipe open long after.
-    let started = Instant::now();
-    let (read, reading) = mpsc::channel();
-    std::thread::spawn(move || {
-        let mut text = String::new();
-        let _ = read.send(out.read_to_string(&mut text).ok().map(|_| text));
-    });
-    if !ended_within(&mut child, limit) {
-        return None;
-    }
-    reading
-        .recv_timeout(limit.saturating_sub(started.elapsed()))
-        .ok()
-        .flatten()
-        .filter(|s| !s.is_empty())
-}
-
-/// Whether a child ended well within `limit`; one still running then is
-/// killed and counts as failed.
-fn ended_within(child: &mut std::process::Child, limit: Duration) -> bool {
-    let started = Instant::now();
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => return status.success(),
-            Ok(None) if started.elapsed() < limit => std::thread::sleep(Duration::from_millis(50)),
-            _ => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return false;
-            }
-        }
-    }
-}
-
 /// Writes what it heard whole, so what was sent stays marked sent however
 /// the run ends.
 fn keep(heard_at: &Path, kept: &[Heard]) -> Result<(), String> {
@@ -341,19 +281,26 @@ fn keep(heard_at: &Path, kept: &[Heard]) -> Result<(), String> {
     crate::write_whole(heard_at, &lines)
 }
 
-/// `hear_putting`, for the tests that read every send alike.
+/// `hear_putting`, for the tests that read every send alike, each going
+/// or failing.
 #[cfg(test)]
 pub fn hear(
     ears: &Ears,
     cells_printed: &str,
     send: &mut dyn FnMut(&str, &str) -> bool,
 ) -> Result<Hour, String> {
-    hear_putting(ears, cells_printed, &mut |to, text, _| send(to, text))
+    hear_putting(ears, cells_printed, &mut |to, text, _| {
+        if send(to, text) {
+            Sent::Went
+        } else {
+            Sent::Failed
+        }
+    })
 }
 
 /// Hears what's new, sends what no one has, and says the hour. `send`
-/// takes an address, a finding's text and how it's put, and says whether
-/// it went.
+/// takes an address, a finding's text and how it's put, and says how it
+/// came out.
 ///
 /// # Errors
 ///
@@ -361,7 +308,7 @@ pub fn hear(
 pub fn hear_putting(
     ears: &Ears,
     cells_printed: &str,
-    send: &mut dyn FnMut(&str, &str, Put) -> bool,
+    send: &mut dyn FnMut(&str, &str, Put) -> Sent,
 ) -> Result<Hour, String> {
     fs::create_dir_all(&ears.state).map_err(|e| format!("{}: {e}", ears.state.display()))?;
     let since = ears.at - DAY_MS;
@@ -420,11 +367,11 @@ pub fn hear_putting(
     let mut failed = 0;
     let mut guarded = |to: &str, text: &str, put: Put| {
         if routes.refuses(to) {
-            return false;
+            return Sent::Failed;
         }
-        let went = send(to, text, put);
-        failed += usize::from(!went);
-        went
+        let sent = send(to, text, put);
+        failed += usize::from(sent == Sent::Failed);
+        sent
     };
     let mut asked = |to: &str, text: &str| guarded(to, text, Put::Asked);
     let owned = route_waiting(ears, &routes, &cells, &mut kept, &mut asked, &heard_at);
@@ -627,7 +574,7 @@ fn route_waiting(
     routes: &Routes,
     cells: &BTreeMap<String, Cell>,
     kept: &mut [Heard],
-    send: &mut dyn FnMut(&str, &str) -> bool,
+    send: &mut dyn FnMut(&str, &str) -> Sent,
     heard_at: &Path,
 ) -> Vec<String> {
     // With no one named to send as, or no cell named never to send to,
@@ -653,16 +600,21 @@ fn route_waiting(
         pains.sort_by_key(|n| (std::cmp::Reverse(kept[*n].hits), kept[*n].at));
         pains.truncate(route::NAMED_AT_MOST);
         let named: Vec<&Heard> = pains.iter().map(|n| &kept[*n]).collect();
-        if send(&owner, &route::finding(&named, cells, ears.offset_s)) {
-            for n in pains {
-                kept[n].to = Some(owner.clone());
-                kept[n].routed_at = Some(ears.at);
-                owned.push(kept[n].key.clone());
+        match send(&owner, &route::finding(&named, cells, ears.offset_s)) {
+            Sent::Went => {
+                for n in pains {
+                    kept[n].to = Some(owner.clone());
+                    kept[n].routed_at = Some(ears.at);
+                    owned.push(kept[n].key.clone());
+                }
             }
-        } else {
-            for n in pains {
-                kept[n].tries += 1;
+            Sent::Failed => {
+                for n in pains {
+                    kept[n].tries += 1;
+                }
             }
+            // Not tried, so its tries stand for the next run.
+            Sent::Held => {}
         }
         let _ = keep(heard_at, kept);
     }
@@ -679,7 +631,7 @@ fn note_for_keeper(
     cells: &BTreeMap<String, Cell>,
     kept: &mut [Heard],
     owned: &[String],
-    send: &mut dyn FnMut(&str, &str, Put) -> bool,
+    send: &mut dyn FnMut(&str, &str, Put) -> Sent,
     heard_at: &Path,
 ) {
     let Some(keeper) = routes.ledgers.as_ref().filter(|_| routes.sends()) else {
@@ -734,17 +686,19 @@ fn note_for_keeper(
     // still has each from its owner's side, and heard.jsonl. Late ones
     // wait for the next run until the note goes.
     // A late pain has its keeper's own tries, after any its owner had.
-    let went = send(
+    let sent = send(
         keeper,
         &route::ledger_note(&noted, cells, ears.offset_s, true),
         Put::Asked,
     );
     for n in late {
-        if went {
-            kept[n].to = Some(keeper.clone());
-            kept[n].routed_at = Some(ears.at);
-        } else {
-            kept[n].tries = kept[n].tries.max(SEND_TRIES) + 1;
+        match sent {
+            Sent::Went => {
+                kept[n].to = Some(keeper.clone());
+                kept[n].routed_at = Some(ears.at);
+            }
+            Sent::Failed => kept[n].tries = kept[n].tries.max(SEND_TRIES) + 1,
+            Sent::Held => {}
         }
     }
     let _ = keep(heard_at, kept);

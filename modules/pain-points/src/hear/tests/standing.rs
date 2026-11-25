@@ -15,7 +15,7 @@ fn pain(entry: &str, words: &str, hits: usize) -> Heard {
 /// Writes a script aside and copies it in, so no thread here holds it
 /// open for writing when another test forks: a script run then is refused
 /// as busy (ETXTBSY), as nix-offload's tests found on 31 October.
-fn runnable(path: &Path, script: &str) {
+pub(super) fn runnable(path: &Path, script: &str) {
     let draft = path.with_extension("draft");
     fs::write(&draft, script).expect("a draft");
     let copied = Command::new("cp")
