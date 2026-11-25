@@ -7,7 +7,7 @@
 //! rules they prove, as every module in wifid keeps them.
 
 use tokio::sync::{mpsc, watch};
-use tokio::time::Instant;
+use tokio::time::{Duration, Instant};
 
 use crate::acts;
 use crate::air::Heard;
@@ -264,8 +264,8 @@ async fn roam(asks: mpsc::Sender<Ask>, air: watch::Receiver<State>, card: String
 /// a trial standing as the usual ended early.
 fn asides(chooser: &mut Chooser, on: &Joined, measured: &Measured, signal: i16) -> Vec<String> {
     let mut said = Vec::new();
-    if let Some(unreached) = chooser.unreached() {
-        said.push(kept_off(on, &unreached));
+    if let Some((unreached, lasts)) = chooser.unreached() {
+        said.push(kept_off(on, &unreached, lasts));
     }
     if let Some(narrower) = chooser.began_keeping_wide() {
         said.push(kept_wide(on, measured, signal, &narrower));
@@ -297,15 +297,27 @@ fn asides(chooser: &mut Chooser, on: &Joined, measured: &Measured, signal: i16) 
 
 /// Why a card keeps off an access point it was moved to: it's somewhere
 /// else since, whether the move failed or something moved it on, and the
-/// chooser can't tell which.
-fn kept_off(on: &Joined, unreached: &str) -> String {
+/// chooser can't tell which. A keep-off longer than the hour a miss holds
+/// was there before it, and runs on.
+fn kept_off(on: &Joined, unreached: &str, lasts: Duration) -> String {
     format!(
-        "{} keeps off {unreached} for {} minutes, as it's on {} rather than there since \
-         it was moved",
+        "{} keeps off {unreached} for {}, as it's on {} rather than there since it was \
+         moved",
         on.card,
-        choose::SPURNED.as_secs() / 60,
+        how_long(lasts),
         on.point
     )
+}
+
+/// A keep-off's length as the journal says it: in hours from two, as
+/// each past the first is a whole number of them, else in minutes.
+fn how_long(lasts: Duration) -> String {
+    let minutes = lasts.as_secs() / 60;
+    if minutes >= 120 && minutes.is_multiple_of(60) {
+        format!("{} hours", minutes / 60)
+    } else {
+        format!("{minutes} minutes")
+    }
 }
 
 /// Why a card keeps to its wider band where it would once have tried a
@@ -332,7 +344,7 @@ fn said_back(
     to: &str,
 ) -> String {
     let why = chooser.went_back();
-    let kept = chooser.keeps_off(&on.point, now);
+    let kept = chooser.kept_for(&on.point, now);
     went_back(on, measured, to, (why.as_ref(), kept))
 }
 
@@ -344,7 +356,7 @@ fn went_back(
     on: &Joined,
     measured: &Measured,
     to: &str,
-    (why, kept): (Option<&Against>, bool),
+    (why, kept): (Option<&Against>, Option<Duration>),
 ) -> String {
     let carried = format!(
         "{} carried {} at p95 with {:.1}% lost",
@@ -352,14 +364,21 @@ fn went_back(
         measure::ms(measured.p95),
         measured.lost
     );
-    let spurned = format!(
-        "; it keeps off {} for {} minutes",
-        on.point,
-        choose::SPURNED.as_secs() / 60
-    );
+    let spurned = kept.map_or_else(String::new, |lasts| {
+        format!("; it keeps off {} for {}", on.point, how_long(lasts))
+    });
+    // A keep-off for carrying worse holds against a failing link for its
+    // first hour alone (choose.rs), which a longer one says.
+    let firmly = match kept {
+        Some(lasts) if lasts > choose::SPURNED => format!(
+            "{spurned}, or {} should {to} fail a whole span",
+            how_long(choose::SPURNED)
+        ),
+        _ => spurned.clone(),
+    };
     let because = match why {
         Some(Against::Worse(than)) => format!(
-            "{carried}, worse than the {} with {:.1}% lost {to} carried before{spurned}",
+            "{carried}, worse than the {} with {:.1}% lost {to} carried before{firmly}",
             measure::ms(than.p95),
             than.lost
         ),
@@ -373,7 +392,7 @@ fn went_back(
             };
             // A failing link leaves for the point tried once a whole span
             // on whatever point the card is on says so (choose.rs).
-            let after = if kept {
+            let after = if kept.is_some() {
                 format!(
                     "{spurned} unless the card's link fails a whole span, having gone \
                      back from it once already"
@@ -392,11 +411,11 @@ fn went_back(
             )
         }
         Some(Against::Slowed(before)) => format!(
-            "{} moved {} Mbit/s under load, where {to} moved {before}{spurned}",
+            "{} moved {} Mbit/s under load, where {to} moved {before}{firmly}",
             on.point,
             measured.moving.unwrap_or(0)
         ),
-        Some(Against::Badly) => format!("{carried}, badly for a wider band's room{spurned}"),
+        Some(Against::Badly) => format!("{carried}, badly for a wider band's room{firmly}"),
         None => carried,
     };
     format!("{} goes back to {to}, as {because}", on.card)
@@ -473,8 +492,6 @@ fn tried(
 mod tests {
     use std::path::Path;
 
-    use tokio::time::Duration;
-
     use super::*;
     use crate::learn::Here;
     use crate::measure::tests::joined;
@@ -484,6 +501,7 @@ mod tests {
 
     const DESK: &str = "6c:ae:f6:c1:84:26";
     const HALL: &str = "6c:ae:f6:c1:84:28";
+    const NEAR: &str = "6c:ae:f6:c1:84:27";
 
     fn ms(millis: u64) -> Duration {
         Duration::from_millis(millis)
@@ -949,7 +967,8 @@ mod tests {
             lost: 1.5,
             ..carried(76)
         };
-        let line = |why: &Against| went_back(&on, &idle(50), DESK, (Some(why), true));
+        let hour = Some(choose::SPURNED);
+        let line = |why: &Against| went_back(&on, &idle(50), DESK, (Some(why), hour));
         let usual = Measured {
             p95: Some(ms(14)),
             ..before.clone()
@@ -961,19 +980,14 @@ mod tests {
             &on,
             &carried(50),
             DESK,
-            (Some(&Against::Usually(usual.clone())), false),
+            (Some(&Against::Usually(usual.clone())), None),
         );
-        let usually = went_back(
-            &on,
-            &idle(50),
-            DESK,
-            (Some(&Against::Usually(usual)), false),
-        );
+        let usually = went_back(&on, &idle(50), DESK, (Some(&Against::Usually(usual)), None));
         let cut = Measured {
             moving: Some(30),
             ..carried(50)
         };
-        let slowed = went_back(&on, &cut, DESK, (Some(&Against::Slowed(52)), true));
+        let slowed = went_back(&on, &cut, DESK, (Some(&Against::Slowed(52)), hour));
         let badly = line(&Against::Badly);
 
         let carried =
@@ -1021,6 +1035,32 @@ mod tests {
         assert!(
             badly.ends_with(&format!("{carried}, badly for a wider band's room{kept}")),
             "a trial for a wider band's room says it carried badly there: {badly}"
+        );
+    }
+
+    #[test]
+    fn a_card_going_back_from_a_point_found_worse_again_says_its_longer_keep_off() {
+        let (mut chooser, again) = choose::tests::found_worse_twice(Instant::now());
+
+        let line = said_back(&mut chooser, again, (&joined(DESK), &idle(775)), NEAR);
+
+        assert!(
+            line.ends_with(&format!(
+                "; it keeps off {DESK} for 2 hours, or 60 minutes should {NEAR} fail a \
+                 whole span"
+            )),
+            "a second keep-off running isn't said as the chooser keeps it: {line}"
+        );
+    }
+
+    #[test]
+    fn a_keep_off_is_said_in_minutes_under_two_hours_and_whole_hours_from_there() {
+        let said = [3600, 5400, 7200, 43_200].map(|secs| how_long(Duration::from_secs(secs)));
+
+        assert_eq!(
+            said,
+            ["60 minutes", "90 minutes", "2 hours", "12 hours"],
+            "a keep-off's length is misread"
         );
     }
 
@@ -1116,7 +1156,8 @@ mod tests {
 
     #[test]
     fn a_card_keeping_off_a_point_it_was_moved_to_says_where_it_is() {
-        let why = kept_off(&joined(HALL), DESK);
+        let why = kept_off(&joined(HALL), DESK, choose::SPURNED);
+        let longer = kept_off(&joined(HALL), DESK, choose::SPURNED * 6);
 
         assert!(
             why.ends_with(&format!(
@@ -1124,6 +1165,10 @@ mod tests {
                  than there since it was moved"
             )),
             "a point kept off says how long and where the card is: {why}"
+        );
+        assert!(
+            longer.contains(&format!("keeps off {DESK} for 6 hours,")),
+            "a miss through a longer keep-off didn't say what runs on: {longer}"
         );
     }
 

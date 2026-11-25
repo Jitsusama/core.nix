@@ -128,7 +128,7 @@ HELD_ON = ["#orchestration/skiff1", "#repo/harbour"]
 WAITS = ("asked", "held")
 MINUTE = timedelta(minutes=1)
 ASKER_SHORT, WAITED_SHORT, HOLDER_SHORT = "Count the Cleats", "Chart The Harbour", "Paint The Hull"
-ASKED_WORDS = f"a question waiting; it came from {ASKER_SHORT} {{}} min ago, with no answer yet"
+ASKED_WORDS = f"owes {ASKER_SHORT} an answer: asked {{}} min ago, with no answer yet"
 HELD_WORDS = "holding Rig the Skiff for the Season and the harbour repository"
 # HERON1, which leads node.json's Chart the Harbour, said by its forage to
 # have been started by SKIFF1, which leads Rig the Skiff, so the one network
@@ -216,8 +216,10 @@ def twin() -> dict[str, list[dict[str, object]]]:
                 "networks": heard,
             }
         )
-    # Still listed by the machine it left, an hour older.
-    cells.append({**copy.deepcopy(cells[1]), "machine": "osprey", "since": "2026-11-16T08:00:00Z"})
+    # Still listed by the machine it left, an hour older, under a key of its
+    # own, so the page holds both copies and has to choose.
+    left = {**copy.deepcopy(cells[1]), "machine": "osprey", "since": "2026-11-16T08:00:00Z"}
+    cells.append({**left, "key": f"{left['key']}@osprey"})
     for n in range(TWIN_RECEPTORS):
         name = f"radio{n}@kestrel"
         cells.append({**copy.deepcopy(receptor), "key": f"cell:{name}", "name": name})
@@ -621,7 +623,7 @@ def test_a_cell_that_moves_is_drawn_moving(mycelium_opened: Opened, mycelium_nod
 # The two cells node.json names "Mend the Sails": the first moving, the
 # second needing Joel.
 NAMESAKES = ("TERN01", "TERN02")
-NAMESAKES_OWE = f"{ASKER_SHORT}'s question waiting since"
+NAMESAKES_OWE = f"hasn't answered {ASKER_SHORT}'s question of"
 
 
 def standing_of(page: Page, cell: str) -> set[str]:
@@ -1848,6 +1850,42 @@ def test_a_cell_whose_own_record_names_its_starter_grows_a_branch_with_no_forage
         expect(body, "the cell's drawer never said who its record named").to_contain_text(
             f"by {GROWN_BY_TITLE}", timeout=PACE_MS
         )
+        # While it moves, the machine it left may list it too, under a key of
+        # its own. The map draws the copy started latest and names that copy's
+        # starter, so what it draws and the branch it grows change together.
+        kinds = json.loads((HERE / "node.json").read_text())["kinds"]
+        heron = next(cell for cell in kinds["cell"] if cell["name"] == GROWN_CELL)
+        left = {
+            **heron,
+            "key": f"cell:{GROWN_CELL}@kestrel",
+            "kind": "cell",
+            "heard": heard,
+            "machine": "kestrel",
+        }
+        mycelium_node.tell("cell", changed=[{**left, "since": "2026-11-16T09:00:00Z"}])
+        expect(body, "the map never drew the copy started latest").to_contain_text(
+            "network, on kestrel", timeout=PACE_MS
+        )
+        expect(body, "a copy the map doesn't draw named the starter").not_to_contain_text(
+            f"by {GROWN_BY_TITLE}"
+        )
+        expect(hub, "a copy the map doesn't draw kept the branch").not_to_have_attribute(
+            "data-branch-of", re.compile(".")
+        )
+        the_map_counts(page, COUNTED, "a cell two machines list was counted twice")
+        # Told again as started earlier, it keeps its place as the copy told
+        # last, so only the later copy standing gives the branch back.
+        mycelium_node.tell("cell", changed=[{**left, "since": "2026-11-16T07:00:00Z"}])
+        expect(body, "the map drew a copy started earlier").to_contain_text(
+            "network, on osprey", timeout=PACE_MS
+        )
+        expect(hub, "the branch never came back with the copy that names it").to_have_attribute(
+            "data-branch-of", GROWN_FROM, timeout=PACE_MS
+        )
+        expect(body, "the copy that stands never named its starter").to_contain_text(
+            f"by {GROWN_BY_TITLE}", timeout=PACE_MS
+        )
+        mycelium_node.tell("cell", gone=[left["key"]])
         # Once the record stops naming its starter, the branch goes, and so
         # does the cell's word of who started it.
         mycelium_node.tell("cell", changed=[{**said, "started_by": None, "started_by_from": None}])
@@ -2234,11 +2272,11 @@ def test_what_waits_and_what_holds_are_said_as_the_node_judges(
         ages = range(round(ASKED_AGO / MINUTE), round((read - since) / MINUTE) + 1)
         reach = [f"{HELD_WORDS} since {day_clock(held['since'], at)}" for at in ends]
         until = [f"until {day_clock(held['until'], at)} at most" for at in ends]
-        first = lines.index("Questions Waiting") if "Questions Waiting" in lines else len(lines)
+        first = lines.index("Answers Owed") if "Answers Owed" in lines else len(lines)
         glance = next(n for n, line in enumerate(lines) if line.startswith("Your whole network"))
         assert first < glance, f"Now should say what holds the flow before the glance: {lines}"
         said = lines[first : first + 6]
-        assert said[:2] == ["Questions Waiting", WAITED_SHORT], f"Now misread who waits: {said}"
+        assert said[:2] == ["Answers Owed", WAITED_SHORT], f"Now misread who owes: {said}"
         assert said[2:3] in [[ASKED_WORDS.format(age)] for age in ages], (
             f"Now misread the question waiting: {said}"
         )
@@ -2248,7 +2286,7 @@ def test_what_waits_and_what_holds_are_said_as_the_node_judges(
         page.evaluate(f"location.hash = '#cell={WAITED}'")
         title = page.locator("#panel-title")
         expect(title, f"{WAITED}'s drawer never opened").to_have_text(WAITED_SHORT)
-        waits = f"{ASKER_SHORT}'s question waiting since"
+        waits = f"hasn't answered {ASKER_SHORT}'s question of"
         owed = [f"{waits} {day_clock(asked['since'], at)}" for at in ends]
         expect(body, f"{WAITED}'s health left out the question waiting on it").to_contain_text(
             re.compile("|".join(map(re.escape, owed)))

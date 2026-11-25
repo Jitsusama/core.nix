@@ -6,7 +6,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
 
-use crate::{lints, notes, reached, stale, terraform};
+use crate::{attributes, lints, notes, reached, stale, terraform};
 
 /// A file of the repository: its path from the folder read, and its text.
 pub struct File {
@@ -133,11 +133,16 @@ pub fn measure(paths: &[String], files: &[File], roots: &[String]) -> Health {
     let suppressions: Vec<String> = code
         .iter()
         .flat_map(|file| {
+            // Each line with the file past it, since an attribute can run on.
+            let mut from = 0;
             file.text
-                .lines()
+                .split_inclusive('\n')
                 .enumerate()
-                .filter(|(_, line)| suppresses(&file.path, line))
-                .map(|(number, _)| format!("{}:{}", file.path, number + 1))
+                .filter_map(move |(number, line)| {
+                    let rest = &file.text[from..];
+                    from += line.len();
+                    suppresses(&file.path, rest).then(|| format!("{}:{}", file.path, number + 1))
+                })
         })
         .collect();
     let count = suppressions.len();
@@ -305,7 +310,9 @@ fn sentence(line: &str, words: &str) -> bool {
 
 /// Whether a line of a code file turns a linter off, by its language's
 /// own way of saying so, so a string naming one in other code isn't one.
-fn suppresses(path: &str, line: &str) -> bool {
+/// `rest` is the file from the line on.
+fn suppresses(path: &str, rest: &str) -> bool {
+    let line = rest.lines().next().unwrap_or_default();
     let extension = path.rsplit_once('.').map_or("", |(_, extension)| extension);
     // A mark is a comment's only where no quote before it is left open.
     let comment = |mark: &str, markers: &[&str]| {
@@ -319,12 +326,7 @@ fn suppresses(path: &str, line: &str) -> bool {
         })
     };
     match extension {
-        "rs" => {
-            let line = line.trim_start();
-            ["#[allow(", "#![allow(", "#[expect(", "#![expect("]
-                .iter()
-                .any(|attribute| line.starts_with(attribute))
-        }
+        "rs" => attributes::turns_a_rust_lint_off(rest),
         "py" => comment(
             "#",
             &["noqa", "type: ignore", "pyright: ignore", "pylint: disable"],
@@ -533,6 +535,32 @@ mod tests {
             health.named["suppressions"],
             ["main.tf:1", "main.tf:2", "main.tf:3", "main.tf:4"],
             "a Terraform suppression was missed, or a string naming one was counted"
+        );
+    }
+
+    #[test]
+    fn a_line_is_read_with_the_file_from_its_own_start() {
+        // The character wider than a byte puts each later line's start in
+        // bytes past its start in characters, so a cut counted in characters
+        // lands in the wrong place. The attribute runs across lines, so a
+        // line read alone, or from the next, misses it.
+        let files = [file(
+            "x.rs",
+            concat!(
+                "fn a() {}\n",
+                "// \u{e9}\n",
+                "#[cfg_attr(\n",
+                "    test,\n",
+                "    allow(x)\n",
+                ")]\n",
+                "fn b() {}\n",
+            ),
+        )];
+        let health = measure(&paths(&files), &files);
+        assert_eq!(
+            health.named["suppressions"],
+            ["x.rs:3"],
+            "a line was read from other than its own start, or numbered as another"
         );
     }
 

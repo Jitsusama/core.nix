@@ -228,6 +228,9 @@
         disk-order = script "disk-order" ../../modules/slices/disk-order.sh { };
         efficient-cores = script "efficient-cores" ../../modules/slices/efficient-cores.sh { };
         ergodox = script "ergodox" ../../modules/ergodox/ergodox.sh { };
+        find = script "find" ../../modules/find/find.sh {
+          words = "/usr/bin/find ${../../modules/ripgrep/ignore} /System/Volumes/Data";
+        };
         firmware-errors-keep = script "firmware-errors-keep" ../../modules/firmware-errors/keep.sh { };
         gnome-keyring-unlock = script "gnome-keyring-unlock" ../../modules/gnome-keyring/unlock.sh { };
         google-opens = script "google-opens" ../../modules/google/opens.sh {
@@ -259,6 +262,9 @@
             { };
         niri-off-cpu-begun = script "niri-off-cpu-begun" ../../modules/niri-off-cpu/off-cpu-begun.sh { };
         option-rom-check = script "option-rom-check" ../../modules/lanzaboote/option-rom-check.sh { };
+        pi-agent-proxy-os-login =
+          script "pi-agent-proxy-os-login" ../../modules/pi/agent-proxy/os-login.sh
+            { };
         pi-ask = script "pi-ask" ../../modules/pi/ask.sh { };
         pi-claude = script "pi-claude" ../../modules/pi/claude.sh { };
         pi-compress-logs = script "pi-compress-logs" ../../modules/pi/timers/compress-logs.sh { };

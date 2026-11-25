@@ -283,6 +283,22 @@ fn refusals_say_why() {
         ),
         (with(USER, r#""/home/u/src""#, r#""src""#), "absolute"),
         (
+            with(
+                USER,
+                r#""notify": true"#,
+                r#""notify": true, "writer_holds": ["velocity-hold/disk-writers"]"#,
+            ),
+            "velocity-hold/disk-writers is not a plain absolute path",
+        ),
+        (
+            with(
+                USER,
+                r#""notify": true"#,
+                r#""notify": true, "writer_holds": ["/run/user/../hold"]"#,
+            ),
+            "/run/user/../hold is not a plain absolute path",
+        ),
+        (
             with(USER, r#""/home/u/src""#, r#""/home/u/../src""#),
             "absolute",
         ),

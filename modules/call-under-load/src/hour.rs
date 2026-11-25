@@ -391,8 +391,9 @@ fn blind(calls: &[crate::watch::Real], since: u64, at: u64) -> Measure {
     let (none_open, unread): (Vec<_>, Vec<_>) = fresh.into_iter().partition(|c| appless(c));
     let mut behind = vec![
         "Joel's calls since the last hour with a call app open but no sending thread read, \
-         so their waits are unread; a call in Tuple or Zoom, whose threads aren't named as \
-         Chromium's, reads so, as does the microphone in use outside a call while one is open"
+         so their waits are unread; a call in Zoom, whose threads aren't named as \
+         Chromium's or Tuple's, reads so, as does the microphone in use outside a call \
+         while one is open"
             .to_string(),
     ];
     behind.extend(unread.iter().map(|call| {

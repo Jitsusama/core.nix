@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import timedelta
+from itertools import pairwise
 from typing import TYPE_CHECKING
 
 import pytest
@@ -26,20 +27,33 @@ ENDING = "the camera still gives no frames; ending so it starts afresh"
 # What GStreamer says as the relay fails to make a pipeline, which would leave a client waiting
 # for a pipeline that was never there rather than one that gives no frame.
 UNMADE = "backend_pipeline_create"
+# What GStreamer says as the relay's camera pipeline, once made, sets an element of it playing, so
+# a camera that gives no frame is told from a pipeline that was never there. The pipeline itself
+# waits on a frame to finish its own change, so only its elements say they're playing.
+BUILT = re.compile(r"<input-pipeline> child '[^']+' changed state to 4\(PLAYING\) successfully")
 # How long a client waits for a first frame, and for the next once frames have stopped, before
 # the pipeline is made again: the patch's STALL_SECONDS and FLOWING_SECONDS.
 STALL = 90
 FLOWING = 10
-# How long the camera that stops gives frames for each time it starts: 60 at 30 a second.
-FRAMING = 2
+# How long the camera that stops gives frames for each time it starts: 450 at 30 a second,
+# longer than FLOWING, so a wait counted from its start rather than its last frame shows.
+FRAMING = 15
 # How many times that camera is to be made again, to show the wait is the same each time.
 AGAIN = 2
 # How late the relay may see a wait has run out: it looks every two seconds, and counts in
-# whole seconds, so a wait it says can run past its bound by as much.
-LOOKING = 3
-# How far short of a wait the journal's clock may read it: the relay counts whole seconds from
-# a moment between two of the journal's, so a wait it counts as 90 s can read as 89.997.
+# whole seconds, so a wait it says can run past its bound by as much, and the journal stamps
+# each line as it reads it, which a busy builder can put off a little more.
+LOOKING = 4
+# How far short of a wait the journal's clock may read it: the relay counts its wait in whole
+# seconds, so one it calls 90 s may have run as little as 89, and a correct relay read 89.997.
 ROUNDING = 1
+# How much shorter still a gap between two of the relay's lines may read: the journal may stamp
+# the earlier one late on a busy builder, and the camera that stops gives its last frame a frame
+# before its FRAMING runs out. A wait counted from the camera's start still falls far short.
+STAMPED = 1
+# How long after its client starts the relay may count it: the client opens the loopback and
+# asks for its first picture before the loopback tells the relay it's there.
+COUNTING = 5
 # How long a test gives the relay to say what it says, beyond the wait it's saying it after:
 # the loopback's client takes a moment to be counted on a busy builder.
 SAYING = timedelta(seconds=30)
@@ -99,6 +113,21 @@ class Relay:
                 return int(entry["__MONOTONIC_TIMESTAMP"]) / MICROSECONDS
         pytest.fail(f"The relay never said '{words}':\n{self.said()}")
 
+    def whens(self, words: str) -> list[float]:
+        """Give the seconds since boot at which the relay said those words, each time."""
+        return [
+            int(entry["__MONOTONIC_TIMESTAMP"]) / MICROSECONDS
+            for entry in map(json.loads, self.machine.succeed(self.saying("json")).splitlines())
+            if words in str(entry.get("MESSAGE", ""))
+        ]
+
+    def counted(self) -> float:
+        """Give the seconds since boot at which the client started reading the loopback."""
+        started = self.machine.succeed(
+            f"systemctl show -P ExecMainStartTimestampMonotonic client-{self.unit}"
+        )
+        return int(started) / MICROSECONDS
+
     def said(self) -> str:
         """Give what the relay has said since it last started, an ended one included."""
         return self.machine.succeed(self.saying())
@@ -127,7 +156,7 @@ def never(machine: BaseMachine) -> Iterator[Relay]:
 
 @pytest.fixture
 def stops(machine: BaseMachine) -> Iterator[Relay]:
-    """Give the relay whose camera gives two seconds of frames and stops, started and read."""
+    """Give the relay whose camera gives fifteen seconds of frames and stops, started and read."""
     relay = Relay(machine, "stops")
     relay.start()
     yield relay
@@ -139,6 +168,11 @@ def test_a_camera_that_never_frames_is_waited_on_90_s_then_ended(never: Relay) -
     waits = never.remade(1, timedelta(seconds=STALL + LOOKING) + SAYING)
     assert waits, f"The relay never made its camera again:\n{never.said()}"
     assert STALL <= waits[0] <= STALL + LOOKING, f"The relay waited {waits[0]} s, not {STALL}"
+    # The relay's own count is checked against the journal's, from the client's start.
+    first = never.when("starting it again") - never.counted()
+    assert STALL - ROUNDING <= first <= STALL + LOOKING + COUNTING, (
+        f"The relay made its camera again {first:.1f} s after its client came, not {STALL}"
+    )
     never.machine.wait_until_succeeds(
         f"! systemctl is-active --quiet {never.unit}",
         timeout=(timedelta(seconds=STALL + LOOKING) + SAYING).seconds,
@@ -152,10 +186,11 @@ def test_a_camera_that_never_frames_is_waited_on_90_s_then_ended(never: Relay) -
     # made again gets the whole first wait over, since its camera's setup starts over too.
     again = never.when("starting it again")
     ended = never.when(ENDING)
-    assert STALL - ROUNDING <= ended - again <= STALL + LOOKING, (
+    assert STALL - ROUNDING - STAMPED <= ended - again <= STALL + LOOKING, (
         f"The relay ended {ended - again:.1f} s after making its camera again, not {STALL}"
     )
     assert UNMADE not in said, f"The relay never made its camera's pipeline:\n{said}"
+    assert BUILT.search(said), f"The relay's camera pipeline never played:\n{said}"
     result = never.machine.succeed(f"systemctl show -P Result {never.unit}").strip()
     assert result == "exit-code", f"The relay ended as {result}, not with its failure"
 
@@ -169,6 +204,16 @@ def test_a_camera_that_stops_is_waited_on_10_s_each_time(stops: Relay) -> None:
     )
     for waited in waits:
         assert FLOWING <= waited <= FLOWING + LOOKING, f"The relay waited {waited} s, not {FLOWING}"
+    # Each wait is counted from the camera's last frame, so each remaking comes its frames and a
+    # wait after the last, or after the client came, by the journal's clock.
+    times = [stops.counted(), *stops.whens("starting it again")]
+    for earlier, later in pairwise(times):
+        gap = later - earlier
+        least = FRAMING + FLOWING - ROUNDING - STAMPED
+        assert least <= gap <= FRAMING + FLOWING + LOOKING + COUNTING, (
+            f"The relay made its camera again {gap:.1f} s after it started, not {FRAMING + FLOWING}"
+        )
     assert ENDING not in stops.said(), "The relay ended a camera that framed again"
     assert UNMADE not in stops.said(), "The relay failed to make its camera's pipeline"
+    assert BUILT.search(stops.said()), "The relay's camera pipeline never played"
     stops.machine.succeed(f"systemctl is-active --quiet {stops.unit}")

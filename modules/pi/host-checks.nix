@@ -298,82 +298,6 @@ in
         && lib.hasInfix "hosts.later.proof is version 2, not 1" refusals
       );
 
-  # A realm's own NODE_OPTIONS, or any other variable a host's unit clears
-  # since it would run code as the host, fails evaluation, naming the realm
-  # and each variable, rather than being dropped unseen.
-  pi-hosts-refuse-code-loading-variables =
-    let
-      runtime = "/nix/store/00000000000000000000000000000000-pi-host-runtime-1.5.0";
-      realm = environment: {
-        pi = "${runtime}/lib/node_modules/pi";
-        node = "${pkgs.emptyDirectory}/node";
-        proof = proofOf { inherit runtime; };
-        inherit environment;
-      };
-      # A realm giving each alone, named for it: node_options and so on.
-      realmOf = name: lib.toLower name;
-      checks =
-        (account (bareNixos [
-          self.nixosModules.workstation
-          {
-            home-manager.users.someone.jitsusama.pi.hosts =
-              lib.listToAttrs (
-                map (
-                  name:
-                  lib.nameValuePair (realmOf name) (realm {
-                    ${name} = "/x";
-                  })
-                ) loadsCode
-              )
-              // {
-                plain = realm { GREETING = "hi"; };
-                # Two, beside one that loads nothing, which the
-                # refusal leaves out.
-                both = realm {
-                  OPENSSL_CONF = "/x.cnf";
-                  LD_PRELOAD = "/x.so";
-                  GREETING = "hi";
-                };
-                three = realm {
-                  OPENSSL_MODULES = "/x";
-                  NODE_PATH = "/x";
-                  LD_AUDIT = "/x.so";
-                };
-              };
-          }
-        ])).assertions;
-      refusals = map (check: check.message) (lib.filter (check: !check.assertion) checks);
-      # The one refusal naming a realm, or none.
-      prefixOf = realm: "jitsusama.pi.hosts.${realm}.environment gives ";
-      refusalOf = realm: lib.findFirst (lib.hasPrefix (prefixOf realm)) null refusals;
-      # Whether a realm's refusal names just these variables, as written,
-      # and speaks of one as it and of several as each; then names each of
-      # loadsCode again where it says how they load code, and where a
-      # command gets one instead. How each loads code is the message's to
-      # word, so only its names are pinned.
-      names =
-        realm: named:
-        let
-          refused = refusalOf realm;
-          one = !(lib.hasInfix " and " named);
-          head = "${prefixOf realm}${named}, which a pi host's unit clears: ${if one then "it" else "each"} could make";
-          explained = lib.removePrefix head refused;
-        in
-        refused != null
-        && lib.hasPrefix head refused
-        && lib.all (name: lib.hasInfix " ${name}" explained) loadsCode
-        && lib.hasInfix (if one then " Drop it. " else " Drop each one. ") refused
-        && lib.hasSuffix " a command that needs one sets it itself." refused;
-    in
-    holds "pi-hosts-refuse-code-loading-variables"
-      "A realm giving NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE, LD_PRELOAD, LD_AUDIT, LD_LIBRARY_PATH, OPENSSL_CONF or OPENSSL_MODULES, which its pi host's unit clears, was taken unseen, or the refusal didn't name the realm and only the ones it gave, speaking of one as it and of several as each, then name each of the eight again where it says how they load code, and say that a command needing one sets it itself."
-      (
-        refusalOf "plain" == null
-        && lib.all (name: names (realmOf name) name) loadsCode
-        && names "both" "LD_PRELOAD and OPENSSL_CONF"
-        && names "three" "NODE_PATH, LD_AUDIT and OPENSSL_MODULES"
-      );
-
   # A Mac's hosts are launchd daemons run as its primary account, not agents,
   # since launchd ends an account's agents with its login session and every
   # conversation a host holds with them. Each starts at boot, again after it
@@ -777,6 +701,20 @@ in
         && hostsIn mac.systemd.user.services == [ ]
         && lib.all (check: check.assertion) (naming bareNixos self.nixosModules.workstation).assertions
       );
+}
+# The refusal of a code-loading variable changes with its words alone, so its
+# check sits beside these.
+// import ./code-loading-checks.nix {
+  inherit
+    account
+    bareNixos
+    holds
+    lib
+    loadsCode
+    pkgs
+    proofOf
+    self
+    ;
 }
 # The conversations' own template changes with its unit alone, so its check
 # sits beside these.

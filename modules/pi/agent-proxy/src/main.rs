@@ -13,7 +13,11 @@
 //! lent builders with (`--key`), hidden from every fenced command, and
 //! signs with it only a login as `nix-offload` to a builder lent now
 //! (`--lent`, src/lent.rs); an agent's key behind never signs for a lent
-//! builder, nor the builders' key for any other host. Anything else a
+//! builder, nor the builders' key for any other host. With `--os-login`
+//! it makes a key of its own as it starts, written to no file, and
+//! signs with it only a login to an OS Login instance gcloud's known
+//! hosts name (`--os-login-hosts`, `src/os_login.rs`), as an agent's
+//! `gcloud compute ssh` makes one; no other key signs for one. Anything else a
 //! client asks, adding a key, removing one, locking, or a signature for
 //! anything else, is refused. Each login signed and each refusal is said
 //! on stderr in one line of a fixed shape (src/said.rs), so the journal
@@ -26,6 +30,7 @@
 mod bind;
 mod cli;
 mod lent;
+mod os_login;
 mod peer;
 mod said;
 mod wire;
@@ -43,8 +48,9 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use bind::{Bindings, Hosts};
+use bind::{Bindings, Hosts, Reach};
 use lent::{ACCOUNT, Key, Lent};
+use os_login::OsLogin;
 use said::{Refusal, Signer, Why, many_signs_line, signed_line};
 use signature::Signer as _;
 use ssh_key::Signature;
@@ -87,14 +93,15 @@ const MOST_COUNTED: usize = 1_000;
 const BUILDERS_COMMENT: &[u8] = b"nix-offload builders";
 
 /// What every client is answered by: the hosts and the agents behind,
-/// the builders' key and the builders lent, how many clients are being
-/// answered now, and the logins signed this hour for each claimed
-/// session.
+/// the builders' key and the builders lent, the OS Login key and its
+/// hosts, how many clients are being answered now, and the logins signed
+/// this hour for each claimed session.
 struct Shared {
     hosts: Hosts,
     upstreams: Vec<PathBuf>,
     key: Key,
     lent: Lent,
+    os_login: Option<OsLogin>,
     clients: AtomicUsize,
     signs: Mutex<HashMap<String, (u64, u32)>>,
 }
@@ -144,22 +151,80 @@ impl Drop for Place {
     }
 }
 
-/// What the command line says.
+/// What the command line says: the OS Login key's folder and gcloud's
+/// known hosts are kept apart, as the key is made only once everything
+/// else holds, and whether it was asked for nothing else.
 struct Config {
     shared: Shared,
     socket: Option<PathBuf>,
+    os_login: Option<(PathBuf, PathBuf)>,
+    os_login_alone: bool,
 }
 
 fn main() -> ExitCode {
     terminal_kit::main(&cli::help(), env!("CARGO_PKG_VERSION"), |context| {
-        let config = config(context.args.iter().cloned())?;
+        undumpable();
+        let mut config = config(context.args.iter().cloned())?;
         let listener = listener(config.socket.as_deref()).map_err(|error| {
             Failure::new(Exit::Failed, "pi-agent-proxy has nothing to listen on")
                 .because(error.to_string())
         })?;
+        // Made last, once nothing else can refuse the start, so a key is
+        // never put in the person's profile by a proxy about to exit.
+        if let Some((folder, known)) = config.os_login.take() {
+            config.shared.os_login = os_login(&folder, known, config.os_login_alone)?;
+        }
         answer(&Arc::new(config.shared), &listener);
         Ok(())
     })
+}
+
+/// Keep this process's memory, which holds the builders' key and the OS
+/// Login key, from other processes of the account: one that can't be
+/// dumped can't be traced or read through /proc by them, as the
+/// spawner's and the password door's can't.
+fn undumpable() {
+    // SAFETY: prctl with PR_SET_DUMPABLE takes plain integers and only
+    // changes a flag of this process.
+    #[cfg(target_os = "linux")]
+    unsafe {
+        libc::prctl(libc::PR_SET_DUMPABLE, 0, 0, 0, 0);
+    }
+}
+
+/// The OS Login key, made in `folder` for the instances `known` names.
+/// A key it can't make costs only the OS Login logins: the agents' hosts
+/// and the builders' logins it signs too go on, and a previous proxy's
+/// public half is taken away, so ssh offers no key nobody holds.
+///
+/// # Errors
+///
+/// Failed, 1, when the key can't be made and, `alone`, nothing else was
+/// asked for.
+fn os_login(folder: &Path, known: PathBuf, alone: bool) -> Result<Option<OsLogin>, Failure> {
+    let made = OsLogin::start(folder, known);
+    if made.is_err() {
+        let _ = std::fs::remove_file(folder.join(os_login::PUBLIC_FILE));
+    }
+    match made {
+        Ok(os_login) => Ok(Some(os_login)),
+        Err(error) if alone => Err(Failure::new(
+            Exit::Failed,
+            format!(
+                "pi-agent-proxy couldn't make its OS Login key in {}",
+                folder.display()
+            ),
+        )
+        .because(error.to_string())),
+        Err(error) => {
+            eprintln!(
+                "pi-agent-proxy: couldn't make its OS Login key in {}, so it signs no OS Login \
+                 logins: {error}",
+                folder.display()
+            );
+            Ok(None)
+        }
+    }
 }
 
 /// Answer each client `listener` takes, on a thread of its own, while
@@ -193,6 +258,8 @@ fn config(mut args: impl Iterator<Item = String>) -> Result<Config, Failure> {
     let mut upstreams = Vec::new();
     let mut key = None;
     let mut lent = Vec::new();
+    let mut os_login_folder = None;
+    let mut os_login_hosts = None;
     let mut socket = None;
     while let Some(arg) = args.next() {
         if !cli::FLAGS.contains(&arg.as_str()) {
@@ -218,6 +285,8 @@ fn config(mut args: impl Iterator<Item = String>) -> Result<Config, Failure> {
             "--upstream" => upstreams.push(PathBuf::from(value()?)),
             "--key" => key = Some(PathBuf::from(value()?)),
             "--lent" => lent.push(PathBuf::from(value()?)),
+            "--os-login" => os_login_folder = Some(PathBuf::from(value()?)),
+            "--os-login-hosts" => os_login_hosts = Some(PathBuf::from(value()?)),
             "--socket" => socket = Some(PathBuf::from(value()?)),
             // The FLAGS check above refuses every other word, so a flag added there and not
             // here is a bug to say loudly rather than a socket to take silently.
@@ -225,11 +294,19 @@ fn config(mut args: impl Iterator<Item = String>) -> Result<Config, Failure> {
         }
     }
     let hosts = hosts.ok_or_else(|| cli::wrongly("--hosts is needed"))?;
-    if upstreams.is_empty() && key.is_none() {
+    let os_login = match (os_login_folder, os_login_hosts) {
+        (Some(folder), Some(known)) => Some((folder, known)),
+        (None, None) => None,
+        _ => {
+            return Err(cli::wrongly("--os-login and --os-login-hosts go together"));
+        }
+    };
+    if upstreams.is_empty() && key.is_none() && os_login.is_none() {
         return Err(cli::wrongly(
-            "at least one --upstream, or a --key, is needed",
+            "at least one --upstream, a --key or --os-login is needed",
         ));
     }
+    let os_login_alone = upstreams.is_empty() && key.is_none();
     if key.is_some() && lent.is_empty() {
         return Err(cli::wrongly(
             "--key needs at least one --lent, the builders it signs for",
@@ -241,10 +318,13 @@ fn config(mut args: impl Iterator<Item = String>) -> Result<Config, Failure> {
             upstreams,
             key: Key::new(key),
             lent: Lent::new(lent),
+            os_login: None,
             clients: AtomicUsize::new(0),
             signs: Mutex::new(HashMap::new()),
         },
         socket,
+        os_login,
+        os_login_alone,
     })
 }
 
@@ -359,6 +439,12 @@ impl<'a> Session<'a> {
                 ),
             }
         }
+        if let Some(os_login) = &self.shared.os_login {
+            listed.push((
+                os_login.blob().to_vec(),
+                os_login::COMMENT.as_bytes().to_vec(),
+            ));
+        }
         let mut answer = vec![IDENTITIES_ANSWER];
         answer.extend_from_slice(
             &u32::try_from(listed.len())
@@ -385,25 +471,42 @@ impl<'a> Session<'a> {
                 key.to_vec(),
                 data.to_vec(),
                 permit.host.clone(),
-                permit.lent,
+                permit.reach,
                 permit.user,
             ))
         })();
-        let (key, data, host, lent, user) = match asked {
+        let (key, data, host, reach, user) = match asked {
             Ok(asked) => asked,
             Err(refusal) => return self.refused(&refusal),
         };
         if self.builders_blob().as_ref() == Some(&key) {
-            return self.sign_for_builder(&data, &host, lent, &user);
+            return self.sign_for_builder(&data, &host, reach == Reach::Lent, &user);
         }
-        if lent {
-            return self.refused(
-                &Refusal::new(
-                    Why::LentHost,
-                    "a login to a lent builder with a key other than the builders'",
-                )
-                .at(&host),
-            );
+        if let Some(os_login) = &self.shared.os_login
+            && os_login.blob() == key.as_slice()
+        {
+            return self.sign_for_os_login(os_login, &data, &host, reach, &user);
+        }
+        match reach {
+            Reach::Told => {}
+            Reach::Lent => {
+                return self.refused(
+                    &Refusal::new(
+                        Why::LentHost,
+                        "a login to a lent builder with a key other than the builders'",
+                    )
+                    .at(&host),
+                );
+            }
+            Reach::OsLogin => {
+                return self.refused(
+                    &Refusal::new(
+                        Why::OsLoginHost,
+                        "a login to an OS Login host with a key other than its own for them",
+                    )
+                    .at(&host),
+                );
+            }
         }
         if !self.holders.contains_key(&key) {
             self.identities();
@@ -511,14 +614,54 @@ impl<'a> Session<'a> {
         answer
     }
 
+    /// The OS Login key's signature over `data`, a login as `user` to a
+    /// session with `host`, when `reach` says `host` is an OS Login one.
+    fn sign_for_os_login(
+        &self,
+        os_login: &OsLogin,
+        data: &[u8],
+        host: &ssh_key::public::KeyData,
+        reach: Reach,
+        user: &[u8],
+    ) -> Vec<u8> {
+        if reach != Reach::OsLogin {
+            return self.refused(
+                &Refusal::new(
+                    Why::NotOsLogin,
+                    "a login with the OS Login key to a host that isn't an OS Login one",
+                )
+                .at(host),
+            );
+        }
+        let Some(blob) = os_login.sign(data) else {
+            return self.refused(
+                &Refusal::new(
+                    Why::NoHolder,
+                    "an OS Login host's login, since its key couldn't sign it",
+                )
+                .at(host),
+            );
+        };
+        eprintln!(
+            "{}",
+            signed_line(host, Signer::OsLogin, user, &self.claimed)
+        );
+        self.shared.count(&self.claimed);
+        let mut answer = vec![SIGN_RESPONSE];
+        put_string(&mut answer, &blob);
+        answer
+    }
+
     /// Take a session binding; refuse every other extension.
     fn extension(&mut self, fields: &mut Fields) -> Vec<u8> {
         match fields.string() {
             Ok(SESSION_BIND) => {
-                match self
-                    .bindings
-                    .bind(&self.shared.hosts, &self.shared.lent, fields)
-                {
+                match self.bindings.bind(
+                    &self.shared.hosts,
+                    &self.shared.lent,
+                    self.shared.os_login.as_ref(),
+                    fields,
+                ) {
                     Ok(()) => vec![SUCCESS],
                     Err(refusal) => self.refused(&refusal),
                 }

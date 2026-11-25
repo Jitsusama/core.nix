@@ -106,7 +106,7 @@ it("sums what cells spent, counting only those that say", () => {
   );
 });
 
-it("counts cells by standing, worst first, and those with questions waiting", () => {
+it("counts cells by standing, worst first, and those owing answers", () => {
   const cells = [
     cell("A", { standing: "asks", owes: [{}] }),
     cell("B", { standing: "quiet" }),
@@ -120,13 +120,13 @@ it("counts cells by standing, worst first, and those with questions waiting", ()
   );
   assert.equal(
     countsWords(cells),
-    "4 cells: 1 needs you, 1 stuck, 2 quiet; 2 with questions waiting",
+    "4 cells: 1 needs you, 1 stuck, 2 quiet; 2 owing answers",
     "worst first, then what waits",
   );
   assert.equal(
     countsWords([cells[0] as Cell]),
-    "1 cell: 1 needs you; 1 with a question waiting",
-    "one waiting is a question",
+    "1 cell: 1 needs you; 1 owing an answer",
+    "one owing is an answer",
   );
   assert.equal(countsWords([]), "0 cells", "no cells, no standings");
   const each: Cell["standing"][] = ["dormant", "quiet", "moving", "stuck", "asks"];
@@ -161,12 +161,12 @@ it("says what a cell is doing and what waits on it or it holds", () => {
   assert.equal(cellWords(cell("A", { standing: "dormant" })), "dormant", "the rest by their word");
   assert.equal(
     cellWords(cell("A", { standing: "stuck", owes: [{}], holds: [{}] })),
-    "stuck; a question waiting; a hold standing",
+    "stuck; owes an answer; a hold standing",
     "one question and one hold",
   );
   assert.equal(
     cellWords(cell("A", { owes: [{}, {}, {}], holds: [{}, {}] })),
-    "quiet; 3 questions waiting; 2 holds standing",
+    "quiet; owes 3 answers; 2 holds standing",
     "several of each",
   );
 });

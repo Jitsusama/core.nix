@@ -4,6 +4,7 @@
 //! them to know whether the session keeping the cycle fast is there and
 //! answering, and writes a question the way the harness's own folder
 //! transport does: one JSON file per message, renamed into place whole.
+//! Long because its tests write and read a mesh on disk beside the code.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -174,6 +175,16 @@ pub struct Message {
     pub pid: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub re: Option<String>,
+    /// The message this one replaces, as a hold replaced by another.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supersedes: Option<String>,
+    /// Whether this answer ends the hold it answers.
+    #[serde(
+        default,
+        rename = "endsHold",
+        skip_serializing_if = "std::ops::Not::not"
+    )]
+    pub ends_hold: bool,
 }
 
 #[derive(Deserialize)]
@@ -519,6 +530,8 @@ mod tests {
             text: "a target slipped".into(),
             pid: 1,
             re: None,
+            supersedes: None,
+            ends_hold: false,
         }
     }
 

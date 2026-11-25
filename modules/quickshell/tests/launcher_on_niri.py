@@ -322,6 +322,10 @@ class Shell:
         """Give what each place has made since the shell started (Provider.qml's tally)."""
         return cast("Json", json.loads(self.as_account(self.ipc("made"))))
 
+    def searching(self, place: str) -> str:
+        """Say how the place's search of its daemon stands (ReadyRows.qml's searchState)."""
+        return self.as_account(self.ipc("searching", place))
+
     def rows_made(self, place: str) -> int:
         """Give how many rows the place has made since the shell started."""
         return int(self.made()["rows"][place])

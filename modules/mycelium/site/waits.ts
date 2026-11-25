@@ -82,9 +82,9 @@ export const ageOf = (owes: readonly Owed[], at: string): number => {
   return oldest ? Math.max(0, Date.parse(at) - Date.parse(oldest.at)) : 0;
 };
 
-/** One question waiting on a cell, in words: whose, and since when. */
+/** One answer a cell owes, in words said of the cell: whose question, and from when. */
 export const owedWords = (o: Owed, seen: Seen, at: string): string =>
-  `${askerOf(o, seen)}'s question waiting since ${dayClock(o.at, at)}`;
+  `hasn't answered ${askerOf(o, seen)}'s question of ${dayClock(o.at, at)}`;
 
 /** How the page says what holds a cell up: whether the node judged it, and how a name fits. */
 export interface HeldSaid {
@@ -104,10 +104,10 @@ export const heldWords = (
 ): string => {
   const oldest = s.owes[0];
   const asker = oldest ? named(askerOf(oldest, seen)) : "";
-  return (
-    `${waitingWords(s.owes)}; ${s.owes.length === 1 ? "it came" : "the oldest came"} ` +
-    `from ${asker} ${minutesWord(ageOf(s.owes, at))} ago, ${unansweredWords(judged)}`
-  );
+  const ago = `${minutesWord(ageOf(s.owes, at))} ago, ${unansweredWords(judged)}`;
+  return s.owes.length === 1
+    ? `owes ${asker} an answer: asked ${ago}`
+    : `${waitingWords(s.owes)}: the oldest asked by ${asker} ${ago}`;
 };
 
 /** The cells with questions waiting on them, the oldest question first. */

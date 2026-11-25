@@ -26,6 +26,13 @@ For a frame asked about, timesOf also says the refresh the compositor
 gave with its feedback. Presentation times lie on the refresh grid, so
 the time from a swap to the screen counts as whole compositor frames.
 
+timesOf also says whether the frame took an ask. The render thread
+begins a frame after its sync, while the GUI thread runs on, so an ask
+made as framesBegun is read can be taken by a frame synced before it;
+only the frame itself can say it took it. The margin cat's rest
+(MarginCat.restFrom) asks again only on that word, so a rebase that
+loses it leaves the rest, and every pet on that screen, waiting.
+
 ---
 diff --git a/src/wayland/CMakeLists.txt b/src/wayland/CMakeLists.txt
 index 7bd6c15..b8881e0 100644
@@ -74,7 +81,7 @@ new file mode 100644
 index 0000000..4b3f5c5
 --- /dev/null
 +++ b/src/wayland/presentation/qml.cpp
-@@ -0,0 +1,283 @@
+@@ -0,0 +1,286 @@
 +#include "qml.hpp"
 +#include <cstdint>
 +#include <ctime>
@@ -286,6 +293,7 @@ index 0000000..4b3f5c5
 +	    {"rendered", times.rendered},
 +	    {"swapped", times.swapped},
 +	    {"refresh", times.refresh},
++	    {"asked", times.asked},
 +	};
 +}
 +
@@ -330,8 +338,10 @@ index 0000000..4b3f5c5
 +	this->drawing.frame = frame;
 +	this->drawing.rendering = monotonicNow();
 +	// An ask is spent whether or not the window is followed, so one made
-+	// while following isn't left to answer a later frame.
++	// while following isn't left to answer a later frame, and kept with
++	// the frame, so timesOf says which frame took it.
 +	auto asked = this->asked.exchange(false);
++	this->drawing.asked = asked;
 +	if (!asked && !this->mFollowing) return;
 +
 +	auto* manager = impl::Presentation::instance();
@@ -363,7 +373,7 @@ new file mode 100644
 index 0000000..1e911f1
 --- /dev/null
 +++ b/src/wayland/presentation/qml.hpp
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,178 @@
 +#pragma once
 +
 +#include <array>
@@ -489,7 +499,7 @@ index 0000000..1e911f1
 +	/// For a frame asked about, once the compositor has answered, `refresh`
 +	/// is its refresh in milliseconds. Empty before it's rendered and once
 +	/// it's older than the last sixteen; a time it had no such step for, or
-+	/// hasn't reached yet, is 0.
++	/// hasn't reached yet, is 0. `asked` is whether it took an ask.
 +	Q_INVOKABLE QVariantMap timesOf(int frame) const;
 +
 +	static FramePresentation* qmlAttachedProperties(QObject* object);
@@ -525,6 +535,7 @@ index 0000000..1e911f1
 +		double rendered = 0;
 +		double swapped = 0;
 +		double refresh = 0;
++		bool asked = false;
 +	};
 +
 +	QPointer<ProxyWindowBase> proxyWindow;

@@ -11,12 +11,19 @@
 # maps can't be read; that a Chrome started again while the old one quits
 # stops the move; that one still quitting after the half minute is given
 # up on, and the run looks once more and starts over once it has quit;
-# and that while a Chrome holds the profile, on this host or another,
-# nothing in the profile is touched, though the folders in memory are
-# still made; and that folders reaching outside the profile are refused.
-# The folders are those a running Chrome was seen mapping shared and
+# and that while a Chrome holds the profile nothing in it is touched,
+# though the folders in memory are still made, but for BrowserMetrics,
+# which Chrome deletes itself as it runs and which moves whenever nothing
+# of Chrome's maps or holds open a file still in it: a file it maps or
+# holds open there keeps it on the disk, one it deleted doesn't, nor one
+# in a folder whose name only begins with it, a quitting Chrome mapping
+# one is waited for, and what a session left in memory goes unless it's
+# mapped; that a Chrome on another host keeps BrowserMetrics too, since
+# its processes can't be seen; and that folders reaching outside the
+# profile are refused. The
+# folders are those a running Chrome was seen mapping shared and
 # writable, listed here apart from the module so one dropped there is
-# caught.
+# caught, as is BrowserMetrics losing its mark.
 #
 # Usage: chrome-maps-land-in-memory.sh COMMAND_FILE UNREADABLE_CHROME
 set -euo pipefail
@@ -106,6 +113,41 @@ waiting() {
   fi
 }
 
+# Waits until the run in the background has moved BrowserMetrics, which
+# comes before the caches, so it has reached their wait however loaded
+# the machine is, failing if it ends first or takes a minute.
+reached_caches() {
+  local started=$SECONDS
+  until [ -L "$profile/BrowserMetrics" ]; do
+    waiting "$1"
+    if [ $((SECONDS - started)) -gt 60 ]; then
+      echo "the command hadn't reached the caches a minute into waiting for $1"
+      exit 1
+    fi
+    # A tenth of a second between looks at a move that takes a moment.
+    sleep 0.1
+  done
+}
+
+# Fails unless BrowserMetrics is still the folder Chrome filled.
+metrics_kept() {
+  local index
+  index=$(cat "$profile/BrowserMetrics/index" 2>/dev/null || true)
+  if [ -L "$profile/BrowserMetrics" ] || [ "$index" != old ]; then
+    echo "$1, the command moved BrowserMetrics"
+    exit 1
+  fi
+}
+
+# Fails unless the run's log says what it was given.
+said() {
+  if ! grep -qF -- "$1" run.log; then
+    echo "$2, the command didn't say '$1', saying:"
+    cat run.log
+    exit 1
+  fi
+}
+
 # Every folder a link to its folder in memory, and nothing of Chrome's
 # old files left on the disk.
 in_memory() {
@@ -136,10 +178,18 @@ in_memory() {
   fi
 }
 
-# Every folder where Chrome had it, as it was, with its folder in memory
+# BrowserMetrics in memory, with nothing of Chrome's open in it, and every
+# other folder where Chrome had it, as it was, with its folder in memory
 # made all the same.
 untouched() {
-  for folder in "${folders[@]}"; do
+  metrics "$1"
+  caches_untouched "$1"
+}
+
+# Every folder but BrowserMetrics where Chrome had it, as it was, with its
+# folder in memory made all the same.
+caches_untouched() {
+  for folder in "${folders[@]:1}"; do
     index=$(cat "$profile/$folder/index" 2>/dev/null) || index=
     if [ -L "$profile/$folder" ] || [ "$index" != old ]; then
       echo "$1, the command swapped $folder out from under it"
@@ -150,6 +200,20 @@ untouched() {
       exit 1
     fi
   done
+}
+
+# BrowserMetrics a link into memory, its old files gone.
+metrics() {
+  local link
+  link=$(readlink "$profile/BrowserMetrics" || true)
+  if [ "$link" != "$runtime/chrome/BrowserMetrics" ]; then
+    echo "$1, BrowserMetrics isn't a link into memory, though nothing of Chrome's was open in it"
+    exit 1
+  fi
+  if [ -e "$runtime/chrome/BrowserMetrics/index" ]; then
+    echo "$1, BrowserMetrics' old files went into memory with it"
+    exit 1
+  fi
 }
 
 fill
@@ -214,7 +278,12 @@ untouched "with Chrome running"
 fill
 ln -s "elsewhere.example-1" "$profile/SingletonLock"
 run "other host's"
-untouched "with Chrome running on another host"
+metrics_kept "with Chrome running on another host, whose processes can't be seen"
+caches_untouched "with Chrome running on another host"
+said "Chrome on elsewhere.example holds the profile" "with Chrome running on another host"
+# BrowserMetrics' own reason, which the caches' line doesn't share.
+said "holds the profile, whose processes can't be seen from here," \
+  "with Chrome running on another host, for its histograms"
 
 # A Chrome quitting, which has dropped its lock but still maps a file in
 # the profile, is waited for.
@@ -222,9 +291,7 @@ fill
 quit_later "$work/quit"
 run "quitting Chrome's" &
 running=$!
-# Two seconds is long past a run that doesn't wait, and short of the half
-# minute a run gives a quitting Chrome.
-sleep 2
+reached_caches "a quitting Chrome that still mapped the profile"
 waiting "a quitting Chrome that still mapped the profile"
 untouched "while a quitting Chrome still mapped the profile"
 touch "$work/quit"
@@ -246,8 +313,7 @@ if grep -q . "/proc/$hidden/maps" 2>/dev/null; then
 fi
 run "unreadable Chrome's" &
 running=$!
-# As long as the quitting Chrome's wait, for the same reason.
-sleep 2
+reached_caches "a Chrome process whose maps couldn't be read"
 waiting "a Chrome process whose maps couldn't be read"
 untouched "while a Chrome process's maps couldn't be read"
 touch "$work/quit"
@@ -261,8 +327,7 @@ fill
 quit_later "$work/quit"
 run "relaunched Chrome's" &
 running=$!
-# As long as the quitting Chrome's wait, for the same reason.
-sleep 2
+reached_caches "a quitting Chrome, before another started"
 waiting "a quitting Chrome, before another started"
 ./chrome &
 chrome=$!
@@ -311,6 +376,124 @@ if ! grep -q 'starts over' run.log; then
   exit 1
 fi
 in_memory "once a Chrome that quit as the run ended had gone"
+
+# A running Chrome mapping a file in BrowserMetrics, as its browser maps
+# its histograms, keeps it on the disk, and the run says why.
+fill
+cp "$BASH" "$profile/BrowserMetrics/chrome"
+"$profile/BrowserMetrics/chrome" -c 'while :; do sleep 1; done' &
+chrome=$!
+named "$chrome"
+ln -s "$here-$chrome" "$profile/SingletonLock"
+run "mapping Chrome's"
+index=$(cat "$profile/BrowserMetrics/index" || true)
+if [ -L "$profile/BrowserMetrics" ] || [ "$index" != old ]; then
+  echo "the command moved BrowserMetrics from under a Chrome mapping a file in it"
+  exit 1
+fi
+if ! grep -q "process $chrome, maps $profile/BrowserMetrics/chrome" run.log; then
+  echo "the command kept BrowserMetrics on the disk without saying what mapped it:"
+  cat run.log
+  exit 1
+fi
+
+# Once Chrome has deleted the folder, its file with it, and made another,
+# the map names a deleted file, and the folder moves.
+rm -rf "$profile/BrowserMetrics"
+mkdir "$profile/BrowserMetrics"
+echo old >"$profile/BrowserMetrics/index"
+run "deleted map's"
+kill "$chrome"
+metrics "with Chrome mapping a file it had deleted"
+
+# A running Chrome holding a file in BrowserMetrics open, without mapping
+# it, keeps it on the disk too.
+fill
+mkdir -p "$work/holding"
+# shellcheck disable=SC2016 # The stand-in expands its own argument.
+printf '#!%s\nexec 3<"$1"\nwhile :; do sleep 1; done\n' "$BASH" >"$work/holding/chrome"
+chmod +x "$work/holding/chrome"
+"$work/holding/chrome" "$profile/BrowserMetrics/index" &
+chrome=$!
+named "$chrome"
+started=$SECONDS
+until [ -e "/proc/$chrome/fd/3" ]; do
+  if ! kill -0 "$chrome" 2>/dev/null || [ $((SECONDS - started)) -gt 60 ]; then
+    echo "the stand-in Chrome never held its histograms' index open"
+    exit 1
+  fi
+  # It opens the file a moment after it takes Chrome's name.
+  sleep 0.1
+done
+ln -s "$here-$chrome" "$profile/SingletonLock"
+run "holding Chrome's"
+kill "$chrome"
+metrics_kept "with a Chrome holding a file in it open"
+said "process $chrome, holds $profile/BrowserMetrics/index open" \
+  "with a Chrome holding a file in it open"
+
+# A Chrome mapping a file in a folder whose name only begins with
+# BrowserMetrics doesn't keep BrowserMetrics on the disk: it holds the
+# whole-path match against one that takes a prefix for the folder.
+fill
+mkdir -p "$profile/BrowserMetrics-spare"
+cp "$BASH" "$profile/BrowserMetrics-spare/chrome"
+"$profile/BrowserMetrics-spare/chrome" -c 'while :; do sleep 1; done' &
+chrome=$!
+named "$chrome"
+ln -s "$here-$chrome" "$profile/SingletonLock"
+run "neighbour's"
+kill "$chrome"
+metrics "with Chrome mapping a file beside BrowserMetrics"
+
+# A Chrome quitting, its lock dropped, that still maps a file in
+# BrowserMetrics is waited for, and the folder moves once it has gone.
+fill
+cp "$BASH" "$profile/BrowserMetrics/chrome"
+rm -f "$work/quit" run.log
+# shellcheck disable=SC2016 # The stand-in expands its own argument.
+"$profile/BrowserMetrics/chrome" -c 'until [ -e "$0" ]; do sleep 0.1; done' "$work/quit" &
+quitting=$!
+named "$quitting"
+run "quitting histograms'" &
+running=$!
+started=$SECONDS
+until grep -q 'waits up to half a minute' run.log 2>/dev/null; do
+  waiting "a quitting Chrome that still mapped its histograms"
+  if [ $((SECONDS - started)) -gt 60 ]; then
+    echo "the command hadn't said it waits for a quitting Chrome's histograms after a minute"
+    exit 1
+  fi
+  # A tenth of a second between looks at the run's log.
+  sleep 0.1
+done
+metrics_kept "while a quitting Chrome still mapped its histograms"
+touch "$work/quit"
+wait "$quitting"
+wait "$running"
+metrics "once a quitting Chrome that mapped its histograms had gone"
+
+# What a session before left in memory goes as it moves, but for a file
+# that's still mapped.
+fill
+mkdir -p "$runtime/chrome/BrowserMetrics"
+echo left >"$runtime/chrome/BrowserMetrics/left.pma"
+cp "$BASH" "$runtime/chrome/BrowserMetrics/chrome"
+"$runtime/chrome/BrowserMetrics/chrome" -c 'while :; do sleep 1; done' &
+chrome=$!
+named "$chrome"
+ln -s "$here-$chrome" "$profile/SingletonLock"
+run "left files'"
+kill "$chrome"
+metrics "with files left in memory"
+if [ -e "$runtime/chrome/BrowserMetrics/left.pma" ]; then
+  echo "a file a session left in memory, which nothing mapped, stayed"
+  exit 1
+fi
+if [ ! -e "$runtime/chrome/BrowserMetrics/chrome" ]; then
+  echo "a file in memory that Chrome still mapped was taken"
+  exit 1
+fi
 
 # A folder that reaches outside the profile is refused as asked wrongly,
 # and what's there is kept.

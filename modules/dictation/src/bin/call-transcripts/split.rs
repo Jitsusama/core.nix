@@ -33,7 +33,7 @@
 //! Long because two thirds of it is its cases, each a take cut a
 //! different way; the splitting itself is under 300 lines.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use dictation::echo;
 use dictation::parakeet::Word;
@@ -129,6 +129,17 @@ pub fn by_voice(call: &mut Call, voices: &[Option<usize>]) -> Splits {
 /// `read` lines were read back from the call's file, told when they were
 /// first written, and are kept.
 pub fn unechoed(lines: &[Line], pieces: &[Piece], read: usize) -> Vec<Line> {
+    let echoing = echoing(lines, pieces, read);
+    lines
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| !echoing.contains(index))
+        .map(|(_, line)| line.clone())
+        .collect()
+}
+
+/// Which of `lines` `unechoed` leaves out, by index.
+pub fn echoing(lines: &[Line], pieces: &[Piece], read: usize) -> HashSet<usize> {
     let take_of: HashMap<usize, usize> = pieces
         .iter()
         .filter_map(|piece| Some((piece.line?, piece.take)))
@@ -150,8 +161,8 @@ pub fn unechoed(lines: &[Line], pieces: &[Piece], read: usize) -> Vec<Line> {
     lines
         .iter()
         .enumerate()
-        .filter(|&(index, line)| index < read || !echo::echoes(line, &takes))
-        .map(|(_, line)| line.clone())
+        .filter(|&(index, line)| index >= read && echo::echoes(line, &takes))
+        .map(|(index, _)| index)
         .collect()
 }
 

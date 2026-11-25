@@ -538,6 +538,22 @@ QtObject {
             if (said !== want)
                 failures.push(`footName, ${what}: "${said}", not "${want}"`);
         }
+        // As the shell hands a session over: one with a record by the title
+        // its presence names, one started in pi's host with none yet by the
+        // quest's name the launcher gave it, never its id.
+        const titleOf = presence => presence.questInfo.title;
+        const handed = [
+            ["one with a record by its presence's title", { address: "QEST-X",
+                name: "Kelp", presence: { questInfo: { title: "Reef" } } }, "Reef"],
+            ["one with no record yet by the quest's name it was started on",
+                { address: "QEST-X", machine: "", name: "Kelp" }, "Kelp"],
+            ["one with neither by its address", { address: "QEST-X", machine: "" }, "QEST-X"]
+        ];
+        for (const [what, session, want] of handed) {
+            const said = SessionRow.footNameOf(undefined, session, titleOf);
+            if (said !== want)
+                failures.push(`footNameOf, ${what}: "${said}", not "${want}"`);
+        }
 
         // What Joel hears of a walk, as Sessions counts it (tests/places.qml
         // holds the count): one folder gone or many, then how many

@@ -294,7 +294,7 @@ QtObject {
     function guessing(check) {
         const ask = { key: "ask:7", at: 2 };
         const onIt = (from, landed) => Held.onItsRow(from, landed);
-        check("a leave that lands on the row stepped in from, by its key, is on it",
+        check("a leave that lands back on the row stepped in from, as its key says, is on it",
             onIt(ask, "ask:7"), true);
         check("one that lands on another row, as one hidden leaves it, is not",
             onIt(ask, "copies"), false);
@@ -317,24 +317,24 @@ QtObject {
         const left = landing(none, "copies");
         check("a landing on another row is guessed at its keys and depth", shown(left),
             "5@0 d2");
-        check("a landing on its own row by key guesses nothing", after(none, "ask:7"),
+        check("a landing back on its own row guesses nothing", after(none, "ask:7"),
             "-1@0 d-1");
         check("a shut launcher guesses nothing", after(none, "copies", { open: false }),
             "-1@0 d-1");
-        // A change within keyedWithin of Joel's key is his key's, so its
-        // leave is one he watched.
+        // A leave made by the refresh of Joel's last key's act (Held.keyed)
+        // is one he watched.
         check("a leave Joel's key caused guesses nothing",
             after(none, "copies", { byKey: true }), "-1@0 d-1");
         check("but keeps a guess an earlier leave left pending",
             after(left, "copies", { byKey: true, depth: 1 }), "5@0 d1");
-        // A second leave before any key, landing by its key a step up,
-        // leaves the Return still meant for the first step's ask.
-        check("a leave by key keeps a guess no key has answered, at its own depth",
+        // A second leave before any key, landing back on its row a step
+        // up, leaves the Return still meant for the first step's ask.
+        check("a leave back on its row keeps a guess no key has answered, at the new depth",
             after(left, "ask:7", { depth: 1 }), "5@0 d1");
         // A first leave threw, and a second closed whole before any key: the
         // Return is still meant for the first step, but the selection is
         // whole again, so it holds once, not until another key.
-        check("a leave by key keeps a broken guess whole again",
+        check("a leave back on its row keeps a broken guess whole again",
             after(Held.whileLeaving(5, true, none), "ask:7", { depth: 1 }), "5@0 d1");
         check("but not once a key came between", after(left, "ask:7", { keys: 6 }),
             "-1@0 d-1");
@@ -354,6 +354,143 @@ QtObject {
             "5@0 d-1 broken, 5@0 d-1 broken");
         check("and a throw once Joel has pressed more is a new one",
             shown(Held.whileLeaving(7, true, threw)), "7@0 d-1 broken");
+        // What the journal says once the leave is judged, as returnUnder
+        // would answer the Return next: Joel's own key's leave holds
+        // nothing, though it can still leave a pending guess, and no key's
+        // act landing back on its row holds nothing.
+        check("a leave is journalled by its act and whether a Return next holds",
+            [Held.leaveSaid("a key's act", landing(none, "copies", { byKey: true })),
+                Held.leaveSaid("a key's act", landing(left, "copies", { byKey: true })),
+                Held.leaveSaid("no key's act", landing(none, "ask:7")),
+                Held.leaveSaid("a key's act, joined", left)].join(" | "),
+            "a key's act; nothing holds | a key's act; a Return next holds"
+                + " | no key's act; nothing holds | a key's act, joined; a Return next holds");
+
+        // Held.movesClock: only a key that may act moves the clock; a
+        // modifier alone and a key the find types itself leave it at the
+        // key before them.
+        check("a modifier alone, and a letter, Space or é in the find, keep the clock",
+            [Held.movesClock(true, false, ""), Held.movesClock(false, true, "a"),
+                Held.movesClock(false, true, "Space"), Held.movesClock(false, true, "")]
+                .join(" "), "false false false false");
+        // Shift+Space types a space as Space does, and the caret keys only
+        // move the caret; in normal, Left is a key that acts.
+        check("Shift+Space and the caret keys in the find keep it, Left in normal moves it",
+            ["Shift+Space", "Left", "Right", "Home", "End"]
+                .map(name => Held.movesClock(false, true, name))
+                .concat([Held.movesClock(false, false, "Left")]).join(" "),
+            "false false false false false true");
+        // Backspace on an empty find leaves it for normal, so it may act.
+        check("Escape and Backspace in the find, j and an unnamed key in normal move it",
+            [Held.movesClock(false, true, "Escape"), Held.movesClock(false, true, "Backspace"),
+                Held.movesClock(false, false, "j"), Held.movesClock(false, false, "")]
+                .join(" "), "true true true true");
+        // Held.movedSaid: j the 4th key taken, the clock's. The prompt
+        // clears its word as each key comes, and says a move once it's read.
+        check("a move said of the clock's own key is its",
+            Held.movedSaid(false, 4, 4, true), true);
+        check("a Shift after j, clearing the prompt's word, leaves j's move",
+            Held.movedSaid(true, 4, 5, false), true);
+        check("a move said of another key isn't the clock's key's",
+            Held.movedSaid(false, 4, 5, true), false);
+        // Prompt.modalKey's own order, through the launcher's two handlers:
+        // a press clears the word, is counted, then says its move; a
+        // repeat clears it, says its move, then is counted. A handler runs
+        // on a change alone, as a property's does.
+        const replay = writes => {
+            const at = { keys: 0, moved: false, heard: 0, word: false };
+            const say = moved => {
+                if (moved !== at.moved) {
+                    at.moved = moved;
+                    at.word = Held.movedSaid(at.word, at.heard, at.keys, moved);
+                }
+            };
+            const count = name => {
+                at.keys += 1;
+                if (Held.movesClock(name === "Shift", false, name)) {
+                    at.heard = at.keys;
+                    at.word = Held.movedSaid(false, at.keys, at.keys, at.moved);
+                }
+            };
+            // j moves; x, a key that acts, and Shift alone don't.
+            writes.forEach(one => {
+                say(false);
+                if (one === "repeat") {
+                    say(true);
+                    count("j");
+                } else {
+                    count(one);
+                    say(one === "j");
+                }
+            });
+            return at.word;
+        };
+        check("in the prompt's order, j moves, and a Shift after it or j's repeat keep that",
+            [replay(["j"]), replay(["j", "Shift"]), replay(["j", "repeat"])].join(" "),
+            "true true true");
+        check("in the prompt's order, x doesn't move, nor does j's move outlast an x",
+            [replay(["x"]), replay(["j", "x"]), replay(["j", "Shift", "x"])].join(" "),
+            "false false false");
+
+        // Held.changeDoes, as refreshed and reanswer ask it of each change
+        // and answer heard, keyedWithin 50 ms.
+        const does = more => Held.changeDoes(Object.assign(
+            { ago: 10, moved: false, within: 50, shown: true, waiting: false }, more)).says;
+        check("a change shown within keyedWithin of an acting key is its act, to 49 ms",
+            [does({}), does({ ago: 49 })].join(" "), "act act");
+        check("one at 50 ms or after a move joins the source's acts",
+            [does({ ago: 50 }), does({ moved: true })].join(" "), "joins joins");
+        // A share's change heard before the key, waiting on the pace or a
+        // fill's find, is taken into the key's refresh, so would empty the
+        // step as if Joel's key had.
+        check("an act whose source already waits on a refresh is recorded joined",
+            does({ waiting: true }), "joined act");
+        // A change to rows the launcher doesn't show, or an answer, which
+        // records no act here, is the key's within keyedWithin, so leaves
+        // its act his.
+        check("one not shown within keyedWithin is kept, past it joins",
+            [does({ shown: false }), does({ shown: false, ago: 50 })].join(" "),
+            "kept joins");
+        // A move or lateness outranks what waits, and not being shown does.
+        check("a move joins whatever waits, and one not shown is kept though one waits",
+            [does({ moved: true, waiting: true }), does({ shown: false, waiting: true })]
+                .join(" "), "joins kept");
+        check("what it says is told apart for the launcher, which matches no words",
+            ["joins", "joined act", "act"].map(says => {
+                const change = Held.changeDoes({ ago: says === "joins" ? 50 : 10,
+                    moved: false, within: 50, shown: true, waiting: says === "joined act" });
+                return `${change.joins} ${change.mixed}`;
+            }).join(" | "), "true false | false true | false false");
+
+        // Held.actOf, Held.keyed and Held.mixIn, as the launcher's keyedActs
+        // hold a key's act until the refresh that shows it, each case on
+        // acts of its own.
+        const share = { name: "share" };
+        const asks = { name: "asks" };
+        const acts = () => [{ source: asks, heard: 40 }];
+        check("a leave of the act's own source, under its key, is the key's",
+            [Held.actOf(acts(), asks, 40), Held.keyed(acts(), asks, 40)].join(" | "),
+            "a key's act | true");
+        check("but not once another key was heard, nor another source's",
+            [Held.actOf(acts(), asks, 90), Held.actOf(acts(), share, 40),
+                Held.keyed(acts(), asks, 90), Held.keyed(acts(), share, 40)].join(" | "),
+            "a key's act, another key since | no key's act | false | false");
+        const shared = acts();
+        Held.mixIn(shared, share);
+        check("another source's change joins none of this one's acts",
+            Held.keyed(shared, asks, 40), true);
+        const joined = acts();
+        Held.mixIn(joined, asks);
+        check("a change the key doesn't own, joining its act, makes the leave no key's",
+            [Held.actOf(joined, asks, 40), Held.keyed(joined, asks, 40)].join(" | "),
+            "a key's act, joined | false");
+        // The chain heldAgain runs: a share's change joins the key's act,
+        // so the leave its refresh makes off its row is guessed, and the
+        // journal says a Return next holds.
+        const chained = landing(none, "copies", { byKey: Held.keyed(joined, asks, 40) });
+        check("a joined act's leave off its row is guessed, and journalled as holding",
+            Held.leaveSaid(Held.actOf(joined, asks, 40), chained),
+            "a key's act, joined; a Return next holds");
 
         // Held.returnUnder, as the field's Return asks it: 2 deep, no words
         // asked for, and the key-timing wait 300 ms.
