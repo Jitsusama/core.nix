@@ -733,9 +733,9 @@ mod tests {
 
     #[test]
     fn two_cookies_are_told_apart_whatever_they_share() {
-        assert!(same("c0ffee", "c0ffee"));
-        assert!(!same("c0ffee", "c0ffef"));
-        assert!(!same("c0ffee", "c0ffe"));
-        assert!(!same("", "c0ffee"));
+        assert!(same("c0ffee", "c0ffee"), "a cookie wasn't taken for itself");
+        assert!(!same("c0ffee", "c0ffef"), "a cookie a letter off passed");
+        assert!(!same("c0ffee", "c0ffe"), "a cookie's start passed for it");
+        assert!(!same("", "c0ffee"), "no cookie passed for one");
     }
 }

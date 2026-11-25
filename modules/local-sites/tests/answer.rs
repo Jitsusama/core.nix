@@ -22,6 +22,8 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
+mod common;
+
 /// How long a test waits for the server.
 const PATIENCE: Duration = Duration::from_secs(10);
 
@@ -76,7 +78,8 @@ fn answer(stream: UnixStream, steered: &Mutex<Vec<Value>>) {
     }
 }
 
-/// The server, stopped and its folder taken away once it's dropped.
+/// The server, stopped and its folder taken away once it's dropped. A server
+/// that died answers nothing, and must not pass for one that refused.
 struct Served {
     child: Child,
     port: u16,
@@ -86,9 +89,7 @@ struct Served {
 
 impl Drop for Served {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-        let _ = std::fs::remove_dir_all(&self.folder);
+        common::stop(&mut self.child, &self.folder);
     }
 }
 

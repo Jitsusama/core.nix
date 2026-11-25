@@ -21,6 +21,8 @@ use serde_json::{Value, json};
 use tungstenite::client::IntoClientRequest;
 use tungstenite::{Message, WebSocket};
 
+mod common;
+
 /// How long a test waits for the server, or for a line it's owed.
 const PATIENCE: Duration = Duration::from_secs(10);
 
@@ -117,15 +119,7 @@ struct Served {
 
 impl Drop for Served {
     fn drop(&mut self) {
-        let ended = self.child.try_wait().ok().flatten();
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-        let _ = std::fs::remove_dir_all(&self.folder);
-        if let Some(status) = ended
-            && !thread::panicking()
-        {
-            panic!("the server ended under the test: {status}");
-        }
+        common::stop(&mut self.child, &self.folder);
     }
 }
 

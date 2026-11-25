@@ -107,7 +107,7 @@ LIGHT_STROKE = re.compile(r"^    g \{ stroke: ([^;]+); \}", re.MULTILINE)
 @pytest.fixture
 def to_do(tmp_path: Path) -> Iterator[StandIn]:
     """Stand in for the to-do daemon holding one look, and for the node it's answered through."""
-    look = {"key": "look:l1", "kind": "look", "look": waiting_look()}
+    look: dict[str, object] = {"key": "look:l1", "kind": "look", "look": waiting_look()}
     stand_in = StandIn(tmp_path / "to-do.sock", "to-do", {"look": [look]}).start()
     yield stand_in
     stand_in.leave()
