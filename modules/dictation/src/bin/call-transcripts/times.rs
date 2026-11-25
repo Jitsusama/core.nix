@@ -210,4 +210,13 @@ mod tests {
             "no word timed fails, since a model that times none would otherwise pass"
         );
     }
+
+    #[test]
+    fn with_no_word_timed_the_report_says_none_rather_than_all() {
+        let said = Timed::default().describe("all");
+        assert!(
+            said.ends_with("none timed while one of theirs speaks") && !said.contains('%'),
+            "with no word timed, the report gave a share: {said}"
+        );
+    }
 }
