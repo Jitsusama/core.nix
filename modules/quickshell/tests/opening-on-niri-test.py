@@ -1968,28 +1968,30 @@ def test_a_letter_reordering_a_kept_place_lists_it_afresh_from_its_first_row(
     whole = shell.showing()["count"]
     shell.send_chars("f")
     shell.launcher_until(lambda shown: shown["typed"] == "f" and cast("int", shown["count"]) > 0)
+    settled(shell)
+    # How many the held answer lists, which the letter typed again lists in its own frame.
+    held = cast("int", shell.showing()["count"])
     shell.send_key("backspace")
     shell.launcher_until(lambda shown: shown["typed"] == "" and shown["count"] == whole)
     for _ in range(ROWS_DOWN):
         shell.send_key("down")
     shell.launcher_until(lambda shown: cast("int", shown["seen"]["at"]) == ROWS_DOWN)
-    first: list[Json] = []
-    # Marked before the key, so its own first frame is judged: marked after, that frame was
-    # mostly past, and a letter that let the held answer go passed once its own answer came.
-    since = shell.mark()
-
-    def typed_f(_: Json) -> bool:
-        reports, _end = shell.said_since(since)
-        for said in reports:
-            if not first and said.startswith("showing "):
-                shown = json.loads(said[len("showing ") :])
-                if shown["typed"] == "f":
-                    first.append(shown)
-        return bool(first)
-
+    # Counted once every key before it is presented, so the letter's is the next: its own first
+    # frame is judged, as what's showing is made once a turn and a frame listing the rows
+    # before it, or none, could go unsaid, and a letter that let the held answer go passed
+    # once its own answer came.
+    before = len(launcher_on_niri.keys_presented_settled(shell))
     shell.send_chars("f")
-    shell.launcher_until(typed_f)
-    assert cast("int", first[0]["count"]) > 0, f"the held answer's letter listed none: {first}"
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    presented: list[Json] = []
+    while len(presented) <= before and time.monotonic() < deadline:
+        presented = json.loads(shell.as_account(shell.ipc("keysPresented")))
+        time.sleep(launcher_on_niri.POLL)
+    assert len(presented) > before, f"the letter was never presented: {presented}"
+    letter = presented[before]
+    assert letter["listed"] == held, (
+        f"the letter's first frame listed {letter['listed']}, not the {held} held: {letter}"
+    )
     laid = json.loads(shell.as_account(shell.ipc("laidOut")))
     selection = laid["selection"]
     assert selection is not None, f"the letter left no selection drawn: {laid['rows']}"
