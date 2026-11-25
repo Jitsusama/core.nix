@@ -752,6 +752,7 @@ mod tests {
             serde_json::json!({"at": AT, "words": "long ago", "owner": "XY9H5C",
                 "none": "no pain", "none_at_ms": (now - DAY - 1) * 1000}),
             serde_json::json!({"at": AT, "words": "still open", "owner": "ABC123"}),
+            serde_json::json!({"at": AT, "words": "it's fine", "owner": "ABC123"}),
         ]
         .iter()
         .map(ToString::to_string)
@@ -783,7 +784,7 @@ mod tests {
             open,
             ["it's fine · ABC123", "still open · ABC123"],
             "a miss said none was kept open, so it would be told fixed, or another owner's \
-             in the same words was forgotten"
+             still open in the same words was forgotten"
         );
     }
 
