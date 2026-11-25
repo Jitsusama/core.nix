@@ -297,6 +297,7 @@
           inherit (self.homeModules) quickshell;
         };
         ssh-tpm-agent = ./modules/ssh-tpm-agent/home.nix;
+        subvolumes = ./modules/subvolumes/home.nix;
         sudo = ./modules/sudo/home.nix;
         swayidle = ./modules/swayidle/home.nix;
         swayimg = moduleFrom ./modules/swayimg/home.nix { inherit (self.homeModules) niri quickshell; };
