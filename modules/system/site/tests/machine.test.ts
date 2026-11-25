@@ -136,7 +136,7 @@ it("its cells are counted running, busy and idle, with the parked or ended aside
   assert.equal(far(0, 12), "12 out of reach", "an unreached machine's cells");
   assert.equal(
     far(2, 1),
-    "2 running: 2 busy and none idle, and 1 out of reach",
+    "3 running: 2 busy, none idle and 1 out of reach",
     "some reached and some not",
   );
 });

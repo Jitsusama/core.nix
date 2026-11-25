@@ -74,18 +74,24 @@ fn cells_now(ties: &Value) -> Said {
     };
     let (busy, idle, far) = (of("busy"), of("idle"), of("unreachable"));
     // A machine the node can't reach has its cells counted out of reach,
-    // not busy or idle: they are still its cells, so they are said.
-    let running = format!(
-        "{} running: {} busy and {} idle",
-        grouped(busy + idle),
-        none_or(busy),
-        none_or(idle)
-    );
+    // not busy or idle: they are still its cells, and running, since only
+    // the parked aren't, so they are said among them.
     let said = match (busy + idle, far) {
         (0, 0) => "none running".to_owned(),
         (0, far) => format!("{} out of reach", grouped(far)),
-        (_, 0) => running,
-        (_, far) => format!("{running}, and {} out of reach", grouped(far)),
+        (reached, 0) => format!(
+            "{} running: {} busy and {} idle",
+            grouped(reached),
+            none_or(busy),
+            none_or(idle)
+        ),
+        (reached, far) => format!(
+            "{} running: {} busy, {} idle and {} out of reach",
+            grouped(reached + far),
+            none_or(busy),
+            none_or(idle),
+            grouped(far)
+        ),
     };
     let ended = of("ended");
     // A node too old to tell the parked apart sends no `parked`, and its
@@ -436,7 +442,7 @@ mod tests {
         );
         assert_eq!(
             far(2, 1),
-            "2 running: 2 busy and none idle, and 1 out of reach",
+            "3 running: 2 busy, none idle and 1 out of reach",
             "some reached and some not"
         );
         assert_eq!(

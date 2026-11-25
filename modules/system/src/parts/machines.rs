@@ -13,7 +13,7 @@ use serde_json::Value;
 use super::ties::ties;
 use super::{Answer, and, count, side_of, unread};
 use crate::record::{Deeper, Health, Part, Thing};
-use crate::words::grouped;
+use crate::words::running;
 
 /// A gigabyte, as a disk's free room is said.
 const GIGABYTE: f64 = 1e9;
@@ -222,7 +222,8 @@ fn machine(
     backup: Option<Backup>,
 ) -> (Thing, Vec<String>) {
     let mut words = Said::default();
-    if said.get("state").and_then(Value::as_str) == Some("unreachable") {
+    let away = said.get("state").and_then(Value::as_str) == Some("unreachable");
+    if away {
         words.look(
             Health::Bad,
             "is out of reach".to_owned(),
@@ -315,7 +316,7 @@ fn machine(
         line.push("is ready".to_owned());
     }
     if let Some(sessions) = sessions {
-        line.push(format!("runs {}", sessions_said(sessions)));
+        line.push(sessions_said(sessions, away));
     }
     let thing = Thing {
         kind: "machine",
@@ -385,23 +386,22 @@ fn resource(said: &str) -> &str {
     }
 }
 
-/// A machine's running cells by how they stand: the busy and the idle,
-/// since the parked are said on its page and the ended ones are history.
-/// They are cells, the one name every page gives the mycelium's sessions.
-fn sessions_said(sessions: &Value) -> String {
+/// A machine's running cells by how they stand, the busy, the idle and
+/// those out of reach, since the parked are said on its page and the ended
+/// ones are history. They are cells, the one name every page gives the
+/// mycelium's sessions. A machine itself out of reach holds its cells
+/// rather than runs them, as how each stands there is unknown; its line
+/// already says it's out of reach, so they are said once, together.
+fn sessions_said(sessions: &Value, away: bool) -> String {
     let of = |key: &str| sessions.get(key).and_then(Value::as_u64).unwrap_or(0);
-    let (busy, idle) = (of("busy"), of("idle"));
-    match (busy, idle) {
-        // A machine the node can't reach has its cells counted out of
-        // reach, not busy or idle, and it still holds them.
-        (0, 0) => match of("unreachable") {
-            0 => "no cell".to_owned(),
-            far => format!("{} out of reach", count(far, "cell", "cells")),
-        },
-        (busy, 0) => format!("{} busy", count(busy, "cell", "cells")),
-        (0, idle) => format!("{} idle", count(idle, "cell", "cells")),
-        (busy, idle) => format!("{} busy and {} idle cells", grouped(busy), grouped(idle)),
+    let (busy, idle, far) = (of("busy"), of("idle"), of("unreachable"));
+    if away {
+        return match busy + idle + far {
+            0 => "holds no cell".to_owned(),
+            held => format!("holds {}", count(held, "cell", "cells")),
+        };
     }
+    format!("runs {}", running(busy, idle, far))
 }
 
 #[cfg(test)]
@@ -667,6 +667,29 @@ mod tests {
         assert_eq!(
             part.things[0].says, "is ready, runs 12 cells out of reach",
             "an unreached machine's cells were said as none"
+        );
+    }
+
+    #[test]
+    fn a_machine_s_cells_out_of_reach_are_said_beside_its_busy_ones() {
+        let mut said = said_health();
+        said["sessions"]["laptop"] = json!({"busy": 2, "idle": 0, "ended": 0, "unreachable": 3});
+        let part = machines(&Ok(realm(&[laptop(&[], "healthy")])), &Ok(said), None, None);
+        assert_eq!(
+            part.things[0].says, "is ready, runs 2 cells busy, and 3 out of reach",
+            "three cells out of reach were lost beside two busy"
+        );
+    }
+
+    #[test]
+    fn a_machine_itself_out_of_reach_holds_its_cells_said_once() {
+        let mut said = said_health();
+        said["sessions"]["spare"] = json!({"busy": 1, "idle": 0, "ended": 4, "unreachable": 11});
+        let away = json!({"name": "spare", "state": "unreachable"});
+        let part = machines(&Ok(realm(&[away])), &Ok(said), None, None);
+        assert_eq!(
+            part.things[0].says, "is out of reach, holds 12 cells",
+            "an unreached machine said out of reach twice, or its ended as held"
         );
     }
 

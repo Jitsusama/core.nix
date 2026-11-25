@@ -273,7 +273,7 @@ mod tests {
                     name: "machines",
                     health: Health::Watch,
                     says: "laptop is short of memory and processor, has a filling disk, \
-                           248 GB free, runs 70 busy and 20 idle sessions"
+                           248 GB free, runs 70 busy and 20 idle cells"
                         .to_owned(),
                     side: Vec::new(),
                     holds: Some("1 machine".to_owned()),
@@ -281,7 +281,7 @@ mod tests {
                         kind: "machine",
                         name: "laptop".to_owned(),
                         health: Health::Watch,
-                        says: "is short of memory, runs 3 busy sessions".to_owned(),
+                        says: "is short of memory, runs 3 cells busy".to_owned(),
                         side: Vec::new(),
                         address: Some("mycelium/#machine=laptop".to_owned()),
                         ties: ties(),
@@ -313,7 +313,7 @@ mod tests {
         assert!(
             lines.contains(
                 &"! machines  watch     laptop is short of memory and processor, has a filling \
-                  disk, 248 GB free, runs 70 busy and 20 idle sessions"
+                  disk, 248 GB free, runs 70 busy and 20 idle cells"
             ),
             "{said}"
         );
@@ -322,7 +322,7 @@ mod tests {
             "a part not read wears no mark and says why: {said}"
         );
         assert!(
-            lines.contains(&"! machine laptop  watch  is short of memory, runs 3 busy sessions"),
+            lines.contains(&"! machine laptop  watch  is short of memory, runs 3 cells busy"),
             "each machine has its own line: {said}"
         );
         assert!(
@@ -371,7 +371,7 @@ mod tests {
         let lines: Vec<String> = said.lines().map(words).collect();
         assert_eq!(lines[0], "machine laptop · read on laptop");
         for line in [
-            "! laptop watch is short of memory, runs 3 busy sessions",
+            "! laptop watch is short of memory, runs 3 cells busy",
             "kind Example 14, Linux, this machine",
             "cells 4 running: 3 busy and 1 idle · none parked or ended",
             "network Wi-Fi to the Hall point, on 5 GHz · a strong signal, with 183 Mb/s of room",

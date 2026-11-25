@@ -80,7 +80,7 @@
         "ties": {
           "reached": true,
           "heard_at": null,
-          "cells": { "busy": 4, "idle": 5, "ended": 2 },
+          "cells": { "busy": 4, "idle": 5, "unreachable": 0, "parked": 0, "ended": 2 },
           "network": [
             { "device": "mac:0a", "by": "2.4 GHz", "point": "Hall", "bars": 4, "room_mbps": 180 }
           ],
@@ -116,7 +116,7 @@
         "ties": {
           "reached": true,
           "heard_at": null,
-          "cells": { "busy": 2, "idle": 4, "ended": 0 },
+          "cells": { "busy": 2, "idle": 4, "unreachable": 0, "parked": 0, "ended": 0 },
           "network": [{ "device": "mac:0b", "by": "wired", "point": "Den", "room_mbps": 900 }],
           "code": null,
           "figures": {

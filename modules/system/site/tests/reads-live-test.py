@@ -473,7 +473,8 @@ def test_a_machine_out_of_reach_is_named_apart(system_page: Page, system_daemon:
         "ties": {
             "reached": False,
             "heard_at": "2026-11-16T11:00:00Z",
-            "cells": {"busy": 1, "idle": 0, "ended": 0},
+            # The node counts an unreached machine's cells out of reach, never busy.
+            "cells": {"busy": 0, "idle": 0, "unreachable": 1, "ended": 0},
             "network": None,
             "code": None,
             "figures": None,

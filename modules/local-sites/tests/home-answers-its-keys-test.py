@@ -75,10 +75,15 @@ DARK_STROKE = re.compile(r"dark\) \{ g \{ stroke: ([^;]+); \}")
 LIGHT_STROKE = re.compile(r"^    g \{ stroke: ([^;]+); \}", re.MULTILINE)
 # A laptop's short screens, on which the first site must stand whole in the
 # first screen, and one tall enough for the crest at its 13rem, as home.css
-# draws it from 70rem tall.
+# draws it from 60rem tall.
 LAPTOPS = [(1280, 800), (1024, 768)]
 TALL = (1280, 1200)
 FULL_CREST_PX = 208
+# A phone, narrow and short, whose crest goes by its width alone, at 9rem: a
+# short screen's shrinking is the wide one's, so the crest doesn't fall to its
+# least on a phone or change size as its address bar slides.
+PHONE = (375, 667)
+PHONE_CREST_PX = 144
 
 
 @pytest.fixture
@@ -235,14 +240,21 @@ def test_a_laptops_first_screen_shows_a_site_whole(
         opened.close()
 
 
-def test_a_tall_screen_keeps_the_whole_crest(browser: Browser, home: str) -> None:
-    """A screen with room for the threshold draws its crest at its full size."""
-    opened = Opened(browser, home, TALL, "dark")
+@pytest.mark.parametrize(
+    ("size", "crest_px"),
+    [(TALL, FULL_CREST_PX), (PHONE, PHONE_CREST_PX)],
+    ids=["tall", "phone"],
+)
+def test_a_screen_not_wide_and_short_keeps_its_crest(
+    browser: Browser, home: str, size: tuple[int, int], crest_px: int
+) -> None:
+    """A tall screen draws its crest at its full size, and a phone at its width's."""
+    opened = Opened(browser, home, size, "dark")
     try:
         crest = opened.page.locator(".crest").bounding_box()
         assert crest, "the crest was drawn with no box"
         # Within a pixel, since the browser lays boxes out in 1/64 px steps.
         drawn = crest["width"]
-        assert abs(drawn - FULL_CREST_PX) < 1, f"a tall screen drew the crest {drawn} px"
+        assert abs(drawn - crest_px) < 1, f"a {size} screen drew the crest {drawn} px"
     finally:
         opened.close()

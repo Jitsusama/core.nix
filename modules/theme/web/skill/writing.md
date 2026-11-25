@@ -121,7 +121,8 @@ novel mode and lost its pithy title. this is not what i meant" (2026-11-06).
   plus 22, each right by its own rule and wrong side by side. Cells alone
   means the cells standing now, as the mycelium node counts them: every
   session that hasn't ended, parked ones included, never its machines or
-  receptors. Running means those less the parked. A page counting another
+  receptors. Running means those less the parked, the out of reach among
+  them, said beside the busy and the idle. A page counting another
   set names it beside the number: "61 running", "38 here at work on a
   quest".
 - **A thing is named by what it is to Joel, never by its id**: a cell by

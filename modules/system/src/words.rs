@@ -19,9 +19,52 @@ pub fn grouped(count: u64) -> String {
     out
 }
 
+/// Running cells by how they stand, the busy, the idle and those out of
+/// reach, which the node counts apart from both and are still cells: the
+/// parked are no part of it, since running means the cells less the
+/// parked. A machine's line and the mycelium's say one count this one way.
+pub fn running(busy: u64, idle: u64, far: u64) -> String {
+    let cells = |count: u64| if count == 1 { "cell" } else { "cells" };
+    let reached = match (busy, idle) {
+        (0, 0) => None,
+        (busy, 0) => Some(format!("{} {} busy", grouped(busy), cells(busy))),
+        (0, idle) => Some(format!("{} {} idle", grouped(idle), cells(idle))),
+        (busy, idle) => Some(format!(
+            "{} busy and {} idle cells",
+            grouped(busy),
+            grouped(idle)
+        )),
+    };
+    match (reached, far) {
+        (None, 0) => "no cell".to_owned(),
+        (None, far) => format!("{} {} out of reach", grouped(far), cells(far)),
+        (Some(reached), 0) => reached,
+        (Some(reached), far) => format!("{reached}, and {} out of reach", grouped(far)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn running_cells_say_the_out_of_reach_beside_the_busy_and_idle() {
+        assert_eq!(running(0, 0, 0), "no cell");
+        assert_eq!(running(1, 0, 0), "1 cell busy");
+        assert_eq!(running(0, 3, 0), "3 cells idle");
+        assert_eq!(running(1_200, 3_400, 0), "1,200 busy and 3,400 idle cells");
+        assert_eq!(running(0, 0, 12), "12 cells out of reach");
+        assert_eq!(
+            running(2, 0, 3),
+            "2 cells busy, and 3 out of reach",
+            "the out of reach were lost beside the busy"
+        );
+        assert_eq!(
+            running(2, 1, 1),
+            "2 busy and 1 idle cells, and 1 out of reach",
+            "the out of reach were lost beside the busy and idle"
+        );
+    }
 
     #[test]
     fn a_count_groups_its_thousands_from_the_right() {

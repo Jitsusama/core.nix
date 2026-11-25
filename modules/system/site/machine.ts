@@ -183,17 +183,20 @@ function cellsNow(ties: Ties): Said {
 /**
  * A machine's running cells, busy and idle, and those out of reach: a
  * machine the node can't reach has its cells counted there rather than
- * busy or idle, and it still holds them.
+ * busy or idle, and they are running still, since only the parked aren't.
  */
 function runningSaid(cells: Cells): string {
   const counted = (count: number): string => (count === 0 ? "none" : count.toLocaleString("en-CA"));
-  const running = cells.busy + cells.idle;
+  const reached = cells.busy + cells.idle;
   const far = `${cells.unreachable.toLocaleString("en-CA")} out of reach`;
-  if (running === 0) {
+  if (reached === 0) {
     return cells.unreachable === 0 ? "None running" : capital(far);
   }
-  const said = `${running.toLocaleString("en-CA")} running: ${counted(cells.busy)} busy and ${counted(cells.idle)} idle`;
-  return cells.unreachable === 0 ? said : `${said}, and ${far}`;
+  const running = (reached + cells.unreachable).toLocaleString("en-CA");
+  if (cells.unreachable === 0) {
+    return `${running} running: ${counted(cells.busy)} busy and ${counted(cells.idle)} idle`;
+  }
+  return `${running} running: ${counted(cells.busy)} busy, ${counted(cells.idle)} idle and ${far}`;
 }
 
 /** A machine's parked and ended cells, told apart where the node's health does. */

@@ -8,7 +8,7 @@
 use serde_json::Value;
 
 use crate::record::{Deeper, Health, Part};
-use crate::words::grouped;
+use crate::words::{grouped, running};
 
 mod machines;
 mod ties;
@@ -75,12 +75,12 @@ pub fn mycelium(health: &Answer) -> Part {
                 .sum::<u64>()
         })
     };
-    let (busy, idle) = (of("busy"), of("idle"));
+    // The cells running, said as each machine's line says its own, the
+    // out of reach among them.
+    let cells = running(of("busy"), of("idle"), of("unreachable"));
     let across = machines.map_or(0, serde_json::Map::len);
     let mut held = vec![format!(
-        "{} busy and {} idle cells on {}",
-        grouped(busy),
-        grouped(idle),
+        "{cells} on {}",
         count(across as u64, "machine", "machines")
     )];
     // A session whose process has gone is an agent's leftover, as a gone
@@ -603,6 +603,17 @@ mod tests {
             mycelium(&Ok(said)).says,
             "1,202 busy and 3,401 idle cells on 2 machines; 1 link up",
             "a session count is grouped, as a machine's card says it"
+        );
+    }
+
+    #[test]
+    fn cells_out_of_reach_are_counted_with_the_running() {
+        let mut said = said_health();
+        said["sessions"]["laptop"] = json!({"busy": 0, "idle": 0, "ended": 0, "unreachable": 5});
+        assert_eq!(
+            mycelium(&Ok(said)).says,
+            "2 busy and 1 idle cells, and 5 out of reach on 2 machines; 1 link up",
+            "the cells out of reach were left out of the mycelium's count"
         );
     }
 }
