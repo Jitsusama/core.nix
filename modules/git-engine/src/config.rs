@@ -171,18 +171,21 @@ pub fn system_file(
 /// What a parent git passed on to the commands it runs, from its
 /// environment as `var` gives it, in the order config.c reads them:
 /// `GIT_CONFIG_COUNT`'s pairs, then each `-c`, which `GIT_CONFIG_PARAMETERS`
-/// holds shell-quoted, as `'key'='value'`, `'key'` for a bare key, or
-/// `'key=value'` as older gits wrote it. A pair git would die on is left
-/// out.
+/// holds shell-quoted, as `'key'='value'`, `'key'=` for a bare key, which
+/// is true, or `'key'` and `'key=value'` as older gits wrote them. A pair
+/// git would die on is left out, and the pairs of `GIT_CONFIG_COUNT` end at
+/// the first missing, where git dies.
 pub fn parameters(var: impl Fn(&str) -> Option<String>) -> Vec<(String, Option<String>)> {
     let mut pairs = Vec::new();
     let count = var("GIT_CONFIG_COUNT").and_then(|count| count.parse::<usize>().ok());
     for i in 0..count.unwrap_or(0) {
-        if let (Some(key), Some(value)) = (
+        let (Some(key), Some(value)) = (
             var(&format!("GIT_CONFIG_KEY_{i}")),
             var(&format!("GIT_CONFIG_VALUE_{i}")),
-        ) && let Some(key) = canonical(&key)
-        {
+        ) else {
+            break;
+        };
+        if let Some(key) = canonical(&key) {
             pairs.push((key, Some(value)));
         }
     }
@@ -199,10 +202,15 @@ pub fn parameters(var: impl Fn(&str) -> Option<String>) -> Vec<(String, Option<S
             return pairs;
         };
         let (key, value, after) = if let Some(after) = after.strip_prefix('=') {
-            let Some((value, after)) = unquoted(after) else {
-                return pairs;
-            };
-            (word, Some(value), after)
+            // An `=` with nothing after it is how git writes a bare key.
+            if after.is_empty() || after.starts_with(|c: char| c.is_ascii_whitespace()) {
+                (word, None, after)
+            } else {
+                let Some((value, after)) = unquoted(after) else {
+                    return pairs;
+                };
+                (word, Some(value), after)
+            }
         } else {
             match word.split_once('=') {
                 Some((key, value)) => (key.to_owned(), Some(value.to_owned()), after),
@@ -602,6 +610,19 @@ mod tests {
             "the new form, a bare key and the old form weren't each read, keys kept as \
              the files' are"
         );
+        // As git 2.56 writes `-c core.bare -c core.autocrlf=true -c a.b`.
+        assert_eq!(
+            passed(&[(
+                "GIT_CONFIG_PARAMETERS",
+                "'core.bare'= 'core.autocrlf'='true' 'a.b'=",
+            )]),
+            [
+                bare.clone(),
+                one("core.autocrlf", "true"),
+                ("a.b".to_owned(), None)
+            ],
+            "a bare key as git now writes it, with an `=` and nothing after, wasn't read"
+        );
         assert_eq!(
             passed(&[("GIT_CONFIG_PARAMETERS", "'a.b'='it'\\''s'\\!'' 'a.c'=''")]),
             [one("a.b", "it's!"), one("a.c", "")],
@@ -619,6 +640,17 @@ mod tests {
             ]),
             [one("a.x", "first"), one("a.x", "last")],
             "the counted pairs weren't read before the -c ones, or one git dies on was kept"
+        );
+        assert_eq!(
+            passed(&[
+                ("GIT_CONFIG_COUNT", "18446744073709551615"),
+                ("GIT_CONFIG_KEY_0", "a.x"),
+                ("GIT_CONFIG_VALUE_0", "0"),
+                ("GIT_CONFIG_KEY_2", "a.y"),
+                ("GIT_CONFIG_VALUE_2", "2"),
+            ]),
+            [one("a.x", "0")],
+            "the counted pairs went on past the first missing, where git dies"
         );
         assert_eq!(
             passed(&[("GIT_CONFIG_PARAMETERS", "'a.x'='1' unquoted 'a.y'='2'")]),

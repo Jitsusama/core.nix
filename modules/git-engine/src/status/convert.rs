@@ -86,7 +86,10 @@ pub(super) fn conversion_of(
 /// as it is.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Driver {
-    /// Its process or clean command runs.
+    /// Its process or clean command runs, and is git-lfs's own, which turns
+    /// a file into the pointer git-lfs writes for it.
+    Lfs,
+    /// Its process or clean command runs, and is some other.
     Runs,
     /// It has neither, but is required, so git refuses the file.
     Refuses,
@@ -102,11 +105,13 @@ pub fn filter_drivers(config: &Config) -> BTreeMap<String, Driver> {
         .into_iter()
         .filter_map(|name| {
             let step = |step: &str| config.get(&format!("filter.{name}.{step}"));
-            let runs = match step("process") {
-                Some(process) => !process.is_empty(),
-                None => step("clean").is_some_and(|clean| !clean.is_empty()),
+            let (runs, verb) = match step("process") {
+                Some(process) => (process, "filter-process"),
+                None => (step("clean").unwrap_or_default(), "clean"),
             };
-            let driver = if runs {
+            let driver = if is_git_lfs(runs, verb) {
+                Driver::Lfs
+            } else if !runs.is_empty() {
                 Driver::Runs
             } else if config.get_bool(&format!("filter.{name}.required")) == Some(true) {
                 Driver::Refuses
@@ -118,11 +123,21 @@ pub fn filter_drivers(config: &Config) -> BTreeMap<String, Driver> {
         .collect()
 }
 
+/// Whether `command` runs git-lfs's `verb`, by any path to it: a driver
+/// running anything else might write something other than its pointer.
+fn is_git_lfs(command: &str, verb: &str) -> bool {
+    let mut words = command.split_ascii_whitespace();
+    words
+        .next()
+        .is_some_and(|program| program.rsplit('/').next() == Some("git-lfs"))
+        && words.next() == Some(verb)
+}
+
 /// What runs on a file's way in before its line endings, as convert.c
 /// has it: the filter its attributes name, then a change of encoding from
-/// any but UTF-8, made to the filter's output. Since neither an LFS pointer
-/// nor any other file can be matched once an encoding would be changed,
-/// that, or one git refuses, counts first.
+/// any but UTF-8, made to the filter's output. The engine changes no
+/// encoding, so a file whose encoding git would change, or one git
+/// refuses, counts as changed before its filter is looked at.
 fn filter_of(attrs: &HashMap<String, State>, settings: &Settings) -> Filter {
     match attrs.get("working-tree-encoding") {
         Some(State::Value(encoding))
@@ -136,7 +151,7 @@ fn filter_of(attrs: &HashMap<String, State>, settings: &Settings) -> Filter {
     }
     match attrs.get("filter") {
         Some(State::Value(name)) => match settings.filters.get(name) {
-            Some(Driver::Runs) if name == "lfs" => Filter::Lfs,
+            Some(Driver::Lfs) => Filter::Lfs,
             Some(_) => Filter::Other,
             None => Filter::None,
         },
@@ -348,22 +363,30 @@ mod tests {
              [filter \"must\"]\n smudge = cat\n required\n\
              [filter \"loose\"]\n smudge = cat\n required = false\n\
              [filter \"sure\"]\n clean = cat\n required\n\
+             [filter \"pathed\"]\n clean = /bin/git-lfs clean -- %f\n\
+             [filter \"wrapped\"]\n process = git-lfs-wrapper filter-process\n\
+             [filter \"crossed\"]\n process = git-lfs clean\n\
              [filters]\n x = y\n",
         );
         let runs = |name: &str| (name.to_owned(), Driver::Runs);
+        let lfs = |name: &str| (name.to_owned(), Driver::Lfs);
         assert_eq!(
             filter_drivers(&config),
             BTreeMap::from([
                 runs("Crypt"),
                 runs("a.b"),
-                runs("lfs"),
+                runs("crossed"),
+                lfs("lfs"),
+                lfs("pathed"),
+                runs("wrapped"),
                 ("must".to_owned(), Driver::Refuses),
                 runs("sure"),
                 runs("twice"),
             ]),
             "took a filter only smudging, with an empty or emptied command, an empty \
              process over a clean one, or another section's keys; missed one with a dot \
-             or a capital in its name; or misjudged a required one"
+             or a capital in its name; misjudged a required one; or took for git-lfs's \
+             a command other than its process or clean"
         );
     }
 
@@ -394,7 +417,8 @@ mod tests {
     #[test]
     fn a_filter_counts_only_where_git_has_a_clean_step_for_it() {
         let none = settings(false, &[]);
-        let both = settings(false, &[("lfs", Driver::Runs), ("crypt", Driver::Runs)]);
+        let both = settings(false, &[("lfs", Driver::Lfs), ("crypt", Driver::Runs)]);
+        let other = settings(false, &[("lfs", Driver::Runs)]);
         let refusing = settings(
             false,
             &[("lfs", Driver::Refuses), ("must", Driver::Refuses)],
@@ -404,6 +428,8 @@ mod tests {
             (value("lfs"), &none, Filter::None),
             (value("crypt"), &both, Filter::Other),
             (value("lfs"), &both, Filter::Lfs),
+            // A driver named lfs whose command is another's is no LFS.
+            (value("lfs"), &other, Filter::Other),
             (value("Crypt"), &both, Filter::None),
             (State::Set, &both, Filter::None),
             (State::Unset, &both, Filter::None),
@@ -450,7 +476,7 @@ mod tests {
 
     #[test]
     fn an_encoding_counts_over_any_filter() {
-        let lfs = settings(false, &[("lfs", Driver::Runs)]);
+        let lfs = settings(false, &[("lfs", Driver::Lfs)]);
         for (encoding, settings, wanted) in [
             ("UTF-16", &lfs, Filter::Other),
             ("UTF-16", &settings(false, &[]), Filter::Other),
@@ -497,6 +523,17 @@ mod tests {
             (vec![("text", value("foo"))], true, Crlf::Auto),
             (vec![("eol", value("lf"))], false, Crlf::Text),
             (vec![("eol", value("crlf"))], false, Crlf::Text),
+            // An eol makes text only of a file whose text is unsaid.
+            (
+                vec![("text", value("auto")), ("eol", value("lf"))],
+                false,
+                Crlf::Auto,
+            ),
+            (
+                vec![("text", State::Unset), ("eol", value("crlf"))],
+                true,
+                Crlf::Binary,
+            ),
             // An eol other than lf or crlf says nothing either.
             (vec![("eol", value("foo"))], false, Crlf::Binary),
             (vec![("eol", value("foo"))], true, Crlf::Auto),
@@ -642,7 +679,10 @@ mod tests {
         let other = b"version https://git-lfs.github.com/spec/v1\n\
             oid sha256:5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03\n\
             size 7\n";
-        let objects = store("lfs", &[extended, other]);
+        let changed = b"version https://git-lfs.github.com/spec/v1\n\
+            oid sha256:5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be04\n\
+            size 6\n";
+        let objects = store("lfs", &[extended, other, changed]);
         let mut odb = Odb::open(&objects);
         let exact = Oid::of("blob", lfs_pointer(b"hello\n").as_bytes());
         for (oid, wanted, what) in [
@@ -653,6 +693,11 @@ mod tests {
                 "a pointer with an extension",
             ),
             (Oid::of("blob", other), false, "a pointer of another size"),
+            (
+                Oid::of("blob", changed),
+                false,
+                "a pointer of the same size to another object",
+            ),
             (
                 Oid::of("blob", b"absent"),
                 false,

@@ -116,19 +116,26 @@ pub struct Repo {
     monitor: Option<Monitor>,
 }
 
-fn config_files(location: &Location, home: Option<&Path>) -> Vec<PathBuf> {
+/// The config files git reads for a repository whose common folder is
+/// `common`, from its environment as `var` gives it, lowest first: the
+/// system's, the global ones, then the repository's own.
+fn config_files(
+    common: &Path,
+    home: Option<&Path>,
+    var: impl Fn(&str) -> Option<String>,
+) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = config::system_file(
-        |name| std::env::var(name).ok(),
+        &var,
         "GIT_CONFIG_NOSYSTEM",
         Some("GIT_CONFIG_SYSTEM"),
         "/etc/gitconfig",
     )
     .into_iter()
     .collect();
-    if let Ok(global) = std::env::var("GIT_CONFIG_GLOBAL") {
+    if let Some(global) = var("GIT_CONFIG_GLOBAL") {
         files.push(PathBuf::from(global));
     } else {
-        let xdg = std::env::var_os("XDG_CONFIG_HOME")
+        let xdg = var("XDG_CONFIG_HOME")
             .map(PathBuf::from)
             .or_else(|| home.map(|h| h.join(".config")));
         if let Some(xdg) = xdg {
@@ -138,7 +145,7 @@ fn config_files(location: &Location, home: Option<&Path>) -> Vec<PathBuf> {
             files.push(home.join(".gitconfig"));
         }
     }
-    files.push(location.common.join("config"));
+    files.push(common.join("config"));
     files
 }
 
@@ -148,7 +155,7 @@ fn load_config(location: &Location, home: Option<&Path>, branch: Option<&str>) -
         branch,
         home,
     };
-    let mut files = config_files(location, home);
+    let mut files = config_files(&location.common, home, |name| std::env::var(name).ok());
     let parameters = config::parameters(|name| std::env::var(name).ok());
     let first = Config::load(&files, &parameters, &context);
     if first.get_bool("extensions.worktreeconfig") == Some(true) {
@@ -730,5 +737,50 @@ impl Repo {
         status::settle(&mut counts, limits);
         answer.counts = Some(counts);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::config_files;
+    use std::path::{Path, PathBuf};
+
+    /// The files read for a repository at /r, home /h, in an environment
+    /// holding `vars`.
+    fn files(vars: &[(&str, &str)]) -> Vec<PathBuf> {
+        config_files(Path::new("/r"), Some(Path::new("/h")), |name| {
+            vars.iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| (*value).to_owned())
+        })
+    }
+
+    #[test]
+    fn config_files_are_read_system_first_then_global_then_the_repositorys() {
+        let paths = |names: &[&str]| names.iter().map(PathBuf::from).collect::<Vec<_>>();
+        assert_eq!(
+            files(&[]),
+            paths(&[
+                "/etc/gitconfig",
+                "/h/.config/git/config",
+                "/h/.gitconfig",
+                "/r/config"
+            ]),
+            "the files weren't read in git's order"
+        );
+        assert_eq!(
+            files(&[
+                ("GIT_CONFIG_SYSTEM", "/s"),
+                ("GIT_CONFIG_GLOBAL", "/g"),
+                ("XDG_CONFIG_HOME", "/x"),
+            ]),
+            paths(&["/s", "/g", "/r/config"]),
+            "the system or global file wasn't taken from where the environment says"
+        );
+        assert_eq!(
+            files(&[("GIT_CONFIG_NOSYSTEM", "1"), ("XDG_CONFIG_HOME", "/x")]),
+            paths(&["/x/git/config", "/h/.gitconfig", "/r/config"]),
+            "the system file was read where it's turned off, or XDG's wasn't followed"
+        );
     }
 }

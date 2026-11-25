@@ -475,6 +475,8 @@ for r in $work/converted $work/converted-watched; do
   git -C $r config filter.nothing.clean 'tr o O'
   like_git "${r:t}: a filter git runs" $r
   git -C $r config --unset filter.nothing.clean
+  like_git "${r:t}: a filter that smudges again" $r
+  # Only the system file changes, so its change alone must be seen.
   git config --system filter.nothing.clean 'tr o O'
   like_git "${r:t}: a filter git runs by the system config" $r
   : > $GIT_CONFIG_SYSTEM
