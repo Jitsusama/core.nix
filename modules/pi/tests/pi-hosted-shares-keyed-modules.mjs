@@ -397,9 +397,9 @@ await heldUpUntil("a link to an unkeyed copy", throughUnkeyed, async () => {
 });
 // While a load holds its turn too long, the load waiting behind it and one
 // begun meanwhile load as an unkeyed package's do, and a factory kept
-// before stays kept. Once the load ends, it is kept too, and later loads
-// share the package's modules again, without waiting for one that went on
-// unshared.
+// before stays kept. Every factory those loads give is kept, the held
+// load's once it ends, and later loads share the package's modules again,
+// without waiting for one that went on unshared.
 afresh();
 const { entries: stall, counts: stalledCounts } = stalledPackage(join(scratch, "stalled"));
 await open("stalled-early", [stall.early]);
@@ -430,10 +430,14 @@ await within(
 lagGate.putAway();
 lagGate.open();
 await within(stallWaiting, "a load that went on behind a turn held too long never ended");
+await within(
+  open("stalled-again", [stall.behind, stall.meanwhile]),
+  "a load after loads that went on unshared never ended",
+);
 assert.deepEqual(
   stalledCounts(),
   [3, 1, 1, 1, 1, 1],
-  "loads while a turn was held too long shared its modules, a factory kept was let go, or later loads didn't share again",
+  "loads while a turn was held too long shared its modules, a factory they gave wasn't kept, or later loads didn't share again",
 );
 
 // A load in flight as its link moves to another copy, while the copy it
