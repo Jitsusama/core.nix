@@ -390,6 +390,16 @@ import ./host-checks.nix args
         touch $out
       '';
 
+  # A hosted pi draws its conversation before its extensions bind, so a
+  # session_start that never settles leaves the window readable, not blank.
+  pi-hosted-draws-before-it-binds =
+    pkgs.runCommandLocal "pi-hosted-draws-before-it-binds" { }
+      ''
+        HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+          ${./tests/pi-hosted-draws-before-it-binds.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+        touch $out
+      '';
+
   # A hosted pi's screen stays in its own conversation: quitting or a crash
   # ends only that screen and what it was doing, a stopped screen builds
   # nothing for an extension and disposes the footer, header and editor one
