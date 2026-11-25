@@ -431,8 +431,8 @@ def test_a_listing_served_from_another_folder_never_takes_the_old_list_for_its_o
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    # Kept elsewhere, the pass's own list comes with its copy, so one left
-    # in the folder asked for is from some other run.
+    # Kept elsewhere, the kept folder's list comes with the copy, so one
+    # left in the folder asked for is from some other run.
     out = stand_in.folder / "out"
     out.mkdir()
     (out / "subtests").write_text("test_stale\n")

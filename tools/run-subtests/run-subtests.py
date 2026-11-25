@@ -383,12 +383,13 @@ def there(options: Options) -> tuple[int, frozenset[str]] | None:
     # A list left in a folder used before isn't this build's, so it's moved
     # out of the way. It goes back when nix-offload wrote no list of its own,
     # so neither a failed run nor a pass kept in this very folder loses it;
-    # but not beside a pass copied from elsewhere, whose list comes with it.
-    # Ctrl-C puts it back too, though beside such a copy if nix-offload had
-    # begun one; a signal that ends Python unhandled, as SIGTERM does, loses it.
-    # A pass kept in this very folder is shown with the list the folder holds
-    # now, which a later listing into it, of another check or commit, may have
-    # replaced: nix-offload keeps no mark of whose list it is.
+    # but not beside a pass copied from elsewhere, whose kept folder's list
+    # comes with it. Ctrl-C puts it back too, though beside such a copy if
+    # nix-offload had begun one; a signal that ends Python unhandled, as
+    # SIGTERM does, loses it. Either way a served pass is shown with the list
+    # its kept folder holds now, which a later listing into that folder, of
+    # another check or commit, may have replaced: nix-offload keeps no mark
+    # of whose list it is.
     listed = out / "subtests"
     before = listed.read_text() if listed.exists() else None
     command = ["nix-offload", "there", "-L", "--out", str(out), "--apply", apply]
