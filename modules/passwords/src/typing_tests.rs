@@ -48,6 +48,22 @@ fn kitty_is_asked_where_it_was_told_to_listen_else_by_its_pid() {
 }
 
 #[test]
+fn only_a_kitty_listening_at_an_abstract_address_answers_alone() {
+    assert!(kittys_alone("unix:@kitty-9"), "kitty.conf's own address");
+    for address in [
+        "unix:/run/user/1000/pi-sessions/kitty.sock",
+        "tcp:localhost:5000",
+        "unix:",
+        "",
+    ] {
+        assert!(
+            !kittys_alone(address),
+            "{address:?} could be taken by another program"
+        );
+    }
+}
+
+#[test]
 fn only_the_focused_windows_foreground_is_read() {
     let listed = json!([
         {"is_focused": false, "tabs": [{"is_focused": true, "windows": [

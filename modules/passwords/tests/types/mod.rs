@@ -304,11 +304,20 @@ impl Desk {
     /// named as Linux names kitty, running `child` as its window's process;
     /// answers kitty's id and the child's.
     fn kitty(&mut self, child: &str) -> (u32, u32) {
+        self.kitty_with(child, "")
+    }
+
+    /// A stand-in kitty, as `kitty` starts one, started with `words` too,
+    /// as kitty is told where to listen.
+    fn kitty_with(&mut self, child: &str, words: &str) -> (u32, u32) {
         let kitty = self.copied(&format!("{KITTY_PACKAGE}/kitty"));
         let said = self.folder.join("kitty-child");
         let pid = self.start(
             &kitty,
-            &format!("-c '{child} & echo $! > \"{}\"; wait'", said.display()),
+            &format!(
+                "-c '{child} & echo $! > \"{}\"; wait' {words}",
+                said.display()
+            ),
         );
         until("kitty is named kitty", || {
             std::fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|comm| comm == "kitty\n")
@@ -515,6 +524,43 @@ fn nothing_is_typed_into_a_window_beneath_an_agents_command() {
         desk.typed().is_none(),
         "it was typed into a window an agent's command opened"
     );
+}
+
+#[test]
+fn nothing_is_typed_into_a_window_whose_program_is_gone() {
+    // niri names the process that opened a window's connection, which
+    // may hand it to a child and end, leaving nothing in /proc to read.
+    let desk = Desk::new("gone");
+    let mut ended = Command::new("/bin/sh").arg("-c").arg(":").spawn().unwrap();
+    ended.wait().unwrap();
+    desk.focus(WINDOW, ended.id(), "foot");
+    let (running, _journal) = running("gone", &desk, &[]);
+    let refused = type_github(&running);
+    refused_reading_nothing(&running, &refused, "is gone");
+    assert!(
+        desk.typed().is_none(),
+        "it was typed into a window nothing in /proc stands behind"
+    );
+}
+
+#[test]
+fn nothing_is_typed_into_a_kitty_listening_where_another_could_answer() {
+    // A socket's file can be removed and bound again by any program of
+    // Joel's, which then answers kitten's ls for kitty.
+    let mut desk = Desk::new("kitty-listens-openly");
+    let (kitty, shell) =
+        desk.kitty_with("sleep 1000", "--listen-on unix:/run/user/1000/kitty.sock");
+    desk.focus(WINDOW, kitty, "kitty");
+    desk.kitty_runs(&json!([{"pid": shell, "cmdline": ["-zsh"]}]));
+    let (running, _journal) = running("kitty-listens-openly", &desk, &[]);
+    let refused = type_github(&running);
+    refused_reading_nothing(&running, &refused, "could answer for it");
+    assert!(
+        desk.kitty_asked().is_empty(),
+        "kitty was asked at an address another could answer: {}",
+        desk.kitty_asked()
+    );
+    assert!(desk.typed().is_none(), "it was typed past an open address");
 }
 
 #[test]

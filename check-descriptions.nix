@@ -3397,9 +3397,11 @@
     that window still has them, refusing a second while one is under way, never into one an
     agent's process is behind, above or below (pi, pi-spawner,
     mycelium, the hosted runtime, or the agents' or jobs' slices, which only kitten's own kitty
-    is let off, never one only named kitty), nor a kitty whose foreground runs one or a
-    multiplexer or that can't say, nor a kitty window another may lie over or that isn't the
-    one the first look found, nor more than 5 s after it was asked, and writes one journal line
+    is let off, never one only named kitty), nor one whose program is gone or can't be read,
+    nor a kitty listening where another program could answer for it, nor a kitty whose
+    foreground runs one or a multiplexer or that can't say, nor a kitty window another may lie
+    over or that isn't the one the first look found, nor more than 5 s after it was asked, and
+    writes one journal line
     for each type
     naming no secret, can't be read through /proc by the
     account's other processes nor write a core dump, says nothing of its own on the shell's pipe

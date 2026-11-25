@@ -213,6 +213,25 @@ fn cgroup(pid: u32) -> String {
     std::fs::read_to_string(format!("/proc/{pid}/cgroup")).unwrap_or_default()
 }
 
+/// Whether /proc still says what the process at `pid` is: its name and
+/// its control group. Every reader here takes a gone process's empty
+/// answer for nothing wrong, so one that can't be read must refuse.
+fn read(pid: u32) -> bool {
+    !program(pid).is_empty() && !cgroup(pid).is_empty()
+}
+
+/// Whether the process behind a window still runs: readable, and its
+/// program still there, which a zombie's isn't. niri names the process
+/// that opened the window's connection, which may have handed it to a
+/// child and gone, leaving whatever holds it unread (finding 151 on
+/// #6502, 2026-11-25).
+fn runs(pid: u32) -> bool {
+    read(pid) && std::fs::read_link(format!("/proc/{pid}/exe")).is_ok()
+}
+
+/// Why a window whose process is gone is refused.
+pub const GONE: &str = "the program that opened that window is gone";
+
 /// Whether a control group, as /proc gives it, is an agent's: in the jobs'
 /// slice, or the agents' slice but for a scope kitty makes for one of its
 /// windows, which holds whatever Joel starts there.
@@ -291,14 +310,15 @@ fn an_agent(pid: u32, from: Option<&Path>) -> bool {
 }
 
 /// The process at `pid` or among its forebears that is an agent's, up to
-/// the first, or none, `from` as `an_agent` takes it.
+/// the first, or none, `from` as `an_agent` takes it. One that can't be
+/// read counts, since what it was can't be told.
 #[must_use]
 pub fn session_above(pid: u32, from: Option<&Path>) -> Option<u32> {
     let mut at = Some(pid);
     // A loop in what /proc says can't be, but is never followed forever.
     for _ in 0..4096 {
         let here = at?;
-        if an_agent(here, from) {
+        if !read(here) || an_agent(here, from) {
             return Some(here);
         }
         at = parent(here).filter(|up| *up != 0 && *up != here);
@@ -438,6 +458,19 @@ pub fn listens_on(words: &[String], pid: u32) -> String {
     format!("unix:@kitty-{pid}")
 }
 
+/// Whether kitty listening at `address` can be the only one to answer
+/// there: an abstract address, which none can take from it while it
+/// holds it. A socket's file can be removed and bound again by any
+/// program of Joel's, which would then answer for kitty (finding 152 on
+/// #6502, 2026-11-25).
+#[must_use]
+pub fn kittys_alone(address: &str) -> bool {
+    address.starts_with("unix:@")
+}
+
+/// Why a kitty listening elsewhere is refused.
+pub const OPENLY: &str = "that kitty listens where any program of yours could answer for it";
+
 /// What kitty's `ls` says runs in the window that has its keys: each
 /// foreground process's id and arguments, from its focused OS window's
 /// active tab's active window. None where it names no such window.
@@ -528,12 +561,11 @@ pub struct Fit {
     pub kitty: Option<u64>,
 }
 
-/// What kitty at `pid` says runs in its focused window, asked through
-/// `kitty`, the program, within `KITTY_ANSWERS`.
-fn kitty_says(kitty: &str, pid: u32) -> Result<String, String> {
-    let address = listens_on(&arguments(pid), pid);
+/// What kitty listening at `address` says runs in its focused window,
+/// asked through `kitty`, the program, within `KITTY_ANSWERS`.
+fn kitty_says(kitty: &str, address: &str) -> Result<String, String> {
     let mut asked = Command::new(kitty)
-        .args(["@", "--to", &address, "ls"])
+        .args(["@", "--to", address, "ls"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -575,9 +607,11 @@ fn kitty_says(kitty: &str, pid: u32) -> Result<String, String> {
 ///
 /// # Errors
 ///
-/// Where another window has the keys, niri says not whose it is, an agent
-/// reads it, or it's a terminal that runs an agent, a multiplexer, or
-/// can't say what it runs, or a kitty window another may lie over.
+/// Where another window has the keys, niri says not whose it is, the
+/// program that opened it is gone, an agent reads it, or it's a terminal
+/// that runs an agent, a multiplexer, or can't say what it runs, a kitty
+/// listening where another could answer, or a kitty window another may
+/// lie over.
 pub fn fit(niri: &Path, window: u64, kitty_program: Option<&str>) -> Result<Fit, (String, String)> {
     let unknown = |why: String| (String::new(), why);
     let Some(focused) = focused_now(niri).map_err(unknown)? else {
@@ -598,6 +632,9 @@ pub fn fit(niri: &Path, window: u64, kitty_program: Option<&str>) -> Result<Fit,
     let Some(pid) = focused.pid else {
         return refused("niri didn't say whose window it is");
     };
+    if !runs(pid) {
+        return refused(GONE);
+    }
     let name = program(pid);
     if x11s(&name) {
         return refused("that window is X11's, where any X program can read its keys");
@@ -617,7 +654,11 @@ pub fn fit(niri: &Path, window: u64, kitty_program: Option<&str>) -> Result<Fit,
         }
         return below(pid, from).map_or_else(fits, refused);
     }
-    let said = match kitty_says(kitty_program, pid) {
+    let address = listens_on(&arguments(pid), pid);
+    if !kittys_alone(&address) {
+        return refused(OPENLY);
+    }
+    let said = match kitty_says(kitty_program, &address) {
         Ok(said) => said,
         Err(why) => return refused(&why),
     };
