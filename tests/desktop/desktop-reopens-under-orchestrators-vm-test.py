@@ -1073,7 +1073,10 @@ def test_new_work_in_a_zone_by_its_name_begins_at_its_checkouts_top(desktop: Des
         desktop.as_account("rm -rf ~/src/github.com/harbour")
 
 
-def test_new_work_is_pictured_from_its_folder_to_its_window(desktop: Desktop) -> None:
+# One walk, as Joel takes it: each step starts where the last left it, and is pictured there.
+def test_new_work_is_pictured_from_its_folder_to_its_window(  # noqa: PLR0915
+    desktop: Desktop,
+) -> None:
     """Pictures each step of Start New Work in a folder, as Joel walks it, to its window.
 
     Joel, 2026-11-25 14:33, of a start he gave in a folder: "i have no room to type once i
