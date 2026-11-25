@@ -138,7 +138,9 @@ fn made(clone: &Path, seed: &str) -> io::Result<()> {
 /// Runs git in `dir` with no account or system config, so no setting of
 /// Joel's, a rename limit or a diff driver, turns what it judges, and a
 /// link that stalls gives up in half a minute rather than holding the
-/// card. Upkeep is git's own, as cadence owns its clones.
+/// card. It never asks for a password: the hour runs unattended, so a
+/// remote wanting one fails at once rather than opening a prompt on the
+/// desktop. Upkeep is git's own, as cadence owns its clones.
 fn run(dir: &Path, args: &[&str]) -> io::Result<Output> {
     Command::new("git")
         .arg("-C")
@@ -152,6 +154,9 @@ fn run(dir: &Path, args: &[&str]) -> io::Result<Output> {
         .args(args)
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env_remove("GIT_ASKPASS")
+        .env_remove("SSH_ASKPASS")
         .output()
         .map_err(|err| io::Error::other(format!("git didn't start: {err}")))
 }
