@@ -461,8 +461,9 @@ PanelWindow {
         const now = Date.now();
         // As far into the scroll as niri says, or a guess at how late it
         // hears of one where niri says nothing.
-        carry = Stacked.rides(carry, place, to, now, MarginCat.behindTold(frameMs, "slide",
-            Tiles.animating(Niri.windows, space?.id, "ViewMove")), spring);
+        const behind = MarginCat.behindTold(frameMs, "slide",
+            Tiles.animating(Niri.windows, space?.id, "ViewMove"));
+        carry = Stacked.rides(carry, place, to, { at: now - behind, spring });
         lag = MarginCat.lags(carry.from, now - carry.at, spring);
         place = to;
     }
