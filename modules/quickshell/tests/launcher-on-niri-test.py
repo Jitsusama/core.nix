@@ -2771,8 +2771,16 @@ def test_emoji_says_how_many_it_found_past_those_it_answers(shell: Shell) -> Non
     # Emoji lists nothing for an f until the history answers, which type_in takes as settled.
     shell.launcher_until(lambda shown: shown["count"] > 0)
     shell.normal()
-    shell.launcher_until(lambda shown: shown["found"] != "")
-    said = shell.showing()["found"]
+    # The head judged is the one the wait passed on, as a later showing() could come after the
+    # answer was let go and say nothing.
+    heads: list[str] = []
+
+    def says_found(shown: Json) -> bool:
+        heads.append(cast("str", shown["found"]))
+        return heads[-1] != ""
+
+    shell.launcher_until(says_found)
+    said = heads[-1]
     shell.close_launcher()
     counted = FOUND_OF.fullmatch(said)
     assert counted, f"Emoji's head never said how many it found past those it shows: {said}"
