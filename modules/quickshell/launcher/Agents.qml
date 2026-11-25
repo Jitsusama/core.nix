@@ -2773,9 +2773,9 @@ Provider {
         // (Sprouting.fromJoel), and only his first to an ask, For You's choices too. Refused,
         // nothing is kept, so its Talk shows no words he didn't send; a walk is told why
         // (Launcher.qml's walkedRun), and `then` hears it refused, its row saying why.
-        const refused = TalkAnswers.answerRefused(Sprouting.fromJoel(launcher), answeredTo[to],
-            chose.answers.want, Date.now(), Words.of("verb:agent:talk").said ?? {},
-            sessionAt(address)?.title ?? to);
+        const asked = { list: answeredTo[to], want: chose.answers.want, nowMs: Date.now() };
+        const refused = TalkAnswers.answerRefused(Sprouting.fromJoel(launcher), asked,
+            Words.of("verb:agent:talk").said ?? {}, sessionAt(address)?.title ?? to);
         if (refused !== null) {
             launcher?.walkRefused?.(refused);
             then(false, refused, false, true);
