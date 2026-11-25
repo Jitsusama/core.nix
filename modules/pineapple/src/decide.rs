@@ -131,9 +131,11 @@ pub fn decide(heard: &Heard, joel: &Joel) -> Decision {
             (Tell::Loud, Reply::Nothing)
         }
         Verdict::Resume | Verdict::Waved(Waved::TalkedAbout) => (Tell::Row, Reply::Nothing),
-        Verdict::Waved(Waved::Quoted | Waved::Bot | Waved::Outsider) | Verdict::Nothing => {
-            (Tell::Log, Reply::Nothing)
-        }
+        // Joel's account saying the phrase other than as its opening is
+        // most often one of his agents writing about it, so it's only
+        // kept in the log, like a quote.
+        Verdict::Waved(Waved::Quoted | Waved::Bot | Waved::Outsider | Waved::Unopened)
+        | Verdict::Nothing => (Tell::Log, Reply::Nothing),
     };
     Decision {
         verdict,

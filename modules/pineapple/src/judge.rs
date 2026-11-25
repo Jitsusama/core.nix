@@ -133,6 +133,11 @@ pub enum Waved {
     /// organization nor a collaborator (Joel's orchestrator, 16
     /// November), so a stranger can't stop his agents, nor sound an alert.
     Outsider,
+    /// Written by Joel's own account on a markdown host, where his agents
+    /// post as him, without opening with the phrase: only a saying that
+    /// opens with it, after any tags, is his command. An agent's findings
+    /// quoting the phrase once stopped everything (WCJQSG, 25 November).
+    Unopened,
 }
 
 impl fmt::Display for Verdict {
@@ -157,6 +162,7 @@ impl fmt::Display for Waved {
             Self::Quoted => "quoted",
             Self::Bot => "bot",
             Self::Outsider => "outsider",
+            Self::Unopened => "unopened",
         })
     }
 }
@@ -187,6 +193,10 @@ pub fn judge(saying: &Saying<'_>, joel: &Joel) -> Judgement {
     };
     let anywhere = tokens(saying.text);
     let phrase_anywhere = has_run(&anywhere, &OVERRIDE) || has_run(&anywhere, &RESUME);
+    // Joel's account on a markdown host is his agents' too, so there his
+    // own saying counts only when it opens with the phrase.
+    let unopened =
+        |run: &[&str]| by_joel && saying.platform == Platform::Markdown && !opens_with(&own, run);
 
     if saying.by_bot {
         let verdict = if phrase_anywhere {
@@ -197,7 +207,9 @@ pub fn judge(saying: &Saying<'_>, joel: &Joel) -> Judgement {
         return found(verdict, Vec::new());
     }
     if let Some(at) = find_run(&words, &OVERRIDE) {
-        let verdict = if talked_about(&words, at) {
+        let verdict = if unopened(&OVERRIDE) {
+            Verdict::Waved(Waved::Unopened)
+        } else if talked_about(&words, at) {
             Verdict::Waved(Waved::TalkedAbout)
         } else if !tagged && !by_joel {
             Verdict::Waved(Waved::NoTag)
@@ -210,7 +222,9 @@ pub fn judge(saying: &Saying<'_>, joel: &Joel) -> Judgement {
     }
     if let Some(at) = find_run(&words, &RESUME) {
         let named = targets(&own, &words, at + RESUME.len());
-        return if talked_about(&words, at) {
+        return if unopened(&RESUME) {
+            found(Verdict::Waved(Waved::Unopened), Vec::new())
+        } else if talked_about(&words, at) {
             found(Verdict::Waved(Waved::TalkedAbout), Vec::new())
         } else if by_joel {
             found(Verdict::Resume, named)
@@ -227,6 +241,18 @@ pub fn judge(saying: &Saying<'_>, joel: &Joel) -> Judgement {
         return found(Verdict::StopAsked, Vec::new());
     }
     found(Verdict::Nothing, Vec::new())
+}
+
+/// Whether `own` words open with the run `run`, after any tags that lead
+/// them, as "@jitsusama pineapple override" and "pineapple override" do.
+fn opens_with(own: &str, run: &[&str]) -> bool {
+    let mut rest = own.trim_start();
+    while let Some(tag) = rest.strip_prefix('@') {
+        let end = tag.find(char::is_whitespace).unwrap_or(tag.len());
+        rest = tag[end..].trim_start();
+    }
+    let opening = tokens(rest);
+    opening.len() >= run.len() && opening.iter().zip(run).all(|(word, want)| word == want)
 }
 
 /// Whether the phrase at `at` is being talked about rather than said, as

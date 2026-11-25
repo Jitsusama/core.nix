@@ -433,6 +433,42 @@
       "targets": []
     },
     {
+      "name": "Joel's account quoting the phrase mid-text, as an agent's findings do",
+      "platform": "markdown",
+      "author": "Jitsusama",
+      "text": "The findings of round council-1, for its owner to decide: 28 in all.\n\n#### F1, medium (issue), modules/pineapple/src/phone.rs:220\n\nNothing checks that the reader still knows its own alert, so the alert's quoted 'pineapple override' could start a stop-and-alert loop.",
+      "verdict": "waved:unopened"
+    },
+    {
+      "name": "Joel's account resuming mid-text",
+      "platform": "markdown",
+      "author": "Jitsusama",
+      "text": "Once it's fixed, pineapple resume on #4215",
+      "verdict": "waved:unopened"
+    },
+    {
+      "name": "Joel opens with the phrase and a link",
+      "platform": "markdown",
+      "author": "Jitsusama",
+      "text": "pineapple override https://github.com/Jitsusama/core.nix/pull/6476",
+      "verdict": "stop",
+      "targets": ["pr:Jitsusama/core.nix#6476"]
+    },
+    {
+      "name": "Joel opens with his own tag, then the phrase",
+      "platform": "markdown",
+      "author": "Jitsusama",
+      "text": "@Jitsusama, pineapple override",
+      "verdict": "stop"
+    },
+    {
+      "name": "Joel mid-sentence on Slack, where no agent writes as him",
+      "platform": "slack",
+      "author": "U0JOEL0001",
+      "text": "ok, pineapple override now",
+      "verdict": "stop"
+    },
+    {
       "name": "Joel resumes one PR",
       "platform": "markdown",
       "author": "Jitsusama",
