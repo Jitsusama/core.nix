@@ -1349,6 +1349,31 @@ ShellRoot {
                 + Niri.spawns.slice(untookFrom).join(" | "));
         Sessions.forgetAsk(untook);
         Niri.windows = Object.assign({}, unforged, { "88": forged });
+        // A viewer Reopen Them All kept a place for, opened there by itself
+        // once Joel isn't on it, that no kitty took keeps that place, as it
+        // was, so it opens there once a kitty can, rather than wherever
+        // niri puts it next, or nowhere.
+        const keptNamed = "pi-hosted.s-kept-untaken";
+        const keptPlace = { workspace: 5, column: 1, at: Date.now(), asked: true,
+            waiting: view.slice(0, -1).concat(["s-kept-untaken"]), named: keptNamed,
+            title: "Reef" };
+        const keptBeforeUntaken = Sessions.keptPlaces;
+        Sessions.keepPlaces(Object.assign({}, keptBeforeUntaken,
+            { "s-kept-untaken": keptPlace }));
+        const keptFrom = Niri.spawns.length;
+        const keptSpawns = () => Niri.spawns.slice(keptFrom)
+            .filter(command => command.includes(keptNamed)).length;
+        Sessions.viewKept();
+        const keptAsked = keptSpawns() === 1
+            && Sessions.keptPlaces["s-kept-untaken"] === undefined;
+        Sessions.untaken(keptNamed, String(Sessions.attaching[keptNamed]));
+        const keptBack = JSON.stringify(Sessions.keptPlaces["s-kept-untaken"]);
+        Sessions.viewKept();
+        expect("a kept viewer no kitty took keeps its place as it was, and is asked there again",
+            keptAsked && keptBack === JSON.stringify(keptPlace) && keptSpawns() === 2,
+            `${keptAsked} ${keptBack} ${keptSpawns()}`);
+        Sessions.forgetAsk(keptNamed);
+        Sessions.keepPlaces(keptBeforeUntaken);
         // A stray come long after an ask that never came isn't taken for
         // that ask's own refused, so Go To would open its own beside it.
         const stale = "pi-hosted.s-stale";
