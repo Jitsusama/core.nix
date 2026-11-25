@@ -93,8 +93,9 @@ def story(said: list[str]) -> str:
     """Give what the cat did over the reports, once each time it changed, to say why a wait failed.
 
     A failed wait's tail holds only the last second of reports, and the yarn's wait for its
-    play to begin has failed twice that way (23 and 24 Nov) with nothing to say what came
-    between the ask and the strolling the tail shows.
+    play to begin has failed twice that way (2026-11-23 and 2026-11-24) with nothing to say
+    what came between the ask and the strolling the tail shows. It runs only on a failed wait,
+    and a fault of its own still fails the check, with the wait's failure as its cause.
     """
     told: list[str] = []
     was: dict[str, object] | None = None
@@ -106,11 +107,15 @@ def story(said: list[str]) -> str:
             continue
         at = placed(line[len(SITS) :]) or {}
         walk = at.get("walk") or {}
-        keys = ("window", "strolling", "pose", "stilled", "held", "departing")
+        move = at.get("move") or {}
+        keys = ("window", "strolling", "pose", "stilled", "held", "departing", "asleep")
         now: dict[str, object] = {key: at.get(key) for key in keys} | {
+            "restBegun": at.get("restBegun"),
             "beats": walk.get("beats"),
             "play": walk.get("play"),
             "to": walk.get("to"),
+            "move": move.get("beats"),
+            "way": move.get("way"),
         }
         if now != was:
             told.append(f"x {at.get('x')}: {json.dumps(now)}")
@@ -200,8 +205,8 @@ def plays_out(shell: Shell, kind: str) -> tuple[list[Json], Json, Json]:
         shell.reported(SITS, asked, since, STROLLS)
     except AssertionError as failed:
         said, _ = shell.said_since(asking)
-        why = f"{failed}\nwhat the cat did since the ask:\n{story(said)}"
-        raise AssertionError(why) from failed
+        # The wait's own failure, its log tail with it, is printed once as this one's cause.
+        raise AssertionError(f"what the cat did since the ask:\n{story(said)}") from failed
     began = shell.mark()
     shell.reported(PLAYED, lambda said: said.split(" ", 1)[1].startswith("{"), began, PLAYS)
     said, _ = shell.said_since(since)

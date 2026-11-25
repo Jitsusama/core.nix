@@ -56,9 +56,10 @@ QtObject {
     // first frame synced after it sat, never one a walk began, and never
     // by asking for frame after frame (2026-11-24, #6382's rounds).
     function rests(expect) {
-        // It sat at 1000 ms with 40 frames begun. Each frame here was synced,
-        // at a time above the 0 timesOf gives a frame rendered without one,
-        // but in the one case that holds that 0.
+        // It sat at 1000 ms with 40 frames begun. A frame's times are its
+        // sync's, above the 0 timesOf gives one rendered without a sync,
+        // except in the case that holds that 0 and the three fed {}, a
+        // frame whose times were overwritten or never kept.
         const rest = (frame, synchronizing, asked) =>
             MarginCat.restFrom(frame, { synchronizing, asked }, 40, 1000);
         expect("a frame synced as it sat or after begins it, ask or none",
