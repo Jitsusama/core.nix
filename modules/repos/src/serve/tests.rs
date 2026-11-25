@@ -531,20 +531,16 @@ fn a_reading_is_said_until_it_is_stale_paces_old_however_often_it_is_taken() {
     let freed = std::sync::Mutex::new(freed);
     let calls = std::sync::atomic::AtomicU64::new(0);
     let folders = vec![PathBuf::from("/home/someone/trees/fix")];
-    let mut working = Working::start(
-        SLOW,
-        SLOW * STALE,
-        folders.clone(),
-        move |folders: &[PathBuf]| {
-            let call = calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            if call > 0 {
-                let _ = freed
-                    .lock()
-                    .map(|freed| freed.recv_timeout(SLOW * STALE * 4));
-            }
-            read_by(call, folders)
-        },
-    );
+    // Old only past a late wake's whole margin, so the takings below
+    // see the first reading fresh however late this thread wakes.
+    let old = SLOW * STALE + LATE;
+    let mut working = Working::start(SLOW, old, folders.clone(), move |folders: &[PathBuf]| {
+        let call = calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if call > 0 {
+            let _ = freed.lock().map(|freed| freed.recv_timeout(old * 4));
+        }
+        read_by(call, folders)
+    });
     working.read(folders.clone());
     for _ in 0..10 {
         working.read(folders.clone());
@@ -552,13 +548,13 @@ fn a_reading_is_said_until_it_is_stale_paces_old_however_often_it_is_taken() {
     assert_eq!(
         working.used.len(),
         1,
-        "a reading taken often went unsaid before it was {STALE} paces old"
+        "a reading taken often went unsaid before it was {old:?} old"
     );
-    std::thread::sleep(SLOW * STALE);
+    std::thread::sleep(old);
     working.read(folders.clone());
     assert!(
         working.used.is_empty() && working.unread(),
-        "a reading {STALE} paces old, taken once, is still said as now"
+        "a reading {old:?} old, taken once, is still said as now"
     );
     drop(free);
 }
