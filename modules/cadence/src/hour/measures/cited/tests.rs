@@ -447,6 +447,26 @@ fn a_torn_line_amid_the_day_leaves_the_log_unread_but_one_still_being_written_do
 }
 
 #[test]
+fn a_torn_line_from_before_the_day_is_passed_over_once_a_later_line_dates_it() {
+    let root = tempfile::tempdir().expect("a scratch folder");
+    let log = root.path().join(LOG);
+    let resumed = [
+        entry(NOW - DAY - 120, "Before the crash."),
+        "{\"assistant\": torn".to_owned(),
+        "not a line of the log's at all".to_owned(),
+        entry(NOW - DAY - 60, "Resumed."),
+        entry(NOW - 30, "Today."),
+    ];
+    fs::write(&log, resumed.join("\n")).expect("the log is written");
+    let said = said_in(&log, NOW - DAY, NOW).map(|said| said.len());
+    assert_eq!(
+        said.ok(),
+        Some(1),
+        "a torn line written before the day left the log unread for good"
+    );
+}
+
+#[test]
 fn a_message_sent_before_citations_reach_backs_nothing() {
     let root = tempfile::tempdir().expect("a scratch folder");
     machine(root.path(), NOW - CITES_LAST - 60);
