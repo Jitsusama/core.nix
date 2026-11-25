@@ -63,9 +63,14 @@ impl Routes {
     }
 
     /// Whether the keeper is only told of a pain sent to `address`, in
-    /// any case.
+    /// any case: never the fallback's, as a pain sent there went to no
+    /// owner of its own.
     pub fn only_tells(&self, address: &str) -> bool {
-        self.told.iter().any(|n| n.eq_ignore_ascii_case(address))
+        let fallback = self
+            .fallback
+            .as_deref()
+            .is_some_and(|f| f.eq_ignore_ascii_case(address));
+        !fallback && self.told.iter().any(|n| n.eq_ignore_ascii_case(address))
     }
 
     /// Why routes.json can't be used, when it's there but can't be read.
@@ -500,6 +505,23 @@ mod tests {
         let said = finding(&[&ended], &cells, 0);
         assert!(said.contains("DEF456"), "names the ended cell: {said}");
         assert!(said.contains("ended"), "says it ended: {said}");
+    }
+
+    #[test]
+    fn the_keeper_is_never_only_told_of_what_went_to_the_fallback() {
+        let routes = Routes {
+            told: vec!["abc123".into(), "orch01".into()],
+            ..routes()
+        };
+        assert!(
+            routes.only_tells("ABC123"),
+            "a cell named told, in any case"
+        );
+        assert!(
+            !routes.only_tells("ORCH01"),
+            "the fallback, though named told"
+        );
+        assert!(!routes.only_tells("GHI789"), "a cell not named told");
     }
 
     #[test]
