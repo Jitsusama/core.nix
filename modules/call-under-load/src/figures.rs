@@ -87,12 +87,13 @@ pub struct Call {
     /// freeze it rose by, so a freeze can be laid beside lag-watch's
     /// ten-second rows to say what the machine was doing. Cut down to the
     /// second, as lag-watch's own row ends are, so it falls in the row of
-    /// the sample that counted it. It's the latest the freeze could have
-    /// ended: the sample comes up to one sample gap after, a second or more
-    /// under load, so the row before may be the one that held the frame. A
-    /// stream that restarted still times its freezes here, those its first
-    /// sample counted included, though their count and length can't be told
-    /// then.
+    /// the sample that counted it. The freeze had ended by the sample's own
+    /// time, which comes up to one sample gap after it, a second or more
+    /// under load, so the row before may be the one that held the frame;
+    /// the cut can put the time up to a second before that sample too. A
+    /// count that fell is taken as a stream restarted from 0, so its first
+    /// sample's freezes are timed too; a restart whose count comes back at
+    /// or above the old one can't be told from no restart, and loses them.
     pub frozen_at: Vec<f64>,
     /// A click on the call's own tab to its next frame, in ms.
     pub clicks_p50: Option<f64>,
@@ -261,8 +262,9 @@ pub fn call(mine: &[Value], far: &[Value], clicks: &[f64]) -> Call {
         .collect();
     // Chrome counts a freeze once its next frame comes, so the sample
     // whose count rose is the one by which it had ended, and a count that
-    // rose by two between samples ended two. A count that fell came from a
-    // stream that restarted from 0, so all it holds are freezes since.
+    // rose by two between samples ended two. A count that fell is taken as
+    // a stream restarted from 0, since the far end reads one inbound video
+    // stream, so all it holds are freezes since.
     let frozen_at = frozen
         .windows(2)
         .flat_map(|pair| {
