@@ -3498,6 +3498,18 @@ pub fn in_turn_nearby(command: &str) -> String {
     )
 }
 
+/// What prints how many builds a builder runs, counted by their users: a
+/// build user's, or an allocated range of 65536 from Nix's first. One
+/// macro, so the room [`ROOM_SAID`] says and the room a run is placed by
+/// ([`pressure`]) count builds alike.
+macro_rules! builds_running {
+    () => {
+        "ps -eo uid= 2>/dev/null | awk '$1 >= 872415232 \
+         { print int(($1 - 872415232) / 65536) } $1 > 30000 && $1 < 31000 { print \"b\" $1 }' \
+         | sort -u | wc -l"
+    };
+}
+
 /// What a run sent far says every `NIX_OFFLOAD_ROOM_EVERY` seconds, 300 by
 /// default, while its builder runs as many builds as it runs at once, so a
 /// run waiting there for room is never read as a hung one: on 8 November
@@ -3506,15 +3518,17 @@ pub fn in_turn_nearby(command: &str) -> String {
 /// stays silent. Builds are counted by their users, a build user's or an
 /// allocated range of 65536 from Nix's first, and nothing is said where
 /// either can't be read.
-const ROOM_SAID: &str = "(said=0; while kill -0 $$ 2>/dev/null; do sleep 1; \
+const ROOM_SAID: &str = concat!(
+    "(said=0; while kill -0 $$ 2>/dev/null; do sleep 1; \
      said=$((said + 1)); [ \"$said\" -lt \"${NIX_OFFLOAD_ROOM_EVERY:-300}\" ] && continue; \
      said=0; most=$(nix config show max-jobs 2>/dev/null); \
-     running=$(ps -eo uid= 2>/dev/null | awk '$1 >= 872415232 \
-     { print int(($1 - 872415232) / 65536) } $1 > 30000 && $1 < 31000 { print \"b\" $1 }' \
-     | sort -u | wc -l); \
+     running=$(",
+    builds_running!(),
+    "); \
      if [ -n \"$most\" ] && [ \"$running\" -ge \"$most\" ] 2>/dev/null; then \
      echo \"nix-offload: the builder runs $running builds, as many as it runs at once, \
-     so this may wait there for room\" >&2; fi; done) </dev/null >/dev/null &";
+     so this may wait there for room\" >&2; fi; done) </dev/null >/dev/null &"
+);
 
 /// ssh to `host`, never asking anything, logging where `said` names, whose
 /// verbose log ends with what it sent, which is what a build put on the
@@ -4192,11 +4206,45 @@ pub fn pressure_of(text: &str) -> Option<f64> {
 pub fn pressure(store: &str, scratch: &Path, ssh: &str) -> Option<f64> {
     let builder = builder(store.lines().next()?.trim())?;
     let reading = Sending {
-        command: "cat /proc/pressure/cpu".to_owned(),
+        command: concat!(
+            "cat /proc/pressure/cpu; printf 'slots %s %s\\n' \"$(",
+            builds_running!(),
+            ")\" \"$(nix config show max-jobs 2>/dev/null)\""
+        )
+        .to_owned(),
         bundle: None,
     };
     let (ran, printed) = printed_on(&builder, &reading, scratch, ssh).ok()?;
-    (ran.status == 0).then(|| pressure_of(&printed)).flatten()
+    (ran.status == 0).then(|| fullness_of(&printed)).flatten()
+}
+
+/// How full a builder is, as [`pressure_of`] reads its CPUs, but never
+/// under [`FULL`] once its `slots` line says it runs as many builds as it
+/// runs at once: a run sent there waits for a slot however idle its CPUs.
+/// From 06:05 to 07:05 on 25 November the first lent builder took 124
+/// runs, a run waiting there 47 minutes for room, while its CPUs read
+/// under FULL and eight other builders took 45 runs between them.
+pub fn fullness_of(text: &str) -> Option<f64> {
+    let pressure = pressure_of(text)?;
+    Some(if slots_taken(text) {
+        pressure.max(FULL)
+    } else {
+        pressure
+    })
+}
+
+/// Whether a `slots RUNNING MOST` line says every build slot is taken;
+/// not where either count is missing or isn't a number.
+fn slots_taken(text: &str) -> bool {
+    text.lines()
+        .filter_map(|line| line.strip_prefix("slots "))
+        .any(|counts| {
+            let mut counts = counts.split_whitespace().map(str::parse::<usize>);
+            matches!(
+                (counts.next(), counts.next()),
+                (Some(Ok(running)), Some(Ok(most))) if most > 0 && running >= most
+            )
+        })
 }
 
 /// A second builder as a build going there finds it.
@@ -9718,6 +9766,58 @@ mod tests {
         assert_eq!(pressure_of(read), Some(48.10));
         assert_eq!(pressure_of("full avg60=3.00\n"), None);
         assert_eq!(pressure_of(""), None);
+    }
+
+    #[test]
+    fn a_builder_with_every_slot_taken_reads_full_however_idle_its_cpus() {
+        let cpus = "some avg10=9.00 avg60=12.50 avg300=10.00 total=1\n";
+        assert_eq!(
+            fullness_of(&format!("{cpus}slots 33 33\n")),
+            Some(FULL),
+            "a builder running as many builds as it runs at once must read full"
+        );
+        assert_eq!(
+            fullness_of(&format!("{cpus}slots 34 33\n")),
+            Some(FULL),
+            "one past its slots must read full too"
+        );
+        assert_eq!(
+            fullness_of(&format!("{cpus}slots 32 33\n")),
+            Some(12.50),
+            "a free slot must leave its CPUs to say"
+        );
+        assert_eq!(
+            fullness_of("some avg60=60.00\nslots 33 33\n"),
+            Some(60.00),
+            "busier CPUs than full must still say how busy"
+        );
+        assert_eq!(
+            fullness_of(&format!("{cpus}slots 33 \n")),
+            Some(12.50),
+            "a max-jobs that can't be read must leave its CPUs to say"
+        );
+        assert_eq!(
+            fullness_of(&format!("{cpus}slots 0 0\n")),
+            Some(12.50),
+            "no slots said must not read full"
+        );
+        assert_eq!(fullness_of("slots 33 33\n"), None, "no CPUs read, nothing");
+    }
+
+    #[test]
+    fn a_builder_full_by_its_slots_sends_builds_to_a_second() {
+        let first = fullness_of("some avg60=12.00\nslots 33 33\n");
+        assert!(
+            to_second(first, &Second::Stands(Some(5.0))),
+            "a first full by its slots must send builds to an idle second"
+        );
+        assert!(
+            both_full(
+                first,
+                &Second::Stands(fullness_of("some avg60=3.00\nslots 33 33\n"))
+            ),
+            "two builders full by their slots must let builds spill"
+        );
     }
 
     #[test]

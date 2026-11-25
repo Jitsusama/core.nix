@@ -1493,8 +1493,8 @@ fn more_than(first: &Path, more: &Path, scratch: &Path) -> (PathBuf, bool) {
             let full = there::both_full(Some(waits), &second);
             if there::to_second(Some(waits), &second) {
                 eprintln!(
-                    "nix-offload: the lent builder's tasks wait {waits:.0}% of the time for its \
-                     CPUs, so this goes to a second"
+                    "nix-offload: the lent builder is full, its tasks waiting {waits:.0}% of the \
+                     time for its CPUs or every build slot taken, so this goes to a second"
                 );
                 return (more.to_owned(), full);
             }
