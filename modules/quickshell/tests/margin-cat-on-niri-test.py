@@ -1803,7 +1803,8 @@ def test_a_click_beside_the_cat_reaches_the_window(shell: Shell) -> None:
 
 def layout_now(shell: Shell, window: Json) -> Json:
     """Give where niri lays this window out now, its target as it slides there."""
-    return next(one for one in shell.windows() if one["id"] == window["id"])["layout"]
+    layout: Json = next(one for one in shell.windows() if one["id"] == window["id"])["layout"]
+    return layout
 
 
 def laid_out(shell: Shell, window: Json) -> Json:
