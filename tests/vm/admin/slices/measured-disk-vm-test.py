@@ -21,6 +21,9 @@ ACCOUNT = "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service"
 TARGETED = [f"{ACCOUNT}/app.slice", f"{ACCOUNT}/session.slice", "/sys/fs/cgroup/user.slice"]
 # How long a held slice's unit may take to start.
 APPEARING = dt.timedelta(seconds=30)
+# The disk's writeback throttle, and what disk-order recorded it read before io.cost took it.
+THROTTLE = "/sys/block/vda/queue/wbt_lat_usec"
+RECORD = "/run/disk-order/vda"
 
 
 def kernel(machine: BaseMachine, path: str) -> str:
@@ -59,6 +62,8 @@ def test_a_measured_disk_is_shared_by_its_model(measured: BaseMachine) -> None:
     qos = cost(measured, "qos")
     for setting in ["enable=1", "ctrl=user", "rlat=5000", "wlat=5000"]:
         assert setting in qos, f"io.cost's qos lacks {setting}: {qos}"
+    throttle = kernel(measured, THROTTLE)
+    assert throttle == "0", f"the writeback throttle reads {throttle} beside io.cost"
 
 
 def test_with_it_no_slice_holds_a_latency_target(measured: BaseMachine) -> None:
@@ -82,8 +87,13 @@ def test_old_latency_targets_go_as_it_turns_on(measured: BaseMachine) -> None:
 def test_stopping_it_hands_the_disk_back(measured: BaseMachine) -> None:
     """Stopping it hands the disk back to first come, first served.
 
-    It turns the disk's sharing off, so it comes last.
+    It turns the disk's sharing off, and gives the throttle back what it read before, so it
+    comes last.
     """
+    before = kernel(measured, RECORD)
     measured.succeed("systemctl stop disk-order-vda.service")
     qos = cost(measured, "qos")
     assert "enable=0" in qos, f"io.cost's qos still on: {qos}"
+    throttle = kernel(measured, THROTTLE)
+    assert throttle == before, f"the throttle reads {throttle}, not the {before} it had"
+    measured.fail(f"test -e {RECORD}")
