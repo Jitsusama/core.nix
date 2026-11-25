@@ -645,6 +645,24 @@ Singleton {
             : Object.assign({}, into, { focused: true }), title, said);
         console.info(`sessions: viewing ${lost.id} to wait for its host`);
     }
+    // The viewer of a start pi's host took, as `host` names it and `id`:
+    // raised where one is listed, the kitty's pid read first, as Go To
+    // reads it, so one drawn by a kitty started again since is raised
+    // rather than a second opened beside it; said where one came refused
+    // (disowned) or is still coming (heldBack); otherwise opened as any
+    // viewer is (viewWith), titled for its quest and folder until pi
+    // titles it, rather than a bare attach whose window reads "mycelium".
+    // Answers the listed one, if any.
+    function viewStarted(host, id, named, title, folder, said) {
+        readKittyPid();
+        const listed = listedNamed(named);
+        if (listed)
+            Niri.act({ FocusWindow: { id: listed.id } });
+        else if (!disowned(named, said) && !heldBack(id, named, said))
+            viewWith(["mycelium", "--realm", host.replace(/-attended$/, ""), "attach", "--host",
+                host, "--session", id], named, null, Viewers.viewerTitle("", title, folder), said);
+        return listed;
+    }
     // Whether a viewer `named` is held back, as one asked for moments ago
     // that niri hasn't listed yet (viewerComing), said opening. Asked
     // only once a listed viewer would have been raised. Each caller is a
@@ -1830,20 +1848,8 @@ Singleton {
                     return;
                 }
                 if (started) {
-                    // One listed already is raised, and one still coming
-                    // is said (heldBack); otherwise it opens as any viewer
-                    // does (viewWith), titled for its quest and folder
-                    // until pi titles it, rather than a bare attach whose
-                    // window reads "mycelium".
-                    const listed = root.listedNamed(viewer);
-                    if (listed)
-                        Niri.act({ FocusWindow: { id: listed.id } });
-                    else if (!root.disowned(viewer, footed)
-                        && !root.heldBack(id, viewer, footed))
-                        root.viewWith(["mycelium", "--realm", host.replace(/-attended$/, ""),
-                            "attach", "--host", host, "--session", id],
-                            viewer, null, Viewers.viewerTitle("", title || quest, folder),
-                            footed);
+                    const listed = root.viewStarted(host, id, viewer, title || quest, folder,
+                        footed);
                     console.info(`sessions: started ${quest} in pi's host ${host}, as ${id}`
                         + (listed ? ", its viewer already open" : ""));
                     Report.say(`started a session ${orchestrates ? "orchestrating" : "on"} ${quest}`
