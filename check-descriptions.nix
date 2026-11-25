@@ -724,8 +724,10 @@
   camera-buffers-never-ask-twice-for-big-pages = ''
     the XPS 14's patched videobuf2 scattered allocator never asks again for a block size that
     failed, and asks for blocks above a page without retrying, keeping full effort for single
-    pages, read in the allocator's order: the failed size kept right after stepping down from
-    it, outside the loop over pieces, and each piece's size held to it before it's asked for
+    pages, read in the allocator's order: its flags and the largest size set before the loop
+    over pieces, each piece's size held to the failed one before it's asked for, and the failed
+    size kept right after stepping down from it; each patch line is there once, a second ask
+    or a second place keeping the size fails, and upstream's lines gone say the allocator moved
   '';
   cargo-builds-on-their-own-filesystem = ''
     a workstation account's cargo keeps each workspace's intermediates in its folder on the
