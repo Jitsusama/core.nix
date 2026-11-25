@@ -2130,8 +2130,9 @@
     or a slow lookup from its second round running, each kind counted apart so a failure then
     one cold answer says nothing, one failing and lagging by turns from its third, and a busy
     mDNSResponder, by its path or its name, from its fifth, as errors opening with name-lookups,
-    each well again once, and nothing while all is well; a state file's blank line or a word for
-    a count is read past, never run
+    each well again once, and nothing while all is well; a state file's blank line, a word for
+    a count or a zero before a count's other digits is read past, never run, ending the round
+    or dropping the checks after it
   '';
   looks-probe-finds-what-a-deploy-lost = ''
     the web-design skill's looks probe, in headless Chromium over small sites of its own, lists a
