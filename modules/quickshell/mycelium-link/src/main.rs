@@ -57,7 +57,8 @@ use plain::plain;
 
 /// How long after a link is followed another is let go: longer than a
 /// double click or a page's burst of them, shorter than Joel following a
-/// second one by hand.
+/// second one by hand. The map keeps to the same gap (the mycelium site's
+/// acts.ts, `LINK_GAP_MS`), so it says a link waits rather than that it went.
 const GAP: Duration = Duration::from_secs(3);
 
 /// The longest name a link carries: a network's name or a machine's runs to

@@ -70,7 +70,7 @@ import {
   shortestTree,
   sow as sowSeeds,
 } from "./layout.js";
-import { askedOf, cellActs } from "./acts.js";
+import { LINK_GAP_MS, askedOf, cellActs, linkGoesAhead } from "./acts.js";
 import { grownOf, oneCopyEach } from "./lineage.js";
 import { drawnWidth } from "./lines.js";
 import { durationOf, easedInOut, goneAndBack } from "./motion.js";
@@ -4982,6 +4982,34 @@ import {
     needsStepped = next;
     where.textContent = `Opened ${openedWords(c)}; a opens the next that needs you.`;
   };
+  // The desktop lets go a link followed within mycelium-link's gap of the
+  // last (acts.ts), and the page can't see it do so, so the page lets it go
+  // first and says why, rather than saying it went. Every link to the
+  // desktop passes here, a key's or a click's, Go to It then Talk included.
+  let linkLast = null;
+  const linkHeld = () =>
+    `The Launcher takes one link every ${LINK_GAP_MS / 1000} seconds; try again in a moment.`;
+  document.addEventListener(
+    "click",
+    (e) => {
+      const link = e.target instanceof Element ? e.target.closest('a[href^="mycelium:"]') : null;
+      if (!link) return;
+      const now = Date.now();
+      if (!linkGoesAhead(linkLast, now)) {
+        e.preventDefault();
+        where.textContent = linkHeld();
+        return;
+      }
+      linkLast = now;
+    },
+    true,
+  );
+  // Whether a key's link would be let go, said where it would be.
+  const linkWaits = () => {
+    if (linkGoesAhead(linkLast, Date.now())) return false;
+    where.textContent = linkHeld();
+    return true;
+  };
   // Talk goes the way its drawer's link does, so the key and the link
   // never disagree about which cells the Launcher can reach.
   const talkToChosen = () => {
@@ -4996,6 +5024,7 @@ import {
       where.textContent = `The Launcher can't talk to ${openedWords(c)}.`;
       return;
     }
+    if (linkWaits()) return;
     link.click();
     where.textContent = `Talking to ${openedWords(c)} in the Launcher.`;
   };
@@ -5012,6 +5041,7 @@ import {
       where.textContent = `There is no window to go to for ${openedWords(c)}.`;
       return;
     }
+    if (linkWaits()) return;
     link.click();
     where.textContent = `Going to ${openedWords(c)}.`;
   };

@@ -32,9 +32,10 @@
 //   included, past the one the keys rest on and the cells that need him;
 //   once something is open, no faded name at all and at most NAMES_OPEN
 //   names;
-// - parity: every drawer, Now, network, branch, machine and cell, opens
-//   with Purpose, Doing and Health, in that order, in a dl.glance, with no
-//   words squeezed into less than half their column.
+// - parity: every drawer, Now, network, branch, machine and cell, holds
+//   Purpose, Doing and Health, in that order, in a dl.glance, with no
+//   words squeezed into less than half their column; a cell that asks
+//   something leads with its acts and its question, above the glance.
 (async () => {
   const faults = [];
   const NETS_TRIED = 10;
@@ -90,7 +91,10 @@
   const glanceOf = (what) => {
     const heads = [...body.querySelectorAll("dl.glance dt")].map((dt) => dt.textContent.trim());
     if (heads.join("|") !== "Purpose|Doing|Health") {
-      faults.push(`parity: ${what}'s drawer heads read "${heads.join(", ") || "nothing"}"; it should open with Purpose, Doing and Health in a dl.glance`);
+      const read = heads.join(", ") || "nothing";
+      faults.push(
+        `parity: ${what}'s drawer heads read "${read}"; it should hold Purpose, Doing and Health in a dl.glance`,
+      );
     }
     // Words crushed into a narrow column wrap without overflowing, so the
     // layout check never sees them: every block of words in the glance
