@@ -256,8 +256,9 @@ cleared() {
 /// folder, once that folder is the very one the quest's scratch holds
 /// at the tree's name, since through a link put at the tree or above it
 /// a rename would take a file from wherever the link points: a tree
-/// reached so is the job's fault, and one gone is this machine's, as a
-/// rename failing was. Held so, a link put there later redirects no
+/// reached so, or anything but a folder of its own at its name, is the
+/// job's fault, and one gone is this machine's, as a rename failing was,
+/// each said. Held so, a link put there later redirects no
 /// rename, which is by its name in that folder. Each archive
 /// is taken from the handover by renaming it to the copy's own `.tar`,
 /// once, so the archive checked is the very one unpacked:
@@ -322,11 +323,21 @@ pub(super) fn copying() -> String {
     # put at the tree or above it, then or later, redirects a rename.
     [ -n "$held" ] || {{
       # The copy lies in the same scratch, so it is a whole path too.
-      case $job in /*) ;; *) exit 2 ;; esac
+      case $job in /*) ;; *) {{
+        printf "elsewhere: this machine's cache folder isn't a whole path\n" >&2
+        exit 2
+      }} ;; esac
       top=$(cd -P "${{job%/*/*/*}}" && pwd -P) || exit 2
-      cd -P "$job/{TREE}" 2>/dev/null || exit 2
-      [ "$(pwd -P)" = "$top/{HANDOVER}/${{job##*/}}/{TREE}" ] || {{
-        printf "elsewhere: the job's tree in its handover is reached through a link\n" >&2
+      [ -e "$job/{TREE}" ] || [ -L "$job/{TREE}" ] || {{
+        printf "elsewhere: the job's tree is gone from its handover\n" >&2
+        exit 2
+      }}
+      # Anything else at its name, a link, a file or a folder closed to
+      # this account, is the job's doing.
+      [ ! -L "$job/{TREE}" ] && cd -P "$job/{TREE}" 2>/dev/null &&
+        [ "$(pwd -P)" = "$top/{HANDOVER}/${{job##*/}}/{TREE}" ] || {{
+        printf '%s %s\n' "elsewhere: the job's tree in its handover is reached through a link," \
+          "or isn't a folder of its own" >&2
         exit 1
       }}
       held=1
@@ -534,11 +545,12 @@ fi
 
 /// Frees the job's copy, with what it made, and the tree it was made
 /// from, once nothing is brought back out of them, and then its run's
-/// file, once they went. The tree goes only once no link stands at the
-/// job's handover or above it, as `unlinked` makes sure.
+/// file, once they went. The tree goes, in the same clearing as the copy,
+/// only once no link stands at the job's handover or above it, as
+/// `unlinked` makes sure; the copy goes either way.
 fn freed() -> String {
     format!(
-        "cd \"$HOME\" && {{ ! unlinked || cleared \"$job/{TREE}\"; }} && cleared \"$work\" &&\n  \
-         rm -f \"$work{RUN}\"\n"
+        "cd \"$HOME\" && if unlinked; then cleared \"$job/{TREE}\" \"$work\"; \
+         else cleared \"$work\"; fi &&\n  rm -f \"$work{RUN}\"\n"
     )
 }

@@ -451,7 +451,10 @@ PATH=${{PATH#*:}} exec mkdir "$@""#
         "the stand-in never took the tree away ({code:?}): {err}"
     );
     assert!(
-        code == Some(75) && !home.join("read").exists() && !work(&home).join("ran").exists(),
+        code == Some(75)
+            && err.contains("tree is gone from its handover")
+            && !home.join("read").exists()
+            && !work(&home).join("ran").exists(),
         "a tree gone wasn't left for another try ({code:?}): {err}"
     );
     let _ = std::fs::remove_dir_all(&home);
