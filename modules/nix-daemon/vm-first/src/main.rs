@@ -281,23 +281,36 @@ fn client_from(first: u32, build: &Path) -> Option<Proc> {
 /// at the first process found, since it's taken for each build twice a
 /// second.
 fn first_process(build: &Path) -> Option<u32> {
+    first_process_listed(build, cgroups_in)
+}
+
+/// The first process a build's cgroup lists, else the nearest under it,
+/// with the cgroups under each as `list` lists them. They're sorted here,
+/// since a file system lists a folder in an order of its own, which a
+/// test can't choose but can stand in for.
+fn first_process_listed(build: &Path, list: impl Fn(&Path) -> Vec<PathBuf>) -> Option<u32> {
     let mut cgroups = VecDeque::from([build.to_path_buf()]);
     while let Some(cgroup) = cgroups.pop_front() {
         let procs = fs::read_to_string(cgroup.join("cgroup.procs")).unwrap_or_default();
         if let Some(pid) = procs.lines().find_map(|pid| pid.trim().parse().ok()) {
             return Some(pid);
         }
-        let mut under: Vec<PathBuf> = fs::read_dir(&cgroup)
-            .into_iter()
-            .flatten()
-            .filter_map(Result::ok)
-            .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
-            .map(|entry| entry.path())
-            .collect();
+        let mut under = list(&cgroup);
         under.sort();
         cgroups.extend(under);
     }
     None
+}
+
+/// The cgroups just under `cgroup`, in the order its file system lists them.
+fn cgroups_in(cgroup: &Path) -> Vec<PathBuf> {
+    fs::read_dir(cgroup)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
+        .map(|entry| entry.path())
+        .collect()
 }
 
 /// Whether `cgroup` names a cgroup as a process's `/proc/<pid>/cgroup`
@@ -306,7 +319,8 @@ fn first_process(build: &Path) -> Option<u32> {
 /// root itself is refused, as the machine's and never a daemon's: taken
 /// for one, its own `cgroup.subtree_control` would be written should a
 /// daemon sit in a `nix-daemon` under it, as systemd never puts one, and
-/// the kernel's threads in it would be looked over as builds left behind.
+/// the kernel's threads in it, taken for builds left behind, could have
+/// their scheduling changed.
 fn under_cgroup_root(cgroup: &Path) -> bool {
     cgroup.starts_with(CGROUP_ROOT)
         && cgroup != Path::new(CGROUP_ROOT)

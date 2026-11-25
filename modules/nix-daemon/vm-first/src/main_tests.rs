@@ -446,10 +446,11 @@ fn finds_every_process_under_a_build_its_containers_too() {
 #[test]
 fn a_builds_first_process_is_its_own_else_the_nearest_under_it() {
     let root = std::env::temp_dir().join(format!("vm-first-first-{}", std::process::id()));
-    // `c` sorts first but is made between `m` and `d`, so a folder listed
-    // in the order its folders were made, or the reverse, lists another
-    // first, as APFS does by its names' hashes, which put `m` before `c`;
-    // then, emptied, `c` holds its process a cgroup further down.
+    // Each folder is listed in the reverse of its names' order, so a walk
+    // that didn't sort them would take `m` before `c` and `d`, and the last
+    // sibling before `w0`, on every file system; the program lists them as
+    // its file system does. Emptied, `c` holds its process a cgroup further
+    // down.
     let (m, c, deep, d) = (
         root.join("m"),
         root.join("c"),
@@ -467,37 +468,32 @@ fn a_builds_first_process_is_its_own_else_the_nearest_under_it() {
     procs(&deep, "50\n");
     procs(&d, "35\n");
     procs(&m, "40\n");
+    let reversed = |cgroup: &Path| {
+        let mut under = cgroups_in(cgroup);
+        under.sort_unstable_by(|one, other| other.cmp(one));
+        under
+    };
     let own = first_process(&root);
     procs(&root, "");
-    let sorted = first_process(&root);
+    let sorted = first_process_listed(&root, reversed);
     procs(&c, "");
-    let nearest = first_process(&root);
+    let nearest = first_process_listed(&root, reversed);
     procs(&d, "");
-    let next = first_process(&root);
+    let next = first_process_listed(&root, reversed);
     procs(&m, "");
-    let deeper = first_process(&root);
+    let deeper = first_process_listed(&root, reversed);
     procs(&deep, "");
-    let none = first_process(&root);
-    // A file system listing by its names' hashes, as ext4 and ZFS do, could
-    // still list the one sorting first first by chance. Among 32 siblings,
-    // named for the clock's nanoseconds so their hashes change from run to
-    // run, even in a build's sandbox, where a process's id barely does, and
-    // made from the middle, 7 apart, so `w00` is made neither first nor
-    // last, an unsorted walk lists it first one run in 32.
-    let run = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("the clock is past 1970")
-        .subsec_nanos();
-    for made in 0..32 {
-        let sibling = (made * 7 + 16) % 32;
-        let cgroup = root.join(format!("w{sibling:02}-{run}"));
+    let none = first_process_listed(&root, reversed);
+    for sibling in 0..4 {
+        let cgroup = root.join(format!("w{sibling}"));
         fs::create_dir(&cgroup).expect("the temp folder takes a folder");
         procs(&cgroup, &format!("{}\n", 100 + sibling));
     }
-    let widest = first_process(&root);
+    let widest = first_process_listed(&root, reversed);
+    let listed = first_process(&root);
     fs::remove_dir_all(&root).expect("the temp folder gives its folder back");
     assert_eq!(
-        (own, sorted, nearest, next, deeper, none, widest),
+        (own, sorted, nearest, next, deeper, none, widest, listed),
         (
             Some(10),
             Some(30),
@@ -505,6 +501,7 @@ fn a_builds_first_process_is_its_own_else_the_nearest_under_it() {
             Some(40),
             Some(50),
             None,
+            Some(100),
             Some(100)
         ),
         "a build's first process wasn't its own, else the nearest under it, by name"
@@ -524,9 +521,11 @@ fn a_cgroup_under_the_cgroup_root_is_kept_as_asked() {
         let within = kept
             .as_deref()
             .is_some_and(|kept| in_cgroup("0::/build.slice/x\n", kept));
+        // A path's components compare a trailing slash and a `.` away, so
+        // its text is what shows it kept as asked.
         assert_eq!(
-            (kept.as_deref(), within),
-            (Some(Path::new(asked)), true),
+            (kept.as_deref().map(Path::as_os_str), within),
+            (Some(std::ffi::OsStr::new(asked)), true),
             "{asked} wasn't kept, or a process under it wasn't read as in it"
         );
     }
