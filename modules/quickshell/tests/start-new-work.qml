@@ -422,8 +422,10 @@ QtObject {
         Expect.same("each said once it's up names its session",
             ["up", "upLater"].filter(key => !String(written[key]).includes("{title}")), []);
         const full = { machine: "kestrel", title: "Olga's access", minutes: "15" };
-        // Filled with more than each needs, a title included though only an up one has
-        // its title, so a fill any word names and none gets is caught.
+        // Agents.qml's said() gives every word a title, empty until the session is up, so
+        // only the up words may name one, or a word said before would show it blank.
+        Expect.same("only an up word names the title it's given", opened.filter(key =>
+            String(written[key]).includes("{title}")), ["up", "upLater"]);
         Expect.same("each is filled whole", opened.filter(key =>
             Openings.filled(written, key, full).includes("{")), []);
 
