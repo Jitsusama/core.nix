@@ -366,9 +366,18 @@ fn went_back(
     let spurned = kept.map_or_else(String::new, |lasts| {
         format!("; it keeps off {} for {}", on.point, how_long(lasts))
     });
+    // A keep-off for carrying worse holds against a failing link for its
+    // first hour alone (choose.rs), which a longer one says.
+    let firmly = match kept {
+        Some(lasts) if lasts > choose::SPURNED => format!(
+            "{spurned}, or {} should {to} fail a whole span",
+            how_long(choose::SPURNED)
+        ),
+        _ => spurned.clone(),
+    };
     let because = match why {
         Some(Against::Worse(than)) => format!(
-            "{carried}, worse than the {} with {:.1}% lost {to} carried before{spurned}",
+            "{carried}, worse than the {} with {:.1}% lost {to} carried before{firmly}",
             measure::ms(than.p95),
             than.lost
         ),
@@ -401,11 +410,11 @@ fn went_back(
             )
         }
         Some(Against::Slowed(before)) => format!(
-            "{} moved {} Mbit/s under load, where {to} moved {before}{spurned}",
+            "{} moved {} Mbit/s under load, where {to} moved {before}{firmly}",
             on.point,
             measured.moving.unwrap_or(0)
         ),
-        Some(Against::Badly) => format!("{carried}, badly for a wider band's room{spurned}"),
+        Some(Against::Badly) => format!("{carried}, badly for a wider band's room{firmly}"),
         None => carried,
     };
     format!("{} goes back to {to}, as {because}", on.card)
@@ -1035,7 +1044,10 @@ mod tests {
         let line = said_back(&mut chooser, again, (&joined(DESK), &idle(775)), NEAR);
 
         assert!(
-            line.ends_with(&format!("; it keeps off {DESK} for 2 hours")),
+            line.ends_with(&format!(
+                "; it keeps off {DESK} for 2 hours, or 60 minutes should {NEAR} fail a \
+                 whole span"
+            )),
             "a second keep-off running isn't said as the chooser keeps it: {line}"
         );
     }

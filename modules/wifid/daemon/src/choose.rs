@@ -264,7 +264,10 @@ pub struct Chooser {
     spurned: HashMap<String, Kept>,
     /// Each access point found worse lately, how many times running and
     /// until when it was last kept off for it, so it's kept off longer
-    /// each time (`SPURNED_MOST`). Like `spurned`, it lives only as long as
+    /// each time (`SPURNED_MOST`). Every back that keeps a point off counts:
+    /// carrying worse than the point left, slower under load, badly for a
+    /// wider band's room, or worse than the usual a second time, as each
+    /// is a trial that didn't pay. Like `spurned`, it lives only as long as
     /// the card's chooser: a restart of wifid, or a minute's tick finding
     /// the card unjoined, as on a resume, starts every point afresh. Its
     /// times are awake time, as `Instant` doesn't count a suspend.
@@ -812,14 +815,29 @@ impl Chooser {
     }
 
     /// Forgets how often an access point was found worse once a trial of
-    /// it stands carrying well: as the point left usually does, or no
-    /// worse than that point did while its link wasn't failing. One that
-    /// stands only for carrying better than a failing link, or on a
-    /// band's looser bar while carrying worse, says nothing of it.
-    fn stood(&mut self, point: &str, before: &Measured, measured: &Measured, as_usual: bool) {
-        if as_usual || (before.lost <= FAILING && !worse(measured, before)) {
+    /// it stands carrying well: as the point left usually does, or not
+    /// badly at all. One that stands only for carrying better than a
+    /// failing, lossy or slow link says nothing of it, as 390 ms beating
+    /// 400 ms isn't a point come good.
+    fn stood(&mut self, point: &str, measured: &Measured, as_usual: bool) {
+        if as_usual || !badly(measured) {
             self.struck.remove(point);
         }
+    }
+
+    /// Keeps off an access point a move never reached for `SPURNED`, firm
+    /// against a failing link, or as long as it was already kept off if
+    /// longer, so a miss through a keep-off that gave way doesn't shorten
+    /// it.
+    fn keep_off_unreached(&mut self, point: &str, now: Instant) {
+        let until = now + SPURNED;
+        let kept = self.spurned.entry(point.to_owned()).or_insert(Kept {
+            until,
+            firm: until,
+            from: None,
+        });
+        kept.until = kept.until.max(until);
+        kept.firm = kept.firm.max(until);
     }
 
     /// Whether the card keeps off this access point now, which the tests
@@ -901,12 +919,7 @@ impl Chooser {
                 }
                 self.missed = Some(now);
             }
-            let kept = Kept {
-                until: now + SPURNED,
-                firm: now + SPURNED,
-                from: None,
-            };
-            self.spurned.insert(trial.to.clone(), kept);
+            self.keep_off_unreached(&trial.to, now);
             self.unreached = Some(trial.to);
             return None;
         }
@@ -987,7 +1000,7 @@ impl Chooser {
             // One run out is no longer kept, so isn't said freed.
             let earned_here =
                 |kept: &Kept| kept.from.as_deref() == Some(trial.from.as_str()) && now < kept.until;
-            self.stood(point, &trial.before, measured, as_usual);
+            self.stood(point, measured, as_usual);
             if as_usual {
                 self.usually.remove(&moved);
                 if self.spurned.get(point).is_some_and(earned_here) {
@@ -5207,13 +5220,21 @@ pub(crate) mod tests {
     const HOUR: Duration = Duration::from_hours(1);
 
     /// A chooser whose card tried ch52 off the desk's 2.4 GHz radio and
-    /// went back twice, the second try as the first keep-off ended, and
-    /// when it went back the second time.
-    pub(crate) fn found_worse_twice(start: Instant) -> (Chooser, Instant) {
+    /// went back this many times, each try as the last keep-off ended, and
+    /// when it went back the last time.
+    fn found_worse(times: usize, start: Instant) -> (Chooser, Instant) {
         let mut chooser = Chooser::default();
-        let first = tried_ch52_and_back(&mut chooser, start);
-        let second = tried_ch52_and_back(&mut chooser, first + HOUR);
-        (chooser, second)
+        let mut back = tried_ch52_and_back(&mut chooser, start);
+        for _ in 1..times {
+            let ended = chooser.kept_for(DESK, back).unwrap_or_default();
+            back = tried_ch52_and_back(&mut chooser, back + ended);
+        }
+        (chooser, back)
+    }
+
+    /// The same, gone back twice, for a keep-off of two hours.
+    pub(crate) fn found_worse_twice(start: Instant) -> (Chooser, Instant) {
+        found_worse(2, start)
     }
 
     #[test]
@@ -5264,10 +5285,17 @@ pub(crate) mod tests {
     fn a_failing_link_may_leave_for_a_point_kept_off_longer_after_its_first_hour() {
         let failing = carried(400, 15.0);
         let ch52 = [desk_at(-48, None)];
+        // Kept off eight hours, where only a first hour holds against a
+        // failing link, not all but the last.
         let chosen_after = |after: Duration| {
-            let (mut chooser, second) = found_worse_twice(Instant::now());
+            let (mut chooser, fourth) = found_worse(4, Instant::now());
+            assert_eq!(
+                chooser.kept_for(DESK, fourth),
+                Some(HOUR * 8),
+                "ch52 found worse four times wasn't kept off eight hours"
+            );
             chooser.badly_on = Some(NEAR.into());
-            chooser.choose(second + after, (NEAR, &failing, -50, CH6), &ch52, false)
+            chooser.choose(fourth + after, (NEAR, &failing, -50, CH6), &ch52, false)
         };
 
         let firm = chosen_after(HOUR.saturating_sub(Duration::from_secs(1)));
@@ -5314,8 +5342,10 @@ pub(crate) mod tests {
         );
     }
 
-    #[test]
-    fn a_trial_standing_off_a_working_link_forgets_how_often_its_point_was_found_worse() {
+    /// How long ch52 is kept off when found worse once more, after a
+    /// third trial of it off the 2.4 GHz radio's 201 ms stood carrying
+    /// this.
+    fn kept_off_after_standing(stood_carrying: &Measured) -> Option<Duration> {
         let (mut chooser, second) = found_worse_twice(Instant::now());
         let third = second + HOUR * 2;
         chooser.badly_on = Some(NEAR.into());
@@ -5326,19 +5356,54 @@ pub(crate) mod tests {
             Choice::Try(DESK.into()),
             "ch52 wasn't tried a third time"
         );
-        let quick = carried(15, 0.0);
-        let stood = chooser.choose(third + TRIAL, (DESK, &quick, -48, CH52), &[], false);
+        let there = (DESK, stood_carrying, -48, CH52);
+        let stood = chooser.choose(third + TRIAL, there, &[], false);
         assert!(
             !matches!(stood, Choice::Back(_)),
-            "ch52 carrying 15 ms went back: {stood:?}"
+            "ch52 carrying {stood_carrying:?} off 201 ms went back: {stood:?}"
         );
-
         let later = tried_ch52_and_back(&mut chooser, third + TRIAL + SETTLE);
+        chooser.kept_for(DESK, later)
+    }
 
+    #[test]
+    fn a_trial_standing_carrying_well_forgets_how_often_its_point_was_found_worse() {
         assert_eq!(
-            chooser.kept_for(DESK, later),
+            kept_off_after_standing(&carried(15, 0.0)),
             Some(HOUR),
             "ch52 found worse after a trial stood wasn't kept off an hour, as at first"
+        );
+    }
+
+    #[test]
+    fn a_move_missing_a_point_kept_off_longer_keeps_the_longer_keep_off() {
+        let (mut chooser, fourth) = found_worse(4, Instant::now());
+        let missed = fourth + HOUR * 2;
+
+        chooser.keep_off_unreached(DESK, missed);
+        let mut fresh = Chooser::default();
+        fresh.keep_off_unreached(DESK, missed);
+
+        assert_eq!(
+            chooser.kept_for(DESK, missed),
+            Some(HOUR * 6),
+            "a move missing ch52 two hours into eight shortened its keep-off"
+        );
+        assert_eq!(
+            fresh.kept_for(DESK, missed),
+            Some(SPURNED),
+            "a move missing a point kept off by nothing didn't keep it off an hour"
+        );
+    }
+
+    #[test]
+    fn a_trial_standing_only_for_beating_a_slow_link_forgets_nothing() {
+        // No worse than the 201 ms left, so it stands, but slow all the
+        // same: a point no better than a bad link hasn't come good.
+        assert_eq!(
+            kept_off_after_standing(&carried(205, 0.0)),
+            Some(HOUR * 4),
+            "ch52, standing only as slow as the link it left, was forgiven its two backs"
         );
     }
 

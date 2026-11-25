@@ -23,6 +23,9 @@
 //! refusal is `said` in the launcher's words for it (launcher/words/wifi.json),
 //! as the vocabulary the connection's rows are made in has them, so the
 //! shell's foot says them as they are (2026-11-13).
+//!
+//! Long because its cases, over half of it, stay beside the private
+//! rules they prove, as every module in wifid keeps them.
 
 use std::time::Duration;
 
@@ -116,7 +119,7 @@ fn asking(said: &Value) -> Result<Asking, (&'static str, String)> {
 /// wifid's. An ask saying neither way is said so, as it's refused.
 pub fn wanted(said: &Value) -> String {
     let named = |name: &str| match said.get(name).and_then(Value::as_str) {
-        Some(named) => format!("{named:?}"),
+        Some(named) => quoted(named),
         None => format!("no {name}"),
     };
     let on = |name: &str| said.get(name).and_then(Value::as_bool);
@@ -134,7 +137,23 @@ pub fn wanted(said: &Value) -> String {
             None => "to turn the radio saying neither way".to_owned(),
         },
         "scan" => "a look".to_owned(),
-        other => format!("an act {other:?}"),
+        other => format!("an act {}", quoted(other)),
+    }
+}
+
+/// The most of a name an ask's journal line says: a BSSID is 17
+/// characters and an SSID at most 32 bytes, and journald cuts a line past
+/// its `LineMax` into records of their own, the rest reading as wifid's.
+const SAID_MOST: usize = 64;
+
+/// A name as an ask's journal line says it: quoted, so it holds no new
+/// line, and cut to `SAID_MOST` characters.
+fn quoted(name: &str) -> String {
+    if name.chars().count() <= SAID_MOST {
+        format!("{name:?}")
+    } else {
+        let cut: String = name.chars().take(SAID_MOST).collect();
+        format!("{cut:?}...")
     }
 }
 
@@ -440,6 +459,22 @@ mod tests {
         assert!(
             !said.contains('\n'),
             "a name holding a new line wrote a journal line of its own: {said}"
+        );
+    }
+
+    #[test]
+    fn what_an_act_wants_says_at_most_the_start_of_a_long_name() {
+        let long = "A".repeat(100_000);
+
+        let said = [
+            wanted(&json!({"act": "join", "network": long})),
+            wanted(&json!({"act": long})),
+        ];
+
+        assert!(
+            said.iter().all(|said| said.len() < 100),
+            "a 100,000 character name was said whole, for journald to cut: {:?}",
+            said.map(|said| said.len())
         );
     }
 
