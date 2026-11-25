@@ -257,6 +257,61 @@ def test_polkits_prompt_lets_the_account_start_a_system_service(desktop: Desktop
     machine.succeed(desktop.in_session(f"! {journal} | grep -q {shlex.quote(unsaid)}"))
 
 
+def test_polkits_prompt_comes_up_after_polkit_restarts(desktop: Desktop) -> None:
+    """Polkit's prompt still comes up after polkit's service restarts beneath the shell.
+
+    The shell registers its agent with polkit as it starts, and a switch can restart polkit
+    under it without restarting the shell, which then has to register again.
+    """
+    machine = desktop.machine
+    machine.succeed("rm -f /run/polkit-allowed", "systemctl restart polkit.service")
+    machine.wait_for_unit("polkit.service")
+    polkit_asked_again(desktop)
+
+
+def test_polkits_prompt_comes_up_after_a_switch_restarts_polkit_and_hands_over(
+    desktop: Desktop,
+) -> None:
+    """Polkit's prompt still comes up after a switch restarts polkit and hands the shell over.
+
+    The new shell asks polkit for the agent while the old one still holds it, and takes it as
+    the old one ends. On 23 Nov polkit had restarted three times under one shell, the last 12 s
+    before a switch handed it over, and the new shell took the agent but drew no prompt for
+    the three asks before the next hand-over.
+    """
+    machine = desktop.machine
+    machine.succeed("rm -f /run/polkit-allowed")
+    for _ in range(3):
+        machine.succeed("systemctl restart polkit.service")
+        machine.wait_for_unit("polkit.service")
+    main = "systemctl --user show quickshell -p MainPID --value"
+    old = desktop.as_account(main).strip()
+    desktop.as_account("systemctl --user reload quickshell")
+    machine.wait_until_succeeds(desktop.in_session(f'test "$({main})" != {old}'), timeout=STARTING)
+    polkit_asked_again(desktop)
+
+
+def polkit_asked_again(desktop: Desktop) -> None:
+    """Asks polkit to start a system service, and answers its prompt, which must come up."""
+    machine = desktop.machine
+    asked = "polkit asked by systemctl start polkit-allowed.service"
+    drawn = False
+    try:
+        with desktop.told("keys polkit"), desktop.told(asked):
+            desktop.as_account("niri msg action spawn -- systemctl start polkit-allowed.service")
+        drawn = True
+        machine.send_chars(f"{desktop.values['secret']}\n")
+        machine.wait_for_file("/run/polkit-allowed", timeout=timedelta(seconds=30))
+    finally:
+        # A shell that drew no prompt drew none for later asks on 23 Nov either, so it starts
+        # again and the tests after it run as they would alone.
+        if not drawn:
+            desktop.as_account("systemctl --user restart quickshell")
+            machine.wait_until_succeeds(
+                desktop.in_session("qs ipc show | grep -q askpass"), timeout=STARTING
+            )
+
+
 def test_the_askpass_asks_for_a_yes_a_pin_and_a_touch(desktop: Desktop) -> None:
     """The askpass asks for a yes, a PIN and a touch, each answered as OpenSSH expects."""
     machine = desktop.machine
