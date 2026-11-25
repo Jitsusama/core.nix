@@ -6,7 +6,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::hash::{Hash, Hasher};
 
-use crate::{attributes, lints, notes, reached, stale, terraform};
+use crate::{attributes, hour, lints, notes, reached, stale, terraform};
 
 /// A file of the repository: its path from the folder read, and its text.
 pub struct File {
@@ -182,9 +182,7 @@ pub fn measure(paths: &[String], files: &[File], roots: &[String]) -> Health {
     let count = bare.len();
     health.put("folders-without-notes", bare, count);
 
-    let gone = stale_paths(stale::stale(paths, files));
-    let count = gone.len();
-    health.put("stale-paths", gone, count);
+    put_stale(&mut health, stale::stale(paths, files));
 
     if let Some((named, lines)) = vm_test_lines(&code) {
         health.put("vm-test-lines", named, lines);
@@ -433,18 +431,17 @@ fn duplicated(code: &[&File]) -> (usize, Vec<String>) {
     (repeated.len(), places)
 }
 
-/// The comments naming what's gone, and each file whose comments can't be
-/// known, counted once: what such a file names can't be told, so it may
-/// count less than it held, but it can't drop out of the figure unseen.
-fn stale_paths(stale: stale::Stale) -> Vec<String> {
-    let mut gone = stale.gone;
-    gone.extend(
-        stale
-            .unread
-            .iter()
-            .map(|file| format!("{file}: its comments can't be known")),
-    );
-    gone
+/// Each file whose comments can't be known, and the comments naming
+/// what's gone, but none while any file's comments can't be known: what
+/// such a file names can't be told, so a figure without it would read as
+/// a gain, and two such hours in a row would ratchet the target down.
+fn put_stale(health: &mut Health, stale: stale::Stale) {
+    if stale.unread.is_empty() {
+        let count = stale.gone.len();
+        health.put("stale-paths", stale.gone, count);
+    }
+    let count = stale.unread.len();
+    health.put(hour::UNREAD_COMMENTS, stale.unread, count);
 }
 
 /// A count as a figure; no repository holds four billion of anything.
@@ -466,15 +463,34 @@ mod tests {
     }
 
     #[test]
-    fn a_file_whose_comments_cant_be_known_counts_among_the_stale_paths() {
-        let stale = stale::Stale {
+    fn a_file_whose_comments_cant_be_known_is_counted_apart_and_leaves_no_stale_figure() {
+        let stale = |unread: &[&str]| stale::Stale {
             gone: vec!["a.sh:1: modules/b".to_owned()],
-            unread: vec!["c.sh".to_owned()],
+            unread: unread.iter().map(|&file| file.to_owned()).collect(),
+        };
+        let figures = |unread: &[&str]| {
+            let mut health = Health::default();
+            put_stale(&mut health, stale(unread));
+            (health.figures, health.named)
         };
         assert_eq!(
-            stale_paths(stale),
-            ["a.sh:1: modules/b", "c.sh: its comments can't be known"],
-            "a file whose comments can't be known dropped out of the stale paths"
+            figures(&["c.sh"]),
+            (
+                BTreeMap::from([(hour::UNREAD_COMMENTS, 1.0)]),
+                BTreeMap::from([(hour::UNREAD_COMMENTS, vec!["c.sh".to_owned()])])
+            ),
+            "a file whose comments can't be known wasn't counted apart, or left a stale figure"
+        );
+        assert_eq!(
+            figures(&[]),
+            (
+                BTreeMap::from([("stale-paths", 1.0), (hour::UNREAD_COMMENTS, 0.0)]),
+                BTreeMap::from([
+                    ("stale-paths", vec!["a.sh:1: modules/b".to_owned()]),
+                    (hour::UNREAD_COMMENTS, Vec::new())
+                ])
+            ),
+            "with every file read, the stale paths weren't counted, or an unread one was"
         );
     }
 

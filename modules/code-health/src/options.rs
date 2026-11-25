@@ -15,7 +15,7 @@ const FLAGS: [&str; 6] = [
 
 /// Every measure it reads (measure.rs, merges.rs, and main.rs's stray
 /// owners).
-pub const MEASURES: [&str; 22] = [
+pub const MEASURES: [&str; 23] = [
     "crowded-folders",
     "daemons-waiting",
     "duplicated-lines",
@@ -37,6 +37,7 @@ pub const MEASURES: [&str; 22] = [
     "tflint-findings",
     "trivy-findings",
     "unreached-files",
+    hour::UNREAD_COMMENTS,
     "vm-test-lines",
 ];
 

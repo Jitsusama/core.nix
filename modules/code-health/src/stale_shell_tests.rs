@@ -447,12 +447,14 @@ fn left_open_by(lines: &[&str]) -> Vec<Shell> {
 fn a_cases_in_may_open_a_later_line_past_its_subject() {
     use Shell::{Branch, Case, Command};
     // Bash takes a case's `in` past newlines, blank lines too, and a
-    // subject that reads `in` is still the subject.
-    let cases: [(&[&str], &[Shell]); 4] = [
+    // subject that reads `in` is still the subject, as is a comment past
+    // it that reads `in`.
+    let cases: [(&[&str], &[Shell]); 5] = [
         (&["x=$(case a", "in a) echo"], &[Command, Branch]),
         (&["x=$(case a", "", "  in a) echo;; esac)"], &[]),
         (&["x=$(case in", "in in) echo"], &[Command, Branch]),
         (&["x=$(case a", ""], &[Command, Case]),
+        (&["x=$(case a # in a)", "in a) echo"], &[Command, Branch]),
     ];
     for (lines, open) in cases {
         assert_eq!(

@@ -28,6 +28,14 @@ const SWINGING: [&str; 3] = ["edit-to-merge", "files-per-change", "shared-files"
 /// is always a mistake, so it's held to none where no target is set.
 pub const STRAY_OWNERS: &str = "stray-owners";
 
+/// The files whose comments the stale reader couldn't know, which only
+/// its own misreading leaves, so it's held to none where no target is set.
+pub const UNREAD_COMMENTS: &str = "unread-comments";
+
+/// The measures that are always a mistake, held to none unless a target
+/// is set for them.
+const HELD_TO_NONE: [&str; 2] = [STRAY_OWNERS, UNREAD_COMMENTS];
+
 /// What a repository's machine judges it by: a target for some of its
 /// measures, who owns each, by measure or for the whole repository, and
 /// who owns each folder, by its path from the repository's top.
@@ -80,7 +88,7 @@ pub fn hour(
                 .targets
                 .get(*measure)
                 .copied()
-                .or_else(|| (*measure == STRAY_OWNERS).then_some(0.0));
+                .or_else(|| HELD_TO_NONE.contains(measure).then_some(0.0));
             let lowest = held(days, repo, measure).filter(|_| !SWINGING.contains(measure));
             let target = set.map(|set| lowest.map_or(set, |lowest| set.min(lowest)));
             let owner = judged.owners.get(*measure).or(judged.owner.as_ref());
@@ -393,10 +401,11 @@ mod tests {
     }
 
     #[test]
-    fn a_stray_owner_is_held_to_none_unless_a_target_is_set() {
+    fn a_stray_owner_or_unread_file_is_held_to_none_unless_a_target_is_set() {
         let read = figures(&[
             ("core", STRAY_OWNERS, 1.0),
             ("pi", STRAY_OWNERS, 0.0),
+            ("pi", UNREAD_COMMENTS, 0.0),
             ("set", STRAY_OWNERS, 1.0),
         ]);
         let judged = BTreeMap::from([("set".to_owned(), judged(&[(STRAY_OWNERS, 2.0)], None))]);
@@ -407,6 +416,11 @@ mod tests {
             targets,
             [&json!(0.0), &json!(0.0), &json!(2.0)],
             "a stray owner wasn't held to none, or a target set for it was lost"
+        );
+        assert_eq!(
+            measure(&hour, "pi", UNREAD_COMMENTS)["target"],
+            json!(0.0),
+            "a file whose comments couldn't be read wasn't held to none"
         );
         assert_eq!(
             (&hour["worst"]["repo"], &hour["worst"]["measure"]),

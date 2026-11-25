@@ -164,16 +164,32 @@ fn stale_held(context: &Context, tree: &str, waiting: &str) -> Result<(), Failur
         .filter(|line| !line.is_empty())
         .map(str::to_owned)
         .collect();
-    let stale = stale::stale(&paths, &files);
-    let (new, gone) = tree::held(&stale.gone, &stale.unread, &listed);
-    // A file that couldn't be read is this tool's misreading, not the
-    // tree's fault, so it's said without refusing the change, and what the
-    // list holds of it stands.
-    if let Some(unread) = unread_said(&stale.unread) {
-        context.say(&unread).map_err(|error| {
+    let (unread, refused) = stale_verdict(&stale::stale(&paths, &files), &listed);
+    let say = |said: &str| {
+        context.say(said).map_err(|error| {
             Failure::new(Exit::Failed, "the answer couldn't be said").because(error.to_string())
-        })?;
+        })
+    };
+    if let Some(unread) = unread {
+        say(&unread)?;
     }
+    let Some(refused) = refused else {
+        return Ok(());
+    };
+    say(&refused)?;
+    Err(
+        Failure::new(Exit::Refused, "a comment or the waiting list is stale")
+            .because("each is named above"),
+    )
+}
+
+/// What the gate says of `stale` held against `listed`, its waiting list:
+/// the files whose comments couldn't be read, if any, and what refuses the
+/// change, if anything does. A file that couldn't be read is this tool's
+/// misreading, not the tree's fault, so it's said without refusing the
+/// change, and what the list holds of it stands.
+fn stale_verdict(stale: &stale::Stale, listed: &[String]) -> (Option<String>, Option<String>) {
+    let (new, gone) = tree::held(&stale.gone, &stale.unread, listed);
     let mut said = Vec::new();
     if !new.is_empty() {
         said.push("These comments name what isn't there; name where it is now:".to_owned());
@@ -183,19 +199,9 @@ fn stale_held(context: &Context, tree: &str, waiting: &str) -> Result<(), Failur
         said.push("These wait on less now; list each as often as it's found:".to_owned());
         said.extend(gone.iter().map(|line| format!("  {line}")));
     }
-    if said.is_empty() {
-        return Ok(());
-    }
     // Said as lines, each ended, so the refusal after them starts its own.
-    let mut said = said.join("\n");
-    said.push('\n');
-    context.say(&said).map_err(|error| {
-        Failure::new(Exit::Failed, "the answer couldn't be said").because(error.to_string())
-    })?;
-    Err(
-        Failure::new(Exit::Refused, "a comment or the waiting list is stale")
-            .because("each is named above"),
-    )
+    let refused = (!said.is_empty()).then(|| said.join("\n") + "\n");
+    (unread_said(&stale.unread), refused)
 }
 
 fn main() -> ExitCode {
@@ -575,6 +581,45 @@ mod tests {
                 )
             ),
             "the files whose comments couldn't be read weren't each named, or were said of none"
+        );
+    }
+
+    #[test]
+    fn an_unread_files_entries_stand_unrefused_while_the_rest_are_held() {
+        let owned = |lines: &[&str]| lines.iter().map(|&line| line.to_owned()).collect();
+        // A file named with a space, so its entries are told by their
+        // last space, as a path holds none.
+        let stale = stale::Stale {
+            gone: owned(&["a.sh:3: old/x", "d.sh:1: new/y"]),
+            unread: owned(&["b c.sh"]),
+        };
+        let listed = owned(&["a.sh old/x", "b c.sh old/z", "b c.sh old/z", "e.sh gone/w"]);
+        assert_eq!(
+            stale_verdict(&stale, &listed),
+            (
+                Some(
+                    "These files' comments couldn't be read; what waits in them stands:\n  \
+                     b c.sh\n"
+                        .to_owned()
+                ),
+                Some(
+                    "These comments name what isn't there; name where it is now:\n  \
+                     d.sh:1: new/y\n\
+                     These wait on less now; list each as often as it's found:\n  \
+                     e.sh gone/w (found nowhere: take it off)\n"
+                        .to_owned()
+                )
+            ),
+            "an unread file's entries didn't stand, or a new or gone one wasn't refused"
+        );
+        let unread_only = stale::Stale {
+            gone: Vec::new(),
+            unread: owned(&["b c.sh"]),
+        };
+        assert_eq!(
+            stale_verdict(&unread_only, &owned(&["b c.sh old/z"])).1,
+            None,
+            "a file that couldn't be read refused the change"
         );
     }
 
