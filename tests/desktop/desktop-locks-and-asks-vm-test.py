@@ -307,16 +307,16 @@ def test_polkits_prompt_comes_up_after_a_hand_over_that_waited(desktop: Desktop)
 def polkit_restarted(desktop: Desktop) -> None:
     """Restart polkit's service, and wait for the shell's agent to register with it again.
 
-    polkit says so as an agent registers, and an ask before then finds no agent at all, which
-    would fail as a prompt that never came up.
+    The shell says so each time it takes polkit's agent, and an ask before then finds no agent
+    at all, which would fail as a prompt that never came up.
     """
     machine = desktop.machine
+    since = desktop.mark()
     machine.succeed("systemctl restart polkit.service")
     machine.wait_for_unit("polkit.service")
-    started = "$(systemctl show -p InvocationID --value polkit.service)"
+    journal = f"journalctl --user -u quickshell -o cat --after-cursor={shlex.quote(since)}"
     machine.wait_until_succeeds(
-        f"journalctl -b _SYSTEMD_INVOCATION_ID={started} -o cat"
-        " | grep -q 'Registered Authentication Agent'",
+        desktop.in_session(f'{journal} | grep -qF "took polkit\'s agent after"'),
         timeout=STARTING,
     )
 
