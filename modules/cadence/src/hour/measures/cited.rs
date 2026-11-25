@@ -200,13 +200,13 @@ pub fn uncited(
     cited: &str,
     senders: &BTreeMap<String, String>,
 ) -> Measure {
-    let cites: Vec<Cite> = cites(cited)
+    let backing: Vec<Cite> = cites(cited)
         .into_iter()
         .filter(|cite| backed(cite, senders))
         .collect();
     let mut behind = Vec::new();
     for message in said {
-        let before: Vec<&Cite> = cites.iter().filter(|c| c.at <= message.at).collect();
+        let before: Vec<&Cite> = backing.iter().filter(|c| c.at <= message.at).collect();
         behind.extend(timed_uncited(&message.text, &before));
         behind.extend(asks_uncited(&message.text, &before));
     }
