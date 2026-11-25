@@ -128,7 +128,11 @@ fn the_channel_names_the_asker_in_base64_and_carries_a_token() {
         !url(address, "net", Some("1&x=2")).contains("token"),
         "a token that isn't plain is carried"
     );
-    assert!(url(IpAddr::V6(Ipv6Addr::LOCALHOST), "net", None).starts_with("wss://[::1]:8002/"));
+    let v6 = url(IpAddr::V6(Ipv6Addr::LOCALHOST), "net", None);
+    assert!(
+        v6.starts_with("wss://[::1]:8002/"),
+        "an IPv6 address isn't bracketed: {v6}"
+    );
 }
 
 #[test]
