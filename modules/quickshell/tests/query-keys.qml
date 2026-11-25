@@ -1322,7 +1322,8 @@ QtObject {
             ["never past them", "here   ", []],
             ["nor from them into the next paragraph", "here  next", []],
             ["on a text of only spaces, at its line's start", "   ", [[2, 0]]],
-            ["across a wrap into the spaces its last line ends with", "s here ", [[3, 4]]]
+            ["across a wrap into the spaces its last line ends with", "s here ",
+                [[0, 3], [3, 4]]]
         ];
         for (const [what, pattern, want] of endedOn)
             holds(`the drawer's search reads ${what}`,
