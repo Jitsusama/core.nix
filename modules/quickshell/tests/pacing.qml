@@ -1098,6 +1098,22 @@ QtObject {
             Presented.keyShown("row:wifi:network:Harbour", true), "row:wifi:network:Harbour");
         check(failures, "a record's window by its app",
             Presented.keyShown("row:window:kitty:~/src", false), "window:kitty");
+        // A program's row is keyed by its desktop entry's id, which no
+        // title is, so each program's drawer can be timed on its own
+        // (RTOIMQ, 2026-11-24), as a window's app is said.
+        check(failures, "a program's key is said with its desktop entry's id",
+            Presented.keyShown("program:org.inkscape.Inkscape", false),
+            "program:org.inkscape.Inkscape");
+        check(failures, "as its row says it",
+            Presented.rowShown({ key: "program:kitty", name: "kitty" }, false), "program:kitty");
+        check(failures, "but one whose id isn't shaped as an app's is said as program",
+            Presented.keyShown("program:My App_2", false), "program");
+        check(failures, "as is one with a part past its id, as a player's under media",
+            Presented.keyShown("program:media:spotify", false), "program");
+        check(failures, "or one with no id",
+            Presented.keyShown("program:", false), "program");
+        check(failures, "or one whose id was read as null",
+            Presented.keyShown("program:null", false), "program");
         check(failures, "a row named but with no key is said only as an answer with reports off",
             Presented.rowShown({ name: "Re: my offer" }, false), "answer");
         check(failures, "and its name while they're on",
