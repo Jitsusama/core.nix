@@ -10,6 +10,7 @@
 // so is each a styled text breaks; a line Qt wraps is part of its own, and
 // a blank one is none.
 const PARAGRAPH_BREAK = /[\n\u2028\u2029]/;
+const PARAGRAPH_BREAKS = /[\n\u2028\u2029]/g;
 function paragraphs(text) {
     return text.split(PARAGRAPH_BREAK).filter(paragraph => paragraph.trim() !== "").length;
 }
@@ -21,10 +22,13 @@ function paragraphs(text) {
 // the drawer broke itself, as it lays a run, an identifier or an item's
 // value, ends at a break too, so a search stops there as the wash does.
 // A `spaced` text's break stands for the space it was laid at, as a
-// title's does (Identifier.titleLines), so it runs on with that space.
+// title's does (Identifier.titleLines), so it runs on with that space and
+// each one beside it, letter for letter as Search.washed reads the title.
 function runsOn(raw, kept, spaced) {
     const rest = raw.slice(kept);
-    return !PARAGRAPH_BREAK.test(rest) ? rest : spaced === true ? " " : null;
+    if (!PARAGRAPH_BREAK.test(rest))
+        return rest;
+    return spaced === true ? rest.replace(PARAGRAPH_BREAKS, " ") : null;
 }
 
 // What a line that ends its paragraph or its text holds past its `kept`

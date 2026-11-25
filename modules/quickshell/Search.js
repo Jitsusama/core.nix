@@ -11,6 +11,9 @@ const ampersand = /&/g;
 const opening = /</g;
 const closing = />/g;
 const newline = /\n/g;
+// Every break Qt keeps between lines: a newline, or a line or paragraph
+// separator, as a title's own name may hold one (Identifier.titleBreaks).
+const breaks = /[\n\u2028\u2029]/g;
 // A drawer lays each line of a run that fits with no-break spaces, so Qt
 // wraps it only between items; a space typed finds one, or "Pirate flag"
 // in Emoji's drawer would be found nowhere. A pattern pasted from one is
@@ -166,11 +169,12 @@ function escaped(text) {
 // A text as rich text, each place the pattern's found washed: its ink and
 // ground as the wash gives them, as Neovim's Search draws a match. A
 // `spaced` text's breaks each stand for a space, as a title's do, so a
-// match runs on across one as the eye reads it; any other's end a match.
+// match runs on across one as the eye reads it, letter for letter as the
+// drawer's search does (DrawerLines.runsOn); any other's end a match.
 function washed(text, pattern, wash, spaced) {
     let at = 0;
     let html = "";
-    const read = spaced === true ? text.replace(newline, " ") : text;
+    const read = spaced === true ? text.replace(breaks, " ") : text;
     for (const [start, end] of found(pattern, read)) {
         html += escaped(text.slice(at, start))
             + `<span style="color:${wash.ink};background-color:${wash.ground}">`
