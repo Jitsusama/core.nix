@@ -1,15 +1,21 @@
 # shellcheck shell=bash
 # Checks that the Mac's du, counting a home folder from the home folder, from
 # Library, from above both it and the data volume's second name for it, from
-# / , or following links from anywhere, leaves out each guarded folder below
-# the start by its name, once, and says so on stderr in full; that a start
-# naming a guarded folder, by a glob's list, in another case, through `..`
-# or inside one, is left out of the count and said, du not run when none is
-# left; that the account's home is guarded whatever HOME says, and HOME's
-# too; that du's options and their values, joined or apart, are read past
-# to the paths, from a folder below the home so a skipped path would show;
-# that a count above no guarded folder runs as given and says nothing; and
-# that --help answers without running du. A stand-in du writes down each
+# / , even from inside a guarded folder, leaves out each guarded folder below
+# the start by its name, once, says so on stderr in full and ends 1; that a
+# start naming a guarded folder, by a glob's list, in another case, with
+# `./`, `//` or `/.`, through `..`, passing through one or inside one, is
+# left out of the count and said, judged before it's opened, du not run when
+# none is left, and that a start after it that looks like an option reaches
+# du as a path; that -L, alone or among letters, is taken out and said
+# unless -P follows it; that the account's home is guarded whatever HOME
+# says, HOME's too, an unset one, and a home named through a link; that a
+# working folder gone still counts a whole path; that a home that can't be
+# found is said; that du's options and their values, joined or apart, are
+# read past to the paths, from a folder below the home so a skipped path
+# would show; that a count above no guarded folder runs as given, says
+# nothing and ends 0; and that --help answers without running du. A
+# stand-in du writes down each
 # word it's given, since macOS's du, whose -I leaves a folder out by its
 # name, isn't there to run on Linux; nor is a Mac's disk, which takes a path
 # in any case, so a second folder named like the home in capitals stands in
@@ -22,7 +28,7 @@ wrapper=$1
 ignore=$2
 work=$(mktemp -d)
 work=$(cd "${work}" && pwd -P)
-trap 'rm -rf "${work}"' EXIT
+trap 'chmod -R u+rwx "${work}"; rm -rf "${work}"' EXIT
 home="${work}/a [home]*"
 data=${work}/data
 given=${work}/given
@@ -56,16 +62,35 @@ EOF
 chmod +x "${work}/du"
 
 # Runs the wrapper from a folder with the words given, the account's home
-# being the stand-in and HOME the stand-in unless `moved` names another,
-# keeping what it gave du, what it said and how it ended.
+# being the stand-in unless `account` names another, and HOME the stand-in
+# unless `moved` names another or is `unset`; with `gone` set, the folder is
+# removed once the wrapper's shell is in it. It keeps what the wrapper gave
+# du, what it said and how it ended.
 moved=""
+account=""
+gone=""
 count() {
   local from=$1
   shift
   rm -f "${given}"
   ended=0
-  (cd "${from}" && HOME=${moved:-${home}} bash "${wrapper}" "${work}/du" "${ignore}" "${data}" \
-    "${home}" "$@") 2>"${said}" || ended=$?
+  (
+    cd "${from}"
+    if [ -n "${gone}" ]; then
+      rmdir "${from}"
+    fi
+    if [ "${moved}" = unset ]; then
+      unset HOME
+    else
+      export HOME=${moved:-${home}}
+    fi
+    bash "${wrapper}" "${work}/du" "${ignore}" "${data}" "${account:-${home}}" "$@"
+  ) 2>"${said}" || ended=$?
+  # bash itself says, as it starts, that it can't find a folder removed.
+  if [ -n "${gone}" ]; then
+    grep -v '^shell-init: ' "${said}" >"${said}.kept" || true
+    mv "${said}.kept" "${said}"
+  fi
 }
 
 # What the wrapper says it left out: the starts, and the names.
@@ -74,15 +99,18 @@ starts_left() {
   for one in "$@"; do
     all="${all:+${all}, }${one}"
   done
-  echo "note: du left out $# start(s) macOS asks about, uncounted: ${all}; /usr/bin/du counts them"
+  echo "note: du left out $# start(s) in or through folders macOS asks about, uncounted: ${all}"
 }
 names_left() {
   local all="" one
   for one in "$@"; do
     all="${all:+${all}, }${one}"
   done
-  echo "note: du left out, uncounted, every folder named ${all}, which macOS asks about"
+  echo "note: du left out, uncounted, every folder named ${all} beneath its starts, a project's" \
+    "own too, since macOS asks about those in the home folder"
 }
+unfollowed="note: du counted without following links, since a link may reach a folder macOS asks"
+unfollowed+=" about under a name of its own"
 
 # What du was given ahead of the words typed: -I and a name, for each name.
 masks() {
@@ -92,16 +120,25 @@ masks() {
   done
 }
 
-# Whether the wrapper said exactly what's wanted, and gave du exactly the
-# words wanted.
+# Whether the wrapper said exactly what's wanted, gave du exactly the words
+# wanted, and ended 1 when it said anything, 0 when not, or as `ends` says.
+ends=""
 gives() {
-  local what=$1 telling=$2 want
+  local what=$1 telling=$2 want ending=0 ran="(du wasn't run)"
   shift 2
   want=$(printf '%s\n' "$@")
-  if [ "$(<"${given}")" != "${want}" ] || [ "$(<"${said}")" != "${telling}" ]; then
+  if [ -n "${telling}" ]; then
+    ending=1
+  fi
+  ending=${ends:-${ending}}
+  if [ -e "${given}" ]; then
+    ran=$(<"${given}")
+  fi
+  if [ "${ran}" != "${want}" ] || [ "$(<"${said}")" != "${telling}" ] ||
+    [ "${ended}" -ne "${ending}" ]; then
     echo "${what}: du was given" >&2
-    cat "${given}" >&2
-    echo "and the wrapper said: $(<"${said}")" >&2
+    echo "${ran}" >&2
+    echo "and the wrapper said: $(<"${said}"), ending ${ended} rather than ${ending}" >&2
     echo "rather than" >&2
     echo "${want}" >&2
     echo "and: ${telling}" >&2
@@ -163,18 +200,49 @@ count "${work}" -s "${data}"
 leaves_all "a count above the data volume's name for home" -s "${data}"
 count "${work}" -sh "${project}" "${home}"
 leaves_all "a count of a project and then the home folder" -sh "${project}" "${home}"
+count "${home}/Documents/inside" -sh /
+leaves_all "a count of / from inside Documents" -sh /
+count "${home}/Documents/inside" -sh ../..
+leaves_all "a count of ../.. from inside Documents" -sh ../..
+
+# -L is taken out, alone or among letters, and said, unless -P follows it;
+# an L that is -I's value is a name.
 count "${work}" -L -sh "${project}"
-leaves_all "a count following links, from a project" -L -sh "${project}"
+gives "a count asked to follow links, from a project" "${unfollowed}" -sh "${project}"
+count "${work}" -sLh "${project}"
+gives "a count asked to follow links by -sLh" "${unfollowed}" -sh "${project}"
+count "${work}" -L -P "${project}"
+gives "a count asked to follow links, then not" "" -P "${project}"
+count "${work}" -ILx "${project}"
+gives "a count whose -I names Lx" "" -ILx "${project}"
 
 # The account's home is guarded wherever HOME points, and HOME's own too.
 moved=/nonexistent
 count "${work}" -sh "${home}"
 leaves_all "a count of the home folder with HOME gone" -sh "${home}"
+moved="unset"
+count "${work}" -sh "${home}"
+leaves_all "a count of the home folder with HOME unset" -sh "${home}"
 moved="${work}/another home"
 mkdir -p "${moved}"
 count "${work}" -sh "${moved}"
 leaves_all "a count of the home HOME names" -sh "${moved}"
+account=/nonexistent
+moved=/nonexistent
+count "${work}" -sh "${project}"
+ends=0
+gives "a count with no home to be found, which leaves nothing out" \
+  "note: du found no home folder to guard, so it guards nothing" -sh "${project}"
+ends=""
+account=""
 moved=""
+
+# A working folder gone still counts a start named by its whole path.
+mkdir "${work}/gone"
+gone=yes
+count "${work}/gone" -sh "${home}"
+leaves_all "a count of the home folder from a working folder gone" -sh "${home}"
+gone=""
 
 # A Mac's disk takes the home folder's name in any case.
 mkdir -p "${work}/A [HOME]*"
@@ -206,6 +274,39 @@ count "${work}" -sh "${home}/DOWNLOADS/"
 runs_nothing "a count naming Downloads in capitals" "${home}/DOWNLOADS/"
 count "${work}" -sh "${home}/src/../Documents"
 runs_nothing "a count reaching Documents through .." "${home}/src/../Documents"
+count "${home}/Documents/inside" -sh ..
+runs_nothing "a count of .. from inside Documents" ..
+ln -s "${home}/Documents" "${home}/src/notes"
+count "${work}" -sh "${home}/src/notes"
+runs_nothing "a count of a link to Documents" "${home}/src/notes"
+rm "${home}/src/notes"
+
+# A start named plainly is judged before it's opened: with Documents and
+# Downloads unable to be entered, and so having no real path, each named
+# plainly, however it's spelt, or passed through, is still left out, as is
+# one named through a link to the home folder, the account's home named so.
+chmod 000 "${home}/Documents" "${home}/Downloads"
+count "${work}" -sh "${home}/Documents"
+runs_nothing "a count of a Documents that can't be entered" "${home}/Documents"
+count "${home}" -sh ./Documents
+runs_nothing "a count naming ./Documents" ./Documents
+count "${work}" -sh "${home}//Documents"
+runs_nothing "a count naming Documents after //" "${home}//Documents"
+count "${home}" -sh Documents/.
+runs_nothing "a count naming Documents/." Documents/.
+count "${home}" -sh Downloads/../src
+runs_nothing "a count passing through Downloads" Downloads/../src
+ln -s "${home}" "${work}/linked"
+account=${work}/linked
+count "${work}" -sh "${work}/linked/Documents"
+runs_nothing "a count of Documents through a home named by a link" "${work}/linked/Documents"
+account=""
+chmod 755 "${home}/Documents" "${home}/Downloads"
+
+# A start after one left out that looks like an option reaches du as a path.
+left=$(starts_left Documents)
+count "${home}" -s Documents -L
+gives "a count with -L after Documents" "${left}" -s -- -L
 count "${home}" -sh Desktop Library src
 left=$(starts_left Desktop)
 gives "a count of a glob's list of the home folder" "${left}"$'\n'"${library_names}" \

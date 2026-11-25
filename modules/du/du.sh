@@ -4,20 +4,25 @@
 # macOS asks about. Opening one makes macOS ask whether the counter may read
 # it, and an agent's du of the home folder on 24 November walked into every
 # one of them, since du reads no ignore file.
-# A start that is a guarded folder, or lies in one, is left out of the
-# count, since naming it is how a shell's glob asks too: `du -sh ~/*` names
-# Desktop, Documents and Downloads. A start above one leaves out, by -I,
-# every folder of that name beneath it, since macOS's du leaves a folder out
-# by its name alone, not its path: a project's own Documents goes too. A
-# count following links (-L) leaves out every guarded name wherever it
-# starts, since a link may reach the home folder from anywhere. Either is
-# said on stderr, so a smaller total never reads as the whole, and
-# /usr/bin/du run by its path counts what this leaves out.
+# A start that is a guarded folder, lies in one or passes through one on
+# its way, as `~/Downloads/../src` does, is left out of the count: judged
+# first by its path as typed, empty steps and `.` dropped and `..` taking
+# back a step, before anything opens it, then by its real path. Naming one
+# is how a shell's glob asks too: `du -sh ~/*` names Desktop, Documents and
+# Downloads. A start above one leaves out, by -I, every folder of that name
+# beneath it, since macOS's du leaves a folder out by its name alone, not
+# its path: a project's own Documents goes too. A count asked to follow
+# links (-L) counts without following them, since macOS's du matches -I
+# against the name a link has, not the folder it reaches (ignorep in its
+# du.c), so a link named otherwise would walk into one. Each is said on
+# stderr, and du then ends 1, so a smaller total never reads as the whole.
+# Neither names a way round, since an agent reads a named way as the next
+# thing to run.
 # The home folder guarded is the account's, as its configuration names it,
-# and the one HOME names when that's elsewhere. A guarded folder reached
-# through `..` or a link is resolved by bash, which looks inside it once;
-# one named plainly is left out without being touched. Another du ahead of
-# this one on PATH, as a dev shell's is, isn't reached.
+# and the one HOME names when that's elsewhere, each as named and by its
+# real path. A guarded folder reached through a link in a start's path is
+# resolved by bash, which looks inside it once. Another du ahead of this one
+# on PATH, as a dev shell's is, isn't reached.
 # usage: du.sh <du> <ignore file> <data volume> <home> [du's arguments...]
 set -euo pipefail
 
@@ -36,39 +41,64 @@ du  macOS's du, leaving guarded folders alone
 
   Runs macOS's du, but never walks into a folder
   the home folder's .ignore guards: a start that
-  is one, or lies in one, is left out, and a count
-  starting above one leaves out every folder of
-  that name. Either is said on stderr; /usr/bin/du
-  counts them as given.
+  is one, lies in one or passes through one is
+  left out, a count starting above one leaves out
+  every folder of that name, and links aren't
+  followed. Each is said on stderr.
 
 EXAMPLES
   du -sh ~
   du -sh ~/*
 
 EXIT
-  du's own, or 1 when every start was left out
+  du's own, or 1 when anything was left out
 EOF
   exit 0
 fi
 args=("$@")
 
-# du's options come first, then the paths. Only the options macOS's du takes
-# are read: -B, -I, -d and -t take a value, joined to them or as the next
-# word, and -- ends them. -L, before any value, follows links.
+# du's options come first, then the paths: macOS's du reads options only up
+# to the first path. Only the options it takes are read: -B, -I, -d and -t
+# take a value, joined to them or as the next word, and -- ends them. Of -H,
+# -L and -P the last given wins, as in du; -L is taken out, wherever it
+# sits among a word's letters, and said when it would have won.
 follows=""
+dashed=""
+options=()
 at=0
 while [ "${at}" -lt "${#args[@]}" ]; do
   arg=${args[at]}
   at=$((at + 1))
   if [ "${arg}" = -- ]; then
+    options+=(--)
+    dashed=yes
     break
   elif [[ ${arg} == --?* ]]; then
+    options+=("${arg}")
     continue
   elif [[ ${arg} =~ ^-[A-Za-z] ]]; then
     letters=${arg#-}
     before=${letters%%[BIdt]*}
-    [[ ${before} == *L* ]] && follows=yes
-    if [[ ${letters} =~ ^[^BIdt]*[BIdt]$ ]]; then
+    value=${letters:${#before}}
+    kept_letters=""
+    while [ -n "${before}" ]; do
+      letter=${before:0:1}
+      before=${before:1}
+      case ${letter} in
+        L)
+          follows=yes
+          continue
+          ;;
+        H | P) follows="" ;;
+        *) ;;
+      esac
+      kept_letters+=${letter}
+    done
+    if [ -n "${kept_letters}${value}" ]; then
+      options+=("-${kept_letters}${value}")
+    fi
+    if [[ ${letters} =~ ^[^BIdt]*[BIdt]$ ]] && [ "${at}" -lt "${#args[@]}" ]; then
+      options+=("${args[at]}")
       at=$((at + 1))
     fi
   else
@@ -76,7 +106,6 @@ while [ "${at}" -lt "${#args[@]}" ]; do
     break
   fi
 done
-options=("${args[@]:0:at}")
 starts=("${args[@]:at}")
 # No path is du's ., judged as one but not named to du, as it wasn't typed.
 unnamed=""
@@ -85,27 +114,94 @@ if [ ${#starts[@]} -eq 0 ]; then
   unnamed=yes
 fi
 
-# A folder's real path, as du opens it, never one CDPATH names instead, and
-# without a subshell, since a count may name thousands of starts; empty
-# when it can't be reached.
-origin=${PWD}
+# The working folder, which relative starts are judged from. A folder's
+# real path is found by going there and back, without a subshell, since a
+# count may name thousands of starts; when the working folder can't be
+# gone back to, as when it was removed, in a subshell instead, so a start
+# named by its whole path is still judged and counted.
+origin=${PWD-}
+if [ -z "${origin}" ]; then
+  origin=$(pwd -P 2>/dev/null) || origin=""
+fi
+here=""
+if [ -n "${origin}" ] && cd -- "${origin}" 2>/dev/null; then
+  here=yes
+fi
+# A folder's real path, as du opens it, never one CDPATH names instead;
+# empty when it can't be reached.
 real() {
   real=""
+  if [ -z "${here}" ]; then
+    real=$(CDPATH='' cd -P -- "$1" 2>/dev/null && pwd -P) || real=""
+    return 0
+  fi
   if CDPATH='' cd -P -- "$1" 2>/dev/null; then
     real=${PWD}
   fi
-  cd -- "${origin}"
+  if ! cd -- "${origin}" 2>/dev/null; then
+    echo "note: du's working folder went away while its starts were judged," \
+      "so it counted nothing" >&2
+    exit 1
+  fi
 }
 
-# The guarded folders, under each home folder and the data volume's second
-# name for it. Only a line naming one folder from the home folder's top,
-# /Name/, is read.
+# Whether `plain` is a guarded folder or lies in one, as `inside`. A Mac's
+# disk takes a name in any case, and cd keeps the case typed, so paths are
+# matched whatever their case.
+judge() {
+  local path=${plain,,} target
+  for target in ${lowered[@]+"${lowered[@]}"}; do
+    if [ "${path}" = "${target}" ] || [[ ${path} == "${target}"/* ]]; then
+      inside=yes
+    fi
+  done
+}
+# Sets plain to the path folder $1 and then path $2 make, read as typed:
+# empty steps and `.` dropped, `..` taking back a step, and / when nothing
+# is left. Sets inside when a step $2 takes, or where it ends, is or lies
+# in a guarded folder; $1's own steps are where the count already is.
+plain() {
+  local rest step judging=""
+  plain=""
+  inside=""
+  for rest in "$1" "$2"; do
+    rest=${rest}/
+    while [ -n "${rest}" ]; do
+      step=${rest%%/*}
+      rest=${rest#*/}
+      case ${step} in
+        "" | .) ;;
+        ..) plain=${plain%/*} ;;
+        *)
+          plain=${plain}/${step}
+          if [ -n "${judging}" ]; then
+            judge
+          fi
+          ;;
+      esac
+    done
+    judging=yes
+  done
+  [ -n "${plain}" ] || plain=/
+  judge
+}
+
+# The guarded folders, under each home folder that can be reached, as named
+# and by its real path, and the data volume's second name for it. Only a
+# line naming one folder from the home folder's top, /Name/, is read.
+lowered=()
 homes=()
 for home in "${account}" "${HOME-}"; do
-  [ -n "${home}" ] || continue
+  [[ ${home} == /* ]] || continue
   real "${home}"
   [ -n "${real}" ] || continue
-  [[ " ${homes[*]-} " == *" ${real} "* ]] || homes+=("${real}")
+  plain "" "${home}"
+  for one in "${plain}" "${real}"; do
+    if [ -z "${one}" ] || [ "${one}" = / ]; then
+      continue
+    fi
+    [[ " ${homes[*]-} " == *" ${one} "* ]] || homes+=("${one}")
+  done
 done
 targets=()
 # A last line with no newline is read too, as ripgrep reads it.
@@ -119,24 +215,12 @@ while IFS= read -r line || [ -n "${line}" ]; do
     fi
   done
 done <"${ignore}"
+for target in ${targets[@]+"${targets[@]}"}; do
+  lowered+=("${target,,}")
+done
 
-# Whether a path is a guarded folder or lies in one, as `inside`. A Mac's
-# disk takes a name in any case, and cd keeps the case typed, so paths are
-# matched whatever their case.
-guarded() {
-  local path=${1,,} target
-  inside=""
-  for target in ${targets[@]+"${targets[@]}"}; do
-    target=${target,,}
-    if [ "${path}" = "${target}" ] || [[ ${path} == "${target}"/* ]]; then
-      inside=yes
-    fi
-  done
-}
-
-# Each start a guarded folder holds is left out, by its path as typed
-# before anything opens it, then by its real path. Each guarded folder's
-# name is kept once, for a start above it.
+# Each start a guarded folder holds, or that passes through one, is left
+# out. Each guarded folder's name is kept once, for a start above it.
 declare -A leaving=()
 names=()
 kept=()
@@ -148,17 +232,23 @@ leave() {
   names+=("${name}")
 }
 for path in "${starts[@]}"; do
-  typed=${path%"${path##*[!/]}"}
-  [[ ${typed} == /* ]] || typed=${origin}/${typed}
-  guarded "${typed}"
+  if [[ ${path} == /* ]]; then
+    plain "" "${path}"
+  elif [ -n "${origin}" ]; then
+    plain "${origin}" "${path}"
+  else
+    inside=""
+  fi
   if [ -n "${inside}" ]; then
     left+=("${path}")
     continue
   fi
   real=""
-  [ -d "${path}" ] && real "${path}"
+  if [ -d "${path}" ]; then
+    real "${path}"
+  fi
   if [ -n "${real}" ]; then
-    guarded "${real}"
+    plain "" "${real}"
     if [ -n "${inside}" ]; then
       left+=("${path}")
       continue
@@ -171,11 +261,6 @@ for path in "${starts[@]}"; do
   fi
   kept+=("${path}")
 done
-if [ -n "${follows}" ]; then
-  for target in ${targets[@]+"${targets[@]}"}; do
-    leave "${target}"
-  done
-fi
 
 # The words given, as one list, in `all`.
 listed() {
@@ -185,10 +270,15 @@ listed() {
     all="${all:+${all}, }${one}"
   done
 }
+short=""
+if [ ${#targets[@]} -eq 0 ]; then
+  echo "note: du found no home folder to guard, so it guards nothing" >&2
+fi
 if [ ${#left[@]} -gt 0 ]; then
   listed "${left[@]}"
-  echo "note: du left out ${#left[@]} start(s) macOS asks about, uncounted:" \
-    "${all}; /usr/bin/du counts them" >&2
+  echo "note: du left out ${#left[@]} start(s) in or through folders macOS asks about," \
+    "uncounted: ${all}" >&2
+  short=yes
 fi
 if [ ${#kept[@]} -eq 0 ]; then
   exit 1
@@ -202,6 +292,29 @@ if [ ${#names[@]} -gt 0 ]; then
     masks+=(-I "${name}")
   done
   listed "${names[@]}"
-  echo "note: du left out, uncounted, every folder named ${all}, which macOS asks about" >&2
+  echo "note: du left out, uncounted, every folder named ${all} beneath its starts," \
+    "a project's own too, since macOS asks about those in the home folder" >&2
+  short=yes
 fi
-exec "${du}" ${masks[@]+"${masks[@]}"} ${options[@]+"${options[@]}"} ${kept[@]+"${kept[@]}"}
+if [ -n "${follows}" ]; then
+  echo "note: du counted without following links, since a link may reach a folder" \
+    "macOS asks about under a name of its own" >&2
+  short=yes
+fi
+# A kept start that looks like an option, as one behind a start left out
+# can, is put past --, so du reads it as a path.
+if [ -z "${dashed}" ]; then
+  for path in ${kept[@]+"${kept[@]}"}; do
+    if [[ ${path} == -* ]]; then
+      options+=(--)
+      break
+    fi
+  done
+fi
+ended=0
+"${du}" ${masks[@]+"${masks[@]}"} ${options[@]+"${options[@]}"} ${kept[@]+"${kept[@]}"} ||
+  ended=$?
+if [ -n "${short}" ] && [ "${ended}" -eq 0 ]; then
+  ended=1
+fi
+exit "${ended}"

@@ -1259,11 +1259,15 @@
     a Mac's account runs its own du, ahead of any other in its profile, macOS's with the ignore
     file, the data volume and the account's home, and a Linux account none; over a stand-in du,
     a count starting above a guarded folder, from the home folder, Library, the data volume's
-    name for it, /, a home in capitals or HOME's own, or following links from anywhere, leaves
-    each guarded folder out by its name, once, and says so in full, HOME gone or not, options
-    and their values, joined or apart, read past; a start that is a guarded folder or lies in
-    one, named, by a glob's list, in capitals or through .., is left out and said, du not run
-    when none is left; a count above none runs as given, and --help runs no du
+    name for it, /, even from inside one, a home in capitals or HOME's own, leaves each
+    guarded folder out by its name, once, says so in full and ends 1, HOME gone, unset or not,
+    options and their values, joined or apart, read past; a start that is, lies in or passes
+    through a guarded folder, named, by a glob's list, in capitals, with ./, // or /., through
+    .., by a link, or through a home named by one, is judged before it's opened, left out and
+    said, du not run when none is left, and a start after it like an option reaches du as a
+    path; -L is taken out and said unless -P follows; a working folder gone still counts a
+    whole path, and no home found is said; a count above none runs as given and ends 0, and
+    --help runs no du
   '';
   every-fixed-wait-says-why = ''
     every sleep in a test polls, or says what passes while it waits in a comment or by a named
