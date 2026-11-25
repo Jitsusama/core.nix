@@ -213,6 +213,7 @@ const NOT_A_VM_TEST: &str = "isn't a VM test, so it has no subtests";
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Write as _;
 
     /// What a search reads from a run whose log says `failed` failed.
     fn run(failed: &[&str]) -> BTreeSet<String> {
@@ -386,30 +387,31 @@ mod tests {
         let name = "the-launcher-answers-whats-typed-on-niri";
         let mut log = String::from("these 8 derivations will be built:\n");
         for part in 1..=6 {
-            log.push_str(&format!("  /nix/store/ab-{name}-part-{part}.drv\n"));
+            let _ = writeln!(log, "  /nix/store/ab-{name}-part-{part}.drv");
         }
         for part in 1..=6 {
-            log.push_str(&format!(
-                "building '/nix/store/ab-{name}-part-{part}.drv'...\n"
-            ));
+            let _ = writeln!(log, "building '/nix/store/ab-{name}-part-{part}.drv'...");
         }
         for _ in 1..=6 {
-            log.push_str(&format!("{name}-part> ===== test session starts =====\n"));
+            let _ = writeln!(log, "{name}-part> ===== test session starts =====");
         }
-        log.push_str(&format!(
-            "{name}-part> FAILED ../nix/store/ab-tests/t.py::test_tada - AssertionError\n"
-        ));
+        let _ = writeln!(
+            log,
+            "{name}-part> FAILED ../nix/store/ab-tests/t.py::test_tada - AssertionError"
+        );
         for sum in sums {
-            log.push_str(&format!(
-                "{name}-part> ======= {sum} in 77.33s (0:01:17) =======\n"
-            ));
+            let _ = writeln!(
+                log,
+                "{name}-part> ======= {sum} in 77.33s (0:01:17) ======="
+            );
         }
         for part in broke {
-            log.push_str(&format!(
+            let _ = writeln!(
+                log,
                 "error: Cannot build '/nix/store/ab-{name}-part-{part}.drv'.\n       \
                  Reason: builder failed with exit code 1.\n       \
-                 > ======= 1 failed, 53 passed in 290.07s =======\n"
-            ));
+                 > ======= 1 failed, 53 passed in 290.07s ======="
+            );
         }
         log
     }
