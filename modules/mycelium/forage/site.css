@@ -71,6 +71,21 @@
   text-decoration-color: currentColor;
 }
 
+/* The lines the longest lede the model writes takes, held from the first
+   paint, so nothing under it moves as the node answers. Its words grow with
+   the window and stop widening at the kit's 36rem, so below 64rem it takes
+   at most four lines, and above, three. Nothing is cut: a longer lede grows
+   the box. */
+.page-head .lede {
+  min-block-size: 4lh;
+}
+
+@media (min-width: 64rem) {
+  .page-head .lede {
+    min-block-size: 3lh;
+  }
+}
+
 /* The keys act when pressed, as typing them does (steps.ts), and wait for
    the script that makes them act before they show. */
 .page-head .keys kbd {

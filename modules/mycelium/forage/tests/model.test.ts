@@ -253,10 +253,7 @@ it("the lede names the cells with no purpose, then the plan furthest from done",
       ),
     ),
   ).forages;
-  assert.equal(
-    lede(many),
-    "CELLA, CELLB and 3 more have no purpose written yet. No plan has steps left.",
-  );
+  assert.equal(lede(many), "CELLA and 4 more have no purpose written yet. No plan has steps left.");
 });
 
 it("a find matches a cell, its quest, its purpose or a document's title", () => {
@@ -350,8 +347,12 @@ it("the lede first says what waits on its person, and from which cells", () => {
   );
   assert.equal(
     lede(forages),
-    "3 things wait on you, from KESTR2, KESTRL and OSPREY. Every cell has its purpose written. KESTR2 has furthest to go, 3 of 6 steps done.",
+    "3 things wait on you, from KESTR2 and 2 more. Every cell has its purpose written. KESTR2 has furthest to go, 3 of 6 steps done.",
   );
+  const two = foragesOf(
+    told([forage("KESTRL", { waits: [look] }), forage("OSPREY", { waits: [look] })]),
+  ).forages;
+  assert.ok(lede(two).startsWith("2 things wait on you, from KESTRL and OSPREY. "), lede(two));
   const [one] = foragesOf(told([forage("OSPREY", { waits: [look] })])).forages;
   assert.ok(one);
   assert.ok(lede([one]).startsWith("One thing waits on you, from OSPREY. "), lede([one]));
