@@ -116,10 +116,8 @@ fn within(slice: &Path) -> bool {
     let first = names.next().flatten();
     first.is_some_and(|name| name != "app.slice")
         && names.all(|name| name.is_some())
-        && slice
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| name.ends_with(".slice"))
+        // systemd's unit names are told apart by case, so only `.slice` is.
+        && slice.extension().is_some_and(|kind| kind == "slice")
 }
 
 /// The account's number, from passwd's text.
