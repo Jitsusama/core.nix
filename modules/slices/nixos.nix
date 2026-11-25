@@ -257,6 +257,9 @@ let
   agentsHigh = "42%";
   # Where jobs' ceiling starts, and what jobs-sorter puts back as it stops.
   jobsHigh = "26%";
+  # A percentage as an Exec line takes it: systemd reads a % there as the
+  # start of a specifier, even inside quotes.
+  unitPercent = lib.replaceStrings [ "%" ] [ "%%" ];
   account = "24%";
   above = "38%";
 
@@ -1080,7 +1083,7 @@ in
             # declared ceiling, 4 GiB a look, at the first wait, a call or
             # memory short.
             "--ceiling"
-            "jobs.slice=${jobsHigh}"
+            "jobs.slice=${unitPercent jobsHigh}"
             "--spare"
             "app.slice"
             "--spare"
@@ -1132,9 +1135,12 @@ in
         # sorter that isn't back before the call ends can't; a restart
         # mid-call brakes again on its first look. It puts back jobs'
         # declared ceiling too, since one it lifted would stay up with
-        # nothing to bring it down; an empty one would clear it. Each is
-        # given 5 s, as the sorter's own sets are, so a stalled bus can't
-        # hold its stop.
+        # nothing to bring it down; an empty one would clear it. By hand,
+        # `systemctl --user set-property --runtime jobs.slice MemoryHigh=`
+        # with jobsHigh's share does the same. Each is given 5 s, as the sorter's own sets are, so
+        # a stalled bus can't hold its stop. It goes back in one write
+        # rather than a fall at a time, since nothing paces it once the
+        # sorter has stopped, and a lifted ceiling left up is worse.
         ExecStopPost =
           let
             letGo =
@@ -1154,7 +1160,7 @@ in
           [
             "-${letGo "--user" "jobs.slice" "CPUQuota="}"
             "-${letGo "--system" "build.slice" "CPUQuota="}"
-            "-${letGo "--user" "jobs.slice" "MemoryHigh=${jobsHigh}"}"
+            "-${letGo "--user" "jobs.slice" "MemoryHigh=${unitPercent jobsHigh}"}"
           ];
         Restart = "on-failure";
         RestartSec = 5;

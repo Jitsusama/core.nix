@@ -292,21 +292,29 @@ def test_work_in_jobs_is_slowed_never_ended_past_a_ceiling_that_follows_room(
         f"head -c {declared} /dev/urandom > /var/tmp/filler && sync"
         " && echo 1 > /proc/sys/vm/drop_caches"
     )
-    jobs.write_into_jobs(
-        "fills",
-        f"{JOBS}/jobs.service",
-        f"{{ {coreutils}/cat /var/tmp/filler > /dev/null; {jobs.sleep} 1008; }}",
-    )
-    machine.wait_until_succeeds(f"test $(cat {JOBS}/memory.high) -gt {declared}", timeout=RISING)
-    said = machine.succeed("journalctl -o cat _SYSTEMD_USER_UNIT=jobs-sorter.service")
-    assert "memory ceiling to" in said, said
-    assert "nothing it spares waiting on memory" in said, said
-    machine.succeed("systemctl -M alice@ --user stop jobs-sorter.service")
+    # Whatever fails from here, the filler goes and the sorter runs again, so the subtests
+    # after this one start from a jobs holding nothing of it.
     try:
+        jobs.write_into_jobs(
+            "fills",
+            f"{JOBS}/jobs.service",
+            f"{{ {coreutils}/cat /var/tmp/filler > /dev/null; {jobs.sleep} 1008; }}",
+        )
+        machine.wait_until_succeeds(
+            f"test $(cat {JOBS}/memory.high) -gt {declared}", timeout=RISING
+        )
+        said = machine.succeed("journalctl -o cat _SYSTEMD_USER_UNIT=jobs-sorter.service")
+        assert "memory ceiling to" in said, said
+        assert "nothing it spares waiting on memory" in said, said
+        # Still lifted as the sorter stops, so only its unit can have put it back.
+        machine.succeed(
+            f"test $(cat {JOBS}/memory.high) -gt {declared}"
+            " && systemctl -M alice@ --user stop jobs-sorter.service"
+        )
         put_back = int(jobs.read(f"{JOBS}/memory.high"))
         assert abs(put_back - declared) <= MIB, (put_back, declared)
     finally:
-        machine.succeed(f"kill {jobs.sleeping(1008)}; rm -f /var/tmp/filler")
+        machine.succeed(f"pkill -xf '{jobs.sleep} 1008' || true; rm -f /var/tmp/filler")
         machine.succeed("systemctl -M alice@ --user start jobs-sorter.service")
 
 

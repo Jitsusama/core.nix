@@ -22,7 +22,10 @@
 //!
 //! It's set as a runtime property, gone at the next boot, and the unit
 //! puts back the declared ceiling as it stops, since a sorter that isn't
-//! running can't bring it down.
+//! running can't bring it down. Each look reads the ceiling back from the
+//! slice's `memory.high`, so one set elsewhere, or a set that failed but
+//! landed late, is followed from where it stands, and one cleared or put
+//! past [`TOP`] is put back.
 
 use std::time::{Duration, Instant};
 
@@ -58,8 +61,45 @@ pub const ROOM: u64 = 30;
 /// The most of memory, as a percentage, the ceiling ever gives jobs.
 pub const TOP: u64 = 50;
 
-/// How long a ceiling that couldn't be set waits to be tried again.
+/// How long a ceiling that couldn't be set waits to be tried again, unless
+/// it was to come down: a fall is tried again at the next look, since a
+/// spared slice is waiting on it.
 pub const AGAIN: Duration = Duration::from_secs(30);
+
+/// Why a ceiling is set, as the sorter's journal says it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Why {
+    /// The first set, to the declared ceiling.
+    Declared,
+    /// Put back at the declared ceiling after a set that failed, with
+    /// nothing read back to say where it stands.
+    Again,
+    /// Put back inside its bounds after something else set it outside them.
+    Elsewhere,
+    /// Raised, nothing spared having waited.
+    Rise,
+    /// Brought down for a spared slice waiting on memory.
+    Waiting,
+    /// Brought down for a call.
+    Call,
+    /// Brought down for memory available falling short of [`ROOM`].
+    Short,
+}
+
+impl Why {
+    /// The reason as the journal's line ends.
+    pub fn said(self) -> &'static str {
+        match self {
+            Why::Declared => "as it declares",
+            Why::Again => "as it declares, after a set that failed",
+            Why::Elsewhere => "back inside its bounds after something else set it",
+            Why::Rise => "nothing it spares waiting on memory",
+            Why::Waiting => "a slice it spares waiting on memory",
+            Why::Call => "a call on",
+            Why::Short => "memory short",
+        }
+    }
+}
 
 /// What one look found.
 #[derive(Clone, Copy)]
@@ -74,6 +114,24 @@ pub struct Look {
     pub waiting: bool,
     /// Whether a call is on.
     pub calling: bool,
+    /// The slice's ceiling as its `memory.high` reads, or none when that
+    /// can't be read.
+    pub high: Option<u64>,
+}
+
+/// Two ceilings within a MiB of each other are one: the kernel keeps a
+/// ceiling in whole pages, so one set to a share of memory reads back a
+/// little under it.
+fn near(one: u64, other: u64) -> bool {
+    one.abs_diff(other) < MIB
+}
+
+/// The ceiling `memory.high` says, `max` being none at all.
+pub fn high(text: &str) -> Option<u64> {
+    match text.trim() {
+        "max" => Some(u64::MAX),
+        high => high.parse().ok(),
+    }
 }
 
 /// Where the ceiling stands: as last set, or unknown before the first set
@@ -92,31 +150,64 @@ pub fn least(total: u64, percent: u64) -> u64 {
 }
 
 impl Ceiling {
-    /// The ceiling to set `now`, given what `look` found and the slice's
-    /// declared ceiling `least`, or none when it stands as it should.
-    pub fn wanted(&mut self, look: &Look, least: u64, now: Instant) -> Option<u64> {
-        if self
-            .failed
-            .is_some_and(|at| now.saturating_duration_since(at) < AGAIN)
-        {
-            return None;
+    /// The ceiling to set `now` and why, given what `look` found and the
+    /// slice's declared ceiling `least`, or none when it stands as it
+    /// should.
+    pub fn wanted(&mut self, look: &Look, least: u64, now: Instant) -> Option<(u64, Why)> {
+        // What memory.high reads is where the ceiling stands, whoever set
+        // it; within a MiB of the last set, it's that set. A sorter just
+        // started takes it only as the declared ceiling, so one left by an
+        // earlier sorter, or declared before a change, is set afresh.
+        match (self.set, look.high) {
+            (Some(set), Some(high)) if !near(set, high) => self.set = Some(high),
+            (None, Some(high)) if self.failed.is_some() || near(high, least) => {
+                self.set = Some(high);
+            }
+            _ => {}
         }
         let short = look.available < look.total / 100 * ROOM;
-        if look.waiting || look.calling || short {
+        let down = if look.waiting {
+            Some(Why::Waiting)
+        } else if look.calling {
+            Some(Why::Call)
+        } else if short {
+            Some(Why::Short)
+        } else {
+            None
+        };
+        if down.is_some() {
             self.quiet_from = None;
         } else if self.quiet_from.is_none() {
             self.quiet_from = Some(now);
         }
+        let again = self
+            .failed
+            .is_some_and(|at| now.saturating_duration_since(at) < AGAIN);
+        // In whole MiB, so a ceiling risen to it reads back as at it.
+        let top = (self::least(look.total, TOP) / MIB * MIB).max(least);
         let Some(set) = self.set else {
-            return Some(least);
+            return match down {
+                Some(why) => Some((least, why)),
+                None if again => None,
+                None if self.failed.is_some() => Some((least, Why::Again)),
+                None => Some((least, Why::Declared)),
+            };
         };
-        if self.quiet_from.is_none() {
-            // Down a fall at most, and never below the declared ceiling,
-            // which one under it is brought up to.
-            let fallen = (set.saturating_sub(fall(look.total)) / MIB * MIB).max(least);
-            return (set != least).then_some(fallen);
+        if let Some(why) = down {
+            // Down a fall at most, from the top at most, and never below
+            // the declared ceiling; one something else set under it stays
+            // there until nothing waits, since raising it now would take
+            // from what waits.
+            let fallen = (set.min(top).saturating_sub(fall(look.total)) / MIB * MIB).max(least);
+            return (set > least && !near(fallen, set)).then_some((fallen, why));
         }
-        let top = self::least(look.total, TOP).max(least);
+        if again {
+            return None;
+        }
+        let bounded = set.clamp(least, top);
+        if !near(bounded, set) {
+            return Some((bounded, Why::Elsewhere));
+        }
         let quiet = self
             .quiet_from
             .is_some_and(|from| now.saturating_duration_since(from) >= QUIET_FOR);
@@ -124,16 +215,12 @@ impl Ceiling {
         // slice that isn't is room handed out untested.
         let step = step(look.total);
         let filled = look.current.saturating_add(step) >= set;
-        if quiet && filled && set < top {
+        let raised = set.saturating_add(step).min(top) / MIB * MIB;
+        if quiet && filled && raised > set && !near(raised, set) {
             self.quiet_from = Some(now);
-            return Some(set.saturating_add(step).min(top) / MIB * MIB);
+            return Some((raised, Why::Rise));
         }
         None
-    }
-
-    /// Where the ceiling stands as last set, or none when it's unknown.
-    pub fn stands(&self) -> Option<u64> {
-        self.set
     }
 
     /// The ceiling now stands at `high`.
@@ -142,7 +229,8 @@ impl Ceiling {
         self.failed = None;
     }
 
-    /// Setting it failed `now`; it may have landed late, so it's unknown.
+    /// Setting it failed `now`; it may have landed late, so it's unknown
+    /// until `memory.high` is read again.
     pub fn failed(&mut self, now: Instant) {
         self.set = None;
         self.failed = Some(now);
@@ -202,7 +290,8 @@ mod tests {
         least(TOTAL, 26)
     }
 
-    /// Jobs at its ceiling, a third of memory available, nothing waiting.
+    /// Jobs holding `current`, two fifths of memory available, nothing
+    /// waiting, and its ceiling not read back.
     fn roomy(current: u64) -> Look {
         Look {
             total: TOTAL,
@@ -210,6 +299,16 @@ mod tests {
             current,
             waiting: false,
             calling: false,
+            high: None,
+        }
+    }
+
+    /// What a look at a jobs holding `current` finds when a spared slice
+    /// waits.
+    fn waiting(current: u64) -> Look {
+        Look {
+            waiting: true,
+            ..roomy(current)
         }
     }
 
@@ -227,8 +326,46 @@ mod tests {
         let mut ceiling = Ceiling::default();
         assert_eq!(
             ceiling.wanted(&roomy(base()), base(), now),
-            Some(base()),
+            Some((base(), Why::Declared)),
             "a ceiling of unknown height wasn't set to the declared one"
+        );
+    }
+
+    #[test]
+    fn a_ceiling_read_back_as_declared_needs_no_first_set() {
+        let now = Instant::now();
+        let mut ceiling = Ceiling::default();
+        // The kernel keeps it in whole pages, a little under the share.
+        let read = Look {
+            high: Some(base() / 4096 * 4096),
+            ..roomy(base())
+        };
+        assert_eq!(
+            ceiling.wanted(&read, base(), now),
+            None,
+            "a ceiling already standing as declared was set again"
+        );
+        assert_eq!(
+            ceiling.wanted(
+                &Look {
+                    waiting: true,
+                    ..read
+                },
+                base(),
+                now
+            ),
+            None,
+            "a ceiling read back a page under the declared one was set to it"
+        );
+        let mut ceiling = Ceiling::default();
+        let left = Look {
+            high: Some(base() + STEP),
+            ..roomy(base())
+        };
+        assert_eq!(
+            ceiling.wanted(&left, base(), now),
+            Some((base(), Why::Declared)),
+            "a ceiling an earlier sorter left lifted was taken as standing"
         );
     }
 
@@ -241,11 +378,14 @@ mod tests {
             None,
             "it rose before the spared slices had been quiet long enough"
         );
-        let raised = ceiling.wanted(&roomy(base()), base(), now + QUIET_FOR);
-        assert_eq!(raised, Some((base() + STEP) / MIB * MIB));
-        ceiling.set(raised.unwrap());
+        let raised = (base() + STEP) / MIB * MIB;
         assert_eq!(
-            ceiling.wanted(&roomy(raised.unwrap()), base(), now + QUIET_FOR * 3 / 2),
+            ceiling.wanted(&roomy(base()), base(), now + QUIET_FOR),
+            Some((raised, Why::Rise))
+        );
+        ceiling.set(raised);
+        assert_eq!(
+            ceiling.wanted(&roomy(raised), base(), now + QUIET_FOR * 3 / 2),
             None,
             "it rose again without waiting out another quiet spell"
         );
@@ -269,19 +409,37 @@ mod tests {
     }
 
     #[test]
+    fn jobs_within_a_step_of_its_ceiling_fills_it() {
+        let now = Instant::now();
+        let mut ceiling = standing(base(), now);
+        assert_eq!(
+            ceiling.wanted(&roomy(base() - STEP - 1), base(), now + QUIET_FOR),
+            None,
+            "it rose for a slice more than a step short of its ceiling"
+        );
+        assert!(
+            ceiling
+                .wanted(&roomy(base() - STEP), base(), now + QUIET_FOR * 2)
+                .is_some(),
+            "it didn't rise for a slice a step short of its ceiling, where reclaim keeps it"
+        );
+    }
+
+    #[test]
     fn it_never_rises_past_the_top() {
         let now = Instant::now();
-        let top = least(TOTAL, TOP);
+        // Half of 64 GiB, as a share, is 18 bytes short of a whole MiB.
+        let top = least(TOTAL, TOP) / MIB * MIB;
         let mut ceiling = standing(top - GIB, now);
         assert_eq!(
             ceiling.wanted(&roomy(top - GIB), base(), now + QUIET_FOR),
-            Some(top / MIB * MIB)
+            Some((top, Why::Rise))
         );
         ceiling.set(top);
         assert_eq!(
             ceiling.wanted(&roomy(top), base(), now + QUIET_FOR * 2),
             None,
-            "it rose past the top"
+            "it rose past the top, or set the top again"
         );
     }
 
@@ -290,21 +448,20 @@ mod tests {
         let now = Instant::now();
         let high = base() + 3 * FALL / 2;
         let mut ceiling = standing(high, now);
-        let waiting = Look {
-            waiting: true,
-            ..roomy(high)
-        };
-        let lower = ceiling.wanted(&waiting, base(), now + Duration::from_secs(1));
-        assert_eq!(lower, Some((high - FALL) / MIB * MIB));
-        ceiling.set(lower.unwrap());
+        let lower = (high - FALL) / MIB * MIB;
         assert_eq!(
-            ceiling.wanted(&waiting, base(), now + Duration::from_secs(2)),
-            Some(base()),
+            ceiling.wanted(&waiting(high), base(), now + Duration::from_secs(1)),
+            Some((lower, Why::Waiting))
+        );
+        ceiling.set(lower);
+        assert_eq!(
+            ceiling.wanted(&waiting(high), base(), now + Duration::from_secs(2)),
+            Some((base(), Why::Waiting)),
             "it fell below the declared ceiling, or not to it"
         );
         ceiling.set(base());
         assert_eq!(
-            ceiling.wanted(&waiting, base(), now + Duration::from_secs(3)),
+            ceiling.wanted(&waiting(high), base(), now + Duration::from_secs(3)),
             None
         );
     }
@@ -313,11 +470,10 @@ mod tests {
     fn a_wait_starts_the_quiet_spell_again() {
         let now = Instant::now();
         let mut ceiling = standing(base(), now);
-        let waiting = Look {
-            waiting: true,
-            ..roomy(base())
-        };
-        assert_eq!(ceiling.wanted(&waiting, base(), now + QUIET_FOR / 2), None);
+        assert_eq!(
+            ceiling.wanted(&waiting(base()), base(), now + QUIET_FOR / 2),
+            None
+        );
         assert_eq!(
             ceiling.wanted(&roomy(base()), base(), now + QUIET_FOR),
             None,
@@ -340,18 +496,27 @@ mod tests {
     fn a_call_or_memory_short_brings_it_down_and_holds_it() {
         let now = Instant::now();
         let high = base() + STEP;
-        for look in [
-            Look {
-                calling: true,
-                ..roomy(high)
-            },
-            Look {
-                available: TOTAL / 100 * (ROOM - 1),
-                ..roomy(high)
-            },
+        for (look, why) in [
+            (
+                Look {
+                    calling: true,
+                    ..roomy(high)
+                },
+                Why::Call,
+            ),
+            (
+                Look {
+                    available: TOTAL / 100 * (ROOM - 1),
+                    ..roomy(high)
+                },
+                Why::Short,
+            ),
         ] {
             let mut ceiling = standing(high, now);
-            assert_eq!(ceiling.wanted(&look, base(), now + QUIET_FOR), Some(base()));
+            assert_eq!(
+                ceiling.wanted(&look, base(), now + QUIET_FOR),
+                Some((base(), why))
+            );
             ceiling.set(base());
             assert_eq!(
                 ceiling.wanted(&look, base(), now + QUIET_FOR * 4),
@@ -377,8 +542,109 @@ mod tests {
         );
         assert_eq!(
             ceiling.wanted(&roomy(base()), base(), now + AGAIN),
-            Some(base())
+            Some((base(), Why::Again))
         );
+    }
+
+    #[test]
+    fn a_failed_fall_is_tried_again_at_the_next_look_from_where_it_stands() {
+        let now = Instant::now();
+        let high = base() + 2 * FALL;
+        let mut ceiling = standing(high, now);
+        let lower = (high - FALL) / MIB * MIB;
+        assert_eq!(
+            ceiling.wanted(&waiting(high), base(), now),
+            Some((lower, Why::Waiting))
+        );
+        ceiling.failed(now);
+        // It didn't land, so memory.high still says where it stood.
+        let unlanded = Look {
+            high: Some(high),
+            ..waiting(high)
+        };
+        assert_eq!(
+            ceiling.wanted(&unlanded, base(), now + Duration::from_secs(1)),
+            Some((lower, Why::Waiting)),
+            "a fall that failed waited before it was tried again, or wasn't a fall"
+        );
+        ceiling.failed(now + Duration::from_secs(1));
+        // This time it landed late, so the next fall goes on from there.
+        let landed = Look {
+            high: Some(lower),
+            ..waiting(high)
+        };
+        assert_eq!(
+            ceiling.wanted(&landed, base(), now + Duration::from_secs(2)),
+            Some((base(), Why::Waiting)),
+            "a fall that landed late wasn't followed from where it landed"
+        );
+    }
+
+    #[test]
+    fn a_ceiling_set_elsewhere_is_followed_and_one_past_its_bounds_put_back() {
+        let now = Instant::now();
+        let top = least(TOTAL, TOP) / MIB * MIB;
+        let mut ceiling = standing(base(), now);
+        let cleared = Look {
+            high: high("max\n"),
+            ..roomy(base())
+        };
+        assert_eq!(
+            ceiling.wanted(&cleared, base(), now + Duration::from_secs(1)),
+            Some((top, Why::Elsewhere)),
+            "a ceiling cleared elsewhere wasn't put back under the top"
+        );
+        assert_eq!(
+            ceiling.wanted(
+                &Look {
+                    waiting: true,
+                    ..cleared
+                },
+                base(),
+                now + Duration::from_secs(2)
+            ),
+            Some((top - FALL, Why::Waiting)),
+            "a ceiling cleared elsewhere didn't fall from the top while a slice waited"
+        );
+        let mut ceiling = standing(base(), now);
+        let raised = Look {
+            high: Some(base() + STEP),
+            ..waiting(base())
+        };
+        assert_eq!(
+            ceiling.wanted(&raised, base(), now + Duration::from_secs(1)),
+            Some((base(), Why::Waiting)),
+            "a ceiling raised elsewhere wasn't brought down from where it stood"
+        );
+        let mut ceiling = standing(base(), now);
+        let lowered = Look {
+            high: Some(base() - STEP),
+            ..waiting(base())
+        };
+        assert_eq!(
+            ceiling.wanted(&lowered, base(), now + Duration::from_secs(1)),
+            None,
+            "a ceiling lowered elsewhere was raised while a slice waited"
+        );
+        assert_eq!(
+            ceiling.wanted(
+                &Look {
+                    waiting: false,
+                    ..lowered
+                },
+                base(),
+                now + Duration::from_secs(2)
+            ),
+            Some((base(), Why::Elsewhere)),
+            "a ceiling lowered elsewhere wasn't put back once nothing waited"
+        );
+    }
+
+    #[test]
+    fn a_ceiling_is_read_from_its_memory_high() {
+        assert_eq!(high("17393516544\n"), Some(17_393_516_544));
+        assert_eq!(high("max\n"), Some(u64::MAX));
+        assert_eq!(high(""), None);
     }
 
     #[test]
