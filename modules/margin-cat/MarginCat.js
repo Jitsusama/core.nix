@@ -231,13 +231,13 @@ function above(seat, leaving, aboard) {
     return aboard === true || (seat?.floats === true && !leaving);
 }
 
-// How far into a resize niri says began `began` ms before it told of it the cat's first frame
-// shows, rather than RESIZES' guess at it, and a frame further: a cat late of the edge of a window
-// growing down over it is in that window's face, and one early is in the gap it leaves (VKCF3Z,
-// 3bc784ec). As `behind` gives with no word from niri.
-function behindResize(frame, began) {
+// How far into niri's motion of `kind` it says began `began` ms before it told of it the cat's
+// first frame shows, rather than a guess at it, and for a resize a frame further: a cat late of
+// the edge of a window growing down over it is in that window's face, and one early is in the gap
+// it leaves (VKCF3Z, 3bc784ec). As `behind` gives with no word from niri.
+function behindTold(frame, kind, began) {
     return typeof began === "number" && began >= 0
-        ? Math.round(HEARS + 2 * frame + began) : behind(frame, "resize");
+        ? Math.round(HEARS + (kind === "resize" ? 2 : 1) * frame + began) : behind(frame, kind);
 }
 
 // Whether it's drawn over the windows, `now` as the screen has it: while Joel's hand `holds` it and

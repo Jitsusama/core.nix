@@ -94,7 +94,10 @@ QtObject {
             2: moving(windows[2], "Resize", 0.1), 3: moving(windows[3], "TileMove", 90),
             4: moving(windows[4], "Resize", 200) });
         expect("a resize under way says when it began, the longest ago on its workspace",
-            [Tiles.resizing(growing, 7), Tiles.resizing(windows, 7), Tiles.resizing(growing, 9)],
-            [4.5, null, null]);
+            [Tiles.animating(growing, 7, "Resize"), Tiles.animating(windows, 7, "Resize"),
+                Tiles.animating(growing, 9, "Resize")], [4.5, null, null]);
+        expect("a scroll under way says when it began, as a resize does",
+            [Tiles.animating(growing, 7, "TileMove"), Tiles.animating(growing, 7, "ViewMove")],
+            [90, null]);
     }
 }

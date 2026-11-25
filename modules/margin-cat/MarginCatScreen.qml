@@ -396,6 +396,11 @@ PanelWindow {
             under = column;
             if (reshaped)
                 walkFrom(true, saw);
+            else if (carry !== null)
+                // Back on its own column while niri's spring still slides
+                // the strip, it goes back with its window from where it's
+                // drawn, never at once to where niri will have it.
+                rideTo(there);
             else
                 place = there;
         } else if (going !== null && wanted === goingTo) {
@@ -428,17 +433,24 @@ PanelWindow {
         const by = MarginCat.carries(saw, tilesOf(space?.id), sat);
         if (by === null || place === null)
             return;
+        rideTo({ x: place.x + by.x, y: place.y + by.y });
+    }
+    // Its place set to `to` as niri's scroll sets off, drawn where it is
+    // now and closing on `to` on niri's spring.
+    function rideTo(to: var): void {
         const spring = Object.assign({}, Theme.motion.spring,
             { slowdown: Theme.motion.slowdown });
         carry = {
-            from: { x: lag.x - by.x, y: lag.y - by.y },
-            // As late as it hears of niri's slide, it's that far in.
-            at: Date.now() - MarginCat.behind(frameMs, "slide"),
+            from: { x: place.x + lag.x - to.x, y: place.y + lag.y - to.y },
+            // As far into the scroll as niri says, or a guess at how late
+            // it hears of one where niri says nothing.
+            at: Date.now() - MarginCat.behindTold(frameMs, "slide",
+                Tiles.animating(Niri.windows, space?.id, "ViewMove")),
             ends: MarginCat.slides(spring),
             spring
         };
         lag = MarginCat.lags(carry.from, Date.now() - carry.at, spring);
-        place = { x: place.x + by.x, y: place.y + by.y };
+        place = to;
     }
     // The scroll carrying it, while niri's spring runs, and how far from
     // its place that has it drawn now.
@@ -541,7 +553,8 @@ PanelWindow {
             on: heard.on,
             ahead: MarginCat.behind(frameMs, "resize"),
             // As far into a window's growth over it as niri says it is.
-            grows: MarginCat.behindResize(frameMs, Tiles.resizing(Niri.windows, space?.id)),
+            grows: MarginCat.behindTold(frameMs, "resize",
+                Tiles.animating(Niri.windows, space?.id, "Resize")),
             frame: frameMs,
             marks: marksLit
         }, setOff));
@@ -822,6 +835,9 @@ PanelWindow {
     }
 
     function halt(): void {
+        // Whatever it does next sets off from its place, a ride ended.
+        carry = null;
+        lag = { x: 0, y: 0 };
         walker.stop();
         going = null;
         // After `going`, whose handler fades the yarn as the play that
@@ -1411,6 +1427,8 @@ PanelWindow {
         const at = !place ? "nowhere" : JSON.stringify({
             x: place.x,
             y: place.y,
+            // Where it's drawn, behind its place as a scroll carries it.
+            drawn: { x: place.x + lag.x, y: place.y + lag.y },
             size: window.size,
             air: window.cell,
             cell: Math.round(window.cell * window.ratio),
