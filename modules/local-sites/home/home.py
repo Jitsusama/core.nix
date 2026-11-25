@@ -517,13 +517,20 @@ def build(
         root.mkdir(parents=True, exist_ok=True)
     # A record caught half written, or broken by a slip, leaves the last good
     # build serving and says why, since the next change to it builds again.
+    # Where no build is there to keep, as after a reboot empties the runtime
+    # folder the home is built into, the declared rows alone make it, so the
+    # sites still answer until the record reads again.
+    unread = ""
     try:
         text = record.read_text(encoding="utf-8") if record.exists() else '{"sites": []}'
         rows = json.loads(text, parse_constant=refused, parse_float=finite)["sites"]
         drawable(rows)
         sites = [Site.read(row) for row in rows]
     except (ValueError, KeyError, TypeError, AttributeError) as error:
-        return f"home: sites.json can't be read ({error}), so the last build stays"
+        if (own / "index.html").exists() or not declared:
+            return f"home: sites.json can't be read ({error}), so the last build stays"
+        unread = f"; sites.json can't be read ({error}), and no build was there to keep"
+        sites = []
     # Nix wrote the declared rows, so a fault in them is the build's, and fails it.
     rows_declared = live(declared) if declared else []
     sites = declaring(sites, rows_declared) if declared else sites
@@ -566,7 +573,7 @@ def build(
     said += f"; scripts of their own in {', '.join(owning)}" if owning else ""
     said += f"; left out {', '.join(map(repr, strays))}, no path of ours" if strays else ""
     left = ", ".join(f"{each['kind']!r} from {each['from']!r}" for each in taken)
-    return said + (f"; homes left to the declared sites: {left}" if taken else "")
+    return said + (f"; homes left to the declared sites: {left}" if taken else "") + unread
 
 
 def left_behind(root: Path, own: Path) -> None:

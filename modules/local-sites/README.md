@@ -27,7 +27,8 @@ source sits at `modules/<name>/site/`, served at `/<name>/`, and
 row in `jitsusama.local-sites.rows`, which the home lists in place of any
 row `sites.json` has at its path, so what the home says of a live site is
 built with it. The home writes every row it lists, the declared ones as
-declared, into `rows.json` beside it, for the readers of a row's `homes`
+declared, into `rows.json` in the home's own folder under the runtime
+folder, served at `/rows.json`, for the readers of a row's `homes`
 (the system daemon's, the web-design skill's and Code's). A switch refuses
 declared rows that give one kind two sites as its home, a pattern the
 readers would drop, or one kind two different patterns on one site: the
@@ -41,8 +42,10 @@ in `rows.json`'s `taken`, which the skill's reader names. Each reads
 `rows.json` first and `sites.json` only where it's missing, so `sites.json`
 keeps only the rows nothing declares; a session's edit to a live row there no
 longer reaches the home. A home rolled back
-to before `rows.json` leaves the last one in place, so remove it then, or
-its readers keep its rows. The system page
+to before `rows.json` leaves the last one in the home's folder until a reboot
+empties it, so remove it then, or its readers keep its rows. A `sites.json`
+the builder can't read keeps the last build, or, where a reboot left none,
+builds the home from the declared rows alone. The system page
 ([`modules/system/site`][system]) is the first, and the mycelium map
 ([`modules/mycelium/site`][map]) is fed live by the node. Code
 ([`modules/repos/site`][code]) draws every repository live from the repos

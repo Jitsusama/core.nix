@@ -32,7 +32,8 @@ that is awesome" (2026-11-11).
   home, its `llms.txt` and every page's strip within a second of the
   record changing. Write the whole record to a file beside it and rename
   it over, so the builder never reads it half written; a record it can't
-  read keeps the last build. A turned-down or settled site moves to the
+  read keeps the last build, or, with none to keep (after a reboot), the
+  home lists only the declared rows below. A turned-down or settled site moves to the
   home's Kept for Reference, below the rest.
 - **A live site's row is declared with it.** For a live site (system,
   network, forage, mycelium, web or code, on a machine that serves it),
@@ -41,8 +42,8 @@ that is awesome" (2026-11-11).
   for its row in `sites.json`. Its words change there, as a change to
   core, and reach the home at the next switch; an edit to its
   `sites.json` row no longer reaches the home. The home writes every row
-  it lists, the declared ones as declared, to `rows.json` beside
-  `sites.json`. The system's and Code's readers of the homes read
+  it lists, the declared ones as declared, to `rows.json`, served at the
+  sites' root beside `sites.json`. The system's and Code's readers of the homes read
   `rows.json`, and `sites.json` only where a home has none yet;
   `homes.js` reads `rows.json` too, and checks `sites.json` beside it.
   So a change to a live site's homes is made in `home.nix` alone. Leave
