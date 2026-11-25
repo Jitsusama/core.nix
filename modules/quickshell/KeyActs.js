@@ -5,36 +5,65 @@
 // own engine.
 .pragma library
 
-// The line's own edits and caret moves, which change only what's typed
-// and where its caret stands, as a letter typed does.
+// The line's own edits and caret moves, and Ctrl+Y's completion, which
+// change only what's typed and where its caret stands, as a letter typed
+// does.
 const typing = ["caretLeft", "caretRight", "caretStart", "caretEnd", "deleteBack", "deleteWord",
-    "deleteToStart"];
+    "deleteToStart", "complete"];
+
+// Normal's edits and caret moves on a prompt's words, read only in normal
+// (QueryKeys.js, `words`), which change what's typed as insert's do.
+const editing = ["letterBack", "letterNext", "wordNext", "wordBack", "wordEnd", "lineStart",
+    "lineEnd", "deleteLetter", "deleteWordOn", "changeWord", "undo"];
+
+// The keys that only say a word: h and l on a row saying the way out and
+// in, q how to close, and a page's change keys Vim's E21.
+const saying = ["intoSaid", "outSaid", "quitSaid", "cannotChange"];
+
+// The acts that do nothing where the launcher has nowhere to take them,
+// each by the line's word for whether it has: Space or Ctrl+W l into the
+// drawer with none out, Tab in normal into a row with no parts, which only
+// says so (Launcher.qml's tabbedIn), - with nothing above, and gv on the
+// rows with no selection to take back.
+function nowhere(act, line) {
+    return (act === "drawer" && !line.drawerHere)
+        || (act === "into" && line.mode !== "find" && !line.intoHere)
+        || (act === "out" && !line.upHere)
+        || (act === "reselect" && !line.reselectHere);
+}
 
 // Whether a key acted, given what QueryKeys.read made of it (`read`) and
 // how the line stood as it came (`line`): a modifier pressed `alone`, as
 // the Shift before a capital, acts on nothing, nor does Ctrl+R's wait for
-// a register, or its letter, which types (`registering`). A key answering
-// what the line asks (`answering`), the operator pressed again after
-// visual's (`operated`) and a colon opening the command line (`commands`)
-// act. Otherwise a key the field types itself, as a letter, Shift+Left or
-// Alt+a, a count or a sequence begun, Escape at rest and a key meaning
-// nothing where it was pressed act on nothing; nor does the drawer's key
-// with no drawer out (`drawerHere`), nor an edit or a caret move on the
-// line, but for Backspace on an empty find, which leaves it for normal.
-// Every other act acts, moves through the rows too, which the prompt says
-// apart (its keyMoved). A key meaning nothing that the selected row takes
-// as its own act, and Escape at rest backing out of a list or an ask, act
-// after all: the launcher times those itself (Launcher.qml's keyActs).
-// Tab into a row with no parts errs the other way, read as acting though
-// it opens nothing.
+// a register, or its letter, which types (`registering`), nor the operator
+// pressed again after visual's, which is swallowed (`operated`). A key
+// while an ask stands (`answering`) acts where the ask takes it as its
+// answer (`answerTaken`, Confirm.answer), and a colon opening the command
+// line (`commands`) acts. Otherwise a key the field types itself, as a
+// letter, Shift+Left or Alt+a, a count or a sequence begun, Escape at rest
+// and a key meaning nothing where it was pressed act on nothing; nor does
+// a key that only says a word, nor one with nowhere to go (`nowhere`), nor
+// an edit or a caret move on the line or on a prompt's words, but for
+// Backspace on an empty find, which leaves it for normal. Every other act
+// acts, moves through the rows too, which the prompt says apart (its
+// keyMoved). A key meaning nothing that the selected row takes as its own
+// act, Escape at rest backing out of a list or an ask, and a secret's and
+// the command line's keys, which the line never reads, act after all: the
+// launcher times those itself (Launcher.qml's keyActs).
 function acts(read, line) {
-    if (line.alone || line.registering) {
+    if (line.alone || line.registering || line.operated) {
         return false;
     }
-    if (line.answering || line.operated || line.commands) {
+    if (line.answering) {
+        return line.answerTaken;
+    }
+    if (line.commands) {
         return true;
     }
-    if (!read.ours || read.act === "" || (read.act === "drawer" && !line.drawerHere)) {
+    if (!read.ours || read.act === "" || saying.includes(read.act) || nowhere(read.act, line)) {
+        return false;
+    }
+    if (line.mode === "normal" && editing.includes(read.act)) {
         return false;
     }
     const emptied = read.act === "deleteBack" && line.mode === "find" && line.text === "";

@@ -5143,6 +5143,9 @@ Scope {
         // that one press, so it runs nothing; only a fresh Return does.
         if (commanding?.typed && Date.now() - linedAt < Options.keyTiming.wait)
             return;
+        // The command line's own Return, which the prompt never reads, runs
+        // what's typed, so it's timed as acting.
+        keyActs("Return");
         const opened = commanding;
         commandEarlier = Commands.remembered(commandEarlier, read.typed ?? "");
         // What went wrong is said where the line was, over a viewer too,
@@ -6013,15 +6016,18 @@ Scope {
     // key acting by what it read; one it gave over as meaning nothing, or
     // as Escape at rest, acts after all where the launcher does something
     // with it (doKeyed, the prompt's onRested), which times it before it
-    // does, so the rows that act changes count as Joel's.
-    function keyActs() {
+    // does, so the rows that act changes count as Joel's. A key the
+    // prompt's modes never read (`outside`, by its name), as a secret's
+    // and the command line's, is none of the prompt's counted keys, and
+    // never only a move.
+    function keyActs(outside = "") {
         const heard = KeyTimes.now();
         keyHeardAt = heard;
-        keyHeardName = prompt.keyTaken;
+        keyHeardName = outside === "" ? prompt.keyTaken : outside;
         keyCollectedAt = Heap.collected();
-        keyHeardKeys = prompt.keysTaken;
-        keyHeardMoved = Held.movedSaid(false, prompt.keysTaken, prompt.keysTaken,
-            prompt.keyMoved);
+        keyHeardKeys = outside === "" ? prompt.keysTaken : -1;
+        keyHeardMoved = outside === "" && Held.movedSaid(false, prompt.keysTaken,
+            prompt.keysTaken, prompt.keyMoved);
         // Its work is done once its handler has returned.
         Qt.callLater(() => {
             if (root.keyHeardAt === heard)
@@ -6556,9 +6562,9 @@ Scope {
         // acted on nothing leaves the clock at the key before, as the
         // prompt reads it (KeyActs.acts): a modifier alone, a letter or
         // Shift+Left typed into the find, a caret move or an edit on it, a
-        // count or a sequence begun. So such an act stays his across one,
-        // and only a key that acted ends it, but for Tab into a row with
-        // no parts, which acts by the table and opens nothing. A change
+        // count or a sequence begun, a key that only says a word. So such
+        // an act stays his across one, and only a key that acted ends it.
+        // A change
         // heard past keyedWithin or after a move, or an answer heard so,
         // joins the act, and an act whose source was already waiting on
         // a refresh is recorded joined, either way no longer his alone
@@ -14292,6 +14298,10 @@ Scope {
                         // and one that ends something, from either, only
                         // writes its command on the : line.
                         onAccepted: {
+                            // A secret's Return, which its line never reads,
+                            // hands over words, so it's timed as acting.
+                            if (prompt.secret)
+                                root.keyActs("Return");
                             const heard = KeyTimes.now();
                             const pressed = KeyTimes.pressed();
                             root.searchNow();
@@ -14395,7 +14405,8 @@ Scope {
                         // the launcher closed, a popup, from any depth, as
                         // his Neovim closes its floats; it never steps out
                         // (the vi-paradigm spec, Normal).
-                        onCancelled: {
+                        onCancelled: key => {
+                            root.keyActs(key);
                             if (root.listing)
                                 root.listing = false;
                             // Words asked for, as a password, are given up,
@@ -14456,6 +14467,13 @@ Scope {
                         // words to sit on.
                         drawerHere: root.drawerOut && drawerCard.lined
                         reselectable: root.lastVisual !== null
+                        // Where Tab goes into the row and - goes up, so
+                        // a key that only says it can't acts on nothing.
+                        intoHere: root.goesIn(root.matches[root.current] ?? null)
+                        upHere: root.canGoUp
+                        // The ask takes a key as answerAsk does.
+                        answerTaken: key => root.asked !== null && Confirm.answer(root.asked,
+                            key, Date.now(), askReady.interval) !== "early"
                         // A search run in the drawer puts its cursor on
                         // the match.
                         onSought: (pattern, forward, count) => {
