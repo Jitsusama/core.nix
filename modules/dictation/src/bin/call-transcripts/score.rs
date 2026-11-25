@@ -11,20 +11,25 @@
 //! for the model alone, since a clip also hears whoever talks over its
 //! speaker; the gap between the two readings says what context and the
 //! cutting are worth, a side at a time.
+//!
+//! The far end's words are timed as they're heard, and the times held to
+//! their takes and to the reference's speech (times.rs), since cutting
+//! their echo from Joel's words goes by them.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::path::Path;
 
 use dictation::echo;
-use dictation::parakeet::{RATE, Timings, WINDOW, Word};
+use dictation::parakeet::{Parakeet, RATE, WINDOW, Word};
 use dictation::takes::Take;
 use dictation::transcript::{self, Line, Side, markdown};
 use dictation::wav;
 use dictation::wer::{Errors, said, words};
 
-use crate::hear::Hears;
+use crate::hear::{self, Hears};
 use crate::said;
+use crate::times::{self, Timed};
 use crate::{Settings, takes};
 
 /// How much of the side's sound around a reference line is heard with
@@ -69,13 +74,16 @@ pub struct Meeting<'a> {
 
 /// A meeting's errors: each side's as written down, and as heard alone,
 /// and Joel's side's as it would be written with none of his words taken
-/// for the others' echo. A meeting's sides hold no echo (meetings.nix), so
-/// where that's lower, the echo filter left out words he said.
+/// for the others' echo, and with only his words cut by time and
+/// loudness, none of his lines left out whole for repeating theirs. A
+/// clean meeting's sides hold no echo (meetings.nix), so where either is
+/// lower there, the echo filter left out words he said.
 #[derive(Default)]
 struct Scored {
     written: [Errors; 2],
     alone: [Errors; 2],
     unfiltered: Errors,
+    cut_by_word: Errors,
 }
 
 /// A take heard as a line, with its words timed from the start of its
@@ -83,15 +91,15 @@ struct Scored {
 pub type HeardLine = (Line, Vec<Word>);
 
 /// A take of `side`'s heard as a line, with its words timed from the
-/// start of its sound, none when it holds no words, and how long it took.
+/// start of its sound, none when it holds no words: heard as the daemon
+/// hears it (`hear::transcribe_take`), so what's scored is what it writes.
 pub fn hear_take(
     speech: &mut impl Hears,
     side: Side,
     take: &Take,
-) -> Result<(Option<HeardLine>, Timings), String> {
-    let (heard, took) = speech.words(&take.samples)?;
-    let joined: Vec<&str> = heard.iter().map(|word| word.text.as_str()).collect();
-    let written = said::spoken(&joined.join(" ")).map(|text| {
+) -> Result<Option<HeardLine>, String> {
+    let (text, words) = hear::transcribe_take(speech, take.start, &take.samples)?;
+    Ok(text.map(|text| {
         let line = Line {
             side,
             start: take.start,
@@ -100,16 +108,8 @@ pub fn hear_take(
             voice: None,
             name: None,
         };
-        let timed = heard
-            .into_iter()
-            .map(|word| Word {
-                at: take.start + word.at,
-                ..word
-            })
-            .collect();
-        (line, timed)
-    });
-    Ok((written, took))
+        (line, words)
+    }))
 }
 
 /// `side`'s `takes`, whose sound came from `file`, heard onto `lines`,
@@ -126,9 +126,8 @@ pub fn hear_side(
     words: &mut HashMap<usize, Vec<Word>>,
 ) -> Result<(), String> {
     for take in takes {
-        let (heard, took) = hear_take(speech, side, take)
+        let heard = hear_take(speech, side, take)
             .map_err(|why| format!("hearing {file} at {} s: {why}", take.start / RATE))?;
-        eprintln!("call-transcripts: {}", took.describe(speech.device()));
         if let Some((line, its_words)) = heard {
             words.insert(lines.len(), its_words);
             lines.push(line);
@@ -158,88 +157,118 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
     let meetings = meetings(set, &sides)?;
     let mut speech = Settings::read(model.to_owned()).load()?;
     let mut all = Scored::default();
-    for Meeting {
-        name,
-        mine,
-        reference,
-        sounds,
-    } in meetings
-    {
-        let mut scored = Scored::default();
-        let mut lines = Vec::new();
-        let mut timed = HashMap::new();
-        for side in [Side::Mine, Side::Theirs] {
-            let sound = &sounds[index(side)];
-            for take in takes(sound) {
-                if let (Some((line, its_words)), _) = hear_take(&mut speech, side, &take)? {
-                    timed.insert(lines.len(), its_words);
-                    lines.push(line);
-                }
-            }
-            for line in reference.iter().filter(|line| whose(line, mine) == side) {
-                let (from, to) = (samples(line.start - AROUND), samples(line.end + AROUND));
-                let clip = &sound[from.min(sound.len())..to.min(sound.len())];
-                let (text, _) = speech.transcribe(clip)?;
-                scored.alone[index(side)] += Errors::count(&said(&line.text), &words(&text));
-            }
-        }
-        let spoken = |side: Side| -> Vec<String> {
-            reference
-                .iter()
-                .filter(|line| whose(line, mine) == side)
-                .flat_map(|line| said(&line.text))
-                .collect()
-        };
-        let (cut, cuts) = echo::cut_echoes(&lines, &timed, said::spoken);
-        for taken in &cuts {
-            let ms = taken.after * 1000 / isize::try_from(RATE).unwrap_or(isize::MAX);
-            println!(
-                "{name}: Joel's words at {} taken for an echo, {ms} ms after theirs: {}",
-                transcript::clock(taken.at),
-                taken.text
-            );
-        }
-        let written = transcript::read(&markdown(&cut, "Me", None, None), "Me");
-        for side in [Side::Mine, Side::Theirs] {
-            let heard: Vec<String> = written
-                .iter()
-                .filter(|line| line.side == side)
-                .flat_map(|line| words(&line.text))
-                .collect();
-            scored.written[index(side)] = Errors::count(&spoken(side), &heard);
-        }
-        for line in joels(&cut)
-            .into_iter()
-            .filter(|line| echo::echoes(line, &cut))
-        {
-            let at = transcript::clock(line.start);
-            println!(
-                "{name}: Joel's line at {at} taken for an echo: {}",
-                line.text
-            );
-        }
-        let heard: Vec<String> = joels(&lines)
-            .iter()
-            .flat_map(|line| words(&line.text))
-            .collect();
-        scored.unfiltered = Errors::count(&spoken(Side::Mine), &heard);
-        println!("{}", report(name, &scored));
+    let mut all_times = Timed::default();
+    for meeting in meetings {
+        let (scored, judged) = score_meeting(&mut speech, &meeting)?;
+        all_times += judged;
         for i in 0..2 {
             all.written[i] += scored.written[i];
             all.alone[i] += scored.alone[i];
         }
         all.unfiltered += scored.unfiltered;
+        all.cut_by_word += scored.cut_by_word;
     }
     println!("{}", report("all", &all));
+    println!("{}", all_times.describe("all"));
     let mut total = all.written[0];
     total += all.written[1];
     if total.words == 0 {
         return Err(format!("{} has no words to hear", set.display()));
     }
+    println!("{}", all_times.verdict(times::INSIDE)?);
     match ceiling {
         Some(most) => verdict(total.tenths(), most).map(|passed| println!("{passed}")),
         None => Ok(()),
     }
+}
+
+/// Hears `meeting` with `speech` and says its errors, its far end's word
+/// times and what was cut from Joel's side as their echo; answers its
+/// errors and how its far end's words were timed, for the set's.
+fn score_meeting(speech: &mut Parakeet, meeting: &Meeting) -> Result<(Scored, Timed), String> {
+    let Meeting {
+        name,
+        mine,
+        reference,
+        sounds,
+    } = meeting;
+    let mut scored = Scored::default();
+    let mut lines = Vec::new();
+    let mut word_times = HashMap::new();
+    for side in [Side::Mine, Side::Theirs] {
+        let sound = &sounds[index(side)];
+        let file = format!("{name}.{}.wav", label(side));
+        hear_side(
+            &mut *speech,
+            side,
+            &file,
+            &takes(sound),
+            &mut lines,
+            &mut word_times,
+        )?;
+        for line in reference.iter().filter(|line| whose(line, mine) == side) {
+            let (from, to) = (samples(line.start - AROUND), samples(line.end + AROUND));
+            let clip = &sound[from.min(sound.len())..to.min(sound.len())];
+            let (text, _) = speech
+                .transcribe(clip)
+                .map_err(|why| format!("hearing {file} at {} s alone: {why}", line.start))?;
+            scored.alone[index(side)] += Errors::count(&said(&line.text), &words(&text));
+        }
+    }
+    let theirs: Vec<(f64, f64)> = reference
+        .iter()
+        .filter(|line| whose(line, mine) == Side::Theirs)
+        .map(|line| (line.start - AROUND, line.end + AROUND))
+        .collect();
+    let judged = times::judge(&lines, &word_times, &theirs);
+    println!("{}", judged.describe(name));
+    let spoken = |side: Side| -> Vec<String> {
+        reference
+            .iter()
+            .filter(|line| whose(line, mine) == side)
+            .flat_map(|line| said(&line.text))
+            .collect()
+    };
+    let (cut, cuts) = echo::cut_echoes(&lines, &word_times, said::spoken);
+    for taken in &cuts {
+        let ms = taken.after * 1000 / isize::try_from(RATE).unwrap_or(isize::MAX);
+        println!(
+            "{name}: Joel's words at {} taken for an echo, {ms} ms after theirs: {}",
+            transcript::clock(taken.at),
+            taken.text
+        );
+    }
+    let written = transcript::read(&markdown(&cut, "Me", None, None), "Me");
+    for side in [Side::Mine, Side::Theirs] {
+        let heard: Vec<String> = written
+            .iter()
+            .filter(|line| line.side == side)
+            .flat_map(|line| words(&line.text))
+            .collect();
+        scored.written[index(side)] = Errors::count(&spoken(side), &heard);
+    }
+    for line in joels(&cut)
+        .into_iter()
+        .filter(|line| echo::echoes(line, &cut))
+    {
+        let at = transcript::clock(line.start);
+        println!(
+            "{name}: Joel's line at {at} taken for an echo: {}",
+            line.text
+        );
+    }
+    let heard: Vec<String> = joels(&lines)
+        .iter()
+        .flat_map(|line| words(&line.text))
+        .collect();
+    scored.unfiltered = Errors::count(&spoken(Side::Mine), &heard);
+    let cut_by_word: Vec<String> = joels(&cut)
+        .iter()
+        .flat_map(|line| words(&line.text))
+        .collect();
+    scored.cut_by_word = Errors::count(&spoken(Side::Mine), &cut_by_word);
+    println!("{}", report(name, &scored));
+    Ok((scored, judged))
 }
 
 /// The meetings `sides` names in `set`, each refused when its line,
@@ -350,6 +379,13 @@ fn report(name: &str, scored: &Scored) -> String {
         rate(&scored.unfiltered),
         kinds(&scored.unfiltered),
     );
+    out.push('\n');
+    let _ = write!(
+        out,
+        "{name} with only Joel's words cut, no line of his left out whole: Joel's side {} ({})",
+        rate(&scored.cut_by_word),
+        kinds(&scored.cut_by_word),
+    );
     out
 }
 
@@ -444,6 +480,8 @@ pub fn read(file: &Path) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
+
+    use dictation::parakeet::Timings;
 
     use super::*;
 

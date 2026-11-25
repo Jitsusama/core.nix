@@ -34,21 +34,24 @@
 //! wait. Held from the VPN it sits unused while he's quiet, as the VPN's
 //! own CAKE holds its class hard: after four megabits a second straight it
 //! falls to his least in about eight seconds, leaving about a second of a
-//! ten-megabit line unused, and more after more. That's at a steady rate:
-//! held as a share, it falls in kbit/s by about a sixth a second while
-//! the controller climbs, and not at all while it climbs fast
-//! (src/oneway.rs's `FAST_CLIMB`), so the line goes unused that much
-//! longer. Moving his upload into
-//! the VPN then finds it kept only what he carried there the second before
-//! and his headroom past it, so the lane he left holds back his growth on
-//! the one he's on until his need there fills the room or the hold falls:
-//! a second when he moves at speed, a few when he starts slowly. But
+//! ten-megabit line unused, and more after more. That's at a steady rate.
+//! The controller climbs only while the line carries three quarters of
+//! its rate (src/oneway.rs's `FULL`), so it doesn't while more than a
+//! quarter is held unused; held as a share, the hold falls in kbit/s by
+//! about a sixth a second while it climbs, and not at all while it climbs
+//! fast (`FAST_CLIMB`), so the line goes unused that much longer. Moving
+//! his upload into the VPN then finds it kept only what he carried there
+//! the second before and his headroom past it, so the lane he left holds
+//! back his growth on the one he's on until his need there fills the room
+//! or the hold falls: a second when he moves at speed, a few when he
+//! starts slowly. But
 //! agents' uploads are mostly inside the VPN, where a dip beside them alone
 //! would otherwise leave him little more than what he carried. With no
 //! agent waiting nothing is held from the VPN, so a lane he left never
 //! squeezes it. Waiting is as below, the twenty seconds after the VPN's
-//! CAKE last dropped or marked a packet included, so for those seconds a
-//! move into the VPN is held back as though its agents still queued.
+//! CAKE last dropped or marked a packet in its bulk tin, where agents'
+//! packets go, included, so for those seconds a move into the VPN is held
+//! back as though its agents still queued.
 //! While the VPN's share falls, it never takes the part of the quarter that
 //! agents waiting straight are owed.
 //!
@@ -1071,15 +1074,8 @@ mod tests {
             near(dipped, busy * (1.0 - FALL)),
             "a second's dip took Joel's lane from {busy} to {dipped}"
         );
-        // Held as what a real second gave him: a smaller rate between
-        // seconds stores nothing. At three tenths of the rate what's spare
-        // binds, so the hold comes back a smaller share than it was, and
-        // stored it would bring less back at the whole rate.
-        lanes.at(RATE * 0.3);
-        assert!(
-            near(lanes.at(RATE).joel, dipped),
-            "a smaller rate between seconds kept less of Joel's lane"
-        );
+        // That a smaller rate between seconds stores nothing is
+        // a_cut_between_seconds_gives_back_what_it_raised's to prove.
         let back = lanes.split(&seen((4_000.0, 0.0), agents), 1.0).joel;
         assert!(
             near(back, need(4_000.0)),
@@ -1207,13 +1203,24 @@ mod tests {
         let agents = (Agents::default(), waiting(30));
         let busy = lanes.split(&seen((4_000.0, 0.0), agents), 1.0).joel;
         let dipped = lanes.split(&seen((200.0, 0.0), agents), 1.0).joel;
-        // At three tenths of the rate what's spare binds, so the hold comes back a smaller share
-        // than it was, and stored it would bring less back at the whole rate.
-        let cut = lanes.at(RATE * 0.3);
+        // Between three tenths of the rate and 0.34, what's spare binds and
+        // the VPN's agents get their quarter exactly, so the hold comes back
+        // a smaller share than it was, and stored it would bring less back
+        // at the whole rate. Under three tenths Joel's least takes part of
+        // their quarter; past 0.34 nothing binds and storing changes
+        // nothing. 0.32 sits 200 kbit/s from either edge.
+        let cut_rate = RATE * 0.32;
+        let cut = lanes.at(cut_rate);
         assert!(
-            adds_up(cut, RATE * 0.3) && cut.vpn - need(0.0) >= RATE * 0.3 * AGENTS_FLOOR - 1.0,
-            "at three tenths of the rate Joel's hold left the VPN's agents less than their \
-             quarter: {cut:?}"
+            adds_up(cut, cut_rate) && cut.vpn - need(0.0) >= cut_rate * AGENTS_FLOOR - 1.0,
+            "at {cut_rate} kbit/s Joel's hold left the VPN's agents less than their quarter: \
+             {cut:?}"
+        );
+        assert!(
+            cut.joel < dipped * 0.32 - 1.0,
+            "at {cut_rate} kbit/s what's spare didn't bind Joel's lane, at {}, so storing it \
+             would change nothing",
+            cut.joel
         );
         let back = lanes.at(RATE);
         assert!(
@@ -1246,6 +1253,49 @@ mod tests {
             "Joel's hold left the VPN's agents {}, not their {}",
             moved.vpn - need(4_000.0),
             RATE * AGENTS_FLOOR
+        );
+    }
+
+    // Agents inside the VPN starved to two packets hold too little to
+    // count, so only their CAKE's drop says they wait. For the twenty
+    // seconds after it a move into the VPN is held back as though they
+    // queued; after them nothing is held from the VPN.
+    #[test]
+    fn a_drop_inside_the_vpn_holds_joel_s_move_back_for_twenty_seconds() {
+        let moved_after = |quiet: u32| {
+            let mut lanes = Lanes::default();
+            lanes.split(
+                &seen((20_000.0, 0.0), (Agents::default(), starved(100))),
+                1.0,
+            );
+            lanes.split(
+                &seen((20_000.0, 0.0), (Agents::default(), starved(101))),
+                1.0,
+            );
+            for _ in 1..quiet {
+                lanes.split(
+                    &seen((20_000.0, 0.0), (Agents::default(), starved(101))),
+                    1.0,
+                );
+            }
+            lanes.split(
+                &seen((0.0, 4_000.0), (Agents::default(), starved(101))),
+                1.0,
+            )
+        };
+        let held = moved_after(19);
+        assert!(
+            near(held.vpn - need(4_000.0), RATE * AGENTS_FLOOR),
+            "nineteen seconds after a drop inside the VPN Joel's move left its agents {}, \
+             not their {}",
+            held.vpn - need(4_000.0),
+            RATE * AGENTS_FLOOR
+        );
+        let free = moved_after(20);
+        assert!(
+            near(free.vpn, RATE - need(0.0) - free.agents),
+            "twenty seconds after a drop inside the VPN Joel's move was still held back: \
+             {free:?}"
         );
     }
 

@@ -35,9 +35,12 @@ const SHARE: f32 = 0.6;
 const WORDS: usize = 4;
 
 /// How long after one of their words Joel's microphone may hear it, in
-/// samples: the speakers' and the microphone's buffers, and a word timed
-/// by the encoder frame it was written on, 80 ms each. Joel saying their
-/// words back starts after they've finished saying them.
+/// samples. On AMI's meetings with their side mixed into his, echo landed
+/// within 400 ms of their word; a live call's two recorders may also sit
+/// up to half a second apart, since a side is only filled with silence
+/// once it falls further behind than that (follow.rs). The cost is that
+/// Joel saying two of their words back within a second of each, no louder
+/// than they said them, is cut as their echo.
 const LAG: usize = RATE;
 
 /// How long before one of their words its echo may be timed, in samples,
@@ -52,8 +55,8 @@ const LEAD: usize = RATE * 3 / 10;
 /// as likely his own.
 const RUN: usize = 2;
 
-/// How many of their words a word of their echo may follow the last by:
-/// either side may hear a word the other doesn't.
+/// How many words on either side a word of their echo may follow the
+/// last by: either side may hear a word the other doesn't.
 const GAP: usize = 2;
 
 /// Whether `line` is Joel's microphone hearing one of the others' lines,
@@ -93,7 +96,9 @@ fn may_echo(heard: &Word, said: &Word) -> bool {
 /// For each of Joel's `mine`, the one of `theirs`, in the order they were
 /// said, it's the echo of, if it's one: a run of his words, each spelled
 /// as one of theirs, in their order, that his microphone heard within a
-/// moment of them saying it, and quieter.
+/// moment of them saying it, and quieter. A run may pass over a word
+/// either side heard and the other didn't, and one his side heard alone
+/// is kept as his.
 fn echoes_of(mine: &[Word], theirs: &[Word]) -> Vec<Option<usize>> {
     // Each of his words' runs: which of theirs it may echo, and how long
     // the run ending on it is.
@@ -102,9 +107,7 @@ fn echoes_of(mine: &[Word], theirs: &[Word]) -> Vec<Option<usize>> {
         let spelling = spelled(&word.text);
         let from = theirs.partition_point(|said| said.at + LAG < word.at);
         let to = theirs.partition_point(|said| said.at <= word.at + LEAD);
-        let before = i
-            .checked_sub(1)
-            .map_or(&[][..], |last| runs[last].as_slice());
+        let before = &runs[i.saturating_sub(GAP)..i];
         let heard = (from..to.max(from))
             .filter(|&j| {
                 !spelling.is_empty()
@@ -114,6 +117,7 @@ fn echoes_of(mine: &[Word], theirs: &[Word]) -> Vec<Option<usize>> {
             .map(|j| {
                 let longest = before
                     .iter()
+                    .flatten()
                     .filter(|&&(k, _)| k < j && j - k <= GAP)
                     .map(|&(_, run)| run)
                     .max()
@@ -136,19 +140,19 @@ fn echoes_of(mine: &[Word], theirs: &[Word]) -> Vec<Option<usize>> {
             continue;
         }
         echoes[end] = Some(j);
-        for i in (0..end).rev() {
-            if run == 1 {
-                break;
-            }
+        let mut i = end;
+        while run > 1 {
             run -= 1;
-            let Some(&(k, _)) = runs[i]
-                .iter()
-                .find(|&&(k, length)| length == run && k < j && j - k <= GAP)
-            else {
+            let Some((h, k)) = (i.saturating_sub(GAP)..i).rev().find_map(|h| {
+                runs[h]
+                    .iter()
+                    .find(|&&(k, length)| length == run && k < j && j - k <= GAP)
+                    .map(|&(k, _)| (h, k))
+            }) else {
                 break;
             };
-            echoes[i] = Some(k);
-            j = k;
+            echoes[h] = Some(k);
+            (i, j) = (h, k);
         }
     }
     echoes
@@ -167,8 +171,10 @@ pub struct Cut {
 
 /// `lines` with the others' echo cut from each of Joel's whose words
 /// `words` holds, by the line's index, what's left tidied by `tidy`, and
-/// what was cut. A line left with nothing has no text, and isn't
-/// written, so the lines keep their indices.
+/// what was cut. A line whose opening words are cut starts at the first
+/// word kept, so his answer to what they said is written after it. A
+/// line left with nothing has no text, and isn't written, so the lines
+/// keep their indices.
 pub fn cut_echoes<S: BuildHasher>(
     lines: &[Line],
     words: &HashMap<usize, Vec<Word>, S>,
@@ -194,10 +200,12 @@ pub fn cut_echoes<S: BuildHasher>(
             continue;
         }
         let mut kept = Vec::new();
+        let mut first = None;
         let mut run: Option<Cut> = None;
         for (word, echo) in mine.iter().zip(&echoes) {
             let Some(j) = *echo else {
                 kept.push(word.text.as_str());
+                first = first.or(Some(word.at));
                 cuts.extend(run.take());
                 continue;
             };
@@ -214,6 +222,11 @@ pub fn cut_echoes<S: BuildHasher>(
             }
         }
         cuts.extend(run);
+        if echoes[0].is_some()
+            && let Some(at) = first
+        {
+            line.start = at;
+        }
         line.text = tidy(&kept.join(" ")).unwrap_or_default();
     }
     (cut, cuts)
@@ -467,6 +480,20 @@ mod tests {
     }
 
     #[test]
+    fn a_word_only_joels_microphone_heard_doesnt_break_their_echo() {
+        // Echo comes in quiet over his room, so his side may hear a word
+        // in it theirs didn't: their "noon" must still be cut after it.
+        let theirs = timed("Lunch at noon", 5_000);
+        let mut mine = timed("Fine by me.", 1_000);
+        mine.extend(timed("Lunch at the noon", 5_050));
+        assert_eq!(
+            cut_from(&[theirs], &[mine]),
+            ["Fine by me. the"],
+            "a word of theirs after one only Joel's side heard was written as his"
+        );
+    }
+
+    #[test]
     fn one_word_of_joels_heard_just_after_theirs_is_his_own() {
         // A lone "Okay" is as likely his own as their echo.
         let theirs = timed("Okay so the next item", 2_000);
@@ -518,6 +545,46 @@ mod tests {
                 after: 0,
                 text: "Lunch at noon".to_owned(),
             }]
+        );
+    }
+
+    #[test]
+    fn their_echo_timed_just_before_their_word_is_cut_and_says_how_early() {
+        // Each side's words are timed by its own encoder frames, so echo
+        // can be timed before the word it echoes, as on AMI's meetings.
+        let theirs = timed("Lunch at noon on Thursday then.", 5_000);
+        let mut mine = timed("Fine by me.", 1_000);
+        mine.extend(timed("Lunch at noon on Thursday then.", 4_800));
+        let lines = [worded(Side::Theirs, &theirs), worded(Side::Mine, &mine)];
+        let words = HashMap::from([(0, theirs), (1, mine)]);
+        let (cut, cuts) = cut_echoes(&lines, &words, |left| Some(left.to_owned()));
+        assert_eq!(
+            cut[1].text, "Fine by me.",
+            "their echo timed 200 ms before their words wasn't cut"
+        );
+        let early = isize::try_from(200 * RATE / 1000).unwrap();
+        assert_eq!(
+            cuts.iter().map(|cut| cut.after).collect::<Vec<_>>(),
+            [-early],
+            "the cut didn't say it was heard 200 ms before their word"
+        );
+    }
+
+    #[test]
+    fn a_line_whose_opening_echo_is_cut_starts_at_joels_first_word() {
+        // His microphone hears their "Lunch at noon" before he answers in
+        // the same take, so what's left of it starts when he does.
+        let theirs = timed("Lunch at noon", 5_000);
+        let mut mine = timed("Lunch at noon", 5_050);
+        mine.extend(timed("Fine by me.", 6_500));
+        let lines = [worded(Side::Theirs, &theirs), worded(Side::Mine, &mine)];
+        let words = HashMap::from([(0, theirs), (1, mine)]);
+        let (cut, _) = cut_echoes(&lines, &words, |left| Some(left.to_owned()));
+        assert_eq!(cut[1].text, "Fine by me.", "their echo wasn't cut");
+        assert_eq!(
+            cut[1].start,
+            6_500 * RATE / 1000,
+            "Joel's line starts where their echo did, so it's written before what he answers"
         );
     }
 

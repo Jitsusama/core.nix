@@ -37,8 +37,8 @@
       # Only lanzaboote's own CI uses it.
       inputs.pre-commit.follows = "";
     };
-    # Rust's standard library for other platforms, so a check can compile
-    # the disk guard for macOS where no Mac runs.
+    # Rust's standard library for other platforms, so a check can lint a
+    # crate as macOS compiles it where no Mac runs (compilesForMacos).
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";

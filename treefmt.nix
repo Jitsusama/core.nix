@@ -167,6 +167,7 @@ in
   # Each is named alone, so an edit to a file beside them rebuilds no mypy.
   jitsusama.mypy.paths = [
     ./modules/local-sites/tests
+    ./modules/mycelium/surfaces
     ./modules/niri/tests
     ./modules/quickshell/tests/launcher_on_niri.py
     ./tests/desktop/desktop_session.py
