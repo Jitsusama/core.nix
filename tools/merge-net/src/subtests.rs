@@ -152,7 +152,7 @@ pub fn ran_whole(log: impl IntoIterator<Item = impl AsRef<str>>, test: &str) -> 
             }
         }
         broke += usize::from(line.trim_start().starts_with("Reason: builder failed"));
-        parts.extend(part_built(line, &part));
+        parts.extend(part_built(line, &part).map(str::to_owned));
     }
     summed > 0 && summed >= began && summed >= parts.len() && broke <= failing
 }
