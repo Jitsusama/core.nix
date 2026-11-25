@@ -223,9 +223,10 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<(), Missed> {
         sent => sent,
     };
     sent.map_err(|called| match called {
-        Called::Unreachable(why) | Called::Unreadable(why) => Missed::Unsure(why),
         Called::Failed(why) if spent(&why) => Missed::NotSent(why),
-        Called::Failed(why) => Missed::Unsure(why),
+        Called::Unreachable(why) | Called::Unreadable(why) | Called::Failed(why) => {
+            Missed::Unsure(why)
+        }
         Called::NotReached(why) => Missed::NotSent(why),
         Called::Refused => Missed::NotSent("the gateway refused Joel's sign-in".to_owned()),
         Called::NoSignIn(_) => Missed::NotSent("no sign-in to the gateway was given".to_owned()),

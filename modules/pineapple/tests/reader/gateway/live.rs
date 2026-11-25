@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
-use super::cut::{a_gap, nothing};
+use super::cut::{a_gap, nothing, result, stop};
 use super::{
     OWN, PATIENCE, an_alert_waits, decisions_in, each, gateway, home, journal, kept_stops, reading,
     said, serving, sign_in, stand_in, tools, until_decided_in,
@@ -129,27 +129,29 @@ fn a_reader_over_a_gateway_live_stops_agents_and_tells_joel_alone() {
 /// The fake gateway's answer, but with its search also finding the alert
 /// the reader sent Joel, in his own messages to himself, as the gateway's
 /// search does once Slack has indexed it.
-fn echoing(tool: &str, _: &Value, now: u64) -> String {
+fn echoing(tool: &str, asked: &Value, now: u64) -> String {
     if tool != "slack_search_public_and_private" {
         return said(tool, now);
     }
-    let ts = format!("{}.000200", now - 30);
-    let found: Value = serde_json::from_str(&said(tool, now)).expect("the search's answer");
-    let real = found["results"].as_str().expect("its results");
-    let (head, first) = real.split_once("### Result 1 of 1\n").expect("one result");
-    let echo = format!(
-        "### Result 2 of 2\nChannel: DM (ID: D0SELF0001)\n\
-         From: Joel <joel@example.com> (ID: {}) \nTime: today\nMessage_ts: {ts}\n\
-         Permalink: [link](https://example.slack.com/archives/D0SELF0001/p{})\n\
-         Text: \npineapple: Someone stopped your agents\n\
-         Said: \"pineapple override\"\n\
-         Where: https://example.slack.com/archives/C1/p1\n\n---\n",
-        crate::JOEL,
-        ts.replace('.', "")
-    );
+    let alert = "pineapple: Someone stopped your agents\n\
+        Said: \"pineapple override\"\n\
+        Where: https://example.slack.com/archives/C1/p1";
+    let found = [
+        (now - 30, crate::JOEL, alert.to_owned()),
+        (now - 60, "U0OTHER001", stop()),
+    ];
+    let limit = asked["limit"]
+        .as_u64()
+        .and_then(|limit| usize::try_from(limit).ok())
+        .unwrap_or(20);
+    let counted = limit.min(found.len());
+    let results = (1..)
+        .zip(&found[..counted])
+        .map(|(at, (when, author, text))| result(at, counted, *when, author, text))
+        .collect::<Vec<_>>()
+        .concat();
     json!({ "results": format!(
-        "{}### Result 1 of 2\n{first}\n{echo}",
-        head.replace("(1 results)", "(2 results)")
+        "# Search Results for: \n\n## Messages ({counted} results)\n{results}"
     ) })
     .to_string()
 }
