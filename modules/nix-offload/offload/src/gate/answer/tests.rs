@@ -294,7 +294,10 @@ fn a_refusal_whose_journal_line_cant_be_written_says_it_was_printed() {
     fs::create_dir(places.state.join(JOURNAL)).expect("a folder in the journal's way");
     let found = left(&places, &gate, (QUEST, &head), None, Err((REFUSED, why)));
     assert_eq!(found.said, refusal_said(REFUSED, false));
-    assert!(result_of(&gate).contains(&found.said));
+    assert!(
+        result_of(&gate).contains(&found.said),
+        "the result the run leaves says where the detail went"
+    );
 }
 
 #[test]
