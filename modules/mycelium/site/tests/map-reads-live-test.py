@@ -76,9 +76,12 @@ CELLS = 8
 # their own; about 668 KB since the builders, the legend's moving samples and
 # new work's line, and since no comment is sent, view.js's and the styles'
 # included, a little more with the drawer's acts and its whole question, and
-# under the 677 KB allowed; new work's line and its hidden controls draw about 20 elements of the
-# 611.
-BUDGET = Budget(files=33, kilobytes=677, elements=620)
+# the gap it keeps between links, and under the 678 KB allowed; new work's
+# line and its hidden controls draw about 20 elements of the 611.
+BUDGET = Budget(files=33, kilobytes=678, elements=620)
+# A little past the gap acts.ts keeps between links to the Launcher, as
+# mycelium-link does, so a link after waiting it out is let go.
+LINK_GAP_MS = 3_100
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -927,14 +930,23 @@ NOW_LEADS = """(() => {
   return [first.textContent, next.textContent];
 })()"""
 # Holds a click on a link to the Launcher, saying where it went, since a
-# test browser has nothing to open it with.
+# test browser has nothing to open it with; a link the page let go itself
+# went nowhere.
 TALK_HELD = """document.addEventListener("click", (event) => {
   const link = event.target.closest?.('a[href^="mycelium:"]');
-  if (!link) return;
+  if (!link || event.defaultPrevented) return;
   event.preventDefault();
   window.talkedTo = link.getAttribute("href");
   window.talks = (window.talks || 0) + 1;
+  window.talkedAt = Date.now();
 }, true)"""
+
+
+def gap_up(page: Page) -> None:
+    """Wait out what is left of the gap the page keeps between links to the Launcher."""
+    page.wait_for_timeout(
+        page.evaluate(f"Math.max(0, (window.talkedAt ?? -Infinity) + {LINK_GAP_MS} - Date.now())")
+    )
 
 
 def test_now_leads_with_who_needs_you_and_a_and_t_reach_them(mycelium_opened: Opened) -> None:
@@ -1080,6 +1092,15 @@ def test_a_cell_that_needs_you_leads_with_its_question_whole_and_go_to_it(
     page.keyboard.press("g")
     gone = page.evaluate("window.talkedTo")
     assert gone == GONE_TO, f"g went to {gone}"
+    # t inside the Launcher's gap is let go and says so, as mycelium-link
+    # would drop it; once the gap is up, t talks.
+    page.keyboard.press("t")
+    expect(page.locator("#where"), "t inside the gap didn't say it waits").to_contain_text(
+        "takes one link every 3 seconds"
+    )
+    held = page.evaluate("window.talkedTo")
+    assert held == GONE_TO, f"t inside the gap still went to {held}"
+    gap_up(page)
     page.keyboard.press("t")
     talked = page.evaluate("window.talkedTo")
     assert talked == f"mycelium:cell/{NEEDING[0]}@kestrel", f"t talked to {talked}"
@@ -1225,6 +1246,7 @@ def test_new_work_from_a_cell_takes_its_address_until_unticked(mycelium_opened: 
     expect(page.locator("#sprout"), "s didn't take the keys back to the line").to_be_focused()
     expect(page.locator("#sprout-from"), "s again ticked the cell back").not_to_be_checked()
     page.locator("#sprout").fill("on its own")
+    gap_up(page)
     page.locator("#sprout").press("Enter")
     handed = page.evaluate("window.talkedTo")
     assert handed == "mycelium:sprout?words=on%20its%20own", f"the cleared tick handed {handed}"
@@ -1295,6 +1317,7 @@ def test_find_and_new_work_never_stand_together(mycelium_opened: Opened) -> None
 
 def sent_again(page: Page, want: str) -> None:
     """Open new work's line from the map and send its kept words again, as `want`."""
+    gap_up(page)
     page.evaluate("window.talkedTo = null")
     page.locator("#map-view").focus()
     page.keyboard.press("s")
@@ -1327,6 +1350,7 @@ def test_new_work_sends_again_from_the_cell_it_went_from(mycelium_opened: Opened
     page.keyboard.press("s")
     expect(field, "the handed words didn't come back").to_have_value("first")
     page.keyboard.type("second")
+    gap_up(page)
     page.keyboard.press("Enter")
     handed = page.evaluate("window.talkedTo")
     assert handed == f"mycelium:sprout?words=second&from={NEEDING[1]}", f"new words: {handed}"
@@ -1363,6 +1387,7 @@ def test_new_works_kept_words_keep_a_cleared_tick_and_let_a_gone_cell_go(
     # Words sent from no cell go again from none, though a cell is open.
     page.keyboard.type("bare")
     tick.uncheck()
+    gap_up(page)
     field.press("Enter")
     sent_again(page, "mycelium:sprout?words=bare")
     page.locator("#map-view").focus()
@@ -1372,6 +1397,7 @@ def test_new_works_kept_words_keep_a_cleared_tick_and_let_a_gone_cell_go(
     # Kept words whose cell has left the map go again from the cell open now.
     drawer.click()
     page.keyboard.type("last")
+    gap_up(page)
     page.keyboard.press("Enter")
     page.evaluate(f"location.hash = '#cell={NEEDING[0]}'")
     expect(page, "the first cell didn't open").to_have_url(re.compile(rf"#cell={NEEDING[0]}$"))

@@ -3740,6 +3740,8 @@ import {
       where.textContent = NO_WORDS;
       return;
     }
+    // Inside the Launcher's gap the words stay on the line, to send again.
+    if (linkWaits()) return;
     sproutGo.href = link;
     sproutGo.click();
     sproutKept = { words: sproutInput.value, from };
