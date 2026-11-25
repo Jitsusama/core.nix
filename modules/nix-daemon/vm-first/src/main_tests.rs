@@ -3,6 +3,33 @@
 
 use super::*;
 
+// Only Linux has a /proc to read.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_process_is_read_through_its_open_folder_until_it_is_gone() {
+    let own = Proc::open(std::process::id()).expect("this process's folder wouldn't open");
+    assert_eq!(
+        (own.read("cmdline"), own.owner()),
+        (
+            fs::read("/proc/self/cmdline").ok(),
+            fs::metadata("/proc/self").ok().map(|meta| meta.uid())
+        ),
+        "a process's own files or owner weren't read through its folder"
+    );
+    let mut child = std::process::Command::new("sleep")
+        .arg("60")
+        .spawn()
+        .expect("sleep wouldn't start");
+    let gone = Proc::open(child.id()).expect("the child's folder wouldn't open");
+    child.kill().expect("the child wouldn't stop");
+    child.wait().expect("the child wasn't reaped");
+    assert_eq!(
+        gone.read("cmdline"),
+        None,
+        "a process reaped was still read, as its pid's next process could be"
+    );
+}
+
 fn words(line: &str) -> Vec<String> {
     line.split_whitespace().map(String::from).collect()
 }

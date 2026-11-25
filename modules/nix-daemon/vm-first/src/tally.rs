@@ -138,9 +138,8 @@ const COMMAND_LENGTH: usize = 120;
 
 /// A client's command as a person would type it, from its command line:
 /// the program by its name alone, and cut short past `COMMAND_LENGTH`.
-/// Any client may write its command line, so a control character is said
-/// escaped, as `\n`, and no newline in one starts a journal line of its
-/// own.
+/// Any client may write its command line, so it's said safely, as
+/// `said_safely` says.
 fn command_of(cmdline: &[u8]) -> String {
     let mut args = cmdline
         .split(|&byte| byte == 0)
@@ -162,12 +161,18 @@ fn command_of(cmdline: &[u8]) -> String {
     cut
 }
 
-/// One argument as text, each control character in it escaped.
-fn said_safely(arg: &[u8]) -> String {
+/// Text a client chose, as a journal line may hold it: each control
+/// character escaped, as `\n`, so no newline in it starts a line of its
+/// own, and each backslash and backtick escaped too, so none passes for an
+/// escape or closes the quoting the line says it in.
+fn said_safely(text: &[u8]) -> String {
     let mut said = String::new();
-    for c in String::from_utf8_lossy(arg).chars() {
+    for c in String::from_utf8_lossy(text).chars() {
         if c.is_control() {
             said.extend(c.escape_default());
+        } else if c == '\\' || c == '`' {
+            said.push('\\');
+            said.push(c);
         } else {
             said.push(c);
         }
@@ -221,6 +226,14 @@ fn quest_of(slice: &str) -> Option<&str> {
         .filter(|quest| !quest.is_empty())
 }
 
+/// The quest a process's `/proc/<pid>/cgroup` sits in a slice of, said
+/// safely, since a client may name a slice of its own.
+fn quest_said(cgroup: &str) -> Option<String> {
+    quest_slice(cgroup)
+        .and_then(quest_of)
+        .map(|quest| said_safely(quest.as_bytes()))
+}
+
 /// Whether a build's cgroup holds a process to follow to its client.
 fn has_a_process(build: &Path) -> bool {
     fs::read_to_string(build.join("cgroup.procs")).is_ok_and(|procs| !procs.trim().is_empty())
@@ -229,10 +242,12 @@ fn has_a_process(build: &Path) -> bool {
 /// Who asked for a build, while its client is still there to ask.
 fn asker_of(build: &Path) -> Option<Asker> {
     let client = client_of_build(build)?;
-    let command = command_of(&fs::read(format!("/proc/{client}/cmdline")).ok()?);
-    let cgroup = fs::read_to_string(format!("/proc/{client}/cgroup")).ok()?;
-    let quest = quest_slice(&cgroup).and_then(quest_of).map(str::to_string);
-    Some(Asker { command, quest })
+    let command = command_of(&client.read("cmdline")?);
+    let cgroup = String::from_utf8(client.read("cgroup")?).ok()?;
+    Some(Asker {
+        command,
+        quest: quest_said(&cgroup),
+    })
 }
 
 /// Brings each build's tally up to date, and says what each build that has

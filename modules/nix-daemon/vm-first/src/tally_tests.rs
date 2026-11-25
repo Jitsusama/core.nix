@@ -71,9 +71,23 @@ fn names_a_client_by_its_command() {
         "a long command wasn't cut to its length: {said}"
     );
     assert_eq!(
-        command_of(b"nix\x00build\x00x\nA build for `y`\x1b[2J\x00"),
-        "nix build x\\nA build for `y`\\u{1b}[2J",
-        "a control character in a client's command wasn't escaped"
+        command_of(b"nix\x00build\x00x\nA build for `y`\x1b[2J\x00a\\nb\x00"),
+        "nix build x\\nA build for \\`y\\`\\u{1b}[2J a\\\\nb",
+        "a control character, a backtick or a backslash in a client's command wasn't escaped"
+    );
+}
+
+#[test]
+fn says_a_quest_as_safely_as_a_command() {
+    assert_eq!(
+        quest_said("0::/user.slice/jobs.slice/jobs-work.slice/jobs-work-a`\t\\b.slice/x.scope\n"),
+        Some("a\\`\\t\\\\b".to_owned()),
+        "a quest's name wasn't escaped as a command is"
+    );
+    assert_eq!(
+        quest_said("0::/user.slice/jobs.slice/jobs-work.slice/x.scope\n"),
+        None,
+        "a process in no quest's slice was given one"
     );
 }
 
@@ -153,13 +167,24 @@ fn a_build_is_known_by_its_cgroup_made_again_and_forgotten_once_gone() {
     fs::create_dir_all(&build).expect("the temp folder takes a folder");
     let mut tallies = HashMap::new();
     let known = |tallies: &HashMap<PathBuf, Tally>| {
-        tallies
-            .get(&build)
-            .map(|tally| (tally.cgroup, tally.seen, tally.asked.is_some()))
+        tallies.get(&build).map(|tally| {
+            (
+                tally.cgroup,
+                tally.seen,
+                tally.asked.is_some(),
+                tally.written,
+            )
+        })
     };
     tally(&mut tallies, std::slice::from_ref(&build));
     let first = known(&tallies);
     let first_inode = fs::metadata(&build).map(|meta| meta.ino()).ok();
+    // What the first build counted and saw must stay with it, so a tally
+    // taken over by the build after it would be told apart.
+    if let Some(first) = tallies.get_mut(&build) {
+        first.written = 1 << 20;
+        first.seen = true;
+    }
     // Nix makes the next build of the same user in a cgroup of the same
     // name; made while the first stands, it can't take the first's inode.
     fs::rename(&build, &before).expect("the temp folder renames a folder");
@@ -172,13 +197,13 @@ fn a_build_is_known_by_its_cgroup_made_again_and_forgotten_once_gone() {
     tally(&mut tallies, &[]);
     assert_eq!(
         first,
-        first_inode.map(|inode| (inode, false, false)),
+        first_inode.map(|inode| (inode, false, false, 0)),
         "a build with no process wasn't known by its cgroup's inode, unseen and unasked"
     );
     assert_eq!(
         again,
-        again_inode.map(|inode| (inode, false, false)),
-        "a cgroup made again was taken for the build before it"
+        again_inode.map(|inode| (inode, false, false, 0)),
+        "a cgroup made again was taken for the build before it, or its tally for the new one"
     );
     assert!(tallies.is_empty(), "a build gone was still tallied");
 }

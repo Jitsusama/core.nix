@@ -46,6 +46,7 @@
 use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char};
 use std::fs;
+use std::os::fd::AsRawFd;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -178,21 +179,47 @@ fn quest_weight(quest: u64, vm: u64) -> u64 {
     quest.min(vm.saturating_sub(1)).max(1)
 }
 
+/// A process's folder under `/proc`, held open so that each read of it is
+/// of the one process. Read again by its pid, the folder could by then be
+/// another's, since a pid is used again once its process is reaped, but a
+/// read through the open folder of a process that's gone fails.
+struct Proc(fs::File);
+
+impl Proc {
+    fn open(pid: u32) -> Option<Proc> {
+        fs::File::open(format!("/proc/{pid}")).ok().map(Proc)
+    }
+
+    /// The user the process runs as, who owns its folder. A process that
+    /// makes itself undumpable has the files in its folder shown as
+    /// root's, but Linux leaves the folder its own user's, as
+    /// `task_dump_owner` in fs/proc/base.c does for every `dr-xr-xr-x`
+    /// folder, so no build passes for a root worker that way.
+    fn owner(&self) -> Option<u32> {
+        self.0.metadata().ok().map(|meta| meta.uid())
+    }
+
+    /// One of the process's files, read through its open folder.
+    fn read(&self, name: &str) -> Option<Vec<u8>> {
+        fs::read(format!("/proc/self/fd/{}/{name}", self.0.as_raw_fd())).ok()
+    }
+}
+
 /// The client that asked for a build, found through the daemon's worker
-/// its processes descend from.
-fn client_of_build(build: &Path) -> Option<u32> {
+/// its processes descend from. The client is opened by the pid the worker
+/// names, which is all a worker says of it.
+fn client_of_build(build: &Path) -> Option<Proc> {
     let procs = fs::read_to_string(build.join("cgroup.procs")).ok()?;
-    let mut pid: u32 = procs.lines().next()?.parse().ok()?;
+    let mut process = Proc::open(procs.lines().next()?.parse().ok()?)?;
     for _ in 0..WORKER_DEPTH {
-        // A process's folder is owned by the user it runs as.
-        let owner = fs::metadata(format!("/proc/{pid}")).ok()?.uid();
-        if let Some(client) = fs::read(format!("/proc/{pid}/cmdline"))
-            .ok()
-            .and_then(|cmdline| client_of(&cmdline, owner))
+        if let Some(client) = process
+            .read("cmdline")
+            .and_then(|cmdline| client_of(&cmdline, process.owner()?))
         {
-            return Some(client);
+            return Proc::open(client);
         }
-        pid = parse_ppid(&fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)?;
+        let stat = String::from_utf8(process.read("stat")?).ok()?;
+        process = Proc::open(parse_ppid(&stat)?)?;
     }
     None
 }
@@ -201,7 +228,7 @@ fn client_of_build(build: &Path) -> Option<u32> {
 /// in a quest's slice.
 fn weight_of_quest(build: &Path) -> Option<u64> {
     let client = client_of_build(build)?;
-    let cgroup = fs::read_to_string(format!("/proc/{client}/cgroup")).ok()?;
+    let cgroup = String::from_utf8(client.read("cgroup")?).ok()?;
     let slice = quest_slice(&cgroup)?;
     let weight = format!("{CGROUP_ROOT}{slice}/cpu.weight");
     fs::read_to_string(weight).ok()?.trim().parse().ok()
