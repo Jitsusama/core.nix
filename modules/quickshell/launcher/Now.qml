@@ -2225,9 +2225,12 @@ Provider {
         // shows it, and a Return there right after doesn't send a second.
         const answer = (fields, label) => {
             const agents = provider.source("agents");
-            // One nothing said of may have arrived, so the foot says so rather than nothing.
-            const answered = (put, why, unheard) => {
-                if (put)
+            // One nothing said of may have arrived, so the foot says so rather than nothing;
+            // one refused (a second, as answerKept refuses) says why, as it never went.
+            const answered = (put, why, unheard, refused) => {
+                if (refused === true)
+                    provider.launcher?.say([[why, ""]], true);
+                else if (put)
                     provider.launcher?.say([[filledIn(said.answered ?? "", { label }), ""]]);
                 else if (unheard === true)
                     provider.launcher?.say([[filledIn(

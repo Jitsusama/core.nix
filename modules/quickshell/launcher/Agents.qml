@@ -1268,20 +1268,19 @@ Provider {
             launcher?.walkRefused?.(told);
             return;
         }
-        // A second Return to an ask he answered goes nowhere, as it takes his first, so the
-        // foot says so rather than showing it sent.
-        if (TalkAnswers.answeredAlready(answeredTo[to], answers.want, Date.now())) {
-            told = TalkAnswers.filled(said.answeredAlready ?? "", { name: session.title });
-            launcher?.drafts?.settle({ [to]: [{ words: text.trim(), stage: "answered" }] });
-            launcher?.walkRefused?.(told);
-            return;
-        }
         told = TalkAnswers.filled((Words.of("orchestrators").said ?? {}).sent ?? "",
             { name: session.title });
         const fields = Object.assign({ want: answers.want }, answer.value !== undefined
             ? { value: answer.value } : { other: answer.other });
         const chose = { label: answer.label, typed: text, answers };
-        answerKept(session.address, fields, chose, (put, why, unheard) => {
+        answerKept(session.address, fields, chose, (put, why, unheard, refused) => {
+            // A second Return to an ask he answered goes nowhere, as it takes his first
+            // (answerKept), so his words go and the foot says why rather than sent.
+            if (refused === true) {
+                launcher?.drafts?.settle({ [to]: [{ words: text.trim(), stage: "answered" }] });
+                told = why;
+                return;
+            }
             // His words stay only for the ask they were meant for: once it asks something else,
             // given back they'd answer the new ask with words for the old one, so they show
             // only as not delivered, and the foot says why.
@@ -2766,23 +2765,20 @@ Provider {
     // `chose.label` and typed as `chose.typed`, sent with `fields` (answerWant's) and kept
     // among its answers (answeredTo) until the node says of it, whichever row gave it, For
     // You's choices too, so its Talk shows it and a second Return there knows it went.
-    // `then(put, why, unheard)` hears the node, after it's kept.
+    // `then(put, why, unheard, refused)` hears the node, after it's kept, or `refused` true
+    // where it never went, with why.
     function answerKept(address, fields, chose, then) {
         const to = String(address).toUpperCase();
         // An answer goes as Joel's, so it goes only from his own Return, whichever row gives it
-        // (Sprouting.fromJoel), and only his first to an ask, For You's choices too; refused,
-        // the foot says why and nothing is kept, so its Talk shows no words he didn't send. A
-        // walk is told so (Launcher.qml's walkedRun); his own Return reads it on the foot, as
-        // For You's second choice says nothing else.
-        const fromJoel = Sprouting.fromJoel(launcher);
-        const refused = TalkAnswers.answerRefused(fromJoel, answeredTo[to],
+        // (Sprouting.fromJoel), and only his first to an ask, For You's choices too. Refused,
+        // nothing is kept, so its Talk shows no words he didn't send; a walk is told why
+        // (Launcher.qml's walkedRun), and `then` hears it refused, its row saying why.
+        const refused = TalkAnswers.answerRefused(Sprouting.fromJoel(launcher), answeredTo[to],
             chose.answers.want, Date.now(), Words.of("verb:agent:talk").said ?? {},
             sessionAt(address)?.title ?? to);
         if (refused !== null) {
             launcher?.walkRefused?.(refused);
-            if (fromJoel)
-                launcher?.say?.([[refused, ""]], true);
-            then(false, refused, false);
+            then(false, refused, false, true);
             return;
         }
         const one = TalkAnswers.said(chose.label, Date.now(), chose.answers.want, chose.typed);

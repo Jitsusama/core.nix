@@ -174,8 +174,17 @@ ShellRoot {
             return wants[address] ?? null;
         }
 
-        // As Agents' answerKept, which keeps the answer among the session's before it goes.
+        // Why answerKept refuses an answer (a walk's, or a second to an ask), keeping nothing,
+        // or "" where it takes it.
+        property string refuses: ""
+
+        // As Agents' answerKept, which keeps the answer among the session's before it goes,
+        // or refuses it, keeping and sending nothing.
         function answerKept(address, fields, chose, then) {
+            if (refuses !== "") {
+                then(false, refuses, false, true);
+                return;
+            }
             answered = answered.concat([{ address: address, fields: fields,
                 label: chose.label, want: chose.answers.want }]);
             then(puts, "", !puts && unheard);
@@ -2927,6 +2936,15 @@ ShellRoot {
             JSON.stringify([agents.answered, theLauncher.said]));
         agents.unheard = false;
         agents.answered = agents.answered.slice(0, 1);
+        theLauncher.said = [];
+        // Refused by answerKept, a second to an ask he answered, it says why on the foot.
+        agents.refuses = "Wanting has your answer already";
+        inside[0].run();
+        expect("a choice answerKept refuses sends nothing and says why on the foot",
+            agents.answered.length === 1 && JSON.stringify(theLauncher.said)
+                === JSON.stringify([["Wanting has your answer already", ""]]),
+            JSON.stringify([agents.answered, theLauncher.said]));
+        agents.refuses = "";
         theLauncher.said = [];
         agents.puts = true;
         inside[0].run();
