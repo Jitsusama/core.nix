@@ -1450,8 +1450,8 @@ Provider {
     // an answer since replaced changes nothing (`sent`).
     function answerLook(one, choice) {
         if (Looks.awaiting(one, lookAnswers)) {
-            console.warn(`Now: not sending ${JSON.stringify(choice.label)} to look`
-                + ` ${JSON.stringify(one.id)}, whose answer may still reach its session`);
+            console.warn(`Now: not sending ${Presented.quoted(choice.label)} to look`
+                + ` ${Presented.quoted(one.id)}, whose answer may still reach its session`);
             return;
         }
         answersSent += 1;
@@ -1459,9 +1459,9 @@ Provider {
         const at = Date.now();
         const told = Looks.answer(one, choice, lookCell(one), at);
         if (told === null) {
-            console.warn(`Now: nobody to tell the answer to look ${JSON.stringify(one.id)}:`
-                + ` address ${JSON.stringify(one.address ?? null)},`
-                + ` quest ${JSON.stringify(one.quest ?? null)}`);
+            console.warn(`Now: nobody to tell the answer to look ${Presented.quoted(one.id)}:`
+                + ` address ${Presented.quoted(one.address ?? null)},`
+                + ` quest ${Presented.quoted(one.quest ?? null)}`);
             lookAnswers = Object.assign({}, lookAnswers, { [one.id]: { label: choice.label,
                 at: at, sent: sent, failed: "nobody" } });
             return;
@@ -1490,8 +1490,10 @@ Provider {
                         answer.error, Options.reports)}`
                     : "not given by the node, which said nothing of why"
             };
-            console.warn(`Now: the answer to look ${JSON.stringify(one.id)} for`
-                + ` ${JSON.stringify(told.address)} was ${words[failed]}`);
+            // Its id and address quoted with the line ends JSON leaves raw
+            // escaped too, since a reader may split on any of them.
+            console.warn(`Now: the answer to look ${Presented.quoted(one.id)} for`
+                + ` ${Presented.quoted(told.address)} was ${words[failed]}`);
             left[one.id] = { label: choice.label, at: Date.now(), sent: sent, failed: failed };
             provider.lookAnswers = left;
         });

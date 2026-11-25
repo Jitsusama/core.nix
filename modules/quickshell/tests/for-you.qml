@@ -495,10 +495,34 @@ QtObject {
                 LookForm.poses("\u2067klaT\u2069", ["Talk"]),
                 LookForm.poses("Keep It\u200f", ["Clear It"]),
                 LookForm.poses("Keep It", ["Clear It", "Talk"]),
-                LookForm.poses("Clear It Away", ["Clear It"]),
+                LookForm.poses("Clearance", ["Clear It", "Clear"]),
                 LookForm.poses("\u202etI raelC", [])],
             [true, true, true, true, true, true, true, true, true, true, true, true, true,
                 true, true, false, false, false]);
+        // A verb cut short where it runs out of room shows only its first
+        // words, so one opening with an act's words poses as it, however
+        // short what follows: the line's room isn't known where it's judged
+        // (#6562's second review: Clear It and one long word drew as Clear
+        // It and an ellipsis).
+        expect("a choice opening with an act's words poses as it, whatever follows",
+            [LookForm.poses(`Clear It ${"Everything".repeat(8)}`, ["Clear It"]),
+                LookForm.poses("Clear It Away", ["Clear It"]),
+                LookForm.poses("clear it, now", ["Clear It"]),
+                LookForm.poses("Talk\u00a0to Them", ["Talk"]),
+                LookForm.poses("Keep It Clear", ["Clear It"]),
+                LookForm.poses("Clear", ["Clear It"])],
+            [true, true, true, true, false, false]);
+        // And a look's own act can't pass for a choice, nor a choice for it,
+        // once either is cut short.
+        const offering = labels => second({ act: "Review It",
+            choices: labels.map(label => ({ value: label, label: label })),
+            wants: { choices: labels.map(label => ({ label: label })) } });
+        expect("its act is never a choice's words, cut short either way",
+            [LookForm.actOf(offering(["Review It Now"])),
+                LookForm.actOf(offering(["Review"])),
+                LookForm.actOf(offering(["Review It\nfor good"])),
+                LookForm.actOf(offering(["Keep It", "Roll It Back"]))],
+            ["", "", "", "Review It"]);
         // A verb draws on one line, cut short where it runs out of room, so
         // what follows a line break, or a run of spaces past its room, never
         // shows: a name whose words before either read as an act poses as it.
@@ -511,9 +535,8 @@ QtObject {
                 LookForm.poses("Clear It\u3000\u3000Away", ["Clear It"]),
                 LookForm.poses("Clear\u200b  It  Away", ["Clear"]),
                 LookForm.poses("Keep It\nClear It", ["Clear It"]),
-                LookForm.poses("Clear  It", ["Clear It"]),
-                LookForm.poses("Clear It Away", ["Clear It"])],
-            [true, true, true, true, true, true, false, true, false]);
+                LookForm.poses("Clear  It", ["Clear It"])],
+            [true, true, true, true, true, true, false, true]);
         // Explain It is told a terminal look's Open beside its cell's acts, by
         // the name its row shows, as that Open goes to the cell's window; any
         // other look's Open answers the look, so it is told none.

@@ -84,7 +84,8 @@ function readAs(name) {
 
 // What Joel presses for a look in its second form, in its own words, as
 // "Review It", else "": never past the harness's four words, a choice's
-// label, or a name another of its acts goes by (`taken`), however it's
+// label, one a label opens with or opening with one, or a name another of
+// its acts goes by (`taken`), however it's
 // spaced, stopped or hides what draws as nothing, so it can't pass itself
 // off as Clear It or an answer, or turn its letters around. A letter from
 // another script that draws alike still could; the drawer's eyebrow says
@@ -94,7 +95,8 @@ function actOf(one, taken = []) {
     const read = readAs(act);
     return read === "" || read.split(" ").length > ACT_WORDS || TURNS.test(act)
         || poses(act, taken)
-        || (one.offers ?? []).some(choice => readAs(choice.label) === read) ? "" : act;
+        || (one.offers ?? []).some(choice => poses(act, [written(choice.label)])
+            || poses(written(choice.label), [act])) ? "" : act;
 }
 
 // The words of a name before a line break or a run of spaces, which is
@@ -108,12 +110,17 @@ function headOf(name) {
 // hides what draws as nothing, or as one once what follows a line break or
 // a run of spaces is cut from sight, so a choice can't pass for Clear It;
 // one that turns its letters around poses as any, since it can draw as
-// either.
+// either. One that opens with a taken name's words poses too, whatever
+// follows, since a verb's line cut short where it runs out of room shows
+// only those, as Clear It and one long word draws as Clear It and an
+// ellipsis; the line's room isn't known here, so it's never trusted to
+// show the rest.
 function poses(name, taken) {
     const read = readAs(name);
     const head = readAs(headOf(name));
     return taken.length > 0 && (TURNS.test(String(name))
-        || taken.some(each => readAs(each) === read || readAs(each) === head));
+        || taken.map(readAs).some(each => each !== ""
+            && (each === read || each === head || read.startsWith(`${each} `))));
 }
 
 // What Explain It is told a look's row offers, by the names the row shows
