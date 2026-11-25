@@ -37,8 +37,18 @@ fn look() -> Value {
     })
 }
 
+/// A look whose session has ended, on a quest whose own session goes on.
+fn ended_look() -> Value {
+    let mut look = look();
+    look["id"] = json!("ended");
+    look["address"] = json!("gone12");
+    look["quest"] = json!("QEST-20261124-LIVE12");
+    look
+}
+
 /// A daemon standing in for the to-do daemon and the node at once: it
-/// answers a get of `look:l1` with the look, and a steer as the node does,
+/// answers a get of `look:l1` or `look:ended` with that look, and a steer
+/// as the node does, refusing one to GONE12, whose session has ended, and
 /// keeping every steer it was asked.
 fn stand_in(socket: &Path) -> Arc<Mutex<Vec<Value>>> {
     let listener = UnixListener::bind(socket).expect("the stand-in listens");
@@ -65,10 +75,18 @@ fn answer(stream: UnixStream, steered: &Mutex<Vec<Value>>) {
             Some("get") if asked["keys"] == json!(["look:l1"]) => {
                 json!({"id": id, "records": [{"key": "look:l1", "kind": "look", "look": look()}]})
             }
+            Some("get") if asked["keys"] == json!(["look:ended"]) => {
+                json!({"id": id, "records": [{"key": "look:ended", "kind": "look", "look": ended_look()}]})
+            }
             Some("get") => json!({"id": id, "records": []}),
             Some("steer") => {
                 steered.lock().expect("the steers").push(asked.clone());
-                json!({"id": id, "steered": {"machine": "here"}})
+                if asked["address"] == "GONE12" {
+                    let why = "no session goes by GONE12 now";
+                    json!({"id": id, "error": {"code": "refused", "message": why}})
+                } else {
+                    json!({"id": id, "steered": {"machine": "here"}})
+                }
             }
             _ => json!({"id": id, "error": {"code": "unknown-ask"}}),
         };
@@ -269,6 +287,27 @@ fn an_answer_pressed_on_a_page_is_carried_once_as_the_launcher_carries_it() {
     );
     assert!(body.contains("\"answered\""), "{body}");
     assert_eq!(served.steered.lock().expect("the steers").len(), 1);
+}
+
+#[test]
+fn an_answer_whose_session_ended_goes_to_its_quests_as_the_launchers_does() {
+    let served = served("ended");
+    let page = from_a_page(served.port, &given(served.port));
+    let pressed = json!({"look": "ended", "value": "yes"}).to_string();
+    let (status, _, body) = asked(served.port, "POST /answer", &page, &pressed);
+    assert_eq!(status, "HTTP/1.1 200 OK", "{body}");
+    let told: Vec<Value> = served
+        .steered
+        .lock()
+        .expect("the steers")
+        .iter()
+        .map(|steer| steer["address"].clone())
+        .collect();
+    assert_eq!(
+        told,
+        [json!("GONE12"), json!("LIVE12")],
+        "the answer wasn't tried at its own session, then at its quest's"
+    );
 }
 
 #[test]

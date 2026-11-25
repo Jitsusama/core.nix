@@ -1,8 +1,9 @@
 //! An answer Joel presses on one of the sites' own pages, carried to the
 //! session that asked, as the launcher's For You carries one: the steer
 //! `{act: "answer", look, value, from: "joel", at}`, sent over the node to
-//! the session that left the look, which checks it against the look again
-//! and takes only the first answer (the harness's mesh steering).
+//! the session that left the look, or once that has ended to its quest's
+//! own session (`answerers`), which checks it against the look again and
+//! takes only the first answer (the harness's mesh steering).
 //!
 //! The session can't tell who wrote the steer, so the whole proof that Joel
 //! pressed it rests here, and an answer is carried only when all of these
@@ -148,31 +149,46 @@ impl Answers {
         let look = self.look(&id)?;
         let now = now();
         offered(&look, &value, now)?;
-        let address = look
-            .get("address")
-            .and_then(Value::as_str)
-            .filter(|address| !address.is_empty())
-            .ok_or_else(|| refused("unaddressed", 409, "the look names no session to answer"))?;
-        let steer = json!({
-            "ask": "steer",
-            "address": address.to_uppercase(),
-            "steer": {
-                "at": iso(now), "from": "joel", "act": "answer", "look": id, "value": value,
-                "via": "sites",
-            },
-        });
-        let told = page::once(&self.node, &steer)
-            .map_err(|why| refused("unreached", 502, &format!("the node doesn't answer: {why}")))?;
-        if let Some(error) = told.get("error") {
-            let why = error.get("message").and_then(Value::as_str).unwrap_or("");
+        let answerers = answerers(&look);
+        if answerers.is_empty() {
             return Err(refused(
-                "unsteered",
-                502,
-                &format!("the node refused it: {why}"),
+                "unaddressed",
+                409,
+                "the look names no session to answer",
             ));
         }
-        answered.insert(id.clone());
-        Ok(json!({"answered": id, "steered": told.get("steered").cloned().unwrap_or(Value::Null)}))
+        let mut why = String::new();
+        for address in answerers {
+            let steer = json!({
+                "ask": "steer",
+                "address": address,
+                "steer": {
+                    "at": iso(now), "from": "joel", "act": "answer", "look": id,
+                    "value": value, "via": "sites",
+                },
+            });
+            let told = page::once(&self.node, &steer).map_err(|failed| {
+                refused(
+                    "unreached",
+                    502,
+                    &format!("the node doesn't answer: {failed}"),
+                )
+            })?;
+            // The node refuses a session it can't tell, as one no session
+            // goes by now, so the next is told in its place.
+            let Some(error) = told.get("error") else {
+                answered.insert(id.clone());
+                let steered = told.get("steered").cloned().unwrap_or(Value::Null);
+                return Ok(json!({"answered": id, "steered": steered}));
+            };
+            why.clear();
+            why.push_str(error.get("message").and_then(Value::as_str).unwrap_or(""));
+        }
+        Err(refused(
+            "unsteered",
+            502,
+            &format!("the node refused it: {why}"),
+        ))
     }
 
     /// Whether `asked` came from a page of the sites' own, open now.
@@ -315,6 +331,24 @@ fn offered(look: &Value, value: &str, now: i64) -> Result<(), Refused> {
         return Err(refused("unoffered", 409, "the look doesn't offer that"));
     }
     Ok(())
+}
+
+/// The sessions an answer to `look` goes to, in turn, as the launcher's
+/// For You sends one (Looks.js `answer`): the one that left it, by the
+/// address it names, then its quest's own session, whose address is the
+/// quest's last part, where the asking goes on once the first has ended.
+/// None where the look names neither.
+fn answerers(look: &Value) -> Vec<String> {
+    let text = |field: &str| look.get(field).and_then(Value::as_str).unwrap_or("");
+    let quests = text("quest").rsplit('-').next().unwrap_or("");
+    let mut answerers: Vec<String> = Vec::new();
+    for address in [text("address"), quests] {
+        let address = address.to_uppercase();
+        if !address.is_empty() && !answerers.contains(&address) {
+            answerers.push(address);
+        }
+    }
+    answerers
 }
 
 /// When `value` falls, in milliseconds since the epoch: a whole number of
@@ -697,6 +731,35 @@ mod tests {
             offered(&unknown_zone, "yes", NOW),
             Ok(()),
             "a time with no zone says nothing"
+        );
+    }
+
+    #[test]
+    fn an_answer_goes_to_the_session_that_left_the_look_then_its_quests() {
+        let mut look = look();
+        assert_eq!(
+            answerers(&look),
+            ["ABC123"],
+            "an answer went past the session that left the look"
+        );
+        look["quest"] = json!("QEST-20261124-live12");
+        assert_eq!(
+            answerers(&look),
+            ["ABC123", "LIVE12"],
+            "an answer had no quest's session to go to once its own ended"
+        );
+        look["address"] = json!("live12");
+        assert_eq!(answerers(&look), ["LIVE12"], "one session was told twice");
+        look["address"] = json!("");
+        assert_eq!(
+            answerers(&look),
+            ["LIVE12"],
+            "a look naming no session wasn't answered at its quest's"
+        );
+        look["quest"] = json!("");
+        assert!(
+            answerers(&look).is_empty(),
+            "a look naming neither found a session to answer"
         );
     }
 
