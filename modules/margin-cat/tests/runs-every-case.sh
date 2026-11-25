@@ -73,7 +73,8 @@ for case in "${cases[@]}"; do
   { time (run "$case" 2>&3); } 3>&2 2>"$used"
   code=$?
   # The timing is the last line: bash says a job a signal ended above it.
-  read -r user kernel clock < <(tail -n 1 "$used")
+  timing=$(tail -n 1 "$used")
+  read -r user kernel clock <<<"$timing"
   own=$(awk -v user="$user" -v kernel="$kernel" 'BEGIN { printf "%.0f", user + kernel }')
   if [ "$code" != 0 ]; then
     said=$(ended "$case" "$code" "${clock%.*}")
