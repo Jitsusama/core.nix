@@ -1636,7 +1636,7 @@ Scope {
             toldGone();
             return { done: false, said: `${gone.gone ?? ""}: ${gone.why ?? ""}` };
         }
-        // Agents opened the launcher to say why as it was refused (refused), so only
+        // Agents opened the launcher to say why as it was refused (refusedGoing), so only
         // the why it gave is answered here.
         if (!going.went)
             return { done: false, said: going.why };
@@ -1644,7 +1644,7 @@ Scope {
     }
 
     // Opens the launcher on Agents to say what's held for its next opening, a Go To's why it
-    // couldn't go (Sessions.goTo, said by Agents' refused), with Joel's first keys held back,
+    // couldn't go (Sessions.goTo, said by Agents' refusedGoing), with Joel's first keys held back,
     // as toldGone does: every act shuts the launcher before it runs, and a link comes with it
     // shut, so the why would otherwise wait until he next opened it himself. Over a launcher
     // in use it says nothing (inUse), the foot having said it. Whether it said so.

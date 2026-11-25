@@ -1391,7 +1391,7 @@ Provider {
     // where it has none, held here, hosted or on another machine (Sessions.goTo), waking it
     // first where it's parked, as a look's Go To does. Only the first word said names one
     // (TalkTo.goesTo), and nothing is typed or sent. Gives the session and whether it went
-    // (Sessions.wakeToGo), with the why it was told where it didn't (refused), or null for
+    // (Sessions.wakeToGo), with the why it was told where it didn't (refusedGoing), or null for
     // nobody here: the void and a network have no window to go to.
     function goToFor(said) {
         const address = TalkTo.goesTo(said, {

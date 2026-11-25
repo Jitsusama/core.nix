@@ -1247,7 +1247,7 @@ Provider {
             return false;
         }
         if (!Sessions.wakeToGo(Sessions.parkedAs(cell.address), cell)) {
-            // Agents' refused has opened the launcher to say why already; this
+            // Agents' refusedGoing has opened the launcher to say why already; this
             // opens it for a refusal said no other way.
             const told = provider.launcher?.toldHere() === true;
             console.warn(`Now: look ${JSON.stringify(one.id)}'s session`
