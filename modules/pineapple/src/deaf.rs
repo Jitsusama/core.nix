@@ -10,7 +10,9 @@
 //!
 //! A round Slack couldn't be asked in, its network down or its rate
 //! spent, counts neither way: nothing there is Joel's to do, and the
-//! journal says it. An answer that came but can't be read counts as
+//! journal says it. Through a tool gateway, past [`UNREACHED`] such
+//! rounds in a row is told, since nothing else hears Slack while the
+//! gateway is out, and only Joel marks it done. An answer that came but can't be read counts as
 //! deaf, though no sign-in mends it: its cause lasts (a gateway's
 //! wording changed, its answer cut short past what can be asked again,
 //! or a message among the newest shaped like its markup), so read as
@@ -54,7 +56,16 @@ pub enum Deafness {
     /// One search's answer can't be read, so only the other's messages
     /// are judged.
     Unread(Search),
+    /// The tool gateway Slack is heard through went unreached more than
+    /// [`UNREACHED`] rounds in a row.
+    Unreached,
 }
+
+/// How many rounds in a row a reader over a tool gateway may leave Slack
+/// unasked, about five minutes at its pace, before that's a deafness of
+/// its own: the gateway is the one way it hears, so an outage of it
+/// isn't a blink that a reader beside it covers.
+pub const UNREACHED: u32 = 10;
 
 /// Each of a round's two searches.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -132,6 +143,8 @@ pub struct Deaf {
     /// Whether Slack is heard through a tool gateway, whose sign-in isn't
     /// Slack's, so a row about it can't send Joel to sign in to Slack.
     gateway: bool,
+    /// How many rounds in a row left Slack unasked.
+    unasked: u32,
 }
 
 impl Default for Deaf {
@@ -154,6 +167,7 @@ impl Deaf {
             since: None,
             left: true,
             gateway: false,
+            unasked: 0,
         }
     }
 
@@ -212,6 +226,7 @@ impl Deaf {
         match round {
             Round::Heard => {
                 self.rounds = 0;
+                self.unasked = 0;
                 self.held = None;
                 self.phrase = Fared::default();
                 self.tag = Fared::default();
@@ -224,6 +239,9 @@ impl Deaf {
                 }
             }
             Round::Deaf(why) => {
+                if why != Deafness::Unreached {
+                    self.unasked = 0;
+                }
                 self.rounds = self.rounds.saturating_add(1);
                 let held = match self.held {
                     Some((last, held)) if last == why => held.saturating_add(1),
@@ -232,7 +250,10 @@ impl Deaf {
                 self.held = Some((why, held));
                 // A sign-in's cause reads neither search, so each counts
                 // as heard of nothing it says.
-                let whole = matches!(why, Deafness::Refused | Deafness::NoSignIn);
+                let whole = matches!(
+                    why,
+                    Deafness::Refused | Deafness::NoSignIn | Deafness::Unreached
+                );
                 let covers =
                     |search| why == Deafness::Unreadable || why == Deafness::Unread(search);
                 self.phrase.round(!whole && covers(Search::Phrase));
@@ -266,6 +287,16 @@ impl Deaf {
                 } else {
                     waits(why, since, at)
                 })
+            }
+            // Through a gateway, a run of rounds unasked is deaf as any
+            // cause is, since nothing else hears Slack while it lasts.
+            Round::Unasked if self.gateway => {
+                self.unasked = self.unasked.saturating_add(1);
+                if self.unasked > UNREACHED {
+                    self.heard(Round::Deaf(Deafness::Unreached), at)
+                } else {
+                    Change::Keep
+                }
             }
             Round::Unasked => Change::Keep,
         }
@@ -329,6 +360,16 @@ pub fn waits(why: Deafness, since: u64, at: u64) -> Value {
             vec![READ_JOURNAL],
             json!({"by": "person"}),
         ),
+        Deafness::Unreached => (
+            format!(
+                "The tool gateway the safe word hears Slack through can't be reached, {UNHEARD}"
+            ),
+            vec![
+                "Ask an agent to read the reader's journal, which says why the gateway went \
+                 unreached",
+            ],
+            json!({"by": "person"}),
+        ),
     };
     json!({
         "v": 2,
@@ -357,7 +398,7 @@ pub fn waits_on_gateway(why: Deafness, since: u64, at: u64) -> Value {
     let said = match why {
         Deafness::Refused => "The tool gateway or Slack behind it refused the safe word's sign-in",
         Deafness::NoSignIn => "The safe word has no tool gateway sign-in it can read",
-        Deafness::Unreadable | Deafness::Unread(_) => return told,
+        Deafness::Unreadable | Deafness::Unread(_) | Deafness::Unreached => return told,
     };
     let item = &mut told["items"][0];
     item["why"] = json!(format!(

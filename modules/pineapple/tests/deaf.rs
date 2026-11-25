@@ -5,7 +5,7 @@ use std::ffi::OsStr;
 use std::path::Path;
 
 use pineapple::deaf::{
-    Change, Deaf, Deafness, ROUNDS, Round, Search, Waiting, keep_missed, make, missed,
+    Change, Deaf, Deafness, ROUNDS, Round, Search, UNREACHED, Waiting, keep_missed, make, missed,
     refuses_the_sign_in, waiting, waits, waits_on_gateway,
 };
 
@@ -183,6 +183,52 @@ fn only_a_refusal_of_the_sign_in_is_joels_to_fix() {
         assert!(
             !refuses_the_sign_in(word),
             "{word} isn't fixed by signing in"
+        );
+    }
+}
+
+#[test]
+fn a_gateway_unreached_past_its_rounds_is_told_as_deaf_and_heard_again_untold() {
+    let mut deaf = Deaf::through_gateway();
+    let round = |n: u32| AT + u64::from(n) * 30_000;
+    for n in 1..=UNREACHED + 1 {
+        assert_eq!(
+            deaf.heard(Round::Unasked, round(n)),
+            Change::Keep,
+            "round {n} unasked isn't told yet"
+        );
+    }
+    let at = round(UNREACHED + 2);
+    assert_eq!(
+        deaf.heard(Round::Unasked, at),
+        Change::Tell(waits_on_gateway(Deafness::Unreached, at, at)),
+        "a gateway unreached past its rounds is told, once the cause has held"
+    );
+    let item = &waits_on_gateway(Deafness::Unreached, at, at)["items"][0];
+    assert!(
+        item["why"]
+            .as_str()
+            .is_some_and(|why| why.contains("can't be reached"))
+            && item["doneWhen"] == serde_json::json!({"by": "person"}),
+        "it says the gateway can't be reached, and only Joel marks it done: {item}"
+    );
+    assert_eq!(
+        deaf.heard(Round::Unasked, round(UNREACHED + 3)),
+        Change::Keep,
+        "told once, not each round"
+    );
+    assert_eq!(
+        deaf.heard(Round::Heard, round(UNREACHED + 4)),
+        Change::Untell,
+        "heard again, the row is taken away"
+    );
+    let mut keyring = Deaf::new();
+    let _ = keyring.heard(Round::Heard, AT);
+    for n in 1..=3 * UNREACHED {
+        assert_eq!(
+            keyring.heard(Round::Unasked, round(n)),
+            Change::Keep,
+            "the keyring reader counts a round unasked neither way, round {n}"
         );
     }
 }
