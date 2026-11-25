@@ -1811,6 +1811,13 @@ QtObject {
             holds(`a drawer's prose, long and ${styledness}: none past its sixth line measured`,
                 proseMeasured < 40, true);
         }
+        // Laid to a line, as the drawer lays to the line that fades, they're the first
+        // lines of the whole lay, paragraphs and empty ones counted as it counts them.
+        const paragraphs = "aa bb cc dd\n\nee ff gg\nhh";
+        for (const most of [1, 2, 3, 4, 5, 9])
+            holds(`a drawer's prose, laid to ${most} lines: the whole lay's first`,
+                JSON.stringify(Prose.laid(paragraphs, 50, width, most)),
+                JSON.stringify(Prose.laid(paragraphs, 50, width).slice(0, most)));
         for (const [what, figure, lines, room, under, want] of places)
             holds(`a figure's place: ${what}`,
                 JSON.stringify(Figure.place(figure, lines, room, under)),
