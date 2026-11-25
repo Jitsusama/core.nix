@@ -200,9 +200,9 @@ in
   config = lib.mkMerge [
     (lib.mkIf (gateway != null) {
       # The Slack reader again, hearing Slack through the gateway
-      # (src/ears.rs), only ever in shadow, as the reader refuses --live
-      # with --gateway: it keeps to pineapple-gateway beside the live
-      # reader's state, its row of what waits included, however it's run,
+      # (src/ears.rs), in shadow, as it isn't given --live: it keeps to
+      # pineapple-gateway beside the live reader's state, its row of what
+      # waits included, however it's run,
       # so a gateway it can't hear never reaches Joel while the reader he
       # trusts goes on. The environment is left alone, for the sign-in
       # program it runs.
