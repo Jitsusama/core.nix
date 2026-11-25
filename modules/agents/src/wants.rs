@@ -313,12 +313,11 @@ fn answers(wants: &Value) -> Value {
 }
 
 /// The node's ask that answers a session's want, as `acts::done` takes
-/// it, from `{ "ask": "answer", "address", "value" }` or `"other"` for
-/// Joel's own words: the want found among `wants` by its address, so a
+/// it, from `{ "ask": "answer", "address", "want", "value" }` or `"other"`
+/// for Joel's own words: the want found among `wants` by its address, so a
 /// want gone or answered since is refused rather than answered, as is one
-/// other than the `want` the answer names where it names one, so words
-/// given to what he was shown never answer a newer ask. None for any
-/// other ask.
+/// naming no `want`, or another than it asks, so words given to what he
+/// was shown never answer a newer ask. None for any other ask.
 pub fn answer_of(said: &Value, wants: &[Value], now_ms: u128) -> Option<Result<Value, String>> {
     if said["ask"] != "answer" {
         return None;
@@ -333,10 +332,12 @@ pub fn answer_of(said: &Value, wants: &[Value], now_ms: u128) -> Option<Result<V
             "{address} asks Joel nothing he can answer here"
         )));
     };
-    if let Some(named) = said["want"].as_str().filter(|named| !named.is_empty())
-        && named != want
-    {
-        return Some(Err(format!("{address} asks something else now")));
+    match said["want"].as_str().filter(|named| !named.is_empty()) {
+        None => return Some(Err("an answer names the ask Joel was shown".to_owned())),
+        Some(named) if named != want => {
+            return Some(Err(format!("{address} asks something else now")));
+        }
+        Some(_) => {}
     }
     let mut steer = json!({
         "act": "answer",
@@ -713,7 +714,8 @@ mod tests {
         )]);
         assert_eq!(
             answer_of(
-                &json!({"ask": "answer", "address": "skiff", "value": "high"}),
+                &json!({"ask": "answer", "address": "skiff", "value": "high",
+                    "want": "question@2026-11-13T05:00:00.000Z"}),
                 &wants,
                 0
             ),
@@ -726,7 +728,8 @@ mod tests {
         );
         assert_eq!(
             answer_of(
-                &json!({"ask": "answer", "address": "SKIFF", "other": " both "}),
+                &json!({"ask": "answer", "address": "SKIFF", "other": " both ",
+                    "want": "question@2026-11-13T05:00:00.000Z"}),
                 &wants,
                 0
             )
@@ -738,7 +741,8 @@ mod tests {
         assert!(
             matches!(
                 answer_of(
-                    &json!({"ask": "answer", "address": "BUOY", "value": "x"}),
+                    &json!({"ask": "answer", "address": "BUOY", "value": "x",
+                        "want": "question@2026-11-13T05:00:00.000Z"}),
                     &wants,
                     0
                 ),
@@ -748,10 +752,24 @@ mod tests {
         );
         assert!(
             matches!(
-                answer_of(&json!({"ask": "answer", "address": "SKIFF"}), &wants, 0),
+                answer_of(
+                    &json!({"ask": "answer", "address": "SKIFF",
+                        "want": "question@2026-11-13T05:00:00.000Z"}),
+                    &wants,
+                    0
+                ),
                 Some(Err(_))
             ),
             "an answer with no words is refused"
+        );
+        assert_eq!(
+            answer_of(
+                &json!({"ask": "answer", "address": "SKIFF", "value": "high"}),
+                &wants,
+                0
+            ),
+            Some(Err("an answer names the ask Joel was shown".to_owned())),
+            "one naming no want is refused, as it could answer a newer ask than he saw"
         );
         assert_eq!(
             answer_of(

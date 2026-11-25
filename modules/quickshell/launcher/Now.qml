@@ -2220,7 +2220,9 @@ Provider {
         // Said answered only once the node has put it in the session's
         // inbox, since one it couldn't put never reached the session. It names the want this
         // row was made from (a changed one makes it anew), so the node refuses it once the
-        // session asks something else (wants.rs's answer_of), as a Talk's answer is.
+        // session asks something else (wants.rs's answer_of), as a Talk's answer is. It's kept
+        // among the session's answers as a Talk's is (Agents.qml's answerKept), so its Talk
+        // shows it, and a Return there right after doesn't send a second.
         const answer = (fields, label) => {
             const agents = provider.source("agents");
             const answered = put => {
@@ -2228,7 +2230,8 @@ Provider {
                     provider.launcher?.say([[filledIn(said.answered ?? "", { label }), ""]]);
             };
             if (agents)
-                agents.answerWant(address, Object.assign({ want: answers.want }, fields), answered);
+                agents.answerKept(address, Object.assign({ want: answers.want }, fields),
+                    { label, typed: label, answers }, answered);
         };
         const named = id => ({
             verb: Words.verb(`verb:on:waiting:${id}`),

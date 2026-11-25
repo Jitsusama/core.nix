@@ -172,8 +172,10 @@ ShellRoot {
             return wants[address] ?? null;
         }
 
-        function answerWant(address, fields, then) {
-            answered = answered.concat([{ address: address, fields: fields }]);
+        // As Agents' answerKept, which keeps the answer among the session's before it goes.
+        function answerKept(address, fields, chose, then) {
+            answered = answered.concat([{ address: address, fields: fields,
+                label: chose.label, want: chose.answers.want }]);
             then(puts);
         }
 
@@ -2925,6 +2927,12 @@ ShellRoot {
                 && JSON.stringify(theLauncher.said) === JSON.stringify([["answered Yes, push it",
                     ""]]),
             JSON.stringify([agents.answered, theLauncher.said]));
+        // Kept among the session's answers by its label, as a Talk's is, so a Talk opened after
+        // shows it and sends no second (Agents.qml's answerKept).
+        expect("it's kept among the session's answers, by its label, to the want shown",
+            answered.label === "Yes, push it"
+                && answered.want === "question@2026-11-12T07:00:00.000Z",
+            JSON.stringify(answered));
         expect("the shell steers nothing itself", Sessions.steered.length === 0,
             JSON.stringify(Sessions.steered));
         inside[3].given("after lunch");
