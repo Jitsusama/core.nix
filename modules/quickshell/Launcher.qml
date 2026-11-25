@@ -10092,7 +10092,7 @@ Scope {
             // only once the last was taken: keys read in one turn are read
             // together, and Asks times no move read with a key after it
             // (Shown.js's keyed).
-            taken: prompt.keysTaken,
+            keysTaken: prompt.keysTaken,
             landedFresh: root.landedJustNow(),
             // Whether a Return now would still be the one that wrote an
             // ending row's line, so a test waits it out before running it.

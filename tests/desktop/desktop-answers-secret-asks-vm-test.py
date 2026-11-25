@@ -123,12 +123,26 @@ def put_up(desktop: Desktop, ask: str, why: str) -> None:
     )
 
 
-def answered(desktop: Desktop, ask: str) -> dict[str, object]:
-    """Give an ask's answer, once the daemon has written it."""
+def answered(desktop: Desktop, ask: str, since: str | None = None) -> dict[str, object]:
+    """Give an ask's answer, once the daemon has written it.
+
+    Given the mark from before the yes, one never written says what the shell said of that
+    yes after it, since a yes refused as unread and a slow daemon both leave no answer.
+    """
     path = f"{ASKS}/{ask}.answer.json"
-    desktop.machine.wait_until_succeeds(
-        desktop.in_session(f"test -e {path}"), timeout=dt.timedelta(seconds=30)
-    )
+    try:
+        desktop.machine.wait_until_succeeds(
+            desktop.in_session(f"test -e {path}"), timeout=dt.timedelta(seconds=30)
+        )
+    except Exception as unanswered:
+        if since is None:
+            raise
+        journal = f"journalctl --user -u quickshell -o cat --after-cursor={shlex.quote(since)}"
+        _, said = desktop.machine.execute(
+            desktop.in_session(f"{journal} | grep -a -F {shlex.quote(f'ask:{ask}')}")
+        )
+        never = f"no answer came to {ask}; of it the shell said: {said.strip() or 'nothing'}"
+        raise AssertionError(never) from unanswered
     answer: dict[str, object] = json.loads(desktop.as_account(f"cat {path}"))
     return answer
 
@@ -225,12 +239,13 @@ def test_joels_yes_releases_the_value_into_the_one_command(desktop: Desktop) -> 
     # The release below proves the j was read as a move, since one not read leaves the line
     # untimed and the yes refused. The first Return waits for the j to be taken: read with it
     # in one turn, the j's move is unknown, and the line's time starts again (Shown.js's
-    # keyed), as it was in two of the net's last 36 runs, j and Return 10 ms apart.
-    taken = desktop.showing()["taken"]
+    # keyed). That is likely what failed two of the net's last 36 runs, j and Return 10 ms
+    # apart, read from the code, since those runs kept no shell journal. Asks reads the j a
+    # turn after the launcher counts it (Qt.callLater), long before a Return sent after.
+    taken = desktop.showing()["keysTaken"]
     desktop.machine.send_chars("j")
-    desktop.launcher_until(lambda shown: shown["taken"] > taken)
-    say_yes(desktop)
-    answer = answered(desktop, ask)
+    desktop.launcher_until(lambda shown: shown["keysTaken"] > taken)
+    answer = answered(desktop, ask, say_yes(desktop))
     assert (answer["state"], answer["exit"]) == ("ran", 0), answer
     given = desktop.as_account(f"cat {TREE}/released").split()[0]
     assert given == hashlib.sha256(STAND_IN.encode()).hexdigest(), "the command wasn't given it"
