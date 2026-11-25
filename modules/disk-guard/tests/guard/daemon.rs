@@ -830,6 +830,39 @@ fn passes_that_find_nothing_far_apart_are_not_two_in_a_row() {
 }
 
 #[test]
+fn a_rest_counts_from_when_its_pass_ended() {
+    // On 25 November a pass ran 24 minutes, and a rest counted from its
+    // start had ended before it did, so the next came at once and never
+    // counted as in a row.
+    let home = Home::new();
+    home.trashed("old.txt", "2001-09-09T01:46:40");
+    home.trashed("older.txt", "2001-09-08T01:46:40");
+    let mut config = home.config("100%", "100%");
+    // Not through `guard`, which takes the rest away: two seconds' pass.
+    config.pacing = disk_guard::config::Pacing {
+        files: 1,
+        rest: disk_guard::units::Span(std::time::Duration::from_secs(1)),
+    };
+    let mut guard = Guard::new(config, &home.places()).unwrap();
+    let passes = || {
+        home.journal()
+            .iter()
+            .filter(|line| line["event"] == "pass")
+            .count()
+    };
+    let mut seen = Vec::new();
+    for at in [3600.0, 3661.0, 3663.5] {
+        guard.step(&tick_at(at), &CALM).unwrap();
+        seen.push(passes());
+    }
+    assert_eq!(
+        seen,
+        [1, 1, 2],
+        "the minute's rest counted from before its pass's two seconds"
+    );
+}
+
+#[test]
 fn each_pass_journals_what_set_it_going_what_it_was_offered_and_its_survey() {
     // In the day to 03:00 on 21 November half the passes freed nothing,
     // and their lines couldn't say whether each reached, upkept or

@@ -2646,6 +2646,10 @@ impl Guard {
                 continue;
             };
             let unheard = scan.went_unheard();
+            // From when the pass ended, on the step's clock: one ran 24
+            // minutes on 25 November, and a rest counted from its start was
+            // over before it ended.
+            let ended = tick.monotonic + self.stepped.elapsed().as_secs_f64();
             if let Some(watched) = self.watched.get_mut(&device) {
                 let unvouched = unheard && !watched.rest.is_some_and(|rest| rest.unvouched);
                 // A pass that gave way to a disk shorter of room, to a
@@ -2676,7 +2680,7 @@ impl Guard {
                         })
                     };
                     Rest {
-                        until: tick.monotonic + seconds,
+                        until: ended + seconds,
                         seconds,
                         band,
                         unvouched,
