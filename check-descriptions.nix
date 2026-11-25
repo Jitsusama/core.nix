@@ -2596,10 +2596,14 @@
     leaving a machine's also and a budget's kind unsaid is written with them filled in as the
     lender takes them, beside a forge budget a machine names; a lend capping no machine's dollars
     and pricing no model is written without them, which the lender reads as lending no model,
-    its budget's prices among the fields the scan reads as defaulted, and warned of rather than
-    refused, as is a models budget naming no spend-watch budget or pricing none, while a capped
-    and priced lend, and a machine lending only a forge, are warned of by neither warning, and a
-    model priced at nothing is refused by the option's type; a budget with no key is written with
+    its budget's prices among the fields the scan reads as defaulted, a scan shown to read as
+    defaulted only a field whose own line above, past its doc lines, is the attribute, and warned
+    of rather than refused, naming which it lacks, as is a models budget naming no spend-watch
+    budget or pricing none, and a machine lending models only beside a forge; a lend whose every
+    models budget is priced and watched and whose machines are capped is warned of by neither
+    warning, nor is a machine lending only a forge; a price leaving its cache's prices unset is
+    written without them, and a model priced at nothing is refused by the option's type; a
+    budget with no key is written with
     none, a further realm's node and a machine lending nothing are given no lend, a Mac's lend is
     refused by a message naming it and its node given none, plain prefixes and dotted paths and
     key packages are taken, and a lend with no realm, naming a budget it lacks, with a prefix that

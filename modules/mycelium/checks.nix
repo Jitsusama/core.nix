@@ -2289,6 +2289,35 @@ in
               };
             };
           };
+          # A lend whose every models budget is priced and watched, and whose
+          # machine is capped.
+          priced = lending // {
+            budgets = removeAttrs lending.budgets [ "keyless" ];
+          };
+          # A machine lending models only beside a forge, uncapped.
+          alsoModels = lending // {
+            vms = [
+              (
+                removeAttrs vm [ "usd_a_day" ]
+                // {
+                  budget = "forge";
+                  also = [ "models" ];
+                }
+              )
+            ];
+            budgets = lending.budgets // {
+              forge = forge // {
+                kind = "forge";
+              };
+            };
+          };
+          # A model priced without its cache's prices, which are left out.
+          cacheUnpriced = withModels {
+            prices.a-model = removeAttrs lending.budgets.models.prices.a-model [
+              "cache_write"
+              "cache_read"
+            ];
+          };
           # A machine lending only a forge, whose spend no dollar caps.
           forgeOnly = lending // {
             vms = [ (removeAttrs vm [ "usd_a_day" ] // { budget = "forge"; }) ];
@@ -2309,16 +2338,9 @@ in
               };
             };
           };
-          builds =
-            lend:
-            (builtins.tryEval (
-              let
-                node = (linux (both // { inherit lend; })).systemd.user.services.mycelium;
-              in
-              builtins.seq (given node) true
-            )).success;
           budgetWarned = "jitsusama.mycelium.lend.budgets.models names no prices";
           vmWarned = "jitsusama.mycelium.lend.vms'";
+          lendWarned = lend: lib.filter (lib.hasPrefix "jitsusama.mycelium.lend") (warnings lend);
         in
         evaluates home
         && given home.systemd.user.services.mycelium == holding
@@ -2339,6 +2361,20 @@ in
         # serde reads every other field it leaves out, each an Option, as
         # none without being told.
         && lib.elem "prices" (defaults "Budget")
+        # Only the field whose own line above is the attribute, past its
+        # doc lines, is read as defaulted.
+        && (structScan plainVm "Vm").defaulted == [ "requests_a_day" ]
+        &&
+          (structScan (changedVm 6 [
+            "    #[serde(default)]"
+            "    /// Counted a day."
+          ]) "Vm").defaulted == [ "requests_a_day" ]
+        &&
+          (structScan (changedVm 7 [
+            "    requests_a_day: u64,"
+            "    most: u64,"
+          ]) "Vm").defaulted == [ "requests_a_day" ]
+        && (structScan (changedVm 6 [ ]) "Vm").defaulted == [ ]
         && lib.all (struct: fields struct == shapes.${struct}) (lib.attrNames shapes)
         && sorted kindOption.type.functor.payload.values == sorted kinds.words
         && kindOption.default == kinds.unwritten
@@ -2346,15 +2382,21 @@ in
         && writes unsaid filled
         && writes uncapped uncapped
         && warns "jitsusama.mycelium.lend.vms' agents- names no usd_a_day"
-        && warns budgetWarned
-        && warnsOf unwatched budgetWarned
-        && warnsOf unpriced budgetWarned
-        && !warnsOf unwatched vmWarned
+        && warns "${budgetWarned},"
+        && warnsOf unwatched "jitsusama.mycelium.lend.budgets.models names no spend_watch,"
+        && warnsOf unpriced "${budgetWarned},"
+        && warnsOf alsoModels "jitsusama.mycelium.lend.vms' agents- names no usd_a_day"
         && !warnsOf forgeOnly vmWarned
-        && !warnsOf lending budgetWarned
-        && !warnsOf lending vmWarned
-        && builds lending
-        && !builds free
+        &&
+          lendWarned lending == [
+            (
+              "jitsusama.mycelium.lend.budgets.keyless names no prices and no spend_watch, "
+              + "so mycelium refuses every model lent through it."
+            )
+          ]
+        && lendWarned priced == [ ]
+        && writes cacheUnpriced cacheUnpriced
+        && typeRefuses free
         && reading (kindScan plainKind) == plainKinds
         && lib.all (refusedFor kindScan) unreadKinds
         # A kind the type takes, beside one it refuses, so the refusal is

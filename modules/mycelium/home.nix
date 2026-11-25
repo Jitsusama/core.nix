@@ -152,8 +152,16 @@ let
     "${pkgs.writeText "mycelium-lend.json" (
       builtins.toJSON {
         vms = map (lib.filterAttrs (_: value: value != null)) cfg.lend.vms;
+        # A price's unset cache fields are left out too, as serde reads
+        # each Option the file leaves out as none.
         budgets = lib.mapAttrs (
-          _: budget: lib.filterAttrs (_: value: value != null) budget
+          _: budget:
+          lib.filterAttrs (_: value: value != null) (
+            budget
+            // lib.optionalAttrs (budget.prices != null) {
+              prices = lib.mapAttrs (_: lib.filterAttrs (_: value: value != null)) budget.prices;
+            }
+          )
         ) cfg.lend.budgets;
       }
     )}"
@@ -607,17 +615,15 @@ in
         let
           models = lib.filterAttrs (_: budget: budget.kind == "models") cfg.lend.budgets;
           lendsModels = vm: lib.any (budget: models ? ${budget}) ([ vm.budget ] ++ vm.also);
+          missing =
+            budget:
+            lib.optional (budget.prices == null || budget.prices == { }) "prices"
+            ++ lib.optional (budget.spend_watch == null) "spend_watch";
         in
-        lib.mapAttrsToList
-          (
-            name: _:
-            "jitsusama.mycelium.lend.budgets.${name} names no prices or no spend_watch, so mycelium refuses every model lent through it."
-          )
-          (
-            lib.filterAttrs (
-              _: budget: budget.prices == null || budget.prices == { } || budget.spend_watch == null
-            ) models
-          )
+        lib.mapAttrsToList (
+          name: budget:
+          "jitsusama.mycelium.lend.budgets.${name} names no ${lib.concatStringsSep " and no " (missing budget)}, so mycelium refuses every model lent through it."
+        ) (lib.filterAttrs (_: budget: missing budget != [ ]) models)
         ++ map (
           vm:
           "jitsusama.mycelium.lend.vms' ${vm.prefix} names no usd_a_day, so mycelium lends its machines no model."

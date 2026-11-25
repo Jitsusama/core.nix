@@ -91,8 +91,14 @@ lib.types.submodule {
               description = ''
                 How many dollars of model calls each machine may spend a day,
                 by UTC, past which each is refused; or null to lend them no
-                model at all. Each request reserves the most it can cost
-                before it is sent, so requests asked at once can't pass it.
+                model at all. Each request reserves the most its tokens can
+                cost at its model's prices before it is sent, and is settled
+                to the tokens its answer says it used, so requests asked at
+                once can't pass it by tokens. What a model charges other than
+                by these prices, such as a server tool's use or a longer-lived
+                cache write, isn't counted here. The cap is each machine's,
+                not the prefix's: the budget's spend_watch allowance is what
+                holds them all.
               '';
             };
           };
