@@ -7,7 +7,10 @@ let
   # Only the fences a machine says run here, in mycelium's shape. An
   # agent's `mycelium run` in a fenced or strict one starts through the
   # fence's launcher, Landlock's on Linux and sandbox-exec's on a Mac; one
-  # unfenced takes none, as no agent asks as unfenced. Doors accepted for
+  # unfenced takes none, as no agent asks as unfenced. A held start an agent
+  # asks for in either goes through it too, except the realm's agent
+  # program where pi lays its own fence: on Linux, and on a Mac declaring
+  # `piFencesItself`. Doors accepted for
   # other machines are said only once some machine is named, as an empty
   # allowance means what none does.
   fenced = lib.mapAttrs (
