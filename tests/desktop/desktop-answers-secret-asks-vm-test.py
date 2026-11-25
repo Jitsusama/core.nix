@@ -27,7 +27,6 @@ import time
 from typing import TYPE_CHECKING
 
 import pytest
-import vm_helpers
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -56,7 +55,7 @@ EMPTIED = "{}"
 # Past the key language's wait (300 ms) and the daemon's least time a line is shown (500 ms), so
 # a second Return is neither taken for the first doubled nor refused as unread.
 PAST_THE_READING = 1.0
-# How long the daemon may take to write an ask's answer on a quiet host, paced as every wait is.
+# How long the daemon may take to write an ask's answer on a quiet host.
 ANSWER_WRITTEN = dt.timedelta(seconds=30)
 
 
@@ -131,19 +130,21 @@ def answered(desktop: Desktop, ask: str, since: str | None = None) -> dict[str, 
 
     Given the mark from before the yes, one never written says what the shell said of that
     yes after it, since a yes refused as unread and a slow daemon both leave no answer. The
-    wait is paced as every other is, since these runs failed on it under a loaded builder.
+    driver's wait is paced already (vm_helpers.pace_the_driver).
     """
     path = f"{ASKS}/{ask}.answer.json"
-    allowed = ANSWER_WRITTEN * vm_helpers.pace(vm_helpers.busyness())
     try:
-        desktop.machine.wait_until_succeeds(desktop.in_session(f"test -e {path}"), timeout=allowed)
+        desktop.machine.wait_until_succeeds(
+            desktop.in_session(f"test -e {path}"), timeout=ANSWER_WRITTEN
+        )
     except Exception as unanswered:
         if since is None:
             raise
-        # Its showings hold the ask's row too, so only the shell's words of it are kept.
+        # Its showings hold the ask's row too, so only the shell's words of it are kept. grep
+        # finding no line ends 1, which reads as nothing said rather than a read that failed.
         journal = f"journalctl --user -u quickshell -o cat --after-cursor={shlex.quote(since)}"
         words = f"grep -a -F {shlex.quote(f'ask:{ask}')} | grep -a -v -F 'report[showing '"
-        said = desktop.diagnosis(f"{journal} | {words}")
+        said = desktop.diagnosis(f"{journal} | {words} || test $? -eq 1")
         never = f"no answer came to {ask}; of it the shell said: {said.strip() or 'nothing'}"
         raise AssertionError(never) from unanswered
     answer: dict[str, object] = json.loads(desktop.as_account(f"cat {path}"))
