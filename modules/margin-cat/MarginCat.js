@@ -191,11 +191,10 @@ function behind(frame, kind) {
     return Math.round(HEARS + frame + (kind === "resize" ? RESIZES : 0));
 }
 
-// How far niri moved the window `id` between two of a workspace's tilings, `was` and `now`
-// (MarginCatTiles.js's of), as { x, y }: null where it's in only one, or where it hasn't moved.
-// niri lays a workspace's columns out on one strip and scrolls it, so as the keys go to a column
-// off the screen's edge the window the cat sits on goes the other way (Joel, 2026-11-14 17:24:
-// "focusing to a window off the left or right edge").
+// How far niri moved the window `id` between two tilings, `was` and `now`, as { x, y }: null
+// where it's in only one, or hasn't moved. niri scrolls a workspace's columns as one strip, so
+// as the keys go to a column off the screen's edge the cat's window goes the other way (Joel,
+// 2026-11-14 17:24: "focusing to a window off the left or right edge").
 function carries(was, now, id) {
     const before = (was ?? []).find(one => one.id === id);
     const after = (now ?? []).find(one => one.id === id);

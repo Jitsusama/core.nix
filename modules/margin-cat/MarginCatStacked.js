@@ -103,7 +103,7 @@ function risesOnto(place, at) {
 // walk(): from off the screen's side, where the window it sat on carried it
 // as niri scrolled the strip (MarginCatScreen.qml's carried), it comes back
 // in at that edge first (comesIn()).
-function walk(from, to, at) {
+function walkAlong(from, to, at) {
     const now = Paths.closing(at);
     const coming = comesIn(from, now);
     if (coming === null) {
@@ -132,8 +132,11 @@ function comesIn(from, at) {
     const side = from.x < 0 ? -1 : 1;
     const cols = at.cols ?? [];
     const seen = side > 0 ? from.x < at.across : from.x + at.wide > 0;
-    const peeks = side > 0 ? at.across - PEEKS * at.cell : PEEKS * at.cell - at.wide;
-    const past = seen ? null : Routes.columnAt(cols, peeks, at.wide);
+    const peeked = side > 0 ? at.across - PEEKS * at.cell : PEEKS * at.cell - at.wide;
+    // The window past the edge it comes in on, where niri lays one there.
+    const nearest = seen ? null : Routes.columnAt(cols, peeked, at.wide);
+    const past = nearest && (side > 0 ? nearest.right > at.across : nearest.left < 0)
+        ? nearest : null;
     const y = past ? Routes.stands(past.top, at) : from.y;
     const way = Ways.begun(at, { x: seen ? from.x : side > 0 ? at.across : -at.wide, y });
     way.facing = -side;
@@ -141,7 +144,7 @@ function comesIn(from, at) {
     if (seen) {
         return { way, side };
     }
-    Ways.leg(way, "climbs", { x: peeks, y },
+    Ways.leg(way, "climbs", { x: peeked, y },
         { name: "peeks", ms: (PEEKS * CREEPS * MarginCat.MS) / 60, bounds: PEEKS / 2 });
     Ways.holds(way, "peers", PEERS);
     Ways.holds(way, "looks", LOOKS);

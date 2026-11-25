@@ -524,7 +524,7 @@ PanelWindow {
         // pace; from a stride held on the spot, once it's seen.
         const setOff = Paths.setOffFrom(stepped);
         const from = { x: place.x, y: place.y };
-        const plan = Stacked.walk(from, { x: to.x, y: to.y }, Object.assign({
+        const plan = Stacked.walkAlong(from, { x: to.x, y: to.y }, Object.assign({
             cell,
             ratio,
             wide: size,

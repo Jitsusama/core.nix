@@ -353,7 +353,7 @@ QtObject {
         const seen = one => one.x + 8 > 0 && one.x < 1248;
         for (const [from, to, side] of [[2000, 312, "off the right"],
             [-900, 900, "off the left"]]) {
-            const walk = Stacked.walk({ x: from, y: 7 }, { x: to, y: 7 }, at);
+            const walk = Stacked.walkAlong({ x: from, y: 7 }, { x: to, y: 7 }, at);
             const all = frames(walk, 1000 / 120);
             const comes = all.find(seen);
             const shows = one => from > 0 ? 1248 - one.x : one.x + 8;
@@ -388,12 +388,12 @@ QtObject {
             expect(`${side}, and walks the tops to its seat`, [seated.x, seated.y, seated.beat],
                 [to, 7, "sits"]);
         }
-        const partly = Stacked.walk({ x: 1244, y: 7 }, { x: 312, y: 7 }, at);
+        const partly = Stacked.walkAlong({ x: 1244, y: 7 }, { x: 312, y: 7 }, at);
         expect("partly over the edge, it walks on from where it's drawn, peeking at nothing",
             [Paths.frame(partly, 0).x, partly.beats.some(beat => beat.name === "peeks")],
             [1244, false]);
         expect("on the screen, it walks as any walk does",
-            JSON.stringify(Stacked.walk({ x: 100, y: 7 }, { x: 900, y: 7 }, at)),
+            JSON.stringify(Stacked.walkAlong({ x: 100, y: 7 }, { x: 900, y: 7 }, at)),
             JSON.stringify(Paths.walk({ x: 100, y: 7 }, { x: 900, y: 7 }, at)));
     }
 
