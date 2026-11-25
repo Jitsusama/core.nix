@@ -304,7 +304,8 @@ def test_jobs_ceiling_rises_while_it_fills_it_and_goes_back_as_the_sorter_stops(
         f"test $(cat {JOBS}/memory.high) -gt {declared}", timeout=RISING
     )
     said = machine.succeed("journalctl -o cat _SYSTEMD_USER_UNIT=jobs-sorter.service")
-    assert "memory ceiling to" in said and "nothing it spares waiting on memory" in said, said
+    assert "memory ceiling to" in said, said
+    assert "nothing it spares waiting on memory" in said, said
     machine.succeed("systemctl -M alice@ --user stop jobs-sorter.service")
     try:
         put_back = int(jobs.read(f"{JOBS}/memory.high"))
