@@ -71,7 +71,8 @@ it("offers a receptor only what it is for, since there is no window to go to", (
 it("says what a cell asks whole, its paragraphs, lines and indentation kept", () => {
   const asked =
     "\n  The signing key is ready to deploy, and the house reports sign with it.\r\n\r\n" +
-    "Three things are left:\r1. The Mac's copy job.\n  2. The signing pause: yes, no or partly?  \n\n\n";
+    "Three things are left:\r1. The Mac's copy job.\n" +
+    "  2. The signing pause: yes, no or partly?  \n\n\n";
   assert.deepEqual(
     askedOf({ wants: "2. The signing pause: yes, no or partly?", asked }),
     [
@@ -82,7 +83,8 @@ it("says what a cell asks whole, its paragraphs, lines and indentation kept", ()
         "  2. The signing pause: yes, no or partly?",
       ],
     ],
-    "the whole question should be said, never only its last line, its old Mac line ends read as breaks",
+    "the whole question should be said, never only its last line, " +
+      "its old Mac line ends read as breaks",
   );
 });
 

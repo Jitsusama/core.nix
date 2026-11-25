@@ -86,6 +86,10 @@ export interface Asking {
 // next paragraph's own indentation is kept.
 const PARAGRAPHS = /\n(?:[^\S\n]*\n)+/u;
 
+// The blank lines a text opens with, cut so its first line's own
+// indentation stands.
+const OPENING_BLANKS = /^(?:[^\S\n]*\n)+/u;
+
 /**
  * What the cell asks, whole: its paragraphs in order, each its lines, so a
  * list it asked in reads as the list it is, and a line's indentation, for
@@ -95,9 +99,9 @@ const PARAGRAPHS = /\n(?:[^\S\n]*\n)+/u;
 export const askedOf = (s: Asking): readonly (readonly string[])[] => {
   const whole = typeof s.asked === "string" ? s.asked.replace(/\r\n?/gu, "\n") : "";
   const wants = typeof s.wants === "string" ? s.wants : "";
-  // Only blank lines are cut from either end, so the first line's
-  // indentation stands.
-  const said = (whole.trim() === "" ? wants : whole).replace(/^(?:[^\S\n]*\n)+|\s+$/gu, "");
+  // The end is trimmed rather than matched, since a trailing \s+$ tries
+  // every start in a long run of spaces.
+  const said = (whole.trim() === "" ? wants : whole).replace(OPENING_BLANKS, "").trimEnd();
   return said
     .split(PARAGRAPHS)
     .map((paragraph) =>

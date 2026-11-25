@@ -554,7 +554,7 @@ def test_the_map_draws_how_cells_connect_and_answers_a_click_in_one_window(
     page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
     expect(page, "a click on a cell didn't open it").to_have_url(re.compile("#cell=TERN03$"))
     expect(
-        page.locator('#panel-body a[href^="mycelium:cell/TERN03"]'),
+        page.locator('#panel-body a[href^="mycelium:cell/TERN03"][href$="/go"]'),
         "a click on a cell left its drawer shut",
     ).to_be_visible()
 
@@ -1081,9 +1081,9 @@ def test_a_cell_that_needs_you_leads_with_its_question_whole_and_go_to_it(
     talked = page.evaluate("window.talkedTo")
     assert talked == f"mycelium:cell/{NEEDING[0]}@kestrel", f"t talked to {talked}"
     # The tree's g is the tree's alone: it goes to its first row, and the
-    # page's g never also answers it. The tree is hidden while a cell is
-    # open, so the page's g would only refuse, saying so in the status
-    # line a screen reader reads out over the tree's own step.
+    # page's g never also answers it. . lets the cell go to show the tree,
+    # so with no cell open the page's g would only refuse, saying so in the
+    # status line a screen reader reads out over the tree's own step.
     talks = page.evaluate("window.talks")
     page.locator("#panel-title").press(".")
     items = page.locator("#tree [role=treeitem]")
