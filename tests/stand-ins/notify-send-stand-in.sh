@@ -1,4 +1,4 @@
-# shellcheck shell=bash
+# shellcheck shell=bash disable=SC2154 # The check's session sets XDG_RUNTIME_DIR (people.nix).
 # notify-send, for the shell's checks that tell notices without a notices
 # daemon: each notice's words are kept a line each in
 # $XDG_RUNTIME_DIR/told, and its id is the line it was kept on. A notice
@@ -22,5 +22,8 @@ case " $* " in
     # looks for its closing about as often as a frame is drawn.
     sleep 0.05
   done
+  ;;
+*)
+  # Any other notice is told and let go at once, as notify-send does.
   ;;
 esac

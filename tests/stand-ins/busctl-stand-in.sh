@@ -1,4 +1,4 @@
-# shellcheck shell=bash
+# shellcheck shell=bash disable=SC2154 # The check's session sets XDG_RUNTIME_DIR (people.nix).
 # busctl, for the shell's checks that close notices without a notices
 # daemon: each call is kept a line each in $XDG_RUNTIME_DIR/closed, and a
 # call's last word, a CloseNotification's id, is written as
