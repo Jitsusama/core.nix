@@ -165,29 +165,38 @@ impl Store {
         }
     }
 
-    fn locate(&self, oid: &Oid) -> io::Result<Option<(usize, u64)>> {
-        // An entry the multi-pack-index refuses, or one naming a pack past
-        // those it covers, can't say where the object is. Its packs' own
-        // indexes are read instead, and its error stands only when they
-        // and the other packs hold the object nowhere, so a broken entry
-        // neither hides an object nor passes for a missing one.
-        let mut refused = None;
+    /// Where `oid` lies in this store's packs. An entry the
+    /// multi-pack-index refuses, or one naming a pack past those it covers,
+    /// can't say where the object is, so its packs' own indexes are read
+    /// instead. What they or it refuse is kept in `refused` rather than
+    /// returned, for the caller to let stand only once no other store, nor
+    /// the loose objects, holds the object: a broken entry neither hides an
+    /// object nor passes for a missing one.
+    fn locate(
+        &self,
+        oid: &Oid,
+        refused: &mut Option<io::Error>,
+    ) -> io::Result<Option<(usize, u64)>> {
         if let Some(midx) = &self.midx {
             match midx.locate(oid) {
                 Ok(Some((pack, offset))) if pack < self.midx_packs => {
                     return Ok(Some((pack, offset)));
                 }
                 Ok(None) => {}
+                // A pack past its count is passed over, as the other
+                // packs may hold the object, rather than refused.
                 Ok(Some(_)) => {
-                    refused = Some(invalid("multi-pack-index pack past its count"));
+                    if let Some(found) = self.in_covered(oid, refused) {
+                        return Ok(Some(found));
+                    }
                 }
-                Err(error) => refused = Some(error),
+                Err(error) => {
+                    if let Some(found) = self.in_covered(oid, refused) {
+                        return Ok(Some(found));
+                    }
+                    refused.get_or_insert(error);
+                }
             }
-        }
-        if refused.is_some()
-            && let Some(found) = self.in_covered(oid)?
-        {
-            return Ok(Some(found));
         }
         for (at, pack) in self.packs.iter().enumerate().skip(self.midx_packs) {
             if let Some(index) = &pack.index
@@ -196,12 +205,14 @@ impl Store {
                 return Ok(Some((at, offset)));
             }
         }
-        refused.map_or(Ok(None), Err)
+        Ok(None)
     }
 
     /// Where `oid` lies by the own indexes of the packs the
-    /// multi-pack-index covers, a pack whose index won't open passed over.
-    fn in_covered(&self, oid: &Oid) -> io::Result<Option<(usize, u64)>> {
+    /// multi-pack-index covers. A pack whose index won't open is passed
+    /// over, and one that won't read is kept in `refused`, so neither hides
+    /// the packs after it.
+    fn in_covered(&self, oid: &Oid, refused: &mut Option<io::Error>) -> Option<(usize, u64)> {
         let indexes = self.covered.get_or_init(|| {
             let pack_dir = self.dir.join("pack");
             self.midx
@@ -211,13 +222,15 @@ impl Store {
                 .collect()
         });
         for (at, index) in indexes.iter().enumerate() {
-            if let Some(index) = index
-                && let Some(offset) = index.offset(oid)?
-            {
-                return Ok(Some((at, offset)));
+            match index.as_ref().map(|index| index.offset(oid)) {
+                Some(Ok(Some(offset))) => return Some((at, offset)),
+                Some(Err(error)) => {
+                    refused.get_or_insert(error);
+                }
+                Some(Ok(None)) | None => {}
             }
         }
-        Ok(None)
+        None
     }
 
     fn loose(&self, oid: &Oid) -> io::Result<Option<Object>> {
@@ -424,8 +437,11 @@ impl Odb {
     }
 
     fn find(&mut self, oid: &Oid) -> io::Result<Option<Object>> {
+        // What a store's indexes refuse stands only once every other place
+        // the object may lie has been read.
+        let mut refused = None;
         for store in 0..self.stores.len() {
-            if let Some((pack, offset)) = self.stores[store].locate(oid)? {
+            if let Some((pack, offset)) = self.stores[store].locate(oid, &mut refused)? {
                 let (kind, data) = self.unpack(store, pack, offset, 0)?;
                 return Ok(Some(Object { kind, data }));
             }
@@ -435,7 +451,7 @@ impl Odb {
                 return Ok(Some(object));
             }
         }
-        Ok(None)
+        refused.map_or(Ok(None), Err)
     }
 
     fn unpack(
@@ -608,122 +624,5 @@ pub fn parse_commit(data: &[u8]) -> io::Result<Commit> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn deltas_copy_and_insert() {
-        let base = b"hello, world";
-        // base 12, result 12: copy 7 from 0 ("hello, "), insert "there".
-        let delta = [12, 12, 0x90, 7, 5, b't', b'h', b'e', b'r', b'e'];
-        assert_eq!(apply_delta(base, &delta).unwrap(), b"hello, there");
-        assert!(apply_delta(b"short", &delta).is_err());
-    }
-
-    #[test]
-    fn a_multi_pack_index_refused_leaves_each_pack_found_through_its_own_index() {
-        use crate::pack_index::tests::{midx, moved, offsets, sorted, unique, version_2};
-        let objects = unique("objects");
-        let pack = objects.join("pack");
-        std::fs::create_dir_all(&pack).expect("the temp folder takes a folder");
-        let names = sorted();
-        // Its object names are said to run into its checksum.
-        let whole = midx(&["pack-a.idx"], 1, None);
-        let broken = moved(whole.clone(), 2, whole.len() as u64 - 21);
-        for (name, bytes) in [
-            ("multi-pack-index", broken),
-            ("pack-a.idx", version_2(&names)),
-            ("pack-a.pack", b"PACK".to_vec()),
-        ] {
-            std::fs::write(pack.join(name), bytes).expect("the temp folder takes a file");
-        }
-        let store = Store::open(&objects);
-        assert!(
-            store.midx.is_none(),
-            "a multi-pack-index past its end was used"
-        );
-        assert_eq!(
-            store
-                .locate(&Oid(names[0]))
-                .expect("the pack's own index reads"),
-            Some((0, offsets(&names)[0])),
-            "the pack's own index wasn't read in the refused index's place"
-        );
-    }
-
-    /// A store over `midx`, its one pack's own index holding `own`.
-    fn store_over(midx: Vec<u8>, own: &[[u8; 20]]) -> Store {
-        use crate::pack_index::tests::{unique, version_2};
-        let objects = unique("objects");
-        let pack = objects.join("pack");
-        std::fs::create_dir_all(&pack).expect("the temp folder takes a folder");
-        for (name, bytes) in [
-            ("multi-pack-index", midx),
-            ("pack-a.idx", version_2(own)),
-            ("pack-a.pack", b"PACK".to_vec()),
-        ] {
-            std::fs::write(pack.join(name), bytes).expect("the temp folder takes a file");
-        }
-        Store::open(&objects)
-    }
-
-    #[test]
-    fn a_lookup_the_multi_pack_index_cant_answer_is_read_from_its_packs_own_indexes() {
-        use crate::pack_index::tests::{midx, moved, offsets, sorted};
-        let names = sorted();
-        let last = names.len() - 1;
-        let whole = midx(&["pack-a.idx"], 1, None);
-        // Its large offsets moved to the last 8 bytes before its checksum
-        // hold one, so the last name's, its second, lies past its chunk.
-        let short = moved(whole.clone(), 4, whole.len() as u64 - 28);
-        let store = store_over(short.clone(), &names);
-        assert!(store.midx.is_some(), "a short LOFF was refused at open");
-        assert_eq!(
-            store
-                .locate(&Oid(names[last]))
-                .expect("the pack's own index reads"),
-            Some((0, offsets(&names)[last])),
-            "a large offset past its chunk wasn't read from the pack's own index"
-        );
-        // With the pack's own index not holding it either, the refusal
-        // stands rather than passing for a missing object.
-        let store = store_over(short, &names[..last]);
-        assert_eq!(
-            store
-                .locate(&Oid(names[last]))
-                .err()
-                .map(|e| e.to_string())
-                .as_deref(),
-            Some("multi-pack-index large offset past its chunk"),
-            "a broken entry no index answers passed for a missing object"
-        );
-        // Its names alternate between two packs, but it counts one, so
-        // every other name is said to lie in a pack it doesn't name.
-        let store = store_over(midx(&["pack-a.idx", "pack-b.idx"], 1, None), &names);
-        assert_eq!(store.midx_packs, 1, "the index's count wasn't kept");
-        assert_eq!(
-            store
-                .locate(&Oid(names[1]))
-                .expect("the pack's own index reads"),
-            Some((0, offsets(&names)[1])),
-            "a name in a pack past the index's count wasn't read from its packs' indexes"
-        );
-    }
-
-    #[test]
-    fn commits_read_their_parts() {
-        let tree = Oid::of("tree", b"");
-        let text = format!(
-            "tree {}\nparent {}\nauthor A <a@b> 1 +0000\ncommitter C <c@d> 1700000000 -0500\n\
-             encoding ISO-8859-1\n\n\nSummary line\n\nBody\n",
-            tree.hex(),
-            tree.hex()
-        );
-        let commit = parse_commit(text.as_bytes()).unwrap();
-        assert_eq!(commit.tree, tree);
-        assert_eq!(commit.parents, vec![tree]);
-        assert_eq!(commit.time, 1_700_000_000);
-        assert_eq!(commit.encoding, "ISO-8859-1");
-        assert_eq!(commit.summary, "Summary line");
-    }
-}
+#[path = "odb_tests.rs"]
+mod tests;
