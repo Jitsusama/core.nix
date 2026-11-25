@@ -97,10 +97,23 @@ fn a_word_sharing_a_hung_first_line_is_shortened_to_that_line_s_room() {
 fn a_word_cut_to_the_hang_still_shares_a_first_line_it_fits() {
     // Ten cells are left beside the first word, under the 24 a word
     // needs to share a line, so it's cut to the ten its own line would
-    // give it, and those fit the first line, where it stays.
+    // give it, and those fit the first line, where it stays. What's left
+    // beside it and its own line's measure are both ten, as they are for
+    // any word but a path cut short of its room, so this pins where the
+    // word stays rather than which of the two it was cut to.
     assert_eq!(
         hanging("a bbbbbbbbbbbbbbbbbbbbb", 0, Room::Cells(12)),
         ["a bbbb\u{2026}bbbbb"]
+    );
+}
+
+#[test]
+fn an_item_too_long_for_a_line_keeps_the_dot_before_it() {
+    // The second item breaks across lines, its first words sharing the
+    // first line after the dot that parts it from the item before.
+    assert_eq!(
+        wrapped("up \u{b7} one two three four five six", 14),
+        ["up \u{b7} one two", "three four", "five six"]
     );
 }
 
@@ -154,6 +167,7 @@ fn a_hanging_paragraph_keeps_its_first_line_s_room_and_hangs_the_rest() {
     let cases = [
         (words, 2),
         ("aaaa · bbbbbbbbbbb · cc", 0),
+        ("aaaa · bbbbbbbbbbb · cc", 2),
         ("a screen of 1272 × 768 pixels and more", 2),
         ("aa bb cccc dddd", 0),
     ];
