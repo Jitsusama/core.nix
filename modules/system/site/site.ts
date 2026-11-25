@@ -30,7 +30,7 @@ import {
   placesOf,
   reachedOf,
 } from "./draw.ts";
-import { looksOf } from "./looks.ts";
+import { keptOf, looksOf } from "./looks.ts";
 import { machineHeadline, whenSaid } from "./machine.ts";
 import { allTold, type System, systemOf, type Thing } from "./model.ts";
 
@@ -151,7 +151,8 @@ function sayWhen(): void {
   standingLine.dataset["state"] = now?.state ?? "connecting";
   const problems = [...(system?.unread ?? []), ...heard.values()];
   const unreadNote = problems.length > 0 ? `Couldn't read: ${problems.join("; ")}.` : "";
-  const noted = [unreadNote, landingNote].filter((line) => line !== "").join(" ");
+  const kept = system === undefined ? "" : keptOf(system);
+  const noted = [unreadNote, kept, landingNote].filter((line) => line !== "").join(" ");
   if (noted !== noteSaid) {
     noteSaid = noted;
     note.textContent = noted;

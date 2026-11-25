@@ -83,31 +83,37 @@ function siteOf(part: Part): string {
  * The machines' looks: each machine's side, a look a word, or why the
  * machines couldn't be read. A machine drawn whole on the page leads to its
  * section, its position among them told by `drawn`; one past those leads
- * to the map. Then the part's own, such as the note it says when the
- * machines were read from their owner's last answer.
+ * to the map. The part's own note, said when the machines were read from
+ * their owner's last answer, is the page's note's to say (keptOf).
  */
 function machineLooks(part: Part, drawn: number): readonly Look[] {
   if (part.health === "unread") {
     return [lookOf(part, "unread", `Couldn't be read: ${part.says}`, "unread")];
   }
-  return [...thingLooks(part, drawn), ...ownLooks(part)];
+  return thingLooks(part, drawn);
 }
 
 /**
- * What the machines part says worth a look that no machine does: the note
- * it carries when it was read from its owner's last answer. Its side also
- * names each machine worth a look, "kestrel on battery at 9%", then how many
- * more; those are left to the machines' own looks, which clear first when a
- * machine's record changes before the part's, and wait with the list's
- * settling for a machine named before its record. The note is good, since
- * the part's health is its machines' and a kept answer raises no alarm.
+ * What the machines part says in `system` that no machine does: the note it
+ * carries when it was read from its owner's last answer, as a sentence. Its
+ * side also names each machine worth a look, "kestrel on battery at 9%", then
+ * how many more; those are left to the machines' own looks, which clear
+ * first when a machine's record changes before the part's, and wait with the
+ * list's settling for a machine named before its record. The note is no
+ * look: the daemon leaves a read missed once its kept answer is too old to
+ * stand on (modules/system/src/kept.rs), so one it still stands on is how
+ * the page was read, said where the page says what it couldn't read.
  */
-function ownLooks(part: Part): readonly Look[] {
+function keptOf(system: System): string {
+  const part = system.parts.find((each) => each.part === "machines");
+  if (part === undefined || part.health === "unread") {
+    return "";
+  }
   const machines = part.named.map((name) => `${name} `);
   const own = part.side.filter(
     (words) => !(MORE.test(words) || machines.some((name) => words.startsWith(name))),
   );
-  return keyed(own).map(({ words, key }) => lookOf(part, "good", words, key));
+  return own.length === 0 ? "" : `Machines ${own.join("; ")}.`;
 }
 
 /**
@@ -192,12 +198,16 @@ function lookOf(part: Part, health: Health, words: string, key: string): Look {
 
 /**
  * Another part's looks: each of its side's, or why it couldn't be read. A
- * good part's side is empty but for the note it carries when it was read
- * from its owner's last answer, which is listed as the machines' is.
+ * good part has none: its side is empty but for the note it carries when it
+ * was read from its owner's last answer, which no more wants a look than
+ * the machines' does, and which its own section across the machines says.
  */
 function partLooks(part: Part): readonly Look[] {
   if (part.health === "unread") {
     return [lookOf(part, "unread", `Couldn't be read: ${part.says}`, "unread")];
+  }
+  if (part.health === "good") {
+    return [];
   }
   return keyed(part.side).map(({ words, key }) => lookOf(part, part.health, words, key));
 }
@@ -226,4 +236,4 @@ function looksOf(system: System, drawn: number): Looks {
 }
 
 export type { Look, Looks };
-export { LOOKS_LISTED, looksOf };
+export { keptOf, LOOKS_LISTED, looksOf };

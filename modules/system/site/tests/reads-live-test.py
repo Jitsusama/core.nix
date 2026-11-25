@@ -8,7 +8,8 @@ turns and one that goes, say broken when the daemon stops and live again
 when it's back, say stale when the server goes, and pass the web-design skill's
 page checks at a phone's width and a desk's in both looks. It must open with
 what is worth a look, each leading where it can be seen whole, a machine's
-long name leaving its look's words room at both widths. Its keys and
+long name leaving its look's words room at both widths, and a good part read
+from a kept answer never among them, its note said where it belongs. Its keys and
 places must move the cursor from section to section, and a machine's address
 must put it on that machine. Anything the page
 logs fails it, since that is how it drew four empty parts unseen on 16 November.
@@ -320,6 +321,32 @@ def test_a_says_what_the_list_cannot_know(system_page: Page, system_daemon: Stan
     expect(unread, "a didn't answer").to_contain_text("What is worth a look isn't known yet.")
     expect(unread, "a hid which record couldn't be read").to_contain_text(
         "Couldn't read: machine:wren"
+    )
+
+
+def test_a_kept_answer_is_no_look(system_page: Page, system_daemon: StandIn) -> None:
+    says_it_stands(system_page, "live")
+    quieted(system_page, system_daemon)
+    # The daemon stands a part on its owner's last answer only while that is
+    # fresh enough to, so the note it carries says how the page was read: the
+    # machines' in the page's note, a part's in its own section.
+    machines = "as read at 00:19; just now mycelium machines gave no answer in 20 s"
+    code = "as read at 00:19; just now repos --json gave no answer in 20 s"
+    system_daemon.tell(
+        "part",
+        changed=[
+            {"key": "part:machines", "side": [machines]},
+            {"key": "part:code", "side": [code]},
+        ],
+    )
+    expect(system_page.locator("#note"), "the machines' kept answer went unsaid").to_contain_text(
+        f"Machines {machines}.", timeout=PACE_MS
+    )
+    aside = system_page.locator("[data-part='part-code'] .aside")
+    expect(aside, "the code part's kept answer went unsaid").to_have_text(f"A{code[1:]}")
+    expect(aside, "the code part's kept answer was hidden").to_be_visible()
+    expect(system_page.locator("#looks"), "a kept answer was listed as a look").to_have_text(
+        "Nothing is worth a look."
     )
 
 

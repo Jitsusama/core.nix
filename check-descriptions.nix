@@ -4193,9 +4193,10 @@
     going, broken while the daemon is away and live once it's back, stale once the server goes, the
     web-design skill's page checks passing at a phone's width and a desk's in both looks, a look
     for a machine with a spot machine's long name leaving its words at least two fifths of the
-    list at both widths and none past the window, a first visit within its budget of files, bytes
-    and elements, both visits reaching only the sites' server and the second answered unchanged,
-    and nothing logged
+    list at both widths and none past the window, a good part read from its owner's kept answer
+    never listed as worth a look and its note said where it belongs, a first visit within its
+    budget of files, bytes and elements, both visits reaching only the sites' server and the second
+    answered unchanged, and nothing logged
   '';
   forage-feed-passes-what-its-page-reads = ''
     the node's feed, as a machine in a realm declares it, passes every field the forage page reads
