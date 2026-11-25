@@ -722,8 +722,16 @@ mod tests {
         );
         assert_eq!(
             s.blocked,
-            BTreeMap::from([(shown, 12_500_000), (hidden, 3_000_000)]),
+            BTreeMap::from([(shown, 12_500_000), (hidden.clone(), 3_000_000)]),
             "only the apps' threads, shown or hidden, had their time blocked read"
+        );
+        // Read, the hidden tab's time blocked is still left out of its window, which counts
+        // only the threads a window ends with shown.
+        assert!(
+            s.resting.contains_key(&hidden) && !s.threads.contains_key(&hidden),
+            "the tab raised past nice 0 wasn't read as hidden: resting {:?}, shown {:?}",
+            s.resting.keys().map(|t| t.label).collect::<Vec<_>>(),
+            s.threads.keys().map(|t| t.label).collect::<Vec<_>>()
         );
         fs::remove_dir_all(&dir).unwrap();
     }

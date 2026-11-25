@@ -138,7 +138,9 @@ pub struct Wait {
     pub doubted: u64,
     /// The most any of its threads was blocked in the kernel in the window,
     /// in milliseconds: on a lock, a page read back or reclaim, which no
-    /// wait for a CPU shows. None where it isn't kept.
+    /// wait for a CPU shows. None where it isn't kept. The kernel adds a
+    /// block when it ends, so a block counts whole in the window it ends in,
+    /// past ten seconds if it lasted longer, and none shows while it lasts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub blocked_ms: Option<f64>,
 }
