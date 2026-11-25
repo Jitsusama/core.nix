@@ -122,13 +122,67 @@ pub fn none_selected(log: impl IntoIterator<Item = impl AsRef<str>>) -> bool {
 /// echoed summary finishes nothing.
 #[must_use]
 pub fn finished(log: impl IntoIterator<Item = impl AsRef<str>>) -> bool {
-    log.into_iter().any(|line| {
-        let line = pytests_own(line.as_ref()).trim_end();
-        line.starts_with('=')
-            && (line.contains(" passed") || line.contains(" failed") || line.contains(" error"))
-            && line.contains(" in ")
-            && line.ends_with("==")
-    })
+    log.into_iter()
+        .any(|line| sums_up(pytests_own(line.as_ref())))
+}
+
+/// Whether a failed run of `test`, its log read a line at a time, ran to
+/// its end, so the subtests it names failing are all that failed in it:
+/// each pytest session it began, and each of the test's parts it built,
+/// was summed up, and no build failed but where pytest said one failed.
+/// On 25 November a review of #6475 found a run excused by its listed
+/// subtests alone: a part of the-launcher-answers-whats-typed-on-niri
+/// failing in its listed case would have excused the five others, cut
+/// off when Nix stopped at the first failure, or failing outside pytest.
+/// Only the build's own lines count, not Nix's copy of a failed build's
+/// last lines, which would sum one session up twice.
+#[must_use]
+pub fn ran_whole(log: impl IntoIterator<Item = impl AsRef<str>>, test: &str) -> bool {
+    let part = format!("-{test}-part-");
+    let (mut began, mut summed, mut failing, mut broke) = (0, 0, 0, 0);
+    let mut parts = BTreeSet::new();
+    for line in log {
+        let line = line.as_ref();
+        if let Some(said) = builds_own(line) {
+            if said.trim_end().ends_with('=') && said.contains(" test session starts ") {
+                began += 1;
+            } else if sums_up(said) {
+                summed += 1;
+                failing += usize::from(said.contains(" failed") || said.contains(" error"));
+            }
+        }
+        broke += usize::from(line.trim_start().starts_with("Reason: builder failed"));
+        parts.extend(part_built(line, &part));
+    }
+    summed > 0 && summed >= began && summed >= parts.len() && broke <= failing
+}
+
+/// Whether one line of what pytest wrote is its summary of a session.
+fn sums_up(said: &str) -> bool {
+    let said = said.trim_end();
+    said.starts_with('=')
+        && (said.contains(" passed") || said.contains(" failed") || said.contains(" error"))
+        && said.contains(" in ")
+        && said.ends_with("==")
+}
+
+/// What a build wrote on one line of a log, past the `name> ` Nix puts
+/// before it, or nothing on a line Nix wrote itself.
+fn builds_own(line: &str) -> Option<&str> {
+    match line.split_once("> ") {
+        Some((build, rest)) if !build.is_empty() && !build.contains(' ') => Some(rest),
+        _ => None,
+    }
+}
+
+/// The part's derivation one line names, as Nix lists what it builds,
+/// when `part` (`-test-part-`) names one of the test's parts.
+fn part_built<'a>(line: &'a str, part: &str) -> Option<&'a str> {
+    let at = line.find(part)?;
+    let number = &line[at + part.len()..];
+    let digits = number.chars().take_while(char::is_ascii_digit).count();
+    (digits > 0 && number[digits..].starts_with(".drv"))
+        .then_some(&line[at..at + part.len() + digits])
 }
 
 /// Whether a narrowed run's log says its subtests can't be built alone,
@@ -323,5 +377,96 @@ mod tests {
         let killed = "vm-test-run-x> [3601.91s] !!! Test \"A\" failed with error: \"[Errno 9]\"\n\
                       error: Cannot build '/nix/store/x.drv'.\n";
         assert!(!finished(killed.lines()), "a run killed at its limit");
+    }
+
+    /// A log of the-launcher-answers-whats-typed-on-niri's six parts, as
+    /// the net's of a3c1d495 on 23 November reads: each part's session
+    /// begun, then `sums` summed up, part 3 failing in `test_tada` alone.
+    fn parts_log(sums: &[&str], broke: &[&str]) -> String {
+        let name = "the-launcher-answers-whats-typed-on-niri";
+        let mut log = String::from("these 8 derivations will be built:\n");
+        for part in 1..=6 {
+            log.push_str(&format!("  /nix/store/ab-{name}-part-{part}.drv\n"));
+        }
+        for part in 1..=6 {
+            log.push_str(&format!(
+                "building '/nix/store/ab-{name}-part-{part}.drv'...\n"
+            ));
+        }
+        for _ in 1..=6 {
+            log.push_str(&format!("{name}-part> ===== test session starts =====\n"));
+        }
+        log.push_str(&format!(
+            "{name}-part> FAILED ../nix/store/ab-tests/t.py::test_tada - AssertionError\n"
+        ));
+        for sum in sums {
+            log.push_str(&format!(
+                "{name}-part> ======= {sum} in 77.33s (0:01:17) =======\n"
+            ));
+        }
+        for part in broke {
+            log.push_str(&format!(
+                "error: Cannot build '/nix/store/ab-{name}-part-{part}.drv'.\n       \
+                 Reason: builder failed with exit code 1.\n       \
+                 > ======= 1 failed, 53 passed in 290.07s =======\n"
+            ));
+        }
+        log
+    }
+
+    #[test]
+    fn a_run_of_parts_ran_whole_once_each_part_is_summed_up() {
+        let name = "the-launcher-answers-whats-typed-on-niri";
+        let sums = [
+            "2 passed",
+            "6 passed",
+            "25 passed",
+            "20 passed",
+            "1 failed, 53 passed",
+        ];
+        let cut = parts_log(&sums, &["3"]);
+        assert!(
+            !ran_whole(cut.lines(), name),
+            "a part cut off before its end may have failed in anything"
+        );
+        let all = [&sums[..], &["28 passed"]].concat();
+        let whole = parts_log(&all, &["3"]);
+        assert!(
+            ran_whole(whole.lines(), name),
+            "every part summed up, one failing"
+        );
+        let outside = parts_log(&all, &["3", "5"]);
+        assert!(
+            !ran_whole(outside.lines(), name),
+            "part 5 failed though its pytest passed, so outside what it names"
+        );
+    }
+
+    #[test]
+    fn a_part_never_begun_and_nixs_copy_of_a_summary_finish_nothing() {
+        let name = "the-launcher-answers-whats-typed-on-niri";
+        let unbegun = parts_log(&[], &["3"]).replace(
+            &format!("{name}-part> ===== test session starts =====\n"),
+            "",
+        );
+        assert!(
+            !ran_whole(unbegun.lines(), name),
+            "six parts built, none summed up but in Nix's copy of part 3's last lines"
+        );
+        let one = "vm-test-run-x> ===== test session starts =====\n\
+                   vm-test-run-x> FAILED vm-pytest-ab/x.py::test_b - Error\n\
+                   vm-test-run-x> ===== 1 failed, 9 passed in 1.00s =====\n\
+                   error: Cannot build '/nix/store/ab-vm-test-run-x.drv'.\n       \
+                   Reason: builder failed with exit code 1.\n";
+        assert!(
+            ran_whole(one.lines(), "vm-x"),
+            "a VM test's one session, summed up"
+        );
+        let killed = "vm-test-run-x> ===== test session starts =====\n\
+                      vm-test-run-x> FAILED vm-pytest-ab/x.py::test_b - Error\n";
+        assert!(
+            !ran_whole(killed.lines(), "vm-x"),
+            "a VM test killed at its limit"
+        );
     }
 }

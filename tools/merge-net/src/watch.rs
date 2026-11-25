@@ -565,14 +565,25 @@ fn confirmed_apart(world: &dyn World, state: &State, commit: &str, check: &str) 
 /// passed and what follows a pass follows (quarantine.rs). The list is
 /// main's as last fetched, which its owners keep, rather than the
 /// commit's: a search runs at commits from before an entry was written.
+/// A run that didn't run whole is excused by nothing, since what it never
+/// ran, or what failed outside pytest, may have failed for anything.
 fn excused(world: &dyn World, state: &State, commit: &str, check: &str, log: &Path) -> bool {
     let Some(newest) = world.fetched() else {
         return false;
     };
     let test = subtests::whole(check);
     let listed = world.listed_subtests(&newest, test);
-    let failing = subtests::failed_in(crate::world::lines_of(log));
+    let lines: Vec<String> = crate::world::lines_of(log).collect();
+    let failing = subtests::failed_in(&lines);
     if !crate::quarantine::excuses(&listed, &failing) {
+        return false;
+    }
+    if !subtests::ran_whole(&lines, test) {
+        state.say(&format!(
+            "{check} failed at {} only in subtests main lists as quarantined, but didn't run \
+             whole, so it counts as failed",
+            short(commit)
+        ));
         return false;
     }
     state.say(&format!(
@@ -1904,8 +1915,10 @@ fn stalled(state: &State, head: &str, test: &str, owner: Option<u64>) -> Result<
 fn failed_at_base(world: &dyn World, state: &State, base: &str, test: &str) -> bool {
     let listed = listed_subtests_of(world, test);
     let excused_no_longer = state.excused_logs(base, test).iter().any(|log| {
-        let failing = subtests::failed_in(crate::world::lines_of(log));
-        log.exists() && !crate::quarantine::excuses(&listed, &failing)
+        let lines: Vec<String> = crate::world::lines_of(log).collect();
+        let failing = subtests::failed_in(&lines);
+        log.exists()
+            && !(crate::quarantine::excuses(&listed, &failing) && subtests::ran_whole(&lines, test))
     });
     excused_no_longer
         || state
@@ -2617,6 +2630,9 @@ mod tests {
         /// Commits where a failed run's log says only that something it
         /// needs didn't build, so the test never ran.
         unbuilt: Vec<String>,
+        /// Commits where a failed run names its subtest but was cut off
+        /// before pytest summed it up.
+        cut_off: Vec<String>,
         /// Merges of heads whose gate skipped a Mac's comparison.
         mac_skipped: Vec<String>,
     }
@@ -2810,11 +2826,10 @@ mod tests {
                 .or(self.fails_in.as_ref())
                 .filter(|_| exit != 0)
             {
-                let line = format!(
-                    "vm-test-run> FAILED vm-pytest-ab/t.py::{subtest} - Error\n\
-                     vm-test-run> ======= 1 failed, 9 passed in 1.00s =======\n"
-                );
-                let _ = fs::write(log, line);
+                let failed = format!("vm-test-run> FAILED vm-pytest-ab/t.py::{subtest} - Error\n");
+                let summed = "vm-test-run> ======= 1 failed, 9 passed in 1.00s =======\n";
+                let cut = self.cut_off.iter().any(|at| at == commit);
+                let _ = fs::write(log, failed + if cut { "" } else { summed });
             }
             (exit != STALL).then_some(exit)
         }
@@ -4667,6 +4682,29 @@ mod tests {
             world.built().iter().all(|(at, _)| at == "h"),
             "nothing is searched: {:?}",
             world.built()
+        );
+    }
+
+    #[test]
+    fn a_test_cut_off_after_failing_in_its_listed_subtest_fails() {
+        // A review of #6475 on 25 November found a run excused by its
+        // listed subtest alone, though what it never ran may have failed.
+        let state = state("listed-subtest-cut-off");
+        state.set_heads("s", "s").unwrap();
+        let world = Stand {
+            head: "h".into(),
+            merges: names("h"),
+            changed: changed("vm-a"),
+            fails_in: Some("test_b".into()),
+            listed_by_subtest: vec![("vm-a".into(), names("test_b"))],
+            cut_off: names("h"),
+            ..Stand::default()
+        }
+        .exits("h", "vm-a", &[1, 1]);
+        assert_ne!(
+            round(&world, &state, "s").unwrap(),
+            Round::Passed("h".into()),
+            "a run cut off after failing in a listed subtest was excused"
         );
     }
 
