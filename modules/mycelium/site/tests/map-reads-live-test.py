@@ -67,17 +67,18 @@ REDRAWN_MS = 2500
 COUNTED = "8 cells, 2 moving, 1 stuck"
 CELLS = 8
 # What a first visit to the map may cost, drawn from the stand-in's cells:
-# 32 files since the balance, who started each cell, the tree beside the map,
+# 33 files since the balance, who started each cell, the tree beside the map,
 # what each thing is in words, how a time is said, how each thing stands, what
 # each is doing, what each spent, what waits, how wide each line is drawn, how
 # a cell is named, how the map's motion is timed, where everything stands,
-# what the ground layer's canvas touches, a reading's shape and what new work
-# hands the Launcher were read in modules of their own; about 668 KB since the
-# builders, the legend's moving samples and new work's line, and since no
-# comment is sent, view.js's and the styles' included, with a little room
-# above; new work's line and its hidden controls draw about 20 elements of the
+# what the ground layer's canvas touches, a reading's shape, what new work
+# hands the Launcher and what a cell's drawer offers were read in modules of
+# their own; about 668 KB since the builders, the legend's moving samples and
+# new work's line, and since no comment is sent, view.js's and the styles'
+# included, a little more with the drawer's acts and its whole question, and
+# under the 677 KB allowed; new work's line and its hidden controls draw about 20 elements of the
 # 611.
-BUDGET = Budget(files=32, kilobytes=677, elements=620)
+BUDGET = Budget(files=33, kilobytes=677, elements=620)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -554,7 +555,7 @@ def test_the_map_draws_how_cells_connect_and_answers_a_click_in_one_window(
     page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
     expect(page, "a click on a cell didn't open it").to_have_url(re.compile("#cell=TERN03$"))
     expect(
-        page.locator('#panel-body a[href^="mycelium:cell/TERN03"]'),
+        page.locator('#panel-body a[href^="mycelium:cell/TERN03"][href$="/go"]'),
         "a click on a cell left its drawer shut",
     ).to_be_visible()
 
@@ -972,11 +973,20 @@ def test_now_leads_with_who_needs_you_and_a_and_t_reach_them(mycelium_opened: Op
     expect(page.locator("#where"), "t on a receptor didn't say it can't talk").to_contain_text(
         "The Launcher can't talk to"
     )
+    # Nor has it a window, and g says so.
+    page.keyboard.press("g")
+    expect(page.locator("#where"), "g on a receptor didn't say it has no window").to_contain_text(
+        "There is no window to go to for"
+    )
     page.keyboard.press("Escape")
     expect(page, "Escape didn't let the cell go").not_to_have_url(re.compile("#cell="))
     page.keyboard.press("t")
     expect(page.locator("#where"), "t with no cell open didn't say so").to_have_text(
         "No cell is open to talk to; a opens the next that needs you."
+    )
+    page.keyboard.press("g")
+    expect(page.locator("#where"), "g with no cell open didn't say so").to_have_text(
+        "No cell is open to go to; a opens the next that needs you."
     )
 
 
@@ -993,7 +1003,7 @@ NAMED = (
 def test_a_cell_opens_by_its_whole_link_as_its_address(mycelium_opened: Opened) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
-    talk = page.locator('#panel-body a[href^="mycelium:cell/"]')
+    talk = page.locator('#panel-body a[href^="mycelium:cell/"]:not([data-go-to])')
     for named in NAMED:
         page.evaluate("location.hash = ''")
         expect(talk, "the last cell's drawer stayed open").to_have_count(0)
@@ -1009,6 +1019,83 @@ def test_a_cell_opens_by_its_whole_link_as_its_address(mycelium_opened: Opened) 
     expect(talk, "a stray % opened a cell").to_have_count(0)
     page.evaluate(f"location.hash = '#cell={NAMED[1]}'")
     expect(talk, "the map stopped answering after a stray %").to_have_count(1)
+
+
+# What node.json's TERN02 asks, whole, a paragraph a line, where its `asks`
+# holds only the last; and where its Go to It goes, on the machine it runs on.
+ASKED_WHOLE = (
+    (
+        "The waxed thread holds in salt but stiffens in the cold.\n"
+        "The plain runs smoother and wears sooner."
+    ),
+    "Which thread: the waxed or the plain?",
+)
+GONE_TO = f"mycelium:cell/{NEEDING[0]}@kestrel/go"
+# The drawer's first act, past its way back: the first link or button after it.
+FIRST_ACT = """(() => {
+  const act = document.querySelector("#panel-body a, #panel-body button:not(.back)");
+  return [act?.textContent, act?.getAttribute("href")];
+})()"""
+# Whether the question comes after Go to It, each of its paragraphs' line
+# breaks, which to_have_text folds away, and whether its lines keep their
+# indentation, as pre-wrap sets them.
+ASKED_SHAPE = """(() => {
+  const body = document.querySelector("#panel-body");
+  const go = body.querySelector("a[data-go-to]");
+  const asked = body.querySelector(".asked");
+  const after = !!go && !!asked
+    && !!(go.compareDocumentPosition(asked) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const paragraphs = [...body.querySelectorAll(".asked p")];
+  return [
+    after,
+    paragraphs.map((p) => p.querySelectorAll("br").length),
+    paragraphs.map((p) => getComputedStyle(p).whiteSpace),
+  ];
+})()"""
+
+
+def test_a_cell_that_needs_you_leads_with_its_question_whole_and_go_to_it(
+    mycelium_opened: Opened,
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(f"location.hash = '#cell={NEEDING[0]}'")
+    body = page.locator("#panel-body")
+    expect(body.locator("#panel-title"), "the asking cell's drawer never opened").to_be_visible()
+    # Its words, whitespace folded: ASKED_SHAPE counts its line breaks.
+    expect(body.locator(".asked p"), "its question wasn't said whole").to_have_text(
+        list(ASKED_WHOLE), use_inner_text=True
+    )
+    first = page.evaluate(FIRST_ACT)
+    assert first == ["Go to It", GONE_TO], f"the drawer's first act was {first}"
+    shape = page.evaluate(ASKED_SHAPE)
+    breaks = [paragraph.count("\n") for paragraph in ASKED_WHOLE]
+    kept = ["pre-wrap"] * len(ASKED_WHOLE)
+    assert shape == [True, breaks, kept], f"after Go to It, its breaks and spaces were {shape}"
+    # g goes there as the link does, and t still talks rather than goes.
+    page.evaluate(TALK_HELD)
+    page.locator("#map-view").focus()
+    page.keyboard.press("g")
+    gone = page.evaluate("window.talkedTo")
+    assert gone == GONE_TO, f"g went to {gone}"
+    page.keyboard.press("t")
+    talked = page.evaluate("window.talkedTo")
+    assert talked == f"mycelium:cell/{NEEDING[0]}@kestrel", f"t talked to {talked}"
+    # The tree's g is the tree's alone: it goes to its first row, and the
+    # page's g never also answers it. . lets the cell go to show the tree,
+    # so with no cell open the page's g would only refuse, saying so in the
+    # status line a screen reader reads out over the tree's own step.
+    talks = page.evaluate("window.talks")
+    page.locator("#panel-title").press(".")
+    items = page.locator("#tree [role=treeitem]")
+    items.last.focus()
+    page.keyboard.press("g")
+    expect(items.first, "g didn't go to the tree's first").to_be_focused()
+    expect(page.locator("#where"), "the page's g answered the tree's").not_to_contain_text(
+        "No cell is open to go to"
+    )
+    after = page.evaluate("window.talks")
+    assert after == talks, f"the tree's g opened a link: {after} links, not {talks}"
 
 
 # What new work's line hands the Launcher, said back once the line closes,
@@ -1535,10 +1622,14 @@ def test_a_basins_machines_are_drawn_as_one(browser: Browser, basins_served: Ser
         expect(body, "the cell lost its own machine").to_contain_text(
             f"on {BASIN_MACHINES[0]}, in the {BASIN} basin", timeout=PACE_MS
         )
-        # Its link to the Launcher names that machine too, never the basin.
+        # Its links to the Launcher name that machine too, never the basin.
         expect(
-            body.locator('a[href^="mycelium:cell/"]'), "the cell's link lost its machine"
+            body.locator('a[href^="mycelium:cell/"]:not([data-go-to])'),
+            "the cell's link lost its machine",
         ).to_have_attribute("href", f"mycelium:cell/{BASIN_CELLS[0]}@{BASIN_MACHINES[0]}")
+        expect(body.locator("a[data-go-to]"), "its Go to It lost its machine").to_have_attribute(
+            "href", f"mycelium:cell/{BASIN_CELLS[0]}@{BASIN_MACHINES[0]}/go"
+        )
         # Now counts every machine, a basin's each its own, not each mark.
         page.locator("#now-control").click()
         expect(title, "Now never opened").to_have_text("Now")

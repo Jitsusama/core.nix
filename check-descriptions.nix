@@ -2311,10 +2311,11 @@
     every act Joel takes on his cells is on the mycelium command, a pi session, the map and the
     launcher, or owed by a cell by a time, or waived with a reason: a file said to have it holds
     its words and the locked mycelium's help says a command's, and an act the launcher's session
-    row lists is one of the table's; a clean act passing, and a surface left out, two standings, a
-    missing file or word, a help that fails, an owing with no cell, time or why, a waiver with no
-    reason, an act naming no way to it, an act a surface lists that the table doesn't, no longer
-    lists or maps to no act, and a list read as holding none, each failing first
+    row or the map's cell drawer lists is one of the table's; a clean act passing, and a surface
+    left out, two standings, a missing file or word, a help that fails, an owing with no cell,
+    time or why, a waiver with no reason, an act naming no way to it, an act a surface lists that
+    the table doesn't, no longer lists or maps to no act, and a list read as holding none, each
+    failing first
   '';
   mycelium-completes-its-teams-in-zsh = ''
     mycelium swarm completes in zsh with its acts and the teams the line's realm's node names, a
@@ -2420,8 +2421,9 @@
     its day only off the reading's and a lease's time left, and how each set of cells and each
     machine stands and why, worst first, its form, its share and the balance's flags, what each
     set of cells, receptor and cell is doing and how much of the talk asked or found something,
-    what each spent today, most first, ten to a list and the rest counted and summed, and what
-    waits on each cell and what holds stand, oldest first, said as the page names each
+    what each spent today, most first, ten to a list and the rest counted and summed, what
+    waits on each cell and what holds stand, oldest first, said as the page names each, and a
+    cell drawer's acts in order, Go to It first, and its question whole, paragraphs and lines kept
   '';
   mycelium-site-reads-live = ''
     the mycelium map, served by the local sites' server beside a stand-in node through the node feed
@@ -2442,6 +2444,7 @@
     its starter on another, going once it stops, the builders standing under the machines in
     rounded boxes,
     dashed while taking no builds, their words read unopened, opened by link and let go by m,
+    an asking cell's drawer saying its question whole and leading with Go to It, which g follows,
     a key of each
     kind keys.ts decides answering (the keys dialog, find and a letter typed into it, n and N,
     Escape in its order, the walk, the machines, Now and Escape closing it, the view zoomed in

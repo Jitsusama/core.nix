@@ -18,9 +18,8 @@
 # owed by every other until it's there or waived. Where a surface lists its
 # acts in a file of its own, an offered entry at the end reads that list, and
 # an act in it the table doesn't name fails, so a gained act can't go unseen.
-# Only the launcher's session row is read so far, its verb:agent: ids; the
-# map's drawer lists its words in a file once core.nix#6389 lands, and is
-# read from then.
+# Two are read: the launcher's session row, its verb:agent: ids, and the
+# map's cell drawer, its acts' words in site/acts.ts.
 # The pi tools aren't read, since the harness that holds them isn't an input
 # of core.nix; each session has says where its tool does the act.
 #
@@ -66,10 +65,9 @@ by = "85PKB2"
 due = "2026-11-24 20:00"
 why = "show_person only points at a terminal"
 
-[act.map.owed]
-by = "KP0L6A"
-due = "2026-11-24 18:30"
-why = "Go to It on a cell's drawer lands with core.nix#6389"
+[act.map.has]
+file = "modules/mycelium/site/acts.ts"
+holds = 'go: "Go to It"'
 
 [act.launcher.has]
 file = "modules/quickshell/launcher/words/agents.json"
@@ -116,8 +114,8 @@ why = "mesh_read gives a peer's question, not a want's whole text and choices"
 
 [act.map.owed]
 by = "KP0L6A"
-due = "2026-11-24 18:30"
-why = "a cell's drawer says its question whole, with core.nix#6389"
+due = "2026-11-25 12:00"
+why = "its drawer says what a node sends whole, and none sends it until mycelium#426's pin"
 
 [act.launcher.owed]
 by = "42P0R4"
@@ -186,8 +184,8 @@ holds = "what each cell is for"
 tool = "quest"
 
 [act.map.has]
-file = "modules/mycelium/site/view.js"
-holds = "See What It Is For, and Its Plans"
+file = "modules/mycelium/site/acts.ts"
+holds = 'forage: "See What It Is For, and Its Plans"'
 
 [act.launcher.owed]
 by = "42P0R4"
@@ -333,3 +331,16 @@ close = "close"
 
 [offered.apart]
 take-back = "it undoes what the talk line's void did, an act on his own words, not on a cell"
+
+# The map's are the acts a cell's drawer offers, by their words' keys; its
+# keys, a for the next that needs him among them, aren't read.
+[[offered]]
+surface = "map"
+file = "modules/mycelium/site/acts.ts"
+pattern = '^  ([a-z]+): "'
+
+[offered.acts]
+go = "go"
+talk = "talk"
+sprout = "sprout"
+forage = "forage"

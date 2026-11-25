@@ -1446,6 +1446,36 @@ body {
   color: var(--text);
 }
 
+/* What a cell asks, whole, in its drawer, straight after the acts that
+   reach it, since those are what Joel came for. A rule in the person's
+   ink down its start ties it to the ring his cells wear on the map, and its
+   words are set in strong ink at the reading size, a paragraph apart,
+   since they are read rather than scanned. */
+.asked {
+  display: grid;
+  gap: var(--tie);
+  padding-inline-start: var(--items);
+  border-inline-start: 2px solid var(--person);
+}
+
+.panel-body .asked h3 {
+  margin: 0;
+  color: var(--text);
+  font: italic 400 var(--step-small) / 1.5 var(--serif);
+}
+
+/* Its lines keep the indentation a nested list or code is said in. */
+.asked p {
+  margin: 0;
+  color: var(--strong);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.asked p + p {
+  margin-block-start: var(--tie);
+}
+
 .says {
   color: var(--strong);
   font-style: italic;

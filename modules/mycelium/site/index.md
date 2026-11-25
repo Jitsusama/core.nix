@@ -145,10 +145,11 @@ Nothing on it acts on the network.
   the questions waiting and holds standing that hold the flow; then how
   the whole network stands, what it spent today, how to read the map
   and the network as a tree. Full stop, or the last control over the
-  map, opens Now. A cell's drawer talks to it in the Launcher, starts
-  new work from it, and one
-  with a forage opens the forage page on it, saying what it is for and
-  how far its plans have come.
+  map, opens Now. A cell's drawer can go to it, raising its window or
+  opening one, talk to it in the Launcher and start new work from it;
+  one that asks you something leads with those acts, then says what it
+  asks, whole, and one with a forage opens the forage page on it,
+  saying what it is for and how far its plans have come.
 - **Signal against noise** is said in Now: of the latest messages,
   how many asked or found something, against how many were for context
   only; a network's details count the messages that touch it. A cell's

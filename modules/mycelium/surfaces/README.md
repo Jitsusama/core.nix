@@ -15,10 +15,10 @@ An act one surface gains is added to the table with every other surface
 owing it, so the check fails until each has it, owes it by a time or
 waives it. Where a surface lists its acts in a file, the table's `offered`
 entries read that list, and an act there the table doesn't name fails, so
-a gained act can't go unseen. Only the launcher's session row is read so
-far, its `verb:agent:` verbs; its verbs under other ids, such as Carry
-Back, aren't. The map's drawer lists its words in a file once
-core.nix#6389 lands, and is read from then. The command and a pi session
+a gained act can't go unseen. Two lists are read: the launcher's session
+row, its `verb:agent:` verbs, though not its verbs under other ids such
+as Carry Back, and the acts a cell's drawer on the map offers, by their
+words' keys in `site/acts.ts`. The command and a pi session
 list theirs nowhere core.nix reads, so an act they gain is added by hand.
 
 Each act names the one way to it, the node's call or the files every

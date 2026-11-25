@@ -70,6 +70,7 @@ import {
   shortestTree,
   sow as sowSeeds,
 } from "./layout.js";
+import { askedOf, cellActs } from "./acts.js";
 import { grownOf } from "./lineage.js";
 import { drawnWidth } from "./lines.js";
 import { durationOf, easedInOut, goneAndBack } from "./motion.js";
@@ -548,7 +549,12 @@ import {
         purpose: windowed || c.title === UNNAMED ? null : c.title || null,
         quest: c.quest || null,
         doing: receptor ? sensedWords(c.counts || {}) : c.doing || null,
-        wants: c.asks || null,
+        // A newer node's field of another kind reads as none, rather
+        // than stopping the drawer that says it.
+        wants: typeof c.asks === "string" ? c.asks : null,
+        // The whole text it asked in, where its session says more than
+        // the one line `asks` holds.
+        asked: typeof c.asked === "string" ? c.asked : null,
         repo: c.repo || null,
         usage: c.usage || {},
         standing: receptor ? (c.state === "reading" ? "moving" : "quiet") : STANDING_OF_CELL[c.standing] || "quiet",
@@ -3150,7 +3156,7 @@ import {
     return (
       (asks.length ? rowsUnder(`${howMany(asks, "One needs", "need")} you:`, asks) : "") +
       (stuck.length ? rowsUnder(`${howMany(stuck, "One is", "are")} stuck:`, stuck) : "") +
-      `<p class="hint"><kbd>a</kbd> opens each in turn; once one is open, <kbd>t</kbd> talks to it in the Launcher.</p>`
+      `<p class="hint"><kbd>a</kbd> opens each in turn; once one is open, <kbd>g</kbd> goes to its window and <kbd>t</kbd> talks to it in the Launcher.</p>`
     );
   };
   const overview = () => {
@@ -3386,16 +3392,32 @@ import {
         const pair = ends.length === 1 ? pairKey(`c:${s.address}`, ends[0]) : null;
         return pair && talkEndsKnown(pair) ? `<li><button type="button" class="said" data-go="talk=${esc(pair)}">${said}</button></li>` : `<li>${said}</li>`;
       });
+    // What it offers, in acts.ts's order: Go to It first, since a cell
+    // that needs Joel is one he must reach.
+    const acts = cellActs({ address: s.address, host: s.host, receptor, foraged: m.foraged.has(s.address) })
+      .map((a) =>
+        a.act === "sprout"
+          ? `<p class="led"><button type="button" class="inline" data-sprout-from="${esc(a.from)}">${esc(a.words)}</button></p>`
+          : `<p class="led"><a class="inline"${a.act === "go" ? " data-go-to" : ""} href="${esc(a.href)}">${esc(a.words)}</a></p>`,
+      )
+      .join("");
+    // What it asks, whole, said straight after its acts, Go to It first,
+    // since reaching it is what he came for and a long question must not
+    // push the way there below the fold; its Doing then says only that it
+    // waits on him.
+    const asked = s.standing === "asks" ? askedOf(s) : [];
+    const asks = asked.length
+      ? `<section class="asked" aria-labelledby="asked-title"><h3 id="asked-title">It Asks You</h3>${asked.map((lines) => `<p>${lines.map(esc).join("<br>")}</p>`).join("")}</section>`
+      : "";
+    const doing = asked.length ? "Waiting on your answer" : cellDoing(s);
     return (
       backButton(netOf(s) ? netOf(s).name : "Now") +
       `<h2 id="panel-title">${esc(s.short)}</h2>` +
       `<p class="carries">${esc(`A cell ${home}.`)}</p>` +
-      glance(esc(purpose), `<span class="doing">${stateGlyph(s)}<span>${esc(cellDoing(s))}</span></span>`, cellHealth(s)) +
-      (receptor ? "" : launcherLink("cell", s.address, "Talk to It in the Launcher", s.host)) +
-      // Only an address the link carries can be started from.
-      (receptor || !isAddress(s.address) ? "" : `<p class="led"><button type="button" class="inline" data-sprout-from="${esc(s.address)}">Start New Work From It</button></p>`) +
-      // The forage page lists only cells with a forage, so only those link there.
-      (m.foraged.has(s.address) ? `<p class="led"><a class="inline" href="../forage/#cell=${encodeURIComponent(s.address)}">See What It Is For, and Its Plans</a></p>` : "") +
+      (asks ? acts : "") +
+      asks +
+      glance(esc(purpose), `<span class="doing">${stateGlyph(s)}<span>${esc(doing)}</span></span>`, cellHealth(s)) +
+      (asks ? "" : acts) +
       factList(facts) +
       where +
       `<h3>Lately</h3>` +
@@ -4986,6 +5008,22 @@ import {
     link.click();
     where.textContent = `Talking to ${openedWords(c)} in the Launcher.`;
   };
+  // Going there follows its drawer's Go to It in the same way, so the key
+  // reaches only a window the link would.
+  const goToChosen = () => {
+    if (chosen?.kind !== "cell") {
+      where.textContent = "No cell is open to go to; a opens the next that needs you.";
+      return;
+    }
+    const link = panelBody.querySelector("a[data-go-to]");
+    const c = { kind: "cell", id: chosen.id };
+    if (!link) {
+      where.textContent = `There is no window to go to for ${openedWords(c)}.`;
+      return;
+    }
+    link.click();
+    where.textContent = `Going to ${openedWords(c)}.`;
+  };
   // What each of the page's letters does, once keys.ts has said which.
   const PAGE_DOES = {
     keys: () => toggleKeys(),
@@ -5000,6 +5038,7 @@ import {
     now: () => toggleNow(),
     "needs-you": () => nextNeedingYou(),
     talk: () => talkToChosen(),
+    go: () => goToChosen(),
     machines: () => toggleMachines(),
     fit: () => fit(),
     "zoom-in": () => zoomBy(1.25),
@@ -5019,10 +5058,11 @@ import {
       chosen: !!chosen,
       nowOpen: !!nowOpen,
     });
-    if (!asked) return;
+    // A key the tree already took, such as its g, is the tree's alone.
+    if (!asked || e.defaultPrevented) return;
     e.preventDefault();
     // A held key opens the Launcher or steps the round once, not per repeat.
-    if (e.repeat && (asked === "talk" || asked === "needs-you")) return;
+    if (e.repeat && (asked === "talk" || asked === "go" || asked === "needs-you")) return;
     PAGE_DOES[asked]();
   });
   // keys.ts lists every act a page key can ask, and outline.ts every step

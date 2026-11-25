@@ -874,8 +874,8 @@ in
   # it names holds its words, or the locked mycelium's help for the command
   # says them; a pi tool is taken by its name, since the harness isn't an
   # input. Where a surface lists its acts in a file, an act there the table
-  # doesn't name fails, so one a surface gains is seen; so far only the
-  # launcher's session row is read. So it can't pass by reading nothing,
+  # doesn't name fails, so one a surface gains is seen; the launcher's
+  # session row and the map's cell drawer are read. So it can't pass by reading nothing,
   # each way of straying is shown to fail first, beside a clean act that
   # passes, so each fails on its own fault alone. It proves
   # each act's words are where the table says, not that the code offers or
@@ -937,7 +937,7 @@ in
           tool = "mesh_read"
           [act.map.has]
           file = "modules/mycelium/site/view.js"
-          holds = "See What It Is For, and Its Plans"
+          holds = "It Asks You"
           ${says}
         '';
       # Each way of straying the check has to catch, with what it says.
