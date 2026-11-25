@@ -69,6 +69,16 @@ const REFRESH: Duration = Duration::from_secs(10);
 /// the shell is let see a watch that isn't working as one that stopped.
 /// The command line trusts the last pass's `budgets.json` as long.
 pub(crate) const FAILING: Duration = Duration::from_mins(2 * 5 + 1);
+/// How long the watch waits as it starts for the history to be its own:
+/// its lock, and the database a reader may be writing. With no watch
+/// running, a reader brings an older history to this one's shape under
+/// the lock, and on 25 November that held a 1.9 GB history for minutes
+/// after a switch. A watch that gave up at once ended three times on the
+/// lock and once on the database, four minutes in all, with the budgets
+/// unwatched until a restart came after the reader was done.
+const TURN: Duration = Duration::from_mins(10);
+/// How often a watch waiting its turn asks again.
+const TURN_ASKED: Duration = Duration::from_secs(1);
 
 struct Feed {
     config: FeedConfig,
@@ -903,6 +913,46 @@ fn written(runtime: &std::path::Path, name: &str) -> String {
 #[cfg(not(target_os = "linux"))]
 fn rewrites(_runtime: &std::path::Path, _wake: Sender<Wake>) {}
 
+/// The history's lock, waited for `within` when something else holds it,
+/// and said once in the journal so a slow start reads as a wait, not a
+/// hang. Another watch holding it for good still ends this one once the
+/// time is up, as it did at once before.
+fn waited(state: &Path, within: Duration) -> Result<std::fs::File, String> {
+    let began = Instant::now();
+    let mut said = false;
+    loop {
+        match lock(state) {
+            Ok(file) => return Ok(file),
+            Err(why) if began.elapsed() >= within => return Err(why),
+            Err(why) => {
+                if !said {
+                    eprintln!("{why}; waiting up to {} s for it", within.as_secs());
+                    said = true;
+                }
+                std::thread::sleep(TURN_ASKED);
+            }
+        }
+    }
+}
+
+/// The history at `path`, opened once no reader is writing it. Opening
+/// makes an index where it's missing, and a reader opening it at the same
+/// moment may be making it too, past the database's own ten-second wait.
+fn opened_in_turn(path: &Path, within: Duration) -> Result<History, String> {
+    let began = Instant::now();
+    loop {
+        match opened(path) {
+            // SQLite's words for another connection's write, as rusqlite
+            // gives them; the history's errors reach here only as words.
+            Err(why) if why.contains("database is locked") && began.elapsed() < within => {
+                eprintln!("{why}; trying again");
+                std::thread::sleep(TURN_ASKED);
+            }
+            opened => return opened,
+        }
+    }
+}
+
 /// The history at `path`, said in the journal as it's brought up from an
 /// older shape: that holds it for minutes on a large one with nothing
 /// else to show, and a restart meanwhile only starts the move again.
@@ -925,10 +975,10 @@ fn opened(path: &Path) -> Result<History, String> {
 }
 
 pub fn run(config: &Config) -> Result<(), String> {
-    let _lock = lock(&config.state)?;
+    let _lock = waited(&config.state, TURN)?;
     config.runtime()?;
     hold(config)?;
-    let history = opened(&config.history())?;
+    let history = opened_in_turn(&config.history(), TURN)?;
     let (wake, inbox): (Sender<Wake>, Receiver<Wake>) = mpsc::channel();
     let hub = hub(config)?;
     hub.doing(doer(config, wake.clone()));
@@ -1663,5 +1713,40 @@ mod tests {
         let most = Duration::from_secs(300);
         assert_eq!(backoff(Some(most), quick), most);
         assert_eq!(backoff(Some(second), Duration::from_secs(600)), first);
+    }
+
+    // A watch starting while a reader holds the history's lock, as one
+    // bringing it to a newer shape does, takes it once the reader lets go,
+    // where it used to end at once and be restarted into the same lock.
+    #[test]
+    fn a_watch_starting_beside_a_reader_takes_the_lock_once_it_is_let_go() {
+        let dir = tempfile::tempdir().unwrap();
+        let held = lock(dir.path()).unwrap();
+        let letting_go = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(1500));
+            drop(held);
+        });
+        let began = Instant::now();
+        let taken = waited(dir.path(), Duration::from_secs(30));
+        letting_go.join().unwrap();
+        assert!(
+            taken.is_ok(),
+            "the watch didn't take the lock its reader let go: {:?}",
+            taken.err()
+        );
+        assert!(
+            began.elapsed() >= Duration::from_secs(1),
+            "the watch took a lock that was still held"
+        );
+    }
+
+    // Something holding the lock past the wait still ends the watch, so a
+    // second watch run by hand beside the unit's goes rather than waits on.
+    #[test]
+    fn a_watch_whose_lock_stays_held_past_its_wait_ends() {
+        let dir = tempfile::tempdir().unwrap();
+        let _held = lock(dir.path()).unwrap();
+        let taken = waited(dir.path(), Duration::from_millis(1200));
+        assert!(taken.is_err(), "the watch took a lock another still held");
     }
 }

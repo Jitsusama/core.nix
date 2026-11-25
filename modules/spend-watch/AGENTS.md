@@ -212,7 +212,10 @@ feed speaks.
 - **History.** A shape that only grows is brought up to date where it
   stands, by the daemon as it starts, in minutes on a large one; a
   command reading it meanwhile is told to try again, and with no daemon
-  it moves the history itself under the lock. One that doesn't read is
+  it moves the history itself under the lock. A daemon starting then
+  waits up to ten minutes for the lock and the database rather than
+  ending, since each restart met the same move and left the budgets
+  unwatched for its length. One that doesn't read is
   set aside under a name nothing holds
   yet and built again, and each feed is told what's kept of its bill, none
   of it then, so it tells the bill again. One a newer spend-watch keeps,
