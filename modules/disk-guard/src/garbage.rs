@@ -187,15 +187,13 @@ pub fn min_free(nix: &Path) -> Result<u64, String> {
     // guard's log is often readable by any account, and a Nix printing
     // more than the one value, or quoting a nix.conf line it refuses,
     // could print its access tokens.
-    let said = match output(&argv, Duration::from_secs(30), true, &[])? {
-        (true, stdout) => stdout,
-        (false, stderr) => {
-            return Err(format!(
-                "nix config show min-free failed, saying {} bytes on its error stream",
-                stderr.trim().len()
-            ));
-        }
-    };
+    let (succeeded, said) = output(&argv, Duration::from_secs(30), true, &[])?;
+    if !succeeded {
+        return Err(format!(
+            "nix config show min-free failed, saying {} bytes on its error stream",
+            said.trim().len()
+        ));
+    }
     said.trim().parse().map_err(|error| {
         format!(
             "nix config show min-free said {} bytes that aren't a number: {error}",
