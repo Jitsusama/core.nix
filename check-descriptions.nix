@@ -3604,6 +3604,12 @@
     and told so, left running through a switch, its host's restart and the kernel killing one
     of its commands for memory, and a Mac gets none
   '';
+  pi-conversations-cap-heap-growth = ''
+    a realm's conversationHeapGrowingPercent reaches each of its conversations' own processes,
+    attended and background, as V8's --heap-growing-percent after their heap and before the
+    harness's program, while its hosts and every process of a realm that names none keep V8's
+    own growth, and a cap of 0 or 301 percent is refused
+  '';
   pi-hosts-start-with-the-session = ''
     each realm a machine names gets an attended and a background pi host, started with the
     account's session where the harness is installed, run by the host's pi and its own node, its

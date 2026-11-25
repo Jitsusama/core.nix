@@ -76,9 +76,10 @@ let
 
   # The command line a host and a conversation's own process share, up to
   # the harness's program: the realm's folders, the host's node with the
-  # inspector shut, and its heap. `rest` comes after the program.
+  # inspector shut, and its heap, then node's own `flags`. `rest` comes
+  # after the program.
   startOf =
-    host: heapMb: rest:
+    host: heapMb: flags: rest:
     lib.escapeShellArgs (
       # Environment= can only replace PATH, so env puts the realm's folders
       # before the user manager's; systemd expands ${PATH}, and env execs
@@ -93,7 +94,7 @@ let
         }:\${PATH}"
       ]
       ++ [ host.node ]
-      ++ launch.words config host heapMb rest
+      ++ launch.words config host heapMb flags rest
     );
 
   # A conversation's allocator tuning, for one in a unit of its own (so on
@@ -294,7 +295,9 @@ let
         Service = {
           # It says nothing to systemd: its host follows it on its socket.
           Type = "exec";
-          ExecStart = startOf host host.conversationHeapMb [ "--child" ];
+          ExecStart = startOf host host.conversationHeapMb (lib.optional (
+            host.conversationHeapGrowingPercent != null
+          ) "--heap-growing-percent=${toString host.conversationHeapGrowingPercent}") [ "--child" ];
           Environment = environmentOf realm host false (
             {
               PI_HOST_CHILD_KEY = key;
@@ -365,7 +368,7 @@ let
         # conversation can be sent to it; it says so from a child process.
         Type = "notify";
         NotifyAccess = "all";
-        ExecStart = startOf host host.heapMb [ kind ];
+        ExecStart = startOf host host.heapMb [ ] [ kind ];
         # The stop limit below, which the host parks within, and what its
         # restart waits on (host-launch.nix's hostOwn).
         Environment = environmentOf realm host true (launch.hostOwn restartWaitsOn);
@@ -521,6 +524,21 @@ in
               conversation's own, so unlike heapMb they don't add up to a
               share of agents.slice: the slice's ceiling slows them all
               together once they pass it.
+            '';
+          };
+          conversationHeapGrowingPercent = lib.mkOption {
+            type = lib.types.nullOr (lib.types.ints.between 1 300);
+            default = null;
+            description = ''
+              How far each conversation's own process lets its heap grow past
+              what it held live after a full collection before it collects in
+              full again, in percent, as node's --heap-growing-percent. Unset,
+              V8 picks the factor itself, and with a heap limit of 2048 MB or
+              more, as conversationHeapMb's default is, it lets the heap reach
+              up to four times what is live while collections keep up, and
+              carries that growth as resident memory between collections. A lower
+              percent collects more often, keeping less resident for more
+              collection time. Its hosts keep V8's own growth.
             '';
           };
           asyncContextFrame = lib.mkOption {

@@ -211,4 +211,67 @@
             ]
         && lib.filter (lib.hasPrefix "pi-conversation-") (lib.attrNames mac) == [ ]
       );
+
+  # A realm may cap how far each of its conversations' heaps grows past what
+  # it holds live before V8 collects it in full. Its hosts, and every process
+  # of a realm that names no cap, keep V8's own growth, and a cap outside 1
+  # to 300 percent is refused.
+  pi-conversations-cap-heap-growth =
+    let
+      pi = "${pkgs.emptyDirectory}/pi";
+      node = "${pkgs.emptyDirectory}/node";
+      proof = proofOf { runtime = builtins.unsafeDiscardStringContext "${pkgs.emptyDirectory}"; };
+      servicesOf =
+        hosts:
+        (account (bareNixos [
+          self.nixosModules.workstation
+          { home-manager.users.someone.jitsusama.pi = { inherit hosts; }; }
+        ])).systemd.user.services;
+      services = servicesOf {
+        capped = {
+          inherit pi node proof;
+          conversationHeapGrowingPercent = 30;
+        };
+        plain = { inherit pi node proof; };
+      };
+      startOf = unit: lib.head (lib.toList (services.${unit}.Service.ExecStart or ""));
+      capped =
+        kind:
+        let
+          start = startOf "pi-conversation-capped-${kind}@";
+        in
+        lib.hasInfix " '--max-old-space-size=4096' '--heap-growing-percent=30' /" start
+        && lib.hasSuffix "/scripts/pi-host.ts --child" start;
+      grows = unit: services ? ${unit} && !(lib.hasInfix "--heap-growing-percent" (startOf unit));
+      refused =
+        percent:
+        !(builtins.tryEval (
+          builtins.deepSeq
+            (servicesOf {
+              wrong = {
+                inherit pi node proof;
+                conversationHeapGrowingPercent = percent;
+              };
+            })."pi-conversation-wrong-attended@".Service.ExecStart
+            true
+        )).success;
+    in
+    holds "pi-conversations-cap-heap-growth"
+      "A realm's cap on its conversations' heap growth doesn't reach their own processes as V8's growing percent, before the harness's program, or it reaches its hosts or a realm that names none, or a cap outside 1 to 300 percent is taken."
+      (
+        lib.all
+          (
+            kind:
+            capped kind
+            && grows "pi-host-capped-${kind}"
+            && grows "pi-conversation-plain-${kind}@"
+            && grows "pi-host-plain-${kind}"
+          )
+          [
+            "attended"
+            "background"
+          ]
+        && refused 0
+        && refused 301
+      );
 }
