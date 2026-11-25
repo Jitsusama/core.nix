@@ -21,7 +21,7 @@
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what Quickshell runs them with.
     pkgs.runCommandLocal "emoji-keeps-a-lost-search-only-open" { } ''
-      mkdir -p launcher runtime && chmod -R 700 runtime
+      mkdir -p launcher
       cp ${../../../tests/lib/Expect.js} Expect.js
       ${copied [
         "Daemon.qml"
@@ -40,8 +40,10 @@
         property var byApp: ({})
         function spawn(command) { }
       ''} Niri.qml
+      cp ${singleton "Report.qml" "function say(text) {}"} Report.qml
       cp ${../tests/emoji.qml} shell.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
+      mkdir -m 700 $XDG_RUNTIME_DIR
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml

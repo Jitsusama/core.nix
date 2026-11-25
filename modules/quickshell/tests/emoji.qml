@@ -50,17 +50,36 @@ ShellRoot {
             typedLost: served.typedLost, state: served.searchState() });
     }
 
-    Component.onCompleted: Qt.callLater(root.cases)
+    // The cases run once ReadyRows' daemon is loaded, which its LazyLoader may do after the
+    // shell starts, and nothing here waits forever: a daemon that never loads fails, by name.
+    property bool begun: false
+    Component.onCompleted: begin()
+    Timer {
+        running: !root.begun
+        interval: 30000
+        onTriggered: Expect.fail("never came: ReadyRows' daemon loaded")
+    }
+    Connections {
+        target: theEmoji.served
+        function onLinkChanged() {
+            root.begin();
+        }
+    }
+
+    function begin() {
+        if (begun || !theEmoji.served.link)
+            return;
+        begun = true;
+        Qt.callLater(root.cases);
+    }
 
     function cases() {
         Expect.run(() => {
             const served = theEmoji.served;
-            Expect.expect("Emoji asks the history over a connection of its own",
-                served.link !== null && served.link !== undefined, root.said());
             Expect.expect("shut, its rows aren't drawn", served.drawn === false, root.said());
             theEmoji.search("tu");
             theEmoji.typedInGroup(root.group, "sm");
-            Expect.expect("shut, a search gone unanswered is let go, as a refresh asks it anew",
+            Expect.expect("shut, a search gone unanswered isn't kept, as its rows aren't drawn",
                 served.lost === null && served.typedLost === null, root.said());
 
             theLauncher.open = true;
