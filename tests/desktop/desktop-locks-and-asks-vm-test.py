@@ -30,6 +30,9 @@ STALLS = "/run/lock-stalls/once"
 # 250 ms apart, each after polkit's answer, so 10 s idle and more on a loaded host, where it's
 # stretched as every wait is (vm_helpers.pace).
 HELD_ASKED = timedelta(seconds=20)
+# Stretched no further than this, short of the minute shell-hands-over.sh waits for the old
+# launcher to close before it hands over anyway, so that launcher is still there to close.
+HELD_AT_MOST = timedelta(seconds=45)
 # How long a first ask after polkit restarts is given to come up before it's read as refused
 # (polkit_asked_again).
 AGENT_BACK = timedelta(seconds=10)
@@ -306,7 +309,8 @@ def test_polkits_prompt_comes_up_after_a_hand_over_that_waited(desktop: Desktop)
             desktop.in_session(f"{said} 'Held until released'"), timeout=STARTING
         )
         # Past the tries a held shell once asked for the agent in, the old launcher still open.
-        machine.sleep(duration=HELD_ASKED * vm_helpers.pace(vm_helpers.busyness()))
+        held = min(HELD_ASKED * vm_helpers.pace(vm_helpers.busyness()), HELD_AT_MOST)
+        machine.sleep(duration=held)
         # Two shells run now, so the old one's launcher is closed by its own process.
         desktop.as_account(f"qs ipc --pid {old} call launcher toggle")
         # Handed over, the unit's main process is the new shell, never none (0).
