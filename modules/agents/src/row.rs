@@ -482,7 +482,6 @@ fn acting(session: Session, stands: Stands, known: &Known) -> Stands {
 /// off still waits, so its row keeps his mark, but in the hue it would
 /// wear wanting nothing, muted for one parked, as its mark is, lighting
 /// nothing above it (top.rs) until the hour is up.
-
 fn worn(session: Session, known: &Known, warns: bool) -> (Stands, Option<Stands>, &'static str) {
     let wears = session.stands_to_joel(known.joel_can, known.jobs);
     let unwanted = unwanted(session, known, wears);
