@@ -12683,6 +12683,9 @@ Scope {
         const weighing = Math.round(weighed - collected);
         const live = Math.round(weight.live);
         const held = Math.round(weight.held);
+        // What's held in memory, since a lent page the kernel took stays
+        // held but costs nothing (heap.h's weigh).
+        const resident = Math.round(weight.resident);
         const outside = Math.round(weight.outside);
         const free = Math.round(weight.free);
         const chunks = Math.round(weight.chunks);
@@ -12692,7 +12695,8 @@ Scope {
         const outsideAt = Math.round(reached.collectsOutsideAt);
         console.info(
             `launcher: collected after closing in ${took} ms: ${live} MB live of ${held} MB`
-            + ` held, ${free} MB of it in free pages, ${outside} MB outside, chunks`
+            + ` held, ${resident} MB of it resident, ${free} MB of it in free pages,`
+            + ` ${outside} MB outside, chunks`
             + ` ${chunks} MB; before it, chunks ${reachedChunks} of ${chunksAt} MB and`
             + ` outside ${reachedOutside} of ${outsideAt} MB, weighed in ${weighing} ms,`
             + ` ${lent} MB of free pages lent in ${lending} ms, the kernel holding`

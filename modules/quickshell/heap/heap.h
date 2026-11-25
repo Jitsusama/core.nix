@@ -23,7 +23,10 @@ public:
     static Heap *create(QQmlEngine *qmlEngine, QJSEngine *engine);
 
     // The heap as it stands, in megabytes: `live`, what its items take;
-    // `held`, the chunks and large items it keeps for them; and `outside`,
+    // `held`, the chunks and large items it keeps for them; `resident`, the
+    // pages of what's held in memory, lent ones not yet taken among them,
+    // and each chunk's header, which `held` leaves out, so it may pass
+    // `held` by a little; and `outside`,
     // what its strings and objects hold beyond the heap; and `free`, of what
     // it holds, the resident pages with nothing in them, which could go
     // back to the kernel without moving anything; `chunks`, what its
