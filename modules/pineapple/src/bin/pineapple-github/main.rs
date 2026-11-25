@@ -1,12 +1,13 @@
 //! The safe word's reader for GitHub.
 //!
 //! `pineapple-github run`, as its service runs it, asks GitHub every
-//! minute, with Joel's own sign-in (gh's, printed by the program
+//! half minute, with Joel's own sign-in (gh's, printed by the program
 //! `SIGN_IN_KEYRING` names, only read), which pull requests and issues he
 //! takes part in changed, and, since GitHub never notifies him of his own
-//! words, which of those name the word, as a search finds them (own.rs). It
-//! reads what was said on each since it last asked, or on one the search
-//! found from an hour before the search reaches: its opening, comments,
+//! words, where he said the word, as the newest comments where he was last
+//! active list it (watch.rs) and a search finds it (own.rs). It reads
+//! what was said on each since it last asked, or on one the search found
+//! from an hour before the search reaches: its opening, comments,
 //! review comments and reviews. Whatever holds "pineapple" or tags him
 //! is judged with the pull request it was said on as its place
 //! (src/github.rs, then judging.rs), and the decision goes in
@@ -68,13 +69,16 @@ use ureq::Agent;
 
 mod judging;
 mod own;
+mod watch;
 
 use judging::judge;
 use own::Searched;
+use watch::Watched;
 
-/// How often GitHub is asked, unless a test says otherwise: with the
-/// enforcer's few seconds after, a stop lands well inside five minutes.
-const EVERY: Duration = Duration::from_secs(60);
+/// How often GitHub is asked, unless a test says otherwise: a stop Joel
+/// writes himself is heard within a minute, and with the enforcer's few
+/// seconds after, anyone's lands well inside five.
+const EVERY: Duration = Duration::from_secs(30);
 
 /// How far back a first start looks, in seconds.
 const LOOK_BACK: u64 = 10 * 60;
@@ -167,7 +171,10 @@ fn help() -> Help {
                 "--repo OWNER/NAME",
                 "a repository searched by author, given once for each, at most 20",
             )
-            .option("--every MS", "how often it asks, a minute unless given"),
+            .option(
+                "--every MS",
+                "how often it asks, half a minute unless given",
+            ),
     )
 }
 
@@ -377,6 +384,7 @@ fn run(how: &Run) -> Result<(), Failure> {
         own: None,
     });
     let mut own = Searched::new(judged.since, judged.own, first, INDEX_LAG);
+    let mut watched = Watched::default();
     let agent: Agent = Agent::config_builder()
         .timeout_global(Some(PATIENCE))
         .http_status_as_error(false)
@@ -392,7 +400,8 @@ fn run(how: &Run) -> Result<(), Failure> {
                     token: &token,
                     agent: &agent,
                 };
-                round(&github, how, &state, &mut judged, &mut own);
+                let reading = (&mut own, &mut watched);
+                round(&github, how, &state, &mut judged, reading);
             }
             SignIn::Missing => eprintln!("<4>no {name} sign-in yet, so nothing is read"),
             // A locked keyring prompts each time it's asked (RAN_OVER_REST).
@@ -574,7 +583,13 @@ fn searched(github: &GitHub<'_>, query: &str) -> Result<Value, Unread> {
 /// One round: what changed since the last, judged oldest first, and how
 /// far it has read moved on only once every pull request and issue it
 /// named was read; Joel's own search only once it was whole too.
-fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own: &mut Searched) {
+fn round(
+    github: &GitHub<'_>,
+    how: &Run,
+    state: &Path,
+    judged: &mut Judged,
+    (own, watched): (&mut Searched, &mut Watched),
+) {
     let began = seconds();
     let Some(login) = who(github, how) else {
         return;
@@ -602,6 +617,18 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
     let mut threads: Vec<(Thread, u64, u64)> = Vec::new();
     for thread in hits.iter().flat_map(|hits| hits.threads.iter()) {
         threads.push((thread.clone(), reach, own.read_from()));
+    }
+    // Where he spoke lately, his words are listed long before searched,
+    // and only what's fresh is read there.
+    let spoken = if mine {
+        watched.listed(github, (&how.site, &login), reach, &judged.keys)
+    } else {
+        Vec::new()
+    };
+    for thread in spoken {
+        if !threads.iter().any(|(known, _, _)| *known == thread) {
+            threads.push((thread, reach, reach));
+        }
     }
     for thread in notified {
         if !threads.iter().any(|(listed, _, _)| *listed == thread) {
