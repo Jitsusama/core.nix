@@ -89,6 +89,73 @@ fn a_session_is_pi_or_mycelium_by_name_or_by_any_word() {
 }
 
 #[test]
+fn an_agents_process_is_known_by_its_name_its_runtime_or_its_slice() {
+    let user = "0::/user.slice/user-1000.slice/user@1000.service";
+    let words = |line: &str| line.split(' ').map(str::to_owned).collect::<Vec<_>>();
+    let hosted = format!("{user}/agents.slice/pi-conversation-work-background@01a1.service");
+    let command = format!("{user}/jobs.slice/jobs-work.slice/pi-spawner-3820109-dc5d.scope");
+    let kittys = format!("{user}/agents.slice/kitty-4248-0.scope");
+    let app = format!("{user}/app.slice/app-gio-google-chrome-2349662.scope");
+    assert!(
+        agents("node", &words("/nix/store/x-nodejs/bin/node"), &hosted),
+        "a hosted session's node in the agents' slice wasn't an agent"
+    );
+    assert!(
+        agents(
+            "node",
+            &words("/nix/store/x-pi-host-runtime-1.5.0/libexec/pi-host/node"),
+            ""
+        ),
+        "the hosted runtime, out of its slice, wasn't an agent"
+    );
+    assert!(
+        agents("chromium", &words("chromium --headless"), &hosted),
+        "a browser a hosted session opened wasn't an agent's"
+    );
+    assert!(
+        agents("pi-spawner", &[], &app),
+        "pi-spawner wasn't an agent by its name"
+    );
+    assert!(
+        agents("bash", &words("bash -c make"), &command),
+        "a command in the jobs' slice wasn't an agent's"
+    );
+    assert!(
+        !agents("zsh", &words("-zsh"), &kittys),
+        "a shell in a scope kitty made for its window was taken for an agent"
+    );
+    assert!(
+        !agents("chrome", &words("/nix/store/x-google-chrome/chrome"), &app),
+        "Joel's own Chrome was taken for an agent"
+    );
+    assert!(
+        agents_group(&format!("{user}/agents.slice/kitty-4248-x.scope")),
+        "a scope only named like kitty's window was let through"
+    );
+}
+
+#[test]
+fn a_multiplexer_is_known_by_its_name_or_its_first_word() {
+    let words = |line: &str| line.split(' ').map(str::to_owned).collect::<Vec<_>>();
+    assert!(
+        multiplexes("tmux: client", &[]),
+        "tmux's client wasn't a multiplexer"
+    );
+    assert!(
+        multiplexes("", &words("/nix/store/x-zellij/bin/zellij attach")),
+        "zellij by its path wasn't a multiplexer"
+    );
+    assert!(
+        multiplexes("screen", &words("screen -r")),
+        "screen wasn't a multiplexer"
+    );
+    assert!(
+        !multiplexes("nvim", &words("nvim tmux.conf")),
+        "nvim editing tmux's config was taken for a multiplexer"
+    );
+}
+
+#[test]
 fn a_journal_line_names_the_entry_and_window_on_one_line_each() {
     let line = journal_line("Git\nHub", "fire\nfox", "didn't type", "no\nwhy");
     assert_eq!(

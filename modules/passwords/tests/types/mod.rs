@@ -2,12 +2,14 @@
 //! typist is named; the password into the window the launcher opened
 //! over, on the typist's standard input alone, once the launcher has let
 //! go of the keys; nothing, and no secret read, where another window has
-//! them, where pi is behind the window or among its forebears, or where
-//! it's kitty and kitty says a session runs in it or can't say what does;
+//! them, where an agent is behind the window, among its forebears or
+//! below it, or where it's kitty and kitty says an agent or a multiplexer
+//! runs in it or can't say what does;
 //! and a journal line for each, naming the entry and the window's app id,
 //! never the secret (ISXEG8's terms for R-type-password, 2026-11-24).
 //! niri, the typist and kitty are stand-ins, and each window's process is
-//! one of the test's own, its forebears made as each case needs.
+//! one of the test's own, its forebears made as each case needs. They run
+//! in the build's sandbox: run beneath an agent, every window is refused.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -68,6 +70,7 @@ impl Desk {
             ("typist", TYPIST),
             ("kitten", KITTEN),
             ("pi", PI),
+            ("pi-spawner", PI),
             ("kitty", KITTY),
         ] {
             let path = folder.join(name);
@@ -145,8 +148,14 @@ impl Desk {
 
     /// A process beneath a stand-in pi, answering its id once it's said.
     fn beneath_pi(&mut self) -> u32 {
+        self.beneath("pi")
+    }
+
+    /// A process beneath a stand-in agent's program, `agent`, answering
+    /// its id once it's said.
+    fn beneath(&mut self, agent: &str) -> u32 {
         let said = self.folder.join("beneath");
-        let pi = self.folder.join("pi").to_string_lossy().into_owned();
+        let pi = self.folder.join(agent).to_string_lossy().into_owned();
         self.start(&pi, &said.to_string_lossy());
         until("pi starts its child", || {
             std::fs::read_to_string(&said).is_ok_and(|id| id.ends_with('\n'))
@@ -158,6 +167,22 @@ impl Desk {
             .unwrap();
         self.started.push(pid);
         pid
+    }
+
+    /// A window's process with a stand-in pi below it, as a terminal
+    /// other than kitty running a session has, answering the window's id.
+    fn above_pi(&mut self) -> u32 {
+        let said = self.folder.join("beneath");
+        let pi = self.folder.join("pi");
+        // The `:` keeps the shell from becoming pi, so pi stays below it.
+        let window = self.start(
+            "/bin/sh",
+            &format!("-c '\"{}\" \"{}\"; :'", pi.display(), said.display()),
+        );
+        until("pi starts below the window", || {
+            std::fs::read_to_string(&said).is_ok_and(|id| id.ends_with('\n'))
+        });
+        window
     }
 
     /// A stand-in kitty's process, named as Linux names kitty.
@@ -334,11 +359,43 @@ fn nothing_is_typed_into_a_window_beneath_pi() {
     desk.focus(WINDOW, window, "chromium");
     let (running, journal) = running("beneath-pi", &desk, &[]);
     let refused = type_github(&running);
-    refused_reading_nothing(&running, &refused, "a pi session reads that window");
+    refused_reading_nothing(&running, &refused, "an agent reads that window");
     assert!(desk.typed().is_none(), "it was typed into pi's window");
     let line = told(&journal);
     assert!(line.contains("PASSWORDS_TYPED=didn't type"), "{line}");
     assert!(line.contains("PASSWORDS_TYPED_APP_ID=chromium"), "{line}");
+}
+
+#[test]
+fn nothing_is_typed_into_a_window_beneath_an_agents_command() {
+    // pi-spawner runs a session's commands, so a window one of them opens
+    // has it above, and no pi.
+    let mut desk = Desk::new("beneath-spawner");
+    let window = desk.beneath("pi-spawner");
+    desk.focus(WINDOW, window, "foot");
+    let (running, _journal) = running("beneath-spawner", &desk, &[]);
+    let refused = type_github(&running);
+    refused_reading_nothing(&running, &refused, "an agent reads that window");
+    assert!(
+        desk.typed().is_none(),
+        "it was typed into a window an agent's command opened"
+    );
+}
+
+#[test]
+fn nothing_is_typed_into_a_window_with_a_session_below_it() {
+    // A terminal other than kitty can't be asked what it runs, so what
+    // runs below its process is read instead.
+    let mut desk = Desk::new("above-pi");
+    let window = desk.above_pi();
+    desk.focus(WINDOW, window, "foot");
+    let (running, _journal) = running("above-pi", &desk, &[]);
+    let refused = type_github(&running);
+    refused_reading_nothing(&running, &refused, "an agent runs in that window");
+    assert!(
+        desk.typed().is_none(),
+        "it was typed into a terminal running pi"
+    );
 }
 
 #[test]
@@ -380,10 +437,35 @@ fn nothing_is_typed_into_a_terminal_running_a_session() {
         desk.kitty_runs(&json!([{"pid": process, "cmdline": runs}]));
         let (running, _journal) = running(test, &desk, &[]);
         let refused = type_github(&running);
-        refused_reading_nothing(&running, &refused, "a pi session runs in that terminal");
+        refused_reading_nothing(&running, &refused, "an agent runs in that terminal");
         assert!(
             desk.typed().is_none(),
             "{test}: it was typed into a session"
+        );
+    }
+}
+
+#[test]
+fn nothing_is_typed_into_a_terminal_whose_multiplexer_kitty_cant_see_past() {
+    for (test, runs) in [
+        ("kitty-tmux", json!(["tmux", "attach"])),
+        (
+            "kitty-zellij",
+            json!(["/nix/store/x-zellij/bin/zellij", "attach"]),
+        ),
+        ("kitty-screen", json!(["screen", "-r"])),
+    ] {
+        let mut desk = Desk::new(test);
+        let kitty = desk.kitty();
+        let process = desk.plain();
+        desk.focus(WINDOW, kitty, "kitty");
+        desk.kitty_runs(&json!([{"pid": process, "cmdline": runs}]));
+        let (running, _journal) = running(test, &desk, &[]);
+        let refused = type_github(&running);
+        refused_reading_nothing(&running, &refused, "kitty can't see past the multiplexer");
+        assert!(
+            desk.typed().is_none(),
+            "{test}: it was typed past a multiplexer"
         );
     }
 }

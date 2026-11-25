@@ -253,7 +253,7 @@ in
       # launcher opened over, with nothing copied while no copier is named,
       # as copying waits until agents are fenced off the clipboard. Only
       # Joel's keys in the launcher reach a type, and nothing is typed into
-      # a pi session's window (src/typing.rs). A machine sets off to true
+      # an agent's window (src/typing.rs). A machine sets off to true
       # for the place to reach no daemon at all.
       managers = map (manager: {
         inherit (manager)
@@ -273,7 +273,7 @@ in
       # an entry's Return does while copying is off: wtype, reading it on
       # its standard input, never its arguments; and kitten, which asks a
       # kitty what runs in its window, so nothing is typed into a terminal
-      # running a pi session (src/typing.rs).
+      # running an agent (src/typing.rs).
       typist = lib.getExe pkgs.wtype;
       kitty = lib.getExe' pkgs.kitty "kitten";
       # The daemon the place runs as its own child, for the shell's life.

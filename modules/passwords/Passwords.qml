@@ -718,7 +718,7 @@ Provider {
     // Asks the daemon to type an entry's password, or a detail of it, into
     // the window the launcher opened over, niri's by its id, which the
     // daemon types into only once the launcher has let go of the keys and
-    // while that window still has them, and never into a pi session's
+    // while that window still has them, and never into an agent's
     // (modules/passwords/src/typing.rs). Only Joel's own keys type one: an
     // act walked from outside the launcher is refused and says so, as a
     // yes to a secret ask is withheld (secret-asks/Shown.js), and no IPC

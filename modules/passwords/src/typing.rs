@@ -2,15 +2,18 @@
 //! as Type the Password does while copying is off (ISXEG8's terms for
 //! R-type-password, 2026-11-24). A typed password reaches whatever reads
 //! that window's keys, so the daemon types only into the window Joel
-//! chose, once the launcher has let go of the keys, and never into one a
-//! pi session reads: a model would see the password and send it on to its
-//! provider. A window is a session's when pi is the program behind it or
-//! among its forebears, as a fenced agent's window is, whose client is
-//! the fenced command. A terminal is asked what it runs in its focused
-//! window instead, since every kitty window shares the one kitty process,
-//! whose forebears say nothing of what runs inside: refused when it runs
-//! pi, or mycelium, which holds and attaches pi sessions, and when kitty
-//! can't say.
+//! chose, once the launcher has let go of the keys, and never into one an
+//! agent reads: a model would see the password and send it on to its
+//! provider. A window is an agent's when an agent's process is behind it,
+//! among its forebears or below it (ISXEG8, 2026-11-24): pi, pi-spawner,
+//! which runs its commands, or mycelium, which holds and attaches pi
+//! sessions; the hosted runtime, which runs sessions as node; or anything
+//! in the agents' or jobs' slices, where a hosted session and every
+//! command it runs are kept. A terminal is asked what it runs in its
+//! focused window instead, since every kitty window shares the one kitty
+//! process, which lives in the agents' slice itself: refused when an agent
+//! runs in it, when a multiplexer stands in front, past which kitty can't
+//! see, and when kitty can't say.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
@@ -36,6 +39,22 @@ const KITTY_ANSWERS: Duration = Duration::from_secs(2);
 /// The programs that are a session, or hold one: pi itself, and mycelium,
 /// which holds pi sessions and attaches a window to one running elsewhere.
 const SESSIONS: [&str; 2] = ["pi", "mycelium"];
+
+/// The programs that are an agent's: the sessions, and pi-spawner, which
+/// runs a session's commands.
+const AGENTS: [&str; 3] = ["pi", "pi-spawner", "mycelium"];
+
+/// The hosted runtime, in a program's path or arguments: it runs pi
+/// sessions as node, a name that says nothing.
+const RUNTIME: &str = "pi-host-runtime";
+
+/// The slices agents run in: hosted sessions and the sessions' kitty in
+/// the agents', every command a session runs in the jobs'.
+const AGENTS_SLICE: &str = "/agents.slice/";
+const JOBS_SLICE: &str = "/jobs.slice/";
+
+/// The programs that hold a terminal's sessions out of kitty's sight.
+const MULTIPLEXERS: [&str; 3] = ["tmux", "zellij", "screen"];
 
 /// kitty's process, by the name Linux gives it: Nix's wrapper renames it.
 const KITTIES: [&str; 2] = ["kitty", ".kitty-wrapped"];
@@ -164,20 +183,115 @@ fn arguments(pid: u32) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// The process at `pid` or among its forebears that is pi, up to the
-/// first, or none.
+/// A process's control group as Linux gives it, or "" for one that's gone.
+fn cgroup(pid: u32) -> String {
+    std::fs::read_to_string(format!("/proc/{pid}/cgroup")).unwrap_or_default()
+}
+
+/// Whether a control group, as /proc gives it, is an agent's: in the jobs'
+/// slice, or the agents' slice but for a scope kitty makes for one of its
+/// windows, which holds whatever Joel starts there.
+#[must_use]
+pub fn agents_group(group: &str) -> bool {
+    group.lines().any(|line| {
+        let path = line.splitn(3, ':').nth(2).unwrap_or("");
+        let unit = path.rsplit('/').next().unwrap_or("");
+        path.contains(JOBS_SLICE) || (path.contains(AGENTS_SLICE) && !kittys_window(unit))
+    })
+}
+
+/// Whether a unit is a scope kitty makes for a window: `kitty-<pid>-<n>.scope`.
+fn kittys_window(unit: &str) -> bool {
+    unit.strip_prefix("kitty-")
+        .and_then(|rest| rest.strip_suffix(".scope"))
+        .and_then(|rest| rest.split_once('-'))
+        .is_some_and(|(pid, n)| {
+            [pid, n]
+                .iter()
+                .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
+        })
+}
+
+/// Whether a process named so, with these arguments, in this control
+/// group, is an agent's. kitty's own group is passed as "", since the
+/// sessions' kitty lives in the agents' slice and is asked what it runs.
+#[must_use]
+pub fn agents(name: &str, words: &[String], group: &str) -> bool {
+    AGENTS.contains(&name) || words.iter().any(|word| word.contains(RUNTIME)) || agents_group(group)
+}
+
+/// Whether the process at `pid` is an agent's, as /proc says.
+fn an_agent(pid: u32) -> bool {
+    let name = program(pid);
+    let group = if KITTIES.contains(&name.as_str()) {
+        String::new()
+    } else {
+        cgroup(pid)
+    };
+    let mut words = arguments(pid);
+    if let Ok(path) = std::fs::read_link(format!("/proc/{pid}/exe")) {
+        words.push(path.to_string_lossy().into_owned());
+    }
+    agents(&name, &words, &group)
+}
+
+/// The process at `pid` or among its forebears that is an agent's, up to
+/// the first, or none.
 #[must_use]
 pub fn session_above(pid: u32) -> Option<u32> {
     let mut at = Some(pid);
     // A loop in what /proc says can't be, but is never followed forever.
     for _ in 0..4096 {
         let here = at?;
-        if program(here) == "pi" {
+        if an_agent(here) {
             return Some(here);
         }
         at = parent(here).filter(|up| *up != 0 && *up != here);
     }
     None
+}
+
+/// Whether an agent's process runs anywhere below `pid`, as a session in
+/// a terminal other than kitty does, whose own process is no agent's.
+fn agent_below(pid: u32) -> bool {
+    let Ok(entries) = std::fs::read_dir("/proc") else {
+        return true;
+    };
+    let parents: Vec<(u32, u32)> = entries
+        .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse().ok())
+        .filter_map(|child| Some((child, parent(child)?)))
+        .collect();
+    let mut below = vec![pid];
+    let mut seen = 0;
+    while seen < below.len() {
+        let at = below[seen];
+        seen += 1;
+        for (child, _) in parents
+            .iter()
+            .filter(|(child, up)| *up == at && *child != at)
+        {
+            if an_agent(*child) {
+                return true;
+            }
+            if !below.contains(child) {
+                below.push(*child);
+            }
+        }
+    }
+    false
+}
+
+/// Whether a program named so, with these arguments, is a multiplexer,
+/// whose sessions kitty can't see past: tmux names its client "tmux: client".
+#[must_use]
+pub fn multiplexes(name: &str, words: &[String]) -> bool {
+    let one = |word: &str| {
+        let base = word.rsplit('/').next().unwrap_or(word);
+        MULTIPLEXERS
+            .iter()
+            .any(|multiplexer| base == *multiplexer || base.starts_with(&format!("{multiplexer}:")))
+    };
+    one(name) || words.first().is_some_and(|first| one(first))
 }
 
 /// Whether a program named so, with these arguments, is a session or
@@ -310,8 +424,9 @@ fn kitty_says(kitty: &str, pid: u32) -> Result<String, String> {
 ///
 /// # Errors
 ///
-/// Where another window has the keys, niri says not whose it is, pi reads
-/// it, or it's a terminal that runs a session or can't say what it runs.
+/// Where another window has the keys, niri says not whose it is, an agent
+/// reads it, or it's a terminal that runs an agent, a multiplexer, or
+/// can't say what it runs.
 pub fn fit(
     niri: &Path,
     window: u64,
@@ -330,9 +445,12 @@ pub fn fit(
         return refused("niri didn't say whose window it is");
     };
     if session_above(pid).is_some() {
-        return refused("a pi session reads that window");
+        return refused("an agent reads that window");
     }
     if !kitty(pid) {
+        if agent_below(pid) {
+            return refused("an agent runs in that window");
+        }
         return Ok(app);
     }
     let Some(kitty_program) = kitty_program else {
@@ -345,12 +463,18 @@ pub fn fit(
     let Some(running) = foreground(&said) else {
         return refused("kitty didn't say what runs in its window");
     };
+    let named = |pid: &Option<u32>| pid.map(program).unwrap_or_default();
+    if running
+        .iter()
+        .any(|(pid, words)| multiplexes(&named(pid), words))
+    {
+        return refused("kitty can't see past the multiplexer in that terminal");
+    }
     let session = running.iter().any(|(pid, words)| {
-        let name = pid.map(program).unwrap_or_default();
-        a_sessions(&name, words) || pid.and_then(session_above).is_some()
+        a_sessions(&named(pid), words) || pid.and_then(session_above).is_some()
     });
     if session {
-        return refused("a pi session runs in that terminal");
+        return refused("an agent runs in that terminal");
     }
     Ok(app)
 }
