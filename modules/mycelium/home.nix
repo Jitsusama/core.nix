@@ -596,10 +596,10 @@ in
         fence here, the first a program in the Nix store, as each fenced
         and strict fence the machine declares says them: pi's own fence,
         strict, on Linux and on a Mac, whose strict reads the home folder
-        but what it hides, where Linux's reads only what it lists. An
-        agent's fenced or strict held start goes after them too, but not
-        `agents` where it is told its fence instead: on Linux, and on a Mac
-        with `declares.piFencesItself`. Null refuses each run and start that would go after them.
+        but what it hides, where Linux's reads only what it lists. A held
+        fenced or strict start goes after them too, but for the agent
+        program, told its fence instead on Linux and on a Mac declaring
+        `declares.piFencesItself`. Null refuses all that would go after them.
       '';
     };
   }
@@ -726,7 +726,7 @@ in
       assertions = [
         {
           assertion = cfg.declares.piFencesItself -> isDarwin;
-          message = "jitsusama.mycelium.declares.piFencesItself is set on Linux; it says pi fences each command it runs with a sandbox profile, which only a Mac's pi does.";
+          message = "jitsusama.mycelium.declares.piFencesItself is set on Linux; it says pi fences each command it runs with a sandbox profile, which only a Mac's pi does; set it only on a Mac.";
         }
       ];
       # Where the account's commands read it: XDG_CONFIG_HOME's, or

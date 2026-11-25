@@ -93,7 +93,8 @@ rec {
           sandbox profile, so a fenced or strict session starts as pi alone
           rather than within the fence's launcher. Then only the commands pi
           runs are fenced, not pi's own reads and calls. Refused on Linux,
-          where pi lays no such fence.
+          whose pi fences each command with Landlock rather than a sandbox
+          profile, and whose node takes it as fencing itself unasked.
         '';
       };
       taints = lib.mkOption {
@@ -155,9 +156,10 @@ rec {
           a Mac's strict reads the home folder but what pi's fence hides,
           where Linux's reads only what it lists, and it writes the account's
           temporary folder, yet both say strict. So a carry from Linux to a
-          Mac lands looser in what it may read and write. On a Mac declaring
-          piFencesItself, the kind fences only the commands pi runs, while
-          pi's own reads, writes and calls stand outside it.
+          Mac lands looser in what it may read and write. Where the agent
+          program is held, on Linux and on a Mac declaring piFencesItself,
+          the kind fences only the commands pi runs, while pi's own reads,
+          writes and calls stand outside it.
         '';
       };
     };
