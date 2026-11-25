@@ -1,6 +1,8 @@
 # The checks of pi's shared hosts, which pi's checks.nix gathers beside its
 # own: the units host.nix renders for each realm and the proof each realm's pi
 # needs, kept apart since they change with host.nix and nothing else.
+# Long because each check builds its own machine around one of host.nix's
+# units, and splitting them would split what one change to host.nix reaches.
 {
   account,
   bareDarwin,
