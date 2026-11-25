@@ -12,6 +12,7 @@ import {
   holds,
   keeps,
   lede,
+  standingLine,
   startedFrom,
   steps,
 } from "../model.ts";
@@ -193,13 +194,35 @@ it("the headline says how many cells are on quests, and how many have no purpose
   });
   assert.equal(headline(forages.slice(0, 1)).lead, "One cell on a quest,");
   assert.equal(headline(forages.slice(0, 1)).turn, "with its purpose.");
+  assert.equal(headline(forages.slice(1)).lead, "One cell on a quest,");
   assert.equal(headline(forages.slice(1)).turn, "without purpose.");
+  const hollow = foragesOf(
+    told([forage("KESTRL", { purpose: "" }), forage("OSPREY", { purpose: "" })]),
+  ).forages;
+  assert.deepEqual(headline(hollow), {
+    cells: 2,
+    without: 2,
+    lead: "2 cells on quests,",
+    turn: "all without purpose.",
+  });
   assert.deepEqual(headline([]), {
     cells: 0,
     without: 0,
     lead: "No cells",
-    turn: "on a quest here.",
+    turn: "on a quest.",
   });
+});
+
+/** A broken standing as the line says it, and what it couldn't read after it. */
+const BROKEN_SAID = /^Not live since \d\d:\d\d: the node is down\. This is how it stood then\./u;
+const UNREAD_SAID = / Couldn't read: forage:NONAME named no cell; a wait had no id\.$/u;
+
+it("the standing line says how the page stands, then what it couldn't read", () => {
+  assert.equal(standingLine(undefined, []), "Reaching the mycelium node.");
+  const broken = { state: "broken", since: 0, reason: "the node is down" } as const;
+  const line = standingLine(broken, ["forage:NONAME named no cell", "a wait had no id"]);
+  assert.match(line, BROKEN_SAID);
+  assert.match(line, UNREAD_SAID);
 });
 
 it("the headline sets a count's thousands apart", () => {

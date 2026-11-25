@@ -12,7 +12,7 @@ import { addressIn } from "../../local-sites/kit/cell.ts";
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { type Actions, listen, toggle } from "../../local-sites/kit/keys.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
-import { said, tell } from "../../local-sites/kit/status.ts";
+import { tell } from "../../local-sites/kit/status.ts";
 import { pressable } from "../../local-sites/kit/steps.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import {
@@ -36,6 +36,7 @@ import {
   holds,
   lede,
   shownBy,
+  standingLine,
   startedFrom,
   unwritten,
 } from "./model.ts";
@@ -108,12 +109,11 @@ function machine(): string {
   return forages[0]?.machine ?? "";
 }
 
+const standingWords = (): string => standingLine(standing, [...unread, ...(heard ? [heard] : [])]);
+
 /** Says whether what's drawn is live, and what couldn't be read. */
 function sayWhen(): void {
-  const problems = [...unread, ...(heard === undefined ? [] : [heard])];
-  const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
-  const words = standing === undefined ? "Reaching the mycelium node." : said(standing);
-  tell(asof, `${words}${trouble}`, standing?.state ?? "connecting");
+  tell(asof, standingWords(), standing?.state ?? "connecting");
   if (!given && standing?.state === "broken") {
     title.textContent = "Nothing to draw yet.";
     ledeLine.textContent =
@@ -367,7 +367,10 @@ function copy(): void {
     return;
   }
   const line = command(open);
-  const say = (words: string): void => tell(asof, words, standing?.state ?? "connecting");
+  // An event, written even when it repeats, ahead of the standing words it keeps.
+  const say = (words: string): void => {
+    asof.textContent = `${words} ${standingWords()}`;
+  };
   navigator.clipboard.writeText(line).then(
     () => say(`Copied ${line}.`),
     (error: unknown) => say(`Couldn't copy (${String(error)}); the command is ${line}.`),

@@ -8,8 +8,10 @@
 // page couldn't make sense of is said rather than drawn as if it were
 // whole.
 
+import type { Standing } from "../../local-sites/kit/feed.ts";
 import type { Fields, Held } from "../../local-sites/kit/records.ts";
 import { isObject, number, object, text } from "../../local-sites/kit/records.ts";
+import { said as saidStanding } from "../../local-sites/kit/status.ts";
 import {
   bookedOf,
   bothEnds,
@@ -357,7 +359,7 @@ function headline(forages: readonly Forage[]): Headline {
   const cells = forages.length;
   const without = forages.filter(unwritten).length;
   if (cells === 0) {
-    return { cells, without, lead: "No cells", turn: "on a quest here." };
+    return { cells, without, lead: "No cells", turn: "on a quest." };
   }
   const lead = cells === 1 ? "One cell on a quest," : `${grouped(cells)} cells on quests,`;
   if (without === 0) {
@@ -422,6 +424,12 @@ function waited(forages: readonly Forage[]): string {
   const count =
     things.size === 1 ? "One thing waits on you" : `${grouped(things.size)} things wait on you`;
   return `${count}, from ${named(cells)}. `;
+}
+
+/** The standing line: whether what's drawn is live, then what couldn't be read. */
+function standingLine(standing: Standing | undefined, problems: readonly string[]): string {
+  const words = standing === undefined ? "Reaching the mycelium node." : saidStanding(standing);
+  return problems.length > 0 ? `${words} Couldn't read: ${problems.join("; ")}.` : words;
 }
 
 /**
@@ -544,6 +552,7 @@ export {
   keeps,
   lede,
   shownBy,
+  standingLine,
   startedFrom,
   steps,
   unwritten,

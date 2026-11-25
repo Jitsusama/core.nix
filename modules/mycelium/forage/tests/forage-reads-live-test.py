@@ -64,8 +64,9 @@ CELLS = ["KESTRL", "SKIFFS", "TERNAA", "OSPREY"]
 # at what the page asks for now, on purpose: each module is one more file a first visit waits
 # on, so splitting one out raises this as a choice rather than slipping past it. The kit's
 # cell.ts is the 23rd, the one way every site names a cell, and its head.css the 24th, the
-# head every live page opens with, whose eyebrow's dot is one element more.
-BUDGET = Budget(files=24, kilobytes=516, elements=256)
+# head every live page opens with. Its link and the eyebrow's dot are two elements more, and
+# the elements keep the one of room they had.
+BUDGET = Budget(files=24, kilobytes=516, elements=257)
 
 
 @pytest.fixture
@@ -234,6 +235,22 @@ def test_the_keys_step_the_cursor(forage_page: Page) -> None:
     expect(forage_page.locator("#panel-body h3"), "the panel didn't follow").to_have_text("OSPREY")
     forage_page.keyboard.press("g")
     selected(forage_page, "KESTRL", "g didn't go to the first row")
+
+
+def test_a_tap_on_a_key_the_head_shows_does_what_typing_it_does(forage_page: Page) -> None:
+    says_it_stands(forage_page, "live")
+    every_cell_drawn(forage_page)
+    shown = forage_page.locator(".page-head .keys kbd")
+    tapped = shown.filter(has_text="j")
+    expect(tapped, "j in the head wasn't made a button").to_have_attribute("role", "button")
+    tapped.click()
+    selected(forage_page, "SKIFFS", "a tap on j didn't step down")
+    expect(forage_page.locator("#cells"), "the list didn't hold the keys after j").to_be_focused()
+    shown.filter(has_text="k").click()
+    selected(forage_page, "KESTRL", "a tap on k didn't step up")
+    # Typed now, so a tap that left the keys on the kbd would leave the cursor.
+    forage_page.keyboard.press("j")
+    selected(forage_page, "SKIFFS", "a key typed after a tap didn't step")
 
 
 # The tops a node longer than the floor holds, CELLAA to CELLCG, then the one
@@ -427,6 +444,7 @@ def test_a_purpose_written_and_cells_gone_are_followed(
     expect(forage_page.locator("#floor svg.crest"), "the crest didn't come back").to_have_count(1)
     expect(forage_page.locator("#floor rect[data-cell]"), "gone cells were drawn").to_have_count(0)
     expect(forage_page.locator("#panel-body"), "a gone cell's panel stayed").to_be_empty()
+    expect(headline, "the count of no cells wasn't said").to_have_text("No cells on a quest.")
     # A cell heard again, as after a node's restart, takes the floor back from the crest.
     mycelium_node.tell("forage", changed=[long_record("PLOVER")])
     expect(cell(forage_page, "PLOVER"), "the cell heard again wasn't listed").to_have_count(
