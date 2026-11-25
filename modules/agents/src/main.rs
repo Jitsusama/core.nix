@@ -406,9 +406,12 @@ fn for_the_shell_alone(
     ]);
 }
 
-/// What an answer from anyone but the shell is told, whichever check
-/// refused it, as Let Them Start says its own.
-const ONLY_THE_SHELL: &str = "only the launcher answers for Joel here";
+/// What an answer the shell's check refused is told, as Let Them Start
+/// says its own. Joel reads it where his own Return was refused because
+/// the check couldn't be made, so it says what the daemon couldn't tell
+/// rather than who may answer.
+const ONLY_THE_SHELL: &str =
+    "the agents daemon takes an answer only from the launcher, and couldn't tell this came from it";
 
 /// Joel's answer to one of `wants`, steered through `node` only where
 /// `asker` says the shell asked it: the node takes it as his, so an
