@@ -607,12 +607,12 @@ Lending lentOnce() {
 // lending the kernel took from is tried once more, and if it takes again,
 // what it holds lent and what stays resident are left unjudged, with a
 // note. What it said, marked and left once taken, and what reads back, are
-// judged on both tries, through asLent().
+// judged through asLent() on a first try taken from and on the try judged.
 bool lendsBack() {
     const Lending first = lentOnce();
     const Lending lending = first.calm ? first : lentOnce();
     const bool firstAsLent = first.calm || first.asLent();
-    const bool said = lending.saidAsCounted();
+    const bool asLent = lending.asLent();
     const bool held = !lending.calm || (lending.lentBefore >= 0 &&
                                         lending.lentAfter - lending.lentBefore > lending.free / 2);
     const bool kept = !lending.calm || lending.freeLent > lending.free / 2;
@@ -621,8 +621,6 @@ bool lendsBack() {
     // early has already lowered it, so only a calm lending is judged.
     const bool fell =
         !lending.calm || lending.residentLent - lending.residentTaken > lending.lent / 2;
-    const bool marked = lending.markedAsLent();
-    const bool taken = lending.goneOnceTaken();
     const ReadBack &read = lending.read;
     if (!lending.counted)
         std::fprintf(stderr,
@@ -643,24 +641,24 @@ bool lendsBack() {
     if (!firstAsLent)
         std::fprintf(stderr,
                      "FAIL the first lending, taken from early, said %.1f MB of %.1f free, "
-                     "marked %.1f MB lent, %.1f MB free once taken (%s); the few summed %.0f "
-                     "of %.0f, and what was made after %.0f of %.0f\n",
+                     "marked %.1f MB lent (-1 if uncounted), %.1f MB free once taken (%s); the "
+                     "few summed %.0f of %.0f, and what was made after %.0f of %.0f\n",
                      first.lent, first.free, first.marked, first.freeTaken,
                      first.took ? "taken" : "the kernel refused", first.read.kept,
                      first.read.keptMade, first.read.after, first.read.afterMade);
-    if (!said || !held || !kept || !fell || !marked || !taken || !read.asMade())
+    if (!asLent || !held || !kept || !fell)
         std::fprintf(stderr,
                      "FAIL lending %.1f MB of free pages back says so, keeps them resident "
                      "until the kernel takes them, and leaves what's kept: said %.1f MB; the "
-                     "kernel held %.1f, then %.1f MB lent, and marked %.1f MB; %.1f MB free once "
-                     "lent, and %.1f once taken (%s); %.1f MB held resident once lent, and "
-                     "%.1f once taken; the few summed %.0f of %.0f, and what was made after "
-                     "%.0f of %.0f\n",
+                     "kernel held %.1f, then %.1f MB lent, and marked %.1f MB (-1 if uncounted); "
+                     "%.1f MB free once lent, and %.1f once taken (%s); %.1f MB held "
+                     "resident once lent, and %.1f once taken; the few summed %.0f of %.0f, "
+                     "and what was made after %.0f of %.0f\n",
                      lending.free, lending.lent, lending.lentBefore, lending.lentAfter,
                      lending.marked, lending.freeLent, lending.freeTaken,
                      lending.took ? "taken" : "the kernel refused", lending.residentLent,
                      lending.residentTaken, read.kept, read.keptMade, read.after, read.afterMade);
-    return firstAsLent && said && held && kept && fell && marked && taken && read.asMade();
+    return firstAsLent && asLent && held && kept && fell;
 }
 
 // How many runs too small for what's made after are freed, each a store
