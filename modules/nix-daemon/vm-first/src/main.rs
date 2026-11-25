@@ -225,14 +225,15 @@ impl Proc {
         Some(String::from_utf8_lossy(&self.read(name)?).into_owned())
     }
 
-    /// The process `pid` names, should it have started no later than the
-    /// clock tick its namer did, `named_at`, the namer naming it as its
-    /// parent or its client: by then the pid could be a process made
-    /// since, which starts later, as only a pid used again in the same
-    /// clock tick could not.
-    fn open_older(pid: u32, named_at: u64) -> Option<Proc> {
+    /// The process `pid` names, and its stat, should it have started no
+    /// later than the clock tick its namer did, `named_at`, the namer
+    /// naming it as its parent or its client: by then the pid could be a
+    /// process made since, which starts later, as only a pid used again in
+    /// the same clock tick could not.
+    fn open_older(pid: u32, named_at: u64) -> Option<(Proc, String)> {
         let opened = Proc::open(pid)?;
-        (parse_started(&opened.text("stat")?)? <= named_at).then_some(opened)
+        let stat = opened.text("stat")?;
+        (parse_started(&stat)? <= named_at).then_some((opened, stat))
     }
 }
 
@@ -246,28 +247,44 @@ impl Proc {
 /// pass for one, but read before, the command line of a process gone by
 /// then won't read.
 ///
-/// The walk starts at the first process the build's cgroup lists, opened
-/// only while its cgroup is still the build's or one under it, since by
-/// then its pid could be another's.
+/// The walk starts at the build's first process, opened only while its
+/// cgroup is still the build's or one under it, since by then its pid
+/// could be another's.
 fn client_of_build(build: &Path) -> Option<Proc> {
-    let procs = fs::read_to_string(build.join("cgroup.procs")).ok()?;
-    let mut process = Proc::open(procs.lines().next()?.parse().ok()?)?;
+    let mut process = Proc::open(first_process(build)?)?;
     if !in_cgroup(&process.text("cgroup")?, build) {
         return None;
     }
+    let mut stat = process.text("stat")?;
     for _ in 0..WORKER_DEPTH {
         let owner = process.owner()?;
-        let stat = process.text("stat")?;
         let started = parse_started(&stat)?;
         if let Some(client) = process
             .read("cmdline")
             .and_then(|cmdline| client_of(&cmdline, owner))
         {
-            return Proc::open_older(client, started);
+            return Proc::open_older(client, started).map(|(client, _)| client);
         }
-        process = Proc::open_older(parse_ppid(&stat)?, started)?;
+        (process, stat) = Proc::open_older(parse_ppid(&stat)?, started)?;
     }
     None
+}
+
+/// The first process a build's cgroup lists, else the first a cgroup under
+/// it lists, so a build that moves every process into a cgroup of its own
+/// is still weighed by its quest.
+fn first_process(build: &Path) -> Option<u32> {
+    pids_under(build).first()?.parse().ok()
+}
+
+/// Whether `cgroup` names a cgroup as a process's `/proc/<pid>/cgroup`
+/// would, from the file system's root down and never back up it, without
+/// which every client would be taken for out of its build's cgroup.
+fn under_cgroup_root(cgroup: &Path) -> bool {
+    cgroup.starts_with(CGROUP_ROOT)
+        && !cgroup
+            .components()
+            .any(|part| part == std::path::Component::ParentDir)
 }
 
 /// Whether a process's `/proc/<pid>/cgroup` puts it in `cgroup`, a path
@@ -647,7 +664,11 @@ fn settings(args: &[String]) -> Result<Settings, Failure> {
                 .ok_or_else(|| wrongly(format!("{flag} needs a value")))
         };
         match flag.as_str() {
-            "--cgroup" => settings.cgroup = PathBuf::from(value()?),
+            "--cgroup" => {
+                settings.cgroup = Some(PathBuf::from(value()?))
+                    .filter(|cgroup| under_cgroup_root(cgroup))
+                    .ok_or_else(|| wrongly(format!("--cgroup is a path under {CGROUP_ROOT}")))?;
+            }
             "--name" => settings.names.push(value()?.clone()),
             "--nice" => {
                 settings.nice = value()?

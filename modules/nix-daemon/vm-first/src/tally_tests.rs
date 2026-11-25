@@ -92,7 +92,8 @@ fn every_separator_and_mark_turning_text_round_is_unsafe_and_its_neighbours_safe
         assert!(unsafe_to_say(c), "{c:?} was said as it is");
     }
     for c in [
-        '\u{061b}', '\u{200d}', '\u{2027}', '\u{202f}', '\u{2065}', '\u{206a}', 'é',
+        '\u{061b}', '\u{061d}', '\u{200d}', '\u{2010}', '\u{2027}', '\u{202f}', '\u{2065}',
+        '\u{206a}', 'é',
     ] {
         assert!(!unsafe_to_say(c), "{c:?} was escaped");
     }

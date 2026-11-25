@@ -66,25 +66,27 @@ fn a_process_named_is_opened_only_if_it_started_no_later_than_its_namer() {
 #[test]
 fn a_build_s_first_process_counts_only_while_in_its_cgroup_or_one_under_it() {
     let build = Path::new("/sys/fs/cgroup/build.slice/nix-daemon.service/nix-build-a.slice");
-    let at = |path: &str| format!("0::{path}\n");
-    assert!(in_cgroup(
-        &at("/build.slice/nix-daemon.service/nix-build-a.slice"),
-        build
-    ));
-    assert!(in_cgroup(
-        &at("/build.slice/nix-daemon.service/nix-build-a.slice/payload"),
-        build
-    ));
-    assert!(!in_cgroup(
-        &at("/build.slice/nix-daemon.service/nix-build-ab.slice"),
-        build
-    ));
-    assert!(!in_cgroup(&at("/user.slice"), build));
-    // Only the unified hierarchy's line says where a process sits.
-    assert!(!in_cgroup(
-        "1:cpu:/build.slice/nix-daemon.service/nix-build-a.slice\n0::/user.slice\n",
-        build
-    ));
+    let daemon = "0::/build.slice/nix-daemon.service";
+    // A cgroup whose name only starts with the build's is another's, and
+    // only the unified hierarchy's line says where a process sits.
+    for (said, within) in [
+        (format!("{daemon}/nix-build-a.slice\n"), true),
+        (format!("{daemon}/nix-build-a.slice/payload\n"), true),
+        (format!("{daemon}/nix-build-ab.slice\n"), false),
+        (format!("{daemon}/nix-build-a.slice-x\n"), false),
+        (format!("{daemon}/nix-build-a.sliced\n"), false),
+        ("0::/user.slice\n".to_owned(), false),
+        (
+            "1:cpu:/build.slice/nix-daemon.service/nix-build-a.slice\n0::/user.slice\n".to_owned(),
+            false,
+        ),
+    ] {
+        assert_eq!(
+            in_cgroup(&said, build),
+            within,
+            "{said:?} was read as in the build's cgroup when it isn't, or out when it is"
+        );
+    }
 }
 
 #[test]
@@ -92,6 +94,19 @@ fn reads_when_a_process_started_past_a_name_with_spaces() {
     let stat = "4242 (a b) c) S 1 4242 4242 0 -1 4194560 100 0 0 0 1 2 0 0 20 0 1 0 98765 1 2";
     assert_eq!(parse_started(stat), Some(98765));
     assert_eq!(parse_started("4242 (cc1) S 1"), None);
+    // A name that isn't UTF-8 is read as a stand-in, as Proc::text reads
+    // it, and the fields past it still read.
+    let lossy = [
+        b"4242 (a\xff\xfe) S 1 4242 4242 0 -1 4194560".as_slice(),
+        b" 100 0 0 0 1 2 0 0 20 0 1 0 98765 1 2",
+    ]
+    .concat();
+    let lossy = String::from_utf8_lossy(&lossy);
+    assert_eq!(
+        (parse_started(&lossy), parse_ppid(&lossy)),
+        (Some(98765), Some(1)),
+        "a name that isn't UTF-8 lost the fields past it"
+    );
 }
 
 fn words(line: &str) -> Vec<String> {
@@ -138,6 +153,9 @@ fn a_flag_asked_wrongly_is_a_usage_failure() {
         "--weight 0",
         "--every soon",
         "--quick",
+        "--cgroup sys/fs/cgroup/build.slice",
+        "--cgroup /sys/fs/cgroup/../build.slice",
+        "--cgroup /run/build.slice",
     ] {
         let exit = settings(&words(line)).err().map(|failure| failure.exit);
         assert_eq!(
@@ -302,15 +320,19 @@ fn reads_a_parent() {
 
 #[test]
 fn finds_the_quest_a_client_works_for() {
-    let quest = "/user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-work.slice/jobs-work-qest20261024abc123.slice";
+    let quest = concat!(
+        "/user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-work.slice",
+        "/jobs-work-qest20261024abc123.slice"
+    );
     assert_eq!(
         quest_slice(&format!("0::{quest}/work-307590-4656305.scope\n")),
         Some(quest)
     );
     assert_eq!(
-        quest_slice(
-            "0::/user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-work.slice/work-1-2.scope\n"
-        ),
+        quest_slice(concat!(
+            "0::/user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-work.slice",
+            "/work-1-2.scope\n"
+        )),
         None
     );
     assert_eq!(
@@ -321,7 +343,10 @@ fn finds_the_quest_a_client_works_for() {
 
 #[test]
 fn a_tiered_quests_build_is_weighed_by_its_tier() {
-    let tier = "/user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-work.slice/jobs-work-driving.slice";
+    let tier = concat!(
+        "/user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-work.slice",
+        "/jobs-work-driving.slice"
+    );
     assert_eq!(
         quest_slice(&format!(
             "0::{tier}/jobs-work-driving-qest20261024abc123.slice/work-1-2.scope\n"
@@ -409,6 +434,27 @@ fn finds_every_process_under_a_build_its_containers_too() {
     fs::remove_dir_all(&root).unwrap();
 
     assert_eq!(found, vec!["10", "11", "30"]);
+}
+
+#[test]
+fn a_builds_first_process_is_its_own_else_the_first_under_it() {
+    let root = std::env::temp_dir().join(format!("vm-first-first-{}", std::process::id()));
+    let payload = root.join("payload");
+    fs::create_dir_all(&payload).unwrap();
+    fs::write(root.join("cgroup.procs"), "10\n11\n").unwrap();
+    fs::write(payload.join("cgroup.procs"), "30\n").unwrap();
+    let own = first_process(&root);
+    fs::write(root.join("cgroup.procs"), "").unwrap();
+    let moved = first_process(&root);
+    fs::write(payload.join("cgroup.procs"), "").unwrap();
+    let none = first_process(&root);
+    fs::remove_dir_all(&root).unwrap();
+
+    assert_eq!(
+        (own, moved, none),
+        (Some(10), Some(30), None),
+        "a build's first process wasn't its own, else the first under it"
+    );
 }
 
 #[test]
