@@ -63,7 +63,7 @@ pub(super) fn land(
         .collect();
     let (mut going, mut base) = (candidate.to_owned(), base.to_owned());
     for _ in 0..RECUTS {
-        let Some(main) = main_of(git) else {
+        let Ok(main) = super::origin::main(git) else {
             return Landing::Refused("origin's main couldn't be read".to_owned());
         };
         if main == base {
@@ -83,15 +83,6 @@ pub(super) fn land(
         }
     }
     Landing::Moved
-}
-
-/// Origin's main as it stands, fetched afresh, trying three times, as a
-/// fetch beside another can't lock its ref.
-fn main_of(git: &dyn Fn(&[&str]) -> Result<String, String>) -> Option<String> {
-    (0..3).find_map(|_| {
-        git(&["fetch", "--quiet", "origin", "main"]).ok()?;
-        git(&["rev-parse", "refs/remotes/origin/main"]).ok()
-    })
 }
 
 /// How long the train first waits on GitHub before asking again, doubled
