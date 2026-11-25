@@ -549,7 +549,8 @@ fn a_run_s_file_another_run_holds_is_left_with_its_copy_and_tree_to_it() {
              echo {theirs} \"$(uname -n)\" \"$(readlink /proc/self/ns/pid 2>/dev/null)\" \
              > \"$runs/1.run\" && : > \"$runs/1/theirs\" && : > \"$runs/1.names\" && \
              mkdir \"$runs/2\" && \
-             sed 's/^{theirs} /{ended} /' \"$runs/1.run\" > \"$runs/2.run\"; fi"
+             sed 's/^{theirs} /{ended} /' \"$runs/1.run\" > \"$runs/2.run\" && \
+             : > \"$HOME/planted\"; fi"
         ),
     );
     let (code, err, home) = far_line(
@@ -559,6 +560,12 @@ fn a_run_s_file_another_run_holds_is_left_with_its_copy_and_tree_to_it() {
         &kind(""),
         None,
         &[(step, &winning)],
+    );
+    // First, so neither a win nor the gone run's absence below is read
+    // while its planting never got that far.
+    assert!(
+        home.join("planted").exists(),
+        "the two runs weren't planted: {err}"
     );
     let heard = relay(said(&home).as_slice(), "1");
     assert!(
