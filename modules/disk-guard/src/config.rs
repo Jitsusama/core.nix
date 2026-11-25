@@ -3,6 +3,8 @@
 //! Nix renders one JSON file per daemon, and the build runs `check-config`
 //! over it, so a field this doesn't know, a path that isn't absolute or a
 //! source the scope doesn't own fails the build rather than the daemon.
+//! Long because it is that file's whole shape: every setting a machine
+//! can write is read and checked here, in one place.
 
 use crate::band::Band;
 use crate::hours::Hours;
