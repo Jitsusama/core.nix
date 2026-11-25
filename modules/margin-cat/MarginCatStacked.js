@@ -125,7 +125,9 @@ function walkAlong(from, to, at) {
 // between that window and the one inside the edge, if there's one and
 // that window is all past the edge, and walks on from there without
 // thinking again. Partly on the screen, it walks on from where it's drawn.
-function comesIn(from, at) {
+// It first `holds` that many ms out of sight where given, as niri slides
+// to another workspace under it (moves()).
+function comesIn(from, at, holds) {
     if (at.across === undefined || Routes.onScreen(from.x, at)) {
         return null;
     }
@@ -145,6 +147,9 @@ function comesIn(from, at) {
     way.turn = 0;
     if (seen) {
         return { way, side };
+    }
+    if (holds) {
+        Ways.leg(way, "rides", way, { ms: holds, slide: () => 0, posed: () => null });
     }
     Ways.leg(way, "climbs", { x: peeked, y },
         { name: "peeks", ms: (PEEKS * CREEPS * MarginCat.MS) / 60, bounds: PEEKS / 2 });
@@ -182,6 +187,27 @@ function rides(carry, place, to, told) {
     return { from, at, ends: MarginCat.slides(spring), spring };
 }
 
+// How the cat goes back to its seat `there` on the column it sat on, as
+// niri's layout has it, from its `place` (MarginCatScreen.qml's follow):
+// "stays" where it's there already, a ride under way running on as its
+// window's spring does, never set off again from a lag gone by, as the
+// keys come back to a column still in view; "rides" with its window from
+// where it's drawn while niri's spring slides the strip, a ride under way
+// (`at.riding`) or a scroll niri told of within its spring
+// (`at.scrolling`), or from wholly off the screen, where only a scroll
+// leaves it; and "sits" there at once otherwise, nowhere before or as a
+// floating window dragged carries it, which niri doesn't animate.
+function backOn(place, there, at) {
+    if (place === null) {
+        return "sits";
+    }
+    if (Math.abs(place.x - there.x) < 0.5 && Math.abs(place.y - there.y) < 0.5) {
+        return "stays";
+    }
+    const off = place.x + at.wide <= 0 || place.x >= at.across;
+    return at.riding || at.scrolling || off ? "rides" : "sits";
+}
+
 // A move between workspaces, `at.way` 1 to the one below and -1 to the
 // one above, from `from` on `at.was`'s tiles to its seat `to` on
 // `at.now`'s, as MarginCatPaths.js's moves() takes it. It's walked as
@@ -202,6 +228,19 @@ function moves(from, to, at) {
     // it 90 px into its window's face as niri's spring ran fastest.
     const told = { way: at.way, ahead: (at.ahead ?? 0) + (down ? at.frame ?? 0 : 0), from,
         stacked: { lift, spring } };
+    // Carried wholly off the screen's side as niri scrolled the strip
+    // (MarginCatScreen.qml's carried), it's out of sight as the workspace
+    // slides, so it holds there and then comes in at that edge head first
+    // over the new workspace's windows, as a walk does (comesIn()), never
+    // crossing them from where its old window went, thousands of pixels off.
+    if (to !== null && at.across !== undefined
+        && (from.x >= at.across || from.x + at.wide <= 0)) {
+        const now = Object.assign({}, at, { cols: Paths.columns(at.now, 0), hurried: true });
+        const coming = comesIn(from, now, MarginCat.slides(spring));
+        const way = Paths.onward(coming.way, to, Object.assign({}, now,
+            { facing: coming.way.facing }));
+        return Object.assign(Ways.timed(way), { way: at.way, ahead: told.ahead, from });
+    }
     if (to === null) {
         const way = Ways.begun(at, { x: from.x, y: from.y - lift });
         Ways.leg(way, "rides", way, { ms: MarginCat.slides(spring), slide: () => 0,

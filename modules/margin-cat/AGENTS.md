@@ -126,6 +126,12 @@ screen with it on niri's spring if that's where niri scrolls it, and back
 with it the same way if the keys come back first; then it comes back in at
 that edge head first, as between workspaces, and walks the strip to its
 seat, leaping the gap at the edge only where its window is all past it.
+Caught mid-walk by the scroll, it stops where it's drawn and rides the same
+way, and a ride isn't a rest: no play sets off and no pet starts till it
+ends. Moved to another workspace while it's off the edge, it holds out of
+sight through niri's slide, then comes in at that edge head first over the
+new workspace's windows; with its workspace emptied, it comes in at that
+edge along the floor.
 
 - Held by `margin-cat-one-screen.qml`: "its window scrolled, it's carried as far"
 - Held by `margin-cat-one-screen.qml`: "drawn where it was as niri sets off, nearer as it
@@ -138,6 +144,11 @@ seat, leaping the gap at the edge only where its window is all past it.
 - Held by `margin-cat-one-screen.qml`: "then it comes on facing in, never thinking again or going
   back out"
 - Held by `margin-cat-one-screen.qml`: "and walks the tops to its seat"
+- Held by `margin-cat-one-screen.qml`: "it holds out of sight as niri slides"
+- Held by `margin-cat-one-screen.qml`: "it comes in at that edge, head first"
+- Held by `margin-cat-one-screen.qml`: "a floating window dragged, it sits there at once"
+- Owed since 2026-11-25: on nested niri, a walk caught by a scroll off the edge rides its
+  window, and a floor came to from off the edge.
 
 ### Climb, Path and Leap About the Windows
 

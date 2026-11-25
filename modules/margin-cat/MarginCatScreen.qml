@@ -155,10 +155,12 @@ PanelWindow {
     // builder.
     property string pose: ""
     property int facing: 0
-    // Whether it's sitting still, neither going, moving, at play nor
-    // stretching, so a pointer may pet it; and since when, so one it
+    // Whether it's sitting still, neither going, moving, riding its
+    // window's scroll, at play nor stretching, so a pointer may pet it and
+    // a play may set off from where it's drawn; and since when, so one it
     // came to under isn't one that moved onto it (MarginCat.strokes).
     readonly property bool still: going === null && moving === null && !holding
+        && carry === null
         && (yarnAt === null || yarnLies) && window.scene.posed === "" && !window.scene.stretching
     property real stillSince: -1
     onStillChanged: {
@@ -394,25 +396,39 @@ PanelWindow {
                     || (!column.floats && Math.abs(column.top - under.top) > 0.5));
             sat = wanted;
             under = column;
-            if (reshaped)
+            if (reshaped) {
                 walkFrom(true, saw);
-            else if (carry !== null || scrolled()) {
-                // Back on its own column while niri's spring still slides
-                // the strip, or once it has settled with the cat off the
-                // screen, it goes back with its window from where it's
-                // drawn, never at once to where niri will have it. Where
-                // niri sets off no new scroll, as the keys come back to a
-                // column still in view, its ride runs on as its window's
-                // spring does, never set off again from a lag gone by.
-                if (!placedAt(there))
+            } else {
+                // Back on its own column, it rides with its window from
+                // where it's drawn, sits there at once, or lets a ride
+                // under way run on (Stacked.backOn).
+                const back = Stacked.backOn(place, there, {
+                    wide: size,
+                    across: modelData.width,
+                    riding: carry !== null,
+                    scrolling: scrolling()
+                });
+                if (back === "rides")
                     rideTo(there);
-            } else
-                place = there;
+                else if (back === "sits")
+                    place = there;
+            }
         } else if (going !== null && wanted === goingTo) {
             if (Math.round(there.x * ratio) !== Math.round(going.to.x * ratio)
                 || Math.round(there.y * ratio) !== Math.round(going.to.y * ratio))
                 walkFrom(true, saw);
         } else {
+            // Walking still to a window the keys have left, as niri
+            // scrolls the strip under it, it stops where it's drawn and
+            // rides that window, as it would sitting, rather than walking
+            // on to where that window was, over the air. A drop by his
+            // hand falls on as it was let go.
+            if (going !== null && !byHand
+                && MarginCat.carries(saw, tilesOf(space?.id), goingTo) !== null) {
+                const was = goingTo;
+                halt();
+                sat = was;
+            }
             if (going === null)
                 carried(saw);
             if (going !== null || !resting.running || wanted !== waitingOn) {
@@ -439,18 +455,6 @@ PanelWindow {
         if (by === null || place === null)
             return;
         rideTo({ x: place.x + by.x, y: place.y + by.y });
-    }
-    // Whether niri scrolls its own column under it, where it sits, as niri
-    // says, or, where niri says nothing, from off the screen, where only a
-    // scroll leaves it at rest: never a drag, which niri doesn't animate.
-    function scrolled(): bool {
-        if (there === null || place === null || placedAt(there))
-            return false;
-        return scrolling() || place.x + size <= 0 || place.x >= modelData.width;
-    }
-    function placedAt(to: var): bool {
-        return place !== null && Math.abs(place.x - to.x) < 0.5
-            && Math.abs(place.y - to.y) < 0.5;
     }
     // Whether niri's scroll of its workspace still runs: told less than
     // its spring's length ago, since niri never says one ended, so an old
@@ -551,7 +555,19 @@ PanelWindow {
             return;
         resting.stop();
         endStroll();
-        walkTo(true, null, { x: place.x, y: floor });
+        // Carried off the screen's side with its window (carried), it's
+        // out of sight on the floor past that edge, and comes in head first
+        // to sit just inside it (Stacked.comesIn), never on a seat where it
+        // can't be seen.
+        const off = place.x + size <= 0 ? -1 : place.x >= modelData.width ? 1 : 0;
+        if (off !== 0) {
+            halt();
+            place = { x: off < 0 ? -size : modelData.width, y: floor };
+        }
+        walkTo(true, null, {
+            x: off < 0 ? 0 : off > 0 ? modelData.width - size : place.x,
+            y: floor
+        });
     }
 
     function walkTo(hurried: bool, saw: var, to: var): void {
@@ -972,7 +988,7 @@ PanelWindow {
     // its kind and how long it thinks, from where it sits: run on the
     // walker as a walk is, its seat for the walk back where it lands.
     function play(asked: var): void {
-        if (asked === null || holding)
+        if (asked === null || holding || carry !== null)
             return;
         const playing = Games.play(asked.kind, playsFrom(asked.pause));
         if (playing === null)

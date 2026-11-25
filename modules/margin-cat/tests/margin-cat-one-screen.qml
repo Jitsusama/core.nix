@@ -32,6 +32,8 @@ QtObject {
         along(expect);
         straddled(expect);
         scrolled(expect);
+        movedOff(expect);
+        backOnIt(expect);
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
@@ -467,5 +469,60 @@ QtObject {
             { at: 9000, spring });
         expect("set off again once the first has settled, from its place",
             [Math.abs(after.from.x + 1240) < 1240 * 0.01, after.from.y], [true, 0]);
+    }
+
+    // Carried off the screen's side, then moved to the workspace below, it's
+    // out of sight as niri slides, then comes in at that edge head first over
+    // the new workspace's windows, never walking them from where its old
+    // window went, thousands of pixels off.
+    function movedOff(expect) {
+        const at = world({});
+        const slides = MarginCat.slides(at.spring);
+        const seen = one => one.x + 8 > 0 && one.x < 1248 && one.y + 8 > 0 && one.y < 800;
+        for (const [from, to, side] of [[4436, 312, "off the right"],
+            [-3000, 900, "off the left"]]) {
+            const move = Stacked.moves({ x: from, y: 7 }, { x: to, y: 7 }, at);
+            const all = frames(move, 1000 / 120);
+            const comes = all.find(seen);
+            expect(`moved ${side}, it holds out of sight as niri slides`,
+                [move.beats[0]?.name, Math.round(move.beats[0]?.ends),
+                    all.filter(one => one.t < slides && seen(one)).length],
+                ["rides", Math.round(slides), 0]);
+            expect(`moved ${side}, its seat said again, it finds its way till the slide ends`,
+                [Paths.replans(move, slides - 10, true), move.stacked, move.from],
+                [true, undefined, { x: from, y: 7 }]);
+            expect(`moved ${side}, it comes in at that edge, head first`,
+                [comes?.beat, from > 0 ? comes?.x >= 1245 : comes?.x <= -5],
+                ["peeks", true]);
+            const seated = Paths.frame(move, move.ends);
+            expect(`moved ${side}, then it walks to its seat`,
+                [seated.x, seated.y, seated.beat], [to, 7, "sits"]);
+        }
+    }
+
+    // How it goes back to its seat as the keys come back to its column
+    // (MarginCatStacked.js's backOn): a ride on niri's spring only while one
+    // runs or from wholly off the screen, never for a drag, and a ride under
+    // way left to run on where it's placed there already.
+    function backOnIt(expect) {
+        const at = { wide: 8, across: 1248, riding: false, scrolling: false };
+        const seat = { x: 312, y: 7 };
+        const given = more => Object.assign({}, at, more);
+        const cases = [
+            ["nowhere before, it sits there at once", null, at, "sits"],
+            ["placed there, a ride under way runs on", seat, given({ riding: true }), "stays"],
+            ["placed there within half a pixel, it stays", { x: 312.4, y: 7 }, at, "stays"],
+            ["a ride under way, it rides on to its seat", { x: 900, y: 7 },
+                given({ riding: true }), "rides"],
+            ["a scroll told within its spring, it rides", { x: 900, y: 7 },
+                given({ scrolling: true }), "rides"],
+            ["wholly off the right, it rides back in", { x: 4436, y: 7 }, at, "rides"],
+            ["wholly off the left, it rides back in", { x: -8, y: 7 }, at, "rides"],
+            ["a pixel on the screen, no scroll, it sits there at once", { x: -7, y: 7 }, at,
+                "sits"],
+            ["a floating window dragged, it sits there at once", { x: 312, y: 100 }, at, "sits"]
+        ];
+        for (const [name, place, told, want] of cases)
+            expect(`back on its column, ${name}`, Stacked.backOn(place, seat, told), want);
     }
 }
