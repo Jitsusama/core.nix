@@ -770,10 +770,13 @@ impl Config {
             nix.profiles = Some(PathBuf::from("/nix/var/nix/profiles"));
         }
         let roots = &rendered.holders.roots;
+        // A writers' mark the guard can't find never holds it, so a
+        // mistyped one would pass unseen; it is refused here instead.
         for path in [&nix.bin, &nix.store]
             .into_iter()
             .chain(&nix.profiles)
             .chain(roots)
+            .chain(&rendered.writer_holds)
         {
             if !plain_absolute(path) {
                 return Err(format!("{} is not a plain absolute path", path.display()));

@@ -534,7 +534,9 @@ or launchd, and [`home.nix`][2] the account's.
   already running goes on, a dedupe included. The log says when a hold
   begins and ends. The system's guard and the account's each read their
   own config, so a machine names its marks in both: core knows no program
-  that leaves one.
+  that leaves one. A mark's path must be plain and absolute, since one the
+  guard can't find would never hold it, and a mistyped one is refused
+  when the config is read.
 - **Notices.** The account's guard shows one desktop notice, and only once
   a disk is nearly full: a filling disk is the launcher's to show. The
   exception is the guard itself failing: a pass on a filling disk whose
