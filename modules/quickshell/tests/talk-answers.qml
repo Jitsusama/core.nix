@@ -16,7 +16,7 @@ QtObject {
             // stages Orchestrators' talks say.
             const words = { asks: "{name} asks you", choices: "{choices}, or your own words",
                 only: "{choices}", sent: "sent", unsent: "not delivered", answered: "answered",
-                working: "working on it" };
+                working: "working on it", unheard: "not known whether it arrived" };
             // As the agents daemon serves a want (modules/agents/src/wants.rs), for the
             // session Joel was asked by from the realm's map on 24 November.
             const asked = "2. The signing pause: yes, no or partly? The commits stay unsigned "
@@ -138,6 +138,17 @@ QtObject {
             Expect.same("not delivered alone where no why came",
                 Answers.shown(Answers.put(one, false, ""), false, words, dayOf).stands,
                 "not delivered");
+            // The agents daemon gone while it was asked: the node may have put it or not.
+            const unheard = Answers.put(one, false, "", true);
+            Expect.same("not known whether it arrived where no answer came back",
+                Answers.shown(unheard, true, words, dayOf).stands,
+                "not known whether it arrived");
+            Expect.same("never not delivered where it may have been",
+                Answers.shown(unheard, false, words, dayOf).stands.includes("not delivered"),
+                false);
+            Expect.same("one not known shows under a later ask for a quarter hour",
+                [at + 1000, at + 20 * 60 * 1000].map(nowMs =>
+                    Answers.standing([unheard], "q@2", nowMs)), [[unheard], []]);
 
             // A session's answers kept and shown (Agents.qml's answerIn and answerTalks).
             const later = Answers.said("No", at + 1000, answers.want);

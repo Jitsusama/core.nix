@@ -108,7 +108,7 @@ function question(now, name, words, dayOf) {
 
 // An answer said in this shell to the want `want`: his words, when, and how it stands:
 // "sent" until the node says whether it put it in the session's inbox, then "answered", or
-// "failed" with why.
+// "failed" with why, or "unheard" where nothing said whether it went.
 function said(text, at, want) {
     return { at: new Date(at).toISOString(), want: String(want ?? ""),
         words: String(text ?? "").trim(), stage: "sent", why: "" };
@@ -128,25 +128,30 @@ function kept(list, one) {
 // Which of a session's answers its Talk shows at `nowMs`: those to the want it asks, `want`,
 // while it asks one, and none for a null `want`, one he can't answer here; else, once it asks
 // nothing (""), those said in the last SHOWN_AFTER_MS, so one long done, or to an ask since
-// replaced, never leads a later Talk. One not delivered in that time shows under any ask,
-// since the node refuses an answer to an ask since replaced, and the refusal is shown under
-// the ask that replaced it.
+// replaced, never leads a later Talk. One not delivered, or not known to be, in that time
+// shows under any ask, since the node refuses an answer to an ask since replaced, and the
+// refusal is shown under the ask that replaced it.
 function standing(list, want, nowMs) {
     const recent = one => nowMs - Date.parse(one.at) < SHOWN_AFTER_MS;
+    const unput = one => one.stage === "failed" || one.stage === "unheard";
     return (list ?? []).filter(one => (want === "" ? recent(one)
-        : one.want === want || (one.stage === "failed" && recent(one))));
+        : one.want === want || (unput(one) && recent(one))));
 }
 
 // What the node's put made of the answer `one`: answered where it went, failed with `why`
-// where it didn't.
-function put(one, went, why) {
+// where it didn't, and unheard where nothing came back to say (`unheard`), the agents daemon
+// gone while it was asked, so it may have gone or not.
+function put(one, went, why, unheard) {
+    if (!went && unheard === true) {
+        return Object.assign({}, one, { stage: "unheard", why: "" });
+    }
     return Object.assign({}, one, went ? { stage: "answered", why: "" }
         : { stage: "failed", why: String(why ?? "") });
 }
 
 // How an answer of his reads under the field: his words, with when at their right; sent
 // until the node puts it; then, breathing, working while the session `working` works on, else
-// answered; or not delivered, and why.
+// answered; or not delivered, and why; or not known to have arrived.
 function shown(one, working, words, dayOf) {
     const told = { line: one.words, answers: [], waiting: "", stands: "", by: "",
         side: sideOf(one.at, dayOf) };
@@ -155,8 +160,8 @@ function shown(one, working, words, dayOf) {
         return Object.assign(told, { stands: [String(words.unsent ?? "")]
             .concat(why === "" ? [] : [why]).join(" \u00b7 ") });
     }
-    if (one.stage === "sent") {
-        return Object.assign(told, { stands: String(words.sent ?? "") });
+    if (one.stage === "sent" || one.stage === "unheard") {
+        return Object.assign(told, { stands: String(words[one.stage] ?? "") });
     }
     return Object.assign(told, working === true ? { waiting: String(words.working ?? "") }
         : { stands: String(words.answered ?? "") });
