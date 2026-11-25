@@ -8239,10 +8239,6 @@ Scope {
             // A wait ended after its closing lists nothing, so it marks
             // nothing late and says no key listed (onOpenChanged); the
             // held key is let go as searchAwaited lets one go shut.
-            if (!root.open) {
-                root.searchAwaited();
-                return;
-            }
             root.answersLate = { text: waited.text, sources: waited.sources,
                 began: waited.began };
             // The words as Trials's slow key says them (Presented.typedShown).
@@ -11119,7 +11115,6 @@ Scope {
         // on, would say it came that late (answersLate).
         if (!open) {
             prompt.unlinked();
-            answersLate = null;
         }
         tallyMarked();
         // An opening's selection rests anew, never on the last opening's.
