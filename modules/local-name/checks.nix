@@ -106,11 +106,12 @@ let
         ]
       );
     };
-  # What the module adds or changes on a Mac, beside the same Mac without
-  # it, so a job added any of those ways, or a key added to one the Mac
-  # already has, shows by name. Any of them could advertise for the host,
-  # through dns-sd, a script of its own, launchd's own Bonjour key or
-  # Remote Login, and the module's header says why none may.
+  # What the module adds, changes or takes away on a Mac, beside the same
+  # Mac without it, so a job added any of those ways, a key added to one
+  # the Mac already has, or a file turned off, shows by name. Any of them
+  # could advertise for the host, through dns-sd, a script of its own,
+  # launchd's own Bonjour key or Remote Login, and the module's header says
+  # why none may.
   changedBy =
     without: mac:
     let
@@ -120,21 +121,24 @@ let
     lib.concatLists (
       lib.mapAttrsToList (
         kind: files:
-        lib.filter (file: before.${kind}.${file} or null != files.${file}) (lib.attrNames files)
+        lib.filter (file: before.${kind}.${file} or null != files.${file} or null) (
+          lib.unique (lib.attrNames files ++ lib.attrNames (before.${kind} or { }))
+        )
       ) after
     );
   changedNamed = changedBy bareNamed.config quietMac;
   changedUnnamed = changedBy (macWith [ noName ]) unnamedMac;
-  # The files in /etc the module adds or changes, which must be the rotation
+  # The files in /etc the module adds, changes or turns off, which must be the rotation
   # alone, linked where its name says, written from its own text as held,
   # which names the two logs and sends no signal. nix-darwin names a file's
   # text for the last part of its name.
   etcChanged =
     let
       before = (jobsOf bareNamed.config).etc;
+      after = (jobsOf namedMac).etc;
     in
-    lib.filter (file: before.${file} or null != (jobsOf namedMac).etc.${file}) (
-      lib.attrNames (jobsOf namedMac).etc
+    lib.filter (file: before.${file} or null != after.${file} or null) (
+      lib.unique (lib.attrNames after ++ lib.attrNames before)
     );
   rotates =
     let
@@ -294,9 +298,9 @@ in
   # Mac with a host name but no local name runs neither. The module adds or
   # changes no other launchd job, nix-darwin's or the account's, nor Remote
   # Login, launchd's environment, an activation script or a file in /etc
-  # but the rotation of the jobs' logs, held as written; each plist is on,
+  # but the rotation of the jobs' logs, held as written, and turns none off; each plist is on,
   # is linked as its own file, is what its options lower to, is written
-  # from that text and opens no socket; keep.sh names, in bash's lowercase,
+  # from that text and opens no socket; keep.sh names, in any case,
   # none of the ways to advertise the host listed above, and answer.sh only
   # dns-sd, run in one line alone answering the name as a host of its own
   # on one link. It doesn't see another module's jobs, a way that list

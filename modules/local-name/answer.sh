@@ -5,16 +5,19 @@
 # every interface, its hundreds of loopback aliases too, each a record its
 # name service probes and fights over (the module's header says when that
 # spun a core). So this registers one address record of its own, for the
-# name, with dns-sd's -P, which names a host of its own rather than the
-# Mac's, on one link with -i: one record, on one link, whatever else the
-# Mac has.
+# name, with dns-sd's -P, which gives the record itself rather than leaving
+# it to macOS's own host records, on one link with -i: one record, on one
+# link, whatever else the Mac has. dns-sd refuses a link it can't find
+# rather than taking every one.
 # The link is the first wired or Wi-Fi one (en*) macOS lists for IPv4, in
 # its order of service, with its address: a tunnel, as a VPN's is, or a
 # virtual machines' bridge isn't where the network finds the Mac. Every few
 # seconds it reads them again, and when either changes, or the answer
 # ends, it ends, and the answer with it, for launchd to start it again on
-# the link as it is then. With no such link it waits for one. What it does
-# goes to its log, with when.
+# the link as it is then. With no such link it waits for one, and a read
+# scutil can't give changes nothing, so a working answer outlasts it. What
+# it does goes to its log, with when, and so does what dns-sd reports, such
+# as a name another machine holds, which ends it.
 # usage: answer.sh <name> <seconds between reads>
 set -euo pipefail
 
@@ -29,14 +32,17 @@ say() {
 }
 
 # Sets link and address to the first en* link macOS lists for IPv4 and its
-# address, from scutil --nwi, or to nothing when it lists none with one or
-# can't say, which waiting says once: what scutil says on a failed read is
-# left out, since it would be said at every read.
+# address, from scutil --nwi, or to nothing when it lists none with one,
+# which waiting says once. When scutil can't say, both are left as they
+# were, so nothing changes: what scutil says then is left out, since it
+# would be said at every read.
 pick() {
   local line section="" at="" listed
+  if ! listed=$(scutil --nwi 2>/dev/null); then
+    return 0
+  fi
   link=""
   address=""
-  listed=$(scutil --nwi 2>/dev/null) || listed=""
   while IFS= read -r line; do
     case ${line} in
       "IPv4 network interface information"*) section=ipv4 ;;
@@ -66,6 +72,8 @@ finish() {
 }
 trap finish EXIT
 
+link=""
+address=""
 pick
 waited=""
 while [ -z "${link}" ]; do
@@ -78,7 +86,7 @@ while [ -z "${link}" ]; do
   sleep "${every}"
   pick
 done
-dns-sd -i "${link}" -P "${name}" _workstation._tcp local 9 "${name}.local" "${address}" >/dev/null &
+dns-sd -i "${link}" -P "${name}" _workstation._tcp local 9 "${name}.local" "${address}" >&2 &
 answering=$!
 say "${name}.local answers ${address} on ${link}"
 while true; do

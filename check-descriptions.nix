@@ -2130,10 +2130,11 @@
     couldn't read or set is said, and a set tried, once in five minutes
   '';
   local-name-answers-on-its-link = ''
-    the name answers the first wired or Wi-Fi link's address, past a tunnel or a bridge, on
-    that link alone and as a host of its own; a moved address, another link or none ends it
-    and its answer; with no link, or a scutil that fails, it waits and says so once; and an
-    answer that ends by itself ends it, saying so
+    the name answers the first wired or Wi-Fi link's address, past a tunnel or a bridge and
+    never from the IPv6 list, on that link alone and as a host of its own; a moved address,
+    another link or none ends it and its answer, waited for; with no link, or a scutil that
+    fails, it waits and says so once, and a scutil that fails while it answers changes
+    nothing; and an answer that ends by itself ends it, saying so
   '';
   local-name-is-kept-by-a-job = ''
     a Mac with a local name runs two root jobs, each labelled as nix-darwin labels it, under
@@ -2143,9 +2144,9 @@
     once a minute, and answer.sh, which answers it, kept running; a Mac with none runs
     neither; the module adds or changes no launchd plist but those two, nor any agent of the
     account's, launchd's environment or a file in /etc but the rotation of the two logs, as
-    held; each plist is on, is linked as its own file, is the text its options lower to, is
-    written from that text and opens no socket; keep.sh names, in bash's lowercase, none of
-    dns-sd, launchctl, systemsetup's remote switches, Remote Management's kickstart or the
+    held, and turns none off; each plist is on, is linked as its own file, is the text its
+    options lower to, is written from that text and opens no socket; keep.sh names, in any
+    case, none of dns-sd, launchctl, systemsetup's remote switches, Remote Management's kickstart or the
     sharing command, and answer.sh only dns-sd, in one line answering the name as a host of
     its own on one link, since any other could advertise for the host
   '';

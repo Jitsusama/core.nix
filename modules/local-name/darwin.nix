@@ -75,12 +75,14 @@ in
     };
   };
 
-  # A line each time the answer starts is the usual, but an answer that
-  # keeps ending, as one refused for a name another machine holds would,
-  # has launchd start it every ten seconds, two lines each time. So macOS's
-  # newsyslog moves each log aside past 512 KB, keeping three before it. It
-  # sends no signal, since neither job takes one: launchd opens a job's log
-  # anew each time it starts it.
+  # A few lines each time the answer starts is the usual, but an answer
+  # that keeps ending, as one refused for a name another machine holds
+  # would, has launchd start it every ten seconds, a few lines each time.
+  # So macOS's newsyslog moves each log aside past 512 KB, keeping three
+  # before it. It sends no signal, since neither job takes one: launchd
+  # opens a job's log anew each time it starts it, which for keep.sh is
+  # every minute. answer.sh runs as long as its link holds, so what it
+  # writes after a move lands in the log moved aside, until it starts again.
   config.environment.etc."newsyslog.d/local-name.conf" = lib.mkIf (name != null) {
     text = ''
       # logfilename                    mode count size(KB) when flags
