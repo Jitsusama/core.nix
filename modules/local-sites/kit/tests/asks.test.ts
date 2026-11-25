@@ -216,13 +216,17 @@ it("a page asks once whether its answers are taken, and is told why not", async 
   const none = await ready(() =>
     Promise.resolve({ status: 404, text: "this server takes no answers\n" }),
   );
-  assert.match(none ?? "", TAKES_NONE);
-  const agents = await ready(() => Promise.resolve({ status: 403, text: '{"refused":"agent"}' }));
-  assert.match(agents ?? "", AGENTS);
-  const untold = await ready(() => Promise.resolve({ status: 403, text: '{"refused":"untold"}' }));
-  assert.match(untold ?? "", UNTOLD);
+  assert.match(String(none), TAKES_NONE);
+  const agents = await ready(() =>
+    Promise.resolve({ status: 403, text: '{"refused":"agent"}' }),
+  );
+  assert.match(String(agents), AGENTS);
+  const untold = await ready(() =>
+    Promise.resolve({ status: 403, text: '{"refused":"untold"}' }),
+  );
+  assert.match(String(untold), UNTOLD);
   const down = await ready(() => Promise.reject(new Error("down")));
-  assert.match(down ?? "", UNREACHED);
+  assert.match(String(down), UNREACHED);
 });
 
 it("answers wait on the server taking them, and say why where it doesn't", async () => {
