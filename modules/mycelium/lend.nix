@@ -7,6 +7,45 @@ let
   # A lend's upstream socket, relative to the node's runtime folder: no
   # part of it starts with a dot, so `..` can't climb out of it.
   socket = lib.types.strMatching "([A-Za-z0-9_-][A-Za-z0-9._-]*/)*[A-Za-z0-9_-][A-Za-z0-9._-]*";
+  # Dollars a million tokens, which mycelium refuses below nothing, as it
+  # would reserve less than a request may cost.
+  dollars = lib.types.numbers.nonnegative;
+  # What one model costs, as mycelium's lender reads it.
+  price = lib.types.submodule {
+    options = {
+      input = lib.mkOption {
+        type = dollars;
+        description = "Dollars a million tokens asked.";
+      };
+      output = lib.mkOption {
+        type = dollars;
+        description = "Dollars a million tokens answered.";
+      };
+      cache_write = lib.mkOption {
+        type = lib.types.nullOr dollars;
+        default = null;
+        description = ''
+          Dollars a million tokens written to the model's cache, or null for
+          a quarter more than `input`.
+        '';
+      };
+      cache_read = lib.mkOption {
+        type = lib.types.nullOr dollars;
+        default = null;
+        description = ''
+          Dollars a million tokens read from the model's cache, or null for
+          `input`.
+        '';
+      };
+      most_output = lib.mkOption {
+        type = lib.types.ints.positive;
+        description = ''
+          The most tokens a request may ask it to answer with, in its
+          `max_tokens`, past which the request is refused.
+        '';
+      };
+    };
+  };
 in
 lib.types.submodule {
   options = {
@@ -42,6 +81,17 @@ lib.types.submodule {
               description = ''
                 How many requests each machine may make a day, through all
                 its budgets, past which each is refused.
+              '';
+            };
+            usd_a_day = lib.mkOption {
+              type = lib.types.nullOr lib.types.numbers.positive;
+              default = null;
+              example = 25;
+              description = ''
+                How many dollars of model calls each machine may spend a day,
+                by UTC, past which each is refused; or null to lend them no
+                model at all. Each request reserves the most it can cost
+                before it is sent, so requests asked at once can't pass it.
               '';
             };
           };
@@ -137,6 +187,37 @@ lib.types.submodule {
                 The command, its program by its path in the Nix store, that prints
                 the header's whole value on one line, which the node never
                 logs; or null where the upstream adds its own.
+              '';
+            };
+            prices = lib.mkOption {
+              type = lib.types.nullOr (lib.types.attrsOf price);
+              default = null;
+              example = lib.literalExpression ''
+                {
+                  claude-sonnet-4-5 = {
+                    input = 3;
+                    output = 15;
+                    cache_write = 3.75;
+                    cache_read = 0.3;
+                    most_output = 64000;
+                  };
+                }
+              '';
+              description = ''
+                What each model a models budget may be asked costs, by the
+                name a request gives in its `model`; a model not named, or
+                every model where this is null, is refused.
+              '';
+            };
+            spend_watch = lib.mkOption {
+              type = lib.types.nullOr (lib.types.strMatching "[A-Za-z0-9_.-]+");
+              default = null;
+              example = "proxy";
+              description = ''
+                The budget in spend-watch whose money a models budget's
+                requests spend. Each is refused while spend-watch is silent of
+                it, or says it is past an allowance; and every one is refused
+                where this is null.
               '';
             };
           };
