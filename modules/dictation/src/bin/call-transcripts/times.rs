@@ -59,12 +59,15 @@ impl Timed {
         )
     }
 
-    /// Whether the times hold: none outside its take or out of order, and
-    /// at least `least` tenths of a percent while one of theirs speaks.
+    /// Whether the times hold: some timed, none outside its take or out of
+    /// order, and at least `least` tenths of a percent while one of theirs
+    /// speaks.
     pub fn verdict(&self, least: usize) -> Result<String, String> {
         let inside = percent(self.tenths_inside());
         let may = percent(least);
-        if self.outside > 0 || self.backward > 0 {
+        if self.words == 0 {
+            Err(String::from("none of the far end's words was timed"))
+        } else if self.outside > 0 || self.backward > 0 {
             Err(format!(
                 "{} of the far end's words were timed outside their take, {} out of order",
                 self.outside, self.backward
