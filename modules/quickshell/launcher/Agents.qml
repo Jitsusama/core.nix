@@ -1871,7 +1871,8 @@ Provider {
         // program may make while the launcher is free, stamps its own act's
         // row, which it gives fresh words (newWorkFor); the start is still
         // told in the foot or as a notice.
-        sproutPressed = Openings.pressedAt(sproutPressed, key, Date.now());
+        const pressed = Date.now();
+        sproutPressed = Openings.pressedAt(sproutPressed, key, pressed);
         if (sprouting !== "") {
             sproutSays(key, words.busy);
             sproutReaches({ started: false, why: words.busy });
@@ -1886,14 +1887,16 @@ Provider {
         }
         sprouting = key;
         sprouts += 1;
-        sproutGiven = { words: String(said), letters: launcher.lettersAt };
+        // Its Return already counted in keysTaken (Prompt.qml), so only a key after counts.
+        sproutGiven = { words: String(said), letters: launcher.lettersAt,
+            keys: launcher.keysTaken, at: pressed };
         sproutCarried = "";
         const sprout = sprouts;
         // Marked again once the Return that gave the words has emptied the field, which moves
         // lettersAt as a letter would (Launcher.qml's give), so only a key after it counts.
         Qt.callLater(() => {
             if (sprouts === sprout)
-                sproutGiven = { words: sproutGiven.words, letters: launcher.lettersAt };
+                sproutGiven = Object.assign({}, sproutGiven, { letters: launcher.lettersAt });
         });
         sproutSays(key, words.starting);
         sproutPatience.restart();
@@ -2067,8 +2070,7 @@ Provider {
         Report.say(how.started ? `sprouted new work on ${how.machine}`
             : `couldn't sprout new work: ${how.why}`);
         if (how.started && how.held !== "") {
-            openings = openings.concat([{ key: key, held: how.held, machine: how.machine,
-                since: Date.now(), keys: provider.launcher?.keysTaken ?? -1 }]);
+            openings = openings.concat([Openings.opening(how, key, sproutGiven)]);
             openSprouted();
         }
     }
@@ -2084,10 +2086,11 @@ Provider {
             sproutTell([told]);
     }
 
-    // The words of the start running and the launcher's lettersAt at its
-    // Return, and the words a start refused for want of a repository
-    // carries to the folder Joel picks next, "" when none does.
-    property var sproutGiven: ({ words: "", letters: 0 })
+    // The words of the start running, and the launcher's lettersAt and
+    // keysTaken and the time at its Return; and the words a start refused
+    // for want of a repository carries to the folder Joel picks next, ""
+    // when none does.
+    property var sproutGiven: ({ words: "", letters: 0, keys: -1, at: 0 })
     property string sproutCarried: ""
     // Steps Joel out of the act `key`, whose start wanted a repository, back
     // onto Start New Work's folders, its words carried to whichever he picks
@@ -2143,6 +2146,9 @@ Provider {
         const launcher = provider.launcher ?? null;
         sproutFooted = null;
         sproutCarried = "";
+        // No opening takes the keys once he's shut it, one still asked included.
+        openings = Openings.shutOn(openings);
+        sproutGiven = Object.assign({}, sproutGiven, { keys: -1 });
         if (launcher === null
             || !Sprouting.noticedAtShut(footed, launcher.keysTaken, Date.now()))
             return;
@@ -2151,9 +2157,10 @@ Provider {
     }
 
     // The sprouts waiting for their sessions, each `{ key, held, machine,
-    // since, keys, late, told }`, `keys` the launcher's keysTaken at the
-    // answer (-1 with none, so it never takes the keys), `late` true once it's said to be still coming up and
-    // `told` the words that said it (Openings.toldOf):
+    // since, keys, late, told }` (Openings.opening), `since` and `keys` the
+    // time and keysTaken at its Return (keys -1 once the launcher shut, or
+    // with none, so it never takes the keys), `late` true once it's said to
+    // be still coming up and `told` the words that said it (Openings.toldOf):
     // Joel asked for each, so each opens for him, on the workspace a session
     // goes to and focused (Sessions.goTo), rather than in no window (Joel,
     // 18 November: "start new work does not seem to work from the
@@ -2218,7 +2225,7 @@ Provider {
         // Its window, or its up word, answers the foot's "still coming up"
         // of it, so neither says it beside them nor notices it at the shut.
         takeBack(one);
-        if (!Openings.opensOn(Sprouting.waitsOn(launcher, one.key, one.keys), sproutPressed,
+        if (!Openings.takesKeys(Sprouting.waitsOn(launcher, one.key, one.keys), sproutPressed,
             one)) {
             sproutJournal(`new work held ${one.held} is up${late} as session `
                 + `${one.session.address}; left for Go To`);

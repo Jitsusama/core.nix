@@ -224,7 +224,7 @@ QtObject {
         const upAre = new Set(["h1", "h2", "h7", "h8"]);
         const found = one => upAre.has(one.held) ? { address: one.held } : null;
         const stood = Sprouting.settled(openings, found, now, times);
-        Expect.same("each up opens, with its session, the slow one after its minute too",
+        Expect.same("each up is found, with its session, the slow one after its minute too",
             stood.up.map(one => [one.key, one.session.address]),
             [["slow", "h1"], ["quick", "h2"], ["unmarked", "h7"], ["watched", "h8"]]);
         Expect.same("each up keeps its late mark, which picks the words said of it",
@@ -440,11 +440,24 @@ QtObject {
         Expect.same("an act never pressed says", Openings.saysOnAct({}, "a", 200), true);
         {
             const opening = { key: "a", since: 200 };
-            Expect.same("an up start Joel waits on, its act unpressed since, opens",
-                Openings.opensOn(true, { a: 100 }, opening), true);
+            Expect.same("an up start Joel waits on, its act unpressed since, takes the keys",
+                Openings.takesKeys(true, { a: 100 }, opening), true);
             Expect.same("its act offered fresh words since, it doesn't, though he waits",
-                Openings.opensOn(true, { a: 300 }, opening), false);
-            Expect.same("not waited on, it doesn't", Openings.opensOn(false, {}, opening), false);
+                Openings.takesKeys(true, { a: 300 }, opening), false);
+            Expect.same("not waited on, it doesn't", Openings.takesKeys(false, {}, opening),
+                false);
+            // Made from its Return, at 200 with 7 keys taken, though the node answered
+            // later: a key or an offer while it was asked counts against it.
+            const made = Openings.opening({ held: "h1", machine: "kestrel" }, "a",
+                { words: "w", letters: 0, keys: 7, at: 200 });
+            Expect.same("an opening counts from its Return", made,
+                { key: "a", held: "h1", machine: "kestrel", since: 200, keys: 7 });
+            Expect.same("an offer while it was asked keeps the launcher open",
+                Openings.takesKeys(true, { a: 250 }, made), false);
+            Expect.same("once the launcher shut, none takes the keys again",
+                Openings.shutOn([made, { key: "b", keys: 3, late: true }])
+                    .map(one => [one.key, one.keys, one.late === true]),
+                [["a", -1, false], ["b", -1, true]]);
         }
         Expect.same("an act pressed since, or given fresh words, doesn't",
             Openings.saysOnAct({ a: 300 }, "a", 200), false);

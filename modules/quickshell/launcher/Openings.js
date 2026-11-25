@@ -58,11 +58,25 @@ function footedWithout(footed, text) {
 
 // Whether `one`, up, opens and takes the keys: only where Joel `waits` on
 // its act (Sprouting.waitsOn) and nothing has been pressed or offered on
-// that act since it started (`pressed`, saysOnAct). A link offer moves
+// that act since its Return (`pressed`, saysOnAct). A link offer moves
 // no key, so it would otherwise leave a late start shutting the launcher
 // on the words just offered.
-function opensOn(waits, pressed, one) {
+function takesKeys(waits, pressed, one) {
     return waits && saysOnAct(pressed, one.key, one.since);
+}
+
+// The opening a start `how` on the act `key` waits on, from `given`, what
+// its Return recorded (`at` its stamp, `keys` the launcher's keysTaken):
+// counted from the Return, not the answer, so a key pressed or a link
+// offered while the node was asked counts against it.
+function opening(how, key, given) {
+    return { key, held: how.held, machine: how.machine, since: given.at, keys: given.keys };
+}
+
+// The `openings` once the launcher shuts: none takes the keys after, as
+// a reopening needn't move a key and Joel has left the act's wait.
+function shutOn(openings) {
+    return openings.map(one => Object.assign({}, one, { keys: -1 }));
 }
 
 // The word said of `one` come up and left for Go To: "upLater", naming
