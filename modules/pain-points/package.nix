@@ -18,6 +18,9 @@ rustPlatform.buildRustPackage rec {
       ./Cargo.lock
       ./src
       ./tests
+      # Its tests read the run's time from here, so the Rust's own ends
+      # can't outgrow it unseen.
+      ./home.nix
       ../terminal-kit/Cargo.toml
       ../terminal-kit/src
     ];

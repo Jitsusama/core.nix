@@ -464,3 +464,32 @@ fn a_keeper_s_note_held_past_a_day_is_said_no_more() {
         "a note held over a day went as new once the keeper took sends: {notes:?}"
     );
 }
+
+/// The time the unit gives a run, as `home.nix` says it: in minutes or
+/// seconds, or nothing for a value said another way.
+fn unit_time(nix: &str) -> Option<Duration> {
+    let line = nix
+        .lines()
+        .find(|line| line.trim_start().starts_with("TimeoutStartSec"))?;
+    let (_, value) = line.split_once('"')?;
+    let (value, _) = value.split_once('"')?;
+    let (count, unit) = value.split_at(value.find(|c: char| !c.is_ascii_digit())?);
+    let count: u64 = count.parse().ok()?;
+    match unit {
+        "min" => Some(Duration::from_secs(count * 60)),
+        "s" => Some(Duration::from_secs(count)),
+        _ => None,
+    }
+}
+
+#[test]
+fn a_run_ends_its_sends_and_asks_inside_the_time_its_unit_allows() {
+    let nix = include_str!("../../../home.nix");
+    let allowed = unit_time(nix).expect("home.nix gives the run its time in minutes or seconds");
+    let asks_end = super::super::ASKS_END;
+    assert!(
+        SENDS_END < asks_end && asks_end + Duration::from_secs(20) <= allowed,
+        "the run's sends end at {SENDS_END:?} and its asks at {asks_end:?}, which leaves no \
+         time to write what it heard inside the {allowed:?} its unit allows"
+    );
+}

@@ -98,7 +98,8 @@ in
       # run ends its sends by SENDS_END and its asks of git by ASKS_END,
       # three minutes and three and a half in, so it writes what it heard
       # inside this. Those are fixed in the Rust, not read from here, so
-      # shortening this means shortening them too.
+      # shortening this means shortening them too; pain-points' tests read
+      # this line and fail when they no longer fit.
       TimeoutStartSec = "4min";
     };
   };
