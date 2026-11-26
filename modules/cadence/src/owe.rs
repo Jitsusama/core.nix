@@ -439,4 +439,41 @@ mod tests {
             "a must moved to a new date wasn't said late again past it"
         );
     }
+
+    /// A miss's ask and a queue's are drags as a measure's are, so a
+    /// repeat of any of them is counted on its own line.
+    #[test]
+    fn a_drag_of_any_kind_filed_again_after_it_closed_reopens_its_own_line() {
+        for key in [
+            "hour:miss:the host crashed",
+            "hour:queue:core",
+            "hour:slips",
+        ] {
+            let drag = || Owed {
+                kind: "drag".to_owned(),
+                ..owed(key, DUE)
+            };
+            let mut ledger = Vec::new();
+            owe(&mut ledger, drag(), "d1", DAY);
+            ledger[0].late = true;
+            ledger[0].put_to = vec!["S".to_owned()];
+            assert!(settle(&mut ledger, key), "{key} wasn't closed");
+            owe(&mut ledger, drag(), "d3", 3 * DAY);
+            let entry = &ledger[0];
+            assert_eq!(
+                (
+                    ledger.len(),
+                    entry.open,
+                    entry.reopened,
+                    entry.first.as_str()
+                ),
+                (1, true, 1, "d3"),
+                "{key} filed again after it closed opened a second line: {ledger:?}"
+            );
+            assert!(
+                !entry.late && entry.put_to.is_empty(),
+                "{key} reopened still read as late from its closed run: {entry:?}"
+            );
+        }
+    }
 }

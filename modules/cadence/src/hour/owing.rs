@@ -257,9 +257,9 @@ fn told_late_asked(m: &Measure, says: &str) -> Vec<Filed> {
 
 /// The ask to each class's owner about a cause found on three or more
 /// changes in a week, filed class by class, so each owner fixes the cause
-/// once rather than each change's reviewer fixing it again. It closes by
-/// itself once the class is found on fewer, and a case after that brings
-/// the same line back, counted as reopened.
+/// once rather than each change's reviewer fixing it again. Until a named
+/// fix closes it, it also closes once the class is found on fewer, and a
+/// case after that brings the same line back, counted as reopened.
 fn causes_asked(m: &Measure) -> Vec<Filed> {
     m.behind
         .iter()
@@ -273,8 +273,8 @@ fn causes_asked(m: &Measure) -> Vec<Filed> {
                     "cadence hour: a cause is found again and again, and it is yours: {line}. \
                      Please reply within a day with the one fix that stops it at its root, \
                      such as a check that refuses it or a shared piece every change uses, \
-                     or why it can't have one. It closes by itself once the class is found \
-                     on fewer than three changes in a week."
+                     or why it can't have one. It stays open until you name the fix; until \
+                     then it also closes once the class falls under three changes in a week."
                 ),
                 owner: owner.to_owned(),
             }
