@@ -538,9 +538,9 @@ Provider {
     // which its Return reads (SessionRow.drawn), so a park or wake the
     // daemon hasn't served yet wraps it again (rowOf).
     readonly property var wrappedParked: ({})
-    // The sessions the shell holds parked, by the address each row is keyed
-    // by, made once a park or wake changes them, so every row laid out asks
-    // in one lookup (SessionRow.parkedSet), not by walking the parked.
+    // The sessions the shell holds parked, by every address each goes by,
+    // made once a park or wake changes them, so every row laid out asks in
+    // one lookup (SessionRow.parkedSet), not by walking the parked.
     readonly property var parkedHere: SessionRow.parkedSet(Sessions.parked)
     function shellParked(address) {
         return parkedHere.has(String(address).toUpperCase());
@@ -963,7 +963,7 @@ Provider {
         const place = { depth: served.depth, orchestrates: !!held.orchestrates };
         const said = items => (items ?? []).map(item => item.said).join(" \u00b7 ");
         const returning = SessionRow.drawn(served, windowedOf(session),
-            shellParked(session.address)).marked;
+            shellParked(session.address), SessionRow.standsAtTop(presence)).marked;
         const row = member({
             thing: true,
             key: served.row,
@@ -1459,7 +1459,8 @@ Provider {
     // it parked, SessionRow.js's own (SessionRow.drawn).
     function offeredOf(session) {
         const row = rowsKind?.held?.[`row:agents:${session.address}`]?.row ?? null;
-        return SessionRow.drawn(row, windowedOf(session), shellParked(session.address));
+        return SessionRow.drawn(row, windowedOf(session), shellParked(session.address),
+            SessionRow.standsAtTop(session.presence));
     }
 
     // A session's own acts, in the order its row offers them, each steering

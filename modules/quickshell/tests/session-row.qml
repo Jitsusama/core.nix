@@ -156,15 +156,15 @@ QtObject {
             if (SessionRow.topActOf(key) !== want)
                 failures.push(`top ${key}: "${SessionRow.topActOf(key)}", not "${want}"`);
         }
-        // The shell's parked are known by the address each row is keyed by,
-        // whatever its case, and a parked record's other addresses speak for
-        // no other session.
+        // The shell's parked are known by every address each goes by, whatever
+        // its case, as Sessions.parkedAs finds one.
         const parkedHere = SessionRow.parkedSet([
-            { address: "ab12cd", presence: { addresses: ["ab12cd", "LIVE01"] } },
-            { address: "" }, {}
+            { address: "ab12cd", presence: { addresses: ["ab12cd", "OLD001"] } },
+            { address: "ef34gh" }, { address: "" }, {}
         ]);
         const parkings = [["its own, upper-cased", "AB12CD", true],
-            ["an alias it lists", "LIVE01", false], ["none", "", false]];
+            ["another it goes by", "OLD001", true], ["one with no presence", "EF34GH", true],
+            ["one not parked", "LIVE01", false], ["none", "", false]];
         for (const [what, address, want] of parkings) {
             if (parkedHere.has(address) !== want)
                 failures.push(`parked, ${what}: ${!want}, not ${want}`);
@@ -205,8 +205,32 @@ QtObject {
             ["unheld, with a window", null, true, false, "switch talk", "switch"],
             ["unheld, parked by the shell", null, true, true, "wake talk", "wake"]
         ];
+        // One at the top, as the void, is gone to to be told something however
+        // it stands, so Return talks to it, parked by the shell's word too.
+        const voids = [
+            ["the void held parked", rowOf(["wake", "talk"], "verb:agent:talk"), false, true,
+                true, "wake talk", "talk"],
+            ["the void held live, parked by the shell", live, true, true, true, "wake talk",
+                "talk"],
+            ["the void unheld, parked by the shell", null, false, true, true, "wake talk",
+                "talk"],
+            ["the void held live", live, true, false, true, "switch talk pause park close",
+                "talk"]
+        ];
+        for (const [what, row, windowed, parked, top, want, mark] of voids) {
+            const { ids, marked } = SessionRow.drawn(row, windowed, parked, top);
+            if (ids.join(" ") !== want || marked !== mark)
+                failures.push(`drawn ${what}: "${ids.join(" ")}" marking ${marked}, `
+                    + `not "${want}" marking ${mark}`);
+        }
+        const atTop = [[{ standsAtTop: { name: "Void" } }, true],
+            [{ standsAtTop: { name: "" } }, false], [{}, false], [undefined, false]];
+        for (const [presence, want] of atTop) {
+            if (SessionRow.standsAtTop(presence) !== want)
+                failures.push(`standsAtTop of ${JSON.stringify(presence)}: not ${want}`);
+        }
         for (const [what, row, windowed, parked, want, mark] of draws) {
-            const { ids, marked } = SessionRow.drawn(row, windowed, parked);
+            const { ids, marked } = SessionRow.drawn(row, windowed, parked, false);
             if (ids.join(" ") !== want || marked !== mark)
                 failures.push(`drawn ${what}: "${ids.join(" ")}" marking ${marked}, `
                     + `not "${want}" marking ${mark}`);
@@ -237,6 +261,13 @@ QtObject {
             ["Resume on one unpaused since", liveRow, "resume", false, ""],
             ["Pause on one the shell holds parked", liveRow, "pause", true, "unsentParked"],
             ["Talk on one the shell holds parked", liveRow, "talk", true, ""],
+            // Its row still serving Park, Stop or Close, the shell's word wins.
+            ["Park on a live row the shell holds parked", liveRow, "park", true,
+                "unsentParked"],
+            ["Close on a live row the shell holds parked", liveRow, "close", true,
+                "unsentParked"],
+            ["Stop on a working row the shell holds parked",
+                { acts: served(["talk", "pause", "park", "stop"]) }, "stop", true, "unsentParked"],
             ["Pause on an unheld row the shell holds parked", null, "pause", true,
                 "unsentParked"],
             ["Park on a row not yet held", null, "park", false, "unsentUnheld"],

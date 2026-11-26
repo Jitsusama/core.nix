@@ -107,14 +107,22 @@ function offered(rowActs, returns, fallback) {
 
 // What a session's drawer offers and its Return does, from its `row` as
 // the agents daemon serves it, or null before it's held, whether it's
-// `windowed`, and whether the shell holds it `parked`. Parked by the
-// shell's word, it offers a parked one's acts whatever its row still
-// serves, since `withheld` keeps back every other act then, so what's
-// offered and what goes agree.
-function drawn(row, windowed, parked) {
+// `windowed`, whether the shell holds it `parked`, and whether it stands
+// at the `top`, as the void does (standsAtTop). Parked by the shell's
+// word, it offers a parked one's acts whatever its row still serves,
+// since `withheld` keeps back every other act then, so what's offered and
+// what goes agree; its Return is Wake, but Talk for one at the top, which
+// is gone to to be told something however it stands, as row.rs serves it.
+function drawn(row, windowed, parked, top) {
     const fallback = fallbackOf(windowed, parked);
-    return parked ? offered([], "", fallback)
+    return parked ? offered([], top ? `${AGENT}talk` : "", fallback)
         : offered(row?.acts, row?.held?.returns, fallback);
+}
+
+// Whether a session stands at the top, gone to by name as the void is,
+// from its `presence` as session.rs's at_top reads it: a name it says.
+function standsAtTop(presence) {
+    return String(presence?.standsAtTop?.name ?? "") !== "";
 }
 
 // The shell's own acts for a session's row, `offered`'s fallback: for one
@@ -133,13 +141,20 @@ function fallbackOf(windowed, parked) {
 }
 
 // The addresses of the sessions the shell holds parked (Sessions.parked),
-// upper-cased, each by the address its row is keyed by, so a row asks
-// whether its own session is parked in one lookup, and a parked record
-// naming another session among its aliases speaks for none but its own.
+// upper-cased, each by every address it goes by, as Sessions.parkedAs
+// finds one, so a row asks whether its session is parked in one lookup
+// and by the same rule as the shell's other places.
 function parkedSet(parked) {
-    return new Set((Array.isArray(parked) ? parked : [])
-        .map(one => String(one?.address ?? "").toUpperCase())
-        .filter(address => address !== ""));
+    const addresses = new Set();
+    for (const one of Array.isArray(parked) ? parked : []) {
+        for (const address of one?.presence?.addresses ?? [one?.address]) {
+            const upper = String(address ?? "").toUpperCase();
+            if (upper !== "") {
+                addresses.add(upper);
+            }
+        }
+    }
+    return addresses;
 }
 
 // The act a served orchestration's row names by `key` that the shell
