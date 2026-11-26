@@ -7,6 +7,7 @@ use std::fmt::Write;
 
 use serde::{Deserialize, Serialize};
 
+use super::ledger::Seen;
 use super::lines::{figure, shown_lines};
 use super::measures::{Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, drag};
 use super::owing::by_owner;
@@ -39,6 +40,10 @@ pub struct Kept {
     /// The day the card last named the measures out three days running.
     #[serde(default)]
     pub out_told: Option<String>,
+    /// What the hour has seen of the asks list, so one written over is
+    /// read as unread rather than as none of his asks.
+    #[serde(default)]
+    pub asks: Seen,
 }
 
 /// How many misses told fixed the hour keeps, newest last.
@@ -180,6 +185,7 @@ pub fn compose(
         fetched: kept.fetched.clone(),
         out: kept.out.clone(),
         out_told: kept.out_told.clone(),
+        asks: kept.asks,
     };
     (card, next)
 }

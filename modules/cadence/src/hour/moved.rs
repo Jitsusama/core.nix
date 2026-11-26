@@ -114,7 +114,7 @@ fn changed_since(
 }
 
 /// Where a fetch puts its origin's main in a clone.
-const MAIN: &str = "+refs/heads/main:refs/remotes/cadence/main";
+pub(super) const MAIN: &str = "+refs/heads/main:refs/remotes/cadence/main";
 
 /// Clones `seed` bare into `clone`, by way of a folder beside it, so a
 /// clone killed part way leaves nothing that reads as one, and the next
@@ -157,7 +157,7 @@ fn run(dir: &Path, args: &[&str]) -> io::Result<Output> {
 }
 
 /// [`run`], giving what git printed, or an error naming `step`.
-fn git(dir: &Path, step: &str, args: &[&str]) -> io::Result<String> {
+pub(super) fn git(dir: &Path, step: &str, args: &[&str]) -> io::Result<String> {
     let out = run(dir, args).map_err(|err| io::Error::other(format!("{step}: {err}")))?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
@@ -176,14 +176,14 @@ fn failed(step: &str, out: &Output) -> io::Error {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use std::path::PathBuf;
 
     use super::*;
 
     /// Runs git in `at` with a config of its own, so the test reads and
     /// signs with nobody's, giving what it printed.
-    fn git(at: &Path, args: &[&str]) -> String {
+    pub(in crate::hour) fn git(at: &Path, args: &[&str]) -> String {
         let out = Command::new("git")
             .arg("-C")
             .arg(at)
@@ -207,7 +207,7 @@ mod tests {
     /// Commits `text` as `file` in `at`, giving the commit. Its message
     /// names the branch, so one edit made on two in the same second is two
     /// commits rather than one.
-    fn commit(at: &Path, file: &str, text: &str) -> String {
+    pub(in crate::hour) fn commit(at: &Path, file: &str, text: &str) -> String {
         std::fs::write(at.join(file), text).expect("a file written");
         git(at, &["add", file]);
         let on = git(at, &["branch", "--show-current"]);

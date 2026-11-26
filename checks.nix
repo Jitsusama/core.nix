@@ -614,6 +614,7 @@ gather {
     ./modules/disk-guard/checks.nix
     ./modules/disk-loss-panic/checks.nix
     ./modules/disko/checks.nix
+    ./modules/du/checks.nix
     ./modules/eero/checks.nix
     ./modules/elsewhere/checks.nix
     ./modules/ergodox/checks.nix
@@ -634,6 +635,7 @@ gather {
     ./modules/hang-panic/checks.nix
     ./modules/health/checks.nix
     ./modules/hibernate/checks.nix
+    ./modules/home-manager/checks.nix
     ./modules/house-report/checks.nix
     ./modules/inkscape/checks.nix
     ./modules/inlyne/checks.nix

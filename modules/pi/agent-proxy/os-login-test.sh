@@ -258,10 +258,17 @@ grep -q "^<4>.*no gcloud" "$work/said" || fail "didn't warn there's no gcloud"
 
 # Every run's copy, the removals' and the waiting cases' too, since the
 # script's trap would remove a stray one before the folder is listed.
+# A missing record would make grep fail with 2 and pass unread.
+[[ -s $work/copies ]] || fail "no run recorded the copy it handed gcloud"
 grep -qvE "^$work/\.os-login-sent\.[^/]+$" "$work/copies" &&
   fail "copied the proxy's line outside the key's folder"
 left=$(ls -A "$work/shared")
 [[ -z $left ]] || fail "made a file in the temporary folder"
-compgen -G "$work/.os-login-sent.*" >/dev/null && fail "left a copy of the line behind"
+# A glob rather than compgen, which the sandbox's non-interactive bash
+# lacks, so a missing builtin can't pass this unread.
+shopt -s nullglob
+kept=("$work"/.os-login-sent.*)
+shopt -u nullglob
+((${#kept[@]} == 0)) || fail "left a copy of the line behind"
 
 exit "$fails"
