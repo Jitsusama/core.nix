@@ -261,13 +261,6 @@ for given in '+3' ' 3' '+ +3' ' -1' '+-1' '0000000000000000000003' '184467440737
     exit 1
   fi
 done
-# One below a long long is held at its least, whose low 32 bits are 0, so
-# find opens nothing below its start and there's nothing to prune.
-search "${home}" -maxdepth '-9300000000000000000' -name needle >/dev/null
-if grep -qxF "${note}" "${said}"; then
-  echo "${who} with a -maxdepth below a long long pruned as if it had no limit" >&2
-  exit 1
-fi
 # An action of its own that opens nothing lists each guarded folder it
 # matches once, as it prints, with nothing added: NUL-ended, as -print0 asks.
 found=$(wrapped "${home}" . -type d -print0 2>"${said}" | tr '\n\0' '!\n')
@@ -411,15 +404,19 @@ for action in -ok -okdir; do
     exit 1
   fi
 done
-# Kept in an int, 2^32 + 1 is 1, and zeros past a long long's digits are 0,
-# each of which opens no guarded folder.
-for args in depth-primary depth-option deep delete semi-led plus-led int-wraps zeros; do
+# Kept in an int, 2^32 + 1 is 1, zeros past a long long's digits are 0, and
+# one below a long long is held at its least, whose low 32 bits are 0, each
+# of which opens no guarded folder. That one is typed after a +, since find
+# refuses a depth that starts with a -.
+for args in depth-primary depth-option deep delete semi-led plus-led int-wraps zeros \
+  low-held; do
   case ${args} in
     depth-primary) given "${home}" -name x -d ;;
     semi-led) given "${home}" -exec true ';x' -mindepth 3 ;;
     plus-led) given "${home}" -exec true '{}' +x -mindepth 3 ;;
     int-wraps) given "${home}" -maxdepth 3 -maxdepth 4294967297 -name x ;;
     zeros) given "${home}" -maxdepth 3 -maxdepth 0000000000000000000000 -name x ;;
+    low-held) given "${home}" -maxdepth 3 -maxdepth +-9300000000000000000 -name x ;;
     depth-option) given -d "${home}" -name x ;;
     deep) given "${home}" -mindepth 2 -name x ;;
     delete) given "${home}" -name x -delete ;;
