@@ -143,7 +143,10 @@ fn a_listing_that_fails_says_why() {
     let dir = tempfile::tempdir().unwrap();
     script(
         &dir.path().join("nix-store"),
-        "echo 'error: cannot connect to the daemon' >&2; exit 1\n",
+        &format!(
+            "{}echo 'error: cannot connect to the daemon' >&2; exit 1\n",
+            refusing(LISTING)
+        ),
     );
     let failed = list(&dir.path().join("nix"), Path::new(STORE), false).unwrap_err();
     assert!(failed.contains("cannot connect to the daemon"), "{failed}");
@@ -175,7 +178,7 @@ fn a_refused_nix_conf_line_is_told_by_its_length_alone() {
         let dir = tempfile::tempdir().unwrap();
         script(
             &dir.path().join("nix-store"),
-            &format!("[ \"$*\" = '{LISTING}' ] || exit 9\n{said}\nexit 1\n"),
+            &format!("{}{said}\nexit 1\n", refusing(LISTING)),
         );
         let failed = list(&dir.path().join("nix"), Path::new(STORE), false).unwrap_err();
         assert!(
@@ -200,7 +203,7 @@ fn a_min_free_read_runs_at_the_guard_s_own_priority() {
     let dir = tempfile::tempdir().unwrap();
     script(
         &dir.path().join("nix"),
-        &format!("[ \"$*\" = '{asked}' ] || exit 9\nread -r stat < /proc/$$/stat\n{POLICY}"),
+        &format!("{}read -r stat < /proc/$$/stat\n{POLICY}", refusing(asked)),
     );
     let stat = fs::read_to_string("/proc/self/stat").unwrap();
     let own: u64 = stat
@@ -240,9 +243,10 @@ fn a_min_free_read_tells_none_of_what_nix_printed() {
         let dir = tempfile::tempdir().unwrap();
         script(
             &dir.path().join("nix"),
-            &format!("[ \"$*\" = '{asked}' ] || exit 9\n{printed}"),
+            &format!("{}{printed}", refusing(asked)),
         );
-        let failed = min_free(&dir.path().join("nix")).unwrap_err();
+        let nix = dir.path().join("nix");
+        let failed = min_free(&nix).unwrap_err();
         assert!(
             !failed.contains("SECRET"),
             "told what Nix printed: {failed}"
@@ -251,7 +255,21 @@ fn a_min_free_read_tells_none_of_what_nix_printed() {
             failed.contains(told),
             "didn't tell how much Nix printed: {failed}"
         );
+        let see = format!(
+            "; run {} {asked} as the guard's account to see why",
+            nix.display()
+        );
+        assert!(
+            failed.ends_with(&see),
+            "didn't name the read to run: {failed}"
+        );
     }
+}
+
+/// The opening of a stand-in that answers only `asked`, and says what it
+/// was asked otherwise, so a wrong ask fails saying so.
+fn refusing(asked: &str) -> String {
+    format!("[ \"$*\" = '{asked}' ] || {{ echo \"stand-in asked: $*\" >&2; exit 9; }}\n")
 }
 
 const DAY: f64 = 86400.0;

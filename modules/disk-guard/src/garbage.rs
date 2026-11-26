@@ -191,32 +191,39 @@ pub fn min_free(nix: &Path) -> Result<u64, String> {
     // more than the one value, or quoting a nix.conf line it refuses,
     // could print its access tokens. Where its other commands' last words
     // are told with a quoted line left out, this one's aren't, since a read
-    // of the config may print a setting in no quoted form at all; the way
-    // to see why is named instead.
+    // of the config may print a setting in no quoted form at all; the read
+    // itself is named instead, to run as the guard's account.
     // Not idle, unlike the guard's collections: it's one quick read, and on
     // a Mac the background band throttles it most while the machine is
     // busiest, which is when a read past its thirty seconds keeps the guard
-    // from its floor. That lifts the system guard's read, and on Linux an
-    // account's too, from idle to its unit's slice, background.slice,
-    // which still yields to the account's own work. On a Mac an account's
-    // guard runs wholly in the background band, as its launchd agent's
-    // ProcessType puts it so the account's own work comes first, and so
-    // does this read.
+    // from its floor. So it runs as its guard runs. On Linux both guards'
+    // units are in background.slice, whose CPU weight yields to what the
+    // account runs, though its disk reads don't wait as an idle one's do.
+    // On a Mac the system guard is a daemon at launchd's standard priority,
+    // and an account's guard runs wholly in the background band, as its
+    // launchd agent's ProcessType puts it so the account's own work comes
+    // first, and so does this read.
     let (status, said) = output(&argv, Duration::from_secs(30), false, &[])?;
+    let see = argv
+        .iter()
+        .map(|arg| arg.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join(" ");
     if status != Some(0) {
         let ended = status.map_or_else(
             || "was ended by a signal".to_owned(),
             |code| format!("exited {code}"),
         );
         return Err(format!(
-            "nix config show min-free {ended}, saying {} bytes on its error stream; run it \
+            "nix config show min-free {ended}, saying {} bytes on its error stream; run {see} \
              as the guard's account to see why",
             said.trim().len()
         ));
     }
     said.trim().parse().map_err(|error| {
         format!(
-            "nix config show min-free said {} bytes that aren't a number: {error}",
+            "nix config show min-free said {} bytes that aren't a number: {error}; run {see} \
+             as the guard's account to see why",
             said.trim().len()
         )
     })
