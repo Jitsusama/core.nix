@@ -5,7 +5,8 @@
 //! the node a camera's watch couldn't say in `.devices/` is said once it
 //! can be, its trouble said once, and only then is the run ready; and as
 //! its camera goes or its watch stops, the node file goes only once its
-//! nobody is written, and one it couldn't remove is tried again.
+//! nobody is written, and one it couldn't remove as its camera went is
+//! tried again.
 
 use std::fs::{self, File, Permissions};
 use std::os::unix::fs::{PermissionsExt, symlink};
