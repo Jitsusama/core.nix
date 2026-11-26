@@ -57,17 +57,19 @@ fn the_passphrase_typed_with_a_key_plugged_in_opens_the_vault_without_the_key() 
     let scratch = Scratch::new("install-vault-passphrase");
     let mut stand_in = shut_stick(&scratch, &target);
     plugged(&mut stand_in, &[("/dev/hidraw1", "canokey")]);
-    assert!(matches!(
-        OpenVault.observe(&mut stand_in).unwrap(),
-        Standing::Needed { .. }
-    ));
+    let stood = OpenVault.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Needed { .. }),
+        "a shut vault wasn't still to open: {stood:?}"
+    );
     OpenVault
         .run(&mut stand_in, &passphrase(PASSPHRASE))
         .unwrap();
-    assert!(matches!(
-        OpenVault.observe(&mut stand_in).unwrap(),
-        Standing::Done { .. }
-    ));
+    let stood = OpenVault.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Done { .. }),
+        "the passphrase typed with a key plugged in didn't open the vault: {stood:?}"
+    );
 }
 
 #[test]
@@ -112,17 +114,23 @@ fn once_the_vault_is_open_the_steps_read_what_it_installs_with_the_stick_out() {
         .unwrap();
     stand_in.stick_out(true);
     assert_eq!(guide::install::target(&mut stand_in).unwrap(), target);
-    assert!(matches!(
-        OpenVault.observe(&mut stand_in).unwrap(),
-        Standing::Done { .. }
-    ));
+    let stood = OpenVault.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Done { .. }),
+        "with the stick out, the open vault wasn't taken as open: {stood:?}"
+    );
     // What only the vault holds says the stick is out, to be put back.
-    assert!(matches!(
-        guide::install::vault(&mut stand_in).err(),
-        Some(Fault::StickOut)
-    ));
+    let held = guide::install::vault(&mut stand_in).err();
+    assert!(
+        matches!(held, Some(Fault::StickOut)),
+        "with the stick out, the vault didn't say to put it back: {held:?}"
+    );
     stand_in.stick_out(false);
-    assert!(guide::install::vault(&mut stand_in).is_ok());
+    let held = guide::install::vault(&mut stand_in).err();
+    assert!(
+        held.is_none(),
+        "with the stick back, the vault didn't open: {held:?}"
+    );
 }
 
 #[test]
@@ -133,8 +141,9 @@ fn with_the_stick_out_and_nothing_held_the_target_says_to_put_it_back() {
     stand_in
         .no_file(guide::install::HELD_TARGET)
         .stick_out(true);
-    assert!(matches!(
-        guide::install::target(&mut stand_in),
-        Err(Fault::StickOut)
-    ));
+    let held = guide::install::target(&mut stand_in);
+    assert!(
+        matches!(held, Err(Fault::StickOut)),
+        "with the stick out and nothing held, the target didn't say to put it back: {held:?}"
+    );
 }

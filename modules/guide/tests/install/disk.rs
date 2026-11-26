@@ -85,10 +85,11 @@ fn a_disk_laid_out_and_open_at_the_root_stays_done() {
         .journal()
         .record("lay-out-disk", &target.machine)
         .unwrap();
-    assert!(matches!(
-        LayOutDisk.observe(&mut stand_in).unwrap(),
-        Standing::Done { .. }
-    ));
+    let stood = LayOutDisk.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Done { .. }),
+        "a disk laid out and open at the root wasn't taken as laid out: {stood:?}"
+    );
 }
 
 // An old system left open at the root, by Recover or a carry that

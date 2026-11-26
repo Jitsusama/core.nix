@@ -38,10 +38,11 @@ fn the_install_seals_the_keys_to_the_recovery_key_before_its_typed_back() {
     let mut stand_in = stick(&scratch, &target);
     keys_made(&mut stand_in, "the db certificate");
     stand_in.no_file(BUNDLE);
-    assert!(matches!(
-        SealRescueBundle.observe(&mut stand_in).unwrap(),
-        Standing::Needed { .. }
-    ));
+    let stood = SealRescueBundle.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Needed { .. }),
+        "with no bundle, sealing one wasn't needed: {stood:?}"
+    );
     SealRescueBundle
         .run(&mut stand_in, &Answers::new())
         .unwrap();
@@ -64,17 +65,19 @@ fn the_install_seals_the_keys_to_the_recovery_key_before_its_typed_back() {
         &format!("{SBCTL}/keys/db/db.pem"),
         b"another db certificate",
     );
-    assert!(matches!(
-        SealRescueBundle.observe(&mut stand_in).unwrap(),
-        Standing::Needed { .. }
-    ));
+    let stood = SealRescueBundle.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Needed { .. }),
+        "with keys made again, a bundle wasn't needed again: {stood:?}"
+    );
 
     // With the recovery key gone there's nothing to seal it to.
     stand_in.no_file(RECOVERY_KEY);
-    assert!(matches!(
-        SealRescueBundle.observe(&mut stand_in).unwrap(),
-        Standing::Blocked { .. }
-    ));
+    let stood = SealRescueBundle.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Blocked { .. }),
+        "with the recovery key gone, sealing wasn't blocked: {stood:?}"
+    );
 
     let ids = step_ids(&target);
     let at = |id: &str| ids.iter().position(|found| *found == id).unwrap();
@@ -227,10 +230,11 @@ fn the_stick_carries_the_machines_keys_and_bundle_and_boots_with_its_key() {
     let scratch = Scratch::new("install-keep-on-stick");
     let (key, pem) = db_key(&scratch);
     let (mut stand_in, vault) = installed_on_stick(&scratch, &key, &pem);
-    assert!(matches!(
-        KeepOnStick.observe(&mut stand_in).unwrap(),
-        Standing::Needed { .. }
-    ));
+    let stood = KeepOnStick.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Needed { .. }),
+        "installed, keeping the keys on the stick wasn't needed: {stood:?}"
+    );
     KeepOnStick.run(&mut stand_in, &Answers::new()).unwrap();
 
     let opened = VaultKey::from_secret(&Secret::new(
@@ -252,7 +256,10 @@ fn the_stick_carries_the_machines_keys_and_bundle_and_boots_with_its_key() {
         std::fs::read(vault.join("machine-rescue-bundle.json")).unwrap(),
         b"the sealed bundle"
     );
-    assert!(boots_with(&scratch, &scratch.join("boot.fat"), &pem));
+    assert!(
+        boots_with(&scratch, &scratch.join("boot.fat"), &pem),
+        "the stick's boot program wasn't signed by the machine's db key"
+    );
     // Unmounted from /boot before it's opened to be changed.
     let at = |call: &str| {
         stand_in
@@ -265,10 +272,11 @@ fn the_stick_carries_the_machines_keys_and_bundle_and_boots_with_its_key() {
         "{:#?}",
         stand_in.calls
     );
-    assert!(matches!(
-        KeepOnStick.observe(&mut stand_in).unwrap(),
-        Standing::Done { .. }
-    ));
+    let stood = KeepOnStick.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Done { .. }),
+        "kept on the stick, keeping them wasn't done: {stood:?}"
+    );
 
     // Run again with the same keys and a newer bundle, as a step tried
     // again finds the stick: the bundle is the new one, the vault holds no
@@ -288,17 +296,21 @@ fn the_stick_carries_the_machines_keys_and_bundle_and_boots_with_its_key() {
         std::fs::read(scratch.join("boot.fat")).unwrap() == boot_partition,
         "the boot partition its key signed already was changed"
     );
-    assert!(boots_with(&scratch, &scratch.join("boot.fat"), &pem));
+    assert!(
+        boots_with(&scratch, &scratch.join("boot.fat"), &pem),
+        "run again, the stick's boot program no longer verifies with the machine's db key"
+    );
 
     // Keys made again, as a second install from the stick does, make it
     // that machine's again.
     let other = Scratch::new("install-keep-on-stick-other");
     let (_, another) = db_key(&other);
     stand_in.file(&format!("{SBCTL}/keys/db/db.pem"), another.as_bytes());
-    assert!(matches!(
-        KeepOnStick.observe(&mut stand_in).unwrap(),
-        Standing::Needed { .. }
-    ));
+    let stood = KeepOnStick.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Needed { .. }),
+        "with another machine's keys made, the stick wasn't to be made its own: {stood:?}"
+    );
 }
 
 #[test]
@@ -330,7 +342,10 @@ fn a_boot_partition_on_another_disk_than_the_vaults_is_never_signed() {
         "{result:?}"
     );
     assert_eq!(std::fs::read(scratch.join("boot.fat")).unwrap(), before);
-    assert!(!vault.join("machine-rescue-bundle.json").exists());
+    assert!(
+        !vault.join("machine-rescue-bundle.json").exists(),
+        "the vault holds a bundle though nothing was signed"
+    );
 }
 
 #[test]

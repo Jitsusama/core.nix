@@ -186,12 +186,13 @@ fn the_install_key_comes_off_only_once_every_key_and_the_recovery_key_open_the_d
         &dump,
         fixture!("luks-dump-before-wipe.json"),
     );
-    assert!(matches!(
-        WipeInstallKey { yubikeys: 3 }
-            .observe(&mut stand_in)
-            .unwrap(),
-        Standing::Blocked { .. }
-    ));
+    let stood = WipeInstallKey { yubikeys: 3 }
+        .observe(&mut stand_in)
+        .unwrap();
+    assert!(
+        matches!(stood, Standing::Blocked { .. }),
+        "with two of three keys enrolled, the install key's wipe wasn't held: {stood:?}"
+    );
 
     // Both keys enrolled but no recovery key: it waits, or nothing would
     // open the disk without a YubiKey. The real header, its recovery token
@@ -206,12 +207,13 @@ fn the_install_key_comes_off_only_once_every_key_and_the_recovery_key_open_the_d
     let mut stand_in = stick(&scratch, &target);
     stand_in.prints(Tool::Cryptsetup, &dump, &header.to_string());
     stand_in.file(INSTALL_KEY, b"0123");
-    assert!(matches!(
-        WipeInstallKey { yubikeys: 2 }
-            .observe(&mut stand_in)
-            .unwrap(),
-        Standing::Blocked { .. }
-    ));
+    let stood = WipeInstallKey { yubikeys: 2 }
+        .observe(&mut stand_in)
+        .unwrap();
+    assert!(
+        matches!(stood, Standing::Blocked { .. }),
+        "with no recovery key, the install key's wipe wasn't held: {stood:?}"
+    );
 
     // Both enrolled, the key's slot still there: it's next.
     let scratch = Scratch::new("install-ready");
@@ -222,12 +224,13 @@ fn the_install_key_comes_off_only_once_every_key_and_the_recovery_key_open_the_d
         fixture!("luks-dump-before-wipe.json"),
     );
     stand_in.file(INSTALL_KEY, b"0123");
-    assert!(matches!(
-        WipeInstallKey { yubikeys: 2 }
-            .observe(&mut stand_in)
-            .unwrap(),
-        Standing::Needed { .. }
-    ));
+    let stood = WipeInstallKey { yubikeys: 2 }
+        .observe(&mut stand_in)
+        .unwrap();
+    assert!(
+        matches!(stood, Standing::Needed { .. }),
+        "with every key and the recovery key enrolled, the wipe wasn't due: {stood:?}"
+    );
 
     // Every slot a token's, and the key forgotten: done.
     let scratch = Scratch::new("install-wiped");
@@ -237,12 +240,13 @@ fn the_install_key_comes_off_only_once_every_key_and_the_recovery_key_open_the_d
         &dump,
         fixture!("luks-dump-installed.json"),
     );
-    assert!(matches!(
-        WipeInstallKey { yubikeys: 2 }
-            .observe(&mut stand_in)
-            .unwrap(),
-        Standing::Done { .. }
-    ));
+    let stood = WipeInstallKey { yubikeys: 2 }
+        .observe(&mut stand_in)
+        .unwrap();
+    assert!(
+        matches!(stood, Standing::Done { .. }),
+        "with the install key's slot gone, its wipe wasn't done: {stood:?}"
+    );
 }
 
 #[test]
@@ -262,10 +266,11 @@ fn the_install_key_coming_off_takes_the_journals_copy_with_it() {
     // Every slot a token's and the key forgotten, but the copy still says
     // an install is under way: not done until it goes.
     let step = WipeInstallKey { yubikeys: 2 };
-    assert!(matches!(
-        step.observe(&mut stand_in).unwrap(),
-        Standing::Needed { .. }
-    ));
+    let stood = step.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Needed { .. }),
+        "with the journal's copy still there, the wipe was taken as done: {stood:?}"
+    );
     Journey::attempt(&step, &mut stand_in, &Answers::new()).unwrap();
     assert_eq!(stand_in.journal().copy(), None);
 }
@@ -313,10 +318,11 @@ fn the_installed_system_is_told_which_credential_each_named_key_enrolled() {
     let (mut stand_in, credentials) = enrolled_stick(&scratch, &target, true);
     let kept = format!("/mnt{NAMED}");
     stand_in.no_file(&kept);
-    assert!(matches!(
-        NameYubikeys.observe(&mut stand_in).unwrap(),
-        Standing::Needed { .. }
-    ));
+    let stood = NameYubikeys.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Needed { .. }),
+        "with no names kept, naming the keys wasn't needed: {stood:?}"
+    );
     NameYubikeys.run(&mut stand_in, &Answers::new()).unwrap();
     assert!(
         stand_in.calls.contains(&format!("publishing {kept}")),
@@ -355,10 +361,11 @@ fn names_kept_from_another_enrolment_are_written_again() {
         credentials[0], credentials[1]
     );
     stand_in.file(&format!("/mnt{NAMED}"), stale.as_bytes());
-    assert!(matches!(
-        NameYubikeys.observe(&mut stand_in).unwrap(),
-        Standing::Needed { .. }
-    ));
+    let stood = NameYubikeys.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Needed { .. }),
+        "names kept from another enrolment were taken as this one's: {stood:?}"
+    );
 }
 
 #[test]
@@ -370,5 +377,9 @@ fn a_key_not_yet_enrolled_leaves_nothing_to_name() {
         panic!("the 5C isn't enrolled")
     };
     assert!(why.contains("the 5C isn't enrolled"), "{why}");
-    assert!(NameYubikeys.run(&mut stand_in, &Answers::new()).is_err());
+    let naming = NameYubikeys.run(&mut stand_in, &Answers::new());
+    assert!(
+        naming.is_err(),
+        "keys were named with the 5C not yet enrolled: {naming:?}"
+    );
 }

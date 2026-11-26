@@ -424,7 +424,10 @@ fn only_the_boot_program_firmware_boots_is_signed_in_place() {
         .status
         .success()
     };
-    assert!(verify(&boot_program_in(&directory, &boot_partition)));
+    assert!(
+        verify(&boot_program_in(&directory, &boot_partition)),
+        "the boot program the firmware boots wasn't signed"
+    );
     assert!(!verify(&other), "the other program was signed");
 }
 
@@ -529,7 +532,10 @@ fn a_stick_signed_for_two_machines_verifies_with_each_ones_db_key() {
         2
     );
     for signer in &signers {
-        assert!(signer.has_signed(&signed));
+        assert!(
+            signer.has_signed(&signed),
+            "a machine's signature is missing from the program"
+        );
     }
     // sbverify takes the program by any of its signatures, so by each
     // machine's key, and by no other: a third machine's is refused. The
@@ -544,9 +550,15 @@ fn a_stick_signed_for_two_machines_verifies_with_each_ones_db_key() {
             .status
             .success()
     };
-    assert!(verifies(&first));
-    assert!(verifies(&second));
-    assert!(!verifies(&db_key(&directory.join("third"))));
+    assert_eq!(
+        (
+            verifies(&first),
+            verifies(&second),
+            verifies(&db_key(&directory.join("third")))
+        ),
+        (true, true, false),
+        "sbverify didn't take the program by each machine's key and refuse a third's"
+    );
 }
 
 #[test]
@@ -570,7 +582,10 @@ fn an_image_with_nothing_to_sign_is_refused_with_nothing_written() {
         "{:?}",
         result.err()
     );
-    assert!(fs::read(&path).unwrap().iter().all(|byte| *byte == 0xee));
+    assert!(
+        fs::read(&path).unwrap().iter().all(|byte| *byte == 0xee),
+        "an image with nothing to sign wrote to the stick"
+    );
 }
 
 #[test]
@@ -640,7 +655,7 @@ fn a_write_that_stops_part_way_leaves_no_partition_table() {
             })
         },
     );
-    assert!(stopped.is_err());
+    assert!(stopped.is_err(), "a write whose vault failed went on");
     let listed = try_run("sfdisk", &["--json".as_ref(), path.as_os_str()]);
     assert!(
         !listed.status.success(),
@@ -648,7 +663,10 @@ fn a_write_that_stops_part_way_leaves_no_partition_table() {
         String::from_utf8_lossy(&listed.stdout)
     );
     let stick = fs::read(&path).unwrap();
-    assert!(Table::read(&stick).is_err());
+    assert!(
+        Table::read(&stick).is_err(),
+        "a write stopped part way left a partition table"
+    );
     let backup = &stick[stick.len() - index(SECTOR)..];
     assert_ne!(&backup[..8], b"EFI PART");
 }
@@ -672,7 +690,10 @@ fn a_stick_too_small_is_refused_with_nothing_written() {
         "{:?}",
         result.err()
     );
-    assert!(fs::read(&path).unwrap().iter().all(|byte| *byte == 0xee));
+    assert!(
+        fs::read(&path).unwrap().iter().all(|byte| *byte == 0xee),
+        "a stick too small was written to"
+    );
 }
 
 #[test]

@@ -178,7 +178,11 @@ fn every_missing_key_is_made_as_its_account_the_pin_only_in_its_environment() {
         assert!(call.ends_with(&format!("[{ASKPASS}]")), "{call}");
         assert!(!call.contains("(as root)"), "{call}");
     }
-    assert!(stand_in.calls.iter().all(|call| !call.contains("2468")));
+    assert!(
+        stand_in.calls.iter().all(|call| !call.contains("2468")),
+        "the PIN rode on a command line: {:#?}",
+        stand_in.calls
+    );
     // The two with a PIN get it; the agents' key gets none.
     let given: Vec<(&str, &str)> = stand_in
         .secrets
@@ -198,7 +202,9 @@ fn pins_that_differ_make_nothing() {
         stand_in
             .calls
             .iter()
-            .all(|call| !call.starts_with("runuser"))
+            .all(|call| !call.starts_with("runuser")),
+        "a key was made with PINs that differ: {:#?}",
+        stand_in.calls
     );
 }
 
@@ -215,7 +221,9 @@ fn a_pin_its_askpass_would_trim_makes_nothing() {
         stand_in
             .calls
             .iter()
-            .all(|call| !call.starts_with("runuser"))
+            .all(|call| !call.starts_with("runuser")),
+        "a key was made with a PIN its askpass would trim: {:#?}",
+        stand_in.calls
     );
 }
 
@@ -271,7 +279,9 @@ fn half_a_key_blocks_rather_than_being_made_over() {
             stand_in
                 .calls
                 .iter()
-                .all(|call| !call.starts_with("runuser"))
+                .all(|call| !call.starts_with("runuser")),
+            "a key with only its {half} half was made over: {:#?}",
+            stand_in.calls
         );
     }
 }
@@ -292,10 +302,11 @@ fn a_public_half_that_isnt_the_keys_blocks() {
 fn a_machine_whose_accounts_keep_no_keys_has_nothing_to_make() {
     let mut stand_in = StandIn::new();
     stand_in.file(FACTS, br#"{"disk_name":"system"}"#);
-    assert!(matches!(
-        MakeKeys.observe(&mut stand_in).unwrap(),
-        Standing::Done { .. }
-    ));
+    let stood = MakeKeys.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Done { .. }),
+        "a machine whose accounts keep no keys had keys to make: {stood:?}"
+    );
 }
 
 #[test]
@@ -339,7 +350,11 @@ fn a_key_the_cleared_tpm_refuses_is_made_again_in_place_of_the_old() {
         let removed = at(&format!("removing {SIGNING}{half}")).expect(half);
         assert!(removed < keygen, "{:#?}", stand_in.calls);
     }
-    assert!(at(&format!("removing {LOGIN}.tpm")).is_none());
+    assert!(
+        at(&format!("removing {LOGIN}.tpm")).is_none(),
+        "the login key the TPM still takes was removed: {:#?}",
+        stand_in.calls
+    );
 }
 
 #[test]
@@ -361,8 +376,14 @@ fn the_tpm_makes_its_storage_key_once_a_look_and_nothing_loaded_stays() {
         tpm.iter().all(|call| call.ends_with("(as root)")),
         "{tpm:#?}"
     );
-    assert!(stand_in.holds("/run/guide/tpm-key/public").is_none());
-    assert!(stand_in.holds("/run/guide/tpm-key/private").is_none());
+    assert_eq!(
+        (
+            stand_in.holds("/run/guide/tpm-key/public"),
+            stand_in.holds("/run/guide/tpm-key/private")
+        ),
+        (None, None),
+        "the TPM's storage key stayed once the keys were made"
+    );
     assert_eq!(
         stand_in.calls.last().map(String::as_str),
         Some("removing /run/guide/tpm-key and all it holds")
@@ -389,6 +410,8 @@ fn a_tpm_refusing_for_another_reason_is_a_fault_and_nothing_is_made_again() {
         stand_in
             .calls
             .iter()
-            .all(|call| !call.starts_with("removing /home"))
+            .all(|call| !call.starts_with("removing /home")),
+        "a key was removed for a TPM refusing for another reason: {:#?}",
+        stand_in.calls
     );
 }

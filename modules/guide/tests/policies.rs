@@ -76,10 +76,11 @@ fn freed(stand_in: &StandIn) -> Vec<&String> {
 #[test]
 fn an_earlier_installs_policy_is_freed_and_this_ones_kept() {
     let mut stand_in = machine(true);
-    assert!(matches!(
-        FreeOldPolicies.observe(&mut stand_in).unwrap(),
-        Standing::Needed { .. }
-    ));
+    let stood = FreeOldPolicies.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Needed { .. }),
+        "an earlier install's policy wasn't to be freed: {stood:?}"
+    );
     stand_in.prints(
         Tool::Tpm2Nvundefine,
         &["-T", "device:/dev/tpmrm0", "-C", "o", EARLIER],
@@ -88,7 +89,11 @@ fn an_earlier_installs_policy_is_freed_and_this_ones_kept() {
     FreeOldPolicies.run(&mut stand_in, &Answers::new()).unwrap();
     let freed = freed(&stand_in);
     assert_eq!(freed.len(), 1, "{:#?}", stand_in.calls);
-    assert!(freed[0].contains(EARLIER) && freed[0].ends_with("(as root)"));
+    assert!(
+        freed[0].contains(EARLIER) && freed[0].ends_with("(as root)"),
+        "the earlier policy wasn't the one freed, as root: {}",
+        freed[0]
+    );
     // Only the indices in systemd's range were read, never this one's.
     assert!(
         read(&stand_in).iter().all(|call| call.contains(EARLIER)),
@@ -114,10 +119,11 @@ fn an_index_of_another_shape_in_the_range_is_left() {
     let theirs = pcrlocks(EARLIER).replace("0x20021008", "0x20021408");
     let listed = format!("{}- 0x1B00042\n", xps!("tpm2-handles-nv-index.txt"));
     let mut stand_in = tpm(&listed, &theirs);
-    assert!(matches!(
-        FreeOldPolicies.observe(&mut stand_in).unwrap(),
-        Standing::Done { .. }
-    ));
+    let stood = FreeOldPolicies.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Done { .. }),
+        "an index of another shape was taken as a policy to free: {stood:?}"
+    );
     FreeOldPolicies.run(&mut stand_in, &Answers::new()).unwrap();
     assert!(freed(&stand_in).is_empty(), "{:#?}", stand_in.calls);
 }
@@ -145,9 +151,10 @@ fn nothing_is_freed_while_the_tpm_doesnt_hold_this_installs_policy() {
 fn a_machine_without_a_policy_file_is_left_alone() {
     let mut stand_in = machine(true);
     stand_in.no_file(PCRLOCK);
-    assert!(matches!(
-        FreeOldPolicies.observe(&mut stand_in).unwrap(),
-        Standing::Done { .. }
-    ));
+    let stood = FreeOldPolicies.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Done { .. }),
+        "a machine without a policy file had policies to free: {stood:?}"
+    );
     assert!(read(&stand_in).is_empty(), "{:#?}", stand_in.calls);
 }

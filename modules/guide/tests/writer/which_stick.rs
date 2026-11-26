@@ -60,7 +60,11 @@ fn two_sticks_plugged_in_are_both_named_and_neither_is_written() {
     );
     let mut answers = Answers::new();
     answers.give("stick", Answer::Done);
-    assert!(step.run(&mut stand_in, &answers).is_err());
+    let written = step.run(&mut stand_in, &answers);
+    assert!(
+        written.is_err(),
+        "with two sticks plugged in, one was written: {written:?}"
+    );
     assert!(
         !stand_in
             .calls
@@ -114,10 +118,11 @@ fn the_one_stick_is_written_whole_and_what_was_mounted_from_it_is_handed_over() 
         String::from_utf8_lossy(&verified.stdout).contains("No errors detected"),
         "{verified:?}"
     );
-    assert!(matches!(
-        step.observe(&mut stand_in).unwrap(),
-        Standing::Done { .. }
-    ));
+    let stood = step.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Done { .. }),
+        "written whole, the stick wasn't taken as written: {stood:?}"
+    );
 }
 
 #[test]
@@ -165,10 +170,11 @@ fn the_sticks_passphrase_is_seven_words_shown_for_the_phone_and_typed_back() {
     assert!(how.contains("\"NixOS Install Phrase\""), "{how}");
     // Looked at again, it's the same words, or the phone would keep
     // words the vault isn't sealed to.
-    assert!(matches!(
-        asked(&mut stand_in).as_slice(),
-        [_, Ask::Show { shown: again, .. }, _] if again == shown
-    ));
+    let asks = asked(&mut stand_in);
+    assert!(
+        matches!(asks.as_slice(), [_, Ask::Show { shown: again, .. }, _] if again == shown),
+        "looked at again, the words shown weren't the same: {asks:?}"
+    );
 
     let mut answers = Answers::new();
     answers.give("stick", Answer::Done);
@@ -237,7 +243,10 @@ fn the_last_card_says_how_to_reach_the_machines_firmware() {
         r#"{"machine":"laptop","disk":"/dev/x","disk_name":"system","install_key":"/run/guide/install-key","layout_packages":[],"system":"/nix/store/abc","account":"alice","yubikeys":[],"recipients":[],"start_from_stick":null,"clear_secure_boot_keys":null}"#,
     );
     // Another machine's keys aren't carried.
-    assert!(other.with_secure_boot_keys("desktop", keys()).is_err());
+    assert!(
+        other.with_secure_boot_keys("desktop", keys()).is_err(),
+        "another machine's Secure Boot keys were carried"
+    );
     let carrying = surface.with_secure_boot_keys("laptop", keys()).unwrap();
     assert!(
         !carrying.next(None).contains("Hold volume-up"),

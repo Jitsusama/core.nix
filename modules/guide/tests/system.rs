@@ -105,7 +105,11 @@ fn what_it_keeps_only_its_owner_can_read() {
     assert_eq!((mode(file.parent().unwrap()), mode(&file)), (0o700, 0o600));
     machine.remove(file.to_str().unwrap()).unwrap();
     machine.remove(file.to_str().unwrap()).unwrap();
-    assert!(!file.exists());
+    assert!(
+        !file.exists(),
+        "removed twice, {} is still there",
+        file.display()
+    );
 }
 
 #[test]
