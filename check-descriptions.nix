@@ -5914,8 +5914,9 @@
     kinds names both in every watch, a field asked deep is mended with only what moved inside it
     while one not asked is replaced whole, a kind with none is known to hold none once answered, a
     whole answer after a gap lets go what went in it, one whole only of some keys lets go only those
-    that went, and a handler of a told change reads when its line was heard while one of a watch's
-    whole answer, or one it put off, reads none
+    that went, a handler of a told change reads when its line was heard while one of a watch's
+    whole answer, or one it put off, reads none, and a connection the shell lets go with an ask in
+    flight is said let go, as information rather than a warning
   '';
   the-desktop-reads-the-spend-watch = ''
     the AI spend piece draws what the watch wrote, and the tokens piece is there only while the
