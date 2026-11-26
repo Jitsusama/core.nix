@@ -172,6 +172,10 @@ def test_the_headphones_hear_what_was_played(session: Session, played: dict[int,
     """The headphones hear what was played."""
     session.run("pactl set-default-sink headphones")
     heard = session.levels("headphones")
-    assert all(
-        abs(decibels(heard[frequency], played[frequency])) < UNCHANGED for frequency in TONES
-    ), f"the headphones changed a tone: heard {heard}, played {played}"
+    assert all(value > HEARD for value in heard.values()), f"a tone went unheard: {heard}"
+    changed = {
+        frequency: round(decibels(heard[frequency], played[frequency]), 1) for frequency in TONES
+    }
+    assert all(abs(change) < UNCHANGED for change in changed.values()), (
+        f"the headphones changed tones by these dB: {changed}"
+    )

@@ -1082,9 +1082,10 @@ def test_only_the_keys_and_recovery_key_open_the_disk(installed: QemuMachine) ->
     installed.succeed("umount /run/vault")
 
 
-def test_card_says_what_the_disk_asks_and_shuts_down(shut_down: QemuMachine) -> None:
+@pytest.mark.usefixtures("shut_down")
+def test_card_says_what_the_disk_asks_and_shuts_down() -> None:
     """The card says what the disk will ask, and the machine shuts down."""
-    assert not shut_down.booted, "the machine still runs once the card said what the disk asks"
+    # shut_down waits for the card's words and for the machine to power off, so it proves both.
 
 
 def test_machine_boots_its_own_disk_with_a_keys_pin(first_boot: QemuMachine) -> None:

@@ -114,7 +114,7 @@ def laptop(machine: BaseMachine) -> Laptop:
 def test_an_idle_machine_on_the_charger_stays_awake(laptop: Laptop) -> None:
     """An idle machine on the charger stays awake."""
     laptop.idle(idle=True)
-    assert laptop.machine_idle(), "logind doesn't count the machine idle with every session idle"
+    assert laptop.machine_idle(), "logind's IdleHint isn't true with every session idle"
     laptop.machine.sleep(LOOKING)
     laptop.machine.fail(ASLEEP)
     laptop.settle()
@@ -144,7 +144,7 @@ def test_a_burst_of_power_events_leaves_it_following_the_charger(laptop: Laptop)
 def test_a_session_in_use_keeps_it_awake_on_battery(laptop: Laptop) -> None:
     """A session still in use, as a call in Chrome keeps it, keeps the machine awake on battery."""
     laptop.charger(plugged=False)
-    assert not laptop.machine_idle(), "logind counts the machine idle with a session in use"
+    assert not laptop.machine_idle(), "logind's IdleHint is true with a session in use"
     laptop.machine.sleep(LOOKING)
     laptop.machine.fail(ASLEEP)
     laptop.settle()
