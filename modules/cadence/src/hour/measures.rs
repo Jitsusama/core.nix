@@ -126,6 +126,16 @@ impl Measure {
     }
 }
 
+/// `measure`, read from nothing since what it reads couldn't be read,
+/// unjudged and saying `why`, so a file lost or torn isn't counted as
+/// none past its target and closed as fixed.
+#[must_use]
+pub fn unread(mut measure: Measure, why: &str) -> Measure {
+    measure.target = None;
+    measure.says = format!("{} (unread: {why})", measure.says);
+    measure
+}
+
 /// The measure to move this hour: the first class with one past its
 /// target, and within it the one furthest past. A merge's rounds past five
 /// can't move, so they are filed to its owner apart and never lead; nor
