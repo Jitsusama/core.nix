@@ -12,6 +12,8 @@ use std::path::Path;
 
 /// The regular file at `path`, or None where nothing is; anything else
 /// there, a FIFO, a device or a folder, is refused as data that won't read.
+/// `O_NONBLOCK` stays set on the file returned, which changes nothing for
+/// a regular file's reads.
 pub(crate) fn open(path: &Path) -> io::Result<Option<File>> {
     let file = match OpenOptions::new()
         .read(true)
@@ -107,11 +109,12 @@ mod tests {
                 refused.clone(),
                 Ok(Vec::new()),
                 gone,
-                refused.clone()
+                refused
             ],
             "a reader to whom nothing there is an error didn't read a plain file, took a \
              missing one for something else, or read or waited on a FIFO"
         );
+        let refused = Err(std::io::ErrorKind::InvalidData);
         assert_eq!(
             found,
             [

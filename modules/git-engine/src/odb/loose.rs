@@ -3,9 +3,9 @@
 //! stream no further than the size it gives, through the bounds a packed
 //! object is read within, so a stream that inflates past that size, however
 //! far, costs no more than the size before it's refused, and one that ends
-//! short of it is refused too, as git refuses both.
+//! short of it, or has bytes after it, is refused too, as git refuses each.
 
-use super::{Kind, Object, Store, Stored, inflate_at, invalid};
+use super::{Kind, Object, Store, Stored, inflate_ending, invalid};
 use crate::hash::Oid;
 use miniz_oxide::inflate::stream::{InflateState, inflate};
 use miniz_oxide::{DataFormat, MZError, MZFlush, MZStatus};
@@ -28,9 +28,24 @@ impl Store {
         let whole = header
             .checked_add(size)
             .ok_or_else(|| invalid("loose object's size"))?;
-        let mut data = inflate_at(&file, 0, whole, Stored::Loose)?;
+        let (mut data, end) = inflate_ending(&file, 0, whole, Stored::Loose)?;
+        // As git's `unpack_loose_rest` refuses bytes past the stream.
+        if end != file.metadata()?.len() {
+            return Err(invalid("garbage at end of loose object"));
+        }
         data.drain(..header);
         Ok(Some(Object { kind, data }))
+    }
+
+    /// The kind the header of `oid`'s loose copy here gives, or None where
+    /// no file holds it.
+    pub(super) fn loose_kind(&self, oid: &Oid) -> io::Result<Option<Kind>> {
+        let hex = oid.hex();
+        let path = self.dir.join(&hex[..2]).join(&hex[2..]);
+        let Some(file) = crate::regular_file::open(&path)? else {
+            return Ok(None);
+        };
+        Ok(Some(header(&file)?.0))
     }
 }
 
@@ -120,7 +135,8 @@ mod tests {
 
     #[test]
     fn a_header_is_read_as_git_reads_one() {
-        let long_kind = [b"blob ".as_slice(), &[b'1'; 40], b"\0x"].concat();
+        // A size of more digits than a header holds, past what fits too.
+        let long_size = [b"blob ".as_slice(), &[b'1'; 40], b"\0x"].concat();
         let cases: [Case; 9] = [
             (b"blob 2\0hi", Ok((Kind::Blob, b"hi"))),
             (b"tree 0\0", Ok((Kind::Tree, b""))),
@@ -130,7 +146,7 @@ mod tests {
             (b"blob2\0hi", Err("loose header")),
             (b"note 2\0hi", Err("loose header")),
             (b"no header here", Err("loose header")),
-            (&long_kind, Err("loose header")),
+            (&long_size, Err("loose header")),
         ];
         for (raw, expected) in cases {
             assert_eq!(
@@ -160,7 +176,9 @@ mod tests {
         // Cut inside the checksum that closes it, after every byte it gives.
         let mut cut = deflated(b"blob 2\0hi");
         cut.truncate(cut.len() - 2);
+        let trailed = [deflated(b"blob 2\0hi").as_slice(), b"x"].concat();
         let cases = [
+            (trailed, "garbage at end of loose object"),
             (deflated(&bomb), "loose object's size"),
             (deflated(b"blob 9\0hi"), "loose object's size"),
             (cut, "loose object's stream ends early"),
@@ -172,8 +190,8 @@ mod tests {
             assert_eq!(
                 read("bomb", &stream, Some(64 << 10)),
                 Err(refused.to_string()),
-                "a stream inflating past or short of its header's size, or not zlib, wasn't \
-                 refused at it"
+                "a stream inflating past or short of its header's size, not zlib, or with \
+                 bytes after it, wasn't refused at it"
             );
         }
     }

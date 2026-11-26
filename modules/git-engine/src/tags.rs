@@ -31,7 +31,8 @@ enum Peeled {
     /// To a tag object whose bytes are wrong: they stay so till its file
     /// is written again, as one missing stays missing.
     Corrupt(Oid),
-    /// To a tag object that wouldn't read this time.
+    /// To a tag object that wouldn't read this time, a delta's base no
+    /// store holds yet among the reasons.
     Unread(Oid),
 }
 
@@ -107,16 +108,28 @@ impl Tags {
 }
 
 /// How far the tag naming `oid` peels: an annotated tag points at a tag
-/// object, which points on, eight deep at most.
+/// object, which points on, eight deep at most. Only a tag object is read
+/// whole: what it points at is asked only its kind, as git's `peel_object`
+/// asks, so a tag on a large blob costs the blob's headers.
 fn peel(odb: &mut Odb, mut oid: Oid) -> Peeled {
+    let settled = |oid, error: std::io::Error| {
+        if error.kind() == std::io::ErrorKind::InvalidData {
+            Peeled::Corrupt(oid)
+        } else {
+            Peeled::Unread(oid)
+        }
+    };
     for _ in 0..8 {
+        match odb.kind(&oid) {
+            Ok(Some(Kind::Tag)) => {}
+            Ok(Some(_)) => break,
+            Ok(None) => return Peeled::Missing(oid),
+            Err(error) => return settled(oid, error),
+        }
         let object = match odb.read(&oid) {
             Ok(Some(object)) => object,
             Ok(None) => return Peeled::Missing(oid),
-            Err(error) if error.kind() == std::io::ErrorKind::InvalidData => {
-                return Peeled::Corrupt(oid);
-            }
-            Err(_) => return Peeled::Unread(oid),
+            Err(error) => return settled(oid, error),
         };
         if object.kind != Kind::Tag {
             break;
@@ -264,7 +277,14 @@ mod tests {
         let loose = objects.join(&wrong.hex()[..2]);
         std::fs::create_dir_all(&loose).expect("v2's folder is made");
         std::fs::write(loose.join(&wrong.hex()[2..]), b"not zlib").expect("v2 is written");
-        let named = vec![("v1".to_string(), gone), ("v2".to_string(), wrong)];
+        // v3 is missing too, in v1's fan-out folder, whose stamp is kept once.
+        let mut also_gone = [1; 20];
+        also_gone[19] = 9;
+        let named = vec![
+            ("v1".to_string(), gone),
+            ("v2".to_string(), wrong),
+            ("v3".to_string(), Oid(also_gone)),
+        ];
         let mut tags = Tags::new(Vec::new(), named, &HashMap::new());
         tags.naming(Oid([3; 20]), &mut Odb::open(&objects));
         let mut paths: Vec<_> = tags.stamps.iter().map(|(path, _)| path.clone()).collect();
@@ -280,19 +300,55 @@ mod tests {
         );
     }
 
+    /// Writes `object`, whole with its header, loose as `oid` in `objects`.
+    fn loose(objects: &Path, oid: Oid, object: &[u8]) {
+        let folder = objects.join(&oid.hex()[..2]);
+        std::fs::create_dir_all(&folder).expect("the object's folder is made");
+        std::fs::write(
+            folder.join(&oid.hex()[2..]),
+            miniz_oxide::deflate::compress_to_vec_zlib(object, 1),
+        )
+        .expect("the object is written");
+    }
+
+    #[test]
+    fn a_tag_is_peeled_past_its_target_s_kind_without_reading_the_target() {
+        let objects = crate::pack_index::tests::unique("tags-blob");
+        let (tag, blob) = (Oid([6; 20]), Oid([7; 20]));
+        let raw = format!("object {}\ntype blob\n", blob.hex());
+        loose(
+            &objects,
+            tag,
+            format!("tag {}\0{raw}", raw.len()).as_bytes(),
+        );
+        loose(
+            &objects,
+            blob,
+            &[b"blob 4096\0".as_slice(), &[b'x'; 4096]].concat(),
+        );
+        let mut tags = Tags::new(Vec::new(), vec![("v1".to_string(), tag)], &HashMap::new());
+        // Room for the tag's bytes, not the blob's.
+        crate::odb::starve(Some(1024));
+        let named = tags.naming(blob, &mut Odb::open(&objects));
+        crate::odb::starve(None);
+        std::fs::remove_dir_all(&objects).expect("the temp folder gives its folder back");
+        assert_eq!(
+            (named.as_str(), tags.unpeeled.len()),
+            ("v1", 0),
+            "a tag on a blob read the blob whole to learn its kind"
+        );
+    }
+
     #[test]
     fn a_tag_whose_object_wouldn_t_read_this_time_is_peeled_again_the_next() {
         let objects = crate::pack_index::tests::unique("tags-starved");
         let (tag, commit) = (Oid([4; 20]), Oid([5; 20]));
-        let loose = objects.join(&tag.hex()[..2]);
-        std::fs::create_dir_all(&loose).expect("v1's folder is made");
         let raw = format!("object {}\ntype commit\n", commit.hex());
-        let object = format!("tag {}\0{raw}", raw.len());
-        std::fs::write(
-            loose.join(&tag.hex()[2..]),
-            miniz_oxide::deflate::compress_to_vec_zlib(object.as_bytes(), 1),
-        )
-        .expect("v1's object is written");
+        loose(
+            &objects,
+            tag,
+            format!("tag {}\0{raw}", raw.len()).as_bytes(),
+        );
         let mut tags = Tags::new(Vec::new(), vec![("v1".to_string(), tag)], &HashMap::new());
         let mut odb = Odb::open(&objects);
         crate::odb::starve(Some(16));

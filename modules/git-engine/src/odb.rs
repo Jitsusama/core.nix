@@ -341,7 +341,17 @@ impl Stored {
 /// `unpack_compressed_entry` does, it makes room for one byte past the
 /// size, and takes the object only where its stream ends there, so a
 /// stream giving more, or ending wrongly, is refused.
-fn inflate_at(file: &File, mut offset: u64, size: usize, stored: Stored) -> io::Result<Vec<u8>> {
+fn inflate_at(file: &File, offset: u64, size: usize, stored: Stored) -> io::Result<Vec<u8>> {
+    inflate_ending(file, offset, size, stored).map(|(data, _)| data)
+}
+
+/// The same, and the offset just past the stream's end.
+fn inflate_ending(
+    file: &File,
+    mut offset: u64,
+    size: usize,
+    stored: Stored,
+) -> io::Result<(Vec<u8>, u64)> {
     let wrong = |part: &str| invalid(&format!("{}'s {part}", stored.name()));
     let mut state = InflateState::new_boxed(DataFormat::Zlib);
     let room = size.checked_add(1).ok_or_else(|| wrong("size"))?;
@@ -367,7 +377,7 @@ fn inflate_at(file: &File, mut offset: u64, size: usize, stored: Stored) -> io::
             match result.status {
                 Ok(MZStatus::StreamEnd) if filled == size => {
                     out.truncate(size);
-                    return Ok(out);
+                    return Ok((out, offset));
                 }
                 Ok(MZStatus::StreamEnd) => return Err(wrong("size")),
                 _ if filled > size => return Err(wrong("size")),
@@ -736,6 +746,7 @@ impl Odb {
 }
 
 mod chain;
+mod kind;
 mod loose;
 mod parse;
 

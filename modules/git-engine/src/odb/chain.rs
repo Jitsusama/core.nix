@@ -154,9 +154,11 @@ impl Odb {
                         if searches.is_empty() {
                             return ended.refused.map_or(Ok(None), Err);
                         }
-                        let refused = ended
-                            .refused
-                            .unwrap_or_else(|| invalid("delta base missing"));
+                        // Not found rather than wrong, as the next answer
+                        // may find the base written loose or in a new pack.
+                        let refused = ended.refused.unwrap_or_else(|| {
+                            io::Error::new(io::ErrorKind::NotFound, "delta base missing")
+                        });
                         spent.insert(
                             ended.oid,
                             (ended.skipped, refused.kind(), refused.to_string()),
@@ -379,7 +381,7 @@ impl Odb {
 /// `head`'s bytes its header takes, refused as git's
 /// `unpack_object_header_buffer` refuses one whose size runs past a word:
 /// once a byte's seven bits would shift past it, before any are dropped.
-fn entry_header(head: &[u8]) -> io::Result<(u8, usize, usize)> {
+pub(super) fn entry_header(head: &[u8]) -> io::Result<(u8, usize, usize)> {
     let byte = *head.first().ok_or_else(|| invalid("pack entry"))?;
     let code = (byte >> 4) & 7;
     let mut size = usize::from(byte & 15);
@@ -402,7 +404,7 @@ fn entry_header(head: &[u8]) -> io::Result<(u8, usize, usize)> {
 /// How far back an offset delta places its base, and how many of `head`'s
 /// bytes say so, refused as git's `get_delta_base` refuses a distance
 /// past 64 bits.
-fn base_distance(head: &[u8]) -> io::Result<(u64, usize)> {
+pub(super) fn base_distance(head: &[u8]) -> io::Result<(u64, usize)> {
     let mut byte = *head.first().ok_or_else(|| invalid("delta offset"))?;
     let mut back = u64::from(byte & 0x7f);
     let mut at = 1;
