@@ -2061,13 +2061,17 @@ fn claims(
     // floors they were set, so once the children together are protected past the slice's own
     // floor, the kernel shares that floor among them by their protected usage, whatever this
     // order says; Fitting::overran says so when it happens.
+    // Only a scope the sorter holds takes its place in focus's order: one whose hold failed
+    // this look is in the order but not held, and sorts among the unheld as any other does,
+    // rather than ahead of what keep.rs keeps.
     windows.sort_by_cached_key(|path| {
+        let held = floored.held.contains(path);
         (
-            !floored.held.contains(path),
+            !held,
             floored
                 .order
                 .iter()
-                .position(|held| held == path)
+                .position(|wanted| held && wanted == path)
                 .unwrap_or(usize::MAX),
             std::cmp::Reverse(floored.kept(path).unwrap_or(0)),
             path.clone(),
@@ -6020,8 +6024,8 @@ mod tests {
         assert_eq!(
             past,
             ["kitty-0-2.scope", "kitty-0-3.scope", "kitty-0-4.scope"],
-            "a held window's floor or its pi's didn't come first within the cap, the one keep.rs \
-             keeps didn't come next, or scopes only named as windows weren't capped by name"
+            "a held or kept floor didn't claim within the cap ahead of scopes only named as \
+             windows, or those weren't capped by name"
         );
     }
 
@@ -6119,6 +6123,58 @@ mod tests {
             ["mycelium-pi-1.scope", stale],
             "the cap's three floors didn't go to the first three focus holds, or a stale hold \
              came before this look's"
+        );
+    }
+
+    // A window focus wanted held whose hold failed this look is in focus's
+    // order but not held, so it claims among the unheld, after what keep.rs
+    // keeps, rather than by its place in the order: here it asked for max
+    // itself, as anything naming a scope as a window may.
+    #[test]
+    fn a_window_whose_hold_failed_claims_after_what_keep_rs_keeps() {
+        const MIB: u64 = 1 << 20;
+        let held = ["kitty-1-1.scope", "kitty-1-4.scope"];
+        let failed = "kitty-1-2.scope";
+        let slice = slice_with(
+            "fit-hold-failed",
+            32768 * MIB,
+            &[
+                (held[0], 2048 * MIB, "max"),
+                (held[1], 2048 * MIB, "max"),
+                (failed, 2048 * MIB, "max"),
+                ("kitty-1-3.scope", 512 * MIB, "536870912"),
+            ],
+        );
+        let floored = Floored {
+            held: held.iter().map(|name| slice.join(name)).collect(),
+            order: [held[0], failed, held[1]]
+                .iter()
+                .map(|name| slice.join(name))
+                .collect(),
+            kept: [("kitty-1-3.scope".to_owned(), keep::PI_FLOOR)].into(),
+        };
+        let (_, strays, _) = claims(
+            &slice,
+            32768 * MIB,
+            &["kitty-".to_owned()],
+            &[],
+            &floored,
+            &mut budget::Peaks::default(),
+            std::time::Instant::now(),
+        );
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        let past: Vec<&str> = strays
+            .iter()
+            .filter(|(_, claim)| *claim > 0)
+            .map(|(name, _)| name.as_str())
+            .collect();
+        // The held take 4 GiB of the 6, the kept one its half gigabyte, and
+        // the window whose hold failed what's left, so only it claims past.
+        assert_eq!(
+            past,
+            [failed],
+            "a window whose hold failed claimed by its place in focus's order, ahead of the one \
+             keep.rs keeps"
         );
     }
 
