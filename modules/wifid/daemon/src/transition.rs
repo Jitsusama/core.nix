@@ -323,18 +323,20 @@ impl Request {
         }
         if !self.warns_any() {
             said.push_str(", warning nothing");
-            return said;
-        }
-        if self.leaves_network {
-            said.push_str(", warning its whole network drops the card");
         } else {
-            said.push_str(", warning it drops the card");
+            if self.leaves_network {
+                said.push_str(", warning its whole network drops the card");
+            } else {
+                said.push_str(", warning it drops the card");
+            }
+            if self.in_ms == 0 {
+                said.push_str(", saying not when");
+            } else {
+                let _ = write!(said, " in {} ms", self.in_ms);
+            }
         }
-        if self.in_ms == 0 {
-            said.push_str(", saying not when");
-        } else {
-            let _ = write!(said, " in {} ms", self.in_ms);
-        }
+        // Any station can send an unprotected ask as the point, so the
+        // journal says which ones came so, warning or not.
         if !self.protected {
             said.push_str(", unprotected");
         }
@@ -555,6 +557,16 @@ mod tests {
         assert_eq!(
             unwarned.said("wlan2", None),
             "wlan2 was asked by its point to move, naming no point, warning nothing",
+        );
+        let forgeable = Request {
+            protected: false,
+            ..unwarned
+        };
+        assert_eq!(
+            forgeable.said("wlan2", None),
+            "wlan2 was asked by its point to move, naming no point, warning nothing, \
+             unprotected",
+            "an ask anyone could have sent read as the point's own"
         );
     }
 

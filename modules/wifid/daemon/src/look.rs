@@ -74,8 +74,14 @@ struct Waiting {
     from: Option<String>,
     looked: Looked,
     after: u32,
-    since: Instant,
+    since: Since,
 }
+
+/// When a card first looked for what a warning names, kept across each
+/// look a newer ask has it take again. Only a look's end gives one, so a
+/// look taken again can't be handed a later time and start over.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Since(Instant);
 
 /// What a newer ask does to a card's look.
 #[derive(Debug, PartialEq, Eq)]
@@ -103,34 +109,35 @@ pub enum Ended {
     /// card's own began, behind the signal that had it ask for its own.
     Earlier,
     /// It's no longer on the point that asked, so what that point asked
-    /// is past.
+    /// is past, however long it looked.
     Moved(Option<String>),
     /// It looked `LOOK_AT_MOST` without an end said in time, so it's let
     /// go, as `Looks::lapsed` lets go of one whose end never comes.
     Lapsed,
     /// Its look is over, so the request is heeded again, this far looked,
     /// and when the card first looked for what it names.
-    Heed(Request, Looked, Instant),
+    Heed(Request, Looked, Since),
 }
 
 impl Looks {
     /// Has a card on `from` wait on its look for what `request` names,
-    /// begun by wpa_supplicant's answer numbered `after`, `since` it
-    /// first looked for what that warning names.
+    /// begun by wpa_supplicant's answer numbered `after` at `now`: timed
+    /// from `since`, when it first looked for what that warning names,
+    /// should a look's end have it look again, or else from `now`.
     pub fn wait(
         &mut self,
         card: &str,
         request: Request,
         from: Option<String>,
         (looked, after): (Looked, u32),
-        since: Instant,
+        (since, now): (Option<Since>, Instant),
     ) {
         let waiting = Waiting {
             request,
             from,
             looked,
             after,
-            since,
+            since: since.unwrap_or(Since(now)),
         };
         self.0.insert(card.to_owned(), waiting);
     }
@@ -190,7 +197,8 @@ impl Looks {
     /// at `now`: the number of its signal, the point the card is on now,
     /// and whether the look that ended `succeeded`. A signal numbered
     /// before the answer that began the card's look ended another; the
-    /// number wraps only past four billion messages. One said after the
+    /// number wraps only past four billion messages. A card no longer on
+    /// the point that asked heeds nothing of it, and one said after the
     /// card looked `LOOK_AT_MOST` is too late to heed what was asked.
     pub fn ended(
         &mut self,
@@ -199,27 +207,18 @@ impl Looks {
         on: Option<&str>,
         succeeded: bool,
     ) -> Ended {
-        let lapsed = match self.0.get(card) {
-            None => return Ended::Unwaited,
-            Some(waiting) => waiting.lapsed(now),
+        let Some(waiting) = self.0.get(card) else {
+            return Ended::Unwaited;
         };
-        if lapsed {
-            self.0.remove(card);
-            return Ended::Lapsed;
+        if !same_point(waiting.from.as_deref(), on) || waiting.lapsed(now) {
+            return self.past(card, on);
         }
-        if self
-            .0
-            .get(card)
-            .is_some_and(|waiting| serial <= waiting.after)
-        {
+        if serial <= waiting.after {
             return Ended::Earlier;
         }
         let Some(waiting) = self.0.remove(card) else {
             return Ended::Unwaited;
         };
-        if !same_point(waiting.from.as_deref(), on) {
-            return Ended::Moved(waiting.from);
-        }
         let looked = match waiting.looked {
             Looked::Done if !succeeded => Looked::Failed,
             looked => looked,
@@ -232,25 +231,44 @@ impl Looks {
     pub fn due(&self) -> Option<Instant> {
         self.0
             .values()
-            .map(|waiting| waiting.since + LOOK_AT_MOST)
+            .map(|waiting| waiting.since.0 + LOOK_AT_MOST)
             .min()
     }
 
     /// Takes back every card that has looked `LOOK_AT_MOST` by `now` with
-    /// no end of its look said, for each to be let go: held to the point
-    /// that warned it, it would otherwise wait there until it's dropped,
-    /// the journal saying nothing of why.
-    pub fn lapsed(&mut self, now: Instant) -> Vec<String> {
+    /// no end of its look said, each with what that says of it as it's
+    /// `on` a point now. One still on the point that warned it is let go:
+    /// held there, it would otherwise wait until it's dropped, the journal
+    /// saying nothing of why. One moved meanwhile, by its chooser or Joel,
+    /// has left that point, and its hold is the move's.
+    pub fn lapsed(
+        &mut self,
+        now: Instant,
+        on: impl Fn(&str) -> Option<String>,
+    ) -> Vec<(String, Ended)> {
         let lapsed: Vec<String> = self
             .0
             .iter()
             .filter(|(_, waiting)| waiting.lapsed(now))
             .map(|(card, _)| card.clone())
             .collect();
-        for card in &lapsed {
-            self.0.remove(card);
-        }
         lapsed
+            .into_iter()
+            .map(|card| {
+                let ended = self.past(&card, on(&card).as_deref());
+                (card, ended)
+            })
+            .collect()
+    }
+
+    /// Takes back a card's look that's past heeding, as it's `on` a point
+    /// now: moved off the point that asked, or lapsed on it.
+    fn past(&mut self, card: &str, on: Option<&str>) -> Ended {
+        match self.0.remove(card) {
+            None => Ended::Unwaited,
+            Some(waiting) if !same_point(waiting.from.as_deref(), on) => Ended::Moved(waiting.from),
+            Some(_) => Ended::Lapsed,
+        }
     }
 
     /// Forgets a card's look, as the card came off its network or went.
@@ -271,7 +289,7 @@ impl Waiting {
     /// Whether the card has looked for what its warning names as long as
     /// it may by `now`.
     fn lapsed(&self, now: Instant) -> bool {
-        now.saturating_duration_since(self.since) >= LOOK_AT_MOST
+        now.saturating_duration_since(self.since.0) >= LOOK_AT_MOST
     }
 }
 
@@ -320,9 +338,14 @@ mod tests {
             request.clone(),
             Some(ON.to_owned()),
             begun,
-            start(),
+            (None, start()),
         );
         looks
+    }
+
+    /// Where the card is, `ON`, for a lapse to judge.
+    fn on_its_point(_: &str) -> Option<String> {
+        Some(ON.to_owned())
     }
 
     /// When each case's look began.
@@ -350,7 +373,7 @@ mod tests {
     /// What a look ending a second into the card's own heeds, of a card
     /// that first looked at `start`.
     fn heeds(request: Request, looked: Looked) -> Ended {
-        Ended::Heed(request, looked, start())
+        Ended::Heed(request, looked, Since(start()))
     }
 
     #[test]
@@ -532,12 +555,14 @@ mod tests {
         let lapsed = start() + LOOK_AT_MOST;
         assert_eq!(looks.due(), Some(lapsed), "the look was never timed");
         assert!(
-            looks.lapsed(lapsed - Duration::from_millis(1)).is_empty(),
+            looks
+                .lapsed(lapsed - Duration::from_millis(1), on_its_point)
+                .is_empty(),
             "a card was let go before it looked as long as it may"
         );
         assert_eq!(
-            looks.lapsed(lapsed),
-            vec!["wlan2".to_owned()],
+            looks.lapsed(lapsed, on_its_point),
+            vec![("wlan2".to_owned(), Ended::Lapsed)],
             "a card held to the point that warned it waited there to be dropped",
         );
         assert_eq!(looks.due(), None, "and nothing more is timed");
@@ -549,6 +574,32 @@ mod tests {
             "anyone's look ending long after heeded a warning hours old",
         );
         assert!(!looks.waits("wlan2"), "and the look is past");
+    }
+
+    #[test]
+    fn a_card_moved_off_its_point_as_it_looked_isn_t_let_go_when_the_look_lapses() {
+        let request = warning(NEAR);
+        let lapsed = start() + LOOK_AT_MOST;
+        let mut looks = waiting(&request, Looked::Done);
+        assert_eq!(
+            looks.lapsed(lapsed, |_| Some(FAR.to_owned())),
+            vec![("wlan2".to_owned(), Ended::Moved(Some(ON.to_owned())))],
+            "a lapse let go of the hold a move since put on another point",
+        );
+        assert!(!looks.waits("wlan2"), "and the look is past");
+
+        let mut looks = waiting(&request, Looked::Done);
+        assert_eq!(
+            looks.ended("wlan2", (11, lapsed), Some(FAR), true),
+            Ended::Moved(Some(ON.to_owned())),
+            "a late end let go of a card on another point",
+        );
+        let mut looks = waiting(&request, Looked::Done);
+        assert_eq!(
+            end(&mut looks, 9, FAR, true),
+            Ended::Moved(Some(ON.to_owned())),
+            "a card moved off its point still waited on its look",
+        );
     }
 
     #[test]
@@ -568,13 +619,18 @@ mod tests {
             else {
                 panic!("a look ending within its time wasn't heeded");
             };
-            assert_eq!(since, start(), "a look asked again started its time over");
+            assert_eq!(
+                since,
+                Since(start()),
+                "a look asked again started its time over"
+            );
             let begun = (looked, serial + 1);
-            looks.wait("wlan2", request, Some(ON.to_owned()), begun, since);
+            let first = (Some(since), now);
+            looks.wait("wlan2", request, Some(ON.to_owned()), begun, first);
         }
         assert_eq!(
-            looks.lapsed(start() + LOOK_AT_MOST),
-            vec!["wlan2".to_owned()],
+            looks.lapsed(start() + LOOK_AT_MOST, on_its_point),
+            vec![("wlan2".to_owned(), Ended::Lapsed)],
             "warnings over channel after channel kept the card looking past its time",
         );
     }

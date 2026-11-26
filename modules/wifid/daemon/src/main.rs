@@ -93,7 +93,7 @@ use face::Face;
 use frequencies::Avoided;
 use learn::Learned;
 use link::Link;
-use look::{Again, Ended, Looked, Looks};
+use look::{Again, Ended, Looked, Looks, Since};
 use network::{Account, Address, Inner, Method, Network, Security};
 use others::Others;
 use secret::{Credentials, Secrets};
@@ -448,11 +448,28 @@ async fn follow(
                 }
             }
             // A warned card whose look never ends is let go in time,
-            // rather than kept to a point that drops it.
+            // rather than kept to a point that drops it. What wpa_supplicant
+            // has said is taken in first, as for a move's time below: a
+            // look's end still queued would otherwise be judged too late,
+            // and the card let go rather than moved to what it heard.
             () = until(unlooked), if unlooked.is_some() => {
+                tokio::task::yield_now().await;
+                for _ in 0..signals.len() {
+                    if let Ok(Ok(message)) = signals.try_recv() {
+                        take_signal(wifid, &mut air, joining.as_ref(), &message).await;
+                    }
+                }
+                let lapsed = {
+                    let state = wifid.state.borrow();
+                    air.looks.lapsed(Instant::now(), |card| state.point_of(card))
+                };
                 let joining = joining.as_ref().map(|joining| joining.card.as_str());
-                for card in air.looks.lapsed(Instant::now()) {
-                    wifid.look_lapsed(&card, joining).await;
+                for (card, ended) in lapsed {
+                    match ended {
+                        Ended::Moved(from) => left_as_it_looked(&card, from.as_deref()),
+                        Ended::Lapsed => wifid.look_lapsed(&card, joining).await,
+                        Ended::Unwaited | Ended::Earlier | Ended::Heed(..) => {}
+                    }
                 }
             }
             () = until(unreached), if unreached.is_some() => {
@@ -525,7 +542,8 @@ async fn take_signal(
     for (card, request, looked, since) in std::mem::take(&mut air.asked) {
         if let Some(look) = wifid.asked(&card, &request, joining, looked).await {
             let begun = (look.looked, look.after);
-            air.looks.wait(&card, request, look.from, begun, since);
+            let first = (since, Instant::now());
+            air.looks.wait(&card, request, look.from, begun, first);
         }
     }
 }
@@ -778,8 +796,8 @@ struct Air<'a> {
     gone: Vec<String>,
     /// The cards their access point has just asked to move, by name, with
     /// what it asked, how far each has looked for the points it names, and
-    /// since when it has looked for them.
-    asked: Vec<(String, Request, Looked, Instant)>,
+    /// since when it has looked for them, if it has.
+    asked: Vec<(String, Request, Looked, Option<Since>)>,
     /// The cards whose look for what their point asked ended too late to
     /// heed it, by name, for each to be let go.
     lapsed: Vec<String>,
@@ -894,13 +912,10 @@ impl<'a> Air<'a> {
             Ended::Earlier => {
                 println!("<7>{card} waits on its own look, as the one ended began before");
             }
-            Ended::Moved(from) => {
-                let from = from.as_deref().unwrap_or("its point");
-                println!("<6>{card} has left {from} as it looked, so what it asked is past");
-            }
+            Ended::Moved(from) => left_as_it_looked(&card, from.as_deref()),
             Ended::Lapsed => self.lapsed.push(card),
             Ended::Heed(request, looked, since) => {
-                self.asked.push((card, request, looked, since));
+                self.asked.push((card, request, looked, Some(since)));
             }
         }
     }
@@ -1086,10 +1101,10 @@ impl<'a> Air<'a> {
             .looks
             .asked_again(&card, &request, from.as_deref(), at_once, now)
         {
-            Again::Fresh => self.asked.push((card, request, Looked::Not, now)),
+            Again::Fresh => self.asked.push((card, request, Looked::Not, None)),
             Again::Lapsed => {
                 println!("<4>{card}'s look for the points asked never ended, so it heeds anew");
-                self.asked.push((card, request, Looked::Not, now));
+                self.asked.push((card, request, Looked::Not, None));
             }
             Again::Kept => {
                 println!("<6>{}", request.said(&card, from.as_deref()));
@@ -1308,9 +1323,10 @@ impl<'a> Air<'a> {
 }
 
 /// What a card hears of its network: the point it's on, each point it
-/// hears as its address, signal and security, and the security of the
-/// point it's on. One it doesn't hear is taken as open, the network least
-/// proven, so nothing unproven moves it.
+/// hears as its address, signal and security, and how its network is
+/// joined, as it's saved (`State::link_of`) rather than as the point
+/// advertises, which anyone in range can change. One not saved is taken
+/// as open, the network least proven, so nothing unproven moves it.
 fn hearing(
     state: &State,
     card: &str,
@@ -1325,14 +1341,15 @@ fn hearing(
         .map(|heard| (heard.bssid, heard.signal, heard.security))
         .collect();
     let from = state.point_of(card);
-    let link = heard
-        .iter()
-        .find(|(bssid, _, _)| {
-            from.as_deref()
-                .is_some_and(|from| from.eq_ignore_ascii_case(bssid))
-        })
-        .map_or(state::Security::Open, |&(_, _, security)| security);
+    let link = state.link_of(card).unwrap_or(state::Security::Open);
     (from, heard, link)
+}
+
+/// Says a warned card left the point that warned it as it looked, moved
+/// by its chooser or Joel, so what that point asked is past.
+fn left_as_it_looked(card: &str, from: Option<&str>) {
+    let from = from.unwrap_or("its point");
+    println!("<6>{card} has left {from} as it looked, so what it asked is past");
 }
 
 /// A look a card waits on for what a request names: the point that asked,
@@ -2898,18 +2915,14 @@ impl Wifid<'_> {
                 if from.is_none() && missed == Missed::GoesBack {
                     println!("<4>{card} moves to {bssid} with no point known to go back to");
                 }
-                // With nowhere to go back to, a failed move is let join
-                // what it hears, so it keeps nothing off. Nor does a move
-                // from a point that warned it drops the card go back there,
-                // whoever asked it: a chooser's or Joel's move made as the
-                // card waits on its look, or once let go, would otherwise
-                // send it back to be dropped (`Arrivals::warned`).
+                // A failed move that doesn't go back is let join what it
+                // hears, so it keeps nothing off (`Arrivals::returns`).
                 let warned = missed == Missed::LetJoin;
-                let dropping = from
-                    .as_deref()
-                    .is_some_and(|from| self.arrivals.borrow().drops(&card, from, Instant::now()));
-                let returns = !warned && !dropping;
-                if from.is_some() && returns {
+                let returns =
+                    self.arrivals
+                        .borrow()
+                        .returns(&card, from.as_deref(), warned, Instant::now());
+                if returns {
                     self.keep_alone(&card, &interface, &network).await;
                 }
                 // A move asked while the card looks waits for the look,
@@ -3483,6 +3496,18 @@ impl Wifid<'_> {
             let point = interface.current_access_point().await?;
             let on = AccessPoint::new(described(self.bus, &point).await?).heard();
             let on = on.map(|heard| heard.bssid);
+            // A card let go of a point that warned it drops the card isn't
+            // held back to it: should the move asked next never come, it
+            // would wait there until it's dropped.
+            let dropping = on
+                .as_deref()
+                .is_some_and(|on| self.arrivals.borrow().drops(&card, on, Instant::now()));
+            let on = on.filter(|on| {
+                if dropping {
+                    println!("<7>{card} isn't held to {on}, as it warned it drops the card");
+                }
+                !dropping
+            });
             if let Some(on) = &on {
                 self.hold(&network, on).await?;
                 self.held.borrow_mut().insert(card.clone(), network);
@@ -3530,6 +3555,13 @@ impl Wifid<'_> {
     /// wherever it's heard once dropped, as one that heard none of them
     /// is, rather than waiting held to be.
     async fn look_lapsed(&self, card: &str, joining: Option<&str>) {
+        // One moved meanwhile, by its chooser or Joel, is held to where
+        // it's going, and its move lets it go if it misses: going from a
+        // point that warned it, it never goes back there.
+        if self.arrivals.borrow().moving(card) {
+            println!("<6>{card}'s look for the points asked never ended in time, as it moves");
+            return;
+        }
         println!("<4>{card}'s look for the points asked never ended in time, so may join any");
         self.let_go(card, joining != Some(card)).await;
     }

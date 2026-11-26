@@ -486,6 +486,8 @@ def test_a_warned_card_stops_looking_to_move_before_it_s_dropped(
     try:
         ask = warning(machine, wifid)
         since = wifid.journal_now()
+        # wpa_supplicant refuses a look asked while one is under way.
+        looking(machine, now=False)
         machine.succeed("wpa_cli -i wlan2 scan | grep -qx OK")
         looking(machine, now=True)
         machine.succeed(f"{ask} | grep -qx OK")

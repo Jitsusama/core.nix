@@ -514,6 +514,16 @@ impl State {
         Some(self.heard.get(path)?.bssid.clone())
     }
 
+    /// How the network a card is on is joined, as it's saved: wpa_supplicant
+    /// joins a network only as it's saved to be, whatever a point of it
+    /// advertises, and anyone in range can advertise as the point.
+    pub fn link_of(&self, card: &str) -> Option<Security> {
+        let card = self.cards.values().find(|shown| shown.name == card)?;
+        let network = card.network.as_deref()?;
+        let saved = self.saved.iter().find(|saved| saved.name == network)?;
+        Some(saved.security)
+    }
+
     /// Each card on a network through an access point it hears, with a
     /// gateway to echo.
     pub fn joined(&self) -> Vec<Joined> {
@@ -1304,6 +1314,31 @@ mod tests {
         let joined = state.joined();
         assert!(joined[0].trusted, "joined: {joined:?}");
         assert_eq!(state.saved_names(), ["Roadside Inn", "Lantern"]);
+    }
+
+    #[test]
+    fn a_card_s_link_is_joined_as_its_network_is_saved_whatever_its_point_advertises() {
+        let mut state = at_the_inn();
+        let mut open = heard("Roadside Inn", -52);
+        open.security = Security::Open;
+        state.heard("/Interfaces/0/BSSs/1", Some(open));
+        assert_eq!(
+            state.link_of("wlan2"),
+            None,
+            "a network not saved was known"
+        );
+
+        state.saved(&[saved("Lantern", false, 0), saved("Roadside Inn", false, 0)]);
+        assert_eq!(
+            state.link_of("wlan2"),
+            Some(Security::Personal),
+            "a point advertising its network open was taken at its word"
+        );
+        assert_eq!(
+            state.link_of("wlan9"),
+            None,
+            "a card on no network had a link"
+        );
     }
 
     #[test]

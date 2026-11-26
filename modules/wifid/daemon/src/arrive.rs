@@ -368,6 +368,16 @@ impl Arrivals {
             .is_some_and(|(point, until)| point.eq_ignore_ascii_case(from) && now < *until)
     }
 
+    /// Whether a move the card is asked at `now`, from the point it's on,
+    /// goes back there should it miss. With nowhere to go back to it's let
+    /// join what it hears, as is one `warned` it drops the card, moved for
+    /// that, and one asked from a point that `drops` it, whoever asked it:
+    /// a chooser's or Joel's move made as the card waits on its look, or
+    /// once let go, would otherwise send it back to be dropped.
+    pub fn returns(&self, card: &str, from: Option<&str>, warned: bool, now: Instant) -> bool {
+        from.is_some_and(|from| !warned && !self.drops(card, from, now))
+    }
+
     /// Whether the card is on a move away from a point that warned it
     /// drops the card, so isn't to be moved elsewhere until it lands: a
     /// move asked meanwhile would take its time, or hold it back to the
@@ -580,11 +590,12 @@ impl Arrivals {
         self.moves.remove(card);
     }
 
-    /// Forgets every card's move, and every point that warned one, as the
-    /// wpa_supplicant making them has gone.
+    /// Forgets every card's move, as the wpa_supplicant making them has
+    /// gone. Each point that warned a card it drops it is kept, until its
+    /// time: the warning was the point's, and holds for the card under a
+    /// new wpa_supplicant as its chooser's keep-off does (`State`).
     pub fn clear(&mut self) {
         self.moves.clear();
-        self.dropping.clear();
     }
 
     /// Takes in a step wpa_supplicant says the card is at, short of joined,
@@ -1122,8 +1133,35 @@ mod tests {
         );
         arrivals.clear();
         assert!(
-            !arrivals.drops("wlan0", DESK, now),
-            "a warning outlived the wpa_supplicant it came through"
+            arrivals.drops("wlan0", DESK, now),
+            "a new wpa_supplicant forgot a warning the card's chooser still keeps to"
+        );
+    }
+
+    #[test]
+    fn a_move_from_a_point_that_warned_or_from_nowhere_is_let_join_what_it_hears() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        assert!(
+            arrivals.returns("wlan0", Some(DESK), false, now),
+            "a chooser's move lost its way back"
+        );
+        assert!(
+            !arrivals.returns("wlan0", None, false, now),
+            "a move with no point known was sent back to none"
+        );
+        assert!(
+            !arrivals.returns("wlan0", Some(DESK), true, now),
+            "a move away from a warning went back to the point that drops the card"
+        );
+        arrivals.warned("wlan0", DESK, now + Duration::from_secs(600));
+        assert!(
+            !arrivals.returns("wlan0", Some(DESK), false, now),
+            "a chooser's move after a warning went back to the point that drops the card"
+        );
+        assert!(
+            arrivals.returns("wlan0", Some(HALL), false, now),
+            "a move from another point lost its way back"
         );
     }
 
