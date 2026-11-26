@@ -544,6 +544,42 @@ mod tests {
     }
 
     #[test]
+    fn joel_talking_over_them_through_a_quiet_microphone_is_his_own() {
+        // Each side's level is its own recorder's, so a quiet microphone
+        // or a loud call app puts all of his voice far below theirs: his
+        // words over them are as loud as his words alone, and so his.
+        let theirs = at_level(timed("We could meet next week if that suits", 0), -20.0);
+        let over = "Hang on, wait.";
+        let alone = "Fine by me, I'll book the room for us.";
+        let mine = [
+            at_level(timed(over, 600), -40.0),
+            at_level(timed(alone, 10_000), -40.0),
+        ];
+        assert_eq!(
+            cut_from(&[theirs], &mine),
+            [over, alone],
+            "Joel talking over them through a quiet microphone was cut as their echo"
+        );
+    }
+
+    #[test]
+    fn joels_answer_in_the_take_holding_their_echo_is_his_own() {
+        // His take may run on from the echo of their last words into his
+        // answer: what follows the echo at his own voice's level is his.
+        let theirs = at_level(timed("Lunch at noon on Thursday then.", 5_000), -20.0);
+        let own = "Fine by me, I'll book the room for us.";
+        let answer = "Sure, that works.";
+        let mut mine = at_level(timed(own, 1_000), -35.0);
+        mine.extend(at_level(timed("Bunch had moon in Tuesday", 5_050), -52.0));
+        mine.extend(at_level(timed(answer, 6_600), -35.0));
+        assert_eq!(
+            cut_from(&[theirs], &[mine]),
+            [format!("{own} {answer}")],
+            "Joel's answer after their echo in one take was cut as their echo"
+        );
+    }
+
+    #[test]
     fn a_word_only_joels_microphone_heard_doesnt_break_their_echo() {
         // Echo comes in quiet over his room, so his side may hear a word
         // in it theirs didn't: their "noon" must still be cut after it.
