@@ -260,14 +260,17 @@ cleared() {
 # True once the copies' folder in the quest's scratch is no link, any one
 # there cleared first: a job of the quest may put one there while this
 # line runs, and the copy, what lies beside it and its run's file are
-# each written, unpacked or cleared by name through that folder. Each
-# step that begins doing so asks first, and the unpacking and the lists
-# brought back ask again past their long parts, which narrows a link put
-# there after to the span of a step rather than closing it. Only a link
-# is caught: a folder put in its place is taken as the copies' own,
-# which gains a job of the quest nothing it couldn't write itself.
+# each written, unpacked or cleared by name through that folder. The
+# start's clearing, each archive's rename, the archive's names list, the
+# unpacking, the clearings after and the bring-back's lists, after its
+# finds, ask first, which narrows a link put there after to the span of
+# a step rather than closing it; the copy loop and what it reads after
+# aren't asked again. Only a link is caught: a folder put in its place
+# is taken as the copies' own, which gains a job of the quest nothing it
+# couldn't write itself. One cleared is said.
 copies() {
-  [ ! -L "${work%/*}" ] || rm -f "${work%/*}" 2>/dev/null
+  [ ! -L "${work%/*}" ] || { rm -f "${work%/*}" 2>/dev/null
+    [ -L "${work%/*}" ] || printf "elsewhere: a link at its copies' folder was cleared\n" >&2; }
   [ ! -L "${work%/*}" ]
 }
 # True once the copy is a folder of its own at its name, no link
@@ -390,7 +393,7 @@ pub(super) fn copying() -> String {
         # folder fails the list's read before this, as this machine's.
         for at in "$job" "${{job%/*}}" "${{job%/*/*}}"; do
           [ ! -L "$at" ] || {{
-            printf "elsewhere: a link was put above the job's tree while it waited\n" >&2
+            printf "elsewhere: a link was put above the job's tree after its wait\n" >&2
             exit 2
           }}
         done
@@ -421,7 +424,7 @@ pub(super) fn copying() -> String {
       printf "elsewhere: the job's archive %s isn't a plain one of the size its list gives, as the near side writes\n" "$part" >&2
       exit 1
     }}
-    rm -f "$work.names" && (set -C && tar -tf "$work.tar" > "$work.names") || exit 2
+    copies && rm -f "$work.names" && (set -C && tar -tf "$work.tar" > "$work.names") || exit 2
     while IFS= read -r member; do
       case /$member/ in
         //*|*/../*)
@@ -436,7 +439,7 @@ pub(super) fn copying() -> String {
     [ "$unpacked" -eq 0 ] || exit 2
     odd=$(find "$work" -type l -o -type p -o -type s -o -type b -o -type c \
       -o ! -type d -links +1) || exit 2
-    [ -z "$odd" ] || {{
+    [ -z "$odd" ] || {{ placed || exit 2
       printf "elsewhere: the job's tree holds %s, which is neither a file nor a folder of its own\n" "${{odd%%
 *}}" >&2
       exit 1

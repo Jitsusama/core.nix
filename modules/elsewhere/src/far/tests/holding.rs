@@ -34,7 +34,7 @@ fn a_link_put_at_the_job_s_tree_or_above_it_is_answered_before_an_archive_is_tak
             "tree/0.tar",
             None,
             75,
-            "a link was put above the job's tree while it waited",
+            "a link was put above the job's tree after its wait",
         ),
     ] {
         let swapping = format!(
@@ -88,7 +88,7 @@ PATH=${{PATH#*:}} exec uname "$@""#
     );
     let (rm, pinned) = refusing("rm", &format!("*\"/{HANDOVER} \"*"), "exit 1");
     for (stays, said) in [
-        (false, "didn't reach"),
+        (false, "a link at the job's handover was cleared"),
         (true, "a link at the job's handover couldn't be cleared"),
     ] {
         let mut programs = vec![("uname", swapping.as_str())];
@@ -298,18 +298,23 @@ fn a_link_put_at_the_copies_folder_or_the_copy_while_it_is_made_leaves_the_job_u
     // link to it at its name, as the archive's names are read, where the
     // far line may clear the link and where it may not; or moving the copy
     // aside, with a link at its name, once tar unpacked into it, or once
-    // the copy was checked, before the job's cd. Each is this machine's to
-    // answer, nothing is cleared through the link, and the job never runs.
+    // the copy was checked, before the job's cd; or moving the copies'
+    // folder aside then, where the link can't be cleared. Each is this
+    // machine's to answer, nothing is unpacked or cleared through the
+    // link, and the job never runs.
     let folder = r#"mv "$s" "$HOME/aside" && ln -s "$HOME/aside" "$s""#;
     let copy = r#"mv "$s/1" "$HOME/moved" && ln -s "$HOME/moved" "$s/1""#;
     let (rm, pinned) = refusing("rm", "*\"/.s \"*", "exit 1");
-    let cases = [
+    // Each: the step, when, whether after it, the swap, what must stay,
+    // what must never be made through the link, and whether it's pinned.
+    let cases: [(&str, &str, bool, &str, &[&str], &[&str], bool); 5] = [
         (
             "tar",
             "*\" -tf \"*",
             false,
             folder,
-            ["aside/1.run", "aside/1.tar"],
+            &["aside/1.run", "aside/1.tar"],
+            &["aside/1/a"],
             false,
         ),
         (
@@ -317,27 +322,31 @@ fn a_link_put_at_the_copies_folder_or_the_copy_while_it_is_made_leaves_the_job_u
             "*\" -tf \"*",
             false,
             folder,
-            ["aside/1.run", "aside/1.tar"],
+            &["aside/1.run", "aside/1.tar"],
+            &["aside/1/a"],
             true,
         ),
+        ("tar", "*\" -xf \"*", true, copy, &["moved/a"], &[], false),
         (
-            "tar",
-            "*\" -xf \"*",
+            "find",
+            "*\" -links \"*",
             true,
             copy,
-            ["moved/a", "moved/a"],
+            &["moved/a"],
+            &[],
             false,
         ),
         (
             "find",
             "*\" -links \"*",
             true,
-            copy,
-            ["moved/a", "moved/a"],
-            false,
+            folder,
+            &["aside/1.run", "aside/1/a"],
+            &[],
+            true,
         ),
     ];
-    for (step, when, after, swap, kept, stays) in cases {
+    for (step, when, after, swap, kept, gone, stays) in cases {
         let swapping = format!(
             r#"PATH=${{PATH#*:}} at='{FIRST}' s="$HOME/${{at%/{HANDOVER}/*}}/.s"
 swap() {{ [ -e "$HOME/swapped" ] || {{ {swap} && : > "$HOME/swapped"; }}; }}
@@ -370,11 +379,13 @@ exit $r"#,
         );
         assert!(
             kept.iter().all(|kept| home.join(kept).exists())
+                && gone.iter().all(|gone| !home.join(gone).exists())
                 && ["aside/ran", "ran"]
                     .iter()
                     .all(|ran| !home.join(ran).exists())
                 && !work(&home).join("ran").exists(),
-            "with a link put at {case}, the job ran or what lay past the link was cleared: {err}"
+            "with a link put at {case}, the job ran, or what lay past the link was unpacked into \
+             or cleared: {err}"
         );
         let _ = std::fs::remove_dir_all(&home);
     }
