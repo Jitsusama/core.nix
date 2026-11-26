@@ -737,6 +737,7 @@ Item {
             registering: takesRegister(event, key),
             answering: confirming,
             answerTaken: confirming && answerTaken(key),
+            repeated: event.isAutoRepeat,
             operated,
             commands: QueryKeys.opensCommands(key, mode, input.text),
             drawerHere,

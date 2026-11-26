@@ -55,7 +55,8 @@ function nowhere(act, line) {
 // a register, or its letter, which types (`registering`), nor the operator
 // pressed again after visual's, which is swallowed (`operated`). A key
 // while an ask stands (`answering`) acts where the ask takes it as its
-// answer (`answerTaken`, Confirm.answer), and a colon opening the command
+// answer (`answerTaken`, Confirm.answer), never as it repeats, even
+// visual's operator again, and a colon opening the command
 // line (`commands`) acts. Otherwise a key the field types itself, as a
 // letter, Shift+Left or Alt+a, a count or a sequence begun, Escape at rest
 // and a key meaning nothing where it was pressed act on nothing; nor does
@@ -68,11 +69,17 @@ function nowhere(act, line) {
 // the command line's keys, which the line never reads, act after all: the
 // launcher times those itself (Launcher.qml's keyActs).
 function acts(read, line) {
-    if (line.alone || line.registering || line.operated) {
+    // In the order Prompt.qml's modalKey hands a key on: a register's key,
+    // then the ask, which never takes a held key's repeat (`repeated`),
+    // then visual's operator.
+    if (line.alone || line.registering) {
         return false;
     }
     if (line.answering) {
-        return line.answerTaken;
+        return !line.repeated && line.answerTaken;
+    }
+    if (line.operated) {
+        return false;
     }
     if (line.commands) {
         return true;
