@@ -13,7 +13,7 @@
 
 import { type Ask, asked, type Choice, waitFor } from "./ask.ts";
 import { carry, type Readying, ready, type Send } from "./answer.ts";
-import { type Clock, follow, type Reaching, type State } from "./feed.ts";
+import { browserClock, follow, type Reaching, type State } from "./feed.ts";
 import { type Drawn, type Holder, keyed } from "./keyed.ts";
 import { type Held, isObject } from "./records.ts";
 import { clockTime } from "./status.ts";
@@ -194,14 +194,6 @@ interface Asking<Item extends Drawn> {
   readonly reaching?: Reaching & { readonly send?: Send; readonly ready?: Readying };
 }
 
-const browserClock: Clock = {
-  now: () => Date.now(),
-  later: (milliseconds, then) => {
-    const timer = setTimeout(then, milliseconds);
-    return () => clearTimeout(timer);
-  },
-};
-
 /** The asks a page follows: narrowed to one cell's or widened to all, and closed. */
 interface Following {
   /** Shows only the asks of the cell at `address`, or every one for null. */
@@ -221,6 +213,17 @@ function followAsks<Item extends Made<Item>>(asking: Asking<Item>): Following {
   // Whether the server takes this page's answers: unknown until it says,
   // then null where it does, or the sentence saying why it doesn't.
   let barred: string | null | undefined;
+  let wasLive = false;
+  // Asked again each time the feed comes back, since a server restarted
+  // meanwhile draws a fresh cookie, or now takes what it refused; no
+  // answer is offered until it says.
+  const askReady = (): void => {
+    barred = undefined;
+    ready(reaching.ready).then((why) => {
+      barred = why;
+      draw();
+    });
+  };
   const press = (row: Waiting, choice: Choice): void => {
     if (pressed.has(row.key)) {
       return;
@@ -267,7 +270,12 @@ function followAsks<Item extends Made<Item>>(asking: Asking<Item>): Following {
     {
       moved: (_, moved) => draw(moved.whole ? undefined : [...moved.changed, ...moved.gone]),
       stands: (standing) => {
+        const back = wasLive && state !== "live" && standing.state === "live";
         state = standing.state;
+        wasLive ||= state === "live";
+        if (back) {
+          askReady();
+        }
         draw();
       },
       // A record the page can't read is one look it can't show; For You still holds it.
@@ -276,10 +284,7 @@ function followAsks<Item extends Made<Item>>(asking: Asking<Item>): Following {
     reaching,
   );
   held = following.held;
-  ready(reaching.ready).then((why) => {
-    barred = why;
-    draw();
-  });
+  askReady();
   return {
     narrow: (next) => {
       if (next !== address) {

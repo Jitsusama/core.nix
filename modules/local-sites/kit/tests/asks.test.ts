@@ -15,7 +15,11 @@ import { Held } from "../records.ts";
 import { Hands } from "./hands.ts";
 import { StandIn } from "./stand-in.ts";
 
-/** An element as a row is built from it, refusing markup as a test of text. */
+/**
+ * An element as a row is built from it, which keeps whatever text it's given
+ * as text and throws on every way of writing markup into it, so a row drawn
+ * whole was drawn from text alone.
+ */
 class Element {
   readonly tag: string;
   className = "";
@@ -33,6 +37,14 @@ class Element {
   }
 
   set innerHTML(_markup: string) {
+    throw new Error("a row was given markup");
+  }
+
+  set outerHTML(_markup: string) {
+    throw new Error("a row was given markup");
+  }
+
+  insertAdjacentHTML(_where: string, _markup: string): void {
     throw new Error("a row was given markup");
   }
 
@@ -90,7 +102,11 @@ const TAKES_NONE = /take no answers: answer in For You/u;
 const UNREACHED = /can't be reached/u;
 const AGENTS = /one of your agents/u;
 const FOR_YOU = /answer in For You/u;
-const UNTOLD = /couldn't tell this press was yours/u;
+const UNTOLD = /couldn't tell this page is yours/u;
+const NOTHING_SENT = /nothing was sent/u;
+
+/** Waits out every task already queued, however many turns it takes. */
+const flush = (): Promise<void> => new Promise((then) => setImmediate(then));
 const COME_BACK = /come back once this page is live/u;
 const ANSWERED = /Answered Merge It/u;
 
@@ -151,8 +167,7 @@ it("every word a session wrote is set as text, so markup in a title shows as wri
   const row = drawAsk(make, { key: "look:l1", look: null, ask }, view, NOW);
   const [title] = row.all("h3");
   assert.equal(title?.words(), "<b>Merge</b> it?");
-  assert.equal(title?.all("b").length, 0, "a title's markup became an element");
-  assert.equal(row.all("img").length, 0, "a why's markup became an element");
+  assert.match(row.words(), /<img src=x onerror=alert\(1\)> Its checks passed\./u);
   assert.equal(
     row.all("a")[0]?.getAttribute("href"),
     "https://github.com/Jitsusama/core.nix/pull/1",
@@ -223,6 +238,10 @@ it("a page asks once whether its answers are taken, and is told why not", async 
   assert.match(String(untold), UNTOLD);
   const down = await ready(() => Promise.reject(new Error("down")));
   assert.match(String(down), UNREACHED);
+  const elsewhere = await ready(() => Promise.resolve({ status: 403, text: '{"refused":"site"}' }));
+  for (const said of [none, agents, untold, down, elsewhere]) {
+    assert.doesNotMatch(String(said), NOTHING_SENT, "a row nobody pressed said nothing was sent");
+  }
 });
 
 it("answers wait on the server taking them, and say why where it doesn't", async () => {
@@ -245,8 +264,7 @@ it("answers wait on the server taking them, and say why where it doesn't", async
       "answers showed before the server said it takes them",
     );
     answer(said);
-    await Promise.resolve();
-    await Promise.resolve();
+    await flush();
     assert.equal(holder.all("button").length, shown, `${said.status}`);
     assert.equal(
       AGENTS.test(holder.words()),
@@ -281,8 +299,8 @@ it("answers show only while the feed is live and go once one is pressed", async 
       ready: takes,
     },
   });
-  await Promise.resolve();
-  await Promise.resolve();
+  // The server says it takes the page's answers before the feed goes live.
+  await flush();
   const feed = socket as unknown as StandIn;
   feed.onopen?.();
   feed.tell({ id: 2, records: [{ key: "look:l1", kind: "look", look: look("l1", "abc") }] });
@@ -293,8 +311,7 @@ it("answers show only while the feed is live and go once one is pressed", async 
   assert.ok(yes !== undefined, "no answers showed while live");
   yes.clicks[0]?.();
   assert.equal(holder.all("button").length, 0, "answers stayed once one was pressed");
-  await Promise.resolve();
-  await Promise.resolve();
+  await flush();
   assert.deepEqual(
     posted.map((body) => JSON.parse(body)),
     [{ look: "l1", value: "yes" }],
@@ -343,18 +360,82 @@ it("a page narrowed to a cell shows only its asks, and every one widened again",
   assert.deepEqual(holder.all("h3").length, 1);
 });
 
+it("a page asks again whether its answers are taken once its feed comes back", async () => {
+  const sockets: StandIn[] = [];
+  const holder = new Element("div");
+  const near = reaching(sockets);
+  let asked = 0;
+  const asking = (): Promise<Posted> => {
+    asked += 1;
+    return takes();
+  };
+  followAsks({ holder, make, reaching: { ...near, ready: asking } });
+  telling(sockets[0], look("l1", "abc"));
+  await flush();
+  assert.equal(asked, 1);
+  sockets[0]?.onclose?.();
+  near.clock.pass(60_000);
+  telling(sockets[1], look("l1", "abc"));
+  assert.equal(asked, 2, "a server that may have restarted wasn't asked again");
+  assert.equal(holder.all("button").length, 0, "answers showed before it said again");
+  await flush();
+  assert.equal(holder.all("button").length, 2, "answers didn't come back once it said");
+});
+
+/** Loads the rows' files as the browser does, counting each load. */
+function counted(): { loads: number; load: () => Promise<typeof import("../asks.ts")> } {
+  const loading = {
+    loads: 0,
+    load: () => {
+      loading.loads += 1;
+      return import("../asks.ts");
+    },
+  };
+  return loading;
+}
+
+it("rows whose files failed to load are loaded again once the feed is watched again", async () => {
+  const sockets: StandIn[] = [];
+  const holder = new Element("div");
+  const near = reaching(sockets);
+  const loading = counted();
+  let fails = true;
+  const load = (): Promise<typeof import("../asks.ts")> => {
+    if (fails) {
+      fails = false;
+      loading.loads += 1;
+      return Promise.reject(new Error("the server restarted"));
+    }
+    return loading.load();
+  };
+  asksOnceOneWaits({ holder, make, reaching: near }, load);
+  telling(sockets[0], look("l1", "abc"));
+  await flush();
+  assert.equal(loading.loads, 1);
+  assert.equal(sockets.length, 1, "the feed was watched again at once");
+  near.clock.pass(60_000);
+  telling(sockets[1], look("l1", "abc"));
+  assert.equal(loading.loads, 2, "rows whose files failed to load were never loaded again");
+});
+
 it("the rows load only once a look waits, narrowed as the page narrowed them meanwhile", async () => {
   const sockets: StandIn[] = [];
   const holder = new Element("div");
-  const asks = asksOnceOneWaits({ holder, make, reaching: reaching(sockets) });
+  const loading = counted();
+  const asks = asksOnceOneWaits({ holder, make, reaching: reaching(sockets) }, loading.load);
   telling(sockets[0], { ...look("done", "abc"), state: "resolved" });
-  assert.equal(sockets.length, 1, "the rows loaded with nothing waiting");
+  await flush();
+  assert.equal(loading.loads, 0, "the rows loaded with nothing waiting");
+  assert.equal(sockets.length, 1, "a second watch opened with nothing waiting");
+  assert.equal(sockets[0]?.closed, false, "the watch closed with nothing waiting");
   asks.narrow("def");
   sockets[0]?.tell({ id: 2, changed: [{ key: "look:l2", kind: "look", look: look("l2", "abc") }] });
   assert.equal(sockets[0]?.closed, true, "the watch for a waiting look stayed open");
-  for (let turns = 0; turns < 20 && sockets.length < 2; turns += 1) {
+  assert.equal(loading.loads, 1);
+  for (let turns = 0; turns < 200 && sockets.length < 2; turns += 1) {
     await new Promise((then) => setTimeout(then, 5));
   }
+  assert.equal(sockets.length, 2, "the rows' files never loaded, so they never watched");
   telling(sockets[1], look("l2", "abc"), look("l3", "def"));
   assert.deepEqual(
     holder.all("h3").length,

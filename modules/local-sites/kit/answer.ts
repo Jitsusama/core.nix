@@ -79,6 +79,17 @@ const REFUSALS: Readonly<Record<string, string>> = {
   unsteered: UNREACHED,
 };
 
+/**
+ * What each word the server refuses this page its answers with says to him,
+ * before he's pressed anything: so no row says nothing was sent.
+ */
+const UNREADY: Readonly<Record<string, string>> = {
+  ...REFUSALS,
+  untold: `The server couldn't tell this page is yours: ${FOR_YOU}.`,
+  origin: `Only a page of your sites can answer: ${FOR_YOU}.`,
+  site: `Only a page of your sites can answer: ${FOR_YOU}.`,
+};
+
 /** The browser's post of `body` to the server that served the page. */
 async function browserSend(body: string): Promise<Posted> {
   const answer = await fetch(ANSWER, {
@@ -96,8 +107,8 @@ async function browserAsk(): Promise<Posted> {
   return { status: answer.status, text: await answer.text() };
 }
 
-/** What the server's refusal `posted` says to him. */
-function refusedAs(posted: Posted): string {
+/** What the server's refusal `posted` says to him, in `refusals`' words. */
+function refusedAs(posted: Posted, refusals = REFUSALS): string {
   let said: unknown = null;
   try {
     said = JSON.parse(posted.text);
@@ -105,7 +116,7 @@ function refusedAs(posted: Posted): string {
     // A server that takes no answers says so in plain words, not JSON.
   }
   const word = isObject(said) ? said["refused"] : undefined;
-  const words = typeof word === "string" ? REFUSALS[word] : undefined;
+  const words = typeof word === "string" ? refusals[word] : undefined;
   if (words !== undefined) {
     return words;
   }
@@ -123,9 +134,9 @@ async function ready(ask: Readying = browserAsk): Promise<string | null> {
   try {
     asked = await ask();
   } catch {
-    return UNSEEN;
+    return `The sites' server can't be reached: ${FOR_YOU}.`;
   }
-  return asked.status === GIVEN ? null : refusedAs(asked);
+  return asked.status === GIVEN ? null : refusedAs(asked, UNREADY);
 }
 
 /**

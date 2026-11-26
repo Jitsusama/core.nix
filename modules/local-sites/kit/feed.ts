@@ -267,4 +267,4 @@ function follow(watching: Watching, hearing: Hearing, reaching: Reaching = {}): 
 }
 
 export type { Clock, Following, Hearing, Reaching, Socket, Standing, State, Watching };
-export { feedAddress, follow, waitBefore };
+export { browserClock, feedAddress, follow, waitBefore };
