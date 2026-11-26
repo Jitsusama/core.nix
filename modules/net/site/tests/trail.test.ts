@@ -66,3 +66,13 @@ it("once the map is drawn the other way, the opposite arrow goes to its nearest"
   view.shows(STACKED);
   assert.deepEqual(view.walk(-1, 0), { to: "switch" });
 });
+
+it("once a stacked map is drawn across, the opposite arrow goes to its nearest", () => {
+  const view = new MapView(element<HTMLElement>(), element<SVGSVGElement>());
+  view.shows(STACKED);
+  view.land("switch");
+  assert.deepEqual(view.walk(1, 0), { to: "eero" });
+  // Across, the switch is far below the modem, out of the left arrow's reach.
+  view.shows(drawing(false, { modem: [0, 0], eero: [100, 0], switch: [0, 300] }));
+  assert.deepEqual(view.walk(-1, 0), { to: "modem" });
+});

@@ -306,9 +306,32 @@ HERE_PAST = """() => {
     moved: view.scrollTop > 0 || view.scrollLeft > 0,
   };
 }"""
-# A desk's width, drawn across, too short for the whole map at its smallest zoom, so the
-# lowest device stands past the room's first sight once the window widens.
-SHORT_DESK = (SIZES[-1][0], 360)
+# The map's room and the drawing's height at zoom 1, as drawn across on the opening desk.
+ROOM_AND_DRAWN = """() => {
+  const view = document.querySelector("#map-view");
+  const box = document.querySelector("#map-draw").viewBox.baseVal;
+  return { room: view.clientHeight, drawn: box.height };
+}"""
+# The shortest window the page lays out as a desk's, with the map's room its own region rather
+# than a block the page scrolls past (site.css's 34rem), and how much of the drawing across, at
+# the smallest zoom, a widened window leaves below its room's first sight.
+LEAST_DESK_HEIGHT = 34 * 16
+BELOW_SIGHT_PX = 80
+# The view's scroll put back to its corner, so only the page can bring the keys' device into it.
+TO_THE_CORNER = """() => document.querySelector("#map-view").scrollTo(0, 0)"""
+
+
+def short_desk(page: Page) -> tuple[int, int]:
+    """Read a desk window whose map's room leaves the drawing across past its first sight."""
+    width, height = SIZES[-1]
+    measured = page.evaluate(ROOM_AND_DRAWN)
+    around = height - measured["room"]
+    short = around + int(measured["drawn"] * SMALLEST_ZOOM) - BELOW_SIGHT_PX
+    assert short >= LEAST_DESK_HEIGHT, (
+        f"a room short enough to leave the map {BELOW_SIGHT_PX} px past its sight needs a "
+        f"{short} px window, which the page lays out as a phone's: {measured}"
+    )
+    return width, short
 
 
 def the_keys_device_stands_in_view(page: Page, where: str) -> None:
@@ -329,6 +352,7 @@ def test_the_keys_device_stays_in_view_as_the_map_draws_the_other_way(
         page = opened.page
         says_it_stands(page, "live")
         every_device_drawn(page)
+        desk_short = short_desk(page)
         lowest = page.evaluate(LOWEST)
         assert lowest is not None, "the map drew no device"
         opened_on(page, lowest)
@@ -339,7 +363,10 @@ def test_the_keys_device_stays_in_view_as_the_map_draws_the_other_way(
         stacked = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === false"
         page.wait_for_function(stacked, arg=KESTREL, timeout=PACE_MS)
         the_keys_device_stands_in_view(page, "a narrowed window")
-        page.set_viewport_size({"width": SHORT_DESK[0], "height": SHORT_DESK[1]})
+        # From the corner, so the phone's own scroll, clamped to the map's foot, can't be what
+        # shows the device once it widens.
+        page.evaluate(TO_THE_CORNER)
+        page.set_viewport_size({"width": desk_short[0], "height": desk_short[1]})
         across = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === true"
         page.wait_for_function(across, arg=KESTREL, timeout=PACE_MS)
         the_keys_device_stands_in_view(page, "a widened window")
