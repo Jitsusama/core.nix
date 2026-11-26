@@ -45,6 +45,7 @@ import "../Places.js" as Places
 import "../SessionTalks.js" as Said
 import "../When.js" as When
 import "CarryBack.js" as CarryBack
+import "ForYouCells.js" as Cells
 import "Landed.js" as Landed
 import "Moment.js" as Moment
 import "Numbers.js" as Numbers
@@ -1006,12 +1007,12 @@ Provider {
     // the cell says it (Now.qml's cellHeading), or none before it's told.
     // Read from the record, never a made row, since the headings are heard
     // with the launcher shut, where a row made for nobody is work a held
-    // key waits on (vm-desktop-launcher-keeps-up, ZINAWZ).
+    // key waits on (vm-desktop-launcher-keeps-up, ZINAWZ). Read as
+    // ForYouCells.js's standing reads it, so for-you-cells.qml holds the
+    // reading the headings use; `placings` moves as any row does.
     function standingOf(address) {
         void placings;
-        const served = rowsKind?.held?.[`row:agents:${address}`]?.row;
-        return served ? { name: String(served.name ?? ""),
-            doing: String(served.held?.doing ?? "") } : null;
+        return Cells.standing(rowsKind?.held, address);
     }
 
     // A session's row at no depth, as Now and Ask show one, or none while

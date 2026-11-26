@@ -84,6 +84,17 @@ function headingName(cell, served, said) {
     return doing === "" ? title : filledOnce(said.cell, { title, doing });
 }
 
+// How the session at `address` stands as Agents' row for it serves it,
+// read from `held`, the agents daemon's records by key, as Agents.qml's
+// standingOf reads them: its name and how the daemon words its state
+// without its figures, as headingName takes `served`, or null before the
+// row is told.
+function standing(held, address) {
+    const served = held?.[`row:agents:${address}`]?.row;
+    return served ? { name: String(served.name ?? ""),
+        doing: String(served.held?.doing ?? "") } : null;
+}
+
 // How a notice names the session that raised it, as the notices daemon
 // serves it (notice.rs's Cell): `mycelium:cell/<ADDRESS>[@<machine>][#<anchor>]`.
 // Its group is named, as biome holds every pattern to, but read by place,
