@@ -114,9 +114,7 @@ into kinds at a quiet moment its owner chooses, not alongside other work.
   asks `machine` and `mycelium:repository/<key>` asks `code`, each
   carrying the name or key alone;
   `mycelium:sprout?words=<words>&from=<ADDRESS>` asks `newWork`, which
-  fills Start New Work's field and starts nothing until Joel's own Return,
-  and with `&on=<machine>` or `&on=cloud` asks `newWorkOn`, offering that
-  machine as the place to start it;
+  fills Start New Work's field and starts nothing until Joel's own Return;
   and nothing for a second link within a few seconds.
 - [`in-a-terminal/`][terminal]: `launcher`, a Rust program printing any
   place, row or drawer the launcher holds, as text or as JSON, from the

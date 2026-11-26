@@ -1,7 +1,7 @@
 # What a mycelium: link opens in the launcher, built from this directory,
 # its tests run as it builds. Its source reaches up to modules/ for the
 # terminal kit, which answers its help and its refusals, and for the address
-# and machine cases its tests share, and builds from its own folder there.
+# cases its tests share, and builds from its own folder there.
 {
   lib,
   rustPlatform,
@@ -20,8 +20,6 @@ rustPlatform.buildRustPackage rec {
       # reader, which the tests take in (src/main.rs).
       ../../mycelium/site/tests/addresses.rs
       ../../mycelium/site/tests/addresses.txt
-      # The machine cases the map's rule is held to too.
-      ../../mycelium/site/tests/machines.txt
       ../../terminal-kit/Cargo.toml
       ../../terminal-kit/src
     ];
