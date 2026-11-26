@@ -271,6 +271,8 @@
       cp ${../launcher/ReopenTally.js} ReopenTally.js
       cp ${../launcher/SessionDrawer.js} SessionDrawer.js
       ${copied [ "Reading.js" ]}
+      cp ${(import ../launcher/words.nix).file} words.json
+      export QML_XHR_ALLOW_FILE_READ=1
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

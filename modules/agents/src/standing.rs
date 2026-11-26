@@ -100,9 +100,9 @@ fn truthy(value: Option<&Value>) -> bool {
 /// freeing what it holds until it's woken: the harness parks one idle at
 /// once and one at work once its turn settles, and refuses one under
 /// another hold, so a paused one isn't offered it (agentic-harness.pi
-/// #2159). One off, with no presence to say how it stands, may be parked
-/// already, and the node wakes a parked session for any steer, so a Park
-/// there would wake what it meant to park. A Park relays to another
+/// #2159). One off has no presence to say it runs, so it isn't offered
+/// Park, though its Pause and Close go as they did; one the node says is
+/// parked never stands off, but parked (`Session::stands`). A Park relays to another
 /// machine's session as any steer of Joel's does, the node there checking
 /// it as the harness reads it (mycelium's steer.rs). Only one here
 /// can be closed, last, since the harness ends a session on a close Joel

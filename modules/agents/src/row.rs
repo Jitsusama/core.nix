@@ -775,6 +775,14 @@ mod tests {
                 ("parked", "wake"),
                 "parked by the node, {what}, it reads parked and its Return wakes it"
             );
+            let mut said_parked = record.clone();
+            said_parked["presence"]["state"] = json!("parked");
+            let twin = made(&said_parked, Place::default(), &given());
+            assert_eq!(
+                (row.hue, row.mark_hue, &row.doing),
+                (twin.hue, twin.mark_hue, &twin.doing),
+                "parked by the node, {what}, it wears and says what one its presence parks does"
+            );
         }
     }
 

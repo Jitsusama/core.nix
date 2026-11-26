@@ -2,8 +2,8 @@
 // JavaScript engine, the one the shell runs it in. The
 // `the-launcher-says-how-each-session-stands` check copies
 // modules/quickshell/launcher/SessionRow.js, SessionDrawer.js, Holders.js,
-// Landed.js and ReopenTally.js beside this file and runs
-// `qml -platform offscreen session-row.qml`. How each session stands, in
+// Landed.js and ReopenTally.js beside this file, with the launcher's
+// words.json, and runs `qml -platform offscreen session-row.qml`. How each session stands, in
 // the one order every list keeps (needs you, working, in line, listening,
 // paused, parked), is the agents daemon's (modules/agents/src/standing.rs),
 // as is how Agents lays them out, each under the one orchestrating it
@@ -19,6 +19,14 @@ import "ReopenTally.js" as ReopenTally
 import "Reading.js" as Reading
 
 QtObject {
+    // The words a thing has in words.json, by its id, as the shell reads them.
+    function said(id) {
+        const request = new XMLHttpRequest();
+        request.open("GET", Qt.resolvedUrl("words.json"), false);
+        request.send();
+        return JSON.parse(request.responseText).things.find(one => one.id === id)?.said ?? {};
+    }
+
     // A test that throws ends as a failure, rather than leaving qml running.
     Component.onCompleted: {
         try {
@@ -143,14 +151,17 @@ QtObject {
         }
         // The shell's own acts: Go To where it has a window before its row's held,
         // and Talk, none that steers or ends it, as how it stands isn't known;
-        // held with nothing the shell makes, Talk alone.
+        // held with nothing the shell makes, Talk alone; one the shell holds
+        // parked, Wake and Talk, its row held or not.
         const fallbacks = [
-            ["unheld, with a window", false, true, "switch talk"],
-            ["unheld, with none", false, false, "talk"],
-            ["held, with a window", true, true, "talk"]
+            ["unheld, with a window", false, true, false, "switch talk"],
+            ["unheld, with none", false, false, false, "talk"],
+            ["held, with a window", true, true, false, "talk"],
+            ["unheld, parked by the shell", false, true, true, "wake talk"],
+            ["held, parked by the shell", true, false, true, "wake talk"]
         ];
-        for (const [what, held, windowed, want] of fallbacks) {
-            const got = SessionRow.fallbackOf(held, windowed).join(" ");
+        for (const [what, held, windowed, parked, want] of fallbacks) {
+            const got = SessionRow.fallbackOf(held, windowed, parked).join(" ");
             if (got !== want)
                 failures.push(`fallback ${what}: "${got}", not "${want}"`);
         }
@@ -200,15 +211,17 @@ QtObject {
             ["Talk on a row not yet held", null, "talk", false, ""],
             ["Wake on a row not yet held", null, "wake", false, ""]
         ];
+        // Each kept back is said in the words the shell reads, so a key
+        // withheld gives that words.json has none of fails here.
+        const keptSaid = said("agents:machine");
         for (const [what, row, id, parked, want] of pressed) {
             const got = SessionRow.withheld(row, id, parked);
             if (got !== want)
                 failures.push(`${what}: withheld "${got}", not "${want}"`);
+            if (got !== "" && !String(keptSaid[got] ?? "").includes("{act}"))
+                failures.push(`${what}: words.json says nothing of "${got}" naming the act`);
         }
         // What the foot says of one kept back, in the act's own name, plainly.
-        const keptSaid = { unsent: "{act} not sent, its row doesn't offer it now",
-            unsentParked: "{act} not sent, it's parked now, and that would wake it",
-            unsentUnheld: "{act} not sent, how it stands isn't known yet" };
         const unsents = [
             ["unsent", "Park", "Park not sent, its row doesn't offer it now"],
             ["unsentParked", "Stop", "Stop not sent, it's parked now, and that would wake it"],

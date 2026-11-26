@@ -300,15 +300,24 @@ Provider {
     // Go To on a served orchestration is the shell's, as a session's own is
     // (sessionAct), since only the shell moves niri's focus (acts.rs): asked
     // of the daemon, it answered nothing and said it couldn't
-    // (moves-keep-their-window, 2026-11-13). Park is the shell's too, so a
-    // press on a row gone stale is kept back as a session's own is
-    // (SessionRow.withheld), not sent to wake one parked since. Close is the
-    // daemon's, served saying what stays (ReadyRows.js's asking). Null for
-    // any other act, or a session Sessions doesn't hold.
+    // (moves-keep-their-window, 2026-11-13). Its steers are the shell's too,
+    // Park, Pause, Resume and Stop, so a press on a row gone stale is kept
+    // back as a session's own is (SessionRow.withheld), not sent to wake one
+    // parked since; one Sessions doesn't hold yet is asked by its address,
+    // so its steers are kept back until its row is held. Close is the
+    // daemon's, served saying what stays (ReadyRows.js's asking), asked
+    // before it's sent, and meant to end the session either way. Null for
+    // any other act, and Go To on a session Sessions doesn't hold.
     function topSessionAct(one) {
-        const id = /^verb:agent:(switch|park)$/u.exec(String(one.key ?? ""))?.[1];
-        const session = id ? sessionAt(one.ask?.address) : null;
-        return session ? sessionAct(session, id) : null;
+        const id = /^verb:agent:(switch|park|pause|resume|stop)$/u
+            .exec(String(one.key ?? ""))?.[1];
+        const address = one.ask?.address;
+        if (!id || !address)
+            return null;
+        const session = sessionAt(address);
+        if (session)
+            return sessionAct(session, id);
+        return id === "switch" ? null : sessionAct({ address }, id);
     }
 
     // A served row naming its session's drawer, "drawer:agents-top:<address>",
@@ -1431,7 +1440,8 @@ Provider {
     function offeredOf(session) {
         const row = rowsKind?.held?.[`row:agents:${session.address}`]?.row ?? null;
         return SessionRow.offered(row?.acts, row?.held?.returns,
-            SessionRow.fallbackOf(row !== null, windowedOf(session)));
+            SessionRow.fallbackOf(row !== null, windowedOf(session),
+                Sessions.parkedAs(session.address) !== null));
     }
 
     // A session's own acts, in the order its row offers them, each steering

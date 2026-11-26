@@ -120,20 +120,25 @@ function offered(rowActs, returns, fallback) {
     return { ids, marked: returning === "" ? ids[0] ?? "" : returning };
 }
 
-// The shell's own acts for a session's row, `offered`'s fallback: Go To
-// where it has a window, and Talk, which every session takes, and none
-// that steers or ends it, since how it stands isn't known: before its row
-// is held it may be parked already, and the node wakes a parked session
-// for any steer; held with no act the shell makes, as from a daemon newer
-// than it, it's no better known. `withheld` keeps back the rest.
-function fallbackOf(held, windowed) {
+// The shell's own acts for a session's row, `offered`'s fallback: for one
+// the shell holds `parked`, a parked one's, Wake and Talk, as Wake works
+// with no daemon to serve its row; else Go To where it has a window, and
+// Talk, which every session takes, and none that steers or ends it, since
+// how it stands isn't known: before its row is held it may be parked
+// already, and the node wakes a parked session for any steer; held with
+// no act the shell makes, as from a daemon newer than it, it's no better
+// known. `withheld` keeps back the rest.
+function fallbackOf(held, windowed, parked) {
+    if (parked) {
+        return acts("parked", windowed, false);
+    }
     return windowed && !held ? ["switch", "talk"] : ["talk"];
 }
 
 // The act a held row's Return does, read as its drawer marks it, so the
 // two never name different acts.
 function returnOf(rowActs, returns) {
-    return offered(rowActs, returns, fallbackOf(true, false)).marked;
+    return offered(rowActs, returns, fallbackOf(true, false, false)).marked;
 }
 
 // Why an act pressed on a session's row isn't steered, asked of the row

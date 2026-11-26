@@ -152,9 +152,13 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(
             re.fullmatch(said, facts.get(name, "")) for name, said in known.items()
         )
 
-    desktop.launcher_until(says_what_is_known)
-    # Its acts are its drawer's, Return's first, and Close last (VKCF3Z, 3a742b67).
-    acts = [act.removeprefix("\u21b5 ") for act in desktop.showing()["drawer"]["acts"]]
+    # Its acts are its drawer's, Return's first, and Close last (VKCF3Z, 3a742b67), once its
+    # row is held: before, it offers only Go To and Talk, as how it stands isn't known.
+    def acts_of(shown: Json) -> list[str]:
+        return [act.removeprefix("\u21b5 ") for act in shown["drawer"]["acts"]]
+
+    desktop.launcher_until(lambda shown: says_what_is_known(shown) and "Stop" in acts_of(shown))
+    acts = acts_of(desktop.showing())
     assert acts[-1] == "Close", acts
     assert {"Go To", "Talk", "Pause", "Stop"} <= set(acts), acts
     # The groups it hears are its wiring, so they're in the fold under z a, not the glance,
