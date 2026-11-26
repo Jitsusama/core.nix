@@ -308,16 +308,19 @@ Provider {
     // daemon's, served saying what stays (ReadyRows.js's asking), asked
     // before it's sent, and meant to end the session either way. Null for
     // any other act (SessionRow.topActOf), and Go To on a session Sessions
-    // doesn't hold.
+    // doesn't hold. A steer keeps the launcher open on the row, as the
+    // daemon's ask it stands in for did (ReadyRows.js's leaving; #4138), so
+    // Joel sees what it became.
     function topSessionAct(one) {
         const id = SessionRow.topActOf(one.key);
         const address = one.ask?.address;
         if (!id || !address)
             return null;
         const session = sessionAt(address);
-        if (session)
-            return sessionAct(session, id);
-        return id === "switch" ? null : sessionAct({ address }, id);
+        if (id === "switch")
+            return session ? sessionAct(session, id) : null;
+        const made = sessionAct(session ?? { address }, id);
+        return made ? Object.assign(made, { stays: true }) : null;
     }
 
     // A served row naming its session's drawer, "drawer:agents-top:<address>",
