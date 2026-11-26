@@ -2795,7 +2795,8 @@
     drawn until every kind of net's records is told, concerns worst first by net's rank rather
     than the order a watch hears them, a record it can't read named rather than drawn, the
     floors laid out top first with each device on its own eero, and a device's command naming it
-    by a word that finds it alone and pastes as it reads, quoted as the terminal kit quotes
+    by a word that finds it alone and pastes as it reads, quoted as the terminal kit quotes, and
+    the opposite arrow retracing the step just walked only while the map is drawn the same way
   '';
   network-site-reads-live = ''
     the network page, served by the local sites' server beside a stand-in net and node, reads live
@@ -2807,8 +2808,11 @@
     each zoom button 44 px inside its set, a bigger house with two switches, a third eero and a
     full floor drawn the same way at a phone's width and a laptop's, the map drawn across on a
     desk, stacked once the window narrows to a phone's and across again once it widens back,
-    stacked in a window whose room falls short of across only once its floors' names count, a
-    first visit within its budget and a second answered unchanged, the web-design skill's page
+    the device the keys are on scrolled into view as the map narrows to a phone's and widens to a
+    short desk's, each too big for its room to show it beside the worst concern, stacked in a
+    window whose room falls
+    short of across only once its floors' names count, a first visit within its budget and a
+    second answered unchanged, the web-design skill's page
     checks passing at a phone's width and a desk's in both looks, and nothing logged but what a
     test causes
   '';
