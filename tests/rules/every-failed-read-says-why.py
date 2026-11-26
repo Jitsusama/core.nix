@@ -46,12 +46,12 @@ def is_test(path: Path) -> bool:
 
 
 def code_of(line: str) -> str:
-    """A line's code, without its comment."""
+    """Give a line's code, without its comment."""
     return line.split("//", 1)[0]
 
 
 def statement_end(lines: list[str], number: int, column: int) -> int:
-    """The line a read's statement ends on, from its call at `column` of line `number`.
+    """Give the line a read's statement ends on, from its call at `column` of line `number`.
 
     It ends at a `;` or `,` outside the read's own brackets, or where a bracket
     it sits inside closes, as a closure's body or a call's argument does.
@@ -72,7 +72,7 @@ def statement_end(lines: list[str], number: int, column: int) -> int:
 
 
 def statement_start(lines: list[str], number: int) -> int:
-    """The line the statement holding line `number` starts on.
+    """Give the line the statement holding line `number` starts on.
 
     A line before it is the statement's while that line's code doesn't end
     one, or open or close a block.
