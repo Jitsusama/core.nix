@@ -35,6 +35,7 @@ fn snapshot(at: f64, groups: &[(&str, Group)], niri_wait: u64, niri_slices: u64)
             run_ns: 0,
             wait_ns: niri_wait,
             slices: niri_slices,
+            fair_ns: None,
         },
     );
     s
@@ -319,6 +320,7 @@ fn ran(s: &mut Snapshot, label: &'static str, name: &str, wait_ns: u64, slices: 
             run_ns: 0,
             wait_ns,
             slices,
+            fair_ns: None,
         },
     );
 }
@@ -471,6 +473,7 @@ fn sched(wait_ns: u64, slices: u64) -> Sched {
         run_ns: 0,
         wait_ns,
         slices,
+        fair_ns: None,
     }
 }
 

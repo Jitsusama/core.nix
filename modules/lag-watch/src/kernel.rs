@@ -38,12 +38,32 @@ pub fn field(text: &str, key: &str) -> u64 {
 }
 
 /// A thread's schedstat: nanoseconds on a CPU, nanoseconds waiting for
-/// one, and how many times it ran.
+/// one, and how many times it ran; and, where its `sched` keeps it, the
+/// fair scheduler's own count of the wait (`waited`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Sched {
     pub run_ns: u64,
     pub wait_ns: u64,
     pub slices: u64,
+    pub fair_ns: Option<u64>,
+}
+
+impl Sched {
+    /// How long the thread waited for a CPU since `old`: the lesser of
+    /// what each count grew by, where both were read. Each counts every
+    /// real wait, and each counts some sleeps the other doesn't: the
+    /// schedstat a delayed sleeper's move between CPUs, up to seconds; the
+    /// fair count the time a sleeper stays queued before it leaves, which
+    /// put Chrome's drawing thread's at 310 ms against 125 ms over 30 s on
+    /// 26 November. The lesser is the real wait, plus whatever both
+    /// counted.
+    pub fn waited_since(&self, old: &Sched) -> u64 {
+        let counted = self.wait_ns.saturating_sub(old.wait_ns);
+        match (self.fair_ns, old.fair_ns) {
+            (Some(now), Some(then)) => counted.min(now.saturating_sub(then)),
+            _ => counted,
+        }
+    }
 }
 
 /// A thread's nice, from its `stat`: field 19. A process's `stat` holds
@@ -85,20 +105,20 @@ pub fn sched(text: &str) -> Option<Sched> {
         run_ns: n.next()??,
         wait_ns: n.next()??,
         slices: n.next()??,
+        fair_ns: None,
     })
 }
 
-/// A thread's schedstat, with its wait taken from its `sched` beside it
-/// where the kernel keeps one there (`waited`). The schedstat's own wait
+/// A thread's schedstat, with the fair scheduler's count of its wait from
+/// its `sched` beside it where the kernel keeps one there (`waited`), so
+/// `Sched::waited_since` can take the lesser. The schedstat's own wait
 /// also counts some sleeps: on 26 November, in 20 minutes, it counted 23
 /// sleeps of Slack's threads and a test's as waits of up to 4 s, while the
-/// fair scheduler's count grew by at most 2 ms on each (docs/kernel.md,
-/// The Patches). None for a schedstat that can't be read.
+/// fair count grew by at most 2 ms on each (docs/kernel.md, The Patches).
+/// None for a schedstat that can't be read.
 pub fn read_sched(schedstat: &Path) -> Option<Sched> {
     let mut read = sched(&text(schedstat))?;
-    if let Some(ns) = waited(&text(&schedstat.with_file_name("sched"))) {
-        read.wait_ns = ns;
-    }
+    read.fair_ns = waited(&text(&schedstat.with_file_name("sched")));
     Some(read)
 }
 
@@ -444,7 +464,8 @@ pub mod tests {
             Some(Sched {
                 run_ns: 1_621_278_039_012,
                 wait_ns: 163_383_489_014,
-                slices: 6_999_273
+                slices: 6_999_273,
+                fair_ns: None
             })
         );
         assert_eq!(sched(""), None);
@@ -488,7 +509,7 @@ pub mod tests {
     }
 
     #[test]
-    fn a_thread_s_wait_is_the_fair_count_where_it_is_kept() {
+    fn a_thread_s_fair_count_is_read_beside_its_schedstat() {
         let root = std::env::temp_dir().join(format!("lag-watch-wait-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let kept = root.join("7/task/7/schedstat");
@@ -498,20 +519,46 @@ pub mod tests {
             read_sched(&kept),
             Some(Sched {
                 run_ns: 5_000_000,
-                wait_ns: 2_000_000,
-                slices: 40
+                wait_ns: 999_000_000,
+                slices: 40,
+                fair_ns: Some(2_000_000)
             }),
-            "the schedstat's wait, which counts some sleeps, was kept"
+            "the fair count wasn't read beside the schedstat"
         );
         let unkept = root.join("8/task/8/schedstat");
         write(&unkept, "5000000 3000000 40\n");
         assert_eq!(
-            read_sched(&unkept).map(|s| s.wait_ns),
-            Some(3_000_000),
+            read_sched(&unkept).map(|s| (s.wait_ns, s.fair_ns)),
+            Some((3_000_000, None)),
             "a thread with no fair count lost its wait"
         );
         assert_eq!(read_sched(&root.join("9/task/9/schedstat")), None);
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_wait_is_the_lesser_of_the_two_counts() {
+        let at = |wait_ns, fair_ns| Sched {
+            wait_ns,
+            fair_ns,
+            ..Sched::default()
+        };
+        let then = at(1_000_000_000, Some(500_000_000));
+        assert_eq!(
+            at(1_999_000_000, Some(500_400_000)).waited_since(&then),
+            400_000,
+            "a sleep the schedstat counted read as a wait"
+        );
+        assert_eq!(
+            at(1_000_125_000, Some(500_310_000)).waited_since(&then),
+            125_000,
+            "a sleep the fair count counted read as a wait"
+        );
+        assert_eq!(
+            at(1_003_000_000, None).waited_since(&at(1_000_000_000, None)),
+            3_000_000,
+            "a thread with no fair count lost its wait"
+        );
     }
 
     /// Writes `text` to a stand-in kernel file, making its folders.

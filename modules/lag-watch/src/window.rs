@@ -99,7 +99,7 @@ pub fn book(
         let Some(old) = before.get(key).filter(|_| asleep.contains(key)) else {
             continue;
         };
-        let wait = s.wait_ns.saturating_sub(old.wait_ns);
+        let wait = s.waited_since(old);
         if wait > passed + DRIFT_NS {
             let entry = booked.entry(key.clone()).or_default();
             entry.wait_ns += wait;
@@ -439,9 +439,7 @@ fn turns_waited(
         };
         let booked = now.booked.get(key).copied().unwrap_or_default();
         let (wait, slices) = (
-            s.wait_ns
-                .saturating_sub(old.wait_ns)
-                .saturating_sub(booked.wait_ns),
+            s.waited_since(old).saturating_sub(booked.wait_ns),
             s.slices
                 .saturating_sub(old.slices)
                 .saturating_sub(booked.slices),

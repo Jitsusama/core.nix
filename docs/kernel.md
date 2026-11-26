@@ -170,8 +170,11 @@ delayed task being marked as queued; its wakeup still marks it. Neither 7.3.4
 nor mainline has it yet. It closes only the move: of 23 such sleeps counted
 as waits over 20 minutes, 9 came with no move between reads, which some
 other path marks. The fair scheduler's own count, `wait_sum` in the
-thread's `sched` file, grew by at most 2 ms on every one of them, so
-lag-watch reads that instead.
+thread's `sched` file, grew by at most 2 ms on every one of them. It
+counts sleeps of its own, though: the time a sleeper stays queued before it
+leaves, which over 30 s put Chrome's drawing thread at 310 ms against
+run_delay's 125. Each counts every real wait, so lag-watch takes the lesser
+of what the two grew by.
 
 7.3.2 to 7.3.3 gave a false W^X warning at boot, with a stack trace, on a
 processor that needs the mitigation for Indirect Target Selection, while the
