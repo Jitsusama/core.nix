@@ -165,17 +165,14 @@ def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture
         assert not memfds, f"the shell maps its heap from a memfd {len(memfds)} times"
     medians = [round(statistics.median(each) / 1024) for each in rounds]
     resident = [
-        float(statistics.median([said for _, said in each])) if each else 0.0
-        for each in residents
+        float(statistics.median([said for _, said in each])) if each else 0.0 for each in residents
     ]
     # A take in the third round only lowers it, so only what was taken before it counts: no more
     # than the machine took anywhere, nor than the shell held but hadn't resident at any of the
     # second round's closings, since a page taken of its heap stays held. The machine's count
     # alone would let a busy builder pass any climb.
     machine = (taken[1] - started) * os.sysconf("SC_PAGE_SIZE") / 2**20
-    shell_took = max(
-        (max(held - said, 0) for held, said in residents[1] if said >= 0), default=0
-    )
+    shell_took = max((max(held - said, 0) for held, said in residents[1] if said >= 0), default=0)
     allowed = min(machine, float(shell_took))
     # Said whether it passes, so a change's cost is read from its run.
     with capsys.disabled():
