@@ -11,6 +11,9 @@
 //! `job` runs the command and writes down what it said and how it ended,
 //! and root waits for that. With no launchctl, or nobody logged in as the
 //! account, the command runs as it would anywhere else.
+//!
+//! Long because root's half of the hand-off and the job's half share its
+//! files and their limits, and are tested together: most of it is tests.
 
 use crate::config::Session;
 use crate::run::{self, Account, Failure};
@@ -485,7 +488,12 @@ mod tests {
     #[test]
     fn a_job_that_didnt_end_is_told_with_the_last_it_had_said() {
         let folder = tempfile::tempdir().unwrap();
-        let waited = wait(folder.path(), "fetching the input secrets", Duration::ZERO, LANDS);
+        let waited = wait(
+            folder.path(),
+            "fetching the input secrets",
+            Duration::ZERO,
+            LANDS,
+        );
         let out = "waiting for lock on /nix/store/x.lock\n";
         let err = "error: interrupted by the user\n";
         let told = said_by(waited, "fetching", Some(out), Some(err));
