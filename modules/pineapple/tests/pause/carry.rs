@@ -255,6 +255,18 @@ fn a_stop_widened_while_a_machine_waits_names_it_until_it_takes_the_wider_one() 
         ["mac"],
         "holding only the narrower stop, the Mac is named on the wider one's row"
     );
+    carry(&mut carrier, &state, 3, &mut here);
+    let noted = json(&state.join("carried/slack-C1-1.000000.json"));
+    let macs = noted["machines"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|one| one["machine"] == "mac")
+        .count();
+    assert_eq!(
+        macs, 1,
+        "however often it's found waiting, it's noted once: {noted}"
+    );
     here.refusing = None;
     let later = carry(&mut carrier, &state, 1 + AGAIN_MS, &mut here);
     assert_eq!(
@@ -268,6 +280,53 @@ fn a_stop_widened_while_a_machine_waits_names_it_until_it_takes_the_wider_one() 
     assert!(
         unreached(&state, "slack-C1-1.000000").is_empty(),
         "and isn't named once it holds the wider one"
+    );
+}
+
+#[test]
+fn a_give_whose_note_fails_says_whether_any_took_it_or_all_were_waiting() {
+    let noted = |name: &str, refusing: Option<&'static str>, waits: bool| {
+        let state = scratch(name);
+        let mut record = heard("slack:C1:1.000000");
+        keep(&state, "slack-C1-1.000000", &record);
+        let mut here = machine();
+        let mut carrier = Carrier::default();
+        if waits {
+            carry(&mut carrier, &state, 0, &mut here);
+            here.refusing = Some("machine=mac");
+            keep(&state, "slack-C2-2.000000", &heard("slack:C2:2.000000"));
+            carry(&mut carrier, &state, 1, &mut here);
+            record["reaches"] = json!(["pr:owner/name#12", "pr:owner/name#13"]);
+            keep(&state, "slack-C1-1.000000", &record);
+        }
+        here.refusing = refusing;
+        let _ = fs::remove_dir_all(state.join("carried"));
+        fs::write(state.join("carried"), "").expect("a file where the folder goes");
+        let gives = carry(&mut carrier, &state, 2, &mut here);
+        let _ = fs::remove_dir_all(&state);
+        gives
+    };
+    let said = |gives: &[Carried]| {
+        gives
+            .iter()
+            .find(|one| one.machine.is_empty())
+            .and_then(|one| one.failed.clone())
+            .unwrap_or_default()
+    };
+    let given = noted("carry-unnoted-given", None, false);
+    assert!(
+        said(&given).starts_with("given, but what was given couldn't be noted"),
+        "one taken is said given: {given:?}"
+    );
+    let refused = noted("carry-unnoted-refused", Some("machine=mac"), false);
+    assert!(
+        said(&refused).starts_with("given to none, and the machines it was tried on"),
+        "all refused is said given to none: {refused:?}"
+    );
+    let waiting = noted("carry-unnoted-waiting", Some("machine=mac"), true);
+    assert!(
+        said(&waiting).starts_with("the machines waiting to be given it couldn't be noted"),
+        "only waiting is said so: {waiting:?}"
     );
 }
 

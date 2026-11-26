@@ -227,7 +227,8 @@ impl Carrier {
         if (waiting || !carried.is_empty())
             && let Err(error) = keep_given(here.state, name, &held)
         {
-            carried.push(unnoted(name, gift, &error, !carried.is_empty()));
+            let noted = unnoted(name, gift, &error, &carried);
+            carried.push(noted);
         }
         carried
     }
@@ -264,7 +265,8 @@ impl Carrier {
             keep_given(here.state, name, &kept)
         };
         if let Err(error) = noted {
-            carried.push(unnoted(name, Gift::Removal, &error, true));
+            let noted = unnoted(name, Gift::Removal, &error, &carried);
+            carried.push(noted);
         }
         carried
     }
@@ -323,13 +325,17 @@ fn give(plan: &Plan, runs: &mut dyn Runs, at: &Reached, script: &str) -> Result<
         .map_err(|why| reach::without_begun(&why))
 }
 
-/// What a give answers when what each machine was given couldn't be noted:
-/// it is given again next time, which writes the same record.
-fn unnoted(name: &str, gift: Gift, error: &io::Error, gave: bool) -> Carried {
-    let why = if gave {
+/// What a give answers when what each machine holds couldn't be noted,
+/// after `carried`: whether any took it, all it was tried on refused it,
+/// or it was tried on none, as each was waiting. Each is noted again the
+/// next time it's given or found waiting.
+fn unnoted(name: &str, gift: Gift, error: &io::Error, carried: &[Carried]) -> Carried {
+    let why = if carried.iter().any(|one| one.failed.is_none()) {
         format!("given, but what was given couldn't be noted: {error}")
-    } else {
+    } else if carried.is_empty() {
         format!("the machines waiting to be given it couldn't be noted: {error}")
+    } else {
+        format!("given to none, and the machines it was tried on couldn't be noted: {error}")
     };
     Carried {
         name: name.to_owned(),
