@@ -933,7 +933,8 @@ Provider {
         // SessionRow.unsteered).
         function onUnsteered(session, why, act) {
             const called = provider.footName(session);
-            SessionRow.unsteered(provider.launcher, Words.of("agents:machine").said ?? {}, {
+            const told = SessionRow.unsteered(provider.launcher,
+                Words.of("agents:machine").said ?? {}, {
                 act, actName: SessionRow.actName(act, Words.name), why,
                 address: session.address, name: called === session.address ? "" : called,
                 called, held: Boolean(provider.launcher?.becoming?.[`agent:${session.address}`])
@@ -942,8 +943,13 @@ Provider {
             // back, so Sessions' waking no longer holds it: the press that
             // woke it is answered as any Go To's refusal is, rather than
             // reading done with the launcher shut (#6519's third review).
-            if (act === "wake")
+            // Its words are kept as refusedWhy too, so a link's Go To whose
+            // wake was refused at once answers why, not "" (#6519's F147).
+            if (act === "wake") {
+                if (told !== null)
+                    provider.refusedWhy = `${told[0]}: ${told[1]}`;
                 provider.openedForPress(provider.refusalTold(session));
+            }
         }
 
         // A parked session Wake would reopen with no fence it can say,

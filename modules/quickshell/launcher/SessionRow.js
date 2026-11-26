@@ -305,16 +305,19 @@ function takesBack(refused) {
 // refusal. `launcher` holds becameNot and tellOnOpen, `said` the
 // agents:machine words, `alert` the foot's colour, and `refused` is as
 // takesBack takes it, with `actName` the act's name and `called` what the
-// foot names the session by.
+// foot names the session by. It gives the foot's `[name, words]` it told,
+// so a Go To asked from outside answers with them (Agents' goToFor), or
+// null for a row taken back, which told the foot nothing.
 function unsteered(launcher, said, refused, alert) {
     const back = takesBack(refused);
     if (back !== null) {
         launcher?.becameNot?.(`agent:${refused.address}`, back);
-        return;
+        return null;
     }
     const [name, words] = refusal(said, { act: refused.actName, why: refused.why,
         address: refused.address, name: refused.called });
     launcher?.tellOnOpen?.([[name, words, alert]]);
+    return [name, words];
 }
 
 // How long after a Go To its refusal still answers that press: a session

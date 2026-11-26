@@ -539,6 +539,23 @@ QtObject {
             if (JSON.stringify(toldLauncher) !== JSON.stringify(want))
                 failures.push(`unsteered, ${what}: ${JSON.stringify(toldLauncher)}`);
         }
+        // A Wake a link's Go To asked for, refused at once with no row becoming
+        // woken, gives back the words it told, so goToFor answers with them
+        // (#6519's F147); one taken back told the foot nothing and gives none.
+        toldLauncher.length = 0;
+        const toldBack = SessionRow.unsteered(launcherStandIn, machineSaid, { act: "wake",
+            actName: "Wake", why: "", address: "PARKED", name: "Parked Quest",
+            called: "Parked Quest", held: false }, "alert");
+        const toldFoot = toldLauncher[0]?.[1]?.[0] ?? [];
+        if (JSON.stringify(toldBack) !== JSON.stringify(toldFoot.slice(0, 2))
+            || toldBack === null || toldBack[1] === "")
+            failures.push(`unsteered gives what it told: ${JSON.stringify([toldBack, toldFoot])}`);
+        const takenBack = SessionRow.unsteered(launcherStandIn, machineSaid, { act: "wake",
+            actName: "Wake", why: "", address: "PARKED", name: "Parked Quest",
+            called: "Parked Quest", held: true }, "alert");
+        if (takenBack !== null)
+            failures.push(
+                `unsteered taking a row back gives nothing: ${JSON.stringify(takenBack)}`);
 
         // A Go To's refusal opens the launcher only to answer Joel's press for
         // that session moments ago; a walk's, a kept view's or a start's late
