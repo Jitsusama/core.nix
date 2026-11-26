@@ -344,8 +344,9 @@ in
   # copied's walk and guard, by what it makes of tables given it, so nothing
   # is built: it copies every file a root reaches, walked here apart from it,
   # and nothing else; a row past the root in another order copies the same;
-  # and one left empty is refused, copying nothing, as the guard names it
-  # (wrongWith). Each case takes its file from imports.nix, so an edit to
+  # and one left empty, or one two imports past the root naming an import
+  # more, is refused, copying nothing, as the guard names it (wrongWith),
+  # with imports.nix and that file said. Each case takes its file from imports.nix, so an edit to
   # one file's imports moves a case rather than failing it. Today's rows are
   # all sorted, so only this sees the order case break. A program's own file,
   # placed in a folder of its own, is copied there and brings what copying the
@@ -354,7 +355,8 @@ in
   # the shell's folder or one written from the root is refused, each on its
   # own escaped line naming the file, the import as written and what to do
   # instead, and the step stops. So is an own file given by anything but its
-  # plain place, alone or beside those (programStepWith).
+  # plain place, alone or beside those (programStepWith). A program's step
+  # with no roots copies what its file reaches, and nothing else.
   a-check-copies-what-each-file-imports =
     let
       table = import ./imports.nix;
@@ -382,6 +384,13 @@ in
       withEmptied = table // {
         ${picked} = [ ];
       };
+      # A file past the root's own row, so a guard reading only the root's
+      # imports can't pass it, given a row naming an import it doesn't hold.
+      deep = lib.findFirst (file: file != root && !(lib.elem file (rowOf root))) null reached;
+      padding = lib.findFirst (file: file != deep && !(lib.elem file (rowOf deep))) null reached;
+      withPadded = table // {
+        ${deep} = rowOf deep ++ [ padding ];
+      };
       real = copiedWith table [ root ];
       lines = lib.splitString "\n";
       copyLines = script: lib.filter (lib.hasPrefix "cp ") (lines script);
@@ -393,10 +402,22 @@ in
       uncopied = uncopiedBy real reached;
       leftOut = lib.concatStringsSep ", " uncopied;
       # Where each cp line copies to, so a file copied that nothing reaches,
-      # or one copied twice, is seen as well as one left out.
-      copiedTo = lib.sort lib.lessThan (map (line: lib.last (lib.splitString " " line)) (copyLines real));
-      copiedOtherwise = copiedTo != lib.sort lib.lessThan reached;
-      copiedBeyond = lib.concatStringsSep ", " (lib.subtractLists reached copiedTo);
+      # or one copied twice, is seen as well as one left out: what's copied
+      # past those wanted, or null.
+      destination = line: lib.last (lib.splitString " " line);
+      beyondOf =
+        script: wanted:
+        let
+          copiedTo = map destination (copyLines script);
+          beyond = lib.subtractLists wanted copiedTo;
+        in
+        if beyond != [ ] then
+          lib.concatStringsSep ", " beyond
+        else if lib.length copiedTo != lib.length (lib.unique copiedTo) then
+          "a file twice"
+        else
+          null;
+      realBeyond = beyondOf real reached;
       # A program's own file in a folder nothing of the shell's is in, so only
       # the step makes it, importing one as a file there names it.
       ownFolder = "planted";
@@ -406,6 +427,7 @@ in
       };
       planted = programStepWith table [ ] (ownImporting "../${picked}");
       unplanted = uncopiedBy planted ([ own ] ++ reach picked);
+      plantedBeyond = beyondOf planted ([ (lib.escapeShellArg own) ] ++ reach picked);
       madeAt = at (making ownFolder) planted;
       ownCopiedAt = at (lib.hasSuffix " ${lib.escapeShellArg own}") planted;
       # A program's own file whose folder and name the shell must take as
@@ -495,10 +517,13 @@ in
       ownHeldSaid = "the shell's folder holds ${ownFolder}; give this check another folder";
       plantedLeftOut = lib.concatStringsSep ", " unplanted;
       unplantedSaid = "a program's file importing ${picked} left out ${plantedLeftOut}";
+      realSaidBeyond = "copying ${root} copied more than it reaches: ";
+      plantedSaidBeyond = "a program's file importing ${picked}, with no roots, copied more: ";
       ownUnmadeSaid = "a program's file in ${ownFolder} was copied with no folder made first";
       unrefusedSaid = "a program's file importing these wasn't refused as each should be: ";
       # The guard by what it finds wrong, and a step it refuses by stopping
-      # before it copies anything, so neither leans on what the refusal says.
+      # before it copies anything, saying imports.nix in full, for a
+      # program's check in another folder, and the one file it names.
       stopped =
         script:
         let
@@ -506,28 +531,41 @@ in
           copyAt = at (lib.hasPrefix "cp ") script;
         in
         stopAt != null && (copyAt == null || stopAt < copyAt);
+      refusedNaming =
+        file: script:
+        stopped script
+        && lib.hasInfix "modules/quickshell/checks/imports.nix doesn't say" script
+        && lib.hasInfix "\"${file}\"" script;
       sameTurned = copiedWith withTurned [ root ] == real;
       emptiedRefused =
-        wrongWith withEmptied [ root ] == [ picked ] && stopped (copiedWith withEmptied [ root ]);
+        wrongWith withEmptied [ root ] == [ picked ]
+        && refusedNaming picked (copiedWith withEmptied [ root ]);
+      padded = copiedWith withPadded [ root ];
+      paddedRefused = wrongWith withPadded [ root ] == [ deep ] && refusedNaming deep padded;
       plantedEmptied = programStepWith withEmptied [ ] (ownImporting "../${picked}");
       plantedEmptiedRefused =
         stopped plantedEmptied && lib.hasInfix (copiedWith withEmptied [ picked ]) plantedEmptied;
       plantedEmptiedSaid = "${picked}'s row, emptied, went unrefused from a program's file";
       failures =
         if wrongWith table [ root ] != [ ] then
-          [ "imports.nix's rows don't match the files; the shell's checks name which" ]
+          [
+            "imports.nix's rows don't match these files: ${
+              lib.concatStringsSep ", " (wrongWith table [ root ])
+            }"
+          ]
         else if several == [ ] then
           [ "no file ${root} reaches past itself imports two files; give this check another root" ]
+        else if deep == null then
+          [ "every file ${root} reaches is in its own row; give this check another root" ]
         else
           lib.optional (uncopied != [ ]) "copying ${root} left out ${leftOut}"
-          ++ lib.optional (uncopied == [ ] && copiedOtherwise) (
-            "copying ${root} copied more than it reaches: "
-            + (if copiedBeyond == "" then "a file twice" else copiedBeyond)
-          )
+          ++ lib.optional (realBeyond != null) "${realSaidBeyond}${realBeyond}"
           ++ lib.optional (!sameTurned) "${picked}'s row, reversed, copied otherwise"
           ++ lib.optional (!emptiedRefused) "${picked}'s row, emptied, went unrefused"
+          ++ lib.optional (!paddedRefused) "${deep}'s row, naming ${padding} too, went unrefused"
           ++ lib.optional (!plantedEmptiedRefused) plantedEmptiedSaid
           ++ lib.optional (unplanted != [ ]) unplantedSaid
+          ++ lib.optional (plantedBeyond != null) "${plantedSaidBeyond}${plantedBeyond}"
           ++ lib.optional ownUnmade ownUnmadeSaid
           ++ lib.optional ownHeld ownHeldSaid
           ++ lib.optional strayHeld strayHeldSaid

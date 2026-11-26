@@ -51,6 +51,29 @@ let
   importingFrom = source: file: lib.unique (map (named: named.placed) (importsOf source file));
   # What one of the shell's own files imports of the shell's own.
   importing = file: importingFrom (../. + "/${file}") file;
+  # Every file the walk from files reaches through the table, each once,
+  # sorted.
+  everyWith =
+    table: files:
+    let
+      bring =
+        seen: file:
+        if lib.elem file seen then seen else lib.foldl' bring (seen ++ [ file ]) (table.${file} or [ ]);
+    in
+    lib.sort lib.lessThan (lib.foldl' bring [ ] files);
+  # Of the files a walk reached, those whose imports aren't what the table
+  # says, in whatever order its row lists them.
+  wrongIn =
+    table:
+    lib.filter (
+      file:
+      (lib.hasSuffix ".qml" file || lib.hasSuffix ".js" file)
+      && file != "Options.qml"
+      && lib.sort lib.lessThan (importing file) != lib.sort lib.lessThan (table.${file} or [ ])
+    );
+  # The files the walk from files reaches whose imports aren't what the
+  # table says, which copiedWith refuses.
+  wrongWith = table: files: wrongIn table (everyWith table files);
   # Copies each file a check names into the folder it runs in, where the
   # shell's folder holds it, with everything it imports, once each. A file
   # whose imports aren't what imports.nix says, in whatever order its row
@@ -62,29 +85,11 @@ let
   # that hasn't chosen, for a check whose files say a line by it
   # (Presented.rowShown). The table is given, so a check can give it another
   # (core.nix's a-check-copies-what-each-file-imports).
-  everyWith =
-    table: files:
-    let
-      bring =
-        seen: file:
-        if lib.elem file seen then seen else lib.foldl' bring (seen ++ [ file ]) (table.${file} or [ ]);
-    in
-    lib.sort lib.lessThan (lib.foldl' bring [ ] files);
-  # The files the walk from files reaches whose imports aren't what the
-  # table says, which copiedWith refuses.
-  wrongWith =
-    table: files:
-    lib.filter (
-      file:
-      (lib.hasSuffix ".qml" file || lib.hasSuffix ".js" file)
-      && file != "Options.qml"
-      && lib.sort lib.lessThan (importing file) != lib.sort lib.lessThan (table.${file} or [ ])
-    ) (everyWith table files);
   copiedWith =
     table: files:
     let
       every = everyWith table files;
-      wrong = wrongWith table files;
+      wrong = wrongIn table every;
       folders = lib.unique (lib.filter (folder: folder != ".") (map dirOf every));
       words = (import ../launcher/words.nix).file;
       options = singleton "Options.qml" "readonly property bool reports: false";

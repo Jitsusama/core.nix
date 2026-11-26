@@ -19,9 +19,10 @@
   a-check-copies-what-each-file-imports = ''
     the shell's checks copy every file a root reaches through imports.nix and nothing else, a
     row past the root listing its imports in another order copies the same files, and one left
-    empty is refused, copying nothing, each case taking its file from imports.nix as it is;
-    a program's own file importing that file copies what copying it does, and one importing
-    a file the shell's folder doesn't hold is refused, naming it
+    empty, or one past the root's own row naming an import more, is refused, copying nothing
+    and naming it, each case taking its file from imports.nix as it is; a program's own file
+    importing that file copies what copying it does and nothing else, and one importing a
+    file the shell's folder doesn't hold is refused, naming it
   '';
   a-claimed-chord-is-refused = ''
     a chord two layers claim, or one claims twice, is refused
