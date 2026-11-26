@@ -3250,7 +3250,11 @@ mod tests {
             socket.tcp_keepalive_retries().ok(),
             socket.tcp_user_timeout().ok(),
         );
-        assert_eq!(probing.len(), 1, "the connection retired wasn't probed");
+        assert_eq!(
+            probing.len(),
+            1,
+            "the sleep didn't probe the one connection it retired alone"
+        );
         assert_eq!(
             asked,
             (
