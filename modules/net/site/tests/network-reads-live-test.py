@@ -312,9 +312,9 @@ ROOM_AND_DRAWN = """() => {
   const box = document.querySelector("#map-draw").viewBox.baseVal;
   return { room: view.clientHeight, drawn: box.height };
 }"""
-# The shortest window the page lays out as a desk's, with the map's room its own region rather
-# than a block the page scrolls past (site.css's 34rem), and how much of the drawing across, at
-# the smallest zoom, a widened window leaves below its room's first sight.
+# The height site.css's desk and phone layouts meet at (34rem), which a desk's window must pass:
+# at it both match, and the map's room is a block the page scrolls past. And how much of the
+# drawing across, at the smallest zoom, a widened window leaves below its room's first sight.
 LEAST_DESK_HEIGHT = 34 * 16
 BELOW_SIGHT_PX = 80
 # The view's scroll put back to its corner, so only the page can bring the keys' device into it.
@@ -327,7 +327,7 @@ def short_desk(page: Page) -> tuple[int, int]:
     measured = page.evaluate(ROOM_AND_DRAWN)
     around = height - measured["room"]
     short = around + int(measured["drawn"] * SMALLEST_ZOOM) - BELOW_SIGHT_PX
-    assert short >= LEAST_DESK_HEIGHT, (
+    assert short > LEAST_DESK_HEIGHT, (
         f"a room short enough to leave the map {BELOW_SIGHT_PX} px past its sight needs a "
         f"{short} px window, which the page lays out as a phone's: {measured}"
     )
@@ -359,12 +359,13 @@ def test_the_keys_device_stays_in_view_as_the_map_draws_the_other_way(
         expect(placed(page, lowest), "opening a device put no keys on it").to_have_attribute(
             "data-here", ""
         )
+        # Each flip starts from the view's corner, so only the page can bring the device into it.
+        page.evaluate(TO_THE_CORNER)
         page.set_viewport_size({"width": phone[0], "height": phone[1]})
         stacked = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === false"
         page.wait_for_function(stacked, arg=KESTREL, timeout=PACE_MS)
         the_keys_device_stands_in_view(page, "a narrowed window")
-        # From the corner, so the phone's own scroll, clamped to the map's foot, can't be what
-        # shows the device once it widens.
+        # Not left where the phone scrolled, which clamped to the map's foot could show it too.
         page.evaluate(TO_THE_CORNER)
         page.set_viewport_size({"width": desk_short[0], "height": desk_short[1]})
         across = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === true"
