@@ -230,6 +230,22 @@ fn an_import_beside_a_running_daemon_is_to_try_again() {
     assert_eq!(imported.exit, Exit::TryAgain, "{}", imported.stderr);
 }
 
+// A watch run beside one answering on the socket is told at once that
+// one is running, rather than waiting ten minutes to take over from it.
+#[test]
+fn a_watch_beside_a_running_one_is_to_try_again_at_once() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let _listening = std::os::unix::net::UnixListener::bind(dir.path().join("socket"))
+        .expect("the socket is bound");
+    let began = std::time::Instant::now();
+    let started = ran(dir.path(), &["run"]);
+    assert_eq!(started.exit, Exit::TryAgain, "{}", started.stderr);
+    assert!(
+        began.elapsed() < std::time::Duration::from_secs(5),
+        "a second watch waited beside a running one"
+    );
+}
+
 // The daemon brings an older history up to date as it starts, holding it
 // for minutes on a large one, so a read meanwhile is to try again: not an
 // unreadable history, and not a second move of it from under the daemon.

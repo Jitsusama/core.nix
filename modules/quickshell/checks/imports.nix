@@ -32,6 +32,7 @@
   "Files.qml" = [ "FileFacts.js" ];
   "Finding.js" = [ "LineEditing.js" ];
   "ForYouHolds.qml" = [ "pieces/Holding.js" ];
+  "KeyActs.js" = [ "QueryKeys.js" ];
   "KeyboardLayout.qml" = [ "launcher/Keyboards.js" ];
   "Mark.qml" = [ "MarkSize.js" ];
   "ModeMarks.js" = [ "QueryKeys.js" ];
@@ -152,6 +153,7 @@
     "launcher/NowDrawers.js"
     "launcher/Zones.js"
   ];
+  "launcher/Cloud.js" = [ "launcher/Sprouting.js" ];
   "launcher/Displays.qml" = [
     "Fuzzy.js"
     "Hearing.js"
