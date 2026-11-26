@@ -4461,7 +4461,8 @@
     folder that is one included, and the rest by their folder, as is a zone two checkouts share;
     and a place the node says isn't checked out started by name all the same; and Wheres.startAt
     gives a row picked before the places land the start it says once they have, found by its own
-    folder alone, else the start it was made with
+    folder alone, else the start it was made with; and a node's 2000 places, as long as Joel's,
+    are read and weighed in under 50 ms of the shell's thread
   '';
   starts-stopped-lifts-only-on-joels-return = ''
     Starts Stopped's Return steps in among its acts wherever the launcher drops its drawer's step,
