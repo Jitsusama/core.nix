@@ -4,12 +4,11 @@
 //! any process of Joel's account, an agent's command among them, and the
 //! node judges the daemon as Joel, so a sprout an agent could ask here
 //! would start work with more than the agent's own reach, and an answer
-//! would answer its own ask as him. The kernel
-//! names the process at the other end by pidfd (`SO_PEERPIDFD`), never a
-//! pid an ask says, and its cgroup says which unit runs it: only the
-//! shell's unit, under this daemon's own account, and only the unit's
-//! main process, as its manager names it, running quickshell's own
-//! program. Other programs run in that unit too (pi-ask while Super+S
+//! would answer its own ask as him. The kernel names the process at the
+//! other end by pidfd (`SO_PEERPIDFD`), never a pid an ask says, and its
+//! cgroup says which unit runs it: only the shell's unit, under this
+//! daemon's own account, and only the unit's main process, as its manager
+//! names it, running quickshell's own program. Other programs run in that unit too (pi-ask while Super+S
 //! talks, the shell's helpers, their children and orphans), and any of
 //! them could run a program named quickshell, so the program alone is a
 //! second line, as pineapple's peer.rs holds it (ISXEG8 on #5456).
@@ -58,6 +57,18 @@ pub fn the_shell(stream: &UnixStream) -> Result<(), String> {
     // SAFETY: getuid has no failure and touches no memory.
     let uid = unsafe { libc::getuid() };
     if !takes(&seen, uid, shells_main_pid).map_err(untold)? {
+        // Who it was is journalled, quoted as the kernel read it, so an
+        // agent asking as Joel can be traced to its own process and unit.
+        let unit = seen
+            .cgroup
+            .lines()
+            .find_map(|line| line.strip_prefix("0::"));
+        eprintln!(
+            "agents: refused pid {} running {:?} in {:?}: it isn't the shell",
+            seen.pid,
+            seen.exe,
+            unit.unwrap_or("no unified cgroup")
+        );
         return Err(REFUSED.to_owned());
     }
     // Read last, so a pid taken again since any read above can't answer.
@@ -98,44 +109,65 @@ pub fn takes(
     Ok(main_pid()? == seen.pid)
 }
 
-/// How long this account's manager has to name the shell's main process.
-/// An answer waits on it before the node's own 5 s (acts.rs's `PATIENCE`),
-/// and the launcher lets Joel answer again once 30 s pass unheard
-/// (TalkAnswers.js's `SENT_STANDS_MS`), so the two stay well inside that.
+/// How long this account's manager has to name the shell's main process,
+/// for every ask the shell alone may make: a start, the places, a start
+/// told and an answer. An answer waits on it before the node's own 5 s
+/// (acts.rs's `PATIENCE`), and the launcher lets Joel answer again once
+/// 30 s pass unheard (TalkAnswers.js's `SENT_STANDS_MS`), so the two stay
+/// well inside that. A start waits longer on the node (sprout.rs's
+/// `PATIENCE`), but a manager taking more than this to say one property
+/// is wedged, so a start asked then is refused as untold rather than
+/// waiting with it.
 const MANAGER_PATIENCE: Duration = Duration::from_secs(3);
 
 /// How often a manager not yet done is looked at again.
 const MANAGER_LOOKS_EVERY: Duration = Duration::from_millis(10);
 
 /// The shell's unit's main process, as this account's manager says it
-/// within `MANAGER_PATIENCE`, the call ended where it doesn't.
+/// within `MANAGER_PATIENCE`.
 fn shells_main_pid() -> io::Result<u32> {
-    let mut asked = Command::new("systemctl")
-        .args([
-            "--user",
-            "show",
-            "--property=MainPID",
-            "--value",
-            SHELL_UNIT,
-        ])
+    let mut asked = Command::new("systemctl");
+    asked.args([
+        "--user",
+        "show",
+        "--property=MainPID",
+        "--value",
+        SHELL_UNIT,
+    ]);
+    main_pid_of(&mut asked, MANAGER_PATIENCE)
+}
+
+/// The main process `command` says, as `systemctl show --value` says it,
+/// within `patience`, the command killed and reaped where it doesn't end
+/// in time or can't be waited on.
+fn main_pid_of(command: &mut Command, patience: Duration) -> io::Result<u32> {
+    let mut asked = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
-    let deadline = Instant::now() + MANAGER_PATIENCE;
+    let deadline = Instant::now() + patience;
     let status = loop {
-        if let Some(status) = asked.try_wait()? {
-            break status;
+        let ended = asked.try_wait();
+        let over = Instant::now() >= deadline;
+        match ended {
+            Ok(Some(status)) => break status,
+            Ok(None) if !over => thread::sleep(MANAGER_LOOKS_EVERY),
+            // Dropped, a child is neither killed nor reaped, so neither a
+            // command out of time nor one that can't be waited on is left.
+            Ok(None) => {
+                let _ = asked.kill();
+                let _ = asked.wait();
+                return Err(io::Error::other(format!(
+                    "systemd didn't say the shell's main process within {patience:?}"
+                )));
+            }
+            Err(why) => {
+                let _ = asked.kill();
+                let _ = asked.wait();
+                return Err(why);
+            }
         }
-        if Instant::now() >= deadline {
-            let _ = asked.kill();
-            let _ = asked.wait();
-            return Err(io::Error::other(format!(
-                "systemd didn't say the shell's main process within {} s",
-                MANAGER_PATIENCE.as_secs()
-            )));
-        }
-        thread::sleep(MANAGER_LOOKS_EVERY);
     };
     // Its words are a line each, well inside a pipe's buffer, so it never
     // waits on them being read before it ends.
@@ -368,6 +400,66 @@ mod tests {
         assert!(
             !takes(&elsewhere, 1000, asked).expect("not asked"),
             "another unit"
+        );
+    }
+
+    /// A manager stood in by `sh`, saying what `script` does.
+    fn manager(script: &str) -> Command {
+        let mut said = Command::new("sh");
+        said.args(["-c", script]);
+        said
+    }
+
+    #[test]
+    fn the_managers_main_process_is_read_from_what_it_says() {
+        let patience = Duration::from_secs(5);
+        assert_eq!(
+            main_pid_of(&mut manager("echo 4106561"), patience).expect("said"),
+            4_106_561
+        );
+        // 0 is a unit with no main process, which no peer's pid is.
+        assert_eq!(
+            main_pid_of(&mut manager("echo 0"), patience).expect("said"),
+            0
+        );
+        let unread = main_pid_of(&mut manager("echo active"), patience).expect_err("no pid");
+        assert!(
+            unread.to_string().contains("named no main process"),
+            "{unread}"
+        );
+    }
+
+    #[test]
+    fn a_manager_that_fails_says_why_in_its_own_words() {
+        let failed = main_pid_of(
+            &mut manager("echo 'no such unit' >&2; exit 1"),
+            Duration::from_secs(5),
+        )
+        .expect_err("it failed");
+        assert!(failed.to_string().ends_with(": no such unit"), "{failed}");
+    }
+
+    #[test]
+    fn a_manager_out_of_time_is_ended_within_its_patience() {
+        let patience = Duration::from_secs(1);
+        let began = Instant::now();
+        // It writes its pid first, so whether it was killed can be read.
+        let pid_file = std::env::temp_dir().join(format!("wedged-{}", std::process::id()));
+        let script = format!("echo $$ > {}; exec sleep 30", pid_file.display());
+        let late = main_pid_of(&mut manager(&script), patience).expect_err("out of time");
+        assert!(late.to_string().contains("within 1s"), "{late}");
+        assert!(
+            began.elapsed() < Duration::from_secs(5),
+            "it waited {:?}",
+            began.elapsed()
+        );
+        let pid = std::fs::read_to_string(&pid_file).expect("it said its pid");
+        let _ = std::fs::remove_file(&pid_file);
+        // Killed and reaped, it is no process at all, not even a zombie.
+        assert!(
+            !Path::new(&format!("/proc/{}", pid.trim())).exists(),
+            "the wedged manager {} still runs",
+            pid.trim()
         );
     }
 

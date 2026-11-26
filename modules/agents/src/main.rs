@@ -415,17 +415,37 @@ fn for_the_shell_alone(
 const ONLY_THE_SHELL: &str =
     "the agents daemon takes an answer only from the launcher, and couldn't tell this came from it";
 
+/// The most of a refused answer's `want` or `address` its journal line
+/// says, its quoted JSON cut short: a want's id and an address are far
+/// shorter.
+const NAMED_AT_MOST: usize = 120;
+
 /// Joel's answer to one of `wants`, steered through `node` only where
 /// `asker` says the shell asked it: the node takes it as his, so an
 /// agent answering its own ask through this daemon would answer as him
 /// (ISXEG8's R-agent-answers-own-ask).
 fn answered(asker: Result<(), String>, wants: &Wants, said: &Value, node: Option<&Path>) -> Value {
     if let Err(why) = asker {
-        // Why it was refused is journalled with what it named, so an
-        // agent answering its own ask can be traced to it.
+        // Why it was refused is journalled with what it named, beside the
+        // line asker.rs writes of who asked, so an agent answering its own
+        // ask can be traced to it. What it named is the asker's own, cut
+        // short, so no ask writes more than a line.
+        let named = |value: &Value| {
+            value
+                .to_string()
+                .chars()
+                .take(NAMED_AT_MOST)
+                .collect::<String>()
+        };
+        let why: &str = if why == asker::REFUSED {
+            "who asked isn't the shell"
+        } else {
+            why.as_str()
+        };
         eprintln!(
             "agents: an answer to {} for {} wasn't taken: {why}",
-            said["want"], said["address"]
+            named(&said["want"]),
+            named(&said["address"])
         );
         return json!({"error": {"code": "refused", "message": ONLY_THE_SHELL}});
     }

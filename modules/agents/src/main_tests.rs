@@ -138,7 +138,7 @@ fn the_daemons_socket_lets_no_one_but_the_shell_lift_the_stop() {
 }
 
 /// What ASKER asks Joel, as the loop holds it, and Joel's answer to it.
-fn asking() -> (Wants, Value) {
+fn asked_of_joel() -> (Wants, Value) {
     let wants = Wants::default();
     let want = json!({"kind": wants::KIND, "address": "ASKER",
         "answers": {"want": "question@2026-11-25T09:00:00.000Z"}});
@@ -164,7 +164,7 @@ fn the_daemons_socket_takes_no_answer_from_anyone_but_the_shell() {
     let (told, _heard) = mpsc::channel();
     let stood = Arc::new(starts_stopped::Told::new(told.clone()));
     let keeping = Keeping::read(&folder.join(starts::FILE), clock::now_ms());
-    let (wants, mut said) = asking();
+    let (wants, mut said) = asked_of_joel();
     for_the_shell_alone(
         &shared,
         (Some(at_node), wants),
@@ -201,7 +201,7 @@ fn the_daemons_socket_takes_no_answer_from_anyone_but_the_shell() {
 /// names.
 #[test]
 fn only_the_shells_answer_reaches_the_node() {
-    let (wants, said) = asking();
+    let (wants, said) = asked_of_joel();
     let socket = std::env::temp_dir().join(format!("agents-answered-{}.sock", std::process::id()));
     let _ = std::fs::remove_file(&socket);
     let listener = UnixListener::bind(&socket).expect("a socket to stand in for the node");

@@ -6,12 +6,11 @@
 //! answers it offers to a single question (harness #1394), the one it
 //! recommends first, so the shell reads them rather than parsing every
 //! session's presence (KRINS0 item 2). Answering is asked of the daemon
-//! too, by the shell alone (main.rs's `answered`), and `answer_of` finds the
-//! want by the session's address; the
-//! shell names the want it was shown, and one the session no longer asks
-//! is refused. Each says too whether it rings the
-//! shell's bell (`rings`) and who it is (`known`), by which the shell
-//! rings once for each (Sessions.qml's stopped), so the shell judges no
+//! too, by the shell alone (main.rs's `answered`), and `answer_of` finds
+//! the want by the session's address; the shell names the want it was
+//! shown, and one the session no longer asks is refused. Each says too
+//! whether it rings the shell's bell (`rings`) and who it is (`known`), by
+//! which the shell rings once for each (Sessions.qml's stopped), so the shell judges no
 //! want itself (KRINS0 item 4, ending #3853's stopgap). Joel may put one
 //! off for an hour (`PutOff`), and it says so and rings for none of it, so
 //! the shell leaves it out of what needs him until then.
