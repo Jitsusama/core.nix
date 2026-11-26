@@ -63,7 +63,9 @@ Provider {
         const round = bare.replace(/-.*$/, "");
         return {
             id: bare,
-            key: record.key ?? `run:${id}`,
+            // Made a string, so a node's key of any other kind can't throw
+            // where rows are found by it (Provider.qml's byWhat).
+            key: String(record.key ?? `run:${id}`),
             kind: record["run.kind"]
                 ?? (id.startsWith("fleet.") ? "fleet" : kinds[round] ? round : "review"),
             about: record.about ?? "",

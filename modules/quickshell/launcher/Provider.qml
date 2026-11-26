@@ -553,51 +553,68 @@ Scope {
     // anew, as a new notice makes them, are looked at too: when a change
     // makes the list anew but keeps some of its rows, as Runs keeps every
     // finished run's while one at work is made again each update, a kept
-    // row the letters before didn't match still can't match, since what a
-    // search reads of it is never changed in place by the three that share
-    // this, Applications, Copies and Runs: Copies changes a kept row's side
-    // alone, and Runs' `also` is made once from its words. The launcher's
-    // withSynonyms is the one writer that adds to a row's words in place,
-    // on Applications' programs as it joins them: a letter searched before
-    // that join, after Programs were made anew, can miss a program found
-    // only by a synonym until what's typed stops going on. Without the kept
-    // rows' verdicts, every update the node sent while a run was at work had the next letter
-    // search the whole day again (2026-11-26). A search says what it
-    // matched, at any grade, with `matchedIn`.
-    property var lastMatched: ({ from: null, words: "", rows: [] })
+    // row the letters before didn't match still can't match while what a
+    // search reads of it (`searchReads`) is what they judged. One reworded in
+    // place since is looked at again, so a program the launcher's
+    // withSynonyms gives more words to as it joins it is found by them at
+    // once, and a row a provider later rewords in place can't go missing
+    // while typing goes on. Without the kept rows' verdicts, every update
+    // the node sent while a run was at work had the next letter search the
+    // whole day again (2026-11-26). A search says what it matched, at any
+    // grade, with `matchedIn`.
+    property var lastMatched: ({ from: null, words: "", rows: [], read: [] })
 
     function poolFor(rows, typed) {
         const words = Fuzzy.words(typed).join(" ");
         const last = lastMatched;
         if (last.from === null || last.words === "" || !words.startsWith(last.words))
             return rows;
-        if (last.from === rows)
-            return last.rows;
         const matched = byWhat(last.rows);
-        const before = byWhat(last.from);
-        return rows.filter(row => among(matched, row) || !among(before, row));
+        const judged = byWhat(last.from);
+        return rows.filter(row => among(matched, last.rows, row)
+            || !judgedAsItReads(judged, last, row));
     }
 
-    // Rows by what each is, so asking whether a row is among them looks at
-    // its namesakes alone: never a Set, which Qt's engine searches key by
-    // key for an object (RowsKept.js), every row against every other.
+    // What a search reads of a row: its name and its other words, each
+    // made once and never changed in place but by being given anew, as
+    // withSynonyms gives `keywords` (Member.js, Runs' `also`).
+    function searchReads(row) {
+        return [row.prepared, row.keywords ?? null, row.also ?? null];
+    }
+
+    // Where in `rows` each row is, by what it is, so asking whether a row
+    // is among them looks at its namesakes alone: never a Set, which Qt's
+    // engine searches key by key for an object (RowsKept.js), every row
+    // against every other.
     function byWhat(rows) {
         const by = Object.create(null);
-        for (const row of rows) {
-            const what = row.key ?? "";
+        for (let at = 0; at < rows.length; at += 1) {
+            const what = rows[at].key ?? "";
             if (by[what] === undefined)
                 by[what] = [];
-            by[what].push(row);
+            by[what].push(at);
         }
         return by;
     }
 
-    function among(by, row) {
-        return (by[row.key ?? ""] ?? []).includes(row);
+    function among(by, rows, row) {
+        return (by[row.key ?? ""] ?? []).some(at => rows[at] === row);
+    }
+
+    // Whether the last search judged this very row, reading of it what it
+    // reads now.
+    function judgedAsItReads(by, last, row) {
+        const at = (by[row.key ?? ""] ?? []).find(one => last.from[one] === row);
+        if (at === undefined)
+            return false;
+        const was = last.read[at];
+        const now = searchReads(row);
+        return was[0] === now[0] && was[1] === now[1] && was[2] === now[2];
     }
 
     function matchedIn(rows, typed, matched) {
-        lastMatched = { from: rows, words: Fuzzy.words(typed).join(" "), rows: matched };
+        lastMatched = { from: rows, words: Fuzzy.words(typed).join(" "), rows: matched,
+            read: rows === null ? [] : rows.map(row => searchReads(row)) };
     }
 
     // Its row in the main search: its matches, unless it answered what's
