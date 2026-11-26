@@ -236,6 +236,7 @@
     "launcher/Presented.js"
     "launcher/SessionRow.js"
     "launcher/Showing.js"
+    "launcher/TalkAnswers.js"
     "pieces/Holding.js"
   ];
   "launcher/NowGroups.js" = [ "launcher/Order.js" ];
