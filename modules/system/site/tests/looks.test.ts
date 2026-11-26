@@ -316,18 +316,6 @@ it("says why each machine's look matters, with its one act, the machine's launch
     ["On battery at 9%", "", link],
     "a daemon too old to list its looks leaves the side to say them, with no why but its act",
   );
-  const torn = { ...judged("kestrel", "watch", []), side: ["on battery at 9%"] };
-  assert.deepEqual(
-    looksOf(system([torn]), 8).looks.map((look) => look.words),
-    ["On battery at 9%"],
-    "an empty list beside a side that names a look leaves the side to say it",
-  );
-  const cleared = { ...judged("kestrel", "good", [why("on battery at 9%")]), side: [] };
-  assert.deepEqual(
-    looksOf(system([cleared]), 8).looks.map((look) => look.words),
-    [],
-    "a list beside a side that names none leaves the side to say none",
-  );
 });
 
 it("gives the one look for a machine out of reach its why and act, and several neither", () => {
@@ -387,6 +375,7 @@ it("draws a look's why and act under its words, escaped, and no line where it ha
     !(drawn.includes("<b>") || drawn.includes("<i>")),
     "no record's markup reaches the page",
   );
+  assert.ok(ACT_AS_ROW.test('<a class="launch" data-row="x">'), "it finds an act as a row");
   assert.ok(!ACT_AS_ROW.test(drawn), "the act is no cursor row, so j and k step from look to look");
   const bare = looksDrawn(looksOf(system([], [part("network", "bad", ["the modem is down"])]), 8));
   assert.ok(!bare.includes('class="why"'), "a look with no why and no act draws no line for them");

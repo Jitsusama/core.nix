@@ -177,16 +177,10 @@ function thingLooks(part: Part, drawn: number): readonly Look[] {
 /**
  * A machine's looks, each with its why: every one the daemon judged, where
  * its record lists them, or its side's, cut to a few and saying no why, from
- * a daemon too old to list them.
+ * a daemon too old to list them or a list the page couldn't read (thingOf).
  */
 function lookedOf(thing: Thing): readonly ThingLook[] {
-  // A list and a side that disagree on whether there is anything to look at
-  // are a record caught between its two fields, either way round, so the side
-  // says them, as the machine's health is read beside it.
-  const torn =
-    thing.looks !== undefined && (thing.looks.length === 0) !== (thing.side.length === 0);
-  const told = torn ? undefined : thing.looks;
-  return told ?? thing.side.map((side) => ({ side, matters: "" }));
+  return thing.looks ?? thing.side.map((side) => ({ side, matters: "" }));
 }
 
 /**

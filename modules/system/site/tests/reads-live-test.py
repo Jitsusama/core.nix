@@ -660,6 +660,9 @@ def test_a_machine_out_of_reach_is_named_apart(system_page: Page, system_daemon:
 # A spot machine's name, as long as the provider's: sized to it, the names'
 # column once took a phone's whole width and left the words a letter wide.
 LONG_NAME = "gull-spot-provider-s99ia2-1795535220"
+# A name with nowhere to break, twice as long: only the act's own wrapping keeps
+# "Open ... in the Launcher" inside a phone's width, as a hyphen would otherwise.
+UNBROKEN_NAME = LONG_NAME.replace("-", "") * 2
 # The least of the list's width each look's words keep, whatever the names:
 # the names' column takes two fifths at most, and the mark and gaps a little.
 WORDS_KEEP = 0.4
@@ -671,6 +674,9 @@ WORDS_ROOM = """(() => {
   return { least: Math.min(...words.map((w) => w.width)) / list.width,
     past: Math.max(...words.map((w) => w.right)) - innerWidth };
 })()"""
+# How far past the window the furthest of the looks' acts runs.
+ACT_PAST = """(() => Math.max(...[...document.querySelectorAll('#looks .launch')]
+  .map((act) => act.getBoundingClientRect().right)) - innerWidth)()"""
 
 
 def test_a_long_name_leaves_its_words_room_at_every_size(
@@ -678,22 +684,36 @@ def test_a_long_name_leaves_its_words_room_at_every_size(
 ) -> None:
     says_it_stands(system_page, "live")
     counted(system_page)
+    acts = {"link": f"mycelium:machine/{UNBROKEN_NAME}?from=system", "commands": []}
     long: dict[str, object] = {
-        **machine_called(LONG_NAME),
+        **machine_called(UNBROKEN_NAME),
         "health": "bad",
         "says": "has a nearly full disk, 54 GB free",
         "side": ["nearly full disk, 54 GB free"],
+        "ties": {
+            "reached": True,
+            "heard_at": None,
+            "cells": {"busy": 1, "idle": 0, "ended": 0},
+            "network": None,
+            "code": None,
+            "figures": None,
+            "acts": acts,
+        },
     }
     system_daemon.tell("machine", changed=[long])
-    things = ["machine:kestrel", "machine:osprey", f"machine:{LONG_NAME}"]
+    things = ["machine:kestrel", "machine:osprey", f"machine:{UNBROKEN_NAME}"]
     system_daemon.tell("part", changed=[{"key": "part:machines", "things": things}])
-    look = system_page.locator(f"#looks a[data-row^='look:machine:{LONG_NAME}:']")
+    look = system_page.locator(f"#looks a[data-row^='look:machine:{UNBROKEN_NAME}:']")
     expect(look, "the long-named machine's look never came").to_be_visible(timeout=PACE_MS)
+    act = system_page.locator(f"#looks a.launch[href='{acts['link']}']")
+    expect(act, "the long-named machine's look drew no act").to_be_visible()
     for width, height in SIZES:
         system_page.set_viewport_size({"width": width, "height": height})
         room = system_page.evaluate(WORDS_ROOM)
         assert room["past"] <= 0, f"at {width} px a look's words ran {room['past']} px past"
         assert room["least"] >= WORDS_KEEP, f"at {width} px a look's words kept {room['least']}"
+        past = system_page.evaluate(ACT_PAST)
+        assert past <= 0, f"at {width} px a look's act ran {past} px past the window"
 
 
 def test_a_machine_that_goes_leaves_its_part(system_page: Page, system_daemon: StandIn) -> None:
