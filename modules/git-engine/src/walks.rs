@@ -15,6 +15,7 @@ use crate::hash::{Oid, Sha1, to_hex};
 use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 /// Past this size the file starts again, rather than grow for ever.
@@ -108,7 +109,15 @@ impl Walks {
         if std::fs::metadata(file).is_ok_and(|meta| meta.len() > LIMIT) {
             let _ = std::fs::remove_file(file);
         }
-        if let Ok(mut out) = OpenOptions::new().create(true).append(true).open(file) {
+        // Nor is a FIFO there waited on for a reader.
+        let out = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .custom_flags(libc::O_NONBLOCK | libc::O_NOCTTY)
+            .open(file);
+        if let Ok(mut out) = out
+            && out.metadata().is_ok_and(|meta| meta.is_file())
+        {
             let _ = out.write_all(line.as_bytes());
         }
     }
@@ -117,7 +126,11 @@ impl Walks {
     /// newest upstream for each commit is the last one counted.
     fn load(&self) -> Known {
         let mut known = Known::default();
-        let Some(text) = self.file.as_ref().and_then(|file| std::fs::read(file).ok()) else {
+        let Some(text) = self
+            .file
+            .as_ref()
+            .and_then(|file| crate::regular_file::read(file).ok().flatten())
+        else {
             return known;
         };
         for ((local, upstream), counts) in text
