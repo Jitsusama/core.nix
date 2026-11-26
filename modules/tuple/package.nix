@@ -1,9 +1,11 @@
 # Tuple's Linux alpha, newer than nixpkgs' v2026_09_16.1: v2026_11_25.0,
 # whose command is the one Tuple's docs describe (tuple call, contacts,
 # state, webcam). v2026_11_19.0 was the first to share a webcam from
-# Linux; this one checks a camera's colour space and says when Tuple
-# can't take it. The log lines and stream keys tuple-call reads, and the
-# contacts' keys and status words tuple-people reads, are in both builds.
+# Linux; this one's new words, read from the build itself, say when
+# Tuple can't take a camera's colour space. The log lines and stream keys
+# tuple-call reads, the contacts' keys and status words tuple-people
+# reads, and the window titles niri's rules match are in this build as
+# they were in v2026_11_19.0, by a comparison of the two builds' strings.
 # Screen sharing through the portal was last seen working here on
 # v2026_10_21.0. Webcam sharing is yet to be seen here: the build reads
 # cameras through PipeWire, where the IR camera is hidden, and until the
