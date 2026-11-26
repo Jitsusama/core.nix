@@ -349,8 +349,8 @@ in
   # placed in a folder of its own, is copied there and brings what copying the
   # file it imports does, guarded as copying it is; one importing a file the
   # shell's folder doesn't hold, a folder, or a file above the shell's folder
-  # is refused, naming the file, the import as written and which it is
-  # (programStepWith).
+  # is refused, each on its own escaped line naming the file, the import as
+  # written and what to do instead, and the step stops (programStepWith).
   a-check-copies-what-each-file-imports =
     let
       table = import ./imports.nix;
@@ -398,31 +398,52 @@ in
       ownUnmade = madeAt == null || ownCopiedAt != null && madeAt > ownCopiedAt;
       ownHeld = builtins.pathExists (../. + "/${ownFolder}");
       stray = "Planted-nowhere.js";
-      strayHeld = builtins.pathExists (../. + "/${stray}");
+      strayHeld = lib.any (file: builtins.pathExists (../. + "/${file}")) [
+        stray
+        quoted
+      ];
       # Each import a program's file can't be given, as written in it, and
-      # what the step must say of it: a missing file, a file above the
-      # shell's folder that is there (the flake's own), and a folder, named
-      # or as ".." alone.
+      # why the step must say it can't: a missing file, one whose name the
+      # shell must take as it is written, a file above the shell's folder
+      # that is there (the flake's own), and a folder, named or as ".."
+      # alone, and a file above the folder even when given as the program's
+      # own. All are in one file, placed after the planted one, so each must
+      # be said, of the file that imports it.
+      quoted = "it's-$(gone).js";
+      missing = file: "not in modules/quickshell; add it to the program's own files as ${file}";
+      folder = "a folder; import the files taken from it by name";
+      above = "above modules/quickshell, where a check can't be given a file";
+      ownAbove = "../Planted-above.js";
       strays = {
-        "../${stray}" = "not in modules/quickshell";
-        "../../../flake.nix" = "above modules/quickshell";
-        "../launcher" = "a folder, not a file";
-        ".." = "a folder, not a file";
+        "../${stray}" = missing stray;
+        "../${quoted}" = missing quoted;
+        "../../../flake.nix" = above;
+        "../${ownAbove}" = above;
+        "../launcher" = folder;
+        ".." = folder;
       };
-      strayUnrefused = lib.attrNames (
-        lib.filterAttrs (
-          written: why:
-          !(lib.hasInfix "${own} imports \"${written}\": ${why}" (
-            programStepWith table [ ] (ownImporting written)
-          ))
-        ) strays
+      strayFile = "${ownFolder}/Strays.js";
+      strayed = programStepWith table [ ] (
+        ownImporting "../${picked}"
+        // {
+          ${ownAbove} = builtins.toFile "Planted-above.js" "";
+          ${strayFile} = builtins.toFile "Strays.js" (
+            lib.concatMapStrings (written: ".import \"${written}\" as Stray\n") (lib.attrNames strays)
+          );
+        }
       );
-      strayHeldSaid = "the shell's folder holds ${stray}; give this check another name";
+      sayingOf =
+        written: "the program's file at ${strayFile} imports \"${written}\": ${strays.${written}}";
+      strayUnrefused = lib.filter (
+        written: !(lib.elem "echo ${lib.escapeShellArg (sayingOf written)} >&2" (lines strayed))
+      ) (lib.attrNames strays);
+      strayUnended = !(lib.elem "exit 1" (lines strayed));
+      strayHeldSaid = "the shell's folder holds ${stray} or ${quoted}; give this check other names";
       ownHeldSaid = "the shell's folder holds ${ownFolder}; give this check another folder";
       plantedLeftOut = lib.concatStringsSep ", " unplanted;
       unplantedSaid = "a program's file importing ${picked} left out ${plantedLeftOut}";
       ownUnmadeSaid = "a program's file in ${ownFolder} was copied with no folder made first";
-      unrefusedSaid = "a program's file importing these went unrefused: ";
+      unrefusedSaid = "a program's file importing these wasn't refused as each should be: ";
       refusal = "modules/quickshell/checks/imports.nix doesn't say";
       refused = file: script: lib.hasInfix refusal script && lib.hasInfix file script;
       sameTurned = copiedWith withTurned [ root ] == real;
@@ -445,7 +466,8 @@ in
           ++ lib.optional ownUnmade ownUnmadeSaid
           ++ lib.optional ownHeld ownHeldSaid
           ++ lib.optional strayHeld strayHeldSaid
-          ++ lib.optional (strayUnrefused != [ ]) (unrefusedSaid + lib.concatStringsSep ", " strayUnrefused);
+          ++ lib.optional (strayUnrefused != [ ]) (unrefusedSaid + lib.concatStringsSep ", " strayUnrefused)
+          ++ lib.optional strayUnended "a program's file importing those went on unstopped";
     in
     pkgs.runCommandLocal "a-check-copies-what-each-file-imports" { } ''
       ${lib.concatMapStrings (failure: "echo ${lib.escapeShellArg failure} >&2\n") failures}

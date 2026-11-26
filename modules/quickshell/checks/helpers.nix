@@ -137,23 +137,28 @@ let
         lib.mapAttrsToList (file: source: map (one: one // { inherit file; }) (importsOf source file)) own
       );
       shells = lib.filter (file: !(lib.elem file placed)) (lib.unique (map (one: one.placed) found));
-      # Why the shell's folder can't give a check what an import names, or
-      # null when it can.
+      climbs = file: lib.elem ".." (lib.splitString "/" file);
+      # Why the shell's folder can't give a check what an import names, and
+      # what can be done instead, or null when it can. A file above the
+      # shell's folder can't be given even as the program's own, since it
+      # would be copied out of the check's folder.
       unheld =
         file:
         let
           path = ../. + "/${file}";
         in
-        if lib.elem ".." (lib.splitString "/" file) then
-          "above modules/quickshell; give the check that file itself"
+        if climbs file then
+          "above modules/quickshell, where a check can't be given a file"
         else if !(builtins.pathExists path) then
-          "not in modules/quickshell; give the check that file"
+          "not in modules/quickshell; add it to the program's own files as ${file}"
         else if builtins.readFileType path != "regular" then
-          "a folder, not a file; name the files taken from it in the check's roots"
+          "a folder; import the files taken from it by name"
         else
           null;
-      strays = lib.filter (one: !(lib.elem one.placed placed) && unheld one.placed != null) found;
-      said = one: "${one.file} imports \"${one.written}\": ${unheld one.placed}";
+      strays = lib.filter (
+        one: climbs one.placed || !(lib.elem one.placed placed) && unheld one.placed != null
+      ) found;
+      said = one: "the program's file at ${one.file} imports \"${one.written}\": ${unheld one.placed}";
       folders = lib.unique (lib.filter (folder: folder != ".") (map dirOf placed));
     in
     if strays == [ ] then
