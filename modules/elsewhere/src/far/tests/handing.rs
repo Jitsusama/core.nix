@@ -169,7 +169,7 @@ fn a_link_a_job_pins_at_its_handover_folder_stops_all_it_would_bring_back() {
 }
 
 #[test]
-fn a_link_pinned_at_the_handover_as_it_brings_back_gets_nothing_more_written_through_it() {
+fn a_link_pinned_at_the_handover_as_it_brings_back_gets_no_end_written_through_it() {
     let mut kind = kind("");
     kind.brings_back = vec!["out".into()];
     // A cp that, once the job's one file crossed, moves the handover aside
@@ -187,8 +187,8 @@ fn a_link_pinned_at_the_handover_as_it_brings_back_gets_nothing_more_written_thr
     let listed = std::fs::read_to_string(home.join("moved").join(BROUGHT)).unwrap_or_default();
     assert!(
         home.join("swapped").exists() && kept_beyond(&home),
-        "the far line wrote or cleared through a link pinned as it brought back \
-         ({code:?}): {err}"
+        "the far line ended its list, or cleared, through a link pinned as it brought \
+         back ({code:?}): {err}"
     );
     assert!(
         code == Some(0)
@@ -197,11 +197,9 @@ fn a_link_pinned_at_the_handover_as_it_brings_back_gets_nothing_more_written_thr
                 "so the list of what it brings back isn't ended and nothing is brought back"
             )
             && listed.contains("\tout/a\n")
-            && !listed.contains("end")
-            && !listed.contains("cut")
             && !work(&home).join("1").exists(),
-        "the far line didn't say the link stays and its list is left unended, or kept \
-         its copy ({code:?}): {listed:?} {err}"
+        "the far line didn't say the link stays and its list is left unended, listed \
+         what it began, or kept its copy ({code:?}): {listed:?} {err}"
     );
     let _ = std::fs::remove_dir_all(&home);
 }

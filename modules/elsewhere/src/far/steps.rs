@@ -523,8 +523,8 @@ fi
 pub(super) fn bringing(kind: &Kind) -> String {
     if kind.brings_back.is_empty() {
         return format!(
-            "{}[ -z \"$handed\" ] || {{ rm -f \"$job/{BROUGHT}\" && \
-             (set -C && echo {END} > \"$job/{BROUGHT}\"); }}\n",
+            "{}if [ -z \"$handed\" ]; then {UNENDED}\nelse rm -f \"$job/{BROUGHT}\" && \
+             (set -C && echo {END} > \"$job/{BROUGHT}\"); fi\n",
             freed()
         );
     }
@@ -624,19 +624,25 @@ fi
     )
 }
 
+/// What the far line says where `freed` couldn't clear a link at the
+/// handover, so the list of what's brought back gets no end.
+const UNENDED: &str = "printf \"elsewhere: its handover wasn't cleared, so the list of what \
+it brings back isn't ended and nothing is brought back\\n\" >&2";
+
 /// The end of `bringing`'s list of what's brought back, once the list's
 /// lines were written, or `wrote` says they couldn't all be.
 fn ended() -> String {
     format!(
         r#"# Freed before the list ends, the job's copy and its tree with them, as
 # on a disk that filled, these are the room its end needs. Where a link
-# at the handover couldn't be cleared, as `freed` says, nothing more is
-# written through it, and the near side waits out a list with no end,
-# as this line says, so its wait isn't read as a slow crossing.
+# at the handover couldn't be cleared, as `freed` says, the list's end
+# and its cut aren't written through it, and the near side waits out a
+# list with no end, as this line says, so its wait isn't read as a slow
+# crossing. One put there while the files were copied isn't looked for
+# between them.
 ! copies || rm -f "$names" "$names".*
 {freed}if [ -z "$handed" ]; then wrote=1
-  printf "elsewhere: its handover wasn't cleared, so the list of what it brings back \
-isn't ended and nothing is brought back\n" >&2
+  {UNENDED}
 elif [ $wrote -ne 0 ]; then
   printf "elsewhere: couldn't write down all it brings back\n" >&2
 elif ! echo {END} >> "$job/{BROUGHT}"; then
@@ -665,10 +671,10 @@ fi
 pub(super) fn freed() -> String {
     format!(
         r#"handed=
+if unlinked; then handed=1; else
+  printf "elsewhere: a link at the job's handover couldn't be cleared, so its tree stays\n" >&2
+fi
 cd "$HOME" && {{
-  if unlinked; then handed=1; else
-    printf "elsewhere: a link at the job's handover couldn't be cleared, so its tree stays\n" >&2
-  fi
   if ! copies; then
     stays
     [ -z "$handed" ] || cleared "$job/{TREE}"

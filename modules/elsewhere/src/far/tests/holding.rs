@@ -120,6 +120,15 @@ PATH=${{PATH#*:}} exec uname "$@""#
         );
         let _ = std::fs::remove_dir_all(&home);
     }
+    // With nothing at the handover, nothing is said of a link there.
+    let archive = archive_of("a", "inside");
+    let list = format!("{}\t0.tar\nend\n", archive.len());
+    let (code, err, home) = reading(&list, &[("0.tar", &archive)], &[]);
+    assert!(
+        !err.contains("a link at the job's handover") && !err.contains("so the wait may run out"),
+        "a far line with no link at its handover said one ({code:?}): {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 #[test]
