@@ -1843,15 +1843,42 @@ fn watch_real_time(shaped: &mut BTreeMap<String, Shaped>, t: f64) {
     }
 }
 
-/// What a follower takes from the link it follows (`hold_followers`): its
-/// upload's rate and most, what the controller asked of its download and
-/// whether it left it unlimited, and its steady ceiling.
-#[derive(Clone, Copy)]
-struct Leader {
+/// What a link gives the links following it (`hold_followers`): its
+/// upload's rate and the most its CAKE is told, what the controller asked
+/// of its download and whether it left it unlimited (`Shaped::asked_down`),
+/// and its steady ceiling (a link's own line round 8's F2 and F6).
+struct Followed {
     up: u64,
+    up_most: u64,
     asked_down: (u64, bool),
-    most: u64,
     under: Option<u64>,
+}
+
+/// What a follower is held to (`taken`): its upload's rate and the most
+/// its CAKE is told, its download's rate and whether it goes straight in,
+/// and its steady ceiling.
+#[derive(Debug, PartialEq, Eq)]
+struct Taken {
+    up: u64,
+    up_most: u64,
+    down: (u64, bool),
+    under: Option<u64>,
+}
+
+/// What a follower takes from the link it `follows`, under its own call's
+/// `room` and its own link's `most` each way: the leader's upload rate and
+/// steady ceiling, so the two together are held under it exactly, and
+/// what the controller asked of the leader's download, held under the
+/// follower's room, never the leader's. Neither way is told more than the
+/// follower's own link carries (a link's own line round 7's F5 and F12).
+fn taken(follows: &Followed, room: Option<u64>, most: Held) -> Taken {
+    let (down, straight) = held_down(follows.asked_down, room);
+    Taken {
+        up: follows.up,
+        up_most: follows.up_most.min(most.up),
+        down: (down.min(most.down), straight),
+        under: follows.under,
+    }
 }
 
 /// Holds each follower to its leader's rates; its own pings still say its
@@ -1864,36 +1891,32 @@ struct Leader {
 /// judged against the lower of its leader's ceiling and its own, so its
 /// CAKE is never told a rate its own link can't carry.
 fn hold_followers(shaped: &mut BTreeMap<String, Shaped>) {
-    let rates: BTreeMap<String, Leader> = shaped
+    let followed: BTreeMap<String, Followed> = shaped
         .iter()
         .map(|(n, s)| {
-            let leader = Leader {
+            let gives = Followed {
                 up: s.up.rate,
+                up_most: s.up.bounds.max,
                 asked_down: s.asked_down,
-                most: s.up.bounds.max,
                 under: s.under,
             };
-            (n.clone(), leader)
+            (n.clone(), gives)
         })
         .collect();
     for s in shaped.values_mut() {
-        let leader = s.follows.as_ref().and_then(|l| rates.get(l));
-        if let Some(&Leader {
-            up,
-            asked_down,
-            most,
-            under,
-        }) = leader
-        {
-            let (down, straight) = held_down(asked_down, s.room.held());
-            s.up.rate = up;
-            s.down.rate = down;
-            // A follower takes its leader's ceiling, so the two together
-            // are held under it exactly too.
-            s.under = under;
-            apply(s, most.min(s.up.bounds.max));
-            go_straight(s, straight);
-        }
+        let Some(follows) = s.follows.as_ref().and_then(|l| followed.get(l)) else {
+            continue;
+        };
+        let most = Held {
+            up: s.up.bounds.max,
+            down: s.down.bounds.max,
+        };
+        let held = taken(follows, s.room.held(), most);
+        s.up.rate = held.up;
+        s.down.rate = held.down.0;
+        s.under = held.under;
+        apply(s, held.up_most);
+        go_straight(s, held.down.1);
     }
 }
 
@@ -2817,11 +2840,53 @@ mod tests {
             "never over what the controller asks of the one connection"
         );
         assert_eq!(held_down(unlimited, None), unlimited, "no call");
-        let (leader, _, straight) = under_room(replay::Rates::default(), 2_000_000, held);
+    }
+
+    // What a follower takes is worked out apart from its link, so each
+    // field can be told from the others: a swap of the upload's rate and
+    // most, the leader's room taken for the follower's, or a steady
+    // ceiling left behind each fails (a link's own line round 7's F2, F7
+    // and F14, round 8's F1 and F3).
+    #[test]
+    fn a_follower_takes_each_of_its_leader_s_rates_under_its_own_link() {
+        let follows = Followed {
+            up: 9_000,
+            up_most: 12_000,
+            asked_down: (50_000, false),
+            under: Some(10_800),
+        };
+        let most = Held {
+            up: 11_000,
+            down: 400_000,
+        };
         assert_eq!(
-            (leader, straight),
-            held_down(unlimited, held),
-            "a leader's download, as hold() works it out, by the same rule"
+            taken(&follows, Some(18_000), most),
+            Taken {
+                up: 9_000,
+                up_most: 11_000,
+                down: (18_000, false),
+                under: Some(10_800),
+            },
+            "held under its own room and the lower of the two links' most"
+        );
+        assert_eq!(
+            taken(&follows, None, most).down,
+            (50_000, false),
+            "outside a call, what the controller asked of its leader"
+        );
+        let unlimited = Followed {
+            asked_down: (2_000_000, true),
+            ..follows
+        };
+        assert_eq!(
+            taken(&unlimited, None, most).down,
+            (400_000, true),
+            "left unlimited, straight in, and never told more than its own link"
+        );
+        assert_eq!(
+            taken(&unlimited, Some(18_000), most).down,
+            (18_000, false),
+            "a call's room holds it though its leader goes unlimited"
         );
     }
 
