@@ -254,9 +254,13 @@ in
   # it holds live before V8 collects it in full. Its hosts, and every process
   # of a realm that names no percent, keep V8's own growth, and a percent
   # outside 10 to 100 is refused, while both ends are taken. Only a
-  # conversation given a percent names the build proving its node takes it.
+  # conversation given a percent names the build proving its own realm's node
+  # takes that percent, and the name carries the build into the generation.
   pi-conversations-set-heap-growth =
     let
+      # The build that proves the set realm's node, which growingServicesOf
+      # gives every host, takes its 30 percent.
+      proof = "${growthTakenBy "set" "${pkgs.emptyDirectory}/node" 30}";
       set =
         kind:
         let
@@ -265,7 +269,8 @@ in
         in
         lib.hasInfix " '--max-old-space-size=4096' '--heap-growing-percent=30' /" start
         && lib.hasSuffix "/scripts/pi-host.ts --child" start
-        && lib.hasSuffix "-pi-conversation-set-takes-heap-growth" proven;
+        && proven == proof
+        && builtins.getContext proven == builtins.getContext proof;
       # Whether a unit is there, its command leaves V8 its own growth and it
       # names no build proving a percent.
       keepsOwnGrowth =
@@ -289,7 +294,7 @@ in
         !(builtins.tryEval (builtins.deepSeq start start)).success;
     in
     holds "pi-conversations-set-heap-growth"
-      "A realm's percent of heap growth for its conversations doesn't reach their own processes as V8's growing percent, before the harness's program, with the build proving its node takes it, or it reaches its hosts or a realm that names none, or 10 or 100 percent isn't taken, or 9 or 101 isn't refused."
+      "A realm's percent of heap growth for its conversations doesn't reach their own processes as V8's growing percent, before the harness's program, with the build proving its own node takes that percent and its context, or it reaches its hosts or a realm that names none, or 10 or 100 percent isn't taken, or 9 or 101 isn't refused."
       (
         lib.all
           (
@@ -311,27 +316,40 @@ in
 
   # A realm whose node refuses the growing percent fails the generation's
   # build, naming the realm, the percent and the node, rather than ending
-  # each conversation as it starts; node 22, which pi is built with, takes it.
+  # each conversation as it starts, and one whose node the build can't run
+  # fails saying so; node 22, which pi is built with, takes it.
   pi-conversations-refuse-a-node-without-growth =
     let
-      # Refuses the word as node refuses an option it doesn't know.
+      # Refuses the word as node refuses an option it doesn't know, and runs
+      # anything else, so only a build that gives it the word fails.
       refusing = pkgs.writeShellScript "node" ''
-        echo "$0: bad option: $1" >&2
-        exit 9
+        if [ "$1" = --heap-growing-percent=70 ]; then
+          echo "$0: bad option: $1" >&2
+          exit 9
+        fi
       '';
-      failed = pkgs.testers.testBuildFailure (growthTakenBy "one" "${refusing}" 70);
-      said = lib.concatStrings [
+      refused = pkgs.testers.testBuildFailure (growthTakenBy "one" "${refusing}" 70);
+      refusedSaid = lib.concatStrings [
         "jitsusama.pi.hosts.one.conversationHeapGrowingPercent is 70, "
         "but ${refusing} refuses --heap-growing-percent=70, so each"
       ];
+      # Named outside the store, as no build's sandbox holds.
+      unrun = pkgs.testers.testBuildFailure (growthTakenBy "one" "/nowhere/node" 70);
+      unrunSaid = "but the build proving the realm's node takes it can't run /nowhere/node: give";
       taken = growthTakenBy "one" (lib.getExe pkgs.nodejs_22) 70;
     in
     pkgs.runCommandLocal "pi-conversations-refuse-a-node-without-growth" { } ''
-      if ! grep -qF ${lib.escapeShellArg said} ${failed}/testBuildFailure.log; then
-        echo "a node refusing the percent failed without naming it; its log:"
-        cat ${failed}/testBuildFailure.log
-        exit 1
-      fi
+      says() {
+        if ! grep -qF "$2" "$1/testBuildFailure.log"; then
+          echo "a node $3 failed without saying so; its log:"
+          cat "$1/testBuildFailure.log"
+          exit 1
+        fi
+      }
+      says ${refused} ${lib.escapeShellArg refusedSaid} "refusing the percent"
+      says ${refused} ${lib.escapeShellArg "${refusing}: bad option: --heap-growing-percent=70"} \
+        "refusing the percent"
+      says ${unrun} ${lib.escapeShellArg unrunSaid} "the build can't run"
       test -e ${taken}
       touch $out
     '';
