@@ -66,10 +66,18 @@ expect() {
 }
 
 expect 'tuple ca' call capture
-expect 'tuple call ' join leave mute unmute start
+# What core runs against it: tuple-call, tuple-people, the shell and the
+# service, with the flags the two that follow pass.
+expect 'tuple call ' accept join leave mute unmute start
 expect 'tuple call l' leave list
 expect 'tuple cont' contacts
+expect 'tuple contacts ' favorite follow unfavorite
+expect 'tuple contacts follow --' --format
+expect 'tuple ne' new
+expect 'tuple sh' share
 expect 'tuple st' start state stop
+expect 'tuple state ' follow
+expect 'tuple state follow --' --format --raw
 # Only v2026_11_19.0 on has webcam, so an older build installed fails here.
 expect 'tuple w' webcam whoami
 expect 'tuple webcam ' list start stop
