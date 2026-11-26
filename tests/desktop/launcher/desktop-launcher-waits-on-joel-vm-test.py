@@ -1012,14 +1012,18 @@ def test_waiting_on_you_leads_now_with_nothing_waiting_and_says_so(desktop: Desk
 # The heading over what TESTQA's session wants of Joel, in For You: its name and where it
 # stands, as the agents daemon says it (What Needs Me, 2026-11-18).
 WANTS_HEADING = "A quest of its own & whole \u00b7 needs you"
+# What sessions ask gathers under this one row at For You's own level, never loose there.
+AGENTS_ASKING = "Agents Asking"
 
 
 def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) -> None:
     """A session wanting Joel is in For You as its Agents row, and Now has no pi row.
 
-    Super+O, Return, Return goes to its window: Now opens on For You, which counts it,
-    Return steps in to the session, selected under its cell's heading, which says where
-    it stands in the agents daemon's own words, and its Return goes to its window.
+    Now opens on For You, which counts it, and Return steps in to Agents Asking, never a
+    session at For You's own level (Joel, 2026-11-25 21:52: "it also makes no sense for
+    the agents to be top level"). Its Return steps in to the session, selected under its
+    cell's heading, which says where it stands in the agents daemon's own words, and the
+    session's Return steps into what it asks, whose first goes to its window.
     """
     machine = desktop.machine
     desktop.pi_session()
@@ -1047,6 +1051,14 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
         desktop.launcher_until(
             lambda shown: (
                 shown["held"] == ["now", "For You"]
+                and shown["rows"] == [AGENTS_ASKING]
+                and (shown["selected"] or {}).get("side") == "1"
+            )
+        )
+        machine.send_key("ret")
+        desktop.launcher_until(
+            lambda shown: (
+                shown["held"] == ["now", "For You", AGENTS_ASKING]
                 and shown["rows"][:2] == [WANTS_HEADING, "A quest of its own & whole"]
                 and (shown["selected"] or {}).get("name") == "A quest of its own & whole"
                 and shown["selected"]["verb"] == "more"
@@ -1057,7 +1069,7 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
         machine.send_key("ret")
         desktop.launcher_until(
             lambda shown: (
-                shown["held"] == ["now", "For You", "A quest of its own & whole"]
+                shown["held"] == ["now", "For You", AGENTS_ASKING, "A quest of its own & whole"]
                 and shown["rows"] == ["Deal With It", "Go To", "Put It Off"]
             )
         )
@@ -1073,7 +1085,8 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
 
 
 def answered_in_place(desktop: Desktop, since: str) -> None:
-    """Answer a session's question from For You: in its row, Return on the recommended answer.
+    """Answer a session's question from For You: in its row, inside Agents Asking, Return on
+    the recommended answer.
 
     The answer reaches the session's inbox as the harness takes one, by the want's id.
     """
@@ -1096,6 +1109,13 @@ def answered_in_place(desktop: Desktop, since: str) -> None:
     desktop.launcher_until(
         lambda shown: (
             shown["held"] == ["now", "For You"]
+            and (shown["selected"] or {}).get("name") == AGENTS_ASKING
+        )
+    )
+    machine.send_key("ret")
+    desktop.launcher_until(
+        lambda shown: (
+            shown["held"] == ["now", "For You", AGENTS_ASKING]
             and (shown["selected"] or {}).get("side") == "needs your answer \u00b7 2 choices"
         )
     )
@@ -1125,7 +1145,8 @@ def answered_in_place(desktop: Desktop, since: str) -> None:
 def test_a_sessions_action_is_in_needs_you_once_as_its_item(desktop: Desktop) -> None:
     """A session wanting Joel to do one of its items is in For You once, as the item.
 
-    Under the session's heading, since the item is its own.
+    Under the session's heading inside Agents Asking, since the item is its own and the
+    session asks it of him.
 
     And it's said once, by For You's notice: the session's own notice for the same thing
     put two up in the same second (2026-11-06), and a session's want posts none now.
@@ -1161,8 +1182,12 @@ def test_a_sessions_action_is_in_needs_you_once_as_its_item(desktop: Desktop) ->
         retry(lambda _: tray_counted(desktop) == 1, timeout=dt.timedelta(seconds=10))
         desktop.machine.send_key("ret")
         desktop.launcher_until(
+            lambda shown: shown["held"] == ["now", "For You"] and shown["rows"] == [AGENTS_ASKING]
+        )
+        desktop.machine.send_key("ret")
+        desktop.launcher_until(
             lambda shown: (
-                shown["held"] == ["now", "For You"]
+                shown["held"] == ["now", "For You", AGENTS_ASKING]
                 and shown["rows"] == [WANTS_HEADING, "Sign the Form"]
             )
         )
