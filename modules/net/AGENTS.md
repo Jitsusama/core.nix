@@ -225,7 +225,9 @@ address in the record. They answer `net.pressed/1` (`device`, `key`,
   Allow (`Unanswered`). A TV refusing the token it handed (`Forgotten`)
   has its token forgotten and its pin kept, so the next press asks Allow
   of the same TV; where the token can't be forgotten, the failure says
-  so and offers removing the file. One going quiet after a token was carried broke off.
+  so and offers pressing again, which tries the forgetting again and
+  keeps the pin the TV just proved. One going quiet after a token was
+  carried broke off.
   A token the TV hands is kept even when the key then fails to go.
   TLS or WebSocket spoken otherwise than a TV speaks it fails as
   `Failed` with no retry, since a retry reaches the same.
@@ -238,11 +240,15 @@ address in the record. They answer `net.pressed/1` (`device`, `key`,
   at, or a `systemd-creds` that won't run or seals nothing now (asked by
   sealing nothing), says so instead.
 - Try lines name the TV by its id, which `views::find` takes first, so
-  they reach it even where another device shares its name. While neither
-  the modem nor the switch is heard at all, a TV that isn't heard isn't
-  blamed: the failure says this machine is likely away from home. A
-  switch that signed net out was heard over the home network, so it
-  counts as home.
+  they reach it even where another device shares its name. While a
+  record from the last two minutes has neither the modem nor the switch
+  heard for two minutes, this machine is likely away from home: a TV
+  that isn't heard, or a certificate not the kept one, says so rather
+  than blaming the TV, and a first press isn't made, since it would pin
+  whatever answers at the TV's address. A press with a pin kept still
+  goes, since the TV answers while only the modem is off. A switch that
+  signed net out was heard over the home network, so it counts as home;
+  a stale record, or one minute's missed read, says nothing of away.
 - The token and the pin are sealed with `systemd-creds --user` under
   `$XDG_STATE_HOME/net/televisions/`, one file named by the TV's hardware
   address and sealed under a name of its own, as eero-daemon seals its

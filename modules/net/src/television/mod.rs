@@ -16,7 +16,7 @@ pub mod remote;
 pub mod wake;
 
 use std::net::IpAddr;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 use terminal_kit::{Context, Exit, Failure};
@@ -119,18 +119,47 @@ fn reached(device: &Device) -> Result<IpAddr, Failure> {
     })
 }
 
-/// Whether this machine is likely off the home network: the modem and
-/// the switch answer net only over it, and the record names at least one
-/// of them and has none heard at all. A switch that signed net out still
-/// answered over the home network, so it counts as home. A TV that
-/// didn't answer while none was heard may be fine, and isn't blamed.
-fn off_home(network: &Network) -> bool {
+/// How old, in seconds, a record may be for it to say where this machine
+/// is: net's daemon writes one a minute, so an older one is from a daemon
+/// that stopped, or from before a suspend, and says nothing of now.
+const FRESH: u64 = 2 * 60;
+
+/// How long, in seconds, the modem and the switch must have gone unheard
+/// for this machine to be taken as away: one minute's read the modem
+/// misses is a hiccup, two in a row is the home network gone.
+const UNHEARD: u64 = 2 * 60;
+
+/// Whether this machine is likely off the home network, at `now` in
+/// seconds since the epoch: the modem and the switch answer net only over
+/// it, and a fresh record names at least one of them and has none heard
+/// for `UNHEARD`. A switch that signed net out still answered over the
+/// home network, so it counts as home. A stale record says nothing, so
+/// nothing is said of being away. A TV that didn't answer while none was
+/// heard may be fine, and isn't blamed.
+fn off_home(network: &Network, now: u64) -> bool {
+    if now.saturating_sub(network.collected_at) > FRESH {
+        return false;
+    }
     let mut home = network
         .sources
         .iter()
         .filter(|source| source.name == modem::ID || source.name == switch::NAME)
         .peekable();
-    home.peek().is_some() && home.all(|source| source.state == SourceState::Unreachable)
+    home.peek().is_some()
+        && home.all(|source| {
+            source.state == SourceState::Unreachable
+                && source
+                    .since
+                    .is_some_and(|since| network.collected_at.saturating_sub(since) >= UNHEARD)
+        })
+}
+
+/// Whether this machine is likely off the home network now.
+fn off_home_now(network: &Network) -> bool {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs());
+    off_home(network, now)
 }
 
 /// Why a TV wasn't heard while this machine is likely off the home
@@ -174,6 +203,14 @@ pub fn press(
     let mac = television(device, allowed_before)?;
     let address = reached(device)?;
     let kept = kept::open(mac).map_err(|unopened| unopened_as(device, word, unopened))?;
+    // Away from home, whatever answers at the TV's address is a
+    // stranger's, and a first press would trust its certificate, so none
+    // is made. A press with a certificate kept still goes, since the TV
+    // answers on the home network while only the modem is off.
+    let away_now = off_home_now(network);
+    if away_now && kept.is_none() {
+        return Err(away(format!("{} can't be reached", device.name)));
+    }
     let first = kept.as_ref().is_none_or(|kept| kept.token.is_none());
     let mut waiting = first
         .then(|| {
@@ -194,19 +231,41 @@ pub fn press(
             if let Some(waiting) = waiting.take() {
                 let _ = waiting.failed(&unallowed(device, &missed.why));
             }
+            let forgetting = matches!(missed.why, remote::Why::Forgotten);
             let held = missed.kept.as_ref().is_some_and(|kept_now| {
-                !keep_now(context, device, mac, kept.as_ref(), kept_now, false)
+                !keep_now(
+                    context,
+                    device,
+                    mac,
+                    kept.as_ref(),
+                    kept_now,
+                    Keeping::Missed { forgetting },
+                )
             });
-            if matches!(missed.why, remote::Why::Unreachable(_)) && off_home(network) {
+            // A stranger answering at the address fails the kept
+            // certificate, which away from home isn't a reset TV.
+            if away_now
+                && matches!(
+                    missed.why,
+                    remote::Why::Unreachable(_) | remote::Why::NotTheTv
+                )
+            {
                 return Err(away(format!("{} didn't answer", device.name)));
             }
-            if held && matches!(missed.why, remote::Why::Forgotten) {
+            if held && forgetting {
                 return Err(unforgotten(device, word));
             }
             return Err(refused(device, word, missed.why));
         }
     };
-    keep_now(context, device, mac, kept.as_ref(), &kept_now, true);
+    keep_now(
+        context,
+        device,
+        mac,
+        kept.as_ref(),
+        &kept_now,
+        Keeping::Went,
+    );
     said(
         context,
         &pressed_answer(device, word, first),
@@ -218,18 +277,27 @@ pub fn press(
     )
 }
 
+/// Why what the TV allowed is being kept: the key went, or it didn't and
+/// the TV either refused its token (`forgetting`) or handed what it
+/// allowed before the key failed to go.
+#[derive(Clone, Copy)]
+enum Keeping {
+    Went,
+    Missed { forgetting: bool },
+}
+
 /// Keeps what the TV allowed now, where it differs from what was kept,
-/// answering whether it's kept. A token the TV handed that can't be kept
-/// is warned of, since the TV will ask again; a refused token that can't
-/// be forgotten is said by the failure instead, as it's carried again.
-/// `went` says whether the key went.
+/// answering whether it's kept. What can't be kept is warned of, since
+/// the TV will ask again, or its certificate is trusted afresh; a refused
+/// token that can't be forgotten is said by the failure alone, as it's
+/// carried again.
 fn keep_now(
     context: &Context,
     device: &Device,
     mac: &str,
     kept: Option<&kept::Kept>,
     kept_now: &kept::Kept,
-    went: bool,
+    keeping: Keeping,
 ) -> bool {
     if kept == Some(kept_now) {
         return true;
@@ -237,46 +305,37 @@ fn keep_now(
     let Err(error) = kept::keep(mac, kept_now) else {
         return true;
     };
-    if kept_now.token.is_some() {
-        let key = if went { "the key went, but " } else { "" };
-        let _ = context.tell(
-            "!",
-            "warning",
-            &format!(
-                "{key}what {} allowed couldn't be kept, so it will ask again: {error}",
-                device.name
-            ),
-        );
+    let name = &device.name;
+    let key = match keeping {
+        Keeping::Missed { forgetting: true } => return false,
+        Keeping::Went => "the key went, but ",
+        Keeping::Missed { forgetting: false } => "",
+    };
+    let lost = if kept_now.token.is_some() {
+        format!("what {name} allowed couldn't be kept, so it will ask again")
     } else {
-        let _ = context.tell(
-            "!",
-            "warning",
-            &format!(
-                "the token {} refused couldn't be forgotten: {error}",
-                device.name
-            ),
-        );
-    }
+        format!("{name}'s certificate couldn't be kept, so the next press trusts it afresh")
+    };
+    let _ = context.tell("!", "warning", &format!("{key}{lost}: {error}"));
     false
 }
 
 /// Why a key wasn't pressed when the TV refused the token it handed and
-/// net couldn't forget it: every press carries it again until its file
-/// goes, which costs nothing the TV still honours.
+/// net couldn't forget it. Pressing again tries the forgetting again and
+/// keeps the certificate the TV just proved it holds, which removing the
+/// file would lose.
 fn unforgotten(device: &Device, word: &str) -> Failure {
     let name = &device.name;
-    let failure = Failure::new(
+    Failure::new(
         Exit::Refused,
         format!("{name} no longer allows this machine"),
     )
     .because(
-        "it refused the token it handed, and net couldn't forget it, so each press carries \
-         it again until its file is removed; the next press then asks Allow on its screen",
-    );
-    match kept_file(device) {
-        Some(file) => failure.try_this(format!("rm {file} && {}", again(device, word))),
-        None => failure,
-    }
+        "it refused the token it handed, and net couldn't forget it; the next press tries \
+         again to forget it, keeping its certificate, and once it's forgotten asks Allow on \
+         its screen",
+    )
+    .try_this(again(device, word))
 }
 
 /// `net.pressed/1`: which key went to which TV, and whether the TV was
@@ -472,7 +531,7 @@ pub fn wake(context: &Context, network: &Network, device: &Device) -> Result<(),
         if let Some(waiting) = waiting {
             let _ = waiting.failed(&format!("{} didn't wake", device.name));
         }
-        if off_home(network) {
+        if off_home_now(network) {
             return Err(away(format!("{} wasn't heard waking", device.name)));
         }
         return Err(
@@ -552,263 +611,5 @@ fn word_for(device: &Device) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A device called `name`, with `roles`, the hardware address
-    /// 02:00:00:00:00:90 and `addresses`.
-    fn device(name: &str, roles: &[&str], addresses: &[&str]) -> Device {
-        serde_json::from_value(json!({
-            "id": "mac:02:00:00:00:00:90",
-            "name": name,
-            "roles": roles,
-            "source": "eero",
-            "macs": ["02:00:00:00:00:90"],
-            "addresses": addresses,
-            "ports": [],
-            "radios": [],
-        }))
-        .expect("a device")
-    }
-
-    fn never(_mac: &str) -> bool {
-        false
-    }
-
-    #[test]
-    fn each_key_is_found_by_its_word_in_any_case() {
-        for (word, said) in KEYS {
-            assert_eq!(code(word), Some(said));
-            assert_eq!(code(&word.to_uppercase()), Some(said));
-        }
-    }
-
-    #[test]
-    fn a_word_no_key_goes_by_is_no_key() {
-        for word in ["", "KEY_POWER", "factory-reset", "volume up", "power "] {
-            assert_eq!(code(word), None, "{word:?}");
-        }
-    }
-
-    #[test]
-    fn every_key_goes_by_one_word_and_one_code() {
-        let mut words: Vec<&str> = KEYS.iter().map(|(word, _)| *word).collect();
-        let mut codes: Vec<&str> = KEYS.iter().map(|(_, code)| *code).collect();
-        words.sort_unstable();
-        words.dedup();
-        codes.sort_unstable();
-        codes.dedup();
-        assert_eq!((words.len(), codes.len()), (KEYS.len(), KEYS.len()));
-    }
-
-    #[test]
-    fn a_key_is_said_in_plain_words() {
-        assert_eq!(spoken("Volume-Up"), "volume up");
-    }
-
-    #[test]
-    fn a_tv_heard_on_its_page_or_one_that_allowed_this_machine_is_a_tv() {
-        let heard = device("Living", &["television"], &[]);
-        assert_eq!(
-            television(&heard, never).map_err(|failure| failure.json(false)),
-            Ok("02:00:00:00:00:90")
-        );
-        let silent = device("Living", &["client"], &[]);
-        assert_eq!(
-            television(&silent, |mac| mac == "02:00:00:00:00:90")
-                .map_err(|failure| failure.json(false)),
-            Ok("02:00:00:00:00:90"),
-            "a TV in standby that allowed this machine isn't taken"
-        );
-        let refused = television(&silent, never).expect_err("a client is taken as a TV");
-        assert_eq!(refused.code(), Exit::Usage.code());
-    }
-
-    #[test]
-    fn a_key_goes_only_to_an_address_eero_gives_now() {
-        let tv = device("Living", &["television"], &["fe80::1", "10.0.0.90"]);
-        assert_eq!(
-            reached(&tv).map_err(|failure| failure.json(false)),
-            Ok("10.0.0.90".parse::<IpAddr>().expect("an address"))
-        );
-        let gone = device("Living", &["television"], &[]);
-        let failure = reached(&gone).expect_err("a TV with no address is reached");
-        assert_eq!(failure.code(), Exit::Unavailable.code());
-        assert_eq!(address(&gone), None, "a wake has an address to ask");
-    }
-
-    #[test]
-    fn each_reason_a_key_didnt_go_has_its_own_exit_and_way_out() {
-        let tv = device("Living", &["television"], &["10.0.0.90"]);
-        let cases = [
-            (
-                remote::Why::Unreachable("timed out".into()),
-                Exit::Unavailable,
-                Some("wake"),
-            ),
-            (remote::Why::NotTheTv, Exit::Refused, None),
-            (remote::Why::Refused, Exit::Refused, Some("press mute")),
-            (remote::Why::Forgotten, Exit::Refused, Some("press mute")),
-            (remote::Why::Unanswered, Exit::Refused, Some("press mute")),
-            (
-                remote::Why::Broke("reset".into()),
-                Exit::TryAgain,
-                Some("press mute"),
-            ),
-            (remote::Why::Unlike("bad frame".into()), Exit::Failed, None),
-        ];
-        for (why, exit, then) in cases {
-            let said = format!("{why:?}");
-            let failure = refused(&tv, "Mute", why).json(false);
-            assert_eq!(failure["exit"], exit.code(), "{said}");
-            match then {
-                Some(then) => assert!(
-                    failure["try"]
-                        .as_str()
-                        .is_some_and(|tried| tried.contains(then)),
-                    "{said} offers {}",
-                    failure["try"]
-                ),
-                None => assert!(failure["try"].is_null(), "{said} offers a retry"),
-            }
-        }
-    }
-
-    #[test]
-    fn a_try_line_names_the_tv_by_its_id_whatever_it_is_called() {
-        let tv = device("Living Room", &["television"], &["10.0.0.90"]);
-        let failure = refused(&tv, "mute", remote::Why::Refused).json(false);
-        assert_eq!(
-            failure["try"], "net devices mac:02:00:00:00:00:90 press mute",
-            "the try line doesn't reach this TV alone"
-        );
-    }
-
-    /// A record whose modem and switch are in `states`, by name.
-    fn network(states: &[(&str, &str)]) -> Network {
-        let sources: Vec<Value> = states
-            .iter()
-            .map(|(name, state)| json!({"name": name, "what": "", "state": state}))
-            .collect();
-        serde_json::from_value(json!({
-            "schema": crate::model::SCHEMA,
-            "collected_at": 0,
-            "sources": sources,
-            "devices": [],
-            "links": [],
-        }))
-        .expect("a record")
-    }
-
-    #[test]
-    fn this_machine_is_off_home_only_while_neither_the_modem_nor_the_switch_answers() {
-        for (states, off) in [
-            (
-                vec![("modem", "unreachable"), ("switch", "unreachable")],
-                true,
-            ),
-            (vec![("modem", "unreachable")], true),
-            (
-                vec![("modem", "unreachable"), ("switch", "answering")],
-                false,
-            ),
-            (vec![("modem", "answering"), ("eero", "unreachable")], false),
-            (
-                vec![("modem", "unreachable"), ("switch", "signed-out")],
-                false,
-            ),
-            (vec![("switch", "signed-out")], false),
-            (vec![("eero", "unreachable")], false),
-            (vec![], false),
-        ] {
-            assert_eq!(off_home(&network(&states)), off, "{states:?}");
-        }
-    }
-
-    #[test]
-    fn only_a_file_that_wont_open_as_a_tvs_is_offered_forgetting() {
-        let tv = device("Living", &["television"], &[]);
-        let cases = [
-            (
-                kept::Unopened::Unseen(std::io::ErrorKind::PermissionDenied.into()),
-                false,
-            ),
-            (
-                kept::Unopened::Unrun(std::io::ErrorKind::NotFound.into()),
-                false,
-            ),
-            (kept::Unopened::Unserved, false),
-            (kept::Unopened::Unsealed, true),
-            (kept::Unopened::Unread, true),
-        ];
-        for (unopened, forgets) in cases {
-            let said = format!("{unopened:?}");
-            let failure = unopened_as(&tv, "mute", unopened).json(false);
-            let tried = failure["try"].as_str().unwrap_or_default();
-            if forgets {
-                assert!(
-                    kept_file(&tv).is_some(),
-                    "no file is known to offer removing"
-                );
-                assert!(tried.starts_with("rm "), "{said} offers {tried}");
-            } else {
-                assert!(failure["try"].is_null(), "{said} offers {tried}");
-            }
-        }
-    }
-
-    #[test]
-    fn a_refused_token_that_couldnt_be_forgotten_is_said_so_and_offers_removing_it() {
-        let tv = device("Living", &["television"], &[]);
-        let failure = unforgotten(&tv, "mute").json(false);
-        let because = failure["why"].as_str().unwrap_or_default();
-        assert!(
-            because.contains("couldn't forget"),
-            "the failure says the token was forgotten: {because}"
-        );
-        let tried = failure["try"].as_str().unwrap_or_default();
-        assert!(
-            tried.starts_with("rm ") && tried.ends_with("press mute"),
-            "the try line doesn't remove the file and press again: {tried}"
-        );
-    }
-
-    #[test]
-    fn only_a_tv_that_refused_or_stopped_asking_is_said_not_to_allow() {
-        let tv = device("Living", &["television"], &[]);
-        for why in [remote::Why::Refused, remote::Why::Unanswered] {
-            assert_eq!(unallowed(&tv, &why), "Living didn't allow this machine");
-        }
-        assert_eq!(
-            unallowed(&tv, &remote::Why::Forgotten),
-            "Living no longer allows this machine"
-        );
-        for why in [
-            remote::Why::Unreachable("timed out".into()),
-            remote::Why::NotTheTv,
-            remote::Why::Broke("reset".into()),
-            remote::Why::Unlike("bad frame".into()),
-        ] {
-            let said = unallowed(&tv, &why);
-            assert!(!said.contains("allow"), "{why:?} blames Allow: {said}");
-        }
-    }
-
-    #[test]
-    fn the_answers_say_the_device_the_key_and_what_was_heard() {
-        let tv = device("Living", &["television"], &[]);
-        assert_eq!(
-            pressed_answer(&tv, "Volume-Up", true),
-            json!({
-                "schema": "net.pressed/1",
-                "device": "mac:02:00:00:00:00:90",
-                "key": "volume-up",
-                "allowed_now": true,
-            })
-        );
-        assert_eq!(
-            woken_answer(&tv, false),
-            json!({"schema": "net.woken/1", "device": "mac:02:00:00:00:00:90", "heard": false})
-        );
-    }
-}
+#[path = "mod_tests.rs"]
+mod tests;
