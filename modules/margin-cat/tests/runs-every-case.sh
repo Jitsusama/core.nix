@@ -24,8 +24,8 @@ shopt -s nullglob
 qml=$1
 limit=${CASE_LIMIT:-60}
 guard=${CASE_GUARD:-600}
-# A limit that isn't whole seconds would leave the case unlimited, since
-# ulimit refuses it and the case runs on regardless.
+# A limit that isn't whole seconds is refused once, for the whole run,
+# rather than by ulimit as each case is run.
 if ! [[ $limit =~ ^[1-9][0-9]*$ && $guard =~ ^[1-9][0-9]*$ ]]; then
   echo "CASE_LIMIT and CASE_GUARD must be whole seconds, not '$limit' and '$guard'" >&2
   exit 2
@@ -45,11 +45,10 @@ trap 'rm -f "$used"' EXIT
 # collector is still handed one.
 run() {
   ulimit -c 0
-  # A limit the builder refuses fails the case, rather than letting it run
-  # with none.
+  # A limit the builder refuses fails the case unrun, rather than letting it
+  # run with none, by timeout's own code for a command it couldn't run.
   if ! { ulimit -St "$limit" && ulimit -Ht "$hard"; }; then
-    echo "$1: the processor's limits couldn't be set" >&2
-    return 1
+    return 125
   fi
   timeout -k 10 "$guard" "$qml" "$1"
 }
@@ -71,6 +70,8 @@ ended() {
     echo "$case was killed: out of memory, or past its hard $hard s"
   elif [ "$code" = 152 ]; then
     echo "$case ran past its $limit s of its own time"
+  elif [ "$code" = 125 ]; then
+    echo "$case never ran: its limits or its guard couldn't be set"
   else
     echo "$case failed, exit code $code"
   fi

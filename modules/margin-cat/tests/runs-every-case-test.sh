@@ -5,8 +5,9 @@
 # from outside with a pass after it, under a guard of a minute by the clock, so a loaded builder
 # slowing the spinning case never makes it a hang; then, under a guard of
 # three seconds, a hang that stops the run and one that ignores the guard's
-# signal until its kill, each with a case left unrun after it; and limits
-# and guards that aren't whole seconds, refused.
+# signal until its kill, each with a case left unrun after it; a case whose
+# limits the system refuses, failed unrun; and limits and guards that aren't
+# whole seconds, refused.
 # usage: runs-every-case-test.sh <runs-every-case.sh>
 set -euo pipefail
 
@@ -43,7 +44,10 @@ failing() {
 
 # Runs the runner over a folder of its own, with a stand-in case for each
 # `name:how` given, under `limit` seconds of the processor's and `guard` of
-# the clock's, keeping what it said and how it ended.
+# the clock's, keeping what it said and how it ended; where `cap` is set,
+# under soft and hard limits of that many seconds already, the hard one a
+# user not root can't raise.
+cap=
 runs() {
   local folder=$here/$1 limit=$2 guard=$3 each
   shift 3
@@ -52,8 +56,8 @@ runs() {
     echo "${each#*:}" >"$folder/${each%%:*}.qml"
   done
   code=0
-  said=$(cd "$folder" && CASE_LIMIT=$limit CASE_GUARD=$guard "$BASH" "$runner" "$here/qml" 2>&1) ||
-    code=$?
+  said=$(cd "$folder" && { [ -z "$cap" ] || ulimit -t "$cap"; } &&
+    CASE_LIMIT=$limit CASE_GUARD=$guard "$BASH" "$runner" "$here/qml" 2>&1) || code=$?
   echo "$said"
 }
 ends() {
@@ -123,5 +127,18 @@ runs refused-guard 1 0 a-passes:pass
 ends 2
 holds "CASE_LIMIT and CASE_GUARD must be whole seconds, not '1' and '0'"
 never "a-passes.qml took"
+
+runs refused-zero 0 60 a-passes:pass
+ends 2
+holds "CASE_LIMIT and CASE_GUARD must be whole seconds, not '0' and '60'"
+
+# Its hard limit of 11 s is past the 5 s already in force, so it's refused,
+# and the case fails without running rather than running with no limit.
+cap=5
+runs capped 1 60 a-passes:pass
+cap=
+ends 1
+holds "a-passes.qml never ran: its limits or its guard couldn't be set"
+never "a-passes.qml failed"
 
 [ "$fails" = 0 ]
