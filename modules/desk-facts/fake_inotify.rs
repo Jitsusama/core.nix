@@ -40,6 +40,8 @@ pub(crate) struct Held {
     /// A folder refused with this once it's there, as one whose
     /// permissions change after the start.
     pub(crate) refusing: Option<(PathBuf, i32)>,
+    /// What the next read fails with, once, before it reads on.
+    pub(crate) faulting: Option<i32>,
     /// Watches let go of that it had already dropped, each of which the
     /// kernel refuses: a wasted call, and a number it might have given
     /// to another watch by then.
@@ -178,6 +180,9 @@ impl Kernel for Fake {
 
     fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
         let mut held = self.0.borrow_mut();
+        if let Some(code) = held.faulting.take() {
+            return Err(io::Error::from_raw_os_error(code));
+        }
         if held.events.is_empty() {
             return Err(io::ErrorKind::WouldBlock.into());
         }

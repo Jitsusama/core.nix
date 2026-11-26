@@ -294,6 +294,23 @@ Capture:
                     "{} isn't a module of facts.rs",
                     path.display()
                 );
+            } else if path.is_dir() {
+                // A module's own folder holds its child modules.
+                let parent = fs::read_to_string(path.with_extension("rs"))
+                    .unwrap_or_else(|_| panic!("{} is no module's folder", path.display()));
+                for child in fs::read_dir(&path).unwrap().flatten() {
+                    let child = child.path();
+                    let name = child.file_stem().and_then(|stem| stem.to_str());
+                    assert!(
+                        name.is_some_and(|name| {
+                            parent
+                                .lines()
+                                .any(|line| line.trim() == format!("mod {name};"))
+                        }),
+                        "{} isn't a module of {stem}.rs",
+                        child.display()
+                    );
+                }
             }
         }
         assert!(files > 0, "no modules were found beside {}", file!());

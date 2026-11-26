@@ -433,7 +433,9 @@ fn timed_out<K: Kernel>(
     Ok(due)
 }
 
-/// Ends the hearing with its facts removed, so nothing reads them stale.
+/// Ends the hearing with its facts removed, so nothing reads them stale:
+/// a run's that failed, or one killed before it could remove them, which
+/// the next run finds if it fails at its start.
 fn end(desk: &Desk, code: ExitCode) -> ExitCode {
     for file in &desk.files {
         let _ = fs::remove_file(file);
@@ -456,10 +458,11 @@ pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
         PathBuf::from(HOLDERS),
         IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE | IN_DELETE,
     )];
+    let mut desk = Desk::new(folder, lighting, loopbacks);
     // Made before it's watched for the monitors' facts.
     if let Err(error) = fs::create_dir_all(folder) {
         eprintln!("<3>can't make {}: {error}", folder.display());
-        return ExitCode::FAILURE;
+        return end(&desk, ExitCode::FAILURE);
     }
     let monitors = vec![(folder.to_owned(), IN_MOVED_TO | IN_DELETE)];
     let (mut stop, mut kernel, changes, held, said) = match (
@@ -478,7 +481,7 @@ pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
         | (_, _, _, Err(error), _)
         | (.., Err(error)) => {
             eprintln!("<3>can't hear the desk's devices: {error}");
-            return ExitCode::FAILURE;
+            return end(&desk, ExitCode::FAILURE);
         }
     };
     let mut folders = Folders {
@@ -486,7 +489,6 @@ pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
         held,
         said,
     };
-    let mut desk = Desk::new(folder, lighting, loopbacks);
     let mut due = DISPLAYS | SOUND | CAMERAS | BLUETOOTH | KEYBOARDS;
     let mut settling = Settling::default();
     loop {
@@ -505,8 +507,9 @@ pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
             if ready < 0 {
                 continue;
             }
-            // A folder refused for good fails the unit, as at the start,
-            // so it's started afresh and seen failed meanwhile.
+            // A fault of the program's, or inotify failing a read, fails
+            // the unit, as at the start, so systemd starts it afresh, ever
+            // more slowly, the fault in the journal each time.
             let heard = if ready == 0 {
                 timed_out(&mut folders, &mut settling, Instant::now())
             } else if waiting[0].revents & POLLIN != 0 {
@@ -574,6 +577,33 @@ mod tests {
             (0, SOUND | CAMERAS | DISPLAYS, Some((now, 0)), false),
             "a folder nothing could wake wasn't tried again as poll's wait ran out, its \
              kind read and settled once it was watched"
+        );
+    }
+
+    #[test]
+    fn a_fault_met_as_poll_times_out_ends_the_hearing_with_its_facts_removed() {
+        let fake = Fake::default();
+        let mut folders = folders(&fake);
+        fake.0.borrow_mut().refusing = Some(("/snd".into(), 22));
+        fake.make("/snd");
+        let fault = timed_out(&mut folders, &mut Settling::default(), Instant::now())
+            .map_err(|error| error.to_string());
+        let sys = Sys::new("ended");
+        let desk = Desk::new(&sys.0, PathBuf::new(), Vec::new());
+        for file in &desk.files {
+            fs::write(file, "{}").expect("a fact is written");
+        }
+        let code = end(&desk, ExitCode::FAILURE);
+        let left: Vec<_> = desk.files.iter().filter(|file| file.exists()).collect();
+        assert_eq!(
+            (fault, format!("{code:?}"), left),
+            (
+                Err("can't watch /snd: Invalid argument (os error 22)".to_string()),
+                format!("{:?}", ExitCode::FAILURE),
+                Vec::<&PathBuf>::new()
+            ),
+            "a fault met as poll's wait ran out was passed over, or the hearing ended \
+             another way than it was told, or left a fact to be read stale"
         );
     }
 
