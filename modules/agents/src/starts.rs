@@ -29,8 +29,10 @@ pub const TOLD: &str = "sprout-told";
 
 /// The ask a shell makes of which starts are still kept, answered from
 /// the file rather than the records served, which a daemon just started
-/// hasn't made yet. Any connection may ask: it says no more than the
-/// records any watch hears.
+/// hasn't made yet, and whether the asker is the shell, the unit's main
+/// process: a shell held while a switch hands over isn't yet, and leaves
+/// another's starts to the one it replaces. Any connection may ask: it
+/// says no more than the records any watch hears.
 pub const KEPT: &str = "sprout-kept";
 
 /// What a start a restart cut off is ended as, coded as a silent node's
@@ -40,7 +42,9 @@ pub const CUT_OFF: &str = "a restart cut it off before the node answered; it may
 
 /// How many starts are kept at most, the oldest let go first: a shell
 /// that never says what it told would otherwise grow the file for good.
-const KEPT_AT_MOST: usize = 20;
+/// `KEPT_FOR_MS` lets one go first in any day's use, so this never lets go
+/// a start a shell still watches for.
+const KEPT_AT_MOST: usize = 200;
 
 /// How long an untold start is kept, a day, after which telling it would
 /// say nothing Agents hasn't.

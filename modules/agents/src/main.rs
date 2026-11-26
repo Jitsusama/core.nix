@@ -368,7 +368,12 @@ fn sprouts_for_the_shell(
                 kept
             };
             if said["ask"] == starts::KEPT {
-                return Some(json!({"kept": keeping.kept(&starts::told_of(said))}));
+                // Whether its asker is the shell, as a shell held beside the
+                // one it replaces isn't until it has the unit, and so tells
+                // none of another's starts while that one may still.
+                let shell = asker::the_shell(stream).is_ok();
+                return Some(json!({"kept": keeping.kept(&starts::told_of(said)),
+                    "shell": shell}));
             }
             let asker = asker::the_shell(stream);
             if said["ask"] == starts::TOLD {
@@ -397,13 +402,15 @@ fn sprouts_for_the_shell(
             Some(answer)
         }),
     );
-    // Told asks the shell's systemd who the shell is, as a sprout does.
+    // Told and kept ask the shell's systemd who the shell is, as a sprout
+    // does.
     shared.slow(&[
         "feedback",
         sprout::ASK,
         places::ASK,
         offers::ASK,
         starts::TOLD,
+        starts::KEPT,
         starts_stopped::ASK,
     ]);
 }
