@@ -150,7 +150,10 @@ fn a_stop_ends_the_preview_and_the_desktop_it_started() {
     let own = stand_in.own();
     let link = fs::read_link(own.join("quickshell/Launcher.qml")).expect("a link");
     assert_eq!(link, stand_in.at("repo/modules/quickshell/Launcher.qml"));
-    assert!(!own.join("quickshell/Theme.qml").is_symlink());
+    assert!(
+        !own.join("quickshell/Theme.qml").is_symlink(),
+        "the built theme, which no tracked file holds, shouldn't be linked"
+    );
 
     let pid = i32::try_from(preview.id()).expect("a pid");
     let stopped = Instant::now();

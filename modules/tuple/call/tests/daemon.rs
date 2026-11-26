@@ -325,7 +325,11 @@ fn a_call_is_said_to_a_watch_as_it_changes() {
         json!([{"id": "7", "name": "Ada Brightwater", "email": "ada@example.com",
                 "connection": "connected", "muted": true, "sharing": true, "camera": true}])
     );
-    assert!(record["heard"].as_i64().is_some());
+    assert!(
+        record["heard"].as_i64().is_some(),
+        "the call should say when it was heard, not {}",
+        record["heard"]
+    );
     let said = client.ask(&json!({"id": 2, "ask": "get", "keys": ["call:current"]}));
     assert_eq!(said["records"][0]["state"], "connected");
     running.streams("{\"type\":\"current_call\",\"data\":null}");
