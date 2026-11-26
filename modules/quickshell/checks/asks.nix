@@ -5,6 +5,7 @@
   account,
   copied,
   graphical,
+  launcherOnNiri,
   lib,
   noFonts,
   pkgs,
@@ -13,6 +14,23 @@
   ...
 }:
 {
+  # A lab, run by hand for a words review: an ask's drawer and a standing
+  # yes's row, pictured (tests/asks-shots-lab-on-niri.py).
+  the-asks-shots-lab-on-niri = launcherOnNiri {
+    name = "the-asks-shots-lab-on-niri";
+    tests = ../../../tests/asks-shots-lab-on-niri.py;
+    shell.launcher.providers.asks = {
+      order = 49;
+      source = ../../secret-asks/Asks.qml;
+    };
+    given = [
+      "SECRET_ASKS=${lib.getExe (pkgs.callPackage ../../secret-asks/package.nix { })}"
+      "GIT=${lib.getExe pkgs.git}"
+      "BASH_PROGRAM=${lib.getExe pkgs.bash}"
+      "WORDS=${(import ../launcher/words.nix).file}"
+    ];
+  };
+
   # Asks lists what the secret-asks daemon serves, run here over its own
   # folder with stand-ins for op and loginctl, and two asks put up as an
   # agent puts one (tests/asks-stand-ins.sh): For You holds each waiting
