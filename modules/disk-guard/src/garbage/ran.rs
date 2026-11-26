@@ -1,6 +1,8 @@
 //! Running Nix's commands for the garbage and generations they clear:
 //! what each printed, how it ended, and why it failed, in Nix's own last
-//! words with any nix.conf line they quote left out.
+//! words with any nix.conf line they quote left out. Those last words are
+//! how every failure the guard tells of Nix is said, its store's
+//! deduplication and the commands it runs for a source among them.
 
 use crate::commands::{self, Job, Ran};
 use std::ffi::OsStr;

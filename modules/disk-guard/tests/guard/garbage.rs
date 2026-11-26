@@ -182,19 +182,33 @@ fn a_refused_nix_conf_line_is_told_by_its_length_alone() {
     }
 }
 
-/// The min-free read runs at the usual priority, not the idle one the
-/// guard's collections take: the stand-in prints its scheduling policy as
-/// the value, 0 for the usual and 5 for idle.
+/// The min-free read runs at the guard's own priority, not the idle one
+/// its collections take: the stand-in prints its scheduling policy as the
+/// value, which is the test's own unless the read lowered it to idle, 5.
+/// A build already at idle, as core's nix-daemon runs one, can't tell the
+/// two apart, so there the test holds only that the read still answers.
 #[test]
 #[cfg(target_os = "linux")]
-fn a_min_free_read_runs_at_the_usual_priority() {
+fn a_min_free_read_runs_at_the_guard_s_own_priority() {
+    // The 41st field of a process's stat, its policy, past a name with no
+    // blanks in it: the stand-in's, and this test's own.
+    const POLICY: &str = "set -- $stat\nshift 40\necho \"$1\"\n";
     let dir = tempfile::tempdir().unwrap();
     script(
         &dir.path().join("nix"),
-        // Its 41st field, its policy, past a name with no blanks in it.
-        "read -r stat < /proc/$$/stat\nset -- $stat\nshift 40\necho \"$1\"\n",
+        &format!("read -r stat < /proc/$$/stat\n{POLICY}"),
     );
-    assert_eq!(min_free(&dir.path().join("nix")), Ok(0));
+    let stat = fs::read_to_string("/proc/self/stat").unwrap();
+    let own: u64 = stat
+        .rsplit(')')
+        .next()
+        .unwrap()
+        .split_whitespace()
+        .nth(38)
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert_eq!(min_free(&dir.path().join("nix")), Ok(own));
 }
 
 /// The guard's log is often readable by any account, and a Nix printing
