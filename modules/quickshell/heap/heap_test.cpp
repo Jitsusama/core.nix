@@ -443,12 +443,16 @@ qint64 sweepsOf(const QJSEngine &engine) {
 
 // Whether a burst kept past twice the room, growing the chunks by
 // BURST_ROOMS rooms, collects at least once and no more than once for
-// each room it grows by, with `litter` objects made and dropped after
-// the closing's collection and before the opening asks again, on a heap
-// holding over twice what's live in runs too small for it, as Joel's shell held 201 to
-// 209 MB for 63 to 68 live. Past twice the room beyond where it was left,
-// a limit below what's held would start a collection at every miss, one
-// for each chunk the burst takes: two openings of Joel's shell each spent
+// each room it grows by, with `litter` objects made and dropped after a
+// collection and before the first ask since it, on a heap holding over
+// twice what's live in runs too small for it, as Joel's shell held 201
+// to 209 MB for 63 to 68 live. With none, its ask stands for the
+// closing's, straight after the closing's collection; with some, for the
+// opening's after a collection run while the launcher was shut, the only
+// path where garbage is made before the ask that takes the baseline.
+// Past twice the room beyond where it was left, a limit below what's
+// held would start a collection at every miss, one for each chunk the
+// burst takes: two openings of Joel's shell each spent
 // about 27 collections' worth inside them, 1955 and 1949 ms of their 3269
 // and 3320 (2026-11-25).
 bool pacesABurstPastTheRoom(int litter) {
@@ -459,9 +463,10 @@ bool pacesABurstPastTheRoom(int litter) {
                        "m: i }); return made.filter((_, i) => i % %2 === 0); })()")
             .arg(HOLED)
             .arg(HOLED_KEPT_ONE_IN));
-    // The closing asks and collects, and the opening asks again, as the
-    // shell does: the second ask runs on a heap whose full sweep's count
-    // keepRoom has raised past what the sweep kept.
+    // An earlier ask, then a collection with its room, as when the shell
+    // collects while the launcher is shut: the ask after it runs on a heap
+    // whose full sweep's count keepRoom has raised past what the sweep
+    // kept, as every ask but a fresh engine's does.
     engine.collectGarbage();
     heap.leaveRoom(SMALL_ROOM_MB);
     engine.collectGarbage();
