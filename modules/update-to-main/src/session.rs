@@ -730,7 +730,10 @@ mod tests {
         let file = folder.path().join(ERR);
         fs::write(&file, "the account's own\n").unwrap();
         let owner = fs::metadata(folder.path()).unwrap().uid();
-        assert_eq!(read_owned(&file, KEPT, owner).unwrap(), b"the account's own\n");
+        assert_eq!(
+            read_owned(&file, KEPT, owner).unwrap(),
+            b"the account's own\n"
+        );
         let refused = read_owned(&file, KEPT, owner.wrapping_add(1)).unwrap_err();
         assert_eq!(refused.to_string(), "it isn't its folder's owner's");
     }
@@ -741,8 +744,9 @@ mod tests {
         fs::write(folder.path().join(STATUS), "").unwrap();
         // A bound of four looks, so one whose clock starts again at each
         // look never ends the wait, within a wait short enough that one
-        // which forgets the bound fails as a job that didn't end.
-        let (within, lands) = (Duration::from_secs(5), 4 * EVERY);
+        // which forgets the bound fails as a job that didn't end, and one
+        // held to that wait instead ends too late.
+        let (within, lands, late) = (Duration::from_secs(5), 4 * EVERY, Duration::from_secs(4));
         let since = Instant::now();
         let told = wait(folder.path(), "fetching", within, lands).unwrap_err();
         assert_eq!(
@@ -753,7 +757,7 @@ mod tests {
         );
         let waited = since.elapsed();
         assert!(
-            waited >= lands && waited < within - 4 * EVERY,
+            waited >= lands && waited < late,
             "an empty status was told lost after {waited:?}, not once it had stayed empty for \
              its bound"
         );
