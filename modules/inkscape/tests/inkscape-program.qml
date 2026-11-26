@@ -62,15 +62,17 @@ ShellRoot {
         expect(what, wanted.includes(got), `${got}, not one of ${wanted.join(" | ")}`);
     }
 
-    // What a row may say of a moment `before` seconds ahead of NOW: the
-    // rows read the clock as they're made, any moment from NOW to this
-    // one, which a loaded builder puts tens of seconds on (the lint, the
-    // daemon and Quickshell's start come between), so each minute that
-    // span crosses is as true as the first.
+    // What a row may say of a moment `before` seconds before NOW: the rows
+    // read the clock as they're made, any moment from NOW to this one,
+    // which a loaded builder puts tens of seconds on (the daemon and
+    // Quickshell's start come between), so each minute that span crosses
+    // is as true as the first. drawings-lately.sh keeps each moment to
+    // the microsecond, up to a second younger than `before`. Whether a
+    // minute rounds down is file-facts.qml's to pin, on a fixed clock.
     function agos(before) {
         const passed = (Date.now() - root.now) / 1000;
         const said = [];
-        for (let minutes = Math.floor(before / 60);
+        for (let minutes = Math.max(0, Math.floor((before - 1) / 60));
             minutes <= Math.floor((before + passed) / 60); minutes++) {
             said.push(minutes === 0 ? "just now" : `${minutes}\u00a0min ago`);
         }
@@ -324,7 +326,8 @@ ShellRoot {
         same("Recent counts each once", recent.side, "5");
         const [fresh, logo, exported, tom, icon] = files;
         among("when it was opened beside it", logo.side, agos(750));
-        among("just now", fresh.side, agos(0));
+        among("the one added as the check began, just now or as long since",
+            fresh.side, agos(0));
         same("days ago", icon.side, Qt.formatDate(new Date(root.now - 172800000), "dddd"));
         among("an export is the shared list's row, saying when and then its folder",
             exported.side, agos(1000).map(ago => `${ago} \u00b7 ~/Drawings`));
