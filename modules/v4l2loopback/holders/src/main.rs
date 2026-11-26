@@ -364,7 +364,7 @@ fn say(line: &str) {
 }
 
 /// Says the run is ready, the first time its file says who holds the
-/// camera as last seen.
+/// camera as a read that worked found.
 fn written(ready: &mut Ready) {
     if let Some(line) = ready.line() {
         say(&line);
@@ -393,9 +393,14 @@ fn watch(
     // Whether a USB camera streams shows only in sysfs, so while anyone
     // holds it, it's looked at every second.
     let every = Duration::from_secs(if sysfs.is_some() { 1 } else { 2 });
+    // What the file holds, as last written.
     let mut said = None;
+    // What went wrong on the last look, said once as it begins and once
+    // as it clears, since a look comes each second while it lasts.
+    let mut trouble = None;
     let mut pids = HashSet::new();
     loop {
+        let mut troubles = Vec::new();
         // A read that fails writes nobody, which is a guess, so only a
         // read that worked counts toward the watch being ready.
         let (names, seen) = match holders::holders(node, units, &pids) {
@@ -405,7 +410,7 @@ fn watch(
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ended::Gone,
             Err(error) => {
-                complain(format_args!("{}: {error}", node.display()));
+                troubles.push(format!("{}: {error}", node.display()));
                 (BTreeSet::new(), false)
             }
         };
@@ -415,11 +420,20 @@ fn watch(
             || match write(output, &shown) {
                 Ok(()) => true,
                 Err(error) => {
-                    complain(format_args!("{}: {error}", output.display()));
+                    troubles.push(format!("{}: {error}", output.display()));
                     false
                 }
             };
-        if seen && right {
+        let now = (!troubles.is_empty()).then(|| troubles.join("; "));
+        if now != trouble {
+            match &now {
+                Some(what) => complain(format_args!("{what}")),
+                None => complain(format_args!("{}: right again", output.display())),
+            }
+            trouble = now;
+        }
+        let settled = seen && right;
+        if settled {
             written(ready);
         }
         // The record asks the camera itself, which a stalling camera can
@@ -430,10 +444,11 @@ fn watch(
                 say(&line);
             }
         }
-        // A file that couldn't be written is tried again on the next look,
-        // which comes on a timer even while nobody holds the camera.
+        // A file that couldn't be written, or a read that failed, is tried
+        // again on the next look, which comes on a timer even while nobody
+        // holds the camera.
         said = right.then_some(shown);
-        match events.wait((anyone || said.is_none()).then_some(every)) {
+        match events.wait((anyone || !settled).then_some(every)) {
             Woken::Timeout | Woken::Changed => {}
             Woken::NodeGone => return Ended::Gone,
             Woken::Stopped => return Ended::Stopped,
