@@ -52,15 +52,56 @@ let
   #   refused, and reload wins;
   # - kept-probe refuses both a restart and a stop, and the refused
   #   restart wins; stop-probe refuses only a stop;
+  # - mixed-probe refuses a stop but says yes to a restart, and the
+  #   refused stop wins; halt-probe says yes only to a stop;
   # - one-probe says X-ReloadIfChanged = 1;
+  # - yes-0 to yes-5 say reload in each of sd-switch's yes spellings,
+  #   padded and in capitals, and no-0 to no-5 refuse a stop in each of
+  #   its no spellings;
   # - timeout-probe bounds itself by TimeoutSec alone;
   # - unit-probe's timer names the service it runs, unit-probe-run;
   # - probe@one runs an instance of the template probe@;
   # - untimed-probe is a oneshot no timer runs;
   # - stray-probe's service nothing writes.
+  # sd-switch's to_bool spellings, at 308f45c's ini.rs.
+  yesSpellings = [
+    "1"
+    "yes"
+    "y"
+    "true"
+    "t"
+    "on"
+  ];
+  noSpellings = [
+    "0"
+    "no"
+    "n"
+    "false"
+    "f"
+    "off"
+  ];
+  # One probe per spelling, named kind-index, each saying `key` as it.
+  spellingProbes =
+    kind: key: spellings:
+    lib.listToAttrs (
+      lib.imap0 (index: spelling: {
+        name = "${kind}-${toString index}";
+        value = oneshot { Unit.${key} = " ${lib.toUpper spelling} "; };
+      }) spellings
+    );
+  spelledProbes =
+    spellingProbes "yes" "X-ReloadIfChanged" yesSpellings
+    // spellingProbes "no" "X-StopIfChanged" noSpellings;
+  saysEach =
+    kind: spellings: wanted: home:
+    lib.all (index: method home "${kind}-${toString index}" == wanted) (
+      lib.range 0 (lib.length spellings - 1)
+    );
+
   probes = {
     systemd.user.timers =
-      lib.genAttrs [
+      lib.mapAttrs (_: _: daily) spelledProbes
+      // lib.genAttrs [
         "bare-probe"
         "exec-probe"
         "own-probe"
@@ -69,6 +110,8 @@ let
         "both-probe"
         "kept-probe"
         "stop-probe"
+        "mixed-probe"
+        "halt-probe"
         "one-probe"
         "timeout-probe"
         "probe@one"
@@ -79,7 +122,7 @@ let
           Unit = "unit-probe-run.service";
         };
       };
-    systemd.user.services = {
+    systemd.user.services = spelledProbes // {
       bare-probe = oneshot { };
       exec-probe.Service = {
         Type = "exec";
@@ -104,6 +147,13 @@ let
         };
       };
       stop-probe = oneshot { Unit.X-StopIfChanged = false; };
+      mixed-probe = oneshot {
+        Unit = {
+          X-RestartIfChanged = true;
+          X-StopIfChanged = "off";
+        };
+      };
+      halt-probe = oneshot { Unit.X-StopIfChanged = "T"; };
       one-probe = oneshot { Unit.X-ReloadIfChanged = 1; };
       timeout-probe = oneshot { Service.TimeoutSec = "10min"; };
       unit-probe-run = oneshot { };
@@ -142,6 +192,16 @@ let
     "a refused restart is read as keep-old, ahead of a refused stop" =
       method home "kept-probe" == "keep-old";
     "a legacy stop key saying no is read as restart" = method home "stop-probe" == "restart";
+    "a refused stop is read as restart, ahead of a restart said yes" =
+      method home "mixed-probe" == "restart";
+    "a legacy stop key alone is read as sd-switch's stop-start" =
+      method home "halt-probe" == "stop-start";
+    "each of sd-switch's yes spellings, padded and in capitals, reads as yes" =
+      saysEach "yes" yesSpellings "reload"
+        home;
+    "each of sd-switch's no spellings, padded and in capitals, reads as no" =
+      saysEach "no" noSpellings "restart"
+        home;
     "a legacy key said as the number 1 is read as yes" = method home "one-probe" == "reload";
     "a TimeoutSec alone bounds the start too" = bound home "timeout-probe" == null;
     "a timer's Timer.Unit is the service it keeps" =

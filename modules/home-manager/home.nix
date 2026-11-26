@@ -69,12 +69,13 @@ let
       "off"
     ];
   # The switch method a timed oneshot takes unless it says its own: what
-  # its legacy keys say, in sd-switch's order (its unit_file.rs: reload,
-  # then a restart refused, then a stop refused), else keep-old. A unit
-  # saying only X-RestartIfChanged = true gets no method from sd-switch's
-  # legacy reading, so sd-switch stops and starts it; it reads as
-  # stop-start here, since core's keep-old would otherwise overrule what
-  # the unit asked for.
+  # its legacy keys say, in sd-switch's order (its unit_file.rs at
+  # 308f45c: reload, then a restart refused, then a stop refused), else
+  # keep-old. A unit saying only X-RestartIfChanged = true or
+  # X-StopIfChanged = true gets no method from sd-switch's legacy
+  # reading, so sd-switch stops and starts it; it reads as stop-start
+  # here, since core's keep-old would otherwise overrule a unit that
+  # asked for its run to be stopped.
   method =
     unit:
     if yes (unit.X-ReloadIfChanged or null) then
@@ -83,7 +84,7 @@ let
       "keep-old"
     else if no (unit.X-StopIfChanged or null) then
       "restart"
-    else if yes (unit.X-RestartIfChanged or null) then
+    else if yes (unit.X-RestartIfChanged or null) || yes (unit.X-StopIfChanged or null) then
       "stop-start"
     else
       "keep-old";
