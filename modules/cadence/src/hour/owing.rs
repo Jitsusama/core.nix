@@ -682,7 +682,30 @@ mod tests {
         let mut queue = measure(&format!("{QUEUE}x"), Class::Queues, 90.0, Some(60.0));
         queue.owner = "QUEUE1".to_owned();
         queue.behind = vec!["x · QUEUE1".to_owned()];
-        let told = file(&mut ledger, &[lead, ship, quiet, queue], "2026-11-26", 1000);
+        let mut pains = measure("pains", Class::Pains, 2.0, Some(0.0));
+        pains.owner = "PAINS1".to_owned();
+        let told = file(
+            &mut ledger,
+            &[lead, ship, quiet, queue, pains],
+            "2026-11-26",
+            1000,
+        );
+        // Queues are asked once a day as the worst of them, and pains by
+        // the hearer that sent each, so neither is filed as a red line.
+        let queues: Vec<&str> = ledger
+            .iter()
+            .filter(|e| e.key.starts_with(&format!("hour:{QUEUE}")))
+            .map(|e| e.key.as_str())
+            .collect();
+        assert_eq!(
+            queues.len(),
+            1,
+            "the queue wasn't filed once, as the day's worst: {queues:?}"
+        );
+        assert!(
+            ledger.iter().all(|e| e.key != "hour:pains"),
+            "a pains measure was filed as a red line, though its hearer tells each"
+        );
         let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
         assert!(
             owners.contains(&"OWNER") && owners.contains(&"SHIP01") && !owners.contains(&"QUIET1"),
