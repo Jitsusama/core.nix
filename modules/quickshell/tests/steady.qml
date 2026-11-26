@@ -240,8 +240,9 @@ QtObject {
         // again over it, as it reads above, and nowhere else (Y2YBTS,
         // 2026-11-22 [228cdeb9] and [4c5e154a]). A heading is "#" and its
         // name, with "=" and the rows it holds, by key, where it names them
-        // as For You's do, one said again "+" after it, a pressing row "!",
-        // and one gone "-".
+        // as For You's do (none after a bare "=", as the heading closing the
+        // cells holds), one said again "+" after it, a pressing row "!", and
+        // one gone "-".
         const underHeadings = said => said.split(" ").filter(one => one !== "").map(one => {
             const gone = one.endsWith("-");
             const bare = gone ? one.slice(0, -1) : one;
@@ -251,7 +252,7 @@ QtObject {
             const [key, holding] = (presses ? named.slice(0, -1) : named).split("=");
             return Object.assign({ key: key, side: "" },
                 key.startsWith("#") ? { heading: true } : {},
-                holding === undefined ? {} : { holding: holding.split(",") },
+                holding === undefined ? {} : { holding: holding === "" ? [] : holding.split(",") },
                 presses ? { pressing: true } : {},
                 again ? { repeated: true } : {}, gone ? { gone: true, went: true } : {});
         });
@@ -331,6 +332,13 @@ QtObject {
         // last cell's.
         const shownAgain = [
             ["a row under no heading waits", "#A=a1 a1", "#A=a1 a1 look later", "#A a1", 2],
+            // The heading closing For You's cells holds none, so what comes
+            // after it stands under no heading (Now.qml's cellsClosed), and
+            // a row arriving there reads as no cell's, so comes in.
+            ["a row past the heading closing the cells comes in", "#A=a1 a1 #K= look",
+                "#A=a1 a1 #K= look later", "#A a1 #K look later", 0],
+            ["and that heading comes only with the list made again", "#A=a1 a1 look",
+                "#A=a1 a1 #K= look", "#A a1 look", 0],
             ["and one above every heading", "#A=a1 a1", "x #A=a1 a1", "#A a1", 1],
             ["but a pressing row comes in first", "#A=a1 a1", "#A=a1 a1 asked!", "asked #A a1",
                 0],

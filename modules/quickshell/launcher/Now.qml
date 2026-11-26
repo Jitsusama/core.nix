@@ -1999,7 +1999,7 @@ Provider {
     // at, weighed by ForYou.js, the heaviest first, since what blocks a
     // session or is due bubbles up whatever kind it is (VKCF3Z,
     // 2026-11-08); the mark and the drawer's eyebrow say the kind. What
-    // needs him now leads, one by one, and what's to look at or to try
+    // needs him now leads, under the cell behind each (cellRows), and what's to look at or to try
     // and doesn't is each kind's one row after it (waitingRows). Then
     // what's for later and the history, each one row. It counts and
     // colours only what he can do now, its note names the first of
@@ -2510,6 +2510,26 @@ Provider {
     }
     readonly property var cellsKept: keeper()
 
+    // Joel's own heading again, closing what needs him now while the last
+    // heading over it is a cell's, so To Look At and the rows after it,
+    // which are his, never read as that cell's: a heading names the rows
+    // under it, down to the next (Y2YBTS, 2026-11-23). None while nothing
+    // follows, or while his own heading is already the last. Its key is its
+    // own, since his group can stand higher up under his heading too. It's
+    // `holding` none, so the rows after it stand under no heading, as
+    // before, and one arriving after them comes in, since the end no longer
+    // reads as a cell's (Steady.js's headingsUnder and endingHeading).
+    function cellsClosed(cells, after) {
+        const headings = cells.filter(row => row.heading === true);
+        const last = headings[headings.length - 1];
+        if (after.length === 0 || last === undefined || last.key === "on:heading:cell:yours")
+            return [];
+        const key = "on:heading:kinds";
+        const name = cellSaid(null);
+        return [keptAlike(cellsKept, key, [name],
+            () => member({ key, name, heading: true, holding: [] }))];
+    }
+
     function cellSaid(cell) {
         const agents = cell === null ? null : provider.source("agents");
         return Cells.headingName(cell, agents ? agents.standingOf(cell.address) : null,
@@ -2539,8 +2559,9 @@ Provider {
     // leads by its order (VKCF3Z, 2026-11-09).
     // Kept while it holds the same rows, each kept as it is (kindsKept).
     // Agents Asking is such a row too, gathering what agents ask of Joel,
-    // though each needs him now, so it stands among what does where its
-    // heaviest weighs, its mark in the hue of what it holds rather than
+    // though each needs him now, so it stands first, above every cell's
+    // heading, while any shows, else among what does where its heaviest
+    // weighs (ForYouCells.js's laidOut), its mark in the hue of what it holds rather than
     // muted (Joel, 2026-11-18 10:18: "they are all loose amongst other
     // things properly categorized").
     function kindRow(kind, rows) {
@@ -2606,12 +2627,11 @@ Provider {
         lap("lately");
         const cells = cellRows(bands.now, now, asked, bands.agent[0]?.weight ?? 0);
         lap("cells");
-        const lookRows = kindRow("look", bandRows(bands.look, now));
-        const tryRows = kindRow("try", bandRows(bands.try, now));
-        const readRows = kindRow("read", bandRows(bands.read, now));
-        lap("kinds");
-        const rows = lately.concat(cells, lookRows, tryRows, readRows,
+        const after = [].concat(kindRow("look", bandRows(bands.look, now)),
+            kindRow("try", bandRows(bands.try, now)), kindRow("read", bandRows(bands.read, now)),
             laterRow === null ? [] : [laterRow], historyRow === null ? [] : [historyRow]);
+        lap("kinds");
+        const rows = lately.concat(cells, cellsClosed(cells, after), after);
         keeps.forEach(keeping => keptOnly(keeping));
         for (const file of Object.keys(looksKept.rows)) {
             if (!(file in lookTexts))

@@ -2299,11 +2299,27 @@ ShellRoot {
         forYouBefore = now.tally.rows;
         const due = forYou();
         const dueRow = due.find(row => row.key === "on:waiting:item:Say Yes");
-        expect("one to-do now due makes only its row again",
-            now.tally.rows - forYouBefore === 1 && dueRow !== undefined
+        // Due, Joel's own group leads, so the session's stands last and his
+        // heading closes it before To Look At: that heading is new too.
+        const closing = due.find(row => row.key === "on:heading:kinds");
+        const yoursAt = due.findIndex(row => row.key === "on:heading:cell:yours");
+        expect("one to-do now due makes only its row again, and the heading closing the cells",
+            now.tally.rows - forYouBefore === 2 && dueRow !== undefined && closing !== undefined
+                && due.indexOf(closing) + 1
+                    === due.findIndex(row => row.key === "on:waitingOnYou:kind:look")
+                && yoursAt >= 0
+                && yoursAt < due.findIndex(row => row.key === "on:waiting:want:WANTB")
                 && heldFirst.indexOf(dueRow) === -1
-                && due.filter(row => row !== dueRow).every(row => heldFirst.includes(row)),
+                && due.filter(row => row !== dueRow && row !== closing)
+                    .every(row => heldFirst.includes(row))
+                && heldFirst.filter(row => row.key !== dueRow.key)
+                    .every(row => due.includes(row)),
             JSON.stringify([now.tally.rows - forYouBefore, due.map(row => row.key)]));
+        forYouBefore = now.tally.rows;
+        const dueAgain = forYou();
+        expect("asked again, the heading closing the cells is kept with every row",
+            same(dueAgain, due) && now.tally.rows === forYouBefore,
+            now.tally.rows - forYouBefore);
         // A session's window moving keeps its row, which reads none of it,
         // but Go To goes to the session as it is now, not as it was.
         const movedB = Object.assign({}, Sessions.wanting[0], { window: 7 });
@@ -2687,6 +2703,27 @@ ShellRoot {
                 ["on:waiting:want:LEFTC", ""], ["on:look:c", ""],
                 ["on:heading:cell:yours", "yours alone"], ["on:waiting:item:Sign In", ""]]),
             JSON.stringify(read));
+        // With a cell's group last, Joel's own heading closes it before To
+        // Look At, which is his, so that row never reads as the cell's.
+        WaitingOnYou.now = [];
+        now.lookTexts = { "c.json": lookAt("c", "Read C", "s-c"),
+            "d.json": lookAt("d", "Read D", "s-none") };
+        const closed = shown();
+        expect("a cell's group last, Joel's own heading closes it before To Look At",
+            JSON.stringify(closed) === JSON.stringify([
+                ["on:heading:cell:LEFTC", "Session C \u00b7 needs you"],
+                ["on:waiting:want:LEFTC", ""], ["on:look:c", ""],
+                ["on:heading:kinds", "yours alone"], ["on:waitingOnYou:kind:look", ""]]),
+            JSON.stringify(closed));
+        // It holds no row, so what comes after it stands under no heading,
+        // and a row arriving there comes in, since the end no longer reads
+        // as a cell's (Steady.js's headingsUnder).
+        const closer = forYou().find(row => row.key === "on:heading:kinds");
+        expect("the heading closing the cells holds no row",
+            Array.isArray(closer?.holding) && closer.holding.length === 0,
+            JSON.stringify(closer?.holding ?? null));
+        WaitingOnYou.now = [toDo("Sign In")];
+        now.lookTexts = { "c.json": lookAt("c", "Read C", "s-c") };
         // Two asking stand together in Agents Asking, first, above every
         // heading, since a heading claims what's under it (Y2YBTS,
         // 2026-11-18 15:49); the cell that left the look keeps its heading
