@@ -467,8 +467,13 @@ impl Row {
 /// Joel needs him, but its acts stay a paused one's, Resume and no Park,
 /// since the harness parks none under another hold (agentic-harness.pi
 /// #2159), as a parked one's stay a parked one's
-/// (`Session::stands_to_joel`).
+/// (`Session::stands_to_joel`). One the node says is parked acts as
+/// parked whatever its presence last said, since the node wakes a parked
+/// session for any steer, so only Wake and Talk may be offered it.
 fn acting(session: Session, stands: Stands, known: &Known) -> Stands {
+    if session.lives() == session::Lives::Parked {
+        return Stands::Parked;
+    }
     match stands {
         Stands::Needs if session.stands_wanting_nothing(known.jobs) == Stands::Paused => {
             Stands::Paused
@@ -748,6 +753,28 @@ mod tests {
             "switch talk pause park close",
             "one listening that wants him can still be paused or parked"
         );
+    }
+
+    #[test]
+    fn a_session_the_node_says_is_parked_is_offered_only_wake_and_talk() {
+        let parked = |presence: Value| json!({"standing": "parked", "presence": presence});
+        let unsaid = parked(json!({"addresses": ["P"], "session": "s-lead"}));
+        let listening = parked(json!({"addresses": ["P"], "session": "s-lead",
+            "state": "listening"}));
+        let asking = parked(json!({"addresses": ["P"], "session": "s-lead",
+            "wants": {"kind": "question", "said": "Which tree?"}}));
+        for (what, record) in [
+            ("its presence saying no state", unsaid),
+            ("its presence last listening", listening),
+            ("its presence asking Joel", asking),
+        ] {
+            let row = made(&record, Place::default(), &given());
+            assert_eq!(
+                row.acts.join(" "),
+                "wake talk",
+                "parked by the node, {what}, it's offered no steer that would wake it"
+            );
+        }
     }
 
     #[test]

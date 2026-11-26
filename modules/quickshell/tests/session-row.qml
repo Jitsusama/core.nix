@@ -167,17 +167,46 @@ QtObject {
             if (got !== want || got !== marked)
                 failures.push(`Return of ${what}: ${got}, marked ${marked}, not ${want}`);
         }
-        // Pressed, an act is steered only while its row still offers it.
+        // Pressed, an act is kept back only where it would wake what it meant to
+        // steer: anything but Wake and Talk once parked, and Park wherever its row
+        // doesn't offer it, held or not; any other goes for the node to answer.
+        const liveRow = { acts: served(["switch", "talk", "pause", "park", "close"]) };
+        const parkedRow = { acts: served(["wake", "talk"]) };
+        const askingRow = { acts: served(["switch", "talk", "pause"]) };
         const pressed = [
-            ["Park on one still live", { acts: served(["talk", "park"]) }, "park", true],
-            ["Park on one parked since", { acts: served(["wake", "talk"]) }, "park", false],
-            ["Pause on one paused since", { acts: served(["talk", "resume"]) }, "pause", false],
-            ["Park on a row not yet held", null, "park", true],
-            ["Park on a row serving no acts", {}, "park", true]
+            ["Park on one still live", liveRow, "park", ""],
+            ["Park on one parked since", parkedRow, "park", "unsentParked"],
+            ["Pause on one parked since", parkedRow, "pause", "unsentParked"],
+            ["Stop on one parked since", parkedRow, "stop", "unsentParked"],
+            ["Close on one parked since", parkedRow, "close", "unsentParked"],
+            ["Resume on one parked since", parkedRow, "resume", "unsentParked"],
+            ["Wake on one parked", parkedRow, "wake", ""],
+            ["Talk on one parked", parkedRow, "talk", ""],
+            ["Park on one asking Joel since", askingRow, "park", "unsent"],
+            ["Stop on one asking Joel since", askingRow, "stop", ""],
+            ["Resume on one unpaused since", liveRow, "resume", ""],
+            ["Park on a row not yet held", null, "park", "unsent"],
+            ["Park on a row serving no acts", {}, "park", "unsent"],
+            ["Pause on a row not yet held", null, "pause", ""]
         ];
         for (const [what, row, id, want] of pressed) {
-            if (SessionRow.stillOffers(row, id) !== want)
-                failures.push(`${what}: ${want ? "refused" : "steered"}`);
+            const got = SessionRow.withheld(row, id);
+            if (got !== want)
+                failures.push(`${what}: withheld "${got}", not "${want}"`);
+        }
+        // What the foot says of one kept back, in the act's own name, plainly.
+        const keptSaid = { unsent: "{act} not sent, its row doesn't offer it now",
+            unsentParked: "{act} not sent, it's parked now, and that would wake it" };
+        const unsents = [
+            ["unsent", "Park", "Park not sent, its row doesn't offer it now"],
+            ["unsentParked", "Stop", "Stop not sent, it's parked now, and that would wake it"],
+            ["unsent", "$& {act}", "$& {act} not sent, its row doesn't offer it now"],
+            ["unknown", "Park", ""]
+        ];
+        for (const [why, act, want] of unsents) {
+            const got = SessionRow.unsent(keptSaid, why, act);
+            if (got !== want)
+                failures.push(`unsent ${why} of ${act}: "${got}", not "${want}"`);
         }
         for (const [what, acts, returns, fallback, want, mark] of offers) {
             const { ids, marked } = SessionRow.offered(acts, returns, fallback);

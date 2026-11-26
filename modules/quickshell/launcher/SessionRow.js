@@ -134,15 +134,25 @@ function returnOf(rowActs, returns) {
     return offered(rowActs, returns, fallbackOf(true, false, false)).marked;
 }
 
-// Whether a session's row offers `id` as it's served now, asked as one
-// is pressed: an act its drawer showed may be gone since, as Park is once
-// the session parks, and the node wakes a parked session for any steer.
-// A row not yet held is asked by the shell's own, so it's still offered.
-function stillOffers(row, id) {
-    if (row === null || row === undefined || !Array.isArray(row.acts)) {
-        return true;
+// Why an act pressed on a session's row isn't steered, asked of the row
+// as it's served at the press, or "" when it is: one parked since (its
+// row offers Wake) takes only Wake and Talk, since the node wakes a
+// parked session for any steer; Park goes only while its row offers it,
+// so never before the row's held, as one not yet served may be parked
+// already. Any other act goes for the node or the harness to answer, so
+// a Stop pressed as its turn comes to ask Joel still stops it.
+function withheld(row, id) {
+    const served = Array.isArray(row?.acts) ? row.acts.map(one => known(one?.key)) : [];
+    if (served.includes("wake")) {
+        return id === "wake" || id === "talk" ? "" : "unsentParked";
     }
-    return row.acts.some(one => known(one?.key) === id);
+    return id !== "park" || served.includes("park") ? "" : "unsent";
+}
+
+// What the foot says of an act `withheld` kept back, by its word's key,
+// in the act's own name: said plainly, as nothing failed.
+function unsent(said, why, act) {
+    return String(said?.[why] ?? "").replace("{act}", () => act);
 }
 
 // The theme's role its glyph is drawn in: a program's, as a live one

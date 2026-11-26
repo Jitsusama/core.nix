@@ -1566,17 +1566,21 @@ Provider {
             glyph: Words.glyph(`verb:agent:${id}`),
             hue: "action"
         }, fields));
-        // Pressed once its row no longer offers it, as Park once the session
-        // parked while its drawer stood open, it's refused, not steered
-        // (SessionRow.stillOffers).
+        // Pressed once it would wake what it meant to steer, as Park once the
+        // session parked while its drawer stood open, it's kept back and said
+        // so plainly, not sent (SessionRow.withheld).
         const steered = what => () => {
             const now = current();
             const row = rowsKind?.held?.[`row:agents:${now.address}`]?.row ?? null;
-            if (SessionRow.stillOffers(row, what))
+            const why = SessionRow.withheld(row, what);
+            if (why === "") {
                 provider.actOn(now, what);
-            else
-                Sessions.steered(now.address,
-                    { error: { message: provider.elsewhere("moved", now) } }, what);
+                return;
+            }
+            Report.say(`unsent ${String(now.address).toUpperCase()}: ${what}, ${why}`);
+            provider.launcher?.tellOnOpen([[provider.footName(now),
+                SessionRow.unsent(Words.of("agents:machine").said, why,
+                    SessionRow.actName(what, Words.name)), Theme.text]]);
         };
         const talked = () => {
             const talk = provider.talking(session.address, session.title);

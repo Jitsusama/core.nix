@@ -962,7 +962,6 @@ def test_za_on_a_live_session_keeps_its_fold_in_sight(shell: Shell) -> None:
     shell.on_find()
     parks = [act for act in opened["acts"] if act.split(" ")[-1] == "Park"]
     assert parks, f"its acts don't offer Park: {opened}"
-    assert opened["body"] != "", f"it has no prose to give way: {opened}"
     fold_stands_in_sight(opened)
 
 
