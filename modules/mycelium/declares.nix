@@ -130,6 +130,38 @@ rec {
           each minute.
         '';
       };
+      # The node adds these only to a sprout placement chooses for, so one
+      # naming a machine, asking needs of its own or staying here starts as
+      # asked; a mycelium that predates them ignores them.
+      needsIn = lib.mkOption {
+        type = lib.types.listOf needRule;
+        # A rule naming neither folders nor words would name no work, so
+        # it's refused rather than taken as meaning none.
+        apply = map (
+          rule:
+          lib.throwIf (rule.folders == [ ] && rule.words == [ ])
+            "jitsusama.mycelium.declares.needsIn: the rule needing ${lib.concatStringsSep ", " rule.needs} names no folder and no word"
+            rule
+        );
+        default = [ ];
+        example = [
+          {
+            folders = [ "src/inner" ];
+            words = [ "forge.example" ];
+            needs = [ "reach=inner" ];
+          }
+        ];
+        description = ''
+          What work sprouted here needs wherever placement sends it: work
+          begun in one of a rule's folders or below, or whose words hold
+          one of its words in any case, needs each of its needs. Work met
+          only by a probe is refused while no machine's probe answers,
+          rather than started where it can't work. It keeps work from a
+          machine it can't work on, and is no fence: a sprout naming its
+          own machine or needs, an agent's included, starts as it asks. A
+          mycelium that predates this ignores it.
+        '';
+      };
       # A carry an orchestrator orders lands only in a kind at least as
       # strict as the session's own, behind no door it lacked, judged from
       # what each machine says here; a kind left unsaid is one no ordered carry lands in, so the
@@ -167,6 +199,58 @@ rec {
           declare it, to Linux or to a Mac that does, lands looser for the
           agent itself, which the carry's judge, reading kinds, can't see.
         '';
+      };
+    };
+  };
+  # Work begun in some folders, or naming some words, and what it needs,
+  # each need as `mycelium sprout --need` takes it.
+  needRule = lib.types.submodule {
+    options = {
+      # Mycelium compares folders part by part, expanding nothing, so a
+      # folder written from `~` or `$`, with an empty, `.` or `..` part
+      # (home itself, the root alone or a trailing `/` among them), or
+      # with space at an end, would match nothing, or everything.
+      folders = lib.mkOption {
+        type = lib.types.listOf (
+          lib.types.addCheck lib.types.str (
+            folder:
+            builtins.match "[~$].*|[[:space:]].*|.*[[:space:]]|.*/[$].*" folder == null
+            && lib.all (part: part != "" && part != "." && part != "..") (
+              lib.splitString "/" (lib.removePrefix "/" folder)
+            )
+          )
+          // {
+            description = "folder within home or whole, of plain parts";
+          }
+        );
+        default = [ ];
+        example = [ "src/inner" ];
+        description = "The folders, each within home unless whole, of plain parts never from ~ or $, whose work or work below needs these.";
+      };
+      words = lib.mkOption {
+        type = lib.types.listOf lib.types.nonEmptyStr;
+        default = [ ];
+        example = [ "forge.example" ];
+        description = "The words, such as a link's host, whose naming anywhere in work's words, in any case, needs these.";
+      };
+      # Each value in the shape a machine says it: a machine as a realm
+      # names one, an accelerator of a kind mycelium knows, and a reach,
+      # always or by a probe, system, architecture or tool as a lowercase
+      # name. Only the shape is judged here; which machine says it is
+      # placement's to find.
+      needs = lib.mkOption {
+        type = lib.types.nonEmptyListOf (
+          lib.types.strMatching (
+            lib.concatStringsSep "|" [
+              "cloud"
+              "machine=[a-z0-9][a-z0-9-]*"
+              "accelerator=(gpu|npu)"
+              "(reach|system|arch|tool)=[a-z0-9][a-z0-9_.-]*"
+            ]
+          )
+        );
+        example = [ "reach=inner" ];
+        description = "What such work needs: cloud, or kind=value, as `mycelium sprout --need` takes it.";
       };
     };
   };
