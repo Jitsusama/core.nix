@@ -114,7 +114,7 @@ fn changed_since(
 }
 
 /// Where a fetch puts its origin's main in a clone.
-const MAIN: &str = "+refs/heads/main:refs/remotes/cadence/main";
+pub(super) const MAIN: &str = "+refs/heads/main:refs/remotes/cadence/main";
 
 /// Clones `seed` bare into `clone`, by way of a folder beside it, so a
 /// clone killed part way leaves nothing that reads as one, and the next
@@ -138,7 +138,9 @@ fn made(clone: &Path, seed: &str) -> io::Result<()> {
 /// Runs git in `dir` with no account or system config, so no setting of
 /// Joel's, a rename limit or a diff driver, turns what it judges, and a
 /// link that stalls gives up in half a minute rather than holding the
-/// card. Upkeep is git's own, as cadence owns its clones.
+/// card. It never asks for a password: the hour runs unattended, so a
+/// remote wanting one fails at once rather than opening a prompt on the
+/// desktop. Upkeep is git's own, as cadence owns its clones.
 fn run(dir: &Path, args: &[&str]) -> io::Result<Output> {
     Command::new("git")
         .arg("-C")
@@ -152,12 +154,15 @@ fn run(dir: &Path, args: &[&str]) -> io::Result<Output> {
         .args(args)
         .env("GIT_CONFIG_GLOBAL", "/dev/null")
         .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env_remove("GIT_ASKPASS")
+        .env_remove("SSH_ASKPASS")
         .output()
         .map_err(|err| io::Error::other(format!("git didn't start: {err}")))
 }
 
 /// [`run`], giving what git printed, or an error naming `step`.
-fn git(dir: &Path, step: &str, args: &[&str]) -> io::Result<String> {
+pub(super) fn git(dir: &Path, step: &str, args: &[&str]) -> io::Result<String> {
     let out = run(dir, args).map_err(|err| io::Error::other(format!("{step}: {err}")))?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
@@ -176,14 +181,14 @@ fn failed(step: &str, out: &Output) -> io::Error {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use std::path::PathBuf;
 
     use super::*;
 
     /// Runs git in `at` with a config of its own, so the test reads and
     /// signs with nobody's, giving what it printed.
-    fn git(at: &Path, args: &[&str]) -> String {
+    pub(in crate::hour) fn git(at: &Path, args: &[&str]) -> String {
         let out = Command::new("git")
             .arg("-C")
             .arg(at)
@@ -207,7 +212,7 @@ mod tests {
     /// Commits `text` as `file` in `at`, giving the commit. Its message
     /// names the branch, so one edit made on two in the same second is two
     /// commits rather than one.
-    fn commit(at: &Path, file: &str, text: &str) -> String {
+    pub(in crate::hour) fn commit(at: &Path, file: &str, text: &str) -> String {
         std::fs::write(at.join(file), text).expect("a file written");
         git(at, &["add", file]);
         let on = git(at, &["branch", "--show-current"]);

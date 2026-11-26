@@ -22,6 +22,7 @@ mod lines;
 mod measures;
 mod moved;
 mod owing;
+mod parted;
 mod records;
 mod reviews;
 mod stuck;
@@ -276,9 +277,11 @@ fn gather(
         measures::untested(misses, folder, checkouts, &switches),
         measures::slips(&asks, now, Tracking::His),
         measures::parked(&asks, Tracking::His),
+        measures::told_late(&asks, now, Tracking::His),
         measures::to_first_slice(&asks, now, Tracking::His),
         measures::slips(&asks, now, Tracking::Derived),
         measures::parked(&asks, Tracking::Derived),
+        measures::told_late(&asks, now, Tracking::Derived),
         measures::to_first_slice(&asks, now, Tracking::Derived),
         measures::undated(&quarantine, &today(now), NET_RULES),
         measures::reverts(&text(&folder.join("reverted.json")), now, NET_RULES),
@@ -292,7 +295,14 @@ fn gather(
         landed(&core_log, &harness_log, &machine_log, now),
     ];
     all.extend(measures::said_none(misses, now));
+    all.push(measures::cited::read(
+        state_home,
+        now,
+        &today(now),
+        orchestrator,
+    ));
     all.push(measures::holds::read(state_home, &asks, now));
+    all.extend(parted::dates_at_risk(state_home, &core, &asks, now));
     all.extend(found);
     let per_merge = rounds_per_merge(state_home, &core, &core_log, &harness_log, now);
     all.extend(per_merge);

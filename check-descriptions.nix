@@ -773,11 +773,12 @@
     one still quitting after half a minute is given up on, the run starting over if that Chrome
     quits during the run's last look, and with Chrome running, or started again as the old one
     quits, no cache is touched, so none is swapped under it, while BrowserMetrics, which Chrome
-    deletes itself as it runs, moves whenever nothing of Chrome's maps a file still in it, a
-    mapped file keeping it on the disk and a deleted one not, and what a session left in memory
-    goes unless it's mapped; the unit starts
-    with the account's manager, before the graphical session, and again on each change in the profile's folder, as
-    when Chrome quits and drops its lock, with no start limit for Chrome's writes to reach
+    deletes itself as it runs, moves once nothing of Chrome's here maps or holds open a file in
+    it, a mapped or open file keeping it on the disk and a deleted one or a neighbour folder's
+    not, a Chrome on another host keeping it there and a quitting one waited for, and what a
+    session left in memory goes unless it's mapped; the unit starts with the account's manager,
+    before the graphical session, and again on each change in the profile's folder, as when
+    Chrome quits and drops its lock, with no start limit for Chrome's writes to reach
   '';
   chrome-open-tabs-passes-clippy = ''
     clippy finds nothing in the host that tells the launcher Chrome's open tabs, or its tests
@@ -2596,7 +2597,18 @@
     Kind and the one marked default, read from an enum that derives Deserialize with one lowercase
     rename over it and plain variants, by a scan shown to refuse ten other layouts; a lend
     leaving a machine's also and a budget's kind unsaid is written with them filled in as the
-    lender takes them, beside a forge budget a machine names; a budget with no key is written with
+    lender takes them, beside a forge budget a machine names; a lend capping no machine's dollars
+    and pricing no model is written without them, which mycelium's own tests show its lender
+    reads as lending no model,
+    its budget's prices among the fields the scan reads as defaulted, a scan shown to read as
+    defaulted only a field whose own line above, past its doc lines, is the attribute, and warned
+    of rather than refused, naming which it lacks, as is a models budget naming no spend-watch
+    budget or pricing none, and a machine lending models only beside a forge, each still meeting
+    every assertion; a lend whose every models budget is priced and watched and whose machines
+    are capped is warned of by neither warning, nor is a machine lending only a forge or its
+    forge budget; a price leaving its cache's prices unset is written without them, and a model
+    with any of its four prices at nothing is refused by the option's type; a
+    budget with no key is written with
     none, a further realm's node and a machine lending nothing are given no lend, a Mac's lend is
     refused by a message naming it and its node given none, plain prefixes and dotted paths and
     key packages are taken, and a lend with no realm, naming a budget it lacks, with a prefix that

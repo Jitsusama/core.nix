@@ -151,9 +151,17 @@ let
     "--lend"
     "${pkgs.writeText "mycelium-lend.json" (
       builtins.toJSON {
-        inherit (cfg.lend) vms;
+        vms = map (lib.filterAttrs (_: value: value != null)) cfg.lend.vms;
+        # A price's unset cache fields are left out too, as serde reads
+        # each Option the file leaves out as none.
         budgets = lib.mapAttrs (
-          _: budget: lib.filterAttrs (_: value: value != null) budget
+          _: budget:
+          lib.filterAttrs (_: value: value != null) (
+            budget
+            // lib.optionalAttrs (budget.prices != null) {
+              prices = lib.mapAttrs (_: lib.filterAttrs (_: value: value != null)) budget.prices;
+            }
+          )
         ) cfg.lend.budgets;
       }
     )}"
@@ -514,13 +522,17 @@ in
       default = null;
       example = lib.literalExpression ''
         {
-          vms = [ { prefix = "agents-"; budget = "models"; requests_a_day = 500; } ];
+          vms = [
+            { prefix = "agents-"; budget = "models"; requests_a_day = 500; usd_a_day = 25; }
+          ];
           budgets.models = {
             upstream = "model-relay/agents.sock";
             host = "models.example";
             paths = [ "/v1/messages" ];
             auth_header = "authorization";
             key = [ "''${models-key}/bin/models-key" ];
+            prices.a-model = { input = 3; output = 15; most_output = 64000; };
+            spend_watch = "models";
           };
         }
       '';
@@ -595,6 +607,28 @@ in
   config = lib.mkMerge [
     { inherit (eases) warnings; }
     { inherit (agentsSocket) assertions; }
+    # Warned of rather than refused, so a machine lending models before
+    # its lend caps their spend still evaluates; mycelium refuses each such
+    # model lend 403, so nothing is spent uncapped either way.
+    (lib.mkIf (cfg.lend != null) {
+      warnings =
+        let
+          models = lib.filterAttrs (_: budget: budget.kind == "models") cfg.lend.budgets;
+          lendsModels = vm: lib.any (budget: models ? ${budget}) ([ vm.budget ] ++ vm.also);
+          missing =
+            budget:
+            lib.optional (budget.prices == null || budget.prices == { }) "prices"
+            ++ lib.optional (budget.spend_watch == null) "spend_watch";
+        in
+        lib.mapAttrsToList (
+          name: budget:
+          "jitsusama.mycelium.lend.budgets.${name} names no ${lib.concatStringsSep " and no " (missing budget)}, so mycelium refuses every model lent through it."
+        ) (lib.filterAttrs (_: budget: missing budget != [ ]) models)
+        ++ map (
+          vm:
+          "jitsusama.mycelium.lend.vms' ${vm.prefix} names no usd_a_day, so mycelium lends its machines no model."
+        ) (lib.filter (vm: lendsModels vm && vm.usd_a_day == null) cfg.lend.vms);
+    })
     {
       assertions = [
         {
