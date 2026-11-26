@@ -440,10 +440,19 @@ PanelWindow {
             // instead, riding what moved, never held in the air until the
             // keys rest; with no seat left on the screen, it rides that
             // window from where it's drawn (walkOnTo, Carried.caught). A
-            // play plays on, as before: a key ends one (stroll), and a
-            // dozing puppy's visit is his being away, which a window
-            // taking the keys doesn't end.
-            if (going !== null && !going.kind && !byHand
+            // play plays on, as before: a key ends one (stroll), but for
+            // a puppy's visit, which the first branch ends where niri
+            // carries its window away.
+            if (going?.kind === "puppy"
+                && MarginCat.carries(saw, tilesOf(space?.id), sat) !== null) {
+                // The keys gone to a column niri scrolls its window away
+                // for end the puppy's visit there, the puppy fading where
+                // it was, so the cat rides off with its window as a seated
+                // cat does, never left standing on the air where that
+                // window was.
+                tell("puppy");
+                halt();
+            } else if (going !== null && !going.kind && !byHand
                 && MarginCat.carries(saw, tilesOf(space?.id), goingTo) !== null) {
                 const was = goingTo;
                 const top = (saw ?? []).find(one => one.id === was);
@@ -1083,14 +1092,10 @@ PanelWindow {
             }
             return;
         }
-        const refusal = strollsNot();
+        const refusal = strollsNot(to);
         if (refusal !== "") {
             if (to === "play")
                 turnedDown(window.scene.playing?.kind ?? "", refusal);
-            return;
-        }
-        if (to === "play") {
-            play(window.scene.playing);
             return;
         }
         if (to === "column") {
@@ -1100,6 +1105,10 @@ PanelWindow {
             handsBack = true;
             roams = false;
             strolled = null;
+            return;
+        }
+        if (to === "play") {
+            play(window.scene.playing);
             return;
         }
         const spot = Plays.wander({
@@ -1121,10 +1130,10 @@ PanelWindow {
         strolled = spot;
     }
 
-    // Why a stroll is turned down, by the name a turned-down report gives
-    // it, or "" where it may stroll: stroll()'s guard itself, so a reason
-    // added to it is named as it is.
-    function strollsNot(): string {
+    // Why a stroll `to` there is turned down, by the name a turned-down
+    // report gives it, or "" where it may stroll: stroll()'s guard itself,
+    // so a reason added to it is named as it is.
+    function strollsNot(to: string): string {
         if (place === null)
             return "not on this screen";
         if (column === null)
@@ -1137,7 +1146,10 @@ PanelWindow {
             return "keys elsewhere";
         if (holding)
             return "held";
-        if (carry !== null)
+        // Riding its window on niri's scroll, it sets off on no play or
+        // wander till the ride ends, though a walk back still takes it
+        // home, never left at a wander's spot off its seat.
+        if (carry !== null && to !== "column")
             return "riding";
         return "";
     }
@@ -1229,8 +1241,6 @@ PanelWindow {
             yarnFades.resume();
         else if (yarnAt !== null && !yarnFades.running)
             goes(yarnFades);
-        if (puppyFades.paused)
-            puppyFades.resume();
     }
 
     // Held with Joel's hand at `hand`, in the screen's logical pixels.
@@ -1427,7 +1437,8 @@ PanelWindow {
         }
         if (stilled && puppyFades.running && !byHand)
             goes(puppyFades);
-        for (const clock of [walker, mover, yarnFades, puppyFades]) {
+        // The puppy's fade is never held: it went at once above.
+        for (const clock of [walker, mover, yarnFades]) {
             if (stilled && clock.running && !byHand)
                 clock.pause();
             else if (!stilled)
@@ -1958,10 +1969,10 @@ PanelWindow {
     // never each frame it rolls: a new drawing each frame had its cells
     // made again each frame, and a play cost the shell 4 to 7% of a core
     // (the GPU rig, 2026-11-14).
-    readonly property string yarnLooks: MarginCat.yarnLooks(yarnAt)
-    readonly property var yarnDrawn: MarginCat.yarnDrawn(yarnLooks, Theme.pixels)
-    readonly property string puppyLooks: MarginCat.yarnLooks(puppyAt)
-    readonly property var puppyDrawn: MarginCat.yarnDrawn(puppyLooks, Theme.pixels)
+    readonly property string yarnLooks: MarginCat.companionLooks(yarnAt)
+    readonly property var yarnDrawn: MarginCat.companionDrawn(yarnLooks, Theme.pixels)
+    readonly property string puppyLooks: MarginCat.companionLooks(puppyAt)
+    readonly property var puppyDrawn: MarginCat.companionDrawn(puppyLooks, Theme.pixels)
 
     // Where `at` logical pixels falls on one of the screen's own.
     function snapped(at: real): real {
