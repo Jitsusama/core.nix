@@ -764,18 +764,20 @@ mod tests {
     }
 
     #[test]
-    fn nothing_is_cut_for_its_level_until_five_of_his_words_are_heard_alone() {
+    fn a_word_far_below_theirs_is_held_to_his_voice_once_five_of_his_are_heard_alone() {
+        // Words 16 dB below theirs but near his voice's -40 dB are cut while
+        // four of his are heard alone, and kept as his from the fifth.
         let misheard = "Bunch had moon in Tuesday";
         for (own, written) in [
-            ("Fine by me, sure.", format!("Fine by me, sure. {misheard}")),
+            ("Fine by me, sure.", "Fine by me, sure.".to_owned()),
             (
                 "Fine by me, sure then.",
-                "Fine by me, sure then.".to_owned(),
+                format!("Fine by me, sure then. {misheard}"),
             ),
         ] {
             let theirs = at_level(timed("Lunch at noon on Thursday then.", 5_000), -20.0);
-            let mut mine = at_level(timed(own, 1_000), -20.0);
-            mine.extend(at_level(timed(misheard, 5_050), -42.0));
+            let mut mine = at_level(timed(own, 1_000), -40.0);
+            mine.extend(at_level(timed(misheard, 5_050), -36.0));
             assert_eq!(
                 cut_from(&[theirs], &[mine]),
                 [written],
