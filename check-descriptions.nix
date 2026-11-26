@@ -1851,6 +1851,12 @@
     kind's first claim, passes a page that links none of a pattern's things, fails with no row home
     to anything, and reads a shortened name's tail as no mention
   '';
+  house-report-advises-by-the-file-its-key-names = ''
+    a Mac's key job, its own lines run over sample keys with its Mac tools stood in for, says to
+    make a key anew whichever refusal it says, by the owner, mode and access list of the file the
+    key's name comes to, and not of a key others may only run or reach by lesser rights, one it
+    copied, or a name that comes to no file
+  '';
   house-report-hands-a-mac-its-key-safely = ''
     a Mac given a key runs house-report signing with activation's copy of it, readable by nobody's
     account alone in a folder of root's, ahead of the address; activation copies the key only once
