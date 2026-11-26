@@ -186,8 +186,7 @@ holds() {
 
 # Where a folder's move keeps what it counted since the machine started,
 # a name for its `.copies`, its `.waits` and its waiter's `.idle`, or
-# nothing where the account
-# has no runtime folder.
+# nothing where the account has no runtime folder.
 counted() {
   if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -n "$waiter" ]; then
     echo "$XDG_RUNTIME_DIR/own-subvolumes/$waiter"

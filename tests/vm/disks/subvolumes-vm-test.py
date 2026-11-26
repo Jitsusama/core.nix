@@ -227,8 +227,8 @@ def test_a_waiter_that_held_nothing_a_minute_three_times_running_starts_the_move
 
     A split beside the folder fails each move it starts, as a holder the waiter never finds
     would leave each, so the count rises. Its count is the move's to clear, so once a start
-    lands the move, the count goes with it. It runs before the second run, which moves the busy
-    folder with the rest it frees.
+    lands the move, the count goes with it. It runs before the second run, and the move it
+    lands is the busy folder's once its writer stops, so the second run finds a subvolume there.
     """
     count = f"/run/user/1000/own-subvolumes/{waiter('busy')}.idle"
     as_account(moved, "systemctl --user stop busy.service")
@@ -236,14 +236,24 @@ def test_a_waiter_that_held_nothing_a_minute_three_times_running_starts_the_move
     for _ in range(3):
         as_account(moved, f"systemctl --user start --wait {waiter('busy')}")
     assert moved.succeed(f"cat {count}").strip() == "3", "each start with nothing held counts"
+    show = f"systemctl --user show -P InvocationID {unit('busy')}"
+    # A start a waiter asks for is queued before it exits, so once no job is left for the move
+    # and it isn't running, any move a waiter started has shown as an invocation of its own.
+    busy = f"systemctl --user show -P ActiveState {unit('busy')}"
+    queued = f"systemctl --user list-jobs --no-legend | grep -qF {unit('busy')}"
+    settled = f"timeout 30 sh -c 'while {queued} || [ $({busy}) = activating ]; do sleep 0.2; done'"
+    as_account(moved, settled)
+    before = as_account(moved, show)
     as_account(moved, f"systemctl --user start --wait {waiter('busy')}")
     told = waited(moved, "busy")
     assert "3 times in a row with nothing held a minute" in told, f"the waiter said: {told}"
+    as_account(moved, settled)
+    assert as_account(moved, show) == before, "the bound starts no move"
     as_account(moved, "rmdir busy.split-1")
-    # Only a start would move it now, and the bound starts none.
-    assert inode(moved, f"{HOME}/busy") != "256"
     moved.succeed(f"echo 2 > {count}")
-    as_account(moved, f"systemctl --user reset-failed {unit('busy')}")
+    # Five starts of each in a few seconds is systemd's limit, so the next would be refused. A
+    # waiter that ended well may be unloaded already, which reset-failed counts as a failure.
+    as_account(moved, f"systemctl --user reset-failed {unit('busy')} {waiter('busy')}; true")
     as_account(moved, f"systemctl --user start --wait {waiter('busy')}")
     moved.wait_until_succeeds(f"! test -e {count}", timeout=timedelta(minutes=1))
     assert inode(moved, f"{HOME}/busy") == "256"
@@ -256,6 +266,7 @@ def test_a_second_run_leaves_a_subvolume_as_it_is(moved: BaseMachine) -> None:
     # The held folders' waiters would start the same moves as their holders stop.
     as_account(moved, f"systemctl --user stop {waiter('held')} {waiter('mapped')}")
     as_account(moved, "systemctl --user stop holder mapper writer busy")
+    # The bound's subtest moved busy once its writer stopped, so this run leaves it as it is.
     freed = ("moved", "held", "mapped", "unreadable", "busy")
     as_account(moved, "systemctl --user restart " + " ".join(unit(f) for f in freed))
     assert moved.succeed(f"ls -d {HOME}/moved.before-subvolume-*") == before
