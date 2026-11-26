@@ -26,13 +26,15 @@ otherwise give the kind to whichever row came first, or fault both. rows.json
 says each claim taken, beside its rows, for the web-design skill's reader to
 name in sites.json.
 
-usage: home.py [--into=<home>] <sources> <root> <theme> [<declared>], where
-sources holds the home's page and its files, root is the sites' folder, theme is
-the web kit's theme.css the sites share, and declared is the rows the Nix config
-declares. The home's own files go into home where it's given, a folder sessions
-don't write, which the server serves ahead of the documents as the sites' own
-rather than as a document, so the home can read Joel's feeds; any copy of
-them left in root from before is taken away. It
+usage: home.py [--into=<home>] [--kept=<record>] <sources> <root> <theme>
+[<declared>], where sources holds the home's page and its files, root is the
+sites' folder, theme is the web kit's theme.css the sites share, and declared is
+the rows the Nix config declares. The home's own files go into home where it's
+given, a folder sessions don't write, which the server serves ahead of the
+documents as the sites' own rather than as a document, so the home can read
+Joel's feeds; any copy of them left in root from before is taken away. Each
+record that reads is kept at record where it's given, another place sessions
+don't write, to build from when sites.json won't read and no build is there. It
 rewrites index.html, index.md, rows.json and llms.txt whole, and in each
 stripped page only what sits between the strip's two markers, so a run with
 nothing changed leaves every file as it was. Without declared rows, a root with
@@ -63,6 +65,9 @@ GONE = ("home.js", "theme.js")
 # What the home writes of its own, beside FILES, which go where it's told.
 OWN = ("favicon.svg", "index.html", "llms.txt", "index.md", "rows.json")
 INTO = "--into="
+KEEP = "--kept="
+# What a record that won't read raises as it's read.
+UNREADABLE = (ValueError, KeyError, TypeError, AttributeError)
 OPEN, CLOSE = "<!-- sites strip: home.py writes this -->", "<!-- /sites strip -->"
 GROUND = re.compile(r"--background:\s*([^;]+);")
 # What a site marks its emphasis in, unless it takes another hue: the
@@ -81,7 +86,7 @@ KIT = "/local-sites/kit/"
 # which home.nix's astray spells again for the rows Nix declares.
 STEP = re.compile(r"[A-Za-z0-9_~-][A-Za-z0-9._~-]*")
 LIGHT = "@media (prefers-color-scheme: light)"
-USAGE = "usage: home.py [--into=<home>] <sources> <root> <theme> [<declared>]"
+USAGE = "usage: home.py [--into=<home>] [--kept=<record>] <sources> <root> <theme> [<declared>]"
 
 
 @dataclass(frozen=True)
@@ -494,20 +499,80 @@ def folder(path: str) -> str:
     return "/".join(part for part in path.split("/") if part not in {"", "."}) + "/"
 
 
+@dataclass(frozen=True)
+class Where:
+    """Where the home's own files go, and where the last record that read is kept."""
+
+    into: Path | None = None
+    kept: Path | None = None
+
+
+def rows_of(text: str) -> list[Site]:
+    """Read a record's sites, refusing one the home can't draw."""
+    rows = json.loads(text, parse_constant=refused, parse_float=finite)["sites"]
+    drawable(rows)
+    return [Site.read(row) for row in rows]
+
+
+def kept_rows(kept: Path | None) -> list[Site] | None:
+    """Read the sites of the last record that read, if one was kept and still reads."""
+    if kept is None or not kept.exists():
+        return None
+    try:
+        return rows_of(kept.read_text(encoding="utf-8"))
+    except UNREADABLE:
+        return None
+
+
+def sites_read(
+    record: Path, own: Path, kept: Path | None, *, declared: bool
+) -> tuple[list[Site] | None, str]:
+    """Read the record's sites and what to say of them, or None where the last build stays.
+
+    A record caught half written, or broken by a slip, leaves the last good
+    build serving and says why, since the next change to it builds again.
+    Where no build is there to keep, as after a reboot empties the runtime
+    folder the home is built into, the last record that read is built, kept
+    where no session writes and a reboot doesn't reach; with none kept, the
+    declared rows alone make it. Either way the sites still answer until the
+    record reads again, and the record is said broken. A record that reads is
+    kept, where it's told.
+    """
+    try:
+        text = record.read_text(encoding="utf-8") if record.exists() else '{"sites": []}'
+        sites = rows_of(text)
+    except UNREADABLE as error:
+        built = (own / "index.html").exists()
+        last = None if built else kept_rows(kept)
+        if last is not None:
+            return (
+                last,
+                f"; sites.json can't be read ({error}), so the last record that read is built",
+            )
+        if built or not declared:
+            return None, f"home: sites.json can't be read ({error}), so the last build stays"
+        return [], f"; sites.json can't be read ({error}), and no build was there to keep"
+    if kept is not None and record.exists():
+        kept.parent.mkdir(parents=True, exist_ok=True)
+        write(kept, text)
+    return sites, ""
+
+
 def build(
     sources: Path,
     root: Path,
     theme: Path,
     declared: Path | None = None,
     *,
-    into: Path | None = None,
+    where: Where | None = None,
 ) -> str:
     """Build the home from its sources, root's sites.json, the theme and declared rows.
 
-    Its own files go into into where it's given, and into root otherwise. It
-    says what it did.
+    Its own files go where says into, and into root otherwise, and a record
+    that reads is kept where says kept. It says what it did.
     """
-    own = into or root
+    where = where or Where()
+    own = where.into or root
     record = root / "sites.json"
     # With no record yet, the declared rows alone make the home, making the
     # sites' folder on a machine's first switch, before any document is there.
@@ -515,22 +580,10 @@ def build(
         if not declared:
             return "home: no sites.json yet, so nothing to build"
         root.mkdir(parents=True, exist_ok=True)
-    # A record caught half written, or broken by a slip, leaves the last good
-    # build serving and says why, since the next change to it builds again.
-    # Where no build is there to keep, as after a reboot empties the runtime
-    # folder the home is built into, the declared rows alone make it, so the
-    # sites still answer until the record reads again.
-    unread = ""
-    try:
-        text = record.read_text(encoding="utf-8") if record.exists() else '{"sites": []}'
-        rows = json.loads(text, parse_constant=refused, parse_float=finite)["sites"]
-        drawable(rows)
-        sites = [Site.read(row) for row in rows]
-    except (ValueError, KeyError, TypeError, AttributeError) as error:
-        if (own / "index.html").exists() or not declared:
-            return f"home: sites.json can't be read ({error}), so the last build stays"
-        unread = f"; sites.json can't be read ({error}), and no build was there to keep"
-        sites = []
+    read, unread = sites_read(record, own, where.kept, declared=declared is not None)
+    if read is None:
+        return unread
+    sites = read
     # Nix wrote the declared rows, so a fault in them is the build's, and fails it.
     rows_declared = live(declared) if declared else []
     sites = declaring(sites, rows_declared) if declared else sites
@@ -594,6 +647,7 @@ if __name__ == "__main__":
     # folders and the theme, then the declared rows when given.
     args = sys.argv[1:]
     into = Path(args.pop(0).removeprefix(INTO)) if args and args[0].startswith(INTO) else None
+    kept = Path(args.pop(0).removeprefix(KEEP)) if args and args[0].startswith(KEEP) else None
     given, with_rows = 3, 4
     if len(args) not in {given, with_rows}:
         sys.exit(USAGE)
@@ -605,4 +659,4 @@ if __name__ == "__main__":
         sys.exit(f"home: the theme {theme} isn't a stylesheet; {USAGE}")
     if not theme.exists():
         print(f"home: the theme {theme} isn't there, so no look is named", file=sys.stderr)
-    print(build(Path(args[0]), Path(args[1]), theme, rows, into=into))
+    print(build(Path(args[0]), Path(args[1]), theme, rows, where=Where(into=into, kept=kept)))

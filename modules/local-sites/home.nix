@@ -69,8 +69,9 @@ let
   # is (src/http.rs says why), and the home can read Joel's feeds and answer
   # what he's asked. A reboot empties it, and the home is built whole from
   # its record before the server serves; a record that won't read then
-  # builds it from the declared rows alone until a session mends it, since
-  # the last build went with the reboot.
+  # builds it from the last record that read (builtFrom's --kept), or from
+  # the declared rows alone where none was kept, until a session mends it,
+  # since the last build went with the reboot.
   homeFolder = cfg.homeFolder;
   # Loopback, under the names a browser sends there by itself.
   served = pkgs.writeText "local-sites.json" (
@@ -267,6 +268,10 @@ let
     "${./home/home.py}"
   ];
   builtFrom = lib.escapeShellArgs [
+    # The last record that read, kept where no session writes and a reboot
+    # doesn't reach, to build the home from when sites.json won't read and
+    # the runtime folder holds no build to keep.
+    "--kept=${config.xdg.stateHome}/local-sites/sites.json"
     "${import ./home-source.nix}"
     "${config.xdg.dataHome}/jitsusama/sites"
     "${webKit}/theme.css"
