@@ -343,18 +343,17 @@ pub fn gated(
         )));
     }
     // The commit has to stand on main's history: on each commit of main
-    // the bundle says it needs, or on main's newest when it needs none.
-    // Main's newest isn't asked of a bundle that needs some, since main
-    // moves while an ask waits its turn, and a change behind main is
-    // gated as it stands, as `there --changed` gates one on this machine.
-    let stands_on = if header.prerequisites.is_empty() {
-        vec!["refs/remotes/origin/main".to_owned()]
-    } else {
-        header.prerequisites.clone()
-    };
-    for base in &stands_on {
-        git(Net::None, &["merge-base", "--is-ancestor", base, commit])
-            .map_err(|_| refused("the commit doesn't descend from the forge's main"))?;
+    // the bundle says it needs, which `unlike_asked` holds to be some.
+    // Main's newest isn't asked of it, since main moves while an ask
+    // waits its turn, and a change behind main is gated as it stands, as
+    // `there --changed` gates one on this machine.
+    for base in &header.prerequisites {
+        git(Net::None, &["merge-base", "--is-ancestor", base, commit]).map_err(|_| {
+            refused(format!(
+                "the commit doesn't descend from {base}, which the bundle needs from the \
+                 forge's main"
+            ))
+        })?;
     }
     git(Net::None, &["checkout", "--quiet", "--detach", commit]).map_err(refused)?;
     run(&tree, &work.join(LOG)).map_err(unreached)

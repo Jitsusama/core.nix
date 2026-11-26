@@ -9,8 +9,10 @@
 //! that folder on the machine named, by `--on` or in
 //! `nix-offload/gates-on` under XDG's config folder. It then waits for
 //! `result.json` to come back beside them, at most `--longest` seconds,
-//! and exits as the gate did; an answer that ends without one is told at
-//! once, by how it ended, rather than waited out.
+//! and exits as the gate did. An answer that ends without one is told by
+//! how it ended once a result has had time to cross back, rather than
+//! waited out, and one that couldn't start in its gate's folder, not yet
+//! crossed, is started again.
 
 use std::fs;
 use std::os::fd::AsFd;
@@ -29,13 +31,21 @@ use super::{BUNDLE, Found, LARGEST_BUNDLE, LOG, NOT_NOW, REFUSED, REQUEST, RESUL
 const LONGEST: Duration = Duration::from_hours(2);
 /// How often it looks for the result.
 const LOOKING: Duration = Duration::from_secs(5);
-/// How long it still looks once the answer has ended, for a result written
-/// on another machine to cross back; none in tests.
-const CROSSING_BACK: Duration = if cfg!(test) {
-    Duration::ZERO
-} else {
-    Duration::from_mins(2)
-};
+/// How long it still looks once an answer has ended badly, for a result
+/// written on another machine to cross back; an answer that passed its
+/// gate is looked for to the longest wait.
+const CROSSING_BACK: Duration = Duration::from_mins(2);
+/// How long a stopped answer is given to end before it's killed, so
+/// mycelium can pass the stop on to the machine that runs it.
+const STOPPING: Duration = Duration::from_secs(10);
+/// How many times an answer that couldn't start in its gate's folder is
+/// started: on a Mac's plain share the folder may not have crossed yet,
+/// and mycelium then starts it in the home, where its fence refuses it.
+const STARTS: u32 = 3;
+/// What `mycelium run` ends with when it couldn't run the command at all.
+const UNRUN: i32 = 255;
+/// What the answer's shell ends with when its fence refused to start it.
+const UNSTARTED: i32 = 126;
 
 /// The gate's own refusal and not-now, as the table names them, so an ask
 /// ends as an answer to it would.
@@ -233,29 +243,60 @@ fn failed_by(said: Said, what: &str, instead: &str) -> Failure {
     }
 }
 
+/// How the answer's run ended.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum End {
+    /// With this code.
+    Exited(i32),
+    /// By a signal.
+    Signalled,
+    /// Unknown, as it couldn't be watched, for this reason.
+    Unwatched(String),
+}
+
+impl End {
+    /// It, in words such as `exited 126`.
+    fn said(&self) -> String {
+        match self {
+            Self::Exited(code) => format!("exited {code}"),
+            Self::Signalled => "was ended by a signal".to_owned(),
+            Self::Unwatched(why) => format!("couldn't be watched: {why}"),
+        }
+    }
+}
+
 /// The answer's run on the gating machine, as `ask` watches it.
 trait Answering {
-    /// How it ended, in words such as `exited 126`, or none while it runs.
-    fn ended(&mut self) -> Option<String>;
+    /// How it ended, or none while it runs.
+    fn ended(&mut self) -> Option<End>;
     /// Stops it, once `ask` waits no longer.
     fn stop(&mut self);
 }
 
 impl Answering for Child {
-    fn ended(&mut self) -> Option<String> {
+    fn ended(&mut self) -> Option<End> {
         match self.try_wait() {
             Ok(None) => None,
-            Ok(Some(status)) => Some(status.code().map_or_else(
-                || "was ended by a signal".to_owned(),
-                |code| format!("exited {code}"),
-            )),
-            Err(error) => Some(format!("couldn't be watched: {error}")),
+            Ok(Some(status)) => Some(status.code().map_or(End::Signalled, End::Exited)),
+            Err(error) => Some(End::Unwatched(error.to_string())),
         }
     }
 
     fn stop(&mut self) {
-        // Stopping mycelium's run stops the answer; one already gone
-        // leaves nothing to stop, which is no failure.
+        // Asked to stop first, so mycelium can pass the stop on to the
+        // answer; killed only once it hasn't ended in `STOPPING`. One
+        // already gone leaves nothing to stop, which is no failure.
+        if let Ok(pid) = libc::pid_t::try_from(self.id()) {
+            // SAFETY: a signal to this process's own child, not yet reaped.
+            unsafe { libc::kill(pid, libc::SIGTERM) };
+            let since = Instant::now();
+            while since.elapsed() < STOPPING {
+                if !matches!(self.try_wait(), Ok(None)) {
+                    return;
+                }
+                thread::sleep(Duration::from_millis(100));
+            }
+        }
         let _ = self.kill();
         let _ = self.wait();
     }
@@ -267,9 +308,20 @@ enum Waited {
     /// The result came back.
     Found(Found),
     /// The answer ended, so, and no result came back after it.
-    Ended(String),
+    Ended(End),
+    /// mycelium couldn't run the answer, ending so.
+    Unrun(End),
     /// Nothing came back within the longest wait.
     Late,
+}
+
+/// How `waited` paces itself: at most `longest` in all, `crossing` after
+/// an answer that ended badly, and a look each `looking`.
+#[derive(Debug, Clone, Copy)]
+struct Pace {
+    longest: Duration,
+    crossing: Duration,
+    looking: Duration,
 }
 
 /// The result in `gate` for `commit`, if it's there.
@@ -280,33 +332,58 @@ fn result(gate: &Path, commit: &str) -> Option<Found> {
         .filter(|found| found.commit == commit)
 }
 
-/// The result once it's there for `commit`, waited for at most `longest`
-/// while `answer` runs, and for `CROSSING_BACK` after it ends: an answer
-/// that ended without writing one, refused by its fence or finding no
-/// gate, is told by how it ended rather than waited out.
-fn waited(gate: &Path, commit: &str, longest: Duration, answer: &mut dyn Answering) -> Waited {
+/// The result once it's there for `commit`, waited for as `pace` says:
+/// while `answer` runs, and once it ended 0, its gate passed and written,
+/// to the longest wait, as a pass may cross back slowly. An answer that
+/// ended otherwise, refused by its fence or finding no gate, is told by
+/// how it ended once `crossing` has passed, and one mycelium couldn't run
+/// at once, rather than either being waited out.
+fn waited(gate: &Path, commit: &str, pace: Pace, answer: &mut dyn Answering) -> Waited {
     let since = Instant::now();
-    let mut ended: Option<(String, Instant)> = None;
+    let mut ended: Option<(End, Instant)> = None;
     loop {
         if let Some(found) = result(gate, commit) {
+            if ended.is_none() {
+                let_go(answer, pace);
+            }
             return Waited::Found(found);
         }
         if ended.is_none() {
-            ended = answer.ended().map(|how| (how, Instant::now()));
+            ended = answer.ended().map(|end| (end, Instant::now()));
         }
+        // A result written just before the end was heard is looked for
+        // once more, so it isn't told as missing.
+        let told = |waited: Waited| result(gate, commit).map_or(waited, Waited::Found);
         match &ended {
-            Some((how, at)) if at.elapsed() >= CROSSING_BACK => {
-                // A result written just before the end was heard is
-                // looked for once more, so it isn't told as missing.
-                return result(gate, commit)
-                    .map_or_else(|| Waited::Ended(how.clone()), Waited::Found);
+            Some((End::Exited(UNRUN), _)) => {
+                return told(Waited::Unrun(End::Exited(UNRUN)));
             }
-            None if since.elapsed() >= longest => {
-                answer.stop();
-                return Waited::Late;
+            Some((End::Exited(0), _)) => {}
+            Some((end, at)) if at.elapsed() >= pace.crossing => {
+                return told(Waited::Ended(end.clone()));
             }
-            _ => thread::sleep(LOOKING),
+            _ => {}
         }
+        if since.elapsed() >= pace.longest {
+            if ended.is_none() {
+                answer.stop();
+            }
+            return told(Waited::Late);
+        }
+        thread::sleep(pace.looking);
+    }
+}
+
+/// `answer`, whose result came back, given `crossing` to end as it
+/// does, and stopped if it hasn't, so no run outlives the ask.
+fn let_go(answer: &mut dyn Answering, pace: Pace) {
+    let since = Instant::now();
+    while answer.ended().is_none() {
+        if since.elapsed() >= pace.crossing {
+            answer.stop();
+            return;
+        }
+        thread::sleep(pace.looking);
     }
 }
 
@@ -351,32 +428,65 @@ pub fn ask(arguments: &[String]) -> Result<(), Failure> {
         ));
     }
     shared(&asked.quest, &on)?;
-    let mut answer = answering(&asked.quest, &on, &commit, &gate, asked.longest)?;
-    eprintln!(
-        "nix-offload: asked {on} to gate {commit}; waiting for its result in {}",
-        gate.display()
-    );
-    let found = match waited(&gate, &commit, asked.longest, &mut answer) {
-        Waited::Found(found) => found,
-        Waited::Ended(how) => {
-            return Err(failed(
-                Exit::Unavailable,
-                "ask's gate ended without a result",
-                &format!("the answer on {on} {how} and wrote none, as its words above say"),
-                "Check the gate's folder reached that machine, and ask again.",
-            ));
-        }
-        Waited::Late => {
-            return Err(failed(
-                NOT_YET,
-                "ask had no result in time",
-                &format!(
-                    "{} brought none back within {} s",
-                    on,
-                    asked.longest.as_secs()
-                ),
-                "Ask again later; a gate that passed meanwhile kept its pass.",
-            ));
+    let since = Instant::now();
+    let mut starts = 0;
+    let found = loop {
+        let pace = Pace {
+            longest: asked.longest.saturating_sub(since.elapsed()),
+            crossing: CROSSING_BACK,
+            looking: LOOKING,
+        };
+        let mut answer = answering(&asked.quest, &on, &commit, &gate, pace.longest)?;
+        starts += 1;
+        eprintln!(
+            "nix-offload: asked {on} to gate {commit}; waiting for its result in {}",
+            gate.display()
+        );
+        match waited(&gate, &commit, pace, &mut answer) {
+            Waited::Found(found) => break found,
+            Waited::Ended(End::Exited(UNSTARTED))
+                if starts < STARTS && since.elapsed() < asked.longest =>
+            {
+                eprintln!(
+                    "nix-offload: the answer on {on} couldn't start, as though its gate's \
+                     folder hadn't crossed yet, so ask starts it again"
+                );
+            }
+            Waited::Ended(end) => {
+                return Err(failed(
+                    Exit::Unavailable,
+                    "ask's gate ended without a result",
+                    &format!(
+                        "the answer on {on} {} and wrote none, as its words above say",
+                        end.said()
+                    ),
+                    "Check the gate's folder reached that machine, and ask again.",
+                ));
+            }
+            Waited::Unrun(end) => {
+                return Err(failed(
+                    Exit::Unavailable,
+                    "ask couldn't run the gate",
+                    &format!(
+                        "mycelium couldn't run the answer on {on}, and {}, as its words \
+                         above say",
+                        end.said()
+                    ),
+                    "Check `mycelium machines` says it's ready, and ask again.",
+                ));
+            }
+            Waited::Late => {
+                return Err(failed(
+                    NOT_YET,
+                    "ask had no result in time",
+                    &format!(
+                        "{} brought none back within {} s",
+                        on,
+                        asked.longest.as_secs()
+                    ),
+                    "Ask again later; a gate that passed meanwhile kept its pass.",
+                ));
+            }
         }
     };
     if let Ok(log) = fs::read_to_string(gate.join(LOG)) {
@@ -515,271 +625,4 @@ fn answering(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn refusal(why: &str) -> Result<(), Said> {
-        Err(Said::Refused(why.to_owned()))
-    }
-
-    #[test]
-    fn a_start_the_node_refused_is_a_refusal_though_mycelium_ended_0() {
-        let said = "{\"Err\":\"this asks as a fenced agent, so it starts nothing\"}\n";
-        assert_eq!(
-            judged(true, said, ""),
-            refusal("this asks as a fenced agent, so it starts nothing"),
-            "a reply of Err must read as the node's refusal, whatever the exit"
-        );
-    }
-
-    #[test]
-    fn a_start_the_node_took_is_no_failure() {
-        let said = "{\"Ok\":{\"Started\":{\"machine\":\"far\"}}}\nshared\n";
-        assert_eq!(
-            judged(true, said, ""),
-            Ok(()),
-            "a reply of Ok refuses nothing"
-        );
-    }
-
-    #[test]
-    fn the_first_reply_decides() {
-        let said = "{\"Ok\":null}\n{\"Err\":\"later\"}\n";
-        assert_eq!(
-            judged(true, said, ""),
-            Ok(()),
-            "an Err after an Ok mustn't undo it"
-        );
-        let said = "{\"Err\":\"first\"}\n{\"Ok\":null}\n";
-        assert_eq!(
-            judged(true, said, ""),
-            refusal("first"),
-            "an Ok after an Err mustn't undo it"
-        );
-    }
-
-    #[test]
-    fn a_reply_printed_across_lines_is_read_whole() {
-        let said = "{\n  \"Err\": \"no room\"\n}\n";
-        assert_eq!(
-            judged(true, said, ""),
-            refusal("no room"),
-            "a reply spread over lines refuses"
-        );
-    }
-
-    #[test]
-    fn a_refusal_that_isnt_words_or_says_nothing_still_says_something() {
-        let said = "{\"Err\":{\"Fenced\":3}}\n";
-        assert_eq!(
-            judged(true, said, ""),
-            refusal("{\"Fenced\":3}"),
-            "a refusal that isn't a string is told as its JSON"
-        );
-        assert_eq!(
-            judged(true, "{\"Err\":\" \"}\n", ""),
-            refusal("the node refused, saying nothing why"),
-            "an empty refusal still says it was one"
-        );
-    }
-
-    #[test]
-    fn mycelium_ending_badly_without_a_reply_failed_and_says_why() {
-        assert_eq!(
-            judged(false, "shared\n", " can't reach the node\n"),
-            Err(Said::Failed("can't reach the node".to_owned())),
-            "a failed run with no reply is a failure, told by its errors"
-        );
-        assert_eq!(
-            judged(false, "", ""),
-            Err(Said::Failed(
-                "mycelium failed, saying nothing why".to_owned()
-            )),
-            "a failed run that says nothing still says it failed"
-        );
-        assert_eq!(
-            judged(true, "shared\n", ""),
-            Ok(()),
-            "plain words at exit 0 are no failure"
-        );
-    }
-
-    #[test]
-    fn a_refusal_ends_as_refused_and_a_failure_as_unavailable() {
-        let refused = failed_by(Said::Refused("no".to_owned()), "it", "Try.");
-        let failure = failed_by(Said::Failed("down".to_owned()), "it", "Try.");
-        assert_eq!(
-            refused.exit,
-            Exit::Refused,
-            "a node's no must end as a refusal"
-        );
-        assert_eq!(
-            failure.exit,
-            Exit::Unavailable,
-            "a run that failed must end as unavailable"
-        );
-    }
-
-    const COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
-
-    /// An answer that ends as `ends` says once asked `after` times, and
-    /// counts whether it was stopped.
-    struct Fake {
-        ends: Option<&'static str>,
-        after: usize,
-        stopped: bool,
-    }
-
-    impl Answering for Fake {
-        fn ended(&mut self) -> Option<String> {
-            if self.after > 0 {
-                self.after -= 1;
-                return None;
-            }
-            self.ends.map(str::to_owned)
-        }
-
-        fn stop(&mut self) {
-            self.stopped = true;
-        }
-    }
-
-    fn found(exit: u8) -> Found {
-        Found {
-            commit: COMMIT.to_owned(),
-            exit,
-            said: "the commit's changed checks passed".to_owned(),
-        }
-    }
-
-    #[test]
-    fn an_answer_that_ends_without_a_result_is_told_at_once() {
-        let gate = tempfile::tempdir().expect("a gate folder");
-        let mut answer = Fake {
-            ends: Some("exited 126"),
-            after: 0,
-            stopped: false,
-        };
-        let since = Instant::now();
-        let waited = waited(gate.path(), COMMIT, LONGEST, &mut answer);
-        assert_eq!(
-            waited,
-            Waited::Ended("exited 126".to_owned()),
-            "an answer its fence refused should be told by how it ended"
-        );
-        assert!(
-            since.elapsed() < Duration::from_secs(5),
-            "an ended answer should be told within seconds, not waited out for {LONGEST:?}"
-        );
-    }
-
-    #[test]
-    fn a_result_written_as_the_answer_ended_is_the_answer() {
-        let gate = tempfile::tempdir().expect("a gate folder");
-        fs::write(gate.path().join(RESULT), found(0).json()).expect("a result");
-        let mut answer = Fake {
-            ends: Some("exited 0"),
-            after: 0,
-            stopped: false,
-        };
-        assert_eq!(
-            waited(gate.path(), COMMIT, LONGEST, &mut answer),
-            Waited::Found(found(0)),
-            "a result there when the answer ends should be read, not told as missing"
-        );
-    }
-
-    #[test]
-    fn a_result_for_another_commit_isnt_the_answer() {
-        let gate = tempfile::tempdir().expect("a gate folder");
-        let mut other = found(0);
-        other.commit = "f".repeat(40);
-        fs::write(gate.path().join(RESULT), other.json()).expect("a stale result");
-        let mut answer = Fake {
-            ends: Some("exited 66"),
-            after: 0,
-            stopped: false,
-        };
-        assert_eq!(
-            waited(gate.path(), COMMIT, LONGEST, &mut answer),
-            Waited::Ended("exited 66".to_owned()),
-            "another commit's result shouldn't answer this one"
-        );
-    }
-
-    #[test]
-    fn an_answer_still_running_at_the_longest_is_stopped() {
-        let gate = tempfile::tempdir().expect("a gate folder");
-        let mut answer = Fake {
-            ends: None,
-            after: 0,
-            stopped: false,
-        };
-        assert_eq!(
-            waited(gate.path(), COMMIT, Duration::ZERO, &mut answer),
-            Waited::Late,
-            "an answer past the longest wait should be late"
-        );
-        assert!(
-            answer.stopped,
-            "an answer ask stops waiting for should be stopped"
-        );
-    }
-
-    #[test]
-    fn the_answer_runs_in_its_gates_folder_for_the_longest_wait() {
-        let run = answer_run(
-            "QEST-20261115-ABC123",
-            "optimus",
-            COMMIT,
-            Path::new("/home/j/q/handover/gates/c"),
-            Duration::from_secs(7200),
-        );
-        assert_eq!(
-            run.join(" "),
-            format!(
-                "run --need machine=optimus --folder /home/j/q/handover/gates/c --lasts 120m \
-                 -- nix-offload answer QEST-20261115-ABC123 {COMMIT}"
-            ),
-            "the answer should run, waited on, in the gate's folder"
-        );
-    }
-
-    fn words(text: &str) -> Vec<String> {
-        text.split(' ').map(str::to_owned).collect()
-    }
-
-    #[test]
-    fn an_ask_ends_with_the_gates_own_codes() {
-        assert_eq!(REFUSES.code(), REFUSED);
-        assert_eq!(NOT_YET.code(), NOT_NOW);
-    }
-
-    #[test]
-    fn an_ask_names_its_quest_and_may_name_the_rest() {
-        assert_eq!(
-            asked(&words(
-                "--quest QEST-20261115-ABC123 --session SK1FF0 --on kestrel --longest 60"
-            )),
-            Ok(Asked {
-                quest: "QEST-20261115-ABC123".to_owned(),
-                session: Some("SK1FF0".to_owned()),
-                on: Some("kestrel".to_owned()),
-                longest: Duration::from_secs(60),
-            }),
-            "every option should be read"
-        );
-        assert!(
-            asked(&words("--session SK1FF0")).is_err(),
-            "an ask without a quest should be refused"
-        );
-        assert!(
-            asked(&words("--quest ../x")).is_err(),
-            "a quest that isn't an id should be refused"
-        );
-        assert!(
-            asked(&words("--quest QEST-20261115-ABC123 --session $(x)")).is_err(),
-            "a session that isn't an address should be refused"
-        );
-    }
-}
+mod tests;

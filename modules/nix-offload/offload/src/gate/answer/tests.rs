@@ -288,6 +288,13 @@ fn a_commit_not_descending_from_main_is_refused() {
         "a commit off main should be refused as bad data: {}",
         refusal.1
     );
+    assert!(
+        refusal
+            .1
+            .contains(&format!("doesn't descend from {}", forge.main)),
+        "the refusal should be the descent's, naming the commit it needs: {}",
+        refusal.1
+    );
 }
 
 #[test]

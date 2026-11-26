@@ -73,7 +73,7 @@ impl GateFolder {
         let top = opened(unsafe {
             libc::open(
                 root_name.as_ptr(),
-                libc::O_PATH | libc::O_DIRECTORY | libc::O_CLOEXEC,
+                LOOKUP | libc::O_DIRECTORY | libc::O_CLOEXEC,
             )
         })?;
         let folder = beneath_no_links(&top, &named(&beneath)?)?;
@@ -179,6 +179,14 @@ impl GateFolder {
         Ok(())
     }
 }
+
+/// How the scratch root is opened: on Linux only as a place to look up
+/// from, which the answer's fence allows where it refuses a read. A Mac
+/// has no `O_PATH`, and answers no gate, so it opens the root to read.
+#[cfg(target_os = "linux")]
+const LOOKUP: libc::c_int = libc::O_PATH;
+#[cfg(not(target_os = "linux"))]
+const LOOKUP: libc::c_int = libc::O_RDONLY;
 
 /// `path` below `top`, opened as a folder by openat2, following no link
 /// and leaving no folder below `top`.
