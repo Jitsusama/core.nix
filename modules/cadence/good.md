@@ -215,6 +215,17 @@ holding a space, as one broken across two lines does, is counted too.
   has not been completed."
 - Over costs him: a date he was given passed, and what was promised isn't there.
 
+## Dates at Risk
+
+- Measures: `dates-at-risk`, `dates-at-risk-derived`
+- Target: 0 dates still to come that wait on a merge whose change shares files with what main
+  has changed since the two parted, unless the change landed or its piece or ask was put down.
+  Only core.nix changes and the zone's branches are judged. A date whose change can't be read
+  is counted apart as unread, and with none at risk beside it the hour goes unjudged.
+- Joel, 14 Nov: "something constantly evaluating how we can ship more and faster"
+- Over costs him: a date is said to stand while its change will be refused or checked again,
+  so it slips with no warning.
+
 ## Slips Parked
 
 - Measures: `slips-parked`, `slips-parked-derived`
