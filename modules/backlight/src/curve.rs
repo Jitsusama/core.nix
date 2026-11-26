@@ -157,11 +157,21 @@ mod tests {
         (a - b).abs() < 1e-9
     }
 
+    /// Holds that `curve` gives `level` in `lux` of light, showing the
+    /// level it gave when not.
+    fn gives(curve: &Curve, lux: f64, level: f64) {
+        let given = curve.level_at(lux);
+        assert!(
+            close(given, level),
+            "in {lux} lux the curve gave {given}, not {level}"
+        );
+    }
+
     #[test]
     fn a_point_s_own_light_gives_its_level() {
         let curve = standard();
-        assert!(close(curve.level_at(20.0), 0.3));
-        assert!(close(curve.level_at(1000.0), 0.75));
+        gives(&curve, 20.0, 0.3);
+        gives(&curve, 1000.0, 0.75);
     }
 
     #[test]
@@ -170,29 +180,33 @@ mod tests {
         // Halfway along ln(1 + lux) from 20 to 150 lux is about 55 lux.
         let halfway = f64::midpoint(along(20.0), along(150.0));
         let lux = halfway.exp() - 1.0;
-        assert!(close(curve.level_at(lux), 0.4));
+        gives(&curve, lux, 0.4);
     }
 
     #[test]
     fn past_either_end_the_end_s_level_holds() {
         let curve = standard();
-        assert!(close(curve.level_at(-5.0), 0.15));
-        assert!(close(curve.level_at(1e6), 1.0));
+        gives(&curve, -5.0, 0.15);
+        gives(&curve, 1e6, 1.0);
     }
 
     #[test]
     fn a_pick_is_what_the_curve_gives_in_that_light_afterwards() {
         let mut curve = standard();
         curve.learn(60.0, 0.62);
-        assert!(close(curve.level_at(60.0), 0.62));
+        gives(&curve, 60.0, 0.62);
     }
 
     #[test]
     fn a_pick_replaces_the_point_near_it() {
         let mut curve = standard();
         curve.learn(22.0, 0.35);
-        assert!(!curve.points.iter().any(|point| close(point.lux, 20.0)));
-        assert!(close(curve.level_at(22.0), 0.35));
+        assert!(
+            !curve.points.iter().any(|point| close(point.lux, 20.0)),
+            "the point at 20 lux stayed beside a pick at 22: {:?}",
+            curve.points
+        );
+        gives(&curve, 22.0, 0.35);
     }
 
     #[test]
@@ -214,14 +228,17 @@ mod tests {
         let levels: Vec<f64> = (0..200)
             .map(|step| curve.level_at(f64::from(step) * 100.0))
             .collect();
-        assert!(levels.windows(2).all(|pair| pair[1] >= pair[0]));
+        assert!(
+            levels.windows(2).all(|pair| pair[1] >= pair[0]),
+            "the curve dimmed as the light grew: {levels:?}"
+        );
     }
 
     #[test]
     fn a_pick_is_never_darker_than_the_dimmest() {
         let mut curve = standard();
         curve.learn(0.0, 0.0);
-        assert!(close(curve.level_at(0.0), DIMMEST));
+        gives(&curve, 0.0, DIMMEST);
     }
 
     #[test]
@@ -261,7 +278,7 @@ mod tests {
     #[test]
     fn comments_and_blank_lines_are_skipped() {
         let curve = Curve::read("# lux level\n\n0 0.2\n100 0.8\n").unwrap();
-        assert!(close(curve.level_at(100.0), 0.8));
+        gives(&curve, 100.0, 0.8);
     }
 
     #[test]

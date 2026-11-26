@@ -89,6 +89,9 @@ mod tests {
     #[tokio::test]
     async fn a_brightness_that_cant_be_heard_stops_it() {
         let kept = keep(HELD, async || Err(io::ErrorKind::NotFound.into()), || ()).await;
-        assert!(kept.is_err());
+        assert!(
+            kept.is_err(),
+            "a brightness that couldn't be heard was kept on"
+        );
     }
 }
