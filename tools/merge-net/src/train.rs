@@ -494,9 +494,15 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
             );
             println!("merge-net: {}, so it goes on as it is", hand_over(&newer));
         }
-        let mut mergings = aboard(&root, &git, &slug, &owner, &waiting);
+        let aboard = aboard(&root, &git, &slug, &owner, &waiting);
+        let mut mergings = aboard.mergings;
         mergings.truncate(splitting.take());
         if mergings.is_empty() {
+            // Riders left waiting on GitHub are asked again after a pause,
+            // rather than at once and over again while it can't answer.
+            if aboard.waited {
+                std::thread::sleep(UNTAKEN_PAUSE);
+            }
             continue;
         }
         git(&["fetch", "--quiet", "origin", "main"])?;
