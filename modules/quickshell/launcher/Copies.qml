@@ -1,6 +1,6 @@
 // The clipboard's history, a collection: every copy made this session, text
 // and pictures, newest first, their rows made ready by clipboard-history
-// (clipboard/src/main.rs and src/rows.rs) and held over one connection to
+// (clipboard/src/history.rs and src/rows.rs) and held over one connection to
 // its socket in the ready-row form (ReadyRows.qml), so nothing is started
 // per copy, nothing is written to disk, and nothing here sorts or words a
 // copy. A search with a match adds one row; the right arrow, or Super+V,

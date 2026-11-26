@@ -7,7 +7,7 @@ pragma Singleton
 // once niri says the launcher has let go of the keys, presses the window's
 // paste keys through a virtual keyboard: Ctrl+Shift+V in a terminal, whose
 // Ctrl+V is a key of its own, and Ctrl+V anywhere else
-// (clipboard/src/main.rs), answering once they're pressed, or that they
+// (clipboard/src/paste.rs), answering once they're pressed, or that they
 // couldn't be. So nothing waits on the shell's thread, which
 // can be busy for seconds after an opening, and the window reads the copy
 // from the history rather than from the shell. With no history kept, the
