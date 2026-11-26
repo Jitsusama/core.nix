@@ -9,13 +9,14 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
-use std::process::{Command, Output, Stdio};
+use std::process::Output;
 
 use serde_json::Value;
 
 use super::super::{Class, Measure, count, first_owner, lines};
 use super::running::{RUN_HERE, running};
 use super::{main_of, named_as, repo_word};
+use crate::unasked;
 
 /// The measure's key, which its drag is filed under for each owner.
 pub const UNTESTED: &str = "misses-untested";
@@ -104,13 +105,14 @@ fn revisions(
 }
 
 /// What git answers in the checkout at `repo`, or none when it couldn't
-/// start, which cadence's log says.
+/// start, which cadence's log says. It never asks for a password, as
+/// [`unasked::git`] runs it, so a partial clone fetching an object it lacks
+/// fails at once rather than waiting on a prompt nobody answers.
 fn asked(repo: &Path, args: &[&str]) -> Option<Output> {
-    Command::new("git")
+    unasked::git()
         .arg("-C")
         .arg(repo)
         .args(args)
-        .stdin(Stdio::null())
         .output()
         .inspect_err(|e| eprintln!("cadence: git couldn't start in {}: {e}", repo.display()))
         .ok()
