@@ -148,10 +148,10 @@ fn hides(each: char) -> bool {
 mod tests {
     use super::words;
 
+    /// Escapes, strings and what hides text go, whole and no further.
     #[test]
-    fn what_would_act_on_a_terminal_goes_whole_and_words_stay_apart() {
+    fn what_would_act_on_a_terminal_goes_whole() {
         for (said, shown, what) in [
-            ("a\tb\rc", "a b c", "a tab or a return parts words"),
             ("\u{1b}[31mred\u{1b}[m", "red", "a colour goes whole"),
             (
                 "\u{1b}]8;;https://x\u{1b}\\link\u{1b}]8;;\u{1b}\\ broke",
@@ -178,6 +178,47 @@ mod tests {
                 "",
                 "a line of only control characters leaves nothing",
             ),
+            (
+                "a\u{1b}\u{1b}[31mb",
+                "ab",
+                "an escape after a lone escape begins its own",
+            ),
+            (
+                "\u{1b}(Bplain",
+                "plain",
+                "a character set chosen goes whole, through its intermediate",
+            ),
+            (
+                "\u{1b}(0plain",
+                "plain",
+                "a character set whose final is a digit goes whole too",
+            ),
+            ("\u{1b}cafter", "after", "a reset takes its one character"),
+            (
+                "\u{1b}]0;title\u{1b}[31mred",
+                "red",
+                "a sequence that ends a string goes whole too",
+            ),
+            (
+                "said\u{1b}]0;never ended",
+                "said",
+                "a string never ended takes the rest with it",
+            ),
+            (
+                "a\u{3164}\u{1d173}b",
+                "ab",
+                "what the terminal kit keeps from a terminal goes",
+            ),
+        ] {
+            assert_eq!(words(said), shown, "{what}");
+        }
+    }
+
+    /// A control parts words by one space, and the blanks beside it fold into that one.
+    #[test]
+    fn controls_and_blanks_beside_them_part_words_by_one_space() {
+        for (said, shown, what) in [
+            ("a\tb\rc", "a b c", "a tab or a return parts words"),
             (
                 "a\u{2028}\tb",
                 "a b",
@@ -212,11 +253,6 @@ mod tests {
                 "a control after a lone escape still parts the words",
             ),
             (
-                "a\u{1b}\u{1b}[31mb",
-                "ab",
-                "an escape after a lone escape begins its own",
-            ),
-            (
                 "a\t\u{1b}[31m b",
                 "a b",
                 "a space after a colour after a control folds into its one",
@@ -235,32 +271,6 @@ mod tests {
                 "a\tb  c",
                 "a b  c",
                 "spaces no control parts are the owner's own, after a word ends a parting",
-            ),
-            (
-                "\u{1b}(Bplain",
-                "plain",
-                "a character set chosen goes whole, through its intermediate",
-            ),
-            (
-                "\u{1b}(0plain",
-                "plain",
-                "a character set whose final is a digit goes whole too",
-            ),
-            ("\u{1b}cafter", "after", "a reset takes its one character"),
-            (
-                "\u{1b}]0;title\u{1b}[31mred",
-                "red",
-                "a sequence that ends a string goes whole too",
-            ),
-            (
-                "said\u{1b}]0;never ended",
-                "said",
-                "a string never ended takes the rest with it",
-            ),
-            (
-                "a\u{3164}\u{1d173}b",
-                "ab",
-                "what the terminal kit keeps from a terminal goes",
             ),
         ] {
             assert_eq!(words(said), shown, "{what}");
