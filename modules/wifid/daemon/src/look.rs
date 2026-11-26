@@ -102,8 +102,10 @@ impl Looks {
         self.0.insert(card.to_owned(), waiting);
     }
 
-    /// Whether a card waits on a look.
-    pub fn waits(&self, card: &str) -> bool {
+    /// Whether a card waits on a look. wifid itself only asks what a
+    /// look's end or a newer ask does, so only the cases read it.
+    #[cfg(test)]
+    fn waits(&self, card: &str) -> bool {
         self.0.contains_key(card)
     }
 

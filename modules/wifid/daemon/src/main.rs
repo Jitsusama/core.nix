@@ -853,6 +853,37 @@ impl<'a> Air<'a> {
         heard.max().map(|(_, card)| card.to_string())
     }
 
+    /// Takes the end of a card's look, as wpa_supplicant says it. What the
+    /// card heard is said before it says it's done looking, so a warned
+    /// card waiting on this look hears its points by now.
+    async fn looked(&mut self, bus: &Connection, path: &ObjectPath<'_>, message: &zbus::Message) {
+        let Some(card) = self.named(bus, path).await else {
+            return;
+        };
+        self.arrivals.borrow_mut().looked(&card, Instant::now());
+        let succeeded = message.body().deserialize::<bool>().unwrap_or(false);
+        if succeeded {
+            println!("<7>{card} is done looking");
+            change(&self.state, |state| state.looked(&card));
+        } else {
+            println!("<7>{card}'s look failed");
+            change(&self.state, State::look_ended);
+        }
+        let serial = message.primary_header().serial_num().get();
+        let on = self.state.borrow().point_of(&card);
+        match self.looks.ended(&card, serial, on.as_deref(), succeeded) {
+            Ended::Unwaited => {}
+            Ended::Earlier => {
+                println!("<7>{card} waits on its own look, as the one ended began before");
+            }
+            Ended::Moved(from) => {
+                let from = from.as_deref().unwrap_or("its point");
+                println!("<6>{card} has left {from} as it looked, so what it asked is past");
+            }
+            Ended::Heed(request, looked) => self.asked.push((card, request, looked)),
+        }
+    }
+
     /// Takes in a signal of wpa_supplicant's: an access point heard, heard
     /// differently or no longer heard, a card going, a card's join going
     /// wrong, or its access point asking it to move.
@@ -898,37 +929,7 @@ impl<'a> Air<'a> {
                 ),
             },
             "PskMismatch" => self.troubled(bus, path, Trouble::WrongPassword).await,
-            // What a card heard is said before it says it's done looking.
-            "ScanDone" => {
-                let Some(card) = self.named(bus, path).await else {
-                    return;
-                };
-                self.arrivals.borrow_mut().looked(&card, Instant::now());
-                let succeeded = body.deserialize::<bool>().unwrap_or(false);
-                if succeeded {
-                    println!("<7>{card} is done looking");
-                    change(&self.state, |state| state.looked(&card));
-                } else {
-                    println!("<7>{card}'s look failed");
-                    change(&self.state, State::look_ended);
-                }
-                // Heard by now, as what a card heard is said first.
-                let serial = message.primary_header().serial_num().get();
-                let on = self.state.borrow().point_of(&card);
-                match self.looks.ended(&card, serial, on.as_deref(), succeeded) {
-                    Ended::Unwaited => {}
-                    Ended::Earlier => {
-                        println!("<7>{card} waits on its own look, as the one ended began before");
-                    }
-                    Ended::Moved(from) => {
-                        let from = from.as_deref().unwrap_or("its point");
-                        println!(
-                            "<6>{card} has left {from} as it looked, so what it asked is past"
-                        );
-                    }
-                    Ended::Heed(request, looked) => self.asked.push((card, request, looked)),
-                }
-            }
+            "ScanDone" => self.looked(bus, path, message).await,
             // How an enterprise network's join went: the server proving
             // itself, then the account taken or not.
             "EAP" => {
