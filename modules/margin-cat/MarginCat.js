@@ -82,31 +82,27 @@ function closeHeard(close, now) {
     return { closed: close.gone, on: close.stands, before: close.seen };
 }
 
-// A walk's beats, in ms at the theme's pace, each a pose of the theme's own
-// (Joel, 2026-11-12: "proper smooth animations with character to them"):
-// it stands and turns its head the way it's going, stops a moment to
-// think, draws back a cell crouched, as anticipation, then walks, easing
-// in over its first stride and out over its last, its strides stepped by
-// the ground it covers so its feet never slide. It walks onto its seat and
-// no further, and crouches a moment as it stops, before it sits (Joel,
-// 2026-11-14 17:19: "i never want the kitty to skid into place").
+// A walk's beats, in ms at the theme's pace, each a pose of the theme's own (Joel, 2026-11-12:
+// "proper smooth animations with character to them"): it stands and turns its head the way it's
+// going, stops a moment to think, draws back a cell crouched, as anticipation, then walks, easing
+// in over its first stride and out over its last, its strides stepped by the ground it covers so
+// its feet never slide. It walks onto its seat and no further, and crouches a moment as it stops,
+// before it sits (Joel, 2026-11-14 17:19: "i never want the kitty to skid into place").
 const TURNS = 140;
 const CROUCHES = 110;
 const SETTLES = 180;
 const LANDS = 120;
 // How far, in its own cells, it draws back.
 const DRAWS_BACK = 1;
-// Its pace, in cells a second: an amble over a short way, each walk taking
-// about `CRUISES` ms where it can, and never over `HURRIES`, so a long way
-// is a gentle long walk, several seconds across a column, rather than a
-// dash (VKCF3Z, 2026-11-12: fast motion at the edge of his eye pulls focus,
-// and a walk blocks nothing of his). Each stride, one drawing, covers
-// `STRIDE_SECONDS` at its pace: never under two cells, so four drawings
-// walk its own length, nor over three at a run, so its paws are always
-// seen moving (Joel, 2026-11-14 17:19: "i always want to see its paws
-// moving when it is walking or running"; VKCF3Z d1d1ead2). Three cells a
-// drawing held two frames at 60 Hz is about 90 cells a second, so a hurry
-// is capped under it, rather than its stride stretched.
+// Its pace, in cells a second: an amble over a short way, each walk taking about `CRUISES` ms
+// where it can, and never over `HURRIES`, so a long way is a gentle long walk, several seconds
+// across a column, rather than a dash (VKCF3Z, 2026-11-12: fast motion at the edge of his eye
+// pulls focus, and a walk blocks nothing of his). Each stride, one drawing, covers
+// `STRIDE_SECONDS` at its pace: never under two cells, so four drawings walk its own length, nor
+// over three at a run, so its paws are always seen moving (Joel, 2026-11-14 17:19:
+// "i always want to see its paws moving when it is walking or running"; VKCF3Z d1d1ead2). Three
+// cells a drawing held two frames at 60 Hz is about 90 cells a second, so a hurry is capped under
+// it, rather than its stride stretched.
 const AMBLES = 40;
 const HURRIES = 80;
 const CRUISES = 2000;
@@ -214,19 +210,15 @@ function lags(from, t, spring) {
     return { x: from.x * left, y: from.y * left };
 }
 
-// Whether it's drawn over the windows rather than under them: on a leg
-// of a walk `aboard` a floating window, onto it, along it or off it
-// (MarginCatFloats.js), in front of the tiled window behind, which would
-// hide it and have it pop on (Joel, 2026-11-15 23:34: "the whole kitty
-// should not have to be rendered when you are seeing it come on to your
-// screen"); or at rest while its `seat`, the column it sits on, is a
-// floating window's, which sits in front of the tiled windows, so the one
-// behind would hide it (Joel, 2026-11-13 18:59), and not once it's
-// `leaving` that seat on any other leg. Anywhere else
-// it's under them, so a window passing in front of it covers it rather
-// than wearing it on its face, however late the shell hears niri: on top,
-// a loaded machine showed it on a sliding window's face for two to four
-// frames (VKCF3Z, 3fe38ef5).
+// Whether it's drawn over the windows rather than under them: on a leg of a walk `aboard` a
+// floating window, onto it, along it or off it (MarginCatFloats.js), in front of the tiled window
+// behind, which would hide it and have it pop on (Joel, 2026-11-15 23:34: "the whole kitty
+// should not have to be rendered when you are seeing it come on to your screen"); or at rest while
+// its `seat`, the column it sits on, is a floating window's, which sits in front of the tiled
+// windows, so the one behind would hide it (Joel, 2026-11-13 18:59), and not once it's `leaving`
+// that seat on any other leg. Anywhere else it's under them, so a window passing in front of it
+// covers it rather than wearing it on its face, however late the shell hears niri: on top, a
+// loaded machine showed it on a sliding window's face for two to four frames (VKCF3Z, 3fe38ef5).
 function above(seat, leaving, aboard) {
     return aboard === true || (seat?.floats === true && !leaving);
 }
