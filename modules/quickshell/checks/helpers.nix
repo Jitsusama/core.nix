@@ -38,13 +38,14 @@ let
     );
   # Copies each file a check names into the folder it runs in, where the
   # shell's folder holds it, with everything it imports, once each. A file
-  # whose imports aren't what imports.nix says fails the check instead,
-  # naming what differs, so the table can't drift from the files. The
-  # launcher's words.json is the one its places' files join to
-  # (launcher/words.nix), as the shell reads it. Options.qml, which the
-  # account's configuration writes, is a stand-in holding only whether
-  # reports are on, and they're off, as on a machine that hasn't chosen,
-  # for a check whose files say a line by it (Presented.rowShown).
+  # whose imports aren't what imports.nix says, in whatever order its row
+  # lists them, fails the check instead, naming what differs, so the table
+  # can't drift from the files. The launcher's words.json is the one its
+  # places' files join to (launcher/words.nix), as the shell reads it.
+  # Options.qml, which the account's configuration writes, is a stand-in
+  # holding only whether reports are on, and they're off, as on a machine
+  # that hasn't chosen, for a check whose files say a line by it
+  # (Presented.rowShown).
   copied =
     files:
     let
@@ -56,7 +57,7 @@ let
         file:
         (lib.hasSuffix ".qml" file || lib.hasSuffix ".js" file)
         && file != "Options.qml"
-        && lib.sort lib.lessThan (importing file) != imports.${file} or [ ]
+        && lib.sort lib.lessThan (importing file) != lib.sort lib.lessThan (imports.${file} or [ ])
       ) every;
       folders = lib.unique (lib.filter (folder: folder != ".") (map dirOf every));
       words = (import ../launcher/words.nix).file;
@@ -80,7 +81,7 @@ let
         # Named in full, since a program's check that fails here lives in another folder.
         echo "modules/quickshell/checks/imports.nix doesn't say what these import:" \
           "${lib.concatStringsSep ", " wrong}" \
-          "(under modules/quickshell; give each its row there)" >&2
+          "(under modules/quickshell; make each one's row there list what it imports)" >&2
         exit 1
       '';
   # The shell's files a program's step in the launcher is drawn from, as
