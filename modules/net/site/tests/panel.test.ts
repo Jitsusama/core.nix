@@ -2,8 +2,8 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { networkOf } from "../model.ts";
-import { type Context, standsNow } from "../panel.ts";
+import { KINDS, networkOf } from "../model.ts";
+import { type Context, ledeOf, standsNow, UNANSWERED } from "../panel.ts";
 import { study } from "../shape.ts";
 import { records, type Told, told } from "./house.ts";
 
@@ -21,10 +21,10 @@ const ceiling: Told = {
 /** The house with only the ceiling for a concern, so its concerns are still told. */
 const calm: readonly Told[] = [...records.filter((record) => record.kind !== "concern"), ceiling];
 
-/** What the lede is said from, for the house told as `these`. */
-function contextOf(these: readonly Told[] = records): Context {
+/** What the lede is said from, for the house told as `these`, every kind told when `whole`. */
+function contextOf(these: readonly Told[] = records, whole = false): Context {
   const { watched, kinds } = told(these);
-  const network = networkOf(watched, kinds);
+  const network = networkOf(watched, whole ? new Set(KINDS) : kinds);
   assert.ok(network, "the whole house was told, so the page draws it");
   return {
     network,
@@ -52,4 +52,28 @@ it("the lede counts a source that didn't answer as worth a look", () => {
 
 it("the lede says nothing needs a look when only the internet's ceiling is told", () => {
   assert.match(standsNow(contextOf(calm)), /, and nothing needs a look\.$/u);
+});
+
+// A page joining a watch the server holds as broken is told every kind
+// empty, before any feed was live.
+const empty = contextOf([], true);
+
+it("the lede says net hasn't answered once its feeds stop reaching it before any was live", () => {
+  assert.equal(ledeOf({ answered: false, worst: "broken" }, undefined), UNANSWERED);
+  assert.equal(ledeOf({ answered: false, worst: "stale" }, undefined), UNANSWERED);
+});
+
+it("the lede says net hasn't answered over an empty net no feed was live for", () => {
+  assert.equal(ledeOf({ answered: false, worst: "broken" }, empty), UNANSWERED);
+});
+
+it("the lede is left as it is while net is still being reached", () => {
+  assert.equal(ledeOf({ answered: false, worst: "connecting" }, undefined), null);
+  assert.equal(ledeOf({ answered: false, worst: undefined }, contextOf()), null);
+});
+
+it("the lede counts what stands once a feed was live, and keeps its words once net goes", () => {
+  assert.equal(ledeOf({ answered: true, worst: "live" }, contextOf()), standsNow(contextOf()));
+  assert.equal(ledeOf({ answered: true, worst: "broken" }, contextOf()), standsNow(contextOf()));
+  assert.equal(ledeOf({ answered: true, worst: "broken" }, undefined), null);
 });

@@ -209,9 +209,33 @@ function standsNow(context: Context): string {
   return `${plural(users(context), "device")} on ${plural(shape.points.length, "eero")} across ${plural(shape.floors.length, "floor")}, and ${asks}.`;
 }
 
+/** The lede while net has never answered and is no longer being reached. */
+const UNANSWERED = "Net hasn't answered, so no device is drawn.";
+
+/** How net's feeds stand for the lede: whether any was ever live, and the worst now. */
+interface Answering {
+  readonly answered: boolean;
+  readonly worst: string | undefined;
+}
+
+/**
+ * What the lede says, or null to leave it as it is: what stands now once a
+ * feed of net's was live, and that net hasn't answered once its feeds stop
+ * reaching it before any was. Until net answers the counts aren't said,
+ * since a page joining a watch the server holds as broken is told every
+ * kind empty, and "0 devices, and nothing needs a look" would read as an
+ * all-clear while net is down.
+ */
+function ledeOf(answering: Answering, context: Context | undefined): string | null {
+  if (!answering.answered) {
+    return answering.worst === "broken" || answering.worst === "stale" ? UNANSWERED : null;
+  }
+  return context === undefined ? null : standsNow(context);
+}
+
 /** Says what stands now in the head's lede, writing only when it changes. */
-function sayStandsNow(lede: HTMLElement, context: Context | undefined): void {
-  const words = context === undefined ? null : standsNow(context);
+function sayStandsNow(lede: HTMLElement, answering: Answering, context: Context | undefined): void {
+  const words = ledeOf(answering, context);
   if (words !== null && lede.textContent !== words) {
     lede.textContent = words;
   }
@@ -288,5 +312,5 @@ function found(context: Context, query: string): Child[] {
   ];
 }
 
-export type { Context };
-export { concernRows, found, overview, row, sayStandsNow, standsNow };
+export type { Answering, Context };
+export { concernRows, found, ledeOf, overview, row, sayStandsNow, standsNow, UNANSWERED };
