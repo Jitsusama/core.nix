@@ -152,7 +152,8 @@ EOF
 # the limit and not by the hang; while systemctl-hangs-first is there, the
 # first look hangs too, and the rest answer at once. While qs-hangs is
 # there, the shell is stalled: what tells it is run with qs hung, ended
-# at its first call, as the cut would.
+# at its first call, as the cut would. Each look it ends is said into
+# cuts, so a case of a look cut shows it was.
 cat > "$stand_ins/timeout" << EOF
 #!$BASH
 limit=\$1
@@ -167,6 +168,7 @@ waits=\$(wc -l < "$work/waits")
 if [ "\$1" = systemctl ] && { { [ -f "$work/systemctl-hangs" ] && [ "\$waits" -ge 84 ]; } ||
   { [ -f "$work/systemctl-hangs-first" ] && [ "\$waits" -eq 0 ]; }; }; then
   for _ in \$(seq \$((limit * 5))); do echo . >> "$work/waits"; done
+  echo "\$1" >> "$work/cuts"
   exit 124
 fi
 exec "\$@"
@@ -188,6 +190,7 @@ fresh() {
   rm -f "$work/came-at" "$work/kitty.sock" "$work"/*-fails "$work"/kitten-* \
     "$work"/systemctl-* "$work"/clock-* "$work"/qs-* "$work/pwned"
   : > "$work/asked"
+  : > "$work/cuts"
   : > "$work/inherited"
   : > "$work/said"
   : > "$work/waits"
@@ -358,6 +361,7 @@ old=$!
 echo "$old" > "$work/main-pid"
 touch "$work/systemctl-hangs-first"
 opens pi-hosted.s-23 pi
+expect "the first look, and only it, is cut" systemctl cuts
 waited "with the first look cut, it waits out its 17 s" 84
 expect "with the first look cut and the rest answered, the journal says no kitty runs" \
   "sessions: no sessions kitty to open pi-hosted.s-23 in" said
@@ -382,6 +386,11 @@ fi
 expect "an inherited start that isn't a time gives way to its own" \
   "qs ipc call sessions untakenFor pi-hosted.s-17 1700000000000 none" asked
 waited "an inherited start that isn't a time waits from its own" 84
+# Each start given way is said, as for one long past, so a first start's
+# times lost is seen in the journal rather than taken for its own.
+not_taken="sessions: a first start's times weren't taken, so it waits from its own
+sessions: no sessions kitty to open pi-hosted.s-17 in"
+expect "an inherited start that isn't a time given way is said" "$not_taken" said
 # Nor does a start later than now, too long for the shell's arithmetic, or
 # one the shell's test takes as a number though the script never writes it
 # so (signed, blank-led, or read as octal for its leading zero), hold it
@@ -396,6 +405,7 @@ for start in 99999999999 99999999999999999999 +1234408 " 1234408" 01234408 -5; d
   expect "an inherited start of '$start' gives way to its own, the time with it" \
     "qs ipc call sessions untakenFor pi-hosted.s-17 1700000000000 none" asked
   waited "an inherited start of '$start' waits from its own" 84
+  expect "an inherited start of '$start' given way is said" "$not_taken" said
 done
 # A time beside a start that is one isn't taken either.
 fresh
@@ -406,6 +416,7 @@ unset OPENS_IN_SESSIONS_ASKED OPENS_IN_SESSIONS_STARTED
 expect "an inherited time that isn't one gives way to its own, the start with it" \
   "qs ipc call sessions untakenFor pi-hosted.s-17 1700000000000 none" asked
 waited "an inherited time that isn't one waits from its own start" 84
+expect "an inherited time that isn't one given way is said" "$not_taken" said
 fresh
 echo "$old" > "$work/main-pid"
 export OPENS_IN_SESSIONS_ASKED=1699999999000 OPENS_IN_SESSIONS_STARTED=1234408
@@ -414,6 +425,8 @@ unset OPENS_IN_SESSIONS_ASKED OPENS_IN_SESSIONS_STARTED
 expect "an inherited start a second earlier is taken, with its time" \
   "qs ipc call sessions untakenFor pi-hosted.s-17 1699999999000 none" asked
 waited "it waits from that start" 79
+expect "a start taken is said only as no kitty" \
+  "sessions: no sessions kitty to open pi-hosted.s-17 in" said
 # One as far back as its own 17 s is taken too, so a run under the journal
 # slow to start still tells the shell its first start, and looks once.
 fresh
@@ -424,6 +437,8 @@ unset OPENS_IN_SESSIONS_ASKED OPENS_IN_SESSIONS_STARTED
 expect "an inherited start 16.8 s earlier is taken, with its time" \
   "qs ipc call sessions untakenFor pi-hosted.s-17 1699999999000 none" asked
 waited "it looks once, its 17 s gone" 0
+expect "a start taken that long back is said only as no kitty" \
+  "sessions: no sessions kitty to open pi-hosted.s-17 in" said
 # One further back, as left from a run long gone, whose own 17 s are over,
 # is no run's under the journal: it gives way to its own, said so.
 for start in 1232827 1232000; do
@@ -439,6 +454,30 @@ for start in 1232827 1232000; do
     "sessions: a first start's times weren't taken, so it waits from its own
 sessions: no sessions kitty to open pi-hosted.s-22 in" said
 done
+kill "$old"
+old=""
+# Its one look, with its 17 s gone, is still made, so an old kitty there
+# then is asked rather than none said.
+fresh
+"$python" -c 'import time; time.sleep(300)' --instance-group pi-sessions > /dev/null 2>&1 &
+old=$!
+until tr '\0' ' ' < "/proc/$old/cmdline" | grep -q -- "--instance-group"; do
+  "$real_sleep" 0.05
+done
+echo "$old" > "$work/main-pid"
+export OPENS_IN_SESSIONS_ASKED=1699999999000 OPENS_IN_SESSIONS_STARTED=1232828
+opens pi-hosted.s-29 pi
+unset OPENS_IN_SESSIONS_ASKED OPENS_IN_SESSIONS_STARTED
+expect "an old kitty there as its 17 s end is still asked, in its one look" \
+  "systemd-run --user --scope --collect --quiet --slice=agents.slice -- env \
+MYCELIUM_APP_ID=pi-hosted.s-29 kitty -1 --instance-group pi-sessions --class pi-hosted.s-29 \
+--directory /home/joel pi" asked
+waited "and isn't waited on" 0
+expect "what it opens inherits no start" "" inherited
+kill "$old"
+old=""
+"$python" -c 'import time; time.sleep(300)' > /dev/null 2>&1 &
+old=$!
 # Started as niri starts it, its run under the journal waits from its
 # first start, not from its own, which comes two of the journal's waits
 # later.
