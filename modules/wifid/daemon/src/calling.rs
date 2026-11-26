@@ -101,8 +101,13 @@ impl Peer {
 
 impl fmt::Display for Peer {
     fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // A uid is said even with no pid, since it alone still says whose
+        // the asker is.
         let Some(pid) = self.pid else {
-            return write!(out, "a process the kernel didn't name");
+            return match self.uid {
+                Some(uid) => write!(out, "a process of uid {uid} the kernel gave no pid"),
+                None => write!(out, "a process the kernel didn't name"),
+            };
         };
         write!(out, "pid {pid}")?;
         if let Some(uid) = self.uid {
@@ -249,6 +254,16 @@ mod tests {
             "the path"
         );
         assert_eq!(cgroup_of(b"0::/\n").as_deref(), Some("/"), "the root");
+        assert_eq!(
+            cgroup_of(b"1:name=systemd:/a\n0::/system.slice/x.service\n").as_deref(),
+            Some("system.slice/x.service"),
+            "a hybrid host's unified line, after its controllers', went unread"
+        );
+        assert_eq!(
+            cgroup_of(b"1:name=systemd:/system.slice/x.service\n"),
+            None,
+            "a host with no unified hierarchy named a path from a controller's line"
+        );
         assert_eq!(cgroup_of(b""), None, "nothing read names none");
         assert_eq!(
             cgroup_of(b"0::/system.slice/x\xff\xc3\xa9.service\n").as_deref(),
@@ -340,9 +355,23 @@ mod tests {
             "a process whose cgroup went unread passed as one in none"
         );
         assert_eq!(
-            Peer { uid: None, ..named }.to_string(),
+            Peer {
+                uid: None,
+                ..named.clone()
+            }
+            .to_string(),
             "pid 42 (system.slice/wifid-calls.service)",
             "a peer with no uid said one"
+        );
+        assert_eq!(
+            Peer {
+                pid: None,
+                cgroup: None,
+                ..named
+            }
+            .to_string(),
+            "a process of uid 1000 the kernel gave no pid",
+            "a peer with no pid lost the uid that says whose it is"
         );
         assert_eq!(
             Peer::default().to_string(),

@@ -479,9 +479,10 @@ impl Connection {
                 // The asker's uid and its cgroup's path are said: a process
                 // may name its own unit under its user's manager, but not
                 // move it out of user.slice, so a unit's name alone is only
-                // a hint.
-                // The pid is the kernel's word for who connected, as the
-                // connection was taken, not for who holds it since.
+                // a hint. The uid is the kernel's, taken as the connection
+                // was; the pid is too, but the path is read by it as wifid
+                // answers, so it holds only while the pid isn't reused
+                // (`Peer::at`), and the fd it holds can be passed on.
                 println!("<6>{} asks {}", self.peer, acts::wanted(&said));
                 let asks = self.face.asks.clone();
                 let words = self.made_in.as_ref().and_then(|made_in| {

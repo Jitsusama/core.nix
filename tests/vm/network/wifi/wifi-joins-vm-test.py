@@ -277,35 +277,30 @@ def test_and_hears_an_account_say_a_call_is_on_naming_who_said_it(
     machine: BaseMachine, wifid: Wifid
 ) -> None:
     """And hears an account say a call is on, and over, naming the process that said it."""
-    # The ask comes the way wifid.acting sends it, so its cgroup is the one this lands in,
-    # whichever PAM gives runuser, and never wifid's own. A PAM that starts a session gives
-    # each runuser a scope of its own, numbered afresh, under the same slice.
+    # The ask comes the way wifid.acting sends it, from the backdoor's shell through runuser,
+    # whose PAM here starts no session, so its cgroup is the one this lands in: the
+    # backdoor's own unit (2026-11-26), never wifid's.
     asker = machine.succeed("runuser -u guest -- cat /proc/self/cgroup").strip()
     path = asker.removeprefix("0::/")
     assert path.split("/")[0] in {"user.slice", "system.slice"}, f"in no slice: {asker}"
+    assert not path.endswith("/wifid.service"), f"the asker runs in wifid's own cgroup: {path}"
     print(f"an ask from guest runs in {path}")
-    parent, _, unit = path.rpartition("/")
     # A path holds only what a unit's name may, so a dot and a backslash are all grep's
     # pattern must escape; re.escape's `\-` draws grep's stray-backslash warning.
-    literal = str.maketrans({".": "\\.", "\\": "\\\\"})
-    cgroup = path.translate(literal)
-    if re.fullmatch(r"session-[0-9]+\.scope", unit):
-        cgroup = f"{parent.translate(literal)}/session-[0-9]+\\.scope"
+    # The backslash goes first, so the ones escaping the dots aren't doubled.
+    cgroup = path.replace("\\", "\\\\").replace(".", "\\.")
     uid = machine.succeed("id -u guest").strip()
-    own = machine.succeed("cat /proc/$(systemctl show -P MainPID wifid)/cgroup").strip()
     for on, stands in ((True, "on"), (False, "over")):
         answer = wifid.acting({"act": "calling", "on": on})
         assert answer == {"id": 1, "done": True}, answer
         # Any process of the wifi group's may say it, so each change names who did, by its
         # uid and its cgroup's path, which tells a user's unit from a system one of a name.
         who = f"^pid [0-9]+, uid {uid} \\({cgroup}\\)"
-        said = machine.wait_until_succeeds(
+        machine.wait_until_succeeds(
             "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
             f" | grep -E '{who} says a call is {stands}$'",
             timeout=timedelta(seconds=10),
         )
-        named = said.splitlines()[-1]
-        assert f"({own.removeprefix('0::/')})" not in named, f"wifid named itself: {named}"
 
 
 @pytest.mark.usefixtures("wifid")

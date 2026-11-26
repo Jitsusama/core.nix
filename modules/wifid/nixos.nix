@@ -162,6 +162,9 @@ in
         DeviceAllow = [ "/dev/rfkill rw" ];
         PrivateTmp = true;
         ProtectClock = true;
+        # Read-only, in the host's cgroup namespace: an asker's path is read
+        # from /proc as wifid sees it (calling.rs), and a namespace of its
+        # own, as `private` or `strict` give, would say every one as `../..`.
         ProtectControlGroups = true;
         ProtectHome = true;
         ProtectHostname = true;
