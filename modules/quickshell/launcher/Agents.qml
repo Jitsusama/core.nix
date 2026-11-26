@@ -538,10 +538,11 @@ Provider {
     // which its Return reads (SessionRow.drawn), so a park or wake the
     // daemon hasn't served yet wraps it again (rowOf).
     readonly property var wrappedParked: ({})
-    // The sessions the shell holds parked, by each one's own address, made
-    // once a park or wake changes them, so every row laid out asks in one
+    // The sessions the shell holds parked, by each one's own address where
+    // no running one owns it (Sessions.parkedAs's rule), made once a park,
+    // a wake or a start changes them, so every row laid out asks in one
     // lookup (SessionRow.parkedSet), not by walking the parked.
-    readonly property var parkedHere: SessionRow.parkedSet(Sessions.parked)
+    readonly property var parkedHere: SessionRow.parkedSet(Sessions.parked, Sessions.running)
     function shellParked(address) {
         return parkedHere.has(String(address).toUpperCase());
     }

@@ -785,6 +785,17 @@ mod tests {
                 "parked by the node, {what}, it wears and says what one its presence parks does"
             );
         }
+        // One standing at the top, the void, is gone to to be told something
+        // however it stands, parked by the node too, as the shell's drawn
+        // reads it (SessionRow.js).
+        let void = parked(json!({"addresses": ["V"], "session": "s-void",
+            "standsAtTop": {"name": "The Void"}}));
+        let row = made(&void, Place::default(), &given());
+        assert_eq!(
+            (row.state, row.returns, row.acts.join(" ")),
+            ("parked", "talk", "wake talk".to_owned()),
+            "parked by the node and standing at the top, its Return talks to it"
+        );
     }
 
     #[test]

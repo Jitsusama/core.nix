@@ -40,6 +40,7 @@ import "SessionWindows.js" as SessionWindows
 import "Viewers.js" as Viewers
 import "Waiting.js" as Waiting
 import "launcher/Order.js" as Order
+import "launcher/SessionRow.js" as SessionRow
 
 Singleton {
     id: root
@@ -120,11 +121,13 @@ Singleton {
         };
     }
 
-    // A session parked, by any address it goes by, or null.
+    // The session parked that goes by `address`, or null: none where a
+    // running one's own it is, else the parked one whose own it is, else
+    // one only listing it, as the agents daemon's cells.rs judges a name
+    // two sessions go by (SessionRow.parkedOf), so a parked session listing
+    // a live one's address never makes the live one read parked.
     function parkedAs(address) {
-        const upper = String(address).toUpperCase();
-        return parked.find(one => (one.presence?.addresses ?? [one.address])
-            .some(each => String(each).toUpperCase() === upper)) ?? null;
+        return SessionRow.parkedOf(parked, running, address);
     }
     readonly property int working: running.filter(session => session.presence.busy).length
     // Those waiting on Joel, as each says while it does: { kind, since,

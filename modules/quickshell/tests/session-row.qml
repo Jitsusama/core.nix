@@ -156,23 +156,35 @@ QtObject {
             if (SessionRow.topActOf(key) !== want)
                 failures.push(`top ${key}: "${SessionRow.topActOf(key)}", not "${want}"`);
         }
-        // The shell's parked are known by each one's own address, whatever its
-        // case; an address one only lists is another's own, which it doesn't
-        // park (cells.rs: the one that is it now wins).
-        const parkedHere = SessionRow.parkedSet([
-            { address: "ab12cd", presence: { addresses: ["ab12cd", "LIVE01"] } },
-            { address: "ef34gh", presence: { addresses: ["OLD001"] } }, { address: "" }, {}
-        ]);
-        const parkings = [["its own, upper-cased", "AB12CD", true],
-            ["its own, though it doesn't list it", "EF34GH", true],
-            ["another's it lists", "LIVE01", false], ["one it only lists", "OLD001", false],
-            ["none", "", false]];
-        for (const [what, address, want] of parkings) {
-            if (parkedHere.has(address) !== want)
-                failures.push(`parked, ${what}: ${!want}, not ${want}`);
+        // Who goes by an address among the parked, beside the running, as
+        // cells.rs judges a name two go by (the one that is it now wins):
+        // whatever its case, a parked one by its own, unless a running one
+        // owns it too; by one it only lists where none owns it, as a link
+        // names an old address; never by a running one's own. A row asks the
+        // set by its own address, and the set agrees with parkedOf there.
+        const resting = [
+            { address: "ab12cd",
+                presence: { addresses: ["ab12cd", "LIVE01", "OLD001", "NEXT01"] } },
+            { address: "NEXT01", presence: { addresses: ["NEXT01"] } },
+            { address: "SHARED", presence: { addresses: ["SHARED"] } }, { address: "" }, {}
+        ];
+        const runningOnes = [{ address: "live01" }, { address: "shared" }];
+        const parkedHere = SessionRow.parkedSet(resting, runningOnes);
+        const parkings = [["its own, upper-cased", "AB12CD", true, "ab12cd"],
+            ["its own, one before listing it", "NEXT01", true, "NEXT01"],
+            ["a running one's it lists", "LIVE01", false, null],
+            ["one it only lists, none owning it", "old001", false, "ab12cd"],
+            ["its own, a running one's too", "SHARED", false, null],
+            ["one none goes by", "NONE01", false, null], ["none", "", false, null]];
+        for (const [what, address, want, whose] of parkings) {
+            const found = SessionRow.parkedOf(resting, runningOnes, address)?.address ?? null;
+            if (parkedHere.has(address) !== want || found !== whose)
+                failures.push(`parked, ${what}: ${parkedHere.has(address)} by ${found}, `
+                    + `not ${want} by ${whose}`);
         }
-        if (SessionRow.parkedSet(undefined).size !== 0)
-            failures.push("parked of nothing: not empty");
+        if (SessionRow.parkedSet(undefined, undefined).size !== 0
+                || SessionRow.parkedOf(undefined, undefined, "AB12CD") !== null)
+            failures.push("parked of nothing: not none");
         // The shell's own acts: Go To where it has a window, and Talk, none that
         // steers or ends it, as how it stands isn't known; one the shell holds
         // parked, Wake and Talk.
@@ -235,7 +247,8 @@ QtObject {
                 failures.push(`drawn ${what}: offers ${kept.join(" ")}, which it keeps back`);
         }
         const atTop = [[{ standsAtTop: { name: "Void" } }, true],
-            [{ standsAtTop: { name: "" } }, false], [{}, false], [undefined, false]];
+            [{ standsAtTop: { name: "" } }, false], [{ standsAtTop: { name: true } }, false],
+            [{ standsAtTop: { name: 1 } }, false], [{}, false], [undefined, false]];
         for (const [presence, want] of atTop) {
             if (SessionRow.standsAtTop(presence) !== want)
                 failures.push(`standsAtTop of ${JSON.stringify(presence)}: not ${want}`);

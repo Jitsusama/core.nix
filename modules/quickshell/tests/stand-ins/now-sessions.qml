@@ -12,6 +12,7 @@
 pragma Singleton
 import Quickshell
 import QtQuick
+import "launcher/SessionRow.js" as SessionRow
 
 Singleton {
     property var running: []
@@ -56,10 +57,9 @@ Singleton {
         wentTo = session;
     }
 
+    // By the real one's rule, its own function (Now's copy brings it).
     function parkedAs(address) {
-        const upper = String(address).toUpperCase();
-        return parked.find(one => (one.presence?.addresses ?? [one.address])
-            .some(each => String(each).toUpperCase() === upper)) ?? null;
+        return SessionRow.parkedOf(parked, running, address);
     }
 
     // Keeps whom it woke, as the real one wakes only one parked (resting).

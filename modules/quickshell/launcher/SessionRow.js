@@ -122,9 +122,11 @@ function drawn(row, windowed, parked, top) {
 }
 
 // Whether a session stands at the top, gone to by name as the void is,
-// from its `presence` as session.rs's at_top reads it: a name it says.
+// from its `presence` as session.rs's at_top reads it: a name it says, as
+// a string and not empty.
 function standsAtTop(presence) {
-    return String(presence?.standsAtTop?.name ?? "") !== "";
+    const name = presence?.standsAtTop?.name;
+    return typeof name === "string" && name !== "";
 }
 
 // The shell's own acts for a session's row, `offered`'s fallback: for one
@@ -142,16 +144,32 @@ function fallbackOf(windowed, parked) {
     return windowed ? ["switch", "talk"] : ["talk"];
 }
 
-// The addresses of the sessions the shell holds parked (Sessions.parked),
-// upper-cased, each by its own address, the one its row is keyed by, so a
-// row asks whether its session is parked in one lookup. An address one
-// parked session only lists is another's own (the agents daemon's
-// cells.rs: the one that is it now wins), so it parks none but its own,
-// as the daemon judges parked from a session's own record.
-function parkedSet(parked) {
-    return new Set((Array.isArray(parked) ? parked : [])
-        .map(one => String(one?.address ?? "").toUpperCase())
-        .filter(address => address !== ""));
+// Who goes by `address` among the shell's `parked` (Sessions.parked),
+// beside its `running`, as the agents daemon's cells.rs judges a name two
+// sessions go by: the one that is it now wins. So a running one whose own
+// it is wins, and none parked is it, failing open on a live session's
+// Stop; else the parked one whose own it is; else one only listing it, as
+// a link may name an address a session went by once. Sessions.parkedAs.
+function parkedOf(parked, running, address) {
+    const upper = String(address ?? "").toUpperCase();
+    const owns = one => upper !== "" && String(one?.address ?? "").toUpperCase() === upper;
+    const lists = one => (one?.presence?.addresses ?? []).some(each =>
+        String(each ?? "").toUpperCase() === upper);
+    const resting = Array.isArray(parked) ? parked : [];
+    if (upper === "" || (Array.isArray(running) ? running : []).some(owns)) {
+        return null;
+    }
+    return resting.find(owns) ?? resting.find(lists) ?? null;
+}
+
+// The own addresses, upper-cased, of the `parked` that parkedOf finds by
+// them, those no running one owns, so a row, keyed by its session's own
+// address, asks whether it's parked in one lookup, by parkedOf's rule.
+function parkedSet(parked, running) {
+    const own = list => (Array.isArray(list) ? list : [])
+        .map(one => String(one?.address ?? "").toUpperCase()).filter(address => address !== "");
+    const live = new Set(own(running));
+    return new Set(own(parked).filter(address => !live.has(address)));
 }
 
 // The act a served orchestration's row names by `key` that the shell

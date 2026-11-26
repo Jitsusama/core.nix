@@ -76,6 +76,7 @@
     "Viewers.js"
     "Waiting.js"
     "launcher/Order.js"
+    "launcher/SessionRow.js"
   ];
   "SessionTalks.js" = [
     "TalkLine.js"
