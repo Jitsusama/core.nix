@@ -1,0 +1,93 @@
+//! When the safe word's Slack reader over a tool gateway tells Joel it
+//! can't hear Slack, and what it asks of him, since the gateway's sign-in
+//! isn't Slack's.
+
+use pineapple::deaf::{Change, Deaf, Deafness, Round, UNREACHED, waits, waits_on_gateway};
+
+const AT: u64 = 1_795_000_000_000;
+
+#[test]
+fn a_gateway_unreached_past_its_rounds_is_told_as_deaf_and_heard_again_untold() {
+    let mut deaf = Deaf::through_gateway();
+    let round = |n: u32| AT + u64::from(n) * 30_000;
+    for n in 1..=UNREACHED + 1 {
+        assert_eq!(
+            deaf.heard(Round::Unasked, round(n)),
+            Change::Keep,
+            "round {n} unasked isn't told yet"
+        );
+    }
+    let at = round(UNREACHED + 2);
+    assert_eq!(
+        deaf.heard(Round::Unasked, at),
+        Change::Tell(waits_on_gateway(Deafness::Unreached, at, at)),
+        "a gateway unreached past its rounds is told, once the cause has held"
+    );
+    let item = &waits_on_gateway(Deafness::Unreached, at, at)["items"][0];
+    assert!(
+        item["why"]
+            .as_str()
+            .is_some_and(|why| why.contains("can't be reached"))
+            && item["doneWhen"] == serde_json::json!({"by": "person"}),
+        "it says the gateway can't be reached, and only Joel marks it done: {item}"
+    );
+    assert_eq!(
+        deaf.heard(Round::Unasked, round(UNREACHED + 3)),
+        Change::Keep,
+        "told once, not each round"
+    );
+    assert_eq!(
+        deaf.heard(Round::Heard, round(UNREACHED + 4)),
+        Change::Untell,
+        "heard again, the row is taken away"
+    );
+    let mut keyring = Deaf::new();
+    let _ = keyring.heard(Round::Heard, AT);
+    for n in 1..=3 * UNREACHED {
+        assert_eq!(
+            keyring.heard(Round::Unasked, round(n)),
+            Change::Keep,
+            "the keyring reader counts a round unasked neither way, round {n}"
+        );
+    }
+}
+
+#[test]
+fn a_reader_through_a_gateway_never_sends_joel_to_sign_in_to_slack() {
+    let mut deaf = Deaf::through_gateway();
+    let refused = Round::Deaf(Deafness::Refused);
+    deaf.heard(refused, AT);
+    let told = deaf.heard(refused, AT + 30_000);
+    assert_eq!(
+        told,
+        Change::Tell(waits_on_gateway(
+            Deafness::Refused,
+            AT + 30_000,
+            AT + 30_000
+        )),
+        "told in the gateway's words"
+    );
+    for why in [Deafness::Refused, Deafness::NoSignIn] {
+        let item = &waits_on_gateway(why, AT, AT)["items"][0];
+        let said = item["why"].as_str().unwrap_or_default();
+        assert!(
+            said.contains("tool gateway") && !said.contains("keyring"),
+            "{why:?} names the gateway's sign-in: {said}"
+        );
+        assert_eq!(
+            item["doneWhen"],
+            serde_json::json!({"by": "person"}),
+            "{why:?} is marked done by Joel alone, since Slack's sign-in mends nothing"
+        );
+        assert!(
+            !item["steps"].to_string().contains("Sign in to Slack"),
+            "{why:?} sends him to no Slack sign-in: {}",
+            item["steps"]
+        );
+    }
+    assert_eq!(
+        waits_on_gateway(Deafness::Unreadable, AT, AT),
+        waits(Deafness::Unreadable, AT, AT),
+        "what Slack's answers say is the same either way"
+    );
+}
