@@ -10,6 +10,8 @@ tests/vm/network/wifi.nix runs this through pytest inside the driver (tests/lib/
 its opening comment says what the test proves. The tests run in the order written, each taking the
 machine on from where the one before left it, so one run alone with -k starts from Lantern joined
 and may not find what an earlier one set up. wifid as the tests reach it is wifi_session.py.
+Long because its subtests share the one machine's two points and the card each leaves where the
+next begins, which a split would only boot again.
 """
 
 from __future__ import annotations

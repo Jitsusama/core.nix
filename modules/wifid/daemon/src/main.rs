@@ -38,6 +38,7 @@ mod face;
 mod frequencies;
 mod learn;
 mod link;
+mod look;
 mod lookup;
 mod measure;
 mod moves;
@@ -92,6 +93,7 @@ use face::Face;
 use frequencies::Avoided;
 use learn::Learned;
 use link::Link;
+use look::{Again, Ended, Looked, Looks};
 use network::{Account, Address, Inner, Method, Network, Security};
 use others::Others;
 use secret::{Credentials, Secrets};
@@ -101,7 +103,7 @@ use stall::Stalls;
 use state::{Progress, Reach, State, Trouble};
 use store::{Saved, Store};
 use supplicant::{InterfaceProxy, JoinableProxy, Step, SupplicantProxy};
-use transition::{Again, Ended, Heed, Looked, Looks, Request};
+use transition::{Heed, Request};
 
 /// Where wifid keeps what it must remember between starts.
 const STATE: &str = "/var/lib/wifid";
