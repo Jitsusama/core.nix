@@ -613,8 +613,11 @@ fn a_measure_of_what_holds_the_disks_journals_what_it_read() {
     let mut guard = home.guard(home.config("100%", "100%"));
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
     let mut at = 0.0;
+    let mut walls = Vec::new();
     while walks(&home, "holders").is_empty() && std::time::Instant::now() < deadline {
-        guard.step(&tick_at(at), &CALM).unwrap();
+        let tick = tick_at(at);
+        walls.push(tick.wall);
+        guard.step(&tick, &CALM).unwrap();
         at += 5.0;
         // Its thread is joined at the next step that finds it done.
         std::thread::sleep(std::time::Duration::from_millis(50));
@@ -626,6 +629,14 @@ fn a_measure_of_what_holds_the_disks_journals_what_it_read() {
         "the measure wasn't journaled once: {walked:?}"
     );
     assert!(walked[0]["seconds"].as_f64() >= Some(0.0), "{walked:?}");
+    // Stamped when it began, so it sorts beside what it ran with, not
+    // at the later step that found it done.
+    assert!(walls.len() > 1, "no later step joined the measure");
+    assert_eq!(
+        walked[0]["at"].as_f64(),
+        walls.first().copied(),
+        "the measure wasn't stamped when it began: {walked:?}"
+    );
     if cfg!(target_os = "linux") {
         assert!(
             walked[0]["read"].is_u64(),

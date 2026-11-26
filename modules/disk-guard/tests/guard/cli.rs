@@ -633,8 +633,9 @@ fn the_journal_says_which_walk_read_how_much_and_for_how_long() {
     assert!(
         row.is_some_and(|row| row.contains("holders")
             && row.contains("9.0 GiB")
+            && row.contains(&format!("in {}", disk_guard::words::span(95.0)))
             && !row.contains('?')),
-        "a walk should say which, what it read and no band: {out}"
+        "a walk should say which, what it read, for how long and no band: {out}"
     );
 }
 

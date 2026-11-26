@@ -565,8 +565,8 @@ pub struct Guard {
     /// What holds the disks, as last measured and when, in wall seconds,
     /// and how much each grew in the day before.
     measured: Measured,
-    /// The thread measuring them, while it does, giving how long it took,
-    /// in seconds.
+    /// The thread measuring them, while it does, giving how long it took
+    /// and what it read from disk.
     measuring: Option<std::thread::JoinHandle<Walked>>,
     /// When the last measure began, how full each disk was then, and how
     /// long it took once it's done.
@@ -982,10 +982,13 @@ impl Guard {
         if let Some(thread) = self.measuring.take()
             && let Ok(walked) = thread.join()
         {
-            if let Some(began) = self.began.as_mut() {
+            // Stamped when it began, as every other walk is, so it sorts
+            // beside the pass it ran with rather than at this later step.
+            let at = self.began.as_mut().map_or(now, |began| {
                 began.took = walked.seconds;
-            }
-            self.journal_walk(now, "holders", walked);
+                began.at
+            });
+            self.journal_walk(at, "holders", walked);
         }
         let budget = self.config.budget;
         let pressed = self.watched.values().any(|watched| {
