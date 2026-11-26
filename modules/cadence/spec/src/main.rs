@@ -19,11 +19,16 @@
 //! (../src/axes/asked.rs), on their own: watched apart, kept apart and
 //! made again after a minute, since they read one file in milliseconds
 //! and an ask's owner may write it at any time (1JQPPC, 2026-11-26,
-//! 4443be2d).
+//! 4443be2d). Each place's read has a deadline of its own, past which
+//! cadence is stopped and the place keeps its last rows, so a Spec read
+//! that hangs, on a git lock or a niri that doesn't answer, never holds
+//! Asked For's rows back for longer than Spec's deadline.
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::sync::{Arc, mpsc};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use daemon_serve::asks::Domain;
@@ -40,12 +45,14 @@ const DOMAIN: Domain = Domain {
     named_only: &[],
 };
 
-/// A place it serves: its name, how cadence is asked for its rows, and how
-/// long the rows last made stand before a watch has them made again.
+/// A place it serves: its name, how cadence is asked for its rows, how
+/// long the rows last made stand before a watch has them made again, and
+/// how long a read may take before it's stopped.
 struct Place {
     name: &'static str,
     flag: &'static str,
     fresh: Duration,
+    deadline: Duration,
 }
 
 /// The places it serves, Spec first.
@@ -54,11 +61,15 @@ const PLACES: [Place; 2] = [
         name: "spec",
         flag: "--served",
         fresh: Duration::from_mins(5),
+        // It takes seconds, so a minute is a read gone wrong.
+        deadline: Duration::from_mins(1),
     },
     Place {
         name: "asked",
         flag: "--asked",
         fresh: Duration::from_mins(1),
+        // It reads two files in milliseconds.
+        deadline: Duration::from_secs(10),
     },
 ];
 
@@ -175,35 +186,26 @@ fn waiting(watched: bool, since: Option<Duration>, fresh: Duration) -> Option<Du
 }
 
 /// A place's rows and headline as cadence makes them now, or none where
-/// it failed or read nothing, so the last rows stay. cadence's own words
-/// on why go to the journal, since its stderr is this daemon's.
+/// it failed, read nothing or ran past the place's deadline, so the last
+/// rows stay. cadence's own words on why go to the journal, since its
+/// stderr is this daemon's.
 fn made(asking: &Asking, place: &Place) -> Option<(Vec<Value>, Value)> {
-    let ran = Command::new(&asking.cadence)
+    let mut command = Command::new(&asking.cadence);
+    command
         .arg("axes")
         .arg(place.flag)
         .arg(&asking.words)
         .stdin(Stdio::null())
-        .stderr(Stdio::inherit())
-        .output();
-    let ran = match ran {
-        Ok(ran) if ran.status.success() => ran,
-        Ok(ran) => {
-            eprintln!(
-                "cadence-spec: cadence ended {}; {} keeps its last rows",
-                ran.status, place.name
-            );
-            return None;
-        }
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit());
+    let printed = match within(&mut command, place.deadline) {
+        Ok(printed) => printed,
         Err(why) => {
-            eprintln!(
-                "cadence-spec: {} couldn't run: {why}; {} keeps its last rows",
-                asking.cadence.display(),
-                place.name
-            );
+            eprintln!("cadence-spec: {why}; {} keeps its last rows", place.name);
             return None;
         }
     };
-    let rows = parsed(&ran.stdout, place.name);
+    let rows = parsed(&printed, place.name);
     if rows.is_none() {
         eprintln!(
             "cadence-spec: cadence's rows didn't read as rows; {} keeps its last",
@@ -211,6 +213,45 @@ fn made(asking: &Asking, place: &Place) -> Option<(Vec<Value>, Value)> {
         );
     }
     rows
+}
+
+/// What `command` printed, where it ended well within `deadline`; else
+/// why not, the command stopped where it ran past. Its output is read as
+/// it comes, so a long answer can't fill the pipe and hold it up.
+fn within(command: &mut Command, deadline: Duration) -> Result<Vec<u8>, String> {
+    let program = command.get_program().to_string_lossy().into_owned();
+    let mut child = command
+        .spawn()
+        .map_err(|why| format!("{program} couldn't run: {why}"))?;
+    let mut out = child.stdout.take().ok_or("its output wasn't kept")?;
+    let reading = thread::spawn(move || {
+        let mut printed = Vec::new();
+        out.read_to_end(&mut printed).map(|_| printed)
+    });
+    let started = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if started.elapsed() < deadline => thread::sleep(Duration::from_millis(20)),
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!(
+                    "{program} ran past {} s, so it was stopped",
+                    deadline.as_secs()
+                ));
+            }
+            Err(why) => return Err(format!("{program} couldn't be waited on: {why}")),
+        }
+    };
+    if !status.success() {
+        return Err(format!("cadence ended {status}"));
+    }
+    match reading.join() {
+        Ok(Ok(printed)) => Ok(printed),
+        Ok(Err(why)) => Err(format!("cadence's output couldn't be read: {why}")),
+        Err(_) => Err("cadence's output couldn't be read".to_owned()),
+    }
 }
 
 /// The rows and headline in what cadence printed for `place`, the
@@ -272,6 +313,29 @@ mod tests {
         let printed = br#"{"rows": [], "head": {"said": "3 open"}}"#;
         let (_, head) = parsed(printed, "asked").expect("a headline");
         assert_eq!(head["key"], "head:asked");
+    }
+
+    #[test]
+    fn a_read_past_its_deadline_is_stopped_and_one_within_it_is_kept() {
+        let shell = std::env::var("BASH").unwrap_or_else(|_| "sh".to_owned());
+        let mut quick = Command::new(&shell);
+        quick.args(["-c", "echo made"]).stdout(Stdio::piped());
+        assert_eq!(
+            within(&mut quick, Duration::from_secs(5)),
+            Ok(b"made\n".to_vec())
+        );
+        let mut hung = Command::new(&shell);
+        hung.args(["-c", "sleep 30"]).stdout(Stdio::piped());
+        let started = Instant::now();
+        let stopped = within(&mut hung, Duration::from_millis(200));
+        assert!(stopped.is_err_and(|why| why.contains("ran past")));
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "a hung read is stopped at its deadline, not waited out"
+        );
+        let mut failing = Command::new(&shell);
+        failing.args(["-c", "exit 3"]).stdout(Stdio::piped());
+        assert!(within(&mut failing, Duration::from_secs(5)).is_err());
     }
 
     #[test]

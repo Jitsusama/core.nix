@@ -14,6 +14,12 @@
 //! leading, then those due soonest, then those given no date, oldest
 //! asked first. Times are served as `{at, as}` for the shell to word, so a
 //! row read at 13:59 still says how it stands at 14:01.
+//!
+//! The list is read whole as the hour reads it (hour/ledger.rs): one
+//! written over, holding fewer asks than were read in it before, is unread
+//! rather than served as most of his asks gone, so cadence-spec keeps the
+//! last rows, and one never seen and not there holds no asks yet. What
+//! was seen of it is kept in `asked.json`, apart from the hour's.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -26,8 +32,9 @@ use terminal_kit::Failure;
 use super::probes::{self, Probed};
 use super::spec::{launcher_words, quests, titled};
 use super::words::Words;
+use crate::hour::ledger::{self, Seen};
 use crate::tracking::{self, Tracking};
-use crate::whole::text_lines;
+use crate::whole::write_whole;
 use crate::{failed, folders, now_ms, wrongly};
 
 /// The place its rows are served in.
@@ -39,15 +46,36 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
         return Err(wrongly("axes", "--asked takes the launcher's words alone"));
     };
     let words = launcher_words(&vocabulary)?;
-    let (home, state_home, _) = folders().map_err(failed)?;
-    let asks = fs::read(state_home.join("mission/asks.jsonl"))
-        .map(|bytes| text_lines(&bytes).0)
-        .map_err(|why| failed(format!("can't read the asks: {why}")))?;
+    let (home, state_home, folder) = folders().map_err(failed)?;
+    let now = now_ms() / 1000;
+    let seen_at = folder.join("asked.json");
+    let mut seen: Seen = fs::read_to_string(&seen_at)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default();
+    let (asks, unread) = ledger::whole(&state_home.join("mission/asks.jsonl"), &mut seen, now);
+    if let Err(why) = serde_json::to_string(&seen)
+        .map_err(std::io::Error::other)
+        .and_then(|text| write_whole(&seen_at, &text))
+    {
+        eprintln!("cadence: what Asked For saw of the asks list can't be kept: {why}");
+    }
+    if let Some(why) = unread {
+        return Err(failed(format!("the asks list is unread, as {why}")));
+    }
     let open = open(&asks);
     let owners: BTreeSet<&str> = open.iter().map(|ask| ask.answers.as_str()).collect();
     let titles = titled(&quests(&home), &owners);
-    let probed = probes::read(&probes::gather(&state_home));
-    let made = made(&open, &probed, &titles, &words, now_ms() / 1000);
+    let runs = probes::gather(&state_home);
+    let unrun = probes::unread(&runs);
+    if unrun > 0 {
+        eprintln!(
+            "cadence: {unrun} lines of the probes record aren't runs, so their asks read as \
+             not run"
+        );
+    }
+    let probed = probes::read(&runs);
+    let made = made(&open, &probed, &titles, &words, now);
     println!("{}", json!({"rows": made.0, "head": made.1}));
     Ok(())
 }

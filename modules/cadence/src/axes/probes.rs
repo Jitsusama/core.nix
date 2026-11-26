@@ -40,23 +40,36 @@ pub fn gather(state_home: &Path) -> String {
         .unwrap_or_default()
 }
 
+/// One run as a line of the record gives it: its ask, when, whether it
+/// passed, the switch it read and who ran it.
+type Run = (String, i64, bool, Option<u64>, String);
+
+/// The run `line` records, or none where it has no ask, time or verdict.
+fn run(line: &str) -> Option<Run> {
+    let run = serde_json::from_str::<Value>(line).ok()?;
+    Some((
+        run["ask"].as_str().filter(|id| !id.is_empty())?.to_owned(),
+        seconds(&run["at"])?,
+        run["passed"].as_bool()?,
+        run["switch"].as_u64(),
+        run["by"].as_str().unwrap_or("").to_owned(),
+    ))
+}
+
+/// How many lines of `text` hold something but no run, so a writer using
+/// another shape is said rather than read as every probe not run yet.
+#[must_use]
+pub fn unread(text: &str) -> usize {
+    text.lines()
+        .filter(|line| !line.trim().is_empty() && run(line).is_none())
+        .count()
+}
+
 /// How each ask's probe stands, by the ask's id, from the runs in `text`
 /// in any order. A line with no ask, time or verdict is no run.
 #[must_use]
 pub fn read(text: &str) -> BTreeMap<String, Probed> {
-    let mut runs: Vec<(String, i64, bool, Option<u64>, String)> = text
-        .lines()
-        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
-        .filter_map(|run| {
-            Some((
-                run["ask"].as_str().filter(|id| !id.is_empty())?.to_owned(),
-                seconds(&run["at"])?,
-                run["passed"].as_bool()?,
-                run["switch"].as_u64(),
-                run["by"].as_str().unwrap_or("").to_owned(),
-            ))
-        })
-        .collect();
+    let mut runs: Vec<Run> = text.lines().filter_map(run).collect();
     runs.sort_by_key(|(id, at, ..)| (id.clone(), *at));
     let mut probed: BTreeMap<String, Probed> = BTreeMap::new();
     for (id, at, passed, switch, by) in runs {
@@ -76,11 +89,19 @@ pub fn read(text: &str) -> BTreeMap<String, Probed> {
     probed
 }
 
+/// Below this, a run timed by a number is timed in seconds, since in
+/// milliseconds it would have run in 1973, and in seconds in 5138.
+const SECONDS_UNDER: i64 = 100_000_000_000;
+
 /// A run's time in seconds: written as a time, or as a number of
-/// milliseconds, as the first runs were.
+/// milliseconds, as the first runs were, or of seconds.
 fn seconds(at: &Value) -> Option<i64> {
-    if let Some(ms) = at.as_i64() {
-        return Some(ms / 1000);
+    if let Some(number) = at.as_i64() {
+        return Some(if number < SECONDS_UNDER {
+            number
+        } else {
+            number / 1000
+        });
     }
     at.as_str()?
         .parse::<Timestamp>()
@@ -143,6 +164,12 @@ mod tests {
     fn a_run_timed_in_milliseconds_reads_as_one_timed_by_the_clock() {
         let text = r#"{"ask": "d4", "at": 1764176400000, "passed": true}"#;
         assert_eq!(read(text)["d4"].at, 1_764_176_400);
+        let text = r#"{"ask": "d4", "at": 1764176400, "passed": true}"#;
+        assert_eq!(
+            read(text)["d4"].at,
+            1_764_176_400,
+            "one timed in seconds isn't read as run in 1970"
+        );
     }
 
     #[test]
@@ -153,8 +180,14 @@ mod tests {
             r#"{"ask": "e5", "passed": true}"#,
             r#"{"ask": "e5", "at": "2026-11-26T12:00:00-05:00", "passed": "yes"}"#,
             "not json",
+            "",
         ]
         .join("\n");
         assert!(read(&text).is_empty());
+        assert_eq!(
+            unread(&text),
+            5,
+            "each line holding no run is counted, a blank one not"
+        );
     }
 }
