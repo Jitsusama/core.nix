@@ -167,7 +167,7 @@ pub(super) fn own_in(
                 let mut line = json!({"at": at, "what": what, "owner": owner, "heard_by": OWNER});
                 saying.on(&mut line);
                 lines.push(line.to_string());
-                match saying.says() {
+                match saying.says(false) {
                     more if more.is_empty() => {
                         format!("pain-points: wrote {owner}'s miss at {at}, owing its test")
                     }
@@ -180,7 +180,10 @@ pub(super) fn own_in(
                     return Ok((None, said));
                 }
                 lines[index] = line.to_string();
-                format!("pain-points: {owner}'s miss at {at} now {}", saying.says())
+                format!(
+                    "pain-points: {owner}'s miss at {at} now {}",
+                    saying.says(false)
+                )
             }
             _ => {
                 let refused = format!("a miss in {name} is at {at} already");

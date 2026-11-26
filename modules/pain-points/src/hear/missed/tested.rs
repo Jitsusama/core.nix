@@ -156,11 +156,14 @@ impl Saying<'_> {
         said && fixed && moved
     }
 
-    /// How the miss reads once this is said, or nothing for nothing said.
-    fn says(self) -> String {
+    /// How the miss reads once this is said, or nothing for nothing said;
+    /// one `still` its owner's, where more than that was said, is said to
+    /// be, so it doesn't read as moved.
+    fn says(self, still: bool) -> String {
         let fixed = self.fix.map(|fix| format!("names its fix, {fix}"));
         let said = self.said.map(Said::says);
-        let moved = self.owner.map(|owner| format!("is {owner}'s"));
+        let still = if still { "still " } else { "" };
+        let moved = self.owner.map(|owner| format!("is {still}{owner}'s"));
         said.into_iter()
             .chain(fixed)
             .chain(moved)
@@ -295,6 +298,7 @@ fn name_in<'a>(ledger: &Path, at: &str, said: impl Into<Saying<'a>>) -> Result<S
         let mut found = 0;
         let mut heard = false;
         let mut already = false;
+        let mut still = false;
         let mut lines: Vec<String> = before
             .lines()
             .map(|line| {
@@ -306,6 +310,11 @@ fn name_in<'a>(ledger: &Path, at: &str, said: impl Into<Saying<'a>>) -> Result<S
                 }
                 found += 1;
                 heard = read["heard_by"] != owned::OWNER;
+                still = said.owner.is_some_and(|owner| {
+                    read["owner"]
+                        .as_str()
+                        .is_some_and(|was| was.eq_ignore_ascii_case(owner))
+                });
                 already = said.on(&mut read);
                 read.to_string()
             })
@@ -321,11 +330,11 @@ fn name_in<'a>(ledger: &Path, at: &str, said: impl Into<Saying<'a>>) -> Result<S
             return Err(failed.try_this("its test, as a heard miss closes on its landing"));
         }
         if already {
-            let said = format!("pain-points: the miss at {at} already {}", said.says());
+            let said = format!("pain-points: the miss at {at} already {}", said.says(false));
             return Ok((None, said));
         }
         lines.push(String::new());
-        let said = format!("pain-points: the miss at {at} now {}", said.says());
+        let said = format!("pain-points: the miss at {at} now {}", said.says(still));
         Ok((Some(lines.join("\n")), said))
     })
 }
@@ -564,6 +573,25 @@ mod tests {
             (&line["owner"], &line["owned_before"], &line["test"]),
             (&json!("85PKB2"), &json!(["WCJQSG", "KP0L6A"]), &json!(test)),
             "a move with its test didn't take both, keeping each owner before: {line}"
+        );
+    }
+
+    #[test]
+    fn a_test_named_with_the_owner_it_has_says_it_stays_theirs_not_moved() {
+        let heard = json!({"at": AT, "owner": "KP0L6A", "heard_by": "x"});
+        let path = ledger("kept-owner", &format!("{heard}\n"));
+        let test = "core modules/x/src/y.rs a_test";
+        let said =
+            named(&flags(&path, &[("--owner", "kp0l6a"), ("--test", test)])).expect("tested");
+        assert!(
+            said.contains("now names its test") && said.contains("is still kp0l6a's"),
+            "a test named with the owner it had read as a move: {said}"
+        );
+        let kept = fs::read_to_string(&path).expect("the ledger");
+        let line: Value = serde_json::from_str(kept.trim()).expect("the miss's line");
+        assert!(
+            line.get("owned_before").is_none(),
+            "a miss kept by its owner gained an owner before: {line}"
         );
     }
 
