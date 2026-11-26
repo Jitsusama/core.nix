@@ -38,7 +38,7 @@ unchanged.
 
 --- a/packages/coding-agent/src/modes/interactive/interactive-mode.ts
 +++ b/packages/coding-agent/src/modes/interactive/interactive-mode.ts
-@@ -1185,12 +1185,56 @@ export class InteractiveMode {
+@@ -1185,12 +1185,58 @@ export class InteractiveMode {
  		this.setupEditorSubmitHandler();
  		this.ui.requestRender();
  
@@ -61,9 +61,11 @@ unchanged.
 +				// Sent now rather than requested: a session_start that holds the thread, reading a stalled
 +				// disk, would hold a requested frame with it.
 +				this.ui.renderNow();
-+			} catch {
++			} catch (error) {
 +				// A renderer wanting what its session_start loads: drawn after the bind, as startup draws.
-+				// Only what this draw added goes; the notices startup showed before it stay.
++				// Only what this draw added goes; the notices startup showed before it stay. Said on
++				// stderr, which a host's journal keeps, so a window blank through its bind says why.
++				process.stderr.write(`pi-host: the early draw threw, so it draws after the bind: ${String(error)}\n`);
 +				this.chatContainer.children.splice(shown);
 +				prompts.length = 0;
 +				drawn = undefined;

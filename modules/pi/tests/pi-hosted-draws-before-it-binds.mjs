@@ -297,6 +297,7 @@ it("a hosted screen whose early draw throws draws after the bind, as startup doe
     mode.editor.addToHistory("said");
     throw new Error("no state yet");
   });
+  const said = mock.method(process.stderr, "write", () => true);
   const started = starting(mode);
   await binding;
   assert.deepEqual(
@@ -313,6 +314,11 @@ it("a hosted screen whose early draw throws draws after the bind, as startup doe
   assert.equal(mode.renderSessionEntries.mock.callCount(), 0);
   assert.equal(mode.rebuildChatFromMessages.mock.callCount(), 0);
   assert.equal(mode.subscribeToAgent.mock.callCount(), 1, "startup failed for a renderer");
+  assert.deepEqual(
+    said.mock.calls.map((call) => call.arguments[0]),
+    ["pi-host: the early draw threw, so it draws after the bind: Error: no state yet\n"],
+    "it didn't say once why the window waited for the bind",
+  );
   mode.themeChangeUnsubscribe?.();
 });
 
@@ -321,13 +327,28 @@ it("a hosted screen whose early frame throws draws after the bind", async () => 
   mode.ui.renderNow.mock.mockImplementationOnce(() => {
     throw new Error("a renderer wants its state");
   });
+  const said = mock.method(process.stderr, "write", () => true);
   const started = starting(mode);
   await binding;
   bound();
   await started;
   assert.deepEqual(steps, ["drawn", "bind", "drawn", "sent"], "it was not drawn after the bind");
   assert.equal(mode.renderSessionEntries.mock.callCount(), 0);
+  assert.equal(said.mock.callCount(), 1, "it didn't say once why the window waited for the bind");
   mode.themeChangeUnsubscribe?.();
+});
+
+it("stands in only for parts pi's screen has", () => {
+  // The screen above mocks these; were pi to rename one, the stub would
+  // test a part startup no longer calls.
+  for (const part of [
+    "renderInitialMessages",
+    "renderSessionEntries",
+    "rebuildChatFromMessages",
+    "subscribeToAgent",
+  ]) {
+    assert.equal(typeof InteractiveMode.prototype[part], "function", `pi's screen has no ${part}`);
+  }
 });
 
 it("a plain pi still draws its conversation after its extensions bind", async () => {
