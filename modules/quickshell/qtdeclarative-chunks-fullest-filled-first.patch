@@ -21,19 +21,21 @@ The kept chunks are put in that order where they lie, which the
 partition before it already shuffles each sweep. The list the sort
 uses is the allocator's, keeping its room from sweep to sweep, so a
 sweep allocates nothing once it's grown. It's emptied before each sweep,
-so one cut short leaves the next nothing stale to write back, and after,
-so it holds no chunk a later sweep frees. Ties go by address through
+so it starts empty whatever came before, and after, so it holds no chunk
+a later sweep frees. Ties go by address through
 std::less, which orders any two pointers, so the order is the same from
 sweep to sweep.
 
 ---
 --- a/src/qml/memory/qv4mm.cpp
 +++ b/src/qml/memory/qv4mm.cpp
-@@ -28,4 +28,5 @@
+@@ -28,6 +28,7 @@
  #include <algorithm>
  #include <chrono>
  #include <cstdlib>
 +#include <functional>
+ 
+ //#define MM_STATS
  
 @@ -546,6 +547,30 @@ void BlockAllocator::sweep()
          return chunks.at(i)->sweep(engine);
@@ -50,9 +52,9 @@ sweep to sweep.
 +    // chunk, which it fills at least half of. The partition above already shuffles the chunks
 +    // each sweep, so nothing counts on the order they lay in. The list is the allocator's,
 +    // keeping its room from sweep to sweep, so a sweep allocates nothing once it has grown.
-+    // It's emptied before, so a sweep cut short leaves the next nothing stale to write back,
-+    // and after, so it holds no chunk a later sweep frees. Ties go by address through
-+    // std::less, which orders any two pointers, so the order is the same from sweep to sweep.
++    // It's emptied before, so it starts empty whatever came before, and after, so it holds no
++    // chunk a later sweep frees. Ties go by address through std::less, which orders any two
++    // pointers, so the order is the same from sweep to sweep.
 +    byUse.clear();
 +    for (auto kept = chunks.begin(); kept != firstEmptyChunk; ++kept)
 +        byUse.emplace_back((*kept)->nUsedSlots(), *kept);
