@@ -712,11 +712,21 @@ in
 
   config.systemd.user.services = {
     local-sites-home = {
-      Unit.Description = "Builds the home of Joel's local sites from its record";
+      Unit = {
+        Description = "Builds the home of Joel's local sites from its record";
+        # A build that fails at login, its record mid-write or its store
+        # not yet there, is tried again, so the home isn't left unready
+        # until the record next moves; five failures in five minutes is a
+        # record it can't read, left to the journal and the next change.
+        StartLimitIntervalSec = 300;
+        StartLimitBurst = 5;
+      };
       Service = {
         Type = "oneshot";
         ExecStart = "${builder} --into=%t/${homeFolder} ${builtFrom}";
         Slice = "background.slice";
+        Restart = "on-failure";
+        RestartSec = "5s";
       };
       # At login too, since a reboot empties the runtime folder the home is in.
       Install.WantedBy = [ "default.target" ];
