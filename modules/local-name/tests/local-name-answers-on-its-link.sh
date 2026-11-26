@@ -2,14 +2,16 @@
 # Checks the job that makes a Mac's local name answer on its network, with a
 # stand-in scutil that lists the links macOS would, read by read, and a
 # stand-in dns-sd that records what it's asked to answer and answers until
-# it's ended, a moment late, or ends by itself when told to, saying why:
+# it's ended, a moment late, or ends by itself when told to, saying why,
+# and a stand-in date that holds the job's stamp until that reply:
 # the name answers the first wired or Wi-Fi link's address, past a tunnel
 # or a bridge listed before it and never one from the IPv6 list, on that
 # link alone and as a host of its own; a moved address, another link or
 # none ends it, and its answer, waited for, for launchd to start it again;
 # with no link, or a scutil that fails, it waits, saying which once, and a
 # scutil that fails while it answers changes nothing; it says the name is
-# offered, not that it answers, before dns-sd says; and an answer that ends
+# offered, not that it answers, before dns-sd says, as its log's order
+# shows; and an answer that ends
 # by itself ends it, what dns-sd said and the end both in its log.
 # usage: local-name-answers-on-its-link.sh <answer.sh> <bash>
 set -euo pipefail
@@ -58,16 +60,21 @@ fi
 sleep infinity &
 wait
 EOF
-# The job stamps what it says with date. When the answer is to end, the
-# stamp waits for dns-sd's reply, bounded at a second, so a job that starts
-# dns-sd before it says the name is offered always has the reply first in
-# its log, and one that says it first, with no dns-sd yet to reply, waits
-# out the second and still has its line first.
+# The job stamps what it says with date, asked as the job asks it. When the
+# answer is to end, the stamp waits for dns-sd's reply, for up to ten
+# seconds, so a job that starts dns-sd before it says the name is offered
+# has the reply first in its log, unless its dns-sd takes longer than that
+# to start, and one that says it first, with no dns-sd yet to reply, waits
+# out the ten seconds and still has its line first. That case checks the
+# stamp was asked for, since a job stamping its lines another way would
+# skip the wait.
 cat > "$work/bin/date" <<EOF
 #!${bash}
+[ "\$*" = "-u +%Y-%m-%dT%H:%M:%SZ" ] || exit 64
+touch "$work/stamped"
 if [ -e "$work/ends" ]; then
   tries=0
-  while [ ! -e "$work/replied" ] && [ "\${tries}" -lt 10 ]; do
+  while [ ! -e "$work/replied" ] && [ "\${tries}" -lt 100 ]; do
     sleep 0.1
     tries=\$((tries + 1))
   done
@@ -115,7 +122,7 @@ nwi() {
 # Starts a case afresh.
 fresh() {
   rm -f "$work"/nwi.* "$work"/links.* "$work/linked" "$work/answers" "$work/answering" \
-    "$work/ends" "$work/replied" "$work/said"
+    "$work/ends" "$work/replied" "$work/stamped" "$work/said"
   echo 0 > "$work/reads"
 }
 # Runs the job, reading every 0 seconds, its exit in ended, what it said,
@@ -207,3 +214,5 @@ holds "an answer that ends" 1 "its-own-name.local is offered as 192.168.4.49 on 
 Got a reply for record its-own-name.local: Name in use, please choose another
 the answer for its-own-name.local on en0 ended (exit 3), so it starts again" \
   "${on_en0}"
+[ -e "$work/stamped" ] \
+  || fail "an answer that ends: its lines weren't stamped by date, so their order went unheld"
