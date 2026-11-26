@@ -1080,10 +1080,7 @@ pub fn run(config: &Config) -> Result<(), String> {
             };
             match pass(&history, config, told, &mut kept, now, &mut steps) {
                 Ok(shown) => {
-                    // Letting go of what the pass held is a step too:
-                    // under swap, freeing its picture faults it back in.
-                    steps.ended("cleared");
-                    last_status = Some((shown, Instant::now(), Instant::now()));
+                    last_status = Some((steps.cleared(shown), Instant::now(), Instant::now()));
                 }
                 Err(error) => eprintln!("a pass failed: {error}"),
             }
@@ -1288,6 +1285,14 @@ impl Steps {
             last: mark,
             spent: Vec::new(),
         }
+    }
+
+    /// A pass that worked let go of what it held, which is a step too:
+    /// under swap, freeing its picture faults it back in. Hands back
+    /// `shown`, what the pass said, so the loop ends it where it takes it.
+    fn cleared<T>(&mut self, shown: T) -> T {
+        self.ended("cleared");
+        shown
     }
 
     /// The step `name` ended now.
@@ -2137,7 +2142,7 @@ mod tests {
             "a step's costs weren't said as they were spent"
         );
         assert_eq!(
-            steps.said(begun + UNENDED - Duration::from_millis(1)),
+            steps.said(begun + UNENDED.saturating_sub(Duration::from_millis(1))),
             "logs 2.1 s, 12 MB read, 40 faults waited on, 3 pages swapped in from the disk and \
              30 from compressed memory; picture 300.0 s",
             "the moment it takes to say a pass was said as a step that didn't end"
