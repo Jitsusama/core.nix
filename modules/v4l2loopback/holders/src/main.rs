@@ -531,8 +531,11 @@ fn forget(options: &Options) {
 /// Says who holds a loopback, following the source to each node it names.
 fn loopback(events: &mut Events, options: &Options, ready: &mut Ready) {
     let nobody = BTreeSet::new();
-    let say_nobody = |ready: &mut Ready| match write(&options.output, &nobody) {
-        Ok(()) => written(ready),
+    // Nobody said is the watch serving only where it's so: no camera, or
+    // its node gone. One it couldn't watch is still there, and nobody is
+    // a guess until the watch is tried again, so it isn't ready.
+    let say_nobody = |ready: Option<&mut Ready>| match write(&options.output, &nobody) {
+        Ok(()) => ready.into_iter().for_each(written),
         Err(error) => complain(format_args!("{}: {error}", options.output.display())),
     };
     tidy(&options.output);
@@ -545,7 +548,7 @@ fn loopback(events: &mut Events, options: &Options, ready: &mut Ready) {
         else {
             if !gone {
                 say_device(&options.output, None);
-                say_nobody(ready);
+                say_nobody(Some(&mut *ready));
                 gone = true;
             }
             if let Woken::Stopped = events.sleep(Duration::from_secs(1)) {
@@ -564,7 +567,7 @@ fn loopback(events: &mut Events, options: &Options, ready: &mut Ready) {
             None,
             ready,
         );
-        say_nobody(ready);
+        say_nobody((!node.exists()).then_some(&mut *ready));
         if let Ended::Stopped = ended {
             say_device(&options.output, None);
             return;

@@ -301,6 +301,14 @@ fn while_the_camera_streams_its_log_says_what_it_gave() {
             let log = fs::read_to_string(&watch.log).unwrap();
             let last = log.lines().last().unwrap();
             assert!(last.ends_with("; then the watch stopped"), "{log}");
+            // Its file was written again as the test held the camera and
+            // as it streamed, and it's ready only once.
+            let ready = log.lines().filter(|line| line.starts_with("ready in "));
+            assert_eq!(
+                ready.count(),
+                1,
+                "the watch didn't say once that it's ready: {log}"
+            );
             return;
         }
         sleep(Duration::from_millis(50));
