@@ -20,6 +20,7 @@ let
     // lib.optionalAttrs (doors.accepts != { }) { inherit (doors) accepts; }
     // runsIn kind
   ) (lib.filterAttrs (_: doors: doors != null) cfg.declares.fence);
+  lively = cfg.declares.keptLively;
   runsIn =
     kind:
     lib.optionalAttrs (cfg.fenceRuns != null && kind != "none") {
@@ -55,4 +56,12 @@ builtins.toJSON (
   // lib.optionalAttrs (cfg.declares.hosts != [ ]) { inherit (cfg.declares) hosts; }
   // lib.optionalAttrs (fenced != { }) { fence = fenced; }
   // lib.optionalAttrs cfg.declares.piFencesItself { pi_fences_itself = true; }
+  // lib.optionalAttrs (lively != null) {
+    kept_lively = {
+      inherit (lively) cpu;
+    }
+    // lib.optionalAttrs (lively.memoryAvailable != null) {
+      memory_available = lively.memoryAvailable;
+    };
+  }
 )
