@@ -16,6 +16,11 @@ use serde_json::{Value, json};
 /// them; Wake only wakes one parked, putting nothing in its inbox.
 const STEERED: [&str; 5] = ["pause", "resume", "stop", "close", "wake"];
 
+/// Every act [`steer_of`] makes a steer of, each of which the node puts
+/// as Joel's, so the daemon takes one only from the shell (main.rs's
+/// `for_the_shell_alone`).
+pub const ACTS: [&str; 6] = ["pause", "resume", "stop", "close", "wake", "talk"];
+
 /// How long the node may take to answer a steer before the act is said
 /// to have failed, since the shell waits on its answer to say what
 /// happened, and the node answers one in milliseconds.
@@ -152,6 +157,20 @@ mod tests {
                 "steer": {"text": "what now?", "id": "talk-7", "from": "joel"}}))),
             "a talk says its words under an id of its own"
         );
+    }
+
+    #[test]
+    fn every_act_it_steers_as_joel_is_named_for_the_shell_alone() {
+        for act in ACTS {
+            let said = json!({"ask": act, "address": "P", "text": "hi"});
+            assert!(
+                matches!(steer_of(&said, 7), Some(Ok(_))),
+                "{act} is named and steers"
+            );
+        }
+        for act in STEERED {
+            assert!(ACTS.contains(&act), "{act} is named among the acts");
+        }
     }
 
     #[test]

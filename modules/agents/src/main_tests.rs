@@ -31,6 +31,7 @@ fn the_daemons_socket_takes_no_sprout_from_anyone_but_the_shell() {
         keeping,
         told,
         (stood, Said::default()),
+        Box::new(|_| None),
     );
     let socket = folder.join("agents.sock");
     let listener = serve::listen(&socket).expect("the daemon's socket");
@@ -109,6 +110,7 @@ fn the_daemons_socket_lets_no_one_but_the_shell_lift_the_stop() {
         keeping,
         told,
         (stood, words.starts),
+        Box::new(|_| None),
     );
     let socket = folder.join("agents.sock");
     let listener = serve::listen(&socket).expect("the daemon's socket");
@@ -171,6 +173,7 @@ fn the_daemons_socket_takes_no_answer_from_anyone_but_the_shell() {
         keeping,
         told,
         (stood, Said::default()),
+        Box::new(|_| None),
     );
     let socket = folder.join("agents.sock");
     let listener = serve::listen(&socket).expect("the daemon's socket");
@@ -307,6 +310,7 @@ fn the_daemons_socket_lists_no_places_for_anyone_but_the_shell() {
         keeping,
         told,
         (stood, Said::default()),
+        Box::new(|_| None),
     );
     let socket = folder.join("agents.sock");
     let listener = serve::listen(&socket).expect("the daemon's socket");
@@ -330,6 +334,62 @@ fn the_daemons_socket_lists_no_places_for_anyone_but_the_shell() {
         node.accept()
             .is_err_and(|error| error.kind() == ErrorKind::WouldBlock),
         "the node was never asked"
+    );
+    let _ = std::fs::remove_dir_all(&folder);
+}
+
+/// Each of a row's acts, a line told and feedback on the daemon's own
+/// socket, from a connection that isn't the shell's (this test's), is
+/// refused without being done, since the node takes each as Joel's, so
+/// no agent steers, talks to or tells a session as him by asking the
+/// daemon (ISXEG8's R-agents-acts-as-joel).
+#[test]
+fn the_daemons_socket_acts_as_joel_for_no_one_but_the_shell() {
+    let folder = std::env::temp_dir().join(format!("agents-as-joel-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).expect("a folder for the socket");
+    let shared = Shared::new(DOMAIN, Box::new(|_| None));
+    let (told, _heard) = mpsc::channel();
+    let stood = Arc::new(starts_stopped::Told::new(told.clone()));
+    let keeping = Keeping::read(&folder.join(starts::FILE), clock::now_ms());
+    let (done, asked) = mpsc::channel();
+    let done = std::sync::Mutex::new(done);
+    for_the_shell_alone(
+        &shared,
+        (None, Wants::default()),
+        keeping,
+        told,
+        (stood, Said::default()),
+        Box::new(move |said| {
+            let _ = done
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .send(said["ask"].clone());
+            Some(json!({"done": true}))
+        }),
+    );
+    let socket = folder.join("agents.sock");
+    let listener = serve::listen(&socket).expect("the daemon's socket");
+    serve::accept(shared, listener);
+    let asking = UnixStream::connect(&socket).expect("the daemon takes a connection");
+    let mut reading = BufReader::new(&asking);
+    for act in acts::ACTS.iter().chain(&["tell", "feedback"]) {
+        assert!(AS_JOEL.contains(act), "{act} is named as Joel's");
+        let ask = json!({"id": 1, "ask": act, "address": "P9R1KI", "text": "hi",
+            "quest": "QEST-1-SKIFF", "words": "hi", "landing": "landing:s-p:o#1"});
+        writeln!(&asking, "{ask}").expect("the act is asked");
+        let mut line = String::new();
+        reading.read_line(&mut line).expect("an answer");
+        let answer: Value = serde_json::from_str(&line).expect("one line of JSON");
+        assert_eq!(
+            (&answer["error"]["code"], &answer["error"]["message"]),
+            (&json!("refused"), &json!(NOT_AS_JOEL)),
+            "{act} refused in its own words, whatever the kernel lets be told of who asked"
+        );
+    }
+    assert!(
+        asked.try_recv().is_err(),
+        "none was done for a program that isn't the shell"
     );
     let _ = std::fs::remove_dir_all(&folder);
 }

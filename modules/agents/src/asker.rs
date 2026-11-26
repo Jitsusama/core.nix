@@ -1,24 +1,26 @@
 //! Who asked, for an ask only the shell may make: Start New Work, which
-//! begins new work as Joel (sprout.rs), and an answer, which the node
-//! takes as his (main.rs's answered). The agents daemon's socket takes
-//! any process of Joel's account, an agent's command among them, and the
-//! node judges the daemon as Joel, so a sprout an agent could ask here
-//! would start work with more than the agent's own reach, and an answer
-//! would answer its own ask as him. The kernel names the process at the
-//! other end by pidfd (`SO_PEERPIDFD`), never a pid an ask says, and its
-//! cgroup says which unit runs it: only the shell's unit, under this
-//! daemon's own account, and only the unit's main process, as its manager
-//! names it, running quickshell's own program. Other programs run in that
-//! unit too (pi-ask while Super+S talks, the shell's helpers, their
-//! children and orphans), and any of them could run a program named
-//! quickshell, so the program alone is a second line, as pineapple's
-//! peer.rs holds it (ISXEG8 on #5456). The shell in turn starts new work
-//! and answers only from Joel's own Return, never a walk from outside
-//! (Agents.qml's sprout and answerKept, Now.qml's answerLook).
+//! begins new work as Joel (sprout.rs), and an answer, a row's act, a
+//! line told or feedback, which the node takes as his (main.rs's
+//! answered and `as_joel`). The agents daemon's socket takes any process
+//! of Joel's account, an agent's command among them, and the node judges
+//! the daemon as Joel, so a sprout an agent could ask here would start
+//! work with more than the agent's own reach, an answer would answer its
+//! own ask as him, and an act would steer a session as him. The kernel
+//! names the process at the other end by pidfd (`SO_PEERPIDFD`), never a
+//! pid an ask says, and its cgroup says which unit runs it: only the
+//! shell's unit, under this daemon's own account, and only the unit's
+//! main process, as its manager names it, running quickshell's own
+//! program. Other programs run in that unit too (pi-ask while Super+S
+//! talks, the shell's helpers, their children and orphans), and any of
+//! them could run a program named quickshell, so the program alone is a
+//! second line, as pineapple's peer.rs holds it (ISXEG8 on #5456).
+//! The shell in turn starts new work and answers only from Joel's own
+//! Return, never a walk from outside (Agents.qml's sprout and
+//! answerKept, Now.qml's answerLook).
 //!
 //! What this holds to: a fenced command can't move itself out of its own
 //! cgroup, but an unfenced process of Joel's could write itself into the
-//! shell's, as any process of his may steer his sessions here already.
+//! shell's.
 //! The read is jobs-broker's (../jobs-broker/src/peer.rs), which needs
 //! the pidfd for more than this does.
 

@@ -1096,18 +1096,21 @@ def test_a_paused_sessions_return_lands_on_resume_and_a_second_sends_it(shell: S
         time.sleep(0.1)
     told = [json.loads(one.read_text()) for one in inbox.glob("*.json")]
     assert [one["act"] for one in told] == ["resume"], told
-    # A line told from anywhere, naming the quest, says who hears it before it's sent, then
-    # reaches that session's inbox as a talk does.
+    # The node takes a line told, a talk or an act as Joel's, so the daemon does none of them
+    # for a program that isn't the shell, as this test's isn't, and none reaches the inbox
+    # (ISXEG8's R-agents-acts-as-joel).
+    refused = {"error": {"code": "refused", "message": NOT_AS_JOEL}}
     asked = {"ask": "tell", "window": None, "quest": "QEST-20261107-PAUSED"}
-    assert rows_answer(asked) == {"to": "PAUSED", "name": "Paused Quest", "why": "quest"}
-    sent = rows_answer({**asked, "words": "how goes it?"})
-    assert "steered" in sent["sent"], sent
-    deadline = time.monotonic() + 10
-    while not any("text" in json.loads(one.read_text()) for one in inbox.glob("*.json")):
-        assert time.monotonic() < deadline, "the line told never reached the session's inbox"
-        time.sleep(0.1)
+    for ask in (
+        {**asked, "words": "how goes it?"},
+        {"ask": "talk", "address": "PAUSED", "text": "how goes it?"},
+        {"ask": "pause", "address": "PAUSED"},
+        {"ask": "feedback", "landing": "landing:none", "words": "too dim"},
+    ):
+        assert rows_answer(ask) == refused, ask
+    # Each is refused before the node is asked, so none can reach the inbox after its answer.
     talks = [json.loads(one.read_text()) for one in inbox.glob("*.json")]
-    assert [one["text"] for one in talks if "text" in one] == ["how goes it?"], talks
+    assert [one.get("act") for one in talks] == ["resume"], talks
 
 
 def test_a_sessions_drawer_marks_return_on_the_act_return_does(shell: Shell) -> None:
@@ -2886,6 +2889,12 @@ def arrived_shut(shell: Shell, arrive: Callable[[], None]) -> None:
         )
         time.sleep(0.1)
     made_settled(shell)
+
+
+NOT_AS_JOEL = (
+    "the agents daemon acts for you only from the launcher, and couldn't tell this came from it"
+)
+"""What the agents daemon says of an act it refused a program other than the shell."""
 
 
 def rows_answer(said: Json) -> Json:
