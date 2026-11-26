@@ -2368,16 +2368,17 @@ ShellRoot {
         // Two asking stand together in Agents Asking, never loose among the
         // to-dos (Joel, 2026-11-18 10:18), ahead of them, since each blocks
         // its session, in the hue of what it holds and counting them; one
-        // alone stood as itself, above. Asked last: B's rows all go into
-        // Agents Asking, so its heading goes, and a later pass makes it anew.
+        // alone stood as itself, above. Inside, each ask stands under its
+        // session's heading, which says whose it is and counts for nothing.
         WaitingOnYou.now = [toDo("Sign In"), toDo("Say Yes")];
         Sessions.wanting = Sessions.wanting.concat([{ address: "WANTC", title: "Session W",
             presence: { session: "s-w", addresses: [], wants: { kind: "question",
                 said: "Which?" } } }]);
         const led = now.waiting.verbs();
-        const gathered = led[0]?.verbs?.() ?? [];
+        const gathered = (led[0]?.verbs?.() ?? []).filter(row => row.heading !== true);
+        const headed = (led[0]?.verbs?.() ?? []).filter(row => row.heading === true);
         expect("two asking lead For You in Agents Asking, in its hue, counted",
-            led[0]?.key === agentsAsking && gathered.length === 2
+            led[0]?.key === agentsAsking && gathered.length === 2 && headed.length === 2
                 && led.every(row => !row.key.startsWith("on:waiting:want:"))
                 && led[0].hue === (gathered[0].hue ?? "") && led[0].hue !== "muted"
                 && led[0].side === "2",
