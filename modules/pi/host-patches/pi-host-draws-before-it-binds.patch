@@ -27,17 +27,18 @@ container. Tool and message renderers are registered as extensions load,
 before the bind, so the early draw has them; one that reads state its
 session_start loads draws those messages without it, and they stay so
 drawn until the chat is next built. One that throws for want of that
-state leaves the early draw cleared and the conversation drawn after the
-bind, as startup draws it. It hears the agent only once the bind ends,
-as before, so nothing reaches an extension before its hooks are live. A
-plain pi starts as before.
+state takes back only what the early draw added, so the notices before
+it stay and no prompt lands in the editor's history twice, and the
+conversation is drawn after the bind, as startup draws it. It hears the
+agent only once the bind ends, as before, so nothing reaches an
+extension before its hooks are live. A plain pi starts as before.
 
 Apply only to the host's private pi build; ordinary interactive pi stays
 unchanged.
 
 --- a/packages/coding-agent/src/modes/interactive/interactive-mode.ts
 +++ b/packages/coding-agent/src/modes/interactive/interactive-mode.ts
-@@ -1185,12 +1185,44 @@ export class InteractiveMode {
+@@ -1185,12 +1185,56 @@ export class InteractiveMode {
  		this.setupEditorSubmitHandler();
  		this.ui.requestRender();
  
@@ -47,6 +48,13 @@ unchanged.
 +		// still land above them, in their own container.
 +		let drawn: string[] | undefined;
 +		if (this.options.hosted) {
++			const shown = this.chatContainer.children.length;
++			const editor = this.editor;
++			const remember = editor.addToHistory;
++			// The draw's prompts reach the editor's history once it has drawn whole, so a throw part way
++			// leaves none there twice when the conversation is drawn again after the bind.
++			const prompts: string[] = [];
++			editor.addToHistory = (text: string) => void prompts.push(text);
 +			try {
 +				drawn = this.sessionManager.buildContextEntries().map((entry) => entry.id);
 +				this.renderInitialMessages();
@@ -55,9 +63,14 @@ unchanged.
 +				this.ui.renderNow();
 +			} catch {
 +				// A renderer wanting what its session_start loads: drawn after the bind, as startup draws.
-+				this.chatContainer.clear();
++				// Only what this draw added goes; the notices startup showed before it stay.
++				this.chatContainer.children.splice(shown);
++				prompts.length = 0;
 +				drawn = undefined;
++			} finally {
++				editor.addToHistory = remember;
 +			}
++			for (const prompt of prompts) remember?.call(editor, prompt);
 +		}
 +		// pi matches a tool's result to its call only within one draw.
 +		const settled = this.pendingTools.size === 0;

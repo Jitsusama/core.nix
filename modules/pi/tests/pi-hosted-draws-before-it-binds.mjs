@@ -98,7 +98,7 @@ function startingScreen(hosted, entries = [entry("said"), entry("answered")]) {
       disableAutoSync: mock.fn(),
       waitForTerminalColors: () => Promise.resolve(),
     },
-    editor: { getText: () => "", setText: mock.fn() },
+    editor: { getText: () => "", setText: mock.fn(), addToHistory: mock.fn() },
     runtimeHost: {
       session: {
         sessionManager: { isPersisted: () => false, buildContextEntries: () => [...entries] },
@@ -224,6 +224,46 @@ for (const [did, change] of [
   });
 }
 
+it("a hosted screen gives the editor the early draw's prompts in order", async () => {
+  const { mode, bound, binding } = startingScreen(true);
+  const history = mode.editor.addToHistory;
+  mode.renderInitialMessages.mock.mockImplementation(() => {
+    mode.editor.addToHistory("first");
+    mode.editor.addToHistory("second");
+  });
+  const started = starting(mode);
+  await binding;
+  assert.equal(mode.editor.addToHistory, history, "the editor kept the draw's stand-in");
+  assert.deepEqual(
+    history.mock.calls.map((call) => call.arguments[0]),
+    ["first", "second"],
+    "the early draw's prompts never reached the editor's history",
+  );
+  bound();
+  await started;
+  mode.themeChangeUnsubscribe?.();
+});
+
+it("a hosted screen keeps its early draw when a call awaits a result not added", async () => {
+  const { mode, bound, binding } = startingScreen(true);
+  // After a kill mid-tool, the conversation ends on a call with no result,
+  // and a bind that adds nothing has nothing to match it with.
+  mode.renderInitialMessages.mock.mockImplementation(() =>
+    mode.pendingTools.set("call", { waiting: true }),
+  );
+  const started = starting(mode);
+  await binding;
+  bound();
+  await started;
+  assert.equal(mode.renderSessionEntries.mock.callCount(), 0, "it drew an empty tail");
+  assert.equal(
+    mode.rebuildChatFromMessages.mock.callCount(),
+    0,
+    "it drew it all again, dropping startup's notices",
+  );
+  mode.themeChangeUnsubscribe?.();
+});
+
 it("a hosted screen draws it all again when a drawn tool call awaits its result", async () => {
   const { mode, bound, binding, entries } = startingScreen(true);
   // The early draw leaves a tool call waiting on its result, as pi's own
@@ -247,13 +287,25 @@ it("a hosted screen draws it all again when a drawn tool call awaits its result"
 
 it("a hosted screen whose early draw throws draws after the bind, as startup does", async () => {
   const { mode, bound, binding, steps } = startingScreen(true);
-  // A renderer wanting state its session_start loads throws the first time.
+  // Startup showed a notice before the draw. A renderer wanting state its
+  // session_start loads throws the first time, part way through the draw.
+  const notice = { notice: true };
+  mode.chatContainer.children.push(notice);
+  const history = mode.editor.addToHistory;
   mode.renderInitialMessages.mock.mockImplementationOnce(() => {
+    mode.chatContainer.children.push({ drawn: true });
+    mode.editor.addToHistory("said");
     throw new Error("no state yet");
   });
   const started = starting(mode);
   await binding;
-  assert.equal(mode.chatContainer.clear.mock.callCount(), 1, "half a draw was left on screen");
+  assert.deepEqual(
+    mode.chatContainer.children,
+    [notice],
+    "half a draw was left on screen, or startup's notice went with it",
+  );
+  assert.equal(mode.editor.addToHistory, history, "the editor kept the draw's stand-in");
+  assert.equal(history.mock.callCount(), 0, "half a draw's prompt reached the history");
   bound();
   await started;
   // Startup's own flush sends the frame once it is done, as stock pi does.
@@ -261,6 +313,20 @@ it("a hosted screen whose early draw throws draws after the bind, as startup doe
   assert.equal(mode.renderSessionEntries.mock.callCount(), 0);
   assert.equal(mode.rebuildChatFromMessages.mock.callCount(), 0);
   assert.equal(mode.subscribeToAgent.mock.callCount(), 1, "startup failed for a renderer");
+  mode.themeChangeUnsubscribe?.();
+});
+
+it("a hosted screen whose early frame throws draws after the bind", async () => {
+  const { mode, bound, binding, steps } = startingScreen(true);
+  mode.ui.renderNow.mock.mockImplementationOnce(() => {
+    throw new Error("a renderer wants its state");
+  });
+  const started = starting(mode);
+  await binding;
+  bound();
+  await started;
+  assert.deepEqual(steps, ["drawn", "bind", "drawn", "sent"], "it was not drawn after the bind");
+  assert.equal(mode.renderSessionEntries.mock.callCount(), 0);
   mode.themeChangeUnsubscribe?.();
 });
 
