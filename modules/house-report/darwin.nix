@@ -56,13 +56,19 @@ let
   # 5's F9). A key another account owns, may read or write, or may read,
   # write, take or change the rights of by an access list, is refused
   # saying, after what it costs, to make it anew on both machines, since
-  # that account may know it and a new owner or mode leaves it known;
-  # one other accounts may only run, or reach by lesser rights, is
-  # refused without it (keys said plainly round 1's F2, F3, F10 and F14;
-  # round 2's F6 and F9). Only the first refusal that holds is said, so
-  # every test of a key another account may know comes before those
-  # that say nothing of it, and a key both runnable and readable is told
-  # to be made anew (keys said plainly round 2's F1, F8 and F10). Each
+  # that account may know it or have changed it, and a new owner or mode
+  # leaves it so; one other accounts may only run, or reach by lesser
+  # rights, is refused without it (keys said plainly round 1's F2, F3,
+  # F10 and F14; round 2's F6 and F9; round 3's F8 and F11). Only the
+  # first refusal that holds is said, so whether to say it is decided
+  # apart from them, by the same three tests of the file the key's name
+  # comes to, every link followed, whatever refusal is said: one of its
+  # folder, its link, its copy's folder or one of the key's own (keys
+  # said plainly round 2's F1, F8 and F10; round 3's F1, F5, F6, F7 and
+  # F10). Those tests copy nothing, so a folder another account may
+  # change can only make the advice wrong, never hand a key over; a
+  # folder another account may change gives no advice of its own, as
+  # that account can spoil the key but not learn it by that alone. Each
   # run copies through a name of its own, so two runs
   # can't move the same file (round 4's F21), though a failing run may
   # take away the copy one beside it just made, or a slower one put back
@@ -89,7 +95,8 @@ let
     houseReportCopy=${copy}
     houseReportWhy=
     houseReportDo=
-    houseReportKnown="; make it anew here and on the shaped machine, as another account may know it"
+    houseReportKnown="; make it anew here and on the shaped machine,"
+    houseReportKnown="$houseReportKnown as another account may know or have changed it"
     houseReportKnowing='^ *[0-9]+: .* allow (.*,)?(read|write|append|writesecurity|chown)(,|$)'
     /usr/bin/install -d -o root -g wheel -m 0755 ${copied} \
       || houseReportWhy="has nowhere to be copied to"
@@ -116,14 +123,11 @@ let
       houseReportWhy="isn't there as a file"
     elif [ "$(/usr/bin/stat -f %u "$houseReportRead")" != 0 ]; then
       houseReportWhy="isn't root's"
-      houseReportDo=$houseReportKnown
     elif [ -n "$(/usr/bin/find "$houseReportRead" -maxdepth 0 -perm +066)" ]; then
       houseReportWhy="may be read or written by an account other than root's"
-      houseReportDo=$houseReportKnown
     elif /bin/ls -le "$houseReportRead" \
       | /usr/bin/grep -qE "$houseReportKnowing"; then
       houseReportWhy="has an access list letting others read, write or take it or change its rights"
-      houseReportDo=$houseReportKnown
     elif [ -n "$(/usr/bin/find "$houseReportRead" -maxdepth 0 -perm +011)" ]; then
       houseReportWhy="may be run by an account other than root's"
     elif /bin/ls -le "$houseReportRead" | /usr/bin/grep -qE '^ *[0-9]+: .* allow '; then
@@ -131,6 +135,15 @@ let
     elif ! /usr/bin/install -o nobody -g nobody -m 0400 "$houseReportRead" "$houseReportNew" \
       || ! /bin/mv -f "$houseReportNew" "$houseReportCopy"; then
       houseReportWhy="couldn't be copied for nobody"
+    fi
+    houseReportSeen=$(/usr/bin/readlink -f "$houseReportRead" 2>/dev/null) || houseReportSeen=
+    if [ -z "$houseReportWhy" ] || [ -z "$houseReportFolder" ] \
+      || [ ! -f "$houseReportSeen" ] || [ -L "$houseReportSeen" ]; then
+      :
+    elif [ "$(/usr/bin/stat -f %u "$houseReportSeen")" != 0 ] \
+      || [ -n "$(/usr/bin/find "$houseReportSeen" -maxdepth 0 -perm +066)" ] \
+      || /bin/ls -le "$houseReportSeen" | /usr/bin/grep -qE "$houseReportKnowing"; then
+      houseReportDo=$houseReportKnown
     fi
     houseReportSaid=${copied}.said
     /bin/rm -f ${copied}/said 2>/dev/null || :

@@ -81,8 +81,8 @@ let
   # making it anew rather than giving it a new owner or mode, and the
   # access list's rights that let an account know it.
   known =
-    "houseReportKnown=\"; make it anew here and on the shaped machine, "
-    + "as another account may know it\"";
+    "houseReportKnown=\"; make it anew here and on the shaped machine,\"\n"
+    + "houseReportKnown=\"$houseReportKnown as another account may know or have changed it\"";
   knowing =
     let
       rights = "(read|write|append|writesecurity|chown)";
@@ -97,23 +97,14 @@ let
     "  houseReportWhy=\"isn't there as a file\""
     "elif [ \"$(/usr/bin/stat -f %u \"$houseReportRead\")\" != 0 ]; then"
     "  houseReportWhy=\"isn't root's\""
-    # A key another account may know is said to need making anew, since
-    # a new owner or mode would leave it known (made anew round 3's F6;
-    # keys said plainly round 1's F3 and F14); `known` pins the words.
-    "  houseReportDo=$houseReportKnown"
     "elif [ -n \"$(/usr/bin/find \"$houseReportRead\" -maxdepth 0 -perm +066)\" ]; then"
     "  houseReportWhy=\"may be read or written by an account other than root's\""
-    "  houseReportDo=$houseReportKnown"
-    # Every refusal saying so comes before those that don't, as only the
-    # first that holds is said (keys said plainly round 2's F1, F8 and
-    # F10).
     "elif /bin/ls -le \"$houseReportRead\" \\"
     "  | /usr/bin/grep -qE \"$houseReportKnowing\"; then"
     (
       "  houseReportWhy=\"has an access list letting others read, write or take it "
       + "or change its rights\""
     )
-    "  houseReportDo=$houseReportKnown"
     "elif [ -n \"$(/usr/bin/find \"$houseReportRead\" -maxdepth 0 -perm +011)\" ]; then"
     "  houseReportWhy=\"may be run by an account other than root's\""
     "elif /bin/ls -le \"$houseReportRead\" | /usr/bin/grep -qE '^ *[0-9]+: .* allow '; then"
@@ -122,6 +113,25 @@ let
       "elif ! /usr/bin/install -o nobody -g nobody -m 0400 \"$houseReportRead\" "
       + "\"$houseReportNew\" \\"
     )
+  ];
+  # Whether a refusal says to make the key anew, decided apart from
+  # which refusal is said, as only the first that holds is: by the
+  # owner, mode and access list of the file the key's name comes to,
+  # every link followed, whatever refused it, so no order of the
+  # refusals can lose it (made anew round 3's F6; keys said plainly
+  # round 1's F3 and F14; round 2's F1, F8 and F10; round 3's F1, F5,
+  # F6, F7 and F10); `known` pins the words.
+  seen = "/usr/bin/readlink -f \"$houseReportRead\" 2>/dev/null";
+  advised = lib.concatStringsSep "\n" [
+    "houseReportSeen=$(${seen}) || houseReportSeen="
+    "if [ -z \"$houseReportWhy\" ] || [ -z \"$houseReportFolder\" ] \\"
+    "  || [ ! -f \"$houseReportSeen\" ] || [ -L \"$houseReportSeen\" ]; then"
+    "  :"
+    "elif [ \"$(/usr/bin/stat -f %u \"$houseReportSeen\")\" != 0 ] \\"
+    "  || [ -n \"$(/usr/bin/find \"$houseReportSeen\" -maxdepth 0 -perm +066)\" ] \\"
+    "  || /bin/ls -le \"$houseReportSeen\" | /usr/bin/grep -qE \"$houseReportKnowing\"; then"
+    "  houseReportDo=$houseReportKnown"
+    "fi"
   ];
   # What a refusal does, whole: a switch says it each time and forgets
   # `said`, kept beside the copy's folder; the job says it once until it
@@ -189,19 +199,30 @@ let
       lib.findFirst (lib.hasPrefix "houseReportKnowing='") "" (lib.splitString "\n" watched)
     )
   );
-  # Access-list lines as a Mac's ls -le prints them, merged per account:
-  # those letting another account know a key, and those that don't.
+  # Access-list lines as a Mac's ls -le prints them, each entry on a
+  # numbered line of its own, chmod +a joining an account's grants of
+  # one kind into one entry, its rights in a fixed order, read and write
+  # first, as this Mac's printed them on 25 November: those letting
+  # another account know or change a key, and those that don't. Each
+  # right taken has a line where it's the only one taken, and the lines
+  # put a taken right first, mid-list and last (keys said plainly round
+  # 3's F2, F3 and F4).
   leakingLists = [
     " 1: group:everyone allow read,write,append"
     " 0: user:someone inherited allow chown"
     " 0: group:everyone allow delete,writesecurity"
     " 0: group:staff allow append"
-    " 2: user:someone allow readattr,read"
+    " 0: group:everyone allow write"
+    " 3: group:everyone allow read,readattr,readextattr,readsecurity"
+    " 0: group:everyone allow write,writeattr"
+    " 0: group:everyone allow delete,append,readattr"
+    " 1: user:someone allow write,delete,readattr,readextattr,writesecurity,chown"
   ];
   lesserLists = [
     " 0: group:everyone allow readattr,readextattr,readsecurity"
+    " 0: group:everyone allow readattr,writeattr,readsecurity"
     " 0: group:everyone allow execute,writeattr"
-    " 0: user:someone allow writeextattr,delete"
+    " 0: user:someone allow delete,writeextattr"
     " 0: group:everyone deny read"
   ];
   # Whether `text` names the job's `said` only where `refusing` does:
@@ -297,8 +318,9 @@ in
           + "outside the chain that refuses a link, a key not root's alone and a folder "
           + "another account may write or take, reads it by its spelling rather than its "
           + "real folder, or hands a file over otherwise than by one install into a name of "
-          + "its own, or refuses a key another account may know without saying, last and "
-          + "once, to make it anew on both machines."
+          + "its own, or refuses a key another account may know or have changed without "
+          + "saying, last and once, to make it anew on both machines, whichever refusal is "
+          + "said."
       )
       (
         macMisread == [ ]
@@ -307,12 +329,12 @@ in
         && lib.hasInfix chained keyedPrepared
         && walked < placed chained
         # The advice is set once, in the job's own text, before the
-        # chain, and only the three refusals of a key another account
-        # may know take it, each once, after what the refusal costs
-        # (keys said plainly round 1's F1, F2, F5, F6, F13 and F19), and
-        # is said last, joined after what the refusal costs (round 2's
-        # F2, F5 and F11).
+        # chain, and taken only past the chain, once, whatever it refused,
+        # so no branch of it sets the advice (keys said plainly round 1's
+        # F1, F2, F5, F6, F13 and F19; round 3's F5), and is said last,
+        # joined after what the refusal costs (round 2's F2, F5 and F11).
         && lib.hasInfix chained watched
+        && lib.hasInfix advised watched
         && lib.hasInfix refusing watched
         && lib.hasInfix known watched
         && lib.hasInfix knowing watched
@@ -320,9 +342,11 @@ in
         && placed known < placed chained
         && placed knowing < placed chained
         && placed "houseReportDo=\n" < placed chained
+        && placed chained < placed advised
+        && placed advised < placed refusing
         && times "houseReportKnown" keyedPrepared == 4
-        && times "houseReportKnowing" keyedPrepared == 2
-        && times "houseReportDo" keyedPrepared == 5
+        && times "houseReportKnowing" keyedPrepared == 3
+        && times "houseReportDo" keyedPrepared == 3
         && lib.hasInfix "&& pwd -P)" keyedPrepared
         && walksWhole
         && lib.hasInfix readInRealFolder keyedPrepared
@@ -356,7 +380,9 @@ in
   # alone or among other rights, as letting it know the key, and not one
   # granting lesser rights or denying any, run over lines as ls -le
   # prints them (keys said plainly round 2's F3 and F4). GNU grep runs it
-  # here and BSD grep on the Mac; it uses only POSIX's extended syntax.
+  # here, on a Mac's builder too; the Mac's own /usr/bin/grep took and
+  # left lines of each kind as here, over what its ls -le printed on 25
+  # November. It uses only POSIX's extended syntax.
   house-report-knows-which-lists-leak-a-key =
     pkgs.runCommandLocal "house-report-knows-which-lists-leak-a-key"
       {

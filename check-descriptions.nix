@@ -1860,7 +1860,8 @@
     naming no chown or chmod and no install or mv but its own, however spelled; a key another
     account owns, may read or write, or may read, write, take or change the rights of by an access
     list, is said, last and once, to need making anew on both machines, not a new owner or mode,
-    whatever else it may do, and one other accounts may only run or reach by lesser rights isn't;
+    decided past the refusals by the file its name comes to, every link followed, whichever
+    refusal is said, and one other accounts may only run or reach by lesser rights isn't;
     and the build refuses a Mac's key outside /etc, /private/etc or /var/root, or spelled through
     or ending in dots
   '';
