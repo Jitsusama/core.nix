@@ -2952,6 +2952,35 @@ fn a_main_the_host_says_doesnt_descend_is_refused() {
     assert!(!world.checkout_has(&two), "the checkout was fetched");
 }
 
+/// A main the checkout holds without the commit last switched to, read
+/// from the host and never fetched, is asked of the host, which says it
+/// descends, rather than refused as a history gone another way.
+#[test]
+fn a_main_whose_last_commit_the_checkout_lacks_is_asked_of_the_host() {
+    let world = with_api();
+    let one = world.hosted_commit("one", None);
+    world.answer();
+    world.system(&one);
+    assert_eq!(world.update().1, done(&one), "the first head wasn't read");
+    let two = world.hosted_commit("two", None);
+    world.answer();
+    let checkout = &world.config.hosted.as_ref().unwrap().checkout;
+    git(
+        checkout,
+        &["fetch", "--quiet", "--depth=1", "origin", "+main:refs/two"],
+    );
+    assert!(
+        world.checkout_has(&two) && !world.checkout_has(&one),
+        "the checkout wasn't left holding two without one"
+    );
+    world.system(&two);
+    assert_eq!(
+        world.update().1,
+        done(&two),
+        "a main descending from what the machine ran was refused for a commit the checkout lacks"
+    );
+}
+
 /// A hosted world whose account names the commit that last changed the
 /// folder with the shell command `changed` gives for the world's folder.
 fn with_changed(changed: impl Fn(&Path) -> String) -> World {
