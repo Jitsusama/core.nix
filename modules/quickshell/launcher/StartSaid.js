@@ -26,19 +26,21 @@ function same(words, said) {
     return String(words).trim() === String(said).trim();
 }
 
-// The starts made (`made`, each { key, words, at, answered, toldAt }), the
-// act `key` given `said` at `now` and ended `how` (Sprouting.ended) among
-// them, in place of any made before with the same words. One counts where
-// it started, or where nothing answered, since that one may still have
-// started; a refused one began nothing. Those an hour old go.
-function made(list, key, said, how, now) {
+// The starts made (`list`, each { key, words, at, answered, toldAt }), the
+// start `given` ({ key, words }, its act and his words) at `now` and ended
+// `how` (Sprouting.ended) among them, in place of any made before with the
+// same words. One counts where it started, or where nothing answered,
+// since that one may still have started; a refused one began nothing.
+// Those an hour old go.
+function made(list, given, how, now) {
     const kept = (Array.isArray(list) ? list : []).filter(one => now - one.at < AGAIN_MS
-        && !(one.key === key && same(one.words, said)));
+        && !(one.key === given.key && same(one.words, given.words)));
     if (how?.started !== true && how?.unanswered !== true) {
         return kept;
     }
-    const one = { key, words: String(said), at: now, answered: how.started === true, toldAt: 0 };
-    return kept.concat([one]).slice(-MOST_MADE);
+    const start = { key: given.key, words: String(given.words), at: now,
+        answered: how.started === true, toldAt: 0 };
+    return kept.concat([start]).slice(-MOST_MADE);
 }
 
 // The start among `list` that `said` given to the act `key` at `now` makes
