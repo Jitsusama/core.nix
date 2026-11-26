@@ -33,9 +33,9 @@ HELD_ASKED = timedelta(seconds=20)
 # Stretched no further than this, short of the minute shell-hands-over.sh waits for the old
 # launcher to close before it hands over anyway, so that launcher is still there to close.
 HELD_AT_MOST = timedelta(seconds=45)
-# How long a first ask after polkit restarts is given to come up before it's read as refused
-# (polkit_asked_again).
-AGENT_BACK = timedelta(seconds=10)
+# How long each polkit ask is given to come up, a first ask after polkit restarts too, so a
+# prompt drawn slowly on a busy builder is never read as refused (polkit_asked_again).
+PROMPT_COMES = timedelta(seconds=30)
 # Where an ask's systemctl leaves its exit status and what it said, so a refused ask is told
 # from a slow or timed-out one: the account's own runtime folder, where nothing else writes.
 ASK_ENDED = "/run/user/1000/polkit-ask-ended"
@@ -360,7 +360,7 @@ def polkit_asked_again(desktop: Desktop, *, again: bool) -> None:
     try:
         with desktop.told("keys polkit"), desktop.told("drawn polkit"):
             try:
-                with desktop.told(asked, timeout=AGENT_BACK if again else timedelta(seconds=30)):
+                with desktop.told(asked, timeout=PROMPT_COMES):
                     desktop.as_account(ask)
             except AssertionError:
                 if not again:
