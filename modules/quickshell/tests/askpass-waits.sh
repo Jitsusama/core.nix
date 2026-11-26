@@ -393,18 +393,24 @@ chmod +x ungated
 refuses "one asking while no gate can be read" ./ungated
 check "saying so" complained "gate (/nowhere) can't be judged by: it can't be read"
 
-# Whatever any case left, those that never ask among them: no askpass
-# folder is left in the runtime directory. A glob rather than compgen,
-# which the build's non-interactive bash may lack.
-shopt -s nullglob
-left=("$XDG_RUNTIME_DIR"/askpass.*)
-shopt -u nullglob
+# Whatever any case left, those that never ask among them: nothing at
+# all is left in the runtime directory. It's this test's own, and only the
+# askpass makes anything there, so anything left is a leak, whatever its
+# name. A glob rather than compgen, which the build's non-interactive
+# bash may lack.
+shopt -s nullglob dotglob
+left=("$XDG_RUNTIME_DIR"/*)
+shopt -u nullglob dotglob
 # Run by check by its name, which shellcheck can't follow.
 # shellcheck disable=SC2329
 none_left() {
   [ "${#left[@]}" -eq 0 ] && return 0
-  printf 'left behind: %s\n' "${left[@]}"
+  local each
+  for each in "${left[@]}"; do
+    echo "left behind: $each, holding:"
+    ls -A "$each"
+  done
   false
 }
-check "no case leaves an askpass folder behind" none_left
+check "no case leaves anything in the runtime directory" none_left
 exit "$failed"
