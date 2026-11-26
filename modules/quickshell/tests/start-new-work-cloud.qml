@@ -81,9 +81,11 @@ QtObject {
                 journal: "can't yet" }, "unoffered: can't yet"]);
         // A Return asks before it reads, so what a daemon answers at once is said on
         // it, as Daemon.qml's sent answers null at once with no daemon connected.
+        // Each read is a copy, as Agents' offersKept builds one each call, so a
+        // returning that read only before it asked would say the stale state.
         const replayed = (state, answers) => {
             let asked = 0;
-            const offeredBy = Cloud.returning(() => state, () => {
+            const offeredBy = Cloud.returning(() => Object.assign({}, state), () => {
                 asked += 1;
                 if (answers === undefined) {
                     state.asking = true;
