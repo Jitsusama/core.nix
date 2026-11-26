@@ -487,7 +487,8 @@ PanelWindow {
     // its spring's length ago, since niri never says one ended, so an old
     // scroll's word, still on its windows, isn't taken for a new one
     // (MarginCatTiles.js's hears). Heard again with each layout niri
-    // sends, so each word is dated as near as it can be to when it came.
+    // sends (onSettledChanged), so each word is dated as near as it can
+    // be to when it came.
     function scrolling(): bool {
         const now = Date.now();
         scrollHeard = Tiles.hears(scrollHeard, Tiles.told(Niri.windows, space?.id, "ViewMove"),
@@ -495,13 +496,6 @@ PanelWindow {
         return Tiles.runs(scrollHeard, now, slideMs);
     }
     property var scrollHeard: null
-    Connections {
-        target: Niri
-
-        function onRevisionChanged() {
-            window.scrolling();
-        }
-    }
     readonly property var spring: Object.assign({}, Theme.motion.spring,
         { slowdown: Theme.motion.slowdown })
     readonly property int slideMs: MarginCat.slides(spring)

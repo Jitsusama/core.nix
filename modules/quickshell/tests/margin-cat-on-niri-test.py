@@ -669,7 +669,9 @@ def test_keys_back_on_its_column_ride_it_back_with_its_window(shell: Shell) -> N
     held = still[0]["x"]
     back = shell.mark()
     took = time.monotonic() - focused
-    assert took < RESTS - SPARE, f"the keys came back {took:.1f} s on, too near their rest"
+    # A report the wait found in its last poll returns a poll and a read past its deadline, so
+    # only one past half the spare is too late for the shell to hear the keys before they rest.
+    assert took < RESTS - SPARE / 2, f"the keys came back {took:.2f} s on, too near their rest"
     shell.as_account(f"niri msg action focus-window --id {third['id']}")
     sits_over(shell, third, back)
     said, _ = shell.said_since(back)
