@@ -247,21 +247,22 @@ class Standings {
 }
 
 /**
- * What the lede says, or null to leave it as it is: what stands now once a
- * feed of net's was live or the map draws a device, and that net hasn't
- * answered once its feeds stop reaching it before either. A page opened
- * while net is down is given the records the server still holds, and draws
- * them, so the lede counts them too rather than saying none is drawn. With
- * none held, the counts aren't said, since a page joining a watch the
- * server holds as broken is told every kind empty, and "0 devices, and
- * nothing needs a look" would read as an all-clear while net is down.
+ * What the lede says, or null to leave it as it is: what stands now while
+ * the map draws a device, and that net hasn't answered once its feeds stop
+ * reaching it before any was live. A page opened while net is down is given
+ * the records the server still holds, and draws them, so the lede counts
+ * them rather than saying none is drawn. With none drawn, the counts aren't
+ * said: a page joining a watch the server holds as broken is told every
+ * kind empty, and a feed coming back says it's live before its records
+ * arrive, and "0 devices, and nothing needs a look" would read as an
+ * all-clear in either.
  */
 function ledeOf(answering: Answering, context: Context | undefined): string | null {
-  const drawn = context !== undefined && context.network.devices.length > 0;
-  if (!(answering.answered || drawn)) {
-    return answering.worst === "broken" || answering.worst === "stale" ? UNANSWERED : null;
+  if (context !== undefined && context.network.devices.length > 0) {
+    return standsNow(context);
   }
-  return context === undefined ? null : standsNow(context);
+  const down = answering.worst === "broken" || answering.worst === "stale";
+  return down && !answering.answered ? UNANSWERED : null;
 }
 
 /** Says what stands now in the head's lede, writing only when it changes. */
