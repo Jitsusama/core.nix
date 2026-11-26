@@ -69,7 +69,11 @@ Piece {
         return session === undefined ? null : {
             glyph: Words.glyph("verb:agent:pause"),
             name: `${Words.name("verb:agent:pause")} ${session.title}`,
-            run: () => Sessions.steer(session.address, { act: "pause" })
+            // Not to one parked since the notice came, as the node wakes a
+            // parked session for any steer, undoing the park that saved more.
+            run: () => Sessions.parkedAs(session.address)
+                ? Report.say(`unsent pause ${session.address}: parked`)
+                : Sessions.steer(session.address, { act: "pause" })
         };
     }).filter(action => action !== null)
 

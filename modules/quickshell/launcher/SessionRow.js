@@ -145,21 +145,25 @@ function fallbackOf(windowed, parked) {
 }
 
 // Who goes by `address` among the shell's `parked` (Sessions.parked),
-// beside its `running`, as the agents daemon's cells.rs judges a name two
-// sessions go by: the one that is it now wins. So a running one whose own
-// it is wins, and none parked is it, failing open on a live session's
-// Stop; else the parked one whose own it is; else one only listing it, as
-// a link may name an address a session went by once. Sessions.parkedAs.
+// beside its `running`, whatever its case, or null. Owners come before
+// listers, as in the agents daemon's cells.rs; unlike there, a running
+// session comes before a parked one at each rank, so where it's unsure it
+// fails open on a live session's Stop: a running owner, then a parked
+// owner, then a running lister, then a parked lister, as a link may name
+// an address a session went by once. cells.rs's quest guard on listers
+// isn't kept: the callers give a row's own address or a cell the cells
+// daemon has already chosen. Sessions.parkedAs.
 function parkedOf(parked, running, address) {
     const upper = String(address ?? "").toUpperCase();
-    const owns = one => upper !== "" && String(one?.address ?? "").toUpperCase() === upper;
+    const owns = one => String(one?.address ?? "").toUpperCase() === upper;
     const lists = one => (one?.presence?.addresses ?? []).some(each =>
         String(each ?? "").toUpperCase() === upper);
     const resting = Array.isArray(parked) ? parked : [];
-    if (upper === "" || (Array.isArray(running) ? running : []).some(owns)) {
+    const live = Array.isArray(running) ? running : [];
+    if (upper === "" || live.some(owns)) {
         return null;
     }
-    return resting.find(owns) ?? resting.find(lists) ?? null;
+    return resting.find(owns) ?? (live.some(lists) ? null : resting.find(lists) ?? null);
 }
 
 // The own addresses, upper-cased, of the `parked` that parkedOf finds by

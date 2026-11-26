@@ -41,6 +41,8 @@
         }]
         property string steered: ""
         function steer(address, fields) { steered = address + " " + fields.act; }
+        // None parked, so its Pause goes.
+        function parkedAs(address) { return null; }
       '';
       shortcuts = singleton "Shortcuts.qml" ''
         property var actions: [{ opens: "spend", chord: [{ text: "Super" }, { text: "U" }] }]

@@ -539,10 +539,14 @@ Provider {
     // daemon hasn't served yet wraps it again (rowOf).
     readonly property var wrappedParked: ({})
     // The sessions the shell holds parked, by each one's own address where
-    // no running one owns it (Sessions.parkedAs's rule), made once a park,
-    // a wake or a start changes them, so every row laid out asks in one
-    // lookup (SessionRow.parkedSet), not by walking the parked.
-    readonly property var parkedHere: SessionRow.parkedSet(Sessions.parked, Sessions.running)
+    // no running one owns it (Sessions.parkedAs's rule), so every row laid
+    // out asks in one lookup (SessionRow.parkedSet), not by walking the
+    // parked. Said first as a string, which notifies only when it differs,
+    // so a running session's step, which moves Sessions.running, makes the
+    // set and lays Agents out again only when who's parked has changed.
+    readonly property string parkedKeys: Array.from(
+        SessionRow.parkedSet(Sessions.parked, Sessions.running)).sort().join(" ")
+    readonly property var parkedHere: new Set(parkedKeys.split(" ").filter(key => key !== ""))
     function shellParked(address) {
         return parkedHere.has(String(address).toUpperCase());
     }
@@ -1298,7 +1302,7 @@ Provider {
     // [ae5dfdb6]); null while none stands there.
     function voidOf() {
         const top = Sessions.running.concat(Sessions.parked)
-            .find(one => !!one.presence?.standsAtTop?.name);
+            .find(one => SessionRow.standsAtTop(one.presence));
         return top ? { to: String(top.address), name: String(top.presence.standsAtTop.name) }
             : null;
     }

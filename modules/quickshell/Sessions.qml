@@ -121,11 +121,10 @@ Singleton {
         };
     }
 
-    // The session parked that goes by `address`, or null: none where a
-    // running one's own it is, else the parked one whose own it is, else
-    // one only listing it, as the agents daemon's cells.rs judges a name
-    // two sessions go by (SessionRow.parkedOf), so a parked session listing
-    // a live one's address never makes the live one read parked.
+    // The session parked that goes by `address`, or null: owners before
+    // listers, and at each a running one before a parked one
+    // (SessionRow.parkedOf), so a parked session listing a live one's
+    // address never makes the live one read parked.
     function parkedAs(address) {
         return SessionRow.parkedOf(parked, running, address);
     }

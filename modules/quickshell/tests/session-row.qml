@@ -156,30 +156,32 @@ QtObject {
             if (SessionRow.topActOf(key) !== want)
                 failures.push(`top ${key}: "${SessionRow.topActOf(key)}", not "${want}"`);
         }
-        // Who goes by an address among the parked, beside the running, as
-        // cells.rs judges a name two go by (the one that is it now wins):
-        // whatever its case, a parked one by its own, unless a running one
-        // owns it too; by one it only lists where none owns it, as a link
-        // names an old address; never by a running one's own. A row asks the
-        // set by its own address, and the set agrees with parkedOf there.
+        // Who goes by an address among the parked, beside the running,
+        // whatever its case: owners before listers, and at each a running one
+        // before a parked one, so a live session's Stop fails open. A row asks
+        // the set by its own address, upper-cased as Agents' shellParked asks
+        // it, and the set holds only parked owners, never a mere lister.
         const resting = [
-            { address: "ab12cd",
-                presence: { addresses: ["ab12cd", "LIVE01", "OLD001", "NEXT01"] } },
+            { address: "ab12cd", presence: { addresses: ["ab12cd", "LIVE01", "OLD001",
+                "NEXT01", "BOTH01"] } },
             { address: "NEXT01", presence: { addresses: ["NEXT01"] } },
             { address: "SHARED", presence: { addresses: ["SHARED"] } }, { address: "" }, {}
         ];
-        const runningOnes = [{ address: "live01" }, { address: "shared" }];
+        const runningOnes = [{ address: "live01" }, { address: "shared" },
+            { address: "run001", presence: { addresses: ["run001", "both01"] } }];
         const parkedHere = SessionRow.parkedSet(resting, runningOnes);
         const parkings = [["its own, upper-cased", "AB12CD", true, "ab12cd"],
             ["its own, one before listing it", "NEXT01", true, "NEXT01"],
             ["a running one's it lists", "LIVE01", false, null],
             ["one it only lists, none owning it", "old001", false, "ab12cd"],
+            ["one a running one lists too", "BOTH01", false, null],
             ["its own, a running one's too", "SHARED", false, null],
             ["one none goes by", "NONE01", false, null], ["none", "", false, null]];
         for (const [what, address, want, whose] of parkings) {
             const found = SessionRow.parkedOf(resting, runningOnes, address)?.address ?? null;
-            if (parkedHere.has(address) !== want || found !== whose)
-                failures.push(`parked, ${what}: ${parkedHere.has(address)} by ${found}, `
+            const here = parkedHere.has(address.toUpperCase());
+            if (here !== want || found !== whose)
+                failures.push(`parked, ${what}: ${here} by ${found}, `
                     + `not ${want} by ${whose}`);
         }
         if (SessionRow.parkedSet(undefined, undefined).size !== 0
