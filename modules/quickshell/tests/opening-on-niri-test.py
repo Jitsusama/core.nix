@@ -753,8 +753,11 @@ def test_a_chord_first_after_a_restart_makes_only_its_places_rows(shell: Shell) 
     first chord after each switch found home again whole on its way into the place, as no
     later one does. A source that changed since home was kept is rightly made again as the
     opening fills it in, so only the others are counted: on a loaded builder Networks, Traffic
-    and Displays first answered after the wait for them (2026-11-26, 4, 3 and 4 rows), while
-    home found whole makes rows for sources that never changed.
+    and Displays first answered after the wait for them (2026-11-26, 4, 3 and 4 rows). It
+    catches an opening that makes rows again for a source that never changed. Home found
+    again whole makes none, since each source's rows are kept as it joined them, so it passed
+    with home kept at the start left uncounted, and with home found on every chord
+    (2026-11-26): only the opening's time shows that.
     """
     restarted = time.monotonic()
     shell.restart()
