@@ -2461,6 +2461,16 @@ ShellRoot {
             JSON.stringify(underCalm) === JSON.stringify(["on:look:e",
                 "on:waiting:item:Sign The Form"]),
             JSON.stringify(underCalm));
+        // Its own cell's ask put off, so Sessions hears it wanting nothing,
+        // the to-do no longer leads it either, as it blocks none.
+        Sessions.wanting = [];
+        const underPutOff = shown().map(row => row[0]).filter(key =>
+            key === "on:waiting:item:Sign The Form" || key === "on:look:e");
+        Sessions.wanting = [acted];
+        expect("a to-do whose own cell's ask is put off never leads it",
+            JSON.stringify(underPutOff) === JSON.stringify(["on:look:e",
+                "on:waiting:item:Sign The Form"]),
+            JSON.stringify(underPutOff));
         // Inside, Talk to its session follows dealing with it there, so
         // what's working on it is reached from it (42P0R4, 2026-11-19); one
         // done in a window of its own leads with going there.

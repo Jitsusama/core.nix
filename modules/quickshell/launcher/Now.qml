@@ -2350,10 +2350,15 @@ Provider {
             thing: provider.itemThing(each),
             cell: () => WaitingOnYou.session(each),
             // It asks its own cell only while it blocks that cell, not
-            // another session on its quest (cellRows).
+            // another session on its quest (cellRows), and only while that
+            // cell wants Joel as For You hears it, so one whose ask he put
+            // off leads nothing, as its blocks count it (wantingHeard).
             asksItsCell: () => {
                 const cell = WaitingOnYou.session(each);
-                return cell !== null && ForYou.blocked(each, [cell]) > 0;
+                const to = String(cell?.address ?? "").toUpperCase();
+                const heard = provider.wantingHeard.filter(session =>
+                    String(session.address).toUpperCase() === to);
+                return cell !== null && ForYou.blocked(each, heard) > 0;
             },
             make: now => provider.item(each, now)
         })), looks.waiting.map(one => ({
