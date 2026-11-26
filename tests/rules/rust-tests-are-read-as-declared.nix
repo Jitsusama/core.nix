@@ -77,8 +77,10 @@ let
       "# }"##;
           const BRACE: char = '}';
           const BYTE: u8 = b'}';
-          // A raw string read without its prefix would close at `""`.
+          // A raw string read without its prefix would close at `""`, a
+          // byte one's or a C one's alike.
           const BYTES: &[u8] = br#"" }"#;
+          const C: &std::ffi::CStr = cr#"" }"#;
           // }
           /* /* */ } */
           fn l<'a>(x: &'a ()) -> char { let _: &'a () = x; '{' }
@@ -298,7 +300,7 @@ let
         #[cfg(test)]
         mod gone;
       '';
-      says = "mod gone is built under test with no file";
+      says = "main.rs: mod gone is built under test with no file";
     };
     unclosed = {
       main = ''

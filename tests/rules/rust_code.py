@@ -15,6 +15,10 @@ them, so a fixture's `}` or a doc line's `mod` is neither.
 import re
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 # A module declared, with the attributes and doc lines above it, and whether
 # its body follows inline. An attribute may run over lines, as rustfmt wraps
@@ -53,6 +57,14 @@ BLOCK_EDGE = re.compile(r"/\*|\*/")
 type Predicate = tuple[str, list["Predicate"] | None]
 
 
+class RefusedError(ValueError):
+    """A crate the reader won't read rather than guess at, and why."""
+
+    def within(self, path: Path) -> RefusedError:
+        """Give the same refusal, said of the file `path` it was met in."""
+        return RefusedError(f"{path}: {self}")
+
+
 def blank(text: str) -> str:
     """Give text with every character but its newlines a space."""
     return re.sub(r"[^\n]", " ", text)
@@ -65,7 +77,8 @@ def block_comment_end(text: str, at: int) -> int:
         depth += 1 if edge.group() == "/*" else -1
         if not depth:
             return edge.end()
-    raise ValueError("a block comment never closes")
+    why = "a block comment never closes"
+    raise RefusedError(why)
 
 
 def masked(text: str) -> str:
@@ -82,13 +95,15 @@ def masked(text: str) -> str:
         if found["raw"]:
             close = text.find('"' + found["hashes"], opened)
             if close < 0:
-                raise ValueError("a raw string never closes")
+                why = "a raw string never closes"
+                raise RefusedError(why)
             end = close + 1 + len(found["hashes"])
             kept.append(found.group() + blank(text[opened:close]) + text[close:end])
         elif found["quote"]:
             rest = STRING_REST.match(text, opened)
             if rest is None:
-                raise ValueError("a string never closes")
+                why = "a string never closes"
+                raise RefusedError(why)
             end = rest.end()
             kept.append(found.group() + blank(text[opened : end - 1]) + '"')
         elif found["char"]:
@@ -138,7 +153,8 @@ def read_cfg(asked: str, written: str) -> Predicate:
     except IndexError:
         end = -1
     if end != len(tokens):
-        raise ValueError(f"a cfg the reader can't read: cfg({written})")
+        why = f"a cfg the reader can't read: cfg({written})"
+        raise RefusedError(why)
     return read
 
 
@@ -155,20 +171,21 @@ def cfgs(module: re.Match[str], text: str) -> list[Predicate]:
     ]
 
 
-def path_given(module: re.Match[str], text: str, blanked: str) -> re.Match[str] | None:
-    """Give the path attribute among a module's attributes, if one is there.
+def paths_given(
+    text: str, blanked: str, start: int = 0, end: int | None = None
+) -> Iterator[re.Match[str]]:
+    """Give each path attribute in `text` between `start` and `end`.
 
-    It's read from `text`, since masking blanks the path, but only where its
-    `#` is still there masked, so one in a doc line or a string is none.
+    Each is read from `text`, since masking blanks the path, but only where
+    its `#` is still there masked, so one in a doc line or a string is none.
     """
-    return next(
-        (
-            given
-            for given in PATH.finditer(text, module.start(1), module.end(1))
-            if blanked[given.start()] == "#"
-        ),
-        None,
-    )
+    found = PATH.finditer(text, start, len(text) if end is None else end)
+    return (given for given in found if blanked[given.start()] == "#")
+
+
+def path_given(module: re.Match[str], text: str, blanked: str) -> re.Match[str] | None:
+    """Give the path attribute among a module's attributes, if one is there."""
+    return next(paths_given(text, blanked, module.start(1), module.end(1)), None)
 
 
 def holds_only_under_test(asked: Predicate) -> bool:
@@ -218,8 +235,8 @@ def read(path: Path) -> tuple[str, str]:
     text = path.read_text()
     try:
         return text, masked(text)
-    except ValueError as error:
-        raise ValueError(f"{path}: {error}") from error
+    except RefusedError as error:
+        raise error.within(path) from error
 
 
 def read_by_tests_alone(src: Path) -> set[Path]:
@@ -239,8 +256,7 @@ def read_by_tests_alone(src: Path) -> set[Path]:
     beside = {
         (path.parent / given.group(1)).resolve()
         for path, (text, blanked) in texts.items()
-        for given in PATH.finditer(text)
-        if blanked[given.start()] == "#"
+        for given in paths_given(text, blanked)
     }
     tests: set[Path] = set()
     folders: set[Path] = set()
@@ -254,8 +270,8 @@ def read_by_tests_alone(src: Path) -> set[Path]:
         text, blanked = texts[path] if path in texts else read(path)
         try:
             read_from, inline = test_modules(path, here, (text, blanked), all_test=path in tests)
-        except ValueError as error:
-            raise ValueError(f"{path}: {error}") from error
+        except RefusedError as error:
+            raise error.within(path) from error
         folders.update(inline)
         for file in read_from:
             if (file := file.resolve()) not in tests:
@@ -293,7 +309,8 @@ def test_modules(
         if file.exists():
             files.append(file)
         elif needs_its_file(asked):
-            raise FileNotFoundError(f"{path}: mod {name} is built under test with no file")
+            why = f"mod {name} is built under test with no file"
+            raise RefusedError(why)
     return files, folders
 
 
@@ -304,7 +321,8 @@ def block_end(blanked: str, at: int) -> int:
         depth += 1 if brace.group() == "{" else -1
         if not depth:
             return at + brace.end()
-    raise ValueError("a test module's braces never close")
+    why = "a test module's braces never close"
+    raise RefusedError(why)
 
 
 def without_inline_tests(text: str) -> str:
@@ -338,8 +356,8 @@ def own_files(src: Path) -> dict[Path, str]:
             continue
         try:
             own[path] = without_inline_tests(path.read_text())
-        except ValueError as error:
-            raise ValueError(f"{path}: {error}") from error
+        except RefusedError as error:
+            raise error.within(path) from error
     return own
 
 
