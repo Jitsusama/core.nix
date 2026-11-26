@@ -5032,7 +5032,6 @@ def test_a_drawer_resting_for_the_letters_names_the_row_selected(
     makes in 4 to 14 ms here, either side of the line by the builder's load, so home's programs
     are taught each way in turn.
     """
-
     marks: list[int] = []
 
     def footed(since: int) -> None:
