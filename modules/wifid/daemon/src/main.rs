@@ -3671,7 +3671,7 @@ impl Wifid<'_> {
             let until = at + lasts;
             self.arrivals.borrow_mut().warned(card, from, until);
             change(self.state, |state| {
-                state.warned_off(card, from, (at, until))
+                state.warned_off(card, from, (at, until));
             });
             let minutes = lasts.as_secs() / 60;
             println!("<7>{card}'s chooser keeps off {from} for {minutes} minutes, as it warned");
