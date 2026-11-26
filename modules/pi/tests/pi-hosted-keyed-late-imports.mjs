@@ -9,8 +9,10 @@
 // given a module the load is still evaluating, nor the load one of its;
 // one made while its own load is still under way shares what that load
 // finished and goes with it should it fail, as does what a failed load's
-// modules import after it, however deep; and two at once share one
-// evaluation. The first keyed-modules test covers the rest.
+// modules import after it, however deep; and two at once from one load
+// share one evaluation. Of two evaluations at once that each finish a copy
+// of one module, only the first's is shared, so no later load or late
+// import is given both. The first keyed-modules test covers the rest.
 // Run as: node THIS PI_ROOT, with the helper beside it.
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
@@ -361,6 +363,109 @@ assert.equal(
   "two imports at once were given two modules",
 );
 assert.equal(evaluations().twice, 1, "two imports at once evaluated their module twice");
+
+// Two evaluations at once may each finish a copy of one module. The first
+// to end joins the package's; the second joins none of what it finished,
+// since some of it was evaluated over its own copy, and neither do imports
+// its extension makes as it runs, nor do they join another graph's. So a
+// later load is given one copy of each module, and an extension's late
+// imports stay on its own copy. Here `runs` imports the counted library
+// `x` as it runs while `loads` evaluates its own `x` and `y`, which
+// imports `x`, and `runs`'s ends first.
+afresh();
+const overlapAt = join(scratch, "overlap");
+write(join(overlapAt, "package.json"), manifest(keyedManifest));
+write(
+  join(overlapAt, "lib", "x.ts"),
+  [
+    counted("overlap-x"),
+    'export const copy = globalThis.evaluations["overlap-x"];',
+    gated("overlap", "x"),
+  ].join("\n"),
+);
+write(
+  join(overlapAt, "lib", "y.ts"),
+  'import { copy } from "./x.ts";\nexport const seen = copy;\n',
+);
+write(
+  join(overlapAt, "lib", "z.ts"),
+  'import { seen as through } from "./y.ts";\nexport const seen = through;\n',
+);
+write(
+  join(overlapAt, "lib", "w.ts"),
+  `import { copy } from "./x.ts";\n${gated("overlapW", "w")}export const seen = copy;\n`,
+);
+const overlapCommand = (name, body) =>
+  `  pi.registerCommand("overlap-${name}", { description: "", handler: async () => ${body} });`;
+const lateSeen = (lib) => `(await import("../../lib/${lib}.ts")).seen`;
+const overlapEntry = (name, lines) => {
+  const entry = join(overlapAt, "extensions", name, "index.ts");
+  write(entry, [...lines, ""].join("\n"));
+  return entry;
+};
+const runs = overlapEntry("runs", [
+  "export default function (pi) {",
+  overlapCommand("x", '(await import("../../lib/x.ts")).copy'),
+  overlapCommand("runs-w", lateSeen("w")),
+  "}",
+]);
+const loads = overlapEntry("loads", [
+  'import { seen } from "../../lib/y.ts";',
+  "export default function (pi) {",
+  overlapCommand("mine", "seen"),
+  overlapCommand("z", lateSeen("z")),
+  overlapCommand("loads-w", lateSeen("w")),
+  "}",
+]);
+const after = overlapEntry("after", [
+  'import { copy } from "../../lib/x.ts";',
+  'import { seen } from "../../lib/y.ts";',
+  'import { seen as through } from "../../lib/z.ts";',
+  "export default function (pi) {",
+  overlapCommand("after", "[copy, seen, through]"),
+  "}",
+]);
+const running = await open("overlap-runs", [runs]);
+const aloneGate = gate("overlap");
+const firstCopy = running("overlap-x");
+await within(aloneGate.reached, "a late import never reached its library");
+const secondGate = gate("overlap");
+const loading = open("overlap-loads", [loads]);
+await within(secondGate.reached, "a load beside a late import never reached its library");
+aloneGate.open();
+assert.equal(await within(firstCopy, "the late import never ended"), 1, "the late import's copy");
+secondGate.putAway();
+secondGate.open();
+const loaded = await within(loading, "the load beside a late import never ended");
+assert.equal(
+  await loaded("overlap-mine"),
+  2,
+  "the load beside a late import wasn't given its own copy",
+);
+assert.equal(
+  await within(loaded("overlap-z"), "a late import over the load's copy never ended"),
+  2,
+  "a late import of the load's extension left its own copy",
+);
+const wGate = gate("overlapW");
+const runsW = running("overlap-runs-w");
+await within(wGate.reached, "a late import never reached its gated library");
+const loadsW = loaded("overlap-loads-w");
+assert.equal(await pendingAfter(loadsW, 200), true, "a late import didn't wait at the gate");
+wGate.putAway();
+wGate.open();
+assert.deepEqual(
+  await within(Promise.all([runsW, loadsW]), "two late imports at once never ended"),
+  [1, 2],
+  "a late import joined one evaluated over another copy of its library",
+);
+const later = await open("overlap-after", [after]);
+assert.deepEqual(
+  await later("overlap-after"),
+  [1, 1, 1],
+  "a later load was given two copies of one module",
+);
+assert.equal(evaluations()["overlap-x"], 2, "a later load evaluated the finished library again");
 
 // An import or require made as an extension runs of what jiti doesn't
 // evaluate itself, a builtin, a data URL, JSON or a module it leaves to

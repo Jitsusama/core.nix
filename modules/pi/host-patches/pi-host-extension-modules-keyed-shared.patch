@@ -17,10 +17,13 @@ jiti gives it, what the load is still evaluating, and fails with it. An
 import an extension makes as it runs, once its load has ended, is given
 only finished modules too: one of a module the package hasn't finished
 evaluates it in a cache of its own over its load's and the package's
-finished modules, joining them once it succeeds, and only while no load
-it began from failed. Two such imports of one module at once share one
-evaluation. What jiti doesn't evaluate itself, a builtin, a data URL,
-JSON or a module it leaves to Node, stays jiti's own.
+finished modules, joining them once it succeeds, and only where each load
+it began from joined its own. Two such imports of one module at once from
+one load share one evaluation. Of two evaluations at once that each
+finish a copy of one module, the first to end joins the package's and the
+other joins none of what it finished, so no load is given both. What
+jiti doesn't evaluate itself, a builtin, a data URL, JSON or a module it
+leaves to Node, stays jiti's own.
 
 A package's loads take turns, so two loads don't both evaluate a library
 they share. A reload, and a link moving off a copy, give the package's
@@ -46,7 +49,7 @@ a link has moved off, or from modules let go of.
 +		if (keyed) keyedRoots.add(folder);
  	} else {
  		const parent = path.dirname(folder);
-@@ -237,16 +238,399 @@
+@@ -237,18 +238,410 @@
  // package keeps a copy for each folder.
  function sharedFileOf(extensionPath: string): string | undefined {
 -	let file: string;
@@ -76,8 +79,8 @@ a link has moved off, or from modules let go of.
 -	if (before !== undefined && before !== file) sharedFactories.delete(before);
 -	sharedFiles.set(extensionPath, file);
 -	return file;
-+}
-+
+ }
+ 
 +// pi-host: a keyed package's extensions share the modules they import, too.
 +// jiti gives each import of an extension a module cache of its own, so a
 +// library its extensions share was evaluated once for each extension
@@ -101,11 +104,14 @@ a link has moved off, or from modules let go of.
 +// the import evaluates in a cache of its own the same way, given what the
 +// evaluation that finished the module finished too, so the module stays one
 +// graph with the load that evaluated it; two such imports of one file at
-+// once share the one evaluation, and what it finishes joins the package's
-+// only where no evaluation it was begun from failed. So no load or import
-+// is given a module another is still evaluating or one a throw left
-+// part-way, and each is given the one instance of a module the package has
-+// finished.
++// once from one evaluation share the one evaluation, and what it finishes
++// joins the package's only where each evaluation it was begun from joined
++// its own. Two evaluations at once may each finish a copy of one module:
++// the first to end joins the package's, and the other joins none of what
++// it finished, since some of it was evaluated over its own copy. So no
++// load or import is given a module another is still evaluating or one a
++// throw left part-way, and each is given the one instance of a module the
++// package has finished.
 +//
 +// The package's loads take turns, so a library is evaluated once rather
 +// than by loads at once. A load that runs past TURN_HELD_MS gives up its
@@ -131,8 +137,9 @@ a link has moved off, or from modules let go of.
 +	// Starts each load still waiting for its turn.
 +	waiting: Set<() => void>;
 +	// Each import a finished module makes, evaluating in an evaluation of
-+	// its own, by file, for another import of it to join.
-+	alone: Map<string, Promise<unknown>>;
++	// its own, by file, for another import of it from the same evaluation
++	// to join.
++	alone: Map<string, { from: Evaluation; imported: Promise<unknown> }>;
 +}
 +
 +// What one load, or one import a finished module makes, evaluates.
@@ -143,8 +150,8 @@ a link has moved off, or from modules let go of.
 +	// The modules it has evaluated, finished or not, by file.
 +	own: Map<string, CachedModule>;
 +	ended: boolean;
-+	// Whether it ended in a throw.
-+	failed: boolean;
++	// Whether what it finished joined its package's.
++	kept: boolean;
 +	// What jiti is given as its cache: its own modules, then those finished
 +	// before it.
 +	cache: ModuleCache;
@@ -169,7 +176,7 @@ a link has moved off, or from modules let go of.
 +
 +function newEvaluation(modules: PackageModules, parent?: Evaluation): Evaluation {
 +	const own = new Map<string, CachedModule>();
-+	const evaluation: Evaluation = { modules, parent, own, ended: false, failed: false, cache: {} };
++	const evaluation: Evaluation = { modules, parent, own, ended: false, kept: false, cache: {} };
 +	evaluation.cache = new Proxy(Object.create(null), {
 +		get: (_, file) => (typeof file === "string" ? (own.get(file) ?? finishedBefore(evaluation, file)) : undefined),
 +		set: (_, file, module: unknown) => {
@@ -201,25 +208,28 @@ a link has moved off, or from modules let go of.
 +	return evaluation.modules.finished.get(file);
 +}
 +
-+// Whether no evaluation `evaluation` was begun from failed, so what it
-+// finishes may join its package's.
++// Whether each evaluation `evaluation` was begun from joined what it
++// finished to its package's, so what it finishes may join too. Each has
++// ended, since an import evaluates alone only once its evaluation has.
 +function stands(evaluation: Evaluation): boolean {
 +	for (let from = evaluation.parent; from !== undefined; from = from.parent) {
-+		if (from.failed) return false;
++		if (!from.kept) return false;
 +	}
 +	return true;
 +}
 +
-+// Ends `evaluation`. Once it has succeeded, and stands, each module it
-+// finished joins its package's, but for one the package finished first.
++// Ends `evaluation`. Once it has succeeded, and stands, the modules it
++// finished join its package's, all of them or, where the package finished
++// another copy of one first, none: some of its modules were evaluated over
++// its own copy, so joining any of them could give a later load both.
 +function endEvaluation(evaluation: Evaluation, succeeded: boolean): void {
 +	evaluation.ended = true;
-+	evaluation.failed = !succeeded;
 +	if (!succeeded || !stands(evaluation)) return;
 +	const { finished } = evaluation.modules;
-+	for (const [file, module] of evaluation.own) {
-+		if (module.loaded && !finished.has(file)) finished.set(file, module);
-+	}
++	const done = [...evaluation.own].filter(([, module]) => module.loaded);
++	if (done.some(([file, module]) => (finished.get(file) ?? module) !== module)) return;
++	for (const [file, module] of done) finished.set(file, module);
++	evaluation.kept = true;
 +}
 +
 +// Whether an import of `file` in `evaluation` needs an evaluation of its
@@ -267,8 +277,10 @@ a link has moved off, or from modules let go of.
 +// one. A require can't wait, so it evaluates its own.
 +function evaluateAlone(jiti: Jiti, evaluation: Evaluation, id: string, file: string, async: boolean): unknown {
 +	const { modules } = evaluation;
++	// Only an import begun from the same evaluation joins one, since one
++	// begun from another may have been evaluated over another copy.
 +	const evaluating = async ? modules.alone.get(file) : undefined;
-+	if (evaluating !== undefined) return evaluating;
++	if (evaluating?.from === evaluation) return evaluating.imported;
 +	const alone = newEvaluation(modules, evaluation);
 +	let evaluated: unknown;
 +	try {
@@ -299,11 +311,11 @@ a link has moved off, or from modules let go of.
 +			},
 +		)
 +		.finally(() => {
-+			if (modules.alone.get(file) === imported) modules.alone.delete(file);
++			if (modules.alone.get(file)?.imported === imported) modules.alone.delete(file);
 +		});
-+	// One begun from a failed evaluation is joined by none, so no import
-+	// is given that evaluation's graph.
-+	if (stands(alone)) modules.alone.set(file, imported);
++	// One begun from an evaluation that kept nothing is joined by none, so
++	// no import is given that evaluation's graph.
++	if (stands(alone)) modules.alone.set(file, { from: evaluation, imported });
 +	return imported;
 +}
 +
@@ -451,9 +463,11 @@ a link has moved off, or from modules let go of.
 +	});
 +	modules.turn = turn;
 +	return imported;
- }
- 
-@@ -257,6 +641,18 @@
++}
++
+ function cachedFactoryOf(extensionPath: string, cacheToken: ExtensionCacheToken): ExtensionFactory | undefined {
+ 	const shared = sharedFileOf(extensionPath);
+@@ -257,6 +650,18 @@
  }
  
 -function cacheFactory(extensionPath: string, cacheToken: ExtensionCacheToken, factory: ExtensionFactory): void {
@@ -473,7 +487,7 @@ a link has moved off, or from modules let go of.
 +	if (through !== undefined && packageModules.get(through.root) !== through) return;
  	if (shared !== undefined) sharedFactories.set(shared, factory);
  	else cacheToken.cache.set(extensionPath, new WeakRef(factory));
-@@ -265,4 +661,7 @@
+@@ -265,4 +670,7 @@
  export function clearExtensionCache(): void {
  	extensionCaches.length = 0;
 +	for (const modules of packageModules.values()) dropModules(modules);
@@ -481,7 +495,7 @@ a link has moved off, or from modules let go of.
 +	keyedRoots.clear();
  	sharedFactories.clear();
  	sharedFiles.clear();
-@@ -732,4 +1131,7 @@
+@@ -732,4 +1140,7 @@
  	}
  
 +	// pi-host: a shared extension loads through its package's modules.
@@ -489,7 +503,7 @@ a link has moved off, or from modules let go of.
 +	const modules = shared === undefined ? undefined : packageModulesOf(shared);
  	const createJitiImpl = await getCreateJiti();
  	// Compiled binaries and the bundled Node distribution use embedded modules.
-@@ -754,5 +1156,9 @@
+@@ -754,5 +1165,9 @@
  	});
  
 -	const module = await jiti.import(canonicalizePath(extensionPath), { default: true });
@@ -500,7 +514,7 @@ a link has moved off, or from modules let go of.
 +			: await jiti.import(canonicalizePath(extensionPath), { default: true });
  	const factory = module as ExtensionFactory;
  	if (typeof factory !== "function") {
-@@ -760,5 +1166,5 @@
+@@ -760,5 +1175,5 @@
  	}
  	if (isCurrentCacheToken(cacheToken)) {
 -		cacheFactory(extensionPath, cacheToken, factory);
