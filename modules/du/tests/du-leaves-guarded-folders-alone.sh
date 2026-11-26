@@ -12,8 +12,10 @@
 # follows it, and one followed by where its links lead, each read as written
 # from the folder really holding it and judged as typed, left out when one
 # leads into Documents, and left out and said apart past 32 links or through
-# a folder that can't be entered; that a start named - is that folder and CDPATH moves none;
-# that only a home's own guarded folders are left out by name; that du's own
+# a folder that can't be entered, as is a start typed below one or below a
+# folder that isn't there, while one alone missing from a folder that is, a
+# / after it or not, reaches du; that a start named - is that folder and
+# CDPATH moves none; that only a home's own guarded folders are left out by name; that du's own
 # nonzero end is kept; that -L, alone or among letters, is taken out, given
 # as -H and said unless -H or -P follows it; that the account's home is
 # guarded whatever HOME says, HOME's too, one whose name begins another's, an
@@ -344,7 +346,7 @@ fi
 chmod 755 "${home}/src/locked"
 ln -s "${home}/Documents/inside/file" "${home}/src/note"
 unjudged="note: du left out 1 start(s) it couldn't judge, a folder it can't enter or find"
-unjudged+=" or a link whose end it can't read, uncounted:"
+unjudged+=", or a link whose end it can't read, uncounted:"
 count "${home}" -sh src/note src
 gives "a count of a link to a file in Documents" "" -sh src/note src
 count "${home}" -shH src/note
@@ -451,9 +453,13 @@ gives "a count of a link through a link below a folder that can't be entered" \
 count "${home}" -sh src/shut/in/file src
 gives "a count of a start typed below a folder that can't be entered" \
   "${unjudged} src/shut/in/file" -sh src
-# One alone missing from a folder that is goes to du, which says so itself.
+# One alone missing from a folder that is goes to du as typed, a / after it
+# or not, for macOS's du to say it isn't there; the stand-in says nothing.
 count "${home}" -sh src/nothing src
 gives "a count of a start missing from a folder that is" "" -sh src/nothing src
+count "${home}" -sh src/nothing/ src
+gives "a count of a start missing from a folder that is, typed with a / after it" "" \
+  -sh src/nothing/ src
 count "${home}" -sh gone/file src
 gives "a count of a start typed below a folder that isn't there" "${unjudged} gone/file" -sh src
 count "${home}" -shH src/through src
