@@ -26,8 +26,9 @@ function paragraphs(text) {
 // each one beside it, letter for letter as Search.washed reads the title.
 function runsOn(raw, kept, spaced) {
     const rest = raw.slice(kept);
-    if (!PARAGRAPH_BREAK.test(rest))
+    if (!PARAGRAPH_BREAK.test(rest)) {
         return rest;
+    }
     return spaced === true ? rest.replace(PARAGRAPH_BREAKS, " ") : null;
 }
 
