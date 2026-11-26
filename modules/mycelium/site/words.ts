@@ -380,50 +380,6 @@ export const described = (reading: Reading, key: string): string => {
   return `${id}, ${machineWords(reading, id)}, ${what}`;
 };
 
-/** How a branch grew, as lineage.ts counts it: whose cells there started or split its own. */
-export interface Grew<T> {
-  readonly by: readonly T[];
-  readonly started: number;
-  readonly split: { readonly from: readonly T[]; readonly cells: number } | null;
-}
-
-/**
- * What a branch says of the network it grew out of, each a line of its own:
- * the cells there that started its own and how many, then those its own
- * split from and how many, out of its `cells`, since a split is not a
- * start. `who` says a list of cells as the page shows them.
- */
-export const grewWords = <T>(
-  grew: Grew<T>,
-  cells: number,
-  who: (cells: readonly T[]) => string,
-): string[] => {
-  const ofIts = (n: number): string => {
-    if (n !== cells) {
-      return `${NUMBER.format(n)} of its ${plural(cells, "cell")}`;
-    }
-    return n === 1 ? "its cell" : `all ${NUMBER.format(n)} of its cells`;
-  };
-  const lines: string[] = [];
-  if (grew.started > 0 && grew.by.length > 0) {
-    lines.push(`Started by ${who(grew.by)}: ${ofIts(grew.started)}`);
-  }
-  if (grew.split && grew.split.cells > 0) {
-    lines.push(`Split from ${who(grew.split.from)}: ${ofIts(grew.split.cells)}`);
-  }
-  return lines;
-};
-
-/**
- * The cell a cell's drawer says it split from: none where the split names
- * the cell that started it, since that is said once, as Started, the way a
- * network's drawer and lineage.ts's originsOf say it.
- */
-export const splitSaid = (
-  split: string | undefined,
-  start: string | undefined,
-): string | undefined => (split && split !== start ? split : undefined);
-
 /**
  * What each kind of shared thing a network gathers round is called in words.
  * The model keeps only the networks whose kind is named here, so the panel

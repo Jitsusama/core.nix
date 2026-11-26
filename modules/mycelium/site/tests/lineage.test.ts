@@ -2,13 +2,14 @@
 // of this machine that works on a quest has a forage (the node's `forage`
 // kind), whose lineage says so too: these prove what the map keeps of
 // that, that the record's word comes first, that a node saying neither
-// names nobody, and what each cell's forage says it split from;
-// branches.test.ts proves which network grows out of which from them.
+// names nobody, and what each cell's forage says it split from and its
+// drawer says of it; branches.test.ts proves which network grows out of
+// which from them.
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
-import { isLaterCopy, oneCopyEach, originsOf } from "../lineage.ts";
+import { isLaterCopy, oneCopyEach, originsOf, splitSaid } from "../lineage.ts";
 import { nowOf } from "../model.ts";
 
 const AT = Date.parse("2026-11-19T01:00:00Z");
@@ -266,4 +267,11 @@ it("a cell's origins are its start, then its split, said once where both name on
     { cell: "HERON1", by: "GULL01", split: true },
     { cell: "TERNAA", by: "KESTRL", split: true },
   ]);
+});
+
+it("a cell says what it split from only where its start doesn't name it", () => {
+  assert.equal(splitSaid("SKIFF1", undefined), "SKIFF1", "a split with no start should be said");
+  assert.equal(splitSaid("GULL01", "SKIFF1"), "GULL01", "a split from another cell is said");
+  assert.equal(splitSaid("SKIFF1", "SKIFF1"), undefined, "a split from its starter is said once");
+  assert.equal(splitSaid(undefined, "SKIFF1"), undefined, "no split, nothing said");
 });

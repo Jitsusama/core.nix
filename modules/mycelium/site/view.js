@@ -71,7 +71,7 @@ import {
   sow as sowSeeds,
 } from "./layout.js";
 import { askedOf, cellActs } from "./acts.js";
-import { grownOf, oneCopyEach, originsOf } from "./lineage.js";
+import { grewWords, grownOf, oneCopyEach, originsOf, splitSaid } from "./lineage.js";
 import { drawnWidth } from "./lines.js";
 import { durationOf, easedInOut, goneAndBack } from "./motion.js";
 import { shapeOf as shapeOfReading } from "./shape.js";
@@ -86,7 +86,6 @@ import {
   builds,
   countsOf,
   described,
-  grewWords,
   money,
   NUMBER,
   offWords,
@@ -96,7 +95,6 @@ import {
   STANDINGS,
   spends,
   spentOf,
-  splitSaid,
   cellsOn as machineCells,
   labelsApart,
   toldApart,

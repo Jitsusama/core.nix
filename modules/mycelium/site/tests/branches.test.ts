@@ -5,7 +5,14 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { grownOf, type Network, type Origin, originsOf, type Started } from "../lineage.ts";
+import {
+  grewWords,
+  grownOf,
+  type Network,
+  type Origin,
+  originsOf,
+  type Started,
+} from "../lineage.ts";
 
 /** A network the node sets within `within`, named `name`, its cells drawn in it. */
 function network(
@@ -238,4 +245,23 @@ it("no branch is grown that would loop back round to the network it grows from",
     aaa: { from: "bbb", by: ["BRANT1"], cells: 1, started: 1 },
     bbb: { from: "ccc", by: ["CRANE1"], cells: 1, started: 1 },
   });
+});
+
+it("says a branch's starts and splits apart, each out of all its cells", () => {
+  const who = (cells: readonly string[]): string => cells.join(" and ");
+  assert.deepEqual(
+    grewWords({ by: ["SKIFF1"], started: 1, split: { from: ["GULL01"], cells: 1 } }, 3, who),
+    ["Started by SKIFF1: 1 of its 3 cells", "Split from GULL01: 1 of its 3 cells"],
+    "a branch both started and split says each line with its own count",
+  );
+  assert.deepEqual(
+    grewWords({ by: [], started: 0, split: { from: ["GULL01", "TERN01"], cells: 2 } }, 2, who),
+    ["Split from GULL01 and TERN01: all 2 of its cells"],
+    "a branch only split says no one started it",
+  );
+  assert.deepEqual(
+    grewWords({ by: ["SKIFF1"], started: 1, split: null }, 1, who),
+    ["Started by SKIFF1: its cell"],
+    "a branch only started says no split",
+  );
 });
