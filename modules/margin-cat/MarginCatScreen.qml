@@ -475,7 +475,15 @@ PanelWindow {
     // Its place set to `to` as niri's scroll sets off, drawn where it was
     // as niri set it off and closing on `to` on niri's spring
     // (MarginCatStacked.js's rides).
+    // Under the launcher's card it's put there at once, as nothing moves
+    // under the card (stilled), so the ride draws no frames beside his keys.
     function rideTo(to: var): void {
+        if (Launched.up && !byHand) {
+            carry = null;
+            lag = { x: 0, y: 0 };
+            place = to;
+            return;
+        }
         const now = Date.now();
         // As far into the scroll as niri says, or a guess at how late it
         // hears of one where niri says nothing or tells of one ended.
@@ -1203,6 +1211,13 @@ PanelWindow {
     // under every round of a lab's keys.
     readonly property bool stilled: Launched.up
     onStilledChanged: {
+        // A ride the card comes up over lands at its place at once, as one
+        // set off under it does (rideTo), rather than drawing on beneath.
+        if (stilled && carry !== null && !byHand) {
+            carry = null;
+            lag = { x: 0, y: 0 };
+            say();
+        }
         for (const clock of [walker, mover, yarnFades]) {
             if (stilled && clock.running && !byHand)
                 clock.pause();
