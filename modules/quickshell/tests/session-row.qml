@@ -165,10 +165,11 @@ QtObject {
             { address: "ab12cd", presence: { addresses: ["ab12cd", "LIVE01", "OLD001",
                 "NEXT01", "BOTH01"] } },
             { address: "NEXT01", presence: { addresses: ["NEXT01"] } },
-            { address: "SHARED", presence: { addresses: ["SHARED"] } }, { address: "" }, {}
+            { address: "SHARED", presence: { addresses: ["SHARED"] } },
+            { address: "OWNED1", presence: { addresses: ["OWNED1"] } }, { address: "" }, {}
         ];
         const runningOnes = [{ address: "live01" }, { address: "shared" },
-            { address: "run001", presence: { addresses: ["run001", "both01"] } }];
+            { address: "run001", presence: { addresses: ["run001", "both01", "owned1"] } }];
         const parkedHere = SessionRow.parkedSet(resting, runningOnes);
         const parkings = [["its own, upper-cased", "AB12CD", true, "ab12cd"],
             ["its own, one before listing it", "NEXT01", true, "NEXT01"],
@@ -176,6 +177,7 @@ QtObject {
             ["one it only lists, none owning it", "old001", false, "ab12cd"],
             ["one a running one lists too", "BOTH01", false, null],
             ["its own, a running one's too", "SHARED", false, null],
+            ["its own, a running one lists it", "OWNED1", true, "OWNED1"],
             ["one none goes by", "NONE01", false, null], ["none", "", false, null]];
         for (const [what, address, want, whose] of parkings) {
             const found = SessionRow.parkedOf(resting, runningOnes, address)?.address ?? null;

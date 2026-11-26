@@ -545,8 +545,8 @@ Provider {
     // so a running session's step, which moves Sessions.running, makes the
     // set and lays Agents out again only when who's parked has changed.
     readonly property string parkedKeys: Array.from(
-        SessionRow.parkedSet(Sessions.parked, Sessions.running)).sort().join(" ")
-    readonly property var parkedHere: new Set(parkedKeys.split(" ").filter(key => key !== ""))
+        SessionRow.parkedSet(Sessions.parked, Sessions.running)).sort().join("\n")
+    readonly property var parkedHere: new Set(parkedKeys.split("\n").filter(key => key !== ""))
     function shellParked(address) {
         return parkedHere.has(String(address).toUpperCase());
     }
