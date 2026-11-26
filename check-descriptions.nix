@@ -1853,9 +1853,10 @@
   '';
   house-report-advises-by-the-file-its-key-names = ''
     a Mac's key job, its own lines run over sample keys with its Mac tools stood in for, says to
-    make a key anew whichever refusal it says, by the owner, mode and access list of the file the
-    key's name comes to, and not of a key others may only run or reach by lesser rights, one it
-    copied, or a name that comes to no file
+    make a key anew whichever refusal it says, by the owner, mode, access list and names of the
+    file the key's name comes to, and for any key its folder refused, and not of a key others may
+    only run or reach by lesser rights, one it copied, or a name that comes to no file and no
+    folder refused
   '';
   house-report-hands-a-mac-its-key-safely = ''
     a Mac given a key runs house-report signing with activation's copy of it, readable by nobody's

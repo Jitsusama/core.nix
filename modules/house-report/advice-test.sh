@@ -2,9 +2,9 @@
 # Runs a Mac's house-report-key job's own lines deciding whether a refusal
 # says to make the key anew, over sample keys. The job's Mac tools are
 # renamed in the lines given to the stand-ins below, which answer from
-# each case's folder: the owner, mode and access list of the file the
-# key's name comes to, and whether it comes to one. Shell tests on that
-# file stay real, so the case's folder holds it.
+# each case's folder: the owner, mode, access list and names of the file
+# the key's name comes to, and whether it comes to one. Shell tests on
+# that file stay real, so the case's folder holds it.
 #
 # Usage: advice-test.sh LINES, LINES the job's lines as checks.nix renames
 # them.
@@ -31,9 +31,13 @@ stand_in_readlink() {
   cat "${here}/seen"
 }
 
+# As the job calls it: -f %u for the owner, -f %l for how many names.
 stand_in_stat() {
-  [[ "$1 $2" == "-f %u" ]] || return 2
-  cat "${here}/owner"
+  case "$1 $2" in
+    "-f %u") cat "${here}/owner" ;;
+    "-f %l") cat "${here}/names" ;;
+    *) return 2 ;;
+  esac
 }
 
 # As the job calls it: FILE -maxdepth 0 -perm +MASK, printing FILE when its
@@ -55,12 +59,14 @@ stand_in_ls() {
 }
 
 # A key the job's name comes to: OWNER, MODE, LIST (ls -le's lines under
-# it), and whether the name comes to it at all.
+# it), whether the name comes to it at all, and how many NAMES it has,
+# one unless given.
 key() {
   here=$(mktemp -d)
   echo "$1" >"${here}/owner"
   echo "$2" >"${here}/mode"
   printf '%b' "$3" >"${here}/list"
+  echo "${5:-1}" >"${here}/names"
   touch "${here}/key"
   if [[ $4 == comes ]]; then
     echo "${here}/key" >"${here}/seen"
@@ -89,15 +95,22 @@ advises() {
 
 walked="is under /etc/house-report, which another account may write"
 key 0 600 "" comes
-advises "a key root's alone, its folder refused" no "${walked}" /etc
+advises "a key root's alone, its folder refused" yes "${walked}" /etc
+key 0 600 "" nowhere
+advises "a name that comes to no file, its folder refused" yes "${walked}" /etc
+key 0 600 "" comes
+advises "a key root's alone, its link refused" no "is a link" /etc
+key 0 600 "" comes 2
+advises "a key root's alone with a second name" yes "has another name" /etc
 key 0 644 "" comes
-advises "a key others may read, its folder refused" yes "${walked}" /etc
+advises "a key others may read, its link refused" yes "is a link" /etc
 key 0 620 "" comes
 advises "a key others may write alone, refused for it" yes "may be read or written" /etc
 key 0 711 "" comes
 advises "a key others may only run" no "may be run by an account other than root's" /etc
 key 501 600 "" comes
-advises "a key another account owns, its folder refused" yes "${walked}" /etc
+advises "a key another account owns, its copy's folder refused" yes \
+  "has nowhere to be copied to" /etc
 key 0 600 " 0: group:everyone allow read,readattr\n" comes
 advises "a list letting others read, its link refused" yes "is a link" /etc
 key 0 600 " 0: group:everyone allow readattr,readsecurity\n" comes
