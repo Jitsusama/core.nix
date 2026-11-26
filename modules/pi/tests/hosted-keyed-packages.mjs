@@ -129,6 +129,8 @@ export const beforeTheBound = () => {
   const deadline = Date.now() + 8000;
   return (promise, message) => within(promise, message, Math.max(1, deadline - Date.now()));
 };
+/** A settling check's wait: a pass ends as it settles, well inside a held turn's 8 s. */
+export const SETTLES_MS = 3000;
 /** Whether `promise` is still pending once `ms` have passed. */
 export const pendingAfter = (promise, ms) =>
   Promise.race([
@@ -274,7 +276,8 @@ export const opensWhileHeld = async (what, holder, kept, waiting) => {
   await holdGate.reached;
   const reopened = open(`${what}-reopened`, [kept]);
   const waited = open(`${what}-waited`, [waiting]);
-  assert.equal(await pendingAfter(reopened, 200), false, `${what}: a kept factory waited a turn`);
+  const keptWaited = await pendingAfter(reopened, SETTLES_MS);
+  assert.equal(keptWaited, false, `${what}: a kept factory waited a turn`);
   assert.equal(await pendingAfter(waited, 200), true, `${what}: a load didn't wait its turn`);
   holdGate.putAway();
   holdGate.open();

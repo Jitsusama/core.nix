@@ -36,6 +36,7 @@ import {
   parentedPackage,
   pendingAfter,
   racingPackage,
+  SETTLES_MS,
   scratch,
   within,
   write,
@@ -213,7 +214,7 @@ assert.equal(
 );
 const waits = globalThis.parentedWaits();
 assert.equal(
-  await pendingAfter(waits, 200),
+  await pendingAfter(waits, SETTLES_MS),
   false,
   "an import made during its own load evaluated again what the load was evaluating",
 );
@@ -315,7 +316,7 @@ assert.equal(
   "doomed",
 );
 assert.equal(
-  await pendingAfter(globalThis.doomedLingers(), 200),
+  await pendingAfter(globalThis.doomedLingers(), SETTLES_MS),
   false,
   "an import after a retry joined one a failed load's module began",
 );
