@@ -3,9 +3,9 @@
 //! filed before closed once it is back in.
 //!
 //! Long because each kind of drag, Joel's misses, a merge's rounds, dates
-//! told late, the work system's findings, the worst queue and each
-//! measure's lines by owner, is filed and closed by rules of its own, and
-//! its tests sit beside them.
+//! told late, the work system's findings, the worst queue, claims of his
+//! rule with nothing behind them and each measure's lines by owner, is
+//! filed and closed by rules of its own, and its tests sit beside them.
 
 use std::collections::BTreeMap;
 
@@ -17,7 +17,7 @@ use super::lines::figure;
 use super::measures::queues::{self, QUEUE};
 use super::measures::{
     BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, UNTESTED, apps, drag, held_for_good,
-    held_unseen, rounds, told_late,
+    held_unseen, rounds, ruled, told_late,
 };
 
 /// How long a queue's ask has before it goes late: long enough for the
@@ -165,6 +165,9 @@ fn filed(m: &Measure) -> Vec<Filed> {
     if m.key.starts_with(told_late::KEY) {
         return told_late_asked(m, &says);
     }
+    if m.key == ruled::KEY {
+        return ruled_asked(m);
+    }
     if m.key == FINDINGS {
         return findings_filed(m);
     }
@@ -248,6 +251,33 @@ fn told_late_asked(m: &Measure, says: &str) -> Vec<Filed> {
                  closes by itself a day after the move."
             ),
             owner: owner.to_owned(),
+        })
+        .collect()
+}
+
+/// The ask to its sender about each message claiming a rule or wish of
+/// Joel's with no word of his behind it, filed message by message, each
+/// line opening with the message's short id in brackets and naming its
+/// sender last. A message can't be taken back, so it closes once its line
+/// is gone, a day after it was sent.
+fn ruled_asked(m: &Measure) -> Vec<Filed> {
+    m.behind
+        .iter()
+        .filter_map(|line| line.rsplit_once(" · "))
+        .filter_map(|(claim, owner)| {
+            let (id, said) = claim.strip_prefix('[')?.split_once("] ")?;
+            Some(Filed {
+                key: format!("hour:{}:{owner}:{id}", m.key),
+                says: format!("a claim of his rule with no word of his, yours: {said}"),
+                text: format!(
+                    "cadence hour: your message {id} says Joel ruled or wants something, with \
+                     no quote of his and no dated source: \"{said}\". Only his own words bind \
+                     a cell. Please answer it on the mesh, re {id}, with his words and when he \
+                     said them, or say the claim is dropped and whose caution it was. This ask \
+                     closes by itself a day after the message."
+                ),
+                owner: owner.to_owned(),
+            })
         })
         .collect()
 }
@@ -345,6 +375,23 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
             .split_once(':')
             .map(|(owner, date)| format!("{date} · {owner}"));
         return m.target.is_some() && line.is_none_or(|line| !m.behind.contains(&line));
+    }
+    // A claim of his rule is its sender's until its message's line is gone
+    // from the measure, read; with the mesh unread it says nothing, so
+    // stays open.
+    let claimed = key
+        .strip_prefix(ruled::KEY)
+        .and_then(|rest| rest.strip_prefix(':'))
+        .and_then(|rest| rest.rsplit_once(':'));
+    if let Some((owner, id)) = claimed {
+        let (opens, ends) = (format!("[{id}] "), format!(" · {owner}"));
+        return measures.iter().find(|m| m.key == ruled::KEY).is_some_and(|m| {
+            m.target.is_some()
+                && !m
+                    .behind
+                    .iter()
+                    .any(|line| line.starts_with(&opens) && line.ends_with(&ends))
+        });
     }
     // An unread file leaves only its one line, never a figure, so a drag
     // isn't closed while its figure can't be seen; a figure written with no
@@ -462,7 +509,9 @@ pub fn file(
     // miss with no test that runs is asked of its owner the same way.
     dragging.extend(measures.iter().filter(|m| {
         let beside = [FINDINGS, UNTESTED].contains(&m.key.as_str());
-        let apart = m.key.starts_with(rounds::FRUITLESS) || m.key.starts_with(told_late::KEY);
+        let apart = m.key.starts_with(rounds::FRUITLESS)
+            || m.key.starts_with(told_late::KEY)
+            || m.key == ruled::KEY;
         (apart || beside) && m.past().is_some()
     }));
     // Nor do the queues; the worst is asked for its next change once a
@@ -1095,6 +1144,58 @@ mod tests {
                 ),
             ],
             "a move closed while its line stood, or stayed open once it was gone"
+        );
+    }
+
+    /// On 26 November two cells passed a caution on as Joel's rule, with
+    /// no word of his; each is asked of its own sender, and closes only
+    /// once its message has left the measure, read.
+    #[test]
+    fn a_claim_of_his_rule_goes_to_its_sender_and_closes_once_its_line_is_gone() {
+        let mut claims = measure(ruled::KEY, Class::Cells, 2.0, Some(0.0));
+        claims.behind = vec![
+            "[1f2e3d4c] I broke Joel's rule · T6E7X6".to_owned(),
+            "[5a6b7c8d] That breaks Joel's rule · 5UTLKM".to_owned(),
+        ];
+        let median = measure(rounds::KEY, Class::Ship, 2.0, Some(rounds::TARGET));
+        let both = [median, claims.clone()];
+        assert!(drag(&both).is_none(), "a claim of his rule led the drag");
+        let mut ledger = Vec::new();
+        let told = file(&mut ledger, &both, "2026-11-26", 1000);
+        let asked: Vec<&(String, String)> =
+            told.iter().filter(|(_, text)| text.contains("Joel ruled")).collect();
+        let mut senders: Vec<&str> = asked.iter().map(|(to, _)| to.as_str()).collect();
+        senders.sort_unstable();
+        assert_eq!(senders, ["5UTLKM", "T6E7X6"], "a sender wasn't asked apart");
+        let broke = asked
+            .iter()
+            .find(|(to, _)| to == "T6E7X6")
+            .map(|(_, text)| text.as_str())
+            .unwrap_or_default();
+        assert!(
+            broke.contains("your message 1f2e3d4c") && broke.contains("\"I broke Joel's rule\""),
+            "the sender wasn't told which message and claim: {broke}"
+        );
+        let mut unread = claims.clone();
+        unread.behind.clear();
+        unread.target = None;
+        file(&mut ledger, &[unread], "2026-11-26", 4600);
+        let open = |ledger: &[Entry]| {
+            let mut keys: Vec<String> = ledger
+                .iter()
+                .filter(|e| e.open && e.key.contains(ruled::KEY))
+                .map(|e| e.key.clone())
+                .collect();
+            keys.sort_unstable();
+            keys
+        };
+        assert_eq!(open(&ledger).len(), 2, "a claim closed while the mesh went unread");
+        claims.behind.remove(0);
+        file(&mut ledger, &[claims], "2026-11-26", 8200);
+        assert_eq!(
+            open(&ledger),
+            [format!("hour:{}:5UTLKM:5a6b7c8d", ruled::KEY)],
+            "a claim closed while its line stood, or stayed open once it was gone"
         );
     }
 

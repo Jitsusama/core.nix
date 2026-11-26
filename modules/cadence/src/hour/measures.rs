@@ -29,6 +29,7 @@ mod promised;
 pub mod queues;
 mod reports;
 pub mod rounds;
+pub mod ruled;
 #[cfg(test)]
 mod slipped;
 mod slips;
@@ -132,11 +133,14 @@ impl Measure {
 /// can a date already told late, which stays on the card for its day and
 /// is filed to each owner apart, but never leads, since asking its owner
 /// to steer it each hour moves nothing; nor do the queues, whose worst is asked apart once a day.
+/// A claim of Joel's rule with nothing behind it is asked of its sender apart, and never leads:
+/// a message sent can't be taken back, so only its sender's answer moves it.
 #[must_use]
 pub fn drag(measures: &[Measure]) -> Option<&Measure> {
+    let apart = [rounds::FRUITLESS, told_late::KEY, ruled::KEY];
     measures
         .iter()
-        .filter(|m| !m.key.starts_with(rounds::FRUITLESS) && !m.key.starts_with(told_late::KEY))
+        .filter(|m| !apart.iter().any(|key| m.key.starts_with(key)))
         .filter(|m| m.class != Class::Queues)
         .filter_map(|m| m.past().map(|past| (m, past)))
         .min_by(|(a, pa), (b, pb)| a.class.cmp(&b.class).then(pb.total_cmp(pa)))

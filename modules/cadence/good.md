@@ -274,6 +274,16 @@ holding a space, as one broken across two lines does, is counted too.
 - Joel, 24 Nov: "I need my agents to be able to get work done, they can't be neutered."
 - Over costs him: agents stopped from working with nobody saying when they start again.
 
+## Rulings With No Word of His
+
+- Measures: `rulings-unsourced`
+- Target: 0 messages on the mesh in the last day saying Joel ruled or wants something with no
+  quote of three words or more, no date and no clock time beside his name. Each is asked of its
+  sender, for his dated words or the claim dropped.
+- Joel, 22 Nov 15:49: "i have said multiple times that security is not acceptable if it blocks us
+  from getting stuff done."
+- Over costs him: a cell's own caution held against the work as if he had ruled it.
+
 ## Lines Citing No Owner
 
 - Measures: `lines-uncited`
