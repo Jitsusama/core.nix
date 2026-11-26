@@ -1,7 +1,17 @@
-// The panel's building blocks: elements made from a tag, attributes and
+// The page's elements: those its markup holds, found by their selector,
+// and the panel's building blocks, elements made from a tag, attributes and
 // children, the diamond mark, and facts and tables of figures.
 
 import { el } from "./svg.ts";
+
+/** The element `selector` finds, which the page's markup always holds. */
+function element<T extends Element>(selector: string, kind: new () => T): T {
+  const match = document.querySelector(selector);
+  if (!(match instanceof kind)) {
+    throw new Error(`the page has no ${selector}, which the network page draws into`);
+  }
+  return match;
+}
 
 /** A child the panel's elements take: an element, words, or nothing. */
 type Child = Node | string | number | null | undefined | false | readonly Child[];
@@ -103,4 +113,4 @@ function table(
 }
 
 export type { Cell, Child, Fact };
-export { facts, glyph, h, table };
+export { element, facts, glyph, h, table };

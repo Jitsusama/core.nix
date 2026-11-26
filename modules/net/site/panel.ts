@@ -1,7 +1,8 @@
 // The panel beside the map, when no device is open: how the whole network
 // stands, said in net's own words wherever net has them, and the devices a
-// search finds.
+// search finds; and how net's feeds stand, which the head says.
 
+import type { Standing } from "../../local-sites/kit/feed.ts";
 import { type Child, facts, glyph, h } from "./elements.ts";
 import type { Concern, Device, Network, Source } from "./model.ts";
 import type { Mycelium } from "./mycelium.ts";
@@ -218,6 +219,33 @@ interface Answering {
   readonly worst: string | undefined;
 }
 
+/** The worst standing first, the one the page says. */
+const WORST_FIRST = ["broken", "stale", "connecting", "live"];
+
+/** Each of net's watches' standing, as its feed last said it. */
+class Standings {
+  readonly #each = new Map<string, Standing>();
+  #answered = false;
+
+  /** Takes how the watch of `kind` stands now. */
+  set(kind: string, stands: Standing): void {
+    this.#each.set(kind, stands);
+    this.#answered ||= stands.state === "live";
+  }
+
+  /** How the worst of net's feeds stands, or undefined before any has said. */
+  worst(): Standing | undefined {
+    return [...this.#each.values()].sort(
+      (one, other) => WORST_FIRST.indexOf(one.state) - WORST_FIRST.indexOf(other.state),
+    )[0];
+  }
+
+  /** How net's feeds stand, for the lede. */
+  answering(): Answering {
+    return { answered: this.#answered, worst: this.worst()?.state };
+  }
+}
+
 /**
  * What the lede says, or null to leave it as it is: what stands now once a
  * feed of net's was live, and that net hasn't answered once its feeds stop
@@ -313,4 +341,14 @@ function found(context: Context, query: string): Child[] {
 }
 
 export type { Answering, Context };
-export { concernRows, found, ledeOf, overview, row, sayStandsNow, standsNow, UNANSWERED };
+export {
+  concernRows,
+  found,
+  ledeOf,
+  overview,
+  row,
+  sayStandsNow,
+  Standings,
+  standsNow,
+  UNANSWERED,
+};

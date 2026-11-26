@@ -507,6 +507,7 @@ import ./ask-checks.nix args
           WEB_SKILL = "${../theme/web/skill}";
           WEB_KIT = "${webKit}";
           HOME_SOURCES = "${import ./home-source.nix}";
+          GATE_PLACES = "${../ssh-tpm-agent/gate.conf}";
           PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
           PYTHONPATH = "${./tests}";
           PYTHONDONTWRITEBYTECODE = "1";
@@ -553,6 +554,7 @@ import ./ask-checks.nix args
           LOCAL_SITES_SHARED = "${shared}";
           STRIP = "${./home/strip.css}";
           WEB_SKILL = "${../theme/web/skill}";
+          GATE_PLACES = "${../ssh-tpm-agent/gate.conf}";
           # The browsers mycelium-map-check carries, so the map's tests
           # launch what a machine runs it with.
           PLAYWRIGHT_BROWSERS_PATH = "${pkgs.callPackage ./headless-browsers.nix { }}";
