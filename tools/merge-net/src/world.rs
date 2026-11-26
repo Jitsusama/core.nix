@@ -1858,8 +1858,11 @@ mod tests {
         kept_drv(&dir, "origin/main", "vm-a", evaluate).expect("evaluated");
         kept_drv(&dir, "origin/main", "vm-a", evaluate).expect("evaluated");
         assert_eq!(asked.get(), 3, "a name that moves is evaluated each time");
-        kept_drv(&dir, commit, "vm-b", || Err("nix failed".to_owned()))
-            .expect_err("an evaluation that failed gave a derivation");
+        assert_eq!(
+            kept_drv(&dir, commit, "vm-b", || Err("nix failed".to_owned())),
+            Err("nix failed".to_owned()),
+            "an evaluation that failed didn't give back nix's own error"
+        );
         assert!(
             !dir.join(format!("{commit}-vm-b")).exists(),
             "a failure isn't kept"
@@ -2077,11 +2080,11 @@ mod tests {
         fs::write(&log, &text).unwrap();
         assert!(
             !clock.overdue(&log, start),
-            "a run waiting its turn is overdue at its start"
+            "a run queued behind one cut short is overdue the moment it's read"
         );
         assert!(
             !clock.overdue(&log, start + SILENT * 2),
-            "queued, though the run before it was taken"
+            "a queued run took the cut-short run's builder line for its own and went overdue"
         );
         let taken = start + SILENT * 2;
         text.push_str("nix-offload: building on the lent builder b\n");
@@ -2110,7 +2113,7 @@ mod tests {
             fs::write(&log, &text).unwrap();
             assert!(
                 !clock.overdue(&log, now),
-                "a run still writing is overdue {:?} in, before the longest",
+                "a run still writing is overdue {:?} in, at most the longest",
                 now - start
             );
             now += Duration::from_mins(10);
