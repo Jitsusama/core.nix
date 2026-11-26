@@ -181,7 +181,7 @@ onLinux {
       cleared = unit: lib.sort lib.lessThan (lib.toList unit.UnsetEnvironment);
     in
     holds "pi-sweeps-work-trees-in-a-unit-of-its-own"
-      "pi's tree sweep doesn't run only at the top of each hour by the wall clock, catching up an hour missed while off, runs outside jobs-work.slice or a node off the PATH, isn't one run to its end, runs a script other than the one it checks for, logs node's module-type warning, fails where the harness isn't installed, is stopped by a switch or by its own clock before two hours, starts without waiting for the machine to have room, or fails if that wait does, waits for room past 15 minutes, isn't made to give back memory past 6 GB, or has a hard limit, its own, its slices' or its account manager's, to kill it at, has a PATH other than the account's git, its hosts' folders and the account's own, names provider modules other than a machine gave it, has an SSH agent other than the agents' proxy its hosts get, leaves a variable that loads code that a pi host's unit clears, or reaches a Mac."
+      "pi's tree sweep doesn't run only at the top of each hour by the wall clock, catching up an hour missed while off, runs outside jobs-work.slice or a node off the PATH, isn't one run to its end, runs a script other than the one it checks for, logs node's module-type warning, fails where the harness isn't installed, is stopped by a switch or by its own clock before two hours, starts without waiting for the machine to have room, or fails if that wait does, waits for room past 15 minutes or without reading when the last sweep ended, isn't made to give back memory past 6 GB, or has a hard limit, its own, its slices' or its account manager's, to kill it at, has a PATH other than the account's git, its hosts' folders and the account's own, names provider modules other than a machine gave it, has an SSH agent other than the agents' proxy its hosts get, leaves a variable that loads code that a pi host's unit clears, or the file bash reads first, or reaches a Mac."
       (
         lib.elem "timers.target" timer.Install.WantedBy
         &&
@@ -195,9 +195,10 @@ onLinux {
         && service.Service.MemoryHigh == "6G"
         && !(service.Service ? ExecCondition)
         && lib.hasPrefix "-/nix/store/" (first service.Service.ExecStartPre)
-        && lib.hasSuffix "/bin/pi-sweep-room /proc/pressure /proc/meminfo 900 30" (
-          first service.Service.ExecStartPre
-        )
+        && lib.hasSuffix (
+          "/bin/pi-sweep-room /proc/pressure /proc/meminfo 900 30"
+          + " %S/pi/agentic-harness.pi/work/sweep.lock.outside"
+        ) (first service.Service.ExecStartPre)
         && !(service.Service ? MemoryMax)
         && noHardLimit "jobs"
         && noHardLimit "jobs-work"
@@ -212,7 +213,14 @@ onLinux {
             ''"PATH=${git}:${profile}:/run/current-system/sw/bin"''
           ]
         && !(proxied home)
-        && cleared service.Service == lib.sort lib.lessThan (cleared givenHost ++ [ "SSH_AUTH_SOCK" ])
+        &&
+          cleared service.Service == lib.sort lib.lessThan (
+            cleared givenHost
+            ++ [
+              "BASH_ENV"
+              "SSH_AUTH_SOCK"
+            ]
+          )
         &&
           lib.toList givenSweep.Environment == [
             ''"PATH=${pkgs.gitMinimal}/bin:/tools/bin:/100%% sure/bin:/odd\"dir\\bin:${givenProfile}:/run/current-system/sw/bin"''
@@ -221,14 +229,15 @@ onLinux {
           ]
         && proxied given
         && lib.elem proxy (lib.toList givenHost.Environment)
-        && cleared givenSweep == cleared givenHost
+        && cleared givenSweep == lib.sort lib.lessThan (cleared givenHost ++ [ "BASH_ENV" ])
         && !(mac.systemd.user.timers ? pi-sweep)
         && !(mac.systemd.user.services ? pi-sweep)
       );
 
   # The sweep's room check, the one its unit runs, over readings of a
   # quiet machine, one at each mark, one past each, a wait run out, a
-  # stall that clears and readings it can't make or that aren't numbers.
+  # stall that clears, a last sweep too long ago to wait for or none, and
+  # readings it can't make or that aren't numbers.
   pi-sweep-waits-for-room =
     let
       service = (account workstation).systemd.user.services.pi-sweep;

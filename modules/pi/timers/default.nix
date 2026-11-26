@@ -179,11 +179,15 @@ in
         # A sweep waits up to 15 minutes for a machine stalled on memory or
         # I/O, reading it every 30 s, and never skips the hour, as two
         # skipped hours hand sweeping to the hosts (sweep-room.sh). The
-        # hosts take over two hours after the last whole sweep ended, so
-        # a sweep that starts at a quarter past still has 45 minutes more
-        # than the last one took to end in. The dash starts it anyway if
-        # the wait itself fails.
-        ExecStartPre = "-${lib.getExe sweepRoom} /proc/pressure /proc/meminfo 900 30";
+        # hosts take over two hours after the last whole sweep ended, which
+        # its stamp says, so a sweep that starts at a quarter past still has
+        # 45 minutes more than the last one took to end in, and one whose
+        # stamp a wait would outlast, as after a sleep, starts at once. The
+        # dash starts it anyway if the wait itself fails.
+        ExecStartPre = lib.concatStringsSep " " [
+          "-${lib.getExe sweepRoom} /proc/pressure /proc/meminfo 900 30"
+          "%S/pi/agentic-harness.pi/work/sweep.lock.outside"
+        ];
         ExecStart = "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${sweepScript}";
         # Where agents' own commands run, beneath everything Joel uses, and
         # a place the polkit rules and the TPM agent's gate both take as an
@@ -208,8 +212,10 @@ in
         # What would have node run code nobody gave it, as a pi host's unit
         # clears (host.nix's loadsCode), since this sweep runs git in every
         # session's trees as a host's would, and the TPM agent's socket, which
-        # a host hides from its conversations too.
+        # a host hides from its conversations too. And the file bash reads
+        # before any script, as the room check is one.
         UnsetEnvironment = [
+          "BASH_ENV"
           "SSH_TPM_AUTH_SOCK"
           "NODE_OPTIONS"
           "NODE_PATH"
@@ -237,8 +243,11 @@ in
         # faulted in again, 1.8 million times, as each tree's status maps
         # those packs anew. 6 GB is over the 5.8 GB peak, and the same on
         # every machine, as what thrashes is the packs and the trees, not
-        # the memory there is. The mark reserves nothing: what Joel is
-        # using keeps its slices' floors beneath it. No hard limit of its own: a kill partway
+        # the memory there is, though on a machine under about 23 GiB
+        # jobs.slice's own ceiling, at least a quarter of memory, may come
+        # first. The
+        # mark reserves nothing: what Joel is using keeps its slices'
+        # floors beneath it. No hard limit of its own: a kill partway
         # through a take leaves a tree moved aside for the next run to put
         # back. The two-hour timeout above, systemd-oomd
         # watching the slice for pressure and the kernel's own OOM killer

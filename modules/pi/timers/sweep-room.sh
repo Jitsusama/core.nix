@@ -5,21 +5,25 @@
 # the disk was already contended held the whole machine's I/O stalled a
 # fifth of its time for half an hour. So it waits while the kernel's
 # five-minute averages of memory and I/O stalls are high or under a
-# quarter of memory is free, and starts the sweep as soon as they aren't.
-# It never skips the hour: a host's own sweep takes over once the last
-# whole sweep ended two hours ago, on the host's one thread and with no
-# limits, and two skipped hours on 26 November did just that. So past its
-# wait it lets the sweep start however the machine stands, and it lets it
-# start at once on a reading it can't make. The marks are 70% of where an
-# agent's heavy work stops: memory stalls past 5% or I/O stalls past 2%
-# over a minute, or under 16 GB free on a 62 GiB machine.
+# quarter of memory is free, and starts the sweep once they fall back.
+# Those averages trail a stall that ends by minutes, so a wait often runs
+# most of its length. It never skips the hour: a host's own sweep takes
+# over once the last whole sweep ended two hours ago, on the host's one
+# thread and with no limits, and two skipped hours on 26 November did
+# just that. So past its wait it lets the sweep start however the machine
+# stands; it lets it start at once when the last sweep's stamp is too old
+# for a wait to end before the hosts take over, as after a sleep, and on
+# a reading it can't make. The stall marks, 3.5% and 1.4%, are 70% of the
+# 5% and 2% at which an agent's heavy work stops, held over five minutes
+# as a start is judged; a quarter free is the jobs door's own room.
 #
-#   pi-sweep-room <pressure folder> <meminfo> <seconds to wait> <seconds apart>
+#   pi-sweep-room <pressure folder> <meminfo> <seconds to wait> <seconds apart> <stamp>
 
 pressure=$1
 meminfo=$2
 most=$3
 apart=$4
+stamp=$5
 
 # The kernel's five-minute average of the share of time every task waited
 # on `$1`, or nothing where it can't be read or isn't a number.
@@ -28,15 +32,38 @@ full() {
     "$pressure/$1" 2> /dev/null || true
 }
 
-# What meminfo says of `$1` in kB, or nothing as above, or for none at all.
+# What meminfo says of `$1` in kB, or nothing as above. MemAvailable may
+# be 0, on a machine out of memory.
 meminfo() {
-  awk -v k="$1:" '$1 == k && $2 ~ /^[0-9]+$/ && $2 > 0 { print $2 }' "$meminfo" 2> /dev/null || true
+  awk -v k="$1:" '$1 == k && $2 ~ /^[0-9]+$/ { print $2 }' "$meminfo" 2> /dev/null || true
 }
 
 # Whether `$1` is past `$2`, as decimals.
 past() {
   awk -v a="$1" -v b="$2" 'BEGIN { exit !(a + 0 > b + 0) }'
 }
+
+# How many seconds ago the last whole sweep ended, by its stamp, or
+# nothing when there's none, as before the first, when hosts sweep.
+age() {
+  local stamped now
+  stamped=$(stat -c %Y "$stamp" 2> /dev/null || true)
+  now=$(date +%s)
+  case $stamped in
+  '' | *[!0-9]*) ;;
+  *) echo $((now - stamped)) ;;
+  esac
+}
+
+ago=$(age)
+if [ -z "$ago" ]; then
+  echo "pi-sweep starts: no sweep has left a stamp, so the hosts sweep meanwhile"
+  exit 0
+fi
+if [ "$ago" -gt $((7200 - most)) ]; then
+  echo "pi-sweep starts: the last sweep ended $((ago / 60)) minutes ago, too long to wait"
+  exit 0
+fi
 
 SECONDS=0
 waited=false
@@ -45,6 +72,7 @@ while :; do
   io=$(full io)
   available=$(meminfo MemAvailable)
   total=$(meminfo MemTotal)
+  [ "$total" != 0 ] || total=""
   unread=""
   [ -n "$memory" ] || unread="$unread memory pressure,"
   [ -n "$io" ] || unread="$unread I/O pressure,"
@@ -58,14 +86,14 @@ while :; do
   said="memory stalled $memory%, I/O stalled $io% over five minutes, $free% of memory free"
   if ! past "$memory" 3.5 && ! past "$io" 1.4 && [ "$free" -ge 25 ]; then
     if "$waited"; then
-      echo "pi-sweep starts after waiting $((SECONDS / 60)) minutes for room: $said"
+      echo "pi-sweep starts after waiting $SECONDS s for room: $said"
     else
       echo "pi-sweep starts: $said"
     fi
     exit 0
   fi
   if [ "$SECONDS" -ge "$most" ]; then
-    echo "pi-sweep starts without room after waiting $((SECONDS / 60)) minutes: $said"
+    echo "pi-sweep starts without room after waiting $SECONDS s: $said"
     exit 0
   fi
   if ! "$waited"; then

@@ -37,11 +37,14 @@ judge() {
 }
 
 # Expect the check, waiting at most `$1` seconds, a second apart, to end 0
-# and say `$2`, as `$3`.
+# and say `$2`, as `$3`, with a sweep that ended a minute ago. A wait
+# its clock ticks past during its last reading says a second more.
 expect() {
   local said status
-  said=$("$program" "$here" "$here/meminfo" "$1" 1)
+  touch -d '1 minute ago' "$here/stamp"
+  said=$("$program" "$here" "$here/meminfo" "$1" 1 "$here/stamp")
   status=$?
+  said=${said//"waiting $(($1 + 1)) s"/"waiting $1 s"}
   judge "$said" "$status" "$2" "$3"
 }
 
@@ -56,22 +59,37 @@ expect 0 "pi-sweep starts: memory stalled 3.50%, I/O stalled 1.40% over five min
 
 memory="memory stalled 3.51%, I/O stalled 0.00% over five minutes, 62% of memory free"
 machine 3.51 0.00 40000000 64000000
-expect 0 "pi-sweep starts without room after waiting 0 minutes: $memory" \
+expect 0 "pi-sweep starts without room after waiting 0 s: $memory" \
   "memory stalled past its mark"
 io="memory stalled 0.00%, I/O stalled 1.41% over five minutes, 62% of memory free"
 machine 0.00 1.41 40000000 64000000
-expect 0 "pi-sweep starts without room after waiting 0 minutes: $io" "I/O stalled past its mark"
+expect 0 "pi-sweep starts without room after waiting 0 s: $io" "I/O stalled past its mark"
 short="memory stalled 0.00%, I/O stalled 0.00% over five minutes, 24% of memory free"
 machine 0.00 0.00 15990000 64000000
-expect 0 "pi-sweep starts without room after waiting 0 minutes: $short" "memory a point short"
+expect 0 "pi-sweep starts without room after waiting 0 s: $short" "memory a point short"
+none="memory stalled 0.00%, I/O stalled 0.00% over five minutes, 0% of memory free"
+machine 0.00 0.00 0 64000000
+expect 0 "pi-sweep starts without room after waiting 0 s: $none" "no memory available"
 machine 3.51 0.00 40000000 64000000
 expect 2 "pi-sweep waits for room: $memory $marks
-pi-sweep starts without room after waiting 0 minutes: $memory" "a stall that outlasts the wait"
+pi-sweep starts without room after waiting 2 s: $memory" "a stall that outlasts the wait"
+
+# A stalled machine whose last sweep ended too long ago for a wait, or
+# that has no stamp, starts the sweep at once.
+machine 3.51 0.00 40000000 64000000
+touch -d '106 minutes ago' "$here/stamp"
+said=$("$program" "$here" "$here/meminfo" 900 1 "$here/stamp")
+judge "$said" "$?" "pi-sweep starts: the last sweep ended 106 minutes ago, too long to wait" \
+  "a stamp a wait would outlast"
+said=$("$program" "$here" "$here/meminfo" 900 1 "$here/none")
+judge "$said" "$?" "pi-sweep starts: no sweep has left a stamp, so the hosts sweep meanwhile" \
+  "no stamp"
 
 # A stall that clears two seconds into a wait of up to a minute starts the
 # sweep then, not when the wait runs out.
 machine 3.51 0.00 40000000 64000000
-"$program" "$here" "$here/meminfo" 60 1 > "$here/said" &
+touch "$here/stamp"
+"$program" "$here" "$here/meminfo" 60 1 "$here/stamp" > "$here/said" &
 waiting=$!
 sleep 2
 machine 0.00 0.00 40000000 64000000
@@ -79,8 +97,14 @@ SECONDS=0
 wait "$waiting"
 status=$?
 said=$(cat "$here/said")
-judge "$said" "$status" "pi-sweep waits for room: $memory $marks
-pi-sweep starts after waiting 0 minutes for room: $quiet" "a stall that clears"
+waited="pi-sweep waits for room: $memory $marks"$'\n'"pi-sweep starts after waiting "
+case $said in
+"$waited"[23]" s for room: $quiet")
+  judge "$said" "$status" "$said" "a stall that clears"
+  ;;
+*) judge "$said" "$status" "a wait of 2 or 3 s, then a start on the quiet reading" \
+  "a stall that clears" ;;
+esac
 if [ "$SECONDS" -gt 10 ]; then
   echo "a stall that cleared still held the sweep $SECONDS more seconds" >&2
   failed=1
