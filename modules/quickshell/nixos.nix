@@ -171,6 +171,12 @@ let
   # another: one opening ran two whole collections 16 s apart, each inside
   # a key (qtdeclarative-room-after-every-sweep.patch). The heap module
   # leaves the room through it, so dropping it means changing the module.
+  # A sweep sorts the chunks it keeps into the free bins by what they use,
+  # the fullest last, so what's made next fills them first, since in the
+  # order they lay what lived long scattered over chunks nearly empty and
+  # none emptied to be freed: in five hours the shell held 284 MB around
+  # 72 live, 135 MB of it free slots on pages still holding something
+  # (qtdeclarative-chunks-fullest-filled-first.patch).
   # An animation starting asks only the windows it changes for a frame
   # while Qt's system timer advances animations, as it does unless one
   # window alone is shown on a vsync Qt trusts, since every window drew a
@@ -213,6 +219,7 @@ let
             ./qtdeclarative-large-runs-by-size.patch
             ./qtdeclarative-small-runs-split-first.patch
             ./qtdeclarative-room-after-every-sweep.patch
+            ./qtdeclarative-chunks-fullest-filled-first.patch
             ./qtdeclarative-animations-wake-only-their-windows.patch
           ];
         });

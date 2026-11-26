@@ -1,0 +1,42 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] Fill the fullest chunks first after a sweep
+
+A sweep sorted each chunk's free runs onto the front of the bins in the
+order the chunks happened to lie, so the chunks sorted in last supplied
+allocation first whatever they held. What lived long was scattered over
+chunks that were nearly empty, and none of them emptied enough to be
+freed. In five hours the shell's heap went from 83 MB held around 41
+live to 284 MB around 72, and of that 284, 135 MB was free slots on
+pages still holding something live. The chunks a sweep keeps are now
+sorted in by the slots they use, the fullest last, so what's made next
+fills them, and the chunks using little are left to empty for a later
+sweep to free.
+
+---
+--- a/src/qml/memory/qv4mm.cpp
++++ b/src/qml/memory/qv4mm.cpp
+@@ -553,10 +553,21 @@ void BlockAllocator::sweep()
+ 
+     usedSlotsAfterLastSweep = 0;
+ 
+-    std::for_each(chunks.begin(), firstEmptyChunk, [this](Chunk *c) {
+-        c->sortIntoBins(freeBins, NumBins);
+-        usedSlotsAfterLastSweep += c->nUsedSlots();
++    // Each chunk's runs go on the front of their bins, so the chunk sorted in last is the one
++    // allocation fills first. Sorted in by what they use, the fullest last, what's made next
++    // fills the chunks nearly full already, and the chunks using little are left to empty, for a
++    // later sweep to free, rather than each keeping a few of what's made and none ever freed.
++    std::vector<std::pair<std::size_t, Chunk *>> byUse;
++    byUse.reserve(std::size_t(firstEmptyChunk - chunks.begin()));
++    std::for_each(chunks.begin(), firstEmptyChunk, [&byUse](Chunk *c) {
++        byUse.emplace_back(c->nUsedSlots(), c);
+     });
++    std::stable_sort(byUse.begin(), byUse.end(),
++                     [](const auto &a, const auto &b) { return a.first < b.first; });
++    for (const auto &[used, c] : byUse) {
++        c->sortIntoBins(freeBins, NumBins);
++        usedSlotsAfterLastSweep += used;
++    }
+ 
+     // only free the chunks at the end to avoid that the sweep() calls indirectly
+     // access freed memory
