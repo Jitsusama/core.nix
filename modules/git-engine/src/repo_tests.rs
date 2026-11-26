@@ -3,8 +3,8 @@
 //! says.
 
 use super::{
-    Location, SYSTEM_ATTRIBUTES, SYSTEM_CONFIG, config_files, load_config, system_attributes,
-    xdg_folder,
+    Limits, Location, Options, Repo, SYSTEM_ATTRIBUTES, SYSTEM_CONFIG, config_files, load_config,
+    system_attributes, xdg_folder,
 };
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
@@ -54,6 +54,80 @@ fn an_empty_xdg_folder_is_taken_as_unset() {
         Some(PathBuf::from("/h/.config")),
         "an empty XDG_CONFIG_HOME named the ignore and attributes files relative to \
          where the engine runs"
+    );
+}
+
+/// Names the home a child of these tests reads a repository's status
+/// under, and so that it's the child.
+const STATUS_CHILD: &str = "GIT_ENGINE_TEST_CHILD_HOME";
+
+#[test]
+fn status_reads_the_ignore_file_from_home_where_xdg_is_empty() {
+    // As config_is_read_from_the_environment_s_own_bytes, the test runs
+    // again in a child given the environment.
+    if let Some(home) = std::env::var_os(STATUS_CHILD) {
+        let workdir = PathBuf::from(home).join("work");
+        let git_dir = workdir.join(".git");
+        let location = Location {
+            workdir,
+            git_dir: git_dir.clone(),
+            common: git_dir,
+        };
+        let mut repo = Repo::open(location).expect("the planted repository opens");
+        let options = Options {
+            limits: Limits {
+                staged: None,
+                unstaged: None,
+                conflicted: None,
+                untracked: None,
+            },
+            max_index: None,
+            respect_untracked_setting: true,
+        };
+        let answer = repo
+            .answer(&options, true)
+            .expect("the planted repository answers");
+        assert_eq!(
+            answer.counts.map(|counts| counts.untracked),
+            Some(1),
+            "an empty XDG_CONFIG_HOME left home's .config/git/ignore unread"
+        );
+        return;
+    }
+    let home = std::env::temp_dir().join(format!("git-engine-xdg-{}", std::process::id()));
+    let workdir = home.join("work");
+    let planted = [
+        (workdir.join(".git/HEAD"), "ref: refs/heads/main\n"),
+        (workdir.join(".git/objects/.keep"), ""),
+        (workdir.join(".git/refs/heads/.keep"), ""),
+        (home.join(".config/git/ignore"), "ignored\n"),
+        (workdir.join("ignored"), ""),
+        (workdir.join("seen"), ""),
+    ];
+    for (path, text) in &planted {
+        let folder = path.parent().expect("each planted file is in a folder");
+        std::fs::create_dir_all(folder).expect("the temp folder takes a folder");
+        std::fs::write(path, text).expect("the temp folder takes a file");
+    }
+    let name = "repo::tests::status_reads_the_ignore_file_from_home_where_xdg_is_empty";
+    let tests = std::env::current_exe().expect("the tests know where they are");
+    let child = std::process::Command::new(tests)
+        .args(["--exact", name])
+        .env(STATUS_CHILD, &home)
+        .env("HOME", &home)
+        .env("XDG_CONFIG_HOME", "")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_ATTR_NOSYSTEM", "1")
+        .env_remove("GIT_CONFIG_GLOBAL")
+        .env_remove("GIT_CONFIG_PARAMETERS")
+        .env_remove("GIT_CONFIG_COUNT")
+        .output()
+        .expect("the tests run again as a child");
+    let _ = std::fs::remove_dir_all(&home);
+    let said = String::from_utf8_lossy(&child.stdout);
+    assert!(
+        child.status.success() && said.contains("1 passed"),
+        "the child reading status failed, or ran no test: {said}"
     );
 }
 
@@ -170,15 +244,16 @@ fn config_files_are_read_system_first_then_global_then_the_repositorys() {
 
 #[test]
 fn the_system_files_are_where_the_git_built_beside_reads_them() {
-    // A Nix build is the package's, beside a git, which must have named
-    // the files; elsewhere, built by cargo alone, they're /etc's.
-    let packaged = std::env::var_os("NIX_BUILD_TOP").is_some();
+    // The package's build names the files from the git beside it, and its
+    // tests run in the same shell, so they see what it named. A build by
+    // cargo alone, in a dev shell or not, names none and reads /etc's.
+    let named = std::env::var("GIT_ENGINE_CONFIG_SYSTEM").ok();
     assert_eq!(
-        option_env!("GIT_ENGINE_CONFIG_SYSTEM").is_some(),
-        packaged,
-        "the package's build named no system files, or a build outside it did"
+        option_env!("GIT_ENGINE_CONFIG_SYSTEM"),
+        named.as_deref(),
+        "the tests weren't built with the system files the package's build named"
     );
-    if !packaged {
+    if named.is_none() {
         assert_eq!(
             (SYSTEM_CONFIG, SYSTEM_ATTRIBUTES),
             ("/etc/gitconfig", "/etc/gitattributes"),
