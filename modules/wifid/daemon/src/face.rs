@@ -472,8 +472,9 @@ impl Connection {
                 // elsewhere can be told from the launcher's: from 19:00 on
                 // 23 Nov 2026 eight roams a minute apart moved the card, on
                 // connections that asked for no rows, and nothing said who.
-                // The unit is the last part of the asker's cgroup, which a
-                // process of the same user may name itself, so it's a hint.
+                // The asker's cgroup is said whole: a process may name its
+                // own unit under its user's manager, but not move it out
+                // of user.slice, so a unit's name alone is only a hint.
                 // The pid is the kernel's word for who connected, as the
                 // connection was taken, not for who holds it since.
                 println!("<6>{} asks {}", self.peer, acts::wanted(&said));

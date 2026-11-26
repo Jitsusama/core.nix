@@ -11,7 +11,7 @@
 //! over at its end. One said on and then never again lapses after ten
 //! minutes, so a teller that stops can't hold the card forever. Any
 //! process of the wifi group's can say it, every agent of Joel's among
-//! them, so each change is logged with the process and unit that said it,
+//! them, so each change is logged with the process and cgroup that said it,
 //! and anything but exactly that shape is refused, logged by what was
 //! wrong with it and never by what it said (2026-11-14).
 
@@ -75,40 +75,48 @@ pub fn asked(line: &str, said: &Value) -> Result<bool, &'static str> {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Peer {
     pub pid: Option<i32>,
-    pub unit: Option<String>,
+    /// The cgroup's whole path, as `cgroup_of` says it.
+    pub cgroup: Option<String>,
 }
 
 impl Peer {
-    /// The peer at a pid, its unit read from the cgroup it's in.
+    /// The peer at a pid, with the cgroup it's in. A path the kernel
+    /// gives in bytes that aren't UTF-8 is read all the same, those bytes
+    /// said as `?`, so the line never reads as a process in no cgroup.
     pub fn at(pid: Option<i32>) -> Peer {
-        let unit = pid
-            .and_then(|pid| std::fs::read_to_string(format!("/proc/{pid}/cgroup")).ok())
-            .and_then(|cgroup| unit_of(&cgroup).map(str::to_owned));
-        Peer { pid, unit }
+        let cgroup = pid
+            .and_then(|pid| std::fs::read(format!("/proc/{pid}/cgroup")).ok())
+            .and_then(|cgroup| cgroup_of(&String::from_utf8_lossy(&cgroup)));
+        Peer { pid, cgroup }
     }
 }
 
 impl fmt::Display for Peer {
     fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match (self.pid, &self.unit) {
-            // A process names its own cgroup under its user's manager, so
-            // the unit is quoted and escaped, as an ask's names are
-            // (`acts::quoted`): a control byte in it would have journalctl
-            // show the whole line as a blob, and a bare `) asks` in it
-            // would write a second pid into the line the kernel never
-            // named. A cgroup's name is at most 255 bytes, so it needs no
-            // cut.
-            (Some(pid), Some(unit)) => write!(out, "pid {pid} ({unit:?})"),
+        match (self.pid, &self.cgroup) {
+            // The whole path, as a process names its own unit under its
+            // user's manager: a unit called wifid-calls.service there
+            // still reads as under user.slice, not system.slice.
+            (Some(pid), Some(cgroup)) => write!(out, "pid {pid} ({cgroup})"),
             (Some(pid), None) => write!(out, "pid {pid}"),
             (None, _) => write!(out, "a process the kernel didn't name"),
         }
     }
 }
 
-/// The unit a process runs in, the last part of its cgroup's path.
-fn unit_of(cgroup: &str) -> Option<&str> {
-    let path = cgroup.lines().find_map(|line| line.strip_prefix("0::"))?;
-    path.rsplit('/').next().filter(|unit| !unit.is_empty())
+/// The path of the cgroup a process runs in, from the root, each byte no
+/// unit's name may hold said as `?`. A process names its own cgroup under
+/// its user's manager, so the name could otherwise hold a control byte,
+/// which has journalctl show the whole line as a blob, or a `) asks a
+/// look; pid 2211 (` writing a second asker into the line.
+fn cgroup_of(cgroup: &str) -> Option<String> {
+    let path = cgroup.lines().find_map(|line| line.strip_prefix("0::/"))?;
+    let allowed = |byte: char| byte.is_ascii_alphanumeric() || ":-_.\\@/".contains(byte);
+    let said: String = path
+        .chars()
+        .map(|byte| if allowed(byte) { byte } else { '?' })
+        .collect();
+    Some(said).filter(|path| !path.is_empty())
 }
 
 #[cfg(test)]
@@ -179,38 +187,61 @@ mod tests {
     }
 
     #[test]
-    fn a_process_is_named_by_the_unit_its_cgroup_ends_in() {
-        let cgroup =
-            "0::/user.slice/user-1000.slice/user@1000.service/app.slice/wifid-calls.service\n";
-        assert_eq!(unit_of(cgroup), Some("wifid-calls.service"), "the unit");
-        assert_eq!(unit_of("0::/\n"), None, "the root names none");
-        assert_eq!(unit_of(""), None, "nothing read names none");
+    fn a_process_is_named_by_its_cgroups_whole_path() {
+        let path = "user.slice/user-1000.slice/user@1000.service/app.slice/wifid-calls.service";
+        assert_eq!(
+            cgroup_of(&format!("0::/{path}\n")).as_deref(),
+            Some(path),
+            "the path"
+        );
+        assert_eq!(cgroup_of("0::/\n"), None, "the root names none");
+        assert_eq!(cgroup_of(""), None, "nothing read names none");
+        let lossy = String::from_utf8_lossy(b"0::/system.slice/x\xff.service\n");
+        assert_eq!(
+            cgroup_of(&lossy).as_deref(),
+            Some("system.slice/x?.service"),
+            "a path not in UTF-8 named no cgroup"
+        );
+    }
+
+    #[test]
+    fn a_cgroup_says_no_byte_a_units_name_cant_hold() {
+        let user = "user.slice/user-1000.slice/user@1000.service/app.slice";
+        let escaping = format!("0::/{user}/\u{1b}[2Jx.service\n");
+        let forging = format!("0::/{user}/init.scope) asks a look; pid 2211 (quickshell.service\n");
+
+        assert_eq!(
+            cgroup_of(&escaping),
+            Some(format!("{user}/??2Jx.service")),
+            "a unit's control byte reached the journal raw"
+        );
+        assert_eq!(
+            cgroup_of(&forging),
+            Some(format!(
+                "{user}/init.scope??asks?a?look??pid?2211??quickshell.service"
+            )),
+            "a unit named to close its own bracket wrote a second asker into the line"
+        );
     }
 
     #[test]
     fn a_peer_says_what_the_kernel_named() {
         let named = Peer {
             pid: Some(42),
-            unit: Some("wifid-calls.service".into()),
-        };
-        assert_eq!(named.to_string(), "pid 42 (\"wifid-calls.service\")");
-        let escaping = Peer {
-            pid: Some(42),
-            unit: Some("\u{1b}[2Jx.service".into()),
+            cgroup: Some("system.slice/wifid-calls.service".into()),
         };
         assert_eq!(
-            escaping.to_string(),
-            "pid 42 (\"\\u{1b}[2Jx.service\")",
-            "a unit's control byte reached the journal raw"
+            named.to_string(),
+            "pid 42 (system.slice/wifid-calls.service)"
         );
-        let forging = Peer {
-            pid: Some(666),
-            unit: Some("init.scope\") asks a look; pid 2211 (\"quickshell.service".into()),
-        };
         assert_eq!(
-            forging.to_string(),
-            "pid 666 (\"init.scope\\\") asks a look; pid 2211 (\\\"quickshell.service\")",
-            "a unit named to close its own quote wrote a second asker into the line"
+            Peer {
+                cgroup: None,
+                ..named
+            }
+            .to_string(),
+            "pid 42",
+            "a process in no cgroup read is named by its pid"
         );
         assert_eq!(
             Peer::default().to_string(),
