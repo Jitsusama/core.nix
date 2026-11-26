@@ -311,6 +311,29 @@ fn an_ask_parked_in_place_is_judged_by_when_its_note_says_it_was_parked() {
     );
 }
 
+/// A late move of an ask parked by a note entry that names its ruling
+/// with no minute the keeper's shape gives can't be judged either way, so
+/// the measure says how many and is left unjudged rather than owing none.
+#[test]
+fn a_late_move_parked_by_a_note_with_no_minute_leaves_the_measure_unread() {
+    let moved = (NOW - 1000, NOW - 1360);
+    let mut drifted = ask_moved("drifted", "A", moved, &json!({"parked": "b95ea57b"}));
+    drifted["note"] = json!("late on Tuesday J7XHQN: parked: b95ea57b, the ruling");
+    let text = list(&[drifted, ask_moved("plain", "B", moved, &json!({}))]);
+    let m = told_late(&text, NOW, Tracking::His);
+    assert_eq!(
+        m.behind,
+        ["plain, moved 6 min before its date · B"],
+        "a move parked by an unread minute was counted, or the plain one lost"
+    );
+    assert_eq!(m.target, None, "a measure with an unread park was judged");
+    assert!(
+        m.says.contains("unread: 1 late move's ask"),
+        "the unread park went unsaid: {}",
+        m.says
+    );
+}
+
 /// An ask its keeper puts down in place keeps its late move when its
 /// `closed` names a minute after the move's. Put down before the move, or
 /// by words alone, it owes no word.

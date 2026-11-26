@@ -6,7 +6,6 @@
 
 use std::collections::BTreeMap;
 
-use jiff::Timestamp;
 use jiff::civil::DateTime;
 use jiff::tz::Offset;
 use serde_json::Value;
@@ -24,6 +23,16 @@ const LEFT: i64 = 15 * 60;
 /// A date told late: when, the line naming it and its owner.
 type Late = (i64, String, String);
 
+/// Whether an ask owed a word when its date moved, or that it can't be
+/// told: parked, with a note naming its park in words not read as a
+/// minute, so the keeper's shape has drifted from what's read here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Owed {
+    Yes,
+    No,
+    Unread,
+}
+
 /// The dates of asks of the kind `which` in the asks list `text` told
 /// late by `now`: each move said in the day before `now` with `LEFT` or
 /// less to go before the date it moved. A move is when the date after it
@@ -38,7 +47,8 @@ type Late = (i64, String, String);
 /// put down in place, when its `closed` names a later minute. Each
 /// ask's dates are read from its latest line, which carries every date
 /// it was given, so a move is counted once however often the ask is
-/// written again.
+/// written again. A move whose park's minute can't be read leaves the
+/// measure unjudged, saying how many, rather than owing none unseen.
 #[must_use]
 pub fn told_late(text: &str, now: i64, which: Tracking) -> Measure {
     let mut written: BTreeMap<[String; 2], (usize, Vec<Value>)> = BTreeMap::new();
@@ -52,25 +62,39 @@ pub fn told_late(text: &str, now: i64, which: Tracking) -> Measure {
     }
     let mut asks: Vec<(usize, Vec<Value>)> = written.into_values().collect();
     asks.sort_by_key(|(order, _)| *order);
-    let mut late: Vec<Late> = asks
-        .iter()
-        .flat_map(|(_, versions)| moved_late(versions, now, which))
-        .collect();
+    let mut late: Vec<Late> = Vec::new();
+    let mut unread = 0;
+    for (_, versions) in &asks {
+        for moved in moved_late(versions, now, which) {
+            match moved {
+                Some(moved) => late.push(moved),
+                None => unread += 1,
+            }
+        }
+    }
     late.sort_by_key(|(when, _, _)| *when);
+    let mut says = "dates moved later with 15 minutes or less left, in the last day".to_owned();
+    if unread > 0 {
+        let them = if unread == 1 { "move's" } else { "moves'" };
+        says = format!(
+            "{says} (unread: {unread} late {them} ask parked by a note whose minute can't be read)"
+        );
+    }
     Measure {
         key: which.key(KEY),
         class: Class::Slip,
-        says: "dates moved later with 15 minutes or less left, in the last day".to_owned(),
+        says,
         now: count(late.len()),
-        target: Some(0.0),
+        target: (unread == 0).then_some(0.0),
         owner: late.first().map(|(_, _, o)| o.clone()).unwrap_or_default(),
         behind: late.into_iter().map(|(_, line, _)| line).collect(),
     }
 }
 
 /// Each move of an ask's dates told late by `now`, as [`told_late`] reads
-/// them, from `versions`, every line the ask was written in, oldest first.
-fn moved_late(versions: &[Value], now: i64, which: Tracking) -> Vec<Late> {
+/// them, from `versions`, every line the ask was written in, oldest first;
+/// none for one whose owing can't be read.
+fn moved_late(versions: &[Value], now: i64, which: Tracking) -> Vec<Option<Late>> {
     let Some(ask) = versions.last() else {
         return Vec::new();
     };
@@ -85,11 +109,21 @@ fn moved_late(versions: &[Value], now: i64, which: Tracking) -> Vec<Late> {
                 || promise.met.is_some_and(|met| met <= moved);
             let near = (promise.expected - LEFT..promise.expected).contains(&moved);
             let told = moved <= now && moved > now - DAY && near && due_after > promise.expected;
-            let owed = owed_at(versions, moved, which);
-            (told && !kept && owed).then(|| {
-                let left = moved_left(promise.expected - moved);
-                (moved, format!("{words}, {left} · {owner}"), owner.clone())
-            })
+            if !told || kept {
+                return None;
+            }
+            match owed_at(versions, moved, which) {
+                Owed::No => None,
+                Owed::Unread => Some(None),
+                Owed::Yes => {
+                    let left = moved_left(promise.expected - moved);
+                    Some(Some((
+                        moved,
+                        format!("{words}, {left} · {owner}"),
+                        owner.clone(),
+                    )))
+                }
+            }
         })
         .collect()
 }
@@ -98,17 +132,32 @@ fn moved_late(versions: &[Value], now: i64, which: Tracking) -> Vec<Late> {
 /// `moved`: of the kind `which`, neither parked nor put down, on the first
 /// line that gave the date after the move, or on the latest when none
 /// says when it was given. Parked on that line, it still owed one when
-/// its note says it was parked in a minute after the move's.
-fn owed_at(versions: &[Value], moved: i64, which: Tracking) -> bool {
+/// its note says it was parked in a minute after the move's, and can't be
+/// told when its note names the park in a minute that can't be read.
+fn owed_at(versions: &[Value], moved: i64, which: Tracking) -> Owed {
     let line = versions.iter().find(|line| given_at(line, moved).is_some());
-    line.or(versions.last()).is_some_and(|line| {
-        let parked_after = || {
-            given_at(line, moved)
-                .and_then(|given| parked_since(line, given))
-                .is_some_and(|park| after(park, moved))
-        };
-        kind_when(line, moved) == Some(which) && (parked::ruling(line).is_none() || parked_after())
-    })
+    let Some(line) = line.or(versions.last()) else {
+        return Owed::No;
+    };
+    if kind_when(line, moved) != Some(which) {
+        return Owed::No;
+    }
+    let Some(ruling) = parked::ruling(line) else {
+        return Owed::Yes;
+    };
+    match parked_since(line, ruling, given_at(line, moved)) {
+        Park::At(park) if after(park, moved) => Owed::Yes,
+        Park::At(_) | Park::Unsaid => Owed::No,
+        Park::Unread => Owed::Unread,
+    }
+}
+
+/// When an ask was parked, as its note says: in a minute, not said, or
+/// said in words whose minute can't be read.
+enum Park {
+    At(i64),
+    Unsaid,
+    Unread,
 }
 
 /// The kind the ask on `line` was of when its date moved at `moved`: put
@@ -144,22 +193,28 @@ fn given_at(line: &Value, moved: i64) -> Option<&str> {
 /// joined by " | ", each opening with the local minute of the pass that
 /// wrote it and no zone, as "2026-11-24 19:26 J7XHQN: parked: b95ea57b",
 /// so the minute is read in the offset of `given`, a time the same keeper
-/// wrote. The park standing is the last entry naming its ruling, since an
-/// ask let go and parked again keeps its first park's entry too. None when
-/// no entry says so in that shape.
-fn parked_since(line: &Value, given: &str) -> Option<i64> {
-    let ruling = parked::ruling(line)?;
-    let offset = offset_of(given)?;
+/// wrote. The park standing is the last entry naming `ruling`, since an
+/// ask let go and parked again keeps its first park's entry too. Unsaid
+/// when no entry names it; unread when the last that does opens on no
+/// minute, or `given` has no offset to read it in.
+fn parked_since(line: &Value, ruling: &str, given: Option<&str>) -> Park {
     let said = format!("parked: {ruling}");
-    line["note"].as_str()?.rsplit(" | ").find_map(|entry| {
-        let (stamp, rest) = entry.trim().split_at_checked(16)?;
-        let (_, words) = rest.split_once(": ")?;
-        if !words.starts_with(&said) {
-            return None;
-        }
+    let Some(note) = line["note"].as_str() else {
+        return Park::Unsaid;
+    };
+    let named = note.rsplit(" | ").map(str::trim).find(|entry| {
+        entry
+            .split_once(": ")
+            .is_some_and(|(_, words)| words.starts_with(&said))
+    });
+    let Some(entry) = named else {
+        return Park::Unsaid;
+    };
+    let minute = entry.get(..16).and_then(|stamp| {
         let minute: DateTime = format!("{}:00", stamp.replacen(' ', "T", 1)).parse().ok()?;
-        offset.to_timestamp(minute).ok().map(Timestamp::as_second)
-    })
+        offset_of(given?)?.to_timestamp(minute).ok()
+    });
+    minute.map_or(Park::Unread, |minute| Park::At(minute.as_second()))
 }
 
 /// The offset a time written as `given` ends with, "Z" or "-05:00".
