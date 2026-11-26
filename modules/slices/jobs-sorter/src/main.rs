@@ -888,9 +888,10 @@ fn held_before(under: &[PathBuf], prefixes: &[String], pis: &[String]) -> holds:
     holding
 }
 
-/// The windows a sorter before this one kept at a floor under `under`, as
-/// their memory.low reads, said once; none unless this one keeps windows
-/// too, as `--orchestrators` has it do, since only that gives them back.
+/// The windows under `under` whose memory.low reads as a floor the sorter
+/// keeps, taken as a sorter before this one's, though only their height
+/// says so; said once, and none unless this one keeps windows too, as
+/// `--orchestrators` has it do, since only that gives them back.
 fn left_kept(keeps: bool, under: &[PathBuf], prefixes: &[String]) -> keep::Keeping {
     if !keeps {
         return keep::Keeping::default();
@@ -899,7 +900,7 @@ fn left_kept(keeps: bool, under: &[PathBuf], prefixes: &[String]) -> keep::Keepi
     let keeping = keep::Keeping::left(scopes, memory_low);
     let kept = keeping.floors().count();
     if kept > 0 {
-        eprintln!("Took up {kept} windows' floors kept by the sorter before.");
+        eprintln!("Took up {kept} windows' floors at the heights the sorter keeps windows at.");
     }
     keeping
 }
@@ -1850,8 +1851,8 @@ struct Fitting {
     /// The slices whose others claimed past the room the units Joel is at
     /// left them ([`Fitting::overran`]).
     overrun: HashSet<String>,
-    /// The slices whose windows the sorter floors left the units Joel is at
-    /// short ([`Fitting::filled`]).
+    /// The slices whose units Joel is at were short while the sorter floored
+    /// windows in them ([`Fitting::filled`]).
     filled: HashSet<String>,
     /// Each window's claim at its peak within the minute.
     peaks: budget::Peaks,
@@ -1913,16 +1914,16 @@ impl Floored {
 
 impl Fitting {
     /// What to say of `slice` when the windows the sorter floors itself
-    /// take `windows` of its floor `low` and so leave the units Joel is at
-    /// `given` of the `wants` they'd add: with no stray past the room,
+    /// take `windows` of its floor `low` while `given` of the `wants` the
+    /// units Joel is at would add fits: with no stray past the room,
     /// [`Fitting::overran`] says nothing, and the units' floors would fall
     /// unsaid. Said once, when they're short by a [`budget::STEP`] or more,
-    /// and again only once they've been given all they'd add and are short
-    /// again; units short with no window floored say nothing, since then
-    /// it's no floor of the sorter's that left them short. It says what
-    /// the sorter's floors take beside what the units are given, not that
-    /// one left the other short, since windows only named and the units'
-    /// own floors take from the same room.
+    /// and again only once all they'd add fits and they're short again;
+    /// units short with no window floored say nothing, since the line is
+    /// about the sorter's floors. It says what those take beside what fits
+    /// the units, not that one left the other short, since windows only
+    /// named and the units' own floors take from the same room. What fits
+    /// is fit's offer, which a unit's floor reaches a step at a time.
     fn filled(
         &mut self,
         slice: &str,
@@ -1942,8 +1943,8 @@ impl Fitting {
             return None;
         }
         Some(format!(
-            "The windows the sorter floors in {slice} take {} MiB of its {} MiB floor, while the \
-             units Joel is at are given {} MiB of the {} MiB they'd add.",
+            "The windows the sorter floors in {slice} take {} MiB of its {} MiB floor, while {} \
+             MiB of the {} MiB the units Joel is at would add fits.",
             windows >> 20,
             low >> 20,
             given >> 20,
@@ -1963,8 +1964,9 @@ impl Fitting {
     /// claiming past the windows' cap as a stray does, is said to be one,
     /// so the reader looks to the sorter's floors rather than a stranger,
     /// held or kept, and is said to be past the windows' cap or raised
-    /// past its floor, since either leaves it a stray's claim and only what
-    /// runs in it can have raised it. The rest the sorter can't trim.
+    /// past its floor, since either leaves it a stray's claim, and a floor
+    /// can be raised by anything the account runs. The rest the sorter
+    /// can't trim.
     fn overran(
         &mut self,
         slice: &str,
@@ -1987,9 +1989,9 @@ impl Fitting {
                 let scope = Path::new(slice).join(name);
                 // A kept window nothing holds claims within the cap no more than the floor
                 // keep.rs set it, and only while the cap has room for it, so what it claims past
-                // the cap is that floor once the cap is full, or what runs in it raising its own.
+                // the cap is that floor once the cap is full, or something raising its floor.
                 // A held one is bounded by a window's floor too, so what it claims past the
-                // cap is the same: the cap full, or what runs in it raising its own.
+                // cap is the same: the cap full, or something raising its floor.
                 let whose = if self.floored.held.contains(&scope) {
                     ", a window the sorter floors, past the windows' cap or raised past its floor"
                 } else if self.floored.kept(&scope).is_some() {
@@ -5728,7 +5730,7 @@ mod tests {
     }
 
     #[test]
-    fn the_sorters_own_floors_leaving_the_units_joel_is_at_short_are_said_once() {
+    fn the_units_joel_is_at_short_beside_the_sorters_own_floors_are_said_once() {
         const MIB: u64 = 1 << 20;
         let mut fitting = Fitting::default();
         assert_eq!(
@@ -5737,10 +5739,10 @@ mod tests {
                 .as_deref(),
             Some(
                 "The windows the sorter floors in agents.slice take 6144 MiB of its 6348 MiB \
-                 floor, while the units Joel is at are given 0 MiB of the 512 MiB they'd add."
+                 floor, while 0 MiB of the 512 MiB the units Joel is at would add fits."
             ),
-            "the sorter's own floors starving the units Joel is at are said, with no stray \
-             past the room"
+            "the units Joel is at short beside the sorter's own floors are said, with no \
+             stray past the room"
         );
         assert_eq!(
             fitting.filled("agents.slice", 6144 * MIB, 6348 * MIB, 0, 512 * MIB),
@@ -5768,7 +5770,8 @@ mod tests {
         assert_eq!(
             Fitting::default().filled("agents.slice", 0, 6348 * MIB, 0, 512 * MIB),
             None,
-            "units short with no window floored is the units' own doing, not the sorter's"
+            "units short with no window the sorter floors were said, though the line is about \
+             its floors"
         );
     }
 
