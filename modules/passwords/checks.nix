@@ -218,6 +218,8 @@ onLinux {
     let
       read = map builtins.readFile [
         ./src/lib.rs
+        ./src/entry.rs
+        ./src/held.rs
         ./src/main.rs
         ./src/asks.rs
         ./src/asks/emptied.rs

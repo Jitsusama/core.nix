@@ -251,13 +251,13 @@ mod tests {
             breached: None,
         };
         assert_eq!(unasked.said(), json!({"reused": 1}));
-        assert!(unasked.troubled());
+        assert!(unasked.troubled(), "a password reused once wasn't trouble");
         let well = Health {
             reused: 0,
             breached: Some(0),
         };
         assert_eq!(well.said(), json!({"reused": 0, "breached": 0}));
-        assert!(!well.troubled());
+        assert!(!well.troubled(), "a password found nowhere was trouble");
     }
 
     #[test]

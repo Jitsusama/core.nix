@@ -17,7 +17,6 @@
   "modules/nix-offload/offload/src/there.rs"
   "modules/nix-offload/offload/tests/there.rs"
   "modules/open-with/FileChooser.qml"
-  "modules/passwords/src/lib.rs"
   "modules/passwords/src/main.rs"
   "modules/people/src/lib.rs"
   "modules/quickshell/Drawer.qml"
