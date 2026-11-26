@@ -540,12 +540,24 @@ struct Lending {
     bool calm = false;
     ReadBack read{};
 
-    // Whether it said about as much as was counted free, the kernel's take
-    // left next to none resident, and what's kept and made after reads back
-    // as made: what holds whether or not the kernel took lent pages early.
+    // Whether it said about as much as was counted free.
+    [[nodiscard]] bool saidAsCounted() const {
+        return lent > free / 2 && lent <= free + GIVEN_LEFT_MB;
+    }
+
+    // Whether the kernel marked at least half as many pages lent, which
+    // giving them back never does, where it counts them.
+    [[nodiscard]] bool markedAsLent() const { return marked < 0 || marked > free / 2; }
+
+    // Whether the kernel's take left next to none of the free pages resident.
+    [[nodiscard]] bool goneOnceTaken() const { return took && freeTaken < GIVEN_LEFT_MB; }
+
+    // Whether it said what was counted, was marked lent, was gone once
+    // taken, and left what's kept and made after reading as made: what
+    // holds whether or not the kernel took lent pages early, so both tries
+    // are judged by it.
     [[nodiscard]] bool asLent() const {
-        return lent > free / 2 && lent <= free + GIVEN_LEFT_MB && took &&
-               freeTaken < GIVEN_LEFT_MB && read.asMade();
+        return saidAsCounted() && markedAsLent() && goneOnceTaken() && read.asMade();
     }
 };
 
@@ -590,17 +602,17 @@ Lending lentOnce() {
 // what's kept, and what's made after, still reads as it was made, so no
 // page lent held a live item. Where it counts them, the kernel must also
 // have marked at least half as many pages lent, which giving them back
-// never does, and which holds even when it takes them at once. A builder short of memory may
-// take lent pages while they're read, as lending allows, so a lending the
-// kernel took from is tried once more, and if it takes again, what it
-// holds lent and what stays resident are left unjudged, with a note; what
-// it marked and the rest are judged on both tries.
+// never does, and which a take afterwards can't undo. A builder short of
+// memory may take lent pages while they're read, as lending allows, so a
+// lending the kernel took from is tried once more, and if it takes again,
+// what it holds lent and what stays resident are left unjudged, with a
+// note. What it said, marked and left once taken, and what reads back, are
+// judged on both tries, through asLent().
 bool lendsBack() {
     const Lending first = lentOnce();
     const Lending lending = first.calm ? first : lentOnce();
     const bool firstAsLent = first.calm || first.asLent();
-    const bool said =
-        lending.lent > lending.free / 2 && lending.lent <= lending.free + GIVEN_LEFT_MB;
+    const bool said = lending.saidAsCounted();
     const bool held = !lending.calm || (lending.lentBefore >= 0 &&
                                         lending.lentAfter - lending.lentBefore > lending.free / 2);
     const bool kept = !lending.calm || lending.freeLent > lending.free / 2;
@@ -609,8 +621,8 @@ bool lendsBack() {
     // early has already lowered it, so only a calm lending is judged.
     const bool fell =
         !lending.calm || lending.residentLent - lending.residentTaken > lending.lent / 2;
-    const bool marked = lending.marked < 0 || lending.marked > lending.free / 2;
-    const bool taken = lending.took && lending.freeTaken < GIVEN_LEFT_MB;
+    const bool marked = lending.markedAsLent();
+    const bool taken = lending.goneOnceTaken();
     const ReadBack &read = lending.read;
     if (!lending.counted)
         std::fprintf(stderr,
@@ -629,9 +641,9 @@ bool lendsBack() {
     if (!firstAsLent)
         std::fprintf(stderr,
                      "FAIL the first lending, taken from early, said %.1f MB of %.1f free, "
-                     "%.1f MB free once taken (%s); the few summed %.0f of %.0f, and what was "
-                     "made after %.0f of %.0f\n",
-                     first.lent, first.free, first.freeTaken,
+                     "marked %.1f MB lent, %.1f MB free once taken (%s); the few summed %.0f "
+                     "of %.0f, and what was made after %.0f of %.0f\n",
+                     first.lent, first.free, first.marked, first.freeTaken,
                      first.took ? "taken" : "the kernel refused", first.read.kept,
                      first.read.keptMade, first.read.after, first.read.afterMade);
     if (!said || !held || !kept || !fell || !marked || !taken || !read.asMade())
