@@ -751,14 +751,24 @@ def test_a_chord_first_after_a_restart_makes_only_its_places_rows(shell: Shell) 
 
     Home kept as the shell started wasn't counted as kept for an opening into a place, so the
     first chord after each switch found home again whole on its way into the place, as no
-    later one does.
+    later one does. A source that changed since home was kept is rightly made again as the
+    opening fills it in, so only the others are counted: on a loaded builder Networks, Traffic
+    and Displays first answered after the wait for them (2026-11-26, 4, 3 and 4 rows), while
+    home found whole makes rows for sources that never changed.
     """
     restarted = time.monotonic()
     shell.restart()
     shell.launcher_until(lambda shown: shown.get("kept"))
+    kept = json.loads(shell.as_account(shell.ipc("changed")))
     answered_since(shell, restarted)
     made = made_by_others(shell, "windows")
-    assert not made, f"first into Windows after a restart, other sources made rows: {made}"
+    now = json.loads(shell.as_account(shell.ipc("changed")))
+    changed = sorted(name for name, count in now.items() if count != kept.get(name, 0))
+    unchanged = {name: rows for name, rows in made.items() if name not in changed}
+    assert not unchanged, (
+        f"first into Windows after a restart, sources unchanged since home was kept made rows:"
+        f" {unchanged}, beside those changed since: {changed}"
+    )
 
 
 def test_a_chord_first_after_a_restart_is_drawn_from_its_place_kept_as_it_started(
@@ -1448,6 +1458,8 @@ def answered_since(shell: Shell, restarted: float) -> None:
     and Displays first answer here, so the next opening's fill makes their rows again, as it
     catches up any source changed since it was kept: 6 here, which aren't what this counts.
     It waits out ANSWERED, then until the changes each source has said hold still for QUIET.
+    A source yet to answer says nothing to wait for, so on a loaded builder one may still
+    answer after it, and the caller counts only the sources unchanged since home was kept.
     """
     time.sleep(max(0.0, restarted + ANSWERED.total_seconds() - time.monotonic()))
     deadline = time.monotonic() + SETTLED.total_seconds()
