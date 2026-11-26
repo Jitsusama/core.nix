@@ -30,7 +30,13 @@ const usage = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 const at = "2026-11-26T00:00:00.000Z";
-const message = (id, parentId, body) => ({ type: "message", id, parentId, timestamp: at, message: body });
+const message = (id, parentId, body) => ({
+  type: "message",
+  id,
+  parentId,
+  timestamp: at,
+  message: body,
+});
 const user = (id, parentId, text) =>
   message(id, parentId, { role: "user", content: [{ type: "text", text }], timestamp: 0 });
 const assistant = (id, parentId, content) =>
@@ -88,22 +94,34 @@ const open = (text = lines) => {
   writeFileSync(file, text);
   return { file, manager: SessionManager.open(file, dir) };
 };
-const light = (holder, key) => typeof Object.getOwnPropertyDescriptor(holder, key)?.get === "function";
+const light = (holder, key) =>
+  typeof Object.getOwnPropertyDescriptor(holder, key)?.get === "function";
 const lightAnywhere = (manager) => manager.getEntries().some(anyLight);
 function anyLight(value) {
-  if (typeof value !== "object" || value === null) return false;
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
   return Object.keys(value).some((key) => light(value, key) || anyLight(value[key]));
 }
-const text = (manager, id, i = 0) => manager.getEntry(id).message.content[i];
-const same = (actual, expected, what) => assert.equal(JSON.stringify(actual), JSON.stringify(expected), what);
+const part = (manager, id, i = 0) => manager.getEntry(id).message.content[i];
+const same = (actual, expected, what) =>
+  assert.equal(JSON.stringify(actual), JSON.stringify(expected), what);
 
 // Read light, every reader still sees what a whole read sees.
 {
   const { manager } = open();
   same(manager.getEntries(), plain, "the entries differ from the log's");
-  same(manager.buildSessionContext(), buildSessionContext(plain), "the context differs from a whole read's");
+  same(
+    manager.buildSessionContext(),
+    buildSessionContext(plain),
+    "the context differs from a whole read's",
+  );
   const ids = (branch) => branch.map((entry) => entry.id);
-  same(ids(manager.getBranch()), ["m1", "m2", "m3", "m4", "m5", "k1", "m6", "m7"], "the branch differs");
+  same(
+    ids(manager.getBranch()),
+    ["m1", "m2", "m3", "m4", "m5", "k1", "m6", "m7"],
+    "the branch differs",
+  );
   same(ids(manager.getBranch("b1")), ["m1", "m2", "m3", "m4", "b1"], "b1's branch differs");
   same(manager.getBranch("b1").at(-1), plain[6], "b1 differs from the log's");
 }
@@ -113,17 +131,35 @@ const same = (actual, expected, what) => assert.equal(JSON.stringify(actual), JS
 {
   const { manager } = open();
   const m2 = manager.getEntry("m2").message.content;
-  assert.ok(light(text(manager, "m1"), "text"), "m1's text, left out, is still held whole");
-  assert.ok(light(m2[0], "thinking") && light(m2[1], "text"), "m2's thinking or text is still held whole");
+  assert.ok(light(part(manager, "m1"), "text"), "m1's text, left out, is still held whole");
+  assert.ok(
+    light(m2[0], "thinking") && light(m2[1], "text"),
+    "m2's thinking or text is still held whole",
+  );
   assert.ok(light(m2[2], "arguments"), "m2's tool call arguments are still held whole");
-  assert.ok(!light(m2[2], "id") && !light(m2[2], "name"), "a tool call's id or name was read light");
+  assert.ok(
+    !light(m2[2], "id") && !light(m2[2], "name"),
+    "a tool call's id or name was read light",
+  );
   assert.ok(!light(m2[0], "thinkingSignature"), "a short value was read light");
   assert.ok(!light(manager.getEntry("m2").message, "usage"), "usage was read light");
-  assert.ok(light(manager.getEntry("m3").message, "content"), "m3's tool result is still held whole");
-  assert.ok(light(text(manager, "b1"), "text"), "b1, on another branch, is still held whole");
-  for (const id of ["m5", "m6", "m7"]) assert.ok(!light(text(manager, id), "text"), `${id}, kept, was read light`);
-  assert.ok(!light(manager.getEntry("k1"), "summary"), "the kept compaction's summary was read light");
-  assert.notEqual(m2[2].arguments, m2[2].arguments, "a value read again came back as one object twice");
+  assert.ok(
+    light(manager.getEntry("m3").message, "content"),
+    "m3's tool result is still held whole",
+  );
+  assert.ok(light(part(manager, "b1"), "text"), "b1, on another branch, is still held whole");
+  for (const id of ["m5", "m6", "m7"]) {
+    assert.ok(!light(part(manager, id), "text"), `${id}, kept, was read light`);
+  }
+  assert.ok(
+    !light(manager.getEntry("k1"), "summary"),
+    "the kept compaction's summary was read light",
+  );
+  assert.notEqual(
+    m2[2].arguments,
+    m2[2].arguments,
+    "a value read again came back as one object twice",
+  );
   same(m2[2].arguments, { command: big("cmd") }, "m2's arguments read again differ");
 }
 
@@ -132,20 +168,39 @@ const same = (actual, expected, what) => assert.equal(JSON.stringify(actual), JS
   const { manager } = open();
   manager.branch("m2");
   same(manager.buildSessionContext(), buildSessionContext(plain, "m2"), "m2's context differs");
-  assert.ok(!light(text(manager, "m1"), "text") && !light(text(manager, "m2", 1), "text"), "m2's context is still read light");
+  assert.ok(
+    !light(part(manager, "m1"), "text") && !light(part(manager, "m2", 1), "text"),
+    "m2's context is still read light",
+  );
 }
 
 // A compaction made later lets go of what it leaves out: entries the kept
 // view held at the read, entries appended since, and the older compaction.
 {
   const { file, manager } = open();
-  const u1 = manager.appendMessage({ role: "user", content: [{ type: "text", text: big("u1") }], timestamp: 0 });
-  const a1 = manager.appendMessage({ role: "user", content: [{ type: "text", text: big("a1") }], timestamp: 0 });
+  const u1 = manager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: big("u1") }],
+    timestamp: 0,
+  });
+  const a1 = manager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: big("a1") }],
+    timestamp: 0,
+  });
   manager.appendCompaction(big("later"), a1, 200);
-  for (const id of ["m5", "m6", "m7", u1]) assert.ok(light(text(manager, id), "text"), `${id}, now left out, is still held whole`);
-  assert.ok(light(manager.getEntry("k1"), "summary"), "the older compaction's summary is still held whole");
-  assert.ok(!light(text(manager, a1), "text"), "a1, kept, was read light");
-  const written = readFileSync(file, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+  for (const id of ["m5", "m6", "m7", u1]) {
+    assert.ok(light(part(manager, id), "text"), `${id}, now left out, is still held whole`);
+  }
+  assert.ok(
+    light(manager.getEntry("k1"), "summary"),
+    "the older compaction's summary is still held whole",
+  );
+  assert.ok(!light(part(manager, a1), "text"), "a1, kept, was read light");
+  const written = readFileSync(file, "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
   same(manager.getEntries(), written.slice(1), "the entries differ from the log written");
 }
 
@@ -156,7 +211,11 @@ const same = (actual, expected, what) => assert.equal(JSON.stringify(actual), JS
   manager._rewriteFile();
   assert.ok(!lightAnywhere(manager), "an entry still reads from a line the rewrite moved");
   same(manager.getEntries(), plain, "the entries differ after the rewrite");
-  same(readFileSync(file, "utf8"), entries.map((entry) => `${JSON.stringify(entry)}\n`).join(""), "the log");
+  same(
+    readFileSync(file, "utf8"),
+    entries.map((entry) => `${JSON.stringify(entry)}\n`).join(""),
+    "the log",
+  );
 }
 
 // An entry appended while something else writes the log has no known place,
@@ -171,15 +230,23 @@ const same = (actual, expected, what) => assert.equal(JSON.stringify(actual), JS
   syncBuiltinESMExports();
   let u1;
   try {
-    u1 = manager.appendMessage({ role: "user", content: [{ type: "text", text: big("u1") }], timestamp: 0 });
+    u1 = manager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text: big("u1") }],
+      timestamp: 0,
+    });
   } finally {
     fs.appendFileSync = append;
     syncBuiltinESMExports();
   }
-  const a1 = manager.appendMessage({ role: "user", content: [{ type: "text", text: big("a1") }], timestamp: 0 });
+  const a1 = manager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: big("a1") }],
+    timestamp: 0,
+  });
   manager.appendCompaction(big("later"), a1, 200);
-  assert.ok(!light(text(manager, u1), "text"), "u1, with no known place, was let go of");
-  same(text(manager, u1).text, big("u1"), "u1's text differs");
+  assert.ok(!light(part(manager, u1), "text"), "u1, with no known place, was let go of");
+  same(part(manager, u1).text, big("u1"), "u1's text differs");
 }
 
 // A log pi would migrate, or one whose last line is unfinished, is read
