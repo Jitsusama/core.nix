@@ -272,8 +272,8 @@ pub fn itself(ties: &Value, now: i64) -> Said {
 /// A machine's last update, as a clause, when its node says one: how long
 /// ago it was, where its time reads and isn't ahead of this clock, and
 /// how it ended, with why when it didn't all go ahead: refused, failed, or
-/// done but booting what it booted before, the only steps `update_why`
-/// (parts/why.rs) carries one for. A why beside any other step, as a node
+/// done or unchanged but booting what it booted before, the only steps
+/// `update_why` (parts/why.rs) carries one for. A why beside any other step, as a node
 /// that knows more steps might send, is left unsaid rather than read as
 /// this one's.
 fn updated(figures: &Value, now: i64) -> Option<String> {
@@ -291,7 +291,7 @@ fn updated(figures: &Value, now: i64) -> Option<String> {
                 .and_then(Value::as_str)
                 .filter(|why| !why.is_empty()),
         ) {
-            (Some("done"), Some(why)) => format!("{ended}, but {why}"),
+            (Some("done" | "unchanged"), Some(why)) => format!("{ended}, but {why}"),
             (Some("refused" | "failed"), Some(why)) => format!("{ended}: {why}"),
             _ => ended,
         },
@@ -641,6 +641,14 @@ mod tests {
             itself(&boots, now).aside,
             "updated 5 m ago, but the boot check failed",
             "a done update that didn't all go ahead says why"
+        );
+        let still = json!({"figures": {"updated_at": "2025-11-17T23:00:18Z",
+                                       "update_step": "unchanged",
+                                       "update_why": "the boot check failed"}});
+        assert_eq!(
+            itself(&still, now).aside,
+            "unchanged at its update 5 m ago, but the boot check failed",
+            "an unchanged update after one that didn't all go ahead still says why"
         );
         let failed = json!({"figures": {"updated_at": "2025-11-17T23:00:18Z",
                                         "update_step": "failed",
