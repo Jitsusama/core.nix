@@ -181,7 +181,13 @@ let
   # or moved leaves that place to a file written some other way, which
   # local-sites can't see, so it's refused below. No other entry can write
   # there while this one does, since home-manager refuses two at one place.
-  inPlace = wordsFile.enable && wordsFile.target == wordsAt;
+  # Home-manager keeps a target as it applies it, under the config folder
+  # and from the home folder, so it's held to the place in that form.
+  inPlace =
+    wordsFile.enable
+    &&
+      wordsFile.target
+      == lib.removePrefix "${config.home.homeDirectory}/" "${config.xdg.configHome}/${wordsAt}";
   # Whether the file is made from its text, as the launcher writes it: a
   # source given in its place wins over the text, which then says words
   # the launcher never reads. Whether it is shows only in the source's own
