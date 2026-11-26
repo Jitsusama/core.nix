@@ -132,11 +132,7 @@ Scope {
     // What a scene is drawn with besides its level and last play: the play
     // `asked` for, and how long each play that rests rests yet.
     function drawsWith(asked: string): var {
-        const now = Date.now();
-        const restsIn = {};
-        for (const play in restsUntil)
-            restsIn[play] = restsUntil[play] - now;
-        return { asked, restsIn };
+        return { asked, restsIn: Plays.restsLeft(restsUntil, Date.now()) };
     }
 
     // Each level a fresh rest, so a key ends whatever scene was under way,
@@ -196,11 +192,8 @@ Scope {
         answers = left.answers;
         asked = left.asked;
         refusedAt = left.refusedAt;
-        if (left.rests !== "") {
-            const until = Object.assign({}, restsUntil);
-            until[left.rests] = Date.now() + Plays.restsFor(left.rests, Math.random());
-            restsUntil = until;
-        }
+        if (left.rests !== "")
+            restsUntil = Plays.restStarted(restsUntil, left.rests, Date.now(), Math.random());
     }
 
     Daemon {

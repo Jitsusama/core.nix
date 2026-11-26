@@ -104,6 +104,22 @@ function restsFor(play, chance) {
     return span ? Math.round(span[0] + (span[1] - span[0]) * chance) : 0;
 }
 
+// What's left of each play's rest at `now`, from `until`, when each ends
+// by the clock, as a scene is drawn with them (scene's `more.restsIn`).
+function restsLeft(until, now) {
+    const left = {};
+    for (const play of Object.keys(until)) {
+        left[play] = until[play] - now;
+    }
+    return left;
+}
+
+// `until` with the rest of `play` begun at `now`, `chance` choosing how
+// long (restsFor), as a play that rests begins.
+function restStarted(until, play, now, chance) {
+    return Object.assign({}, until, { [play]: now + restsFor(play, chance) });
+}
+
 // One of `list`, `chance` (0 to 1) choosing which.
 function pick(list, chance) {
     return list[Math.min(list.length - 1, Math.floor(chance * list.length))];
@@ -184,11 +200,12 @@ function next(lively, draw, last, more) {
 function handed(was, beat, taken, now) {
     const refusedAt = was.answers && !taken && was.refusedAt === null ? now : was.refusedAt;
     const spent = was.answers && (taken || now - refusedAt >= REFUSED_FOR);
+    const rests = taken && RESTS_BETWEEN[beat.play] !== undefined;
     return {
         answers: false,
         asked: spent ? "" : was.asked,
         refusedAt: spent ? null : refusedAt,
-        rests: taken && RESTS_BETWEEN[beat.play] !== undefined ? beat.play : ""
+        rests: rests ? beat.play : ""
     };
 }
 

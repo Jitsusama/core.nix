@@ -69,6 +69,7 @@ function visit(at) {
     const puppy = {
         within: { left: x - spare.left, right: x + at.wide + spare.right },
         stride: trots.stride,
+        near,
         tracks: {
             waits: { from: gone, to: near, facing: -dir }, notices: still(STANDS),
             eyes: still("puppyBowing"), crouches: sits, hops: sits, lands: sits, looks: sits,
@@ -92,7 +93,11 @@ function visit(at) {
 // by the theme's name, the way it faces and the room it's drawn `within`,
 // as the yarn is said (Games.frame); null where the play has none, or is
 // done. Trotting, it steps in whole cells at a steady pace, its drawing
-// the next of its strides each `stride` cells it covers.
+// the next of its strides each `stride` cells it covers. They're counted
+// from where it stands near the cat, the cell before it coming in, since
+// that last cell is the notice's standing: so a way in that isn't whole
+// strides leaves its short one behind the room's edge, not where it
+// arrives in plain sight.
 function frame(playing, t) {
     const beat = playing.puppy ? playing.beats.find(one => t < one.ends) : null;
     const track = beat ? playing.puppy.tracks[beat.name] : null;
@@ -102,11 +107,17 @@ function frame(playing, t) {
     const c = playing.cell;
     const p = (t - beat.begins) / (beat.ends - beat.begins);
     const x = Ways.onCells(track.from + (track.to - track.from) * p, track.from, track.to, c);
-    const strides = Math.floor(Math.abs(x - track.from) / (playing.puppy.stride * c) + 1e-6);
+    const near = playing.puppy.near;
+    const coming = track.to === near && track.from !== near;
+    const strides = cells => Math.floor(Math.max(cells, 0) / playing.puppy.stride + 1e-6);
+    const seen = Math.abs(x - near) / c - (coming ? 1 : 0);
+    // Coming in, its strides run on from the first, which it takes at the edge.
+    const taken = coming ? strides(Math.abs(track.from - near) / c - 1) - strides(seen)
+        : strides(seen);
     return {
         x,
         y: playing.from.y,
-        pose: track.pose ?? TROTS[strides % TROTS.length],
+        pose: track.pose ?? TROTS[taken % TROTS.length],
         facing: track.facing,
         within: playing.puppy.within
     };

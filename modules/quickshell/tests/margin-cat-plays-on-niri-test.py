@@ -476,7 +476,7 @@ def test_away_a_puppy_visits_and_the_cat_hops_where_it_sits(shell: Shell) -> Non
 
 
 def test_a_key_ends_the_puppys_visit(shell: Shell) -> None:
-    """The puppy visits only while he's away, so a key mid-visit ends it and the cat sits.
+    """The puppy visits only while he's away, so a key mid-visit ends it: it goes, the cat sits.
 
     A visit lasts up to about 25 s, and played on it would have the cat hopping as he types and
     asking niri for every tile (#6573's council, 2026-11-25).
@@ -496,6 +496,7 @@ def test_a_key_ends_the_puppys_visit(shell: Shell) -> None:
     shell.reported(SITS, lambda said: not visiting(said), since)
     ended = time.monotonic() - keyed
     assert ended <= BACK, f"a key took {ended:.2f} s to end the visit"
+    # `walk` says no puppy once the cat sits, so only the report's own `puppy` shows it gone.
     shell.reported(
         SITS,
         lambda said: (
@@ -503,6 +504,7 @@ def test_a_key_ends_the_puppys_visit(shell: Shell) -> None:
             and not walking(at)
             and at.get("window") == sat["id"]
             and abs(at["x"] - seat["x"]) <= 1
+            and not at.get("puppy")
         ),
         since,
         HOME,

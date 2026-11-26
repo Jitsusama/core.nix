@@ -193,19 +193,17 @@ QtObject {
             return seed / 2_147_483_647;
         };
         const played = { yarn: [], puppy: [] };
-        const restsUntil = {};
+        let restsUntil = {};
         let clock = 0;
         let lastPlay = "";
         while (clock < 4 * 3_600_000) {
-            const restsIn = {};
-            for (const play in restsUntil)
-                restsIn[play] = restsUntil[play] - clock;
-            const coming = Plays.next("idle", random, lastPlay, { restsIn });
+            const coming = Plays.next("idle", random, lastPlay,
+                { restsIn: Plays.restsLeft(restsUntil, clock) });
             clock += coming.after;
             lastPlay = coming.scene.name;
             if (played[lastPlay]) {
                 played[lastPlay].push(clock);
-                restsUntil[lastPlay] = clock + Plays.restsFor(lastPlay, random());
+                restsUntil = Plays.restStarted(restsUntil, lastPlay, clock, random());
             }
             clock += long(coming.scene.beats) + (coming.scene.beats[0]?.play ? 17_000 : 0);
         }

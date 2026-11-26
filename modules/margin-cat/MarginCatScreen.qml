@@ -1184,6 +1184,8 @@ PanelWindow {
     // where it stood, as the yarn does. It never stays behind its visit.
     property var puppyAt: null
     property real puppyLeft: 1
+    readonly property bool puppyShown: puppyAt !== null
+    onPuppyShownChanged: say()
     NumberAnimation {
         id: puppyFades
         target: window
@@ -1553,6 +1555,9 @@ PanelWindow {
             stilled: window.stilled && !window.byHand,
             landed: window.landedOn,
             yarn: yarnLies ? { x: yarnAt.x, y: yarnAt.y } : null,
+            // Whether the puppy's drawn, visiting or fading where a key
+            // cut its visit short, which `walk` stops saying once it sits.
+            puppy: puppyShown,
             walk: going === null || stepped === null ? null : {
                 t: Math.round(walker.elapsedTime * 10000) / 10,
                 beat: stepped.beat,

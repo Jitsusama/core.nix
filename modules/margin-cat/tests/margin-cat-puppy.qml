@@ -45,6 +45,7 @@ QtObject {
     // The visit's beats, the cat's answers and where the puppy is in each.
     function visits(expect) {
         const played = Puppy.visit(Seated.sat());
+        const visited = frames(played);
         const beat = name => played.beats.find(each => each.name === name);
         const puppyAt = t => Puppy.frame(played, t);
         const catAt = t => Games.frame(played, t);
@@ -68,7 +69,7 @@ QtObject {
         expect("it bows as the cat eyes it, as long as the cat thinks besides",
             [puppyAt(eyes.begins).pose, catAt(eyes.begins).pose, eyes.ends - eyes.begins],
             ["puppyBowing", "tailSwish", 850]);
-        const hopping = frames(played).filter(frame => frame.cat.beat === "hops");
+        const hopping = visited.filter(frame => frame.cat.beat === "hops");
         expect("the cat answers with a hop where it sits, the puppy sitting",
             [Math.min(...hopping.map(frame => frame.cat.y)),
                 hopping.every(frame => frame.cat.x === 100),
@@ -76,7 +77,7 @@ QtObject {
         expect("and flicks an ear after, the puppy still sitting",
             [catAt(beat("looks").begins).pose, puppyAt(beat("looks").begins).pose],
             ["earFlick", "puppySitting"]);
-        const going = frames(played).filter(frame => frame.cat.beat === "watches");
+        const going = visited.filter(frame => frame.cat.beat === "watches");
         expect("then it turns and trots back behind the edge as the cat watches",
             [going[1].puppy.facing, going[going.length - 1].puppy.x,
                 going[going.length - 1].puppy.x >= going[going.length - 1].puppy.within.right],
@@ -85,11 +86,14 @@ QtObject {
             [puppyAt(played.ends), played.to, catAt(played.ends).done],
             [null, { x: 100, y: 20 }, true]);
         expect("the cat never leaves its seat",
-            frames(played).every(frame => frame.cat.x === 100), true);
+            visited.every(frame => frame.cat.x === 100), true);
         expect("the theme's slowdown stretches all of it",
             Puppy.visit(Seated.sat({ slowdown: 2 })).ends, played.ends * 2);
-        expect("with no room for it beside the cat, no visit",
-            Puppy.visit(Seated.sat({ column: { left: 95, top: 30, width: 16 } })), null);
+        // Its gap and itself, ten cells, take a column 23 across from 95,
+        // the cat at 100 and 8 across.
+        const roomed = width => Puppy.visit(Seated.sat({ column: { left: 95, top: 30, width } }));
+        expect("with room beside the cat for just it and its gap, a visit; a cell less, none",
+            [roomed(23)?.kind, roomed(22)], ["puppy", null]);
         expect("nor without a seat", Puppy.visit(Seated.sat({ seat: null })), null);
     }
 
@@ -110,9 +114,28 @@ QtObject {
             all.every(puppy => puppy !== null && Number.isInteger(puppy.x)), true);
         const order = ["puppyWalkingA", "puppyWalkingC", "puppyWalkingB", "puppyWalkingD"];
         const coming = all.slice(0, Math.ceil(waits.ends));
+        // Counted from the cell before it stands at 110, 296 strides on
+        // from the first it takes at the edge.
         expect("a new drawing each three cells it covers, in the cat's order",
             coming.every(puppy => puppy.pose
-                === order[Math.floor(Math.abs(1001 - puppy.x) / 3 + 1e-6) % 4]), true);
+                === order[(296 - Math.floor(Math.max(puppy.x - 111, 0) / 3 + 1e-6)) % 4]), true);
+        // However long its way in, the drawing it arrives in shows for a
+        // whole stride, any short one left behind the room's edge, where at
+        // these widths a way counted from the edge left it 1 or 2 cells.
+        const arrivals = [];
+        for (let width = 200; width < 206; width += 1) {
+            const inward = Puppy.visit(Seated.sat({ column: { left: 92, top: 30, width } }));
+            const trotted = Array.from({ length: Math.ceil(inward.beats[0].ends) },
+                (_, t) => Puppy.frame(inward, t));
+            const arrives = trotted[trotted.length - 1].pose;
+            let first = trotted.length - 1;
+            while (first > 0 && trotted[first - 1].pose === arrives)
+                first -= 1;
+            const cellsShown = new Set(trotted.slice(first).map(puppy => puppy.x)).size;
+            if (cellsShown !== inward.puppy.stride)
+                arrivals.push({ width, cellsShown });
+        }
+        expect("arriving in a whole stride, however far it came", arrivals, []);
         expect("its strides all four drawings", Array.from(new Set(coming.map(puppy =>
             puppy.pose))).sort(), order.slice().sort());
         const runs = [];
@@ -146,16 +169,19 @@ QtObject {
     }
 
     // Each pose it takes is one of the theme's drawings, which the screen
-    // turns the way it faces (MarginCat.yarnDrawn, as the yarn's).
+    // turns the way it faces (MarginCat.yarnDrawn, as the yarn's): the
+    // same stride trotting off is the mirror of its trotting in.
     function drawings(expect) {
-        const posed = new Set(frames(Puppy.visit(Seated.sat())).map(frame => frame.puppy?.pose));
+        const shown = frames(Puppy.visit(Seated.sat())).map(frame => frame.puppy);
+        const posed = new Set(shown.map(puppy => puppy?.pose));
         posed.delete(undefined);
         expect("every pose it takes is drawn",
             Array.from(posed).filter(pose => (Drawings.poses[pose] ?? []).length === 0), []);
-        const going = frames(Puppy.visit(Seated.sat())).map(frame => frame.puppy)
-            .find(puppy => puppy?.facing === 1 && puppy.pose === "puppyWalkingA");
+        const drawn = facing => MarginCat.yarnDrawn(MarginCat.yarnLooks(shown.find(puppy =>
+            puppy?.facing === facing && puppy.pose === "puppyWalkingA")), Drawings.poses);
+        const mirrored = drawn(-1).map(row => row.split("").reverse().join(""));
         expect("and turned the way it faces, off as it trots back",
-            MarginCat.yarnDrawn(MarginCat.yarnLooks(going), Drawings.poses),
-            MarginCat.turned(Drawings.poses.puppyWalkingA, 1));
+            [JSON.stringify(drawn(1)) === JSON.stringify(mirrored),
+                JSON.stringify(drawn(1)) === JSON.stringify(drawn(-1))], [true, false]);
     }
 }
