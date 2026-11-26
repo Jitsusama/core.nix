@@ -305,8 +305,8 @@ fn looked(said: &Value, own: Option<&Value>, backup: Option<Backup>) -> Said {
                 Health::Bad,
                 format!("has a {side}"),
                 side,
-                "Builds and sessions there fail once it fills, and the disk guard couldn't free \
-                 enough of it by itself.",
+                "Builds and sessions there fail once it fills, and nothing there freed enough of \
+                 it by itself.",
             );
         }
         _ => {}
@@ -994,6 +994,65 @@ mod tests {
         assert_eq!(ago_said(3_600), "1 hour ago");
         assert_eq!(ago_said(7_199), "1 hour ago");
         assert_eq!(ago_said(7_200), "2 hours ago");
+    }
+
+    #[test]
+    fn each_kind_of_look_says_its_whole_why() {
+        let mut studio = laptop(&[], "nearly-full");
+        studio["state"] = json!("unreachable");
+        studio["power"] = json!({"on_battery": true, "charge": 12});
+        studio["firmware"] = json!({"error_before_boot": 600});
+        studio["health"] = json!({"parts": {"code": "watch"}});
+        let part = super::machines(
+            &Ok(realm(&[studio])),
+            &Err(String::new()),
+            None,
+            None,
+            Some(Backup::Landed(7 * 3_600)),
+        );
+        let mut said: Vec<(&str, &str)> = part.things[0]
+            .looks
+            .iter()
+            .map(|look| (look.side.as_str(), look.matters.as_str()))
+            .collect();
+        said.sort_unstable();
+        let mut whys = [
+            (
+                "out of reach",
+                "What runs there can't be read or steered from here until a link reaches it again.",
+            ),
+            (
+                "nearly full disk, 279 GB free",
+                "Builds and sessions there fail once it fills, and nothing there freed enough of \
+                 it by itself.",
+            ),
+            (
+                "on battery at 12%",
+                "It stops when its battery runs out, and what runs there stops with it.",
+            ),
+            (
+                "booted under an hour ago after a firmware error",
+                "Its firmware kept an error from before it booted, as an abrupt reset leaves, so \
+                 what ran there may have ended without warning.",
+            ),
+            ("code wants a look", OWN_MATTERS),
+            (
+                "no quest backup in 7 h",
+                "Quests changed since then would be lost with this machine's disk.",
+            ),
+        ];
+        whys.sort_unstable();
+        assert_eq!(said, whys, "each look's why, whole");
+        let unread = backup_said(Backup::Unread("the backup's time file says no time"))
+            .map(|(.., look)| look.matters);
+        assert_eq!(
+            unread.as_deref(),
+            Some(
+                "Quests changed since its last backup would be lost with this machine's disk, \
+                 and when that was can't be told."
+            ),
+            "a backup whose time can't be told says why too"
+        );
     }
 
     #[test]
