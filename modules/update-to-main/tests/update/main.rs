@@ -1622,6 +1622,16 @@ fn going_back_to_a_system_whose_boot_check_failed_keeps_the_old_boot_default() {
 
 /// Makes the machine boot `system` and run it, as a reboot into it would.
 fn reboot_into(world: &World, system: &Path) {
+    // A file's time comes from a clock that moves a few milliseconds at a
+    // time, so a boot made in the same moment as the why kept before it
+    // would read as no newer; a real boot comes long after, as here.
+    if let Ok(kept) = fs::File::options()
+        .write(true)
+        .open(world.config.boots_file())
+    {
+        let before = std::time::SystemTime::now() - Duration::from_secs(1);
+        kept.set_modified(before).unwrap();
+    }
     let booted = &world.config.booted;
     if booted.is_dir() && !booted.is_symlink() {
         fs::remove_dir_all(booted).unwrap();
