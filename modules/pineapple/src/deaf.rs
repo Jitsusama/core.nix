@@ -303,27 +303,60 @@ impl Deaf {
                     waits(why, since, at)
                 })
             }
-            Round::Partly(alone) => self.partly(alone, at),
-            // Through a gateway, a run of rounds unasked is deaf as any
-            // cause is, since nothing else hears Slack while it lasts.
-            Round::Unasked if self.gateway => {
-                self.unasked = self.unasked.saturating_add(1);
-                if self.unasked > UNREACHED {
-                    self.heard(Round::Deaf(Deafness::Unreached), at)
-                } else {
-                    Change::Keep
-                }
-            }
+            Round::Partly(alone) => self.answered(alone, at),
+            Round::Unasked if self.gateway => self.none_answered(at),
             Round::Unasked => Change::Keep,
         }
     }
 
     /// What a round read in part changes, `alone` the search it left
-    /// unasked, if one: it ends a run of rounds unasked, as the gateway
-    /// answered it. Through a gateway, one search left unasked more than
-    /// [`UNREACHED`] rounds in a row is deaf of its own, since a stop only
-    /// it finds goes unheard, so it's told as that search unread, or both
-    /// where the row says the other is, until the row says it.
+    /// unasked, if one. The gateway answered it, so a row saying it's
+    /// unreached is taken away, as is one saying only the search it
+    /// answered can't be read; a deafness after is a time of its own,
+    /// told anew even where Joel marked that row done.
+    fn answered(&mut self, alone: Option<Search>, at: u64) -> Change {
+        let reached = match self.told {
+            Some(Deafness::Unreached) => true,
+            Some(Deafness::Unread(told)) => alone.is_some_and(|left| left != told),
+            _ => false,
+        };
+        if reached {
+            self.told = None;
+            self.since = None;
+            self.rounds = 0;
+            self.held = None;
+        }
+        match self.partly(alone, at) {
+            Change::Keep if reached => Change::Untell,
+            change => change,
+        }
+    }
+
+    /// What a round no search was answered in changes, through a gateway:
+    /// a run of them is deaf as any cause is, since nothing else hears
+    /// Slack while it lasts. A search left unasked alone is left unasked
+    /// here too, so its run goes on, and a gateway answering the other
+    /// now and then can't keep it untold.
+    fn none_answered(&mut self, at: u64) -> Change {
+        self.unasked = self.unasked.saturating_add(1);
+        if self.unasked > UNREACHED {
+            return self.heard(Round::Deaf(Deafness::Unreached), at);
+        }
+        let Some((search, _)) = self.alone else {
+            return Change::Keep;
+        };
+        let unasked = self.unasked;
+        let change = self.partly(Some(search), at);
+        self.unasked = unasked;
+        change
+    }
+
+    /// What a round leaving `alone` unasked, if one, changes: it ends a
+    /// run of rounds unasked. Through a gateway, one search left unasked
+    /// more than [`UNREACHED`] rounds in a row is deaf of its own, since a
+    /// stop only it finds goes unheard, so it's told as that search unread
+    /// until the row says it. Its partner answered in the run, so it's
+    /// never told as both.
     fn partly(&mut self, alone: Option<Search>, at: u64) -> Change {
         self.unasked = 0;
         let run = match (alone, self.alone) {
@@ -337,18 +370,9 @@ impl Deaf {
         if run <= UNREACHED {
             return Change::Keep;
         }
-        let other = match search {
-            Search::Phrase => Search::Tag,
-            Search::Tag => Search::Phrase,
-        };
-        let why = if self.tells(other) {
-            Deafness::Unreadable
-        } else {
-            Deafness::Unread(search)
-        };
         // Told as a deaf round would be, its run kept for the next.
         let kept = self.alone;
-        let change = self.heard(Round::Deaf(why), at);
+        let change = self.heard(Round::Deaf(Deafness::Unread(search)), at);
         self.alone = kept;
         change
     }

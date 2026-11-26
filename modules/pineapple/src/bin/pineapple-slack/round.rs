@@ -128,12 +128,14 @@ pub(super) fn round(
                 }
             }
             // A refusal is said first, then a sign-in none could give.
-            // One blinking beside the other unreadable, or waiting on a
-            // later page, says nothing new, so only both unread are told
-            // as both, though the round names the one blinking. Only both
-            // unasked, neither waiting, is a round no search was answered
-            // in, which a gateway's reader counts.
+            // One unasked beside the other unreadable, waiting on no later
+            // page, heard nothing either, so the round is deaf of both;
+            // each search is counted on its own, so one blink doesn't
+            // widen a row, and one failing every round is told. Of the
+            // rest, only both unasked, neither waiting, is a round no
+            // search was answered in, which a gateway's reader counts.
             let unasked = Some(Round::Unasked);
+            let unreadable = failed.contains(&Some(unread));
             let left = |search: Search, query: &str, answer: Option<Round>| {
                 (answer == unasked && !ears.waiting(query)).then_some(search)
             };
@@ -150,7 +152,7 @@ pub(super) fn round(
             ]
             .into_iter()
             .find(|round| failed.contains(&Some(*round)))
-            .or_else(|| failed.contains(&unasked).then_some(blinked))
+            .or_else(|| (failed.contains(&unasked) && !unreadable).then_some(blinked))
             .unwrap_or(unread);
         }
     };

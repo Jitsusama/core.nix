@@ -43,6 +43,33 @@ fn a_tag_search_failing_every_round_beside_the_phrases_is_told_as_unread() {
 }
 
 #[test]
+fn a_tag_search_failing_every_round_beside_a_phrase_search_that_cant_be_read_is_told_as_both() {
+    let came = hearing(
+        |tool, asked, now| {
+            if tool != "slack_search_public_and_private" {
+                said(tool, now)
+            } else if asked["query"] == "pineapple" {
+                poisoned()
+            } else {
+                format!("{FAILS}Slack said: ratelimited")
+            }
+        },
+        // Only until the row is told.
+        &Until {
+            judging: 0,
+            asks: 0,
+            read_at: None,
+        },
+    );
+    assert!(
+        came.why
+            .contains("Slack's answers to the safe word can't be read"),
+        "neither search is heard, so the row says both, never that the phrase still is: {}",
+        came.why
+    );
+}
+
+#[test]
 fn a_search_cut_each_time_it_is_asked_again_is_asked_four_times_then_told() {
     let came = hearing(
         |tool, asked, now| {
