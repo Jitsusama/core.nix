@@ -295,6 +295,12 @@ fn gather(
         landed(&core_log, &harness_log, &machine_log, now),
     ];
     all.extend(measures::said_none(misses, now));
+    all.push(measures::cited::read(
+        state_home,
+        now,
+        &today(now),
+        orchestrator,
+    ));
     all.push(measures::holds::read(state_home, &asks, now));
     all.extend(parted::dates_at_risk(state_home, &core, &asks, now));
     all.extend(found);

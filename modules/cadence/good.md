@@ -274,6 +274,20 @@ holding a space, as one broken across two lines does, is counted too.
 - Joel, 24 Nov: "I need my agents to be able to get work done, they can't be neutered."
 - Over costs him: agents stopped from working with nobody saying when they start again.
 
+## Lines Citing No Owner
+
+- Measures: `lines-uncited`
+- Target: 0 lines to him in the last day giving a live or switch time, or asking him to act or
+  decide, with no message from a cell other than the writer cited before them, and 0 items the
+  morning note puts to him naming no such message. A time counts as cited only when the message
+  cited says it, and a switch time only from the cell running the switches. A message sent more
+  than two days before backs nothing. A log, citation or message that can't be read leaves the
+  hour unjudged.
+- Joel, 25 Nov 09:04: "2 - you should not be presenting me with this, a cell concerned with
+  this should."
+- Over costs him: a time nobody running the work gave, or a decision nobody who owns it put to
+  him, which he acts on as if they had.
+
 ## Budgets Billed Under Logged
 
 - Measures: `budgets-billed-under-logged`

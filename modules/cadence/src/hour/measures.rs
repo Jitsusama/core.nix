@@ -18,6 +18,7 @@ mod broken;
 mod card;
 mod carried;
 mod cells;
+pub mod cited;
 pub mod holds;
 pub mod locked;
 mod misses;
