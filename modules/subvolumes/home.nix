@@ -68,8 +68,8 @@ let
             RemainAfterExit = true;
             ExecStart = "${move} %h/${folder}";
             # The copy is bounded. Past it come up to three walks of the
-            # folder and of /proc, seconds each under agents' load, and a
-            # few renames, so this is only a backstop.
+            # folder and five of /proc, seconds each under agents' load,
+            # and a few renames, so this is only a backstop.
             TimeoutStartSec = settings.seconds + 120;
           };
           Install.WantedBy = [ "default.target" ];

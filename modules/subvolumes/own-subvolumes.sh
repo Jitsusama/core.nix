@@ -211,7 +211,8 @@ copies_made() {
 making() { echo "$1.subvolume-new"; }
 kept() {
   local stamp
-  stamp=$(date +%Y%m%d%H%M%S)
+  # To the nanosecond, so two kept within a second don't share a name.
+  stamp=$(date +%Y%m%d%H%M%S-%N)
   echo "$1.before-subvolume-$stamp"
 }
 
@@ -253,7 +254,12 @@ tidy() {
 # stands for what was made or removed in it.
 changed() {
   local found
-  found=$(find "$1" -mindepth 1 -cnewer "$2" -print -quit 2> /dev/null) || true
+  # A walk that couldn't read all of it says so, since what it couldn't
+  # read may be what changed, and every caller keeps a folder it's told
+  # changed.
+  if ! found=$(find "$1" -mindepth 1 -cnewer "$2" -print -quit 2> /dev/null); then
+    [ -n "$found" ] || found="$1, as part of it couldn't be read"
+  fi
   [ -n "$found" ] || found=$(find "$1" -maxdepth 0 -newer "$2" -print 2> /dev/null) || true
   echo "$found"
 }
@@ -279,7 +285,7 @@ in_use() {
 # waiter starts may find it. A copy that ends in no move is a whole copy
 # spent, so after three the folder waits for the manager's next start.
 left() {
-  local folder=$1 why=$2 real=$3 holder base copies writer wait=''
+  local folder=$1 why=$2 real=$3 holder base copies writer='' wait=''
   case $why in
   /proc/*) holder=$why ;;
   *) holder=$(holding "$real") ;;
@@ -308,6 +314,8 @@ left() {
     *)
       if [ -n "$holder" ]; then
         echo "$why, and $holder, so $folder stays in the home's tree until that quits"
+      elif [ -n "$writer" ]; then
+        echo "$why, and $writer, so $folder stays in the home's tree until that stops"
       else
         echo "$why, so $folder stays in the home's tree until that stops"
       fi
@@ -481,7 +489,7 @@ own() {
       fi
       rm -f -- "$new.keep"
       echo "✕ $folder was in use as it moved, so it's back, and what was written" \
-        "in the copy meanwhile ($late) is kept at $aside$still" >&2
+        "in the copy meanwhile (${late//"$new"/"$aside"}) is kept at $aside$still" >&2
       return 1
     fi
     # Known to hold nothing, the copy is unmarked first, so a removal
@@ -512,7 +520,7 @@ own() {
 # go, as its folder's move would find it, so Chrome's many processes are
 # waited for one at a time, though they mostly quit together.
 after_quit() {
-  local folder=$1 real inode why pid held state last=''
+  local folder=$1 real inode why pid held state last='' waited='' base idle=0
   while :; do
     if [ ! -d "$folder" ] || [ -L "$folder" ]; then
       echo "$folder isn't a folder here, so there's nothing to wait for"
@@ -527,6 +535,7 @@ after_quit() {
     why=$(running)
     if [ -n "$why" ]; then
       echo "$why, so this waits for it to stop"
+      waited=yes
       # systemd has no wait for a unit to stop, and a look every half
       # minute is one call, against the minute a writer such as Chrome's
       # metrics move takes, and the days the node runs.
@@ -558,6 +567,7 @@ after_quit() {
       echo "$why, so this waits for it to quit"
       last=$pid
     fi
+    waited=yes
     # tail looks for the process every two seconds, which is as soon after
     # a quit as the move needs to start. A process that only passed
     # through, as a shell cd'd there or a reader of Chrome's sessions, may
@@ -570,6 +580,27 @@ after_quit() {
       [ -n "$held" ] || break
     done
   done
+  # A holder the move saw and this never finds, as a program that opens
+  # a file now and then, would have the two start each other without end,
+  # so a start of the move with nothing waited for is counted, and after
+  # three since the machine started, the move waits for the manager.
+  if [ -z "$waited" ] && [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+    base="$XDG_RUNTIME_DIR/own-subvolumes/$move"
+    if [ -f "$base.idle" ]; then
+      idle=$(cat -- "$base.idle")
+    fi
+    case $idle in
+    '' | *[!0-9]*) idle=0 ;;
+    *) ;;
+    esac
+    if [ "$idle" -ge 3 ]; then
+      echo "nothing holds $folder as this looks, though its move found something" \
+        "$idle times since the machine started, so it waits for the account's manager" \
+        "next start"
+      return 0
+    fi
+    mkdir -p -- "${base%/*}" && echo $((idle + 1)) > "$base.idle"
+  fi
   echo "nothing holds $folder now, so its move starts again"
   systemctl --user restart --no-block -- "$move"
 }

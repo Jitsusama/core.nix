@@ -265,6 +265,19 @@ def test_a_marked_copy_beside_a_subvolume_goes_only_once_nothing_reached_it(
     # Stopped as it looked, with nothing written since the copy began.
     as_account(moved, "mkdir moved.subvolume-new && echo calm > moved.subvolume-new/file")
     as_account(moved, "touch moved.subvolume-new.keep")
+    # Held, it may still be written in, so it stays until its holder quits.
+    as_account(
+        moved,
+        "systemd-run --user --unit lingerer"
+        f" bash -c 'exec 3< {HOME}/moved.subvolume-new/file; sleep infinity'",
+    )
+    holds = "test -e /proc/$(systemctl --user show -P MainPID lingerer)/fd/3"
+    as_account(moved, f"timeout 30 sh -c 'until {holds}; do sleep 0.2; done'")
+    as_account(moved, restart, succeed=False)
+    moved.succeed(f"test -e {HOME}/moved.subvolume-new.keep")
+    told = said(moved, "moved")
+    assert "changed as it moved (/proc/" in told, f"the held run said: {told}"
+    as_account(moved, "systemctl --user stop lingerer")
     as_account(moved, restart)
     moved.fail(f"test -e {HOME}/moved.subvolume-new")
     moved.fail(f"test -e {HOME}/moved.subvolume-new.keep")
@@ -300,12 +313,13 @@ def test_a_folder_with_late_writes_set_aside_stays_until_they_are_dealt_with(
     as_account(moved, restart, succeed=False)
     told = said(moved, "missing")
     assert "a copy with writes in it is kept" in told, f"the held run said: {told}"
-    as_account(moved, "systemctl --user stop keeper")
     as_account(moved, "rm -r missing.subvolume-new missing.subvolume-new.keep")
     as_account(moved, "mkdir missing.split-1")
     as_account(moved, restart, succeed=False)
     assert inode(moved, f"{HOME}/missing") != "256", "the folder moved past its split"
-    assert "missing.split-1" in said(moved, "missing")
+    told = said(moved, "missing")
+    assert "missing.split-1, so it stays" in told, f"the held run said: {told}"
+    as_account(moved, "systemctl --user stop keeper")
     as_account(moved, "rmdir missing.split-1")
     as_account(moved, restart)
     assert inode(moved, f"{HOME}/missing") == "256"
