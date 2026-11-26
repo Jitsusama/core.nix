@@ -117,7 +117,7 @@ def resident_after_closings(shell: Shell) -> list[tuple[int, int]]:
     return [
         (int(held), int(resident.split()[0]) if resident[0].isdigit() else -1)
         for held, resident in re.findall(
-            r"collected after closing in \d+ ms: \d+ MB live of (\d+) MB held, "
+            r"launcher: collected after closing in \d+ ms: \d+ MB live of (\d+) MB held, "
             r"(\d+ MB|an unknown amount) of it resident,",
             said,
         )

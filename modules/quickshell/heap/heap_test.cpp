@@ -61,6 +61,7 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <private/qv4engine_p.h>
 #include <private/qv4mm_p.h>
 #include <sys/mman.h>
@@ -1120,23 +1121,38 @@ constexpr int LARGE_VALUES = 100000;
 
 double megabytesOf(std::size_t bytes) { return static_cast<double>(bytes) / (1024.0 * 1024.0); }
 
-// Bit 62 of a page's entry in /proc/self/pagemap, set while the kernel has
-// it swapped out, to zswap's pool or the disk; it's kept for a reader with
-// no privilege, who's shown no frame numbers.
+// Bits 62 and 63 of a page's entry in /proc/self/pagemap: set while the
+// kernel has it swapped out, to zswap's pool or the disk, and while it's
+// mapped in memory. An entry is one or the other, never both, and both are
+// kept for a reader with no privilege, who's shown no frame numbers.
 constexpr int PAGE_SWAPPED_BIT = 62;
+constexpr int PAGE_PRESENT_BIT = 63;
 
-// The MB of the heap's own pages the kernel has swapped out, in its chunks
-// and its large items, or -1 when the kernel won't say. Only the heap's,
-// since the whole process's would let another allocator's swapped pages
-// stand in for a chunk the count leaves out. A large item is read over the
-// span weigh reads it resident over (heap.cpp's spanOf): its segment whole,
-// or its header and size to a page and at least a chunk, the heap's either
+// How far the page map's count of pages in memory may stray from mincore's
+// with nothing swapped, for a page the kernel takes or gives between the
+// two reads.
+constexpr std::size_t MAPPED_SLACK_PAGES = 64;
+
+// The MB of the heap's own pages the page map says are in memory, and
+// swapped out, each read of the same entry.
+struct Mapped {
+    double present;
+    double swapped;
+};
+
+// What the page map says of the heap's own pages, in its chunks and its
+// large items, or nothing when the kernel won't say. Only the heap's, since
+// the whole process's would let another allocator's swapped pages stand in
+// for a chunk the count leaves out. A large item is read over the span
+// weigh reads it resident over (heap.cpp's spanOf): its segment whole, or
+// its header and size to a page and at least a chunk, the heap's either
 // way, and pages past the item were never written, so none is swapped.
-double swappedHeld(const QV4::MemoryManager &manager) {
+std::optional<Mapped> pagesMapped(const QV4::MemoryManager &manager) {
     QFile pagemap(QStringLiteral("/proc/self/pagemap"));
     if (!pagemap.open(QIODevice::ReadOnly | QIODevice::Unbuffered))
-        return -1;
+        return std::nullopt;
     const auto page = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
+    std::size_t present = 0;
     std::size_t swapped = 0;
     const auto count = [&](const void *start, std::size_t length) {
         const std::size_t first = reinterpret_cast<std::uintptr_t>(start) / page;
@@ -1146,14 +1162,16 @@ double swappedHeld(const QV4::MemoryManager &manager) {
         if (!pagemap.seek(static_cast<qint64>(first * sizeof(quint64))) ||
             pagemap.read(reinterpret_cast<char *>(entries.data()), bytes) != bytes)
             return false;
-        for (const quint64 entry : entries)
+        for (const quint64 entry : entries) {
+            present += (entry >> PAGE_PRESENT_BIT) & 1;
             swapped += (entry >> PAGE_SWAPPED_BIT) & 1;
+        }
         return true;
     };
     for (const QV4::BlockAllocator *allocator : {&manager.blockAllocator, &manager.icAllocator})
         for (const QV4::Chunk *chunk : allocator->chunks)
             if (!count(chunk, QV4::Chunk::ChunkSize))
-                return -1;
+                return std::nullopt;
     for (const auto &huge : manager.hugeItemAllocator.chunks)
         if (!count(huge.chunk,
                    huge.segment != nullptr
@@ -1161,8 +1179,8 @@ double swappedHeld(const QV4::MemoryManager &manager) {
                        : std::max<std::size_t>(
                              (huge.size + QV4::Chunk::HeaderSize + page - 1) & ~(page - 1),
                              QV4::Chunk::ChunkSize)))
-            return -1;
-    return megabytesOf(swapped * page);
+            return std::nullopt;
+    return Mapped{megabytesOf(present * page), megabytesOf(swapped * page)};
 }
 
 // Whether what's held resident covers what's live, and passes what's held
@@ -1180,9 +1198,14 @@ double swappedHeld(const QV4::MemoryManager &manager) {
 // counts, come first. A page of the heap the kernel swapped out is no
 // longer resident, so what's live is judged less what of the heap it has
 // swapped, and only the heap's, so no other memory of the process can
-// make up for an allocator the count leaves out. A swapped page is held
-// but not resident, so the two together stay within what's held and its
-// headers too, which fails a swap count that read the wrong bit or pages.
+// make up for an allocator the count leaves out. The page map is read
+// whole: what it says is in memory is mincore's resident, give or take a
+// page the kernel moved between the reads, which fails a read of the wrong
+// pages whatever is swapped; and since an entry is in memory or swapped,
+// never both, the two stay within what's held and its headers, which fails
+// one reading the wrong bit. Resident and swapped aren't summed against
+// held, since mincore counts a page in the swap cache that the page map
+// calls swapped.
 bool residentCoversWhatsLive() {
     QJSEngine engine;
     Heap heap(&engine);
@@ -1199,11 +1222,12 @@ bool residentCoversWhatsLive() {
     const QV4::MemoryManager *manager = engine.handle()->memoryManager;
     // A refusal counts nothing swapped, which can only fail a sound count,
     // and says so, so a failure isn't laid on the resident count.
-    const double swappedSaid = swappedHeld(*manager);
-    if (swappedSaid < 0)
+    const std::optional<Mapped> mapped = pagesMapped(*manager);
+    if (!mapped)
         std::fprintf(stderr, "note: the kernel wouldn't give the heap's page map, so nothing "
                              "of it is counted swapped\n");
-    const double swapped = std::max(swappedSaid, 0.0);
+    const double present = mapped ? mapped->present : -1.0;
+    const double swapped = mapped ? mapped->swapped : 0.0;
     const double shapes = megabytesOf(manager->icAllocator.usedMem());
     const double large = megabytesOf(manager->getLargeItemsMem());
     const auto page = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
@@ -1226,16 +1250,22 @@ bool residentCoversWhatsLive() {
     }
     const bool made = shapes > 1 && chunked >= LARGE_ITEMS && segmented >= 1;
     const bool covers = weight.resident >= 0 && weight.resident + swapped >= weight.live;
-    const bool bounded = weight.resident + swapped <= weight.held + megabytesOf(over);
-    if (kept.isError() || !made || !covers || !bounded)
+    const double slack = megabytesOf(MAPPED_SLACK_PAGES * page);
+    const bool read = !mapped || (present <= weight.resident + slack &&
+                                  (swapped > 0 || present >= weight.resident - slack));
+    const bool bounded = weight.resident <= weight.held + megabytesOf(over) &&
+                         present + swapped <= weight.held + megabytesOf(over);
+    if (kept.isError() || !made || !covers || !read || !bounded)
         std::fprintf(stderr,
                      "FAIL what's held resident covers the %.1f MB live, less %.1f MB swapped, "
                      "%.1f MB of it shapes and %.1f MB large items, %d made by the chunk "
-                     "allocator and %d with a segment, and with what's swapped passes the "
-                     "%.1f MB held by at most %.2f MB: %.1f MB resident\n",
-                     weight.live, swapped, shapes, large, chunked, segmented, weight.held,
-                     megabytesOf(over), weight.resident);
-    return !kept.isError() && made && covers && bounded;
+                     "allocator and %d with a segment, the page map's %.1f MB in memory "
+                     "agrees within %.2f MB, and neither it with what's swapped nor what's "
+                     "resident passes the %.1f MB held by more than %.2f MB: %.1f MB "
+                     "resident\n",
+                     weight.live, swapped, shapes, large, chunked, segmented, present, slack,
+                     weight.held, megabytesOf(over), weight.resident);
+    return !kept.isError() && made && covers && read && bounded;
 }
 
 // How many closures the place test keeps, each from a call of its own.
