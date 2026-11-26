@@ -16,6 +16,7 @@
 // naming each case that doesn't hold.
 import QtQuick
 import QtTest
+import "Confirm.js" as Confirm
 
 Item {
     id: root
@@ -298,6 +299,16 @@ Item {
             keyRelease(Qt.Key_Shift);
         }
 
+        // Under an ask taking every key, so only the modifier's own guard
+        // holds Shift idle: a key with no name reads idle on the rows anyway.
+        function test_aModifierAloneActsOnNothingUnderAnAsk() {
+            toNormal();
+            line.confirming = true;
+            keyPress(Qt.Key_Shift);
+            verify(!line.keyActed, "Shift alone, though the ask takes every key");
+            keyRelease(Qt.Key_Shift);
+        }
+
         function test_aColonOpeningTheCommandLineActs() {
             toNormal();
             keyClick(":");
@@ -318,6 +329,26 @@ Item {
             verify(!line.keyActed, "the register's letter");
         }
 
+        // Under an ask taking every key, so only the register's own guard
+        // holds its keys idle: in insert both read idle anyway.
+        function test_aRegistersKeysActOnNothingUnderAnAsk() {
+            line.registers = true;
+            line.words = true;
+            line.confirming = true;
+            keyClick(Qt.Key_R, Qt.ControlModifier);
+            verify(!line.keyActed, "Ctrl+R waiting for a register, though the ask takes it");
+            keyClick("a");
+            compare(registered.count, 1);
+            // Control, pressed alone before R, is the ask's to hear, as a
+            // key with no name, which Confirm.answer says is early.
+            const heard = [];
+            for (let i = 0; i < answered.count; ++i)
+                heard.push(answered.signalArguments[i][0]);
+            compare(heard.filter(key => key !== ""), [],
+                "the register takes its keys before the ask");
+            verify(!line.keyActed, "the register's letter, though the ask takes it");
+        }
+
         function test_theOperatorAgainIsSwallowed() {
             toNormal();
             keyClick("V");
@@ -330,18 +361,35 @@ Item {
             compare(operated.count, 1, "d again is taken with visual's");
             compare(stepped.count, 0);
             verify(!line.keyActed, "d again, swallowed");
+            // Unswallowed, d again would begin an operator, idle too, which j
+            // would then end as dj.
+            keyClick("j");
+            compare(operated.count, 1, "j after it only moves");
+            compare(stepped.count, 1);
+            compare(stepped.signalArguments[0][0], "next");
         }
 
+        // The ask as the launcher asks it (Launcher.qml's answerTaken and
+        // askSaid): any named key past its guard answers, x as no, and a key
+        // inside the guard is early and taken as nothing.
         function test_anAskActsWhereItTakesTheKey() {
             toNormal();
             line.confirming = true;
-            line.answerTaken = key => key === "Return";
+            const ask = { at: Date.now() };
+            let guard = 0;
+            line.answerTaken = (key, at) => !["", "early"].includes(
+                Confirm.answer(ask, key, at, guard));
             keyClick("x");
             compare(answered.count, 1);
-            verify(!line.keyActed, "a key the ask lets go");
+            verify(line.keyActed, "x past the guard, answering no");
+            guard = 60000;
             keyClick(Qt.Key_Return);
             compare(answered.count, 2);
-            compare(answered.signalArguments[1][0], "Return");
+            verify(!line.keyActed, "Return inside the guard, early");
+            guard = 0;
+            keyClick(Qt.Key_Return);
+            compare(answered.count, 3);
+            compare(answered.signalArguments[2][0], "Return");
             verify(line.keyActed, "Return answering the ask");
         }
 
