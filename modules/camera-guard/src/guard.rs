@@ -53,7 +53,9 @@ impl Watch {
     /// Takes the calendar's latest answer, answering the journal's lines and
     /// whether the meetings changed, to be kept. A calendar that can't be
     /// read leaves the meetings it last said, so a meeting already known
-    /// still keeps the guard up.
+    /// still keeps the guard up. Why it can't is said when it starts and
+    /// again each time the cause changes, so the journal never goes on
+    /// naming a cause that has passed, as a refusal followed by a stall would.
     pub fn heard(&mut self, answer: Result<Vec<Meeting>, String>) -> (Vec<String>, bool) {
         let mut said = Vec::new();
         match answer {
@@ -66,12 +68,16 @@ impl Watch {
                 (said, changed)
             }
             Err(why) => {
-                if self.unread.is_none() {
-                    said.push(format!(
+                match &self.unread {
+                    None => said.push(format!(
                         "<4>the calendar can't be read, so the {} meetings it last said \
                          stand: {why}",
                         self.meetings.len()
-                    ));
+                    )),
+                    Some(was) if *was != why => {
+                        said.push(format!("<4>the calendar still can't be read, now: {why}"));
+                    }
+                    Some(_) => {}
                 }
                 self.unread = Some(why);
                 (said, false)

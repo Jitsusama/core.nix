@@ -128,8 +128,19 @@ fn an_unreadable_calendar_keeps_the_meetings_it_last_said() {
         "the calendar's failure wasn't said"
     );
     assert!(
-        watch.heard(Err("again".into())).0.is_empty(),
+        watch
+            .heard(Err("io: failed to lookup address".into()))
+            .0
+            .is_empty(),
         "the calendar's failure was said again at every read"
+    );
+    // A stall after a refusal, as main.rs's watch hears one, is a new cause.
+    assert_eq!(
+        watch
+            .heard(Err("google.sock hasn't answered in a minute".into()))
+            .0,
+        vec!["<4>the calendar still can't be read, now: google.sock hasn't answered in a minute"],
+        "a new cause went unsaid, leaving the journal naming the old one"
     );
     watch.look(&cgroups, &agents(), start - 5 * MIN);
     assert_eq!(

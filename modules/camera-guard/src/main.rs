@@ -50,7 +50,9 @@ fn help() -> Help {
         "an agents' slice under the account's manager, one or more",
     )
     .exit(Exit::Unavailable, "the kernel refused the guard's program")
-    .exit(Exit::Config, "the account or its slices can't be found")
+    // A slice that isn't there is passed over rather than refused: nothing
+    // runs in it to guard, and it's guarded at the first look after it's made.
+    .exit(Exit::Config, "the account can't be found")
 }
 
 fn main() -> ExitCode {
@@ -149,14 +151,17 @@ fn now() -> u64 {
 /// thread, not one a minute. Until it ends, a meeting the calendar adds is
 /// unheard. Each stall and each failure to keep is said once.
 fn watch(program: &bpf::Guard, paths: &[PathBuf], socket: &Path, kept: &Path) {
-    // Why the meetings heard are still to be kept, after a read or write of
-    // the kept file failed, so the next answer writes them afresh.
-    let mut unkept: Option<String> = None;
+    // Whether the meetings heard are still to be kept, after a read or write
+    // of the kept file failed, so the next answer writes them afresh.
+    let mut unkept = false;
+    // What the last failed keep said, apart from the start's read, so a keep
+    // that fails as the read did is still said once.
+    let mut keep_failed: Option<String> = None;
     let mut watch = guard::Watch::from(meetings::kept(kept).unwrap_or_else(|why| {
         println!(
             "<4>the meetings kept can't be read, so none stand until the calendar says: {why}"
         );
-        unkept = Some(why);
+        unkept = true;
         Vec::new()
     }));
     let mut asked: Option<Instant> = None;
@@ -190,14 +195,18 @@ fn watch(program: &bpf::Guard, paths: &[PathBuf], socket: &Path, kept: &Path) {
             for line in said {
                 println!("{line}");
             }
-            if answered && (changed || unkept.is_some()) {
+            if answered && (changed || unkept) {
                 match meetings::keep(kept, &watch.meetings) {
-                    Ok(()) => unkept = None,
+                    Ok(()) => {
+                        unkept = false;
+                        keep_failed = None;
+                    }
                     Err(why) => {
-                        if unkept.as_ref() != Some(&why) {
+                        if keep_failed.as_ref() != Some(&why) {
                             println!("<4>the meetings couldn't be kept for the next run: {why}");
                         }
-                        unkept = Some(why);
+                        unkept = true;
+                        keep_failed = Some(why);
                     }
                 }
             }
@@ -240,8 +249,9 @@ mod tests {
 
     #[test]
     fn its_unit_s_words_are_read_as_the_account_and_its_slices() {
-        // As nixos.nix's ExecStart gives them, since a start it refuses now
-        // fails the unit rather than restarting it.
+        // The words nixos.nix's ExecStart gives today, copied by hand, since a
+        // start it refuses fails the unit rather than restarting it; a slice
+        // added there must be added here too.
         let unit = ["joel", "jobs.slice", "agents.slice", "shared.slice"];
         let (account, slices) = words(&unit.map(String::from)).unwrap();
         assert_eq!(account, "joel", "the account wasn't the first word");
