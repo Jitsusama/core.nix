@@ -23,16 +23,25 @@ const jiti = source.endsWith(".ts")
 const { InteractiveMode } = await (jiti ? jiti.import(source) : import(source));
 
 const path = process.env.PATH;
+const offline = process.env.PI_OFFLINE;
 afterEach(() => {
   process.env.PATH = path;
+  if (offline === undefined) {
+    delete process.env.PI_OFFLINE;
+  } else {
+    process.env.PI_OFFLINE = offline;
+  }
   mock.restoreAll();
 });
+
+/** A conversation's entry, as the session's context lists it. */
+const entry = (id) => ({ id, type: "message" });
 
 // A screen whose startup runs for real, with its extensions' bind held
 // until `bound` is called, as a session_start on a stalled disk holds it;
 // `binding` settles once startup has reached the bind. `entries` are the
 // conversation's, which a session_start may add to while it binds.
-function startingScreen(hosted, entries = ["said", "answered"]) {
+function startingScreen(hosted, entries = [entry("said"), entry("answered")]) {
   let bound;
   const held = new Promise((resolve) => {
     bound = resolve;
@@ -79,6 +88,7 @@ function startingScreen(hosted, entries = ["said", "answered"]) {
     updateTerminalTitle: mock.fn(),
     renderInitialMessages: mock.fn(),
     renderSessionEntries: mock.fn(),
+    rebuildChatFromMessages: mock.fn(),
     footerDataProvider: { onBranchChange: mock.fn() },
     themeController: {
       applyFromSettings: mock.fn(),
@@ -138,20 +148,39 @@ it("a hosted screen draws its conversation while its extensions still bind", asy
   );
   assert.equal(mode.subscribeToAgent.mock.callCount(), 0, "it heard the agent before it bound");
   // An extension's session_start adds to the conversation while it binds.
-  entries.push("a session_start's note");
+  const note = entry("a session_start's note");
+  entries.push(note);
   bound();
   await started;
   // Drawn once whole: after the bind it draws only what the bind added.
   assert.equal(mode.renderInitialMessages.mock.callCount(), 1);
   assert.deepEqual(
     mode.renderSessionEntries.mock.calls.map((call) => call.arguments[0]),
-    [["a session_start's note"]],
+    [[note]],
     "what session_start added was never drawn, or the rest was drawn twice",
   );
+  assert.equal(mode.rebuildChatFromMessages.mock.callCount(), 0, "it drew it all again");
   for (const part of ["chatContainer", "loadedResourcesContainer"]) {
     assert.equal(mode[part].clear.mock.callCount(), 0, `startup cleared the ${part}`);
   }
   assert.equal(mode.subscribeToAgent.mock.callCount(), 1);
+  mode.themeChangeUnsubscribe?.();
+});
+
+it("a hosted screen draws its conversation again when the bind did more than add to it", async () => {
+  const { mode, bound, binding, entries } = startingScreen(true);
+  const started = starting(mode);
+  await binding;
+  // A session_start that compacts: what was drawn is no longer the start.
+  entries.splice(0, entries.length, entry("a compaction's summary"));
+  bound();
+  await started;
+  assert.equal(mode.renderSessionEntries.mock.callCount(), 0, "it drew a slice of another start");
+  assert.equal(
+    mode.rebuildChatFromMessages.mock.callCount(),
+    1,
+    "the window kept a conversation the agent no longer holds",
+  );
   mode.themeChangeUnsubscribe?.();
 });
 
@@ -171,6 +200,7 @@ it("a plain pi still draws its conversation after its extensions bind", async ()
   await started;
   assert.equal(mode.renderInitialMessages.mock.callCount(), 1);
   assert.equal(mode.renderSessionEntries.mock.callCount(), 0, "a plain pi drew a part");
+  assert.equal(mode.rebuildChatFromMessages.mock.callCount(), 0, "a plain pi drew it again");
   assert.equal(mode.subscribeToAgent.mock.callCount(), 1);
   mode.themeChangeUnsubscribe?.();
 });

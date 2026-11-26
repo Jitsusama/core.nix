@@ -194,12 +194,12 @@ for (const quitAt of ["colors", "tools", "extensions", "providers"]) {
     }
     assert.deepEqual(exits, [{ code: 0, error: undefined }]);
     assert.equal(mode.ui.start.mock.callCount(), 1);
-    // No theme listener outlives it in the host's one theme: its stop has
-    // run, so one still held here would never be released.
+    // No theme listener outlives it in the host's one theme: its stop has run, so one held here leaks.
     assert.equal(mode.themeChangeUnsubscribe, undefined, "a theme listener was left behind");
-    // Drawn just before the bind (pi-host-draws-before-it-binds.patch), once.
+    // Drawn once just before the bind (pi-host-draws-before-it-binds.patch), and nothing after a quit.
     const drawn = quitAt === "extensions" || quitAt === "providers" ? 1 : 0;
     assert.equal(mode.renderInitialMessages.mock.callCount(), drawn);
+    assert.equal(mode.renderSessionEntries.mock.callCount(), 0, "it drew after a quit");
     // None is subscribed, prompted or rendered after the quit; one before is its stop's to release.
     assert.equal(mode.subscribeToAgent.mock.callCount(), quitAt === "providers" ? 1 : 0);
     assert.equal(mode.runtimeHost.session.prompt.mock.callCount(), 0);
