@@ -541,6 +541,14 @@ QtObject {
         if (readHeaded(heldUnseen.rows) !== "#A a1" || heldUnseen.waiting !== 2)
             failures.push(`held, a row the step keeps unseen: `
                 + `"${readHeaded(heldUnseen.rows)}" with ${heldUnseen.waiting} waiting`);
+        // Of those, the row of no cell still waits once the hold ends, as a
+        // refresh withholds it, so only the cell's new row is the end's to
+        // bring in (Launcher.qml's waitingLate); a refresh says the same.
+        const lateRefresh = Steady.refreshed(underHeadings("#A=a1 a1"),
+            underHeadings("#A=a1 a1 look"), id);
+        if (heldUnseen.late !== 1 || lateRefresh.late !== lateRefresh.waiting)
+            failures.push(`what waits late: held ${heldUnseen.late}, refreshed `
+                + `${lateRefresh.late} of ${lateRefresh.waiting}`);
         // A row's id may name what every object has, and is kept as any.
         const ownNames = Steady.refreshed(underHeadings("a1 constructor"),
             underHeadings("a1 constructor __proto__ toString"), id);
