@@ -48,9 +48,11 @@ let
   # - exec-probe is timed but not a oneshot;
   # - own-probe says its own switch method and bound, which must win;
   # - restart-probe and reload-probe say a legacy key, one as a string;
-  # - both-probe says both, reload in capitals, and reload wins;
-  # - kept-probe says X-RestartIfChanged = "no", stop-probe
-  #   X-StopIfChanged = false, and one-probe X-ReloadIfChanged = 1;
+  # - both-probe says reload, padded and in capitals, over a restart
+  #   refused, and reload wins;
+  # - kept-probe refuses both a restart and a stop, and the refused
+  #   restart wins; stop-probe refuses only a stop;
+  # - one-probe says X-ReloadIfChanged = 1;
   # - timeout-probe bounds itself by TimeoutSec alone;
   # - unit-probe's timer names the service it runs, unit-probe-run;
   # - probe@one runs an instance of the template probe@;
@@ -91,11 +93,16 @@ let
       reload-probe = oneshot { Unit.X-ReloadIfChanged = "yes"; };
       both-probe = oneshot {
         Unit = {
-          X-ReloadIfChanged = "Y";
-          X-RestartIfChanged = true;
+          X-ReloadIfChanged = " Y ";
+          X-RestartIfChanged = false;
         };
       };
-      kept-probe = oneshot { Unit.X-RestartIfChanged = "no"; };
+      kept-probe = oneshot {
+        Unit = {
+          X-RestartIfChanged = "no";
+          X-StopIfChanged = false;
+        };
+      };
       stop-probe = oneshot { Unit.X-StopIfChanged = false; };
       one-probe = oneshot { Unit.X-ReloadIfChanged = 1; };
       timeout-probe = oneshot { Service.TimeoutSec = "10min"; };
@@ -127,10 +134,13 @@ let
       method home "own-probe" == "stop-start"
       && bound home "own-probe" == null
       && (service home "own-probe").Service.TimeoutStartSec == "5h";
-    "a legacy restart key is read as restart" = method home "restart-probe" == "restart";
+    "a legacy restart key alone is read as sd-switch's stop-start" =
+      method home "restart-probe" == "stop-start";
     "a legacy reload key, said as a string, is read as reload" = method home "reload-probe" == "reload";
-    "a legacy reload key wins over a restart key, in any case" = method home "both-probe" == "reload";
-    "a legacy restart key saying no is read as keep-old" = method home "kept-probe" == "keep-old";
+    "a legacy reload key wins over a refused restart, padded and in any case" =
+      method home "both-probe" == "reload";
+    "a refused restart is read as keep-old, ahead of a refused stop" =
+      method home "kept-probe" == "keep-old";
     "a legacy stop key saying no is read as restart" = method home "stop-probe" == "restart";
     "a legacy key said as the number 1 is read as yes" = method home "one-probe" == "reload";
     "a TimeoutSec alone bounds the start too" = bound home "timeout-probe" == null;

@@ -39,9 +39,15 @@ let
   ) timed;
   services = config.systemd.user.services;
   # A legacy key as sd-switch reads it (its ini.rs to_bool): written as
-  # home-manager writes the value, then lowered, so a Nix true, an int 1
-  # and "Yes" all read as yes. An absent key reads as neither.
-  spelled = value: lib.toLower (if lib.isBool value then lib.boolToString value else toString value);
+  # home-manager writes the value, then trimmed and lowered, so a Nix
+  # true, an int 1 and " Yes" all read as yes. An absent key reads as
+  # neither.
+  spelled =
+    value:
+    let
+      said = if lib.isBool value then lib.boolToString value else toString value;
+    in
+    lib.toLower (lib.trim said);
   yes =
     value:
     lib.elem (spelled value) [
@@ -63,10 +69,12 @@ let
       "off"
     ];
   # The switch method a timed oneshot takes unless it says its own: what
-  # its legacy keys say, in sd-switch's order (reload, then a restart
-  # refused, then a stop refused), else keep-old. A legacy key that says
-  # only what sd-switch does anyway, X-RestartIfChanged = true, still reads
-  # as restart, since core's default would otherwise overrule it.
+  # its legacy keys say, in sd-switch's order (its unit_file.rs: reload,
+  # then a restart refused, then a stop refused), else keep-old. A unit
+  # saying only X-RestartIfChanged = true gets no method from sd-switch's
+  # legacy reading, so sd-switch stops and starts it; it reads as
+  # stop-start here, since core's keep-old would otherwise overrule what
+  # the unit asked for.
   method =
     unit:
     if yes (unit.X-ReloadIfChanged or null) then
@@ -76,7 +84,7 @@ let
     else if no (unit.X-StopIfChanged or null) then
       "restart"
     else if yes (unit.X-RestartIfChanged or null) then
-      "restart"
+      "stop-start"
     else
       "keep-old";
   oneshot = name: (services.${name}.Service.Type or "simple") == "oneshot";
