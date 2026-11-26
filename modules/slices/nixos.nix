@@ -461,10 +461,11 @@ in
       default, 2 ms on a solid disk, set by hand; io.cost added to that disk
       later still stands it down, since disk-order turns it off as it
       starts. A name that reaches no throttle, such as a partition's, fails
-      its unit. The name is the kernel's, which follows the order disks are found in: on a machine
-      with two of a kind, the goal can land on the other one. A disk
-      io.cost shares, in jitsusama.slices.disks, is refused, since io.cost
-      already turns its throttle off and giving it back would turn it on.
+      its unit. The name is the kernel's, which follows the order disks are
+      found in: on a machine with two of a kind, the goal can land on the
+      other one. A disk io.cost shares, in jitsusama.slices.disks, is
+      refused, since io.cost already turns its throttle off and giving it
+      back would turn it on.
     '';
     default = { };
     example = {

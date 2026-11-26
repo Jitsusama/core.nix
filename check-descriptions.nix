@@ -1120,8 +1120,10 @@
     on a stand-in sysfs, writeback-goal refuses a wrong call with 64 before it looks for the
     disk, fails on a name that reaches no throttle, gives back a disk that's gone quietly, and
     gives back what the throttle had before its first goal, or the kernel's default where none
-    was recorded; disk-order stands the throttle down beside io.cost and gives the kernel's
-    default back as it hands the disk back
+    was recorded, recording a throttle that can't be read as off, failing a goal the throttle
+    won't take with only the record that call made gone, and failing a giving back it won't
+    take with the record kept; disk-order stands the throttle down beside io.cost and gives
+    the kernel's default back as it hands the disk back
   '';
   disks-are-scrubbed = ''
     the disk's Btrfs is scrubbed monthly, from its root
