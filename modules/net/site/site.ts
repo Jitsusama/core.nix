@@ -117,6 +117,8 @@ function fitFirst(at: Network, flipped: boolean): void {
     return;
   }
   fitted = true;
+  // A fit sets the zoom, which brings the device the keys are on into view,
+  // so a drawing the other way keeps it in sight with no step of its own.
   map.fit();
   const worth = flipped
     ? undefined

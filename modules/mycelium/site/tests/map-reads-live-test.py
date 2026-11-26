@@ -88,7 +88,8 @@ CELLS = 8
 # than the map's header was, and the budget rose by three, the rest within
 # its room. One file and a kilobyte more are the kit's early.js, the script
 # the page once wrote into itself, which the sites' policy now runs only from
-# a file: 701 bytes stripped, against about 180 the markup no longer holds.
+# a file: 701 bytes stripped, and 32 more in the markup, whose tag for it and
+# the note on why it runs first are longer than the script they replace.
 # One file, three kilobytes and four elements are the asks beside the
 # drawer: the watch for a waiting look, and the part it fills, whose rows
 # load only once one waits.
