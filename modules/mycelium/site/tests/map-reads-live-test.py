@@ -1959,7 +1959,7 @@ def test_the_map_reaches_every_cell_of_ten_thousand(browser: Browser, twin_serve
 # feed may draw the realm in parts, so neither the driver's polling nor the end of the map's own
 # script stands in for what the reader sees.
 WATCH_DRAWN = """(networks) => {
-  const twin = '#world .hub[data-key^="h:network:orchestration.skf"]';
+  const twin = '#world .hub[data-key^="h:orchestration.skf"]';
   const look = () => {
     if (document.querySelectorAll(twin).length < networks) requestAnimationFrame(look);
     else requestAnimationFrame(() => { window.drawnAt = performance.now(); });
