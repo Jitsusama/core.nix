@@ -176,11 +176,14 @@ in
       };
       Service = {
         Type = "oneshot";
-        # A sweep waits up to 40 minutes for a machine stalled on memory or
-        # I/O, and never skips the hour, as two skipped hours would hand
-        # sweeping to the hosts (sweep-room.sh). The dash starts it anyway
-        # if the wait itself fails.
-        ExecStartPre = "-${lib.getExe sweepRoom}";
+        # A sweep waits up to 15 minutes for a machine stalled on memory or
+        # I/O, reading it every 30 s, and never skips the hour, as two
+        # skipped hours hand sweeping to the hosts (sweep-room.sh). The
+        # hosts take over two hours after the last whole sweep ended, so
+        # a sweep that starts at a quarter past still has 45 minutes more
+        # than the last one took to end in. The dash starts it anyway if
+        # the wait itself fails.
+        ExecStartPre = "-${lib.getExe sweepRoom} /proc/pressure /proc/meminfo 900 30";
         ExecStart = "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${sweepScript}";
         # Where agents' own commands run, beneath everything Joel uses, and
         # a place the polkit rules and the TPM agent's gate both take as an
@@ -218,7 +221,8 @@ in
           "OPENSSL_MODULES"
         ]
         ++ lib.optional (!agentProxied) "SSH_AUTH_SOCK";
-        # A sweep still going after two hours is wedged. The hosts' sweeps
+        # A sweep still going after two hours, its wait for room included,
+        # is wedged. The hosts' sweeps
         # wait on the same lock meanwhile, so none sweeps beside it, and its
         # lock goes stale an hour after it stops, for the next sweep to take.
         TimeoutStartSec = "2h";
@@ -231,15 +235,15 @@ in
         # git status read 8 GB from the disk and 741 KB through read(), so
         # nearly all of it was a large repository's mapped pack files
         # faulted in again, 1.8 million times, as each tree's status maps
-        # those packs anew. A tenth of memory is 6.2 GB on a 62 GiB
-        # machine, over the 5.8 GB peak, and less on a smaller one. The
-        # mark reserves nothing: what Joel is using keeps its slices'
-        # floors beneath it. No hard limit of its own: a kill partway
+        # those packs anew. 6 GB is over the 5.8 GB peak, and the same on
+        # every machine, as what thrashes is the packs and the trees, not
+        # the memory there is. The mark reserves nothing: what Joel is
+        # using keeps its slices' floors beneath it. No hard limit of its own: a kill partway
         # through a take leaves a tree moved aside for the next run to put
         # back. The two-hour timeout above, systemd-oomd
         # watching the slice for pressure and the kernel's own OOM killer
         # may still end it.
-        MemoryHigh = "10%";
+        MemoryHigh = "6G";
       };
     };
     systemd.user.timers.pi-sweep = {
