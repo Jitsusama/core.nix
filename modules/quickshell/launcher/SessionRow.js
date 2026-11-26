@@ -338,7 +338,10 @@ const PRESS_TELLS_MS = 15000;
 // launcher over his work. A press opens it once: a second refusal of it,
 // as a window refused after the terminal was, is held as well (`opened`,
 // the press it last opened for), or it would open the launcher again
-// after Joel shut it.
+// after Joel shut it. A press whose Go To went (`goneTo.went`), as one to
+// a terminal on the machine a session is parked on, holds its wake's late
+// refusal too, since Joel is typing where it took him, perhaps a password
+// (#6519's F166).
 function refusalTold(address, going, now) {
     const said = String(address ?? "");
     if (said !== "" && going?.waking === said) {
@@ -346,7 +349,7 @@ function refusalTold(address, going, now) {
     }
     const gone = going?.goneTo;
     if (said !== "" && gone?.address === said && now - Number(gone.at) < PRESS_TELLS_MS
-        && going?.opened !== gone.at) {
+        && gone.went !== true && going?.opened !== gone.at) {
         return "opens";
     }
     return "held";

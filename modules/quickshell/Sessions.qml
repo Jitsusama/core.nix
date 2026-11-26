@@ -4253,6 +4253,10 @@ Singleton {
         // nothing refused, and isn't said as a press that did nothing (waking).
         root.waking = woke && resting.here !== false ? String(session.address ?? "") : "";
         const went = goTo(session, pressed);
+        // Gone, Joel types where it took him, so the wake's late refusal is
+        // held for his next opening (SessionRow.refusalTold; #6519's F166).
+        if (woke && went)
+            root.goneTo = Object.assign({ went: true }, pressed);
         const wakes = root.waking !== "" && !refusedAtOnce;
         root.waking = "";
         return went || wakes;

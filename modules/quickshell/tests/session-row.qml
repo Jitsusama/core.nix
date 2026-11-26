@@ -570,6 +570,8 @@ QtObject {
                 { waking: "", goneTo: pressed, opened: pressed.at }, "held"],
             ["a later press opens, though the one before it opened", "PARKED",
                 { waking: "", goneTo: pressed, opened: now - 9000 }, "opens"],
+            ["a press whose Go To went is held, as Joel types where it took him", "PARKED",
+                { waking: "", goneTo: Object.assign({ went: true }, pressed) }, "held"],
             ["one Go To is waking is unsaid", "PARKED",
                 { waking: "PARKED", goneTo: pressed }, "unsaid"],
             ["a Go To pressed for another is held", "FARAWY",
