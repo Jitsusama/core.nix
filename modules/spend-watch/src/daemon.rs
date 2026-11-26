@@ -75,7 +75,8 @@ pub(crate) const FAILING: Duration = Duration::from_mins(2 * 5 + 1);
 /// the lock, and on 25 November that held a 1.9 GB history for minutes
 /// after a switch. A watch that gave up at once ended three times on the
 /// lock and once on the database, four minutes in all, with the budgets
-/// unwatched until a restart came after the reader was done.
+/// unwatched until a restart came after the reader was done. The lock
+/// and the database share the one wait.
 const TURN: Duration = Duration::from_mins(10);
 /// How often a watch waiting its turn asks again.
 const TURN_ASKED: Duration = Duration::from_secs(1);
@@ -185,6 +186,14 @@ fn backoff(last: Option<Duration>, ran: Duration) -> Duration {
 /// Held by whatever writes the history from the sources, so two never
 /// read the same log at once.
 pub fn lock(state: &Path) -> Result<std::fs::File, String> {
+    let path = state.join("lock");
+    taken(state)?.ok_or_else(|| format!("another spend-watch holds {}", path.display()))
+}
+
+/// The history's lock, or nothing while something else holds it. A
+/// state folder that can't be made or opened is its own error, so a wait
+/// for the lock never waits out a fault nothing will mend.
+fn taken(state: &Path) -> Result<Option<std::fs::File>, String> {
     std::fs::create_dir_all(state)
         .map_err(|error| format!("making {}: {error}", state.display()))?;
     let path = state.join("lock");
@@ -194,9 +203,11 @@ pub fn lock(state: &Path) -> Result<std::fs::File, String> {
         .write(true)
         .open(&path)
         .map_err(|error| format!("opening {}: {error}", path.display()))?;
-    rustix::fs::flock(&file, rustix::fs::FlockOperation::NonBlockingLockExclusive)
-        .map_err(|_| format!("another spend-watch holds {}", path.display()))?;
-    Ok(file)
+    match rustix::fs::flock(&file, rustix::fs::FlockOperation::NonBlockingLockExclusive) {
+        Ok(()) => Ok(Some(file)),
+        Err(rustix::io::Errno::WOULDBLOCK) => Ok(None),
+        Err(error) => Err(format!("locking {}: {error}", path.display())),
+    }
 }
 
 /// The watch's inotify instance and the folder each of its watches
@@ -913,44 +924,53 @@ fn written(runtime: &std::path::Path, name: &str) -> String {
 #[cfg(not(target_os = "linux"))]
 fn rewrites(_runtime: &std::path::Path, _wake: Sender<Wake>) {}
 
-/// The history's lock, waited for `within` when something else holds it,
-/// and said once in the journal so a slow start reads as a wait, not a
-/// hang. Another watch holding it for good still ends this one once the
-/// time is up, as it did at once before.
-fn waited(state: &Path, within: Duration) -> Result<std::fs::File, String> {
-    let began = Instant::now();
+/// The history's lock, waited for until `by` while something else holds
+/// it, and said once in the journal so a slow start reads as a wait, not
+/// a hang. Held still at `by`, it ends the watch as it did at once
+/// before, and a state folder that can't be had ends it at once.
+fn waited(state: &Path, by: Instant) -> Result<std::fs::File, String> {
     let mut said = false;
     loop {
-        match lock(state) {
-            Ok(file) => return Ok(file),
-            Err(why) if began.elapsed() >= within => return Err(why),
-            Err(why) => {
-                if !said {
-                    eprintln!("{why}; waiting up to {} s for it", within.as_secs());
-                    said = true;
-                }
-                std::thread::sleep(TURN_ASKED);
-            }
+        if let Some(file) = taken(state)? {
+            return Ok(file);
         }
+        if Instant::now() >= by {
+            return lock(state);
+        }
+        if !said {
+            eprintln!(
+                "another spend-watch holds {}; waiting up to {} s for it",
+                state.join("lock").display(),
+                by.saturating_duration_since(Instant::now()).as_secs()
+            );
+            said = true;
+        }
+        std::thread::sleep(TURN_ASKED);
     }
 }
 
-/// The history at `path`, opened once no reader is writing it. Opening
-/// makes an index where it's missing, and a reader opening it at the same
-/// moment may be making it too, past the database's own ten-second wait.
-fn opened_in_turn(path: &Path, within: Duration) -> Result<History, String> {
-    let began = Instant::now();
+/// The history at `path`, opened once no reader is writing it, trying
+/// again until `by`. Opening makes an index where it's missing, and a
+/// reader opening it at the same moment may be making it too, past the
+/// database's own ten-second wait.
+fn opened_in_turn(path: &Path, by: Instant) -> Result<History, String> {
     loop {
         match opened(path) {
-            // SQLite's words for another connection's write, as rusqlite
-            // gives them; the history's errors reach here only as words.
-            Err(why) if why.contains("database is locked") && began.elapsed() < within => {
+            Err(why) if busy(&why) && Instant::now() < by => {
                 eprintln!("{why}; trying again");
                 std::thread::sleep(TURN_ASKED);
             }
             opened => return opened,
         }
     }
+}
+
+/// Whether a history's error is another connection's write: SQLite's
+/// words for SQLITE_BUSY, as `history::sql` gives them, since the
+/// history's errors reach here only as words. A test holds a real write
+/// to pin them.
+fn busy(why: &str) -> bool {
+    why.contains("database is locked")
 }
 
 /// The history at `path`, said in the journal as it's brought up from an
@@ -975,10 +995,11 @@ fn opened(path: &Path) -> Result<History, String> {
 }
 
 pub fn run(config: &Config) -> Result<(), String> {
-    let _lock = waited(&config.state, TURN)?;
+    let by = Instant::now() + TURN;
+    let _lock = waited(&config.state, by)?;
     config.runtime()?;
     hold(config)?;
-    let history = opened_in_turn(&config.history(), TURN)?;
+    let history = opened_in_turn(&config.history(), by)?;
     let (wake, inbox): (Sender<Wake>, Receiver<Wake>) = mpsc::channel();
     let hub = hub(config)?;
     hub.doing(doer(config, wake.clone()));
@@ -1727,7 +1748,7 @@ mod tests {
             drop(held);
         });
         let began = Instant::now();
-        let taken = waited(dir.path(), Duration::from_secs(30));
+        let taken = waited(dir.path(), began + Duration::from_secs(30));
         letting_go.join().unwrap();
         assert!(
             taken.is_ok(),
@@ -1746,7 +1767,51 @@ mod tests {
     fn a_watch_whose_lock_stays_held_past_its_wait_ends() {
         let dir = tempfile::tempdir().unwrap();
         let _held = lock(dir.path()).unwrap();
-        let taken = waited(dir.path(), Duration::from_millis(1200));
+        let taken = waited(dir.path(), Instant::now() + Duration::from_millis(1200));
         assert!(taken.is_err(), "the watch took a lock another still held");
+    }
+
+    // A state folder that can't be made is no lock to wait for: the watch
+    // ends at once rather than ten minutes later.
+    #[test]
+    fn a_watch_whose_state_folder_cannot_be_made_ends_at_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = dir.path().join("state");
+        std::fs::write(&state, "a file where the folder goes").unwrap();
+        let began = Instant::now();
+        let taken = waited(&state, began + Duration::from_secs(30));
+        assert!(
+            taken.is_err(),
+            "the watch took a lock in a folder that isn't one"
+        );
+        assert!(
+            began.elapsed() < Duration::from_secs(5),
+            "the watch waited out a state folder nothing will mend"
+        );
+    }
+
+    // The words a retried open is told apart by are SQLite's own for a
+    // write another connection holds, as the history reports them.
+    #[test]
+    fn another_connections_write_reads_as_busy() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        drop(History::open(&path).unwrap());
+        let writer = rusqlite::Connection::open(&path).unwrap();
+        writer.execute_batch("BEGIN IMMEDIATE;").unwrap();
+        let other = rusqlite::Connection::open(&path).unwrap();
+        other.busy_timeout(Duration::ZERO).unwrap();
+        let refused = other
+            .execute_batch("BEGIN IMMEDIATE;")
+            .expect_err("a second writer began while the first held the history");
+        let why = crate::history::sql(refused);
+        assert!(
+            busy(&why),
+            "another connection's write didn't read as busy: {why}"
+        );
+        assert!(
+            !busy("no such table: meta"),
+            "a history that doesn't read was taken for a busy one"
+        );
     }
 }
