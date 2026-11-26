@@ -112,6 +112,67 @@ Item {
             verify(line.keyActed, "Backspace leaving an empty find for normal");
         }
 
+        // Each of KeyActs.js's typing names, by the key the find reads as
+        // it, moving or editing what's typed and acting on nothing.
+        function test_theFindsEditsAndCaretMovesActOnNothing() {
+            keyClick("a");
+            keyClick("b");
+            keyClick(Qt.Key_Space);
+            keyClick("c");
+            keyClick(Qt.Key_Left);
+            compare(line.caret, 3, "Left moves back");
+            verify(!line.keyActed, "Left");
+            keyClick(Qt.Key_Right);
+            compare(line.caret, 4, "Right moves on");
+            verify(!line.keyActed, "Right");
+            keyClick(Qt.Key_Home);
+            compare(line.caret, 0, "Home moves to the start");
+            verify(!line.keyActed, "Home");
+            keyClick(Qt.Key_End);
+            compare(line.caret, 4, "End moves to the end");
+            verify(!line.keyActed, "End");
+            keyClick(Qt.Key_Y, Qt.ControlModifier);
+            verify(!line.keyActed, "Ctrl+Y");
+            keyClick(Qt.Key_W, Qt.ControlModifier);
+            compare(line.text, "ab ", "Ctrl+W takes the word");
+            verify(!line.keyActed, "Ctrl+W");
+            keyClick(Qt.Key_U, Qt.ControlModifier);
+            compare(line.text, "", "Ctrl+U takes the line");
+            verify(!line.keyActed, "Ctrl+U");
+            compare(line.mode, "find", "the find stays a find");
+        }
+
+        // Each of KeyActs.js's editing names, by its key on a prompt's words
+        // in normal, changing what's typed or its caret and acting on nothing.
+        function test_normalsEditsOnWordsActOnNothing() {
+            line.words = true;
+            keyClick("a");
+            keyClick("b");
+            keyClick(Qt.Key_Space);
+            keyClick("c");
+            keyClick("d");
+            toNormal();
+            const keys = [["0", 0], ["$", 4], ["b", 3], ["h", 2], ["l", 3], ["0", 0],
+                ["w", 3], ["0", 0], ["e", 1]];
+            for (const [key, caret] of keys) {
+                keyClick(key);
+                compare(line.caret, caret, key + " moves the caret");
+                verify(!line.keyActed, key);
+            }
+            keyClick("x");
+            compare(line.text, "a cd", "x takes the letter");
+            verify(!line.keyActed, "x");
+            keyClick("u");
+            compare(line.text, "ab cd", "u takes it back");
+            verify(!line.keyActed, "u");
+            keyClick("0");
+            keyClick("d");
+            keyClick("w");
+            compare(line.text, "cd", "dw takes the word");
+            verify(!line.keyActed, "dw");
+            compare(line.mode, "normal", "normal stays normal");
+        }
+
         function test_escapeActsLeavingTheFindAndNotAtRest() {
             toNormal();
             verify(line.keyActed, "Escape leaving the find");
