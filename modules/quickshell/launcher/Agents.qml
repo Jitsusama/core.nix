@@ -120,7 +120,7 @@ Provider {
                 provider.topNetwork(row))), row)
         actMade: (key, one, row) => provider.topTalk(key, one, row)
             ?? provider.topGoTo(one)
-            ?? provider.topCarryBack(one, row)
+            ?? provider.topCarryBack(key, one, row)
             ?? provider.topLetStart(key, one)
         maker: provider
         drawn: provider.launcher?.open ?? false
@@ -268,8 +268,9 @@ Provider {
     // Carry Back on a carry under Carried is the shell's, asked of the
     // realm's node, never the daemon (CarryBack.js): its row reads as
     // carrying back until the node says the carry has ended, and a refusal
-    // is said in place in the node's own words. Null for any other act.
-    function topCarryBack(one, row) {
+    // is said in place in the node's own words, both on the row keyed as
+    // ReadyRows keyed it from its record's key. Null for any other act.
+    function topCarryBack(key, one, row) {
         const ask = one.key === "verb:carry:back" ? CarryBack.asked(one.ask) : null;
         if (ask === null)
             return null;
@@ -280,14 +281,15 @@ Provider {
             glyph: Words.glyph(one.key),
             hue: "action",
             stays: true,
-            run: () => provider.carryBack(row, ask)
+            run: () => provider.carryBack(key, row, ask)
         });
     }
 
-    function carryBack(row, ask) {
+    function carryBack(key, row, ask) {
         const said = Words.of("verb:carry:back").said ?? {};
-        // Keyed as the launcher keys the row (Presented.js's keyMade), so what it becomes is it.
-        const shown = Presented.keyMade(row, row.key);
+        // Keyed as ReadyRows keyed the row, from its record's key (Presented.js's keyMade), so
+        // what it becomes is that row.
+        const shown = Presented.keyMade(row, key);
         let answered = false;
         provider.becomes(shown, {
             side: said.carrying ?? "",
