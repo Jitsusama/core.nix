@@ -1690,6 +1690,9 @@ def test_a_terminal_is_shown_a_place_as_the_running_shell_answers(desktop: Deskt
     shown = json.loads(desktop.as_account("launcher show machine --json"))
     assert shown["in"] == ["Machine"], shown
     assert "Disk" in [row["name"] for row in shown["rows"]], shown
+    # Media is what the desktop plays, so it's Desktop's, never the hardware's; whether it shows
+    # a row with nothing playing isn't this case's, so only where it isn't is read.
+    assert "Media" not in [row["name"] for row in shown["rows"]], shown
     # Only --drawers asks the shell to build each row's drawer, as each screen has.
     screens = json.loads(desktop.as_account("launcher show --json machine screens"))
     assert screens["rows"], screens
