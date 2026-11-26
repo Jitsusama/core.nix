@@ -74,7 +74,8 @@ impl Before {
 /// How many passes of the same change sharing files with main's moves are
 /// read before the newest is answered: what main moved since a base is a
 /// diff of hundreds of files, so a day of a change's passes isn't each
-/// read. Candidates come newest record first, not newest base, so a clean
+/// read. Candidates come newest record first (a head behind main before
+/// them, as [`speakers`] puts it), not newest base, so a clean
 /// pass past these two can go unread; that costs the head a run at most,
 /// since the cap only ever turns a `Clean` into `Shares`, never the other
 /// way.
@@ -661,8 +662,9 @@ mod tests {
     #[test]
     fn passes_sharing_main_s_moves_are_read_no_further_than_two() {
         // Each read of a sharing pass diffs what main moved since its base,
-        // so a change that passed four times in a day reads two. Another
-        // change's pass, and a commit with no pass, count for nothing.
+        // so a change that passed four times in a day reads two of its
+        // sharing passes. Another change's pass, and a commit with no
+        // pass, count for nothing.
         let passed = "{\"dir\":null,\"printed\":\"\",\"run\":[\"--system\",\"x86_64-linux\"]}\n";
         let files = owned(&["a.rs"]);
         let candidates = owned(&["third", "another", "unpassed", "second", "first", "clean"]);
