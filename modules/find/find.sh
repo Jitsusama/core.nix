@@ -110,35 +110,58 @@ mindepth=0
 maxdepth=''
 # A depth as macOS's find reads it (find_parsenum in its function.c): one
 # leading + dropped, then strtoq's blanks, sign and digits, so `+2`, ` 2`
-# and `+ +2` are each 2, and ` -2` is -2, rather than left unread. One find
-# refuses, with no digits or something after them, opens nothing, so the 0
-# or the digits it's read as here don't matter. Eighteen digits are past
-# any folder's depth, and stay within bash's numbers.
+# and `+ +2` are each 2, and ` -2` is -2, rather than left unread. strtoq
+# holds a number past a long long at its end, and find keeps the depth in
+# an int, its low 32 bits, so a huge depth is -1 there, which is no limit,
+# and 4294967295 is too. One find refuses, with no digits or something
+# after them, opens nothing, so the 0 or the digits it's read as here
+# don't matter. It's said in `read_depth`, apart from `depth`, whether the
+# walk goes depth first.
 depth_of() {
-  local word=${1#+} sign='' digits
+  local word=${1#+} sign='' digits high value
   word=${word#"${word%%[![:space:]]*}"}
   case ${word} in
     [-+]*) sign=${word:0:1} && word=${word:1} ;;
     *) ;;
   esac
   digits=${word%%[!0-9]*}
-  digits=${digits:0:18}
-  depth=$((${sign}10#${digits:-0}))
+  digits=${digits#"${digits%%[!0]*}"}
+  high=${digits:0:10}
+  if [ "${#digits}" -gt 19 ] || { [ "${#digits}" -eq 19 ] \
+    && { [ "${high}" -gt 9223372036 ] || { [ "${high}" -eq 9223372036 ] \
+      && [ "$((10#${digits:10}))" -gt 854775807 ]; }; }; }; then
+    # Past a long long: its least, whose low 32 bits are 0, or its most,
+    # whose are -1.
+    if [ "${sign}" = - ]; then read_depth=0; else read_depth=-1; fi
+    return
+  fi
+  value=$(((${sign}10#${digits:-0}) & 0xFFFFFFFF))
+  if [ "${value}" -ge $((0x80000000)) ]; then
+    value=$((value - 0x100000000))
+  fi
+  read_depth=${value}
 }
 for ((at = 0; at < ${#expression[@]}; at++)); do
   arg=${expression[at]}
   next=${expression[at + 1]-}
   case ${arg} in
-    -depth) [[ ${next} =~ ^[-+]?[0-9]+$ ]] || depth=true ;;
+    # As c_depth does: a digit after up to two signs makes it -depth n.
+    -depth)
+      word=${next#[-+]}
+      [[ ${word#[-+]} == [0-9]* ]] || depth=true
+      ;;
     -d | -delete) depth=true ;;
+    # A depth below 0 tests everything, and a -maxdepth of -1 is find's own
+    # no limit, so either is none here.
     -mindepth)
       depth_of "${next}"
-      mindepth=${depth}
+      mindepth=$((read_depth < 0 ? 0 : read_depth))
       at=$((at + 1))
       ;;
     -maxdepth)
       depth_of "${next}"
-      maxdepth=${depth}
+      maxdepth=${read_depth}
+      [ "${read_depth}" -ne -1 ] || maxdepth=''
       at=$((at + 1))
       ;;
     -name | -iname | -path | -ipath | -wholename | -iwholename | -regex | -iregex | -lname \

@@ -248,8 +248,9 @@ fi
 named "${home}"
 # A depth is read as macOS's find reads it, the last given, a + or blanks
 # before its digits as well, which GNU's find refuses, so what this one
-# says is left out of what's read.
-for given in '+3' ' 3' '+ +3'; do
+# says is left out of what's read. ' -1' and '+-1' are -1, find's own no
+# limit, and zeros before a digit count for nothing however many there are.
+for given in '+3' ' 3' '+ +3' ' -1' '+-1' '0000000000000000000003'; do
   search "${home}" -maxdepth 1 -maxdepth "${given}" -name needle >/dev/null
   if ! grep -qxF "${note}" "${said}"; then
     echo "${who} with -maxdepth 1 then '${given}' ran as -maxdepth 1: $(<"${said}")" >&2
@@ -279,7 +280,7 @@ fi
 # A search find can't prune, going depth first or testing nothing above its
 # -mindepth, runs as given, so it opens the guarded folders; one whose
 # -mindepth lies above them is still pruned.
-for given in -depth '-mindepth 3'; do
+for given in -depth '-depth -maxdepth 2' '-mindepth 3'; do
   # shellcheck disable=SC2086 # Each is split into its words, as typed.
   search "${home}" ${given} -name needle >/dev/null
   if ! grep -q 'ermission denied' "${said}" || grep -qF "${note}" "${said}"; then
