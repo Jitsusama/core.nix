@@ -11,18 +11,30 @@
 //! It reads generously, so a path it names is gone but a gone path may
 //! pass. Only comments are read: a path in a string is often a test's
 //! fixture, meant not to be there, and markdown is the docs check's to
-//! hold. And a path is gone only below a folder the repository holds
-//! under its top one, such as `modules/a/`: `tools/token.c` or `tests/x.nix`
-//! is as likely another project's, or a test's stand-in tree, and git's
-//! `refs/heads` is no path at all. A path cut just before a hyphen, as
+//! hold, and a comment after code on its own line isn't read in any
+//! language. A shell heredoc's body is a command's text, so none of it is
+//! comment, and shell is read as bash reads it, with quotes inside a
+//! substitution inside quotes, so a quote read wrong hides no comment
+//! beyond it. A docstring, a block comment, a heredoc, a string or a shell
+//! quote the file never closes is taken for a misreading, so it hides
+//! nothing after it. And a
+//! path is gone only below a folder the repository holds under its top
+//! one, such as `modules/a/`: `tools/token.c` or `tests/x.nix` is as likely
+//! another project's, or a test's stand-in tree, and git's `refs/heads` is
+//! no path at all. A path cut just before a hyphen, as
 //! `tests/vm/screens/screens-` is, names where names begin rather than one
 //! file, so it's there while any path begins with it, hyphen and all:
 //! `screens.nix` beside it begins only with its letters. It's there too
 //! when found whole, the dash then punctuation, as in `home.nix- which`.
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 
 use crate::measure::{File, extension};
+
+#[path = "stale_shell.rs"]
+mod shell;
+
+use shell::{Closers, Shell, ends_heredoc, shell_line};
 
 /// Every comment of `files` naming a path `paths` doesn't hold, as the
 /// file, its line and the path named.
@@ -87,7 +99,12 @@ pub fn stale(paths: &[String], files: &[File]) -> Vec<String> {
 
 /// A file's comment lines, numbered from one, block comments and
 /// docstrings included: none for a language this doesn't know the
-/// comments of.
+/// comments of. A docstring on a header's own line is read from its
+/// quotes on, past the code before it. A docstring, a block comment, a
+/// heredoc, a string or a shell quote the file never closes is taken for
+/// a misreading, as a `/*` in a string or a `<<` the shell reads otherwise
+/// would be, and the file is read again as if its line opened nothing, so
+/// it hides nothing after it.
 fn comments(file: &File) -> Vec<(usize, &str)> {
     let extension = extension(&file.path);
     let (mark, blocks) = match extension {
@@ -96,12 +113,55 @@ fn comments(file: &File) -> Vec<(usize, &str)> {
         "sh" | "bash" | "py" | "toml" | "yaml" | "yml" => ("#", false),
         _ => return Vec::new(),
     };
+    // A byte-order mark opens a file as nothing at all.
+    let content = file.text.strip_prefix('\u{feff}').unwrap_or(&file.text);
+    let closers = Closers::of(content, matches!(extension, "sh" | "bash"), blocks);
+    // Each reading names lines not named before, since a line named opens
+    // nothing, so there are no more readings than lines.
+    let mut unopened = HashSet::new();
+    loop {
+        match read(content, extension, (mark, blocks), &closers, &unopened) {
+            Ok(lines) => return lines,
+            Err(openers) => {
+                for opener in openers {
+                    assert!(
+                        unopened.insert(opener),
+                        "line {opener} of {} opened something though named",
+                        file.path
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// The comment lines of a file's `content`, read with the comment `mark`
+/// and `blocks`, or the lines that opened a docstring, a block comment, a
+/// heredoc, a string or a shell quote the file never closes. No line in
+/// `unopened` opens one, and `closers` says where what a line opens could
+/// close.
+fn read<'a>(
+    content: &'a str,
+    extension: &str,
+    (mark, blocks): (&str, bool),
+    closers: &Closers,
+    unopened: &HashSet<usize>,
+) -> Result<Vec<(usize, &'a str)>, Vec<usize>> {
     // The quotes a docstring opened with, which alone close it, while
     // one is open, and the same for a string in code, whose lines aren't
     // comment.
     let mut docstring: Option<&str> = None;
     let mut string: Option<&str> = None;
     let mut block = false;
+    // The words closing the heredocs a line of shell opened, in the order
+    // their bodies follow, each with whether `<<-` lets tabs indent it.
+    let mut heredocs: VecDeque<(String, bool)> = VecDeque::new();
+    // What a line of shell left open, innermost last: in a quote, its
+    // lines up to the close are a string's, so neither comment nor opening
+    // a heredoc.
+    let mut quoted: Vec<Shell> = Vec::new();
+    // The line each of `quoted` was opened on.
+    let mut opened_at: Vec<usize> = Vec::new();
     // Whether a docstring may stand on the next line of code: at a
     // module's top, or first in a def's or a class's body, past the colon
     // ending its header. Any other colon, as an if's or a dict key's, opens
@@ -111,60 +171,128 @@ fn comments(file: &File) -> Vec<(usize, &str)> {
     // a backslash carries it on, and whether it opened as a header.
     let mut logical = Logical::default();
     let mut lines = Vec::new();
-    for (number, line) in file.text.lines().enumerate() {
-        // A byte-order mark opens a file as nothing at all.
-        let line = if number == 0 {
-            line.strip_prefix('\u{feff}').unwrap_or(line)
-        } else {
-            line
-        };
+    // The line that last opened a docstring, a block comment, a heredoc, a
+    // string or a quote, which is the one still open at the file's end, if
+    // any is.
+    let mut opener = 0;
+    for (number, line) in content.lines().enumerate() {
+        let opens_here = !unopened.contains(&number);
+        // Whether this line opened the code string open past it.
+        let mut fresh = false;
         let trimmed = line.trim_start();
-        let comment = if let Some(quotes) = docstring {
-            (docstring, string) = docstring_line(line, quotes);
+        let comment = if let Some(heredoc) = heredocs.front() {
+            // A heredoc's body is text a command reads, though a line of it
+            // may look like a comment.
+            if ends_heredoc(line, heredoc) {
+                heredocs.pop_front();
+            }
+            None
+        } else if let Some(quotes) = docstring {
+            (docstring, string) = docstring_line(line, quotes, opens_here);
+            fresh = string.is_some();
             starts = false;
-            true
-        } else if let Some(quotes) = string {
-            let scanned = scan(line, Some(quotes));
-            string = scanned.open;
-            // The brackets a line closes count though it leaves a string
-            // open, so the logical line is carried before asking for one.
-            let ends = logical.ends_a_header(&scanned);
-            starts = string.is_none() && ends;
-            false
+            Some(line)
         } else if block {
             block = !line.contains("*/");
-            true
-        } else if let Some((quotes, past)) = opens(trimmed).filter(|_| extension == "py" && starts)
+            Some(line)
+        } else if let Some((quotes, past)) =
+            opens(trimmed).filter(|_| extension == "py" && starts && opens_here)
         {
-            (docstring, string) = docstring_line(&trimmed[past..], quotes);
+            (docstring, string) = docstring_line(&trimmed[past..], quotes, true);
             starts = false;
             logical = Logical::default();
-            true
-        } else if blocks && trimmed.starts_with("/*") {
+            opener = number;
+            Some(line)
+        } else if blocks
+            && trimmed.starts_with("/*")
+            && opens_here
+            && (trimmed[2..].contains("*/") || closers.block_after(number))
+        {
+            // A block no later line closes is a misreading, known at once.
             block = !trimmed[2..].contains("*/");
-            true
+            opener = number;
+            Some(line)
         } else {
             // Only a file's first line can be its shebang; past it, `#!` is
             // read as any line is.
             let shebang = number == 0 && line.starts_with("#!");
-            let comment = (trimmed.starts_with(mark) && !shebang)
-                || (extension == "nix" && trimmed.starts_with('*'));
+            let comment = Shell::code(quoted.last().copied())
+                && ((trimmed.starts_with(mark) && !shebang)
+                    || (extension == "nix" && trimmed.starts_with('*')));
             // A blank line, a comment or a shebang leaves where a statement
-            // starts as it was.
-            if extension == "py" && !comment && !trimmed.is_empty() && !shebang {
-                let scanned = scan(line, None);
-                logical.begin(scanned.code);
+            // starts as it was. No line a string runs on through is comment.
+            if string.is_some()
+                || (extension == "py" && !comment && !trimmed.is_empty() && !shebang)
+            {
+                // A line a string runs on into carries its logical line on
+                // rather than beginning one.
+                let scanned = scan(line, string, opens_here);
+                if string.is_none() {
+                    logical.begin(scanned.code);
+                }
+                let colon = header_colon(&logical, &scanned);
+                let header = colon
+                    .and_then(|colon| docstring_past(&line[colon + 1..]))
+                    .filter(|_| opens_here);
+                // The string open past the line is its own unless it's the
+                // one it started in, still unclosed.
+                fresh = scanned.open.is_some() && (string.is_none() || scanned.closed);
                 string = scanned.open;
+                // The brackets a line closes count though it leaves a
+                // string open, so the logical line is carried before asking
+                // for one.
                 let ends = logical.ends_a_header(&scanned);
                 starts = string.is_none() && ends;
+                // Past its colon a header's logical line is its body's, whose
+                // colons end no header, and as the line runs on past it,
+                // `starts` holds no docstring may follow.
+                if colon.is_some() {
+                    logical.header = false;
+                }
+                if let Some((text, quotes, past)) = header {
+                    (docstring, string) = docstring_line(&text[past..], quotes, true);
+                    opener = number;
+                }
+                header.map(|(text, _, _)| text)
+            } else {
+                if matches!(extension, "sh" | "bash") && !comment {
+                    // A line named still closes what it started inside,
+                    // but opens neither heredoc nor quote. A heredoc no
+                    // later line closes in turn is a misreading, known at
+                    // once.
+                    let (words, kept) = shell_line(line, &mut quoted, opens_here);
+                    opened_at.truncate(kept);
+                    opened_at.resize(quoted.len(), number);
+                    let words = closers.closing(words, number);
+                    if !words.is_empty() || quoted.len() > kept {
+                        opener = number;
+                    }
+                    heredocs.extend(words);
+                }
+                comment.then_some(line)
             }
-            comment
         };
-        if comment {
-            lines.push((number + 1, line));
+        // A string the line opened and left open is an opening as a
+        // docstring's is; a line named opens none.
+        if fresh {
+            opener = number;
+        }
+        if let Some(comment) = comment {
+            lines.push((number + 1, comment));
         }
     }
-    lines
+    if !quoted.is_empty() {
+        // What a quote or a substitution holds is read alike whatever it
+        // stands in, so each line holding open what the file never closes
+        // opened it on a misreading, and all are named at once, rather
+        // than the file read again for each.
+        opened_at.dedup();
+        Err(opened_at)
+    } else if docstring.is_some() || block || !heredocs.is_empty() || string.is_some() {
+        Err(vec![opener])
+    } else {
+        Ok(lines)
+    }
 }
 
 /// What [`scan`] makes of a line of Python.
@@ -177,6 +305,9 @@ struct Scanned<'a> {
     closed: bool,
     /// The brackets the code opens, less those it closes, outside strings.
     depth: isize,
+    /// Where each colon outside strings stands in the line, with the
+    /// brackets opened before it there, less those closed.
+    colons: Vec<(usize, isize)>,
 }
 
 /// A Python logical line, which brackets left open or a closing backslash
@@ -214,14 +345,39 @@ impl Logical {
     }
 }
 
+/// Where on its line the colon ending a def's or a class's header stands:
+/// the first outside every bracket and string, so a parameter's, a
+/// lambda's or a default's is passed by.
+fn header_colon(logical: &Logical, scanned: &Scanned) -> Option<usize> {
+    if !logical.header {
+        return None;
+    }
+    scanned
+        .colons
+        .iter()
+        .find(|(_, depth)| logical.depth + depth == 0)
+        .map(|&(colon, _)| colon)
+}
+
+/// The docstring standing first in `body`, a header's line past its colon,
+/// as `class K: """Says why."""`'s does: its text from its quotes on, the
+/// quotes, and where past them it begins. A statement there, as
+/// `return """x"""`, holds none.
+fn docstring_past(body: &str) -> Option<(&str, &'static str, usize)> {
+    let text = body.trim_start();
+    opens(text).map(|(quotes, past)| (text, quotes, past))
+}
+
 /// The docstring and the code string left open by a line read from inside
 /// a docstring opened with `quotes`: the docstring still, until its own
-/// quotes close it unescaped, and then any string the code past them opens.
+/// quotes close it unescaped, and then any string the code past them
+/// opens, where the line `opens` one.
 fn docstring_line(
     line: &str,
     quotes: &'static str,
+    opens: bool,
 ) -> (Option<&'static str>, Option<&'static str>) {
-    let scanned = scan(line, Some(quotes));
+    let scanned = scan(line, Some(quotes), opens);
     if scanned.closed {
         (None, scanned.open)
     } else {
@@ -231,53 +387,75 @@ fn docstring_line(
 
 /// A line of Python code read past its strings and their escapes. `open`
 /// holds the quotes of a string the line starts inside, as one the line
-/// before left open.
-fn scan<'a>(line: &'a str, mut open: Option<&'static str>) -> Scanned<'a> {
+/// before left open. A line that `opens` no string reads the quotes of
+/// one it would leave open as code, and the code past them, so the
+/// brackets it closes there still close.
+fn scan<'a>(line: &'a str, mut open: Option<&'static str>, opens: bool) -> Scanned<'a> {
     let started = open.is_some();
     let mut closed = false;
     let mut depth = 0;
+    let mut colons = Vec::new();
+    // Where the string the line opened begins, past its quotes, while it's
+    // open.
+    let mut opened = None;
     let mut at = 0;
-    while let Some(c) = line[at..].chars().next() {
-        let rest = &line[at..];
-        if let Some(quotes) = open {
-            if c == '\\' {
-                at += 1 + rest[1..].chars().next().map_or(0, char::len_utf8);
-                continue;
-            }
-            if rest.starts_with(quotes) {
+    loop {
+        while let Some(c) = line[at..].chars().next() {
+            let rest = &line[at..];
+            if let Some(quotes) = open {
+                if c == '\\' {
+                    at += 1 + rest[1..].chars().next().map_or(0, char::len_utf8);
+                    continue;
+                }
+                if rest.starts_with(quotes) {
+                    at += quotes.len();
+                    open = None;
+                    closed = started;
+                    continue;
+                }
+            } else if c == '#' {
+                return Scanned {
+                    code: &line[..at],
+                    open: None,
+                    closed,
+                    depth,
+                    colons,
+                };
+            } else if "([{".contains(c) {
+                depth += 1;
+            } else if ")]}".contains(c) {
+                depth -= 1;
+            } else if c == ':' {
+                colons.push((at, depth));
+            } else if let Some(quotes) = ["\"\"\"", "'''", "\"", "'"]
+                .into_iter()
+                .find(|quotes| rest.starts_with(quotes))
+            {
                 at += quotes.len();
-                open = None;
-                closed = started;
+                open = Some(quotes);
+                opened = Some(at);
                 continue;
             }
-        } else if c == '#' {
-            return Scanned {
-                code: &line[..at],
-                open: None,
-                closed,
-                depth,
-            };
-        } else if "([{".contains(c) {
-            depth += 1;
-        } else if ")]}".contains(c) {
-            depth -= 1;
-        } else if let Some(quotes) = ["\"\"\"", "'''", "\"", "'"]
-            .into_iter()
-            .find(|quotes| rest.starts_with(quotes))
-        {
-            at += quotes.len();
-            open = Some(quotes);
-            continue;
+            at += c.len_utf8();
         }
-        at += c.len_utf8();
-    }
-    Scanned {
-        code: line,
         // A one-quote string runs on past its line only where a backslash
         // ends it.
-        open: open.filter(|quotes| quotes.len() == 3 || line.ends_with('\\')),
-        closed,
-        depth,
+        let left = open.filter(|quotes| quotes.len() == 3 || line.ends_with('\\'));
+        match opened {
+            Some(past) if !opens && left.is_some() => {
+                at = past;
+                open = None;
+            }
+            _ => {
+                return Scanned {
+                    code: line,
+                    open: left,
+                    closed,
+                    depth,
+                    colons,
+                };
+            }
+        }
     }
 }
 
@@ -325,468 +503,5 @@ fn named<'a>(text: &'a str, tops: &HashSet<&str>) -> Vec<(&'a str, bool)> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::measure::file;
-
-    fn paths(files: &[File]) -> Vec<String> {
-        files.iter().map(|file| file.path.clone()).collect()
-    }
-
-    #[test]
-    fn a_comment_naming_a_path_gone_is_stale() {
-        let files = [
-            file(
-                "modules/a/home.nix",
-                "# Read by modules/b/gone.py and modules/b.\n",
-            ),
-            file("modules/b/home.nix", "{ }\n"),
-            file(
-                "tools/c.rs",
-                "// Moved from modules/b/c.rs, beside modules/a/home.nix.\n",
-            ),
-        ];
-        assert_eq!(
-            stale(&paths(&files), &files),
-            [
-                "modules/a/home.nix:1: modules/b/gone.py",
-                "tools/c.rs:1: modules/b/c.rs"
-            ],
-            "a path gone was missed, or one there was taken for gone"
-        );
-    }
-
-    #[test]
-    fn a_path_is_found_from_any_folder_above_its_file() {
-        let files = [
-            file(
-                "modules/a/src/main.rs",
-                "//! Its words are tests/kept/words.json.\n",
-            ),
-            file("modules/a/tests/kept/words.json", "{}\n"),
-            file("tests/kept/a.nix", "{ }\n"),
-        ];
-        assert!(
-            stale(&paths(&files), &files).is_empty(),
-            "a path named from the file's own module was taken for gone"
-        );
-    }
-
-    #[test]
-    fn only_comments_and_docstrings_are_read() {
-        let files = [
-            file(
-                "tests/a.sh",
-                "#!/usr/bin/env tests/kept/gone\nx=\"tests/kept/none.sh\"\n#! tests/kept/bang.sh\n",
-            ),
-            file(
-                "tests/b.py",
-                "\"\"\"Run by\ntests/kept/checks.nix.\n\"\"\"\nx = \"tests/kept/none.py\"\n",
-            ),
-            file("tests/c.md", "See tests/kept/none.\n"),
-            file("tests/d.nix", "/* Beside\n * tests/kept/none.nix */\n{ }\n"),
-            file(
-                "tests/e.sh",
-                "  #! tests/kept/lead.sh\n#! tests/kept/two.sh\n",
-            ),
-            file("tests/kept/x.nix", "{ }\n"),
-        ];
-        assert_eq!(
-            stale(&paths(&files), &files),
-            [
-                "tests/a.sh:3: tests/kept/bang.sh",
-                "tests/b.py:2: tests/kept/checks.nix",
-                "tests/d.nix:2: tests/kept/none.nix",
-                "tests/e.sh:1: tests/kept/lead.sh",
-                "tests/e.sh:2: tests/kept/two.sh"
-            ],
-            "a string or a shebang was read, or a docstring, an indented `#!` or one past line 1 \
-             missed"
-        );
-    }
-
-    #[test]
-    fn block_comments_and_every_docstring_are_read_whole() {
-        let files = [
-            file(
-                "tests/e.py",
-                "r\"\"\"Raw, naming\ntests/kept/raw.nix.\n\"\"\"\ndef f():\n    \
-                 '''Says \"\"\" once\n    tests/kept/single.nix\n    '''\n    \
-                 return \"tests/kept/none.py\"\n",
-            ),
-            file(
-                "modules/w/a.qml",
-                "/**\n Beside\n tests/kept/jsdoc.qml\n */\n\
-                 Item { source: \"tests/kept/none.qml\" }\n",
-            ),
-            file(
-                "tests/f.nix",
-                "/*\n  Lines with no star,\n  tests/kept/bare.nix\n*/\n\
-                 { x = \"tests/kept/none.nix\"; }\n",
-            ),
-            file(
-                "tests/h.py",
-                "'''Opens, quoting \"\"\"\nand tests/kept/inside.nix\n'''\n\
-                 x = \"tests/kept/none.py\"\n",
-            ),
-            file(
-                "tests/i.nix",
-                "/* One line, naming tests/kept/one.nix */\n{ x = \"tests/kept/none.nix\"; }\n",
-            ),
-            file("tests/kept/x.nix", "{ }\n"),
-        ];
-        assert_eq!(
-            stale(&paths(&files), &files),
-            [
-                "tests/e.py:2: tests/kept/raw.nix",
-                "tests/e.py:6: tests/kept/single.nix",
-                "modules/w/a.qml:3: tests/kept/jsdoc.qml",
-                "tests/f.nix:3: tests/kept/bare.nix",
-                "tests/h.py:2: tests/kept/inside.nix",
-                "tests/i.nix:1: tests/kept/one.nix"
-            ],
-            "a raw docstring, one holding the other quotes, or a block's starless line was \
-             missed, code past a docstring was read as one, or a one-line block stayed open"
-        );
-    }
-
-    #[test]
-    fn a_docstring_stands_only_where_a_statement_starts() {
-        let files = [
-            file(
-                "tests/g.py",
-                "x = \"\"\"\nUsage, as tests/kept/none.py says:\n\"\"\"\ny = 1\ncall(\n    \
-                 f\"\"\"tests/kept/none.py\"\"\"\n)\n\n\ndef f():\n    \
-                 u\"\"\"One line, naming tests/kept/u.nix.\"\"\"\n    \
-                 return \"tests/kept/none.py\"\n\n\nclass K:\n    \
-                 Rb\"\"\"Opens here\n    and names tests/kept/rb.nix\n    \"\"\"\n    z = 2\n",
-            ),
-            file("tests/kept/x.nix", "{ }\n"),
-        ];
-        assert_eq!(
-            stale(&paths(&files), &files),
-            [
-                "tests/g.py:11: tests/kept/u.nix",
-                "tests/g.py:17: tests/kept/rb.nix"
-            ],
-            "a string's closing quotes or an argument were read as a docstring, a docstring \
-             after a def or a class was missed, or a one-line docstring stayed open"
-        );
-    }
-
-    #[test]
-    fn triple_quotes_in_a_string_or_a_comment_open_nothing() {
-        let files = [
-            file(
-                "tests/j.py",
-                "QUOTES = ('\"\"\"', \"'''\")\n\
-                 # tests/kept/string.nix, past a string's quotes\n\
-                 MARK = 1  # three quotes, ''', in a comment open nothing\n\
-                 # tests/kept/comment.nix, past a comment's quotes\n\
-                 def f(x=\"#\"):\n    \"\"\"Naming tests/kept/hash.nix.\"\"\"\n\
-                 s = 'it\\'s \"\"\" here'\n\
-                 # tests/kept/escape.nix, past an escaped quote\n",
-            ),
-            file("tests/kept/x.nix", "{ }\n"),
-        ];
-        assert_eq!(
-            stale(&paths(&files), &files),
-            [
-                "tests/j.py:2: tests/kept/string.nix",
-                "tests/j.py:4: tests/kept/comment.nix",
-                "tests/j.py:6: tests/kept/hash.nix",
-                "tests/j.py:8: tests/kept/escape.nix"
-            ],
-            "triple quotes inside a string or a comment, or past an escaped quote, were taken \
-             for a string left open, or a def's `#` default hid its docstring"
-        );
-    }
-
-    #[test]
-    fn quotes_are_read_past_a_comment_an_escape_and_a_strings_close() {
-        let files = [
-            file(
-                "tests/k.py",
-                "def g():  # a colon, then a comment\n\
-                 \x20   \"\"\"Naming tests/kept/colon.nix.\"\"\"\n\
-                 def h():\n    \"\"\"An escaped \\\"\"\" stays in, as tests/kept/quoted.nix says,\n\
-                 \x20   and tests/kept/after.nix too.\"\"\"\n\
-                 x = \"\"\"open\n\
-                 closed\"\"\" + \"\"\"again\n\
-                 # tests/kept/inside.nix, inside a string\n\
-                 \"\"\"\n\
-                 # tests/kept/out.nix, past it\n",
-            ),
-            file("tests/kept/x.nix", "{ }\n"),
-        ];
-        assert_eq!(
-            stale(&paths(&files), &files),
-            [
-                "tests/k.py:2: tests/kept/colon.nix",
-                "tests/k.py:4: tests/kept/quoted.nix",
-                "tests/k.py:5: tests/kept/after.nix",
-                "tests/k.py:10: tests/kept/out.nix"
-            ],
-            "a comment past a def's colon hid its docstring, an escaped quote closed one, or \
-             a string opened past another's close was missed"
-        );
-    }
-
-    #[test]
-    fn a_blank_line_a_comment_or_a_shebang_leaves_a_docstring_its_place() {
-        let files = [
-            file(
-                "tests/n.py",
-                "#!/usr/bin/env python3\n\
-                 \n\
-                 # A comment before the module's docstring.\n\
-                 \"\"\"Naming tests/kept/module.nix.\"\"\"\n\
-                 def f():\n\
-                 \x20   # A comment before its docstring.\n\
-                 \n\
-                 \x20   \n\
-                 \x20   \"\"\"Naming tests/kept/def.nix.\"\"\"\n",
-            ),
-            file("tests/kept/x.nix", "{ }\n"),
-        ];
-        assert_eq!(
-            stale(&paths(&files), &files),
-            [
-                "tests/n.py:4: tests/kept/module.nix",
-                "tests/n.py:9: tests/kept/def.nix"
-            ],
-            "a blank line, one of spaces alone, a comment or a shebang moved where a docstring \
-             may stand"
-        );
-    }
-
-    #[test]
-    fn strings_are_followed_from_where_each_line_truly_starts() {
-        let files = [
-            file(
-                "tests/m.py",
-                "def g():\n\
-                 \x20   \"\"\"Opened,\n\
-                 \x20   an escaped \\\"\"\" inside, then tests/kept/inner.nix,\n\
-                 \x20   and tests/kept/later.nix.\"\"\"\n\
-                 def h():\n\
-                 \x20   r\"\"\"A raw \\\"\"\" stays in, as tests/kept/raw.nix says,\n\
-                 \x20   and tests/kept/rawafter.nix.\"\"\"\n\
-                 def i():\n\
-                 \x20   \"\"\"Doc.\"\"\" if True else \"\"\"open\n\
-                 # tests/kept/inside.nix, in a string\n\
-                 \"\"\"\n\
-                 s = \"\"\"open\n\
-                 x\"\"\" + y  # a note:\n\
-                 \"\"\"Not a docstring, naming tests/kept/notdoc.nix.\"\"\"\n\
-                 t = 'one quote, \\\n\
-                 # tests/kept/cont.nix'\n\
-                 # tests/kept/out.nix, past them all\n\
-                 def j():\n\
-                 \x20   \"\"\"Opened,\n\
-                 \x20   closed\"\"\" + \"\"\"and a string opened\n\
-                 # tests/kept/handed.nix, in that string\n\
-                 \"\"\"\n\
-                 def k(x=\"\"\"a\n\
-                 b\"\"\"):\n\
-                 \x20   \"\"\"Naming tests/kept/colon.nix.\"\"\"\n",
-            ),
-            file("tests/kept/x.nix", "{ }\n"),
-        ];
-        assert_eq!(
-            stale(&paths(&files), &files),
-            [
-                "tests/m.py:3: tests/kept/inner.nix",
-                "tests/m.py:4: tests/kept/later.nix",
-                "tests/m.py:6: tests/kept/raw.nix",
-                "tests/m.py:7: tests/kept/rawafter.nix",
-                "tests/m.py:17: tests/kept/out.nix",
-                "tests/m.py:25: tests/kept/colon.nix"
-            ],
-            "an escape closed a docstring, a string opened past one's close was read as it, \
-             a line past a string was read as if it began outside one, a backslash's \
-             one-quote string was dropped, a string opened past a docstring's close was lost, \
-             or a string closing on a colon hid the docstring after it"
-        );
-    }
-
-    #[test]
-    fn a_docstring_stands_only_under_a_def_or_a_class() {
-        let files = [
-            file(
-                "tests/h.py",
-                "if ready:\n\
-                 \x20   \"\"\"An if's string, naming tests/kept/if.nix.\"\"\"\n\
-                 FIXTURES = {\n\
-                 \x20   \"key\":\n\
-                 \x20   \"\"\"A value, naming tests/kept/value.nix.\"\"\",\n\
-                 }\n\
-                 def f(\n\
-                 \x20   a,\n\
-                 \x20   b: int = (1, 2),\n\
-                 \x20   c: str = \"(\",\n\
-                 ) -> dict[str, int]:\n\
-                 \x20   \"\"\"Naming tests/kept/wrapped.nix.\"\"\"\n\
-                 class K(A, \\\n\
-                 \x20       B):\n\
-                 \x20   \"\"\"Naming tests/kept/carried.nix.\"\"\"\n\
-                 async  def g():\n\
-                 \x20   \"\"\"Naming tests/kept/async.nix.\"\"\"\n\
-                 def m(x) \\\n\
-                 \x20       -> int:\n\
-                 \x20   \"\"\"Naming tests/kept/backslash.nix.\"\"\"\n\
-                 if call(f(\n\
-                 \x20   x)):\n\
-                 \x20   \"\"\"A wrapped if's string, naming tests/kept/call.nix.\"\"\"\n\
-                 classes = {1:\n\
-                 \x20   \"\"\"Naming tests/kept/classes.nix.\"\"\"}\n\
-                 def h(): x = {\n\
-                 \x20   2:\n\
-                 \x20   \"\"\"A body's string, naming tests/kept/body.nix.\"\"\"}\n\
-                 async with lock:\n\
-                 \x20   \"\"\"An async with's string, naming tests/kept/with.nix.\"\"\"\n\
-                 async for x in y:\n\
-                 \x20   \"\"\"An async for's string, naming tests/kept/for.nix.\"\"\"\n\
-                 d = {\"\"\"a\n\
-                 b\"\"\":\n\
-                 \x20   \"\"\"A string past a key's, naming tests/kept/key.nix.\"\"\"}\n",
-            ),
-            file("tests/kept/x.nix", "{ }\n"),
-        ];
-        assert_eq!(
-            stale(&paths(&files), &files),
-            [
-                "tests/h.py:12: tests/kept/wrapped.nix",
-                "tests/h.py:15: tests/kept/carried.nix",
-                "tests/h.py:17: tests/kept/async.nix",
-                "tests/h.py:20: tests/kept/backslash.nix"
-            ],
-            "a string past an if's, a dict key's, a wrapped if's, a body's, an async with's or \
-             for's, or a string key's colon was read as a docstring, or one past a header \
-             carried across lines by brackets or a backslash, or an async def's, was missed"
-        );
-    }
-
-    #[test]
-    fn a_bracket_closed_where_a_string_opens_still_closes() {
-        let files = [
-            file(
-                "tests/s.py",
-                "x = (1,\n\
-                 \x20    2) + \"\"\"a\n\
-                 b\"\"\"\n\
-                 def f():\n\
-                 \x20   \"\"\"Naming tests/kept/stuck.nix.\"\"\"\n\
-                 y = (1,\n\
-                 \x20    \"\"\"a\n\
-                 b\"\"\") + \"\"\"c\n\
-                 d\"\"\"\n\
-                 def g():\n\
-                 \x20   \"\"\"Naming tests/kept/inside.nix.\"\"\"\n",
-            ),
-            file("tests/kept/x.nix", "{ }\n"),
-        ];
-        assert_eq!(
-            stale(&paths(&files), &files),
-            [
-                "tests/s.py:5: tests/kept/stuck.nix",
-                "tests/s.py:11: tests/kept/inside.nix"
-            ],
-            "a bracket closed on a line leaving a string open, opened in code or past a \
-             string's close, was lost, so the logical line never ended and the def's \
-             docstring after it went unread"
-        );
-    }
-
-    #[test]
-    fn a_byte_order_mark_hides_neither_a_shebang_nor_a_docstring() {
-        let files = [
-            file(
-                "tests/b.py",
-                "\u{feff}#!/usr/bin/env python3\n\"\"\"Naming tests/kept/shebang.nix.\"\"\"\n",
-            ),
-            file(
-                "tests/d.py",
-                "\u{feff}\"\"\"Naming tests/kept/doc.nix.\"\"\"\n",
-            ),
-            file("tests/kept/x.nix", "{ }\n"),
-        ];
-        assert_eq!(
-            stale(&paths(&files), &files),
-            [
-                "tests/b.py:2: tests/kept/shebang.nix",
-                "tests/d.py:1: tests/kept/doc.nix"
-            ],
-            "a byte-order mark opening a file hid its shebang or its module's docstring"
-        );
-    }
-
-    #[test]
-    fn a_path_below_no_folder_held_is_another_trees() {
-        let files = [
-            file(
-                "tools/x/a.rs",
-                "// As upstream's tools/token.c, and a stand-in's modules/one/a.\n",
-            ),
-            file("modules/b/home.nix", "{ }\n"),
-            file(
-                "refs/x/b.ts",
-                "// Not refs/heads/main nor refs/remotes/origin.\n",
-            ),
-        ];
-        assert!(
-            stale(&paths(&files), &files).is_empty(),
-            "another project's path, a stand-in's or a git ref was taken for gone"
-        );
-    }
-
-    #[test]
-    fn a_path_cut_before_a_hyphen_names_where_names_begin() {
-        let files = [
-            file(
-                "tools/a.rs",
-                "// It owned only `tests/vm/screens-`, not tests/vm/gone-.\n\
-                 // Nor tests/vm/screens, which no file is.\n",
-            ),
-            file("tests/vm/gone.nix", "{ }\n"),
-            file(
-                "modules/b/src/c.rs",
-                "// Beside its tests/kept/one- cases, not its tests/kept/two- ones.\n\
-                 // Read by tests/kept/x.nix- which is there.\n",
-            ),
-            file("modules/b/tests/kept/two.nix", "{ }\n"),
-            file("modules/b/tests/kept/one-way.nix", "{ }\n"),
-            file("tests/kept/x.nix", "{ }\n"),
-            file("tests/vm/screens-come-vm-test.py", "\n"),
-        ];
-        assert_eq!(
-            stale(&paths(&files), &files),
-            [
-                "tools/a.rs:1: tests/vm/gone",
-                "tools/a.rs:2: tests/vm/screens",
-                "modules/b/src/c.rs:1: tests/kept/two"
-            ],
-            "a beginning some path has was taken for gone, one only its letters begin, \
-             or a whole name some path merely begins with, was missed"
-        );
-    }
-
-    #[test]
-    fn a_path_is_cut_where_its_characters_end() {
-        let files = [
-            file(
-                "tools/a.sh",
-                "# See (tools/a.sh), tools/x/c.sh. and `tools/x/b`.\n",
-            ),
-            file(
-                "tools/x/c.sh",
-                "# Not my-tools/x/y, ./tools/x/y or $tools/x/y.\n",
-            ),
-        ];
-        assert_eq!(
-            stale(&paths(&files), &files),
-            ["tools/a.sh:1: tools/x/b"],
-            "a path was cut in the wrong place or named mid-word"
-        );
-    }
-}
+#[path = "stale_tests.rs"]
+mod tests;
