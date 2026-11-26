@@ -30,8 +30,17 @@ function same(words, said) {
     return String(words).trim() === String(said).trim();
 }
 
-// The starts made (`list`, each { key, words, at, answered, toldAt }), the
-// start `given` ({ key, words }, its act and his words) at `now` and ended
+// Whether two starts are one: the same act, the same words and the same
+// place. Every From a Link act shares one key, so the same words for the
+// cloud, or for here, are other work.
+function alike(one, asked) {
+    return one.key === asked.key && same(one.words, asked.words)
+        && String(one.on ?? "") === String(asked.on ?? "");
+}
+
+// The starts made (`list`, each { key, words, on, at, answered, toldAt }),
+// the start `given` ({ key, words, on }, its act, his words and where it
+// was asked to start) at `now` and ended
 // `how` (Sprouting.ended) among them, in place of any made before with the
 // same words. One counts where it started, or where nothing answered,
 // since that one may still have started; a refused one began nothing, so
@@ -41,32 +50,32 @@ function made(list, given, how, now) {
     if (how?.started !== true && how?.unanswered !== true) {
         return recent;
     }
-    const kept = recent.filter(one => !(one.key === given.key && same(one.words, given.words)));
-    const start = { key: given.key, words: String(given.words), at: now,
-        answered: how.started === true, toldAt: 0 };
+    const kept = recent.filter(one => !alike(one, given));
+    const start = { key: given.key, words: String(given.words), on: String(given.on ?? ""),
+        at: now, answered: how.started === true, toldAt: 0 };
     return kept.concat([start]).slice(-MOST_MADE);
 }
 
-// The start among `list` that `said` given to the act `key` at `now` makes
-// again, to be told rather than started: the same act, the same words,
-// within AGAIN_MS, unless he was told of it between HEARD_MS and MEANT_MS
-// ago. Otherwise null, and it may start.
-function again(list, key, said, now) {
+// The start among `list` that `asked` ({ key, words, on }) at `now` makes
+// again, to be told rather than started: the same act, words and place
+// (alike), within AGAIN_MS, unless he was told of it between HEARD_MS and
+// MEANT_MS ago. Otherwise null, and it may start.
+function again(list, asked, now) {
     const meant = one => one.toldAt > 0 && now - one.toldAt >= HEARD_MS
         && now - one.toldAt < MEANT_MS;
-    return (Array.isArray(list) ? list : []).find(one => one.key === key
-        && same(one.words, said) && now - one.at < AGAIN_MS && !meant(one)) ?? null;
+    return (Array.isArray(list) ? list : []).find(one => alike(one, asked)
+        && now - one.at < AGAIN_MS && !meant(one)) ?? null;
 }
 
-// Whether `asked`, { key, words, on }, is the start under way, `running`
-// (the same, or null while none runs), given again: the same act, the same
-// words and the same place, so it keeps the receipt it already says rather
-// than being told it's busy over it (Joel, 2026-11-25 14:33: "no clue if i
-// did it once, twice, thrice"). Every From a Link act shares one key, so
-// another page's words, or the same words for the cloud, are new work.
+// The start among those under way, `running` (each { key, words, on }:
+// asked of the node, or started and its session still coming up), that
+// `asked` gives again, or null: the same act, words and place (alike), so
+// it keeps the receipt it already says rather than being told it's busy or
+// started already over it (Joel, 2026-11-25 14:33: "no clue if i did it
+// once, twice, thrice"). Another page's words on the same act, or the
+// same words for the cloud, are new work.
 function underWayAgain(running, asked) {
-    return running !== null && running.key === asked.key && same(running.words, asked.words)
-        && String(running.on ?? "") === String(asked.on ?? "");
+    return (Array.isArray(running) ? running : []).find(one => alike(one, asked)) ?? null;
 }
 
 // `list` with `toldOne` marked told at `now`, so a Return just after starts it.

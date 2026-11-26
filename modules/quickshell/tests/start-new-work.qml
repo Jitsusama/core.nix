@@ -461,7 +461,7 @@ QtObject {
                 { words: "w", letters: 3, keys: 7, at: 200 }, 55200);
             Expect.same("an opening is pressed from its Return and waited from its answer",
                 made, { key: "a", held: "h1", machine: "kestrel", since: 55200, asked: 200,
-                    keys: 7, letters: 3 });
+                    keys: 7, letters: 3, words: "w", on: "" });
             Expect.same("its act pressed after its Return, before its answer, it doesn't",
                 Openings.takesKeys(true, { a: 250 }, made), false);
             Expect.same("a slow answer isn't said to be still coming up seconds after",
@@ -676,9 +676,19 @@ QtObject {
         const up = { started: true, machine: "skiff", held: "h1" };
         const barInA = { key: inA, words: "fix the bar" };
         const bar = StartSaid.made([], barInA, up, began);
-        const again = (list, key, said, at) => StartSaid.again(list, key, said, at)?.words ?? null;
-        Expect.same("the same words again say when they started",
-            StartSaid.clock(StartSaid.again(bar, inA, "  fix the bar ", began + minute)), "14:30");
+        const asks = (key, said, on) => ({ key, words: said, on: on ?? "" });
+        const again = (list, key, said, at) =>
+            StartSaid.again(list, asks(key, said), at)?.words ?? null;
+        Expect.same("the same words again say when they started", StartSaid.clock(
+            StartSaid.again(bar, asks(inA, "  fix the bar "), began + minute)), "14:30");
+        // Every From a Link act shares one key, so where it starts tells two apart.
+        const barThere = StartSaid.made([], { key: inA, words: "fix the bar", on: "cloud" }, up,
+            began);
+        Expect.same("the same words started here, then asked for the cloud, start there",
+            StartSaid.again(bar, asks(inA, "fix the bar", "cloud"), began + minute), null);
+        Expect.same("and the same asked for the cloud again say when they started",
+            StartSaid.clock(StartSaid.again(barThere, asks(inA, "fix the bar", "cloud"),
+                began + minute)), "14:30");
         Expect.same("other words start", again(bar, inA, "fix the foot", began + minute), null);
         Expect.same("the same words in another folder start",
             again(bar, inB, "fix the bar", began + minute), null);
@@ -693,7 +703,8 @@ QtObject {
         const unanswered = StartSaid.made([], barInA,
             { started: false, unanswered: true, why: "nothing answered" }, began);
         Expect.same("an unanswered start counts, as not known to have started",
-            StartSaid.again(unanswered, inA, "fix the bar", began + minute)?.answered, false);
+            StartSaid.again(unanswered, asks(inA, "fix the bar"), began + minute)?.answered,
+            false);
         Expect.same("a refused start counts for nothing", StartSaid.made([], barInA,
             { started: false, why: "no", refusal: "" }, began), []);
         Expect.same("nor does one whose answer couldn't be read", StartSaid.made([], barInA,
@@ -716,20 +727,25 @@ QtObject {
             began + 60 * minute).map(one => one.key), [inB]);
         // A Return on the act whose start is under way keeps its receipt only
         // for the same words, to the same place; every From a Link act shares
-        // one key, so anything else is new work, told it's busy.
+        // one key, so anything else is new work. What's under way is the start
+        // asked and every opening still coming up, its session not yet up.
         const link = "verb:agents:start-new-work:link";
         const running = { key: link, words: "https://x/issues/1", on: "" };
-        const underWay = asked => StartSaid.underWayAgain(running, Object.assign(
+        const coming = Openings.opening({ held: "h2", machine: "skiff" }, inA,
+            { words: "fix the bar", on: "", keys: 4, letters: 2, at: began }, began + minute);
+        const underWay = asked => StartSaid.underWayAgain([running, coming], Object.assign(
             { key: link, words: "https://x/issues/1", on: "" }, asked));
         Expect.same("the same words to the same place again keep the receipt",
-            underWay({ words: " https://x/issues/1 " }), true);
+            underWay({ words: " https://x/issues/1 " }) === running, true);
         Expect.same("another page's link on the same act is new work",
-            underWay({ words: "https://x/issues/2" }), false);
+            underWay({ words: "https://x/issues/2" }), null);
         Expect.same("the same words for the cloud are new work", underWay({ on: "cloud" }),
-            false);
-        Expect.same("another act is new work", underWay({ key: inA }), false);
+            null);
+        Expect.same("another act is new work", underWay({ key: inB }), null);
+        Expect.same("a start still coming up given again keeps its receipt too",
+            underWay({ key: inA, words: "fix the bar" })?.held, "h2");
         Expect.same("nothing running, nothing is under way again",
-            StartSaid.underWayAgain(null, running), false);
+            StartSaid.underWayAgain([], running), null);
         Expect.same("and Start New Work says so in its own words, with the time",
             [written.again, written.againUnanswered].every(one => String(one ?? "")
                 .includes("{at}")), true);

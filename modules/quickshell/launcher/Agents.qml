@@ -1944,6 +1944,27 @@ Provider {
         sproutMarked = Object.assign({}, sproutMarked,
             { [key]: text ? mark ?? "failed" : "" });
     }
+    // The start `one` under way (the one asked, which holds no `held`, or
+    // an opening) given again by Joel's Return: what's pressed and typed
+    // counts from this Return, so its window still opens and takes the keys
+    // once it's up (Openings.takesKeys) rather than being left for Go To.
+    function sproutHeardAgain(one) {
+        const launcher = provider.launcher ?? null;
+        const asked = one.held === undefined;
+        const mark = given => Object.assign({}, given, { keys: launcher?.keysTaken ?? -1,
+            letters: launcher?.lettersAt ?? 0 });
+        const marking = () => {
+            if (asked)
+                sproutGiven = mark(sproutGiven);
+            else
+                openings = openings.map(each => each.held === one.held
+                    && each.machine === one.machine ? mark(each) : each);
+        };
+        marking();
+        // Marked again once the Return is through (Launcher.qml's give), as a
+        // start's first Return is.
+        Qt.callLater(marking);
+    }
     // `on` is "" for work started here, or where it starts elsewhere:
     // "cloud", or a machine by its name (Cloud.ask).
     function sprout(key, said, folder, on) {
@@ -1961,17 +1982,19 @@ Provider {
             return;
         }
         const pressed = Date.now();
-        // The same row's Return again while its own start is under way
-        // keeps the receipt it already says, the moment it began and the
-        // seconds since, rather than saying it's busy over it: a start in
-        // the cloud can take minutes, and Joel must still see it took
-        // (2026-11-25 14:33: "no clue if i did it once, twice, thrice").
-        // Other words on the same row, as another page's link, or the same
-        // for another place, are new work, told it's busy so they aren't
-        // lost under this receipt (StartSaid.underWayAgain).
-        const running = sprouting === "" ? null
-            : { key: sprouting, words: sproutGiven.words, on: sproutOn };
-        if (StartSaid.underWayAgain(running, { key, words: said, on: elsewhere })) {
+        // The same row's Return again while its own start is under way,
+        // asked or its session still coming up, keeps the receipt it
+        // already says rather than saying it's busy or started over it: a
+        // start in the cloud can take minutes, and Joel must still see it
+        // took (2026-11-25 14:33: "no clue if i did it once, twice,
+        // thrice"). Other words on the same row, as another page's link,
+        // or the same for another place, are new work (StartSaid.underWayAgain).
+        const asked = { key, words: said, on: elsewhere };
+        const running = (sprouting === "" ? []
+            : [Object.assign({ key: sprouting }, sproutGiven)]).concat(openings);
+        const same = StartSaid.underWayAgain(running, asked);
+        if (same !== null) {
+            sproutHeardAgain(same);
             console.info("launcher: new work's Return was heard again while it starts");
             return;
         }
@@ -1991,7 +2014,7 @@ Provider {
         // row, which it gives fresh words (newWorkFor); the start is still
         // told in the foot or as a notice.
         sproutPressed = Openings.pressedAt(sproutPressed, key, pressed);
-        const again = StartSaid.again(sproutsMade, key, said, Date.now());
+        const again = StartSaid.again(sproutsMade, asked, Date.now());
         if (again !== null) {
             sproutsMade = StartSaid.told(sproutsMade, again, Date.now());
             const told = again.answered ? words.again : words.againUnanswered;
@@ -2015,7 +2038,7 @@ Provider {
         sproutSince = Date.now();
         sprouts += 1;
         // Its Return already counted in keysTaken (Prompt.qml), so only a key after counts.
-        sproutGiven = { words: String(said), letters: launcher.lettersAt,
+        sproutGiven = { words: String(said), on: elsewhere, letters: launcher.lettersAt,
             keys: launcher.keysTaken, at: pressed };
         sproutCarried = "";
         sproutOn = elsewhere;
@@ -2249,8 +2272,8 @@ Provider {
         sproutsKept(rowsKind?.held ?? {});
         Report.say(how.started ? `sprouted new work on ${how.machine}`
             : `couldn't sprout new work: ${how.why}`);
-        sproutsMade = StartSaid.made(sproutsMade, { key: key, words: sproutGiven.words }, how,
-            Date.now());
+        sproutsMade = StartSaid.made(sproutsMade,
+            { key: key, words: sproutGiven.words, on: sproutGiven.on }, how, Date.now());
         if (how.started && how.held !== "") {
             openings = openings.concat([Openings.opening(how, key, sproutGiven, Date.now())]);
             openSprouted();
