@@ -309,7 +309,6 @@
   "tools/merge-net/src/rules/mod.rs" = 17;
   "tools/merge-net/src/watch.rs" = 24;
   "tools/merge-net/src/world.rs" = 11;
-  "tools/run-subtests/run-subtests-test.py" = 5;
   "tools/shell-preview/src/desktop.rs" = 3;
   "tools/shell-preview/src/layout.rs" = 3;
   "tools/shell-preview/tests/shell_preview.rs" = 1;

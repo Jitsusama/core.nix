@@ -49,6 +49,43 @@ QtObject {
                     name: "~/big/reef" }]), places).map(one => one.folder))
                 .map(folders => folders.length === new Set(folders).size
                     && folders.includes(unchecked.folder)), [true, true, true, true]);
+        // An In row's field entered before the places landed starts at Return as its
+        // row now says (Agents.qml's newWorkAct).
+        // Rows picked by their own folder, the one holding the rest listed first so a
+        // match by prefix shows, and made as other than they start, so keeping the
+        // made start or falling back to the folder shows.
+        const system = { folder: "/home/j/big/src/areas/system", name: "~/big/system" };
+        const reefQuest = [system, { folder: unchecked.folder, name: "~/big/reef" },
+            { folder: pond.folder, name: "~/big/pond" }];
+        const madeAs = Wheres.wheres(reefQuest, []).find(one => one.folder === unchecked.folder)
+            .start;
+        Expect.same("before the places land, a quest's folder starts by its folder", madeAs,
+            unchecked.folder);
+        const landed = Wheres.wheres(reefQuest, [unchecked, pond]);
+        Expect.same("a field entered before places land starts as its row says after",
+            Wheres.startAt(landed, unchecked.folder, madeAs), "//system/reef");
+        Expect.same("and the other row as its own says",
+            Wheres.startAt(landed, pond.folder, "made"), "//system/pond");
+        Expect.same("and the folder holding them as its own",
+            Wheres.startAt(landed, system.folder, "made"), system.folder);
+        Expect.same("and as its own where a row under it is listed first",
+            Wheres.startAt(Wheres.wheres(reefQuest.slice(1).concat([system]), [unchecked]),
+                system.folder, "made"), system.folder);
+        // Listed around it but not at it, none starting as it was made: the folder
+        // holding it, one under it, one sharing its last parts, one ending in its whole
+        // folder, one its folder ends in, one named as it was made, and a zone last.
+        const around = Wheres.wheres([system,
+            { folder: unchecked.folder + "/deep", name: "~/big/reef/deep" },
+            { folder: "/home/j/big2/src/areas/system/reef", name: "~/big2/reef" },
+            { folder: `/mnt${unchecked.folder}`, name: "/mnt/reef" },
+            { folder: "/areas/system/reef", name: "/areas/reef" },
+            { folder: "/home/j/big/src/areas/system/lake", name: "//made/start" }], [pond]);
+        Expect.same("none near it starts as it was made",
+            around.filter(one => one.start === "//made/start"), []);
+        Expect.same("and as made where its folder is no longer listed, whatever is near it",
+            Wheres.startAt(around, unchecked.folder, "//made/start"), "//made/start");
+        Expect.same("and its own folder's start where another row starts as it was made",
+            Wheres.startAt(landed, pond.folder, "//system/reef"), "//system/pond");
         Expect.same("what the node calls it decides, not how its name opens",
             Wheres.wheres([], [Object.assign({}, pond, { kind: "checkout" }),
                 Object.assign({}, harness, { kind: "zone" })])
@@ -66,6 +103,17 @@ QtObject {
                 ["~/big/src/areas/system/pond", pond.folder],
                 ["~/big2/src/areas/system/pond", otherPond.folder]
             ]);
+        // A row made to start by a zone's name starts by its folder once a second
+        // checkout of that zone lands, so the node can't pick the other.
+        const madeByName = Wheres.wheres([], [big, pond]).find(one => one.folder === pond.folder)
+            .start;
+        Expect.same("one checkout's zone starts by its name", madeByName, "//system/pond");
+        Expect.same("and by its folder at Return once another checkout holds it too",
+            Wheres.startAt(Wheres.wheres([], [big, pond, big2, otherPond]), pond.folder,
+                madeByName), pond.folder);
+        Expect.same("and the other checkout's by its own folder",
+            Wheres.startAt(Wheres.wheres([], [big, pond, big2, otherPond]), otherPond.folder,
+                madeByName), otherPond.folder);
         Expect.same("one no checkout holds is named by its folder",
             Wheres.wheres([], [pond, otherPond]).map(one => one.name),
             [pond.folder, otherPond.folder]);
@@ -136,6 +184,11 @@ QtObject {
         Expect.same("a list with a place more is drawn again",
             Wheres.differs([harness], [harness, pond]), true);
         Expect.same("the first list, after none, is drawn", Wheres.differs([], [harness]), true);
+        Expect.same("a zone checked out since, the list as long, is drawn again",
+            Wheres.differs([pond, unchecked], [pond, Object.assign({}, unchecked, { out: false })]),
+            true);
+        Expect.same("and so is a place renamed",
+            Wheres.differs([pond], [Object.assign({}, pond, { name: "//system/lake" })]), true);
         Expect.same("no quests' folders list the node's alone",
             Wheres.wheres(null, [harness]).map(one => one.name), ["~/src/harness"]);
 
@@ -147,5 +200,27 @@ QtObject {
             [listed.length, listed[listed.length - 1].name], [2001, "~/src/r1999"]);
         Expect.same("and only the first 2000 are read",
             Wheres.listable([null].concat(many)).length, 1999);
+
+        // Joel, 25 November: For You "takes forever to load". Its opening asked for the
+        // places, and reading a node's 2000 a character at a time held the shell's thread 5 to
+        // 7 s, by his journal; his node's run to 102 characters a place, as these do.
+        const node = Array.from({ length: 2000 }, (_, at) => ({
+            folder: `/home/j/big/src/areas/clients/team-${at}/service-${at}/components/main`,
+            name: `//clients/team-${at}/service-${at}/main`, kind: "zone", out: false
+        }));
+        // The fastest of 5, so a builder busy with VM tests or a collection
+        // in Qt's engine doesn't fail it; rounds stop only past 5 s, which
+        // the old reading took on its first.
+        const spans = [];
+        for (let round = 0; round < 5 && !spans.some(span => span > 5000); round += 1) {
+            const begun = Date.now();
+            Wheres.differs(Wheres.heard("", { places: node }).places, node);
+            spans.push(Date.now() - begun);
+        }
+        Expect.same("a node's 2000 places are read and weighed in under 50 ms, the fastest of 5",
+            Math.min(...spans) < 50 ? "under 50 ms" : `${spans.join(", ")} ms`, "under 50 ms");
+        Expect.same("and a place whose name holds a turn among them is still left out",
+            Wheres.listable(node.slice(0, 9).concat([{ folder: "/home/j/a", name: "a\u202eb" }]))
+                .length, 9);
     }
 }

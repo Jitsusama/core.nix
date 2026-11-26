@@ -210,6 +210,7 @@ pub fn records(
                 // them, since the presence may let them go before this does.
                 "wants": wants["kind"].as_str().unwrap_or(""),
                 "said": wants["said"].as_str().unwrap_or(""),
+                "whole": whole(wants),
                 "since": since,
                 "parked": one.lives() == Lives::Parked,
                 "answers": answers(wants),
@@ -222,6 +223,26 @@ pub fn records(
         .collect();
     wanting.sort_by(|a, b| a.0.cmp(&b.0));
     wanting.into_iter().map(|(_, record)| record).collect()
+}
+
+/// The most of a want's whole question read, in characters, as the
+/// harness writes it: one past this is none of its writing, so it's left
+/// for the short line (85PKB2, 2026-11-24).
+const WHOLE_AT_MOST: usize = 4000;
+
+/// What a want asks in full, as the harness keeps it beside its short
+/// line (`asked`: paragraphs, list lines and indentation kept), so Talk and
+/// For You show the whole question with its choices (Joel's bar of
+/// 2026-11-24, that any surface he is in answers a question in full); none
+/// where it says no more than its short line, trimmed, or past
+/// `WHOLE_AT_MOST`.
+fn whole(wants: &Value) -> &str {
+    let said = wants["said"].as_str().unwrap_or("").trim();
+    wants["asked"]
+        .as_str()
+        .filter(|asked| !asked.trim().is_empty() && asked.trim() != said)
+        .filter(|asked| asked.chars().count() <= WHOLE_AT_MOST)
+        .unwrap_or("")
 }
 
 /// Whether a want stops its session on Joel's keys now, a question or a
@@ -529,7 +550,7 @@ mod tests {
             wants[0],
             json!({"key": "want:agents:BUOY", "kind": "want", "address": "BUOY",
                 "title": "BUOY Quest", "asked": "BUOY Quest", "wants": "approval", "said": "",
-                "since": "2026-11-13T04:00:00Z",
+                "whole": "", "since": "2026-11-13T04:00:00Z",
                 "parked": true, "answers": null, "rings": true, "putOff": false,
                 "known": "BUOY approval 2026-11-13T04:00:00Z"}),
             "one asking nothing in words is named by its session, and offers no answers"
@@ -550,6 +571,66 @@ mod tests {
                 &json!("which tide?")
             ),
             "what it asked, in its words, and what kind of want it is"
+        );
+    }
+
+    /// What a want asks in full is passed on whole, its lines kept, so Talk
+    /// and For You say the question as it was put; one longer than the
+    /// harness writes, blank, or no more than the short line is none, and
+    /// the short line stands. The most is counted in characters, so one
+    /// two bytes long fills it exactly.
+    #[test]
+    fn a_want_says_its_whole_question_lines_kept() {
+        let asked = "Which tide do we sail on?\n\n- Low: calmer\n  - at dawn\n- High: faster";
+        let want = |put: &Value| {
+            json!({"kind": "question", "said": "Which tide do we sail on?",
+                "asked": put, "since": "2026-11-13T05:00:00Z"})
+        };
+        let wants = served(&[
+            asking("SKIFF", "running", &want(&json!(asked))),
+            asking(
+                "MAST",
+                "running",
+                &want(&json!("\u{e9}".repeat(WHOLE_AT_MOST))),
+            ),
+            asking(
+                "BUOY",
+                "running",
+                &want(&json!("\u{e9}".repeat(WHOLE_AT_MOST + 1))),
+            ),
+            asking("KELP", "running", &want(&json!(" \n "))),
+            asking("REEF", "running", &want(&json!(7))),
+            asking(
+                "KEEL",
+                "running",
+                &want(&json!(" Which tide do we sail on?\n")),
+            ),
+        ]);
+        let most = "\u{e9}".repeat(WHOLE_AT_MOST);
+        let whole: Vec<(&str, &str)> = wants
+            .iter()
+            .map(|one| {
+                (
+                    one["address"].as_str().unwrap_or(""),
+                    one["whole"].as_str().unwrap_or("?"),
+                )
+            })
+            .collect();
+        assert_eq!(
+            whole,
+            [
+                ("SKIFF", asked),
+                ("MAST", most.as_str()),
+                ("BUOY", ""),
+                ("KELP", ""),
+                ("REEF", ""),
+                ("KEEL", "")
+            ],
+            "the whole as written, else none"
+        );
+        assert_eq!(
+            wants[0]["asked"], "Which tide do we sail on?",
+            "its short line is still what it asked"
         );
     }
 

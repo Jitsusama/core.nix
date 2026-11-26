@@ -114,6 +114,7 @@ the queue and conclude. The trees, checkouts and changes agents work in are
 | orchestration | an orchestrator and every session on a quest below it | | `#orchestration/<address>` |
 | talk | Joel's words to an orchestrator or a session, typed in its field from outside its window | steer | `steer/<ADDRESS>/` |
 | offered work | words a page's mycelium: link puts in Start New Work's From a Link, which start only on Joel's own Return once he has checked them; the session the page says they're from is its claim, never vouched for | suggested work | `newWork`, Sprouting.js's `offered` |
+| the Cloud | where Start New Work's In the Cloud starts work: a machine that costs money, one already up with room or one the node's providers make for it, which the node picks | | the need `cloud`, Cloud.js |
 | talk line | one line at the top of the screen, on Super+S, to say something to the focused window's session, else The Void, without opening the launcher | | `agents:line`, TalkLine.qml |
 | pause | Joel stopping a session after its turn, from outside its window, until he resumes it, talks to it or types in it | | presence `paused` |
 | resume | Joel letting a paused session carry on where it left off | | |
@@ -694,7 +695,7 @@ says which module broke.
 | ---- | ----- | --- | ------- |
 | check | a check that `nix flake check` builds, one promise held | | `checks.x86_64-linux.<name>` |
 | VM test | a check that boots machines in VMs | | a `vm-` name |
-| subtest | one of a VM test's pytest tests, as the driver's log names it, which can run alone | | `test_` functions in a `*-vm-test.py` |
+| subtest | one of a VM test's pytest tests, named by its function, which can run alone; the driver's log heads its part with its docstring's first line | | `test_` functions in a `*-vm-test.py` |
 | example machine | a whole machine built only from core's outputs, as a machine repository would | | `example-nixos`, `example-laptop`, `example-apple-laptop`, `example-darwin` |
 | bare machine | the least machine of a class that evaluates, which a check adds one module to, for checks only | | `lib.bareNixosModule`, `lib.bareDarwinModule`, `bareNixos` |
 | stand-in | something standing in for a real program or device in a check | fake | |

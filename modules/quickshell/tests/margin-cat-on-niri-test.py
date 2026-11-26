@@ -517,6 +517,152 @@ def test_a_walk_set_off_under_the_launcher_waits_for_it_to_close(shell: Shell) -
     held_once(told)
 
 
+def test_a_column_off_the_screen_is_walked_to_along_the_strip(shell: Shell) -> None:
+    """Focusing a column off the screen's edge, it keeps to its own window as niri scrolls.
+
+    Joel, 2026-11-14 17:24: "is the kitty supposed to be climbing down the sides of windows
+    yet? ... focusing to a window off the left or right edge". niri lays a workspace's columns
+    out on one strip and scrolls it, so through the rest it stands on the window it sat on
+    wherever the scroll has it, never left in the air where that window was or put down on
+    another it never walked to, and once the keys rest it comes back in at that edge and walks
+    to the column they went to, a step at a time and never nowhere. How it's carried and comes
+    in is MarginCat.js's and MarginCatStacked.js's, held in Qt's engine
+    (margin-cat-one-screen.qml); here, only that niri's scroll reaches it.
+    """
+    first = three_columns(shell, "a walk off the edge")
+    windows = {window["title"]: window for window in shell.windows()}
+    third = windows["a column a walk off the edge sets off from"]
+    across = json.loads(shell.as_account("niri msg --json focused-output"))["logical"]["width"]
+    off = laid_out(shell, first)["tile_pos_in_workspace_view"][0]
+    assert off < 0, f"the first column was on the screen, at {off} of {across}: the case's own"
+    sat_at = laid_out(shell, third)["tile_pos_in_workspace_view"][0]
+    wake(shell)
+    since = shell.mark()
+    # By its id, since the cases before leave windows of their own on the strip ahead of it.
+    shell.as_account(f"niri msg action focus-window --id {first['id']}")
+    # Once niri's scroll is still, and before the keys rest, it stands where niri has the
+    # window it sat on: over it, or off the screen beyond the edge with it.
+    gone = laid_out(shell, third)
+    left, top = gone["tile_pos_in_workspace_view"]
+    width = gone["tile_size"][0]
+
+    def carried(report: str) -> bool:
+        at = placed(report)
+        if at is None or at.get("walk"):
+            return False
+        middle = at["x"] + at["size"] / 2
+        stands = at["y"] + at["size"] + at["air"]
+        # Past the edge with its window, over that window, wherever niri has its top.
+        on = left <= middle <= left + width
+        return bool(on and (left >= across or abs(stands - top) < FLUSH))
+
+    try:
+        shell.reported(SITS, carried, since, timedelta(seconds=RESTS))
+    except AssertionError:
+        said, _ = shell.said_since(since)
+        sat = [report for report in said if report.startswith(SITS)]
+        pytest.fail(
+            f"niri scrolled its window to {left}, {top}, {width} wide, on a screen {across}"
+            f" wide, and the cat never stood with it before the keys rested: {sat[-2:]}"
+        )
+    sits_over(shell, first, since)
+    said, _ = shell.said_since(since)
+    reports = [report[len(SITS) :] for report in said if report.startswith(SITS)]
+    nowhere = [report for report in reports if placed(report) is None]
+    assert not nowhere, f"the cat went from the screen: {nowhere[:2]}"
+    # As niri's scroll sets off, it's drawn short of its new place by what's left of the scroll,
+    # as its window is, never at that place at once or past it.
+    scroll = left - sat_at
+    behind = [
+        (at["x"] - at["drawn"]["x"]) / scroll
+        for at in map(placed, reports)
+        if at is not None and not at.get("walk") and at["drawn"]["x"] != at["x"]
+    ]
+    assert behind, f"niri scrolled its window {scroll} and the cat was never drawn behind it"
+    assert 0 < behind[0] <= 1, f"drawn {behind[0]:.2f} of the scroll behind its place"
+    walked = steps(shell, since)
+    assert walked, "the cat took no step to the column off the edge"
+    jumps = [
+        (before["x"], after["x"])
+        for before, after in itertools.pairwise(walked)
+        if math.hypot(after["x"] - before["x"], after["y"] - before["y"])
+        > STEPS_ON * before["size"]
+    ]
+    assert not jumps, f"the cat jumped along the strip: {jumps[:3]}"
+
+
+def test_keys_back_on_its_column_ride_it_back_with_its_window(shell: Shell) -> None:
+    """Keys back on its own column once niri's scroll away has settled, it rides back.
+
+    niri's spring settles in about a quarter of a second and the keys rest only after two,
+    so the cat can be still, carried off with its window, when the keys come back to its own
+    column and niri scrolls the strip back. It comes back drawn with its window, never put
+    down on its seat at once ahead of it (#6483's council, 2026-11-25).
+
+    Its own column is wide and the other's left of it, so niri scrolls its window along but
+    keeps its middle, where the cat sits, on the screen: carried off the screen, the cat comes
+    in from its edge to the keys at once, which is no ride back (2026-11-25, gates-6483b).
+    """
+    first = shell.opened("a column a ride back goes to")
+    since = shell.mark()
+    third = shell.opened("a column a ride back sets off from")
+    shell.as_account("niri msg action set-column-width 80%")
+    sits_over(shell, third, since)
+    time.sleep(LANDS)
+    sat_at = laid_out(shell, third)["tile_pos_in_workspace_view"][0]
+    wake(shell)
+    since = shell.mark()
+    shell.as_account(f"niri msg action focus-window --id {first['id']}")
+    focused = time.monotonic()
+    away = laid_out(shell, third)
+    gone, width = away["tile_pos_in_workspace_view"][0], away["tile_size"][0]
+    across = json.loads(shell.as_account("niri msg --json focused-output"))["logical"]["width"]
+    assert gone != sat_at, f"niri left its window at {sat_at}: the case's own"
+    assert gone + width / 2 < across, f"niri scrolled its middle off at {gone}: the case's own"
+
+    # Still over its window where niri scrolled it, drawn at its place, its ride done: a
+    # report after the ride's own, never one from before niri carried it.
+    ride: list[Json] = []
+    still: list[Json] = []
+
+    def settled(report: str) -> bool:
+        at = placed(report)
+        if at is None or at.get("walk"):
+            return False
+        if abs(at["x"] - at["drawn"]["x"]) >= 1:
+            ride.append(at)
+            return False
+        if (
+            ride
+            and at.get("window") == third["id"]
+            and abs(at["x"] - at["drawn"]["x"]) < FLUSH
+            and gone <= at["x"] + at["size"] / 2 <= gone + width
+        ):
+            still.append(at)
+        return bool(still)
+
+    heard(shell, settled, since, timedelta(seconds=RESTS))
+    held = still[0]["x"]
+    back = shell.mark()
+    shell.as_account(f"niri msg action focus-window --id {third['id']}")
+    # The keys must come back before they rest on the other column, or the cat walks there.
+    took = time.monotonic() - focused
+    assert took < RESTS, f"the keys came back {took:.1f} s on, after they rested: the case's own"
+    sits_over(shell, third, back)
+    said, _ = shell.said_since(back)
+    rode = [
+        at
+        for at in (placed(report[len(SITS) :]) for report in said if report.startswith(SITS))
+        if at is not None and not at.get("walk") and abs(at["drawn"]["x"] - at["x"]) >= 1
+    ]
+    assert rode, "niri scrolled its window back and the cat was put on its seat at once"
+    # Drawn short of its seat by what's left of the scroll back, as its window is, from where
+    # it was held: never set off from elsewhere, nor ahead of its window.
+    scroll = rode[0]["x"] - held
+    short = (rode[0]["x"] - rode[0]["drawn"]["x"]) / scroll if scroll else 0
+    assert 0 < short <= 1, f"drawn {short:.2f} of the scroll back short of its place"
+
+
 def walked_report(shell: Shell, since: int) -> Json:
     """Wait for the cat to tell of a walk since the mark, and give the one it told of."""
     shell.reported(WALKED, lambda _: True, since, timedelta(seconds=TOLD))
@@ -1537,7 +1683,7 @@ def seat(shell: Shell, window: Json, since: int) -> Json:
             and at.get("window") == window["id"]
             and at.get("walk") is None
             and at.get("move") is None
-            and at.get("resting")
+            and at.get("restBegun")
         )
 
     deadline = time.monotonic() + SETTLES_BY
@@ -1562,7 +1708,7 @@ def settled(shell: Shell, window: Json, away_from: float, since: int) -> Json:
             and at["x"] != away_from
             and at.get("walk") is None
             and at.get("move") is None
-            and at.get("resting")
+            and at.get("restBegun")
         )
 
     heard(shell, still_elsewhere, since)

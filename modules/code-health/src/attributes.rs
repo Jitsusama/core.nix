@@ -16,9 +16,20 @@
 /// past a byte-order mark, is a shebang rustc drops, unless what follows
 /// past whitespace and plain comments is a `[`. Rust is read as edition 2021
 /// and later lex it; an older edition splits some names written against a
-/// `#` or a quote otherwise.
+/// `#` or a quote otherwise. Where a comment, string or raw string is left
+/// open at the file's end, or a character is left open where rustc stops
+/// it, all of which rustc refuses, the line it opens on counts too, since
+/// the walk may have read the file otherwise than rustc would and hidden a
+/// lint turned off below it. Past a character left open, the walk reads on
+/// from where rustc stops it. A file rustc never builds, such as a case
+/// kept to fail compiling, counts each such line it holds too.
 pub fn lines_turning_a_lint_off(text: &str) -> Vec<usize> {
-    let mut code = Tokens { text, at: 0 };
+    let mut code = Tokens {
+        text,
+        at: 0,
+        left_open: Vec::new(),
+        name_ends: 0,
+    };
     if text
         .strip_prefix('\u{feff}')
         .unwrap_or(text)
@@ -31,6 +42,9 @@ pub fn lines_turning_a_lint_off(text: &str) -> Vec<usize> {
         } else {
             text.find('\n').unwrap_or(text.len())
         };
+        // A comment left open past a shebang ends with its line, since
+        // rustc reads on from the next.
+        code.left_open.clear();
     }
     let mut start = 0;
     let mut lines = Vec::new();
@@ -40,6 +54,17 @@ pub fn lines_turning_a_lint_off(text: &str) -> Vec<usize> {
         }
         start += line.len();
     }
+    code.in_code(text.len());
+    // The walk met each in the order it opens, so each line is counted on
+    // from the last.
+    let (mut line, mut counted) = (1, 0);
+    for from in code.left_open {
+        line += text[counted..from].matches('\n').count();
+        counted = from;
+        lines.push(line);
+    }
+    lines.sort_unstable();
+    lines.dedup();
     lines
 }
 
@@ -47,7 +72,12 @@ pub fn lines_turning_a_lint_off(text: &str) -> Vec<usize> {
 /// from the line on, since rustfmt breaks a long `cfg_attr` across lines,
 /// and each attribute opening on the line is read to its close.
 fn turns_a_rust_lint_off(rest: &str) -> bool {
-    let mut tokens = Tokens { text: rest, at: 0 };
+    let mut tokens = Tokens {
+        text: rest,
+        at: 0,
+        left_open: Vec::new(),
+        name_ends: 0,
+    };
     std::iter::from_fn(|| tokens.attribute_on_its_line()).any(|inner| holds_a_lint_off(&inner))
 }
 
@@ -117,6 +147,13 @@ fn is_name(c: char) -> bool {
 struct Tokens<'a> {
     text: &'a str,
     at: usize,
+    /// Where each comment, string, raw string or character rustc leaves open
+    /// opened, in the order the walk met them.
+    left_open: Vec<usize>,
+    /// Where the last name the walk passed whole, a suffix or a raw name,
+    /// ends, so a `b` ending one is read as rustc reads it, as no byte
+    /// character's prefix.
+    name_ends: usize,
 }
 
 impl<'a> Tokens<'a> {
@@ -162,7 +199,7 @@ impl<'a> Tokens<'a> {
                 .map_or(self.text.len(), |n| self.at + n);
             return;
         }
-        let mut depth = 0_usize;
+        let (mut depth, from) = (0_usize, self.at);
         while self.at < self.text.len() {
             if self.ahead("/*") {
                 depth += 1;
@@ -171,12 +208,13 @@ impl<'a> Tokens<'a> {
                 depth -= 1;
                 self.at += 2;
                 if depth == 0 {
-                    break;
+                    return;
                 }
             } else {
                 self.bump();
             }
         }
+        self.left_open.push(from);
     }
 
     /// Passes what rustc passes after a shebang's `#!` in deciding whether
@@ -249,6 +287,7 @@ impl<'a> Tokens<'a> {
         while self.peek().is_some_and(is_name) {
             self.bump();
         }
+        self.name_ends = self.at;
     }
 
     /// Whether the `r` here may open a raw string: no name or lifetime runs
@@ -262,6 +301,16 @@ impl<'a> Tokens<'a> {
             Some(c) => !named(c),
             None => true,
         }
+    }
+
+    /// Whether the quote here opens a byte character: a `b` no name runs
+    /// into stands right before it, as rustc's `c_or_byte_string` reads one,
+    /// and ends no suffix or raw name, which rustc has read whole.
+    fn opens_byte(&self) -> bool {
+        let mut before = self.text[..self.at].chars().rev();
+        self.name_ends != self.at
+            && before.next() == Some('b')
+            && !before.next().is_some_and(is_name)
     }
 
     /// The words inside the next attribute's brackets, where one opens
@@ -313,6 +362,7 @@ impl<'a> Tokens<'a> {
     /// Passes a string from its opening quote, escapes and all, and its
     /// suffix.
     fn pass_string(&mut self) {
+        let from = self.at;
         self.bump();
         while let Some(c) = self.bump() {
             match c {
@@ -323,6 +373,7 @@ impl<'a> Tokens<'a> {
                 _ => {}
             }
         }
+        self.left_open.push(from);
     }
 
     /// Passes a raw string from its `r`, and its suffix, saying whether one
@@ -335,324 +386,81 @@ impl<'a> Tokens<'a> {
         }
         let close = format!("\"{}", "#".repeat(hashes));
         let from = self.at + 2 + hashes;
-        self.at = self.text[from..]
-            .find(&close)
-            .map_or(self.text.len(), |n| from + n + close.len());
-        self.pass_name();
+        if let Some(n) = self.text[from..].find(&close) {
+            self.at = from + n + close.len();
+            self.pass_name();
+        } else {
+            self.left_open.push(self.at);
+            self.at = self.text.len();
+        }
         true
     }
 
     /// Passes a character from its opening quote, and its suffix, saying
-    /// whether one stood there rather than a lifetime.
+    /// whether one stood there rather than a lifetime, as rustc's
+    /// `lifetime_or_char` tells them apart. A quote before a letter, digit or
+    /// `_` opens a lifetime unless a quote follows that one character or the
+    /// name it opens, which closes a character; so here does one before any
+    /// character past ASCII, though rustc reads one before a symbol there as
+    /// a character. A byte character's quote, after a `b` no name runs into
+    /// and ending no suffix or raw name, opens no lifetime. One left open is
+    /// read on from where rustc stops it.
     fn pass_character(&mut self) -> bool {
         let after = &self.text[self.at + 1..];
         let mut chars = after.chars();
-        let length = match (chars.next(), chars.next()) {
-            // The close follows what's escaped, which may itself be a quote.
-            (Some('\\'), _) => after
-                .get(2..)
-                .and_then(|escaped| escaped.find('\''))
-                .map(|n| n + 3),
-            (Some(c), Some('\'')) => Some(c.len_utf8() + 1),
-            _ => None,
-        };
-        let Some(length) = length else {
-            return false;
-        };
-        self.at += 1 + length;
-        self.pass_name();
+        match (chars.next(), chars.next()) {
+            (Some(c), Some('\'')) if c != '\\' => {
+                self.at += 2 + c.len_utf8();
+                self.pass_name();
+                return true;
+            }
+            (Some(c), _)
+                if !self.opens_byte()
+                    && (c.is_ascii_alphanumeric() || c == '_' || !c.is_ascii()) =>
+            {
+                let name = after.len() - after[c.len_utf8()..].trim_start_matches(is_name).len();
+                if !after[name..].starts_with('\'') {
+                    return false;
+                }
+                self.at += name + 2;
+                return true;
+            }
+            _ => {}
+        }
+        match single_quoted(after) {
+            Ok(length) => {
+                self.at += 1 + length;
+                self.pass_name();
+            }
+            Err(stop) => {
+                self.left_open.push(self.at);
+                self.at += 1 + stop;
+            }
+        }
         true
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::measure::{file, measure};
-
-    #[test]
-    fn a_rust_lint_is_counted_off_however_its_attribute_is_written() {
-        // Each line opens with a quote, so this file's own lines aren't counted.
-        let files = [file(
-            "f.rs",
-            concat!(
-                "#[cfg_attr(test, allow(dead_code))]\n",
-                "# [allow(unused)]\n",
-                "#![cfg_attr(not(test), expect(clippy::x))]\n",
-                "#[cfg_attr(test, derive(Debug))]\n",
-                "# ! [ expect ( x ) ]\n",
-                "#[cfg_attr(feature = \"x\", deny(y))]\n",
-                "let s = \"#[cfg_attr(test, allow(x))]\";\n",
-                "#[cfg_attr(test, disallow(x))]\n",
-                "#[cfg_attr(test, derive(Debug), allow(x))]\n",
-                "#[cfg_attr(a, cfg_attr(b, expect(x)))]\n",
-                "#[allow_internal_unstable(x)]\n",
-                "#[derive(Debug, allow(x))]\n",
-                "#[cfg_attr(test, derive(Debug))] // a, allow(x) later\n",
-                "#[cfg_attr(doc, doc = \"a, allow(x) here\")]\n",
-                "#[cfg_attr(feature = \"a\\\", allow(b)\", deny(x))]\n",
-                "#\u{a0}[allow(x)]\n",
-                "#\u{200e}[allow(x)]\n",
-                "#[cfg_attr(test, derive(Debug, allow(x)))]\n",
-                "#[cfg_attr(\n",
-                "    not(test), // a comment's ) and ]\n",
-                "    expect(unused)\n",
-                ")]\n",
-                "\u{200e}\u{feff}\t#[allow(x)]\n",
-                "#[derive(Debug)] #[allow(x)]\n",
-                "#[derive(Debug)]\n",
-                "#[allow(x)]\n",
-                "#[cfg_attr(feature = r#\"a\")\"#, allow(x))]\n",
-                "#[cfg_attr(feature = r#\"a\", allow(x)\"#, deny(x))]\n",
-                "# /* a, allow(y) */ [allow(x)]\n",
-                "#[cfg_attr(test, doc = ')', allow(x))]\n",
-                "#[cfg_attr(test, doc = '\\\"', allow(x))]\n",
-                "#[allow(x)\n",
-            ),
-        )];
-        let health = measure(&["f.rs".to_owned()], &files, &[]);
-        assert_eq!(
-            health.named["suppressions"],
-            [
-                "f.rs:1", "f.rs:2", "f.rs:3", "f.rs:5", "f.rs:9", "f.rs:10", "f.rs:17", "f.rs:19",
-                "f.rs:23", "f.rs:24", "f.rs:26", "f.rs:27", "f.rs:29", "f.rs:30", "f.rs:31"
-            ],
-            "a lint turned off through `cfg_attr`, across lines, past another attribute or \
-             with Rust's whitespace or a comment in its attribute was missed, or an \
-             attribute turning none off, a comment, a string or a lint inside another \
-             attribute was counted"
-        );
+/// How far a character runs `after` its opening quote, as rustc's
+/// `single_quoted_string` reads it, taking each escape and what it escapes
+/// as one: to just past its close, or, left open, to the `/`, the line's
+/// end no quote follows, or the file's end that stops it.
+fn single_quoted(after: &str) -> Result<usize, usize> {
+    let mut chars = after.char_indices().peekable();
+    while let Some((at, c)) = chars.next() {
+        match c {
+            '\'' => return Ok(at + 1),
+            '/' => return Err(at),
+            '\n' if chars.peek().is_none_or(|&(_, next)| next != '\'') => return Err(at),
+            '\\' => {
+                chars.next();
+            }
+            _ => {}
+        }
     }
-
-    #[test]
-    fn an_attribute_holding_brackets_closes_at_its_own() {
-        let files = [file("g.rs", "#[my_attr[x]] #[allow(y)]\n")];
-        let health = measure(&["g.rs".to_owned()], &files, &[]);
-        assert_eq!(
-            health.named["suppressions"],
-            ["g.rs:1"],
-            "a bracket inside an attribute closed it, so the lint turned off past it was missed"
-        );
-    }
-
-    #[test]
-    fn a_raw_string_after_a_letter_or_a_word_is_read_raw() {
-        let files = [file(
-            "r.rs",
-            concat!(
-                "#[cfg_attr(test, doc = br\"\\\", allow(x))]\n",
-                "#[cfg_attr(test, doc = cr\"\\\", allow(x))]\n",
-                "#[cfg_attr(test, path(a r\"\\\"), allow(x))]\n",
-            ),
-        )];
-        let health = measure(&["r.rs".to_owned()], &files, &[]);
-        assert_eq!(
-            health.named["suppressions"],
-            ["r.rs:1", "r.rs:2", "r.rs:3"],
-            "a byte or C raw string, or a raw string after a word, was read as a plain one, \
-             so its closing quote was taken as escaped and the lint turned off past it missed"
-        );
-    }
-
-    #[test]
-    fn a_raw_names_last_letter_opens_no_raw_string() {
-        let files = [file(
-            "n.rs",
-            concat!(
-                "m!(r#r\"\\\";\n#[allow(x)]\n\");\n#[allow(x)]\n",
-                "m!('r#r\"\\\";\n#[allow(x)]\n\");\n#[allow(x)]\n",
-                "#[cfg_attr(test, m(r#r\"\\\"]\"), allow(x))]\n",
-            ),
-        )];
-        let health = measure(&["n.rs".to_owned()], &files, &[]);
-        assert_eq!(
-            health.named["suppressions"],
-            ["n.rs:4", "n.rs:8", "n.rs:9"],
-            "a raw name or lifetime's last r was read as opening a raw string, so a string \
-             after it was misread"
-        );
-    }
-
-    #[test]
-    fn a_suffix_r_and_hash_make_no_raw_name() {
-        let files = [file(
-            "q.rs",
-            concat!(
-                "m!(1r#r\"\\\");\n#[allow(x)]\n// \");\n",
-                "m!(1ur#r\"\\\");\n#[allow(x)]\n// \");\n",
-                "m!(1_r#r\"\\\");\n#[allow(x)]\n// \");\n",
-                "m!(1u\u{301}r#r\"\\\");\n#[allow(x)]\n// \");\n",
-                "m!('a'r#r\"\\\");\n#[allow(x)]\n// \");\n",
-            ),
-        )];
-        let health = measure(&["q.rs".to_owned()], &files, &[]);
-        assert_eq!(
-            health.named["suppressions"],
-            ["q.rs:2", "q.rs:5", "q.rs:8", "q.rs:11", "q.rs:14"],
-            "a number's or character's suffix r and a # were read as a raw name"
-        );
-    }
-
-    #[test]
-    fn a_numbers_suffix_r_in_an_attribute_opens_no_raw_string() {
-        // Misread as raw, the string closes at the escaped quote and the real
-        // closing quote opens one that runs to the end, so this line stays last.
-        let files = [file(
-            "o.rs",
-            "#[cfg_attr(all(), cfg_attr(any(), m(1r\"\\\"),\")), allow(x))]\n",
-        )];
-        let health = measure(&["o.rs".to_owned()], &files, &[]);
-        assert_eq!(
-            health.named["suppressions"],
-            ["o.rs:1"],
-            "a number's suffix r in an attribute was read as opening a raw string"
-        );
-    }
-
-    #[test]
-    fn a_lint_named_rawly_is_counted_off() {
-        let files = [file(
-            "p.rs",
-            concat!(
-                "#[r#allow(x)]\n",
-                "#[cfg_attr(test, r#expect(x))]\n",
-                "#![r#allow(x)]\n",
-            ),
-        )];
-        let health = measure(&["p.rs".to_owned()], &files, &[]);
-        assert_eq!(
-            health.named["suppressions"],
-            ["p.rs:1", "p.rs:2", "p.rs:3"],
-            "a lint level named rawly, which rustc reads as the level itself, was missed"
-        );
-    }
-
-    #[test]
-    fn a_suffix_opens_no_raw_string_and_rusts_whitespace_ends_a_name() {
-        // Lines 2 and 6 sit in a string after a string's suffix ending r;
-        // each third line from 10 to 28 follows a raw string after Rust's
-        // whitespace past ASCII, and line 33 one closing at its second hash.
-        let files = [file(
-            "s.rs",
-            concat!(
-                "m!(\"a\"r\"\\\";\n#[allow(x)]\n\");\n#[allow(x)]\n",
-                "m!(r\"a\"r\"\\\";\n#[allow(x)]\n\");\n#[allow(x)]\n",
-                "m!(\u{85}r\"\\\");\n#[allow(x)]\n// \");\n",
-                "m!(\u{200e}r\"\\\");\n#[allow(x)]\n// \");\n",
-                "m!(\u{200f}r\"\\\");\n#[allow(x)]\n// \");\n",
-                "m!(\u{2028}r\"\\\");\n#[allow(x)]\n// \");\n",
-                "m!(\u{2029}r\"\\\");\n#[allow(x)]\n// \");\n",
-                "m!(\u{2028}br\"\\\");\n#[allow(x)]\n// \");\n",
-                "m!(r#x\u{2028}r\"\\\");\n#[allow(x)]\n// \");\n",
-                "const R: &str = r##\"a \"# b\n#[allow(x)]\n\"##;\n#[allow(x)]\n",
-            ),
-        )];
-        let health = measure(&["s.rs".to_owned()], &files, &[]);
-        assert_eq!(
-            health.named["suppressions"],
-            [
-                "s.rs:4", "s.rs:8", "s.rs:10", "s.rs:13", "s.rs:16", "s.rs:19", "s.rs:22",
-                "s.rs:25", "s.rs:28", "s.rs:33"
-            ],
-            "a string's suffix was read as opening a raw string, Rust's whitespace past \
-             ASCII as part of a name, or a raw string as closed at fewer hashes than \
-             opened it"
-        );
-    }
-
-    #[test]
-    fn a_shebang_is_dropped_and_a_bang_opening_an_attribute_is_none() {
-        let files = [
-            file(
-                "t.rs",
-                "\u{feff}#!/x \"\n/* \"\n#[allow(x)]\n*/\n#[allow(x)]\n",
-            ),
-            file("u.rs", "#!/x \"\n#[allow(x)]\n// \"\n#[allow(x)]\n"),
-            file("v.rs", "#! /* a */ [allow(x)]\n#[allow(x)]\n"),
-            file("w.rs", "\u{feff}#![allow(x)]\n"),
-        ];
-        let paths = ["t.rs", "u.rs", "v.rs", "w.rs"].map(str::to_owned);
-        let health = measure(&paths, &files, &[]);
-        assert_eq!(
-            health.named["suppressions"],
-            ["t.rs:5", "u.rs:2", "u.rs:4", "v.rs:1", "v.rs:2", "w.rs:1"],
-            "a shebang's quote or comment was read as opening one, or a `#!` opening an \
-             attribute, past a byte-order mark or not, was dropped as a shebang"
-        );
-    }
-
-    #[test]
-    fn a_doc_comment_or_byte_order_mark_past_a_bang_makes_it_a_shebang() {
-        let files = [
-            file("a.rs", "#!/// a\n[allow(x)]\n"),
-            file("b.rs", "#!//// a\n[allow(x)]\n"),
-            file("c.rs", "#!//! a\n[allow(x)]\n"),
-            file("d.rs", "#!/** */[ \"\n#[allow(x)]\n// \"\n"),
-            file("e.rs", "#!/*** */[allow(x)]\n"),
-            file("f.rs", "#!/**/[allow(x)]\n"),
-            file("g.rs", "#!/*! */[allow(x)]\n"),
-            file("h.rs", "#!\u{feff}[ \"\n#[allow(x)]\n// \"\n"),
-        ];
-        let paths = [
-            "a.rs", "b.rs", "c.rs", "d.rs", "e.rs", "f.rs", "g.rs", "h.rs",
-        ]
-        .map(str::to_owned);
-        let health = measure(&paths, &files, &[]);
-        assert_eq!(
-            health.named["suppressions"],
-            ["b.rs:1", "d.rs:2", "e.rs:1", "f.rs:1", "h.rs:2"],
-            "a doc comment or byte-order mark after a `#!` was passed as rustc passes only \
-             whitespace and plain comments there, or a plain comment was taken for a doc one"
-        );
-    }
-
-    #[test]
-    fn only_a_line_opening_in_code_is_read() {
-        // Each even line from 2 to 34 turns a lint off; those in code,
-        // right after what would hide them from a walk misreading it, count.
-        let files = [file(
-            "k.rs",
-            concat!(
-                "/*\n#[allow(x)]\n*/\n#[allow(x)]\n",
-                "const S: &str = \"\n#[allow(x)]\n\";\n#[allow(x)]\n",
-                "const R: &str = r#\"\n#[allow(x)]\n\"#;\n#[allow(x)]\n",
-                "/* /* */\n#[allow(x)]\n*/\n#[allow(x)]\n",
-                "const Q: char = '\"'; const B: &[u8] = br\"\\\";\n#[allow(x)]\n",
-                "m!('outer\"\\\"\n#[allow(x)]\n\");\n#[allow(x)]\n",
-                "m!('r\"\\\"\n#[allow(x)]\n\");\n#[allow(x)]\n",
-                "m!('br\"\\\"\n#[allow(x)]\n\");\n#[allow(x)]\n",
-                "m!(xbr\"\\\"\n#[allow(x)]\n\");\n#[allow(x)]\n",
-            ),
-        )];
-        let health = measure(&["k.rs".to_owned()], &files, &[]);
-        assert_eq!(
-            health.named["suppressions"],
-            [
-                "k.rs:4", "k.rs:8", "k.rs:12", "k.rs:16", "k.rs:18", "k.rs:22", "k.rs:26",
-                "k.rs:30", "k.rs:34"
-            ],
-            "a line opening inside a comment, string or raw string begun above was counted, \
-             or one opening in code past a character, a byte raw string or a lifetime missed"
-        );
-    }
-
-    #[test]
-    fn a_cfg_attr_splits_only_at_commas_outside_its_brackets() {
-        let files = [file(
-            "h.rs",
-            concat!(
-                "#[cfg_attr(test, doc[a, allow(x)])]\n",
-                "#[cfg_attr(test, doc{a, allow(x)})]\n",
-                "#[cfg_attr(test, doc[a], allow(y))]\n",
-                "#[cfg_attr(test, doc{a}, allow(y))]\n",
-                "#[cfg_attr(test, a}, allow(y))]\n",
-            ),
-        )];
-        let health = measure(&["h.rs".to_owned()], &files, &[]);
-        assert_eq!(
-            health.named["suppressions"],
-            ["h.rs:3", "h.rs:4", "h.rs:5"],
-            "a cfg_attr was split inside an attribute's brackets, or not read on past their \
-             close, or a close it never opened stopped its reading"
-        );
-    }
+    Err(after.len())
 }
+
+#[cfg(test)]
+#[path = "attributes_tests.rs"]
+mod tests;

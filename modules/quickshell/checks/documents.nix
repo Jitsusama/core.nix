@@ -17,11 +17,13 @@
   # and the google daemon's rows move, and make them once as it opens, in
   # the daemon's order (modules/quickshell/tests/documents.qml), through
   # the real ReadyRows.qml and Daemon.qml, with Google's account, the clock,
-  # the mail, the saves and the entry its links open through stood in. What
-  # the cases' daemon and rows say is read from the log: a connection going
-  # with asks in flight says so, a line that isn't JSON is said once a
-  # connection, and a search lost again once asked again says it waits for
-  # the next key each time, since no case in Qt's engine reads console lines.
+  # the mail, the saves and the entry its links open through stood in; and a
+  # search, or what's typed inside a row, lost as the daemon goes, is asked
+  # again once it says hello. What the cases' daemon and rows say is read
+  # from the log: a connection going with asks in flight says so, a line
+  # that isn't JSON is said once a connection, and a search lost again once
+  # asked again says it waits for the next key each time, since no case in
+  # Qt's engine reads console lines.
   a-shut-launcher-makes-no-document-rows =
     let
       # The entry every Google link opens through, as google's home.nix
