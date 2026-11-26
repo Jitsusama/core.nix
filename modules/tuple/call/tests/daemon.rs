@@ -814,7 +814,7 @@ fn a_mute_done_once_another_connecting_call_began_leaves_it_alone() {
 
 #[test]
 fn a_command_held_past_its_hold_lets_its_act_be_asked_afresh() {
-    let running = Running::waiting("held", &["--answers-within", "1", "--held-for", "3"]);
+    let running = Running::waiting("held", &["--answers-within", "1", "--held-for", "4"]);
     running.streams(STATE);
     let mut watching = running.client();
     watching.watch();
@@ -841,11 +841,11 @@ fn a_command_held_past_its_hold_lets_its_act_be_asked_afresh() {
     );
     // Asked until one is run afresh, as the first stop's hold ends by the
     // daemon's clock, which began a moment after this test's.
-    let afresh = loop {
+    let (afresh, ran) = loop {
         let sent = first.elapsed();
         let said = asking.ask(&json!({"id": "afresh", "ask": "camera", "on": false}));
         if said["error"]["message"] != "Tuple hasn't answered the last time it was asked" {
-            break said;
+            break (said, sent);
         }
         refused = sent;
         assert!(
@@ -856,11 +856,16 @@ fn a_command_held_past_its_hold_lets_its_act_be_asked_afresh() {
         // once within the hold, so the loop doesn't spin.
         std::thread::sleep(Duration::from_millis(100));
     };
-    // Asks a tenth of a second apart, so a three-second hold refuses one
-    // sent past two and a half.
+    // Asks a tenth of a second apart, so a four-second hold refuses one
+    // sent past three and runs one sent before six, a second or more to
+    // spare on each side for a builder that stalls the test.
     assert!(
-        refused >= Duration::from_millis(2500),
+        refused >= Duration::from_secs(3),
         "the first stop's hold ended early, the last stop it refused sent after {refused:?}"
+    );
+    assert!(
+        ran < Duration::from_secs(6),
+        "the first stop's hold ended late, the first stop run afresh sent after {ran:?}"
     );
     assert_eq!(
         afresh["error"]["message"], "Tuple hasn't answered in 1 second",

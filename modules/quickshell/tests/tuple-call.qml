@@ -97,6 +97,9 @@ ShellRoot {
     // given was given before the told beside it was read.
     property real readBegan: 0
     property real toldAsOf: 0
+    // Whether a read has begun that its collector hasn't finished, which
+    // the process may say it no longer runs ahead of.
+    property bool collecting: false
 
     Process {
         id: reading
@@ -109,6 +112,7 @@ ShellRoot {
                 root.told = told ?? "";
                 root.closed = closed ?? "";
                 root.toldAsOf = root.readBegan;
+                root.collecting = false;
                 Qt.callLater(root.heard);
             }
         }
@@ -122,7 +126,8 @@ ShellRoot {
         repeat: true
         running: /^(told|asked|closed)/.test(root.waiting)
         onTriggered: {
-            if (!reading.running) {
+            if (!reading.running && !root.collecting) {
+                root.collecting = true;
                 root.readBegan = Date.now();
                 reading.running = true;
             }
