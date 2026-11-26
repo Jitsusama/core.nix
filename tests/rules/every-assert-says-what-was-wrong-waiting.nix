@@ -154,7 +154,6 @@
   "modules/guide/tests/writer/which_stick.rs" = 4;
   "modules/hibernate/unlock/src/fits.rs" = 1;
   "modules/hibernate/unlock/src/floors.rs" = 2;
-  "modules/hibernate/unlock/src/main.rs" = 7;
   "modules/hibernate/unlock/src/restored.rs" = 1;
   "modules/hibernate/unlock/src/zswap.rs" = 8;
   "modules/ir-camera/src/v4l2.rs" = 6;
