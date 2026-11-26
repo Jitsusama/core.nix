@@ -1944,6 +1944,10 @@ QtObject {
             ["- with nothing above", ["-"], "normal", { upHere: false }],
             ["gv on the rows with nothing to take back", ["g", "v"], "normal",
                 { reselectHere: false }],
+            // The drawer's gv asks the word as Prompt.qml does, so a swap of
+            // what reselectHere reads fails here as well as in reselectsHere.
+            ["gv in the drawer with nothing chosen", ["g", "v"], "page",
+                { reselectHere: KeyActs.reselectHere("page", true, "") }],
             ["l moving the caret on a prompt's words", ["l"], "normal", { words: true }],
             ["or w", ["w"], "normal", { words: true }],
             ["or 0", ["0"], "normal", { words: true }],
@@ -1953,8 +1957,12 @@ QtObject {
             ["u undoing an edit of them", ["u"], "normal", { words: true }],
             ["the operator again, swallowed after visual's", ["d"], "normal",
                 { operated: true }],
+            // d and y read as begun on their own, so these hold the guards
+            // by a key that would act without them.
+            ["or j, swallowed as it", ["j"], "normal", { operated: true }],
             ["a key before an ask takes answers", ["y"], "normal",
                 { answering: true, answerTaken: false }],
+            ["or j", ["j"], "normal", { answering: true, answerTaken: false }],
             ["a modifier alone, as the line asks", ["y"], "normal",
                 { alone: true, answering: true }],
             ["Return naming a register after Ctrl+R", ["Return"], "insert",
@@ -1987,6 +1995,8 @@ QtObject {
                 { intoHere: () => { throw new Error("intoHere asked of j"); } }],
             ["- going up", ["-"], "normal", {}],
             ["gv taking a selection back", ["g", "v"], "normal", {}],
+            ["gv in the drawer taking its last choice back", ["g", "v"], "page",
+                { reselectHere: KeyActs.reselectHere("page", false, "pageVisual") }],
             ["j on a prompt's words, still the rows'", ["j"], "normal", { words: true }],
             ["cw on a prompt's words, going into insert as i does", ["c", "w"], "normal",
                 { words: true }],
