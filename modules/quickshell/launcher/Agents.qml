@@ -1954,6 +1954,15 @@ Provider {
             console.info(`launcher: new work wasn't started: ${words.outside}`);
             return;
         }
+        // The same row's Return again while its own start is under way
+        // keeps the receipt it already says, the moment it began and the
+        // seconds since, rather than saying it's busy over it: a start in
+        // the cloud can take minutes, and Joel must still see it took
+        // (2026-11-25 14:33: "no clue if i did it once, twice, thrice").
+        if (sprouting === key) {
+            console.info("launcher: new work's Return was heard again while it starts");
+            return;
+        }
         if (sprouting !== "") {
             sproutSays(key, words.busy, "pending");
             sproutReaches({ started: false, why: words.busy });
@@ -2202,9 +2211,11 @@ Provider {
         sproutCarried = sproutGiven.words;
         // A link's From a Link (newWorkFor) opens over Agents' rows, not Start New Work's, so
         // stepping out of it steps into Start New Work too.
+        // In the Cloud's acts step back to its own rows, so the words then
+        // start in the cloud as he meant, not here.
         const under = launcher.held[launcher.held.length - 2]?.row?.key ?? "";
         launcher.back();
-        if (under !== "agents:start-new-work")
+        if (under !== "agents:start-new-work" && under !== "agents:start-new-work:cloud")
             launcher.enter(startNewWorkMade());
         console.info("launcher: new work wanted a repository; asking where it starts");
         return true;
