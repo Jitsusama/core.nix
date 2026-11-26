@@ -42,17 +42,45 @@ function before(saw, held, seat) {
         ? saw : held;
 }
 
-// How long before niri last told of it a resize began on a workspace's
-// windows, in ms, the longest where several are under way, null for none:
-// niri's own word, as its tile_animation (modules/niri/tiled-positions.patch),
-// so a fall a window grows down over goes with that window's edge.
-function resizing(windows, workspaceId) {
+// How long before niri last told of it a motion of `kind` began on a
+// workspace's windows, in ms, the longest where several are under way, null
+// for none: niri's own word, as its tile_animation
+// (modules/niri/tiled-positions.patch), so a fall a window grows down over
+// goes with that window's edge ("Resize"), and a cat a scroll carries with
+// its window ("ViewMove").
+function animating(windows, workspaceId, kind) {
     const began = Object.values(windows)
         .filter(one => one.workspace_id === workspaceId
-            && one.layout?.tile_animation === "Resize"
+            && one.layout?.tile_animation === kind
             && typeof one.layout?.tile_animation_began_ms_ago === "number")
         .map(one => one.layout.tile_animation_began_ms_ago);
     return began.length ? Math.max(...began) : null;
+}
+
+// What niri last said of a motion of `kind` on a workspace's windows, as a
+// word that changes only when it tells of one again, "" for none. niri says
+// a motion as it begins, never as it ends (tiled-positions.patch), so a
+// window keeps the word of its last scroll until its next layout, and a
+// floating window dragged long after would ride that scroll's spring.
+function told(windows, workspaceId, kind) {
+    return Object.values(windows)
+        .filter(one => one.workspace_id === workspaceId && one.layout?.tile_animation === kind)
+        .map(one => JSON.stringify([one.id, one.layout.tile_animation_began_ms_ago,
+            one.layout.tile_pos_in_workspace_view]))
+        .sort()
+        .join();
+}
+
+// The word `told` says `now`, and when it was first heard: `heard`'s time
+// for the word it already holds, `now` for a new one.
+function hears(heard, word, now) {
+    return heard?.word === word ? heard : { word, at: now };
+}
+
+// Whether the motion `heard` tells of still runs `now`, heard less than
+// `lasts` ms ago, niri's spring's length; never for no word.
+function runs(heard, now, lasts) {
+    return heard !== null && heard.word !== "" && now - heard.at < lasts;
 }
 
 // The tiles of a workspace's windows, each with its column and its row in

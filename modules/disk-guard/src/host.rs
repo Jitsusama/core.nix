@@ -758,7 +758,8 @@ impl Reclaim<'_> {
 const OUTPUT_LIMIT: usize = 64 << 10;
 
 /// Runs a source's command; anything but a clean exit is a failure, told
-/// with the last thing it said on its errors.
+/// with the last thing it said on its errors, as the guard tells Nix's
+/// (`garbage::last_words`), since its own `nix store gc --max` runs here.
 fn run(argv: &[String], timeout: Duration, idle: bool) -> Outcome {
     let job = Job {
         argv: argv.iter().map(Into::into).collect(),
@@ -773,8 +774,7 @@ fn run(argv: &[String], timeout: Duration, idle: bool) -> Outcome {
             status: Some(0), ..
         })) => Outcome::Reclaimed,
         Ok(Ran::Finished(output)) => {
-            let said = String::from_utf8_lossy(&output.stderr);
-            let said = said.lines().rev().find(|line| !line.trim().is_empty());
+            let said = crate::garbage::last_words(&String::from_utf8_lossy(&output.stderr));
             let how = match output.status {
                 Some(code) => format!("it exited {code}"),
                 None => "a signal ended it".to_owned(),

@@ -1018,10 +1018,10 @@ def test_new_work_in_a_zone_by_its_name_begins_at_its_checkouts_top(desktop: Des
     """Start New Work lists a big repository's zone by its name, and starts in one not out.
 
     Joel, 2026-11-24 12:23, wanting to start in a zone of a big repository: "the list of things
-    to start in was shit as well". The launcher asks the realm's node for its places each time
-    it opens, through the agents daemon, and lists each zone a checkout's manifest names. One
-    not checked out has no folder yet, so it starts by its name, and the node begins it at its
-    checkout's top, telling pi to work in a tree of its own that has the zone.
+    to start in was shit as well". The launcher asks the realm's node for its places as Start New
+    Work is stepped into, through the agents daemon, and lists each zone a checkout's manifest
+    names. One not checked out has no folder yet, so it starts by its name, and the node begins
+    it at its checkout's top, telling pi to work in a tree of its own that has the zone.
     """
     machine = desktop.machine
     checkout = "/home/jitsusama/src/github.com/harbour/basin"
@@ -1042,7 +1042,7 @@ def test_new_work_in_a_zone_by_its_name_begins_at_its_checkouts_top(desktop: Des
         desktop.launcher_ready()
         desktop.type_in("new work", selecting="Start New Work")
         machine.send_key("ret")
-        # The node's places come a moment after the launcher opens.
+        # The node's places come a moment after Start New Work is stepped into.
         desktop.launcher_until(lambda shown: row in shown["rows"])
         desktop.down_to(row)
         desktop.step_in("ret")

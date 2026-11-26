@@ -50,16 +50,19 @@ use std::ffi::{c_char, c_int};
 use std::path::Path;
 use std::process::ExitCode;
 
-use crate::follow::{Evening, follow};
+use crate::evening::Evening;
+use crate::follow::follow;
 use crate::found::{about, lights};
+use crate::json::json;
 use crate::light::{
     BRIGHTNESS, Light, POWER, State, TEMPERATURE, ask_state, kelvin, percent, units,
 };
-use crate::watch::{json, watch};
+use crate::watch::watch;
 
 mod evening;
 mod follow;
 mod found;
+mod json;
 mod light;
 mod watch;
 
@@ -185,6 +188,7 @@ mod tests {
 
     use std::fs;
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     /// A folder of the test's own, gone when it is.
     pub(crate) struct Scratch(PathBuf);
@@ -208,8 +212,11 @@ mod tests {
         }
     }
 
+    /// A folder no other test shares, even one asking by the same name.
     pub(crate) fn root(name: &str) -> Scratch {
-        let root = std::env::temp_dir().join(format!("litra-{name}-{}", std::process::id()));
+        static MADE: AtomicUsize = AtomicUsize::new(0);
+        let made = MADE.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!("litra-{name}-{}-{made}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
         Scratch(root)

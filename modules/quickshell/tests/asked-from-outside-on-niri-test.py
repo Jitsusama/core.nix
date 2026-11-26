@@ -28,6 +28,11 @@ COUNTED = f"{len(MARKER)} letters"
 WRITTEN_WITHIN = 5.0
 # How long what a link opens drops every key (Prompt.qml's linkQuiet), and a little more.
 LINK_QUIET = 0.8
+# The launcher's own kinds of key, said whole where an id follows (KeysSaid.js's keysOwn and
+# ownId), and how many letters of such a key a line says.
+KEYS_OWN = ("place:", "category:", "collection:")
+OWN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+OWN_LENGTH = 64
 
 
 # The shell, started once for the file's cases.
@@ -111,14 +116,20 @@ def first_place(shell: Shell) -> Json:
 def assert_walk_said_by_kind(line: str, start: str, place: Json) -> None:
     """Check a one-row walk's line says its row by its key, or its key's kind, and not its name.
 
-    A place's key is the launcher's own, `place:<id>`, said whole, and another's is said by its
-    kind, so either way the id starts with what the line says, which is one step and not none.
+    A place at the launcher's top is keyed by an own kind and an id, as `category:<id>`, said
+    whole to its 64th letter, so the line says exactly that much of it, never only its start;
+    any other key, as a source's `group:<id>`, or an own kind's holding more than an id, is
+    said by its kind alone.
     """
     step = line.removeprefix(f"launcher: {start}")
     assert str(place["words"]) not in line, f"the walk said its row's name: {line}"
     assert step, f"the walk said no row: {line}"
     assert "\u203a" not in step, f"a walk of one row said more than one: {line}"
-    assert str(place["id"]).startswith(step), f"the walk said another row than its own: {line}"
+    key = str(place["id"])
+    kind, _, rest = key.partition(":")
+    own = f"{kind}:" in KEYS_OWN and OWN_ID.fullmatch(rest) is not None
+    wanted = key[:OWN_LENGTH] if own else kind
+    assert step == wanted, f"the walk said another row than its own: {line}"
 
 
 def test_a_catalogue_walk_says_its_rows_by_kind(shell: Shell) -> None:
