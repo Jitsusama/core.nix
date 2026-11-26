@@ -631,6 +631,13 @@ fn what_can_t_be_read_leaves_the_measure_unjudged_saying_why() {
             m.behind
         );
     }
+    write_mission(root.path(), "cited.jsonl", &format!("{bad}\n\n{bad}\n"));
+    assert_eq!(
+        unread(root.path()),
+        "none of cited.jsonl's 2 lines can be read",
+        "a cited.jsonl with no line readable was read as backing nothing"
+    );
+    write_mission(root.path(), "cited.jsonl", &format!("{good}\n"));
     write_mission(
         root.path(),
         "morning-2026-11-25.md",

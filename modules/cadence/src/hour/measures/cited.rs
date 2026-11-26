@@ -354,7 +354,10 @@ pub fn cited_ids(cited: &str, note: &str) -> Result<BTreeSet<String>, String> {
 /// `senders`. A citation backs a line only from a cell other than
 /// `writer` whose message it names, a time only when that message says
 /// it, and a switch time only from the cell running the switches. A
-/// sentence both giving a time and asking counts once.
+/// sentence both giving a time and asking counts once. A cited.jsonl
+/// with lines but none readable is said unread, not read as backing
+/// nothing, since every line it holds counting uncited then says only
+/// that its shape changed.
 pub fn uncited(
     said: &[Said],
     note: &str,
@@ -363,6 +366,10 @@ pub fn uncited(
     writer: &str,
 ) -> Result<Measure, String> {
     let (all, unreadable) = cites(cited);
+    if all.is_empty() && !unreadable.is_empty() {
+        let count = unreadable.len();
+        return Err(format!("none of cited.jsonl's {count} lines can be read"));
+    }
     let backing: Vec<Cite> = all
         .into_iter()
         .filter(|cite| backed(cite, senders, writer))
