@@ -3071,8 +3071,8 @@ def test_a_program_selected_in_programs_is_asked_its_acts_alone_once(shell: Shel
 
 
 # Eight makings of a kind well past the 13 ms a drawer joins its key's frame under, and eight
-# well within it. Four more makings leave DEAR's median at 20 or more, and take CHEAP's to the
-# line only if each takes 25 ms, where a program's makes in 4 to 14 ms, so either stays it.
+# well within it. Four more makings leave DEAR's median at 20 or more, and five take CHEAP's to
+# the line only if each takes 13 ms, where a program's makes in 4 to 14 ms, so either stays.
 DEAR = [40] * 8
 CHEAP = [1] * 8
 
@@ -5046,10 +5046,10 @@ def test_a_drawer_resting_for_the_letters_names_the_row_selected(
     def footed(since: int) -> None:
         shell.reported("drawer follows program:foot", lambda _: True, since)
         if cheap:
-            # Its timing is kept a frame after it's made and said in a showing after that.
-            shell.launcher_until(
-                lambda shown: (shown["drawer"].get("timed") or {}).get("key") == "program:foot"
-            )
+            # Its timing is kept a frame after it's made and said in a showing after that, and
+            # each letter can follow it again, so the whole word is waited for, held still.
+            shell.launcher_until(lambda shown: shown["typed"] == "foot")
+            shell.held_still()
 
     with taught(shell, {"home program": CHEAP if cheap else DEAR}):
         said = typed_from_home(shell, "foot", footed)
