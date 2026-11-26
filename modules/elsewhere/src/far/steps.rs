@@ -266,9 +266,10 @@ cleared() {
 # bring-back before its lists are made and again before they're sorted
 # ask first, which narrows a link put there after to the span of a step
 # rather than closing it. Not asked again: the reads of an archive and
-# its names once written, which is why a refusal is this machine's
-# where the copy's place no longer holds after, and the bring-back's
-# finds appending to its lists, which follow a link put meanwhile. Only
+# its names once written, the unpacking's chmod, the odd files' find and
+# the job's cd, which is why a refusal is this machine's where the
+# copy's place no longer holds after, and the bring-back's finds and
+# reads of its lists, which follow a link put meanwhile. Only
 # a link is caught: a folder put in its place is taken as the copies'
 # own. Under a strict fence either gains a job of the quest nothing it
 # couldn't write itself, so what this guards is which machine is blamed

@@ -343,9 +343,11 @@ if [ "$why" -ne 0 ]; then
   exit {UNTAKEN}
 fi
 cd {folder} || {{
-  printf "elsewhere: the job's folder holds nothing that travels\n" >&2
-  {freed}  say {refused}
-  exit {REFUSES}
+  placed && printf "elsewhere: the job's folder holds nothing that travels\n" >&2; why=$?
+  [ "$why" -eq 0 ] || printf "elsewhere: the job's copy was moved or linked from its place\n" >&2
+  {freed}  [ "$why" -ne 0 ] || {{ say {refused}; exit {REFUSES}; }}
+  say {untaken}
+  exit {UNTAKEN}
 }}
 say {started}
 (
