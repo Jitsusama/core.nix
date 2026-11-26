@@ -29,8 +29,9 @@
 //! slice's `memory.high`, so one set elsewhere, or a set that failed but
 //! landed late, is followed from where it stands, and one cleared or put
 //! past [`TOP`] is put back. One set under the declared ceiling, by hand
-//! as much as by anything, is raised back to it at the first quiet look,
-//! since jobs never holds less than the slice declares.
+//! as much as by anything, stays while anything waits, since raising it
+//! would take from what waits, and is raised back to it once nothing
+//! does and no failed set's wait is running.
 
 use std::time::{Duration, Instant};
 
@@ -83,7 +84,7 @@ pub enum Why {
     /// The first set, to the declared ceiling.
     Declared,
     /// Put back at the declared ceiling after a set that failed, with
-    /// nothing read back to say where it stands.
+    /// nothing read back, or nothing it trusts, to say where it stands.
     Again,
     /// Put back inside its bounds after something else set it outside them.
     Elsewhere,
