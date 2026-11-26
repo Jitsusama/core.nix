@@ -404,7 +404,9 @@ PanelWindow {
                     || (!column.floats && Math.abs(column.top - under.top) > 0.5));
             sat = wanted;
             under = column;
-            if (reshaped) {
+            // Held short of its seat as a scroll caught its walk, it walks
+            // on to it, never put there at once (heldShort).
+            if (reshaped || (heldShort && place !== null)) {
                 walkFrom(true, saw);
             } else {
                 // Back on its own column, it rides with its window from
@@ -444,6 +446,7 @@ PanelWindow {
                 if (Stacked.standsOnTop(drawnAt(), top, { wide: size, tall: size, air: cell })) {
                     halt();
                     sat = was;
+                    heldShort = true;
                 } else {
                     walkOnTo(was, saw);
                 }
@@ -487,8 +490,10 @@ PanelWindow {
     // its spring's length ago, since niri never says one ended, so an old
     // scroll's word, still on its windows, isn't taken for a new one
     // (MarginCatTiles.js's hears). Heard again with each layout niri
-    // sends (onSettledChanged), so each word is dated as near as it can
-    // be to when it came.
+    // sends (onSettledChanged), and with each window niri says again
+    // whole, as a retitle mid-scroll does, layout and all, which only
+    // bumps Niri.revision, so each word is dated as near as it can be to
+    // when it came.
     function scrolling(): bool {
         const now = Date.now();
         scrollHeard = Tiles.hears(scrollHeard, Tiles.told(Niri.windows, space?.id, "ViewMove"),
@@ -496,6 +501,13 @@ PanelWindow {
         return Tiles.runs(scrollHeard, now, slideMs);
     }
     property var scrollHeard: null
+    Connections {
+        target: Niri
+
+        function onRevisionChanged() {
+            window.scrolling();
+        }
+    }
     readonly property var spring: Object.assign({}, Theme.motion.spring,
         { slowdown: Theme.motion.slowdown })
     readonly property int slideMs: MarginCat.slides(spring)
@@ -542,12 +554,15 @@ PanelWindow {
     // its place that has it drawn now.
     property var carry: null
     property var lag: ({ x: 0, y: 0 })
+    // Whether it was held short of the seat `sat` names, its walk there
+    // caught by a scroll, until its next walk sets off (walks).
+    property bool heldShort: false
     // Under the launcher's card it draws none of the ride, as it draws no
-    // walk (stilled, below): it holds where it was drawn, and as the card
-    // goes its ride, timed by the clock, has ended at its place, as niri's
-    // scroll has.
+    // walk (stilled, below), apart from one his hand set off, which runs
+    // on as his walks do; every other is put at its place as the card
+    // comes (rideTo, onStilledChanged).
     FrameAnimation {
-        running: window.carry !== null && !window.stilled
+        running: window.carry !== null && !(window.stilled && !window.byHand)
         onTriggered: {
             const t = Date.now() - window.carry.at;
             // A clock stepped back ends it too, rather than holding it
@@ -623,15 +638,19 @@ PanelWindow {
     // A walk on to the window `id`'s seat where niri has it now, riding
     // what moved of the windows it `saw`, rather than to the keys' window,
     // still standing on `id` for what follows; held where it's drawn if
-    // that window has no tile here now.
+    // that window has no tile here now, or no seat on the screen, as one
+    // niri scrolled wholly past its edge, rather than walking on over the
+    // air to where it was.
     function walkOnTo(id: var, saw: var): void {
         const onto = tile(id);
-        if (onto === null) {
+        const to = onto === null ? null : seat(onto);
+        if (to === null) {
             halt();
             sat = id;
+            heldShort = true;
             return;
         }
-        walkTo(true, saw, seat(onto));
+        walkTo(true, saw, to);
         goingTo = id;
         under = onto;
         if (going === null)
@@ -721,6 +740,7 @@ PanelWindow {
             steps = 0;
         }
         byHand = false;
+        heldShort = false;
         // Set off before a scroll's spring settled, it walks from where
         // that had it drawn, as its plan does.
         unride();
