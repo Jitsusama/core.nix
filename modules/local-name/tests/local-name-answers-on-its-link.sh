@@ -65,13 +65,16 @@ EOF
 # seconds, so a job that starts dns-sd before it says the name is offered
 # has the reply first in its log, unless its dns-sd takes longer than that
 # to start, and one that says it first, with no dns-sd yet to reply, waits
-# out the ten seconds and still has its line first. That case checks the
-# stamp was asked for, since a job stamping its lines another way would
-# skip the wait.
+# out the ten seconds and still has its line first. That case checks each
+# of its lines asked for a stamp, since a job stamping one another way
+# would skip the wait. Asked otherwise, it says so and refuses.
 cat > "$work/bin/date" <<EOF
 #!${bash}
-[ "\$*" = "-u +%Y-%m-%dT%H:%M:%SZ" ] || exit 64
-touch "$work/stamped"
+if [ "\$*" != "-u +%Y-%m-%dT%H:%M:%SZ" ]; then
+  echo "stand-in date: asked for \$*, not the job's stamp" >&2
+  exit 64
+fi
+echo >> "$work/stamped"
 if [ -e "$work/ends" ]; then
   tries=0
   while [ ! -e "$work/replied" ] && [ "\${tries}" -lt 100 ]; do
@@ -214,5 +217,8 @@ holds "an answer that ends" 1 "its-own-name.local is offered as 192.168.4.49 on 
 Got a reply for record its-own-name.local: Name in use, please choose another
 the answer for its-own-name.local on en0 ended (exit 3), so it starts again" \
   "${on_en0}"
-[ -e "$work/stamped" ] \
-  || fail "an answer that ends: its lines weren't stamped by date, so their order went unheld"
+stamps=0
+# Read as a number, since macOS's wc pads its count with blanks.
+[ ! -e "$work/stamped" ] || stamps=$(($(wc -l < "$work/stamped")))
+[ "${stamps}" = 2 ] ||
+  fail "an answer that ends: date stamped ${stamps} of its 2 lines, so their order went unheld"

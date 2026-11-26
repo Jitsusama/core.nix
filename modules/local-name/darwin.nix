@@ -21,8 +21,11 @@
 # how). That host is spelled as the Mac's own name, so whether macOS's name
 # service keeps the record apart from its own, rather than bringing them
 # back or renaming the Mac, is its to decide, and not yet seen on a Mac.
-# A Mac where it doesn't would show it in the logs: keep.sh saying the
-# local name was name-2, or dns-sd's own line saying the name is in use.
+# A Mac renaming itself would show it in keep.sh's log, the local name
+# was name-2, and one refusing the record in dns-sd's line saying the name
+# is in use; one bringing its own records back on every interface shows in
+# neither, only as its name service's load and its answers naming the
+# loopback aliases' addresses.
 # Any service advertised for the host, Remote Login's included, would
 # bring the records back.
 {
