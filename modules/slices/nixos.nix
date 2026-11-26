@@ -535,10 +535,12 @@ in
     # written 97% of what app.slice swapped on to the disk, and 97.5% of its
     # swap-ins read the disk, against about a fifth for agents' sessions and
     # for builds, which looks like zswap's shrinker reaching the pages idle
-    # longest first. Compressed, they take about a third of the memory, in
-    # zswap's pool, which is capped at a fifth of it: a page that finds the
-    # pool full stays in memory as it is rather than going to disk, and
-    # what the rest swap is written back to make room. The kernel reads the
+    # longest first. Compressed, a page takes about a third of what it
+    # held, in zswap's pool, which holds at most a fifth of the memory. A
+    # page zswap turns away, as one that won't compress or that finds the
+    # pool full, stays in memory as it is rather than going to disk; the
+    # pool makes room only by writing back what the rest swapped, and once
+    # full takes nothing until it falls to nine tenths. The kernel reads the
     # setting up the tree, so it holds for every program's scope inside,
     # whatever jobs-sorter gives back to a window's own.
     systemd.user.slices.session.sliceConfig = {
