@@ -267,13 +267,14 @@ leave() {
   names+=("${name}")
 }
 # Sets real to start `path`'s real path, by its folder's with its name,
-# clearing judged when that folder can't be entered.
+# clearing judged when that folder can't be entered; with no folder there,
+# real is left empty, for du to say.
 by_folder() {
   local folder=.
   [[ ${path} != */* ]] || folder=${path%/*}
   real "${folder:-/}"
   [ -z "${real}" ] || real=${real%/}/${path##*/}
-  [ -n "${real}" ] || judged=""
+  [ -n "${real}" ] || [ ! -e "${folder:-/}" ] || judged=""
 }
 # Sets real to the real path of link $1, which du follows, by the links it
 # leads through: each is read as written, from the real folder holding it,
@@ -286,7 +287,9 @@ by_end() {
   local path=$1 to links=0
   while :; do
     by_folder
-    [ -n "${judged}" ] || return 0
+    if [ -z "${judged}" ] || [ -z "${real}" ]; then
+      return 0
+    fi
     plain "" "${real}"
     [ -z "${inside}" ] || return 0
     [ -L "${real}" ] || break
