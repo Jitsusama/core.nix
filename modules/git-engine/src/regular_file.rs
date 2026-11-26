@@ -208,4 +208,60 @@ mod tests {
              isn't a file was read"
         );
     }
+
+    // packed-refs, a loose tag, the alternates and a loose object each a
+    // FIFO, as the readers of the refs, the tags and the objects meet them,
+    // apart for the same reason as above.
+    #[test]
+    fn no_reader_of_tags_or_objects_waits_on_a_fifo() {
+        use crate::hash::Oid;
+        use crate::reftable::Value;
+        let git = crate::pack_index::tests::unique("fifo-tags");
+        let main = "1111111111111111111111111111111111111111";
+        std::fs::create_dir_all(git.join("refs/heads")).expect("the temp folder takes a folder");
+        std::fs::create_dir_all(git.join("refs/tags")).expect("the temp folder takes a folder");
+        std::fs::write(git.join("refs/heads/main"), main).expect("the temp folder takes a file");
+        std::fs::write(git.join("refs/tags/v2"), main).expect("the temp folder takes a file");
+        let object = Oid([3; 20]);
+        let hex = object.hex();
+        for path in [
+            git.join("packed-refs"),
+            git.join("refs/tags/v1"),
+            git.join("objects/info/alternates"),
+            git.join("objects").join(&hex[..2]).join(&hex[2..]),
+        ] {
+            fifo(&path);
+        }
+        let (send, heard) = std::sync::mpsc::channel();
+        let readers = git.clone();
+        std::thread::spawn(move || {
+            let git = readers;
+            let main = crate::refs::Refs::open(&git, &git, false)
+                .map(|refs| refs.read("refs/heads/main"))
+                .map_err(|error| error.kind());
+            let (mut stamps, mut peeled) = (Vec::new(), std::collections::HashMap::new());
+            let tags = crate::tags::files(&git, &mut stamps, &mut peeled);
+            let mut odb = crate::odb::Odb::open(&git.join("objects"));
+            let kind = odb.kind(&object).map(|_| ()).map_err(|error| error.kind());
+            let read = odb.read(&object).map(|_| ()).map_err(|error| error.kind());
+            let _ = send.send((main, tags, kind, read));
+        });
+        let heard = heard.recv_timeout(std::time::Duration::from_secs(30));
+        let _ = std::fs::remove_dir_all(&git);
+        let oid = Oid::from_hex(main.as_bytes()).expect("main's line is an oid");
+        let refused = Err(std::io::ErrorKind::InvalidData);
+        assert_eq!(
+            heard
+                .expect("a reader of refs, tags or objects was still waiting on a FIFO after 30 s"),
+            (
+                Ok(Some(Value::Oid(oid))),
+                vec![("v2".to_owned(), oid)],
+                refused,
+                refused
+            ),
+            "a loose ref beside a packed-refs that isn't a file wasn't read, a loose tag \
+             that isn't one was named, or a loose object that isn't a file was kinded or \
+             read"
+        );
+    }
 }

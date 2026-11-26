@@ -369,11 +369,8 @@ impl Repo {
         // A rebase or am says how far through it is, as `rebase-i 2/5`.
         let step = |done: &str, all: &str| {
             let read = |name: &str| {
-                std::fs::read_to_string(dir.join(name))
-                    .ok()?
-                    .trim()
-                    .parse::<u64>()
-                    .ok()
+                let bytes = crate::regular_file::read(&dir.join(name)).ok()??;
+                String::from_utf8(bytes).ok()?.trim().parse::<u64>().ok()
             };
             Some(format!(" {}/{}", read(done)?, read(all)?))
         };

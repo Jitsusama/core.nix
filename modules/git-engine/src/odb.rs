@@ -600,7 +600,10 @@ impl Odb {
         let mut at = 0;
         while at < dirs.len() && dirs.len() < 16 {
             let alternates = dirs[at].join("info/alternates");
-            if let Ok(text) = std::fs::read_to_string(&alternates) {
+            // Read only as a file, as every other file of git's is.
+            if let Ok(Some(bytes)) = crate::regular_file::read(&alternates)
+                && let Ok(text) = String::from_utf8(bytes)
+            {
                 for line in text
                     .lines()
                     .map(str::trim)
