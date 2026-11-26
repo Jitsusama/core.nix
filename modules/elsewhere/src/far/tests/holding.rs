@@ -104,7 +104,8 @@ PATH=${{PATH#*:}} exec uname "$@""#
             home.join("swapped").exists()
                 && code == Some(75)
                 && err.contains(said)
-                && !err.contains("so its tree stays"),
+                && !err.contains("so its tree stays")
+                && !err.contains("put above the job's tree"),
             "a link left above the handover wasn't answered untaken, saying {said:?} \
              ({code:?}): {err}"
         );
@@ -292,28 +293,40 @@ PATH=${{PATH#*:}} exec mkdir "$@""#
     let _ = std::fs::remove_dir_all(&home);
 }
 
+/// A swap a job of the quest makes as the copy is made: the step, when,
+/// whether after it, the swap, what must stay, what must never be made
+/// through the link, and whether the link is pinned.
+type Swap = (
+    &'static str,
+    &'static str,
+    bool,
+    &'static str,
+    &'static [&'static str],
+    &'static [&'static str],
+    bool,
+);
+
 #[test]
 fn a_link_put_at_the_copies_folder_or_the_copy_while_it_is_made_leaves_the_job_untaken() {
     // Another job of the quest moving the copies' folder aside, with a
     // link to it at its name, as the archive's names are read, where the
     // far line may clear the link and where it may not; or moving the copy
-    // aside, with a link at its name, once tar unpacked into it, or once
-    // the copy was checked, before the job's cd; or moving the copies'
-    // folder aside then, where the link can't be cleared. Each is this
-    // machine's to answer, nothing is unpacked or cleared through the
-    // link, and the job never runs.
+    // aside, with a link at its name, once tar unpacked into it, once its
+    // folders were opened, so the odd files' find meets the link and a
+    // refusal reads through it, or once the copy was checked, before the
+    // job's cd; or moving the copies' folder aside then, where the link
+    // can't be cleared. Each is this machine's to answer, nothing is
+    // unpacked or cleared through the link, and the job never runs.
     let folder = r#"mv "$s" "$HOME/aside" && ln -s "$HOME/aside" "$s""#;
     let copy = r#"mv "$s/1" "$HOME/moved" && ln -s "$HOME/moved" "$s/1""#;
     let (rm, pinned) = refusing("rm", "*\"/.s \"*", "exit 1");
-    // Each: the step, when, whether after it, the swap, what must stay,
-    // what must never be made through the link, and whether it's pinned.
-    let cases: [(&str, &str, bool, &str, &[&str], &[&str], bool); 5] = [
+    let cases: [Swap; 6] = [
         (
             "tar",
             "*\" -tf \"*",
             false,
             folder,
-            &["aside/1.run", "aside/1.tar"],
+            &["aside/1.run", "aside/1.tar", "aside/1.names"],
             &["aside/1/a"],
             false,
         ),
@@ -322,11 +335,22 @@ fn a_link_put_at_the_copies_folder_or_the_copy_while_it_is_made_leaves_the_job_u
             "*\" -tf \"*",
             false,
             folder,
-            &["aside/1.run", "aside/1.tar"],
+            &["aside/1.run", "aside/1.tar", "aside/1.names"],
             &["aside/1/a"],
             true,
         ),
         ("tar", "*\" -xf \"*", true, copy, &["moved/a"], &[], false),
+        // Only the copy step's own find opens with the copy: `cleared`'s
+        // opens with -P.
+        (
+            "find",
+            "\" /\"*\"/.s/1 -type d \"*",
+            true,
+            copy,
+            &["moved/a"],
+            &[],
+            false,
+        ),
         (
             "find",
             "*\" -links \"*",
@@ -341,7 +365,7 @@ fn a_link_put_at_the_copies_folder_or_the_copy_while_it_is_made_leaves_the_job_u
             "*\" -links \"*",
             true,
             folder,
-            &["aside/1.run", "aside/1/a"],
+            &["aside/1.run", "aside/1/a", "aside/1.names"],
             &[],
             true,
         ),

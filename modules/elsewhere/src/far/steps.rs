@@ -261,13 +261,18 @@ cleared() {
 # there cleared first: a job of the quest may put one there while this
 # line runs, and the copy, what lies beside it and its run's file are
 # each written, unpacked or cleared by name through that folder. The
-# start's clearing, each archive's rename, the archive's names list, the
-# unpacking, the clearings after and the bring-back's lists, after its
-# finds, ask first, which narrows a link put there after to the span of
-# a step rather than closing it; the copy loop and what it reads after
-# aren't asked again. Only a link is caught: a folder put in its place
-# is taken as the copies' own, which gains a job of the quest nothing it
-# couldn't write itself. One cleared is said.
+# sweep before each copy it clears, the start's clearing, each archive's
+# rename and names list, the unpacking, each clearing after, and the
+# bring-back before its lists are made and again before they're sorted
+# ask first, which narrows a link put there after to the span of a step
+# rather than closing it. Not asked again: the reads of an archive and
+# its names once written, which is why a refusal is this machine's
+# where the copy's place no longer holds after, and the bring-back's
+# finds appending to its lists, which follow a link put meanwhile. Only
+# a link is caught: a folder put in its place is taken as the copies'
+# own. Under a strict fence either gains a job of the quest nothing it
+# couldn't write itself, so what this guards is which machine is blamed
+# and what is kept. One cleared is said.
 copies() {
   [ ! -L "${work%/*}" ] || { rm -f "${work%/*}" 2>/dev/null
     [ -L "${work%/*}" ] || printf "elsewhere: a link at its copies' folder was cleared\n" >&2; }
@@ -439,7 +444,7 @@ pub(super) fn copying() -> String {
     [ "$unpacked" -eq 0 ] || exit 2
     odd=$(find "$work" -type l -o -type p -o -type s -o -type b -o -type c \
       -o ! -type d -links +1) || exit 2
-    [ -z "$odd" ] || {{ placed || exit 2
+    [ -z "$odd" ] || {{
       printf "elsewhere: the job's tree holds %s, which is neither a file nor a folder of its own\n" "${{odd%%
 *}}" >&2
       exit 1

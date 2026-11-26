@@ -327,13 +327,13 @@ if {{ [ ! -L "$runs" ] || rm -f "$runs"; }} && mkdir -p "$runs" &&
   (set -C && printf '%s %s\n' "$$" "$here" > "$work{RUN}") && mine=1 &&
   copies && cleared "$work" && mkdir "$work"; then copied; why=$?; else why=2; fi
 # What was taken as an archive may be a folder the job named as one. A
-# link standing at the copies' folder or at the copy as it's checked,
-# which the job's `cd` would follow, or a copy gone with one cleared,
-# leaves it untaken, as this machine's; one put after isn't caught.
+# link standing at the copies' folder or at the copy as it's checked, or
+# a copy gone with one cleared, leaves it untaken, as this machine's, as
+# does a refusal that may have read through one; one put after isn't.
 [ -z "$mine" ] || if copies; then rm -f "$work.names"; cleared "$work.tar"
-  [ "$why" -ne 0 ] || placed ||
+  [ "$why" -eq 2 ] || placed ||
     {{ printf "elsewhere: the job's copy was moved or linked from its place\n" >&2; why=2; }}
-elif [ "$why" -eq 0 ]; then why=2; fi
+else why=2; fi
 # The tree and the copy go as `freed` says.
 if [ "$why" -ne 0 ]; then
   [ -z "$mine" ] || {{
