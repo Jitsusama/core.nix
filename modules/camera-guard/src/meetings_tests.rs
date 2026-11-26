@@ -136,3 +136,39 @@ fn kept_meetings_come_back_as_they_were_and_none_kept_reads_as_none() {
     );
     std::fs::remove_dir_all(&folder).unwrap();
 }
+
+/// Asks a stand-in daemon on a socket of its own that answers with `said`,
+/// then closes.
+fn asked(name: &str, said: Vec<u8>) -> Result<Value, String> {
+    let folder = std::env::temp_dir().join(format!("camera-guard-{name}-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).unwrap();
+    let socket = folder.join("google.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    let daemon = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut ask = String::new();
+        BufReader::new(&stream).read_line(&mut ask).unwrap();
+        // The guard stops reading at its limit and hangs up, which a write
+        // past it hears as a broken pipe; that's the guard's choice, not a fault.
+        let _ = stream.write_all(&said);
+    });
+    let answer = ask(&socket);
+    daemon.join().unwrap();
+    std::fs::remove_dir_all(&folder).unwrap();
+    answer
+}
+
+#[test]
+fn an_answer_is_read_and_one_past_the_limit_is_refused() {
+    assert_eq!(
+        asked("short", b"{\"read\":1,\"records\":[]}\n".to_vec()),
+        Ok(json!({"read": 1, "records": []})),
+        "a daemon's one-line answer wasn't read"
+    );
+    let endless = vec![b' '; usize::try_from(LONGEST).unwrap() + 1];
+    let refused = asked("endless", endless).unwrap_err();
+    assert!(
+        refused.ends_with(&format!("the answer ran past {LONGEST} bytes")),
+        "an answer past the limit wasn't refused as too long: {refused}"
+    );
+}
