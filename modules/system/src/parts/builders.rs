@@ -115,6 +115,7 @@ fn builder(said: &Value) -> Option<(Thing, Vec<String>)> {
         looks: look
             .iter()
             .map(|side| Look {
+                health,
                 side: side.clone(),
                 matters: matters(side).to_owned(),
             })
@@ -224,6 +225,10 @@ mod tests {
                 assert_eq!(sides, thing.side, "the looks say the side's looks");
                 for look in &thing.looks {
                     assert!(look.matters.ends_with('.'), "{look:?} says why it matters");
+                    assert_eq!(
+                        look.health, thing.health,
+                        "{look:?} isn't as bad as the builder it is the one look of"
+                    );
                 }
                 (thing.name, thing.health, thing.says, thing.side)
             })
