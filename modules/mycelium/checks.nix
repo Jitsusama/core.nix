@@ -1576,10 +1576,13 @@ in
   # What work begun in some folders or naming some words needs is written
   # in mycelium's words, each need as mycelium reads it from the words
   # `--need` takes, and left out where nothing is said. A need mycelium
-  # couldn't read fails here rather than reading as none.
+  # couldn't read fails here rather than reading as none. The kinds are
+  # read from the locked mycelium's own Need, so one it gains or renames
+  # fails here, and its declaration must take fields it doesn't know, or
+  # a node on the lock would refuse the whole file.
   mycelium-declares-what-work-needs =
     holds "mycelium-declares-what-work-needs"
-      "What a machine declares work begun in some folders or naming some words needs isn't written in mycelium's words, a cloud need isn't written alone or a kind=value one as its kind keyed to its value, one is written where nothing is said, or a need mycelium can't read, a rule naming none, or an empty folder or word is taken."
+      "What a machine declares work begun in some folders or naming some words needs isn't written in mycelium's words, a cloud need isn't written alone or a kind=value one as its kind keyed to its value, one is written where nothing is said, a kind the locked mycelium's Need has isn't taken, the locked mycelium's declaration refuses fields it doesn't know, or a need mycelium can't match, a rule naming none, or an empty, ~, / or /-ended folder or empty word is taken."
       (
         let
           rule = {
@@ -1588,12 +1591,31 @@ in
             needs = [
               "reach=inner"
               "system=linux"
+              "arch=x86_64"
+              "machine=box-1"
+              "tool=gcloud"
+              "accelerator=gpu"
               "cloud"
             ];
           };
           taken =
             extra:
             (builtins.tryEval (builtins.deepSeq (declaredAs { needsIn = [ (rule // extra) ]; }) true)).success;
+          # Each variant of the locked Need, as its snake_case reads it,
+          # with a value of its kind beside it.
+          enumOf =
+            file: enum:
+            let
+              after = lib.last (lib.splitString "pub enum ${enum} {" (builtins.readFile file));
+              lines = lib.splitString "\n" (lib.head (lib.splitString "\n}" after));
+            in
+            map (line: lib.toLower (lib.head line)) (
+              lib.filter (line: line != null) (map (builtins.match "    ([A-Z][A-Za-z]*)(\\(.*\\))?,") lines)
+            );
+          locked = "${self.inputs.mycelium}/src";
+          kinds = enumOf "${locked}/placement.rs" "Need";
+          said =
+            kind: if kind == "cloud" then kind else "${kind}=${if kind == "accelerator" then "gpu" else "a"}";
         in
         (declaredAs { needsIn = [ rule ]; }).needs_in or null == [
           {
@@ -1601,16 +1623,42 @@ in
             needs = [
               { reach = "inner"; }
               { system = "linux"; }
+              { arch = "x86_64"; }
+              { machine = "box-1"; }
+              { tool = "gcloud"; }
+              { accelerator = "gpu"; }
               "cloud"
             ];
           }
         ]
+        && kinds != [ ]
+        && lib.all (kind: taken { needs = [ (said kind) ]; }) kinds
+        &&
+          enumOf "${locked}/facts.rs" "AcceleratorKind" == [
+            "gpu"
+            "npu"
+          ]
+        && !lib.hasInfix "deny_unknown_fields" (builtins.readFile "${locked}/declared.rs")
         && !((declared linux) ? needs_in)
         && taken { }
+        && taken { words = [ ]; }
+        && taken { folders = [ ]; }
+        && !taken {
+          folders = [ ];
+          words = [ ];
+        }
         && !taken { needs = [ "reach" ]; }
         && !taken { needs = [ "colour=blue" ]; }
+        && !taken { needs = [ "reach=" ]; }
+        && !taken { needs = [ "reach=a=b" ]; }
+        && !taken { needs = [ "reach=Inner" ]; }
+        && !taken { needs = [ "reach=inner net" ]; }
+        && !taken { needs = [ "accelerator=tpu" ]; }
         && !taken { needs = [ ]; }
         && !taken { folders = [ "" ]; }
+        && !taken { folders = [ "~/src/inner" ]; }
+        && !taken { folders = [ "src/inner/" ]; }
+        && !taken { folders = [ "/" ]; }
         && !taken { words = [ "" ]; }
       );
 

@@ -134,7 +134,15 @@ rec {
       # naming a machine, asking needs of its own or staying here starts as
       # asked; a mycelium that predates them ignores them.
       needsIn = lib.mkOption {
-        type = lib.types.listOf needsIn;
+        type = lib.types.listOf needRule;
+        # A rule naming neither folders nor words would name no work, so
+        # it's refused rather than taken as meaning none.
+        apply = map (
+          rule:
+          lib.throwIf (
+            rule.folders == [ ] && rule.words == [ ]
+          ) "jitsusama.mycelium.declares.needsIn: a rule names no folder and no word" rule
+        );
         default = [ ];
         example = [
           {
@@ -148,8 +156,10 @@ rec {
           begun in one of a rule's folders or below, or whose words hold
           one of its words in any case, needs each of its needs. Work met
           only by a probe is refused while no machine's probe answers,
-          rather than started where it can't work. A mycelium that
-          predates this ignores it.
+          rather than started where it can't work. It keeps work from a
+          machine it can't work on, and is no fence: a sprout naming its
+          own machine or needs, an agent's included, starts as it asks. A
+          mycelium that predates this ignores it.
         '';
       };
       # A carry an orchestrator orders lands only in a kind at least as
@@ -194,13 +204,15 @@ rec {
   };
   # Work begun in some folders, or naming some words, and what it needs,
   # each need as `mycelium sprout --need` takes it.
-  needsIn = lib.types.submodule {
+  needRule = lib.types.submodule {
     options = {
+      # A folder written from `~`, ending in `/` or the root alone would
+      # match nothing, or everything, as mycelium compares folders.
       folders = lib.mkOption {
-        type = lib.types.listOf lib.types.nonEmptyStr;
+        type = lib.types.listOf (lib.types.strMatching "[^~/]|[^~].*[^/]");
         default = [ ];
         example = [ "src/inner" ];
-        description = "The folders, each within home unless whole, whose work or work below needs these.";
+        description = "The folders, each within home unless whole, never from ~ or ending in /, whose work or work below needs these.";
       };
       words = lib.mkOption {
         type = lib.types.listOf lib.types.nonEmptyStr;
@@ -208,9 +220,19 @@ rec {
         example = [ "forge.example" ];
         description = "The words, such as a link's host, whose naming anywhere in work's words, in any case, needs these.";
       };
+      # Each value as a machine can say it: a reach as reach is declared,
+      # an accelerator of a kind mycelium knows, and other values as the
+      # lowercase names machines, systems, architectures and tools go by.
       needs = lib.mkOption {
         type = lib.types.nonEmptyListOf (
-          lib.types.strMatching "cloud|(machine|system|arch|reach|accelerator|tool)=.+"
+          lib.types.strMatching (
+            lib.concatStringsSep "|" [
+              "cloud"
+              "reach=[a-z0-9-]+"
+              "accelerator=(gpu|npu)"
+              "(machine|system|arch|tool)=[a-z0-9][a-z0-9_.-]*"
+            ]
+          )
         );
         example = [ "reach=inner" ];
         description = "What such work needs: cloud, or kind=value, as `mycelium sprout --need` takes it.";
