@@ -202,10 +202,6 @@
   "modules/quickshell/in-a-terminal/src/main.rs" = 12;
   "modules/quickshell/in-a-terminal/src/names.rs" = 3;
   "modules/quickshell/keyboard-lights.rs" = 1;
-  "modules/quickshell/timekeeping/src/calendar.rs" = 2;
-  "modules/quickshell/timekeeping/src/candm.rs" = 6;
-  "modules/quickshell/timekeeping/src/chrony.rs" = 3;
-  "modules/quickshell/timekeeping/src/service.rs" = 7;
   "modules/quickshell/timers/src/lib.rs" = 20;
   "modules/quickshell/whereabouts/src/fix.rs" = 16;
   "modules/quickshell/whereabouts/src/named.rs" = 2;
