@@ -149,7 +149,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
             fallback,
         ));
         measures.push(spent_beside_landed(&state_home, now));
-        measures.extend(spend_watch_measures(now));
+        measures.extend(spend_watch_measures());
     }
     // Every measure read, each is held to its line on the definition of
     // good, and one with none, or another target, is counted.
@@ -324,7 +324,7 @@ fn gather(
         &state_home.join("code-health/hour.json"),
     )));
     let apps = fs::read_to_string(state_home.join(measures::apps::FILE)).ok();
-    all.extend(measures::apps::apps(apps.as_deref(), now));
+    all.extend(measures::apps::apps(apps.as_deref(), now_ms() / 1000));
     let watched = measures::load::read(&state_home, now);
     all.push(measures::load::load(&watched, now));
     let wifid = measures::wifi::read(now);
@@ -486,11 +486,11 @@ fn spent_beside_landed(state_home: &Path, now: i64) -> Measure {
     measures::spent::beside(collection.as_deref(), &landed, measures::ASKS)
 }
 
-/// What spend-watch's collection says at `now` of budgets: those billed
-/// under what they logged, and those sessions couldn't draw on. It
-/// rewrites its collection only when its text changes, so its heartbeat,
-/// not the file's time, says whether it's current.
-fn spend_watch_measures(now: i64) -> [Measure; 2] {
+/// What spend-watch's collection says of budgets as it's read: those billed under what they
+/// logged, and those sessions couldn't draw on. It rewrites it only as its text changes, so its
+/// heartbeat says if it's current, by the clock at the read: an hour may be 17 minutes old here.
+fn spend_watch_measures() -> [Measure; 2] {
+    let now = now_ms() / 1000;
     let collection = spend_watch_file("collection.json");
     let status = spend_watch_file("status.json");
     [
