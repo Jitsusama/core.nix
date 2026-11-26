@@ -250,8 +250,11 @@ in
       order = 48;
       source = ./Passwords.qml;
       # Off, reaching no daemon, until agents are fenced off Joel's runtime
-      # folder and Wayland; the checks that walk it turn it on, where no
-      # agent runs and no secret is real.
+      # folder and Wayland: any process of his can write to the daemon
+      # through the shell's own pipes, and drive the launcher through its
+      # IPC and a virtual keyboard, so a type or a read would need no act
+      # of his (ISXEG8's R-type-password-spawned, 2026-11-25). The checks
+      # that walk it turn it on, where no agent runs and no secret is real.
       off = true;
       managers = map (manager: {
         inherit (manager)
@@ -267,6 +270,13 @@ in
       # on the place's own connection, which Asks draws them over; an off
       # place runs no daemon, so it needn't say the place is on.
       answersAsks = config.jitsusama.passwords.releases != [ ];
+      # What types a password into the window the launcher opened over, as
+      # an entry's Return does while copying is off: wtype, reading it on
+      # its standard input, never its arguments; and kitten, which asks a
+      # kitty what runs in its window, so nothing is typed into a terminal
+      # running an agent (src/typing.rs).
+      typist = lib.getExe pkgs.wtype;
+      kitty = lib.getExe' pkgs.kitty "kitten";
       # The daemon the place runs as its own child, for the shell's life.
       daemon = [
         (lib.getExe passwords)

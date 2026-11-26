@@ -68,6 +68,12 @@ pub fn refused(message: &str) -> Value {
     json!({"error": {"code": "refused", "message": message}})
 }
 
+/// An act Tuple's command hadn't answered in time, which it may still
+/// do once it does answer.
+pub fn unanswered(message: &str) -> Value {
+    json!({"error": {"code": "unanswered", "message": message}})
+}
+
 /// The first call link in some text, as `tuple call join` takes one, or
 /// "": `https://tuple.app/c/` or `https://production.tuple.app/c/` and
 /// the room's letters, digits, dashes and underscores.

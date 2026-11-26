@@ -2423,9 +2423,9 @@ mod tests {
     use hyper::body::Body as _;
 
     use super::{
-        BODY_WITHIN, Counts, HELD_AHEAD_AT_MOST, InPieces, Origin, Retiring, SAID_AT_MOST,
-        SLEPT_AT_LEAST, Sender, Slot, Unread, fails_the_path, goes_again, goes_direct,
-        goes_once_more, reach, reach_any, read_whole, slept, with_causes,
+        BODY_WITHIN, Counts, HELD_AHEAD_AT_MOST, InPieces, Named, Origin, Retiring, SAID_AT_MOST,
+        SLEPT_AT_LEAST, Sender, Slot, Unnamed, Unreachable, Unread, fails_the_path, goes_again,
+        goes_direct, goes_once_more, reach, reach_any, read_whole, slept, unmade, with_causes,
     };
 
     /// How the origin ends a request it hasn't answered.
@@ -2909,6 +2909,52 @@ mod tests {
             none.err().map(|why| why.kind()),
             Some(std::io::ErrorKind::ConnectionRefused),
             "a refusal isn't said as a timeout"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_name_no_lookup_finds_is_unnamed_and_never_marked_looked_up() {
+        let looked_up = AtomicBool::new(false);
+
+        // The trailing dot makes the name whole, so no search domain the
+        // machine's resolver adds can turn it into one that resolves.
+        let reaching = reach(
+            "model-relay.invalid.",
+            443,
+            Duration::from_secs(2),
+            &looked_up,
+        );
+        // The budget given to reach bounds the connection, not the lookup,
+        // which the relay bounds from outside; this bounds it here, so a
+        // resolver that never answers fails the test rather than hangs it.
+        let failed = tokio::time::timeout(Duration::from_secs(10), reaching)
+            .await
+            .expect("the machine's resolver took over 10 s to fail a name under .invalid");
+
+        let unnamed = failed
+            .err()
+            .and_then(std::io::Error::into_inner)
+            .is_some_and(|why| why.is::<Unnamed>());
+        assert!(unnamed, "a name no lookup finds wasn't said as unnamed");
+        assert!(
+            !looked_up.load(Ordering::Relaxed),
+            "a name no lookup finds was marked as looked up"
+        );
+    }
+
+    #[test]
+    fn a_connection_not_made_in_time_before_its_name_resolved_is_the_names_doing() {
+        // Once the name resolved it is late instead, which the 504
+        // integration test already shows end to end.
+        let unresolved = unmade(
+            Named { at: 0, number: 0 },
+            Duration::from_secs(10),
+            &AtomicBool::new(false),
+        );
+
+        assert!(
+            matches!(unresolved, Unreachable::Unnamed),
+            "a lookup outlasting the budget wasn't said as the name's"
         );
     }
 

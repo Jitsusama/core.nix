@@ -45,7 +45,7 @@ class Litra:
 
     def __call__(self, report: bytes) -> bytes:
         """Answer one report."""
-        # After the report id and the header, as litra.rs's `report` builds it.
+        # After the report id and the header, as light.rs's `report` builds it.
         command = report[3:4][0] if report[3:4] else 0
         if command in LITRA_SETS:
             question = LITRA_SETS[command]

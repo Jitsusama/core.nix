@@ -191,8 +191,9 @@
   # tuple whose stream says each line the test writes, and whose other commands
   # are kept, while a listener stands in for Tuple's daemon answering. The shell
   # tells who comes and goes through a stand-in notify-send that keeps what it's
-  # asked. The daemon's own reading of Tuple is its tests', run as it builds
-  # (tuple-call-holds-the-call).
+  # asked and waits as notify-send waits, and closes notices through a stand-in
+  # busctl that keeps each close (tests/stand-ins). The daemon's own reading of
+  # Tuple is its tests', run as it builds (tuple-call-holds-the-call).
   the-desktop-hears-tuples-call =
     let
       calls = pkgs.callPackage ../../tuple/call/package.nix { };
@@ -208,28 +209,17 @@
           function act(request) { }
         }
       '';
-      # Tuple's stream says each line of the runtime folder's stream as
-      # it's written; `new` opens a room, and every other command is kept.
-      # Each camera command is refused, as Tuple refuses one, the second
-      # time it's asked, which the list of asks says without a race. Kept
-      # in Nix because it names coreutils' tail and grep by their store
-      # paths, the build sandbox having no PATH to find them on, and it's
-      # a stand-in of a few lines, not a program.
-      tuple = pkgs.writeShellScript "tuple" ''
-        if [ "$3 $4" = "state follow" ]; then
-          exec ${pkgs.coreutils}/bin/tail -n +1 -f "$XDG_RUNTIME_DIR/stream"
-        fi
-        echo "$*" >> "$XDG_RUNTIME_DIR/asked"
-        if [ "$*" = new ]; then echo "Joining https://tuple.app/c/opened"; fi
-        case "$*" in
-          "webcam stop" | "webcam start")
-            if [ "$(${pkgs.gnugrep}/bin/grep -cx "$*" "$XDG_RUNTIME_DIR/asked")" -gt 1 ]; then
-              echo "no webcam to $2" >&2
-              exit 1
-            fi
-            ;;
-        esac
-      '';
+      # Tuple, as tuple-call runs it (tests/stand-ins/tuple-stand-in.sh
+      # says what it answers), on coreutils and grep whatever PATH
+      # tuple-call gives it.
+      tuple = pkgs.writeShellApplication {
+        name = "tuple";
+        runtimeInputs = [
+          pkgs.coreutils
+          pkgs.gnugrep
+        ];
+        text = builtins.readFile ../../../tests/stand-ins/tuple-stand-in.sh;
+      };
       # Tuple's state as its stream opens: someone signed in, one contact,
       # and Joel's own rooms, the newest of which is his. Tuple names a
       # line's type first, which is all tuple-call reads of a line it
@@ -258,10 +248,16 @@
       }}'';
       notify = pkgs.writeShellApplication {
         name = "notify-send";
-        text = ''
-          printf '%s\n' "$*" >> "$XDG_RUNTIME_DIR/told"
-          echo 1
-        '';
+        runtimeInputs = [
+          pkgs.coreutils
+          pkgs.util-linux
+        ];
+        text = builtins.readFile ../../../tests/stand-ins/notify-send-stand-in.sh;
+      };
+      busctl = pkgs.writeShellApplication {
+        name = "busctl";
+        runtimeInputs = [ pkgs.coreutils ];
+        text = builtins.readFile ../../../tests/stand-ins/busctl-stand-in.sh;
       };
     in
     pkgs.runCommandLocal "the-desktop-hears-tuples-call" { } ''
@@ -282,7 +278,7 @@
       cp ${niri} Niri.qml
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime XDG_DATA_HOME=$TMPDIR/data
       export XDG_STATE_HOME=$TMPDIR/state LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
-      export PATH=${notify}/bin:$PATH
+      export PATH=${notify}/bin:${busctl}/bin:$PATH
       mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/daemons
       mkdir -p $XDG_DATA_HOME/tuple/0
       touch $XDG_DATA_HOME/tuple/0/log.txt $XDG_RUNTIME_DIR/told
@@ -291,7 +287,7 @@
       # Tuple's daemon answers before tuple-call first looks, which would
       # otherwise look again only five seconds on.
       timeout 10 sh -c 'until [ -S "$0" ]; do sleep 0.05; done' $XDG_RUNTIME_DIR/tuple-0
-      ${lib.getExe calls} $XDG_RUNTIME_DIR/daemons/tuple-call.sock ${tuple} &
+      ${lib.getExe calls} $XDG_RUNTIME_DIR/daemons/tuple-call.sock ${lib.getExe tuple} &
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       timeout 60 ${qs} -p shell.qml

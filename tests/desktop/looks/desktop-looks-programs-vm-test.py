@@ -891,8 +891,11 @@ def test_passwords_and_a_copy_are_shot_at_each_scale(
             )
         )
         desktop.shoot(f"launcher-passwords-entry-at-{at}")
-        # Return copies its password and the launcher goes, the margin wearing the clipboard's
-        # mark till it clears.
+        # Copy the Password copies it and the launcher goes, the margin wearing the clipboard's
+        # mark till it clears; chosen by name, since Return types it over a window.
+        desktop.follow()
+        desktop.launcher_until(lambda shown: "Copy the Password" in shown["rows"])
+        desktop.down_to("Copy the Password")
         since = desktop.mark()
         desktop.machine.send_key("ret")
         desktop.launcher_until(lambda shown: not shown["open"])

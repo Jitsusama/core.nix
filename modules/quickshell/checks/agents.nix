@@ -129,6 +129,25 @@
       touch $out
     '';
 
+  # Start New Work's In rows list his quests' folders, then the places the
+  # realm's node names, each folder once and only in plain words, a zone
+  # started by its name, as modules/quickshell/tests/start-new-work-places.qml
+  # holds launcher/Wheres.js to it in Qt's own engine.
+  start-new-work-finds-places =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "start-new-work-finds-places" { } ''
+      cp ${../tests/start-new-work-places.qml} start-new-work-places.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      ${copied [ "launcher/Wheres.js" ]}
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml start-new-work-places.qml
+      touch $out
+    '';
+
   # Starts Stopped's Return steps in rather than lifting the stop, and only
   # Joel's own Return asks Let Them Start, never a walk from outside, as
   # modules/quickshell/tests/starts-stopped.qml holds launcher/StartsStopped.js
