@@ -192,7 +192,7 @@ let
       mod helper;
       #[path = "shared.rs"]
       mod shared;
-      #[path = "bin/tool_tests.rs"]
+      #[path = "bin/tool_tests/main.rs"]
       mod tool;
       /*
       mod ghost;
@@ -216,17 +216,19 @@ let
       mod golden;
     '';
     "deep/golden.rs" = "";
-    # A binary's root, real code though its name says tests, finds its
-    # modules beside it.
-    "bin/tool_tests.rs" = ''
+    # A binary's root, real code though its folder's name says tests, finds
+    # its modules beside it. It's a folder's main.rs, since any file right in
+    # bin is a binary of its own, so its test module's file couldn't be the
+    # tests' alone.
+    "bin/tool_tests/main.rs" = ''
       #[cfg(test)]
       mod t;
     '';
-    "bin/t.rs" = "";
+    "bin/tool_tests/t.rs" = "";
   };
   read = writeText "read-by-tests-alone" ''
     any_test.rs
-    bin/t.rs
+    bin/tool_tests/t.rs
     checks.rs
     checks/helper.rs
     deep/golden.rs
@@ -252,7 +254,7 @@ let
   # The crate's own code, each file named as `--own` names it and followed
   # by what's left of it once its inline test modules are cut.
   own = writeText "own-code" ''
-    == bin/tool_tests.rs
+    == bin/tool_tests/main.rs
     #[cfg(test)]
     mod t;
     == both.rs
