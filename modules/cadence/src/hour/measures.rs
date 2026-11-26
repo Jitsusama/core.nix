@@ -32,6 +32,7 @@ pub mod rounds;
 mod slipped;
 mod slips;
 pub mod spent;
+mod told_late;
 #[cfg(test)]
 mod tracked;
 pub mod unbilled;
@@ -53,6 +54,7 @@ pub use pains::{keeper, pains};
 pub use parked::parked;
 pub use reports::{REPORTS_SINCE, Report, report, unasked};
 pub use slips::slips;
+pub use told_late::told_late;
 
 const DAY: i64 = 86_400;
 
