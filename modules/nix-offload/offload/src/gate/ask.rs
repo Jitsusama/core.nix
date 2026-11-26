@@ -5,14 +5,17 @@
 //!
 //! It leaves the commits since origin's main as a bundle, and the request,
 //! in the quest's scratch `handover/gates/<commit>/`, shares the quest so
-//! mycelium carries them, and has mycelium start `nix-offload answer` on
-//! the machine named, by `--on` or in `nix-offload/gates-on` under XDG's
-//! config folder. It then waits for `result.json` to come back beside
-//! them, at most `--longest` seconds, and exits as the gate did.
+//! mycelium carries them, and has mycelium run `nix-offload answer` in
+//! that folder on the machine named, by `--on` or in
+//! `nix-offload/gates-on` under XDG's config folder. It then waits for
+//! `result.json` to come back beside them, at most `--longest` seconds,
+//! and exits as the gate did; an answer that ends without one is told at
+//! once, by how it ended, rather than waited out.
 
 use std::fs;
+use std::os::fd::AsFd;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -26,6 +29,13 @@ use super::{BUNDLE, Found, LARGEST_BUNDLE, LOG, NOT_NOW, REFUSED, REQUEST, RESUL
 const LONGEST: Duration = Duration::from_hours(2);
 /// How often it looks for the result.
 const LOOKING: Duration = Duration::from_secs(5);
+/// How long it still looks once the answer has ended, for a result written
+/// on another machine to cross back; none in tests.
+const CROSSING_BACK: Duration = if cfg!(test) {
+    Duration::ZERO
+} else {
+    Duration::from_mins(2)
+};
 
 /// The gate's own refusal and not-now, as the table names them, so an ask
 /// ends as an answer to it would.
@@ -223,21 +233,80 @@ fn failed_by(said: Said, what: &str, instead: &str) -> Failure {
     }
 }
 
-/// The result once it's there for `commit`, waited for at most `longest`.
-fn waited(gate: &Path, commit: &str, longest: Duration) -> Option<Found> {
+/// The answer's run on the gating machine, as `ask` watches it.
+trait Answering {
+    /// How it ended, in words such as `exited 126`, or none while it runs.
+    fn ended(&mut self) -> Option<String>;
+    /// Stops it, once `ask` waits no longer.
+    fn stop(&mut self);
+}
+
+impl Answering for Child {
+    fn ended(&mut self) -> Option<String> {
+        match self.try_wait() {
+            Ok(None) => None,
+            Ok(Some(status)) => Some(status.code().map_or_else(
+                || "was ended by a signal".to_owned(),
+                |code| format!("exited {code}"),
+            )),
+            Err(error) => Some(format!("couldn't be watched: {error}")),
+        }
+    }
+
+    fn stop(&mut self) {
+        // Stopping mycelium's run stops the answer; one already gone
+        // leaves nothing to stop, which is no failure.
+        let _ = self.kill();
+        let _ = self.wait();
+    }
+}
+
+/// How waiting for a gate's result went.
+#[derive(Debug, PartialEq, Eq)]
+enum Waited {
+    /// The result came back.
+    Found(Found),
+    /// The answer ended, so, and no result came back after it.
+    Ended(String),
+    /// Nothing came back within the longest wait.
+    Late,
+}
+
+/// The result in `gate` for `commit`, if it's there.
+fn result(gate: &Path, commit: &str) -> Option<Found> {
+    fs::read_to_string(gate.join(RESULT))
+        .ok()
+        .and_then(|text| Found::parse(&text))
+        .filter(|found| found.commit == commit)
+}
+
+/// The result once it's there for `commit`, waited for at most `longest`
+/// while `answer` runs, and for `CROSSING_BACK` after it ends: an answer
+/// that ended without writing one, refused by its fence or finding no
+/// gate, is told by how it ended rather than waited out.
+fn waited(gate: &Path, commit: &str, longest: Duration, answer: &mut dyn Answering) -> Waited {
     let since = Instant::now();
+    let mut ended: Option<(String, Instant)> = None;
     loop {
-        let found = fs::read_to_string(gate.join(RESULT))
-            .ok()
-            .and_then(|text| Found::parse(&text))
-            .filter(|found| found.commit == commit);
-        if found.is_some() {
-            return found;
+        if let Some(found) = result(gate, commit) {
+            return Waited::Found(found);
         }
-        if since.elapsed() >= longest {
-            return None;
+        if ended.is_none() {
+            ended = answer.ended().map(|how| (how, Instant::now()));
         }
-        thread::sleep(LOOKING);
+        match &ended {
+            Some((how, at)) if at.elapsed() >= CROSSING_BACK => {
+                // A result written just before the end was heard is
+                // looked for once more, so it isn't told as missing.
+                return result(gate, commit)
+                    .map_or_else(|| Waited::Ended(how.clone()), Waited::Found);
+            }
+            None if since.elapsed() >= longest => {
+                answer.stop();
+                return Waited::Late;
+            }
+            _ => thread::sleep(LOOKING),
+        }
     }
 }
 
@@ -281,22 +350,34 @@ pub fn ask(arguments: &[String]) -> Result<(), Failure> {
             "Check the quest's scratch folder.",
         ));
     }
-    started(&asked.quest, &on, &commit)?;
+    shared(&asked.quest, &on)?;
+    let mut answer = answering(&asked.quest, &on, &commit, &gate, asked.longest)?;
     eprintln!(
         "nix-offload: asked {on} to gate {commit}; waiting for its result in {}",
         gate.display()
     );
-    let Some(found) = waited(&gate, &commit, asked.longest) else {
-        return Err(failed(
-            NOT_YET,
-            "ask had no result in time",
-            &format!(
-                "{} brought none back within {} s",
-                on,
-                asked.longest.as_secs()
-            ),
-            "Ask again later; a gate that passed meanwhile kept its pass.",
-        ));
+    let found = match waited(&gate, &commit, asked.longest, &mut answer) {
+        Waited::Found(found) => found,
+        Waited::Ended(how) => {
+            return Err(failed(
+                Exit::Unavailable,
+                "ask's gate ended without a result",
+                &format!("the answer on {on} {how} and wrote none, as its words above say"),
+                "Check the gate's folder reached that machine, and ask again.",
+            ));
+        }
+        Waited::Late => {
+            return Err(failed(
+                NOT_YET,
+                "ask had no result in time",
+                &format!(
+                    "{} brought none back within {} s",
+                    on,
+                    asked.longest.as_secs()
+                ),
+                "Ask again later; a gate that passed meanwhile kept its pass.",
+            ));
+        }
     };
     if let Ok(log) = fs::read_to_string(gate.join(LOG)) {
         eprint!("{log}");
@@ -365,37 +446,72 @@ fn gated_here() -> Result<(String, Repo), Failure> {
     Ok((commit, repo))
 }
 
-/// The quest shared to `on` and `answer` started there for `commit`, or
-/// why not, already said.
-fn started(quest: &str, on: &str, commit: &str) -> Result<(), Failure> {
+/// The quest shared to `on`, or why not, already said.
+fn shared(quest: &str, on: &str) -> Result<(), Failure> {
     // Shared to the machine and waited for, where both ends' mycelium
     // can; otherwise shared, and `answer` finds the gate once it crosses.
     // Any no to the narrow share falls back to the plain one, as before:
     // a node whose mycelium can't wait answers it with an `Err` too, and
-    // a Mac's gate rests on the plain share. Only the start's no ends ask.
+    // a Mac's gate rests on the plain share.
     let sharing = "Check `mycelium machines` reaches the gate's machine.";
     if mycelium(&["share", quest, "--to", on, "--wait"]).is_err() {
         mycelium(&["share", quest])
             .map_err(|said| failed_by(said, "ask couldn't share the quest", sharing))?;
     }
-    let machine = format!("machine={on}");
-    let answering = [
-        "start",
-        "--need",
-        &machine,
-        "--",
-        "nix-offload",
-        "answer",
-        quest,
-        commit,
-    ];
-    mycelium(&answering).map_err(|said| {
-        failed_by(
-            said,
+    Ok(())
+}
+
+/// The words `mycelium run` is given to answer the gate of `commit` in
+/// `gate`, on `on`, for at most `longest`.
+fn answer_run(quest: &str, on: &str, commit: &str, gate: &Path, longest: Duration) -> Vec<String> {
+    [
+        "run".to_owned(),
+        "--need".to_owned(),
+        format!("machine={on}"),
+        // Started in the gate's own folder, which its fence lets it
+        // read: started in the home, which holds git folders, the fence
+        // refused it and it ended 126 before it ran.
+        "--folder".to_owned(),
+        gate.display().to_string(),
+        "--lasts".to_owned(),
+        format!("{}m", longest.as_secs().div_ceil(60)),
+        "--".to_owned(),
+        "nix-offload".to_owned(),
+        "answer".to_owned(),
+        quest.to_owned(),
+        commit.to_owned(),
+    ]
+    .into()
+}
+
+/// `answer` run on `on` for `commit` through `mycelium run`, which ends as
+/// it ends, so `ask` hears an answer that never wrote a result. What it
+/// says goes to stderr, as stdout is the gate's own line.
+fn answering(
+    quest: &str,
+    on: &str,
+    commit: &str,
+    gate: &Path,
+    longest: Duration,
+) -> Result<Child, Failure> {
+    let unstarted = |why: String| {
+        failed(
+            Exit::Unavailable,
             "ask couldn't start the gate",
+            &why,
             "Check `mycelium machines` says it's ready.",
         )
-    })
+    };
+    let words = std::io::stderr()
+        .as_fd()
+        .try_clone_to_owned()
+        .map_err(|error| unstarted(format!("stderr couldn't be shared: {error}")))?;
+    Command::new("mycelium")
+        .args(answer_run(quest, on, commit, gate, longest))
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(words))
+        .spawn()
+        .map_err(|error| unstarted(format!("mycelium couldn't start: {error}")))
 }
 
 #[cfg(test)]
@@ -501,6 +617,131 @@ mod tests {
             failure.exit,
             Exit::Unavailable,
             "a run that failed must end as unavailable"
+        );
+    }
+
+    const COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
+
+    /// An answer that ends as `ends` says once asked `after` times, and
+    /// counts whether it was stopped.
+    struct Fake {
+        ends: Option<&'static str>,
+        after: usize,
+        stopped: bool,
+    }
+
+    impl Answering for Fake {
+        fn ended(&mut self) -> Option<String> {
+            if self.after > 0 {
+                self.after -= 1;
+                return None;
+            }
+            self.ends.map(str::to_owned)
+        }
+
+        fn stop(&mut self) {
+            self.stopped = true;
+        }
+    }
+
+    fn found(exit: u8) -> Found {
+        Found {
+            commit: COMMIT.to_owned(),
+            exit,
+            said: "the commit's changed checks passed".to_owned(),
+        }
+    }
+
+    #[test]
+    fn an_answer_that_ends_without_a_result_is_told_at_once() {
+        let gate = tempfile::tempdir().expect("a gate folder");
+        let mut answer = Fake {
+            ends: Some("exited 126"),
+            after: 0,
+            stopped: false,
+        };
+        let since = Instant::now();
+        let waited = waited(gate.path(), COMMIT, LONGEST, &mut answer);
+        assert_eq!(
+            waited,
+            Waited::Ended("exited 126".to_owned()),
+            "an answer its fence refused should be told by how it ended"
+        );
+        assert!(
+            since.elapsed() < Duration::from_secs(5),
+            "an ended answer should be told within seconds, not waited out for {LONGEST:?}"
+        );
+    }
+
+    #[test]
+    fn a_result_written_as_the_answer_ended_is_the_answer() {
+        let gate = tempfile::tempdir().expect("a gate folder");
+        fs::write(gate.path().join(RESULT), found(0).json()).expect("a result");
+        let mut answer = Fake {
+            ends: Some("exited 0"),
+            after: 0,
+            stopped: false,
+        };
+        assert_eq!(
+            waited(gate.path(), COMMIT, LONGEST, &mut answer),
+            Waited::Found(found(0)),
+            "a result there when the answer ends should be read, not told as missing"
+        );
+    }
+
+    #[test]
+    fn a_result_for_another_commit_isnt_the_answer() {
+        let gate = tempfile::tempdir().expect("a gate folder");
+        let mut other = found(0);
+        other.commit = "f".repeat(40);
+        fs::write(gate.path().join(RESULT), other.json()).expect("a stale result");
+        let mut answer = Fake {
+            ends: Some("exited 66"),
+            after: 0,
+            stopped: false,
+        };
+        assert_eq!(
+            waited(gate.path(), COMMIT, LONGEST, &mut answer),
+            Waited::Ended("exited 66".to_owned()),
+            "another commit's result shouldn't answer this one"
+        );
+    }
+
+    #[test]
+    fn an_answer_still_running_at_the_longest_is_stopped() {
+        let gate = tempfile::tempdir().expect("a gate folder");
+        let mut answer = Fake {
+            ends: None,
+            after: 0,
+            stopped: false,
+        };
+        assert_eq!(
+            waited(gate.path(), COMMIT, Duration::ZERO, &mut answer),
+            Waited::Late,
+            "an answer past the longest wait should be late"
+        );
+        assert!(
+            answer.stopped,
+            "an answer ask stops waiting for should be stopped"
+        );
+    }
+
+    #[test]
+    fn the_answer_runs_in_its_gates_folder_for_the_longest_wait() {
+        let run = answer_run(
+            "QEST-20261115-ABC123",
+            "optimus",
+            COMMIT,
+            Path::new("/home/j/q/handover/gates/c"),
+            Duration::from_secs(7200),
+        );
+        assert_eq!(
+            run.join(" "),
+            format!(
+                "run --need machine=optimus --folder /home/j/q/handover/gates/c --lasts 120m \
+                 -- nix-offload answer QEST-20261115-ABC123 {COMMIT}"
+            ),
+            "the answer should run, waited on, in the gate's folder"
         );
     }
 

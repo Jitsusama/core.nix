@@ -154,6 +154,24 @@ fn a_bundle_of_commits_past_main_is_checked_out_and_run() {
 }
 
 #[test]
+fn a_commit_main_moved_past_while_it_waited_is_still_run() {
+    let forge = Forge::new();
+    let tree = forge.tree();
+    git(&tree, &["checkout", "--quiet", "-b", "change"]);
+    let head = committed(&tree, "three");
+    let bundle = forge.bundle("origin/main..HEAD");
+    git(&tree, &["checkout", "--quiet", "main"]);
+    committed(&tree, "four");
+    git(&tree, &["push", "--quiet", "origin", "main"]);
+    let gate = forge.gate(&head, &bundle);
+    assert_eq!(
+        forge.gated(&gate, &head),
+        Ok(head),
+        "a change behind main's newest should be gated as it stands"
+    );
+}
+
+#[test]
 fn a_gate_keeps_neither_its_clone_nor_its_bundle_once_it_ends() {
     let forge = Forge::new();
     let head = committed(&forge.tree(), "three");
