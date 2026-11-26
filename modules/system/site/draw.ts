@@ -379,19 +379,21 @@ function builderLine(builder: Thing): string {
  * then the rest's, and the way to them on the map, which lands on the
  * worst, or the first: the map draws its builders only once its address
  * names one. None is drawn where the node names no builders, or the
- * machines weren't read.
+ * machines weren't read. The worst is found, not taken from the order:
+ * a builder's health and the part's order are two watches, so a builder
+ * can turn bad one push before the part puts it first.
  */
 function buildersAcross(system: System): string {
   const builders = buildersOf(system);
-  const [worst] = builders;
+  const health = worstOf(builders);
+  const worst = builders.find((builder) => builder.health === health) ?? builders[0];
   if (worst === undefined) {
     return "";
   }
-  const health = worst.health;
   const noun = builders.length === 1 ? "builder" : "builders";
   const count = `${capital(numbered(builders.length))} ${noun}`;
   const said = health === "good" ? escaped(count) : builderLine(worst);
-  const rest = health === "good" ? builders : builders.slice(1);
+  const rest = health === "good" ? builders : builders.filter((builder) => builder !== worst);
   const aside = rest.length === 0 ? "" : `<p class="aside">${rest.map(builderLine).join("; ")}</p>`;
   const hash = `#builder=${encodeURIComponent(worst.name)}`;
   return `<section class="tie part ${health}" data-part="part-builders"><h3>${mark(health)}Builders${spoken(health)}</h3><p class="said">${said}</p>${aside}<div class="onward"><a class="row deeper" data-row="builders" data-health="${health}" href="../mycelium/${escaped(hash)}">See ${builders.length === 1 ? "it" : "them"} on the map</a></div></section>`;

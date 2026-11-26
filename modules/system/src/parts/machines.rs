@@ -150,7 +150,7 @@ pub fn machines(
     let side = side_of(
         read.iter()
             .filter(|(thing, _)| thing.health > Health::Good)
-            .map(|(thing, looks)| format!("{} {}", thing.name, looks.join(", ")))
+            .map(|(thing, looks)| format!("{} {}", named(thing), looks.join(", ")))
             .collect(),
     );
     let things: Vec<Thing> = read.into_iter().map(|(thing, _)| thing).collect();
@@ -171,7 +171,7 @@ pub fn machines(
         _ => things
             .iter()
             .filter(|thing| thing.health > Health::Good)
-            .map(|thing| format!("{} {}", thing.name, thing.says))
+            .map(|thing| format!("{} {}", named(thing), thing.says))
             .collect::<Vec<_>>()
             .join("; "),
     };
@@ -196,6 +196,17 @@ pub fn machines(
 
 fn name_of(said: &Value) -> &str {
     said.get("name").and_then(Value::as_str).unwrap_or("")
+}
+
+/// How the part's line names a thing: a machine by its name, and anything
+/// else by its kind too, since a builder often bears a machine's name and
+/// "gull isn't answering" beside a healthy gull reads as the machine down.
+fn named(thing: &Thing) -> String {
+    if thing.kind == "machine" {
+        thing.name.clone()
+    } else {
+        format!("{} {}", thing.kind, thing.name)
+    }
 }
 
 /// What a machine's line says, in the order it's found, and what in it is
@@ -1095,8 +1106,15 @@ mod tests {
             Health::Watch,
             "a stalled builder is the part's"
         );
-        assert_eq!(part.side, ["gull isn't answering"]);
-        assert_eq!(part.says, "gull isn't answering");
+        assert_eq!(
+            part.side,
+            ["builder gull isn't answering"],
+            "a builder's side says it is one, since it often bears a machine's name"
+        );
+        assert_eq!(
+            part.says, "builder gull isn't answering",
+            "a builder's line says it is one, since it often bears a machine's name"
+        );
         assert_eq!(part.holds.as_deref(), Some("1 machine and 2 builders"));
         said["Ok"]["Builders"] = json!([{"name": "osprey", "state": "running"}]);
         let part = machines(&Ok(said), &Err(String::new()), None, None);

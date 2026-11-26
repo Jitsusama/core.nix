@@ -129,6 +129,36 @@ mod tests {
     }
 
     #[test]
+    fn every_record_is_of_a_kind_its_clients_may_watch() {
+        let said = json!({"Ok": {
+            "Machines": [{"name": "laptop", "state": "ready", "disk_band": "healthy",
+                           "room": {"over": []}}],
+            "Builders": [{"name": "gull", "state": "not answering"}],
+        }});
+        let none: parts::Answer = Err(String::new());
+        let read = System {
+            machine: "laptop".to_owned(),
+            read_at: "2026-11-15T19:00:00Z".to_owned(),
+            parts: vec![parts::machines(&Ok(said), &none, None, None)],
+        };
+        let kinds: Vec<String> = read
+            .records()
+            .iter()
+            .map(|record| record["kind"].as_str().unwrap_or("").to_owned())
+            .collect();
+        assert!(
+            kinds.iter().any(|kind| kind == "builder"),
+            "no builder's record was made to check: {kinds:?}"
+        );
+        for kind in &kinds {
+            assert!(
+                DOMAIN.kinds.contains(&kind.as_str()),
+                "a {kind} record is of a kind no client may watch"
+            );
+        }
+    }
+
+    #[test]
     fn an_owner_not_read_is_said_as_not_answering_with_why() {
         let gone: parts::Answer = Err("net isn't on this machine".to_owned());
         let read = System {

@@ -168,7 +168,9 @@ function thingLooks(part: Part, drawn: number): readonly Look[] {
         health: thing.health,
         whose: thing.name,
         thing: true,
-        words: capital(words),
+        // A builder often bears a machine's name, so its look says what it
+        // is, or "osprey: Not answering" reads as the machine going down.
+        words: thing.kind === "machine" ? capital(words) : `${capital(thing.kind)} ${words}`,
         href: hrefOf(thing),
         row: `look:${thing.kind}:${encodeURIComponent(thing.name)}:${key}`,
         matters,

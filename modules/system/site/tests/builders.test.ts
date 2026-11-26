@@ -118,17 +118,29 @@ it("counts no builder among the machines, told or still to come", () => {
   );
 });
 
-it("says the builders across the machines: the worst one's line, then the rest", () => {
-  const drawn = buildersDrawn(
-    systemOfThese([
-      summary,
-      machinesPart(["machine:kestrel", "builder:gull", "builder:osprey"], "watch"),
-      kestrel,
-      gull,
-      osprey,
-    ]),
-  );
-  assert.ok(drawn, "no builders were drawn");
+// The part's order is a watch of its own, so a builder can turn bad before
+// the part puts it first: the card finds the worst either way round.
+for (const order of [
+  ["builder:gull", "builder:osprey"],
+  ["builder:osprey", "builder:gull"],
+]) {
+  it(`says the worst builder's line, then the rest, named ${order.join(", ")}`, () => {
+    const drawn = buildersDrawn(
+      systemOfThese([
+        summary,
+        machinesPart(["machine:kestrel", ...order], "watch"),
+        kestrel,
+        gull,
+        osprey,
+      ]),
+    );
+    assert.ok(drawn, "no builders were drawn");
+    saysTheWorstFirst(drawn);
+  });
+}
+
+/** Hold the builders `drawn` to gull's line first, then osprey's aside. */
+function saysTheWorstFirst(drawn: string): void {
   assert.equal(
     read(drawn.slice(drawn.indexOf(">") + 1)),
     escaped(
@@ -150,7 +162,7 @@ it("says the builders across the machines: the worst one's line, then the rest",
     "osprey (good) answers and takes 16 builds at once",
     "the aside holds the rest, not the worst again",
   );
-});
+}
 
 it("says every builder in the aside while none is worth a look", () => {
   const drawn = buildersDrawn(
@@ -206,7 +218,7 @@ it("draws no builders, nor a word of them, where the node names none", () => {
 it("leads a builder's look to it on the map, whatever its place among the things", () => {
   const system = systemOfThese([
     summary,
-    machinesPart(["machine:kestrel", "builder:gull"], "watch", ["gull not answering"]),
+    machinesPart(["machine:kestrel", "builder:gull"], "watch", ["builder gull not answering"]),
     kestrel,
     gull,
   ]);
@@ -217,7 +229,7 @@ it("leads a builder's look to it on the map, whatever its place among the things
       [
         "gull",
         "watch",
-        "Not answering",
+        "Builder not answering",
         "../mycelium/#builder=gull",
         "look:builder:gull:0:not answering",
       ],
@@ -236,11 +248,16 @@ it("keeps a machine's look and a builder's of the same name apart", () => {
   ]);
   const { looks } = looksOf(system, 8);
   assert.deepEqual(
-    looks.map((look) => [look.words, look.href, look.row]),
+    looks.map((look) => [look.whose, look.words, look.href, look.row]),
     [
-      ["On battery", "#machine-1", "look:machine:osprey:0:on battery"],
-      ["Not answering", "../mycelium/#builder=osprey", "look:builder:osprey:0:not answering"],
+      ["osprey", "On battery", "#machine-1", "look:machine:osprey:0:on battery"],
+      [
+        "osprey",
+        "Builder not answering",
+        "../mycelium/#builder=osprey",
+        "look:builder:osprey:0:not answering",
+      ],
     ],
-    "each leads to its own and keeps a row of its own",
+    "each says what it is, leads to its own and keeps a row of its own",
   );
 });

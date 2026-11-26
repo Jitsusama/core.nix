@@ -702,12 +702,17 @@ def test_a_builder_comes_on_its_own_watch(system_page: Page, system_daemon: Stan
         "ties": None,
     }
     system_daemon.tell("builder", changed=[gull])
+    # Heron, which is good, is named before gull, as a part's order can be one push behind its
+    # builders' health: the card still leads with gull, and takes its health.
     named = ["machine:kestrel", "machine:osprey", "builder:heron", "builder:gull"]
     system_daemon.tell("part", changed=[{"key": "part:machines", "things": named}])
-    expect(card, "gull's record never reached the page").to_contain_text(
+    said = card.locator(".said")
+    expect(said, "gull's line didn't lead the card").to_contain_text(
         "gull (watch) isn't answering", timeout=PACE_MS
     )
-    expect(card, "heron wasn't said beside gull").to_contain_text("heron")
+    expect(said, "gull's line was drawn but not shown").to_be_visible()
+    expect(card, "the card didn't take gull's health").to_have_class(re.compile(r"\bwatch\b"))
+    expect(card.locator(".aside"), "heron wasn't said beside gull").to_contain_text("heron")
     look = system_page.locator("#looks a[data-row^='look:builder:gull:']")
     expect(look, "gull's look wasn't listed").to_have_attribute("href", "../mycelium/#builder=gull")
     counted(system_page)
