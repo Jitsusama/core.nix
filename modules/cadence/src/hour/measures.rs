@@ -134,7 +134,7 @@ impl Measure {
 /// is filed to each owner apart, but never leads, since asking its owner
 /// to steer it each hour moves nothing; nor do the queues, whose worst is asked apart once a day.
 /// A claim of Joel's rule with nothing behind it is asked of its sender apart, and never leads:
-/// a message sent can't be taken back, so only its sender's answer moves it.
+/// a message sent can't be taken back, so only its sender's answer, or its day passing, moves it.
 #[must_use]
 pub fn drag(measures: &[Measure]) -> Option<&Measure> {
     let apart = [rounds::FRUITLESS, told_late::KEY, ruled::KEY];
@@ -149,8 +149,8 @@ pub fn drag(measures: &[Measure]) -> Option<&Measure> {
 
 /// The measures read from the mesh's messages of the last day under
 /// `state_home`: the holds no ask in `asks` dates, and the claims of Joel's
-/// rule with no word of his. Read together, so gathering them takes the
-/// hour's gather one line, and it stays within clippy's hundred.
+/// rule with no word of his. Each reads the messages itself; they're
+/// gathered in one call so the hour's gather stays within clippy's hundred.
 #[must_use]
 pub fn from_mesh(state_home: &std::path::Path, asks: &str, now: i64) -> [Measure; 2] {
     [

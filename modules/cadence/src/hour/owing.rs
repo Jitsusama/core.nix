@@ -259,7 +259,7 @@ fn told_late_asked(m: &Measure, says: &str) -> Vec<Filed> {
 /// Joel's with no word of his behind it, filed message by message, each
 /// line opening with the message's short id in brackets and naming its
 /// sender last. A message can't be taken back, so it closes once its line
-/// is gone, a day after it was sent.
+/// is gone: when its sender answers, or a day after it was sent.
 fn ruled_asked(m: &Measure) -> Vec<Filed> {
     m.behind
         .iter()
@@ -271,10 +271,11 @@ fn ruled_asked(m: &Measure) -> Vec<Filed> {
                 says: format!("a claim of his rule with no word of his, yours: {said}"),
                 text: format!(
                     "cadence hour: your message {id} says Joel ruled or wants something, with \
-                     no quote of his and no dated source: \"{said}\". Only his own words bind \
-                     a cell. Please answer it on the mesh, re {id}, with his words and when he \
-                     said them, or say the claim is dropped and whose caution it was. This ask \
-                     closes by itself a day after the message."
+                     no word of when he said it: \"{said}\". Only his own words bind a cell. \
+                     Please answer on the mesh, re this ask or re {id}, with his words and \
+                     when he said them, or say the claim is dropped and whose caution it was. \
+                     Your answer closes this ask; unanswered, it closes a day after the \
+                     message."
                 ),
                 owner: owner.to_owned(),
             })

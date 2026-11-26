@@ -360,6 +360,21 @@ impl Mesh {
             .collect()
     }
 
+    /// Every message sent at `from_ms` or later, as [`Mesh::sent_since`]
+    /// reads them, but only those whose body names the id their file is
+    /// named by: as [`Mesh::senders`] holds, one naming another is no
+    /// one's, and a measure that asks its sender would ask the wrong cell.
+    #[must_use]
+    pub fn sent_since_as_named(&self, from_ms: i64) -> Vec<Message> {
+        self.files_since(from_ms)
+            .iter()
+            .filter_map(|p| {
+                let stem = p.file_stem()?.to_str()?;
+                read_json::<Message>(p).filter(|m| m.id == stem)
+            })
+            .collect()
+    }
+
     /// Who sent each message sent at `from_ms` or later whose short id,
     /// the last part of its id, is among `ids`, and what it said, by that
     /// short id. A file's name is its message's id, `<ms>-<from>-<pid>-<short
@@ -833,6 +848,29 @@ mod tests {
                 format!("{}-A-1-dd", midnight + 7_200_000)
             ],
             "one sent before the moment read, one since missed, or a day long past listed"
+        );
+    }
+
+    #[test]
+    fn a_message_whose_body_names_another_id_than_its_file_is_read_as_no_ones() {
+        let (_dir, mesh) = mesh();
+        for id in ["10-CADENCE-1-aa", "11-CADENCE-1-bb"] {
+            mesh.send(&question(id, "B")).unwrap();
+        }
+        fs::rename(
+            mesh.messages().join("11-CADENCE-1-bb.json"),
+            mesh.messages().join("12-OTHER-1-cc.json"),
+        )
+        .unwrap();
+        let ids: Vec<String> = mesh
+            .sent_since_as_named(0)
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
+        assert_eq!(
+            ids,
+            ["10-CADENCE-1-aa"],
+            "a body naming another id than its file was read as sent"
         );
     }
 
