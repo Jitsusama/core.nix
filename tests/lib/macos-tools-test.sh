@@ -1,12 +1,34 @@
 #!/usr/bin/env bash
 # The check that macosTools (macos-tools.nix) runs a script with macOS's
-# own tools, as a Mac's terminal runs them: tr, sed and find are /usr/bin's,
-# a tool only GNU's coreutils has isn't found at all, and tr under the Mac's
-# UTF-8 locale refuses a byte that isn't UTF-8 unless LC_ALL=C has it read
-# bytes. GNU's tr, first in a darwin build otherwise, reads the byte either
-# way, so a script that leaves LC_ALL=C out passes there and fails on the
-# Mac, and here.
+# own tools, as a Mac's terminal runs them: its PATH is macOS's folders
+# alone, nothing of the build's environment reaches it, its arguments
+# arrive as given, tr, sed and find are /usr/bin's, a tool only GNU's
+# coreutils has isn't found at all, and tr under the Mac's UTF-8 locale
+# refuses a byte that isn't UTF-8 unless LC_ALL=C has it read bytes. GNU's
+# tr, first in a darwin build otherwise, reads the byte either way, so a
+# script that leaves LC_ALL=C out passes there and fails on the Mac, and
+# here.
 set -euo pipefail
+
+if [[ "${PATH}" != "/usr/bin:/bin:/usr/sbin:/sbin" ]]; then
+  echo "PATH is ${PATH}, not macOS's folders alone" >&2
+  exit 1
+fi
+
+for name in $(compgen -e); do
+  case "${name}" in
+    PATH | HOME | TMPDIR | LANG | PWD | OLDPWD | SHLVL | _) ;;
+    *)
+      echo "${name} reached the script from the build's environment" >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ $# -ne 1 || "${1}" != "a b'c" ]]; then
+  echo "the arguments arrived as $# of them (${*:-none}), not the one a b'c" >&2
+  exit 1
+fi
 
 for tool in tr sed find; do
   found=$(command -v "${tool}" || true)

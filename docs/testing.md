@@ -415,19 +415,30 @@ A darwin build puts stdenv's GNU coreutils, findutils, sed and grep first on
 its PATH, so a check of a script a Mac runs tests GNU's tools in place of
 macOS's, and a flag or a locale only GNU's take passes there and fails on
 the Mac. A check of what a Mac runs uses `macosTools`, under `onMacos`: it
-runs the script with macOS's folders alone on its PATH, so a tool macOS
-lacks isn't found, under the UTF-8 locale a Mac's terminal runs, with
-nixpkgs' bash rather than macOS's bash 3.2.
+runs the script with nothing of the build's environment, macOS's folders
+alone on its PATH, so a tool macOS lacks isn't found, and nixpkgs' bash
+rather than macOS's bash 3.2. By default it runs under the UTF-8 locale a
+Mac's terminal runs; a check of what launchd starts passes the agent's own
+environment as `env`, `{ }` for none.
 
 It builds outside the build sandbox, since the sandbox hides those folders.
-A Mac whose sandbox is false or relaxed builds it; on one whose sandbox is
-true the build fails, rather than run with GNU's tools. Outside the sandbox
-the script sees the Mac's files and network, so a check writes only to
-`$TMPDIR` and `$out`. Nothing of macOS is in its hash, so a pass stands for
-the macOS that built it until the check changes or is built with
-`--rebuild`. `a-mac-check-runs-macos-own-tools` holds the helper to it:
-there, a tool only GNU has isn't found, and macOS's tr refuses a byte that
-isn't UTF-8 unless `LC_ALL=C` is set.
+A build whose sandbox is false or relaxed runs it; one whose sandbox is
+true fails, rather than run with GNU's tools. That setting is the build's:
+the Mac's own, for one built on the Mac as the gates build them, but a
+machine the Mac trusts may send its own with a build. So the Mac the gates
+compare on is kept off `sandbox = true` while these checks stand. Outside
+the sandbox the script sees the Mac's files and network, so a check writes
+only to `$TMPDIR` and `$out`.
+
+Nothing of macOS is in its hash, so a pass stands for the macOS that built
+it until the check changes or is built with `--rebuild`. After a macOS
+update, the first change that moves the check is the first to run it
+again, so one failing there on a change that touched nothing of macOS's
+wants its base rebuilt with `--rebuild` before the change is blamed.
+`a-mac-check-runs-macos-own-tools` holds the helper to it: there, nothing
+of the build's environment reaches the script, a tool only GNU has isn't
+found, and macOS's tr refuses a byte that isn't UTF-8 unless `LC_ALL=C` is
+set.
 
 ### The Desktop on niri
 

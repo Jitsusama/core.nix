@@ -41,7 +41,7 @@ For other checks:
 | `bare-darwin.nix`            | the least nix-darwin machine, as a module a check adds others to  |
 | `evaluates.nix`              | the check that a machine evaluates and no module warns            |
 | `macos-tools.nix`            | a check run with macOS's own tools, not stdenv's GNU ones         |
-| `macos-tools-test.sh`        | that check's own: tr, sed and find are macOS's; tac isn't there  |
+| `macos-tools-test.sh`        | that check's own: only macOS's tools and what it names reach it  |
 
 Those three are also core's exports `core.lib.bareNixosModule`,
 `core.lib.bareDarwinModule` and `core.lib.evaluates`, so a repository built
