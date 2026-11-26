@@ -1155,35 +1155,19 @@ fn failed_units(lines: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// Switches back to `system`, the one the machine left. One that waits on
-/// its boot check is only activated, as `switch` activates it, and the
-/// system the machine booted made the boot default again: it ran without
-/// being booted, since its check failed or never ended, so going back with
-/// `switch` made it the boot default that nothing had checked, and the
-/// switch gone back from may have made itself the boot default, needing
-/// no check of its own.
-pub fn go_back(config: &Config, system: &Path) -> Result<(), Failure> {
+/// Switches back to `system`, the one the machine left. One `unchecked`,
+/// whose boot check failed or never ended, is only activated, as `switch`
+/// activates it: going back with `switch` made it the boot default that
+/// nothing had checked. Whether a system waits on its boot check can't
+/// say so, since the booted system may be many switches old, and a system
+/// that passed its check since would be left off the boot default.
+pub fn go_back(config: &Config, system: &Path, unchecked: bool) -> Result<(), Failure> {
     set_profile(config, system)?;
     match config.kind {
-        Kind::Nixos if waits_on_its_boot_check(config, system) => run::output(
-            run::command(&system.join("bin/switch-to-configuration"), &config.state),
-            "switching back",
-            ["test"],
-        )
-        .and_then(|_| {
-            run::output(
-                run::command(
-                    &config.booted.join("bin/switch-to-configuration"),
-                    &config.state,
-                ),
-                "making what the machine booted what it boots",
-                ["boot"],
-            )
-        }),
         Kind::Nixos => run::output(
             run::command(&system.join("bin/switch-to-configuration"), &config.state),
             "switching back",
-            ["switch"],
+            [if unchecked { "test" } else { "switch" }],
         ),
         Kind::Darwin => run::logged(
             run::command(&system.join("activate"), &config.state),

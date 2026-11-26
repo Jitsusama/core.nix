@@ -147,11 +147,19 @@ fn keep_boots(config: &Config, system: &std::path::Path, why: &str) {
     }
 }
 
+/// Whether `system` is the one the kept why speaks of, whose boot check
+/// failed or never ended, so going back to it leaves the boot default be.
+fn unchecked(config: &Config, system: &std::path::Path) -> bool {
+    let kept = fs::read_to_string(config.boots_file()).unwrap_or_default();
+    kept.split_once('\n').is_some_and(|(kept, _)| {
+        fs::canonicalize(kept).is_ok_and(|kept| fs::canonicalize(system).is_ok_and(|s| s == kept))
+    })
+}
+
 /// Ends the why kept by `keep_boots`, once the boot default has moved: a
 /// boot check that passed, or a switch that needed none. A going back
 /// leaves it, since it goes back to a system left unbooted without making
-/// it the boot default, and makes what the machine booted the boot default
-/// again (`system::go_back`).
+/// it the boot default (`system::go_back`).
 fn booted_as_run(config: &Config) {
     // Nothing kept is nothing to end.
     let _ = fs::remove_file(config.boots_file());
@@ -646,7 +654,7 @@ fn going_back(
     if let Err(unmarked) = begin(config, &begun) {
         eprintln!("{}", unmarked.why);
     }
-    match system::go_back(config, &previous) {
+    match system::go_back(config, &previous, unchecked(config, &previous)) {
         Ok(()) => {
             end_switch(config);
             failure

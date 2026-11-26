@@ -1658,13 +1658,18 @@ fn a_reboot_into_the_old_system_says_it_left_the_machine_there() {
 }
 
 #[test]
-fn going_back_from_a_plain_switch_makes_what_it_booted_the_boot_default() {
-    // A switch needing no boot check makes itself the boot default; going
-    // back from it to a system whose check failed only activates that one,
-    // so what the machine booted is made the boot default again.
+fn going_back_to_a_checked_system_makes_it_the_boot_default_again() {
+    // A machine booted many switches ago reads every newer initrd as one
+    // waiting on its check, though this one passed it: going back to it
+    // switches, so the failed switch isn't left what the machine boots.
     let mut world = World::new();
-    let first = world.boots();
-    a_failed_boot_check(&mut world);
+    let head = world.signed("one");
+    let checked = a_new_initrd(&mut world, &head, "true");
+    let (_, passed) = world.update();
+    assert!(
+        matches!(passed, Line::Done { boots: None, .. }),
+        "{passed:?}"
+    );
     let two = world.signed("two");
     let system = world.system(&two);
     std::os::unix::fs::symlink(world.config.booted.join("initrd"), system.join("initrd")).unwrap();
@@ -1676,7 +1681,7 @@ fn going_back_from_a_plain_switch_makes_what_it_booted_the_boot_default() {
     );
     assert_eq!(
         fs::canonicalize(world.boots()).unwrap(),
-        fs::canonicalize(&first).unwrap(),
+        fs::canonicalize(&checked).unwrap(),
         "going back left a switch that failed its health check the boot default"
     );
 }
