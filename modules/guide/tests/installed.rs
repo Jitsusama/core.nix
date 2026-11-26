@@ -76,10 +76,11 @@ fn secure_boot_enforcing_with_the_machines_own_keys_is_done() {
             ),
         ],
     );
-    assert!(matches!(
-        CheckSecureBoot.observe(&mut xps).unwrap(),
-        Standing::Done { .. }
-    ));
+    let stood = CheckSecureBoot.observe(&mut xps).unwrap();
+    assert!(
+        matches!(stood, Standing::Done { .. }),
+        "an XPS enforcing with its own keys wasn't done: {stood:?}"
+    );
 
     let mut surface = StandIn::new();
     efivars(
@@ -102,10 +103,11 @@ fn secure_boot_enforcing_with_the_machines_own_keys_is_done() {
             ),
         ],
     );
-    assert!(matches!(
-        CheckSecureBoot.observe(&mut surface).unwrap(),
-        Standing::Done { .. }
-    ));
+    let stood = CheckSecureBoot.observe(&mut surface).unwrap();
+    assert!(
+        matches!(stood, Standing::Done { .. }),
+        "a Surface enforcing with its own keys wasn't done: {stood:?}"
+    );
 }
 
 #[test]
@@ -132,10 +134,11 @@ fn secure_boot_switched_off_blocks_the_seal() {
             ),
         ],
     );
-    assert!(matches!(
-        CheckSecureBoot.observe(&mut stand_in).unwrap(),
-        Standing::Blocked { .. }
-    ));
+    let stood = CheckSecureBoot.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Blocked { .. }),
+        "Secure Boot switched off didn't block the seal: {stood:?}"
+    );
 }
 
 /// `tpm2_getcap`'s arguments for the TPM's NV indices.
@@ -348,10 +351,11 @@ fn a_tpm_slot_not_tried_first_is_still_to_do() {
         .remove("priority");
     stand_in.prints(Tool::Cryptsetup, DUMP, &header.to_string());
     stand_in.journal().record("seal-tpm", "opened:0").unwrap();
-    assert!(matches!(
-        SealTpm.observe(&mut stand_in).unwrap(),
-        Standing::Needed { .. }
-    ));
+    let stood = SealTpm.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Needed { .. }),
+        "a TPM slot not tried first was taken as sealed: {stood:?}"
+    );
 }
 
 #[test]
@@ -363,10 +367,11 @@ fn a_tpm_slot_nothing_proved_is_still_to_do() {
         DUMP,
         std::str::from_utf8(fixture!("qemu-canokey", "luks-dump-sealed.json")).unwrap(),
     );
-    assert!(matches!(
-        SealTpm.observe(&mut stand_in).unwrap(),
-        Standing::Needed { .. }
-    ));
+    let stood = SealTpm.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Needed { .. }),
+        "a TPM slot never seen to open was taken as sealed: {stood:?}"
+    );
 }
 
 #[test]
@@ -378,10 +383,11 @@ fn a_seal_proven_once_holds_while_the_tpm_keeps_its_policy() {
         std::str::from_utf8(fixture!("qemu-canokey", "luks-dump-sealed.json")).unwrap(),
     );
     stand_in.journal().record("seal-tpm", "opened:0").unwrap();
-    assert!(matches!(
-        SealTpm.observe(&mut stand_in).unwrap(),
-        Standing::Done { .. }
-    ));
+    let stood = SealTpm.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Done { .. }),
+        "a seal proven once didn't hold while the TPM kept its policy: {stood:?}"
+    );
 }
 
 #[test]
@@ -396,10 +402,11 @@ fn a_cleared_tpm_undoes_a_seal_proven_before() {
         std::str::from_utf8(fixture!("qemu-canokey", "luks-dump-sealed.json")).unwrap(),
     );
     stand_in.journal().record("seal-tpm", "opened:0").unwrap();
-    assert!(matches!(
-        SealTpm.observe(&mut stand_in).unwrap(),
-        Standing::Needed { .. }
-    ));
+    let stood = SealTpm.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Needed { .. }),
+        "a cleared TPM left a seal proven before standing: {stood:?}"
+    );
 }
 
 #[test]
@@ -413,10 +420,11 @@ fn a_firmware_update_undoes_a_seal_proven_before() {
         std::str::from_utf8(fixture!("qemu-canokey", "luks-dump-sealed.json")).unwrap(),
     );
     stand_in.journal().record("seal-tpm", "opened:0").unwrap();
-    assert!(matches!(
-        SealTpm.observe(&mut stand_in).unwrap(),
-        Standing::Needed { .. }
-    ));
+    let stood = SealTpm.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Needed { .. }),
+        "a firmware update left a seal proven before standing: {stood:?}"
+    );
 }
 
 #[test]
@@ -498,7 +506,9 @@ fn a_cleared_tpm_gets_its_policy_made_again_before_the_disk_is_sealed_to_it() {
     };
     assert!(
         at("systemd-pcrlock remove-policy")
-            < at("systemctl restart systemd-pcrlock-make-policy.service")
+            < at("systemctl restart systemd-pcrlock-make-policy.service"),
+        "the old policy wasn't removed before it was made again: {:#?}",
+        stand_in.calls
     );
     assert!(
         at("systemctl restart") < at("systemd-cryptenroll"),
@@ -597,10 +607,11 @@ fn a_boot_straight_from_the_disk_the_policy_failed_on_still_needs_the_seal() {
         fixture!("qemu-canokey", "pcrlock-log.json"),
         fixture!("qemu-canokey", "pcr-sha256-4"),
     );
-    assert!(matches!(
-        SealTpm.observe(&mut stand_in).unwrap(),
-        Standing::Needed { .. }
-    ));
+    let stood = SealTpm.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Needed { .. }),
+        "a boot straight from the disk the policy failed on was taken as sealed: {stood:?}"
+    );
 }
 
 #[test]
@@ -610,20 +621,22 @@ fn new_firmware_on_a_boot_through_the_menu_still_needs_the_seal() {
         "/sys/class/tpm/tpm0/pcr-sha256/0",
         b"B4597C7162476A8C53AA825E9C7EEC9BECEFAD902C82ECA12086ADAB07872E34\n",
     );
-    assert!(matches!(
-        SealTpm.observe(&mut stand_in).unwrap(),
-        Standing::Needed { .. }
-    ));
+    let stood = SealTpm.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Needed { .. }),
+        "new firmware on a boot through the menu was taken as sealed: {stood:?}"
+    );
 }
 
 #[test]
 fn a_cleared_tpm_on_a_boot_through_the_menu_still_needs_the_seal() {
     // Its owner's indices gone, the platform's left.
     let mut stand_in = through_the_menu_holding("- 0x1D10200\n");
-    assert!(matches!(
-        SealTpm.observe(&mut stand_in).unwrap(),
-        Standing::Needed { .. }
-    ));
+    let stood = SealTpm.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Needed { .. }),
+        "a cleared TPM on a boot through the menu was taken as sealed: {stood:?}"
+    );
 }
 
 /// A step of the installed machine's, done or still to do as it's told.
@@ -669,10 +682,10 @@ fn a_machine_with_something_left_quits_the_splash_before_the_guide_shows() {
     stand_in
         .prints(Tool::Plymouth, &["--ping"], "")
         .prints(Tool::Plymouth, &["quit"], "");
-    assert!(guide::installed::takes_the_screen(
-        &finishing(false),
-        &mut stand_in
-    ));
+    assert!(
+        guide::installed::takes_the_screen(&finishing(false), &mut stand_in),
+        "a machine with something left didn't take the screen"
+    );
     assert_eq!(stand_in.calls, ["plymouth --ping", "plymouth quit"]);
 }
 
@@ -680,10 +693,10 @@ fn a_machine_with_something_left_quits_the_splash_before_the_guide_shows() {
 fn a_machine_with_no_splash_up_shows_the_guide_without_quitting_one() {
     let mut stand_in = StandIn::new();
     stand_in.refuses(Tool::Plymouth, &["--ping"], 1, "");
-    assert!(guide::installed::takes_the_screen(
-        &finishing(false),
-        &mut stand_in
-    ));
+    assert!(
+        guide::installed::takes_the_screen(&finishing(false), &mut stand_in),
+        "with no splash up, the guide didn't take the screen"
+    );
     assert_eq!(stand_in.calls, ["plymouth --ping"]);
 }
 
@@ -696,10 +709,10 @@ fn a_splash_that_refuses_to_quit_still_leaves_the_guide_to_show() {
         1,
         "plymouthd went away",
     );
-    assert!(guide::installed::takes_the_screen(
-        &finishing(false),
-        &mut stand_in
-    ));
+    assert!(
+        guide::installed::takes_the_screen(&finishing(false), &mut stand_in),
+        "a splash that refused to quit kept the guide off the screen"
+    );
     assert_eq!(stand_in.calls, ["plymouth --ping", "plymouth quit"]);
 }
 
@@ -751,9 +764,9 @@ fn a_tpm_without_secure_boot_keeps_its_keys_but_seals_nothing() {
 #[test]
 fn a_finished_machine_leaves_the_splash_alone() {
     let mut stand_in = StandIn::new();
-    assert!(!guide::installed::takes_the_screen(
-        &finishing(true),
-        &mut stand_in
-    ));
+    assert!(
+        !guide::installed::takes_the_screen(&finishing(true), &mut stand_in),
+        "a finished machine took the screen from its splash"
+    );
     assert!(stand_in.calls.is_empty(), "it ran {:?}", stand_in.calls);
 }

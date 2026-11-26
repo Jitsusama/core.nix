@@ -242,18 +242,22 @@ fn the_person_chooses_and_leaving_them_skips_what_carrying_needs() {
     ChooseCarry.run(&mut stand_in, &chosen("carry", 1)).unwrap();
     // Nothing asked or run to open the old disk, and nothing packed.
     let open = WhenCarried(Box::new(OpenDisk));
-    assert!(matches!(
+    let stood = (
         open.observe(&mut stand_in),
-        Ok(Standing::Done { .. })
-    ));
-    assert!(matches!(
         PackHome.observe(&mut stand_in),
-        Ok(Standing::Done { .. })
-    ));
-    assert!(matches!(
         RestoreHome.observe(&mut stand_in),
-        Ok(Standing::Done { .. })
-    ));
+    );
+    assert!(
+        matches!(
+            stood,
+            (
+                Ok(Standing::Done { .. }),
+                Ok(Standing::Done { .. }),
+                Ok(Standing::Done { .. })
+            )
+        ),
+        "with nothing carried, opening, packing and restoring weren't each done: {stood:?}"
+    );
     assert_eq!(programs(&stand_in), Vec::<&str>::new());
 }
 
@@ -323,10 +327,11 @@ fn the_home_folders_are_packed_sealed_and_read_back_before_anything_is_wiped() {
     );
     // Packed, the steps that opened it aren't wanted again.
     let open = WhenCarried(Box::new(OpenDisk));
-    assert!(matches!(
-        open.observe(&mut stand_in),
-        Ok(Standing::Done { evidence }) if evidence.contains("packed")
-    ));
+    let stood = open.observe(&mut stand_in);
+    assert!(
+        matches!(&stood, Ok(Standing::Done { evidence }) if evidence.contains("packed")),
+        "packed, opening the old disk wasn't done for being packed: {stood:?}"
+    );
     // The archive opens only with its own key, and holds what tar packed,
     // which is what was read back.
     let key = VaultKey::from_secret(&Secret::new(
@@ -357,7 +362,10 @@ fn the_home_folders_are_packed_sealed_and_read_back_before_anything_is_wiped() {
         serde_json::from_slice(stand_in.holds(&format!("{FOLDER}/carried.json")).unwrap()).unwrap();
     assert_eq!(carried.accounts, accounts(OLD_PASSWD));
     assert_eq!(carried.accounts.len(), 1);
-    assert!(!carried.unread);
+    assert!(
+        !carried.unread,
+        "what was carried says some of it went unread"
+    );
     let Ok(Standing::Done { evidence }) = PackHome.observe(&mut stand_in) else {
         panic!("not done")
     };
@@ -374,10 +382,11 @@ fn a_drive_too_small_packs_nothing() {
         "{refused:?}"
     );
     assert_eq!(programs(&stand_in), ["mount", "du", "df", "umount"]);
-    assert!(!matches!(
-        PackHome.observe(&mut stand_in),
-        Ok(Standing::Done { .. })
-    ));
+    let stood = PackHome.observe(&mut stand_in);
+    assert!(
+        !matches!(stood, Ok(Standing::Done { .. })),
+        "a drive too small was taken as packed: {stood:?}"
+    );
 }
 
 #[test]
@@ -390,13 +399,18 @@ fn an_old_system_that_wont_close_is_never_taken_as_packed() {
         5,
         "Device system is still in use.",
     );
-    assert!(PackHome.run(&mut stand_in, &chosen("drive", 0)).is_err());
+    let packing = PackHome.run(&mut stand_in, &chosen("drive", 0));
+    assert!(
+        packing.is_err(),
+        "an old system that won't close was packed: {packing:?}"
+    );
     // Still open, it would pass for a laid-out disk, so nothing is wiped
     // on the strength of it.
-    assert!(!matches!(
-        PackHome.observe(&mut stand_in),
-        Ok(Standing::Done { .. })
-    ));
+    let stood = PackHome.observe(&mut stand_in);
+    assert!(
+        !matches!(stood, Ok(Standing::Done { .. })),
+        "an old system that won't close was taken as packed: {stood:?}"
+    );
 }
 
 #[test]
@@ -408,11 +422,16 @@ fn an_archive_that_doesnt_read_back_whole_is_never_taken_as_packed() {
         matches!(&refused, Err(Fault::Unproven { standing, .. }) if standing.contains("nothing was wiped")),
         "{refused:?}"
     );
-    assert!(stand_in.calls.iter().any(|call| call.starts_with("umount")));
-    assert!(!matches!(
-        PackHome.observe(&mut stand_in),
-        Ok(Standing::Done { .. })
-    ));
+    assert!(
+        stand_in.calls.iter().any(|call| call.starts_with("umount")),
+        "the old disk wasn't unmounted once its archive failed: {:#?}",
+        stand_in.calls
+    );
+    let stood = PackHome.observe(&mut stand_in);
+    assert!(
+        !matches!(stood, Ok(Standing::Done { .. })),
+        "an archive that didn't read back whole was taken as packed: {stood:?}"
+    );
 }
 
 #[test]
@@ -439,7 +458,11 @@ fn a_leave_out_reaching_out_of_a_home_folder_is_refused() {
         matches!(&refused, Err(Fault::Blocked { why, .. }) if why.contains("isn't a path inside a home folder")),
         "{refused:?}"
     );
-    assert!(!stand_in.calls.iter().any(|call| call.starts_with("tar")));
+    assert!(
+        !stand_in.calls.iter().any(|call| call.starts_with("tar")),
+        "tar ran for a leave-out reaching out of a home folder: {:#?}",
+        stand_in.calls
+    );
 }
 
 /// Packed, then the stick restarted, forgetting the key it held, onto a
@@ -481,10 +504,11 @@ fn packed_then_restarted(scratch: &std::path::Path, uid: u32) -> StandIn {
 fn the_home_folders_go_back_after_a_restart_with_the_sticks_copy_of_the_key() {
     let scratch = Scratch::new("carry-restore");
     let mut stand_in = packed_then_restarted(&scratch, 1000);
-    assert!(matches!(
-        RestoreHome.observe(&mut stand_in),
-        Ok(Standing::Needed { .. })
-    ));
+    let stood = RestoreHome.observe(&mut stand_in);
+    assert!(
+        matches!(stood, Ok(Standing::Needed { .. })),
+        "packed and restarted, the home folders weren't still to go back: {stood:?}"
+    );
     RestoreHome.run(&mut stand_in, &Answers::new()).unwrap();
     // Plugged in again as another device, it's found by its filesystem.
     assert_eq!(

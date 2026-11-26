@@ -62,20 +62,26 @@ fn the_recovery_key_is_seven_words_held_before_theyre_enrolled_then_marked_as_on
             "",
         )
         .prints(Tool::Cryptsetup, &IMPORT, "");
-    assert!(matches!(
-        MakeRecoveryKey.observe(&mut stand_in).unwrap(),
-        Standing::Needed { .. }
-    ));
+    let stood = MakeRecoveryKey.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Needed { .. }),
+        "with no recovery key, making one wasn't needed: {stood:?}"
+    );
     MakeRecoveryKey.run(&mut stand_in, &Answers::new()).unwrap();
 
     let words = String::from_utf8(stand_in.holds(RECOVERY_KEY).unwrap().to_vec()).unwrap();
     let each: Vec<&str> = words.split(' ').collect();
     assert_eq!(each.len(), 7, "{words}");
-    assert!(each.iter().all(|word| guide::words::list().contains(word)));
+    assert!(
+        each.iter().all(|word| guide::words::list().contains(word)),
+        "a recovery key word isn't on the word list: {words}"
+    );
     assert_eq!(handed(&stand_in, "NEWPASSWORD"), [words.as_str()]);
     // Marked in the slot the words opened, as systemd marks its own.
     assert!(
-        handed(&stand_in, "stdin").contains(&r#"{"type":"systemd-recovery","keyslots":["3"]}"#)
+        handed(&stand_in, "stdin").contains(&r#"{"type":"systemd-recovery","keyslots":["3"]}"#),
+        "slot 3 wasn't marked as systemd's recovery key: {:#?}",
+        handed(&stand_in, "stdin")
     );
     let at = |start: &str| {
         stand_in
@@ -84,11 +90,19 @@ fn the_recovery_key_is_seven_words_held_before_theyre_enrolled_then_marked_as_on
             .position(|call| call.starts_with(start))
             .unwrap_or_else(|| panic!("no {start} in {:#?}", stand_in.calls))
     };
-    assert!(at("writing /run/guide/recovery-key") < at("systemd-cryptenroll"));
-    assert!(at("systemd-cryptenroll") < at("cryptsetup token import"));
+    assert!(
+        at("writing /run/guide/recovery-key") < at("systemd-cryptenroll")
+            && at("systemd-cryptenroll") < at("cryptsetup token import"),
+        "the words weren't held, then enrolled, then marked: {:#?}",
+        stand_in.calls
+    );
     // New words mean a bundle sealed to any before them goes, as after a
     // restart lost them, so the next step seals it to these.
-    assert!(at(&format!("removing {BUNDLE}")) < at("writing /run/guide/recovery-key"));
+    assert!(
+        at(&format!("removing {BUNDLE}")) < at("writing /run/guide/recovery-key"),
+        "the bundle sealed to earlier words wasn't removed before new ones: {:#?}",
+        stand_in.calls
+    );
 }
 
 #[test]
@@ -119,7 +133,9 @@ fn a_recovery_key_cut_short_keeps_its_words_and_enrols_no_second_slot() {
         stand_in.calls
     );
     assert!(
-        handed(&stand_in, "stdin").contains(&r#"{"type":"systemd-recovery","keyslots":["5"]}"#)
+        handed(&stand_in, "stdin").contains(&r#"{"type":"systemd-recovery","keyslots":["5"]}"#),
+        "the slot enrolled before the cut wasn't the one marked: {:#?}",
+        handed(&stand_in, "stdin")
     );
 }
 
@@ -176,8 +192,9 @@ fn the_recovery_key_is_shown_alone_for_the_phone_then_typed_back_from_it() {
         "key",
         Answer::Typed("abacus abdomen abdominal abide abiding ability ablase".into()),
     );
-    assert!(matches!(
-        KeepRecoveryKey.run(&mut stand_in, &answers),
-        Err(Fault::Blocked { .. })
-    ));
+    let kept = KeepRecoveryKey.run(&mut stand_in, &answers);
+    assert!(
+        matches!(kept, Err(Fault::Blocked { .. })),
+        "words typed back a letter off weren't refused: {kept:?}"
+    );
 }

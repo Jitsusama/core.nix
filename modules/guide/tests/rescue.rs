@@ -116,8 +116,14 @@ fn a_bundle_tells_its_keys_from_others_without_opening() {
             .1
             .to_vec()
     };
-    assert!(bundle.holds(&certificate(&keys)));
-    assert!(!bundle.holds(&certificate(&other)));
+    assert_eq!(
+        (
+            bundle.holds(&certificate(&keys)),
+            bundle.holds(&certificate(&other))
+        ),
+        (true, false),
+        "the bundle didn't tell its own keys' certificate, and only that, from others"
+    );
 }
 
 #[test]
@@ -153,7 +159,10 @@ fn keys_missing_any_of_sbctls_files_are_refused() {
     }
     let mut files = files("bundle-extra");
     files.insert("files.json".into(), Zeroizing::new(vec![]));
-    assert!(Keys::new(files).is_err());
+    assert!(
+        Keys::new(files).is_err(),
+        "keys holding a file sbctl doesn't make were taken"
+    );
 }
 
 fn stand_in_holding(files: &BTreeMap<String, Zeroizing<Vec<u8>>>) -> StandIn {
@@ -222,8 +231,11 @@ fn the_bundle_is_written_privately_and_then_done() {
 
     // Words that aren't these write nothing.
     let other = "abacus abdomen abdominal abide abiding ability ablaze";
-    assert!(step.run(&mut stand_in, &typed(other)).is_err());
-    assert!(stand_in.holds(path).is_none());
+    let written = step.run(&mut stand_in, &typed(other));
+    assert!(
+        written.is_err() && stand_in.holds(path).is_none(),
+        "words other than those shown wrote the bundle: {written:?}"
+    );
 
     // Typed back with capitals, they're the same words, and those shown
     // are those the bundle opens with.
@@ -273,7 +285,10 @@ fn a_bundle_says_which_passphrase_opens_it() {
     let sloppy = Secret::new("A passphrase  for the bundle ".into());
     assert_eq!(bundle.open_with_passphrase(&sloppy).unwrap(), keys);
     let wrong = Secret::new("a passphrase for the bundles".into());
-    assert!(bundle.open_with_passphrase(&wrong).is_err());
+    assert!(
+        bundle.open_with_passphrase(&wrong).is_err(),
+        "a passphrase a word off opened the bundle"
+    );
     let step = OpenRescueBundle {
         bundle,
         opened: std::rc::Rc::default(),
@@ -359,8 +374,9 @@ fn a_bundle_with_no_yubikey_opens_on_the_writer_with_its_passphrase() {
     step.run(&mut stand_in, &answers).unwrap();
     assert_eq!(opened.borrow().as_ref(), Some(&keys));
     assert!(stand_in.calls.is_empty(), "{:?}", stand_in.calls);
-    assert!(matches!(
-        step.observe(&mut stand_in).unwrap(),
-        Standing::Done { .. }
-    ));
+    let stood = step.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Done { .. }),
+        "opened with its passphrase, the bundle wasn't taken as open: {stood:?}"
+    );
 }

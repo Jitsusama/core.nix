@@ -348,10 +348,11 @@ fn spares_whose_halves_match_are_done_and_nothing_is_asked() {
 fn one_keys_spare_kept_leaves_the_other_still_to_keep() {
     let mut stand_in = machine();
     whole(&mut stand_in, NANO, true);
-    assert!(matches!(
-        nano().observe(&mut stand_in).unwrap(),
-        Standing::Done { .. }
-    ));
+    let stood = nano().observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Done { .. }),
+        "the Nano's spare, kept, wasn't taken as kept: {stood:?}"
+    );
     let Standing::Needed { asks } = five_c().observe(&mut stand_in).unwrap() else {
         panic!("the 5C's spare is still to keep")
     };
@@ -396,7 +397,12 @@ fn half_a_spare_blocks_rather_than_being_made_over() {
 fn a_machine_the_guide_didnt_install_has_nothing_to_keep() {
     let mut stand_in = machine();
     stand_in.no_file(NAMED);
-    assert!(steps(&mut stand_in).unwrap().is_empty());
+    let kept = steps(&mut stand_in).unwrap();
+    assert!(
+        kept.is_empty(),
+        "a machine the guide didn't install had {} spares to keep",
+        kept.len()
+    );
     let Standing::Done { evidence } = nano().observe(&mut stand_in).unwrap() else {
         panic!("no YubiKey is named here")
     };

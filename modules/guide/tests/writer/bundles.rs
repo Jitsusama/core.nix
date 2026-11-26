@@ -224,10 +224,11 @@ fn a_stick_carries_every_bundle_on_and_the_next_writer_keeps_them_off_it() {
         .mount("/dev/sda4", &mounted)
         .file(guide::rescue::KEPT, &bundle("tower", Some(9)));
     let gather = GatherBundles::new(directory.join("writer"));
-    assert!(matches!(
-        gather.observe(&mut writer).unwrap(),
-        Standing::Needed { .. }
-    ));
+    let stood = gather.observe(&mut writer).unwrap();
+    assert!(
+        matches!(stood, Standing::Needed { .. }),
+        "with a bundle on the stick, gathering it wasn't needed: {stood:?}"
+    );
     Journey::attempt(&gather, &mut writer, &Answers::new()).unwrap();
     // Mounted only for reading, which needs no password, and never the
     // disk opened, which would.
@@ -250,10 +251,11 @@ fn a_stick_carries_every_bundle_on_and_the_next_writer_keeps_them_off_it() {
             carried("tower", Some(9)),
         ]
     );
-    assert!(matches!(
-        gather.observe(&mut writer).unwrap(),
-        Standing::Done { .. }
-    ));
+    let stood = gather.observe(&mut writer).unwrap();
+    assert!(
+        matches!(stood, Standing::Done { .. }),
+        "gathered, the bundles weren't taken as gathered: {stood:?}"
+    );
 }
 
 #[test]

@@ -124,8 +124,12 @@ fn the_sticks_system_is_copied_into_memory_checked_then_run_from_there() {
         stand_in.holds("/run/stick/store-verity"),
         Some(&[2u8; 8192][..])
     );
-    assert!(position(&stand_in, "veritysetup verify") < position(&stand_in, "dmsetup reload"));
-    assert!(position(&stand_in, "dmsetup reload") < position(&stand_in, "dmsetup resume"));
+    assert!(
+        position(&stand_in, "veritysetup verify") < position(&stand_in, "dmsetup reload")
+            && position(&stand_in, "dmsetup reload") < position(&stand_in, "dmsetup resume"),
+        "the copy wasn't verified, then reloaded, then resumed: {:#?}",
+        stand_in.calls
+    );
     assert!(
         memory::port_words(&mut stand_in).contains("take the stick out first"),
         "the key steps say the stick can come out"
@@ -186,7 +190,11 @@ fn a_machine_without_the_memory_keeps_the_stick_in_and_says_so() {
         panic!("nothing more to do")
     };
     assert!(evidence.contains("stays in"), "{evidence}");
-    assert!(memory::port_words(&mut stand_in).contains("Keep the stick in"));
+    let words = memory::port_words(&mut stand_in);
+    assert!(
+        words.contains("Keep the stick in"),
+        "the key steps don't say to keep the stick in: {words}"
+    );
 }
 
 #[test]
@@ -198,10 +206,11 @@ fn a_system_not_running_from_a_sticks_store_has_nothing_to_copy() {
         1,
         "device-mapper: table ioctl on usr failed: No such device or address",
     );
-    assert!(matches!(
-        RunFromMemory.observe(&mut stand_in).unwrap(),
-        Standing::Done { .. }
-    ));
+    let stood = RunFromMemory.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Done { .. }),
+        "a system not run from a stick's store had something to copy: {stood:?}"
+    );
 }
 
 #[test]

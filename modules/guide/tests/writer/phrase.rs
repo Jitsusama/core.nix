@@ -83,10 +83,11 @@ fn a_stick_that_has_a_passphrase_asks_whether_to_keep_it_and_a_new_one_doesnt() 
         sealed: None,
         keep: Rc::new(Cell::new(None)),
     };
-    assert!(matches!(
-        fresh.observe(&mut stand_in).unwrap(),
-        Standing::Done { evidence } if evidence.contains("new words")
-    ));
+    let stood = fresh.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(&stood, Standing::Done { evidence } if evidence.contains("new words")),
+        "a stick the guide never wrote asked about a passphrase to keep: {stood:?}"
+    );
 }
 
 #[test]

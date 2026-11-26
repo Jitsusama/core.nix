@@ -45,8 +45,12 @@ fn a_target_that_says_nothing_of_secure_boot_has_it() {
     let mut written = serde_json::to_value(target("/dev/disk/by-id/virtio-root")).unwrap();
     written.as_object_mut().unwrap().remove("secure_boot");
     let read: Target = serde_json::from_value(written).unwrap();
-    assert!(read.secure_boot);
-    assert!(step_ids(&read).contains(&"secure-boot-keys"));
+    let ids = step_ids(&read);
+    assert_eq!(
+        (read.secure_boot, ids.contains(&"secure-boot-keys")),
+        (true, true),
+        "a target saying nothing of Secure Boot didn't have it and its keys' step: {ids:?}"
+    );
 }
 
 const GLOBAL: &str = "8be4df61-93ca-11d2-aa0d-00e098032b8c";
@@ -106,10 +110,11 @@ fn the_keys_the_firmware_trusts_are_put_back_with_no_firmware_visit() {
     ];
     let mut stand_in = stick_carrying(&scratch, &target, carried);
     surface_firmware(&mut stand_in, SURFACE_DB);
-    assert!(matches!(
-        SecureBootKeys.observe(&mut stand_in).unwrap(),
-        Standing::Needed { .. }
-    ));
+    let stood = SecureBootKeys.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Needed { .. }),
+        "with the firmware's keys carried, putting them back wasn't needed: {stood:?}"
+    );
     SecureBootKeys.run(&mut stand_in, &Answers::new()).unwrap();
     assert_eq!(
         stand_in.holds(&format!("{SBCTL}/keys/db/db.key")),
@@ -240,10 +245,11 @@ fn a_firmware_that_wont_take_the_keys_stops_the_install_before_the_disk_is_touch
     let mut stand_in = stick(&scratch, &target);
     // A Surface enforcing its own keys, with none carried.
     surface_firmware(&mut stand_in, SURFACE_DB);
-    assert!(matches!(
-        CheckFirmware.observe(&mut stand_in).unwrap(),
-        Standing::Blocked { .. }
-    ));
+    let stood = CheckFirmware.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Blocked { .. }),
+        "a firmware enforcing its own keys, with none carried, didn't stop it: {stood:?}"
+    );
 
     let ids = step_ids(&target);
     let at = |id: &str| ids.iter().position(|found| *found == id).unwrap();
@@ -335,10 +341,11 @@ fn a_firmware_in_setup_mode_gets_the_keys_readied_inside_the_installed_system() 
     for file in AUTO {
         stand_in.no_file(file);
     }
-    assert!(matches!(
-        ReadyEnrolment.observe(&mut stand_in).unwrap(),
-        Standing::Needed { .. }
-    ));
+    let stood = ReadyEnrolment.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Needed { .. }),
+        "a firmware in setup mode didn't need the keys readied: {stood:?}"
+    );
     let program = format!("{}/secure-boot-enrolment", target.system);
     stand_in.prints(Tool::NixosEnter, &["--root", "/mnt", "-c", &program], "");
     ReadyEnrolment.run(&mut stand_in, &Answers::new()).unwrap();
@@ -389,10 +396,11 @@ fn a_system_that_readies_no_keys_itself_is_left_to_its_first_boot() {
     let mut stand_in = stick(&scratch, &target);
     installed(&mut stand_in, &target, false);
     // The firmware isn't even looked at: nothing here would ready keys.
-    assert!(matches!(
-        ReadyEnrolment.observe(&mut stand_in).unwrap(),
-        Standing::Done { .. }
-    ));
+    let stood = ReadyEnrolment.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Done { .. }),
+        "a system that readies no keys itself had keys to ready: {stood:?}"
+    );
 }
 
 #[test]
@@ -401,8 +409,9 @@ fn nothing_is_readied_before_the_system_is_installed() {
     let scratch = Scratch::new("install-ready-first");
     let mut stand_in = stick(&scratch, &target);
     stand_in.pointer("/mnt/nix/var/nix/profiles/system", "/nix/store/old-system");
-    assert!(matches!(
-        ReadyEnrolment.observe(&mut stand_in).unwrap(),
-        Standing::Needed { .. }
-    ));
+    let stood = ReadyEnrolment.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Needed { .. }),
+        "with the system not yet installed, readying was taken as done: {stood:?}"
+    );
 }

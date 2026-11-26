@@ -193,7 +193,10 @@ fn an_install_of_this_machine_stopped_part_way_is_offered_to_carry_on() {
         "{question}"
     );
     assert_eq!(disk, "/dev/vda");
-    assert!(facts.contains(&("enrol-nano".into(), "opened:abc".into())));
+    assert!(
+        facts.contains(&("enrol-nano".into(), "opened:abc".into())),
+        "the stopped install's journal didn't carry the Nano's enrolment: {facts:?}"
+    );
     assert_eq!(STOPPED, &["Carry it on", "Start again, wiping the disk"]);
 }
 
@@ -252,10 +255,11 @@ fn an_install_confirmed_this_boot_is_not_asked_about_again() {
 #[test]
 fn a_blank_disk_holds_no_machine() {
     let mut stand_in = lsblk(fixture!("lsblk-blank.json"));
-    assert!(matches!(
-        FindMachine.observe(&mut stand_in).unwrap(),
-        Standing::Blocked { .. }
-    ));
+    let stood = FindMachine.observe(&mut stand_in).unwrap();
+    assert!(
+        matches!(stood, Standing::Blocked { .. }),
+        "a blank disk was taken as holding a machine: {stood:?}"
+    );
 }
 
 #[test]
@@ -588,7 +592,11 @@ fn a_drive_too_small_copies_nothing() {
         "{:#?}",
         stand_in.calls
     );
-    assert!(stand_in.calls.iter().any(|call| call.starts_with("umount")));
+    assert!(
+        stand_in.calls.iter().any(|call| call.starts_with("umount")),
+        "the old disk wasn't unmounted with nothing copied: {:#?}",
+        stand_in.calls
+    );
     assert_eq!(stand_in.holds(COPIED), None);
 }
 
@@ -616,6 +624,10 @@ fn a_copy_rsync_gives_up_on_is_no_copy() {
     );
     let refused = CopyHome.run(&mut stand_in, &chosen(0));
     assert!(refused.is_err(), "{refused:?}");
-    assert!(stand_in.calls.iter().any(|call| call.starts_with("umount")));
+    assert!(
+        stand_in.calls.iter().any(|call| call.starts_with("umount")),
+        "the old disk wasn't unmounted once rsync gave up: {:#?}",
+        stand_in.calls
+    );
     assert_eq!(stand_in.holds(COPIED), None);
 }

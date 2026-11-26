@@ -62,10 +62,11 @@ fn the_code_github_gives_is_shown_with_where_to_type_it() {
         r#"{"device_code":"the-device-code","user_code":"WDJB-MJHT","verification_uri":"https://github.com/login/device","expires_in":899,"interval":5}"#,
         "",
     );
-    assert!(matches!(
-        AskForCode { account: alice() }.observe(&mut stand_in),
-        Ok(Standing::Needed { .. })
-    ));
+    let stood = AskForCode { account: alice() }.observe(&mut stand_in);
+    assert!(
+        matches!(stood, Ok(Standing::Needed { .. })),
+        "with no token, the code wasn't still to ask for: {stood:?}"
+    );
     AskForCode { account: alice() }
         .run(&mut stand_in, &Answers::new())
         .unwrap();
@@ -214,10 +215,11 @@ fn only_the_keys_github_lacks_are_added_as_their_modules_say() {
         );
     }
     let adding = AddKeys { account: alice() };
-    assert!(matches!(
-        adding.observe(&mut stand_in),
-        Ok(Standing::Needed { .. })
-    ));
+    let stood = adding.observe(&mut stand_in);
+    assert!(
+        matches!(stood, Ok(Standing::Needed { .. })),
+        "with keys github lacks, adding them wasn't needed: {stood:?}"
+    );
     adding.run(&mut stand_in, &Answers::new()).unwrap();
     let added: Vec<&String> = stand_in
         .calls

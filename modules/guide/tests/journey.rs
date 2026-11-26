@@ -134,7 +134,11 @@ fn a_step_already_done_never_runs_again() {
     let step = note("format", Place::Stick);
     let mut machine = StandIn::new();
     machine.journal().record("format", "noted").unwrap();
-    assert!(Journey::attempt(&step, &mut machine, &Answers::new()).is_ok());
+    let attempted = Journey::attempt(&step, &mut machine, &Answers::new());
+    assert!(
+        attempted.is_ok(),
+        "a step already done failed its attempt: {attempted:?}"
+    );
     assert_eq!(step.runs.get(), 0);
 }
 
@@ -164,7 +168,11 @@ fn nothing_runs_without_everything_it_asks_for() {
     assert_eq!(step.runs.get(), 0);
 
     answers.give("plug", Answer::Done);
-    assert!(Journey::attempt(&step, &mut machine, &answers).is_ok());
+    let attempted = Journey::attempt(&step, &mut machine, &answers);
+    assert!(
+        attempted.is_ok(),
+        "with everything it asks for, the step failed: {attempted:?}"
+    );
 }
 
 #[test]
@@ -211,10 +219,14 @@ fn when_everything_here_is_done_it_says_where_to_go() {
     assert_eq!(step.place(), Place::Installed);
 
     machine.journal().record("seal", "noted").unwrap();
-    assert!(matches!(
-        journey.next(Place::Installed, &mut machine).unwrap(),
-        Next::Finished
-    ));
+    let next = journey.next(Place::Installed, &mut machine).unwrap();
+    let left = match next {
+        Next::Finished => None,
+        Next::Run { step, .. } | Next::Blocked { step, .. } | Next::Elsewhere { step } => {
+            Some(step.id())
+        }
+    };
+    assert_eq!(left, None, "with every step done, a step was left");
 }
 
 #[test]
@@ -260,7 +272,10 @@ fn a_blocked_step_says_why_and_what_to_do() {
     assert_eq!(remedy, "wait for it to forgive them");
 
     let result = Journey::attempt(&ReadsTheTpm, &mut machine, &Answers::new());
-    assert!(matches!(result, Err(Fault::Blocked { step: "tpm", .. })));
+    assert!(
+        matches!(result, Err(Fault::Blocked { step: "tpm", .. })),
+        "the TPM's step wasn't the one blocked: {result:?}"
+    );
 }
 
 #[test]
@@ -269,7 +284,10 @@ fn a_journey_never_goes_back_to_a_place_it_left() {
         Box::new(note("seal", Place::Installed)),
         Box::new(note("format", Place::Stick)),
     ]);
-    assert!(result.is_err());
+    assert!(
+        result.is_err(),
+        "a journey going back to the stick from the installed machine was made"
+    );
 }
 
 #[test]
