@@ -732,7 +732,12 @@ fn note_for_keeper(
             let to_keeper =
                 h.to.as_ref()
                     .is_some_and(|to| to.eq_ignore_ascii_case(keeper));
-            let waits = owned.contains(&h.key) || h.unnoted_since.is_some();
+            // A note held waits a day at most, so a keeper refused for
+            // weeks isn't sent them all as new once it's let through.
+            let unnoted = h
+                .unnoted_since
+                .is_some_and(|since| since >= ears.at - DAY_MS);
+            let waits = owned.contains(&h.key) || unnoted;
             (waits && !stalled::is(h) && !to_keeper) || late.contains(n)
         })
         // A late one went to no owner, so the keeper is asked of it,

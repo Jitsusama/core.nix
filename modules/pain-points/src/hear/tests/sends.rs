@@ -393,3 +393,33 @@ fn a_keeper_s_note_answered(untried: Sent) {
     .expect("a run");
     assert_eq!(again, 0, "a note {untried:?} that went was said again");
 }
+
+#[test]
+fn a_keeper_s_note_held_past_a_day_is_said_no_more() {
+    let place = Place::new("held-note");
+    place.routes();
+    a_day(&place);
+    let note = |to: &str, text: &str| to == "ORCH01" && text.contains(route::FOR_THE_KEEPER);
+    hear_putting(&place.ears(), CELLS, &mut |to, text, _| {
+        if note(to, text) {
+            Sent::Held
+        } else {
+            Sent::Went
+        }
+    })
+    .expect("a run");
+    let mut later = place.ears();
+    later.at += DAY_MS + 60_000;
+    let mut notes = Vec::new();
+    hear(&later, CELLS, &mut |to, text| {
+        if note(to, text) {
+            notes.push(text.to_owned());
+        }
+        true
+    })
+    .expect("a run");
+    assert!(
+        notes.is_empty(),
+        "a note held over a day went as new once the keeper took sends: {notes:?}"
+    );
+}
