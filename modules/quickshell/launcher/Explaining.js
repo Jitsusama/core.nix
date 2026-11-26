@@ -186,7 +186,7 @@ function shown(one, ask, said, now) {
         return null;
     }
     const words = key => String(said?.[key] ?? "");
-    const hue = stage => String(said?.hues?.[stage] ?? "alert");
+    const hue = named => String(said?.hues?.[named] ?? "alert");
     if (one.stage !== "asking") {
         return { name: words(one.stage), reads: "", note: "", hue: hue(one.stage) };
     }
