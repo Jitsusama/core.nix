@@ -10,9 +10,9 @@ realm: node: percent:
 let
   word = "--heap-growing-percent=${toString percent}";
   given = "jitsusama.pi.hosts.${realm}.conversationHeapGrowingPercent is ${toString percent}";
-  # A node the build can't run, as one named outside the store, or by a
-  # store path with no context, is in its sandbox, is not one that refuses
-  # the word, and needs another fix.
+  # A node the build can't reach in its sandbox, as one named outside the
+  # store or by a store path without its context, hasn't refused the word,
+  # and needs another fix.
   unrun = lib.concatStrings [
     "${given}, but the build proving the realm's node takes it can't run ${node}: give the realm "
     "a node its build can reach, from the store and with its context, as lib.getExe gives one, "
@@ -23,8 +23,9 @@ let
     "starts: unset the percent, or give the realm a node that knows it. What it said is above."
   ];
   failed = lib.concatStrings [
-    "${given}, but ${node} failed with ${word} other than by refusing it, as a node that can't "
-    "start would: what it said is above."
+    "${given}, but ${node} failed with ${word} other than by refusing it, so the build can't prove "
+    "it takes the word. What it said is above: give the realm a node its build can run, or unset "
+    "the percent."
   ];
   name = "pi-conversation-${realm}-takes-heap-growth";
 in
