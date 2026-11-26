@@ -1024,9 +1024,13 @@ pub fn current(config: &Config) -> Option<PathBuf> {
 /// Whether the machine runs `built`, or one of its specialisations, which
 /// NixOS runs in its stead when the machine was switched to one.
 pub fn runs(config: &Config, built: &Path) -> bool {
-    let Some(current) = current(config) else {
-        return false;
-    };
+    current(config).is_some_and(|current| is_or_specialises(&current, built))
+}
+
+/// Whether `current`, a canonical path, is `built` or one of its
+/// specialisations, which NixOS runs or boots in its stead when the
+/// machine was switched to one.
+pub fn is_or_specialises(current: &Path, built: &Path) -> bool {
     fs::canonicalize(built).is_ok_and(|built| built == current)
         || fs::read_dir(built.join("specialisation")).is_ok_and(|mut specialisations| {
             specialisations.any(|entry| {
@@ -1152,20 +1156,34 @@ fn failed_units(lines: &[String]) -> Vec<String> {
 }
 
 /// Switches back to `system`, the one the machine left. One that waits on
-/// its boot check is only activated, as `switch` activates it: it ran
-/// without being booted, since its check failed or never ended, and going
-/// back with `switch` made it the boot default that nothing had checked.
+/// its boot check is only activated, as `switch` activates it, and the
+/// system the machine booted made the boot default again: it ran without
+/// being booted, since its check failed or never ended, so going back with
+/// `switch` made it the boot default that nothing had checked, and the
+/// switch gone back from may have made itself the boot default, needing
+/// no check of its own.
 pub fn go_back(config: &Config, system: &Path) -> Result<(), Failure> {
     set_profile(config, system)?;
     match config.kind {
+        Kind::Nixos if waits_on_its_boot_check(config, system) => run::output(
+            run::command(&system.join("bin/switch-to-configuration"), &config.state),
+            "switching back",
+            ["test"],
+        )
+        .and_then(|_| {
+            run::output(
+                run::command(
+                    &config.booted.join("bin/switch-to-configuration"),
+                    &config.state,
+                ),
+                "making what the machine booted what it boots",
+                ["boot"],
+            )
+        }),
         Kind::Nixos => run::output(
             run::command(&system.join("bin/switch-to-configuration"), &config.state),
             "switching back",
-            [if waits_on_its_boot_check(config, system) {
-                "test"
-            } else {
-                "switch"
-            }],
+            ["switch"],
         ),
         Kind::Darwin => run::logged(
             run::command(&system.join("activate"), &config.state),

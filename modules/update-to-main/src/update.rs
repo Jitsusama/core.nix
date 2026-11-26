@@ -79,11 +79,12 @@ fn unchanged(head: String, followed: follows::Followed) -> Line {
 
 /// `ending`, when it switched nothing, with why the machine boots the
 /// system it booted before, while the system that why was kept beside runs
-/// unbooted, or that a boot left it on that older system. Without it the
+/// unbooted, or that a boot since left it on another. Without it the
 /// machine read as booting what it ran from the next ask on, though
-/// nothing had moved its boot default. Main's system booted is the why
-/// over, however its boot default moved; and one switched to by hand is a
-/// system the why doesn't speak of.
+/// nothing had moved its boot default. Main's system booted, or one of its
+/// specialisations, is the why over, however its boot default moved; and
+/// one switched to by hand, with no boot since, is a system the why
+/// doesn't speak of.
 fn still_boots(config: &Config, ending: Line) -> Line {
     let Line::Unchanged {
         commit,
@@ -101,16 +102,30 @@ fn still_boots(config: &Config, ending: Line) -> Line {
         .and_then(|(system, why)| {
             let system = std::path::Path::new(system);
             if system::runs(config, system) {
-                (booted != fs::canonicalize(system).ok()).then(|| why.to_owned())
+                let checked = booted
+                    .as_deref()
+                    .is_some_and(|booted| system::is_or_specialises(booted, system));
+                (!checked).then(|| why.to_owned())
             } else {
-                (booted.is_some() && booted == system::current(config))
-                    .then(|| format!("a boot left it on the system before main's, since {why}"))
+                (booted.is_some() && booted == system::current(config) && booted_since(config))
+                    .then(|| format!("a boot left it on another system than main's, since {why}"))
             }
         });
     Line::Unchanged {
         commit,
         followed,
         boots,
+    }
+}
+
+/// Whether the machine booted since its why was kept: the link to what it
+/// booted, made at each boot, is newer than the why. A rollback by hand to
+/// what it booted is no boot.
+fn booted_since(config: &Config) -> bool {
+    let made = |path: &std::path::Path| fs::symlink_metadata(path).and_then(|m| m.modified());
+    match (made(&config.booted), made(&config.boots_file())) {
+        (Ok(booted), Ok(kept)) => booted > kept,
+        _ => false,
     }
 }
 
@@ -135,7 +150,8 @@ fn keep_boots(config: &Config, system: &std::path::Path, why: &str) {
 /// Ends the why kept by `keep_boots`, once the boot default has moved: a
 /// boot check that passed, or a switch that needed none. A going back
 /// leaves it, since it goes back to a system left unbooted without making
-/// it the boot default (`system::go_back`).
+/// it the boot default, and makes what the machine booted the boot default
+/// again (`system::go_back`).
 fn booted_as_run(config: &Config) {
     // Nothing kept is nothing to end.
     let _ = fs::remove_file(config.boots_file());
@@ -560,17 +576,17 @@ fn switch_from(
         .and_then(|switched| system::healthy(config).map(|()| switched));
     match switched {
         Ok(mut switched) => {
-            // Ended before the head is remembered, so a daemon that dies
-            // between the two leaves the head to build again, not a
-            // checked switch marked unended. A system left unbooted is said
-            // so first, so a daemon that dies before its check ends, or
-            // before it begins, leaves the asks after it saying so.
-            end_switch(config);
+            // A system left unbooted is said so first, so a daemon that
+            // dies before its check ends, or before it begins, leaves the
+            // asks after it saying so. The switch is ended before the head
+            // is remembered, so a daemon that dies between the two leaves
+            // the head to build again, not a checked switch marked unended.
             if switched.unbooted {
                 keep_boots(config, built.system, UNCHECKED);
             } else {
                 booted_as_run(config);
             }
+            end_switch(config);
             if let Err(e) =
                 remember(config, &head).and_then(|()| follows::remember(config, &followed))
             {

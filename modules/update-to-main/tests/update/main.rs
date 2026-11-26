@@ -1367,9 +1367,13 @@ fn a_new_kernels_userland_runs_now_and_its_kernel_from_the_next_boot() {
 /// with another, whose boot check runs `check` with the system's path as
 /// its `$1`.
 fn a_new_initrd(world: &mut World, head: &str, check: &str) -> PathBuf {
-    for system in [world.running(), world.root.join("booted")] {
-        fs::create_dir_all(&system).unwrap();
-        fs::write(system.join("initrd"), "one").unwrap();
+    // The booted system is `first` itself, so going back can make it the
+    // boot default again.
+    let first = world.running();
+    fs::write(first.join("initrd"), "one").unwrap();
+    let booted = world.root.join("booted");
+    if fs::symlink_metadata(&booted).is_err() {
+        std::os::unix::fs::symlink(&first, &booted).unwrap();
     }
     let system = world.system(head);
     fs::write(system.join("initrd"), "two").unwrap();
@@ -1600,8 +1604,8 @@ fn going_back_to_a_system_whose_boot_check_failed_keeps_the_old_boot_default() {
     };
     assert!(why.contains("went back to what it ran"), "{why}");
     assert_eq!(
-        world.boots(),
-        first,
+        fs::canonicalize(world.boots()).unwrap(),
+        fs::canonicalize(&first).unwrap(),
         "going back made a system whose boot check failed the boot default"
     );
     git(&world.origin, &["reset", "--quiet", "--hard", &one]);
@@ -1647,9 +1651,62 @@ fn a_reboot_into_the_old_system_says_it_left_the_machine_there() {
         panic!("the ask after the reboot said nothing of it: {again:?}")
     };
     assert!(
-        said.starts_with("a boot left it on the system before main's, since ")
+        said.starts_with("a boot left it on another system than main's, since ")
             && said.ends_with(&boots),
         "{said}"
+    );
+}
+
+#[test]
+fn going_back_from_a_plain_switch_makes_what_it_booted_the_boot_default() {
+    // A switch needing no boot check makes itself the boot default; going
+    // back from it to a system whose check failed only activates that one,
+    // so what the machine booted is made the boot default again.
+    let mut world = World::new();
+    let first = world.boots();
+    a_failed_boot_check(&mut world);
+    let two = world.signed("two");
+    let system = world.system(&two);
+    std::os::unix::fs::symlink(world.config.booted.join("initrd"), system.join("initrd")).unwrap();
+    fs::write(system.join("unhealthy"), "").unwrap();
+    let (_, failed) = world.update();
+    assert!(
+        matches!(&failed, Line::Failed { why, .. } if why.contains("went back to what it ran")),
+        "{failed:?}"
+    );
+    assert_eq!(
+        fs::canonicalize(world.boots()).unwrap(),
+        fs::canonicalize(&first).unwrap(),
+        "going back left a switch that failed its health check the boot default"
+    );
+}
+
+#[test]
+fn a_rollback_by_hand_to_what_it_booted_is_no_boot() {
+    let mut world = World::new();
+    let first = world.boots();
+    a_failed_boot_check(&mut world);
+    let running = world.root.join("running");
+    fs::remove_file(&running).unwrap();
+    std::os::unix::fs::symlink(&first, &running).unwrap();
+    let (_, again) = world.update();
+    assert!(
+        matches!(again, Line::Unchanged { boots: None, .. }),
+        "a rollback by hand was said to be a boot: {again:?}"
+    );
+}
+
+#[test]
+fn a_boot_into_a_specialisation_of_main_s_system_ends_the_why() {
+    let mut world = World::new();
+    let (_, system) = a_failed_boot_check(&mut world);
+    let docked = system.join("specialisation/docked");
+    fs::create_dir_all(&docked).unwrap();
+    reboot_into(&world, &docked);
+    let (_, again) = world.update();
+    assert!(
+        matches!(again, Line::Unchanged { boots: None, .. }),
+        "an ask after main's specialisation booted said the old system boots: {again:?}"
     );
 }
 
