@@ -86,12 +86,14 @@ CELLS = 8
 # 677.4 KB once a network's label keeps what tells it apart, and 678.2 KB
 # once a cloud machine says it's kept, a little more once a long lease counts
 # days, under the 679 KB allowed then; new work's line and its hidden
-# controls draw about 20 elements of the 611. One file more and two of the
-# kilobytes are the kit's head.css, the head every live page shares, less the
-# map's own head rules; the head and its link are seven elements more in the
-# markup than the map's header was, and the budget rose by three, the rest
-# within its room.
-BUDGET = Budget(files=34, kilobytes=681, elements=623)
+# controls draw about 20 elements of the 611. Two files more are the kit's
+# head.css, the head every live page shares, two of the kilobytes less the
+# map's own head rules, and the kit's keys.js, which marks the page keyed at
+# its first key so a touch screen with a keyboard shows its key line, about
+# three more; the head and its link are seven elements more in the markup
+# than the map's header was, and the budget rose by three, the rest within
+# its room.
+BUDGET = Budget(files=35, kilobytes=684, elements=623)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
