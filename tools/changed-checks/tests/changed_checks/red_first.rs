@@ -97,7 +97,11 @@ fn a_new_test_that_fails_on_the_base_and_passes_at_the_head_goes_through() {
         "{}",
         text(&ran.stderr)
     );
-    assert!(stand_in.built().contains(&over_the_base(&stand_in)));
+    assert!(
+        stand_in.built().contains(&over_the_base(&stand_in)),
+        "a wasn't built over the base: {}",
+        stand_in.built()
+    );
 }
 
 #[test]
@@ -177,7 +181,11 @@ fn a_lint_reading_the_tests_is_said_and_not_built_over_the_base() {
         "the lint was built over the base: {}",
         stand_in.built()
     );
-    assert!(stand_in.built().contains(&over_the_base(&stand_in)));
+    assert!(
+        stand_in.built().contains(&over_the_base(&stand_in)),
+        "a wasn't built over the base beside the lint: {}",
+        stand_in.built()
+    );
 }
 
 #[test]
@@ -240,7 +248,11 @@ fn a_change_not_yet_committed_or_only_named_is_not_judged_on_the_base() {
         "{}",
         text(&ran.stderr)
     );
-    assert!(!uncommitted.built().contains("?rev="));
+    assert!(
+        !uncommitted.built().contains("?rev="),
+        "an uncommitted change was built over the base: {}",
+        uncommitted.built()
+    );
 
     let named = committed("red-named", CHANGE, "a3.drv");
     let ran = named.run(&["--system", "x86_64-linux", "--name-only"]);
