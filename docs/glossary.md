@@ -670,6 +670,7 @@ The words core.nix is built from. Never a launcher place.
 | age key | the file that opens what was sealed to it with age | age identity | |
 | theme | the look every program Joel sees shares | | `jitsusama.theme` |
 | terminal kit | the library every Rust command builds on for its shared flags, ink, layout, help, errors and exit codes | | `modules/terminal-kit/` |
+| subject hubs | the library cadence and pain-points read the mycelium's hubs through, each a subject's cells, and keep each need they put to one | | `modules/subject-hubs/` |
 | crate reach | which of core's Rust crates read which, by their manifests' paths, so merge-net and a gate's replay judge alike what main moved beside a change | | `modules/crate-reach/` |
 | colour | what a colour means in the theme, such as the accent, apart from a screen's colours | colour role | `jitsusama.theme.colours`, a theme file's `[colours]` |
 | face | one of the theme's typefaces, named by its kind: mono, sans, serif or script | typeface | `jitsusama.theme.font` |
