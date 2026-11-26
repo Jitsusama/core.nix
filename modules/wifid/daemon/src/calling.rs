@@ -136,7 +136,9 @@ impl Peer {
         };
         let pidfd = pidfd_of(socket);
         let read = std::fs::read(format!("/proc/{number}/cgroup"));
-        let cgroup = judged(held(pidfd), read, named);
+        let cgroup = judged(held(pidfd), read, |path| {
+            named(Path::new("/sys/fs/cgroup"), path)
+        });
         Peer { pid, uid, cgroup }
     }
 }
@@ -178,8 +180,8 @@ fn held(pidfd: io::Result<OwnedFd>) -> Held {
 /// none: one wifid may not look into, as a user may close their own
 /// delegated cgroups to it, is taken as there, so a live asker's isn't
 /// said as removed.
-fn named(path: &[u8]) -> bool {
-    let at = Path::new("/sys/fs/cgroup").join(OsStr::from_bytes(path));
+fn named(root: &Path, path: &[u8]) -> bool {
+    let at = root.join(OsStr::from_bytes(path));
     !matches!(std::fs::symlink_metadata(at), Err(error) if error.kind() == io::ErrorKind::NotFound)
 }
 
@@ -756,9 +758,16 @@ mod tests {
             Some("system.slice/x?.service??deleted?"),
             "a live cgroup not UTF-8, named to end as a removed one's does, was said as removed"
         );
-        assert!(named(b""), "the root cgroup was said as none");
+        // A hierarchy of its own, as a build's sandbox may have none.
+        let root = tempfile::tempdir().expect("a hierarchy");
+        let live = b"x.slice/y\xff.service (deleted)";
+        std::fs::create_dir_all(root.path().join(OsStr::from_bytes(live))).expect("a cgroup");
         assert!(
-            !named(b"no-such.slice/x.service (deleted)"),
+            named(root.path(), live),
+            "a live cgroup not UTF-8 was said as none"
+        );
+        assert!(
+            !named(root.path(), b"x.slice/z.service (deleted)"),
             "a cgroup not there was said as there"
         );
     }
