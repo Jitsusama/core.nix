@@ -36,9 +36,10 @@ use std::time::Duration;
 /// A person's ask.
 pub const ASK: &str = "update";
 
-/// What follows a person's ask to name a followed input's commit, as
-/// `update at INPUT COMMIT`, for main with that input there rather than at
-/// its main's head (src/follows.rs says what the commit must be).
+/// What follows a person's ask to name followed inputs' commits, as
+/// `update at INPUT COMMIT [INPUT COMMIT ...]`, for main with each input
+/// there rather than at its main's head (src/follows.rs says what each
+/// commit must be).
 pub const AT: &str = "at";
 
 /// The follower's ask: an update like any other, except that once built
@@ -362,20 +363,42 @@ fn stop(current: &Mutex<Option<Arc<Answer>>>, asked: Asked) -> String {
 }
 
 /// The followed inputs' commits a person's ask names: none for `update`,
-/// one for `update at INPUT COMMIT`, and why for an `at` without both;
-/// nothing when the ask is another.
+/// each pair's for `update at INPUT COMMIT ...`, and why for an `at`
+/// without whole pairs or naming an input twice; nothing when the ask is
+/// another.
 fn asked_at(ask: &str) -> Option<Result<Followed, String>> {
     match ask.split_whitespace().collect::<Vec<_>>().as_slice() {
         [ASK] => Some(Ok(Followed::new())),
-        [ASK, AT, name, commit] if held::is_commit(commit) => Some(Ok(Followed::from([(
-            (*name).to_owned(),
-            commit.to_ascii_lowercase(),
-        )]))),
-        [ASK, AT, ..] => Some(Err(format!(
-            "`{ASK} {AT}` takes a followed input's name and one commit's full id"
-        ))),
+        [ASK, AT, pairs @ ..] => Some(at_pairs(pairs)),
         _ => None,
     }
+}
+
+/// Each input's commit, from words naming an input, then a commit's full
+/// id, in turn.
+fn at_pairs(words: &[&str]) -> Result<Followed, String> {
+    let wrong = || {
+        format!(
+            "`{ASK} {AT}` takes each followed input's name once, each with one commit's full id"
+        )
+    };
+    let pairs = words.chunks_exact(2);
+    if words.is_empty() || !pairs.remainder().is_empty() {
+        return Err(wrong());
+    }
+    let mut at = Followed::new();
+    for pair in pairs {
+        let [name, commit] = pair else {
+            return Err(wrong());
+        };
+        let new = at
+            .insert((*name).to_owned(), commit.to_ascii_lowercase())
+            .is_none();
+        if !held::is_commit(commit) || !new {
+            return Err(wrong());
+        }
+    }
+    Ok(at)
 }
 
 /// The commits an update was asked at, as its line in the journal ends.
@@ -595,7 +618,24 @@ mod tests {
             Some(Ok(Followed::new())),
             "a plain ask named a commit"
         );
-        for ask in ["update at", "update at core", "update at core b2be6ae26c8f"] {
+        let other = "a".repeat(40);
+        assert_eq!(
+            asked_at(&format!("update at core {commit} core/mycelium {other}")),
+            Some(Ok(Followed::from([
+                ("core".to_owned(), commit.to_ascii_lowercase()),
+                ("core/mycelium".to_owned(), other.clone()),
+            ]))),
+            "an ask at two inputs' commits wasn't read as both"
+        );
+        let twice = format!("update at core {commit} core {other}");
+        let unpaired = format!("update at core {commit} core/mycelium");
+        for ask in [
+            "update at",
+            "update at core",
+            "update at core b2be6ae26c8f",
+            &twice,
+            &unpaired,
+        ] {
             assert!(
                 asked_at(ask).is_some_and(|at| at.is_err()),
                 "{ask:?} wasn't refused"

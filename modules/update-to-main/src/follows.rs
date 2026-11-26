@@ -25,6 +25,11 @@ pub type Followed = BTreeMap<String, String>;
 /// machine for half an hour, though the main just before it was fine. It
 /// is held to the same signature and the same history as a head, so it
 /// never takes the machine back past what it last followed.
+///
+/// An input followed only when asked (`asked`) stays where its lock pins
+/// it until an ask names a commit of it, so a person chooses when it moves.
+/// Once asked, it stays at that commit until its lock pins it or past it,
+/// since falling back to an older pin would undo what was asked for.
 pub fn heads(
     config: &Config,
     head: &str,
@@ -41,11 +46,22 @@ pub fn heads(
         return Ok(Ok(followed));
     }
     let lock = lock(config, head)?;
+    // A name sorts before its own inputs' (core before core/mycelium), so
+    // an input's parent is settled before its pin is read from it.
     for (name, follow) in &config.follows {
+        let kept = last.get(name);
+        if follow.asked && kept.is_none() && !at.contains_key(name) {
+            continue;
+        }
         let repo = Repo::followed(config, name, follow);
         git::keyring(&repo)?;
         let main = git::fetch(&repo)?;
+        let (pinned, pins) = pinned(config, &lock, name, &followed)?;
         let commit = match at.get(name) {
+            None if follow.asked => match kept {
+                Some(kept) if !git::descends(&repo, kept, &pinned)? => kept.clone(),
+                _ => continue,
+            },
             None => main,
             Some(asked) if git::descends(&repo, asked, &main)? => asked.clone(),
             Some(asked) => {
@@ -59,15 +75,9 @@ pub fn heads(
         if let Err(why) = git::signed(&repo, &commit)? {
             return Ok(Err(format!("{}: {why}", repo.called)));
         }
-        let pinned = hosted::locked(&lock, name)?["rev"]
-            .as_str()
-            .ok_or_else(|| Failure::new(format!("the flake's lock pins {name} to no commit")))?;
         let behind = [
-            (Some(pinned), "the flake's lock pins"),
-            (
-                last.get(name).map(String::as_str),
-                "this machine last followed",
-            ),
+            (Some(pinned.as_str()), pins.as_str()),
+            (kept.map(String::as_str), "this machine last followed"),
         ];
         for (older, what) in behind.into_iter().filter_map(|(o, w)| Some((o?, w))) {
             if !git::descends(&repo, older, &commit)? {
@@ -82,6 +92,45 @@ pub fn heads(
         followed.insert(name.clone(), commit);
     }
     Ok(Ok(followed))
+}
+
+/// The commit `name` is pinned at, and what pins it: main's lock, or, for
+/// an input of an input followed, that input's own lock at the commit
+/// followed, since that's the lock the build reads it from.
+fn pinned(
+    config: &Config,
+    lock: &Value,
+    name: &str,
+    followed: &Followed,
+) -> Result<(String, String), Failure> {
+    let rev = |locked: &Value| {
+        locked["rev"]
+            .as_str()
+            .map(str::to_owned)
+            .ok_or_else(|| Failure::new(format!("the flake's lock pins {name} to no commit")))
+    };
+    if let Some((parent, own)) = name.rsplit_once('/')
+        && let Some(commit) = followed.get(parent)
+        && let Some(follow) = config.follows.get(parent)
+    {
+        let repo = Repo::followed(config, parent, follow);
+        let at = git::short(commit);
+        let text = git::show(&repo, commit, "flake.lock").ok_or_else(|| {
+            Failure::new(format!(
+                "{parent} at {at} has no flake.lock, so nothing pins {name}"
+            ))
+        })?;
+        let theirs: Value = serde_json::from_str(&text)
+            .map_err(|e| Failure::new(format!("reading {parent}'s flake.lock at {at}: {e}")))?;
+        return Ok((
+            rev(hosted::locked(&theirs, own)?)?,
+            format!("{parent}'s lock at {at} pins"),
+        ));
+    }
+    Ok((
+        rev(hosted::locked(lock, name)?)?,
+        "the flake's lock pins".to_owned(),
+    ))
 }
 
 /// What the build is given so each followed input is its followed commit.

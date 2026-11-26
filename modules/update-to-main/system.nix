@@ -76,6 +76,16 @@ in
               description = "The branch whose head the input follows.";
             };
             inherit signers;
+            asked = mkOption {
+              type = types.bool;
+              default = false;
+              description = ''
+                Whether the input moves only when an ask names a commit of
+                it, staying there until its lock pins it or past it, rather
+                than whenever its main moves: for an input whose every move
+                restarts something people are told of first.
+              '';
+            };
           };
         }
       );
@@ -85,7 +95,10 @@ in
         repository's main rather than where the flake's lock pins them:
         each built at its main once one of its signers signed it and it
         descends from the lock's commit and from what the machine last
-        followed. Main counts as moved when any of them moved.
+        followed. Main counts as moved when any of them moved, save one
+        moved only when asked. An input of an input is named by its path,
+        as `"core/mycelium"`, and its pin is read from its parent's own
+        lock wherever the parent is followed too.
       '';
     };
     elsewhere = mkOption {
@@ -651,7 +664,7 @@ in
             group = "update-ask";
             signers = signersFor cfg.signers;
             follows = lib.mapAttrs (_: follow: {
-              inherit (follow) repository branch;
+              inherit (follow) repository branch asked;
               signers = signersFor follow.signers;
             }) cfg.follows;
             inherit (cfg) hosted elsewhere builders;

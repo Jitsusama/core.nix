@@ -249,7 +249,12 @@ input at COMMIT, by its full id, instead of its main's head, so a machine
 can step back from a merge held until its revert lands and still take
 everything before it. The commit must be on that main, signed, and past
 what the machine last followed, so the ask only ever chooses how far
-forward to go, and holds judge it as they judge a head. An ask joins an
+forward to go, and holds judge it as they judge a head. An input of an
+input is named by its path, `follows."core/mycelium"`, and `--at` may be
+given once for each input. One with `asked = true` moves only when an ask
+names it, so a person chooses when its restarts come, and stays there
+until its lock pins it or past it. Its pin is its parent's own lock at the
+commit built, wherever the parent is followed too. An ask joins an
 update running only when both were asked at the same commits, and is
 refused otherwise. With `elsewhere = true`, the machine builds only the
 pieces nixpkgs marks light itself and sends every other to `builders`,

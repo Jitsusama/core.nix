@@ -2,11 +2,13 @@
 //!
 //! - `update-to-main serve --config FILE`: root's daemon, on the config's
 //!   socket.
-//! - `update-to-main ask [--at INPUT=COMMIT] [--socket FILE]`: asks for an
-//!   update and prints each line as it comes, as JSON. With `--at`, the
+//! - `update-to-main ask [--at INPUT=COMMIT]... [--socket FILE]`: asks for
+//!   an update and prints each line as it comes, as JSON. With `--at`, the
 //!   followed input INPUT is built at COMMIT, by its full id, rather than
-//!   at its main's head; the commit must be on its main, signed, and past
-//!   what the machine last followed, and holds still judge it.
+//!   at its main's head, and an input of an input is named by its path, as
+//!   core/mycelium; each commit must be on its main, signed, and past
+//!   what its lock pins and the machine last followed, and holds still
+//!   judge it.
 //!   Otherwise it's as `ask`. It exits 0 when the machine runs main
 //!   or already did, 1 when the update failed, 77 when it was refused and
 //!   69 when the daemon couldn't be asked or stopped answering.
@@ -90,7 +92,14 @@ fn help() -> Help {
                     "update-to-main ask --at core=COMMIT",
                     "one input at a commit on its main",
                 )
-                .option("--at INPUT=COMMIT", "builds INPUT at COMMIT")
+                .example(
+                    "update-to-main ask --at core=COMMIT --at core/mycelium=COMMIT",
+                    "core and its own mycelium each at a commit",
+                )
+                .option(
+                    "--at INPUT=COMMIT",
+                    "builds INPUT at COMMIT, once per input",
+                )
                 .exit(Exit::Failed, "the update failed")
                 .exit(Exit::Refused, "the update was refused"),
         ))
@@ -177,11 +186,9 @@ fn run(args: &[String]) -> Result<(), Failure> {
             serve::serve(config)
                 .map_err(|e| Failure::new(Exit::Failed, "it couldn't serve").because(e))
         }
-        ["ask"] => asked(Path::new(SOCKET), None),
-        ["ask", "--socket", file] => asked(Path::new(file), None),
-        ["ask", "--at", at] => asked(Path::new(SOCKET), Some(at_args(at)?)),
-        ["ask", "--at", at, "--socket", file] | ["ask", "--socket", file, "--at", at] => {
-            asked(Path::new(file), Some(at_args(at)?))
+        ["ask", rest @ ..] => {
+            let (socket, at) = ask_args(rest)?;
+            asked(socket, &at)
         }
         ["stop"] => stopped(Path::new(SOCKET)),
         ["stop", "--socket", file] => stopped(Path::new(file)),
@@ -210,6 +217,25 @@ fn run(args: &[String]) -> Result<(), Failure> {
         [command, ..] => Err(unasked(command)),
         [] => Err(Failure::new(Exit::Usage, "update-to-main needs a command")
             .try_this("update-to-main --help")),
+    }
+}
+
+/// Where `ask` asks, and the input and commit each of its `--at`s names,
+/// from the words after it. A socket is named at most once.
+fn ask_args<'a>(mut rest: &[&'a str]) -> Result<(&'a Path, Vec<(&'a str, &'a str)>), Failure> {
+    let (mut socket, mut at) = (None, Vec::new());
+    loop {
+        match rest {
+            [] => return Ok((socket.unwrap_or(Path::new(SOCKET)), at)),
+            ["--at", pair, more @ ..] => {
+                at.push(at_args(pair)?);
+                rest = more;
+            }
+            ["--socket", file, more @ ..] if socket.is_none() => {
+                (socket, rest) = (Some(Path::new(*file)), more);
+            }
+            _ => return Err(unasked("ask")),
+        }
     }
 }
 
@@ -469,11 +495,12 @@ fn at_args(at: &str) -> Result<(&str, &str), Failure> {
         })
 }
 
-fn asked(socket: &Path, at: Option<(&str, &str)>) -> Result<(), Failure> {
+fn asked(socket: &Path, at: &[(&str, &str)]) -> Result<(), Failure> {
     let hear = &mut |line: &Line| println!("{}", line.json());
-    let ending = match at {
-        Some((input, commit)) => ask::ask_at(socket, input, commit, hear),
-        None => ask::ask(socket, hear),
+    let ending = if at.is_empty() {
+        ask::ask(socket, hear)
+    } else {
+        ask::ask_at(socket, at, hear)
     };
     // Each line, the ending's too, is already said on stdout.
     match ending {

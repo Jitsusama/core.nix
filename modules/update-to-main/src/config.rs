@@ -319,6 +319,11 @@ pub struct Follow {
     pub repository: String,
     pub branch: String,
     pub signers: Signers,
+    /// Whether it moves only when an ask names a commit of it, rather
+    /// than whenever its main does: for an input whose every move costs
+    /// a restart someone has to be told of first.
+    #[serde(default)]
+    pub asked: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]

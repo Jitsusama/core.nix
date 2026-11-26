@@ -2931,15 +2931,60 @@ fn following() -> World {
             repository: format!("file://{}", core.display()),
             branch: "main".to_owned(),
             signers: world.config.signers.clone(),
+            asked: false,
         },
     );
     world
 }
 
+/// A world, `world`, whose input core has an input of its own, mycelium,
+/// in a repository of its own, that moves only when an ask names it.
+fn asking_nested(mut world: World) -> World {
+    let mycelium = world.root.join("mycelium");
+    fs::create_dir_all(&mycelium).unwrap();
+    git(&mycelium, &["init", "--quiet", "--initial-branch=main"]);
+    world.config.follows.insert(
+        NESTED.to_owned(),
+        Follow {
+            repository: format!("file://{}", mycelium.display()),
+            branch: "main".to_owned(),
+            signers: world.config.signers.clone(),
+            asked: true,
+        },
+    );
+    world
+}
+
+/// The input of core's that `asking_nested` follows, by its path.
+const NESTED: &str = "core/mycelium";
+
 impl World {
     /// Commits to core's main, signed by the trusted key or not.
     fn core_commit(&self, message: &str, signed: bool) -> String {
+        self.commit_in("core", message, signed)
+    }
+
+    /// Commits to core's main a signed commit whose lock pins mycelium at
+    /// `pinned`.
+    fn core_pinning(&self, message: &str, pinned: &str) -> String {
+        let lock = serde_json::json!({
+            "nodes": {
+                "root": { "inputs": { "mycelium": "mycelium" } },
+                "mycelium": { "locked": { "type": "github", "rev": pinned } },
+            },
+            "root": "root",
+            "version": 7,
+        });
         let core = self.root.join("core");
+        fs::write(core.join("flake.lock"), lock.to_string()).unwrap();
+        git(&core, &["add", "flake.lock"]);
+        self.core_commit(message, true)
+    }
+
+    /// Commits to the repository `name` under the world's root, signed by
+    /// the trusted key or not.
+    fn commit_in(&self, name: &str, message: &str, signed: bool) -> String {
+        let core = self.root.join(name);
         fs::write(core.join("file"), message).unwrap();
         git(&core, &["add", "file"]);
         let key = format!("user.signingkey={}", self.key.display());
@@ -2960,6 +3005,23 @@ impl World {
     }
 }
 
+/// A lock pinning core at `core` and core's own mycelium at `mycelium`.
+fn pinning_nested(core: &str, mycelium: &str) -> String {
+    serde_json::json!({
+        "nodes": {
+            "root": { "inputs": { "core": "core" } },
+            "core": {
+                "inputs": { "mycelium": "mycelium" },
+                "locked": { "type": "github", "rev": core },
+            },
+            "mycelium": { "locked": { "type": "github", "rev": mycelium } },
+        },
+        "root": "root",
+        "version": 7,
+    })
+    .to_string()
+}
+
 /// A lock pinning core at `pinned`.
 fn pinning(pinned: &str) -> String {
     serde_json::json!({
@@ -2974,6 +3036,12 @@ fn pinning(pinned: &str) -> String {
 }
 
 fn following_done(commit: &str, core: &str) -> Line {
+    done_following(commit, &[("core", core)])
+}
+
+/// The line ending an update of main at `commit` with each input named in
+/// `followed` at its commit.
+fn done_following(commit: &str, followed: &[(&str, &str)]) -> Line {
     let Line::Done {
         commit,
         applied,
@@ -2990,7 +3058,10 @@ fn following_done(commit: &str, core: &str) -> Line {
         restart,
         restarted,
         boots: None,
-        followed: BTreeMap::from([("core".to_owned(), core.to_owned())]),
+        followed: followed
+            .iter()
+            .map(|(name, commit)| ((*name).to_owned(), (*commit).to_owned()))
+            .collect(),
     }
 }
 
@@ -3167,6 +3238,104 @@ fn an_ask_at_a_commit_behind_what_was_followed_or_of_no_followed_input_is_refuse
         "refused for another reason: {why}"
     );
     assert_eq!(world.builds(), built, "a refused ask built something");
+}
+
+#[test]
+fn an_input_asked_for_moves_only_when_asked_and_stays_till_the_lock_passes_it() {
+    let world = asking_nested(World::new());
+    let pinned = world.commit_in("mycelium", "pinned", true);
+    let wanted = world.commit_in("mycelium", "wanted", true);
+    let core = "c".repeat(40);
+    fs::write(
+        world.origin.join("flake.lock"),
+        pinning_nested(&core, &pinned),
+    )
+    .unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
+    let head = world.signed("one");
+    world.system(&head);
+    assert_eq!(
+        world.update().1,
+        done(&head),
+        "an input asked for moved with no ask naming it"
+    );
+    assert!(
+        !world.root.join("overridden").exists(),
+        "a plain ask overrode an input asked for"
+    );
+    world.system(&format!("{head}+{wanted}"));
+    assert_eq!(
+        world.update_at(NESTED, &wanted),
+        done_following(&head, &[(NESTED, &wanted)])
+    );
+    let overridden = world.read("overridden");
+    assert!(
+        overridden.starts_with(&format!("{NESTED} git+file://"))
+            && overridden.trim().ends_with(&format!("rev={wanted}")),
+        "the build wasn't given core's mycelium at the commit asked for: {overridden}"
+    );
+    world.commit_in("mycelium", "newer", true);
+    assert_eq!(
+        world.update().1,
+        Line::Unchanged {
+            commit: head.clone(),
+            followed: BTreeMap::from([(NESTED.to_owned(), wanted.clone())]),
+        },
+        "a plain ask didn't keep mycelium where it was asked, past the lock's pin"
+    );
+    fs::write(
+        world.origin.join("flake.lock"),
+        pinning_nested(&core, &wanted),
+    )
+    .unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
+    let caught_up = world.signed("two");
+    world.system(&caught_up);
+    assert_eq!(
+        world.update().1,
+        done(&caught_up),
+        "mycelium was still overridden once the lock pinned what was asked"
+    );
+}
+
+#[test]
+fn an_input_asked_for_is_held_to_the_lock_of_the_core_built_with_it() {
+    let world = asking_nested(following());
+    let older = world.commit_in("mycelium", "older", true);
+    let middle = world.commit_in("mycelium", "middle", true);
+    let later = world.commit_in("mycelium", "later", true);
+    let core_at_older = world.core_pinning("pins older", &older);
+    let core_at_later = world.core_pinning("pins later", &later);
+    let head = world.signed_pinning("one", &core_at_older);
+    // main's own lock pins core's mycelium at the oldest, so only core's
+    // lock at the core asked for can refuse the middle.
+    let at = |core: &str| {
+        BTreeMap::from([
+            ("core".to_owned(), core.to_owned()),
+            (NESTED.to_owned(), middle.clone()),
+        ])
+    };
+    let built = world.builds();
+    let ask = |at: &BTreeMap<String, String>| {
+        update::update_at(&world.config, &|| false, at, &mut |_| {})
+    };
+    let Line::Refused { why, .. } = ask(&at(&core_at_later)) else {
+        panic!("mycelium behind what core's lock pins wasn't refused")
+    };
+    assert!(
+        why.contains(&format!(
+            "which core's lock at {} pins",
+            &core_at_later[..12]
+        )),
+        "refused for another reason: {why}"
+    );
+    assert_eq!(world.builds(), built, "a refused ask built something");
+    world.system(&format!("{head}+{middle}"));
+    assert_eq!(
+        ask(&at(&core_at_older)),
+        done_following(&head, &[("core", &core_at_older), (NESTED, &middle)]),
+        "an ask at both inputs, mycelium past core's pin, didn't build both"
+    );
 }
 
 #[test]

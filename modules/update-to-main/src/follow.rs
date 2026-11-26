@@ -482,7 +482,8 @@ pub fn heads(config: &Config, was: Option<&Followed>) -> Result<Followed, String
             }
         }
     }
-    for (name, follow) in &config.follows {
+    // One that moves only when asked is no reason to ask.
+    for (name, follow) in config.follows.iter().filter(|(_, follow)| !follow.asked) {
         heads.insert(
             name.clone(),
             remote_head(config, &follow.repository, &follow.branch)?,
