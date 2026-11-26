@@ -95,9 +95,12 @@ pub fn find(config: &Config, path: &str) -> Found {
     let mut file = root.join(named);
     if file.is_dir() {
         if !decoded.ends_with('/') {
-            // From one slash, since a path from two (`//elsewhere`) would
-            // send the browser to another host.
-            return Found::Folder(format!("/{}/", path.trim_start_matches('/')));
+            // Relative to where the browser asked, from `./`: a path from
+            // two slashes (`//elsewhere`), or a backslash, which a browser
+            // reads as one, would otherwise send it to another host, and a
+            // name with a colon would read as a scheme.
+            let last = path.rsplit('/').next().unwrap_or_default();
+            return Found::Folder(format!("./{last}/"));
         }
         file.push("index.html");
     }
@@ -373,7 +376,7 @@ mod tests {
         let folders = folders("slash");
         assert_eq!(
             find(&folders.config, "/mycelium"),
-            Found::Folder("/mycelium/".to_owned())
+            Found::Folder("./mycelium/".to_owned())
         );
     }
 
