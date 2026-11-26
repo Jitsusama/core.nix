@@ -63,6 +63,66 @@ fn devices() -> Help {
             "there's no record of the home network yet",
         )
         .exit(Exit::Config, "XDG_RUNTIME_DIR isn't set")
+        .subcommand(press())
+        .subcommand(wake())
+}
+
+/// Press a key on a TV's remote, from this machine.
+fn press() -> Help {
+    Help::new(
+        "press",
+        "press a key on a TV's remote; the first time, the TV asks on its screen to allow it",
+    )
+    .argument(
+        "<key>",
+        "power, volume-up, volume-down, mute, home, source, back, ok, up, down, left, \
+         right, play or pause",
+    )
+    .example(
+        "net devices Living press volume-up",
+        "the TV turns its volume up a step",
+    )
+    .example(
+        "net devices Living press power --json",
+        "the same for its power key, said as net.pressed/1",
+    )
+    .exit(Exit::Usage, "it isn't a TV, or it has no such key")
+    .exit(Exit::NotFound, "no device goes by that name or address")
+    .exit(
+        Exit::Refused,
+        "the TV refused or nobody pressed Allow, or what answered isn't the TV that allowed it",
+    )
+    .exit(
+        Exit::Unavailable,
+        "the TV is asleep or off, or there's no record of the home network yet",
+    )
+    .exit(Exit::TryAgain, "the TV broke off")
+    .exit(
+        Exit::Failed,
+        "what the TV allowed can't be opened, or what answered doesn't speak as a TV",
+    )
+    .exit(Exit::Config, "XDG_RUNTIME_DIR isn't set")
+}
+
+/// Wake a TV from standby with Wake-on-LAN.
+fn wake() -> Help {
+    Help::new(
+        "wake",
+        "wake a TV from standby, waiting about 15 s for it to answer as on",
+    )
+    .example("net devices Living wake", "the TV comes on from standby")
+    .example(
+        "net devices Living wake --json",
+        "the same, said as net.woken/1",
+    )
+    .exit(Exit::Usage, "it isn't a TV")
+    .exit(Exit::NotFound, "no device goes by that name or address")
+    .exit(
+        Exit::Unavailable,
+        "the TV didn't wake (on Wi-Fi it needs Power On with Mobile), or there's no record yet",
+    )
+    .exit(Exit::Failed, "the wake couldn't be sent")
+    .exit(Exit::Config, "XDG_RUNTIME_DIR isn't set")
 }
 
 /// Who fills this machine's uplink: its own sockets, not the network's.

@@ -274,6 +274,12 @@ in
 
     systemd.user.services.cadence = {
       Unit.Description = "Watches the delivery cycle and writes its card";
+      # A switch leaves a running tick be: its timer starts the new unit next
+      # time, while restarting it would make home-manager wait out a tick
+      # under load and send the whole switch back, as call-under-load did to
+      # switch 1186's first try on 24 November. The day, review and hour
+      # runs are kept the same way.
+      Unit.X-SwitchMethod = "keep-old";
       Service = {
         Type = "oneshot";
         ExecStart = lib.escapeShellArgs (
@@ -309,6 +315,7 @@ in
     };
     systemd.user.services.cadence-day = {
       Unit.Description = "Reads the day just ended against the days before it";
+      Unit.X-SwitchMethod = "keep-old";
       Service = {
         Type = "oneshot";
         ExecStart = lib.escapeShellArgs (
@@ -331,10 +338,15 @@ in
         # journalctl and coredumpctl, as the account has them.
         Environment = [ "PATH=${lib.makeBinPath [ pkgs.systemd ]}" ];
         Slice = "background.slice";
+        # A switch no longer ends a run, so this ends a hang, which would
+        # hold back the next day's; nothing timed a day's run, and an hour
+        # is many times what reading one day of records takes.
+        TimeoutStartSec = "1h";
       };
     };
     systemd.user.services.cadence-review = {
       Unit.Description = "Reviews the week's noise and blind spots";
+      Unit.X-SwitchMethod = "keep-old";
       Service = {
         Type = "oneshot";
         ExecStart = lib.escapeShellArgs (
@@ -361,6 +373,8 @@ in
           }:/run/current-system/sw/bin"
         ];
         Slice = "background.slice";
+        # As the day's: a switch no longer ends a hung review, so this does.
+        TimeoutStartSec = "1h";
       };
     };
     # A daemon of its own, named cadence-spec, since every daemon's units
@@ -419,6 +433,7 @@ in
     };
     systemd.user.services.cadence-hour = {
       Unit.Description = "Measures the hour's shipping, quality and clean zones";
+      Unit.X-SwitchMethod = "keep-old";
       Service = {
         Type = "oneshot";
         ExecStart = lib.escapeShellArgs (
@@ -443,7 +458,9 @@ in
         # first, for a checkout stock git refuses to open. The account's
         # mycelium, last, says how crowded each realm's machines are, where
         # its sessions run and how its cells stand, and holds the map's
-        # check, mycelium-map-check.
+        # check, mycelium-map-check. nix-store lists the closure of the
+        # build each service's unit names, to say whether the service runs
+        # it; without it every service would read as unread.
         Environment = [
           "PATH=${
             lib.makeBinPath (
@@ -451,6 +468,7 @@ in
               ++ [
                 pkgs.git
                 pkgs.systemd
+                (if config.nix.package != null then config.nix.package else pkgs.nix)
               ]
             )
           }${lib.optionalString (realms != [ ]) ":${config.home.profileDirectory}/bin"}"

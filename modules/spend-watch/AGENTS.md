@@ -218,7 +218,13 @@ feed speaks.
   of it then, so it tells the bill again. One a newer spend-watch keeps,
   as when an older system boots again, is never touched: the watch holds,
   says so in the margin and the collection, and carries on once it's a
-  shape it reads, or the newer one replaces it.
+  shape it reads, or the newer one replaces it. To take the history back
+  a shape for an older spend-watch, stop the watch and undo what that
+  shape's step made, then set its schema back: for the twelfth, `DROP
+  TRIGGER hour_moves_add; DROP TRIGGER hour_moves_take; DROP TABLE
+  hour_moves; UPDATE meta SET value = '11' WHERE key = 'schema';`. Its
+  step drops what it makes before making it, so a history taken back by
+  its schema alone is still brought up again.
 - **Strings.** Each finding carries a title for its row, a badge of a few
   words beside it, a note for the launcher's footer and a detail for what's
   copied and told. What asks for a look puts its note in the margin's
@@ -250,7 +256,11 @@ feed speaks.
   ever sent anywhere else.
 - **Pace.** A pass costs about half a second on four months of heavy use
   (700,000 turns), because the history keeps each hour's turns summed as
-  they're added, and a pass reads those rather than the turns. Finding the
+  they're added, and a pass reads those rather than the turns. The daemon
+  keeps those sums in memory and rereads only the hours `hour_moves` says
+  moved since its last pass. The machine drops them from its cache within
+  30 seconds, so every pass used to read them back off the disk: about 60 MB a pass
+  on 2026-11-24, 1.3 to 3.6 MB a second. Finding the
   logs is the other cost: on 2026-11-22 the reviewers' pattern read 36,295
   folders for 1,283 logs, 42 seconds a walk on a busy disk and about 4 MB
   a second all day, almost all of it councils finished weeks before. So a
@@ -264,12 +274,24 @@ feed speaks.
   is mended by `systemctl --user restart spend-watch`, which forgets what's
   settled at the price of one whole walk. It runs at
   most every 30 seconds while the logs grow and every five minutes while
-  they don't; the heartbeat alone is written every 30 seconds, so the shell
-  can tell a stopped daemon from a quiet one. Every pi session asks
+  they don't. A slow pass waits four times as long as it took before the
+  next, up to two minutes, since a pass reads its hours from the history,
+  and once the machine drops them from memory each pass reads them from
+  the disk again. On 24 November that was about 60 MB in a pass of 8 to
+  40 seconds, 1.3 to 3.6 MB a second at the busy pace; the half second above
+  is a pass whose hours are still in memory. The two-minute cap bounds how
+  late a warning comes and keeps `budgets.json` within the eleven minutes
+  below, and a pass longer than it says so in the journal. The heartbeat
+  alone is written every 30 seconds between passes, so the shell can tell
+  a stopped daemon from a quiet one; not during one, so a pass longer
+  than the shell's two minutes of silence shows the watch as stopped
+  until it ends. Every pi session asks
   `budgets --json` as it starts, all of them at once when an update
   reloads them, so without a session it answers with the last pass's
-  `budgets.json` while that's within six minutes, rather than a pass each
-  that took 20 seconds under load (2026-11-07).
+  `budgets.json` while the daemon's socket still takes a connection and
+  the file is within eleven minutes, as long as the daemon beats without
+  a pass that worked, rather than a pass each that took 20 seconds under
+  load (2026-11-07).
 
 ## Working on It
 

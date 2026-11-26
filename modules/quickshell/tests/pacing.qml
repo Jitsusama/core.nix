@@ -1090,6 +1090,17 @@ QtObject {
             Presented.keyShown("category:power", false), "category:power");
         check(failures, "and a collection's, as Emoji's row has",
             Presented.keyShown("collection:emoji", false), "collection:emoji");
+        check(failures, "in any case its Nix config names it in",
+            Presented.keyShown("collection:Asks", false), "collection:Asks");
+        // A daemon's row may be keyed as a place too, and what follows its
+        // kind then may be anyone's words, which no id of the launcher's
+        // holds, so it's said by its kind as any other key's is.
+        check(failures, "but a key of its kinds holding a name is said by its kind",
+            Presented.keyShown("place:Harbour House", false), "place");
+        check(failures, "as is one forging a walk's steps",
+            Presented.keyShown("category:power \u203a wifi", false), "category");
+        check(failures, "or holding nothing after its kind",
+            Presented.keyShown("collection:", false), "collection");
         check(failures, "but any other key only by its kind, as a network's name is",
             Presented.keyShown("wifi:Harbour House", false), "wifi");
         check(failures, "and a daemon's record key by the kind after its row:",
@@ -1098,6 +1109,25 @@ QtObject {
             Presented.keyShown("row:wifi:network:Harbour", true), "row:wifi:network:Harbour");
         check(failures, "a record's window by its app",
             Presented.keyShown("row:window:kitty:~/src", false), "window:kitty");
+        // A program's row is keyed by its desktop entry's id, never the
+        // name its window shows, so each program's drawer can be timed on
+        // its own (RTOIMQ, 2026-11-24), as a window's app is said.
+        check(failures, "a program's key is said with its desktop entry's id",
+            Presented.keyShown("program:org.inkscape.Inkscape", false),
+            "program:org.inkscape.Inkscape");
+        check(failures, "as its row says it, never by the name it shows",
+            Presented.rowShown({ key: "program:google-chrome", name: "Bank statement - Chrome" },
+                false), "program:google-chrome");
+        check(failures, "but one whose id isn't shaped as an app's is said as program",
+            Presented.keyShown("program:My App_2", false), "program");
+        check(failures, "as is one with a part past its id, as a player's under media",
+            Presented.keyShown("program:media:spotify", false), "program");
+        check(failures, "or one with no id",
+            Presented.keyShown("program:", false), "program");
+        check(failures, "or one whose id was read as null",
+            Presented.keyShown("program:null", false), "program");
+        check(failures, "and a daemon's record keyed as a program is said by its kind alone",
+            Presented.keyShown("row:program:Harbour", false), "program");
         check(failures, "a row named but with no key is said only as an answer with reports off",
             Presented.rowShown({ name: "Re: my offer" }, false), "answer");
         check(failures, "and its name while they're on",
@@ -1219,8 +1249,8 @@ QtObject {
         check(failures, "its line breaks and quotes escaped",
             Presented.actShown('verb:calendar:a "b"\nlauncher: x', true),
             'verb:calendar:a \\"b\\"\\nlauncher: x');
-        check(failures, "and escaped with reports off where it's said whole",
-            Presented.actShown("place:x\nlauncher: y", false), "place:x\\nlauncher: y");
+        check(failures, "but an own kind's key holding a line break by its kind alone",
+            Presented.actShown("place:x\nlauncher: y", false), "place");
         // A refusal's code, which its line says whole, escaped as a key is.
         const refusing = { error: { code: "refused", refused: "WrongPassword" } };
         check(failures, "a refusal says the daemon's own reason first",
@@ -1304,9 +1334,8 @@ QtObject {
             Presented.pathShown(walked, false), "place:networks \u203a wifi \u203a answer");
         check(failures, "and quoted whole while they're on, so a name can't forge a line",
             Presented.pathShown([{ name: "a\nlauncher: b" }], true), '"a\\nlauncher: b"');
-        check(failures, "and a key said whole with reports off has its line breaks escaped",
-            Presented.pathShown([{ key: "place:a\nlauncher: b" }], false),
-            "place:a\\nlauncher: b");
+        check(failures, "and a key of the launcher's kinds holding a line break by its kind",
+            Presented.pathShown([{ key: "place:a\nlauncher: b" }], false), "place");
         // The shell's own failure may quote what it failed on.
         check(failures, "the shell's failure is said by its kind with reports off",
             Presented.failureShown(new SyntaxError("Unexpected token Harbour"), false),

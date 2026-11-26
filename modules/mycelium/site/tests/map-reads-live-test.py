@@ -76,9 +76,11 @@ CELLS = 8
 # their own; about 668 KB since the builders, the legend's moving samples and
 # new work's line, and since no comment is sent, view.js's and the styles'
 # included, a little more with the drawer's acts and its whole question, and
-# under the 677 KB allowed; new work's line and its hidden controls draw about 20 elements of the
-# 611.
-BUDGET = Budget(files=33, kilobytes=677, elements=620)
+# 677.4 KB once a network's label keeps what tells it apart, and 678.2 KB
+# once a cloud machine says it's kept, a little more once a long lease counts
+# days, under the 679 KB allowed; new work's line and its hidden controls draw about 20 elements of
+# the 611.
+BUDGET = Budget(files=33, kilobytes=679, elements=620)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -94,6 +96,8 @@ BASIN = "shoal"
 BASIN_MARK = f"{BASIN} basin"
 BASIN_MACHINES = ("pool-a", "pool-b")
 BASIN_CELLS = ("HERON1", "HERON2")
+# A cloud machine made for the person to keep declares its end in this year.
+KEPT_UNTIL = "9999-01-01T00:00:00Z"
 # A cell find is asked for by name, and the title its drawer heads it with.
 SOUGHT = "TERN03"
 SOUGHT_TITLE = "Count the Cleats"
@@ -122,7 +126,7 @@ HELD_ON = ["#orchestration/skiff1", "#repo/harbour"]
 WAITS = ("asked", "held")
 MINUTE = timedelta(minutes=1)
 ASKER_SHORT, WAITED_SHORT, HOLDER_SHORT = "Count the Cleats", "Chart The Harbour", "Paint The Hull"
-ASKED_WORDS = f"a question waiting; it came from {ASKER_SHORT} {{}} min ago, with no answer yet"
+ASKED_WORDS = f"owes {ASKER_SHORT} an answer: asked {{}} min ago, with no answer yet"
 HELD_WORDS = "holding Rig the Skiff for the Season and the harbour repository"
 # HERON1, which leads node.json's Chart the Harbour, said by its forage to
 # have been started by SKIFF1, which leads Rig the Skiff, so the one network
@@ -210,8 +214,10 @@ def twin() -> dict[str, list[dict[str, object]]]:
                 "networks": heard,
             }
         )
-    # Still listed by the machine it left, an hour older.
-    cells.append({**copy.deepcopy(cells[1]), "machine": "osprey", "since": "2026-11-16T08:00:00Z"})
+    # Still listed by the machine it left, an hour older, under a key of its
+    # own, so the page holds both copies and has to choose.
+    left = {**copy.deepcopy(cells[1]), "machine": "osprey", "since": "2026-11-16T08:00:00Z"}
+    cells.append({**left, "key": f"{left['key']}@osprey"})
     for n in range(TWIN_RECEPTORS):
         name = f"radio{n}@kestrel"
         cells.append({**copy.deepcopy(receptor), "key": f"cell:{name}", "name": name})
@@ -285,6 +291,16 @@ def basins() -> dict[str, list[dict[str, object]]]:
     for cell, machine in zip(moved, BASIN_MACHINES, strict=True):
         cell["machine"] = machine
     return {**reading, "machine": reading["machine"] + pool, "cell": cells}
+
+
+def lent() -> dict[str, list[dict[str, object]]]:
+    """Node.json's realm with osprey a cloud machine the person keeps."""
+    reading = json.loads((HERE / "node.json").read_text())["kinds"]
+    machines = copy.deepcopy(reading["machine"])
+    for machine in machines:
+        if machine["name"] == "osprey":
+            machine["declared"] = {"reach": ["internet"], "leaves_at": KEPT_UNTIL}
+    return {**reading, "machine": machines}
 
 
 def feeding(cell: str, ago: timedelta = timedelta()) -> dict[str, object]:
@@ -400,6 +416,13 @@ def crowd_served(tmp_path: Path) -> Iterator[Served]:
 @pytest.fixture
 def basins_served(tmp_path: Path) -> Iterator[Served]:
     stand_in = StandIn(tmp_path / "basins.sock", "node", basins()).start()
+    yield from serve(tmp_path, stand_in)
+    stand_in.leave()
+
+
+@pytest.fixture
+def lent_served(tmp_path: Path) -> Iterator[Served]:
+    stand_in = StandIn(tmp_path / "lent.sock", "node", lent()).start()
     yield from serve(tmp_path, stand_in)
     stand_in.leave()
 
@@ -571,7 +594,7 @@ def test_a_cell_that_moves_is_drawn_moving(mycelium_opened: Opened, mycelium_nod
 # The two cells node.json names "Mend the Sails": the first moving, the
 # second needing Joel.
 NAMESAKES = ("TERN01", "TERN02")
-NAMESAKES_OWE = f"{ASKER_SHORT}'s question waiting since"
+NAMESAKES_OWE = f"hasn't answered {ASKER_SHORT}'s question of"
 
 
 def standing_of(page: Page, cell: str) -> set[str]:
@@ -1613,6 +1636,12 @@ def test_a_basins_machines_are_drawn_as_one(browser: Browser, basins_served: Ser
         body = page.locator("#panel-body")
         said = "A basin, drawn as one machine: 2 machines"
         expect(body, "the drawer didn't say it was a basin").to_contain_text(said)
+        # The Launcher's Machines has a row for each of its machines, none for
+        # it: its name holds a space, which no machine's name does, so the
+        # map never offers a link to a row that isn't there.
+        expect(
+            body.locator('a[href^="mycelium:machine/"]'), "the basin linked a row it has none of"
+        ).to_have_count(0)
         for name in BASIN_MACHINES:
             exactly = page.locator(".name", has_text=re.compile(f"^{re.escape(name)}$"))
             row = body.locator(".health .row", has=exactly)
@@ -1798,6 +1827,42 @@ def test_a_cell_whose_own_record_names_its_starter_grows_a_branch_with_no_forage
         expect(body, "the cell's drawer never said who its record named").to_contain_text(
             f"by {GROWN_BY_TITLE}", timeout=PACE_MS
         )
+        # While it moves, the machine it left may list it too, under a key of
+        # its own. The map draws the copy started latest and names that copy's
+        # starter, so what it draws and the branch it grows change together.
+        kinds = json.loads((HERE / "node.json").read_text())["kinds"]
+        heron = next(cell for cell in kinds["cell"] if cell["name"] == GROWN_CELL)
+        left = {
+            **heron,
+            "key": f"cell:{GROWN_CELL}@kestrel",
+            "kind": "cell",
+            "heard": heard,
+            "machine": "kestrel",
+        }
+        mycelium_node.tell("cell", changed=[{**left, "since": "2026-11-16T09:00:00Z"}])
+        expect(body, "the map never drew the copy started latest").to_contain_text(
+            "network, on kestrel", timeout=PACE_MS
+        )
+        expect(body, "a copy the map doesn't draw named the starter").not_to_contain_text(
+            f"by {GROWN_BY_TITLE}"
+        )
+        expect(hub, "a copy the map doesn't draw kept the branch").not_to_have_attribute(
+            "data-branch-of", re.compile(".")
+        )
+        the_map_counts(page, COUNTED, "a cell two machines list was counted twice")
+        # Told again as started earlier, it keeps its place as the copy told
+        # last, so only the later copy standing gives the branch back.
+        mycelium_node.tell("cell", changed=[{**left, "since": "2026-11-16T07:00:00Z"}])
+        expect(body, "the map drew a copy started earlier").to_contain_text(
+            "network, on osprey", timeout=PACE_MS
+        )
+        expect(hub, "the branch never came back with the copy that names it").to_have_attribute(
+            "data-branch-of", GROWN_FROM, timeout=PACE_MS
+        )
+        expect(body, "the copy that stands never named its starter").to_contain_text(
+            f"by {GROWN_BY_TITLE}", timeout=PACE_MS
+        )
+        mycelium_node.tell("cell", gone=[left["key"]])
         # Once the record stops naming its starter, the branch goes, and so
         # does the cell's word of who started it.
         mycelium_node.tell("cell", changed=[{**said, "started_by": None, "started_by_from": None}])
@@ -1935,6 +2000,9 @@ def test_a_reading_that_moves_no_shape_is_painted_over_the_map_as_drawn(
     page.keyboard.press(".")
     legend = page.locator('#panel-body details[data-keep="legend"] > summary')
     expect(legend, ". never opened Now with its legend").to_be_visible()
+    # Opening the drawer fits the whole map clear of it, a glide that places the names as it
+    # goes, so the case marks them only once the view stands still.
+    settled(page, "the map never stood still once Now opened")
     page.evaluate(MARK_DRAWN)
     *_, focused = page.evaluate(STILL_DRAWN)
     assert focused, "the legend's summary took no focus"
@@ -2123,6 +2191,55 @@ def spent(page: Page) -> list[str]:
     return lines[1:2] + lines[3:]
 
 
+def test_a_machines_drawer_opens_its_row_in_the_launcher(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate("location.hash = '#machine=osprey'")
+    expect(page.locator("#panel-title"), "osprey's drawer never opened").to_have_text("osprey")
+    # Its row's acts are where Joel starts work on it, as the system page's link is.
+    link = page.locator("#panel-body").get_by_role("link", name="Open It in the Launcher")
+    expect(link, "osprey's drawer didn't open its row").to_have_attribute(
+        "href", "mycelium:machine/osprey"
+    )
+
+
+def test_a_kept_cloud_machine_says_so_and_opens_its_row(
+    browser: Browser, lent_served: Served
+) -> None:
+    root, _ = lent_served
+    opened = Opened(browser, f"{root}mycelium/#machine=osprey", SIZES[-1], "light")
+    try:
+        page = opened.page
+        the_map_stands(page, "live")
+        body = page.locator("#panel-body")
+        expect(body.locator(".carries"), "osprey didn't say it was kept").to_contain_text(
+            "A cloud machine, kept until you let it go. A cord runs from it"
+        )
+        expect(
+            body.locator(".health"), "osprey's health counted down a kept lease"
+        ).to_contain_text("kept until you let it go")
+        link = body.get_by_role("link", name="Open It in the Launcher")
+        expect(link, "a cloud machine's drawer didn't open its row").to_have_attribute(
+            "href", "mycelium:machine/osprey"
+        )
+        # It is no device on the home network, so the network page has no row.
+        expect(
+            body.get_by_role("link", name="osprey on the network page"),
+            "a cloud machine linked the home network's page",
+        ).to_have_count(0)
+        # A cell on it says so where it says the machine it runs on, and in
+        # its machine's row.
+        page.evaluate("location.hash = '#cell=GULL01'")
+        kept = "on osprey, a cloud machine, kept until you let it go"
+        expect(body, "GULL01 didn't say its machine was kept").to_contain_text(kept)
+        row = body.locator(".rows .row", has=page.locator(".name", has_text=re.compile("^osprey$")))
+        expect(row, "GULL01's machine row counted down a kept lease").to_contain_text(
+            "a cloud machine, kept until you let it go"
+        )
+    finally:
+        opened.close()
+
+
 def test_what_each_spent_today_is_listed_most_first(mycelium_opened: Opened) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
@@ -2180,11 +2297,11 @@ def test_what_waits_and_what_holds_are_said_as_the_node_judges(
         ages = range(round(ASKED_AGO / MINUTE), round((read - since) / MINUTE) + 1)
         reach = [f"{HELD_WORDS} since {day_clock(held['since'], at)}" for at in ends]
         until = [f"until {day_clock(held['until'], at)} at most" for at in ends]
-        first = lines.index("Questions Waiting") if "Questions Waiting" in lines else len(lines)
+        first = lines.index("Answers Owed") if "Answers Owed" in lines else len(lines)
         glance = next(n for n, line in enumerate(lines) if line.startswith("Your whole network"))
         assert first < glance, f"Now should say what holds the flow before the glance: {lines}"
         said = lines[first : first + 6]
-        assert said[:2] == ["Questions Waiting", WAITED_SHORT], f"Now misread who waits: {said}"
+        assert said[:2] == ["Answers Owed", WAITED_SHORT], f"Now misread who owes: {said}"
         assert said[2:3] in [[ASKED_WORDS.format(age)] for age in ages], (
             f"Now misread the question waiting: {said}"
         )
@@ -2194,7 +2311,7 @@ def test_what_waits_and_what_holds_are_said_as_the_node_judges(
         page.evaluate(f"location.hash = '#cell={WAITED}'")
         title = page.locator("#panel-title")
         expect(title, f"{WAITED}'s drawer never opened").to_have_text(WAITED_SHORT)
-        waits = f"{ASKER_SHORT}'s question waiting since"
+        waits = f"hasn't answered {ASKER_SHORT}'s question of"
         owed = [f"{waits} {day_clock(asked['since'], at)}" for at in ends]
         expect(body, f"{WAITED}'s health left out the question waiting on it").to_contain_text(
             re.compile("|".join(map(re.escape, owed)))

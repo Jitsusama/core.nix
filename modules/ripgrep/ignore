@@ -1,6 +1,7 @@
-# What a search of a Mac's home folder never walks into, for ripgrep and fd
-# alike: other programs' data, the cloud's folders, and the Desktop,
-# Documents and Downloads folders, the ones macOS asked about. A search that
+# What a search of a Mac's home folder never walks into, for ripgrep, fd and
+# the Mac's find alike (modules/find/find.sh reads it): other programs' data,
+# the cloud's folders, and the Desktop, Documents and Downloads folders, the
+# ones macOS asked about. A search that
 # reaches one makes macOS ask whether the searcher may read it, again for every build
 # of the searcher, so an agent's search of the home folder asked over and over.
 # The cloud's folders are here too, since a search reading one downloads

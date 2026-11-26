@@ -170,11 +170,11 @@ pub(super) fn said_status(
             // Each holder hangs: its first line at the label's inset, the
             // rest two further in, so where one ends and the next begins
             // reads at a glance.
-            let hung = layout::hung(says, INSET + layout::GAP, prose);
-            for (at, line) in hung.split('\n').enumerate() {
-                let lead = if at == 0 { INSET } else { 0 };
-                block.push(format!("{}{}", " ".repeat(lead), pen.role("text", line)));
-            }
+            block.extend(
+                layout::hanging(says, INSET, prose)
+                    .into_iter()
+                    .map(|line| pen.role("text", &line)),
+            );
         }
         blocks.push(block);
     }

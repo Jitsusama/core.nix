@@ -17,10 +17,12 @@
 
 mod card;
 mod good;
+mod ledger;
 mod lines;
 mod measures;
 mod moved;
 mod owing;
+mod parted;
 mod records;
 mod reviews;
 mod stuck;
@@ -95,18 +97,11 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     let whole = gone.as_ref().is_some_and(Vec::is_empty);
     kept.open
         .retain(|open| !gone.as_ref().is_some_and(|gone| gone.contains(open)));
-    // A miss its owner said was none isn't fixed, so it leaves without Joel
-    // being told it is; the card shows why for a day instead.
-    measures::forget_said_none(&misses, &mut kept.open);
-    let mut measures = gather(
-        &folder,
-        &state_home,
-        &misses,
-        now,
-        checkouts,
-        &mut kept.fetched,
-        to,
-    )?;
+    // A miss its owner said was none isn't fixed, nor one carried into the
+    // asks, so each leaves without Joel being told it is; the card shows a
+    // none's why for a day, and the asks track a carried one's fix.
+    measures::forget_unfixed(&misses, &mut kept.open);
+    let mut measures = gather(&folder, &state_home, &misses, now, checkouts, &mut kept, to)?;
     if !whole {
         unread_misses(&mut measures);
     }
@@ -232,6 +227,20 @@ fn card_to<'a>(to: &'a str, keeper: Option<&'a str>) -> Vec<(&'a str, &'static s
     whom
 }
 
+/// The net's quarantine on core's main, or nothing when it can't be read.
+fn quarantine(core: &Path) -> String {
+    command(
+        "git",
+        &[
+            "-C",
+            &core.to_string_lossy(),
+            "show",
+            "main:tools/merge-net/quarantine.json",
+        ],
+    )
+    .unwrap_or_default()
+}
+
 /// Reads every measure from the machine: the orchestrator's misses and
 /// asks, the work system's findings on the mesh, the net's quarantine,
 /// reverts and results, the tick's card, the three mains, code health's
@@ -242,25 +251,16 @@ fn gather(
     misses: &str,
     now: i64,
     checkouts: &[String],
-    fetched: &mut Vec<i64>,
+    kept: &mut Kept,
     orchestrator: Option<&str>,
 ) -> io::Result<Vec<Measure>> {
     let text = |path: &Path| fs::read_to_string(path).unwrap_or_default();
     let mission = state_home.join("mission");
     let core = folder.join("core.git");
-    let quarantine = command(
-        "git",
-        &[
-            "-C",
-            &core.to_string_lossy(),
-            "show",
-            "main:tools/merge-net/quarantine.json",
-        ],
-    )
-    .unwrap_or_default();
+    let quarantine = quarantine(&core);
     let card_text = fresh_card(folder, now);
     let [core_log, harness_log, machine_log] = axes::repository::mains(folder, now);
-    let asks = text(&mission.join("asks.jsonl"));
+    let (asks, asks_unread) = ledger::whole(&mission.join("asks.jsonl"), &mut kept.asks, now);
     let switches = text(&state_home.join("integration/switches.jsonl"));
     // The work system's findings count against their owners, and one
     // naming none is the orchestrator's to assign.
@@ -276,8 +276,12 @@ fn gather(
         checked,
         measures::untested(misses, folder, checkouts, &switches),
         measures::slips(&asks, now, Tracking::His),
+        measures::parked(&asks, Tracking::His),
+        measures::told_late(&asks, now, Tracking::His),
         measures::to_first_slice(&asks, now, Tracking::His),
         measures::slips(&asks, now, Tracking::Derived),
+        measures::parked(&asks, Tracking::Derived),
+        measures::told_late(&asks, now, Tracking::Derived),
         measures::to_first_slice(&asks, now, Tracking::Derived),
         measures::undated(&quarantine, &today(now), NET_RULES),
         measures::reverts(&text(&folder.join("reverted.json")), now, NET_RULES),
@@ -291,15 +295,19 @@ fn gather(
         landed(&core_log, &harness_log, &machine_log, now),
     ];
     all.extend(measures::said_none(misses, now));
-    all.extend(found);
-    all.extend(rounds_per_merge(
+    all.push(measures::cited::read(
         state_home,
-        &core,
-        &core_log,
-        &harness_log,
         now,
+        &today(now),
+        orchestrator,
     ));
+    all.push(measures::holds::read(state_home, &asks, now));
+    all.extend(parted::dates_at_risk(state_home, &core, &asks, now));
+    all.extend(found);
+    let per_merge = rounds_per_merge(state_home, &core, &core_log, &harness_log, now);
+    all.extend(per_merge);
     all.extend(measures::merge_to_on(&card_text, NET_RULES));
+    let fetched = &mut kept.fetched;
     all.extend(measures::unlocked(&core, checkouts, now, BUMPS, fetched));
     if let Some((median, target)) = measures::card_median(&card_text, "Last commit to merge") {
         all.push(Measure {
@@ -346,6 +354,7 @@ fn gather(
         },
         now,
     ));
+    ledger::unless_whole(&mut all, asks_unread.as_deref());
     Ok(all)
 }
 

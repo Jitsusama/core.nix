@@ -27,7 +27,7 @@ use landing::Fault;
 use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::fs;
-use std::io::{self, Read};
+use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
@@ -325,10 +325,16 @@ if {{ [ ! -L "$runs" ] || rm -f "$runs"; }} && mkdir -p "$runs" &&
   {{ [ ! -L "$work{RUN}" ] || rm -f "$work{RUN}"; }} &&
   (set -C && printf '%s %s\n' "$$" "$here" > "$work{RUN}") && mine=1 &&
   cleared "$work" && mkdir -p "$work"; then copied; why=$?; else why=2; fi
-[ -z "$mine" ] || rm -f "$work.names"
+# What was taken as an archive may be a folder the job named as one.
+[ -z "$mine" ] || {{ rm -f "$work.names"; cleared "$work.tar"; }}
+# The tree goes, with the copy, only where no link stood at the job's
+# handover or above it as `unlinked` looked, so nothing past one found
+# then is cleared; the copy goes either way.
 if [ "$why" -ne 0 ]; then
   [ -z "$mine" ] || {{
-    cd "$HOME" && cleared "$job/{TREE}" "$work" && rm -f "$work{RUN}"
+    cd "$HOME" && if unlinked; then cleared "$job/{TREE}" "$work"; else
+      printf "elsewhere: a link at the job's handover couldn't be cleared, so its tree stays\n" >&2
+      cleared "$work"; fi && rm -f "$work{RUN}"
   }}
   [ "$why" -eq 1 ] && {{ say {refused}; exit {REFUSES}; }}
   say {untaken}
@@ -336,7 +342,9 @@ if [ "$why" -ne 0 ]; then
 fi
 cd {folder} || {{
   printf "elsewhere: the job's folder holds nothing that travels\n" >&2
-  cd "$HOME" && cleared "$job/{TREE}" "$work" && rm -f "$work{RUN}"
+  cd "$HOME" && if unlinked; then cleared "$job/{TREE}" "$work"; else
+    printf "elsewhere: a link at the job's handover couldn't be cleared, so its tree stays\n" >&2
+    cleared "$work"; fi && rm -f "$work{RUN}"
   say {refused}
   exit {REFUSES}
 }}
@@ -487,14 +495,13 @@ pub fn bring_back(
     // long itself.
     let (mut since, mut most, mut seen, mut said) = (Instant::now(), 0, None, false);
     loop {
-        let bytes = list(job);
         // A share carries a list whole, so one past the bound is one every
         // try writes again.
-        if u64::try_from(bytes.len()).map_or(true, |read| read > LARGEST_FILE) {
+        let Some(bytes) = list(job) else {
             return Err(Missed::Refused(format!(
                 "its list of what it brings back is past the {LARGEST_FILE} bytes a share holds in one file, as a job making far more files than a share carries writes"
             )));
-        }
+        };
         let text = readable(&bytes);
         if lines(&text).last() == Some(CUT) {
             return Err(Missed::Lost(
@@ -542,18 +549,17 @@ pub fn bring_back(
 }
 
 /// The far side's list in the handover folder `job`, read only as the
-/// plain file it was opened as, as every file landed is, and no further
-/// than a byte past what a share holds in one file: anything else at its
-/// name, which no share carries, reads as nothing yet.
-fn list(job: &Path) -> Vec<u8> {
-    let mut bytes = Vec::new();
-    if let Ok(file) = landing::opened_plain(&job.join(BROUGHT)) {
-        // Read part way, it is a list still crossing, which the wait answers.
-        if file.take(LARGEST_FILE + 1).read_to_end(&mut bytes).is_err() {
-            bytes.clear();
-        }
-    }
-    bytes
+/// plain file it was opened as, as every file landed is, or nothing when
+/// it is past what a share holds in one file, found by reading no further
+/// than the byte past it: anything else at its name, which no share
+/// carries, reads as nothing yet.
+fn list(job: &Path) -> Option<Vec<u8>> {
+    let Ok(file) = landing::opened_plain(&job.join(BROUGHT)) else {
+        return Some(Vec::new());
+    };
+    // A read failing part way is of a list still crossing, which the wait
+    // answers.
+    archive::at_most(file, LARGEST_FILE).unwrap_or_else(|_| Some(Vec::new()))
 }
 
 /// The far side's list in `bytes`, a line each, with a name that isn't

@@ -3,11 +3,11 @@
    whom; one glow of foxfire, the kit's accent ring, only where the keys are.
 
    What each cell is for: the cells standing on this machine, said first in
-   one sentence over a drawing of the floor, then listed, each under the
-   cell that started it, with its purpose and how far its plans have come,
-   and beside the list the cell the cursor is on. An interface to keep
-   open: the sentence and the drawing are the overview, the panel the
-   detail, and nothing moves under the reader but the cursor. */
+   one sentence in the kit's head, drawn under it as the floor, then listed,
+   each under the cell that started it, with its purpose and how far its
+   plans have come, and beside the list the cell the cursor is on. An
+   interface to keep open: the sentence and the drawing are the overview,
+   the panel the detail, and nothing moves under the reader but the cursor. */
 
 :root {
   /* A cell is a program at work, so the program hue is the site's tint;
@@ -19,23 +19,17 @@
   --open: minmax(20rem, 30rem);
 }
 
-/* ---- The first screen: the crest, the sentence, and where it stands. ---- */
+/* ---- The head: the kit's (head.css), with forage's title and cap. ---- */
 
-.hero {
-  display: grid;
-  justify-items: center;
-  gap: var(--items);
-  padding: calc(var(--groups) * 2) var(--inset) var(--groups);
-  text-align: center;
-}
-
-.eyebrow {
-  margin: 0;
-  color: var(--tint-word);
-  font: var(--label-weight) var(--step-small) / 1.5 var(--label-face);
-  font-feature-settings: var(--mono-features);
-  letter-spacing: var(--label-tracking);
-  text-transform: lowercase;
+/* The kit starts an interface's head on the gutter's edge. This one starts
+   on the edge of the work under it, the frame the list and the open cell
+   share, so the title stands over the first cell at every width. */
+:root[data-kind="interface"] .page-head {
+  --frame: calc(46rem + 30rem + var(--groups) * 1.5);
+  box-sizing: content-box;
+  max-inline-size: var(--frame);
+  margin-inline: auto;
+  padding: calc(var(--groups) * 2) var(--inset) 0;
 }
 
 .eyebrow span {
@@ -77,60 +71,19 @@
   text-decoration-color: currentColor;
 }
 
-.lede {
-  max-inline-size: 33rem;
-  margin: 0;
-  color: var(--text);
-  font-family: var(--voice-face);
-  font-size: var(--step-large);
-  font-style: italic;
-  font-weight: var(--voice-weight);
-  font-variation-settings: "SOFT" var(--voice-soft), "WONK" var(--voice-wonk);
-  line-height: 1.4;
-}
-
-.standing {
-  display: flex;
-  align-items: center;
-  gap: var(--mark);
-  min-block-size: 44px;
-  margin: 0;
-}
-
-.asof {
-  color: var(--text);
-  font-size: var(--step-small);
-}
-
-/* The keys said once, quietly, inside the composition, beside the theme. */
-.ways {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: var(--mark) var(--groups);
-  margin-block-start: var(--mark);
-  color: var(--text);
-  font-size: var(--step-small);
-}
-
-.ways .keys {
-  margin: 0;
-  max-inline-size: 40rem;
-  visibility: hidden;
-}
-
-.js .ways .keys {
-  visibility: visible;
-}
-
-.ways kbd {
+/* The keys act when pressed, as typing them does (steps.ts), and wait for
+   the script that makes them act before they show. */
+.page-head .keys kbd {
   cursor: pointer;
 }
 
-/* ---- The floor cut through: the one drawing, leading the first screen.
-   Before the node speaks it holds the crest, and again once every cell has
-   gone; otherwise the cells themselves. ---- */
+:root:not(.js) .page-head .keys {
+  visibility: hidden;
+}
+
+/* ---- The floor cut through: the one drawing, under the head, across the
+   page. Before the node speaks it holds the crest, and again once every
+   cell has gone; otherwise the cells themselves. ---- */
 
 .floor {
   display: grid;
@@ -139,6 +92,7 @@
   gap: var(--mark);
   inline-size: 100%;
   margin: 0 0 var(--items);
+  padding-inline: var(--inset);
   container-type: inline-size;
 }
 
@@ -273,13 +227,21 @@ rect.hollow {
   }
 }
 
-/* The standing line's glyph: a cap, lit while the page is live and
-   hollow once it isn't, drawn after the floor's marks it borrows from. */
+/* The standing line's glyph: forage's cap in place of the kit's dot, lit
+   while the page is live and hollow once it isn't, drawn after the floor's
+   marks it borrows from. The kit's ring and fill are taken off, the live
+   one by its own selector, which this sheet, coming later, outranks. */
 
-.glyph {
+.page-head .standing .glyph {
   inline-size: 1rem;
   block-size: 1rem;
-  flex: none;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+
+.page-head .standing:is([data-state="live"], :has([data-state="live"])) .glyph {
+  background: none;
 }
 
 .glyph .cap {
@@ -438,8 +400,10 @@ rect.hollow {
 }
 
 /* A cell with no purpose written says so in its own words, set in the
-   voice's italic so it reads as a gap, not a purpose. */
-.quiet {
+   voice's italic so it reads as a gap, not a purpose. Only a purpose or a
+   lead, since the head's quiet row is the kit's, and no stronger than a
+   bare class, so the list's purpose keeps its strong colour. */
+:where(.purpose, .lead).quiet {
   color: var(--text);
   font-style: italic;
 }

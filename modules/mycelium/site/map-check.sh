@@ -5,7 +5,8 @@
 # reaches and names each it misses; with --json it prints what the map
 # said as one line, {"at","cells","count","failures":[{"cell",
 # "orchestration","owner","why"}]}, each why "alone", "unnamed network" or
-# "unreachable". It exits 0 when it misses none, 1 when it misses some,
+# "unreachable", and the owner left out for a cell with no name and no
+# orchestration, which names nobody to tell. It exits 0 when it misses none, 1 when it misses some,
 # 69 when the map never read the node and 70 when the check itself broke.
 # The browser's own words go to standard error only when the check broke,
 # and a name a peer gave is printed as text with its control characters

@@ -190,6 +190,35 @@ function footName(served, title, address) {
         .find(one => one !== "") ?? "";
 }
 
+// footName of a session as the shell hands it over. One with no record
+// yet, as a start in pi's host is, has no presence to title it by, so its
+// quest's name, as the launcher gave it, stands as `name`; `titleOf` is
+// the title a presence names (Sessions.named).
+function footNameOf(served, session, titleOf) {
+    return footName(served, session.presence ? titleOf(session.presence) : session.name,
+        session.address);
+}
+
+// How the foot says each why Sessions gives a press it can't answer as
+// asked (its unhosted): plainly, as of the press's viewer opening or
+// viewed, or in the alert's colour, as a press that viewed nothing
+// (docs/design.md: colour carries the meaning). foot-words.py holds these
+// to the whys the shell gives, both ways, so a why added or renamed there
+// fails until its tone is chosen here, rather than meeting the alert's.
+const WHY_TONES = {
+    opening: "plain", startedOpening: "plain", cameAfter: "plain",
+    startedCameAfter: "plain", ownAfterAll: "plain", startedOwnAfterAll: "plain",
+    disowned: "alert", startedDisowned: "alert", untaken: "alert",
+    startedUntaken: "alert", unowned: "alert", hosted: "alert", hostless: "alert",
+    unnamed: "alert", unviewable: "alert", unviewableHost: "alert"
+};
+
+// Whether the foot says `why` plainly, as of a viewer opening or viewed;
+// one with no tone, which foot-words refuses, in the alert's.
+function viewedWhy(why) {
+    return WHY_TONES[String(why ?? "")] === "plain";
+}
+
 // What an address is made of, the only kind reasonOf looks for in a reason.
 const ADDRESS = /^[A-Z0-9]+$/u;
 

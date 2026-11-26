@@ -167,9 +167,13 @@ export const spentOf = (cells: readonly Cell[]): number => {
 export const spentWords = (cells: readonly Cell[]): string =>
   spends(cells) ? `, ${money(spentOf(cells))} today` : "";
 
-/** How many questions wait, in words. */
+/**
+ * How many questions wait on a cell, in words said of the cell: the answers
+ * it owes. Said as a question waiting, it read as one waiting on the reader,
+ * when it is another cell's question and the cell's to answer.
+ */
 export const waitingWords = (owes: readonly Owed[]): string =>
-  `${owes.length === 1 ? "a question" : `${owes.length} questions`} waiting`;
+  `owes ${owes.length === 1 ? "an answer" : `${owes.length} answers`}`;
 
 /** How many of the cells stand each way. */
 export const countsOf = (cells: readonly Cell[]): Record<Standing, number> => {
@@ -185,10 +189,10 @@ export const countsWords = (cells: readonly Cell[]): string => {
   const n = countsOf(cells);
   const bits = STANDINGS.filter((s) => n[s]).map((s) => `${n[s]} ${STANDING_WORD[s]}`);
   const held = cells.filter((s) => s.owes.length).length;
-  const asked = held === 1 ? "a question" : "questions";
+  const owed = held === 1 ? "an answer" : "answers";
   return (
     `${plural(cells.length, "cell")}${bits.length > 0 ? `: ${bits.join(", ")}` : ""}` +
-    (held ? `; ${held} with ${asked} waiting` : "")
+    (held ? `; ${held} owing ${owed}` : "")
   );
 };
 
@@ -382,4 +386,89 @@ export const SHARED_WORD: Readonly<Record<string, string>> = {
   project: "quest",
   repository: "repository",
   group: "group",
+};
+
+/** A network as its name is told: its key, its name and what it carries. */
+export interface Named {
+  readonly key: string;
+  readonly name: string;
+  readonly carries: string;
+}
+
+/**
+ * Each network's name, told apart from the others': networks whose titles
+ * share their name, as several slices of one project do, are named with
+ * what each carries too, so no two read alike on the map, in the tree or in
+ * Now; whole titles that repeat are told apart by their ids, the part of
+ * the key after its kind, and any still alike, as a title written to read
+ * as another's told name is, by their whole keys until none are.
+ */
+export const toldApart = (networks: readonly Named[]): ReadonlyMap<string, string> => {
+  const names = new Map(networks.map((n) => [n.key, n.name]));
+  tell(networks, names, (n) => (n.carries && n.carries !== n.name ? `: ${n.carries}` : ""));
+  tell(networks, names, (n) => ` ${idHint(n)}`);
+  // Keys are unique, so each pass leaves fewer alike; one per network
+  // bounds it whatever the titles say.
+  for (let pass = 0; pass < networks.length; pass++) {
+    if (!tell(networks, names, (n) => ` [${n.key}]`)) {
+      break;
+    }
+  }
+  return names;
+};
+
+/**
+ * Each network's label on the map, which clips a name to `room`: a told
+ * name clipped alike to another's, its tell cut off, is the network's own
+ * name clipped shorter with its id after it, so none read alike there
+ * either.
+ */
+export const labelsApart = (
+  networks: readonly Named[],
+  told: ReadonlyMap<string, string>,
+  clip: (text: string, room: number) => string,
+  room: number,
+): ReadonlyMap<string, string> => {
+  const labels = new Map(networks.map((n) => [n.key, clip(told.get(n.key) ?? n.name, room)]));
+  const seen = timesEach(labels.values());
+  for (const n of networks) {
+    if ((seen.get(labels.get(n.key) ?? "") ?? 0) > 1) {
+      const hint = idHint(n);
+      labels.set(n.key, `${clip(n.name, room - hint.length - 1)} ${hint}`);
+    }
+  }
+  return labels;
+};
+
+/** A network's id as a hint: the part of its key after its kind. */
+const idHint = (n: Named): string => `(${n.key.slice(n.key.indexOf(".") + 1).toUpperCase()})`;
+
+/** How many times each text comes. */
+const timesEach = (texts: Iterable<string>): ReadonlyMap<string, number> => {
+  const seen = new Map<string, number>();
+  for (const text of texts) {
+    seen.set(text, (seen.get(text) ?? 0) + 1);
+  }
+  return seen;
+};
+
+/**
+ * Adds `more` to each name that repeats, and says whether any did; a
+ * network `more` has nothing for keeps its name.
+ */
+const tell = (
+  networks: readonly Named[],
+  names: Map<string, string>,
+  more: (n: Named) => string,
+): boolean => {
+  const seen = timesEach(names.values());
+  let any = false;
+  for (const n of networks) {
+    const name = names.get(n.key) ?? n.name;
+    if ((seen.get(name) ?? 0) > 1) {
+      names.set(n.key, `${name}${more(n)}`);
+      any = true;
+    }
+  }
+  return any;
 };

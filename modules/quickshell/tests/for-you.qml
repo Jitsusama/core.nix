@@ -522,6 +522,12 @@ QtObject {
             [Looks.askOf(told), Looks.ifNothingOf(told), Looks.askOf(read.waiting[1]),
                 Looks.ifNothingOf(read.waiting[1])],
             ["Merge it now, or hold it?", "It waits, unmerged, and the rescans go on.", "", ""]);
+        // Trimmed, as the sites' ask row reads them, so words of only spaces
+        // say nothing and For You says what it knows in their place.
+        const spaced = Looks.looks([{ file: "s.json", text: lookOf({ id: "S",
+            ask: " Merge it? ", ifNothing: "   " }) }], {}, now).waiting[0];
+        expect("what it asks and what happens if nothing, padded or only spaces, trimmed",
+            [Looks.askOf(spaced), Looks.ifNothingOf(spaced)], ["Merge it?", ""]);
         const toldBack = JSON.parse(Looks.rewritten(told, "opened", "opened", now));
         expect("a look written back keeps who asks, what, and if nothing, as its session wrote them",
             [toldBack.asker, toldBack.ask, toldBack.ifNothing],

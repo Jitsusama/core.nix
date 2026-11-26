@@ -49,6 +49,7 @@
     "Bands.js"
     "Confirm.js"
     "Editing.js"
+    "KeyActs.js"
     "KeyNames.js"
     "MarkSize.js"
     "Measures.js"
@@ -148,7 +149,6 @@
     "launcher/Keeping.js"
     "launcher/Moment.js"
     "launcher/NowDrawers.js"
-    "launcher/Numbers.js"
     "launcher/Zones.js"
   ];
   "launcher/Displays.qml" = [
@@ -251,6 +251,7 @@
     "launcher/Notice.js"
   ];
   "launcher/Power.qml" = [ "launcher/Seen.js" ];
+  "launcher/Presented.js" = [ "launcher/KeysSaid.js" ];
   "launcher/Program.js" = [
     "FileFacts.js"
     "launcher/Numbers.js"
@@ -322,6 +323,7 @@
     "launcher/Addresses.js"
     "launcher/Numbers.js"
   ];
+  "launcher/TalkAnswers.js" = [ "TalkLine.js" ];
   "launcher/TalkOn.js" = [ "launcher/Order.js" ];
   "launcher/Today.qml" = [
     "launcher/Moment.js"
@@ -347,6 +349,7 @@
     "launcher/NowDrawers.js"
     "launcher/Numbers.js"
   ];
+  "launcher/Wheres.js" = [ "launcher/Sprouting.js" ];
   "launcher/WindowTargets.qml" = [ "launcher/HeldWindows.js" ];
   "launcher/Windows.qml" = [
     "Fuzzy.js"

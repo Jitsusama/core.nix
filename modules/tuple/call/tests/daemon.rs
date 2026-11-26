@@ -4,7 +4,12 @@
 //! a call that ended kept in Recent's file, as the caller's when a ring
 //! answered began it, and read back after a restart; a ring and a missed
 //! call are read from the log as it's written, a new log from its start;
-//! each act runs Tuple's command, and opening the room keeps its link and
+//! each act runs Tuple's command, a camera stopped is off before Tuple's
+//! stream says so, a stop Tuple is slow to answer is answered as such,
+//! not run again while it runs, run again once it's done, and still
+//! counts once done, though a stop or mute done after the stream said
+//! Joel's camera or mute turned, or once another call began, leaves the
+//! record as the stream says, and opening the room keeps its link and
 //! makes the call in it Joel's; and an ask or kind it doesn't know is
 //! refused.
 
@@ -12,7 +17,7 @@ use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command};
 use std::time::{Duration, Instant, SystemTime};
 
 use daemon_client::{Client, until};
@@ -21,8 +26,10 @@ use serde_json::{Value, json};
 /// Tuple's command, in the shell the tests run in: `state follow` says
 /// each line of `stream` in its folder as it's written there, until the
 /// file `ends` appears or the folder goes; any other command is written to `asked`, a line
-/// each, `new` printing the room's link, and `call accept` failing as
-/// Tuple does with nothing ringing.
+/// each, `new` printing the room's link, `call accept` failing as Tuple
+/// does with nothing ringing, and any command stalling while the file
+/// `stalls-<its words>` is there, as `stalls-webcam-stop` stalls a stop.
+/// The daemon's journal is kept in `journal`.
 const TUPLE: &str = r#"
 here=$(dirname "$0")
 if [ "$3 $4" = "state follow" ]; then
@@ -41,6 +48,8 @@ if [ "$3 $4" = "state follow" ]; then
   exit 3
 fi
 echo "$*" >> "$here/asked"
+# A command Tuple is slow on waits while the test holds stalls-<its words>.
+while [ -e "$here/stalls-$1-$2" ]; do sleep 0.05; done
 case "$*" in
   new) echo "Joining https://tuple.app/c/joels-room"; sleep 5 ;;
   "call accept") echo "no call is ringing" >&2; exit 1 ;;
@@ -243,7 +252,13 @@ fn spawned(mut command: Command, folder: &std::path::Path) -> Child {
         .env("XDG_RUNTIME_DIR", folder.join("run"))
         .env("XDG_DATA_HOME", folder.join("data"))
         .env("XDG_STATE_HOME", folder.join("state"))
-        .stderr(Stdio::null())
+        .stderr(
+            std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(folder.join("journal"))
+                .unwrap(),
+        )
         .spawn()
         .unwrap()
 }
@@ -497,6 +512,235 @@ fn each_act_runs_tuples_command_and_answers_once_done() {
     assert_eq!(said["error"]["message"], "no call is ringing");
     let said = client.ask(&json!({"id": "j", "ask": "join", "link": "https://example.com"}));
     assert_eq!(said["error"]["code"], "refused");
+}
+
+#[test]
+fn a_camera_stopped_is_off_ahead_of_tuples_stream() {
+    let running = Running::start("camera", true);
+    running.streams(STATE);
+    let mut watching = running.client();
+    watching.watch();
+    let filming = CALL.replace(
+        "\"share_state\":\"audio\",\"webcam_enabled\":false",
+        "\"share_state\":\"audio\",\"webcam_enabled\":true",
+    );
+    running.streams(&filming);
+    watching.until("Joel's camera wasn't said on", |record| {
+        record["camera"] == true
+    });
+    // Asked apart from the watch, so a change said ahead of the answer
+    // isn't read as it.
+    let said = running
+        .client()
+        .ask(&json!({"id": "off", "ask": "camera", "on": false}));
+    assert_eq!(said["done"], true, "the camera's stop: {said}");
+    watching.until("Joel's camera stayed on once its stop was done", |record| {
+        record["camera"] == false
+    });
+}
+
+/// Joel's camera on in the call, as Tuple's stream says it.
+fn filming() -> String {
+    CALL.replace(
+        "\"share_state\":\"audio\",\"webcam_enabled\":false",
+        "\"share_state\":\"audio\",\"webcam_enabled\":true",
+    )
+}
+
+/// Joel muted in the call, as Tuple's stream says it.
+fn muted() -> String {
+    CALL.replace(
+        "\"local\":{\"audio_enabled\":true",
+        "\"local\":{\"audio_enabled\":false",
+    )
+}
+
+#[test]
+fn a_camera_stop_tuple_is_slow_to_answer_is_told_and_still_counts() {
+    let running = Running::start("stalled", true);
+    running.streams(STATE);
+    let mut watching = running.client();
+    watching.watch();
+    running.streams(&filming());
+    watching.until("Joel's camera wasn't said on", |record| {
+        record["camera"] == true
+    });
+    let stall = running.path("bin/stalls-webcam-stop");
+    std::fs::write(&stall, "").unwrap();
+    let mut asking = running.client();
+    let said = asking.ask(&json!({"id": "off", "ask": "camera", "on": false}));
+    assert_eq!(
+        said["error"]["code"], "unanswered",
+        "a stop Tuple hadn't answered wasn't told so: {said}"
+    );
+    let again = asking.ask(&json!({"id": "again", "ask": "camera", "on": false}));
+    assert_eq!(
+        again["error"]["message"], "Tuple hasn't answered the last time it was asked",
+        "a stop asked again while Tuple ran the last wasn't answered at once: {again}"
+    );
+    // Ada unmuting turns nothing of Joel's, so the stop still counts once
+    // Tuple has done it.
+    running.streams(&filming().replace(
+        "\"id\":7,\"audio_enabled\":false",
+        "\"id\":7,\"audio_enabled\":true",
+    ));
+    watching.until("Ada wasn't said unmuted", |record| {
+        record["people"][0]["muted"] == false
+    });
+    std::fs::remove_file(&stall).unwrap();
+    watching.until("a stop Tuple did late didn't count", |record| {
+        record["camera"] == false
+    });
+    until("the late stop wasn't journaled", || {
+        let journal = running.read("journal");
+        journal
+            .iter()
+            .any(|line| line.contains("webcam stop hasn't answered in 5 seconds"))
+            && journal
+                .iter()
+                .any(|line| line.contains("webcam stop answered late"))
+    });
+    let after = asking.ask(&json!({"id": "after", "ask": "camera", "on": false}));
+    assert_eq!(
+        after["done"], true,
+        "a stop asked once Tuple answered the last wasn't run: {after}"
+    );
+    let stops = running.read("bin/asked");
+    assert_eq!(
+        stops.iter().filter(|line| *line == "webcam stop").count(),
+        2,
+        "a stop asked again while Tuple ran the last ran Tuple again: {stops:?}"
+    );
+}
+
+#[test]
+fn a_stop_done_after_the_camera_turned_again_leaves_it_on() {
+    let running = Running::start("turned", true);
+    running.streams(STATE);
+    let mut watching = running.client();
+    watching.watch();
+    running.streams(&filming());
+    watching.until("Joel's camera wasn't said on", |record| {
+        record["camera"] == true
+    });
+    let stall = running.path("bin/stalls-webcam-stop");
+    std::fs::write(&stall, "").unwrap();
+    let mut asking = running.client();
+    let stopping =
+        std::thread::spawn(move || asking.ask(&json!({"id": "off", "ask": "camera", "on": false})));
+    until("the stop wasn't asked of Tuple", || {
+        running
+            .read("bin/asked")
+            .iter()
+            .any(|line| line == "webcam stop")
+    });
+    // Joel stops his camera in Tuple's window and starts it again, as the
+    // notice of a stop unanswered sends him to.
+    running.streams(CALL);
+    watching.until("Joel's camera wasn't said off", |record| {
+        record["camera"] == false
+    });
+    running.streams(&filming());
+    watching.until("Joel's camera wasn't said on again", |record| {
+        record["camera"] == true
+    });
+    std::fs::remove_file(&stall).unwrap();
+    let said = stopping.join().unwrap();
+    assert_eq!(
+        said["done"], true,
+        "the stop Tuple did wasn't answered done: {said}"
+    );
+    let record = running.client().watch();
+    assert_eq!(
+        record["camera"], true,
+        "a stop done after the camera turned again marked it off: {record}"
+    );
+}
+
+#[test]
+fn a_mute_done_after_joel_unmuted_by_hand_leaves_him_unmuted() {
+    let running = Running::start("unmuted", true);
+    running.streams(STATE);
+    let mut watching = running.client();
+    watching.watch();
+    running.streams(CALL);
+    watching.until("the call wasn't said", |record| {
+        record["state"] == "connected"
+    });
+    let stall = running.path("bin/stalls-call-mute");
+    std::fs::write(&stall, "").unwrap();
+    let mut asking = running.client();
+    let muting = std::thread::spawn(move || {
+        asking.ask(&json!({"id": "mute", "ask": "mute", "muted": true}))
+    });
+    until("the mute wasn't asked of Tuple", || {
+        running
+            .read("bin/asked")
+            .iter()
+            .any(|line| line == "call mute")
+    });
+    // Tuple mutes him before its command ends, and he unmutes in Tuple's
+    // window.
+    running.streams(&muted());
+    watching.until("Joel wasn't said muted", |record| record["muted"] == true);
+    running.streams(CALL);
+    watching.until("Joel wasn't said unmuted", |record| {
+        record["muted"] == false
+    });
+    std::fs::remove_file(&stall).unwrap();
+    let said = muting.join().unwrap();
+    assert_eq!(
+        said["done"], true,
+        "the mute Tuple did wasn't answered done: {said}"
+    );
+    let record = running.client().watch();
+    assert_eq!(
+        record["muted"], false,
+        "a mute done after Joel unmuted by hand marked him muted: {record}"
+    );
+}
+
+#[test]
+fn a_mute_done_once_another_call_began_leaves_it_alone() {
+    let running = Running::start("another", true);
+    running.streams(STATE);
+    let mut watching = running.client();
+    watching.watch();
+    running.streams(CALL);
+    watching.until("the call wasn't said", |record| {
+        record["state"] == "connected"
+    });
+    let stall = running.path("bin/stalls-call-mute");
+    std::fs::write(&stall, "").unwrap();
+    let mut asking = running.client();
+    let muting = std::thread::spawn(move || {
+        asking.ask(&json!({"id": "mute", "ask": "mute", "muted": true}))
+    });
+    until("the mute wasn't asked of Tuple", || {
+        running
+            .read("bin/asked")
+            .iter()
+            .any(|line| line == "call mute")
+    });
+    running.streams("{\"type\":\"current_call\",\"data\":null}");
+    watching.until("the call's end wasn't said", |record| {
+        record["state"] == "none"
+    });
+    running.streams(&CALL.replace("\"started_at\":1000", "\"started_at\":2000"));
+    watching.until("the next call wasn't said", |record| {
+        record["since"] == 2000
+    });
+    std::fs::remove_file(&stall).unwrap();
+    let said = muting.join().unwrap();
+    assert_eq!(
+        said["done"], true,
+        "the mute Tuple did wasn't answered done: {said}"
+    );
+    let record = running.client().watch();
+    assert_eq!(
+        record["muted"], false,
+        "a mute asked in the last call marked Joel muted in the next: {record}"
+    );
 }
 
 #[test]

@@ -29,6 +29,8 @@ import {
   spends,
   spentOf,
   spentWords,
+  labelsApart,
+  toldApart,
 } from "../words.ts";
 
 /** A cell on kestrel, quiet with nothing waiting, but for what `more` says. */
@@ -106,7 +108,7 @@ it("sums what cells spent, counting only those that say", () => {
   );
 });
 
-it("counts cells by standing, worst first, and those with questions waiting", () => {
+it("counts cells by standing, worst first, and those owing answers", () => {
   const cells = [
     cell("A", { standing: "asks", owes: [{}] }),
     cell("B", { standing: "quiet" }),
@@ -120,13 +122,13 @@ it("counts cells by standing, worst first, and those with questions waiting", ()
   );
   assert.equal(
     countsWords(cells),
-    "4 cells: 1 needs you, 1 stuck, 2 quiet; 2 with questions waiting",
+    "4 cells: 1 needs you, 1 stuck, 2 quiet; 2 owing answers",
     "worst first, then what waits",
   );
   assert.equal(
     countsWords([cells[0] as Cell]),
-    "1 cell: 1 needs you; 1 with a question waiting",
-    "one waiting is a question",
+    "1 cell: 1 needs you; 1 owing an answer",
+    "one owing is an answer",
   );
   assert.equal(countsWords([]), "0 cells", "no cells, no standings");
   const each: Cell["standing"][] = ["dormant", "quiet", "moving", "stuck", "asks"];
@@ -161,12 +163,12 @@ it("says what a cell is doing and what waits on it or it holds", () => {
   assert.equal(cellWords(cell("A", { standing: "dormant" })), "dormant", "the rest by their word");
   assert.equal(
     cellWords(cell("A", { standing: "stuck", owes: [{}], holds: [{}] })),
-    "stuck; a question waiting; a hold standing",
+    "stuck; owes an answer; a hold standing",
     "one question and one hold",
   );
   assert.equal(
     cellWords(cell("A", { owes: [{}, {}, {}], holds: [{}, {}] })),
-    "quiet; 3 questions waiting; 2 holds standing",
+    "quiet; owes 3 answers; 2 holds standing",
     "several of each",
   );
 });
@@ -355,6 +357,86 @@ it("a builder's drawer says how it stands, who said so and why", () => {
     "The node says it is draining: its lender gives it back.",
     "a state the map doesn't know, in the node's own word",
   );
+});
+
+it("networks sharing a name are told apart by what each carries, then by their ids", () => {
+  const told = toldApart([
+    { key: "orchestration.skiff1", name: "Rig the Skiff", carries: "Sails" },
+    { key: "orchestration.skiff2", name: "Rig the Skiff", carries: "Hull" },
+    { key: "orchestration.tern01", name: "Chart the Harbour", carries: "Chart the Harbour" },
+    { key: "orchestration.tern02", name: "Chart the Harbour", carries: "Chart the Harbour" },
+    { key: "orchestration.heron1", name: "Mend the Nets", carries: "Before the Season" },
+  ]);
+  assert.deepEqual(
+    [...told.values()],
+    [
+      "Rig the Skiff: Sails",
+      "Rig the Skiff: Hull",
+      "Chart the Harbour (TERN01)",
+      "Chart the Harbour (TERN02)",
+      "Mend the Nets",
+    ],
+    "a name alone keeps it; shared, what it carries, else its id, tells it apart",
+  );
+});
+
+it("networks whose whole titles repeat are told apart by their ids", () => {
+  const told = toldApart([
+    { key: "orchestration.gull01", name: "Mend the Sails", carries: "Mainsail" },
+    { key: "orchestration.gull02", name: "Mend the Sails", carries: "Mainsail" },
+  ]);
+  assert.deepEqual(
+    [...told.values()],
+    ["Mend the Sails: Mainsail (GULL01)", "Mend the Sails: Mainsail (GULL02)"],
+    "a title shared whole, with what it carries, is told by its id",
+  );
+});
+
+it("a title written as another network's told name is told apart by its whole key", () => {
+  const whole = (key: string, name: string) => ({ key, name, carries: name });
+  const told = toldApart([
+    whole("orchestration.skiff1", "Rig the Skiff"),
+    whole("orchestration.skiff2", "Rig the Skiff"),
+    whole("orchestration.skiff3", "Rig the Skiff (SKIFF1)"),
+  ]);
+  assert.deepEqual(
+    Object.fromEntries(told),
+    {
+      "orchestration.skiff1": "Rig the Skiff (SKIFF1) [orchestration.skiff1]",
+      "orchestration.skiff2": "Rig the Skiff (SKIFF2)",
+      "orchestration.skiff3": "Rig the Skiff (SKIFF1) [orchestration.skiff3]",
+    },
+    "no two read alike, whatever a title says",
+  );
+});
+
+it("a told name the map clips alike to another's keeps its id there instead", () => {
+  const room = 40;
+  const clip = (text: string, within: number) =>
+    text.length <= within ? text : `${text.slice(0, within - 3)}...`;
+  const slice = (key: string, carries: string) => ({
+    key,
+    name: "Rig the Skiff for the Season",
+    carries,
+  });
+  const networks = [
+    slice("orchestration.skiff1", "Mend the north gauges"),
+    slice("orchestration.skiff2", "Mend the south gauges"),
+    { key: "orchestration.heron1", name: "Chart the Harbour", carries: "Chart the Harbour" },
+  ];
+  const labels = labelsApart(networks, toldApart(networks), clip, room);
+  assert.deepEqual(
+    Object.fromEntries(labels),
+    {
+      "orchestration.skiff1": "Rig the Skiff for the Season (SKIFF1)",
+      "orchestration.skiff2": "Rig the Skiff for the Season (SKIFF2)",
+      "orchestration.heron1": "Chart the Harbour",
+    },
+    "what told the two apart was past the clip, so their ids tell them apart on the map",
+  );
+  for (const label of labels.values()) {
+    assert.ok(label.length <= room, `${label} is past the map's room`);
+  }
 });
 
 it("a builder is labelled by its name, its words and what it is", () => {

@@ -71,7 +71,7 @@ import {
   sow as sowSeeds,
 } from "./layout.js";
 import { askedOf, cellActs } from "./acts.js";
-import { grownOf } from "./lineage.js";
+import { grownOf, oneCopyEach } from "./lineage.js";
 import { drawnWidth } from "./lines.js";
 import { durationOf, easedInOut, goneAndBack } from "./motion.js";
 import { shapeOf as shapeOfReading } from "./shape.js";
@@ -96,6 +96,8 @@ import {
   spends,
   spentOf,
   cellsOn as machineCells,
+  labelsApart,
+  toldApart,
   waitingWords,
 } from "./words.js";
 import { agoWords as agoWordsAt, atWords as atWordsAt, clock } from "./when.js";
@@ -498,21 +500,21 @@ import {
         cells: [],
       });
     }
+    // No two networks read alike (words.ts), nor on the map, where a name
+    // is clipped and what told it apart could be cut off.
+    const named = [...hubs.values()].map(({ key, name, carries }) => ({ key, name, carries }));
+    const told = toldApart(named);
+    const labels = labelsApart(named, told, clipped, NAME_ROOM);
+    for (const h of hubs.values()) {
+      h.label = labels.get(h.key) ?? clipped(h.name);
+      h.name = told.get(h.key) ?? h.name;
+    }
     for (const h of hubs.values()) if (h.within) hubs.get(h.within)?.children.push(h);
     const depth = (h) => (h.within ? 1 + depth(hubs.get(h.within)) : 0);
     // A cell moving between machines can arrive from both for a while,
     // the one it left still listing it. It is one cell under one address,
-    // so the page keeps the copy started most recently, with the groups
-    // either copy names.
-    const once = new Map();
-    for (const c of now.cells) {
-      const had = once.get(c.name);
-      if (!had) once.set(c.name, c);
-      else {
-        const [keep, other] = (c.since || "") > (had.since || "") ? [c, had] : [had, c];
-        once.set(c.name, { ...keep, networks: [...new Set([...keep.networks, ...other.networks])] });
-      }
-    }
+    // so the page keeps one copy, as its starters and reach are read from.
+    const once = oneCopyEach(now.cells);
     // A network sits within another, so a cell on a quest that sits under
     // an orchestration works in that orchestration, even when the node
     // names only the quest: it is alone only in no orchestration at all.
@@ -525,7 +527,7 @@ import {
       }
       return null;
     };
-    const cells = [...once.values()].map((c) => {
+    const cells = once.map((c) => {
       const on = [...new Set(c.networks.map(orchestrationOf).filter(Boolean))];
       const own = on.find((h) => c.quest && c.quest.toLowerCase().endsWith(`-${h.key.split(".").pop()}`));
       const deepest = [...on].sort((a, b) => depth(b) - depth(a))[0];
@@ -611,6 +613,9 @@ import {
       outside.carries = `where ${senses.length > 1 ? `${senses.slice(0, -1).join(", ")} and ${senses.at(-1)}` : senses[0]} come in from outside, each listened to for the cells that read it`;
       hubs.set(OUTSIDE, outside);
     }
+    // The groups working alone and the outside joined the hubs after the
+    // networks were told apart, so they are labelled by their own name.
+    for (const h of hubs.values()) h.label ??= clipped(h.name);
     for (const h of hubs.values()) h.lead = cells.find((s) => s.leads.includes(h.key)) || null;
     // A hub is placed by the machine most of its cells run on. That is
     // where it sits on the map and in the tree, never what it belongs to:
@@ -1505,7 +1510,7 @@ import {
       const n = countsOf(h.cells);
       const sub = [plural(h.cells.length, kindWord(h.cells)), ...["asks", "stuck"].filter((s) => n[s]).map((s) => `${n[s]} ${STANDING_WORD[s]}`)].join(" \u00b7 ");
       const busy = [n.asks, n.stuck, n.moving, h.cells.length];
-      out.push({ key: `h:${h.key}`, kind: "hub", rank: 1, busy, at: L.at.get(h.key), r: HUB_R, disc: L.disc.get(h.key), out: [Math.cos(a), Math.sin(a)], name: lines(clipped(h.name), 22), sub, far: near && !near.hubs.has(h.key) });
+      out.push({ key: `h:${h.key}`, kind: "hub", rank: 1, busy, at: L.at.get(h.key), r: HUB_R, disc: L.disc.get(h.key), out: [Math.cos(a), Math.sin(a)], name: lines(h.label, 22), sub, far: near && !near.hubs.has(h.key) });
     }
     // A knot is named by what its cells share, or by its quest's title.
     for (const n of m.shared) {
@@ -2241,10 +2246,11 @@ import {
   new ResizeObserver(() => {
     mapSize = null;
   }).observe(svg);
-  // Wide enough, the drawer lies over the map's right side, so the map
-  // keeps that side as a gutter: nothing is centred or fitted under it,
-  // and opening the drawer moves nothing. Narrower, the drawer covers
-  // the whole map and there is no gutter.
+  // Wide enough, the drawer lies over the map's right side, so while it's
+  // open the map keeps that side as a gutter: nothing is centred or fitted
+  // under it. Shut, the map takes the whole width, since a gutter kept
+  // for a drawer nobody opened left a laptop's right half empty.
+  // Narrower, the drawer covers the whole map and there is no gutter.
   const wide = matchMedia("(min-width: 60rem) and (min-height: 34rem)");
   wide.addEventListener("change", () => {
     mapSize = null;
@@ -2254,7 +2260,7 @@ import {
       const b = svg.getBoundingClientRect();
       mapSize = [b.width, b.height];
       // offsetWidth, since the drawer's slide is a transform.
-      gutter = wide.matches ? treeBox.offsetWidth : 0;
+      gutter = wide.matches && treeBox.classList.contains("open") ? treeBox.offsetWidth : 0;
     }
     return mapSize;
   };
@@ -2338,6 +2344,16 @@ import {
   const footRoom = () => {
     const room = Math.max(0, seen()[1] - 2 * (FIT_PAD + 44));
     return Math.min(room / 2, Math.max(0, shownBuilders().length - 1) * FOOT_MARK);
+  };
+  // Opens or shuts the drawer as what's chosen and Now ask, and says
+  // whether it changed: the room the map's views are made for changes
+  // with it, so the map's size is measured again.
+  const makeRoom = () => {
+    const open = !!chosen || nowOpen;
+    if (treeBox.classList.contains("open") === open) return false;
+    treeBox.classList.toggle("open", open);
+    mapSize = null;
+    return true;
   };
   const fit = (animate = true) => {
     auto = true;
@@ -2909,6 +2925,9 @@ import {
   const apply = (animate) => {
     const c = cellFor(standFor(fromHash()));
     chosen = knows(c) ? c : null;
+    // The drawer takes its room before the view is moved, so what's chosen
+    // is centred clear of it.
+    makeRoom();
     if (chosen?.kind === "machine" || chosen?.kind === "builder") machinesShown = true;
     const key = keyOf(chosen);
     if (key) {
@@ -3055,7 +3074,7 @@ import {
     const held = heldFirst(cells);
     const holding = holdingFirst(cells);
     return (
-      (held.length ? `<h3>Questions Waiting</h3><ul class="rows">${held.map(heldRow).join("")}</ul>` : "") +
+      (held.length ? `<h3>Answers Owed</h3><ul class="rows">${held.map(heldRow).join("")}</ul>` : "") +
       (holding.length ? `<h3>Holds Standing</h3><ul class="rows">${holding.map(holdRow).join("")}</ul>` : "")
     );
   };
@@ -3199,7 +3218,7 @@ import {
       (current?.fed ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-fed" d="M-12,-6Q0,12 12,-6"/></svg></dt><dd>Fed: a dot-and-dash arc from a receptor to the one cell it fed something from outside, such as a review asked of you or a call's summary, drawn for ten minutes</dd></div>` : "") +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-dormant" r="11"/></svg></dt><dd>Dormant: parked, its place kept</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane m-asks" r="11"/><circle class="m-nucleus" r="6.5"/></svg></dt><dd>Needs you, or stuck: its ring says so, and its name shows as you come close</dd></div>` +
-      `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-waits" r="13"/><circle class="m-membrane" r="9"/><circle class="m-quiet" r="4.5"/></svg></dt><dd>A question waiting: a dashed ring round a cell asked something three minutes or more ago that ${m.judged ? "hasn't answered it yet" : "has said nothing since"}, wider the more questions and the older the first; a network holding any is ringed round its ground</dd></div>` +
+      `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-waits" r="13"/><circle class="m-membrane" r="9"/><circle class="m-quiet" r="4.5"/></svg></dt><dd>An answer owed: a dashed ring round a cell another cell asked something three minutes or more ago, which ${m.judged ? "hasn't answered it yet" : "has said nothing since"}, never one waiting on you; wider the more questions and the older the first; a network holding any is ringed round its ground</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-holds" d="M0,-14V14"/><circle class="m-membrane" r="9"/><circle class="m-quiet" r="4.5"/></svg></dt><dd>A hold standing: a wall drawn across a cell that asked the others to put something off until it says it's over</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-cord" d="M-14,0H-9M9,0H14" style="--w:2px"/><rect class="m-box" x="-9" y="-6" width="18" height="12"/></svg></dt><dd>A machine: its name in a hairline box, its cords leaving the box's edge; the box is dashed while the machine is off</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><rect class="m-box m-lent" x="-10" y="-7" width="20" height="14" style="stroke-dasharray:9 11 9 5;stroke-dashoffset:4.5"/></svg></dt><dd>A lent machine, here until its lease ends: only its box's corners</dd></div>` +
@@ -3251,10 +3270,11 @@ import {
     const health = pool
       ? pool.map((y) => machineHealth(y, { label: y.name, mono: true, lead: [plural(cells.filter((s) => s.host === y.name).length, "cell")] }) + machineShareRow(y, `${y.name}'s share`)).join("")
       : machineHealth(x) + machineShareRow(x);
+    const lent = sandboxWords(x);
     const says = pool
       ? `A basin, drawn as one machine: ${plural(pool.length, "machine")} borrowed from a pool in the cloud. A cord`
-      : isSandbox(x)
-        ? `A machine: ${sandboxWords(x)}. A cord`
+      : lent
+        ? `${lent[0].toUpperCase()}${lent.slice(1)}. A cord`
         : "A machine; a cord";
     const facts = [
       ["Made of", what],
@@ -3284,6 +3304,10 @@ import {
         `<ul class="rows health">${health}${healthRow(`Its ${plural(cells.length, "cell")}`, cells)}</ul>`,
       ) +
       faultLine(cells) +
+      // Its row in the Launcher's Machines is where Joel starts work on it.
+      // A basin's stand is named "<basin> basin", which no row is: the space
+      // in it is one no machine's name holds, so linkOf offers no link.
+      launcherLink("machine", name, "Open It in the Launcher") +
       // Its home as a device is the network page, which knows it by name.
       // A sandbox or a basin isn't a device on the home network, so it has
       // no row there.
@@ -3297,16 +3321,16 @@ import {
 
   // Where Joel says something himself: a link the desktop hands the
   // launcher (modules/quickshell/mycelium-link), opening Agents' Talk to a
-  // cell or Networks on a network, so the page still writes nothing. The
-  // link names it and nothing more, in the letters mycelium-link lets
-  // through, so a name it would refuse is never offered as a link that
-  // does nothing. A cell's is the kit's cellLink, saying the machine it
+  // cell, Networks on a network or Machines on a machine, so the page still
+  // writes nothing. The link names it and nothing more, in the letters
+  // mycelium-link lets through, so a name it would refuse is never offered
+  // as a link that does nothing. A cell's is the kit's cellLink, saying the machine it
   // runs on (its host, never the basin it is drawn from) as a notice's
-  // link does; a network's name takes more letters.
+  // link does; a network's or a machine's name takes more letters.
   const NETWORK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
   const linkOf = (kind, name, machine) => {
     if (kind === "cell") return cellLink(name || "", machine);
-    return NETWORK_NAME.test(name || "") ? `mycelium:network/${name}` : null;
+    return NETWORK_NAME.test(name || "") ? `mycelium:${kind}/${name}` : null;
   };
   const launcherLink = (kind, name, words, machine) => {
     const href = linkOf(kind, name, machine);
@@ -3909,26 +3933,29 @@ import {
   });
 
   // The drawer is open while something is chosen, or while Now is asked
-  // for; otherwise the map's gutter is empty and quiet.
+  // for; otherwise the map has the whole width.
   let nowOpen = false;
   const nowControl = document.getElementById("now-control");
   const drawer = () => {
     const open = !!chosen || nowOpen;
-    treeBox.classList.toggle("open", open);
+    // A view following the whole map fits it again, clear of the drawer.
+    if (makeRoom() && auto) fit();
     nowControl.setAttribute("aria-expanded", String(!chosen && nowOpen));
     // Focus never stays in a drawer going out of reach: it goes to the map,
     // on the mark the keys were on.
     if (!open && treeBox.contains(document.activeElement)) view.focus({ preventScroll: true });
   };
   // Now opens over whatever is chosen, letting it go, and keeps the mark
-  // the keys are on clear of the drawer.
+  // the keys are on clear of the drawer. A view following the whole map
+  // has it fitted clear already, and moving it to the mark then would stop
+  // that fit's glide part way and leave the view no longer following.
   const openNow = () => {
     nowOpen = true;
     if (chosen) {
       history.replaceState(null, "", location.pathname);
       apply(false);
     } else drawer();
-    if (pointed) keepInView(pointed);
+    if (pointed && !auto) keepInView(pointed);
     where.textContent = "Now is open in the drawer.";
   };
   const closeNow = () => {
@@ -5083,19 +5110,14 @@ import {
     view.focus();
   });
   const taps = { "/": openFind, s: () => openSprout(chosen?.kind === "cell" ? chosen.id : null), ".": toggleNow, "?": toggleKeys };
+  // A keycap in the key line does what its key does under a pointer, as
+  // the Network's does. It isn't a control of its own: one showing only
+  // "/" and named "Find a cell" is named apart from what shows, a voice
+  // can't say a bare mark, and the keys are a press away for anyone who
+  // reaches it by keyboard, with New Work and Now in the map's controls.
   for (const kbd of document.querySelectorAll(".head .keys kbd")) {
     const act = taps[kbd.textContent];
-    if (!act) continue;
-    kbd.setAttribute("role", "button");
-    kbd.tabIndex = 0;
-    kbd.setAttribute("aria-label", { "/": "Find a cell", s: "Start new work", ".": "Now", "?": "Keys" }[kbd.textContent]);
-    kbd.addEventListener("click", act);
-    kbd.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        act();
-      }
-    });
+    if (act) kbd.addEventListener("click", act);
   }
 
   const store = {

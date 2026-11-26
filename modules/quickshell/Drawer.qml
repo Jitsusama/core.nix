@@ -85,6 +85,11 @@ Floating {
         // use, since an inline component can't see the drawer; a styled
         // text keeps its own markup.
         property string sought
+        // Whether each break in its plain words stands for a space, as a
+        // title's balanced lines' does, so its wash and the drawer's search
+        // run on across one as across a wrap; any other text's break ends
+        // a match.
+        property bool spaced: false
         // How tall each of its lines is, the plate's pitch or a step of it,
         // or 0 for the face's own, as a line set alone by its baseline is.
         required property real leading
@@ -199,7 +204,8 @@ Floating {
                     // links take its ink, as the Text's do, never rich
                     // text's blue.
                     + `">${words.styled ? said.replace(/<a /g, `<a style="color:${words.ink}" `)
-                        : words.sought !== "" ? Search.washed(said, words.sought, words.wash)
+                        : words.sought !== ""
+                            ? Search.washed(said, words.sought, words.wash, words.spaced)
                             : Search.escaped(said)}</div>`
 
                 FontMetrics {
@@ -278,10 +284,8 @@ Floating {
         font.features: drawer.eyebrowLevel.features
     }
     readonly property string title: shown ? shown.title ?? "" : ""
-    // Its facts, less any that only says the title again, as a server's
-    // name would right under it (VKCF3Z, 2026-11-03).
-    readonly property var facts: shown ? (shown.facts ?? [])
-        .filter(fact => fact && String(fact.value ?? "") !== title) : []
+    // Its facts, less any that only says the title again (DrawerValue.js).
+    readonly property var facts: shown ? Value.factsShown(shown.facts, title) : []
     // A fact's row is kept once made, each reading the fact at its place
     // and hidden past the facts shown, so only a thing with more facts
     // than any before makes rows: they were made afresh for every fact
@@ -877,10 +881,13 @@ Floating {
             // next line of another paragraph begins past the break, which
             // getText gives as Qt's selection does: a \n in a plain text,
             // a paragraph or line separator in a styled one.
+            // One that ends its paragraph or its text keeps the spaces it
+            // ends with, which the wash takes in (DrawerLines.trailing).
             const raw = words.getText(from, next);
             const length = raw.replace(/\s+$/, "").length;
-            pieces.push({ text, words, from, y, length,
-                on: at + 1 < words.lineCount ? Lines.runsOn(raw, length) : null,
+            const on = at + 1 < words.lineCount ? Lines.runsOn(raw, length, text.spaced) : null;
+            pieces.push({ text, words, from, y, length, on,
+                trailing: on === null ? Lines.trailing(raw, length) : "",
                 x: place.x, top: place.y, height: box.height,
                 base: place.y + words.baselineOffset, caps: words.caps });
         }
@@ -2045,15 +2052,23 @@ Floating {
     readonly property bool fadeDrawn: wordsFaded.item !== null
     // Its words as drawn, laid in lines as Qt wraps them, each its letters,
     // without the space a laid line ends on, and how wide Qt draws them,
-    // for the launcher to report. Laid by layLines, as proseLaid is.
+    // for the fade and the launcher to report. Laid by layLines, as
+    // proseLaid is: only while a line fades, and to it, since nothing else
+    // reads them and each word laid is measured, which for a notice of
+    // 34 kB opened whole would hold its drawer seconds (2026-11-25).
     property var proseLines: []
     readonly property var linesAsked: [bodySaid, shown?.styled === true, wordsBox.width,
-        bodyText.font]
+        bodyText.font, wordsKept < bodyLines ? wordsKept : 0]
     onLinesAskedChanged: layLines()
     function layLines() {
+        const most = linesAsked[4];
+        if (most === 0) {
+            proseLines = [];
+            return;
+        }
         const plain = shown?.styled === true ? Prose.lettersOf(bodySaid).plain : bodySaid;
         const width = drawnWidthOf(Measures.drawnFace(bodyText.font, "plain"));
-        proseLines = Prose.laid(plain, wordsBox.width, width).map(line => {
+        proseLines = Prose.laid(plain, wordsBox.width, width, most).map(line => {
             const letters = plain.slice(line.start, line.end).replace(/\s+$/, "");
             return { letters, width: width(letters) };
         });
@@ -2665,6 +2680,8 @@ Floating {
                     PageText {
                         id: titleText
                         sought: drawer.washing
+                        // Each of its breaks is laid where a space stood.
+                        spaced: true
                         marked: "# "
                         width: parent.width
                         y: drawer.pitch / 2 + drawer.dropped - baselineOffset

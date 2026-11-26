@@ -13,7 +13,43 @@ fn room(path: &str, band: Band, free: u64, full_in: Option<f64>) -> Room<'_> {
         full_in,
         nix_floor: None,
         cleared_all: false,
+        waiting: false,
     }
+}
+
+#[test]
+fn a_filling_disk_a_writers_hold_keeps_passes_off_says_its_clearing_waits_unless_none_is_left() {
+    let held = |band, cleared_all| {
+        filesystem(
+            &Room {
+                waiting: true,
+                cleared_all,
+                ..room("/", band, 200 * GIB, None)
+            },
+            None,
+        )
+    };
+    let waits = "The disk is filling, with 200.0 GiB free. \
+                 The guard waits to clear while heavy writing is held off.";
+    assert_eq!(held(Band::Filling, false), waits);
+    assert!(
+        held(Band::Filling, true).contains("has cleared all it may"),
+        "a held disk with nothing left to clear said clearing was to come: {}",
+        held(Band::Filling, true),
+    );
+    assert_eq!(held(Band::Healthy, false), "The disk has 200.0 GiB free.");
+    // A hold waits no pass at nearly full or worse, so they say what
+    // the guard does.
+    assert!(
+        held(Band::NearlyFull, false).contains("is clearing everything"),
+        "a nearly full disk under a hold said: {}",
+        held(Band::NearlyFull, false),
+    );
+    assert!(
+        !held(Band::CriticallyFull, false).contains("waits"),
+        "a critically full disk under a hold said it waits: {}",
+        held(Band::CriticallyFull, false),
+    );
 }
 
 #[test]
@@ -82,6 +118,30 @@ fn a_machine_names_a_disk_filling_before_one_reaching_nixs_floor() {
         machine(&[store, builds], None),
         "/var/builds has 100.0 GiB free. At this rate it fills in 10 h."
     );
+}
+
+/// A disk whose fill isn't worth telling, a forecast already passed or a
+/// month away, gives way to the store's time to Nix's floor, so a machine
+/// with only that to say still says it.
+#[test]
+fn a_machine_tells_nixs_floor_when_no_other_disk_fills_soon() {
+    let store = Room {
+        nix_floor: Some(50 * GIB),
+        ..room("/", Band::Healthy, 170 * GIB, Some(5.0 * 3600.0))
+    };
+    let floor = "The disk has 170.0 GiB free. At this rate it reaches the 50.0 GiB Nix keeps free \
+         in 5 h, where Nix collects its own garbage as it builds.";
+    for (builds_in, why) in [
+        (-3600.0, "a passed forecast"),
+        (30.0 * 86400.0, "a month away"),
+    ] {
+        let builds = room("/var/builds", Band::Healthy, 100 * GIB, Some(builds_in));
+        assert_eq!(
+            machine(&[store, builds], None),
+            floor,
+            "another disk with {why} leaves the floor to be told"
+        );
+    }
 }
 
 #[test]

@@ -119,9 +119,9 @@ linux_7_3.override {
       patch = ./iwlwifi-txq-entries-kvzalloc.patch;
     }
     {
-      # Lets a camera set up its buffers in fragmented memory in a moment,
-      # rather than compacting for every block size on every piece. Written
-      # here; docs/kernel.md has the cause.
+      # Lets a camera set up its buffers in fragmented memory without
+      # compacting for every block size on every piece. Written here;
+      # docs/kernel.md has the cause.
       name = "vb2-dma-sg-orders";
       patch = ./vb2-dma-sg-orders.patch;
     }

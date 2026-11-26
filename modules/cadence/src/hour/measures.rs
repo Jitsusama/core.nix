@@ -8,27 +8,32 @@ use jiff::Timestamp;
 use serde_json::Value;
 
 use owner::first_owner;
-use promised::promised;
 
 use crate::tracking::{self, Tracking};
 
 pub mod apps;
+pub mod at_risk;
 mod balanced;
 mod broken;
 mod card;
 mod carried;
 mod cells;
+pub mod cited;
+pub mod holds;
 pub mod locked;
 mod misses;
 mod owner;
 mod pains;
+pub mod parked;
 mod promised;
 pub mod queues;
 mod reports;
 pub mod rounds;
 #[cfg(test)]
 mod slipped;
+mod slips;
 pub mod spent;
+mod told_late;
 #[cfg(test)]
 mod tracked;
 pub mod unbilled;
@@ -43,11 +48,14 @@ pub use cells::{Quest, cells, mapped, mid_resume, quest};
 pub use locked::read as unlocked;
 pub use misses::{
     BLIND, FINDINGS, HELD, SAID_NONE, UNREAD, UNRUN, UNSEEN, UNTESTED, checked_beside, findings,
-    forget_said_none, held, held_for_good, held_unseen, hosts_started, ledger, said, said_none,
+    forget_unfixed, held, held_for_good, held_unseen, hosts_started, ledger, said, said_none,
     untested,
 };
 pub use pains::{keeper, pains};
+pub use parked::parked;
 pub use reports::{REPORTS_SINCE, Report, report, unasked};
+pub use slips::slips;
+pub use told_late::told_late;
 
 const DAY: i64 = 86_400;
 
@@ -148,115 +156,6 @@ fn seconds(value: &Value) -> Option<i64> {
 #[expect(clippy::cast_precision_loss, reason = "counts stay far below 2^52")]
 const fn count(n: usize) -> f64 {
     n as f64
-}
-
-/// A date that slipped: when it was due, the ask's words and its owner.
-type Slip = (i64, String, String);
-
-/// The dates promised in the orchestrator's `asks.jsonl` that passed in
-/// the day before `now` without their ask landing by then, of asks of
-/// the kind `which`, and every older one its owner hasn't answered since
-/// by landing the ask, meeting the date or moving it: a slip closes only
-/// on its owner's word, never by going a day old. Every date an ask was
-/// given counts, from its `promised`, each with when it was given, so a
-/// date moved in place after it passed is still a slip that day; one moved
-/// before it passed isn't, nor one whose entry says it was `met` by then,
-/// as a step kept before the ask moves on to the next. A line without
-/// `promised` gives its `expected` alone. An older date is answered by a
-/// landing or a move said by `now`, or by any later date the ask was
-/// given, since a date moved by `expected` alone says no time it moved.
-/// An older slip's line says how long ago it was due, so one stuck for
-/// weeks reads apart from yesterday's.
-#[must_use]
-pub fn slips(text: &str, now: i64, which: Tracking) -> Measure {
-    // The list writes an ask again to move its date, or to re-mark, land
-    // or put it down: each date of an ask, by when and what was asked, is
-    // read from its latest line, in the order the list first wrote it.
-    let mut latest: BTreeMap<[String; 3], (usize, Option<Slip>)> = BTreeMap::new();
-    // Each ask's dates on its latest line. A date gone from them was moved
-    // by a line written without `promised` to say so, which answers it,
-    // while a latest line with no date it can read moves none.
-    let mut dated: BTreeMap<[String; 2], Vec<i64>> = BTreeMap::new();
-    for (order, ask) in lines(text).enumerate() {
-        let ours = tracking::of(&ask) == Some(which);
-        let landed = seconds(&ask["landed"]);
-        let given = promised(&ask);
-        let asked = [ask["at"].to_string(), ask["words"].to_string()];
-        dated.insert(asked, given.iter().map(|p| p.expected).collect());
-        let last = given.len();
-        for (i, promise) in given.iter().enumerate() {
-            let (expected, moved, met) = (promise.expected, promise.moved, promise.met);
-            let kept = landed.is_some_and(|landed| landed <= expected)
-                || met.is_some_and(|met| met <= expected)
-                || moved.is_some_and(|moved| moved < expected);
-            // A `met` stands only on a date moved from, so the move answers.
-            let answered = landed.is_some_and(|landed| landed <= now)
-                || moved.is_some_and(|moved| moved <= now)
-                || i + 1 < last;
-            let late = ours && expected <= now && !kept && (expected > now - DAY || !answered);
-            let key = [
-                ask["at"].to_string(),
-                ask["words"].to_string(),
-                expected.to_string(),
-            ];
-            let first = latest.get(&key).map_or(order, |(first, _)| *first);
-            let slip = late.then(|| {
-                (
-                    expected,
-                    ask["words"].as_str().unwrap_or_default().to_owned(),
-                    first_owner(ask["owner"].as_str().unwrap_or_default()),
-                )
-            });
-            latest.insert(key, (first, slip));
-        }
-    }
-    let mut latest: Vec<(usize, Option<Slip>)> = latest
-        .into_iter()
-        .map(|([at, words, _], (first, slip))| {
-            let held = dated.get(&[at, words]);
-            let slip = slip.filter(|&(expected, _, _)| {
-                expected > now - DAY
-                    || held.is_none_or(|held| held.is_empty() || held.contains(&expected))
-            });
-            (first, slip)
-        })
-        .collect();
-    latest.sort_by_key(|(order, _)| *order);
-    let mut slipped: Vec<Slip> = latest.into_iter().filter_map(|(_, slip)| slip).collect();
-    slipped.sort_by_key(|(expected, _, _)| *expected);
-    Measure {
-        key: which.key("slips"),
-        class: Class::Slip,
-        says: if which == Tracking::His {
-            "dates promised that passed in the last day without landing, or since, unanswered"
-        } else {
-            "dates the list set itself (derived, mends) that passed in the last day, or since, \
-             unanswered"
-        }
-        .to_owned(),
-        now: count(slipped.len()),
-        target: Some(0.0),
-        owner: slipped
-            .first()
-            .map(|(_, _, o)| o.clone())
-            .unwrap_or_default(),
-        behind: slipped
-            .iter()
-            .map(|(expected, words, owner)| {
-                format!("{}{} · {owner}", short(words), due_ago(now - expected))
-            })
-            .collect(),
-    }
-}
-
-/// How long ago a slip `late` seconds past its date was due, or nothing
-/// within the day, which the measure's own words already say.
-fn due_ago(late: i64) -> String {
-    match late / DAY {
-        0 => String::new(),
-        1 => ", due a day ago".to_owned(),
-        days => format!(", due {days} days ago"),
-    }
 }
 
 /// How long Joel's asks in the orchestrator's `asks.jsonl` took to put a

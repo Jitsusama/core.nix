@@ -108,6 +108,60 @@ it("a cell two machines both list is judged once", () => {
   assert.equal(reach.count, 1);
 });
 
+it("a cell two machines list is judged as the map keeps it, by either copy's networks", () => {
+  // One copy names the orchestration, the other doesn't, so only a rule
+  // judging the cell by both copies' networks finds it for either copy in
+  // either order. Which copy stands reach can't see, since the copies
+  // differ in nothing else it reads; lineage's tests pin that.
+  const later = { name: "TERN05", type: "session", since: "2026-11-19T00:30:00Z" };
+  const earlier = { ...later, since: "2026-11-19T00:00:00Z" };
+  const heard = ["orchestration.kestrl"];
+  const left = ["repo.skiff"];
+  for (const [moved, stale] of [
+    [
+      { ...later, networks: heard },
+      { ...earlier, networks: left },
+    ],
+    [
+      { ...later, networks: left },
+      { ...earlier, networks: heard },
+    ],
+  ]) {
+    for (const told of [
+      [moved, stale],
+      [stale, moved],
+    ]) {
+      const reach = reachOf(reading(told), drew({ TERN05: "#loose.skiff" }));
+      assert.deepEqual(reach.failures, [
+        { cell: "TERN05", orchestration: "kestrl", owner: "KESTRL", why: "alone" },
+      ]);
+    }
+  }
+});
+
+it("a cell with no name, which the map can't draw, is unreachable and said as words", () => {
+  const now = reading([
+    { name: "", machine: "kestrel", type: "session", networks: ["orchestration.kestrl"] },
+    { type: "session", networks: ["repo.skiff"] },
+    { name: 42, machine: "osprey", type: "receptor", networks: [] },
+    { name: "TERN06", type: "session", networks: ["repo.skiff"] },
+  ]);
+  const reach = reachOf(now, drew({ TERN06: "#loose.skiff" }));
+  assert.equal(reach.cells, 4);
+  // As the page says it, so as the map's check and the hourly measure read
+  // it: every cell named as words, and no owner where nobody can be told.
+  assert.deepEqual(JSON.parse(JSON.stringify(reach.failures)), [
+    {
+      cell: "a cell with no name on kestrel",
+      orchestration: "kestrl",
+      owner: "KESTRL",
+      why: "unreachable",
+    },
+    { cell: "a cell with no name", orchestration: null, why: "unreachable" },
+    { cell: "a cell with no name on osprey", orchestration: null, why: "unreachable" },
+  ]);
+});
+
 it("a cell the map holds nowhere is unreachable", () => {
   const now = reading([{ name: "SKIFFS", type: "session", networks: ["orchestration.kestrl"] }]);
   const reach = reachOf(now, drew({}));

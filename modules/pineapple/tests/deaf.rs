@@ -3,10 +3,11 @@
 
 use std::ffi::OsStr;
 use std::path::Path;
+use std::slice;
 
 use pineapple::deaf::{
-    Change, Deaf, Deafness, ROUNDS, Round, Search, UNREACHED, Waiting, keep_missed, make, missed,
-    refuses_the_sign_in, waiting, waits, waits_on_gateway,
+    Change, Deaf, Deafness, MEET, ROUNDS, Round, Search, Waiting, keep_missed, make, missed,
+    refuses_the_sign_in, waiting, waits,
 };
 
 const AT: u64 = 1_795_000_000_000;
@@ -185,100 +186,6 @@ fn only_a_refusal_of_the_sign_in_is_joels_to_fix() {
             "{word} isn't fixed by signing in"
         );
     }
-}
-
-#[test]
-fn a_gateway_unreached_past_its_rounds_is_told_as_deaf_and_heard_again_untold() {
-    let mut deaf = Deaf::through_gateway();
-    let round = |n: u32| AT + u64::from(n) * 30_000;
-    for n in 1..=UNREACHED + 1 {
-        assert_eq!(
-            deaf.heard(Round::Unasked, round(n)),
-            Change::Keep,
-            "round {n} unasked isn't told yet"
-        );
-    }
-    let at = round(UNREACHED + 2);
-    assert_eq!(
-        deaf.heard(Round::Unasked, at),
-        Change::Tell(waits_on_gateway(Deafness::Unreached, at, at)),
-        "a gateway unreached past its rounds is told, once the cause has held"
-    );
-    let item = &waits_on_gateway(Deafness::Unreached, at, at)["items"][0];
-    assert!(
-        item["why"]
-            .as_str()
-            .is_some_and(|why| why.contains("isn't answering its searches"))
-            && item["doneWhen"] == serde_json::json!({"by": "person"}),
-        "it says the gateway isn't answering, as a tool failing gets there too, and only \
-         Joel marks it done: {item}"
-    );
-    assert_eq!(
-        deaf.heard(Round::Unasked, round(UNREACHED + 3)),
-        Change::Keep,
-        "told once, not each round"
-    );
-    assert_eq!(
-        deaf.heard(Round::Heard, round(UNREACHED + 4)),
-        Change::Untell,
-        "heard again, the row is taken away"
-    );
-    for n in UNREACHED + 5..=2 * UNREACHED + 5 {
-        assert_eq!(
-            deaf.heard(Round::Unasked, round(n)),
-            Change::Keep,
-            "heard again, the count starts anew, so round {n} unasked isn't told yet"
-        );
-    }
-    let mut keyring = Deaf::new();
-    let _ = keyring.heard(Round::Heard, AT);
-    for n in 1..=3 * UNREACHED {
-        assert_eq!(
-            keyring.heard(Round::Unasked, round(n)),
-            Change::Keep,
-            "the keyring reader counts a round unasked neither way, round {n}"
-        );
-    }
-}
-
-#[test]
-fn a_reader_through_a_gateway_never_sends_joel_to_sign_in_to_slack() {
-    let mut deaf = Deaf::through_gateway();
-    let refused = Round::Deaf(Deafness::Refused);
-    deaf.heard(refused, AT);
-    let told = deaf.heard(refused, AT + 30_000);
-    assert_eq!(
-        told,
-        Change::Tell(waits_on_gateway(
-            Deafness::Refused,
-            AT + 30_000,
-            AT + 30_000
-        )),
-        "told in the gateway's words"
-    );
-    for why in [Deafness::Refused, Deafness::NoSignIn] {
-        let item = &waits_on_gateway(why, AT, AT)["items"][0];
-        let said = item["why"].as_str().unwrap_or_default();
-        assert!(
-            said.contains("tool gateway") && !said.contains("keyring"),
-            "{why:?} names the gateway's sign-in: {said}"
-        );
-        assert_eq!(
-            item["doneWhen"],
-            serde_json::json!({"by": "person"}),
-            "{why:?} is marked done by Joel alone, since Slack's sign-in mends nothing"
-        );
-        assert!(
-            !item["steps"].to_string().contains("Sign in to Slack"),
-            "{why:?} sends him to no Slack sign-in: {}",
-            item["steps"]
-        );
-    }
-    assert_eq!(
-        waits_on_gateway(Deafness::Unreadable, AT, AT),
-        waits(Deafness::Unreadable, AT, AT),
-        "what Slack's answers say is the same either way"
-    );
 }
 
 #[test]
@@ -678,4 +585,200 @@ fn each_span_never_read_is_kept_a_week_beside_the_others() {
     );
     assert_eq!(read["quest"], "pineapple", "in the shape For You reads");
     let _ = std::fs::remove_dir_all(&folder);
+}
+
+/// The rows `file` holds, read back.
+fn rows_in(file: &Path) -> Vec<serde_json::Value> {
+    let read: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(file).expect("read")).expect("JSON");
+    read["items"].as_array().expect("rows").clone()
+}
+
+#[test]
+fn a_busy_stretch_read_on_round_after_round_is_said_in_one_row() {
+    let folder = std::env::temp_dir().join(format!(
+        "pineapple-missed-meet-{}-{:?}",
+        std::process::id(),
+        std::time::SystemTime::now()
+    ));
+    let file = folder.join("missed.json");
+    std::fs::create_dir_all(&folder).expect("the folder is made");
+    assert_eq!(MEET, 10 * MINUTE, "the nearness this case is written for");
+    let tag = |from: u64, to: u64| missed(Search::Tag, Some(AT - from), Some(AT - to), AT - to);
+    let far = tag(100 * MINUTE, 90 * MINUTE);
+    keep_missed(&file, far.clone(), AT - 90 * MINUTE).expect("written");
+    let phrase = missed(
+        Search::Phrase,
+        Some(AT - 30 * MINUTE),
+        Some(AT - 25 * MINUTE),
+        AT,
+    );
+    keep_missed(&file, phrase.clone(), AT - 25 * MINUTE).expect("written");
+    keep_missed(&file, tag(30 * MINUTE, 25 * MINUTE), AT - 25 * MINUTE).expect("written");
+    keep_missed(&file, tag(26 * MINUTE, 20 * MINUTE), AT - 20 * MINUTE).expect("written");
+    let overlapping = rows_in(&file);
+    assert_eq!(
+        (
+            overlapping.len(),
+            &overlapping[2]["id"],
+            &overlapping[2]["whole"]
+        ),
+        (
+            3,
+            &serde_json::json!(format!(
+                "pineapple-slack-missed-tag-{}-{}",
+                AT - 30 * MINUTE,
+                AT - 20 * MINUTE
+            )),
+            &serde_json::json!(true)
+        ),
+        "spans that overlap are one, said whole: {overlapping:?}"
+    );
+    keep_missed(&file, tag(15 * MINUTE, 12 * MINUTE), AT - 12 * MINUTE).expect("written");
+    let rows = rows_in(&file);
+    assert_eq!(
+        rows.iter().map(|row| row["id"].clone()).collect::<Vec<_>>(),
+        [
+            far["id"].clone(),
+            phrase["id"].clone(),
+            serde_json::json!(format!(
+                "pineapple-slack-missed-tag-{}-{}",
+                AT - 30 * MINUTE,
+                AT - 12 * MINUTE
+            )),
+        ],
+        "one five minutes past joins them, while one farther off and the other search's \
+         stay their own"
+    );
+    assert_eq!(
+        rows[2]["why"],
+        "The safe word never read parts of what tagged you in Slack without saying pineapple \
+         in the 18 minutes before this was raised, as more was said than it could read, so a \
+         stop said then wasn't heard",
+        "a read stretch lies between, so it's said as parts, raised as the newest was"
+    );
+    assert_eq!(rows[2]["whole"], false, "and kept so as written again");
+    keep_missed(&file, tag(13 * MINUTE, 10 * MINUTE), AT - 10 * MINUTE).expect("written");
+    let again = rows_in(&file);
+    assert!(
+        again.len() == 3 && again[2]["whole"] == false,
+        "a row once said as parts stays so, though the next overlaps it: {again:?}"
+    );
+    let _ = std::fs::remove_dir_all(&folder);
+}
+
+/// What `kept` rows, then `row` kept at `AT`, leave in a file of their own.
+fn kept_after(
+    name: &str,
+    kept: &[serde_json::Value],
+    row: serde_json::Value,
+) -> Vec<serde_json::Value> {
+    let folder = std::env::temp_dir().join(format!(
+        "pineapple-missed-{name}-{}-{:?}",
+        std::process::id(),
+        std::time::SystemTime::now()
+    ));
+    let file = folder.join("missed.json");
+    std::fs::create_dir_all(&folder).expect("the folder is made");
+    let earlier = serde_json::json!({"v": 2, "items": kept});
+    std::fs::write(&file, earlier.to_string()).expect("the earlier rows are written");
+    keep_missed(&file, row, AT).expect("written");
+    let rows = rows_in(&file);
+    let _ = std::fs::remove_dir_all(&folder);
+    rows
+}
+
+#[test]
+fn spans_meet_up_to_ten_minutes_apart_and_an_unknown_start_meets_only_itself() {
+    let tag = |from: u64, to: u64| missed(Search::Tag, Some(AT - from), Some(AT - to), AT - to);
+    let earlier = tag(30 * MINUTE, 20 * MINUTE);
+    let met = kept_after(
+        "edge",
+        slice::from_ref(&earlier),
+        tag(10 * MINUTE, 5 * MINUTE),
+    );
+    assert!(
+        met.len() == 1 && met[0]["whole"] == false,
+        "exactly ten minutes apart they meet, as parts: {met:?}"
+    );
+    let apart = kept_after(
+        "past",
+        slice::from_ref(&earlier),
+        tag(10 * MINUTE - 1, 5 * MINUTE),
+    );
+    assert_eq!(
+        apart.len(),
+        2,
+        "a millisecond farther they don't: {apart:?}"
+    );
+    let touching = kept_after(
+        "touch",
+        slice::from_ref(&earlier),
+        tag(20 * MINUTE, 10 * MINUTE),
+    );
+    assert!(
+        touching.len() == 1 && touching[0]["whole"] == true,
+        "one beginning where the other ends is said whole: {touching:?}"
+    );
+    let mut legacy = earlier.clone();
+    legacy.as_object_mut().expect("a row").remove("whole");
+    let old = kept_after("legacy", &[legacy], tag(25 * MINUTE, 10 * MINUTE));
+    assert!(
+        old.len() == 1 && old[0]["whole"] == true,
+        "a row written before rows met is taken as whole: {old:?}"
+    );
+
+    let days = 3 * 24 * 60 * MINUTE;
+    let dated = tag(days + 10 * MINUTE, days);
+    let unknown = missed(Search::Tag, None, Some(AT - MINUTE), AT);
+    let both = kept_after("unknown", slice::from_ref(&dated), unknown.clone());
+    assert_eq!(
+        both.iter().map(|row| row["id"].clone()).collect::<Vec<_>>(),
+        [dated["id"].clone(), unknown["id"].clone()],
+        "one whose start can't be told takes in no dated row"
+    );
+    let again = kept_after("unknown-again", slice::from_ref(&unknown), unknown.clone());
+    assert_eq!(again.len(), 1, "though it's the same row written again");
+    let after = kept_after(
+        "after-unknown",
+        &[missed(
+            Search::Tag,
+            None,
+            Some(AT - 20 * MINUTE),
+            AT - 20 * MINUTE,
+        )],
+        tag(15 * MINUTE, 10 * MINUTE),
+    );
+    assert_eq!(
+        after.len(),
+        2,
+        "nor does a dated one take in a row whose start can't be told: {after:?}"
+    );
+}
+
+#[test]
+fn rows_written_before_rows_met_are_folded_into_one() {
+    let tag = |from: u64, to: u64| missed(Search::Tag, Some(AT - from), Some(AT - to), AT - to);
+    let rows = kept_after(
+        "chain",
+        &[
+            tag(60 * MINUTE, 45 * MINUTE),
+            tag(46 * MINUTE, 30 * MINUTE),
+            tag(31 * MINUTE, 15 * MINUTE),
+        ],
+        tag(16 * MINUTE, 0),
+    );
+    assert_eq!(
+        rows.iter().map(|row| row["id"].clone()).collect::<Vec<_>>(),
+        [serde_json::json!(format!(
+            "pineapple-slack-missed-tag-{}-{AT}",
+            AT - 60 * MINUTE
+        ))],
+        "the first two meet only once those after them are taken, and are taken too: \
+         {rows:?}"
+    );
+    assert_eq!(
+        rows[0]["whole"], true,
+        "each overlapping the next, it's whole"
+    );
 }
