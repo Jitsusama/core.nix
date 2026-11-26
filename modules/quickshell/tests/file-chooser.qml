@@ -94,13 +94,14 @@ ShellRoot {
         readonly property var sources: [theChooser, drive]
 
         // Into the chooser, then through the folders on the way, as the
-        // launcher walks them.
+        // launcher walks them, where it ends being where it opened.
         function into(name, way) {
             open = true;
             into_ = name;
             held = [{ row: { key: "", from: theChooser }, rows: [] }];
             for (const row of way ?? [])
                 enter(row);
+            openedHere();
         }
 
         function enter(row) {

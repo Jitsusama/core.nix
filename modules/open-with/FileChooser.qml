@@ -79,6 +79,10 @@ Provider {
     id: provider
 
     what: "file"
+    // Never kept to draw at the launcher's next opening (Arming.keepsPlace),
+    // as Asks isn't: it opens only on an ask, deep in that ask's folder,
+    // and kept it would hold an old ask's folders and files to draw again.
+    readonly property bool keptNever: true
 
     // Who's waiting, oldest first: { reply, request }, and, for an ask from
     // inside the shell, picked, called with the paths in place of a socket.
@@ -1302,10 +1306,9 @@ Provider {
         listing.running = (settings.recent ?? []).length > 0;
         // Walked inside its opening, the folders on the way passed through,
         // so only the one it opens in is searched and drawn. That one is
-        // where it opened: the folders on the way were never shown, so
-        // Ctrl+O has none of them to go back to.
+        // where it opened (walkInto): the folders on the way were never
+        // shown, so Ctrl+O has none of them to go back to.
         launcher.into(settings.name, onTheWay(start).map(path => folderRow(path)));
-        launcher.openedHere();
     }
 
     // One answer: connected, said, then gone.
