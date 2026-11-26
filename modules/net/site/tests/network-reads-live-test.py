@@ -76,7 +76,7 @@ def mycelium_node(tmp_path: Path) -> Iterator[StandIn]:
 
 
 def feeds_of(net: StandIn, node: StandIn) -> dict[str, object]:
-    """The server's feeds from `net` and `node`, each trimmed to the kinds home.nix declares."""
+    """Give the server's feeds from `net` and `node`, trimmed to the kinds home.nix declares."""
     return {
         "net": {"socket": str(net.path), "kinds": json.loads(os.environ["NET_KINDS"])},
         "node": {"socket": str(node.path), "kinds": json.loads(os.environ["NODE_KINDS"])},
