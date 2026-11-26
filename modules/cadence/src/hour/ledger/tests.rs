@@ -189,6 +189,27 @@ fn a_running_clock_stops_while_the_list_holds_no_asks() {
 }
 
 #[test]
+fn an_hour_the_list_is_unread_stops_a_running_clock() {
+    let folder = tempfile::tempdir().expect("a scratch folder");
+    let mut seen = Seen::default();
+    read_at(folder.path(), &list(10), &mut seen, NOW);
+    read_at(folder.path(), &list(4), &mut seen, NOW);
+    let torn = format!("{}{{\"at\":\"x\"\n", list(4));
+    let (_, why) = read_at(folder.path(), &torn, &mut seen, NOW + 3600);
+    assert!(why.is_some(), "a list with a torn line was read");
+    assert_eq!(
+        seen.short_since, None,
+        "an hour the list was unread left the clock running"
+    );
+    let after = NOW + SHORT_LASTS + 1;
+    let (text, why) = read_at(folder.path(), &list(4), &mut seen, after);
+    assert!(
+        text.is_empty() && why.is_some(),
+        "a list short again after an hour unread was taken as pruned at once: {text}"
+    );
+}
+
+#[test]
 fn a_line_that_is_no_text_leaves_the_list_unread_saying_which() {
     let folder = tempfile::tempdir().expect("a scratch folder");
     let path = folder.path().join("asks.jsonl");
@@ -210,6 +231,27 @@ fn a_line_that_is_no_text_leaves_the_list_unread_saying_which() {
 }
 
 #[test]
+fn a_record_torn_within_its_text_leaves_the_list_unread_saying_which() {
+    let folder = tempfile::tempdir().expect("a scratch folder");
+    // A write torn short, then the next record appended on after it.
+    let glued = format!(
+        "{}{{\"at\":\"2026-11-25T0{{\"at\":\"y\",\"words\":\"ok\"}}\n",
+        list(4)
+    );
+    let mut seen = Seen::default();
+    let (text, why) = read_at(folder.path(), &glued, &mut seen, NOW);
+    assert!(
+        text.is_empty(),
+        "a list with a torn record was read: {text}"
+    );
+    assert_eq!(
+        why.as_deref(),
+        Some("its line 7 isn't a record"),
+        "a list with a torn record wasn't said unread, with which"
+    );
+}
+
+#[test]
 fn a_last_line_still_being_written_is_left_out_and_the_rest_read() {
     let folder = tempfile::tempdir().expect("a scratch folder");
     let path = folder.path().join("asks.jsonl");
@@ -223,11 +265,17 @@ fn a_last_line_still_being_written_is_left_out_and_the_rest_read() {
         "a list caught mid-write was said unread: {why:?}"
     );
     assert_eq!(
-        Some(text.as_str()),
-        list(4).strip_suffix('\n'),
+        text,
+        list(4),
         "the line being written was read, or a whole line was lost"
     );
     assert_eq!(seen.most, 4, "the line being written was counted");
+    let cut = format!("{}{{\"at\":\"z\",\"wor", list(4));
+    let (_, why) = read_at(folder.path(), &cut, &mut seen, NOW);
+    assert!(
+        why.is_none(),
+        "a list caught mid-write within its text was said unread: {why:?}"
+    );
 }
 
 #[test]

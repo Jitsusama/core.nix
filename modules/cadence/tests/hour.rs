@@ -231,6 +231,26 @@ fn a_torn_ledger_leaves_the_misses_unjudged_and_carried() {
     );
 }
 
+/// A last hour kept that's there but won't read is said, torn or not text
+/// alike, as starting from nothing forgets what the hour saw of the asks.
+#[test]
+fn a_last_hour_that_wont_read_is_said() {
+    for last in [&b"{\"asks\":"[..], b"{\"open\": [\"\xff\"]}"] {
+        let account = account();
+        let kept = account.path().join("state/cadence");
+        fs::create_dir_all(&kept).expect("cadence's folder");
+        fs::write(kept.join("hour.json"), last).expect("last hour");
+
+        let ran = hour(account.path(), &[]);
+        let said = String::from_utf8_lossy(&ran.stderr);
+        assert!(ran.status.success(), "cadence failed: {said}");
+        assert!(
+            said.contains("the hour kept can't be read, so it starts from nothing"),
+            "a last hour that won't read went unsaid: {said}"
+        );
+    }
+}
+
 /// A card that can't be sent leaves last hour kept as it was, so the
 /// "fixed" lines it held are told again next hour rather than never, and
 /// leaves the findings ledger as it was, so no owner's finding is lost.

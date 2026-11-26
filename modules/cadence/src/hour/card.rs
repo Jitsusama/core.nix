@@ -7,6 +7,8 @@
 
 use std::collections::BTreeMap;
 use std::fmt::Write;
+use std::path::Path;
+use std::{fs, io};
 
 use serde::{Deserialize, Serialize};
 
@@ -47,6 +49,24 @@ pub struct Kept {
     /// read as unread rather than as none of his asks.
     #[serde(default)]
     pub asks: Seen,
+}
+
+impl Kept {
+    /// What the last hour kept at `path`, or nothing kept when it isn't
+    /// there. One there that won't read is said, as starting from nothing
+    /// kept forgets what the hour saw of the asks list and so reads one
+    /// written over as whole.
+    pub fn last(path: &Path) -> Self {
+        let read = match fs::read_to_string(path) {
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Self::default(),
+            Err(err) => Err(err.to_string()),
+            Ok(text) => serde_json::from_str(&text).map_err(|err| err.to_string()),
+        };
+        read.unwrap_or_else(|err| {
+            eprintln!("cadence: the hour kept can't be read, so it starts from nothing: {err}");
+            Self::default()
+        })
+    }
 }
 
 /// How many misses told fixed the hour keeps, newest last.

@@ -53,21 +53,47 @@ const FROM_ASKS: [&str; 4] = [
 /// holding none is never taken as pruned, as no pruning keeps nothing,
 /// and the hours it held none don't count toward pruning it after, so an
 /// ask added to a list written over starts the two hours afresh. A line
-/// that isn't text leaves it unread, saying which, since the measures read
-/// each ask from its latest line, and leaving that out could close a slip
-/// as fixed; a last line its keeper is still writing is left out, as the
-/// next read finds it whole.
+/// that isn't text, or isn't a record though a newline ends it, leaves it
+/// unread, saying which, since the measures read each ask from its latest
+/// line, and leaving that out could close a slip as fixed; it stays so
+/// until its keeper mends that line. A last line its keeper is still
+/// writing is left out, as the next read finds it whole. No hour the list
+/// is unread counts toward pruning it, as none of them saw it short.
 pub(super) fn whole(path: &Path, seen: &mut Seen, now: i64) -> (String, Option<String>) {
-    let text = match fs::read(path).map(|bytes| text_lines(&bytes)) {
-        Ok((text, None)) => text,
-        Ok((_, Some(line))) => {
-            return (String::new(), Some(format!("its line {line} isn't text")));
-        }
+    let why = match fs::read(path).map(|bytes| text_lines(&bytes)) {
+        Ok((text, None)) => match torn(&text) {
+            None => return short(text, seen, now),
+            Some(line) => format!("its line {line} isn't a record"),
+        },
+        Ok((_, Some(line))) => format!("its line {line} isn't text"),
         Err(err) if seen.most == 0 && err.kind() == io::ErrorKind::NotFound => {
             return (String::new(), None);
         }
-        Err(err) => return (String::new(), Some(format!("it can't be read: {err}"))),
+        Err(err) => format!("it can't be read: {err}"),
     };
+    seen.short_since = None;
+    (String::new(), Some(why))
+}
+
+/// The number of the first line of `text` that a newline ends but that
+/// isn't a record, counted from one, so a write torn within its text,
+/// and any record written on after it, isn't passed over unsaid. Blank
+/// lines are none of his asks, and the last line, which no newline ends,
+/// may still be being written.
+fn torn(text: &str) -> Option<usize> {
+    let mut lines = text.split('\n').enumerate().peekable();
+    while let Some((n, line)) = lines.next() {
+        let ended = lines.peek().is_some();
+        if ended && !line.trim().is_empty() && serde_json::from_str::<Value>(line).is_err() {
+            return Some(n + 1);
+        }
+    }
+    None
+}
+
+/// `text`, the asks list read whole, beside why it's unread when it holds
+/// under half the most ask records `seen` in it, as `whole` says.
+fn short(text: String, seen: &mut Seen, now: i64) -> (String, Option<String>) {
     let held = asks(&text);
     if held * 2 >= seen.most {
         *seen = Seen {
