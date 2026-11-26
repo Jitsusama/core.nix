@@ -110,15 +110,19 @@ fn the_subvolumes_of_one_btrfs_pool_are_one_filesystem() {
     );
 }
 
-/// Any process the guard weighs for a freeze may hold a pipe open, as
-/// one of its open files, which the guard reads through the process's
-/// link to it. A pipe holds none of its disk's bytes, so its pool is its
-/// own device, read without opening it, since on Btrfs an open would wait
-/// for a writer, and through the link the kernel follows rather than the
-/// name the link says, which may be gone or another namespace's.
+/// A pipe holds none of its disk's bytes, so its pool is its own device,
+/// read without opening it, since an open of a pipe with no writer waits
+/// for one: by its name, as any account may ask the machine's guard, and
+/// through a link to it, as a process the guard weighs for a freeze holds
+/// one, which the kernel follows rather than the name the link says, as
+/// that may be gone. Only on Btrfs was a pipe ever opened, so only there
+/// does this case fail on code that opens it, by waiting.
+#[cfg(target_os = "linux")]
 #[test]
-fn a_held_pipe_s_pool_is_its_own_device_read_without_waiting_for_a_writer() {
+fn a_pipe_with_no_writer_s_pool_is_its_own_device_read_without_opening_it() {
     use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::fs::OpenOptionsExt;
+    use std::path::PathBuf;
     let dir = tempfile::tempdir().unwrap();
     let pipe = dir.path().join("pipe");
     let name = std::ffi::CString::new(pipe.as_os_str().as_bytes()).unwrap();
@@ -129,21 +133,30 @@ fn a_held_pipe_s_pool_is_its_own_device_read_without_waiting_for_a_writer() {
         "no pipe made"
     );
     let device = fs::metadata(&pipe).unwrap().dev();
-    // Opened for reading and writing, which Linux lets a pipe do at once.
+    // Read within five seconds, on a thread of its own, since an open
+    // would never end.
+    let within = |path: PathBuf| {
+        let (sent, heard) = std::sync::mpsc::channel();
+        std::thread::spawn(move || sent.send(pool(&path).ok()));
+        heard.recv_timeout(std::time::Duration::from_secs(5)).ok()
+    };
+    assert_eq!(
+        within(pipe.clone()),
+        Some(Some(device)),
+        "a pipe's pool, read by its name within five seconds, as its own device"
+    );
+    // Held for reading only, without waiting, so it still has no writer.
     let held = fs::OpenOptions::new()
         .read(true)
-        .write(true)
+        .custom_flags(libc::O_NONBLOCK)
         .open(&pipe)
         .unwrap();
     fs::remove_file(&pipe).unwrap();
     let link = Path::new("/proc/self/fd").join(held.as_raw_fd().to_string());
-    let (sent, heard) = std::sync::mpsc::channel();
-    std::thread::spawn(move || sent.send(pool(&link).ok()));
-    let answered = heard.recv_timeout(std::time::Duration::from_secs(5));
     assert_eq!(
-        answered.ok(),
+        within(link),
         Some(Some(device)),
-        "a held pipe's pool, read within five seconds through its link, as its own device"
+        "a held pipe's pool, read through its link within five seconds, as its own device"
     );
     drop(held);
 }

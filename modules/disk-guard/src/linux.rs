@@ -695,7 +695,9 @@ fn mapped_path(line: &str) -> Option<PathBuf> {
 /// no device number has, so the two never meet. A pipe, a socket or a
 /// device holds none of its disk's bytes, so its pool is its own device,
 /// read without opening it: a pipe's open would wait for a writer, and a
-/// device's driver would be asked what only Btrfs answers. Read past any
+/// device's driver would be asked what only Btrfs answers. On Btrfs that
+/// device is a subvolume's, which is no watched disk's; elsewhere it is
+/// its disk's, as for any file there. Read past any
 /// link to it, such as a process's open file, as the kernel follows that
 /// link, rather than by the name the link says, which may be gone or name
 /// another mount namespace's file.
@@ -793,7 +795,9 @@ fn btrfs_id(path: &Path) -> io::Result<[u8; 16]> {
     // Found without opening it, and opened only as a file or a folder, through
     // what was found, so nothing swapped in between is opened: a pipe's open
     // would wait for a writer. A file a writer holds a lease on refuses the
-    // open at once, rather than holding the guard while the lease breaks.
+    // open at once, rather than holding the guard while the lease breaks,
+    // though its holder is still asked to break it, and until it does the
+    // file reads as on no disk.
     let none = rustix::fs::Mode::empty();
     let found = rustix::fs::open(path, OFlags::PATH | OFlags::CLOEXEC, none)?;
     let kind = rustix::fs::FileType::from_raw_mode(rustix::fs::fstat(&found)?.st_mode);
