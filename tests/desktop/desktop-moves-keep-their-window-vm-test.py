@@ -185,6 +185,61 @@ def test_a_session_whose_attach_its_host_refuses_keeps_its_window(desktop: Deskt
         desktop.as_account(f"rm -f ~/refusals-{session} ~/refuse-attach-{session}")
 
 
+def test_a_held_sessions_window_closed_keeps_it_and_go_to_opens_it_again(
+    desktop: Desktop,
+) -> None:
+    """Closing a held session's window ends only the window, never the session.
+
+    Its program runs on under the same hold, the node lets go of the window, and Go To then
+    attaches it in one new window, where Joel's keys reach that same program again (the
+    launcher's Sessions.qml goTo: a held session in no window is attached in a new one).
+    """
+    machine = desktop.machine
+    session = "01d1-closed"
+    try:
+        window = opened_held(desktop, session)
+        pid = program_of(desktop, session)
+        hold = holding(desktop, session)
+        desktop.as_account(f"niri msg action close-window --id {window['id']}")
+        machine.wait_until_fails(
+            desktop.in_session(f"niri msg --json windows | grep -q 'pi --session {session}'"),
+            timeout=STEP,
+        )
+        seen: list[dict[str, Any]] = []
+
+        def let_go(_last: bool) -> bool:
+            seen[:] = [node_row(desktop, session)]
+            return bool(seen[0].get("held")) and not seen[0].get("window")
+
+        try:
+            desktop_session.retry(let_go, timeout=STEP)
+        except Exception as failed:
+            msg = f"the node never let go of the closed window, holding on: {seen}"
+            raise AssertionError(msg) from failed
+        alive = desktop.as_account(f"kill -0 {pid} && echo alive || echo gone").strip()
+        assert alive == "alive", f"closing its window ended the session's program {pid}"
+        assert holding(desktop, session) == hold, "the session is held anew"
+        assert programs_for(desktop, session) == 1, "more than one program runs for it"
+        pressed_go_to(desktop, session)
+        machine.wait_until_succeeds(
+            desktop.in_session(
+                f"niri msg --json focused-window | grep -q 'pi --session {session}'"
+            ),
+            timeout=STEP,
+        )
+        reopened = [one for one in desktop.windows() if one["title"] == f"pi --session {session}"]
+        assert len(reopened) == 1, f"Go To opened {len(reopened)} windows: {reopened}"
+        assert reopened[0]["id"] != window["id"], reopened
+        desktop.as_account("wtype back1")
+        machine.wait_until_succeeds(
+            desktop.in_session(f"grep -q 'back1' ~/typed-{session}"), timeout=STEP
+        )
+        assert program_of(desktop, session) == pid, "a new program took the keys"
+        assert programs_for(desktop, session) == 1, "more than one program runs for it"
+    finally:
+        cleaned(desktop, session)
+
+
 def opened_held(desktop: Desktop, session: str) -> Json:
     """Reopen a session as the launcher does, held, focused, and give its window once drawn."""
     machine = desktop.machine
@@ -235,6 +290,16 @@ def go_to_from_elsewhere(desktop: Desktop, session: str, window: int) -> float:
     That's from Return to niri focusing the session's window, which is the only window Go To
     may focus.
     """
+    began = pressed_go_to(desktop, session)
+    desktop.machine.wait_until_succeeds(
+        desktop.in_session(f"niri msg --json focused-window | grep -q '\"id\":{window},'"),
+        timeout=dt.timedelta(seconds=10),
+    )
+    return time.monotonic() - began
+
+
+def pressed_go_to(desktop: Desktop, session: str) -> float:
+    """From another window, find the session in the launcher and do its Go To, giving when."""
     machine = desktop.machine
     titles = {one["title"] for one in desktop.windows()}
     if "Elsewhere" not in titles:
@@ -253,32 +318,37 @@ def go_to_from_elsewhere(desktop: Desktop, session: str, window: int) -> float:
     # names it, once the launcher knows its window, or the act selected, done by its command.
     desktop.follow()
 
+    # Gone into its acts, Return's is selected, which is Talk for one listening in no window, so
+    # Go To is then one of the rows below it rather than the one selected.
     def offers_go_to(shown: Json) -> bool:
         acts = (shown.get("drawer") or {}).get("acts") or []
         selected = (shown["selected"] or {}).get("name")
         return shown["held"][:1] == ["agents"] and (
-            selected == "Go To" or any(str(act).endswith("Go To") for act in acts)
+            selected == "Go To"
+            or "Go To" in shown["rows"]
+            or any(str(act).endswith("Go To") for act in acts)
         )
 
     try:
-        desktop.launcher_until(offers_go_to)
+        offered = desktop.launcher_until(offers_go_to)
     except AssertionError as failed:
+        shown = desktop.showing()
         msg = (
-            f"the launcher offers no Go To: {desktop.showing()['drawer']},"
-            f" while the node says {node_row(desktop, session)}"
+            f"the launcher offers no Go To: rows {shown['rows']}, selected {shown['selected']},"
+            f" drawer {shown['drawer']}, while the node says {node_row(desktop, session)}"
             f" and niri {desktop.as_account('niri msg --json windows')}"
         )
         raise AssertionError(msg) from failed
+    if (offered["selected"] or {}).get("name") != "Go To" and "Go To" in offered["rows"]:
+        for _down in range(offered["rows"].index("Go To")):
+            desktop.next_row()
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go To")
     desktop.normal()
     machine.send_chars(":")
     desktop.launcher_until(lambda shown: shown["modeMark"] == "CMD")
     began = time.monotonic()
     machine.send_chars("buffer\n")
-    machine.wait_until_succeeds(
-        desktop.in_session(f"niri msg --json focused-window | grep -q '\"id\":{window},'"),
-        timeout=dt.timedelta(seconds=10),
-    )
-    return time.monotonic() - began
+    return began
 
 
 def watched_while_typing(
@@ -352,6 +422,11 @@ def typed_past(desktop: Desktop, session: str) -> None:
     machine.wait_until_succeeds(
         desktop.in_session(f"grep -q 'w{last}' ~/typed-{session}"), timeout=STEP
     )
+
+
+def program_of(desktop: Desktop, session: str) -> int:
+    """Give the pid of what runs for the session in its hold, as its stand-in wrote it."""
+    return int(desktop.as_account(f"cat $XDG_RUNTIME_DIR/moves-{session}").split()[0])
 
 
 def programs_for(desktop: Desktop, session: str) -> int:
