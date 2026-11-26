@@ -196,14 +196,17 @@ const WORDS_NOT_TAKEN: &str = "(the words are at the link)";
 
 /// Sends one alert to Joel from himself through `gateway`. It refuses a
 /// mention, so `@here`, `@channel` and `@everyone` in what others wrote
-/// are said as `(at)here` and so on; any other refusal of what they wrote
-/// is met by sending it once more with the words left to the link, so
-/// the title and where still reach his phone. A rate spent is no refusal
-/// of the words, so it's tried again whole the next round.
+/// are said as `(at)here` and so on; any failing of the tool is met by
+/// sending it once more with the words left to the link, so the title and
+/// where still reach his phone. Only that second failing is judged, as it
+/// holds nothing anyone in Slack wrote: a rate spent there did nothing,
+/// so the alert is tried again whole the next round.
 ///
 /// The tool's failing promises nothing of whether Slack took the message,
 /// so a second failing is counted as may have gone: two such rounds and
-/// it's given up on, rather than sent twice a round for ten minutes.
+/// it's given up on, rather than sent twice a round for ten minutes. One
+/// that failed before the tool was asked, as a session opened or its
+/// backend was turned on, went nowhere, so it's tried again each round.
 /// It gives the text that went, its mentions said otherwise or its words
 /// left to the link as they were.
 ///
@@ -217,10 +220,7 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> 
         (said, called)
     };
     let (said, sent) = match ask(gateway, alert) {
-        (said, Err(Called::Failed(why))) if spent(&why, &said) => {
-            (said, Err(Called::NotReached(why)))
-        }
-        (_, Err(Called::Failed(_))) if !alert.words.is_empty() => {
+        (_, Err(Called::Failed(_))) if gateway.put_to(TO_SELF) && !alert.words.is_empty() => {
             let plain = Alert {
                 words: WORDS_NOT_TAKEN,
                 ..alert
@@ -229,8 +229,12 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> 
         }
         asked => asked,
     };
-    sent.map(|_| said.clone()).map_err(|called| match called {
-        Called::Failed(why) if spent(&why, &said) => Missed::NotSent(why),
+    let put = gateway.put_to(TO_SELF);
+    sent.map(|_| said).map_err(|called| match called {
+        Called::Unreachable(why) | Called::Unreadable(why) | Called::Failed(why) if !put => {
+            Missed::NotSent(why)
+        }
+        Called::Failed(why) if spent(&why) => Missed::NotSent(why),
         Called::Unreachable(why) | Called::Unreadable(why) | Called::Failed(why) => {
             Missed::Unsure(why)
         }
@@ -242,18 +246,11 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> 
 
 /// Whether a tool's failing says Slack's rate was spent, which did nothing:
 /// either of Slack's words for it, `ratelimited` and `rate_limited`, or
-/// HTTP's or a person's. Each line of what was `sent` is taken out first,
-/// as a failing may quote what it refused, so nobody can hold an alert
-/// back by saying "rate limit" in words the gateway won't take.
-fn spent(why: &str, sent: &str) -> bool {
-    let mut why = why.to_ascii_lowercase();
-    for line in sent
-        .to_ascii_lowercase()
-        .lines()
-        .filter(|line| !line.is_empty())
-    {
-        why = why.replace(line, "");
-    }
+/// HTTP's or a person's. It's asked only of a failing to send what nobody
+/// in Slack wrote, so nobody can hold an alert back by saying "rate
+/// limit" in words the gateway won't take.
+fn spent(why: &str) -> bool {
+    let why = why.to_ascii_lowercase();
     why.split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
         .any(|word| word == "ratelimited" || word == "rate_limited")
         || why.contains("rate limit")
@@ -437,30 +434,14 @@ mod tests {
 
     #[test]
     fn only_a_rate_spent_is_said_as_spent() {
-        assert!(spent("Slack said: ratelimited", ""), "Slack's own word");
-        assert!(spent("Slack said: rate_limited", ""), "Slack's other word");
-        assert!(spent("Rate limit exceeded", ""), "in other words");
-        assert!(spent("429 Too Many Requests", ""), "in HTTP's");
+        assert!(spent("Slack said: ratelimited"), "Slack's own word");
+        assert!(spent("Slack said: rate_limited"), "Slack's other word");
+        assert!(spent("Rate limit exceeded"), "in other words");
+        assert!(spent("429 Too Many Requests"), "in HTTP's");
+        assert!(!spent("Slack said: not_allowed"), "a refusal is no rate");
         assert!(
-            !spent("Slack said: not_allowed", ""),
-            "a refusal is no rate"
-        );
-        let sent = text(Alert {
-            title: "Someone stopped your agents",
-            words: "we hit the rate limit",
-            link: "l",
-        });
-        assert!(
-            !spent(&format!("refused: {sent}"), &sent),
-            "a refusal quoting what was sent is no rate"
-        );
-        assert!(
-            !spent("refused: Said: \"we hit the rate limit\"", &sent),
-            "nor one quoting a line of it"
-        );
-        assert!(
-            spent(&format!("{sent}: ratelimited"), &sent),
-            "a rate spent quoting what was sent is still one"
+            !spent("Slack said: ratelimitedness"),
+            "Slack's words count only whole"
         );
     }
 

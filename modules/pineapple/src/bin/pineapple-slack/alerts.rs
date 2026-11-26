@@ -4,6 +4,7 @@
 //! Slack's own API in the IM it finds for him alone, or by the reader over
 //! a tool gateway through its one tool that sends to Joel himself.
 
+use std::collections::HashSet;
 use std::path::Path;
 
 use pineapple::mcp::Gateway;
@@ -56,9 +57,6 @@ pub fn tell(slack: &Slack, phone: &mut Phone, account: &Account, state: &Path) {
         ..
     } = &*phone;
     let im = own.as_ref().map(OwnIm::id);
-    if !*shadow {
-        give_up(state, im);
-    }
     tell_each(*shadow, state, new, im, |alert| {
         own.as_ref()
             .map(|own| phone::tell(origin, account, own, alert))
@@ -69,7 +67,6 @@ pub fn tell(slack: &Slack, phone: &mut Phone, account: &Account, state: &Path) {
 /// whose tool sends to him alone, so no IM is looked for. A reader over a
 /// gateway in shadow tells no phone, so never calls it.
 pub fn tell_through(gateway: &mut Gateway, state: &Path) {
-    give_up(state, Some(TO_SELF));
     tell_each(false, state, untold(state), Some(TO_SELF), |alert| {
         Some(phone::tell_self(gateway, alert))
     });
@@ -86,23 +83,56 @@ fn untold(state: &Path) -> Vec<Value> {
         .collect()
 }
 
+impl Phone {
+    /// Says each live alert let go, as [`give_up`] does, naming Joel's own
+    /// IM where it's found; in shadow, none, as none is tried.
+    pub fn give_up(&self, state: &Path, began: u64) {
+        if !self.shadow {
+            give_up(state, self.own.as_ref().map(OwnIm::id), began);
+        }
+    }
+}
+
+/// Says each live alert let go, as [`give_up`] does, for a reader telling
+/// Joel's phone through a gateway.
+pub fn give_up_through(state: &Path, began: u64) {
+    give_up(state, Some(TO_SELF), began);
+}
+
 /// Says each live alert that went ten minutes untold is let go, as it
 /// won't be tried again, and keeps a line of it in phoned.jsonl so it's
-/// said once: those of the ten minutes before the last ten, so a reader
-/// starting afresh says nothing of older ones.
-fn give_up(state: &Path, im: Option<&str>) {
+/// said once. It's asked each round before any is told, whether or not
+/// Slack or the gateway answers, so one aging out in an outage is said
+/// too; only those already twenty minutes old when the reader `began`
+/// go unsaid, so a reader starting afresh says nothing of older ones.
+/// One whose send may have gone once is said so.
+fn give_up(state: &Path, im: Option<&str>, began: u64) {
     let phoned = state.join("phoned.jsonl");
-    let told = done(&lines(&phoned));
+    let kept = lines(&phoned);
+    let told = done(&kept);
+    let unsure: HashSet<String> = kept
+        .iter()
+        .filter(|line| line["sent"] == UNSURE)
+        .map(told_as)
+        .collect();
     let now = millis();
     let since = now.saturating_sub(LOOK_BACK * MILLIS);
-    let from = now.saturating_sub(2 * LOOK_BACK * MILLIS);
+    let from = began.saturating_sub(2 * LOOK_BACK * MILLIS);
     for line in lines(&state.join("would-tell.jsonl")) {
         let at = line["at"].as_u64().unwrap_or(0);
-        if at < from || at >= since || line["shadow"] != false || told.contains(&told_as(&line)) {
+        let named = told_as(&line);
+        if at < from || at >= since || line["shadow"] != false || told.contains(&named) {
             continue;
         }
         let link = line["link"].as_str().unwrap_or_default();
-        eprintln!("<3>Joel's phone alert is let go, untold after ten minutes of trying: {link}");
+        if unsure.contains(&named) {
+            eprintln!(
+                "<3>Joel's phone alert is let go after ten minutes, its one send that may \
+                 have gone unanswered: {link}"
+            );
+        } else {
+            eprintln!("<3>Joel's phone alert is let go, untold after ten minutes: {link}");
+        }
         let one = json!({
             "at": now,
             "key": line["key"],

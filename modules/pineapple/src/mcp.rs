@@ -52,9 +52,9 @@ const FAILING: u16 = 400;
 const SERVER_FAILING: u16 = 500;
 
 /// HTTP's word for a caller that has asked too often, and for a server
-/// that can't take a request now, each passing. The first is sure to have
-/// done nothing; the second only before a tool is asked, as a proxy may
-/// say it of a call it passed on before the connection behind it went.
+/// that can't take a request now, each passing and each taken to have
+/// done nothing: a proxy may say the second of a call it passed on, but
+/// a phone told twice costs Joel less than one never told.
 const TOO_MANY: u16 = 429;
 const UNAVAILABLE: u16 = 503;
 
@@ -114,6 +114,9 @@ pub struct Gateway {
     opened: bool,
     resting: Option<(Instant, Rest)>,
     asked: u64,
+    /// The tool the last call put to the gateway, once its `tools/call`
+    /// went out, so a caller can tell a tool's failing from one before.
+    put: Option<String>,
 }
 
 /// Why a sign-in is rested from.
@@ -158,7 +161,16 @@ impl Gateway {
             opened: false,
             resting: None,
             asked: 0,
+            put: None,
         }
+    }
+
+    /// Whether the last call reached `tool`: whether its `tools/call` went
+    /// out, so what failed may have done what was asked. A failing before
+    /// it, as a session opens or a backend is turned on, asked nothing.
+    #[must_use]
+    pub fn put_to(&self, tool: &str) -> bool {
+        self.put.as_deref() == Some(tool)
     }
 
     /// What `tool` says, asked with `arguments`.
@@ -190,6 +202,7 @@ impl Gateway {
         let params = json!({ "name": tool, "arguments": arguments });
         let mut refused = false;
         let mut forgotten = false;
+        self.put = None;
         loop {
             // Nothing fails opening a session after the tool was asked, so a
             // gateway unreached or failing its opening asked nothing. A
@@ -208,6 +221,7 @@ impl Gateway {
                 called => called,
             })?;
             let answer = if opened {
+                self.put = Some(tool.to_owned());
                 match self.post("tools/call", Some(&params)) {
                     Ok(answer) => answer,
                     Err(unreached) => {
@@ -337,11 +351,10 @@ impl Gateway {
                 Called::Unreachable(format!("couldn't read the gateway's answer: {error}"))
             })?;
             // A gateway that's down or busy passes, whatever its page holds,
-            // as a spent rate does in deaf.rs. One saying it took nothing
-            // did nothing, as does one saying it can't take a session's
-            // opening; one saying so of a tool's call may have passed it on.
+            // as a spent rate does in deaf.rs; one saying it took nothing
+            // did nothing.
             let why = format!("the gateway answered {status}");
-            if status == TOO_MANY || (status == UNAVAILABLE && method != "tools/call") {
+            if status == TOO_MANY || status == UNAVAILABLE {
                 return Err(Called::NotReached(why));
             }
             if status >= SERVER_FAILING {
