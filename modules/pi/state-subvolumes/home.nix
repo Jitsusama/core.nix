@@ -55,9 +55,10 @@ let
   # account has them: a move named before a unit it hasn't is refused.
   present = lib.filter (unit: config.systemd.user.services ? ${lib.removeSuffix ".service" unit});
   # The sweep removes ended sessions' trees and their records, and the
-  # agents daemon watches orchestrators.json, a watch an exchange of the
-  # folder under it would leave on the old one; named, it holds the move
-  # back at a switch while it runs, as a writer does.
+  # agents daemon and the shell's launcher watch orchestrators.json, a
+  # watch an exchange of the folder under it would leave on the old one;
+  # named, each holds the move back at a switch while it runs, as a
+  # writer does.
   writers = {
     "mesh-workflow/presence" = [ ];
     "mesh-workflow/leases" = [ ];
@@ -65,6 +66,7 @@ let
     quest-workflow = present [
       "agents.service"
       "pi-sweep.service"
+      "quickshell.service"
     ];
     observability = present [ "spend-watch.service" ];
     "work/cut" = present [ "pi-sweep.service" ];

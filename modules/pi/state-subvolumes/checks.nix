@@ -35,45 +35,57 @@
             };
           }
         ]);
-      # The agents daemon comes with the graphical role, so it's named here.
+      hosts = {
+        one = { inherit pi node proof; };
+        two = { inherit pi node proof; };
+        mine = { inherit pi node proof; };
+      };
+      # The agents daemon comes with the graphical role, so it's named
+      # here; the shell, which comes with it too, isn't, and its watch is
+      # named in the module unchecked. Realm one is joined, two isn't.
       hosted = naming [ self.homeModules.agents ] {
-        pi.hosts = {
-          one = { inherit pi node proof; };
-          mine = { inherit pi node proof; };
-        };
+        pi.hosts = hosts;
         mycelium = {
           realm = "mine";
           alsoJoins.one.links = [ "two" ];
         };
       };
+      # With no home realm named, every realm is home, so none moves apart.
+      homeless = naming [ ] { pi.hosts = hosts; };
       bare = naming [ ] { };
-      prefix = "own-subvolume-local-state-pi-agentic-harnesspi";
+      harness = ".local/state/pi/agentic-harness.pi";
       shared = [
-        "mesh-workflow-presence"
-        "mesh-workflow-leases"
-        "mesh-workflow-runs"
+        "mesh-workflow/presence"
+        "mesh-workflow/leases"
+        "mesh-workflow/runs"
         "quest-workflow"
         "observability"
-        "work-cut"
+        "work/cut"
       ];
-      realm = map (folder: "realms-one-${folder}") [
-        "mesh-workflow-presence"
-        "mesh-workflow-leases"
-        "mesh-workflow-runs"
-        "quest-workflow"
-      ];
-      writers = [
-        "pi-host-one-attended.service"
-        "pi-host-one-background.service"
-        "pi-host-mine-attended.service"
-        "pi-host-mine-background.service"
-        "mycelium.service"
+      ofRealm =
+        realm:
+        map (folder: "realms/${realm}/${folder}") [
+          "mesh-workflow/presence"
+          "mesh-workflow/leases"
+          "mesh-workflow/runs"
+          "quest-workflow"
+        ];
+      realm = ofRealm "one" ++ ofRealm "two";
+      homeNode = [ "mycelium.service" ];
+      hostsOf = lib.concatMap (realm: [
+        "pi-host-${realm}-attended.service"
+        "pi-host-${realm}-background.service"
+      ]);
+      writers = hostsOf [
+        "one"
+        "two"
+        "mine"
       ];
       # The other writers each folder waits for, by name rather than by
       # what the account has, so one renamed where it's made is seen.
       sweeps = {
         observability = [ "spend-watch.service" ];
-        work-cut = [ "pi-sweep.service" ];
+        "work/cut" = [ "pi-sweep.service" ];
       };
       others = {
         hosted =
@@ -84,31 +96,44 @@
               "pi-sweep.service"
             ];
           }
-          // lib.genAttrs realm (_: [ "mycelium-one.service" ]);
-        bare = sweeps // {
+          // lib.genAttrs (ofRealm "one") (_: [ "mycelium-one.service" ]);
+        homeless = sweeps // {
           quest-workflow = [ "pi-sweep.service" ];
         };
       };
       sorted = names: lib.sort lib.lessThan (lib.toList names);
+      # Each folder by its path, not its unit's name, which can't tell
+      # work/cut from work-cut.
+      folders = home: home.jitsusama.subvolumes.folders;
       movesBefore =
         home: expected: others: folder:
         let
-          unit = home.systemd.user.services."${prefix}-${folder}" or null;
+          moved = (folders home)."${harness}/${folder}" or null;
           wanted = expected ++ others.${folder} or [ ];
         in
-        unit != null && sorted (unit.Unit.Before or [ ]) == sorted wanted;
-      # Every unit moving some of the harness's state, by its name, so a
-      # folder named wider, its worktrees or messages in it, is seen.
+        moved != null && sorted moved.before == sorted wanted;
+      # Every folder moving some of the harness's state, or holding it, so
+      # a folder named wider, its worktrees or messages in it, is seen.
       moving =
-        home: sorted (lib.filter (lib.hasPrefix prefix) (lib.attrNames home.systemd.user.services));
-      named = folders: sorted (map (folder: "${prefix}-${folder}") folders);
-      # Only the subvolumes module's own assertions, that each writer named
-      # is a unit the account has, so another module's says nothing here;
-      # none found means they're worded otherwise now, which fails.
+        home:
+        sorted (
+          lib.filter (folder: lib.hasPrefix "${harness}/" folder || lib.hasPrefix folder harness) (
+            lib.attrNames (folders home)
+          )
+        );
+      named = paths: sorted (map (folder: "${harness}/${folder}") paths);
+      # Only the assertions that a harness folder's writers are units the
+      # account has, so another module's says nothing here; none found
+      # means they're worded otherwise now, which fails.
       ordered =
         home:
         let
-          says = check: lib.hasInfix "'s move comes before" check.message;
+          says =
+            check:
+            let
+              inherit (check) message;
+            in
+            lib.hasPrefix "~/${harness}/" message && lib.hasInfix "'s move comes before" message;
           checks = lib.filter says home.assertions;
         in
         checks != [ ] && lib.all (check: check.assertion) checks;
@@ -119,11 +144,14 @@
         + "the node and its other writers, or more of the harness's state moves too."
       )
       (
-        lib.all (movesBefore hosted writers others.hosted) (shared ++ realm)
-        && lib.all (movesBefore bare [ ] others.bare) shared
+        lib.all (movesBefore hosted (writers ++ homeNode) others.hosted) (shared ++ realm)
+        && lib.all (movesBefore homeless writers others.homeless) shared
+        && lib.all (movesBefore bare [ ] others.homeless) shared
         && moving hosted == named (shared ++ realm)
+        && moving homeless == named shared
         && moving bare == named shared
         && ordered hosted
+        && ordered homeless
         && ordered bare
       );
 }
