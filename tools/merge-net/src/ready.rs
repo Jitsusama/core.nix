@@ -74,7 +74,10 @@ impl Before {
 /// How many passes of the same change sharing files with main's moves are
 /// read before the newest is answered: what main moved since a base is a
 /// diff of hundreds of files, so a day of a change's passes isn't each
-/// read, and an older base has only more of main's moves to share.
+/// read. Candidates come newest record first, not newest base, so a clean
+/// pass past these two can go unread; that costs the head a run at most,
+/// since the cap only ever turns a `Clean` into `Shares`, never the other
+/// way.
 const SHARING_READ: usize = 2;
 
 /// Whether the head is the same change as one of `candidates`, newest
@@ -625,6 +628,10 @@ mod tests {
         let holds = |lines: usize| lines <= LIMIT;
         let (base, own, mains) = (488, 495, 496);
         let merged = own + mains - base;
+        assert!(
+            holds(own) && holds(mains) && !holds(merged),
+            "the stand-in's check didn't pass on each side alone and fail merged"
+        );
         let passed = "{\"dir\":null,\"printed\":\"\",\"run\":[\"--system\",\"x86_64-linux\"]}\n";
         let files = owned(&[file, "modules/quickshell/Launcher.qml"]);
         let candidates = owned(&["rebased", "old"]);
@@ -654,27 +661,32 @@ mod tests {
     #[test]
     fn passes_sharing_main_s_moves_are_read_no_further_than_two() {
         // Each read of a sharing pass diffs what main moved since its base,
-        // so a change that passed six times in a day reads two.
+        // so a change that passed four times in a day reads two. Another
+        // change's pass, and a commit with no pass, count for nothing.
         let passed = "{\"dir\":null,\"printed\":\"\",\"run\":[\"--system\",\"x86_64-linux\"]}\n";
         let files = owned(&["a.rs"]);
-        let candidates = owned(&["third", "second", "first", "clean"]);
+        let candidates = owned(&["third", "another", "unpassed", "second", "first", "clean"]);
+        let record = |at: &str| {
+            if at == "unpassed" {
+                String::new()
+            } else {
+                passed.to_owned()
+            }
+        };
         let read = std::cell::RefCell::new(Vec::new());
-        let before = checked_before(&candidates, &|_: &str| passed.to_owned(), &on_main, &|at| {
+        let before = checked_before(&candidates, &record, &on_main, &|at| {
             read.borrow_mut().push(at.to_owned());
-            sharing(
-                &files,
-                Some(if at == "clean" {
-                    owned(&[])
-                } else {
-                    files.clone()
-                }),
-            )
+            match at {
+                "another" => None,
+                "clean" => sharing(&files, Some(Vec::new())),
+                _ => sharing(&files, Some(files.clone())),
+            }
         });
         assert_eq!(before, Before::Shares("third".to_owned(), files.clone()));
         assert_eq!(
             *read.borrow(),
-            owned(&["third", "second"]),
-            "passes past the second sharing one were read"
+            owned(&["third", "another", "second"]),
+            "another change's pass counted toward the two, or a third sharing pass was read"
         );
     }
 
