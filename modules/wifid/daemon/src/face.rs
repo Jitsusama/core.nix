@@ -482,7 +482,9 @@ impl Connection {
                 // a hint. The uid is the kernel's, taken as the connection
                 // was; the pid is too, but the path is read by it as wifid
                 // answers, so it holds only while the pid isn't reused
-                // (`Peer::at`), and the fd it holds can be passed on.
+                // (`Peer::at`), and the fd it holds can be passed on. That
+                // window takes in a connection queued on the socket while
+                // wifid restarts, up to a minute (`RestartMaxDelaySec`).
                 println!("<6>{} asks {}", self.peer, acts::wanted(&said));
                 let asks = self.face.asks.clone();
                 let words = self.made_in.as_ref().and_then(|made_in| {

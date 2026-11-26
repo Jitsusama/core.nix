@@ -283,7 +283,9 @@ def test_and_hears_an_account_say_a_call_is_on_naming_who_said_it(
     asker = machine.succeed("runuser -u guest -- cat /proc/self/cgroup").strip()
     path = asker.removeprefix("0::/")
     assert path.split("/")[0] in {"user.slice", "system.slice"}, f"in no slice: {asker}"
-    assert not path.endswith("/wifid.service"), f"the asker runs in wifid's own cgroup: {path}"
+    assert "/session-" not in path, (
+        f"runuser started a session, so the probe and the ask land in scopes of their own: {path}"
+    )
     print(f"an ask from guest runs in {path}")
     # A path holds only what a unit's name may, so a dot and a backslash are all grep's
     # pattern must escape; re.escape's `\-` draws grep's stray-backslash warning.
@@ -296,11 +298,19 @@ def test_and_hears_an_account_say_a_call_is_on_naming_who_said_it(
         # Any process of the wifi group's may say it, so each change names who did, by its
         # uid and its cgroup's path, which tells a user's unit from a system one of a name.
         who = f"^pid [0-9]+, uid {uid} \\({cgroup}\\)"
-        machine.wait_until_succeeds(
-            "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
-            f" | grep -E '{who} says a call is {stands}$'",
-            timeout=timedelta(seconds=10),
-        )
+        try:
+            machine.wait_until_succeeds(
+                "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
+                f" | grep -E '{who} says a call is {stands}$'",
+                timeout=timedelta(seconds=10),
+            )
+        except Exception as missed:
+            said = machine.succeed(
+                "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
+                " | grep -F 'says a call is' || true"
+            )
+            message = f"no line names {path} saying the call is {stands}; wifid said:\n{said}"
+            raise AssertionError(message) from missed
 
 
 @pytest.mark.usefixtures("wifid")

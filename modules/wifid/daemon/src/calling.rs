@@ -86,12 +86,15 @@ pub struct Peer {
 
 impl Peer {
     /// The peer at a pid, with the cgroup it's in, read as bytes so a path
-    /// that isn't UTF-8 is still said. The pid is read as wifid answers,
-    /// so a process that connected and exited before then could have its
-    /// pid taken by another, and the path name that one's cgroup: the
-    /// slice holds only while the pid isn't reused. The uid can't move
-    /// that way, since the kernel took it as the connection was made.
+    /// that isn't UTF-8 is still said. The kernel took the pid and uid as
+    /// the connection was made, but the path is read by that pid as wifid
+    /// answers, so a process that connected and exited before then could
+    /// have its pid taken by another, and the path name that one's cgroup:
+    /// the slice holds only while the pid isn't reused. The uid can't move
+    /// that way. A pid of 0 is the kernel saying the peer is outside
+    /// wifid's pid namespace, which it can't name, so it's said as none.
     pub fn at(pid: Option<i32>, uid: Option<u32>) -> Peer {
+        let pid = pid.filter(|&pid| pid > 0);
         let cgroup = pid
             .and_then(|pid| std::fs::read(format!("/proc/{pid}/cgroup")).ok())
             .and_then(|cgroup| cgroup_of(&cgroup));
@@ -133,11 +136,24 @@ impl fmt::Display for Peer {
 /// character, which has journalctl show the whole line as a blob, or a
 /// `) asks a look; pid 2211 (` writing a second asker into the line. Bytes
 /// that aren't UTF-8 are said as `?` too. No name holds a line break, since
-/// the kernel's `cgroup_mkdir` refuses one to keep this file readable. A
-/// host with no unified hierarchy has no `0::` line, and reads as unread.
+/// the kernel's `cgroup_mkdir` refuses one to keep this file readable, so
+/// lines are split at that alone: a carriage return ending a name is the
+/// name's, said as `?`. A host with no unified hierarchy has no `0::`
+/// line, and reads as unread.
+///
+/// The kernel ends the path with ` (deleted)` once a process's cgroup is
+/// removed, as for a zombie whose unit has stopped, so that's said as the
+/// cgroup it was, since removed. A live cgroup may be named to end so too,
+/// and is said the same way, but can't leave its slice that way.
 fn cgroup_of(cgroup: &[u8]) -> Option<String> {
     let cgroup = String::from_utf8_lossy(cgroup);
-    let path = cgroup.lines().find_map(|line| line.strip_prefix("0::/"))?;
+    let path = cgroup
+        .split('\n')
+        .find_map(|line| line.strip_prefix("0::/"))?;
+    let (path, removed) = match path.strip_suffix(" (deleted)") {
+        Some(path) => (path, ", since removed"),
+        None => (path, ""),
+    };
     let allowed = |said: char| said.is_ascii_alphanumeric() || ":-_.\\@/".contains(said);
     let said: String = path
         .chars()
@@ -145,11 +161,12 @@ fn cgroup_of(cgroup: &[u8]) -> Option<String> {
         .collect();
     // The root's path is empty, said as itself so it doesn't read as one
     // that went unread.
-    Some(if said.is_empty() {
+    let said = if said.is_empty() {
         "/".into()
     } else {
         cut(&said)
-    })
+    };
+    Some(format!("{said}{removed}"))
 }
 
 /// The most of a cgroup's path from its root an ask's line says, enough
@@ -269,6 +286,16 @@ mod tests {
             cgroup_of(b"0::/system.slice/x\xff\xc3\xa9.service\n").as_deref(),
             Some("system.slice/x??.service"),
             "a path not in UTF-8 named no cgroup, or said a character as more than one ?"
+        );
+        assert_eq!(
+            cgroup_of(b"0::/system.slice/x.service\r\n").as_deref(),
+            Some("system.slice/x.service?"),
+            "a carriage return ending a name was dropped, passing it as another unit"
+        );
+        assert_eq!(
+            cgroup_of(b"0::/system.slice/x.service (deleted)\n").as_deref(),
+            Some("system.slice/x.service, since removed"),
+            "a removed cgroup's path was said with the kernel's mark escaped into it"
         );
     }
 
@@ -392,6 +419,11 @@ mod tests {
             gone.to_string(),
             format!("pid {}, uid 1000 (its cgroup unread)", i32::MAX),
             "a pid that isn't there named a cgroup"
+        );
+        assert_eq!(
+            Peer::at(Some(0), Some(1000)).to_string(),
+            "a process of uid 1000 the kernel gave no pid",
+            "a peer outside wifid's pid namespace was read as pid 0, the kernel's own"
         );
         assert!(
             here.cgroup.is_some(),
