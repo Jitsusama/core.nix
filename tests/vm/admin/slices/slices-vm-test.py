@@ -314,12 +314,13 @@ def test_work_in_jobs_is_slowed_never_ended_past_a_ceiling_that_follows_room(
         put_back = int(jobs.read(f"{JOBS}/memory.high"))
         assert abs(put_back - declared) <= MIB, (put_back, declared)
     finally:
-        # The bracket keeps the pattern from matching this shell's own command line, which
-        # names it, while it still matches the filling shell and a cat not yet done.
+        # The bracket keeps the pattern from matching this shell's own command line, while it
+        # still matches the filling shell and a cat not yet done; the file goes in a command
+        # of its own, since naming it here would match this shell too.
         machine.succeed(
             f"pkill -xf '{jobs.sleep} 1009' || true; pkill -f '/var/tmp/fille[r]' || true"
-            "; rm -f /var/tmp/filler"
         )
+        machine.succeed("rm -f /var/tmp/filler")
         machine.succeed("systemctl -M alice@ --user start jobs-sorter.service")
 
 
