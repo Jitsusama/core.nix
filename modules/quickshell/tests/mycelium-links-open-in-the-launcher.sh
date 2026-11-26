@@ -130,20 +130,30 @@ if [ "$said" != '[ipc][call][launcher][talkTo][DAHTNJ]' ]; then
 fi
 
 # The stand-in answers any call, so each function the program calls must
-# be one the launcher's IpcHandler has; qs refuses any other, and the link
-# opens nothing.
+# be one the launcher's IpcHandler has, taking as many arguments as the
+# program passes it, as the asks above show; qs refuses any other, and the
+# link opens nothing.
+passes='code 1
+goTo 1
+machine 1
+network 1
+newWork 2
+newWorkOn 3
+talkTo 1'
+# Each function of the handler and how many arguments it takes.
 handles=$(sed -n '/^    IpcHandler {$/,/^    }$/p' "$launcher" |
-  sed -n 's/^        function \([A-Za-z]*\)(.*/\1/p')
+  sed -n 's/^        function \([A-Za-z]*\)(\(.*\)).*{$/\1 \2/p' |
+  awk '{ name = $1; $1 = ""; print name, ($0 ~ /[^ ]/ ? split($0, each, ",") : 0) }')
 calls=$(sed -n '/^    fn call(&self)/,/^    }$/p' "$link_source" | grep -oE '"[A-Za-z]+"' |
-  tr -d '"' | sort -u)
-if [ "$(wc -l <<< "$calls")" -lt 7 ]; then
-  echo "found too few of mycelium-link's calls to judge: $calls"
+  tr -d '"' | LC_ALL=C sort -u)
+if [ "$calls" != "$(cut -d ' ' -f 1 <<< "$passes")" ]; then
+  echo "mycelium-link calls $calls; say here how many arguments each is passed"
   failed=1
 fi
-for function in $calls; do
-  if ! grep -qxF "$function" <<< "$handles"; then
-    echo "mycelium-link calls $function, which the launcher's IpcHandler hasn't"
+while read -r function count; do
+  if ! grep -qxF "$function $count" <<< "$handles"; then
+    echo "mycelium-link calls $function with $count, which the launcher's IpcHandler hasn't"
     failed=1
   fi
-done
+done <<< "$passes"
 [ "$failed" = 0 ]

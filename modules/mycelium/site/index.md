@@ -237,8 +237,9 @@ The keyboard comes first and the pointer works too.
   kind of tick. The page starts nothing itself: the Launcher opens
   with the words filled in, and only your Return there starts the
   work. Words handed on come back with s, from the same cell and on
-  the same machine while each is still on the map, to send again.
-  Escape closes the line, and the control beside Now opens it
+  the same machine while each is still on the map, to send again;
+  words for a machine that has left go with it, so s opens an empty
+  line. Escape closes the line, and the control beside Now opens it
   too.
 - **Now holds the same network as a tree**, for a screen reader and
   for anyone who would rather walk a list: j and k step, l opens a branch,

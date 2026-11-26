@@ -75,7 +75,7 @@ import { grownOf, oneCopyEach } from "./lineage.js";
 import { drawnWidth } from "./lines.js";
 import { durationOf, easedInOut, goneAndBack } from "./motion.js";
 import { shapeOf as shapeOfReading } from "./shape.js";
-import { CLOUD, FULL_WORDS, handedWords, isAddress, isMachine, LONGEST_WORDS, NO_WORDS, onWords, sproutLink } from "./sprout.js";
+import { CLOUD, FULL_WORDS, handedWords, isAddress, isMachine, keptOnStands, LONGEST_WORDS, NO_WORDS, onWords, sproutLink } from "./sprout.js";
 import { EVERY_TREE_STEP, hasKids as hangsAny, kidsOf, openedTo, rootsOf, rowsOf, rowWords, upOf, walked, worstFirst } from "./outline.js";
 import {
   allCells,
@@ -3745,17 +3745,18 @@ import {
     holdKeysDown();
     sproutOpener = document.activeElement;
     closeFind({ said: false });
-    // Words kept to send again go from the cell they went from, and on the
-    // machine they went to, while each is still on the map, unless a
-    // drawer's button names its own.
+    // Words kept for a machine that has left the map go with it. Others go
+    // from the cell they went from while it is still on the map, and on
+    // the machine they went to, unless a drawer's button names its own.
+    if (sproutKept && !keptOnStands(sproutKept.on, current?.machines.map((x) => x.name) ?? [])) {
+      sproutKept = null;
+      sproutInput.value = "";
+    }
     const kept = sproutKept?.from;
     sproutKeptFromOffered =
       sproutKept !== null && !named && (kept === null || !!current?.byAddress.has(kept));
     offerFrom(sproutKeptFromOffered ? kept : from, { kept: sproutKeptFromOffered });
-    const keptOn = sproutKept?.on;
-    const onKept =
-      sproutKeptFromOffered && (!keptOn || keptOn === CLOUD || !!current?.machines.some((x) => x.name === keptOn));
-    offerOn(onKept ? keptOn : on, { kept: onKept });
+    offerOn(sproutKeptFromOffered ? sproutKept.on : on, { kept: sproutKeptFromOffered });
     trail.inert = true;
     sproutLine.hidden = false;
     sproutControl.setAttribute("aria-expanded", "true");

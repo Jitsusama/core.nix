@@ -1398,6 +1398,14 @@ def sent_again(page: Page, want: str) -> None:
     assert handed == want, f"sent again as {handed}, not {want}"
 
 
+def sent_as(page: Page, words: str, want: str) -> None:
+    """Write `words` over new work's open line and send them, as `want`."""
+    page.locator("#sprout").fill(words)
+    page.locator("#sprout").press("Enter")
+    handed = page.evaluate("window.talkedTo")
+    assert handed == want, f"{words} was sent as {handed}, not {want}"
+
+
 def test_new_work_sends_again_from_the_cell_it_went_from(mycelium_opened: Opened) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
@@ -1738,6 +1746,11 @@ def test_a_basins_machines_are_drawn_as_one(browser: Browser, basins_served: Ser
         expect(body, "the cell lost its own machine").to_contain_text(
             f"on {BASIN_MACHINES[0]}, in the {BASIN} basin", timeout=PACE_MS
         )
+        # Words kept for the cloud go there again, though no machine is it.
+        page.locator("#map-view").focus()
+        page.keyboard.press("s")
+        expect(on, "the kept words lost the cloud").to_have_text("On the cloud")
+        page.keyboard.press("Escape")
         # Its links to the Launcher name that machine too, never the basin.
         expect(
             body.locator('a[href^="mycelium:cell/"]:not([data-go-to])'),
@@ -2356,32 +2369,61 @@ def test_new_work_from_a_machines_drawer_starts_on_it_until_unticked(
     page.locator("#map-view").focus()
     page.keyboard.press("s")
     expect(on, "the kept words lost their machine").to_have_text("On osprey")
+    # New words over them are new work, on the machine open now.
+    page.locator("#sprout").fill("fresh")
+    expect(on, "new words kept the old machine").to_have_text("On kestrel")
+    sent_as(page, "fresh", "mycelium:sprout?words=fresh&on=kestrel")
     # Escape lets the words go, so s offers the open drawer's machine.
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
     page.keyboard.press("Escape")
     page.locator("#map-view").focus()
     page.keyboard.press("s")
     expect(on, "s didn't offer the open machine").to_have_text("On kestrel")
-    page.locator("#sprout").fill("here")
-    page.locator("#sprout").press("Enter")
-    handed = page.evaluate("window.talkedTo")
-    assert handed == "mycelium:sprout?words=here&on=kestrel", f"s on kestrel handed {handed}"
+    sent_as(page, "here", "mycelium:sprout?words=here&on=kestrel")
     # A tick lets it go, so the work starts where new work does when Joel
     # names none.
     page.locator("#map-view").focus()
     page.keyboard.press("s")
     page.locator("#sprout-on").uncheck()
-    page.locator("#sprout").fill("anywhere")
-    page.locator("#sprout").press("Enter")
-    handed = page.evaluate("window.talkedTo")
-    assert handed == "mycelium:sprout?words=anywhere", f"the cleared tick handed {handed}"
-    # The whole map names no machine, with no words kept to bring one back.
+    sent_as(page, "anywhere", "mycelium:sprout?words=anywhere")
+    # Words that went on no machine come back on none, under any drawer.
     page.locator("#map-view").focus()
     page.keyboard.press("s")
+    expect(page.locator("#sprout-on-line"), "unticked words found a machine").to_be_hidden()
     page.keyboard.press("Escape")
+    # The whole map names no machine.
     page.evaluate("location.hash = ''")
+    expect(page.locator("#panel-body [data-sprout-on]"), "a drawer stayed").to_have_count(0)
     page.locator("#map-view").focus()
     page.keyboard.press("s")
     expect(page.locator("#sprout-on-line"), "the whole map offered a machine").to_be_hidden()
+
+
+def test_new_works_words_kept_for_a_machine_that_left_go_with_it(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(TALK_HELD)
+    page.evaluate("location.hash = '#machine=osprey'")
+    expect(page.locator("#panel-title"), "osprey's drawer never opened").to_have_text("osprey")
+    page.locator("#panel-body").get_by_role("button", name="Start New Work Here").click()
+    page.keyboard.type("last")
+    page.keyboard.press("Enter")
+    page.evaluate("location.hash = '#machine=kestrel'")
+    expect(page.locator("#panel-title"), "kestrel's drawer never opened").to_have_text("kestrel")
+    osprey = page.locator('#world [data-key="m:osprey"]')
+    expect(osprey, "the map didn't draw osprey").to_have_count(1)
+    mycelium_node.tell("machine", gone=["machine:osprey"])
+    expect(osprey, "the map kept a machine that left").to_have_count(0, timeout=PACE_MS)
+    # Sent to the machine open now, they'd start work where Joel didn't ask.
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(page.locator("#sprout"), "words for a gone machine came back").to_have_value("")
+    expect(page.locator("#sprout-on-words"), "s didn't offer the open machine").to_have_text(
+        "On kestrel"
+    )
 
 
 def test_what_each_spent_today_is_listed_most_first(mycelium_opened: Opened) -> None:

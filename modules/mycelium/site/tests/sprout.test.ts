@@ -10,6 +10,7 @@ import {
   handedWords,
   isAddress,
   isMachine,
+  keptOnStands,
   LONGEST_WORDS,
   onWords,
   sproutLink,
@@ -137,6 +138,14 @@ it("says the machine it starts on, and hands nothing for a misshaped one", () =>
   assert.equal(sproutLink("", null, "osprey"), null, "no words should hand nothing");
   assert.equal(onWords("osprey"), "On osprey", "a machine should be said by its name");
   assert.equal(onWords(CLOUD), "On the cloud", "the cloud should be said as a place");
+});
+
+it("keeps words for a machine only while the map still has it", () => {
+  const names = ["kestrel", "osprey"];
+  assert.equal(keptOnStands("osprey", names), true, "a machine on the map should stand");
+  assert.equal(keptOnStands("heron", names), false, "a machine that left should go");
+  assert.equal(keptOnStands(CLOUD, []), true, "the cloud is no machine, and should stand");
+  assert.equal(keptOnStands(null, []), true, "words sent on no machine should stand");
 });
 
 /** The escape a case may hold: 1 to 6 capital hex digits (README.md, The Address Cases). */

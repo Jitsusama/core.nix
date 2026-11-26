@@ -46,6 +46,15 @@ const placeWords = (on: string): string => (on === CLOUD ? "the cloud" : on);
 export const onWords = (on: string): string => `On ${placeWords(on)}`;
 
 /**
+ * Whether words kept to send again, `on` the machine they went to, may
+ * still go there: they went to none, or to the cloud, or to a machine of
+ * `names`, the map's own. Words for a machine that has left go with it,
+ * since sent anywhere else they'd start work where Joel didn't ask.
+ */
+export const keptOnStands = (on: string | null, names: readonly string[]): boolean =>
+  on === null || on === CLOUD || names.includes(on);
+
+/**
  * The words as one line, spaces between them, or "" when there are none,
  * with what the launcher leaves out left out here too, so words it would
  * refuse as empty are never said as sent, and cut at LONGEST_WORDS as the
