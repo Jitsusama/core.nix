@@ -29,6 +29,13 @@ pub(super) struct Owned<'a> {
     what: &'a str,
 }
 
+impl<'a> Owned<'a> {
+    /// The cell the miss is written for.
+    pub(super) fn owner(self) -> &'a str {
+        self.owner
+    }
+}
+
 /// The miss `--owner` and `--what` write at `at`, if they're given, or why
 /// they can't: each said plainly on one line, and at a time as the ledger
 /// writes one. `--what` goes with `--owner`; `--owner` alone moves a miss

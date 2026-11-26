@@ -20,6 +20,7 @@
 mod owned;
 
 use super::held;
+use crate::hear::route::Routes;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::fs;
@@ -28,7 +29,7 @@ use std::path::{Path, PathBuf};
 use terminal_kit::{Exit, Failure, Help};
 
 /// The flags `test` takes, each with a value.
-pub const FLAGS: [&str; 7] = [
+pub const FLAGS: [&str; 8] = [
     "--miss",
     "--test",
     "--none",
@@ -36,6 +37,7 @@ pub const FLAGS: [&str; 7] = [
     "--what",
     "--fix",
     "--ledgers",
+    "--routes",
 ];
 
 /// What `pain-points test --help` says.
@@ -72,11 +74,15 @@ pub fn help() -> Help {
         .option("--what WORDS", "what went wrong for him, with --owner")
         .option("--fix CHANGE", "the change fixing a miss its owner wrote")
         .option("--ledgers DIR", "its ledger's folder, or the mission's")
+        .option(
+            "--routes DIR",
+            "the folder of the routes it never sends to, or the listener's",
+        )
         .exit(
             Exit::Usage,
             "no miss, a test and why it's none both or neither, a test not REPO PATH NAME, \
-             a fix not REPO #N or on a heard miss, or a miss its owner writes half said, \
-             said none or at a time taken",
+             a fix not REPO #N or on a heard miss, a miss its owner writes half said, \
+             said none or at a time taken, or an owner the routes never send to",
         )
         .exit(Exit::NotFound, "no ledger, or no one miss at that time")
         .exit(Exit::TryAgain, "the ledger stayed locked")
@@ -219,6 +225,19 @@ pub fn named(given: &BTreeMap<&str, String>) -> Result<String, Failure> {
     let written = owned::given(given, at).map_err(|what| wrongly(&what))?;
     let fix = owned::fix(given).map_err(|what| wrongly(&what))?;
     let owner = owned::moved(given).map_err(|what| wrongly(&what))?;
+    // A miss is only ever asked of its owner, so one given to a cell the
+    // routes never send to would wait on no one, as pain-points never
+    // gives one there itself.
+    let routes = given
+        .get("--routes")
+        .map_or_else(|| crate::state_home().join("pain-points"), PathBuf::from);
+    let routes = Routes::read(&routes);
+    let given_to = owner.or(written.map(owned::Owned::owner));
+    if let Some(cell) = given_to.filter(|cell| routes.refuses(cell)) {
+        return Err(wrongly(&format!(
+            "routes.json never sends to {cell}, so the miss would wait on no one"
+        )));
+    }
     let neither = "give --test, --none with why it was no miss, --fix, or --owner to move it";
     let said = match (given.get("--test"), given.get("--none")) {
         (Some(test), None) => Some(Said::Test(test.trim())),
@@ -479,7 +498,39 @@ mod tests {
             .collect();
         flags.insert("--miss", AT.to_owned());
         flags.insert("--ledgers", folder.display().to_string());
+        flags.insert("--routes", folder.display().to_string());
         flags
+    }
+
+    #[test]
+    fn a_miss_is_never_given_to_a_cell_the_routes_never_send_to() {
+        let heard = json!({"at": AT, "owner": "WCJQSG", "heard_by": "x"});
+        let path = ledger("moved-refused", &format!("{heard}\n"));
+        let folder = path.parent().expect("the ledger's folder");
+        let routes = r#"{"from":"EAR001","never":["VOID01"]}"#;
+        fs::write(folder.join("routes.json"), routes).expect("the routes");
+        let refused = named(&flags(&path, &[("--owner", "void01")])).expect_err("it moved");
+        assert!(
+            matches!(refused.exit, Exit::Usage),
+            "a move to a cell never sent to wasn't refused as usage"
+        );
+        let kept = fs::read_to_string(&path).expect("the ledger");
+        assert_eq!(
+            kept,
+            format!("{heard}\n"),
+            "a refused move changed the ledger"
+        );
+        let written = [
+            ("--owner", "VOID01"),
+            ("--what", "a search walked his folders"),
+        ];
+        let mut flags = flags(&path, &written);
+        flags.insert("--miss", "2026-11-14T18:00:00-05:00".to_owned());
+        let refused = named(&flags).expect_err("it was written");
+        assert!(
+            matches!(refused.exit, Exit::Usage),
+            "a miss written for a cell never sent to wasn't refused as usage"
+        );
     }
 
     #[test]
