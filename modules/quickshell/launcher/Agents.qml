@@ -2106,7 +2106,8 @@ Provider {
         sproutsKept(rowsKind?.held ?? {});
         Report.say(how.started ? `sprouted new work on ${how.machine}`
             : `couldn't sprout new work: ${how.why}`);
-        sproutsMade = StartSaid.made(sproutsMade, key, sproutGiven.words, how, Date.now());
+        sproutsMade = StartSaid.made(sproutsMade, { key: key, words: sproutGiven.words }, how,
+            Date.now());
         if (how.started && how.held !== "") {
             openings = openings.concat([{ key: key, held: how.held, machine: how.machine,
                 since: Date.now(), letters: provider.launcher?.lettersAt ?? 0 }]);

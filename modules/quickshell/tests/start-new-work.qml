@@ -485,7 +485,8 @@ QtObject {
         const inB = "verb:agents:start-new-work:in:/src/b";
         const minute = 60 * 1000;
         const up = { started: true, machine: "skiff", held: "h1" };
-        const bar = StartSaid.made([], inA, "fix the bar", up, began);
+        const barInA = { key: inA, words: "fix the bar" };
+        const bar = StartSaid.made([], barInA, up, began);
         const again = (list, key, said, at) => StartSaid.again(list, key, said, at)?.words ?? null;
         Expect.same("the same words again say when they started",
             StartSaid.at(StartSaid.again(bar, inA, "  fix the bar ", began + minute)), "14:30");
@@ -496,18 +497,18 @@ QtObject {
             again(bar, inA, "fix the bar", began + 60 * minute), null);
         Expect.same("nothing made, anything starts", again([], inA, "fix the bar", began), null);
         // Every start of the hour is kept, not only the last: A, then B, then A again.
-        const both = StartSaid.made(bar, inA, "fix the foot", up, began + minute);
+        const both = StartSaid.made(bar, { key: inA, words: "fix the foot" }, up, began + minute);
         Expect.same("an earlier start is still known after a later one",
             again(both, inA, "fix the bar", began + 2 * minute), "fix the bar");
         // Unanswered may have started, so it counts; refused or unread began nothing.
-        const unanswered = StartSaid.made([], inA, "fix the bar",
+        const unanswered = StartSaid.made([], barInA,
             { started: false, unanswered: true, why: "nothing answered" }, began);
         Expect.same("an unanswered start counts, as not known to have started",
             StartSaid.again(unanswered, inA, "fix the bar", began + minute)?.answered, false);
-        Expect.same("a refused start counts for nothing", StartSaid.made([], inA, "fix the bar",
+        Expect.same("a refused start counts for nothing", StartSaid.made([], barInA,
             { started: false, why: "no", refusal: "" }, began), []);
-        Expect.same("nor does one whose answer couldn't be read", StartSaid.made([], inA,
-            "fix the bar", { started: false, why: "unread" }, began), []);
+        Expect.same("nor does one whose answer couldn't be read", StartSaid.made([], barInA,
+            { started: false, why: "unread" }, began), []);
         // Told it was made, a Return with the same words just after is meant.
         const told = StartSaid.told(bar, bar[0], began + minute);
         Expect.same("just told, the same words start once more",
@@ -515,8 +516,8 @@ QtObject {
         Expect.same("told long ago, he's told again first",
             again(told, inA, "fix the bar", began + 4 * minute), "fix the bar");
         Expect.same("started once more, it's known as the new start alone",
-            StartSaid.made(told, inA, "fix the bar", up, began + 2 * minute).length, 1);
-        Expect.same("an hour's starts go", StartSaid.made(bar, inB, "fix it", up,
+            StartSaid.made(told, barInA, up, began + 2 * minute).length, 1);
+        Expect.same("an hour's starts go", StartSaid.made(bar, { key: inB, words: "fix it" }, up,
             began + 60 * minute).map(one => one.key), [inB]);
         Expect.same("and Start New Work says so in its own words, with the time",
             [written.again, written.againUnanswered].every(one => String(one ?? "")
