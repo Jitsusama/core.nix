@@ -31,8 +31,10 @@ goal=${2:-}
 held=${WRITEBACK_GOAL_SYSFS:-}/sys/block/$disk/queue/wbt_lat_usec
 record=${WRITEBACK_GOAL_RUN:-/run/writeback-goal}/$disk
 # What it's asked is checked first, so a wrong call says so whether or not
-# the disk is there.
-if [[ -z $disk || $disk == */* || $disk == .* ]] \
+# the disk is there. No disk's name under /sys/block holds a slash or a
+# dot, so refusing both keeps a call off any path outside the records and
+# off a record's half-written copy, <disk>.new.
+if [[ -z $disk || $disk == */* || $disk == *.* ]] \
   || { [ "$goal" != kernel ] && [[ -z $goal || $goal == *[!0-9]* ]]; }; then
   printf '%s\n' "writeback-goal sets a disk's goal in microseconds, or kernel" \
     "  try  writeback-goal --help" >&2
@@ -62,7 +64,7 @@ if [ "$goal" = kernel ]; then
     if [[ $kept == -1 || (-n $kept && $kept != *[!0-9]*) ]]; then
       before=$kept
     else
-      echo "writeback-goal: $disk's record reads '$kept', so it gets the kernel's goal" >&2
+      echo "writeback-goal: $disk's record reads '$kept', so it gets the kernel's default" >&2
     fi
   fi
   echo "$before" > "$held"
@@ -71,14 +73,18 @@ if [ "$goal" = kernel ]; then
 fi
 # Only the first goal's record is kept, so a goal set twice gives back
 # the disk's own, not the first goal. It's written whole, through a file
-# renamed into place; a throttle that can't be read, or reads as no
-# number, is recorded as the kernel's default, so a second goal can't be
-# taken for the disk's own. A failed read goes on to set the goal, whose
-# write fails loudly if the throttle can't take one either.
+# renamed into place, so a second goal can't be taken for the disk's own.
+# A throttle that reads as no number is recorded as the kernel's default.
+# One that can't be read is recorded as off: as the block layer reads, a
+# queue with no throttle set up refuses the read but takes a write, which
+# sets one up, so giving back the default would turn on a throttle the
+# disk never had. cat's own error goes to the journal, saying why.
+made=
 if [ ! -e "$record" ]; then
-  if ! now=$(cat "$held" 2> /dev/null); then
-    echo "writeback-goal: $disk's throttle can't be read, so the kernel's default is recorded" >&2
-    now=-1
+  made=1
+  if ! now=$(cat "$held"); then
+    echo "writeback-goal: $disk's throttle can't be read, so it's recorded as off" >&2
+    now=0
   elif [[ -z $now || $now == *[!0-9]* ]]; then
     echo "writeback-goal: $disk's throttle reads '$now', so the kernel's default is recorded" >&2
     now=-1
@@ -87,4 +93,13 @@ if [ ! -e "$record" ]; then
   echo "$now" > "$record.new"
   mv "$record.new" "$record"
 fi
-echo "$goal" > "$held"
+# A goal the throttle won't take fails the unit, and the record this call
+# made goes with it, so a later start reads the disk afresh rather than
+# giving back a record of a goal never set.
+if ! echo "$goal" > "$held"; then
+  if [ -n "$made" ]; then
+    rm -f "$record"
+  fi
+  echo "writeback-goal: $disk's throttle won't take $goal" >&2
+  exit 1
+fi

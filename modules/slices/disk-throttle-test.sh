@@ -99,7 +99,7 @@ reads "$throttle" -1
 for kept in "" 20x; do
   echo 0 > "$throttle"
   printf %s "$kept" > "$WRITEBACK_GOAL_RUN/nvme0n1"
-  says "record reads '$kept', so it gets the kernel's goal" "$goal" nvme0n1 kernel
+  says "record reads '$kept', so it gets the kernel's default" "$goal" nvme0n1 kernel
   reads "$throttle" -1
   if [[ -e $WRITEBACK_GOAL_RUN/nvme0n1 ]]; then
     echo "a record reading '$kept' outlived its giving back"
@@ -115,15 +115,32 @@ exits 0 "$goal" nvme0n1 75000
 reads "$throttle" 75000
 exits 0 "$goal" nvme0n1 kernel
 reads "$throttle" -1
-# A throttle that can't be read is recorded as the kernel's default too,
-# and its goal is still set.
+# A throttle that can't be read is recorded as off, as a queue with no
+# throttle reads, so giving back doesn't turn one on; its goal is still
+# set. Root reads past a mode, so the stand-in can't refuse it there.
 echo 2000 > "$throttle"
 chmod a-r "$throttle"
-says "throttle can't be read, so the kernel's default is recorded" "$goal" nvme0n1 0
+if [[ -r $throttle ]]; then
+  echo "this runs as root, where a stand-in throttle can't be made unreadable"
+  exit 1
+fi
+says "throttle can't be read, so it's recorded as off" "$goal" nvme0n1 75000
 chmod u+r "$throttle"
-reads "$WRITEBACK_GOAL_RUN/nvme0n1" -1
-reads "$throttle" 0
+reads "$WRITEBACK_GOAL_RUN/nvme0n1" 0
+reads "$throttle" 75000
 exits 0 "$goal" nvme0n1 kernel
+reads "$throttle" 0
+# A throttle that takes no goal either fails the unit, and the record it
+# made goes, so a later start reads the disk afresh.
+echo 2000 > "$throttle"
+chmod a-rw "$throttle"
+exits 1 "$goal" nvme0n1 0
+chmod u+rw "$throttle"
+if [[ -e $WRITEBACK_GOAL_RUN/nvme0n1 ]]; then
+  echo "a record outlived the goal it was made for failing"
+  exit 1
+fi
+reads "$throttle" 2000
 # A record of the kernel's default is taken as written, with nothing to
 # say.
 echo 0 > "$throttle"
@@ -138,6 +155,14 @@ reads "$PWD/nvme0n1" kept
 echo kept > "$WRITEBACK_GOAL_RUN/.nvme0n1"
 exits 64 "$goal" .nvme0n1 kernel
 reads "$WRITEBACK_GOAL_RUN/.nvme0n1" kept
+mkdir -p "$WRITEBACK_GOAL_RUN/a"
+echo kept > "$WRITEBACK_GOAL_RUN/a/nvme0n1"
+exits 64 "$goal" a/nvme0n1 kernel
+reads "$WRITEBACK_GOAL_RUN/a/nvme0n1" kept
+echo kept > "$WRITEBACK_GOAL_RUN/nvme0n1.new"
+exits 64 "$goal" nvme0n1.new kernel
+reads "$WRITEBACK_GOAL_RUN/nvme0n1.new" kept
+rm -r "$WRITEBACK_GOAL_RUN/a" "$WRITEBACK_GOAL_RUN/nvme0n1.new"
 # A disk gone by its giving back drops its record, so a disk taking its
 # name later records its own goal rather than giving back the old one's.
 disk sdy 4000
