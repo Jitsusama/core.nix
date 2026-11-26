@@ -26,8 +26,10 @@ closing's line says how much of what's held is resident, which counts what a pag
 no longer costs. A lent page counts as resident until the kernel takes it, and a page swapped out,
 to zswap's pool or the disk, until it's touched again, so a builder short of memory may read a
 round low and the next one at its true height. The kernel's counts of those are the whole
-machine's, so they bound what it could have taken of the shell: the round before is let that much
-higher, which on a quiet builder is nothing and on a busy one says why the bound was loose.
+machine's, so they bound what it could have taken of the shell, and on a quiet builder are nothing.
+On a busy one they grow with every other build, so the shell bounds them too: a page taken of its
+heap stays held, so no more was taken than any of the round's closings held but hadn't resident.
+The round before is let the lesser higher, which says why the bound was loose when it is.
 """
 
 from __future__ import annotations
@@ -103,12 +105,17 @@ def live_after_closings(shell: Shell) -> list[int]:
     return live
 
 
-def resident_after_closings(shell: Shell) -> list[int]:
-    """Give the MB each closing said the heap held resident, in order, -1 where unknown."""
+def resident_after_closings(shell: Shell) -> list[tuple[int, int]]:
+    """Give the MB each closing said the heap held, and held resident, in order.
+
+    Resident is -1 where the closing said it was unknown.
+    """
     said = shell.log.read_text(errors="replace")
     return [
-        int(each.split()[0]) if each[0].isdigit() else -1
-        for each in re.findall(r" MB held, (\d+ MB|an unknown amount) of it resident,", said)
+        (int(held), int(resident.split()[0]) if resident[0].isdigit() else -1)
+        for held, resident in re.findall(
+            r" of (\d+) MB held, (\d+ MB|an unknown amount) of it resident,", said
+        )
     ]
 
 
@@ -157,15 +164,26 @@ def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture
         memfds = [line for line in maps if "/memfd:JSGCHeap" in line]
         assert not memfds, f"the shell maps its heap from a memfd {len(memfds)} times"
     medians = [round(statistics.median(each) / 1024) for each in rounds]
-    resident = [float(statistics.median(each)) if each else 0.0 for each in residents]
-    # A take in the third round only lowers it, so only what was taken before it counts.
-    allowed = (taken[1] - started) * os.sysconf("SC_PAGE_SIZE") / 2**20
+    resident = [
+        float(statistics.median([said for _, said in each])) if each else 0.0
+        for each in residents
+    ]
+    # A take in the third round only lowers it, so only what was taken before it counts: no more
+    # than the machine took anywhere, nor than the shell held but hadn't resident at any of the
+    # second round's closings, since a page taken of its heap stays held. The machine's count
+    # alone would let a busy builder pass any climb.
+    machine = (taken[1] - started) * os.sysconf("SC_PAGE_SIZE") / 2**20
+    shell_took = max(
+        (max(held - said, 0) for held, said in residents[1] if said >= 0), default=0
+    )
+    allowed = min(machine, float(shell_took))
     # Said whether it passes, so a change's cost is read from its run.
     with capsys.disabled():
         print(f"live after each round's closings, medians in kB: {medians}", flush=True)
         print(
-            f"resident after each round's closings, medians in MB: {resident}, the machine's"
-            f" taken pages before the third letting the second {allowed:.1f} MB higher",
+            f"resident after each round's closings, medians in MB: {resident}, letting the"
+            f" second {allowed:.1f} MB higher for pages taken before the third, the least of"
+            f" {machine:.1f} MB the machine took and {shell_took} MB the shell held unresident",
             flush=True,
         )
     assert all(rounds), f"a round's closings weren't collected: {rounds}"
@@ -179,7 +197,7 @@ def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture
         f"a round's closings didn't each say what's held resident as this check reads it:"
         f" {residents}"
     )
-    assert all(each >= 0 for said in residents for each in said), (
+    assert all(said >= 0 for each in residents for _, said in each), (
         f"the kernel wouldn't say which of the heap's pages are resident: {residents}"
     )
     assert resident[2] <= (resident[1] + allowed) * GROWTH, (
@@ -189,13 +207,15 @@ def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture
     )
 
 
-def rounds_kept(shell: Shell) -> tuple[list[list[int]], list[list[int]], list[int]]:
-    """Give the bytes left live, and the MB held resident, at each closing of three rounds.
+def rounds_kept(
+    shell: Shell,
+) -> tuple[list[list[int]], list[list[tuple[int, int]]], list[int]]:
+    """Give the bytes left live, and the MB held and held resident, at each closing of three rounds.
 
     And the pages the kernel had taken anywhere by the end of each round, as pages_taken counts.
     """
     rounds: list[list[int]] = []
-    residents: list[list[int]] = []
+    residents: list[list[tuple[int, int]]] = []
     taken: list[int] = []
     seen = len(live_after_closings(shell))
     for _ in range(3):

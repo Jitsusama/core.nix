@@ -55,6 +55,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -65,6 +66,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -477,8 +479,10 @@ bool givesBack() {
     const double given = heap.giveBack();
     const Weight after = weighed(engine, heap);
     const ReadBack read = readBack(engine, few);
-    const bool taken = after.free < GIVEN_LEFT_MB;
-    const bool said = given > thinned.free / 2 && given <= thinned.free + GIVEN_LEFT_MB;
+    // Free is -1 where the kernel won't say, which is never read as none.
+    const bool taken = after.free >= 0 && after.free < GIVEN_LEFT_MB;
+    const bool said = thinned.free >= 0 && given > thinned.free / 2 &&
+                      given <= thinned.free + GIVEN_LEFT_MB;
     const bool resident = thinned.resident >= thinned.free &&
                           thinned.resident - after.resident > given / 2;
     if (!taken || !said || !resident || !read.asMade())
@@ -546,9 +550,10 @@ struct Lending {
     bool calm = false;
     ReadBack read{};
 
-    // Whether it said about as much as was counted free.
+    // Whether it said about as much as was counted free, where free is
+    // known: -1 says the kernel wouldn't say, never that nothing was free.
     [[nodiscard]] bool saidAsCounted() const {
-        return lent > free / 2 && lent <= free + GIVEN_LEFT_MB;
+        return free >= 0 && lent > free / 2 && lent <= free + GIVEN_LEFT_MB;
     }
 
     // Whether the kernel marked at least half as many pages lent, which
@@ -556,7 +561,9 @@ struct Lending {
     [[nodiscard]] bool markedAsLent() const { return marked < 0 || marked > free / 2; }
 
     // Whether the kernel's take left next to none of the free pages resident.
-    [[nodiscard]] bool goneOnceTaken() const { return took && freeTaken < GIVEN_LEFT_MB; }
+    [[nodiscard]] bool goneOnceTaken() const {
+        return took && freeTaken >= 0 && freeTaken < GIVEN_LEFT_MB;
+    }
 
     // Whether it said what was counted, was marked lent, was gone once
     // taken, and left what's kept and made after reading as made: what
@@ -1105,18 +1112,43 @@ constexpr int LARGE_VALUES = 100000;
 
 double megabytesOf(std::size_t bytes) { return static_cast<double>(bytes) / (1024.0 * 1024.0); }
 
-// The MB of this process's pages the kernel has swapped out, zswap's pool
-// included, since each is left a swap entry wherever it's kept, or -1 when
-// it doesn't say.
-double swappedOut() {
-    QFile status(QStringLiteral("/proc/self/status"));
-    if (!status.open(QIODevice::ReadOnly))
+// Bit 62 of a page's entry in /proc/self/pagemap, set while the kernel has
+// it swapped out, to zswap's pool or the disk; it's kept for a reader with
+// no privilege, who's shown no frame numbers.
+constexpr int PAGE_SWAPPED_BIT = 62;
+
+// The MB of the heap's own pages the kernel has swapped out, in its chunks
+// and its large items, or -1 when the kernel won't say. Only the heap's,
+// since the whole process's would let another allocator's swapped pages
+// stand in for a chunk the count leaves out. A large item is read for its
+// size from its chunk's start, short of the item's end by its header, so
+// what's counted swapped is never more than the heap's.
+double swappedHeld(const QV4::MemoryManager &manager) {
+    QFile pagemap(QStringLiteral("/proc/self/pagemap"));
+    if (!pagemap.open(QIODevice::ReadOnly | QIODevice::Unbuffered))
         return -1;
-    const QRegularExpressionMatch match =
-        QRegularExpression(QStringLiteral("^VmSwap:\\s+(\\d+) kB$"),
-                           QRegularExpression::MultilineOption)
-            .match(QString::fromLatin1(status.readAll()));
-    return match.hasMatch() ? match.captured(1).toDouble() / 1024.0 : -1;
+    const auto page = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
+    std::size_t swapped = 0;
+    const auto count = [&](const void *start, std::size_t length) {
+        const std::size_t first = reinterpret_cast<std::uintptr_t>(start) / page;
+        const std::size_t pages = (length + page - 1) / page;
+        std::vector<quint64> entries(pages);
+        const auto bytes = static_cast<qint64>(pages * sizeof(quint64));
+        if (!pagemap.seek(static_cast<qint64>(first * sizeof(quint64))) ||
+            pagemap.read(reinterpret_cast<char *>(entries.data()), bytes) != bytes)
+            return false;
+        for (const quint64 entry : entries)
+            swapped += (entry >> PAGE_SWAPPED_BIT) & 1;
+        return true;
+    };
+    for (const QV4::BlockAllocator *allocator : {&manager.blockAllocator, &manager.icAllocator})
+        for (const QV4::Chunk *chunk : allocator->chunks)
+            if (!count(chunk, QV4::Chunk::ChunkSize))
+                return -1;
+    for (const auto &huge : manager.hugeItemAllocator.chunks)
+        if (!count(huge.chunk, huge.size))
+            return -1;
+    return megabytesOf(swapped * page);
 }
 
 // Whether what's held resident covers what's live, and passes what's held
@@ -1131,8 +1163,10 @@ double swappedOut() {
 // page it ends in and the rest of a whole chunk, so those are let over. A
 // read a page or less past a large item's chunk isn't caught, and nor is
 // one stopping short of its end, since the item's own bytes, which live
-// counts, come first. A page of this process the kernel swapped out is no
-// longer resident, so what's live is judged less what it has swapped.
+// counts, come first. A page of the heap the kernel swapped out is no
+// longer resident, so what's live is judged less what of the heap it has
+// swapped, and only the heap's, so no other memory of the process can
+// make up for an allocator the count leaves out.
 bool residentCoversWhatsLive() {
     QJSEngine engine;
     Heap heap(&engine);
@@ -1146,8 +1180,9 @@ bool residentCoversWhatsLive() {
             .arg(LARGE_VALUES)
             .arg(HUGE_LENGTH));
     const Weight weight = weighed(engine, heap);
-    const double swapped = std::max(swappedOut(), 0.0);
     const QV4::MemoryManager *manager = engine.handle()->memoryManager;
+    // A refusal counts nothing swapped, which can only fail a sound count.
+    const double swapped = std::max(swappedHeld(*manager), 0.0);
     const double shapes = megabytesOf(manager->icAllocator.usedMem());
     const double large = megabytesOf(manager->getLargeItemsMem());
     const auto page = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
