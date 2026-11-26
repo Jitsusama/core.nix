@@ -53,7 +53,9 @@ while IFS= read -r patch; do
       failed=1
       continue
     }
-    if grep -q 'offset\|fuzz' <<<"$said"; then
+    # Only patch's report of a hunk is read, since a file's own name can hold
+    # either word.
+    if grep -Eq '^Hunk #[0-9]+ succeeded at [0-9]+ (\(offset|with fuzz)' <<<"$said"; then
       echo "$name applies only at an offset or with fuzz:"
       echo "$said"
       failed=1

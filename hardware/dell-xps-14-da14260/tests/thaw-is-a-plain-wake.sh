@@ -36,13 +36,42 @@ if ! grep -q 'btintel_pcie_resume_event(dev, PMSG_THAW)' <<<"$thawing"; then
   exit 1
 fi
 
+# The condition of the first if, at the wake's own level, whose block resets
+# the chip, joined onto one line.
 waking=$(body btintel_pcie_resume_event)
-if ! grep -q 'mesg\.event == PM_EVENT_RESTORE' <<<"$waking"; then
-  echo "Bluetooth's wake no longer tests the event it wakes for where this check reads."
+condition=$(awk '
+  /^\tif \(/ { reading = 1; condition = "" }
+  reading { condition = condition " " $0 }
+  reading && /\{$/ { reading = 0; inside = 1; next }
+  reading && /;$/ { reading = 0; next }
+  inside && /btintel_pcie_request_reset\(/ { print condition; exit }
+  inside && /^\t}$/ { inside = 0 }
+' <<<"$waking")
+if [ -z "$condition" ]; then
+  echo "Bluetooth's wake no longer resets its chip where this check reads."
   exit 1
 fi
-if grep -q 'PM_EVENT_THAW' <<<"$waking"; then
-  echo "Bluetooth's wake resets its chip for a thaw," \
-    "so a hibernation's power-off can be refused."
+condition=$(tr -s '[:space:]' ' ' <<<"$condition")
+
+# A reset at the wake's own level, under no test, is taken on every wake.
+if grep -q $'^\tbtintel_pcie_request_reset(' <<<"$waking"; then
+  echo "Bluetooth's wake resets its chip on every wake, so it resets it for a thaw," \
+    "and a hibernation's power-off can be refused."
+  exit 1
+fi
+
+# A thaw always follows a freeze, so a reset that reads anything but the
+# restore event, or a resume from sleep held in memory, can be taken on a
+# thaw: the freeze before it, a stored record of that sleep, or a test that
+# no event but one is in hand. Each comparison it may make is struck out, and
+# anything left over is something else deciding the reset.
+left=$(sed -E \
+  -e 's/mesg\.event == PM_EVENT_(RESTORE|RESUME)//g' \
+  -e 's/pm_suspend_target_state == PM_SUSPEND_MEM//g' \
+  -e 's/\bif\b|[][(){}|&[:space:]]//g' <<<"$condition")
+if ! grep -q 'mesg\.event == PM_EVENT_RESTORE' <<<"$condition" || [ -n "$left" ]; then
+  echo "Bluetooth's wake resets its chip on more than a restore or a resume from" \
+    "sleep, so it can reset it for a thaw, and a hibernation's power-off can be" \
+    "refused. It resets when:${condition%\{ }"
   exit 1
 fi

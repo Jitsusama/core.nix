@@ -291,7 +291,10 @@ in
       ) kernelPatches;
       list = patches: pkgs.writeText "patches" (lib.concatMapStrings (patch: "${patch}\n") patches);
     in
-    assert fromNext != [ ];
+    assert lib.assertMsg (fromNext != [ ]) (
+      "The XPS 14 takes no patch from linux-next now: drop "
+      + "the-patches-from-linux-next-apply-exactly along with kernel/next.nix."
+    );
     pkgs.runCommandLocal "the-patches-from-linux-next-apply-exactly"
       { nativeBuildInputs = [ pkgs.patchutils ]; }
       ''
