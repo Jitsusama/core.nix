@@ -509,19 +509,18 @@ fn unpack(config: &Config, hosted: &Hosted, commit: &str) -> Result<PathBuf, Fai
 /// is core's own mycelium. An input that follows another isn't found, since
 /// it has no lock of its own.
 pub fn locked<'a>(lock: &'a Value, name: &str) -> Result<&'a Value, Failure> {
-    let missing = || Failure::new(format!("the flake's lock has no input {name}"));
-    let mut node = lock["root"].as_str().ok_or_else(missing)?;
+    found(lock, name).ok_or_else(|| Failure::new(format!("the flake's lock has no input {name}")))
+}
+
+/// An input's lock as `locked` finds it, or none where the lock has no
+/// such input.
+pub fn found<'a>(lock: &'a Value, name: &str) -> Option<&'a Value> {
+    let mut node = lock["root"].as_str()?;
     for own in name.split('/') {
-        node = lock["nodes"][node]["inputs"][own]
-            .as_str()
-            .ok_or_else(missing)?;
+        node = lock["nodes"][node]["inputs"][own].as_str()?;
     }
     let locked = &lock["nodes"][node]["locked"];
-    if locked.is_object() {
-        Ok(locked)
-    } else {
-        Err(missing())
-    }
+    locked.is_object().then_some(locked)
 }
 
 /// Puts an input in the store as the account, by its lock: a path already

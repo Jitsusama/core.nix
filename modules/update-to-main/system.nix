@@ -80,10 +80,12 @@ in
               type = types.bool;
               default = false;
               description = ''
-                Whether the input moves only when an ask names a commit of
-                it, staying there until its lock pins it or past it, rather
-                than whenever its main moves: for an input whose every move
-                restarts something people are told of first.
+                Whether the input never follows its own main, moving only
+                when an ask names a commit of it or as its lock moves,
+                and staying there while it is ahead of its pin: for an
+                input whose every move restarts something people are told
+                of first. A merge to a followed parent that bumps its pin
+                still moves it.
               '';
             };
           };
@@ -97,8 +99,8 @@ in
         descends from the lock's commit and from what the machine last
         followed. Main counts as moved when any of them moved, save one
         moved only when asked. An input of an input is named by its path,
-        as `"core/mycelium"`, and its pin is read from its parent's own
-        lock wherever the parent is followed too.
+        as `"core/mycelium"`, and its pin is read from the lock of the
+        nearest input above it that is followed.
       '';
     };
     elsewhere = mkOption {

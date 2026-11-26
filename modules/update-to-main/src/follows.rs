@@ -27,12 +27,14 @@ pub type Followed = BTreeMap<String, String>;
 /// never takes the machine back past what it last followed.
 ///
 /// An input followed only when asked (`asked`) stays where its lock pins
-/// it until an ask names a commit of it, so a person chooses when it moves.
+/// it until an ask names a commit of it, so its own main never moves it;
+/// a lock that moves, as a followed parent's merge can, still does.
 /// Once asked, it stays at that commit while it is ahead of what its lock
 /// pins, since falling back to an older pin would undo what was asked
 /// for. Once the lock pins it, past it or off its line, the lock rules
-/// again: holding an ask against a lock gone another way would refuse
-/// every update, and no ask could clear it.
+/// again, and so it does once the lock no longer has the input: holding an
+/// ask against a lock gone another way would refuse every update, and no
+/// ask could clear it.
 pub fn heads(
     config: &Config,
     head: &str,
@@ -59,7 +61,17 @@ pub fn heads(
         let repo = Repo::followed(config, name, follow);
         git::keyring(&repo)?;
         let main = git::fetch(&repo)?;
-        let (pinned, pins) = pinned(config, &lock, name, &followed)?;
+        let Some((pinned, pins)) = pinned(config, &lock, name, &followed)? else {
+            // A lock that no longer has the input leaves an ask kept for it
+            // nothing to stand ahead of, so it's dropped rather than failing
+            // every update, which no ask could then clear.
+            if follow.asked && !at.contains_key(name) {
+                continue;
+            }
+            return Err(Failure::new(format!(
+                "{name} isn't in the lock the build reads it from, so nothing pins it"
+            )));
+        };
         let commit = match at.get(name) {
             None if follow.asked => match kept {
                 Some(kept)
@@ -102,43 +114,47 @@ pub fn heads(
     Ok(Ok(followed))
 }
 
-/// The commit `name` is pinned at, and what pins it: main's lock, or, for
-/// an input of an input followed, that input's own lock at the commit
-/// followed, since that's the lock the build reads it from.
+/// The commit `name` is pinned at, and what pins it: main's lock, or, under
+/// an input followed, the nearest such input's own lock at the commit
+/// followed, since that's the lock the build reads it from; core's, for
+/// core/mycelium/kit with only core followed. None where that lock has no
+/// such input.
 fn pinned(
     config: &Config,
     lock: &Value,
     name: &str,
     followed: &Followed,
-) -> Result<(String, String), Failure> {
+) -> Result<Option<(String, String)>, Failure> {
     let rev = |locked: &Value| {
         locked["rev"]
             .as_str()
             .map(str::to_owned)
             .ok_or_else(|| Failure::new(format!("the flake's lock pins {name} to no commit")))
     };
-    if let Some((parent, own)) = name.rsplit_once('/')
-        && let Some(commit) = followed.get(parent)
-        && let Some(follow) = config.follows.get(parent)
-    {
+    let nearest = name.rmatch_indices('/').find_map(|(cut, _)| {
+        let parent = &name[..cut];
+        Some((
+            parent,
+            &name[cut + 1..],
+            followed.get(parent)?,
+            config.follows.get(parent)?,
+        ))
+    });
+    if let Some((parent, own, commit, follow)) = nearest {
         let repo = Repo::followed(config, parent, follow);
         let at = git::short(commit);
-        let text = git::show(&repo, commit, "flake.lock").ok_or_else(|| {
-            Failure::new(format!(
-                "{parent} at {at} has no flake.lock, so nothing pins {name}"
-            ))
-        })?;
+        let Some(text) = git::show(&repo, commit, "flake.lock") else {
+            return Ok(None);
+        };
         let theirs: Value = serde_json::from_str(&text)
             .map_err(|e| Failure::new(format!("reading {parent}'s flake.lock at {at}: {e}")))?;
-        return Ok((
-            rev(hosted::locked(&theirs, own)?)?,
-            format!("{parent}'s lock at {at} pins"),
-        ));
+        return hosted::found(&theirs, own)
+            .map(|locked| Ok((rev(locked)?, format!("{parent}'s lock at {at} pins"))))
+            .transpose();
     }
-    Ok((
-        rev(hosted::locked(lock, name)?)?,
-        "the flake's lock pins".to_owned(),
-    ))
+    hosted::found(lock, name)
+        .map(|locked| Ok((rev(locked)?, "the flake's lock pins".to_owned())))
+        .transpose()
 }
 
 /// What the build is given so each followed input is its followed commit.

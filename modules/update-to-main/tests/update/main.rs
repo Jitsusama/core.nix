@@ -3318,6 +3318,36 @@ fn an_input_asked_for_moves_only_when_asked_and_stays_till_the_lock_passes_it() 
 }
 
 #[test]
+fn an_input_asked_for_is_let_go_once_the_lock_no_longer_has_it() {
+    let world = asking_nested(World::new());
+    let pinned = world.commit_in("mycelium", "pinned", true);
+    let wanted = world.commit_in("mycelium", "wanted", true);
+    let core = "c".repeat(40);
+    fs::write(
+        world.origin.join("flake.lock"),
+        pinning_nested(&core, &pinned),
+    )
+    .unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
+    let head = world.signed("one");
+    world.system(&format!("{head}+{wanted}"));
+    assert_eq!(
+        world.update_at(NESTED, &wanted),
+        done_following(&head, &[(NESTED, &wanted)]),
+        "the ask at mycelium wasn't built"
+    );
+    fs::write(world.origin.join("flake.lock"), pinning(&core)).unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
+    let dropped = world.signed("two");
+    world.system(&dropped);
+    assert_eq!(
+        world.update().1,
+        done(&dropped),
+        "a lock without mycelium didn't let go of the ask kept for it"
+    );
+}
+
+#[test]
 fn an_input_asked_for_is_held_to_the_lock_of_the_core_built_with_it() {
     let world = asking_nested(following());
     let older = world.commit_in("mycelium", "older", true);
