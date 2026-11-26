@@ -3147,9 +3147,13 @@ mod tests {
         );
     }
 
-    #[tokio::test(flavor = "current_thread")]
-    async fn a_name_no_lookup_finds_is_unnamed_and_never_marked_looked_up() {
+    #[test]
+    fn a_name_no_lookup_finds_is_unnamed_and_never_marked_looked_up() {
         let looked_up = AtomicBool::new(false);
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("a runtime");
 
         // The trailing dot makes the name whole, so no search domain the
         // machine's resolver adds can turn it into one that resolves.
@@ -3160,11 +3164,14 @@ mod tests {
             &looked_up,
         );
         // The budget given to reach bounds the connection, not the lookup,
-        // which the relay bounds from outside; this bounds it here, so a
-        // resolver that never answers fails the test rather than hangs it.
-        let failed = tokio::time::timeout(Duration::from_secs(10), reaching)
-            .await
-            .expect("the machine's resolver took over 10 s to fail a name under .invalid");
+        // which the relay bounds from outside; this bounds it here. The
+        // lookup runs on a blocking thread a runtime's drop would wait on,
+        // so the runtime is let go in the background, and a resolver that
+        // never answers fails the test at the bound rather than hangs it.
+        let outcome = runtime.block_on(tokio::time::timeout(Duration::from_secs(10), reaching));
+        runtime.shutdown_background();
+        let failed =
+            outcome.expect("the machine's resolver took over 10 s to fail a name under .invalid");
 
         let unnamed = failed
             .err()
