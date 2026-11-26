@@ -231,6 +231,47 @@ fn a_machine_that_cant_take_a_stop_is_tried_again_after_a_minute() {
 }
 
 #[test]
+fn a_stop_widened_while_a_machine_waits_names_it_until_it_takes_the_wider_one() {
+    let state = scratch("carry-widened");
+    let mut record = heard("slack:C1:1.000000");
+    keep(&state, "slack-C1-1.000000", &record);
+    let mut here = machine();
+    let mut carrier = Carrier::default();
+    carry(&mut carrier, &state, 0, &mut here);
+    here.refusing = Some("machine=mac");
+    keep(&state, "slack-C2-2.000000", &heard("slack:C2:2.000000"));
+    carry(&mut carrier, &state, 1, &mut here);
+    record["reaches"] = json!(["pr:owner/name#12", "pr:owner/name#13"]);
+    keep(&state, "slack-C1-1.000000", &record);
+
+    let waiting = carry(&mut carrier, &state, 2, &mut here);
+
+    assert!(
+        waiting.is_empty(),
+        "the Mac waits out its minute: {waiting:?}"
+    );
+    assert_eq!(
+        unreached(&state, "slack-C1-1.000000"),
+        ["mac"],
+        "holding only the narrower stop, the Mac is named on the wider one's row"
+    );
+    here.refusing = None;
+    let later = carry(&mut carrier, &state, 1 + AGAIN_MS, &mut here);
+    assert_eq!(
+        later,
+        vec![
+            gave("slack-C1-1.000000", "mac", Gift::Stop),
+            gave("slack-C2-2.000000", "mac", Gift::Stop),
+        ],
+        "after its minute it's given the wider stop and the other"
+    );
+    assert!(
+        unreached(&state, "slack-C1-1.000000").is_empty(),
+        "and isn't named once it holds the wider one"
+    );
+}
+
+#[test]
 fn a_machine_whose_give_may_have_landed_is_given_its_resume() {
     let state = scratch("carry-landed");
     keep(&state, "slack-C1-1.000000", &heard("slack:C1:1.000000"));
