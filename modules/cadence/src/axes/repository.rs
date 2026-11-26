@@ -12,9 +12,6 @@
 //! A merge that only moves the folder's lock is left out: those take a
 //! new core, whose changes core's count already holds. So is a revert,
 //! which brings nothing new and counts against the merge it undoes.
-//!
-//! Long because its cases are over a third of it: each way the kept walk
-//! is read, joined, aged out or refused, with a git that answers or fails.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -90,12 +87,11 @@ pub fn gather(now: i64, kept: &Path) -> Sources {
         return Sources::default();
     };
     let since = format!("--since=@{}", now - DAYS * DAY);
-    let tried = |args: &[&str]| {
+    let git = |args: &[&str]| {
         let mut all = vec!["-C", &at.checkout];
         all.extend_from_slice(args);
-        command("git", &all).ok()
+        command("git", &all).unwrap_or_default()
     };
-    let git = |args: &[&str]| tried(args).unwrap_or_default();
     let (log, journal) = std::thread::scope(|s| {
         let journal = s.spawn(|| {
             command(
@@ -112,7 +108,11 @@ pub fn gather(now: i64, kept: &Path) -> Sources {
             )
             .unwrap_or_default()
         });
-        let log = log_of(&walked(&tried, kept, &main, &at.folder, now), &at.folder);
+        let log = kept_log(kept, &main).unwrap_or_else(|| {
+            let log = read_log(&git, &since, &main, &at.folder);
+            keep_log(kept, &main, &log);
+            log
+        });
         let journal = journal
             .join()
             .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
@@ -146,115 +146,19 @@ struct Log {
     reverts: String,
 }
 
-/// What a walk of the folder's history found, before lock moves and
-/// reverts are left out.
-#[derive(Debug, Default, PartialEq, Eq)]
-struct Walk {
-    /// The folder's merges on main, newest first, as `%H %ct %s` lines.
-    merges: String,
-    /// What each merge that moved the lock changed in the folder, as
-    /// `git log --name-only --format=@%H` gives it.
-    locks: String,
-}
-
-/// The folder's walk at `main`, kept by main's commit for the next read.
-/// Main moves every hour, and walking the whole window each time took
-/// 43 s and 615 MB for one of its two logs on 25 November, holding the
-/// hour at its memory limit for five minutes. So when main has only
-/// moved on from the commit kept, only what it gained is walked; when it
-/// moved anywhere else, or nothing is kept, the whole window is. What
-/// falls out of the window is let go either way. A walk git fails in is
-/// never kept, so the next read walks again rather than missing merges
-/// for ten days: until then the walk kept shows, true as far as it goes,
-/// where main only gained, and nothing where it moved elsewhere, as a
-/// failed walk showed before walks were kept.
-fn walked(
-    git: &(impl Fn(&[&str]) -> Option<String> + Sync),
-    kept: &Path,
+/// Reads the folder's merges from git. On a busy machine this took up to
+/// six seconds, and main as fetched moves far less often than the Spec
+/// reads, so what it finds is kept by main's commit.
+fn read_log(
+    git: &(impl Fn(&[&str]) -> String + Sync),
+    since: &str,
     main: &str,
     folder: &str,
-    now: i64,
-) -> Walk {
-    let since = now - DAYS * DAY;
-    let (at, before) = kept_walk(kept, folder).unwrap_or_default();
-    if at == main {
-        return within(&before, since);
-    }
-    let gained = !at.is_empty()
-        && git(&["merge-base", at.as_str(), main]).is_some_and(|base| base.trim() == at);
-    let walk = if gained {
-        let Some(new) = walk_of(git, &format!("{at}..{main}"), since, folder) else {
-            return within(&before, since);
-        };
-        Walk {
-            merges: joined(&new.merges, &before.merges),
-            locks: joined(&new.locks, &before.locks),
-        }
-    } else {
-        let Some(whole) = walk_of(git, main, since, folder) else {
-            return Walk::default();
-        };
-        whole
-    };
-    let walk = within(&walk, since);
-    keep_walk(kept, main, folder, &walk);
-    walk
-}
-
-/// The newer text's lines, then the older's.
-fn joined(newer: &str, older: &str) -> String {
-    newer
-        .lines()
-        .chain(older.lines())
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-/// The walk without the merges made before `since`, nor what the lock's
-/// moves among them changed.
-fn within(walk: &Walk, since: i64) -> Walk {
-    let merges: Vec<&str> = walk
-        .merges
-        .lines()
-        .filter(|line| {
-            line.split(' ')
-                .nth(1)
-                .and_then(|at| at.parse::<i64>().ok())
-                .is_some_and(|at| at >= since)
-        })
-        .collect();
-    let shas: BTreeSet<&str> = merges.iter().filter_map(|l| l.split(' ').next()).collect();
-    let mut keeping = false;
-    let locks: Vec<&str> = walk
-        .locks
-        .lines()
-        .filter(|line| {
-            if let Some(sha) = line.strip_prefix('@') {
-                keeping = shas.contains(sha);
-            }
-            keeping
-        })
-        .collect();
-    Walk {
-        merges: merges.join("\n"),
-        locks: locks.join("\n"),
-    }
-}
-
-/// The folder's merges and the lock's moves in `range` made since `from`,
-/// from git, or none when git fails at any of it.
-fn walk_of(
-    git: &(impl Fn(&[&str]) -> Option<String> + Sync),
-    range: &str,
-    from: i64,
-    folder: &str,
-) -> Option<Walk> {
-    let since = format!("--since=@{from}");
-    let since = since.as_str();
+) -> Log {
     let lock = format!("{folder}/flake.lock");
     let format = "--format=%H %ct %s";
     let (merges, locks, ()) = landings::side_by_side(
-        || git(&["log", "--first-parent", since, format, range, "--", folder]),
+        || git(&["log", "--first-parent", since, format, main, "--", folder]),
         || {
             // A pathspec that leaves the lock out reads every commit's tree
             // and took 17 s on a busy machine; the lock's own log, then the
@@ -264,13 +168,13 @@ fn walk_of(
                 "--first-parent",
                 since,
                 "--format=%H",
-                range,
+                main,
                 "--",
                 &lock,
-            ])?;
+            ]);
             let shas: Vec<&str> = moved.split_whitespace().collect();
             if shas.is_empty() {
-                Some(String::new())
+                String::new()
             } else {
                 let mut args = vec![
                     "log",
@@ -286,51 +190,28 @@ fn walk_of(
         },
         || (),
     );
-    Some(Walk {
-        merges: merges?,
-        locks: locks?,
-    })
-}
-
-/// The folder's log from its walk: the lock's lone moves and the reverts
-/// left out, and the merges reverted named.
-fn log_of(walk: &Walk, folder: &str) -> Log {
-    let (reverts, undoes) = reverted(&walk.merges);
-    let mut left_out = lock_only(&walk.locks, &format!("{folder}/flake.lock"));
+    let (reverts, undoes) = reverted(&merges);
+    let mut left_out = lock_only(&locks, &lock);
     left_out.extend(undoes);
     Log {
-        main: without(&walk.merges, &left_out),
+        main: without(&merges, &left_out),
         reverts,
     }
 }
 
-/// The walk kept for `folder`, and main's commit it was kept for. A walk
-/// kept before walks were kept whole, or for another folder, reads as
-/// none, so the window is walked once.
-fn kept_walk(kept: &Path, folder: &str) -> Option<(String, Walk)> {
+/// The log kept for main's commit `at`, when that's the one kept.
+fn kept_log(kept: &Path, at: &str) -> Option<Log> {
     let all: Value = serde_json::from_str(&fs::read_to_string(kept).ok()?).ok()?;
-    let words = |key: &str| all[key].as_str().map(str::to_owned);
-    if words("folder")? != folder {
-        return None;
-    }
-    Some((
-        words("at")?,
-        Walk {
-            merges: words("merges")?,
-            locks: words("locks")?,
-        },
-    ))
+    (all["at"].as_str() == Some(at)).then(|| Log {
+        main: all["main"].as_str().unwrap_or_default().to_owned(),
+        reverts: all["reverts"].as_str().unwrap_or_default().to_owned(),
+    })
 }
 
-/// Keeps `folder`'s walk for main's commit `at`; a failure only costs the
-/// next read its git.
-fn keep_walk(kept: &Path, at: &str, folder: &str, walk: &Walk) {
-    let all = serde_json::json!({
-        "at": at,
-        "folder": folder,
-        "merges": walk.merges,
-        "locks": walk.locks,
-    });
+/// Keeps the log for main's commit `at`; a failure only costs the next
+/// read its git.
+fn keep_log(kept: &Path, at: &str, log: &Log) {
+    let all = serde_json::json!({"at": at, "main": log.main, "reverts": log.reverts});
     if let Some(folder) = kept.parent() {
         let _ = fs::create_dir_all(folder);
     }
@@ -549,218 +430,23 @@ mod tests {
         );
     }
 
-    /// Ten days and a little after the walks' times below.
-    const NOW: i64 = 1_000_000;
-
-    const DOTS: &str = "home/a/dots";
-
-    /// A kept walk's file, in a folder of its own for `name`.
-    fn kept_at(name: &str) -> std::path::PathBuf {
+    #[test]
+    fn a_kept_log_is_read_only_for_the_commit_it_was_kept_for() {
         let folder =
-            std::env::temp_dir().join(format!("cadence-repository-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&folder);
-        folder.join("cadence/repository.json")
-    }
-
-    /// The answer that makes the git below fail.
-    const FAILS: &str = "<git fails>";
-
-    /// A git that gives the first answer whose words its ask holds, or
-    /// nothing, failing where that answer is `FAILS`, and keeps each ask.
-    fn answering<'a>(
-        asked: &'a std::sync::Mutex<Vec<String>>,
-        answers: &'a [(&'a str, &'a str)],
-    ) -> impl Fn(&[&str]) -> Option<String> + Sync + 'a {
-        move |args: &[&str]| {
-            let ask = args.join(" ");
-            let answer = answers.iter().find(|(words, _)| ask.contains(*words));
-            asked.lock().expect("no ask panicked").push(ask);
-            match answer {
-                Some((_, said)) if *said == FAILS => None,
-                Some((_, said)) => Some((*said).to_owned()),
-                None => Some(String::new()),
-            }
-        }
-    }
-
-    #[test]
-    fn a_walk_kept_for_main_as_it_stands_asks_git_nothing() {
-        let kept = kept_at("kept");
-        let walk = Walk {
-            merges: "m1 200000 First".into(),
-            locks: String::new(),
+            std::env::temp_dir().join(format!("cadence-repository-{}", std::process::id()));
+        let kept = folder.join("cadence/repository.json");
+        let log = Log {
+            main: "aaa 1 Add a thing (#1)".into(),
+            reverts: String::new(),
         };
-        keep_walk(&kept, "new", DOTS, &walk);
-        let asked = std::sync::Mutex::new(Vec::new());
-        let git = answering(&asked, &[]);
-        assert_eq!(walked(&git, &kept, "new", DOTS, NOW), walk);
+        keep_log(&kept, "main1", &log);
+        assert_eq!(kept_log(&kept, "main1"), Some(log));
         assert_eq!(
-            asked.lock().expect("no ask panicked").clone(),
-            Vec::<String>::new(),
-            "main hasn't moved, so git has nothing to walk"
-        );
-    }
-
-    #[test]
-    fn main_moved_on_from_the_kept_walk_walks_only_what_it_gained() {
-        let kept = kept_at("gained");
-        let before = Walk {
-            merges: "m1 200000 First".into(),
-            locks: String::new(),
-        };
-        keep_walk(&kept, "old", DOTS, &before);
-        let asked = std::sync::Mutex::new(Vec::new());
-        let answers = [
-            ("merge-base old new", "old\n"),
-            ("--name-only", "@m3\nhome/a/dots/flake.lock"),
-            ("old..new -- home/a/dots/flake.lock", "m3\n"),
-            (
-                "old..new -- home/a/dots",
-                "m3 400000 Take a core\nm2 300000 Second",
-            ),
-        ];
-        let git = answering(&asked, &answers);
-        let walk = walked(&git, &kept, "new", DOTS, NOW);
-        assert_eq!(
-            walk,
-            Walk {
-                merges: "m3 400000 Take a core\nm2 300000 Second\nm1 200000 First".into(),
-                locks: "@m3\nhome/a/dots/flake.lock".into(),
-            },
-            "what main gained comes first, over what was kept"
-        );
-        let asked = asked.lock().expect("no ask panicked").clone();
-        assert!(
-            asked
-                .iter()
-                .filter(|ask| ask.starts_with("log --first-parent"))
-                .all(|ask| ask.contains(" old..new -- ")),
-            "each walk starts where the kept one ended: {asked:?}"
-        );
-        assert_eq!(
-            kept_walk(&kept, DOTS),
-            Some(("new".to_owned(), walk)),
-            "the joined walk is kept for main as it now stands"
-        );
-        assert_eq!(
-            log_of(&kept_walk(&kept, DOTS).unwrap_or_default().1, DOTS).main,
-            "m2 300000 Second\nm1 200000 First",
-            "the lock's lone move is still left out"
-        );
-    }
-
-    #[test]
-    fn main_moved_elsewhere_or_no_walk_kept_walks_the_whole_window() {
-        let kept = kept_at("elsewhere");
-        let before = Walk {
-            merges: "m1 200000 Dropped by a force push".into(),
-            locks: String::new(),
-        };
-        keep_walk(&kept, "old", DOTS, &before);
-        let answers = [
-            ("merge-base old new", "base\n"),
-            ("new -- home/a/dots/flake.lock", ""),
-            ("new -- home/a/dots", "m2 300000 Second"),
-        ];
-        for (kept, why) in [
-            (kept, "main isn't where the kept walk ended"),
-            (kept_at("none"), "no walk is kept"),
-        ] {
-            let asked = std::sync::Mutex::new(Vec::new());
-            let git = answering(&asked, &answers);
-            let walk = walked(&git, &kept, "new", DOTS, NOW);
-            assert_eq!(walk.merges, "m2 300000 Second", "{why}");
-            let asked = asked.lock().expect("no ask panicked").clone();
-            assert!(
-                asked.iter().any(|ask| ask.ends_with(" new -- home/a/dots"))
-                    && !asked.iter().any(|ask| ask.contains("..new")),
-                "{why}, so the whole window is walked: {asked:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn a_walk_git_fails_in_is_never_kept_and_shows_only_what_is_known() {
-        let kept = kept_at("fails");
-        let before = Walk {
-            merges: "m1 200000 First".into(),
-            locks: String::new(),
-        };
-        keep_walk(&kept, "old", DOTS, &before);
-        let answers = [
-            ("merge-base old new", "old\n"),
-            ("old..new -- home/a/dots", FAILS),
-        ];
-        let asked = std::sync::Mutex::new(Vec::new());
-        let git = answering(&asked, &answers);
-        assert_eq!(
-            walked(&git, &kept, "new", DOTS, NOW),
-            before,
-            "a failed walk of what main gained hid what was kept"
-        );
-        assert_eq!(
-            kept_walk(&kept, DOTS),
-            Some(("old".to_owned(), before)),
-            "a failed walk was kept, so the next read wouldn't walk again"
-        );
-        let none = kept_at("fails-whole");
-        let answers = [("new -- home/a/dots", FAILS)];
-        let git = answering(&asked, &answers);
-        assert_eq!(
-            walked(&git, &none, "new", DOTS, NOW),
-            Walk::default(),
-            "a failed walk of the whole window showed merges git never gave"
-        );
-        assert_eq!(
-            kept_walk(&none, DOTS),
+            kept_log(&kept, "main2"),
             None,
-            "a failed walk of the whole window was kept"
+            "main moved, so git is read again"
         );
-    }
-
-    #[test]
-    fn a_walk_kept_for_another_folder_reads_as_none() {
-        let kept = kept_at("folder");
-        let walk = Walk {
-            merges: "m1 200000 First".into(),
-            locks: String::new(),
-        };
-        keep_walk(&kept, "new", "home/b/dots", &walk);
-        assert_eq!(
-            kept_walk(&kept, DOTS),
-            None,
-            "another folder's merges were taken as this one's"
-        );
-    }
-
-    #[test]
-    fn what_falls_out_of_the_window_is_let_go() {
-        let walk = Walk {
-            merges: "m2 300000 Second\nm0 100000 Too old\nmx none No time".into(),
-            locks: "@m0\nx/flake.lock\n@m2\nx/flake.lock\nx/a".into(),
-        };
-        assert_eq!(
-            within(&walk, NOW - DAYS * DAY),
-            Walk {
-                merges: "m2 300000 Second".into(),
-                locks: "@m2\nx/flake.lock\nx/a".into(),
-            },
-            "a merge before the window, or with no time, goes, and its lock's names with it"
-        );
-    }
-
-    #[test]
-    fn a_log_kept_before_walks_were_kept_reads_as_no_walk_kept() {
-        let kept = kept_at("older");
-        if let Some(folder) = kept.parent() {
-            let _ = fs::create_dir_all(folder);
-        }
-        let _ = fs::write(&kept, r#"{"at":"main1","main":"aaa 1 A","reverts":""}"#);
-        assert_eq!(
-            kept_walk(&kept, DOTS),
-            None,
-            "its merges aren't kept whole, so the window is walked once afresh"
-        );
+        let _ = fs::remove_dir_all(folder);
     }
 
     #[test]
