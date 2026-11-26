@@ -3379,7 +3379,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn a_probe_that_failed_is_stopped_but_not_counted_as_probed() {
+    async fn a_connection_marked_but_not_named_is_stopped_but_not_counted() {
         let origin = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("a port");
@@ -3390,8 +3390,9 @@ mod tests {
         let _far = origin.accept().await.expect("the far end");
         let watching = Probes::default();
         watching.keep(Named { at: 0, number: 0 }, &tcp, || ());
-        // A sleep whose probe of the connection failed marks it but doesn't
-        // name it, so one is made that way from a probe that went well.
+        // A sleep whose probe of a connection failed marks it but doesn't name it. Making the
+        // kernel refuse a setting isn't portable, so a probe that went well marks it and a sleep
+        // naming nothing stands in, which shows the stop's half alone.
         let probing = watching.probe(|| ());
         let failed = Probing {
             named: Vec::new(),
@@ -3403,7 +3404,7 @@ mod tests {
         assert_eq!(
             (stopped, socket2::SockRef::from(&*tcp).keepalive().ok()),
             (0, Some(false)),
-            "a connection whose probe failed wasn't stopped, or was counted as probed"
+            "a connection marked but not named wasn't stopped, or was counted as probed"
         );
     }
 

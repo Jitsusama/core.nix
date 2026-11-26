@@ -2402,8 +2402,9 @@
     unsent in its sockets and short frames, retire a connection by its number alone, sparing one
     opened since, and at most once a minute for a reset, have the kernel probe by count alone
     each connection still open as a relay finds the machine slept, however it was retired, and
-    stop once done, but not one let go, nor hold that one open, nor stop a later sleep's probes
-    though ending their own, and say an error with its causes, cut to a line
+    stop once done, one marked but not named too, uncounted, but not one let go, nor hold that
+    one open, nor stop a later sleep's probes though ending their own, and say an error with its
+    causes, cut to a line
   '';
   model-relay-passes-clippy = ''
     clippy finds nothing in model-relay or its tests
