@@ -447,9 +447,10 @@ qint64 sweepsOf(const QJSEngine &engine) {
 // collection and before the first ask since it, on a heap holding over
 // twice what's live in runs too small for it, as Joel's shell held 201
 // to 209 MB for 63 to 68 live. With none, its ask stands for the
-// closing's, straight after the closing's collection; with some, for the
-// opening's after a collection run while the launcher was shut, the only
-// path where garbage is made before the ask that takes the baseline.
+// closing's, straight after the closing's collection. With some, it
+// stands for an ask taking the baseline with garbage made since the last
+// sweep: an opening's after a collection run while the launcher was shut
+// or still parting, or a fresh shell's first.
 // Past twice the room beyond where it was left, a limit below what's
 // held would start a collection at every miss, one for each chunk the
 // burst takes: two openings of Joel's shell each spent
@@ -463,10 +464,10 @@ bool pacesABurstPastTheRoom(int litter) {
                        "m: i }); return made.filter((_, i) => i % %2 === 0); })()")
             .arg(HOLED)
             .arg(HOLED_KEPT_ONE_IN));
-    // An earlier ask, then a collection with its room, as when the shell
-    // collects while the launcher is shut: the ask after it runs on a heap
-    // whose full sweep's count keepRoom has raised past what the sweep
-    // kept, as every ask but a fresh engine's does.
+    // An earlier ask, then a collection with its room: the closing's, or
+    // with litter to follow, one run while the launcher is shut. The ask
+    // after it runs on a heap whose full sweep's count keepRoom has raised
+    // past what the sweep kept, as every ask after a cycle with a room does.
     engine.collectGarbage();
     heap.leaveRoom(SMALL_ROOM_MB);
     engine.collectGarbage();
