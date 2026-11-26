@@ -443,8 +443,9 @@ qint64 sweepsOf(const QJSEngine &engine) {
 
 // Whether a burst kept past twice the room, growing the chunks by
 // BURST_ROOMS rooms, collects at least once and no more than once for
-// each room it grows by, with `litter` objects made and dropped after a
-// collection and before the first ask since it, on a heap holding over
+// each room it grows by and once besides, with `litter` objects made
+// and dropped after a collection and before the first ask since it, on
+// a heap holding over
 // twice what's live in runs too small for it, as Joel's shell held 201
 // to 209 MB for 63 to 68 live. With none, its ask stands for the
 // closing's, straight after the closing's collection. With some, it
@@ -514,7 +515,8 @@ bool pacesABurstPastTheRoom(int litter) {
     if (!made || !unswept || !holedThrough || grown.chunks < upTo || !paced)
         std::fprintf(stderr,
                      "FAIL a burst kept past twice the room collects at least once and no more "
-                     "than once for each room it grows by, with %d dropped before the ask: "
+                     "than once for each room it grows by and once besides, with %d dropped "
+                     "before the ask: "
                      "%lld collections over %.2f to %.2f MB of chunks, up to %.2f, swept %.2f "
                      "then %.2f MB, collecting at %.2f then %.2f MB, %.2f MB unswept at the "
                      "ask; made %s, unswept %s, holed throughout %s\n",
@@ -532,7 +534,7 @@ bool pacesABurstPastTheRoom(int litter) {
 // did; sweeps that keep less cap it there too rather than wrapping past
 // it; and each slot kept beyond moves it by two, as Qt lets what's used
 // grow.
-bool roomCapsWhatsKept() {
+bool ceilingFollowsWhatsKept() {
     QJSEngine engine;
     Heap heap(&engine);
     const QJSValue few = keepScattered(engine);
@@ -2251,7 +2253,7 @@ int main(int argc, char **argv) {
     const bool ownLimits = roomKeepsQtsOwnLimits();
     const bool burstPaced = pacesABurstPastTheRoom(0);
     const bool litterPaced = pacesABurstPastTheRoom(LITTER);
-    const bool capped = roomCapsWhatsKept();
+    const bool capped = ceilingFollowsWhatsKept();
     const bool follows = allocatorFollows(heap);
     const bool given = givesBack();
     const bool lent = lendsBack();
