@@ -402,18 +402,127 @@ PanelWindow {
             under = column;
             if (reshaped)
                 walkFrom(true, saw);
-            else
+            else if (carry !== null || scrolled()) {
+                // Back on its own column while niri's spring still slides
+                // the strip, or once it has settled with the cat off the
+                // screen, it goes back with its window from where it's
+                // drawn, never at once to where niri will have it. Where
+                // niri sets off no new scroll, as the keys come back to a
+                // column still in view, its ride runs on as its window's
+                // spring does, never set off again from a lag gone by.
+                if (!placedAt(there))
+                    rideTo(there);
+            } else
                 place = there;
         } else if (going !== null && wanted === goingTo) {
             if (Math.round(there.x * ratio) !== Math.round(going.to.x * ratio)
                 || Math.round(there.y * ratio) !== Math.round(going.to.y * ratio))
                 walkFrom(true, saw);
-        } else if (going !== null || !resting.running || wanted !== waitingOn) {
-            // Its wander forgotten a moment later, outside this
-            // change of `there`, which forgetting it changes again.
-            Qt.callLater(endStroll);
-            waitingOn = wanted;
-            resting.restart();
+        } else {
+            if (going === null)
+                carried(saw);
+            if (going !== null || !resting.running || wanted !== waitingOn) {
+                // Its wander forgotten a moment later, outside this
+                // change of `there`, which forgetting it changes again.
+                Qt.callLater(endStroll);
+                waitingOn = wanted;
+                resting.restart();
+            }
+        }
+    }
+
+    // While it waits for the keys to rest on another column, it stays on
+    // the window it sat on wherever niri moves it, as niri scrolls the
+    // strip to a column off the screen's edge, never left on the air where
+    // that window was or on one it never walked to (Joel, 2026-11-14
+    // 17:24: "focusing to a window off the left or right edge"). Its place
+    // is where niri says the window will come to rest, off the screen too,
+    // and it's drawn on niri's spring from where it was (lag), so it goes
+    // with the window as niri draws it. Once the keys rest, it comes back
+    // in at that edge (MarginCatStacked.js's walk).
+    function carried(saw: var): void {
+        const by = MarginCat.carries(saw, tilesOf(space?.id), sat);
+        if (by === null || place === null)
+            return;
+        rideTo({ x: place.x + by.x, y: place.y + by.y });
+    }
+    // Whether niri scrolls its own column under it, where it sits, as niri
+    // says, or, where niri says nothing, from off the screen, where only a
+    // scroll leaves it at rest: never a drag, which niri doesn't animate.
+    function scrolled(): bool {
+        if (there === null || place === null || placedAt(there))
+            return false;
+        return scrolling() || place.x + size <= 0 || place.x >= modelData.width;
+    }
+    function placedAt(to: var): bool {
+        return place !== null && Math.abs(place.x - to.x) < 0.5
+            && Math.abs(place.y - to.y) < 0.5;
+    }
+    // Whether niri's scroll of its workspace still runs: told less than
+    // its spring's length ago, since niri never says one ended, so an old
+    // scroll's word, still on its windows, isn't taken for a new one
+    // (MarginCatTiles.js's told). Heard again with each layout niri sends.
+    function scrolling(): bool {
+        const now = Date.now();
+        scrollHeard = Tiles.hears(scrollHeard, Tiles.told(Niri.windows, space?.id, "ViewMove"),
+            now);
+        return Tiles.runs(scrollHeard, now, slideMs);
+    }
+    property var scrollHeard: null
+    readonly property var spring: Object.assign({}, Theme.motion.spring,
+        { slowdown: Theme.motion.slowdown })
+    readonly property int slideMs: MarginCat.slides(spring)
+    // Its place set to `to` as niri's scroll sets off, drawn where it was
+    // as niri set it off and closing on `to` on niri's spring
+    // (MarginCatStacked.js's rides).
+    // Under the launcher's card it's put there at once, as nothing moves
+    // under the card (stilled), so the ride draws no frames beside his keys.
+    function rideTo(to: var): void {
+        if (Launched.up && !byHand) {
+            carry = null;
+            lag = { x: 0, y: 0 };
+            place = to;
+            return;
+        }
+        const now = Date.now();
+        // As far into the scroll as niri says, or a guess at how late it
+        // hears of one where niri says nothing or tells of one ended.
+        const behind = MarginCat.behindTold(frameMs, "slide", scrolling()
+            ? Tiles.animating(Niri.windows, space?.id, "ViewMove") : null);
+        carry = Stacked.rides(carry, place, to, { at: now - behind, spring });
+        lag = MarginCat.lags(carry.from, now - carry.at, spring);
+        place = to;
+    }
+    // Where it's drawn: its place, short of it on a ride by its lag.
+    function drawnAt(): var {
+        return place === null ? null : { x: place.x + lag.x, y: place.y + lag.y };
+    }
+    // A ride ended where it's drawn, so whatever it does next, a walk, a
+    // move or a lift, sets off from there, never from its place a lag on.
+    function unride(): void {
+        if (carry !== null)
+            place = drawnAt();
+        carry = null;
+        lag = { x: 0, y: 0 };
+    }
+    // The scroll carrying it, while niri's spring runs, and how far from
+    // its place that has it drawn now.
+    property var carry: null
+    property var lag: ({ x: 0, y: 0 })
+    FrameAnimation {
+        running: window.carry !== null
+        onTriggered: {
+            const t = Date.now() - window.carry.at;
+            // A clock stepped back ends it too, rather than holding it
+            // drawn off its place until the clock comes round again.
+            if (t >= window.carry.ends || t < 0) {
+                window.carry = null;
+                window.lag = { x: 0, y: 0 };
+                // Its ride done, it says it's drawn at its place.
+                window.say();
+            } else {
+                window.lag = MarginCat.lags(window.carry.from, t, window.carry.spring);
+            }
         }
     }
 
@@ -477,8 +586,8 @@ PanelWindow {
         // far into it as it was, easing in again unless it was at its
         // pace; from a stride held on the spot, once it's seen.
         const setOff = Paths.setOffFrom(stepped);
-        const from = { x: place.x, y: place.y };
-        const plan = Paths.walk(from, { x: to.x, y: to.y }, Object.assign({
+        const from = drawnAt();
+        const plan = Stacked.walkAlong(from, { x: to.x, y: to.y }, Object.assign({
             cell,
             ratio,
             wide: size,
@@ -501,7 +610,8 @@ PanelWindow {
             on: heard.on,
             ahead: MarginCat.behind(frameMs, "resize"),
             // As far into a window's growth over it as niri says it is.
-            grows: MarginCat.behindResize(frameMs, Tiles.resizing(Niri.windows, space?.id)),
+            grows: MarginCat.behindTold(frameMs, "resize",
+                Tiles.animating(Niri.windows, space?.id, "Resize")),
             frame: frameMs,
             marks: marksLit
         }, setOff));
@@ -533,6 +643,9 @@ PanelWindow {
             steps = 0;
         }
         byHand = false;
+        // Set off before a scroll's spring settled, it walks from where
+        // that had it drawn, as its plan does.
+        unride();
         going = plan;
         if (fresh)
             begunAt = window.FramePresentation.framesBegun;
@@ -778,6 +891,7 @@ PanelWindow {
     }
 
     function halt(): void {
+        unride();
         walker.stop();
         going = null;
         // After `going`, whose handler fades the yarn as the play that
@@ -1058,6 +1172,9 @@ PanelWindow {
         function onStrollToChanged() {
             window.stroll(window.scene.strollTo);
         }
+        function onSettledChanged() {
+            window.scrolling();
+        }
     }
 
     onThereChanged: follow()
@@ -1094,6 +1211,13 @@ PanelWindow {
     // under every round of a lab's keys.
     readonly property bool stilled: Launched.up
     onStilledChanged: {
+        // A ride the card comes up over lands at its place at once, as one
+        // set off under it does (rideTo), rather than drawing on beneath.
+        if (stilled && carry !== null && !byHand) {
+            carry = null;
+            lag = { x: 0, y: 0 };
+            say();
+        }
         for (const clock of [walker, mover, yarnFades]) {
             if (stilled && clock.running && !byHand)
                 clock.pause();
@@ -1367,6 +1491,8 @@ PanelWindow {
         const at = !place ? "nowhere" : JSON.stringify({
             x: place.x,
             y: place.y,
+            // Where it's drawn, behind its place as a scroll carries it.
+            drawn: { x: place.x + lag.x, y: place.y + lag.y },
             size: window.size,
             air: window.cell,
             cell: Math.round(window.cell * window.ratio),
@@ -1459,14 +1585,15 @@ PanelWindow {
 
         // On the screen's own pixels, so every cell's edge is sharp,
         // a hop's height too.
-        x: window.place ? Math.round(window.place.x * window.ratio) / window.ratio : 0
+        x: window.place ? Math.round((window.place.x + window.lag.x) * window.ratio)
+            / window.ratio : 0
         // Held inside the margin, but on a move down, carried up off it
         // and climbing back.
         y: !window.place ? 0
             : window.moving !== null
             ? Math.round(window.place.y * window.ratio) / window.ratio
-            : Math.max(0, Math.round(Math.min(window.place.y, window.height - window.size)
-                * window.ratio) / window.ratio)
+            : Math.max(0, Math.round(Math.min(window.place.y + window.lag.y,
+                window.height - window.size) * window.ratio) / window.ratio)
         width: window.size
         height: window.size
 

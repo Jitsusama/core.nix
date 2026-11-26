@@ -434,8 +434,10 @@ listen({
     ...Object.fromEntries(machineJumps),
     "0": () => toSection("across"),
   },
-  // A row is the cursor, not a control of its own, so the keys answer on one.
-  answersAt: (target) => target.closest("a[data-row]") !== null || !hasOwnKeys(target),
+  // A row is the cursor, not a control of its own, so the keys answer on one,
+  // and on a look's act, a link whose only key of its own is Return.
+  answersAt: (target) =>
+    target.closest("a[data-row], #looks a.launch") !== null || !hasOwnKeys(target),
 });
 
 /**

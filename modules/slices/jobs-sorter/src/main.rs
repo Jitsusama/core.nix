@@ -64,6 +64,11 @@
 //! person's machines too, which `--calls-elsewhere`' mycelium hears, as
 //! `src/elsewhere.rs` says.
 //!
+//! With `--ceiling` and `--spare`, a slice's memory ceiling rises from the
+//! share it declares while the spared slices don't wait on memory, and comes
+//! back at a wait, a call or memory short, as `src/ceiling.rs` says why and
+//! how.
+//!
 //! With `--revive`, a cgroup gives memory back when the kernel's reclaim
 //! thread gives up, as `src/revive.rs` says why and how.
 //!
@@ -102,6 +107,7 @@
 mod brake;
 mod budget;
 mod calls;
+mod ceiling;
 mod cli;
 mod door;
 mod elsewhere;
@@ -163,6 +169,11 @@ struct Settings {
     revive: Option<String>,
     orchestrators: Option<PathBuf>,
     door: Option<String>,
+    /// The slice whose memory ceiling follows the room, and the ceiling it
+    /// declares, as a percentage of memory (src/ceiling.rs).
+    ceiling: Option<(String, u64)>,
+    /// The slices whose wait on memory brings that ceiling down.
+    spare: Vec<String>,
     calls: Option<PathBuf>,
     /// The folder of mycelium nodes' sockets, and the mycelium to ask them.
     calls_elsewhere: Option<(PathBuf, PathBuf)>,
@@ -2814,6 +2825,8 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, Failure>
         revive: None,
         orchestrators: None,
         door: None,
+        ceiling: None,
+        spare: Vec::new(),
         calls: None,
         calls_elsewhere: None,
         niri: None,
@@ -2856,6 +2869,8 @@ fn settings(mut args: impl Iterator<Item = String>) -> Result<Settings, Failure>
             "--weigh" => settings.weigh.push(value()?),
             "--revive" => settings.revive = Some(value()?),
             "--door" => settings.door = Some(value()?),
+            "--ceiling" => settings.ceiling = Some(ceiling_from(&value()?)?),
+            "--spare" => settings.spare.push(slice_from("--spare", &value()?)?),
             "--calls" => settings.calls = Some(PathBuf::from(value()?)),
             "--calls-elsewhere" => settings.calls_elsewhere = Some(elsewhere_from(&value()?)?),
             "--niri" => settings.niri = Some(PathBuf::from(value()?)),
@@ -2915,7 +2930,52 @@ fn paired(settings: Settings) -> Result<Settings, Failure> {
             "--conversations ranks a host's conversations' units beside --hosts, by --slots",
         ));
     }
+    // A ceiling that nothing's wait could bring down would only ever rise.
+    if settings.ceiling.is_some() == settings.spare.is_empty() {
+        return Err(wrongly(
+            "--ceiling lifts a slice's memory ceiling while the --spare slices don't wait",
+        ));
+    }
     Ok(settings)
+}
+
+/// `--ceiling`'s value, a slice and the ceiling it declares as a
+/// percentage of memory under the most it's ever given, or the refusal
+/// saying what it is.
+fn ceiling_from(given: &str) -> Result<(String, u64), Failure> {
+    let refused = || {
+        cli::wrongly(
+            "jobs-sorter",
+            format!(
+                "--ceiling is a slice, =, then its ceiling as a percentage under {}",
+                ceiling::TOP
+            ),
+        )
+    };
+    let (slice, percent) = given.split_once('=').ok_or_else(refused)?;
+    let slice = slice_from("--ceiling", slice)?;
+    let percent = percent.strip_suffix('%').unwrap_or(percent);
+    match percent.parse::<u64>() {
+        Ok(percent) if (1..ceiling::TOP).contains(&percent) => Ok((slice, percent)),
+        _ => Err(refused()),
+    }
+}
+
+/// A slice `flag` names, read from the account's own cgroup, so one name
+/// ending `.slice`: one with a `/` or `..` would be read from elsewhere,
+/// and systemd nests one with a `-` inside another, where it isn't read.
+fn slice_from(flag: &str, given: &str) -> Result<String, Failure> {
+    let name = given.strip_suffix(".slice").unwrap_or_default();
+    if name.is_empty() || name.contains(['/', '-']) || name.starts_with('.') {
+        return Err(cli::wrongly(
+            "jobs-sorter",
+            format!(
+                "{flag} names a slice directly under the account's, such as jobs.slice, \
+                 not {given}"
+            ),
+        ));
+    }
+    Ok(given.to_owned())
 }
 
 /// `--calls-elsewhere`'s value, the nodes' sockets' folder and the
@@ -2956,6 +3016,34 @@ mod settings_tests {
                     "jobs-sorter's help names {flag}, but it refuses it as unknown"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn a_ceiling_takes_its_slice_and_percentage_and_needs_a_slice_to_spare() {
+        let parsed = |words: &str| settings(words.split_whitespace().map(str::to_owned));
+        let got = parsed("--ceiling jobs.slice=26% --spare app.slice --spare agents.slice")
+            .expect("a ceiling and what it spares");
+        assert_eq!(got.ceiling, Some(("jobs.slice".to_owned(), 26)));
+        assert_eq!(got.spare, ["app.slice", "agents.slice"]);
+        assert!(
+            parsed("--ceiling jobs.slice=26 --spare app.slice").is_ok(),
+            "a bare percentage is taken too"
+        );
+        for wrong in [
+            "--ceiling jobs.slice=26",
+            "--spare app.slice",
+            "--ceiling jobs.slice --spare app.slice",
+            "--ceiling jobs.slice=0 --spare app.slice",
+            "--ceiling jobs.slice=50 --spare app.slice",
+            "--ceiling =26 --spare app.slice",
+            "--ceiling jobs-work.slice=26 --spare app.slice",
+            "--ceiling ../jobs.slice=26 --spare app.slice",
+            "--ceiling jobs=26 --spare app.slice",
+            "--ceiling jobs.slice=26 --spare /app.slice",
+            "--ceiling jobs.slice=26 --spare ..slice",
+        ] {
+            assert!(parsed(wrong).is_err(), "{wrong} was taken");
         }
     }
 
@@ -3437,6 +3525,7 @@ fn run(settings: &Settings) -> Result<(), String> {
         }
         watch_door(&mut doorway, &root, settings.door.as_deref(), now);
         brake_for_calls(&mut doorway, &root);
+        follow_room(&mut doorway, &root, settings);
         pass = pass.wrapping_add(1);
         sorter.finish(&alive, now);
     }
@@ -3451,9 +3540,28 @@ struct Doorway {
     elsewhere: Option<elsewhere::Elsewhere>,
     /// Where builds and jobs stand braked for a call (src/brake.rs).
     brake: brake::Brake,
+    /// Where jobs' memory ceiling stands (src/ceiling.rs).
+    ceiling: ceiling::Ceiling,
     /// Whether memory's pressure couldn't be read when last looked at, so
     /// the pace's stall gate going off is said once, not every look.
     unstalled: bool,
+    /// Whether a spared slice's pressure couldn't be read when last looked
+    /// at, so the ceiling held down for it is said once.
+    unspared: bool,
+    /// What of the ceiling's own reads couldn't be read when last looked
+    /// at, so the ceiling standing still, or not rising, is said once.
+    ceiling_read: CeilingRead,
+}
+
+/// How the ceiling's own reads went at the last look.
+#[derive(Clone, Copy, PartialEq)]
+enum CeilingRead {
+    /// Everything it needs was read.
+    Whole,
+    /// The machine's memory couldn't be, so the ceiling stands still.
+    NoMemory,
+    /// What its slice holds couldn't be, so the ceiling doesn't rise.
+    NoHolding,
 }
 
 impl Doorway {
@@ -3464,7 +3572,10 @@ impl Doorway {
             calls: pw_dump.map(calls::Calls::follow),
             elsewhere: None,
             brake: brake::Brake::default(),
+            ceiling: ceiling::Ceiling::default(),
             unstalled: false,
+            unspared: false,
+            ceiling_read: CeilingRead::Whole,
         }
     }
 }
@@ -3476,11 +3587,7 @@ impl Doorway {
 /// mid-call is set again; `account` is the account's manager's cgroup.
 fn brake_for_calls(doorway: &mut Doorway, account: &Path) {
     let now = std::time::Instant::now();
-    let here = doorway.calls.as_mut().is_some_and(|calls| calls.on(now));
-    let there = doorway
-        .elsewhere
-        .as_ref()
-        .is_some_and(|elsewhere| elsewhere.on(now));
+    let (here, there) = calling(doorway, now);
     let calling = here || there;
     let processors = std::thread::available_parallelism().map_or(1, usize::from);
     let lost = if calling {
@@ -3514,15 +3621,21 @@ fn brake_for_calls(doorway: &mut Doorway, account: &Path) {
                     eprintln!("Found {slice} let go mid-call, and braked it again.");
                 }
             }
+            // A failure is counted from when busctl gave up, as the ceiling's
+            // is, so a set that timed out waits its whole time.
             Ok(output) => {
-                doorway.brake.failed(place, calling, now);
+                doorway
+                    .brake
+                    .failed(place, calling, std::time::Instant::now());
                 eprintln!(
                     "Couldn't set {slice}'s quota for a call: {}",
                     String::from_utf8_lossy(&output.stderr).trim()
                 );
             }
             Err(error) => {
-                doorway.brake.failed(place, calling, now);
+                doorway
+                    .brake
+                    .failed(place, calling, std::time::Instant::now());
                 eprintln!("Couldn't run busctl to set {slice}'s quota for a call: {error}");
             }
         }
@@ -3538,6 +3651,183 @@ fn brake_for_calls(doorway: &mut Doorway, account: &Path) {
                 "Let go of builds and jobs, no call on"
             }
         );
+    }
+}
+
+/// Whether a call is on `now`, here and on another of the person's
+/// machines.
+fn calling(doorway: &mut Doorway, now: std::time::Instant) -> (bool, bool) {
+    let here = doorway.calls.as_mut().is_some_and(|calls| calls.on(now));
+    let there = doorway
+        .elsewhere
+        .as_ref()
+        .is_some_and(|elsewhere| elsewhere.on(now));
+    (here, there)
+}
+
+/// Lifts the `--ceiling` slice's memory ceiling while the `--spare` slices
+/// don't wait on memory, and brings it back once one does, as
+/// src/ceiling.rs says; `account` is the account's manager's cgroup.
+fn follow_room(doorway: &mut Doorway, account: &Path, settings: &Settings) {
+    let Some((slice, percent)) = &settings.ceiling else {
+        return;
+    };
+    let meminfo = fs::read_to_string("/proc/meminfo").unwrap_or_default();
+    let room = match room(account, slice, &settings.spare, &meminfo) {
+        Ok(room) => room,
+        Err(unread) => {
+            if doorway.ceiling_read != CeilingRead::NoMemory {
+                eprintln!("Can't read {unread}, so {slice}'s memory ceiling stands where it is.");
+            }
+            doorway.ceiling_read = CeilingRead::NoMemory;
+            return;
+        }
+    };
+    if !room.unread.is_empty() && !doorway.unspared {
+        eprintln!(
+            "Can't read how long {} waited on memory, so {slice}'s ceiling comes back to what \
+             it declares and doesn't rise.",
+            room.unread.join(", ")
+        );
+    }
+    doorway.unspared = !room.unread.is_empty();
+    let read = if room.current.is_none() {
+        CeilingRead::NoHolding
+    } else {
+        CeilingRead::Whole
+    };
+    if read == CeilingRead::NoHolding && doorway.ceiling_read != read {
+        eprintln!("Can't read what {slice} holds, so its ceiling doesn't rise, but can fall.");
+    }
+    doorway.ceiling_read = read;
+    let now = std::time::Instant::now();
+    let (here, there) = calling(doorway, now);
+    let look = ceiling::Look {
+        total: room.total,
+        available: room.available,
+        // What can't be read counts as holding nothing, which never fills
+        // the ceiling, so it doesn't rise on it; a fall needs none of it.
+        current: room.current.unwrap_or(0),
+        waiting: room.waiting(),
+        calling: here || there,
+        high: room.high,
+    };
+    let least = ceiling::least(room.total, *percent);
+    let Some((high, why)) = doorway.ceiling.wanted(&look, least, now) else {
+        return;
+    };
+    // Which slice waited, since one waiting on its own ceiling holds jobs
+    // down as surely as one jobs crowds, and which couldn't be read, since
+    // that brings it down too though nothing may be waiting.
+    let why = match why {
+        ceiling::Why::Waiting => fell_for(&room.waited, &room.unread),
+        why => why.said().to_owned(),
+    };
+    let set = Command::new("busctl")
+        .args(ceiling::high_call(slice, high))
+        .stdout(Stdio::null())
+        .output();
+    match set {
+        Ok(output) if output.status.success() => {
+            doorway.ceiling.set(high);
+            eprintln!("Set {slice}'s memory ceiling to {} MiB, {why}.", high >> 20);
+        }
+        // A failure is counted from when busctl gave up, not from the look,
+        // so a set that timed out waits its whole time before it's tried
+        // again rather than none of it.
+        Ok(output) => {
+            doorway.ceiling.failed(std::time::Instant::now());
+            eprintln!(
+                "Couldn't set {slice}'s memory ceiling: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
+        Err(error) => {
+            doorway.ceiling.failed(std::time::Instant::now());
+            eprintln!("Couldn't run busctl to set {slice}'s memory ceiling: {error}");
+        }
+    }
+}
+
+/// What a look at the ceiling's slice found, less whether a call is on.
+#[derive(Debug, PartialEq)]
+struct Room {
+    /// The machine's memory.
+    total: u64,
+    /// The memory available, as the kernel counts it.
+    available: u64,
+    /// What the slice holds now, when it can be read.
+    current: Option<u64>,
+    /// The slice's ceiling as its `memory.high` reads, when it can be read.
+    high: Option<u64>,
+    /// The spared slices that waited on memory past `ceiling::WAITING`.
+    waited: Vec<String>,
+    /// The spared slices whose wait couldn't be read, which count as
+    /// waiting, so the ceiling never rises on what it can't see.
+    unread: Vec<String>,
+}
+
+impl Room {
+    /// Whether a spared slice waited, or may have: one whose wait couldn't
+    /// be read counts, so the ceiling never rises on what it can't see.
+    fn waiting(&self) -> bool {
+        !self.waited.is_empty() || !self.unread.is_empty()
+    }
+}
+
+/// What a look at `slice` and the `spare` slices under the account's
+/// cgroup `account` finds, `meminfo` being /proc/meminfo, or that the
+/// machine's memory couldn't be read. A spared slice with
+/// no cgroup holds nothing, since systemd makes a slice's cgroup only
+/// while something runs in it, so it has nothing to wait for.
+fn room(account: &Path, slice: &str, spare: &[String], meminfo: &str) -> Result<Room, String> {
+    let (Some(total), Some(available)) = (door::total(meminfo), door::available(meminfo)) else {
+        return Err("the machine's memory".to_owned());
+    };
+    let current = fs::read_to_string(account.join(slice).join("memory.current"))
+        .ok()
+        .and_then(|text| text.trim().parse().ok());
+    let high = fs::read_to_string(account.join(slice).join("memory.high"))
+        .ok()
+        .as_deref()
+        .and_then(ceiling::high);
+    let mut room = Room {
+        total,
+        available,
+        current,
+        high,
+        waited: Vec::new(),
+        unread: Vec::new(),
+    };
+    for spared in spare {
+        // The cgroup is looked for only once its wait can't be read, so one
+        // that goes between the two is taken as gone rather than unread.
+        let cgroup = account.join(spared);
+        let pressure = fs::read_to_string(cgroup.join("memory.pressure"));
+        if pressure.is_err()
+            && fs::metadata(&cgroup).is_err_and(|error| error.kind() == io::ErrorKind::NotFound)
+        {
+            continue;
+        }
+        match pressure.ok().as_deref().and_then(ceiling::waited) {
+            Some(waited) if waited < ceiling::WAITING => {}
+            Some(_) => room.waited.push(spared.clone()),
+            None => room.unread.push(spared.clone()),
+        }
+    }
+    Ok(room)
+}
+
+/// Why the ceiling fell for spared slices: those that `waited` on memory,
+/// and those whose wait was `unread`.
+fn fell_for(waited: &[String], unread: &[String]) -> String {
+    let waiting =
+        (!waited.is_empty()).then(|| format!("{} waiting on memory", waited.join(" and ")));
+    let unknown = (!unread.is_empty()).then(|| format!("no wait read for {}", unread.join(" or ")));
+    match (waiting, unknown) {
+        (Some(waiting), Some(unknown)) => format!("{waiting}, and {unknown}"),
+        (Some(said), None) | (None, Some(said)) => said,
+        (None, None) => ceiling::Why::Waiting.said().to_owned(),
     }
 }
 
@@ -3625,6 +3915,15 @@ fn watch_door(doorway: &mut Doorway, root: &Path, cgroup: Option<&str>, uptime: 
                 );
             }
             door::Done::LetIn(pid) => eprintln!("Let {pid} in."),
+            door::Done::Unranked(pid) => eprintln!(
+                "Let {pid} in unranked, as its rank couldn't be set, so the rest that waited as \
+                 long come in one each {} s.",
+                door::SPACED.as_secs()
+            ),
+            door::Done::Lifted(scope) => eprintln!(
+                "Lifted the memory cap on {}, as it has ramped with room and no call on.",
+                scope.display()
+            ),
             door::Done::Ranked(pid, high) => eprintln!(
                 "Let {pid} in behind other work, its memory held under {high} bytes, with \
                  {free} bytes available."
@@ -3660,6 +3959,85 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_look_at_the_room_counts_a_wait_unread_as_waiting_and_an_empty_slice_as_none() {
+        let account = std::env::temp_dir().join(format!("room-{}", std::process::id()));
+        let meminfo = "MemTotal:       65000000 kB\nMemAvailable:   30000000 kB\n";
+        let spare = ["app.slice", "session.slice", "agents.slice", "idle.slice"].map(str::to_owned);
+        let pressure = |avg10: &str| {
+            format!(
+                "some avg10={avg10} avg60=0.00 avg300=0.00 total=1\n\
+                 full avg10=0.00 avg60=0.00 avg300=0.00 total=0\n"
+            )
+        };
+        let _ = fs::remove_dir_all(&account);
+        assert_eq!(
+            room(&account, "jobs.slice", &spare, meminfo),
+            Ok(Room {
+                total: 65_000_000 * 1024,
+                available: 30_000_000 * 1024,
+                current: None,
+                high: None,
+                waited: Vec::new(),
+                unread: Vec::new(),
+            }),
+            "a slice that can't be read kept the ceiling from falling, or was counted"
+        );
+        assert_eq!(
+            room(&account, "jobs.slice", &spare, ""),
+            Err("the machine's memory".to_owned())
+        );
+        let jobs = account.join("jobs.slice");
+        fs::create_dir_all(&jobs).unwrap();
+        fs::write(jobs.join("memory.current"), "17088724992\n").unwrap();
+        fs::write(jobs.join("memory.high"), "17393516544\n").unwrap();
+        for (spared, wait) in [
+            ("app.slice", Some("0.10")),
+            ("session.slice", Some("0.09")),
+            ("agents.slice", None),
+        ] {
+            fs::create_dir_all(account.join(spared)).unwrap();
+            if let Some(avg10) = wait {
+                fs::write(
+                    account.join(spared).join("memory.pressure"),
+                    pressure(avg10),
+                )
+                .unwrap();
+            }
+        }
+        let looked = room(&account, "jobs.slice", &spare, meminfo);
+        let _ = fs::remove_dir_all(&account);
+        assert_eq!(
+            looked,
+            Ok(Room {
+                total: 65_000_000 * 1024,
+                available: 30_000_000 * 1024,
+                current: Some(17_088_724_992),
+                high: Some(17_393_516_544),
+                // A tenth of a percent is waiting; idle.slice has no cgroup.
+                waited: vec!["app.slice".to_owned()],
+                unread: vec!["agents.slice".to_owned()],
+            }),
+            "a spared slice's wait was misread, or an empty slice counted as waiting"
+        );
+        let unread_alone = Room {
+            waited: Vec::new(),
+            ..looked.unwrap()
+        };
+        assert!(
+            unread_alone.waiting(),
+            "a spared slice whose wait couldn't be read didn't hold the ceiling down"
+        );
+        assert!(
+            !Room {
+                unread: Vec::new(),
+                ..unread_alone
+            }
+            .waiting(),
+            "a room with nothing waiting held the ceiling down"
+        );
+    }
 
     #[test]
     fn viewers_join_in_the_order_their_windows_are_held_and_only_a_session_no_slot_holds_is_found()
@@ -4364,6 +4742,8 @@ mod tests {
             revive: None,
             orchestrators: None,
             door: None,
+            ceiling: None,
+            spare: Vec::new(),
             calls: None,
             calls_elsewhere: None,
             niri: None,
@@ -4482,6 +4862,26 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("{name}-{}-{nanos}", std::process::id()));
         fs::create_dir(&dir).unwrap();
         OwnDir(dir)
+    }
+
+    #[test]
+    fn a_fall_for_a_wait_unread_says_so_rather_than_waiting() {
+        let names = |slices: &[&str]| slices.iter().map(|&it| it.to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            fell_for(&[], &names(&["app.slice"])),
+            "no wait read for app.slice",
+            "a slice whose wait couldn't be read was said to wait on memory"
+        );
+        assert_eq!(
+            fell_for(&names(&["session.slice"]), &names(&["app.slice"])),
+            "session.slice waiting on memory, and no wait read for app.slice",
+            "a fall for both didn't say which waited and which was unread"
+        );
+        assert_eq!(
+            fell_for(&names(&["app.slice", "session.slice"]), &[]),
+            "app.slice and session.slice waiting on memory",
+            "a fall for waits alone wasn't said as before"
+        );
     }
 
     #[test]
