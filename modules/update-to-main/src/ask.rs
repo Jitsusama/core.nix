@@ -18,7 +18,7 @@ pub fn ask(socket: &Path, hear: &mut dyn FnMut(&Line)) -> io::Result<Line> {
 pub fn ask_at(socket: &Path, at: &[(&str, &str)], hear: &mut dyn FnMut(&Line)) -> io::Result<Line> {
     let pairs: String = at
         .iter()
-        .map(|(input, commit)| format!(" {input} {commit}"))
+        .flat_map(|(input, commit)| [" ", input, " ", commit])
         .collect();
     asking(socket, &format!("{ASK} {AT}{pairs}"), hear)
 }

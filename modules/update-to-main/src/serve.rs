@@ -382,15 +382,12 @@ fn at_pairs(words: &[&str]) -> Result<Followed, String> {
             "`{ASK} {AT}` takes each followed input's name once, each with one commit's full id"
         )
     };
-    let pairs = words.chunks_exact(2);
-    if words.is_empty() || !pairs.remainder().is_empty() {
+    let (pairs, unpaired) = words.as_chunks::<2>();
+    if pairs.is_empty() || !unpaired.is_empty() {
         return Err(wrong());
     }
     let mut at = Followed::new();
-    for pair in pairs {
-        let [name, commit] = pair else {
-            return Err(wrong());
-        };
+    for [name, commit] in pairs {
         let new = at
             .insert((*name).to_owned(), commit.to_ascii_lowercase())
             .is_none();
