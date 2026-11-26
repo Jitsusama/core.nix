@@ -111,6 +111,57 @@ fn a_send_the_node_refused_fails_and_the_next_is_still_tried() {
 }
 
 #[test]
+fn a_mycelium_that_cant_start_or_send_as_no_one_holds_its_sends_untried() {
+    let place = Place::new("unstarted-node");
+    let mut node = an_hour_s_node(place.root.join("no-mycelium"), Duration::from_secs(5));
+    let first = node.send("ABC123", "a finding", Put::Asked);
+    assert_eq!(first, Sent::Held, "a send never started spent its try");
+    let second = node.send("GHI789", "another", Put::Asked);
+    assert_eq!(second, Sent::Held, "a send after it wasn't held");
+    assert_eq!(node.held, 2, "the held sends weren't counted as the node's");
+    let (mycelium, asked) = node_doing(&place, r#"echo '{"Ok":{"Sent":1}}'"#);
+    let ends = Instant::now() + Duration::from_secs(3600);
+    let mut no_one = Node::new(mycelium, None, ends, Duration::from_secs(5));
+    let sent = no_one.send("ABC123", "a finding", Put::Asked);
+    assert_eq!(sent, Sent::Held, "a send as no one spent its try");
+    assert!(
+        asks(&asked).is_empty(),
+        "the node was asked to send as no one"
+    );
+}
+
+#[test]
+fn a_pain_for_a_fallback_never_sent_to_waits_with_its_tries() {
+    let place = Place::new("refused-fallback");
+    fs::write(
+        place.root.join("state/routes.json"),
+        r#"{"from":"EAR001","fallback":"VOID01","ledgers":"ORCH01","never":["VOID01"]}"#,
+    )
+    .expect("routes");
+    a_day(&place);
+    for _ in 0..5 {
+        let hour = hear(&place.ears(), CELLS, &mut |to, text| {
+            assert_ne!(to, "VOID01", "sent the void: {text}");
+            true
+        })
+        .expect("a run");
+        assert!(
+            !hour.troubles.iter().any(|t| t.contains("gave up")),
+            "pains for a fallback never sent to were given up on: {hour:?}"
+        );
+    }
+    let waiting: Vec<Heard> = place
+        .heard()
+        .into_iter()
+        .filter(|h| h.routed_at.is_none())
+        .collect();
+    assert!(
+        !waiting.is_empty() && waiting.iter().all(|h| h.tries == 0),
+        "a pain for a fallback never sent to didn't wait, or spent tries: {waiting:?}"
+    );
+}
+
+#[test]
 fn a_held_send_spends_no_try() {
     let place = Place::new("held");
     place.routes();
@@ -188,10 +239,15 @@ fn a_pain_too_old_for_its_owner_keeps_its_tries_while_the_keeper_s_ask_is_out_of
         };
         hear_putting(&place.ears(), CELLS, &mut |to, _, _| keeper_out(to)).expect("a run");
     }
+    let heard = place.heard();
+    let old = heard
+        .iter()
+        .find(|h| h.words.contains("status update please"))
+        .expect("the old pain heard");
     assert!(
-        place.heard().iter().any(|h| h.routed_at.is_none()),
-        "the old pain was taken as routed while its keeper's ask never went: {:?}",
-        place.heard()
+        old.routed_at.is_none() && old.tries == 0,
+        "the old pain was taken as routed, or spent tries, while its keeper's ask never went: \
+         {old:?}"
     );
     let mut to_keeper = Vec::new();
     hear(&place.ears(), CELLS, &mut |to, text| {
@@ -239,10 +295,14 @@ fn a_keeper_s_note_answered(untried: Sent) {
         untried_sends, 1,
         "the keeper's one note wasn't {untried:?}: {hour:?}"
     );
+    let troubles: &[&str] = if untried == Sent::Held {
+        &[]
+    } else {
+        &["1 sends wait for the next run, as its time for sends ran out"]
+    };
     assert_eq!(
-        hour.troubles.is_empty(),
-        untried == Sent::Held,
-        "a note {untried:?} was a trouble when it shouldn't be, or not when it should: {hour:?}"
+        hour.troubles, troubles,
+        "a note {untried:?} wasn't the hour's trouble it should be: {hour:?}"
     );
     let mut notes = Vec::new();
     hear(&place.ears(), CELLS, &mut |to, text| {

@@ -373,12 +373,13 @@ pub fn hear_putting(
         &serde_json::to_string(&following).map_err(|e| e.to_string())?,
     )?;
     // Nothing reaches a cell the routes say never to, whichever way it
-    // was found, and each send that failed, or waits as the run's time
-    // for sends ran out, is counted for the hour.
+    // was found: it waits, its tries kept, as the hour's troubles say of a
+    // fallback or keeper that is one. Each send that failed, or waits as
+    // the run's time for sends ran out, is counted for the hour.
     let (mut failed, mut out_of_time) = (0, 0);
     let mut guarded = |to: &str, text: &str, put: Put| {
         if routes.refuses(to) {
-            return Sent::Failed;
+            return Sent::Held;
         }
         let answer = send(to, text, put);
         failed += usize::from(answer == Sent::Failed);
@@ -685,8 +686,8 @@ fn note_for_keeper(
     let told: Vec<usize> = told.into_iter().map(|(n, _)| n).collect();
     let noted: Vec<usize> = noted.into_iter().map(|(n, _)| n).collect();
     // Told once, as the note of pains already sent is: a failed send is
-    // counted for the hour, and each is in heard.jsonl. One held for a
-    // node that wasn't answering goes with the next run's note.
+    // counted for the hour, and each is in heard.jsonl. One held, or out
+    // of the run's time, goes with the next run's note.
     if !told.is_empty() {
         let note = ledger_note_of(kept, &told, cells, ears.offset_s, false);
         let answer = send(keeper, &note, Put::Told);
@@ -728,9 +729,9 @@ fn ledger_note_of(
     route::ledger_note(&pains, cells, offset_s, asked)
 }
 
-/// Marks how a keeper's note of the pains at `of` came out: one held waits
-/// for the next run's note, and one said, or tried and lost, is said no
-/// more.
+/// Marks how a keeper's note of the pains at `of` came out: one held, or
+/// out of the run's time, waits for the next run's note, and one said, or
+/// tried and lost, is said no more.
 fn wait_for_note(kept: &mut [Heard], of: &[usize], sent: Sent, at: i64) {
     for &n in of {
         kept[n].unnoted_since = match sent {
