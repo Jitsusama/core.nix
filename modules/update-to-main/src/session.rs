@@ -723,9 +723,11 @@ mod tests {
         // A hard link whose other name is gone has one name, so only its
         // owner, root's and not the account's, tells it apart. A test
         // can't make a file another account owns, so it names another
-        // owner instead. Which owner `read_end` takes, its folder's, is
-        // held by every read of a job's file here, run by an account that
-        // isn't root.
+        // owner instead. That `read_end` takes its folder's owner, rather
+        // than a fixed one such as root's, is held by every read of a
+        // job's file here, by an account that isn't root. One taking the
+        // reader's own uid isn't told apart, since here the reader owns
+        // the folder too; on a Mac root reads them, and would refuse all.
         let folder = tempfile::tempdir().unwrap();
         let file = folder.path().join(ERR);
         fs::write(&file, "the account's own\n").unwrap();
@@ -759,6 +761,35 @@ mod tests {
         assert!(
             waited >= lands && waited < late,
             "an empty status was told lost after {waited:?}, not once it had stayed empty for \
+             its bound"
+        );
+    }
+
+    #[test]
+    fn an_empty_status_is_bounded_from_when_it_was_first_seen_empty() {
+        // The status turns up empty only after longer than its bound, so
+        // a bound counted from the wait's start tells it lost at its first
+        // empty look.
+        let folder = tempfile::tempdir().unwrap();
+        let status = folder.path().join(STATUS);
+        let (lands, appears) = (4 * EVERY, 6 * EVERY);
+        let appearing = std::thread::spawn(move || {
+            std::thread::sleep(appears);
+            fs::write(status, "").unwrap();
+        });
+        let since = Instant::now();
+        let told = wait(folder.path(), "fetching", Duration::from_secs(5), lands).unwrap_err();
+        let waited = since.elapsed();
+        appearing.join().unwrap();
+        assert!(
+            told.why
+                .ends_with("but its status stayed empty, as a write on a full disk leaves it"),
+            "an empty status was told as another end: {}",
+            told.why
+        );
+        assert!(
+            waited >= appears + lands,
+            "an empty status was told lost after {waited:?}, before it had stayed empty for \
              its bound"
         );
     }
