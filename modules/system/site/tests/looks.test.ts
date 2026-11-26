@@ -316,6 +316,12 @@ it("says why each machine's look matters, with its one act, the machine's launch
     ["On battery at 9%", "", link],
     "a daemon too old to list its looks leaves the side to say them, with no why but its act",
   );
+  const torn = { ...judged("kestrel", "watch", []), side: ["on battery at 9%"] };
+  assert.deepEqual(
+    looksOf(system([torn]), 8).looks.map((look) => look.words),
+    ["On battery at 9%"],
+    "an empty list beside a side that names a look leaves the side to say it",
+  );
 });
 
 it("gives the one look for a machine out of reach its why and act, and several neither", () => {

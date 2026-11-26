@@ -367,11 +367,15 @@ THUMB = 44
 ANEW = "What ran there may have ended without warning, as it did again."
 # The look's words told afresh, which changes the key its row is found by.
 REWORDED = "booted 2 hours ago after a firmware error"
-# The key of the row after kestrel's look among every row the keys step
-# through, or its own where it is the last.
+# A look of kestrel's listed before the one with the act, so a step back
+# from the act that forgot it stands after its own look would land here,
+# rather than on the first row, where both would land.
+LEAD = {"side": "runs hot under load", "matters": "Its builds may slow while it cools."}
+# The key of the row after kestrel's firmware look among every row the keys
+# step through, or its own where it is the last.
 AFTER_KESTREL = """() => {
   const rows = [...document.querySelectorAll('#looks a[data-row], #parts a[data-row]')];
-  const at = rows.findIndex((row) => row.matches('a.look') && row.textContent.includes('kestrel'));
+  const at = rows.findIndex((row) => row.matches('a.look') && row.textContent.includes('firmware'));
   return rows[Math.min(at + 1, rows.length - 1)]?.dataset.row ?? null;
 }"""
 
@@ -389,9 +393,15 @@ def test_a_machines_look_says_why_it_matters_and_opens_it_in_the_launcher(
         matters = "What ran there may have ended without warning."
         system_daemon.tell(
             "machine",
-            changed=[{"key": "machine:kestrel", "looks": [{"side": firmware, "matters": matters}]}],
+            changed=[
+                {
+                    "key": "machine:kestrel",
+                    "looks": [LEAD, {"side": firmware, "matters": matters}],
+                }
+            ],
         )
-        row = page.locator("#looks li").filter(has=page.locator("a.look", has_text="kestrel"))
+        looks = page.locator("#looks a.look")
+        row = page.locator("#looks li").filter(has=page.locator("a.look", has_text="firmware"))
         why = row.locator(".why")
         expect(why, "the look didn't say why it matters").to_contain_text(matters, timeout=PACE_MS)
         expect(why, "the look's why was hidden").to_be_visible()
@@ -418,7 +428,9 @@ def test_a_machines_look_says_why_it_matters_and_opens_it_in_the_launcher(
         launch.focus()
         system_daemon.tell(
             "machine",
-            changed=[{"key": "machine:kestrel", "looks": [{"side": firmware, "matters": ANEW}]}],
+            changed=[
+                {"key": "machine:kestrel", "looks": [LEAD, {"side": firmware, "matters": ANEW}]}
+            ],
         )
         expect(why, "the look's why wasn't redrawn").to_contain_text(ANEW, timeout=PACE_MS)
         expect(launch, "a redraw took focus off the look's act").to_be_focused()
@@ -426,13 +438,19 @@ def test_a_machines_look_says_why_it_matters_and_opens_it_in_the_launcher(
         # row in its place keeps focus, so Return still opens the launcher.
         system_daemon.tell(
             "machine",
-            changed=[{"key": "machine:kestrel", "looks": [{"side": REWORDED, "matters": ANEW}]}],
+            changed=[
+                {"key": "machine:kestrel", "looks": [LEAD, {"side": REWORDED, "matters": ANEW}]}
+            ],
         )
         expect(row, "the look wasn't reworded").to_contain_text(
             REWORDED, ignore_case=True, timeout=PACE_MS
         )
         expect(launch, "rewording the look took focus off its act").to_be_focused()
-        # A step back from the act lands on its own look, which it stands after.
+        # A step back from the act lands on its own look, which it stands after,
+        # and not on the look before it.
+        expect(looks.first, "the lead look wasn't listed first").to_contain_text(
+            LEAD["side"], ignore_case=True
+        )
         page.keyboard.press("k")
         expect(row.locator("a.look"), "k from the act left its look").to_be_focused()
         launch.focus()

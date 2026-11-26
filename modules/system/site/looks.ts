@@ -180,7 +180,10 @@ function thingLooks(part: Part, drawn: number): readonly Look[] {
  * a daemon too old to list them.
  */
 function lookedOf(thing: Thing): readonly ThingLook[] {
-  return thing.looks ?? thing.side.map((side) => ({ side, matters: "" }));
+  // An empty list beside a side that names looks is a record caught between
+  // its two fields, so the side says them rather than the machine saying none.
+  const told = thing.looks?.length === 0 && thing.side.length > 0 ? undefined : thing.looks;
+  return told ?? thing.side.map((side) => ({ side, matters: "" }));
 }
 
 /**
