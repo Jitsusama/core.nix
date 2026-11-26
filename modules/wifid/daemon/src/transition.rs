@@ -634,7 +634,7 @@ mod tests {
         };
         assert_eq!(
             half.keeps_off(&moved),
-            Some(Duration::from_secs(1800)),
+            Some(Duration::from_mins(30)),
             "a hold between a move's settling and the most wasn't the request's own"
         );
         let forged = Request {
