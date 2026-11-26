@@ -6697,7 +6697,9 @@
     there when the host won't take it or later releases it, keeping the window's id, workspace,
     column and size, taking
     no focus, changing no pixel and losing no key; a viewer its host refuses attaches again in that
-    window; the node gives the session that window, so no second viewer opens and Go To goes to it
+    window; the node gives the session that window, so no second viewer opens and Go To goes to it;
+    and closing a held session's window leaves its program running under the same hold, and Go To
+    then opens it in one new window where the keys reach that program
   '';
   vm-desktop-opens-and-sets = ''
     the launcher sets sound and opens its outputs' and microphones' parts, chooses a microphone's
