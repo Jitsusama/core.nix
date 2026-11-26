@@ -227,12 +227,14 @@ QtObject {
         const plainWhys = typeof SessionRow.viewedWhy !== "function" ? "none read"
             : ["opening", "startedOpening", "askedAgain", "startedAskedAgain", "cameAgain",
                 "startedCameAgain", "cameAfter", "startedCameAfter", "ownAfterAll",
-                "startedOwnAfterAll", "disowned", "startedDisowned", "untaken", "startedUntaken",
+                "startedOwnAfterAll", "stillComing", "startedStillComing", "disowned",
+                "startedDisowned", "untaken", "startedUntaken",
                 "unowned", "hosted", "hostless", "unnamed", "unviewable", "unviewableHost",
                 "bogus", "toString", "", undefined]
                 .filter(why => SessionRow.viewedWhy(why)).join(" ");
         if (plainWhys !== "opening startedOpening askedAgain startedAskedAgain cameAgain "
-            + "startedCameAgain cameAfter startedCameAfter ownAfterAll startedOwnAfterAll")
+            + "startedCameAgain cameAfter startedCameAfter ownAfterAll startedOwnAfterAll "
+            + "stillComing startedStillComing")
             failures.push(`the whys said plainly: "${plainWhys}"`);
 
         // Past 80% of its window its row says how full, in whole percent,

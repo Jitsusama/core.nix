@@ -45,6 +45,10 @@ failed=0
 # while kitten-repeats is there, it first repeats those words as the
 # kitty's; a launch that opens one says the new window's id, as the real
 # one does; and a launch it turns down says so in words of its own.
+# While qs-old is there, qs is a shell from before the script said why,
+# which has no untakenFor, so a call of it fails before running anything;
+# while qs-hung is, the shell is stalled, so the call's cut ends what ran
+# it.
 for program in kitten systemd-run qs; do
   printf '#!%s\necho "%s $*" >> "%s/asked"\n' "$BASH" "$program" "$work" \
     > "$stand_ins/$program"
@@ -64,6 +68,11 @@ for program in kitten systemd-run qs; do
       printf '[ -f "%s/kitten-fails" ] || { echo 42; exit; }\n' "$work"
     } >> "$stand_ins/$program"
   else
+    if [ "$program" = qs ]; then
+      # shellcheck disable=SC2016 # The stand-in it writes expands them, when run.
+      printf '[ ! -f "%s/qs-old" ] || [ "$4" != untakenFor ] || exit 1\n%s\n' "$work" \
+        "[ ! -f \"$work/qs-hung\" ] || { kill \"\$PPID\"; exit 1; }" >> "$stand_ins/$program"
+    fi
     printf '[ ! -f "%s/%s-fails" ] && exit\n' "$work" "$program" >> "$stand_ins/$program"
   fi
   if [ "$program" != qs ]; then
@@ -133,11 +142,19 @@ EOF
 # coreutils' timeout, running what it was given, but ending a hung
 # systemctl at its limit, as the real one does, so a case's clock moves by
 # the limit and not by the hang; while systemctl-hangs-first is there, the
-# first look hangs too, and the rest answer at once.
+# first look hangs too, and the rest answer at once. While qs-hangs is
+# there, the shell is stalled: what tells it is run with qs hung, ended
+# at its first call, as the cut would.
 cat > "$stand_ins/timeout" << EOF
 #!$BASH
 limit=\$1
 shift
+if [ "\$1" != systemctl ] && [ -f "$work/qs-hangs" ]; then
+  touch "$work/qs-hung"
+  "\$@" || true
+  rm -f "$work/qs-hung"
+  exit 124
+fi
 waits=\$(wc -l < "$work/waits")
 if [ "\$1" = systemctl ] && { { [ -f "$work/systemctl-hangs" ] && [ "\$waits" -ge 84 ]; } ||
   { [ -f "$work/systemctl-hangs-first" ] && [ "\$waits" -eq 0 ]; }; }; then
@@ -161,7 +178,7 @@ trap '[ -z "$old" ] || kill "$old"; rm -rf "$work"' EXIT
 
 fresh() {
   rm -f "$work/came-at" "$work/kitty.sock" "$work"/*-fails "$work"/kitten-* \
-    "$work"/systemctl-* "$work"/clock-* "$work/pwned"
+    "$work"/systemctl-* "$work"/clock-* "$work"/qs-* "$work/pwned"
   : > "$work/asked"
   : > "$work/inherited"
   : > "$work/said"
@@ -268,7 +285,7 @@ expect "an old kitty that opens nothing is asked once, and the shell is told non
   "systemd-run --user --scope --collect --quiet --slice=agents.slice -- env \
 MYCELIUM_APP_ID=pi-hosted.s-old kitty -1 --instance-group pi-sessions --class pi-hosted.s-old \
 --directory /home/joel pi
-qs ipc call sessions untaken pi-hosted.s-old 1700000000000" asked
+qs ipc call sessions untakenFor pi-hosted.s-old 1700000000000 refused" asked
 expect "the journal says it opened nothing" \
   "sessions: the sessions kitty opened no pi-hosted.s-old" said
 kill "$old"
@@ -285,7 +302,7 @@ if [ "$status" -ne 1 ]; then
   failed=1
 fi
 expect "with neither, no kitty is asked, and the shell is told none took it" \
-  "qs ipc call sessions untaken pi-hosted.s-11 1700000000000" asked
+  "qs ipc call sessions untakenFor pi-hosted.s-11 1700000000000 none" asked
 waited "it stopped looking once 17 s had passed, waiting on after no last look" 84
 expect "the journal says why" "sessions: no sessions kitty to open pi-hosted.s-11 in" said
 kill "$old"
@@ -315,7 +332,7 @@ for slow in systemctl-slow systemctl-hangs "clock-back systemctl-hangs"; do
   fi
   waited_at_most "with $slow, it gives up within 19 s" 94
   expect "with $slow, the shell is told when it started" \
-    "qs ipc call sessions untaken pi-hosted.s-15 1700000000000" asked
+    "qs ipc call sessions untakenFor pi-hosted.s-15 1700000000000 none" asked
   why="sessions: no sessions kitty to open pi-hosted.s-15 in"
   if [ "$slow" != systemctl-slow ]; then
     why="sessions: systemd didn't name the sessions kitty's process within 2 s
@@ -355,7 +372,7 @@ if [ -e "$work/pwned" ]; then
   failed=1
 fi
 expect "an inherited start that isn't a time gives way to its own" \
-  "qs ipc call sessions untaken pi-hosted.s-17 1700000000000" asked
+  "qs ipc call sessions untakenFor pi-hosted.s-17 1700000000000 none" asked
 waited "an inherited start that isn't a time waits from its own" 84
 # Nor does a start later than now, too long for the shell's arithmetic, or
 # one the shell's test takes as a number though the script never writes it
@@ -369,7 +386,7 @@ for start in 99999999999 99999999999999999999 +1234408 " 1234408" 01234408 -5; d
   opens pi-hosted.s-17 pi
   unset OPENS_IN_SESSIONS_ASKED OPENS_IN_SESSIONS_STARTED
   expect "an inherited start of '$start' gives way to its own, the time with it" \
-    "qs ipc call sessions untaken pi-hosted.s-17 1700000000000" asked
+    "qs ipc call sessions untakenFor pi-hosted.s-17 1700000000000 none" asked
   waited "an inherited start of '$start' waits from its own" 84
 done
 # A time beside a start that is one isn't taken either.
@@ -379,7 +396,7 @@ export OPENS_IN_SESSIONS_ASKED=x OPENS_IN_SESSIONS_STARTED=1234408
 opens pi-hosted.s-17 pi
 unset OPENS_IN_SESSIONS_ASKED OPENS_IN_SESSIONS_STARTED
 expect "an inherited time that isn't one gives way to its own, the start with it" \
-  "qs ipc call sessions untaken pi-hosted.s-17 1700000000000" asked
+  "qs ipc call sessions untakenFor pi-hosted.s-17 1700000000000 none" asked
 waited "an inherited time that isn't one waits from its own start" 84
 fresh
 echo "$old" > "$work/main-pid"
@@ -387,7 +404,7 @@ export OPENS_IN_SESSIONS_ASKED=1699999999000 OPENS_IN_SESSIONS_STARTED=1234408
 opens pi-hosted.s-17 pi
 unset OPENS_IN_SESSIONS_ASKED OPENS_IN_SESSIONS_STARTED
 expect "an inherited start a second earlier is taken, with its time" \
-  "qs ipc call sessions untaken pi-hosted.s-17 1699999999000" asked
+  "qs ipc call sessions untakenFor pi-hosted.s-17 1699999999000 none" asked
 waited "it waits from that start" 79
 # One as far back as its own 17 s is taken too, so a run under the journal
 # slow to start still tells the shell its first start, and looks once.
@@ -397,7 +414,7 @@ export OPENS_IN_SESSIONS_ASKED=1699999999000 OPENS_IN_SESSIONS_STARTED=1232828
 opens pi-hosted.s-17 pi
 unset OPENS_IN_SESSIONS_ASKED OPENS_IN_SESSIONS_STARTED
 expect "an inherited start 16.8 s earlier is taken, with its time" \
-  "qs ipc call sessions untaken pi-hosted.s-17 1699999999000" asked
+  "qs ipc call sessions untakenFor pi-hosted.s-17 1699999999000 none" asked
 waited "it looks once, its 17 s gone" 0
 # One further back, as left from a run long gone, whose own 17 s are over,
 # is no run's under the journal: it gives way to its own, said so.
@@ -408,7 +425,7 @@ for start in 1232827 1232000; do
   opens pi-hosted.s-22 pi
   unset OPENS_IN_SESSIONS_ASKED OPENS_IN_SESSIONS_STARTED
   expect "an inherited start of $start, long past, gives way to its own, the time with it" \
-    "qs ipc call sessions untaken pi-hosted.s-22 1700000000000" asked
+    "qs ipc call sessions untakenFor pi-hosted.s-22 1700000000000 none" asked
   waited "an inherited start of $start waits from its own" 84
   expect "an inherited start of $start given way is said" \
     "sessions: a first start's times weren't taken, so it waits from its own
@@ -423,7 +440,7 @@ opens_unheard pi-hosted.s-19 pi
 expect "one started with no output tells the shell its first start" \
   "systemd-cat --identifier=opens-in-sessions true
 systemd-cat --identifier=opens-in-sessions sh $script $work/kitty.sock pi-hosted.s-19 pi
-qs ipc call sessions untaken pi-hosted.s-19 1700000000000" asked
+qs ipc call sessions untakenFor pi-hosted.s-19 1700000000000 none" asked
 waited "and waits from its first start" 84
 # Nor does a pair that is both numbers keep a run given no output from
 # the journal: only its run under the journal, which has output, takes
@@ -436,7 +453,7 @@ unset OPENS_IN_SESSIONS_ASKED OPENS_IN_SESSIONS_STARTED
 expect "one started with no output, given a pair of numbers, still moves to the journal" \
   "systemd-cat --identifier=opens-in-sessions true
 systemd-cat --identifier=opens-in-sessions sh $script $work/kitty.sock pi-hosted.s-21 pi
-qs ipc call sessions untaken pi-hosted.s-21 1700000000000" asked
+qs ipc call sessions untakenFor pi-hosted.s-21 1700000000000 none" asked
 kill "$old"
 old=""
 
@@ -444,7 +461,9 @@ fresh
 "$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
 # A kitty that turns the launch down, or a socket it no longer listens on,
 # as after a crash; and a shell that doesn't hear the give-up, which is
-# said too. The shell is told when the script started, not when it gave up.
+# said too, once it's asked again as a shell from before the script said
+# why would be. The shell is told when the script started, not when it
+# gave up, and that the kitty it asked refused.
 touch "$work/kitten-fails" "$work/qs-fails"
 opens pi-hosted.s-12 pi
 if [ "$status" -ne 1 ]; then
@@ -454,6 +473,7 @@ fi
 expect "a kitty that opens nothing is asked once, and the shell is told none took it" \
   "kitten @ --to unix:$work/kitty.sock launch --response-timeout 60 --type=os-window \
 --os-window-class pi-hosted.s-12 --cwd /home/joel --env MYCELIUM_APP_ID=pi-hosted.s-12 pi
+qs ipc call sessions untakenFor pi-hosted.s-12 1700000000000 refused
 qs ipc call sessions untaken pi-hosted.s-12 1700000000000" asked
 expect "the journal says it opened nothing, in kitten's words and its own, and that the shell \
 didn't hear" \
@@ -466,8 +486,9 @@ fresh
 # A kitty that doesn't answer within kitten's minute may still open the
 # window, as kitten's cancel of a launch does nothing (kitty/rc/launch.py),
 # so it's said as not answering, never as taking none, beside kitten's own
-# words. The shell is told all the same, as its own wait for the window
-# ended long before, and a window that comes later is still its viewer.
+# words. The shell is told so, as its own wait for the window ended long
+# before, so it says the window may yet come, and a window that comes
+# later is still its viewer.
 touch "$work/kitten-times-out"
 opens pi-hosted.s-16 pi
 if [ "$status" -ne 1 ]; then
@@ -477,11 +498,45 @@ fi
 expect "a kitty that doesn't answer is asked once, and the shell is told" \
   "kitten @ --to unix:$work/kitty.sock launch --response-timeout 60 --type=os-window \
 --os-window-class pi-hosted.s-16 --cwd /home/joel --env MYCELIUM_APP_ID=pi-hosted.s-16 pi
-qs ipc call sessions untaken pi-hosted.s-16 1700000000000" asked
+qs ipc call sessions untakenFor pi-hosted.s-16 1700000000000 unanswered" asked
 expect "the journal says it didn't answer, in kitten's words and its own" \
   "$timed_out
 sessions: the sessions kitty didn't answer for pi-hosted.s-16 in a minute; its window may \
 yet come" said
+
+fresh
+"$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
+# A shell from before the script said why, which has no untakenFor, is
+# told the old way, and hears it, so nothing says it didn't.
+touch "$work/kitten-times-out" "$work/qs-old"
+opens pi-hosted.s-26 pi
+expect "a shell from before the script said why is told the old way" \
+  "kitten @ --to unix:$work/kitty.sock launch --response-timeout 60 --type=os-window \
+--os-window-class pi-hosted.s-26 --cwd /home/joel --env MYCELIUM_APP_ID=pi-hosted.s-26 pi
+qs ipc call sessions untakenFor pi-hosted.s-26 1700000000000 unanswered
+qs ipc call sessions untaken pi-hosted.s-26 1700000000000" asked
+expect "and hearing it, the journal says only that the kitty didn't answer" \
+  "$timed_out
+sessions: the sessions kitty didn't answer for pi-hosted.s-26 in a minute; its window may \
+yet come" said
+
+fresh
+"$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
+# A shell stalled past the 5 s isn't asked again the old way, as it may
+# yet hear the first, and one telling would run twice; what it didn't
+# hear is said as what the script found, not as no kitty taking it.
+touch "$work/kitten-times-out" "$work/qs-hangs"
+opens pi-hosted.s-27 pi
+expect "a shell stalled is told once" \
+  "kitten @ --to unix:$work/kitty.sock launch --response-timeout 60 --type=os-window \
+--os-window-class pi-hosted.s-27 --cwd /home/joel --env MYCELIUM_APP_ID=pi-hosted.s-27 pi
+qs ipc call sessions untakenFor pi-hosted.s-27 1700000000000 unanswered" asked
+expect "the journal says the shell didn't hear the kitty didn't answer" \
+  "$timed_out
+sessions: the sessions kitty didn't answer for pi-hosted.s-27 in a minute; its window may \
+yet come
+sessions: the shell didn't hear that the sessions kitty didn't answer for pi-hosted.s-27" \
+  said
 
 fresh
 "$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
@@ -570,7 +625,7 @@ expect "one started with no output says why in the journal, told its first start
 systemd-cat --identifier=opens-in-sessions sh $script $work/kitty.sock pi-hosted.s-13 pi
 kitten @ --to unix:$work/kitty.sock launch --response-timeout 60 --type=os-window \
 --os-window-class pi-hosted.s-13 --cwd /home/joel --env MYCELIUM_APP_ID=pi-hosted.s-13 pi
-qs ipc call sessions untaken pi-hosted.s-13 1700000000000" asked
+qs ipc call sessions untakenFor pi-hosted.s-13 1700000000000 refused" asked
 expect "the journal hears it opened nothing" \
   "kitten: the launch was turned down
 sessions: the sessions kitty opened no pi-hosted.s-13" said
@@ -589,7 +644,7 @@ expect "one given a time not its own still says why in the journal" \
 systemd-cat --identifier=opens-in-sessions sh $script $work/kitty.sock pi-hosted.s-20 pi
 kitten @ --to unix:$work/kitty.sock launch --response-timeout 60 --type=os-window \
 --os-window-class pi-hosted.s-20 --cwd /home/joel --env MYCELIUM_APP_ID=pi-hosted.s-20 pi
-qs ipc call sessions untaken pi-hosted.s-20 1700000000000" asked
+qs ipc call sessions untakenFor pi-hosted.s-20 1700000000000 refused" asked
 
 fresh
 "$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
@@ -601,14 +656,18 @@ expect "one whose journal won't take its words still asks, and tells the shell" 
   "systemd-cat --identifier=opens-in-sessions true
 kitten @ --to unix:$work/kitty.sock launch --response-timeout 60 --type=os-window \
 --os-window-class pi-hosted.s-14 --cwd /home/joel --env MYCELIUM_APP_ID=pi-hosted.s-14 pi
-qs ipc call sessions untaken pi-hosted.s-14 1700000000000" asked
+qs ipc call sessions untakenFor pi-hosted.s-14 1700000000000 refused" asked
 
-# The shell's handler takes what the script tells it: its target, the
+# The shell's handler takes what the script tells it: its target, each
 # function's name, and an argument for each word after it, which it
 # passes on to the shell's own untaken in the order it took them, outside
-# a comment. Ending 2 says the order is wrong, 1 that there's no handler.
-handler=0
-"$python" - "$sessions" << 'EOF' || handler=$?
+# a comment: untakenFor's three, and untaken's two, as a script from
+# before it said why still calls. Ending 2 says the order is wrong, 1
+# that there's no such handler.
+for words in "untakenFor named asked cause" "untaken named asked"; do
+  handler=0
+  # shellcheck disable=SC2086 # Each word its own argument.
+  "$python" - "$sessions" $words << 'EOF' || handler=$?
 import re
 import sys
 
@@ -619,29 +678,32 @@ for handler in re.finditer(r"\bIpcHandler\s*\{", source):
         depth += {"{": 1, "}": -1}.get(source[at], 0)
         at += 1
     block = source[handler.end():at]
-    taken = re.search(r"function untaken\((\w+): string, (\w+): string\)[^{]*\{", block)
+    function, words = sys.argv[2], len(sys.argv) - 3
+    typed = ", ".join([r"(\w+): string"] * words)
+    taken = re.search(rf"function {function}\({typed}\)[^{{]*\{{", block)
     if re.search(r'^\s*target:\s*"sessions"\s*$', block, re.M) and taken:
-        named, asked = taken.groups()
         depth, end = 1, taken.end()
         while depth and end < len(block):
             depth += {"{": 1, "}": -1}.get(block[end], 0)
             end += 1
         body = re.sub(r"/\*.*?\*/", "", block[taken.end():end], flags=re.S)
         body = re.sub(r"//[^\n]*", "", body)
-        passed = rf"\broot\.untaken\(\s*{named}\s*,\s*{asked}\s*\)"
+        given = r"\s*,\s*".join(taken.groups())
+        passed = rf"\broot\.untaken\(\s*{given}\s*\)"
         sys.exit(0 if re.search(passed, body) else 2)
 sys.exit(1)
 EOF
-case $handler in
-  0) ;;
-  2)
-    echo "FAIL the shell's sessions handler doesn't pass untaken's words on in order"
-    failed=1
-    ;;
-  *)
-    echo "FAIL the shell's sessions handler takes no untaken of an app id and a time"
-    failed=1
-    ;;
-esac
+  case $handler in
+    0) ;;
+    2)
+      echo "FAIL the shell's sessions handler doesn't pass ${words%% *}'s words on in order"
+      failed=1
+      ;;
+    *)
+      echo "FAIL the shell's sessions handler takes no ${words%% *} of: ${words#* }"
+      failed=1
+      ;;
+  esac
+done
 
 exit "$failed"

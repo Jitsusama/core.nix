@@ -93,7 +93,7 @@ in
   # and runs does, through each door (modules/quickshell/tests/
   # opens-in-sessions-doors.sh), and the packaged kitten says an unanswered
   # launch in the words the script reads. Each door's run is cut at 20 s,
-  # and the whole at twenty minutes, past every run's cut together (32
+  # and the whole at twenty minutes, past every run's cut together (34
   # runs and the packaged kitten's half minute, under twelve minutes), so
   # a wait that runs on fails by name, even in each run at once.
   the-sessions-kitty-is-asked-only-its-own-way =
