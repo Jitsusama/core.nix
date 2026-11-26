@@ -739,15 +739,15 @@ pub fn pool(path: &Path) -> io::Result<u64> {
 const STATX_SUBVOL: u32 = 0x8000;
 
 /// A Btrfs filesystem's id folded to two halves, as its `statfs` folds it
-/// before mixing in a subvolume: each big-endian word XORed with the one
-/// two words on.
+/// before mixing in a subvolume: each big-endian word mixed by exclusive
+/// or with the one two words on.
 fn fsid_halves(id: [u8; 16]) -> [u32; 2] {
     let word = |at: usize| u32::from_be_bytes(id[at..at + 4].try_into().unwrap());
     [word(0) ^ word(8), word(4) ^ word(12)]
 }
 
 /// The halves `fsid_halves` gives, from a file's `statfs` fsid, packed low
-/// half first, and the id of the subvolume it's in, which Btrfs XORs into
+/// half first, and the id of the subvolume it's in, which Btrfs mixes into
 /// them so each subvolume reads apart.
 fn statfs_halves(fsid: u64, subvolume: u64) -> [u32; 2] {
     let half = |bits: u64| u32::try_from(bits & u64::from(u32::MAX)).unwrap();
