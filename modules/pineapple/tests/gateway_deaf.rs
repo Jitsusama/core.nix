@@ -278,7 +278,7 @@ fn an_outage_then_its_searches_answered_by_turns_takes_its_row_away() {
         "the next answering only the tag shows each heard, so the row goes"
     );
     for n in UNREACHED + 5..UNREACHED + 9 {
-        let alone = if n % 2 == 1 {
+        let alone = if (n - UNREACHED) % 2 == 1 {
             Search::Tag
         } else {
             Search::Phrase
@@ -289,6 +289,37 @@ fn an_outage_then_its_searches_answered_by_turns_takes_its_row_away() {
             "round {n}: searches answered by turns tell nothing"
         );
     }
+}
+
+#[test]
+fn a_search_answered_before_a_silence_is_no_turn_after_it() {
+    let round = |n: u32| AT + u64::from(n) * 30_000;
+    let mut deaf = Deaf::through_gateway();
+    for n in 1..=UNREACHED + 2 {
+        let _ = deaf.heard(Round::Unasked, round(n));
+    }
+    assert_eq!(
+        deaf.heard(Round::Partly(Some(Search::Tag)), round(UNREACHED + 3)),
+        Change::Keep,
+        "the phrase answered alone leaves the unreached row standing"
+    );
+    for n in UNREACHED + 4..UNREACHED + 7 {
+        assert_eq!(
+            deaf.heard(Round::Unasked, round(n)),
+            Change::Keep,
+            "round {n}: the gateway silent again"
+        );
+    }
+    assert_eq!(
+        deaf.heard(Round::Partly(Some(Search::Phrase)), round(UNREACHED + 7)),
+        Change::Keep,
+        "the tag answered alone after a silence leaves the row: the phrase is unheard now"
+    );
+    assert_eq!(
+        deaf.heard(Round::Partly(Some(Search::Tag)), round(UNREACHED + 8)),
+        Change::Untell,
+        "the phrase answered the very next round shows each heard"
+    );
 }
 
 #[test]

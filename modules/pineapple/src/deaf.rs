@@ -158,6 +158,9 @@ pub struct Deaf {
     /// The search left unasked beside one answered, and how many rounds
     /// in a row it was.
     alone: Option<(Search, u32)>,
+    /// The search the round just before narrowed an unreached row to;
+    /// any other round forgets it.
+    turn: Option<Search>,
 }
 
 impl Default for Deaf {
@@ -182,6 +185,7 @@ impl Deaf {
             gateway: false,
             unasked: 0,
             alone: None,
+            turn: None,
         }
     }
 
@@ -237,6 +241,7 @@ impl Deaf {
     /// flickers. A change of why starts a time of its own, so it isn't
     /// hidden under a row Joel marked done.
     pub fn heard(&mut self, round: Round, at: u64) -> Change {
+        let turn = self.turn.take();
         match round {
             Round::Heard => {
                 self.rounds = 0;
@@ -304,7 +309,7 @@ impl Deaf {
                     waits(why, since, at)
                 })
             }
-            Round::Partly(alone) => self.answered(alone, at),
+            Round::Partly(alone) => self.answered(alone, turn, at),
             Round::Unasked if self.gateway => self.none_answered(at),
             Round::Unasked => Change::Keep,
         }
@@ -317,11 +322,11 @@ impl Deaf {
     /// told anew even where Joel marked that row done. A row saying it's
     /// unreached, though, is narrowed to the search still left unasked
     /// rather than taken away, since that search is still unheard, unless
-    /// the round before left the other unasked: each was answered then.
-    fn answered(&mut self, alone: Option<Search>, at: u64) -> Change {
+    /// the round just before narrowed it to the other: each was answered.
+    fn answered(&mut self, alone: Option<Search>, turn: Option<Search>, at: u64) -> Change {
         if let Some(search) =
             alone.filter(|_| self.gateway && self.told == Some(Deafness::Unreached))
-            && !matches!(self.held, Some((Deafness::Unread(last), _)) if last != search)
+            && turn.is_none_or(|last| last == search)
         {
             let run = match self.alone {
                 Some((last, run)) if last == search => run.saturating_add(1),
@@ -329,6 +334,7 @@ impl Deaf {
             };
             let change = self.heard(Round::Deaf(Deafness::Unread(search)), at);
             self.alone = Some((search, run));
+            self.turn = Some(search);
             return change;
         }
         let reached = match self.told {
