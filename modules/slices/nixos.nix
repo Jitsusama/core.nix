@@ -553,8 +553,13 @@ in
     # CPU wait fell from 3.6 ms a second to 1.1 at a load under 20, and
     # from 8.9 to 4.3 above it. A busy app takes only what it uses, so the
     # sessions lose little: his programs used 0.04 of a core of their 1.6.
+    # The disk's weight is ten times too, as session.slice's is, since
+    # io.cost on a measured disk shares it by weight: at systemd's 100 his
+    # programs would get no more of it than agents' sessions. The latency
+    # target a disk with no model keeps ignores it.
     systemd.user.slices.app.sliceConfig = {
       CPUWeight = 1000;
+      IOWeight = 1000;
       MemoryMin = apps;
       MemoryLow = appsSoft;
     };
