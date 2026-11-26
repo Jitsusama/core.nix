@@ -1046,8 +1046,10 @@ impl Probes {
     }
 
     /// Has the kernel stop probing those still open that `probing` began
-    /// on, as a connection opened does, and says how many. One a later
-    /// sleep had probed again is left to that sleep's own end.
+    /// on, as a connection opened does, and says how many of those it
+    /// named. One whose probe failed is stopped too, in case it failed
+    /// partway, but isn't counted, since the sleep didn't say it probed it.
+    /// One a later sleep had probed again is left to that sleep's own end.
     fn stop(&self, probing: &Probing) -> usize {
         let mut watching = self.watched.lock().unwrap_or_else(PoisonError::into_inner);
         let mut stopped = 0;
@@ -1060,7 +1062,8 @@ impl Probes {
                 continue;
             };
             match socket2::SockRef::from(&*tcp).set_keepalive(false) {
-                Ok(()) => stopped += 1,
+                Ok(()) if probing.named.contains(&watched.named) => stopped += 1,
+                Ok(()) => {}
                 Err(why) => eprintln!(
                     "model-relay: {}'s probes couldn't be stopped: {why}",
                     watched.named
