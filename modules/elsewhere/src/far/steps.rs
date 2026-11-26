@@ -299,7 +299,7 @@ placed() {
 # a link put at a folder of the copy, or above it and taken down again,
 # around the cd would otherwise have the job run where it points.
 entered() {
-  placed && [ "$(pwd -P)" = "$(cd -P "$work" && pwd -P)${{1:+/$1}}" ]
+  placed && [ "$(pwd -P)" = "$(cd -P "$work" && pwd -P)${1:+/$1}" ]
 }
 # Says the copy isn't the folder it was where `placed` no longer holds.
 moved() {
