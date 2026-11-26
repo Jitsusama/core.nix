@@ -312,8 +312,8 @@ fn a_link_put_at_the_copies_folder_or_the_copy_while_it_is_made_leaves_the_job_u
     // link to it at its name, as the archive's names are read, where the
     // far line may clear the link and where it may not; or moving the copy
     // aside, with a link at its name, once tar unpacked into it, once its
-    // folders were opened, so the odd files' find meets the link and a
-    // refusal reads through it, or once the odd files' find ran, before
+    // folders were opened, so the odd files' find meets the link and
+    // refuses it, or once the odd files' find ran, before
     // the copy's check, which says it was moved; or moving the copies'
     // folder aside then, where the link can't be cleared. Each is this
     // machine's to answer, nothing is unpacked or cleared through the
@@ -401,6 +401,7 @@ exit $r"#,
             home.join("swapped").exists()
                 && code == Some(75)
                 && err.contains("so its copy stays") == stays
+                && (!when.contains("-type d") || err.contains("neither a file nor a folder"))
                 && (step != "find"
                     || swap != copy
                     || err.contains("moved or linked from its place")),
