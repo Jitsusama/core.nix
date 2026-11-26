@@ -2439,7 +2439,9 @@ import {
       // for when its cells say, else what it is made of.
       const said = networkPurpose(h);
       const branches = h.children.length ? `, ${plural(h.children.length, "branch", "branches")} among them` : "";
-      return [h.name, said === NO_PURPOSE ? `A network of ${plural(all.length, "cell")}${branches}.` : said, v, words];
+      // Its label, not its told name, which a clip could cut back to read
+      // like another's.
+      return [h.label, said === NO_PURPOSE ? `A network of ${plural(all.length, "cell")}${branches}.` : said, v, words];
     }
     const n = m.shared.find((x) => x.key === c.id);
     if (!n) return null;
@@ -4956,10 +4958,12 @@ import {
   window.addEventListener("pagehide", keepSeen);
 
   // A new size keeps what's in the middle in the middle, or the whole map
-  // whole if he hasn't moved it.
+  // whole if he hasn't moved it. The map's own size is the measure, not
+  // the part the drawer leaves, which a drawer opening changes with no
+  // resize to say so, and the next resize would move the view by half it.
   let was = null;
   new ResizeObserver(() => {
-    const [w, h] = seen();
+    const [w, h] = size();
     if (!current || !L) {
       was = [w, h];
       return;

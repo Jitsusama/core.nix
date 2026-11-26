@@ -468,8 +468,9 @@ fn minutes(count: u64) -> String {
 /// what was never read, keeping those whose span ended in the
 /// [`MISSED_FOR`] before. Its search's rows whose spans come within
 /// [`MEET`] of its own are said with it as one row, raised `at`, spanning
-/// them all: whole where they overlap, as a gap read on again after its
-/// round was thrown away does, and otherwise as parts. Rows that meet
+/// them all: whole where together they leave no read stretch, as a gap
+/// read on again after its round was thrown away does, and otherwise as
+/// parts, whatever order they're met in. Rows that meet
 /// only what it spans once it has taken others are taken too, as a file
 /// written before rows met holds. That row is named anew, so one Joel
 /// said he'd looked at comes back holding what's new; one not made by
@@ -480,12 +481,13 @@ fn minutes(count: u64) -> String {
 /// away as it does the row saying it can't hear, since what it says stays
 /// true once the reader hears again or restarts. One not
 /// there holds no row; one that can't be read, or holds no rows, is left
-/// as it is, so no row it holds is lost.
+/// as it is, so no row it holds is lost. What the row written says is
+/// given back, so the journal says what Joel reads.
 ///
 /// # Errors
 ///
 /// Why it couldn't be read or written.
-pub fn keep_missed(file: &Path, row: Value, at: u64) -> std::io::Result<()> {
+pub fn keep_missed(file: &Path, row: Value, at: u64) -> std::io::Result<String> {
     let unread = |why: String| std::io::Error::new(std::io::ErrorKind::InvalidData, why);
     let kept = match std::fs::read(file) {
         Ok(read) => {
@@ -516,13 +518,14 @@ pub fn keep_missed(file: &Path, row: Value, at: u64) -> std::io::Result<()> {
         .cloned()
         .collect();
     let mut own = span_of(&row);
-    let mut met = false;
+    let mut taken: Vec<Span> = span_of(&row).into_iter().collect();
     if let Some(span) = own.as_mut() {
         loop {
             let before = rows.len();
             rows.retain(|earlier| match span_of(earlier) {
                 Some(theirs) if span.meets(&theirs) => {
-                    span.take(&theirs);
+                    span.reach(&theirs);
+                    taken.push(theirs);
                     false
                 }
                 _ => true,
@@ -530,20 +533,36 @@ pub fn keep_missed(file: &Path, row: Value, at: u64) -> std::io::Result<()> {
             if rows.len() == before {
                 break;
             }
-            met = true;
         }
     }
-    rows.push(match own {
-        Some(span) if met => said(span.search, span.from, Some(span.to), at, span.whole),
+    let row = match own {
+        Some(span) if taken.len() > 1 => {
+            said(span.search, span.from, Some(span.to), at, whole(taken))
+        }
         _ => row,
-    });
+    };
+    let why = row["why"].as_str().unwrap_or_default().to_owned();
+    rows.push(row);
     let file_of = json!({
         "v": 2,
         "updated": slack_people::messages::iso(at),
         "quest": "pineapple",
         "items": rows,
     });
-    make(file, &Change::Tell(file_of))
+    make(file, &Change::Tell(file_of)).map(|()| why)
+}
+
+/// Whether `spans` met in one row are all never read and leave no read
+/// stretch between them, taken from the earliest start on, so the order
+/// they were met in says nothing.
+fn whole(mut spans: Vec<Span>) -> bool {
+    spans.sort_by_key(|span| span.from.unwrap_or(0));
+    let mut reached: Option<u64> = None;
+    spans.iter().all(|span| {
+        let joins = reached.is_none_or(|to| span.from.unwrap_or(0) <= to);
+        reached = Some(reached.map_or(span.to, |to| to.max(span.to)));
+        span.whole && joins
+    })
 }
 
 /// The span a row saying what was never read names, read back from its
@@ -570,10 +589,8 @@ impl Span {
             }
     }
 
-    /// Spans `theirs` too, staying whole only where both are and overlap.
-    fn take(&mut self, theirs: &Span) {
-        let overlap = self.from.unwrap_or(0) <= theirs.to && theirs.from.unwrap_or(0) <= self.to;
-        self.whole = self.whole && theirs.whole && overlap;
+    /// Spans `theirs` too; whether the two are whole is [`whole`]'s.
+    fn reach(&mut self, theirs: &Span) {
         self.from = self
             .from
             .zip(theirs.from)

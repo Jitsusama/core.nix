@@ -266,6 +266,69 @@ fn each_item_put_to_joel_names_a_message_its_owner_sent() {
 }
 
 #[test]
+fn an_indented_list_is_read_item_by_item_with_its_points_carrying_each_on() {
+    let note = "**For you:**\n  - Pick one.\n    - the first\n    - the second\n  - Read it.\n";
+    let m = judged(&[], note, "", &BTreeMap::new());
+    assert_eq!(
+        m.behind,
+        [
+            "for you this morning: Pick one. - the first - the second, naming no owner's message \
+             · WCJQSG",
+            "for you this morning: Read it, naming no owner's message · WCJQSG",
+        ],
+        "an indented list was read as none, or its points as items of their own"
+    );
+}
+
+#[test]
+fn words_leading_into_the_list_are_passed_over_and_words_with_no_list_are_unread() {
+    let note = "**For you:**\nTwo calls today:\n- Pick one.\n- Read it.\n**Later:**\n- Not one.\n";
+    let m = judged(&[], note, "", &BTreeMap::new());
+    assert_eq!(
+        m.behind,
+        [
+            "for you this morning: Pick one, naming no owner's message · WCJQSG",
+            "for you this morning: Read it, naming no owner's message · WCJQSG",
+        ],
+        "words leading into the list hid it, or the next part was read into it"
+    );
+    let said = uncited(
+        &[],
+        "**For you:**\nNothing urgent, see below.\n",
+        "",
+        &BTreeMap::new(),
+        "WCJQSG",
+    );
+    assert_eq!(
+        said.expect_err("words with no list were read as nothing put to him"),
+        "the morning note's \"For you\" holds words but no list",
+        "words with no list weren't said unread, with why"
+    );
+    let labelled = uncited(
+        &[],
+        "**For you:**\nNothing for you today.\n\nOvernight:\n- Built the thing.\n",
+        "",
+        &BTreeMap::new(),
+        "WCJQSG",
+    );
+    assert_eq!(
+        labelled.expect_err("the next part's list was read as put to him"),
+        "the morning note's \"For you\" holds words but no list",
+        "a plain label opening the next part was passed over as a lead-in"
+    );
+    let empty = judged(
+        &[],
+        "**For you:**\n\n## Overnight\n- Not one.\n",
+        "",
+        &BTreeMap::new(),
+    );
+    assert!(
+        empty.behind.is_empty(),
+        "an empty part read the next part's list as his: {empty:?}"
+    );
+}
+
+#[test]
 fn only_the_messages_cited_are_asked_of_the_mesh() {
     let cites = cited(&[(NOW, "80ECO2", "aa11bb22", "12:00")]);
     assert_eq!(
@@ -422,12 +485,42 @@ fn a_torn_line_amid_the_day_leaves_the_log_unread_but_one_still_being_written_do
         said_in(&log, NOW - DAY, NOW).is_err(),
         "a torn line amid the day read as whole"
     );
+    let untimed = [
+        entry(NOW - 90, "First."),
+        "{\"assistant\": torn".to_owned(),
+        "not a line of the log's at all".to_owned(),
+    ];
+    fs::write(&log, untimed.join("\n")).expect("the log is written");
+    assert!(
+        said_in(&log, NOW - DAY, NOW).is_err(),
+        "a torn line amid the day, with only lines of no time after it, read as whole"
+    );
     let last = [entry(NOW - 90, "First."), "{\"assistant\": to".to_owned()];
     fs::write(&log, last.join("\n")).expect("the log is written");
     assert_eq!(
         said_in(&log, NOW - DAY, NOW).ok().map(|said| said.len()),
         Some(1),
         "a last line still being written left the log unread"
+    );
+}
+
+#[test]
+fn a_torn_line_from_before_the_day_is_passed_over_once_a_later_line_dates_it() {
+    let root = tempfile::tempdir().expect("a scratch folder");
+    let log = root.path().join(LOG);
+    let resumed = [
+        entry(NOW - DAY - 120, "Before the crash."),
+        "{\"assistant\": torn".to_owned(),
+        "not a line of the log's at all".to_owned(),
+        entry(NOW - DAY - 60, "Resumed."),
+        entry(NOW - 30, "Today."),
+    ];
+    fs::write(&log, resumed.join("\n")).expect("the log is written");
+    let said = said_in(&log, NOW - DAY, NOW).map(|said| said.len());
+    assert_eq!(
+        said.ok(),
+        Some(1),
+        "a torn line written before the day left the log unread for good"
     );
 }
 
@@ -469,12 +562,39 @@ fn what_can_t_be_read_leaves_the_measure_unjudged_saying_why() {
     );
     machine(root.path(), NOW - 600);
     let mission = root.path().join("state/mission");
-    write_mission(root.path(), "cited.jsonl", "{\"ts\": \"not a time\"}\n");
+    let good = cited(&[(NOW - 300, "16V6F4", "aa11bb22", "12:00")]);
+    let bad = "{\"ts\": \"not a time\"}";
+    for (text, line) in [
+        (format!("{bad}\n{good}\n"), 1),
+        (format!("{good}\n\n{bad}\n"), 3),
+    ] {
+        write_mission(root.path(), "cited.jsonl", &text);
+        let m =
+            read_at(root.path()).unwrap_or_else(|why| panic!("a bad citation read unread: {why}"));
+        assert!(
+            m.says.ends_with(&format!(
+                "(1 line of cited.jsonl can't be read, backing nothing; the first, line {line})"
+            )),
+            "a citation that can't be read went unsaid, or not by its line: {}",
+            m.says
+        );
+        assert!(
+            m.now.abs() < f64::EPSILON,
+            "a citation beside one that can't be read no longer backed its line: {:?}",
+            m.behind
+        );
+    }
+    write_mission(
+        root.path(),
+        "morning-2026-11-25.md",
+        "## Today\n- An item.\n",
+    );
     assert_eq!(
         unread(root.path()),
-        "line 1 of cited.jsonl can't be read",
-        "a citation that can't be read wasn't said unread"
+        "the morning note has no line opening \"For you\"",
+        "a morning note in another shape was read as putting nothing to Joel"
     );
+    fs::remove_file(mission.join("morning-2026-11-25.md")).expect("the note is removed");
     fs::remove_file(mission.join("cited.jsonl")).expect("the citations are removed");
     fs::create_dir(mission.join("cited.jsonl")).expect("a folder stands in for the citations");
     assert!(

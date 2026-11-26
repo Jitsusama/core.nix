@@ -620,6 +620,26 @@ fn the_journal_is_read_oldest_first_and_since_when_asked() {
 }
 
 #[test]
+fn the_journal_says_which_walk_read_how_much_and_for_how_long() {
+    let machine = Machine::new();
+    let walk = format!(
+        r#"{{"event":"walk","at":{},"step":"holders","seconds":95.0,"read":9663676416}}"#,
+        wall() - 60.0
+    );
+    fs::write(machine.env.state.join("journal.jsonl"), format!("{walk}\n")).unwrap();
+    let (code, out, _) = machine.run("journal");
+    assert_eq!(code, 0, "{out}");
+    let row = out.lines().find(|row| row.contains("walked"));
+    assert!(
+        row.is_some_and(|row| row.contains("holders")
+            && row.contains("9.0 GiB")
+            && row.contains(&format!("in {}", disk_guard::words::span(95.0)))
+            && !row.contains('?')),
+        "a walk should say which, what it read, for how long and no band: {out}"
+    );
+}
+
+#[test]
 fn the_journal_says_how_many_replaced_builds_a_pass_swept_from_a_target() {
     let machine = Machine::new();
     let replaced = format!(

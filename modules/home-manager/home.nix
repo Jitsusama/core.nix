@@ -38,25 +38,55 @@ let
     ]
   ) timed;
   services = config.systemd.user.services;
-  # A legacy key said yes, as systemd and sd-switch read a boolean.
+  # A legacy key as sd-switch 0.6.4 reads it (its ini.rs to_bool), the
+  # version nixpkgs ships, which checks.nix holds this to: written as
+  # home-manager writes the value, then trimmed and lowered, so a Nix
+  # true, an int 1 and " Yes" all read as yes. An absent key, or one
+  # in no spelling sd-switch knows, reads as neither, as there.
+  spelled =
+    value:
+    let
+      said = if lib.isBool value then lib.boolToString value else toString value;
+    in
+    lib.toLower (lib.trim said);
   yes =
     value:
-    lib.elem value [
-      true
-      "yes"
-      "true"
-      "on"
+    lib.elem (spelled value) [
       "1"
+      "yes"
+      "y"
+      "true"
+      "t"
+      "on"
+    ];
+  no =
+    value:
+    lib.elem (spelled value) [
+      "0"
+      "no"
+      "n"
+      "false"
+      "f"
+      "off"
     ];
   # The switch method a timed oneshot takes unless it says its own: what
-  # a legacy key of its own says, else keep-old, which X-RestartIfChanged
-  # = false already means.
+  # its legacy keys say, in sd-switch's order (its unit_file.rs: reload,
+  # then a restart refused, then a stop refused), else
+  # keep-old. A unit saying only X-RestartIfChanged = true or
+  # X-StopIfChanged = true gets no method from sd-switch's legacy
+  # reading, so sd-switch stops and starts it; it reads as stop-start
+  # here, since core's keep-old would otherwise overrule a unit that
+  # asked for its run to be stopped.
   method =
     unit:
-    if yes (unit.X-ReloadIfChanged or false) then
+    if yes (unit.X-ReloadIfChanged or null) then
       "reload"
-    else if yes (unit.X-RestartIfChanged or false) then
+    else if no (unit.X-RestartIfChanged or null) then
+      "keep-old"
+    else if no (unit.X-StopIfChanged or null) then
       "restart"
+    else if yes (unit.X-RestartIfChanged or null) || yes (unit.X-StopIfChanged or null) then
+      "stop-start"
     else
       "keep-old";
   oneshot = name: (services.${name}.Service.Type or "simple") == "oneshot";
