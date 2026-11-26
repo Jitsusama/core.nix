@@ -919,8 +919,9 @@ bool fillsTheFullestFirst() {
     if (!tried)
         std::fprintf(stderr,
                      "FAIL the chunks a quarter full were made and what's made after is live: "
-                     "%.1f MB of them, live %.1f then %.1f MB, held %.1f then %.1f MB\n",
-                     quarterMB, swept.live, after.live, swept.held, after.held);
+                     "%.1f MB of them, then %.1f MB made: live %.1f then %.1f MB, held %.1f "
+                     "then %.1f MB\n",
+                     quarterMB, madeMB, swept.live, filled.live, swept.held, filled.held);
     else if (!intact)
         std::fprintf(stderr, "FAIL what's made in the fullest chunks reads back as it was made\n");
     else if (!freed)
@@ -941,12 +942,13 @@ constexpr int LONG_RUN_STORES = 800;
 
 // Whether a sweep leaves every bin's runs fullest chunk first, the last bin
 // among them, read straight after it, before anything is made to take one.
-// The last bin is where a small request no smaller bin serves goes, taking
-// its head and bumping through the rest, so with its runs the other way
-// round the emptiest chunks were filled first and none drained; no case
-// that weighs what's made reaches it. It holds only if the last bin has
-// runs of chunks using both more and less, so a layout that left none
-// there fails it rather than passing with nothing tried.
+// A small request no smaller run serves takes the head of the first large
+// bin holding a run, the last bin among them, and bumps through the rest,
+// so with a bin's runs the other way round the emptiest chunks were filled
+// first and none drained; no case that weighs what's made reaches the last.
+// It holds only if the last bin has runs of chunks using both more and
+// less, so a layout that left none there fails it rather than passing with
+// nothing tried.
 bool sortsEachBinFullestFirst() {
     QJSEngine engine;
     Heap heap(&engine);
@@ -1005,21 +1007,25 @@ bool sortsEachBinFullestFirst() {
             .call({kept});
     // A chunk keeping three of its seven or eight stores uses about 760
     // slots, and one keeping one about 260.
-    const bool tried = !kept.isError() && longRuns >= LONG_RUN_STORES / 80 &&
-                       leastUsed < 400 && mostUsed > 600 && read.toBool();
+    const bool tried =
+        !kept.isError() && longRuns >= LONG_RUN_STORES / 80 && leastUsed < 400 && mostUsed > 600;
+    const bool intact = read.toBool();
     if (!tried)
         std::fprintf(stderr,
                      "FAIL chunks using more and less were swept with long runs: the last bin "
                      "held %d runs, of chunks using %u to %u slots%s\n",
                      longRuns, longRuns > 0 ? leastUsed : 0, mostUsed,
                      kept.isError() ? qPrintable(QStringLiteral(", ") + kept.toString()) : "");
+    else if (!intact)
+        std::fprintf(stderr, "FAIL the long stores read back as they were made%s\n",
+                     read.isError() ? qPrintable(QStringLiteral(": ") + read.toString()) : "");
     else if (!ordered)
         std::fprintf(stderr,
                      "FAIL each bin's runs come fullest chunk first after a sweep: in bin %zu "
                      "of the %s allocator a chunk using %u slots came after one using %u, and "
                      "the last bin held %d runs, of chunks using %u to %u slots\n",
                      badBin, outOfOrder, badAfter, badBefore, longRuns, leastUsed, mostUsed);
-    return tried && ordered;
+    return tried && intact && ordered;
 }
 
 bool expect(const char *what, bool holds, const Weight &before, const Weight &after) {

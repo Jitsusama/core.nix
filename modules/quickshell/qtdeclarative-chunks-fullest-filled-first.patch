@@ -12,45 +12,45 @@ sorted in by the slots they use, the fullest last, so what's made next
 fills them, and the chunks using little are left to empty for a later
 sweep to free.
 
-That holds in the last bin too. A small request that no smaller bin
-can serve takes its head and bumps through the rest, so the head should
-be the fullest of the chunks with a long run. A request for a long run
-passes at most a few runs there and may take a new chunk, but it fills
-at least half of it. The list the sort uses is the allocator's, kept
-from sweep to sweep, so a sweep allocates nothing once it's grown, and
-ties go by address, so the order is the same each time.
+That holds in every bin. A small request that no smaller run can serve
+takes the head of the first large bin holding a run and bumps through
+the rest, so the head should be the fullest chunk there, not the
+emptiest. A request for a long run passes at most a few runs in the
+last bin and may take a new chunk, but it fills at least half of it.
+The kept chunks are put in that order where they lie, which the
+partition before it already shuffles each sweep. The list the sort
+uses is the allocator's, kept from sweep to sweep, so a sweep allocates
+nothing once it's grown, and ties go by address, so the order is the
+same each time.
 
 ---
 --- a/src/qml/memory/qv4mm.cpp
 +++ b/src/qml/memory/qv4mm.cpp
-@@ -553,10 +553,25 @@ void BlockAllocator::sweep()
- 
-     usedSlotsAfterLastSweep = 0;
- 
-+    // Each chunk's runs go on the front of their bins, so the chunk sorted in last is the one
-+    // allocation fills first. Sorted in by what they use, the fullest last, what's made next
-+    // fills the chunks nearly full already, and the chunks using little are left to empty, for a
-+    // later sweep to free, rather than each keeping a few of what's made and none ever freed.
-+    // That holds in every bin, the last too: a small request no smaller bin can serve takes the
-+    // last bin's head and bumps through what's left of it, which should be the fullest chunk of
-+    // those with a long run, not the emptiest. A request of a long run passes at most a few runs
-+    // too short for it there, and may take a new chunk, which it fills at least half of. The
-+    // list is the allocator's, kept from sweep to sweep, so a sweep allocates nothing once it
-+    // has grown, and ties go by address, so the order is the same each time.
-+    byUse.clear();
-     std::for_each(chunks.begin(), firstEmptyChunk, [this](Chunk *c) {
--        c->sortIntoBins(freeBins, NumBins);
--        usedSlotsAfterLastSweep += c->nUsedSlots();
-+        byUse.emplace_back(c->nUsedSlots(), c);
+@@ -546,6 +546,24 @@ void BlockAllocator::sweep()
+         return chunks.at(i)->sweep(engine);
      });
+     const auto firstEmptyChunk = chunks.begin() + firstEmptyChunkPos;
++    // The kept chunks' runs go on the front of their bins in the order the chunks lie, so the
++    // chunk last in line is the one allocation fills first. Put in line by what they use, the
++    // fullest last, what's made next fills the chunks nearly full already, and the chunks using
++    // little are left to empty, for a later sweep to free, rather than each keeping a few of
++    // what's made and none ever freed. That holds in every bin: a small request no smaller run
++    // can serve takes the head of the first large bin holding a run and bumps through what's
++    // left of it, which should be the fullest chunk there, not the emptiest. A request of a
++    // long run passes at most a few runs too short for it in the last bin, and may take a new
++    // chunk, which it fills at least half of. The partition above already shuffles the chunks
++    // each sweep, so nothing counts on the order they lay in. The list is the allocator's, kept
++    // from sweep to sweep, so a sweep allocates nothing once it has grown, and ties go by
++    // address, so the order is the same each time.
++    byUse.clear();
++    for (auto kept = chunks.begin(); kept != firstEmptyChunk; ++kept)
++        byUse.emplace_back((*kept)->nUsedSlots(), *kept);
 +    std::sort(byUse.begin(), byUse.end());
-+    for (const auto &[used, c] : byUse) {
-+        c->sortIntoBins(freeBins, NumBins);
-+        usedSlotsAfterLastSweep += used;
-+    }
++    std::transform(byUse.begin(), byUse.end(), chunks.begin(),
++                   [](const auto &byItsUse) { return byItsUse.second; });
  
-     // only free the chunks at the end to avoid that the sweep() calls indirectly
-     // access freed memory
+     nextFree = nullptr;
+     nFree = 0;
 --- a/src/qml/memory/qv4mm_p.h
 +++ b/src/qml/memory/qv4mm_p.h
 @@ -230,6 +230,9 @@ struct BlockAllocator {
