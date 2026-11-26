@@ -50,12 +50,17 @@
 //! followed first.
 //!
 //! Between those it sleeps on inotify and a signal, so a camera nobody
-//! holds costs nothing. Its help, its failures and its exits take the
-//! terminal kit's shape (`help()`).
+//! holds costs nothing. Once its file is first written, its log says
+//! `ready in N ms`, once a run (src/ready.rs says why). Its help, its
+//! failures and its exits take the terminal kit's shape (`help()`).
+//!
+//! Long because a quarter of it is the tests beside it, of how it's asked
+//! and of what its watches say, which reach its private parts.
 
 mod camera;
 mod count;
 mod holders;
+mod ready;
 mod record;
 mod v4l2;
 mod wait;
@@ -68,6 +73,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
+use ready::Ready;
 use record::Record;
 use terminal_kit::{Exit, Failure, Help};
 use wait::{Events, Woken};
@@ -357,6 +363,13 @@ fn say(line: &str) {
     }
 }
 
+/// Says the run is ready, once its file is first written.
+fn written(ready: &mut Ready) {
+    if let Some(line) = ready.line() {
+        say(&line);
+    }
+}
+
 /// Says who holds the node until it goes. With sysfs, the node is a USB
 /// camera's, named only while it streams, and with a record, said in the
 /// log as it does.
@@ -367,6 +380,7 @@ fn watch(
     units: &[String],
     sysfs: Option<&Path>,
     mut record: Option<&mut Record>,
+    ready: &mut Ready,
 ) -> Ended {
     if let Err(error) = events.watch(node) {
         complain(format_args!("can't watch {}: {error}", node.display()));
@@ -394,10 +408,11 @@ fn watch(
         };
         let anyone = !names.is_empty();
         let shown = listed(names, sysfs, node);
-        if said.as_ref() != Some(&shown)
-            && let Err(error) = write(output, &shown)
-        {
-            complain(format_args!("{}: {error}", output.display()));
+        if said.as_ref() != Some(&shown) {
+            match write(output, &shown) {
+                Ok(()) => written(ready),
+                Err(error) => complain(format_args!("{}: {error}", output.display())),
+            }
         }
         // The record asks the camera itself, which a stalling camera can
         // keep waiting, so it comes after the file is right.
@@ -418,7 +433,7 @@ fn watch(
 
 /// Says who streams from a USB camera while it's there, in a file of its
 /// own that goes with it.
-fn usb(events: &mut Events, options: &Options) -> Result<(), Failure> {
+fn usb(events: &mut Events, options: &Options, ready: &mut Ready) -> Result<(), Failure> {
     let Ok(node) = fs::canonicalize(&options.source) else {
         return Ok(());
     };
@@ -450,6 +465,7 @@ fn usb(events: &mut Events, options: &Options) -> Result<(), Failure> {
         &options.units,
         Some(&options.sysfs),
         Some(&mut record),
+        ready,
     );
     // A stream the watch ends during has its last seconds said too, since
     // a camera dropping off mid-call is what the record is for.
@@ -513,12 +529,14 @@ fn forget(options: &Options) {
 }
 
 /// Says who holds a loopback, following the source to each node it names.
-fn loopback(events: &mut Events, options: &Options) {
+fn loopback(events: &mut Events, options: &Options, ready: &mut Ready) {
     let nobody = BTreeSet::new();
-    let say_nobody = || {
-        if let Err(error) = write(&options.output, &nobody) {
-            complain(format_args!("{}: {error}", options.output.display()));
-        }
+    // Nobody said is the watch serving only where it's so: no camera, or
+    // its node gone. One it couldn't watch is still there, and nobody is
+    // a guess until the watch is tried again, so it isn't ready.
+    let say_nobody = |ready: Option<&mut Ready>| match write(&options.output, &nobody) {
+        Ok(()) => ready.into_iter().for_each(written),
+        Err(error) => complain(format_args!("{}: {error}", options.output.display())),
     };
     tidy(&options.output);
     if let Some(file) = device_file(&options.output) {
@@ -530,7 +548,7 @@ fn loopback(events: &mut Events, options: &Options) {
         else {
             if !gone {
                 say_device(&options.output, None);
-                say_nobody();
+                say_nobody(Some(&mut *ready));
                 gone = true;
             }
             if let Woken::Stopped = events.sleep(Duration::from_secs(1)) {
@@ -540,8 +558,16 @@ fn loopback(events: &mut Events, options: &Options) {
         };
         gone = false;
         say_device(&options.output, Some(&node));
-        let ended = watch(events, &node, &options.output, &options.units, None, None);
-        say_nobody();
+        let ended = watch(
+            events,
+            &node,
+            &options.output,
+            &options.units,
+            None,
+            None,
+            ready,
+        );
+        say_nobody((!node.exists()).then_some(&mut *ready));
         if let Ended::Stopped = ended {
             say_device(&options.output, None);
             return;
@@ -556,6 +582,7 @@ fn loopback(events: &mut Events, options: &Options) {
 
 fn main() -> ExitCode {
     terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let mut ready = Ready::begun();
         let options = options(context.args.iter().cloned())?;
         // Forgetting watches nothing, so a watch it can't have mustn't
         // leave what it's there to remove.
@@ -568,9 +595,9 @@ fn main() -> ExitCode {
                 .because(format!("inotify: {error}"))
         })?;
         if options.usb {
-            usb(&mut events, &options)
+            usb(&mut events, &options, &mut ready)
         } else {
-            loopback(&mut events, &options);
+            loopback(&mut events, &options, &mut ready);
             Ok(())
         }
     })

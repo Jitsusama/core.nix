@@ -21,7 +21,10 @@ Every health is good, watch, bad or not read, each with its own mark.
 - **What is worth a look, under it:** a row for each thing a machine or
   a part has worth a look, the worst first: its mark, whose it is, and
   what. A machine's row goes to its section below, or to the map past
-  the eight drawn, and a part's to its own site. A part that couldn't be
+  the eight drawn, and a part's to its own site. Under a machine's, why
+  it matters, as the system daemon judges it, and a link opening that
+  machine in the launcher, where you update it or start a session
+  there. A part that couldn't be
   read has a row saying why, first. It lists eight at most, then how
   many more; with nothing worth a look, it says so, and until every part
   and machine has told and could be read, it says that isn't known yet.
@@ -52,7 +55,8 @@ Every health is good, watch, bad or not read, each with its own mark.
   - Code: what it holds, counted, linked to the code's page; said not
     read for a machine other than this one.
   - Itself: its disk, then its processor, memory, power and last
-    update.
+    update, with why when it didn't all go ahead: a refusal's reason, a
+    failure's first error, or why a done one boots its old system.
 
   Then what can be done with it: Open in the Launcher, which opens the
   launcher's Machines at that machine, and its commands, each with a

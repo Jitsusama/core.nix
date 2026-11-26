@@ -308,19 +308,43 @@ pub fn itself(ties: &Value, now: i64) -> Said {
 
 /// A machine's last update, as a clause, when its node says one: how long
 /// ago it was, where its time reads and isn't ahead of this clock, and
-/// how it ended.
+/// how it ended, with why when it didn't all go ahead: refused, failed, or
+/// done but booting what it booted before, the only steps `update_why`
+/// (parts/why.rs) carries one for. A why beside any other step, as a node
+/// that knows more steps might send, is left unsaid rather than read as
+/// this one's.
 fn updated(figures: &Value, now: i64) -> Option<String> {
     let at = figures.get("updated_at").and_then(Value::as_str)?;
     let ago = moment(at)
         .filter(|then| *then <= now)
         .map(|then| format!("{} ago", span(now.saturating_sub(then).unsigned_abs())));
     let step = figures.get("update_step").and_then(Value::as_str);
+    let ended = ended(step, ago)?;
+    Some(
+        match (
+            step,
+            figures
+                .get("update_why")
+                .and_then(Value::as_str)
+                .filter(|why| !why.is_empty()),
+        ) {
+            (Some("done"), Some(why)) => format!("{ended}, but {why}"),
+            (Some("refused" | "failed"), Some(why)) => format!("{ended}: {why}"),
+            _ => ended,
+        },
+    )
+}
+
+/// How a machine's last update ended, `ago` when its time reads.
+fn ended(step: Option<&str>, ago: Option<String>) -> Option<String> {
     Some(match (step, ago) {
         (Some("done"), Some(ago)) => format!("updated {ago}"),
         (Some("done"), None) => "updated".to_owned(),
         (Some("unchanged"), Some(ago)) => format!("unchanged at its update {ago}"),
         (Some("unchanged"), None) => "unchanged at its last update".to_owned(),
-        (None, Some(ago)) => format!("last updated {ago}"),
+        // A node too old to say its step, or one whose step couldn't be
+        // read: either way, not known to have gone ahead.
+        (None, Some(ago)) => format!("its last update was {ago}"),
         (None, None) => return None,
         (Some(step), Some(ago)) => format!("its update {ago} says {step}"),
         (Some(step), None) => format!("its last update says {step}"),
@@ -609,6 +633,19 @@ mod tests {
     }
 
     #[test]
+    fn a_why_beside_a_step_that_carries_none_is_left_unsaid() {
+        let now = 1_763_420_718; // 2025-11-17T23:05:18Z
+        let elsewhere = json!({"figures": {"updated_at": "2025-11-17T23:00:18Z",
+                                           "update_step": "building",
+                                           "update_why": "left over"}});
+        assert_eq!(
+            itself(&elsewhere, now).aside,
+            "its update 5 m ago says building",
+            "a why beside a step that carries none is left unsaid"
+        );
+    }
+
+    #[test]
     fn a_machine_itself_says_only_what_its_node_says() {
         let now = 1_763_420_718; // 2025-11-17T23:05:18Z, 20 minutes after the update.
         let whole = json!({"figures": {
@@ -639,6 +676,57 @@ mod tests {
                 "2 TB free",
                 "40% charged, on battery; its last update says building"
             )
+        );
+        let unknown = json!({"figures": {"disk_free": 2_000_000_000_000_u64,
+                                         "updated_at": "2025-11-17T23:00:18Z"}});
+        assert_eq!(
+            itself(&unknown, now),
+            said("2 TB free", "its last update was 5 m ago"),
+            "an update whose step isn't known, or couldn't be read, isn't said to have gone \
+             ahead"
+        );
+        let refused = json!({"figures": {"disk_free": 2_000_000_000_000_u64,
+                                         "updated_at": "2025-11-17T23:00:18Z",
+                                         "update_step": "refused",
+                                         "update_why": "the Mac is over its room"}});
+        assert_eq!(
+            itself(&refused, now),
+            said(
+                "2 TB free",
+                "its update 5 m ago says refused: the Mac is over its room"
+            ),
+            "an update put off says why"
+        );
+        let refused_ahead = json!({"figures": {"updated_at": "2025-11-17T23:25:18Z",
+                                               "update_step": "refused",
+                                               "update_why": "the Mac is over its room"}});
+        assert_eq!(
+            itself(&refused_ahead, now).aside,
+            "its last update says refused: the Mac is over its room",
+            "an update stamped ahead of this clock still says why"
+        );
+        let boots = json!({"figures": {"updated_at": "2025-11-17T23:00:18Z",
+                                       "update_step": "done",
+                                       "update_why": "the boot check failed"}});
+        assert_eq!(
+            itself(&boots, now).aside,
+            "updated 5 m ago, but the boot check failed",
+            "a done update that didn't all go ahead says why"
+        );
+        let failed = json!({"figures": {"updated_at": "2025-11-17T23:00:18Z",
+                                        "update_step": "failed",
+                                        "update_why": "attribute 'x' missing"}});
+        assert_eq!(
+            itself(&failed, now).aside,
+            "its update 5 m ago says failed: attribute 'x' missing",
+            "a failed update says its error"
+        );
+        let empty = json!({"figures": {"updated_at": "2025-11-17T23:00:18Z",
+                                       "update_step": "refused", "update_why": ""}});
+        assert_eq!(
+            itself(&empty, now).aside,
+            "its update 5 m ago says refused",
+            "an empty why is none"
         );
         let unsaid = json!({"figures": {"disk_free": 2_000_000_000_000_u64, "charge": 40}});
         assert_eq!(

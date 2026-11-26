@@ -40,7 +40,7 @@ in
   # Slack's IndexedDB and LevelDB commits each wait on a write and fsync,
   # which in the home's own tree wait their turn behind every agent's. Joel
   # opens Slack himself, so nothing waits on the move, and a Slack opened
-  # partway through it keeps its folder where it is until the next login.
+  # partway through it keeps its folder where it is until Slack next quits.
   jitsusama.subvolumes.folders.".config/Slack" = { };
 
   xdg.configFile = {

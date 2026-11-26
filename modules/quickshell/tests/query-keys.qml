@@ -1297,6 +1297,44 @@ QtObject {
         for (const [what, pattern, want] of besideOn)
             holds(`the drawer's search runs on ${what}`,
                 Page.matchesIn(beside, pattern).map(match => [match.line, match.letter]), want);
+        // The spaces a line holds before its paragraph's break, or at its
+        // text's end, its `trailing`, are no letters the cursor stands on,
+        // but the wash takes them in, so the search reads them too: one
+        // begun in them lands on the line's last letter, the nearest it
+        // stands, and none runs past them into the next paragraph. Both
+        // paragraphs are one text's words, as a fact's value broken in two
+        // is, so only the break stops the search between them; a text of
+        // only spaces, and a wrapped one ending in them, land on the
+        // nearest letter there is.
+        const ending = (words, text, trailing) =>
+            ({ words, text, length: text.length, on: null, trailing });
+        const [ends, blank, wraps] = [{}, {}, {}];
+        const ended = [
+            laid(ending(ends, "Ends here", "  ")),
+            laid(ending(ends, "next", " ")),
+            laid(ending(blank, "", "   ")),
+            laid(part(wraps, "Wraps", " ")), laid(ending(wraps, "here", "  "))
+        ];
+        const endedOn = [
+            ["into the spaces before a paragraph's break", "here ", [[0, 5], [4, 0]]],
+            ["into the spaces at a text's end", "next ", [[1, 0]]],
+            ["landing on a line's last letter from the spaces it ends with", "  ",
+                [[0, 8], [2, 0], [4, 3]]],
+            ["so a space finds those once a line, beside its own", " ",
+                [[0, 4], [0, 8], [1, 3], [2, 0], [4, 0], [4, 3]]],
+            ["never past them", "here   ", []],
+            ["nor from them into the next paragraph", "here  next", []],
+            ["on a text of only spaces, at its line's start", "   ", [[2, 0]]],
+            ["across a wrap into the spaces its last line ends with", "s here ",
+                [[0, 3], [3, 4]]]
+        ];
+        for (const [what, pattern, want] of endedOn)
+            holds(`the drawer's search reads ${what}`,
+                Page.matchesIn(ended, pattern).map(match => [match.line, match.letter]), want);
+        // Two spaces a line ends with land on one letter, so the foot
+        // counts them once, as the cursor can stand there only once.
+        holds("the drawer's foot counts a line's trailing matches once",
+            Page.found(ended, " ", 0, 8), { at: 2, of: 6 });
     }
 
     // What would change the drawer, which a page can't be: Vim's E21, as
@@ -1661,9 +1699,16 @@ QtObject {
         // as a server's name would right under it (VKCF3Z, 2026-11-03).
         const given = [{ label: "Name", value: "kitty" }, null,
             { label: "Kind", value: "Terminal" }, { label: "Port", value: 8080 }];
-        const shownLabels = (facts, title) =>
-            Value.factsShown(facts, title).map(fact => fact.label);
-        holds("a drawer draws every fact given, less none, in order",
+        // A throw is said as the case's answer, so a fact read before it's
+        // known to be there fails its case by name rather than the run.
+        const shownLabels = (facts, title) => {
+            try {
+                return Value.factsDrawn(facts, title).map(fact => fact.label);
+            } catch (error) {
+                return `threw ${error}`;
+            }
+        };
+        holds("a drawer draws every fact given in order, less one that isn't there",
             shownLabels(given, "Ghostty"), ["Name", "Kind", "Port"]);
         holds("less one whose value is its title", shownLabels(given, "kitty"),
             ["Kind", "Port"]);
@@ -1672,6 +1717,18 @@ QtObject {
         holds("a title only part of a value keeps it", shownLabels(given, "Term"),
             ["Name", "Kind", "Port"]);
         holds("and no facts given draws none", shownLabels(undefined, "kitty"), []);
+        // Facts with no value, given as nothing or as null, and one with a
+        // blank value. The titles "null" and "undefined" are what a value
+        // given as null, or not given at all, would read as were it made text
+        // without its fallback.
+        const valueless = [{ label: "Unset" }, { label: "Asked", value: null },
+            { label: "Blank", value: "" }];
+        holds("a fact given null is never taken for a title of null",
+            shownLabels(valueless, "null"), ["Unset", "Asked", "Blank"]);
+        holds("nor one given nothing for a title of undefined",
+            shownLabels(valueless, "undefined"), ["Unset", "Asked", "Blank"]);
+        holds("and under no title, every fact is drawn, a blank one too",
+            shownLabels(valueless, ""), ["Unset", "Asked", "Blank"]);
         // Where a fact's figure stands: a stroke of 100 that reads down to
         // 30, a spark of 100 that reads only whole (VKCF3Z, 2026-11-09).
         const stroke = { shape: "stroke", usual: 100, least: 30 };
@@ -1791,6 +1848,33 @@ QtObject {
             holds(`a drawer's prose: ${what}`,
                 JSON.stringify(Prose.lines({ text: words, styled }, wide, 5, width)),
                 JSON.stringify(want));
+        // A long body, as a notice whose sender wrote 34 kB in it (2026-11-25, its drawer
+        // 3.2 s to its frame), is laid no further than a line past the fifth, plain or
+        // styled: nothing beyond it is measured, and it's cut as a short one is.
+        const longProse = Array.from({ length: 6000 }, () => "aa").join(" ");
+        for (const [styledness, longText, longWant] of [
+            ["plain", longProse, "aa aa aa aa aa aa aa aa aa\u2026"],
+            ["styled", `<b>${longProse}</b>`, "<b>aa aa aa aa aa aa aa aa aa\u2026</b>"]
+        ]) {
+            let proseMeasured = 0;
+            const proseMeasuring = text => {
+                proseMeasured++;
+                return width(text);
+            };
+            const longLaid = Prose.lines({ text: longText, styled: styledness === "styled" }, 50,
+                5, proseMeasuring);
+            holds(`a drawer's prose, long and ${styledness}: cut as a short one is`,
+                JSON.stringify(longLaid), JSON.stringify({ said: longWant, cut: true }));
+            holds(`a drawer's prose, long and ${styledness}: none past its sixth line measured`,
+                proseMeasured < 40, true);
+        }
+        // Laid to a line, as the drawer lays to the line that fades, they're the first
+        // lines of the whole lay, paragraphs and empty ones counted as it counts them.
+        const paragraphs = "aa bb cc dd\n\nee ff gg\nhh";
+        for (const most of [1, 2, 3, 4, 5, 9])
+            holds(`a drawer's prose, laid to ${most} lines: the whole lay's first`,
+                JSON.stringify(Prose.laid(paragraphs, 50, width, most)),
+                JSON.stringify(Prose.laid(paragraphs, 50, width).slice(0, most)));
         for (const [what, figure, lines, room, under, want] of places)
             holds(`a figure's place: ${what}`,
                 JSON.stringify(Figure.place(figure, lines, room, under)),
@@ -2037,6 +2121,19 @@ QtObject {
         ];
         for (const [what, raw, kept, want] of runsOn)
             holds(`a laid line runs on with ${what}`, Lines.runsOn(raw, kept), want);
+        // What a laid line that ends its paragraph or its text holds past
+        // the letters it keeps, before its break (DrawerLines.trailing),
+        // which the wash takes in and so the search reads.
+        const trailing = [
+            ["the spaces before a plain text's break", "ends  \n", 4, "  "],
+            ["the spaces before a log's line", "line 14 \u2028", 7, " "],
+            ["the spaces before a styled text's", "end \u2029", 3, " "],
+            ["the spaces at a text's end", "end ", 3, " "],
+            ["nothing where its break follows its letters", "end\u2029", 3, ""],
+            ["nothing of the next paragraph's", "one\n two", 3, ""]
+        ];
+        for (const [what, raw, kept, want] of trailing)
+            holds(`a laid line ends with ${what}`, Lines.trailing(raw, kept), want);
         // How pieces become laid lines (DrawerLines.linesOf): those sharing
         // a baseline one line, its parts left to right, each keeping what
         // it wrapped at, which a search runs on with (DrawerPage.textsOf).

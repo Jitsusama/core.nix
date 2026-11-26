@@ -19,7 +19,8 @@ const deeper = { command: "mycelium machines", site: "mycelium/", launcher: "Mac
 
 /** A machine the node reaches, standing as `health` says, worth a look for `side`. */
 function reached(name: string, health: Thing["health"], side: string[] = []): Thing {
-  return { name, health, says: "", side, address: undefined, ties: tiesOf({ reached: true }) };
+  const ties = tiesOf({ reached: true });
+  return { name, health, says: "", side, looks: undefined, address: undefined, ties };
 }
 
 /** A machine out of reach, last heard at `heard`, as the daemon says one (machines.rs). */

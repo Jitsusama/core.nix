@@ -7,6 +7,7 @@
 //! guard's memory and out of everyone else's cache.
 
 use crate::commands::{self, Job, Ran};
+use crate::garbage;
 use regex_lite::Regex;
 use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
@@ -124,10 +125,12 @@ pub fn optimise(
             if let (Some(0), Some(bytes)) = (output.status, freed(&said)) {
                 Ok(Some(bytes))
             } else {
-                let last = said.lines().rev().find(|line| !line.trim().is_empty());
+                // Told as the guard's other Nix commands are, with any
+                // nix.conf line Nix quotes left out.
+                let last = garbage::last_words(&said);
                 Err(format!(
                     "nix-store --optimise failed: {}",
-                    last.unwrap_or("it said nothing")
+                    last.as_deref().unwrap_or("it said nothing")
                 ))
             }
         }
