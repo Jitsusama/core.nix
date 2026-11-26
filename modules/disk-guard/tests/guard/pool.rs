@@ -110,13 +110,21 @@ fn the_subvolumes_of_one_btrfs_pool_are_one_filesystem() {
     );
 }
 
-/// A clear may be asked of any path, and a process may hold a pipe open,
-/// so a pipe's pool is read without waiting for a writer to open it too:
-/// on Btrfs, waiting would hold the guard until one did.
+/// Any process the guard weighs for a freeze may hold a pipe open, and a
+/// clear may be asked of one, so a pipe's pool is its folder's, read
+/// without opening it: on Btrfs, opening it would wait for a writer and
+/// hold the guard until one came. Elsewhere no pool opens anything.
 #[test]
-fn a_pipe_s_pool_is_read_without_waiting_for_a_writer() {
+#[ignore = "needs TMPDIR on Btrfs, which the sandbox and the shell's tmpfs aren't: \
+            run with --ignored and TMPDIR on a Btrfs folder"]
+fn a_pipe_s_pool_is_its_folder_s_read_without_waiting_for_a_writer() {
     use std::os::unix::ffi::OsStrExt;
     let dir = tempfile::tempdir().unwrap();
+    assert!(
+        on_btrfs(dir.path()),
+        "{} isn't on Btrfs, where a pipe's open would wait",
+        dir.path().display()
+    );
     let pipe = dir.path().join("pipe");
     let name = std::ffi::CString::new(pipe.as_os_str().as_bytes()).unwrap();
     // SAFETY: a plain system call on a name this test owns.
@@ -126,12 +134,12 @@ fn a_pipe_s_pool_is_read_without_waiting_for_a_writer() {
         "no pipe made"
     );
     let (sent, heard) = std::sync::mpsc::channel();
-    std::thread::spawn(move || sent.send(pool(&pipe).is_ok()));
+    std::thread::spawn(move || sent.send(pool(&pipe).ok()));
     let answered = heard.recv_timeout(std::time::Duration::from_secs(5));
-    assert!(
-        answered.is_ok(),
-        "reading a pipe's pool waited for a writer, on {}",
-        dir.path().display()
+    assert_eq!(
+        answered.ok(),
+        Some(Some(pool(dir.path()).unwrap())),
+        "a pipe's pool, read within five seconds, as its folder's"
     );
 }
 
