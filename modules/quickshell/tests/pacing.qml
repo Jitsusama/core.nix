@@ -788,8 +788,8 @@ QtObject {
         check(failures, "and is said once, in one line, by its kind and where it was thrown",
             [said.length, /^TypeError: thrown at \S*pacing\.qml:\d+(:\d+)?$/.test(said[0] ?? ""),
                 said[0]?.includes("secret")].join(), "1,true,false");
-        // A value thrown with no prototype to say it by is said by its type,
-        // its saying throwing none.
+        // A value thrown with no prototype to say it by is said by its type
+        // alone.
         const unsaid = [];
         Thrown.runEach([() => {
             throw Object.create(null);

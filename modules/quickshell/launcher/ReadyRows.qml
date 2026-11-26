@@ -294,11 +294,13 @@ Scope {
             count += 1;
             // One row that throws is said, where it was thrown, and what it made of the row
             // let go, so its step back makes it whole; the rest owed are made still, rather
-            // than waiting for the next row told.
+            // than waiting for the next row told. Its key is quoted as a search's is, being a
+            // daemon's.
             try {
                 rowAt(key);
             } catch (error) {
-                console.warn(`${place}: ${key} not made ahead: ${Thrown.shown(error)}`);
+                const row = Presented.quoted(Presented.rowShown({ key }, Options.reports));
+                console.warn(`${place}: ${row} not made ahead: ${Thrown.shown(error)}`);
                 unmade(key);
             }
         }
