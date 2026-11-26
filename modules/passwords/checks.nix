@@ -23,6 +23,7 @@ onLinux {
   # never to a watch, or to the clipboard marked sensitive, cleared when
   # its time is up, written once the copier says it's ready and answered
   # copied once it says it holds it, a refusal answered with its reason,
+  # the copy held ending as the daemon ends, killed or not,
   # and copying is refused while no copier is named;
   # a password is typed on the typist's standard input alone, never its
   # arguments, into the window niri says has the keys once the launcher
