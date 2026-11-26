@@ -235,9 +235,8 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> 
         asked => asked,
     };
     let put = gateway.put_to(TO_SELF);
-    let called = match sent {
-        Ok(_) => return Ok(said),
-        Err(called) => called,
+    let Err(called) = sent else {
+        return Ok(said);
     };
     let nothing_ran = |why: &str| {
         let why = unquoted(why, &said);
