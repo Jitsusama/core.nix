@@ -98,12 +98,17 @@ def says_it_stands(page: Page, state: str, timeout: int = PACE_MS) -> None:
     )
 
 
+def quoted(key: str) -> str:
+    """Return `key` as a CSS string, since an id read back from the page may hold any mark."""
+    return '"' + key.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
 def device(page: Page, key: str) -> Locator:
-    return page.locator(f'#tree [role=treeitem][data-id="{key}"]')
+    return page.locator(f"#tree [role=treeitem][data-id={quoted(key)}]")
 
 
 def placed(page: Page, key: str) -> Locator:
-    return page.locator(f'#map-draw [data-level=device][data-id="{key}"]')
+    return page.locator(f"#map-draw [data-level=device][data-id={quoted(key)}]")
 
 
 def every_device_drawn(page: Page) -> None:
@@ -283,10 +288,24 @@ def test_narrowing_a_desk_to_a_phone_draws_the_map_the_other_way(
         opened.close()
 
 
-# The device net.json's worst concern is about, which the first fit brings into view.
+# The device net.json's worst concern is about, which the first fit brings into view: one that
+# isn't a ceiling's, as site.ts's fitFirst passes those over.
 FIRST_CONCERN = min(
-    json.loads((HERE / "net.json").read_text())["kinds"]["concern"], key=lambda c: c["rank"]
+    (
+        concern
+        for concern in json.loads((HERE / "net.json").read_text())["kinds"]["concern"]
+        if concern["concern"] != "ceiling"
+    ),
+    key=lambda c: c["rank"],
 )["device"]
+# How far below `[keys, concern]`'s keys' device the concern's is drawn, top to top.
+BELOW = """([keys, concern]) => {
+  const top = (id) => document
+    .querySelector(`#map-draw [data-level=device][data-id="${CSS.escape(id)}"]`)
+    ?.getBoundingClientRect().top;
+  const [from, to] = [top(keys), top(concern)];
+  return from === undefined || to === undefined ? null : to - from;
+}"""
 # The device drawn farthest from `from`, centre to centre, so a view showing one can leave the
 # other out.
 FARTHEST = """(from) => {
@@ -366,6 +385,13 @@ def the_keys_device_stands_in_view(page: Page, where: str) -> None:
 
 def the_first_concern_leaves_it_out(page: Page, keys_on: str, where: str) -> None:
     """Show the first concern, as a jump back to it would, and check `keys_on` is then out."""
+    # TO_SHOW scrolls from the corner with no padding, which loses the keys' device at least as
+    # much as a padded jump down to the concern does, but not a jump up to one drawn above it.
+    below = page.evaluate(BELOW, [keys_on, FIRST_CONCERN])
+    assert below is not None, f"{where}'s map drew no {keys_on} or {FIRST_CONCERN}"
+    assert below > 0, (
+        f"{where}'s map draws {FIRST_CONCERN} above {keys_on}, where TO_SHOW can't stand for a jump"
+    )
     page.evaluate(TO_SHOW, FIRST_CONCERN)
     past = page.evaluate(PAST, keys_on)
     assert past is not None, f"{where}'s map drew no {keys_on}"
