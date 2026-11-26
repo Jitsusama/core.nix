@@ -127,9 +127,10 @@ struct Daemon {
     /// Whether the stream followed was cut short to be followed afresh.
     cut: bool,
     /// What Tuple's stream last said of the call and Joel, apart from the
-    /// record, which an act sets ahead of the stream, and how often the
-    /// stream has said any of it turned.
+    /// record, which an act sets ahead of the stream.
     stream_said: Said,
+    /// How often the stream has said a call begin or end, or Joel's
+    /// camera or mute turn, which an act done late is weighed by.
     joel_turns: u64,
     /// Tuple's commands for the acts running now.
     acting: Vec<Asked>,

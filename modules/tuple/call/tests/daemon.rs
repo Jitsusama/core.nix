@@ -12,7 +12,9 @@
 //! began, connected or not, leaves the record as the stream says; a
 //! stream followed afresh journals the camera it says on; opening the
 //! room keeps its link and makes the call in it Joel's; and an ask or
-//! kind it doesn't know is refused.
+//! kind it doesn't know is refused. Long because every case drives the
+//! whole daemon over its socket through one stand-in Tuple, and the
+//! harness that builds it, `Running` and `Following`, is theirs to share.
 
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
@@ -66,6 +68,8 @@ struct Running {
     folder: PathBuf,
     socket: PathBuf,
     tuples: Option<UnixListener>,
+    /// Its acts' waits, as it was started with them, kept for a restart.
+    waits: Vec<String>,
 }
 
 fn now() -> i64 {
@@ -108,7 +112,7 @@ impl Running {
     /// Started with Tuple answering and its acts' waits given by `waits`,
     /// as `--answers-within` and `--held-for` give them, so a test waits
     /// on its deadline no longer than it must, and one with steps to take
-    /// before Tuple answers never races it.
+    /// before Tuple answers races only the ten seconds its client waits.
     fn waiting(test: &str, waits: &[&str]) -> Running {
         Running::through(test, true, &[], waits)
     }
@@ -147,17 +151,19 @@ impl Running {
             folder,
             socket,
             tuples,
+            waits: waits.iter().map(|&wait| wait.to_owned()).collect(),
         }
     }
 
-    /// The daemon stopped and started again over the same folders, its
-    /// socket gone with it, as a restart leaves them.
+    /// The daemon stopped and started again over the same folders, with
+    /// the waits it was started with, its socket gone with it, as a
+    /// restart leaves them.
     fn restart(&mut self) {
         let _ = self.daemon.kill();
         let _ = self.daemon.wait();
         let _ = std::fs::remove_file(&self.socket);
         self.daemon = spawned(
-            &mut Command::new(env!("CARGO_BIN_EXE_tuple-call")),
+            Command::new(env!("CARGO_BIN_EXE_tuple-call")).args(&self.waits),
             &self.folder,
         );
         until("the socket never came back", || self.socket.exists());
@@ -763,8 +769,11 @@ fn a_mute_done_once_another_connecting_call_began_leaves_it_alone() {
     running.streams(STATE);
     let mut watching = running.client();
     watching.watch();
-    // Tuple says when a call began only once it connects, so two calls
-    // still connecting are told apart by nothing they say.
+    // A call said connected before it says when it began, so two such
+    // calls are told apart by nothing they say. Tuple says a call's start
+    // once it connects, and the record hides a mute until then, so this is
+    // the one shape where a mute done late would show on the wrong call;
+    // the call's turn guards it whatever Tuple sends.
     let connecting = CALL.replace("\"started_at\":1000,", "");
     running.streams(&connecting);
     watching.until("the call wasn't said", |record| {
@@ -805,11 +814,11 @@ fn a_mute_done_once_another_connecting_call_began_leaves_it_alone() {
 
 #[test]
 fn a_command_held_past_its_hold_lets_its_act_be_asked_afresh() {
-    let running = Running::waiting("held", &["--answers-within", "1", "--held-for", "2"]);
+    let running = Running::waiting("held", &["--answers-within", "1", "--held-for", "3"]);
     running.streams(STATE);
-    running.streams(&filming());
     let mut watching = running.client();
     watching.watch();
+    running.streams(&filming());
     watching.until("Joel's camera wasn't said on", |record| {
         record["camera"] == true
     });
@@ -827,11 +836,26 @@ fn a_command_held_past_its_hold_lets_its_act_be_asked_afresh() {
         again["error"]["message"], "Tuple hasn't answered the last time it was asked",
         "a stop asked again within its hold wasn't answered at once: {again}"
     );
-    // Past the two seconds the first stop holds its act for, counted from
-    // a moment after this test's clock began, so the next is Tuple's to
-    // run afresh.
-    std::thread::sleep(Duration::from_millis(2300).saturating_sub(first.elapsed()));
-    let afresh = asking.ask(&json!({"id": "afresh", "ask": "camera", "on": false}));
+    // Asked until one is run afresh, as the first stop's hold ends by the
+    // daemon's clock, which began a moment after this test's.
+    let afresh = loop {
+        let said = asking.ask(&json!({"id": "afresh", "ask": "camera", "on": false}));
+        if said["error"]["message"] != "Tuple hasn't answered the last time it was asked" {
+            break said;
+        }
+        assert!(
+            first.elapsed() < Duration::from_secs(10),
+            "the first stop's hold never ended: {said}"
+        );
+        // A tenth of a second between asks, which the daemon answers at
+        // once within the hold, so the loop doesn't spin.
+        std::thread::sleep(Duration::from_millis(100));
+    };
+    assert!(
+        first.elapsed() >= Duration::from_secs(3),
+        "the first stop's hold ended early, after {:?}",
+        first.elapsed()
+    );
     assert_eq!(
         afresh["error"]["message"], "Tuple hasn't answered in 1 second",
         "a stop asked past the last one's hold wasn't run afresh: {afresh}"

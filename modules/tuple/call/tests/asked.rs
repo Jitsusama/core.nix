@@ -1,8 +1,8 @@
 //! The daemon asked in ways its unit never asks it: for its help, with a
-//! flag it doesn't take or a wait of none, short of a word it needs or
-//! with one too many, or handed a socket it can't listen on. Each ends
-//! at once in the terminal kit's shape, with the code docs/commands.md
-//! gives it, before it follows Tuple.
+//! flag it doesn't take, short of a word it needs or with one too many,
+//! given a wait of none or of no number, or handed a socket it can't
+//! listen on. Each ends at once in the terminal kit's shape, with the
+//! code docs/commands.md gives it, before it follows Tuple.
 
 use std::process::{Command, Output, Stdio};
 
@@ -70,12 +70,10 @@ fn a_run_short_of_its_tuple_is_refused_as_asked_wrongly() {
 }
 
 #[test]
-fn a_word_too_many_a_flag_or_a_wait_of_none_is_refused_as_asked_wrongly() {
+fn a_word_too_many_or_a_flag_is_refused_as_asked_wrongly() {
     for words in [
         &["tuple-call.sock", "tuple", "more"][..],
         &["--debug", "tuple-call.sock", "tuple"],
-        &["--answers-within", "0", "tuple-call.sock", "tuple"],
-        &["tuple-call.sock", "tuple", "--held-for"],
     ] {
         let output = ran(words);
         let why = said(&output.stderr);
@@ -88,6 +86,35 @@ fn a_word_too_many_a_flag_or_a_wait_of_none_is_refused_as_asked_wrongly() {
         assert!(
             why.contains("tuple-call --help"),
             "{words:?}'s refusal never said where: {why}"
+        );
+    }
+}
+
+#[test]
+fn a_wait_of_none_or_of_no_number_is_refused_as_asked_wrongly() {
+    for (words, flag) in [
+        (
+            &["--answers-within", "0", "tuple-call.sock", "tuple"][..],
+            "--answers-within",
+        ),
+        (
+            &["--held-for", "soon", "tuple-call.sock", "tuple"],
+            "--held-for",
+        ),
+        (&["tuple-call.sock", "tuple", "--held-for"], "--held-for"),
+    ] {
+        let output = ran(words);
+        let why = said(&output.stderr);
+        assert_eq!(
+            output.status.code(),
+            Some(64),
+            "{words:?} ended {:?}",
+            output.status
+        );
+        let refusal = format!("{flag} takes a whole number of seconds past none");
+        assert!(
+            why.contains(&refusal),
+            "{words:?}'s refusal never said what its wait takes: {why}"
         );
     }
 }
