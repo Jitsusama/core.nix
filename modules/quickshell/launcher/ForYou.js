@@ -123,11 +123,13 @@ const OWN_ROWS = ["look", "try", "read"];
 // The kinds never lifted however long they've waited, as they ask nothing of Joel: a look
 // only to see (VKCF3Z, 2026-11-12).
 const NEVER_LIFTED = ["read"];
-// The kinds gathered in a row of their own among what needs Joel now, once
+// The kinds gathered in a row of their own in :filter's flat order, once
 // two or more ask, standing where the heaviest weighs: what agents ask,
 // which stood loose among the to-dos (Joel, 2026-11-18 10:18: "they are all
-// loose amongst other things properly categorized, it is confusing"). One
-// alone stands as itself, so Super+O, Return, Return still reaches it.
+// loose amongst other things properly categorized, it is confusing"). For
+// You itself gathers every cell's rows into Agents however few, even one
+// ask (ForYouCells.js's laidOut; Joel, 2026-11-25 21:52: "it also makes no
+// sense for the agents to be top level").
 const GATHERED = ["agent"];
 const GATHERED_FROM = 2;
 
@@ -147,7 +149,7 @@ function bandBy(kind, thing, now, due) {
 }
 
 // For You's items in their bands, { now, agent, look, try, read }, and
-// `agentAt`, where in `now` Agents Asking stands in :filter's flat order,
+// `agentAt`, where in `now` Agents stands in :filter's flat order,
 // and `all`, what needs Joel now with what agents ask among it, as For
 // You lays it out by whose it is (ForYouCells.js's laidOut), each item
 // { kind, thing } with what else its caller keeps, given its `weight`. Each band is heaviest first, those alike the oldest first,

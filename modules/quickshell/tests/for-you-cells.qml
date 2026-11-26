@@ -7,9 +7,9 @@
 // rows under it, the cells by their heaviest, what a cell asks leading it;
 // each heading in Agents' words for its cell; a session's own notices found
 // by the cell they name and standing under it; and every cell's heading
-// and rows inside Agents Asking, never at For You's top (Joel, 2026-11-25).
+// and rows inside Agents, never at For You's top (Joel, 2026-11-25).
 // The case "no session's heading or row stands at For You's top, only Agents
-// Asking among his own" is the one that says so.
+// among his own" is the one that says so.
 import QtQuick
 import "ForYou.js" as ForYou
 import "ForYouCells.js" as Cells
@@ -83,7 +83,7 @@ QtObject {
             laid(Cells.byCell([{ name: "gone" }, { name: "two" }],
                 item => item.name === "gone" ? cellA : null)), ["two"]);
         const top = laid(grouped).map(one => typeof one === "string" ? one : "ASKED");
-        expect("no session's heading or row stands at For You's top, only Agents Asking"
+        expect("no session's heading or row stands at For You's top, only Agents"
             + " among his own", [top.filter(one => one.startsWith("#")),
             top.filter(one => ["one", "three", "four"].includes(one)), top],
         [[], [], ["ASKED", "two", "five"]]);
@@ -207,7 +207,7 @@ QtObject {
             [noticed.now.length, noticed.now[0]?.weight],
             [1, ForYou.weigh({ since: now - hour }, now).weight]);
 
-        // Agents Asking stands among Joel's own before the first that weighs
+        // Agents stands among Joel's own before the first that weighs
         // less than the heaviest it holds, as agentAt places it (Y2YBTS,
         // 2026-11-18 15:49), however its cells' asks lead their rows.
         const own = [{ name: "two", weight: 9 }, { name: "five", weight: 2 }];

@@ -2336,7 +2336,7 @@ Provider {
             make: () => provider.toReopen
         }]).concat((provider.source("agents") ? sessions : [])
         .map(session => ({
-            // Gathered in Agents Asking once two ask (ForYou.js).
+            // Gathered in Agents once two ask (ForYou.js).
             kind: "agent",
             thing: { kind: "todo", blocks: 1, since: session.presence?.wants?.since ?? null },
             cell: () => session,
@@ -2476,7 +2476,7 @@ Provider {
     }
 
     // What needs Joel now: his own rows loose, and what the sessions raised
-    // gathered into Agents Asking, standing among his own by its heaviest,
+    // gathered into Agents, standing among his own by its heaviest,
     // inside it a heading for each cell behind it and its rows, the cells by
     // their heaviest row and each one's rows by weight but for what it asks,
     // which leads it as what holds it up (ForYouCells.js's byCell and
@@ -2532,7 +2532,7 @@ Provider {
     // that holds more draws one, its name in text, so what needs him now
     // leads by its order (VKCF3Z, 2026-11-09).
     // Kept while it holds the same rows, each kept as it is (kindsKept).
-    // Agents Asking is such a row too, gathering what the sessions raised
+    // Agents is such a row too, gathering what the sessions raised
     // for Joel under each one's heading (cellRows), though each needs him
     // now, so it stands among what does where its heaviest weighs, its mark
     // in the hue of what it holds rather than muted (Joel, 2026-11-18
@@ -2546,7 +2546,7 @@ Provider {
 
     function madeKindRow(kind, rows) {
         const id = `for-you:kind:${kind}`;
-        // Agents Asking holds each cell's heading over its rows, which says
+        // Agents holds each cell's heading over its rows, which says
         // whose they are but is none of them to count or weigh.
         const things = rows.filter(one => one.heading !== true);
         const row = member({
@@ -2596,7 +2596,7 @@ Provider {
         lap("banding");
         const lately = latelyRows(now).filter(latelyComingIn);
         lap("lately");
-        // What needs him now, Agents Asking among it with each cell's rows
+        // What needs him now, Agents among it with each cell's rows
         // inside, so the agents' rows are made as part of it (cellRows).
         const cells = cellRows(bands.all, now);
         lap("cells");

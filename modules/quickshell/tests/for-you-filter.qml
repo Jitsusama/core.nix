@@ -23,7 +23,7 @@ QtObject {
     // and for-you:source entries, beside one of another place's.
     readonly property var names: ({
             "for-you:kind:do": "To-Dos",
-            "for-you:kind:agent": "Agents Asking",
+            "for-you:kind:agent": "Agents",
             "for-you:kind:look": "To Look At",
             "for-you:kind:try": "To Try",
             "for-you:source:mail": "Mail",
@@ -74,9 +74,9 @@ QtObject {
             ["in either order, the source said first", "look mail", "b e", "Mail · To Look At"],
             ["typed in capitals", "Mail LOOK", "b e", "Mail · To Look At"],
             ["a source the words don't know, by its id", "sessions", "d k", "Sessions"],
-            // What agents ask, as Agents Asking holds it, never among the
+            // What agents ask, as Agents holds it, never among the
             // to-dos (Joel, 2026-11-18 10:18).
-            ["what agents ask is its own kind", "agent", "k", "Agents Asking"],
+            ["what agents ask is its own kind", "agent", "k", "Agents"],
             ["and no to-do", "do", "a", "To-Dos"],
             ["and an id of parts, each begun in capitals", "home-network", "i", "Home Network"],
             ["a source the words know, with nothing now, is an empty step", "calendar", "",
@@ -133,7 +133,7 @@ QtObject {
             check(failures, what, offers(Filter.offered(items, arg, said)), offered);
         check(failures, "each offer is named as the head names it, with the field it fills",
             Filter.offered(items, "", said).map(one => `${one.value}:${one.field}:${one.note}`)
-                .join(", "), "do:kind:To-Dos, agent:kind:Agents Asking, "
+                .join(", "), "do:kind:To-Dos, agent:kind:Agents, "
                 + "look:kind:To Look At, try:kind:To Try, "
                 + "desktop:source:Desktop, home-network:source:Home Network, "
                 + "mail:source:Mail, sessions:source:Sessions, slack:source:Slack");

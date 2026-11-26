@@ -122,10 +122,10 @@ QtObject {
             { kind: "look", since: now - hour }), ["try"]);
         expect("a kind with no row of its own needs him now", band("notice",
             { kind: "look" }), ["now"]);
-        // What agents ask stands together in Agents Asking, never loose
-        // among the to-dos, however it presses, once two ask (Joel,
-        // 2026-11-18 10:18); one alone stands as itself, so Super+O,
-        // Return, Return still reaches it (docs/design.md).
+        // What agents ask stands together in :filter's flat order, never
+        // loose among the to-dos, however it presses, once two ask (Joel,
+        // 2026-11-18 10:18); For You's own rows gather even one into Agents
+        // (ForYouCells.js, Joel 2026-11-25 21:52), as for-you-cells.qml holds.
         const asks = (...others) => ForYou.banded([
             { kind: "agent", thing: { kind: "todo", blocks: 1, since: now - hour }, name: "a" },
             { kind: "agent", thing: { kind: "todo", blocks: 1, since: now - 9 * hour,
@@ -133,7 +133,7 @@ QtObject {
         ].concat(others), now);
         const placed = bands => [bands.now.map(one => one.name), bands.agent.map(one =>
             one.name), bands.agentAt];
-        expect("two asks go in Agents Asking, even overdue, heaviest first",
+        expect("two asks go in Agents, even overdue, heaviest first",
             placed(asks()), [[], ["c", "a"], 0]);
         expect("one alone stands as itself", placed(ForYou.banded([{ kind: "agent",
             thing: { kind: "todo", blocks: 1 }, name: "a" }], now)), [["a"], [], 1]);
