@@ -69,7 +69,39 @@ QtObject {
                 null]);
         Expect.same("and no daemon to answer is heard as no answer",
             Cloud.answered({ offers: [], at: 0, unoffered: "" }, null, 5000).unoffered,
-            Cloud.heard("", null).unoffered);
+            "the agents daemon isn't answering");
+        // An old node would drop the need and start the work here (offers.rs), so a
+        // node that no longer takes the cloud takes back what it offered.
+        const untaken = Cloud.answered(kept, { error: { code: "untaken",
+            message: "can't yet" } }, 5000);
+        Expect.same("one no longer taking the cloud takes back what was offered, and says why",
+            [untaken, Cloud.refused("core.nix", "cloud",
+                Cloud.offeredNow(untaken.at, untaken.offers, untaken.unoffered), words)],
+            [{ offers: [], at: 5000, unoffered: "can't yet", changed: true,
+                journal: "can't yet" }, "unoffered: can't yet"]);
+        // A Return asks before it reads, so what a daemon answers at once is said on
+        // it, as Daemon.qml's sent answers null at once with no daemon connected.
+        const replayed = (state, answers) => {
+            let asked = 0;
+            const offeredBy = Cloud.returning(() => state, () => {
+                asked += 1;
+                if (answers === undefined) {
+                    state.asking = true;
+                    return;
+                }
+                Object.assign(state, Cloud.answered(state, answers, 5000));
+            }, 5000);
+            return [offeredBy, asked];
+        };
+        const nothingYet = () => ({ asking: false, at: 0, offers: [], unoffered: "" });
+        Expect.same("a Return says what an answer at once says, and not yet while one is out",
+            [replayed(nothingYet(), null), replayed(nothingYet()),
+                replayed(nothingYet(), { offers: [standard] })],
+            [["the agents daemon isn't answering", 1], [null, 1], [[standard], 1]]);
+        Expect.same("and asks nothing while offers are fresh or an ask is out",
+            [replayed({ asking: false, at: 4000, offers: [standard], unoffered: "" }, null),
+                replayed({ asking: true, at: 0, offers: [], unoffered: "down" }, null)],
+            [[[standard], 0], ["down", 0]]);
         // An opening asks only once the offers are stale, as a provider's program runs
         // for each ask; a Return refused for want of them asks again whatever their age.
         const fresh = { asking: false, at: 1000, offers: [standard] };
@@ -129,6 +161,10 @@ QtObject {
             [Cloud.refused("/home/j/src/core.nix", "cloud", offered, words),
                 Cloud.refused("", "-", offered, words)],
             ["unnamed", "unmachined"]);
+        // With offers offered the cloud refuses nothing, so only the words can
+        // be, and those are Sprouting's to say, never a link misnamed.
+        Expect.same("a start the cloud offers for says no why of its own",
+            Cloud.refused("core.nix", "cloud", offered, words), "");
         // An old node would drop the need and start the work here, a link's start included.
         Expect.same("nothing is asked of the cloud while it offers nothing, and it says so",
             [Cloud.ask("fix it", "core.nix", "cloud", []),

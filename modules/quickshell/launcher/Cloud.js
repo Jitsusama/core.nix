@@ -120,6 +120,19 @@ function offeredNow(at, offers, unoffered) {
     return unoffered === "" ? null : unoffered;
 }
 
+// What a start Returned to the cloud is given as offered (offeredNow): it
+// asks first where asksNow says, `ask()`, then reads what's kept, `read()`
+// giving `{ asking, at, offers, unoffered }` as it stands, so a daemon
+// that answers at once, as one missing does (Daemon.qml's sent), is said
+// by that answer on this Return rather than the next.
+function returning(read, ask, now) {
+    if (asksNow(read(), now, true)) {
+        ask();
+    }
+    const kept = read();
+    return offeredNow(kept.at, kept.offers, kept.unoffered);
+}
+
 // Whether what the cloud offers, as last heard at `at`, is to be asked
 // again at `now`: never heard, or kept past OFFERS_KEPT_MS.
 function stale(at, now) {
@@ -195,7 +208,9 @@ function ask(text, place, on, offered) {
 // offered, as a link's act Returned before the first offers came), the
 // why its last ask came back with no offers (a why offered, offeredNow),
 // none offered by a node that takes the cloud, else where it starts
-// misnamed.
+// misnamed. With offers offered the cloud refuses nothing, so a refusal
+// then is its words', which Agents asks Sprouting.refused for, and this
+// gives "" rather than a why that isn't so (#6792's fourth round).
 function refused(place, on, offered, words) {
     if (!named(place)) {
         return words?.unnamed ?? "";
@@ -210,7 +225,7 @@ function refused(place, on, offered, words) {
         // A function, so a `$` in the node's words is said as written.
         return String(words?.unoffered ?? "").replace("{why}", () => offered);
     }
-    return offering(offered) ? words?.unmachined ?? "" : words?.unprovided ?? "";
+    return offering(offered) ? "" : words?.unprovided ?? "";
 }
 
 // Where a link's `on` says its work starts, as Launcher.qml's newWorkOn
