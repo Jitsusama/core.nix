@@ -443,15 +443,23 @@ impl History {
         }
         let existing = path.exists();
         let history = History::connect(path)?;
-        let schema: Option<i64> = history
+        let read = history
             .db
             .query_row("SELECT value FROM meta WHERE key = 'schema'", [], |row| {
                 row.get::<_, String>(0)
             })
-            .optional()
-            .ok()
-            .flatten()
-            .and_then(|value| value.parse().ok());
+            .optional();
+        // Another connection holding the history is no sign it doesn't
+        // read, and setting it aside then would lose every kept bill.
+        if let Err(error) = &read
+            && matches!(
+                error.sqlite_error_code(),
+                Some(rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked)
+            )
+        {
+            return Err(error.to_string());
+        }
+        let schema: Option<i64> = read.ok().flatten().and_then(|value| value.parse().ok());
         if schema == Some(SCHEMA) {
             history.index_sessions()?;
             return Ok(history);

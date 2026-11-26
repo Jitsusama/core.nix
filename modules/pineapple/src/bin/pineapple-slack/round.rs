@@ -45,8 +45,12 @@ pub(super) struct Reader {
 /// and the round says which search is deaf; the other's messages are
 /// judged. What it gave is judged as its ears say it may be: messages a
 /// second ask agreed with in full, any other only for a stop, which may
-/// come from anyone, never for a resume a writer could type. Either way
-/// the next round asks both again, with no rest a poster could stretch.
+/// come from anyone, never for a resume a writer could type. One search
+/// unasked leaves the round read in part, counted neither way, though the
+/// other's messages are judged, unless it waits on a later page while the
+/// other's answer can't be read, which is said as that search deaf; only
+/// both unasked, neither waiting, is a round unasked. Either way the next
+/// round asks both again, with no rest a poster could stretch.
 pub(super) fn round(
     ears: &mut dyn Ears,
     reader: &Reader,
@@ -77,29 +81,42 @@ pub(super) fn round(
         phrase => (phrase, ears.search(&tag, &judged.back_to(&tag, now))),
     };
     let unread = Round::Deaf(Deafness::Unreadable);
-    // What a deaf search gave, or a page a search read on past: only a
-    // stop is taken from what no second ask agreed with, and it's judged
-    // again once read; what one agreed with in a deaf search is judged
-    // with the rest, in the order it was said.
-    let mut partly = Vec::new();
-    for (query, answer) in [(PHRASE, &phrase), (tag.as_str(), &tagged)] {
-        let deaf = answer.as_ref().err() == Some(&unread);
-        if deaf || answer.is_ok() {
-            let Unread { agreed, unagreed } = ears.unread(query);
-            for message in &unagreed {
-                if judged.is_new(message) && !alert(&joel, message) {
-                    judge(ears, reader, account, state, &joel, message, false);
-                }
-            }
-            if deaf {
-                partly.extend(agreed);
-            }
+    let answers = [(PHRASE, &phrase), (tag.as_str(), &tagged)];
+    let partly = in_part(ears, reader, account, state, &joel, judged, answers);
+    // One search unasked says nothing new of the other, so the round is
+    // read in part and counts neither way, but the other's stops are
+    // heard as it read them, as is what the first read in part, and it has
+    // read as far as they reach; when Slack was read whole stays as it was.
+    // The round names the search left unasked unless it waits on a later
+    // page, which its ears count.
+    let alone = match (&phrase, &tagged) {
+        (Ok(read), Err(Round::Unasked)) => Some((PHRASE, read, Search::Tag, tag.as_str())),
+        (Err(Round::Unasked), Ok(read)) => Some((tag.as_str(), read, Search::Phrase, PHRASE)),
+        _ => None,
+    };
+    if let Some((query, read, unasked, its)) = alone {
+        let heard = read.iter().chain(&partly);
+        judge_each(ears, reader, account, state, &joel, judged, heard);
+        judged.reached(query, read.last());
+        if let Err(error) = judged::write(state, judged, judged::read_at(state)) {
+            eprintln!("<3>couldn't keep how far it has read: {error}");
         }
+        return Round::Partly((!ears.waiting(its)).then_some(unasked));
     }
     let (phrase, tagged, deaf) = match (phrase, tagged) {
         (Ok(phrase), Ok(tagged)) => (phrase, tagged, None),
         (Ok(phrase), Err(tagged)) if tagged == unread => (phrase, Vec::new(), Some(Search::Tag)),
         (Err(phrase), Ok(tagged)) if phrase == unread => (Vec::new(), tagged, Some(Search::Phrase)),
+        // One waiting on a later page, as it may for rounds on end,
+        // mustn't hold back Joel's row on the other, which can't be read;
+        // it's counted as heard for that row, its first pages read. One
+        // whose first page blinked says nothing, so it falls through.
+        (Err(phrase), Err(Round::Unasked)) if phrase == unread && ears.waiting(&tag) => {
+            (Vec::new(), Vec::new(), Some(Search::Phrase))
+        }
+        (Err(Round::Unasked), Err(tagged)) if tagged == unread && ears.waiting(PHRASE) => {
+            (Vec::new(), Vec::new(), Some(Search::Tag))
+        }
         (phrase, tagged) => {
             let failed = [phrase.err(), tagged.err()];
             // What was judged of an answer it couldn't read is kept, and
@@ -111,15 +128,31 @@ pub(super) fn round(
                 }
             }
             // A refusal is said first, then a sign-in none could give.
-            // One search unasked, its network blinking, says nothing new
-            // of the other, so only both unread are told as both.
+            // One unasked beside the other unreadable, waiting on no later
+            // page, heard nothing either, so the round is deaf of both;
+            // each search is counted on its own, so one blink doesn't
+            // widen a row, and one failing every round is told. Of the
+            // rest, only both unasked, neither waiting, is a round no
+            // search was answered in, which a gateway's reader counts.
+            let unasked = Some(Round::Unasked);
+            let unreadable = failed.contains(&Some(unread));
+            let left = |search: Search, query: &str, answer: Option<Round>| {
+                (answer == unasked && !ears.waiting(query)).then_some(search)
+            };
+            let blinked = match (
+                left(Search::Phrase, PHRASE, failed[0]),
+                left(Search::Tag, &tag, failed[1]),
+            ) {
+                (Some(_), Some(_)) => Round::Unasked,
+                (one, other) => Round::Partly(one.or(other)),
+            };
             return [
                 Round::Deaf(Deafness::Refused),
                 Round::Deaf(Deafness::NoSignIn),
-                Round::Unasked,
             ]
             .into_iter()
             .find(|round| failed.contains(&Some(*round)))
+            .or_else(|| (failed.contains(&unasked) && !unreadable).then_some(blinked))
             .unwrap_or(unread);
         }
     };
@@ -142,6 +175,39 @@ pub(super) fn round(
         eprintln!("<3>couldn't keep how far it has read: {error}");
     }
     deaf.map_or(Round::Heard, |search| Round::Deaf(Deafness::Unread(search)))
+}
+
+/// What a deaf search gave, one whose later page went unanswered, or a
+/// page a search read on past, by each search's query and its `answers`:
+/// only a stop is taken from what no second ask agreed with, judged now
+/// and again once read; what one agreed with in a search read in part is
+/// given back to judge with the rest, in the order it was said.
+fn in_part(
+    ears: &mut dyn Ears,
+    reader: &Reader,
+    account: Option<&Account>,
+    state: &Path,
+    joel: &Joel,
+    judged: &Judged,
+    answers: [(&str, &Result<Vec<Message>, Round>); 2],
+) -> Vec<Message> {
+    let unread = Round::Deaf(Deafness::Unreadable);
+    let mut partly = Vec::new();
+    for (query, answer) in answers {
+        let part = matches!(answer, Err(Round::Unasked)) || answer.as_ref().err() == Some(&unread);
+        if part || answer.is_ok() {
+            let Unread { agreed, unagreed } = ears.unread(query);
+            for message in &unagreed {
+                if judged.is_new(message) && !alert(joel, message) {
+                    judge(ears, reader, account, state, joel, message, false);
+                }
+            }
+            if part {
+                partly.extend(agreed);
+            }
+        }
+    }
+    partly
 }
 
 /// Each new message `heard` judged once, in the order they were said, and
@@ -379,7 +445,9 @@ fn resume_as_joel(stops: &Path, reaches: &[Target], at: (u64, u128), link: &str,
 
 /// Say a reply the rules let through, and whether it counts as said: in
 /// shadow each does, said or not, so the rules are tried as they will be;
-/// out of it, only one Slack took.
+/// out of it, only one Slack took. With no sign-in of Slack's own, as a
+/// reader over a gateway has, none is said, since the gateway sends to
+/// Joel alone.
 fn answer(
     reader: &Reader,
     account: Option<&Account>,
@@ -391,7 +459,10 @@ fn answer(
         return true;
     }
     let Some(account) = account else {
-        eprintln!("<3>no sign-in to say a reply with: {}", message.link);
+        eprintln!(
+            "<5>a reply isn't said, as the gateway sends to Joel alone: {}",
+            message.link
+        );
         return false;
     };
     let Some(post) = post else {

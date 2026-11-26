@@ -200,9 +200,11 @@ const TITLE_AT_MOST: usize = 80;
 /// His words, cut short where they run long.
 fn quoted(words: &str) -> String {
     // His words can't close their own quote and speak outside it, as a
-    // window's title can't.
+    // window's title can't, nor carry a control character, which a send's
+    // arguments can't hold.
     let flat = words
         .replace('"', "'")
+        .replace(char::is_control, " ")
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ");
@@ -334,6 +336,15 @@ pub fn ledger_note(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn his_words_are_quoted_with_no_control_character_a_send_cant_carry() {
+        assert_eq!(
+            quoted("why\0 is \"it\"\u{1b}[31m\tslow"),
+            "\"why is 'it' [31m slow\"",
+            "his words kept a character no send's arguments can hold"
+        );
+    }
 
     const SESSIONS: &str = r#"{"Ok":{"Sessions":[
         {"id":"s-live","address":"ABC123","state":"busy","quest":"Q1"},

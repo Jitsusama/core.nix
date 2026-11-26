@@ -1529,6 +1529,12 @@ def test_a_place_its_chord_opened_is_drawn_as_it_stood(shell: Shell) -> None:
     opening = filled_after(shell, timed)
     assert opening.get("into") == "on", f"the opening didn't say its chord: {opening}"
     working_spent(opening)
+    # Its rows, its card and its hold are lapped apart from the ask, since an opening into a
+    # place asked 13 to 18 ms where home asked 1 to 3 (Joel's journal, 2026-11-24).
+    laps = {"asking", "kept rows", "kept card", "letting go"}
+    assert laps <= set(cast("dict[str, float]", opening.get("parts", {}))), (
+        f"the kept opening's laps went unsaid: {opening.get('parts')}"
+    )
     took = [line for line in said_of_chords(shell, since).splitlines() if "opening took" in line]
     assert took, "the opening said nothing of its time"
     assert "; its thread ran " in took[-1], f"the opening's line didn't say its thread: {took[-1]}"
@@ -1968,28 +1974,34 @@ def test_a_letter_reordering_a_kept_place_lists_it_afresh_from_its_first_row(
     whole = shell.showing()["count"]
     shell.send_chars("f")
     shell.launcher_until(lambda shown: shown["typed"] == "f" and cast("int", shown["count"]) > 0)
+    settled(shell)
+    # How many the held answer lists, which the letter typed again lists in its own frame.
+    held_count = cast("int", shell.showing()["count"])
     shell.send_key("backspace")
     shell.launcher_until(lambda shown: shown["typed"] == "" and shown["count"] == whole)
     for _ in range(ROWS_DOWN):
         shell.send_key("down")
     shell.launcher_until(lambda shown: cast("int", shown["seen"]["at"]) == ROWS_DOWN)
-    first: list[Json] = []
-    # Marked before the key, so its own first frame is judged: marked after, that frame was
-    # mostly past, and a letter that let the held answer go passed once its own answer came.
-    since = shell.mark()
-
-    def typed_f(_: Json) -> bool:
-        reports, _end = shell.said_since(since)
-        for said in reports:
-            if not first and said.startswith("showing "):
-                shown = json.loads(said[len("showing ") :])
-                if shown["typed"] == "f":
-                    first.append(shown)
-        return bool(first)
-
+    # Counted once every key before it is presented, so the letter's is the next: its own first
+    # frame is judged, as what's showing is made once a turn and a frame listing the rows
+    # before it, or none, could go unsaid, and a letter that let the held answer go passed
+    # once its own answer came.
+    before = len(launcher_on_niri.keys_presented_settled(shell))
     shell.send_chars("f")
-    shell.launcher_until(typed_f)
-    assert cast("int", first[0]["count"]) > 0, f"the held answer's letter listed none: {first}"
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    presented: list[Json] = []
+    while len(presented) <= before and time.monotonic() < deadline:
+        presented = json.loads(shell.as_account(shell.ipc("keysPresented")))
+        time.sleep(launcher_on_niri.POLL)
+    assert len(presented) > before, f"the letter was never presented: {presented}"
+    letter = presented[before]
+    # One that let the held answer go waits on its own, up to the launcher's bound, so a quick
+    # answer could list the same count; waited says it did, and is None where nothing said.
+    assert letter["waited"] is not None, f"the letter's search recorded no parts: {letter}"
+    assert letter["waited"] is False, f"the letter waited on its answers: {letter}"
+    assert letter["listed"] == held_count, (
+        f"the letter's first frame listed {letter['listed']}, not the {held_count} held: {letter}"
+    )
     laid = json.loads(shell.as_account(shell.ipc("laidOut")))
     selection = laid["selection"]
     assert selection is not None, f"the letter left no selection drawn: {laid['rows']}"

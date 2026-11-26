@@ -20,6 +20,15 @@ let
     // lib.optionalAttrs (doors.accepts != { }) { inherit (doors) accepts; }
     // runsIn kind
   ) (lib.filterAttrs (_: doors: doors != null) cfg.declares.fence);
+  # Each need as mycelium reads it, from the words `--need` takes: cloud
+  # alone, and every other as its kind keyed to its value.
+  need =
+    said:
+    let
+      kind = lib.head (lib.splitString "=" said);
+    in
+    if said == "cloud" then said else { ${kind} = lib.removePrefix "${kind}=" said; };
+  needsIn = map (rule: rule // { needs = map need rule.needs; }) cfg.declares.needsIn;
   runsIn =
     kind:
     lib.optionalAttrs (cfg.fenceRuns != null && kind != "none") {
@@ -53,6 +62,7 @@ builtins.toJSON (
   // lib.optionalAttrs (cfg.agents != { }) { inherit (cfg) agents; }
   // lib.optionalAttrs (cfg.declares.within != null) { inherit (cfg.declares) within; }
   // lib.optionalAttrs (cfg.declares.hosts != [ ]) { inherit (cfg.declares) hosts; }
+  // lib.optionalAttrs (needsIn != [ ]) { needs_in = needsIn; }
   // lib.optionalAttrs (fenced != { }) { fence = fenced; }
   // lib.optionalAttrs cfg.declares.piFencesItself { pi_fences_itself = true; }
 )

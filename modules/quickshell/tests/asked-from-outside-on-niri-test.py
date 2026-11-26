@@ -28,6 +28,11 @@ COUNTED = f"{len(MARKER)} letters"
 WRITTEN_WITHIN = 5.0
 # How long what a link opens drops every key (Prompt.qml's linkQuiet), and a little more.
 LINK_QUIET = 0.8
+# The launcher's own kinds of key, said whole where an id follows (KeysSaid.js's keysOwn and
+# ownId), and how many letters of such a key a line says.
+KEYS_OWN = ("place:", "category:", "collection:")
+OWN_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+OWN_LENGTH = 64
 
 
 # The shell, started once for the file's cases.
@@ -96,46 +101,65 @@ def test_a_links_row_is_counted(shell: Shell, call: str, start: str, missing: st
     close_after_link(shell)
 
 
+def held_whole(key: str) -> bool:
+    """Whether a line says this key whole: an own kind's, holding an id after its colon."""
+    kind, _, rest = key.partition(":")
+    return f"{kind}:" in KEYS_OWN and OWN_ID.fullmatch(rest) is not None
+
+
 def first_place(shell: Shell) -> Json:
-    """Give a place at the launcher's top whose name its id doesn't hold."""
+    """Give a place at the launcher's top keyed by an own kind and an id its name isn't in.
+
+    Only such a key is said whole, so the walk's line can be held to exactly what it says;
+    every other key's line, a source's said by its kind alone, is pinned in tests/pacing.qml.
+    Such a key is the same filtered or not, so a walk to it proves the line follows the reports
+    switch, not that the launcher's two walk lines go through keyShown at all.
+    """
     listed = cast("list[Json]", json.loads(shell.as_account(shell.ipc("list"))))
     places = [
         one
         for one in listed
-        if one["kind"] == "place" and one["in"] == "" and str(one["words"]) not in str(one["id"])
+        if one["kind"] == "place"
+        and one["in"] == ""
+        and held_whole(str(one["id"]))
+        and str(one["words"]) not in str(one["id"])
     ]
-    assert places, f"no place to walk to among {[one['words'] for one in listed]}"
+    tops = [
+        (one["id"], one["words"]) for one in listed if one["kind"] == "place" and one["in"] == ""
+    ]
+    assert places, f"no top place keyed by an own kind and an id its name isn't in: {tops}"
     return places[0]
 
 
-def assert_walk_said_by_kind(line: str, start: str, place: Json) -> None:
-    """Check a one-row walk's line says its row by its key, or its key's kind, and not its name.
+def assert_walk_said_by_key(line: str, start: str, place: Json) -> None:
+    """Check a one-row walk's line says its place by its key, and not its name.
 
-    A place's key is the launcher's own, `place:<id>`, said whole, and another's is said by its
-    kind, so either way the id starts with what the line says, which is one step and not none.
+    The place is keyed by an own kind and an id, as `category:<id>` (first_place), said whole
+    to its 64th letter, so the line says exactly that much of it, never only its start.
     """
     step = line.removeprefix(f"launcher: {start}")
     assert str(place["words"]) not in line, f"the walk said its row's name: {line}"
     assert step, f"the walk said no row: {line}"
     assert "\u203a" not in step, f"a walk of one row said more than one: {line}"
-    assert str(place["id"]).startswith(step), f"the walk said another row than its own: {line}"
+    wanted = str(place["id"])[:OWN_LENGTH]
+    assert step == wanted, f"the walk said another row than its own: {line}"
 
 
-def test_a_catalogue_walk_says_its_rows_by_kind(shell: Shell) -> None:
-    """A walk from outside says each row by its kind rather than its name, which a source gave."""
+def test_a_catalogue_walk_says_its_row_by_key(shell: Shell) -> None:
+    """A walk from outside says its place by its key rather than its name, which a source gave."""
     place = first_place(shell)
     start = "asked from outside to place "
     _, said = asked(shell, start, "run", str(place["id"]))
-    assert_walk_said_by_kind(line_of(said, start), start, place)
+    assert_walk_said_by_key(line_of(said, start), start, place)
     shell.close_launcher()
 
 
-def test_a_terminals_walk_says_its_rows_by_kind(shell: Shell) -> None:
-    """A terminal's `launcher do` says the rows it took by kind, as a walk from outside does."""
+def test_a_terminals_walk_says_its_row_by_key(shell: Shell) -> None:
+    """A terminal's `launcher do` says the place it took by key, as a walk from outside does."""
     place = first_place(shell)
     start = "asked from a terminal to place "
     _, said = asked(shell, start, "doing", json.dumps({"steps": [place["words"]]}))
-    assert_walk_said_by_kind(line_of(said, start), start, place)
+    assert_walk_said_by_key(line_of(said, start), start, place)
     shell.close_launcher()
 
 
