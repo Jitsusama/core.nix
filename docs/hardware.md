@@ -355,8 +355,9 @@ Write-Combined Buffers Under Reclaim, says what held them.
 (12997a385f71, 2926eb396711, 4f6ead67b93b and f2cee6e2aa35), reached
 the stable series in 7.3.6 with the mailbox handshake it had left out,
 so it left `kernel/next/`. At a hibernate's thaw, the driver had reset
-the controller and probed it again, though freeze never cut its power. The probe waited on the controller's
-firmware while user space was frozen. So the power-off asked a controller
+the controller and probed it again, though freeze never cut its power.
+The probe waited on the controller's firmware while user space was
+frozen. So the power-off asked a controller
 still in its bootloader for D3, timed out on its interrupt three times
 and returned -EBUSY. The hibernate rolled back, leaving the laptop on
 until its battery ran out. Thaw is now a plain wake, and only a restore
@@ -1099,10 +1100,13 @@ been traced to its cause, and is harmless, so nothing silences or patches it:
   HDMI codec has four converters and the DSP's topology three outputs. The
   GPU drives four displays, the panel being one, so the three cover every
   external display.
-- **Bluetooth's "Received gp1 mailbox interrupt"**, four times as the
-  controller loads its firmware. The driver reports every interrupt from that
-  mailbox as an error and dumps its registers for debugging; the firmware
-  loads and the controller works. On some boots, and on resuming from them,
+- **Bluetooth's mailbox lines** as the controller loads its firmware.
+  Before 7.3.6 the driver reported each interrupt from that mailbox as an
+  error, "Received gp1 mailbox interrupt", four times a boot, and dumped its
+  registers. 7.3.6 reads the mailbox for where the firmware keeps its debug
+  data and says so at info level, "mailbox for target access" and "mbox
+  interrupt received at N ns; queuing mbox_work"; the firmware loads and
+  the controller works. On some boots, and on resuming from them,
   that dump also logs "Controller device warning": a bit the controller's
   own firmware sets in its boot stage register, which the driver reports and
   does nothing with.

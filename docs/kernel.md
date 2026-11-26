@@ -96,7 +96,9 @@ the name was never recorded, and networkd couldn't match a saved network's
 file on it, or tell it had moved to another network and needed a new
 address. The patch recorded the name first. Most access points name their
 country, but hostapd doesn't unless it's told to. Upstream took it as
-[577f690ce5dc][3], which reached the stable series in 7.3.6.
+[577f690ce5dc][3], which reached the stable series in 7.3.6. The XPS
+14's `wifi-names-a-network-without-a-country` reads the kernel's source
+to hold it there.
 
 The Wi-Fi fix still carried is for a card that couldn't join an access point
 while memory was fragmented. Intel's driver adds a send queue as it joins,

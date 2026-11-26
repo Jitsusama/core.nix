@@ -50,8 +50,9 @@ let
   };
 
   # Each names its country, as nearly every real access point does. The
-  # test runs nixpkgs's kernel, which records the name of a network joined
-  # only when it does; core.nix's kernel has a patch for the others.
+  # test runs nixpkgs's kernel, which before 7.3.6 records the name of a
+  # network joined only when it does; core.nix's kernel is 7.3.6 or newer,
+  # which records it for the others too.
   accessPoint =
     name: settings:
     pkgs.writeText "${name}.conf" ''

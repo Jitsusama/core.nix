@@ -302,6 +302,21 @@ in
       touch $out
     '';
 
+  # A join through wpa_supplicant recorded the network's name only after
+  # finding the access point's country, and one that names none ended the
+  # join's last step first, so networkd couldn't match the network's file.
+  # Core's kernel carried the fix until 7.3.6 took it, so the kernel the
+  # laptop builds must still name the network first
+  # (tests/ssid-before-country.sh).
+  wifi-names-a-network-without-a-country =
+    let
+      sme = "net/wireless/sme.c";
+    in
+    pkgs.runCommandLocal "wifi-names-a-network-without-a-country" { } ''
+      ${lib.getExe pkgs.bash} ${./tests/ssid-before-country.sh} ${kernelSource [ sme ]}/${sme}
+      touch $out
+    '';
+
   # Wi-Fi's block-ack session data holds a reorder buffer per receive
   # queue, an order-5 block that fragmented memory refused four times in
   # a day, each refusal leaving the link without aggregation. So it may
