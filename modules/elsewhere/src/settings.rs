@@ -56,6 +56,10 @@ pub struct Settings {
     pub scratch: String,
     /// The realm mycelium is asked about, or the one it's set to.
     pub realm: Option<String>,
+    /// The folder where that realm's node keeps a ledger of each shared
+    /// quest, read for the machines already holding it; none is read
+    /// where none is named.
+    pub ledgers: Option<PathBuf>,
     pub kinds: BTreeMap<String, Kind>,
     /// The mycelium it asks and sends by, on its path unless named.
     pub mycelium: String,
@@ -67,6 +71,7 @@ impl Default for Settings {
             machines: Vec::new(),
             scratch: ".elsewhere-runs".to_owned(),
             realm: None,
+            ledgers: None,
             kinds: BTreeMap::new(),
             mycelium: "mycelium".to_owned(),
         }
@@ -109,6 +114,11 @@ pub fn read(text: &str) -> Result<Settings, String> {
         .get("realm")
         .and_then(Value::as_str)
         .map(str::to_owned);
+    settings.ledgers = value
+        .get("ledgers")
+        .and_then(Value::as_str)
+        .filter(|folder| !folder.is_empty())
+        .map(PathBuf::from);
     if let Some(kinds) = value.get("kinds").and_then(Value::as_object) {
         for (name, kind) in kinds {
             settings.kinds.insert(name.clone(), self::kind(name, kind)?);
@@ -226,6 +236,15 @@ mod tests {
         assert_eq!(
             settings.mycelium, "mycelium",
             "mycelium wasn't the one on the path"
+        );
+        assert_eq!(
+            settings.ledgers, None,
+            "a ledger was read where none was named"
+        );
+        assert_eq!(
+            read(r#"{"ledgers": "/s/mycelium/shared"}"#).map(|settings| settings.ledgers),
+            Ok(Some(PathBuf::from("/s/mycelium/shared"))),
+            "the ledgers named weren't taken"
         );
     }
 

@@ -595,6 +595,7 @@ gather {
     ./modules/call-under-load/checks.nix
     ./modules/calls/checks.nix
     ./modules/camera/checks.nix
+    ./modules/camera-guard/checks.nix
     ./modules/cargo/checks.nix
     ./modules/chrome/checks.nix
     ./modules/claude/checks.nix
@@ -633,6 +634,7 @@ gather {
     ./modules/hang-panic/checks.nix
     ./modules/health/checks.nix
     ./modules/hibernate/checks.nix
+    ./modules/home-manager/checks.nix
     ./modules/house-report/checks.nix
     ./modules/inkscape/checks.nix
     ./modules/inlyne/checks.nix

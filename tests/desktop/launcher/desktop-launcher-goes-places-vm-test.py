@@ -1285,7 +1285,8 @@ def walk_passwords(desktop: Desktop) -> None:
         "Show in 1Password",
         "Copy the Link",
     ]
-    desktop.launcher_until(lambda shown: shown["rows"] == acts)
+    # Type the Password leads them while a window is under the launcher to type into.
+    desktop.launcher_until(lambda shown: shown["rows"] in (acts, ["Type the Password", *acts]))
     desktop.shoot("launcher-passwords-acts")
     # Back on its row, its drawer says what reading it in full told, first: its website sent
     # in the clear as its health, its weak password as its strength, and never its secret.
@@ -1315,8 +1316,12 @@ def walk_passwords(desktop: Desktop) -> None:
     machine.send_key("ctrl-w")
     machine.send_key("h")
     desktop.launcher_until(lambda shown: not shown["drawer"]["keys"])
-    # Its Return copies its password and the launcher goes, as every copy does, so it pastes
-    # at once, the margin wearing the clipboard's mark till it clears.
+    # Its Copy the Password copies it and the launcher goes, as every copy does, so it pastes
+    # at once, the margin wearing the clipboard's mark till it clears. It's chosen by name,
+    # since Return types it instead while a window is under the launcher.
+    desktop.follow()
+    desktop.launcher_until(lambda shown: "Copy the Password" in shown["rows"])
+    desktop.down_to("Copy the Password")
     since = desktop.mark()
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: not shown["open"])

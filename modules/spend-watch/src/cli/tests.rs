@@ -34,10 +34,11 @@ fn ran(dir: &Path, line: &[&str]) -> Ending {
     )
 }
 
-// The daemon's last word on the budgets answers while it's within an
-// idle wait and a minute, and not once it's older, from a shape this
-// one doesn't write, or from the future, so a stopped daemon's file
-// falls back to a pass of the command's own.
+// The daemon's last word on the budgets answers while a daemon listens
+// and the word is within the trust, and not once it's older, from a
+// shape this one doesn't write, from the future, or once no daemon
+// listens, so a stopped daemon's file falls back to a pass of the
+// command's own.
 #[test]
 fn the_budgets_are_answered_from_the_last_pass_while_recent() {
     let dir = tempfile::tempdir().expect("a folder");
@@ -50,12 +51,26 @@ fn the_budgets_are_answered_from_the_last_pass_while_recent() {
             .expect("the budgets are written");
     };
     write(crate::standing::VERSION);
+    assert_eq!(
+        written_budgets(&config, at),
+        None,
+        "a file no daemon listens beside was taken as how the budgets stand"
+    );
+    let listening =
+        std::os::unix::net::UnixListener::bind(config.socket()).expect("a socket to listen on");
     let answered = written_budgets(&config, at + WRITTEN_LASTS).expect("recent enough");
     assert_eq!(answered["budgets"], json!([]), "{answered}");
     assert_eq!(written_budgets(&config, at + WRITTEN_LASTS + 1.0), None);
     assert_eq!(written_budgets(&config, at - 1.0), None);
     write(crate::standing::VERSION + 1);
     assert_eq!(written_budgets(&config, at), None);
+    write(crate::standing::VERSION);
+    drop(listening);
+    assert_eq!(
+        written_budgets(&config, at),
+        None,
+        "a stopped daemon's file was taken as how the budgets stand"
+    );
 }
 
 // A mistyped command, period or cut is the command line's mistake,
@@ -264,6 +279,7 @@ fn a_read_with_no_daemon_moves_the_history_itself() {
         .db
         .execute_batch(
             "DROP TRIGGER waste_hours_add; DROP TRIGGER waste_hours_take; DROP TABLE waste_hours;
+             DROP TRIGGER hour_moves_add; DROP TRIGGER hour_moves_take; DROP TABLE hour_moves;
              DROP INDEX turns_once; DROP INDEX refusals_once; DROP INDEX unresolved_once;
              ALTER TABLE sessions DROP COLUMN machine;
              UPDATE meta SET value = '9' WHERE key = 'schema';",

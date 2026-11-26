@@ -73,6 +73,7 @@ pub fn stalls(log: &Log, session: &str, void: bool, since: i64, until: i64) -> V
                 to: None,
                 routed_at: None,
                 tries: 0,
+                unnoted_since: None,
                 taken_by: None,
                 answered_at: None,
                 closed_by: None,

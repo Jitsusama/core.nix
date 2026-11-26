@@ -129,7 +129,15 @@ ended() {
   # What it said instead goes with a failure, as the failure's reason.
   complained() { grep -qF -- "$1" err || { cat err; false; }; }
   placed() { grep -qE ' (runs in|was started from) /' err || { cat err; false; }; }
-  folder_gone() { ! compgen -G 'run/*askpass*' > /dev/null; }
+  # A glob rather than compgen, which the build's non-interactive bash
+  # leaves out: its 127, negated, passed whatever the folder held.
+  folder_gone() {
+    local left
+    shopt -s nullglob
+    left=(run/*askpass*)
+    shopt -u nullglob
+    [ "${#left[@]}" = 0 ]
+  }
   between() { [ "$1" -ge "$2" ] && [ "$1" -le "$3" ]; }
 }
 

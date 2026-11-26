@@ -579,7 +579,10 @@ Provider {
             return figure(Object.assign({ thing: true, key: `machine:disk:${disk.path}`,
                 side: free }, fields));
         const said = Words.of("machine:disk:space").said ?? {};
+        // A writers' hold keeps passes off a filling disk, and the guard
+        // says so in its status; nothing left to clear stays true under it.
         const doing = disk.exhausted ? said.cleared
+            : disk.waiting ? said.waiting
             : disk.band === "filling" ? said.clearing : said.clearingAll;
         const full = typeof disk.full_at === "number" ? disk.full_at - Date.now() / 1000 : 0;
         const facts = [
