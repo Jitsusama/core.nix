@@ -360,19 +360,46 @@ impl Mesh {
             .collect()
     }
 
-    /// Every message sent at `from_ms` or later, as [`Mesh::sent_since`]
-    /// reads them, but only those whose body names the id their file is
-    /// named by: as [`Mesh::senders`] holds, one naming another is no
-    /// one's, and a measure that asks its sender would ask the wrong cell.
-    #[must_use]
-    pub fn sent_since_as_named(&self, from_ms: i64) -> Vec<Message> {
-        self.files_since(from_ms)
+    /// Every message sent at `from_ms` or later whose body names the id
+    /// its file is named by: as [`Mesh::senders`] holds, one naming another
+    /// is no one's, and a measure that asks its sender would ask the wrong
+    /// cell. Unlike [`Mesh::sent_since`], a folder that can't be listed or
+    /// a message that can't be read is said why, since a measure reading
+    /// what's left would close asks on messages it never saw.
+    pub fn sent_since_as_named(&self, from_ms: i64) -> Result<Vec<Message>, String> {
+        let listed = |dir: &Path| -> Result<Vec<PathBuf>, String> {
+            fs::read_dir(dir)
+                .and_then(|entries| entries.map(|e| e.map(|e| e.path())).collect())
+                .map_err(|e| format!("{} can't be listed: {e}", dir.display()))
+        };
+        let kept = day_kept(from_ms);
+        let mut files = Vec::new();
+        for path in listed(&self.messages())? {
+            let name = path.file_name().map(|n| n.to_string_lossy().into_owned());
+            if !path.is_dir() {
+                files.push(path);
+            } else if name.as_deref().is_some_and(&kept) {
+                files.extend(listed(&path)?);
+            }
+        }
+        let json = |p: &&PathBuf| p.extension().is_some_and(|e| e == "json") && !p.is_dir();
+        let mut sent = Vec::new();
+        for path in files
             .iter()
-            .filter_map(|p| {
-                let stem = p.file_stem()?.to_str()?;
-                read_json::<Message>(p).filter(|m| m.id == stem)
-            })
-            .collect()
+            .filter(json)
+            .filter(|p| stamped_since(p, from_ms))
+        {
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            let bytes = fs::read(path).map_err(|e| format!("{stem} can't be read: {e}"))?;
+            let message: Message = serde_json::from_slice(&bytes)
+                .map_err(|e| format!("{stem} isn't a message: {e}"))?;
+            if message.id == stem {
+                sent.push(message);
+            }
+        }
+        Ok(sent)
     }
 
     /// Who sent each message sent at `from_ms` or later whose short id,
@@ -422,17 +449,9 @@ impl Mesh {
     /// Every message's file whose id is stamped at `from_ms` or later, as
     /// [`Mesh::sent_since`] reads them.
     fn files_since(&self, from_ms: i64) -> Vec<PathBuf> {
-        let earliest = jiff::Timestamp::from_millisecond(from_ms - 24 * 3600 * 1000)
-            .map(|at| at.strftime("%Y-%m-%d").to_string())
-            .unwrap_or_default();
-        let dated = |name: &str| name.len() == 10 && name.as_bytes()[4] == b'-';
-        self.message_files(|day| !dated(day) || day >= earliest.as_str())
+        self.message_files(day_kept(from_ms))
             .into_iter()
-            .filter(|p| {
-                p.file_name()
-                    .and_then(|n| stamped_at(&n.to_string_lossy()))
-                    .is_some_and(|at| at >= from_ms)
-            })
+            .filter(|p| stamped_since(p, from_ms))
             .collect()
     }
 
@@ -545,6 +564,27 @@ fn json_files(folder: &Path) -> impl Iterator<Item = PathBuf> {
         .filter_map(Result::ok)
         .map(|entry| entry.path())
         .filter(|path| path.extension().is_some_and(|e| e == "json"))
+}
+
+/// Whether a folder of the messages folder, by its name, may hold a
+/// message sent at `from_ms` or later: any but a day's folder from before
+/// the day before, since a message is filed a little after it's sent.
+fn day_kept(from_ms: i64) -> impl Fn(&str) -> bool {
+    let earliest = jiff::Timestamp::from_millisecond(from_ms - 24 * 3600 * 1000)
+        .map(|at| at.strftime("%Y-%m-%d").to_string())
+        .unwrap_or_default();
+    move |name: &str| {
+        let dated = name.len() == 10 && name.as_bytes()[4] == b'-';
+        !dated || name >= earliest.as_str()
+    }
+}
+
+/// Whether the message file at `path` is named for a message sent at
+/// `from_ms` or later.
+fn stamped_since(path: &Path, from_ms: i64) -> bool {
+    path.file_name()
+        .and_then(|n| stamped_at(&n.to_string_lossy()))
+        .is_some_and(|at| at >= from_ms)
 }
 
 fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Option<T> {
@@ -864,6 +904,7 @@ mod tests {
         .unwrap();
         let ids: Vec<String> = mesh
             .sent_since_as_named(0)
+            .expect("the messages were read")
             .into_iter()
             .map(|m| m.id)
             .collect();
@@ -871,6 +912,28 @@ mod tests {
             ids,
             ["10-CADENCE-1-aa"],
             "a body naming another id than its file was read as sent"
+        );
+    }
+
+    /// A message that can't be read, or a messages folder that can't be
+    /// listed, is said why rather than read as no message, since a measure
+    /// would close the asks of the messages it missed.
+    #[test]
+    fn messages_as_named_say_why_they_cant_be_read() {
+        let (dir, mesh) = mesh();
+        mesh.send(&question("10-CADENCE-1-aa", "B")).unwrap();
+        fs::write(mesh.messages().join("11-CADENCE-1-bb.json"), "{").unwrap();
+        let broken = mesh.sent_since_as_named(0);
+        assert!(
+            broken
+                .as_ref()
+                .is_err_and(|why| why.contains("11-CADENCE-1-bb")),
+            "a message that isn't one was read past: {broken:?}"
+        );
+        fs::remove_dir_all(dir.path().join("mesh-workflow")).unwrap();
+        assert!(
+            mesh.sent_since_as_named(0).is_err(),
+            "a messages folder that can't be listed was read as no messages"
         );
     }
 

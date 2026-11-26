@@ -112,6 +112,7 @@ fn words_that_only_look_like_a_date_or_a_quote_back_nothing() {
         "Joel wants this: \"spread load now please\".",
         "I broke Joel's rule, \"never reach the lab box\".",
         "Joel ruled it.\n\"Never block the work\", he said.",
+        "T6E7X6, 10:08: Joel wants the lab shut.",
     ];
     for text in unbacked_ones {
         assert!(
@@ -191,11 +192,17 @@ fn a_claim_with_a_word_inside_joelish_isnt_one() {
         None,
         "a word only ending in joel was read as his name"
     );
+    assert_eq!(
+        unbacked("It goes on Joel's wish list."),
+        None,
+        "the wish list, a list of his, was read as a wish he said"
+    );
 }
 
 /// The ask tells its sender to answer re the ask or re the claim, and
 /// either takes the claim off the count without being counted itself,
-/// whatever the answer says, while another cell's reply clears nothing.
+/// whatever the answer says. Another cell's reply, or a reply to any
+/// other message of cadence's, clears nothing and is judged as any other.
 #[test]
 fn a_senders_answer_re_the_ask_or_the_claim_clears_it_and_isnt_counted() {
     let first = sent("0000000a", 3000, "T6E7X6", "I broke Joel's rule.");
@@ -223,8 +230,29 @@ fn a_senders_answer_re_the_ask_or_the_claim_clears_it_and_isnt_counted() {
     by_claim.re = Some(second.id.clone());
     let mut not_its_own = sent("00000010", 400, "T6E7X6", "Joel's rule binds you too.");
     not_its_own.re = Some(third.id.clone());
+    let mut not_its_ask = sent("00000012", 300, "5UTLKM", "Joel wants T6E7X6 to stop.");
+    not_its_ask.re = Some("0000000d".to_owned());
+    let card = sent(
+        "00000013",
+        250,
+        CADENCE,
+        "cadence hour: 3 measures past target. Is your red line held?",
+    );
+    let mut by_card = sent("00000014", 200, "IKQ63G", "Held: Joel wants it held.");
+    by_card.re = Some("00000013".to_owned());
     let m = unsourced(
-        &[first, second, third, ask, by_ask, by_claim, not_its_own],
+        &[
+            first,
+            second,
+            third,
+            ask,
+            by_ask,
+            by_claim,
+            not_its_own,
+            not_its_ask,
+            card,
+            by_card,
+        ],
         NOW,
     );
     assert_eq!(
@@ -232,8 +260,11 @@ fn a_senders_answer_re_the_ask_or_the_claim_clears_it_and_isnt_counted() {
         [
             "[0000000c] Joel wants the lab shut. · IKQ63G",
             "[00000010] Joel's rule binds you too. · T6E7X6",
+            "[00000012] Joel wants T6E7X6 to stop. · 5UTLKM",
+            "[00000014] Held: Joel wants it held. · IKQ63G",
         ],
-        "an answered claim or an answer was counted, or another cell's reply cleared one"
+        "an answered claim or an answer was counted, or a reply clearing nothing of its \
+         sender's, re another's claim, its ask or another cadence message, went uncounted"
     );
     let m = unsourced(&[sent("00000011", 60, CADENCE, "Joel wants it.")], NOW);
     assert_eq!(
@@ -276,7 +307,7 @@ fn a_claim_older_than_a_day_or_sent_twice_is_counted_once_or_not_at_all() {
 }
 
 #[test]
-fn with_no_messages_folder_the_measure_is_left_unjudged() {
+fn with_no_messages_folder_or_an_unreadable_message_the_measure_is_left_unjudged() {
     let dir = tempfile::tempdir().expect("the test's folder couldn't be made");
     let home = dir.path();
     let m = read(home, NOW);
@@ -288,4 +319,11 @@ fn with_no_messages_folder_the_measure_is_left_unjudged() {
     fs::create_dir_all(&messages).expect("the messages folder couldn't be made");
     let m = read(home, NOW);
     assert_eq!(m.target, Some(0.0), "a mesh with no messages went unjudged");
+    let broken = format!("{}-T6E7X6-1-0000000a.json", (NOW - 60) * 1000);
+    fs::write(messages.join(broken), "{").expect("the broken message couldn't be written");
+    let m = read(home, NOW);
+    assert_eq!(
+        m.target, None,
+        "a message that couldn't be read was read as none, so its ask would close"
+    );
 }

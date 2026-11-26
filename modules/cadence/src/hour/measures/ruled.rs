@@ -127,8 +127,9 @@ const RULES: [&str; 5] = ["rule", "ruling", "wish", "call", "orders"];
 const HIM: [&str; 5] = ["joel", "joel's", "he", "his", "him"];
 
 /// The measure, from the mesh's messages of the last day under
-/// `state_home`'s harness folder. With no messages folder there, it's
-/// left unjudged, rather than reading no messages as none unsourced.
+/// `state_home`'s harness folder. With no messages folder there, or one
+/// that can't be read in full, it's left unjudged, rather than reading the
+/// messages it missed as none unsourced and closing their asks.
 #[must_use]
 pub fn read(state_home: &Path, now: i64) -> Measure {
     let mesh = Mesh {
@@ -137,7 +138,10 @@ pub fn read(state_home: &Path, now: i64) -> Measure {
     if !mesh.root.join("mesh-workflow/messages").is_dir() {
         return unread("no mesh messages folder here");
     }
-    unsourced(&mesh.sent_since_as_named((now - DAY) * 1000), now)
+    match mesh.sent_since_as_named((now - DAY) * 1000) {
+        Ok(sent) => unsourced(&sent, now),
+        Err(why) => unread(&why),
+    }
 }
 
 /// The measure unjudged, saying `why` it can't be read.
@@ -203,15 +207,16 @@ fn well_named(m: &Message) -> bool {
 }
 
 /// The ids of the answers in `sent` to a claim of his rule, and the claims
-/// they answer, by sender and short id. An answer is re one of cadence's
-/// asks, or re a claiming message of its own sender's. One re an ask
-/// answers the claim the ask names, and only for that claim's sender.
+/// they answer, by sender and short id. An answer comes from the claim's
+/// sender, re the claim or re this measure's ask about it. Cadence's other
+/// messages, as its hour's card or a red line's question, ask nothing of a
+/// claim, so a reply to one is judged as any other message.
 fn answers<'a>(sent: &[&'a Message]) -> (BTreeSet<&'a str>, BTreeSet<(&'a str, &'a str)>) {
-    let asked: BTreeMap<&str, Option<&str>> = sent
+    let asked: BTreeMap<&str, &str> = sent
         .iter()
         .copied()
         .filter(|m| m.from == CADENCE)
-        .map(|m| (short_id(&m.id), about(&m.text)))
+        .filter_map(|m| Some((short_id(&m.id), about(&m.text)?)))
         .collect();
     let claimed: BTreeMap<&str, &str> = sent
         .iter()
@@ -224,22 +229,23 @@ fn answers<'a>(sent: &[&'a Message]) -> (BTreeSet<&'a str>, BTreeSet<(&'a str, &
         let Some(re) = m.re.as_deref().map(short_id) else {
             continue;
         };
-        let own = claimed.get(re) == Some(&m.from.as_str());
-        let about = asked.get(re).copied().flatten().or(own.then_some(re));
-        if asked.contains_key(re) || own {
+        let claim = asked.get(re).copied().unwrap_or(re);
+        if claimed.get(claim) == Some(&m.from.as_str()) {
             answers.insert(m.id.as_str());
-        }
-        if let Some(about) = about {
-            answered.insert((m.from.as_str(), about));
+            answered.insert((m.from.as_str(), claim));
         }
     }
     (answers, answered)
 }
 
-/// The short id of the message one of cadence's asks is about, as its
-/// text names it: "your message <short id> says".
+/// The short id of the message one of this measure's asks is about, as
+/// its text names it: "cadence hour: your message <short id> says Joel
+/// ruled". Any other of cadence's messages is about no claim.
 fn about(ask: &str) -> Option<&str> {
-    ask.split_once("your message ")?.1.split_whitespace().next()
+    let (id, rest) = ask
+        .strip_prefix("cadence hour: your message ")?
+        .split_once(' ')?;
+    rest.starts_with("says Joel ruled").then_some(id)
 }
 
 /// Whether any sentence of `text` claims a rule or wish of Joel's.
@@ -308,7 +314,11 @@ fn unquoted(text: &str) -> String {
 /// Whether `sentence` claims a rule or wish of Joel's: any of the words
 /// naming him, or one by "he" or "his" in a sentence naming him.
 fn claims(sentence: &str) -> bool {
-    let said = sentence.to_lowercase();
+    // "Joel's wish list" names a list of his, the repository's own, and
+    // claims nothing he said.
+    let said = sentence
+        .to_lowercase()
+        .replace("joel's wish list", "joel's list");
     let names = CLAIMS.iter().any(|claim| at_word(&said, claim));
     let joel = words(&said).iter().any(|word| word == "joel");
     names || (joel && HIS.iter().any(|claim| at_word(&said, claim)))
@@ -341,7 +351,11 @@ fn dated_by_him(sentence: &str) -> bool {
     };
     let timed = |at: usize| clock(tokens[at]) || iso_date(tokens[at]);
     let starts = |at: usize| timed(at) || lower.get(at + 1).is_some_and(|b| dated(&lower[at], b));
-    let ends = |at: usize| timed(at) || (at > 0 && dated(&lower[at - 1], &lower[at]));
+    // A time ending in a colon heads what follows, as a sender's own
+    // "T6E7X6, 10:08: Joel wants", and is when the sender wrote, not he.
+    let heads = |at: usize| tokens[at].ends_with(':');
+    let ends =
+        |at: usize| !heads(at) && (timed(at) || (at > 0 && dated(&lower[at - 1], &lower[at])));
     (0..tokens.len())
         .filter(|&at| HIM.contains(&lower[at].as_str()))
         .any(|him| {
