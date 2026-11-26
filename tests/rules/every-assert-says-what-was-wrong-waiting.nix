@@ -255,7 +255,6 @@
   "modules/update-to-main/src/ask.rs" = 3;
   "modules/update-to-main/src/follow.rs" = 21;
   "modules/update-to-main/src/hosted.rs" = 8;
-  "modules/update-to-main/src/run.rs" = 9;
   "modules/update-to-main/src/session.rs" = 1;
   "modules/update-to-main/src/system.rs" = 11;
   "modules/update-to-main/tests/update/main.rs" = 11;
