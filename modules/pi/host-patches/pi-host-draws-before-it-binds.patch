@@ -38,7 +38,7 @@ unchanged.
 
 --- a/packages/coding-agent/src/modes/interactive/interactive-mode.ts
 +++ b/packages/coding-agent/src/modes/interactive/interactive-mode.ts
-@@ -1185,12 +1185,58 @@ export class InteractiveMode {
+@@ -1185,12 +1185,63 @@ export class InteractiveMode {
  		this.setupEditorSubmitHandler();
  		this.ui.requestRender();
  
@@ -63,12 +63,17 @@ unchanged.
 +				this.ui.renderNow();
 +			} catch (error) {
 +				// A renderer wanting what its session_start loads: drawn after the bind, as startup draws.
-+				// Only what this draw added goes; the notices startup showed before it stay. Said on
-+				// stderr, which a host's journal keeps, so a window blank through its bind says why.
-+				process.stderr.write(`pi-host: the early draw threw, so it draws after the bind: ${String(error)}\n`);
++				// Only what this draw added goes; the notices startup showed before it stay.
 +				this.chatContainer.children.splice(shown);
 +				prompts.length = 0;
 +				drawn = undefined;
++				// Said on stderr, which a host's journal keeps, so a window blank through its bind says
++				// why, quoted so it stays one line; a write that throws is lost, never the later draw.
++				try {
++					process.stderr.write(`pi-host: the early draw threw, so it draws after the bind: ${JSON.stringify(String(error))}\n`);
++				} catch {
++					// Nothing to say it on, or nothing to say: the draw after the bind still comes.
++				}
 +			} finally {
 +				editor.addToHistory = remember;
 +			}

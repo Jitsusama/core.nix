@@ -4,6 +4,7 @@
 // startup runs for real against a fake runtime; no TTY, model request or
 // extension is started. Arguments name the package and, optionally, source.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, mock, test as it } from "node:test";
 
@@ -316,7 +317,7 @@ it("a hosted screen whose early draw throws draws after the bind, as startup doe
   assert.equal(mode.subscribeToAgent.mock.callCount(), 1, "startup failed for a renderer");
   assert.deepEqual(
     said.mock.calls.map((call) => call.arguments[0]),
-    ["pi-host: the early draw threw, so it draws after the bind: Error: no state yet\n"],
+    ['pi-host: the early draw threw, so it draws after the bind: "Error: no state yet"\n'],
     "it didn't say once why the window waited for the bind",
   );
   mode.themeChangeUnsubscribe?.();
@@ -338,10 +339,33 @@ it("a hosted screen whose early frame throws draws after the bind", async () => 
   mode.themeChangeUnsubscribe?.();
 });
 
-it("stands in only for parts pi's screen has", () => {
-  // The screen above mocks these; were pi to rename one, the stub would
-  // test a part startup no longer calls.
+it("a hosted early draw that throws with no stderr still draws after the bind", async () => {
+  const { mode, bound, binding, steps } = startingScreen(true);
+  const notice = { notice: true };
+  mode.chatContainer.children.push(notice);
+  mode.renderInitialMessages.mock.mockImplementationOnce(() => {
+    mode.chatContainer.children.push({ drawn: true });
+    throw new Error("no state yet");
+  });
+  mock.method(process.stderr, "write", () => {
+    throw new Error("stderr is gone");
+  });
+  const started = starting(mode);
+  await binding;
+  assert.deepEqual(mode.chatContainer.children, [notice], "half a draw was left on screen");
+  bound();
+  await started;
+  assert.deepEqual(steps, ["bind", "drawn", "sent"], "it was not drawn after the bind");
+  assert.equal(mode.subscribeToAgent.mock.callCount(), 1, "startup failed for a lost line");
+  mode.themeChangeUnsubscribe?.();
+});
+
+it("the screen stands in for these parts of pi, which pi has", async () => {
+  // The screen above stands in for these, and the patch calls them; were
+  // pi to rename one, the stub would test a part startup no longer calls.
   for (const part of [
+    "bindCurrentSessionExtensions",
+    "rebindCurrentSession",
     "renderInitialMessages",
     "renderSessionEntries",
     "rebuildChatFromMessages",
@@ -349,6 +373,10 @@ it("stands in only for parts pi's screen has", () => {
   ]) {
     assert.equal(typeof InteractiveMode.prototype[part], "function", `pi's screen has no ${part}`);
   }
+  const { SessionManager } = await import(join(agentPackage, "dist/core/session-manager.js"));
+  assert.equal(typeof SessionManager.prototype.buildContextEntries, "function");
+  // A field, set as the screen is made, so read from its source.
+  assert.match(readFileSync(source, "utf8"), /\bpendingTools = new Map\(\)/u, "no pendingTools");
 });
 
 it("a plain pi still draws its conversation after its extensions bind", async () => {
