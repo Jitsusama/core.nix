@@ -104,6 +104,40 @@ impl Room {
         (self.held(), said)
     }
 
+    /// The rate link `name`'s download is held to for a call this second
+    /// while it follows `leader` to its router, in kbit/s, and the
+    /// journal's line as a hold begins or ends. A follower's download isn't
+    /// measured, so whether it fills its line can't be told: while a call
+    /// is on, `call`, it's held at `ROOM` of its own `line` on `network`,
+    /// whatever it carries. A hold it had as leader at that rate goes on
+    /// unsaid, and one it takes here goes on if it leads again, as `step`
+    /// keeps one it has, so a link's hold isn't let go a second while the
+    /// lead moves (a link's own line round 3's F1, F4, F9, F13 and F16).
+    pub fn follow(
+        &mut self,
+        (name, leader): (&str, &str),
+        network: &str,
+        call: bool,
+        line: Option<u64>,
+    ) -> (Option<u64>, Option<String>) {
+        let room = line.filter(|_| call).map(|line| whole(float(line) * ROOM));
+        let was = self.held.take();
+        let kept = room.is_some_and(|room| {
+            was.as_ref()
+                .is_some_and(|(on, held)| on == network && *held == room)
+        });
+        self.held = room.map(|room| (network.to_owned(), room));
+        let said = match (&was, self.held()) {
+            (_, Some(room)) if !kept => Some(format!(
+                "{name}: a call is on and its download, following {leader}'s, isn't measured, \
+                 so it's held to {room} kbit/s under its own line"
+            )),
+            (Some(_), None) => Some(format!("{name}: the download is no longer held for a call")),
+            _ => None,
+        };
+        (self.held(), said)
+    }
+
     /// The rate the download is held to for a call, in kbit/s, if it is.
     pub fn held(&self) -> Option<u64> {
         self.held.as_ref().map(|&(_, room)| room)
@@ -308,5 +342,46 @@ mod tests {
         let (held, said) = room.step("eth1", HOME, true, carried(90_000.0), None);
         assert_eq!(held, None, "a network with no line holds nothing");
         assert!(said.is_some(), "and the journal says so");
+    }
+
+    // A follower's download isn't measured, so it's held under its own line
+    // for the whole of a call, and its hold goes on, unsaid, as the lead
+    // moves to it or from it mid-call (a link's own line round 3's F1,
+    // F4, F9, F13 and F16).
+    #[test]
+    fn a_follower_is_held_for_a_call_and_keeps_its_hold_as_the_lead_moves() {
+        let wifi = ("wlan0", "eth1");
+        let mut room = Room::default();
+        let (held, said) = room.follow(wifi, HOME, false, Some(20_000));
+        assert_eq!((held, said), (None, None), "no call, no hold");
+        let (held, said) = room.follow(wifi, HOME, true, Some(20_000));
+        assert_eq!(held, Some(18_000), "held unmeasured, under its own line");
+        assert!(said.is_some(), "the journal says the hold began");
+        let (held, said) = room.follow(wifi, HOME, true, Some(20_000));
+        assert_eq!((held, said), (Some(18_000), None), "said once");
+        let (held, said) = room.step("wlan0", HOME, true, UNKNOWN, Some(20_000));
+        assert_eq!(
+            (held, said),
+            (Some(18_000), None),
+            "a follower turned leader keeps its hold before it's measured"
+        );
+        let (held, said) = room.follow(wifi, HOME, true, Some(20_000));
+        assert_eq!(
+            (held, said),
+            (Some(18_000), None),
+            "a leader turned follower isn't said to be let go while held"
+        );
+        let (held, said) = room.follow(wifi, HOME, true, None);
+        assert_eq!(held, None, "a follower with no line");
+        assert!(said.is_some(), "is said to be let go");
+        let (held, said) = room.follow(wifi, HOME, true, Some(20_000));
+        assert_eq!(held, Some(18_000));
+        assert!(said.is_some());
+        let (held, said) = room.follow(wifi, HOME, false, Some(20_000));
+        assert_eq!(held, None, "the call's end lets it go");
+        assert_eq!(
+            said.as_deref(),
+            Some("wlan0: the download is no longer held for a call")
+        );
     }
 }
