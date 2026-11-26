@@ -304,6 +304,18 @@ fn words_leading_into_the_list_are_passed_over_and_words_with_no_list_are_unread
         "the morning note's \"For you\" holds words but no list",
         "words with no list weren't said unread, with why"
     );
+    let labelled = uncited(
+        &[],
+        "**For you:**\nNothing for you today.\n\nOvernight:\n- Built the thing.\n",
+        "",
+        &BTreeMap::new(),
+        "WCJQSG",
+    );
+    assert_eq!(
+        labelled.expect_err("the next part's list was read as put to him"),
+        "the morning note's \"For you\" holds words but no list",
+        "a plain label opening the next part was passed over as a lead-in"
+    );
     let empty = judged(
         &[],
         "**For you:**\n\n## Overnight\n- Not one.\n",

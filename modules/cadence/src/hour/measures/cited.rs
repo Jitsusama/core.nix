@@ -590,8 +590,9 @@ fn for_you(note: &str) -> Result<Vec<String>, String> {
         } else if carried && let Some(last) = items.last_mut() {
             last.push(' ');
             last.push_str(line.trim());
-        } else if first.is_none() && !heading(line) {
-            // Words leading into the list, as "Two calls today:".
+        } else if first.is_none() && !led && !heading(line) {
+            // One line of words leading into the list, as "Two calls
+            // today:"; a second is the next part's, as "Overnight:".
             led = true;
         } else {
             break;

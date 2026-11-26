@@ -267,7 +267,8 @@ fn an_ask_parked_or_put_down_after_its_late_move_keeps_it() {
 /// An ask its keeper parks in place, on its one line, after its late move
 /// keeps the move, by the minute its note gives the park, read in the
 /// clock its dates were given in. Parked before the move, in the pass
-/// that moved it, or with no note naming the ruling, it owes no word.
+/// that moved it, or with no note naming the ruling, it owes no word; let
+/// go and parked again after it, the park standing is the note's last.
 #[test]
 fn an_ask_parked_in_place_is_judged_by_when_its_note_says_it_was_parked() {
     let moved = NOW - 1360;
@@ -288,17 +289,48 @@ fn an_ask_parked_in_place_is_judged_by_when_its_note_says_it_was_parked() {
         ));
         ask
     };
+    let mut again = parked_at("parked again", moved + 120, "b95ea57b");
+    let first = local(moved - 600, "%Y-%m-%d %H:%M");
+    let note = again["note"].as_str().unwrap_or_default().to_owned();
+    again["note"] = json!(format!("{first} J7XHQN: parked: b95ea57b, first | {note}"));
     let text = list(&[
         parked_at("parked after", moved + 120, "b95ea57b"),
         parked_at("parked before", moved - 600, "b95ea57b"),
         parked_at("parked as it moved", moved, "b95ea57b"),
         parked_at("parked on another", moved + 120, "5fa32250"),
+        again,
     ]);
     let m = told_late(&text, NOW, Tracking::His);
     assert_eq!(
         m.behind,
-        ["parked after, moved 6 min before its date · A"],
+        [
+            "parked after, moved 6 min before its date · A",
+            "parked again, moved 6 min before its date · A",
+        ],
         "an ask parked in place was judged by the park, not by when its note says it came"
+    );
+}
+
+/// An ask its keeper puts down in place keeps its late move when its
+/// `closed` names a minute after the move's. Put down before the move, or
+/// by words alone, it owes no word.
+#[test]
+fn an_ask_put_down_in_place_is_judged_by_when_its_closed_says() {
+    let moved = NOW - 1360;
+    let put_down = |words: &str, closed: Value| {
+        let more = json!({"closed": closed, "landed": null});
+        ask_moved(words, "B", (NOW - 1000, moved), &more)
+    };
+    let text = list(&[
+        put_down("put down after", json!(at(moved + 120))),
+        put_down("put down before", json!(at(moved - 600))),
+        put_down("put down in words", json!("put down")),
+    ]);
+    let m = told_late(&text, NOW, Tracking::His);
+    assert_eq!(
+        m.behind,
+        ["put down after, moved 6 min before its date · B"],
+        "an ask put down in place was judged by the put-down, not by when it came"
     );
 }
 

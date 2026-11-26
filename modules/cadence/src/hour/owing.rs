@@ -229,33 +229,25 @@ fn fruitless_asked(m: &Measure, says: String) -> Filed {
     }
 }
 
-/// Each owner's ask about the dates of theirs moved too late to warn
-/// whoever waited, each line naming its owner last as the misses' do. A
-/// move can't be taken back, so its figure never comes in by steering: it
-/// closes once none of the measure's lines names them, a day after.
+/// The ask to its owner about each date moved too late to warn whoever
+/// waited, each line naming its owner last as the misses' do; filed move
+/// by move, so a later move of an owner whose ask is open is still told.
+/// A move can't be taken back, so its figure never comes in by steering:
+/// it closes once its line is gone, a day after the move.
 fn told_late_asked(m: &Measure, says: &str) -> Vec<Filed> {
-    let mut owners: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for (date, owner) in m.behind.iter().filter_map(|line| line.rsplit_once(" · ")) {
-        owners
-            .entry(owner.to_owned())
-            .or_default()
-            .push(date.to_owned());
-    }
-    owners
-        .into_iter()
-        .map(|(owner, dates)| {
-            let dates = dates.join("; ");
-            Filed {
-                key: format!("hour:{}:{owner}", m.key),
-                says: format!("{says}, yours: {dates}"),
-                text: format!(
-                    "cadence hour: {says}, and these moves are yours: {dates}. A date moved \
-                     this late leaves whoever waits on it no time to plan round it. Please \
-                     reply with what held the word back and what tells the next move sooner. \
-                     It closes by itself once none of them is left, a day after its move."
-                ),
-                owner,
-            }
+    m.behind
+        .iter()
+        .filter_map(|line| line.rsplit_once(" · "))
+        .map(|(date, owner)| Filed {
+            key: format!("hour:{}:{owner}:{date}", m.key),
+            says: format!("{says}, yours: {date}"),
+            text: format!(
+                "cadence hour: {says}, and this move is yours: {date}. A date moved this \
+                 late leaves whoever waits on it no time to plan round it. Please reply \
+                 with what held the word back and what tells the next move sooner. It \
+                 closes by itself a day after the move."
+            ),
+            owner: owner.to_owned(),
         })
         .collect()
 }
@@ -341,15 +333,18 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
     if key.starts_with(rounds::FRUITLESS) {
         return !measures.iter().any(|m| m.key == key) && measures.iter().any(rounds::read_whole);
     }
-    // A date told late is its owner's until no line of the measure, read,
-    // names them; with the asks list unread it says nothing, so stays open.
+    // A date told late is its owner's until its line is gone from the
+    // measure, read; with the asks list unread it says nothing, so stays
+    // open.
     let late = measures.iter().find_map(|m| {
-        let owner = key.strip_prefix(m.key.as_str())?.strip_prefix(':')?;
-        m.key.starts_with(told_late::KEY).then_some((m, owner))
+        let moved = key.strip_prefix(m.key.as_str())?.strip_prefix(':')?;
+        m.key.starts_with(told_late::KEY).then_some((m, moved))
     });
-    if let Some((m, owner)) = late {
-        let named = format!(" · {owner}");
-        return m.target.is_some() && !m.behind.iter().any(|line| line.ends_with(&named));
+    if let Some((m, moved)) = late {
+        let line = moved
+            .split_once(':')
+            .map(|(owner, date)| format!("{date} · {owner}"));
+        return m.target.is_some() && line.is_none_or(|line| !m.behind.contains(&line));
     }
     // An unread file leaves only its one line, never a figure, so a drag
     // isn't closed while its figure can't be seen; a figure written with no
@@ -1037,7 +1032,7 @@ mod tests {
     }
 
     #[test]
-    fn a_date_told_late_goes_to_each_owner_apart_and_closes_once_its_line_is_gone() {
+    fn a_date_told_late_goes_to_its_owner_move_by_move_and_closes_once_its_line_is_gone() {
         let mut late = measure(told_late::KEY, Class::Slip, 2.0, Some(0.0));
         late.behind = vec![
             "a fix, moved 6 min before its date · J7XHQN".to_owned(),
@@ -1048,21 +1043,22 @@ mod tests {
         assert!(drag(&both).is_none(), "a date told late led the drag");
         let mut ledger = Vec::new();
         let told = file(&mut ledger, &both, "2026-11-25", 1000);
-        let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
+        let mut owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
+        owners.sort_unstable();
         assert_eq!(
             owners,
             ["16V6F4", "J7XHQN"],
             "a date told late wasn't put to each owner"
         );
+        let fix = told
+            .iter()
+            .find(|(to, _)| to == "J7XHQN")
+            .map(|(_, text)| text.as_str())
+            .unwrap_or_default();
         assert!(
-            told[1]
-                .1
-                .contains("these moves are yours: a fix, moved 6 min before its date."),
-            "the owner wasn't told which move was theirs: {}",
-            told[1].1
+            fix.contains("this move is yours: a fix, moved 6 min before its date."),
+            "the owner wasn't told which move was theirs: {fix}"
         );
-        late.behind.remove(1);
-        late.now = 1.0;
         let mut unread = late.clone();
         unread.behind.clear();
         unread.target = None;
@@ -1071,15 +1067,33 @@ mod tests {
             ledger.iter().all(|e| e.open),
             "a move closed while the asks list went unread"
         );
-        file(&mut ledger, &[late], "2026-11-25", 8200);
-        let open: Vec<&str> = ledger
+        late.behind.remove(1);
+        late.behind
+            .push("a deploy, moved 2 min before its date · J7XHQN".to_owned());
+        let told = file(&mut ledger, &[late], "2026-11-25", 8200);
+        assert!(
+            told.iter()
+                .any(|(to, text)| to == "J7XHQN" && text.contains("a deploy, moved 2 min")),
+            "a later move of an owner with an ask open went untold: {told:?}"
+        );
+        let mut open: Vec<&str> = ledger
             .iter()
             .filter(|e| e.open)
             .map(|e| e.key.as_str())
             .collect();
+        open.sort_unstable();
         assert_eq!(
             open,
-            [format!("hour:{}:J7XHQN", told_late::KEY)],
+            [
+                format!(
+                    "hour:{}:J7XHQN:a deploy, moved 2 min before its date",
+                    told_late::KEY
+                ),
+                format!(
+                    "hour:{}:J7XHQN:a fix, moved 6 min before its date",
+                    told_late::KEY
+                ),
+            ],
             "a move closed while its line stood, or stayed open once it was gone"
         );
     }

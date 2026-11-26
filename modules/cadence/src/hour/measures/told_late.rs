@@ -34,7 +34,8 @@ type Late = (i64, String, String);
 /// ruling, which owes none while it stands, or put down. An ask parked or
 /// put down after its move was told late keeps the move, since the word
 /// came too late all the same: parked in place on its one line, as the
-/// keeper parks, it's parked after the move when its note says so. Each
+/// keeper parks, it's parked after the move when its note says so, and
+/// put down in place, when its `closed` names a later minute. Each
 /// ask's dates are read from its latest line, which carries every date
 /// it was given, so a move is counted once however often the ask is
 /// written again.
@@ -104,10 +105,28 @@ fn owed_at(versions: &[Value], moved: i64, which: Tracking) -> bool {
         let parked_after = || {
             given_at(line, moved)
                 .and_then(|given| parked_since(line, given))
-                .is_some_and(|park| park.div_euclid(60) > moved.div_euclid(60))
+                .is_some_and(|park| after(park, moved))
         };
-        tracking::of(line) == Some(which) && (parked::ruling(line).is_none() || parked_after())
+        kind_when(line, moved) == Some(which) && (parked::ruling(line).is_none() || parked_after())
     })
+}
+
+/// The kind the ask on `line` was of when its date moved at `moved`: put
+/// down in place in a minute after the move, as its `closed` says, it was
+/// still of its kind then. Put down by words alone, no time says when.
+fn kind_when(line: &Value, moved: i64) -> Option<Tracking> {
+    if seconds(&line["closed"]).is_some_and(|closed| after(closed, moved)) {
+        let mut open = line.clone();
+        open["closed"] = Value::Null;
+        return tracking::of(&open);
+    }
+    tracking::of(line)
+}
+
+/// Whether `then` fell in a minute after the one `moved` did, since the
+/// keeper's notes give only the minute.
+fn after(then: i64, moved: i64) -> bool {
+    then.div_euclid(60) > moved.div_euclid(60)
 }
 
 /// The time, as written, that `line`'s `promised` says a date was given
@@ -125,12 +144,14 @@ fn given_at(line: &Value, moved: i64) -> Option<&str> {
 /// joined by " | ", each opening with the local minute of the pass that
 /// wrote it and no zone, as "2026-11-24 19:26 J7XHQN: parked: b95ea57b",
 /// so the minute is read in the offset of `given`, a time the same keeper
-/// wrote. None when no entry says so in that shape.
+/// wrote. The park standing is the last entry naming its ruling, since an
+/// ask let go and parked again keeps its first park's entry too. None when
+/// no entry says so in that shape.
 fn parked_since(line: &Value, given: &str) -> Option<i64> {
     let ruling = parked::ruling(line)?;
     let offset = offset_of(given)?;
     let said = format!("parked: {ruling}");
-    line["note"].as_str()?.split(" | ").find_map(|entry| {
+    line["note"].as_str()?.rsplit(" | ").find_map(|entry| {
         let (stamp, rest) = entry.trim().split_at_checked(16)?;
         let (_, words) = rest.split_once(": ")?;
         if !words.starts_with(&said) {
