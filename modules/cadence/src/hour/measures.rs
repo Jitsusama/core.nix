@@ -148,6 +148,14 @@ fn lines(text: &str) -> impl Iterator<Item = Value> + '_ {
         .filter_map(|line| serde_json::from_str(line).ok())
 }
 
+/// The asks list's lines, each read as its ask, but for a twin: a line
+/// the keeper folded into another with the same moment and words, its id
+/// marked `~`. Every measure of the asks keeps an ask by its latest line,
+/// so a twin written after the ask it copies would stand in its place.
+fn asks(text: &str) -> impl Iterator<Item = Value> + '_ {
+    lines(text).filter(|ask| !ask["id"].as_str().is_some_and(|id| id.contains('~')))
+}
+
 fn seconds(value: &Value) -> Option<i64> {
     value
         .as_str()?
@@ -175,22 +183,22 @@ pub fn to_first_slice(text: &str, now: i64, which: Tracking) -> Measure {
     // how its latest line tracks it, since the list re-marks or puts down
     // an ask by writing it again.
     type Ask = (String, Option<i64>, Option<Tracking>);
-    let mut asks: BTreeMap<(i64, String), Ask> = BTreeMap::new();
-    for ask in lines(text) {
+    let mut by_ask: BTreeMap<(i64, String), Ask> = BTreeMap::new();
+    for ask in asks(text) {
         let Some(asked) = seconds(&ask["at"]) else {
             continue;
         };
         let reached = seconds(&ask["first"]).or_else(|| seconds(&ask["landed"]));
         let words = ask["words"].as_str().unwrap_or_default().to_owned();
         let owner = first_owner(ask["owner"].as_str().unwrap_or_default());
-        let entry = asks.entry((asked, words)).or_insert((owner, None, None));
+        let entry = by_ask.entry((asked, words)).or_insert((owner, None, None));
         entry.1 = match (entry.1, reached) {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
         };
         entry.2 = tracking::of(&ask);
     }
-    let counted: Vec<(i64, &str, &str, bool)> = asks
+    let counted: Vec<(i64, &str, &str, bool)> = by_ask
         .iter()
         .filter(|(_, (.., latest))| *latest == Some(which))
         .filter(|((asked, _), (_, reached, _))| {

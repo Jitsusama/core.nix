@@ -18,6 +18,14 @@
 //! with the job's own cgroup's, goes to `<state>/night-shift/NAME.samples`,
 //! so a stop says whose stall it was.
 //!
+//! With `--stop-io PCT`, the disk counts too: the job starts only while
+//! the machine's full io pressure over the last minute is under PCT, and
+//! is stopped once it passes it. On 26 November a roll of the same
+//! repository's packs read 86 GB in 24 minutes, holding that figure at
+//! 21.9%, and nothing watched it. The minute's figure is read, not ten
+//! seconds', so a burst of written pages flushing doesn't stop a job
+//! alone.
+//!
 //! A stopped job is sent TERM in its own process group first, so git and
 //! the like give back their locks, and is killed once `--grace` passes.
 //! A success leaves `<state>/night-shift/NAME.done`, and for `--rests`
@@ -54,20 +62,26 @@
 //! on a busy machine does, since a switch can start a night job's timer,
 //! and the timer its job, by day (src/hours.rs says when it did).
 //!
+//! With `--away-stop`, a slice's bar eases while Joel is away from the
+//! machine, and holds again the moment he's back (src/away.rs says how).
+//!
+//! What a run is asked, its options read, is src/job.rs's.
+//!
 //! Its help, its failures and its exits take the terminal kit's shape
 //! (src/commands.rs); a failed job's run ends with the job's own code.
 
 mod ahead;
+mod away;
 mod cgroup;
 mod commands;
 mod holding;
 mod hours;
+mod job;
 mod pause;
 mod pressure;
 mod turn;
 
-use cgroup::Limits;
-use hours::Hours;
+use job::{Job, parse};
 use pause::{Hold, Sharing};
 use pressure::Places;
 use std::fmt::Write as _;
@@ -82,23 +96,6 @@ use std::thread;
 use std::time::{Duration, Instant};
 use terminal_kit::{Exit, Failure};
 
-/// One night job, as its arguments give it.
-#[derive(Debug, PartialEq)]
-struct Job {
-    name: String,
-    hours: Option<Hours>,
-    start_under: f64,
-    stops: Vec<(String, f64)>,
-    stop_machine: f64,
-    rests: Duration,
-    wait_at_most: Option<Duration>,
-    runs_at_most: Option<Duration>,
-    every: Duration,
-    grace: Duration,
-    limits: Limits,
-    command: Vec<String>,
-}
-
 fn main() -> ExitCode {
     terminal_kit::main(&commands::help(), env!("CARGO_PKG_VERSION"), |context| {
         let args = &context.args;
@@ -108,80 +105,6 @@ fn main() -> ExitCode {
         }
         run(&parse(args).map_err(|problem| commands::wrongly(args, problem))?)
     })
-}
-
-fn parse(args: &[String]) -> Result<Job, String> {
-    let (Some("run"), Some(name)) = (args.first().map(String::as_str), args.get(1)) else {
-        return Err("night-shift takes run or turn, and the job's name".into());
-    };
-    let split = args
-        .iter()
-        .position(|arg| arg == "--")
-        .ok_or("night-shift run takes the job's command after --")?;
-    let command = args[split + 1..].to_vec();
-    if command.is_empty() {
-        return Err("the job's command is empty".into());
-    }
-    let mut job = Job {
-        name: name.clone(),
-        hours: None,
-        start_under: 3.0,
-        stops: Vec::new(),
-        stop_machine: 25.0,
-        rests: Duration::from_hours(12),
-        wait_at_most: None,
-        runs_at_most: None,
-        every: Duration::from_secs(5),
-        grace: Duration::from_secs(60),
-        limits: Limits::default(),
-        command,
-    };
-    let mut options = args[2..split].iter();
-    while let Some(option) = options.next() {
-        let value = options
-            .next()
-            .ok_or_else(|| format!("{option} takes a value"))?;
-        let number = |text: &str| {
-            text.parse::<f64>()
-                .ok()
-                .filter(|n| n.is_finite() && *n >= 0.0)
-                .ok_or_else(|| format!("{option} takes a number, not {text}"))
-        };
-        match option.as_str() {
-            "--hours" => job.hours = Some(Hours::read(value)?),
-            "--start-under" => job.start_under = number(value)?,
-            "--stop-machine" => job.stop_machine = number(value)?,
-            "--rests" => job.rests = Duration::from_secs_f64(number(value)? * 3600.0),
-            "--wait-at-most" => {
-                job.wait_at_most = Some(Duration::from_secs_f64(number(value)?));
-            }
-            "--runs-at-most" => {
-                job.runs_at_most = Some(Duration::from_secs_f64(number(value)?));
-            }
-            "--every" => job.every = Duration::from_secs_f64(number(value)?),
-            "--grace" => job.grace = Duration::from_secs_f64(number(value)?),
-            "--stop" => {
-                let (slice, bar) = value
-                    .split_once('=')
-                    .ok_or_else(|| format!("--stop takes SLICE=PCT, not {value}"))?;
-                job.stops.push((slice.to_owned(), number(bar)?));
-            }
-            "--memory-high" => job.limits.memory_high = Some(value.clone()),
-            "--memory-max" => job.limits.memory_max = Some(value.clone()),
-            "--swap-max" => job.limits.swap_max = Some(value.clone()),
-            "--reads-at-most" => {
-                let (disk, rate) = value
-                    .split_once('=')
-                    .ok_or_else(|| format!("--reads-at-most takes DISK=RATE, not {value}"))?;
-                let bytes = cgroup::rate(rate).ok_or_else(|| {
-                    format!("--reads-at-most takes a rate such as 50M, not {rate}")
-                })?;
-                job.limits.reads.push((PathBuf::from(disk), bytes));
-            }
-            _ => return Err(format!("{option} isn't an option of run")),
-        }
-    }
-    Ok(job)
 }
 
 /// Whether the job's hours, when it has them, leave it out now, saying so.
@@ -255,17 +178,7 @@ fn run(job: &Job) -> Result<(), Failure> {
         .iter()
         .map(|(slice, bar)| (slice.clone(), pressures.slice_file(slice), *bar))
         .collect();
-    for (slice, file, _) in &watched {
-        if pressure::read(file).is_none() {
-            say(
-                job,
-                &format!(
-                    "{slice} has no pressure to read at {}, so it can't stop the job",
-                    file.display()
-                ),
-            );
-        }
-    }
+    say_what_cant_stop_it(job, &pressures, &watched);
     let samples = File::create(places.state.join(format!("{}.samples", job.name)))
         .map_err(|error| failed(job, "can't write its samples").because(error.to_string()))?;
     let mut command = Command::new(&job.command[0]);
@@ -345,6 +258,31 @@ fn run(job: &Job) -> Result<(), Failure> {
         drop(sharing);
         stop(job, &mut child);
         Ok(())
+    }
+}
+
+/// Says each pressure a bar watches that has nothing to read, since that
+/// bar can't stop the job.
+fn say_what_cant_stop_it(job: &Job, pressures: &Places, watched: &[(String, PathBuf, f64)]) {
+    if job.stop_io.is_some() && pressure::read(&pressures.machine_io()).is_none() {
+        say(
+            job,
+            &format!(
+                "the machine has no io pressure to read at {}, so io can't stop the job",
+                pressures.machine_io().display()
+            ),
+        );
+    }
+    for (slice, file, _) in watched {
+        if pressure::read(file).is_none() {
+            say(
+                job,
+                &format!(
+                    "{slice} has no pressure to read at {}, so it can't stop the job",
+                    file.display()
+                ),
+            );
+        }
     }
 }
 
@@ -470,8 +408,15 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
             ),
         );
     }
+    Ok(room_to_start(job).map(|at| (lock, at)))
+}
 
-    let now = pressure::read(&Places::of_this_machine().machine()).unwrap_or_default();
+/// The machine's memory full avg60 where the job has room to start, its
+/// memory and, with an io bar, its disk under their bars; none, saying
+/// which is short, where it hasn't.
+fn room_to_start(job: &Job) -> Option<f64> {
+    let pressures = Places::of_this_machine();
+    let now = pressure::read(&pressures.machine()).unwrap_or_default();
     if now.avg60 >= job.start_under {
         say(
             job,
@@ -480,10 +425,27 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
                 now.avg60, job.start_under
             ),
         );
-        return Ok(None);
+        return None;
     }
-    Ok(Some((lock, now.avg60)))
+    if let Some(bar) = job.stop_io {
+        let io = pressure::read(&pressures.machine_io()).unwrap_or_default();
+        if io.avg60 >= bar {
+            say(
+                job,
+                &format!(
+                    "not started: io full avg60 is {:.2}%, not under {bar}%; a later try goes on",
+                    io.avg60
+                ),
+            );
+            return None;
+        }
+    }
+    Some(now.avg60)
 }
+
+/// What the log says as Joel goes and as he comes back.
+const EASED: &str = "Joel is away, so its eased bars hold";
+const BACK: &str = "Joel is back, so its own bars hold again";
 
 /// Samples the pressures until the job ends, giving its status, or until
 /// one passes its bar or the job has run its most, giving None once it
@@ -500,6 +462,9 @@ fn watch(
 ) -> Option<ExitStatus> {
     let began = Instant::now();
     let mut last_sample: Option<Instant> = None;
+    // Whether Joel is away, looked at only when a bar eases while he is.
+    let mut presence = job.away.eases().then(|| job.away.watch());
+    let mut was_away = false;
     loop {
         if ASKED_TO_STOP.load(Ordering::Relaxed) {
             say(job, "stopping: it was asked to stop");
@@ -546,6 +511,17 @@ fn watch(
             continue;
         }
         last_sample = Some(Instant::now());
+        // Whether he's away comes first, since asking about a call can
+        // take a moment, and the bars it gives are held to the pressures
+        // read after it rather than to older ones.
+        let away = presence.as_mut().is_some_and(away::Watch::is_away);
+        if let Some(news) = presence.as_mut().and_then(away::Watch::news) {
+            say(job, &news);
+        }
+        if away != was_away {
+            was_away = away;
+            say(job, if away { EASED } else { BACK });
+        }
         let own_now = own.and_then(pressure::read).unwrap_or_default();
         let machine = pressure::read(&pressures.machine()).unwrap_or_default();
         let mut line = format!(
@@ -553,34 +529,66 @@ fn watch(
             began.elapsed().as_secs(),
             machine.avg10
         );
-        let mut past = None;
-        for (slice, file, bar) in watched {
-            let reading = pressure::read(file).unwrap_or_default();
-            let _ = write!(line, " {slice} {:.2}", reading.avg10);
-            if reading.avg10 > *bar && past.is_none() {
-                past = Some(format!(
-                    "{slice}'s memory full avg10 is {:.2}%, past {bar}%",
-                    reading.avg10
-                ));
-            }
-        }
-        if past.is_none() && machine.avg10 > job.stop_machine {
-            past = Some(format!(
-                "memory full avg10 is {:.2}%, past {}%",
-                machine.avg10, job.stop_machine
-            ));
-        }
+        let past = first_past(job, pressures, machine.avg10, watched, away, &mut line);
         let paused = if sharing.is_paused() { " paused" } else { "" };
-        let _ = writeln!(samples, "{line} own {:.2}{paused}", own_now.avg10);
+        let away_mark = if away { " away" } else { "" };
+        let _ = writeln!(
+            samples,
+            "{line} own {:.2}{paused}{away_mark}",
+            own_now.avg10
+        );
         if let Some(why) = past {
             say(
                 job,
-                &format!("stopping: {why} (its own {:.2}%)", own_now.avg10),
+                &format!(
+                    "stopping: {why} (its own memory full avg10 {:.2}%)",
+                    own_now.avg10
+                ),
             );
             return None;
         }
         thread::sleep(pace);
     }
+}
+
+/// Which bar a sample passes first, if any: a watched slice's, then the
+/// machine's memory backstop, each as eased while Joel is `away`, then
+/// its io bar, which nothing eases. Each figure read goes on the sample's
+/// `line`.
+fn first_past(
+    job: &Job,
+    pressures: &Places,
+    machine: f64,
+    watched: &[(String, PathBuf, f64)],
+    away: bool,
+    line: &mut String,
+) -> Option<String> {
+    let mut past = None;
+    for (slice, file, bar) in watched {
+        let reading = pressure::read(file).unwrap_or_default();
+        let _ = write!(line, " {slice} {:.2}", reading.avg10);
+        let bar = job.away.slice_bar(slice, *bar, away);
+        if reading.avg10 > bar && past.is_none() {
+            past = Some(format!(
+                "{slice}'s memory full avg10 is {:.2}%, past {bar}%",
+                reading.avg10
+            ));
+        }
+    }
+    let machine_bar = job.away.machine_bar(job.stop_machine, away);
+    if past.is_none() && machine > machine_bar {
+        past = Some(format!(
+            "memory full avg10 is {machine:.2}%, past {machine_bar}%"
+        ));
+    }
+    if let Some(bar) = job.stop_io {
+        let io = pressure::read(&pressures.machine_io()).unwrap_or_default();
+        let _ = write!(line, " io {:.2}", io.avg60);
+        if past.is_none() && io.avg60 > bar {
+            past = Some(format!("io full avg60 is {:.2}%, past {bar}%", io.avg60));
+        }
+    }
+    past
 }
 
 /// How a job that ended ends the run: marked done, or failed with its own
@@ -678,93 +686,4 @@ fn stop(job: &Job, child: &mut Child) {
     signal_group(child, SIGKILL);
     let _ = child.wait();
     say(job, "stopped; a later try goes on");
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn args(text: &str) -> Vec<String> {
-        text.split_whitespace().map(str::to_owned).collect()
-    }
-
-    #[test]
-    fn a_job_takes_its_bars_and_its_command() {
-        let job = parse(&args(
-            "run repack --start-under 2 --stop app.slice=1 --stop agents.slice=10 --stop-machine 30 --rests 6 -- git maintenance run",
-        ))
-        .unwrap();
-        assert_eq!(job.name, "repack");
-        assert!(
-            (job.start_under - 2.0).abs() < f64::EPSILON,
-            "it starts under {}, not 2",
-            job.start_under
-        );
-        assert_eq!(
-            job.stops,
-            vec![
-                ("app.slice".to_owned(), 1.0),
-                ("agents.slice".to_owned(), 10.0)
-            ]
-        );
-        assert!(
-            (job.stop_machine - 30.0).abs() < f64::EPSILON,
-            "it stops past {}, not 30",
-            job.stop_machine
-        );
-        assert_eq!(job.rests, Duration::from_hours(6));
-        assert_eq!(job.command, args("git maintenance run"));
-    }
-
-    #[test]
-    fn a_job_takes_its_limits() {
-        let job = parse(&args(
-            "run repack --memory-high 12G --swap-max 2G --reads-at-most /dev/nvme0n1=50M -- git gc",
-        ))
-        .unwrap();
-        assert_eq!(
-            job.limits,
-            Limits {
-                memory_high: Some("12G".to_owned()),
-                memory_max: None,
-                swap_max: Some("2G".to_owned()),
-                reads: vec![(PathBuf::from("/dev/nvme0n1"), 50_000_000)],
-            }
-        );
-        assert!(
-            parse(&args(
-                "run repack --reads-at-most /dev/nvme0n1=quick -- true"
-            ))
-            .is_err(),
-            "a rate of words was taken"
-        );
-    }
-
-    #[test]
-    fn a_job_with_no_command_is_refused() {
-        assert!(
-            parse(&args("run repack --")).is_err(),
-            "an empty command was taken"
-        );
-        assert!(
-            parse(&args("run repack")).is_err(),
-            "a missing command was taken"
-        );
-    }
-
-    #[test]
-    fn a_bar_that_isnt_a_number_is_refused() {
-        assert!(
-            parse(&args("run repack --stop app.slice=lots -- true")).is_err(),
-            "a bar of words was taken"
-        );
-        assert!(
-            parse(&args("run repack --start-under -1 -- true")).is_err(),
-            "a negative bar was taken"
-        );
-        assert!(
-            parse(&args("run repack --stop app.slice -- true")).is_err(),
-            "a slice with no bar was taken"
-        );
-    }
 }

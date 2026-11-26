@@ -105,7 +105,7 @@ pub fn machines(
     // its file is this machine's own and was read without the node.
     let unknown = |why: &str| {
         let mut part = unread("machines", why, deeper.clone());
-        if let Some((_, said, look)) = backup.and_then(backup_said) {
+        if let Some((said, look)) = backup.and_then(backup_said) {
             part.says = format!("{}; this machine {said}", part.says);
             part.side.push(look.side);
         }
@@ -190,13 +190,13 @@ fn name_of(said: &Value) -> &str {
 }
 
 /// What a machine's line says, in the order it's found, and what in it is
-/// worth a look: how bad, as the line says it, and the look itself, whose
-/// words for a row's side name no machine and so drop the verb ("filling
-/// disk" for "has a filling disk").
+/// worth a look: as the line says it, and the look itself, how bad it is
+/// and its words for a row's side, which name no machine and so drop the
+/// verb ("filling disk" for "has a filling disk").
 #[derive(Default)]
 struct Said {
     line: Vec<String>,
-    looks: Vec<(Health, String, Look)>,
+    looks: Vec<(String, Look)>,
 }
 
 impl Said {
@@ -210,7 +210,14 @@ impl Said {
     fn look(&mut self, health: Health, said: String, side: String, matters: &str) {
         self.line.push(said.clone());
         let matters = matters.to_owned();
-        self.looks.push((health, said, Look { side, matters }));
+        self.looks.push((
+            said,
+            Look {
+                health,
+                side,
+                matters,
+            },
+        ));
     }
 }
 
@@ -229,14 +236,14 @@ fn machine(
     } = looked(said, own, backup);
     let health = looks
         .iter()
-        .map(|(health, ..)| *health)
+        .map(|(_, look)| look.health)
         .max()
         .unwrap_or(Health::Good);
-    let named: Vec<String> = looks.iter().map(|(_, said, _)| said.clone()).collect();
+    let named: Vec<String> = looks.iter().map(|(said, _)| said.clone()).collect();
     // The side says the worst first; a sort that keeps ties in place keeps
     // the rest in the order they were found.
-    looks.sort_by(|(a, ..), (b, ..)| b.cmp(a));
-    let looks: Vec<Look> = looks.into_iter().map(|(.., look)| look).collect();
+    looks.sort_by_key(|(_, look)| std::cmp::Reverse(look.health));
+    let looks: Vec<Look> = looks.into_iter().map(|(_, look)| look).collect();
     let side = side_of(looks.iter().map(|look| look.side.clone()).collect());
     if line.is_empty() {
         line.push("is ready".to_owned());
@@ -385,21 +392,21 @@ fn ago_said(seconds: u64) -> String {
 /// hours, so its words change once an hour rather than each minute, and
 /// every watcher isn't sent them anew.
 fn backup_looks(words: &mut Said, backup: Backup) {
-    if let Some((health, said, Look { side, matters })) = backup_said(backup) {
-        words.look(health, said, side, &matters);
+    if let Some((said, look)) = backup_said(backup) {
+        words.look(look.health, said, look.side, &look.matters);
     }
 }
 
 /// A quest backup's look, its line and the look with its why, when it
 /// wants one. A late one fails only past the whole hours that were worth
 /// a look, so the same words never say both.
-fn backup_said(backup: Backup) -> Option<(Health, String, Look)> {
+fn backup_said(backup: Backup) -> Option<(String, Look)> {
     let age = match backup {
         Backup::Unread(why) => {
             return Some((
-                Health::Watch,
                 format!("can't tell when its quests last backed up ({why})"),
                 Look {
+                    health: Health::Watch,
                     side: "quest backup's time unknown".to_owned(),
                     matters: "Quests changed since its last backup would be lost with this \
                               machine's disk, and when that was can't be told."
@@ -416,9 +423,9 @@ fn backup_said(backup: Backup) -> Option<(Health, String, Look)> {
         _ => return None,
     };
     Some((
-        health,
         format!("hasn't backed up its quests in {hours} h{BACKUP_HINT}"),
         Look {
+            health,
             side: format!("no quest backup in {hours} h"),
             matters: "Quests changed since then would be lost with this machine's disk.".to_owned(),
         },
@@ -802,6 +809,16 @@ mod tests {
             part.things[0].looks[1].matters,
             "It stops when its battery runs out, and what runs there stops with it.",
             "each look says why it matters"
+        );
+        let healths: Vec<Health> = part.things[0]
+            .looks
+            .iter()
+            .map(|look| look.health)
+            .collect();
+        assert_eq!(
+            healths,
+            [Health::Bad, Health::Watch],
+            "each look keeps its own health, not the machine's worst"
         );
     }
 
