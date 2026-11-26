@@ -8,7 +8,7 @@
 // reads it is read whole, as before.
 // Run as: node THIS PI_ROOT
 import assert from "node:assert/strict";
-import fs, { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import fs, { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -193,3 +193,5 @@ const same = (actual, expected, what) => assert.equal(JSON.stringify(actual), JS
   same(manager.getEntries(), plain, "the unfinished log's entries differ");
   assert.ok(readFileSync(file, "utf8").endsWith("\n"), "the unfinished line wasn't ended");
 }
+
+rmSync(dir, { recursive: true, force: true });
