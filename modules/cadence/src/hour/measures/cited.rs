@@ -238,7 +238,8 @@ fn said_in(log: &Path, from: i64, to: i64) -> io::Result<Vec<Said>> {
         reader.read_until(b'\n', &mut line)?;
     }
     let mut said = Vec::new();
-    let mut torn = false;
+    // A torn line, and whether lines with no time to read came after it.
+    let (mut torn, mut after) = (false, false);
     loop {
         line.clear();
         if reader.read_until(b'\n', &mut line)? == 0 {
@@ -248,11 +249,14 @@ fn said_in(log: &Path, from: i64, to: i64) -> io::Result<Vec<Said>> {
         if torn {
             let next = serde_json::from_str::<Value>(&text).ok();
             match next.and_then(|entry| seconds(&entry["timestamp"])) {
-                Some(at) if at <= from => torn = false,
+                Some(at) if at <= from => (torn, after) = (false, false),
                 Some(_) => {
                     return Err(io::Error::other("a line of the assistant's isn't whole"));
                 }
-                None => continue,
+                None => {
+                    after |= !text.trim().is_empty();
+                    continue;
+                }
             }
         }
         if !text.contains("\"assistant\"") {
@@ -281,6 +285,11 @@ fn said_in(log: &Path, from: i64, to: i64) -> io::Result<Vec<Said>> {
             at,
             text: words.join("\n"),
         });
+    }
+    // Only the log's last line may still be being written; a torn one
+    // with more after it, none of which dates it, is torn within the day.
+    if torn && after {
+        return Err(io::Error::other("a line of the assistant's isn't whole"));
     }
     Ok(said)
 }
@@ -370,10 +379,13 @@ pub fn uncited(
     }
     behind.extend(noted_uncited(note, senders, writer)?);
     let mut measure = judged(behind, writer);
-    if unreadable > 0 {
-        let lines = if unreadable == 1 { "line" } else { "lines" };
-        measure.says =
-            format!("{SAYS} ({unreadable} {lines} of cited.jsonl can't be read, backing nothing)");
+    if let Some(first) = unreadable.first() {
+        let count = unreadable.len();
+        let lines = if count == 1 { "line" } else { "lines" };
+        measure.says = format!(
+            "{SAYS} ({count} {lines} of cited.jsonl can't be read, backing nothing; the first, \
+             line {first})"
+        );
     }
     Ok(measure)
 }
@@ -392,11 +404,11 @@ fn judged(behind: Vec<String>, writer: &str) -> Measure {
 }
 
 /// The citations in `cited`, each a line with its time, owner, message
-/// and words, and how many lines can't be read. One that can't is left
-/// out, backing nothing, rather than leaving every hour after it
-/// unjudged: the file only grows, so one bad line would otherwise take
-/// the measure off the card for good.
-fn cites(cited: &str) -> (Vec<Cite>, usize) {
+/// and words, and the number of each line that can't be read. One that
+/// can't is left out, backing nothing, rather than leaving every hour
+/// after it unjudged: the file only grows, so one bad line would
+/// otherwise take the measure off the card for good.
+fn cites(cited: &str) -> (Vec<Cite>, Vec<usize>) {
     let read = |line: &Value| {
         Some(Cite {
             at: seconds(&line["ts"])?,
@@ -405,15 +417,16 @@ fn cites(cited: &str) -> (Vec<Cite>, usize) {
             item: line["item"].as_str()?.to_lowercase(),
         })
     };
-    let (mut all, mut unreadable) = (Vec::new(), 0);
-    for line in cited.lines().filter(|line| !line.trim().is_empty()) {
+    let (mut all, mut unreadable) = (Vec::new(), Vec::new());
+    let numbered = cited.lines().zip(1..);
+    for (line, number) in numbered.filter(|(line, _)| !line.trim().is_empty()) {
         match serde_json::from_str::<Value>(line)
             .ok()
             .as_ref()
             .and_then(read)
         {
             Some(cite) => all.push(cite),
-            None => unreadable += 1,
+            None => unreadable.push(number),
         }
     }
     (all, unreadable)
@@ -564,6 +577,7 @@ fn for_you(note: &str) -> Result<Vec<String>, String> {
     }
     let mut items: Vec<String> = Vec::new();
     let mut first: Option<usize> = None;
+    let mut led = false;
     for line in lines {
         if line.trim().is_empty() {
             continue;
@@ -576,11 +590,24 @@ fn for_you(note: &str) -> Result<Vec<String>, String> {
         } else if carried && let Some(last) = items.last_mut() {
             last.push(' ');
             last.push_str(line.trim());
+        } else if first.is_none() && !heading(line) {
+            // Words leading into the list, as "Two calls today:".
+            led = true;
         } else {
             break;
         }
     }
+    if items.is_empty() && led {
+        return Err("the morning note's \"For you\" holds words but no list".to_owned());
+    }
     Ok(items)
+}
+
+/// Whether `line` opens the note's next part: a heading, or a line opening
+/// in bold, as "**For you:**" does.
+fn heading(line: &str) -> bool {
+    let line = line.trim_start();
+    line.starts_with('#') || line.starts_with("**") || line.starts_with("__")
 }
 
 /// The owner and message the last comment in an item names, as
