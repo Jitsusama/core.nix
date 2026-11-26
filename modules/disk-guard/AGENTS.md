@@ -577,6 +577,10 @@ or launchd, and [`home.nix`][2] the account's.
   file there without Apple's entitlement, so no older build is dated or
   offered; nothing freezes a writer yet; there's no scope for a linking run;
   and Time Machine's local snapshots are thinned once nearly full.
+  macOS keeps no stall averages, so room is the kernel's own word on
+  memory: a listing that can wait needs 35% free, as `memory_pressure`
+  prints it, at the normal level; dedupe waits out a warning; critical
+  is overloaded. The disk's stalls go unjudged there.
 
 ## Where Things Live
 
@@ -598,7 +602,7 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/footprint.rs`        | what files take on a compressed disk, read as root       |
 | `src/activity.rs`, `locks.rs` | whether something is in use                          |
 | `src/host.rs`, `linux.rs`, `macos.rs` | the machine the guard runs on, through `crate::sys` |
-| `src/procargs.rs`, `pmset.rs` | what macOS says, parsed where Linux's tests reach it |
+| `src/procargs.rs`, `pmset.rs`, `memorystatus.rs` | what macOS says, parsed for Linux's tests |
 | `src/daemon.rs`, `serve.rs` | a daemon's step and its loop                           |
 | `src/socket.rs`, `vouch.rs` | what the two daemons say to each other                 |
 | `src/garbage.rs`, `generations.rs`, `dedupe.rs` | Nix's garbage, generations and linking |
