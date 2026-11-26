@@ -5,33 +5,24 @@
 // the moment net's does, and the head's standing line says whether what it
 // shows is live and since when.
 
-import { follow, type Standing } from "../../local-sites/kit/feed.ts";
+import { follow } from "../../local-sites/kit/feed.ts";
 import { hasOwnKeys, listen, toggle } from "../../local-sites/kit/keys.ts";
 import type { Held } from "../../local-sites/kit/records.ts";
 import { said, tell } from "../../local-sites/kit/status.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { followMycelium } from "./beside.ts";
 import { details } from "./device.ts";
-import { type Child, h } from "./elements.ts";
+import { type Child, element, h } from "./elements.ts";
 import { ACROSS_LEAST } from "./grid.ts";
 import { type Drawn, drawMap } from "./map.ts";
 import { type KINDS, type Network, networkOf, type Watched } from "./model.ts";
 import { type Mycelium, myceliumOf } from "./mycelium.ts";
-import { type Answering, type Context, found, overview, sayStandsNow } from "./panel.ts";
+import { type Context, found, overview, sayStandsNow, Standings } from "./panel.ts";
 import { type Shape, study } from "./shape.ts";
 import { el } from "./svg.ts";
 import { drawTree, heedTree, markOpened } from "./tree.ts";
 import { MapView } from "./view.ts";
 import { fragment, linkedTo, whereWords } from "./where.ts";
-
-/** The element `selector` finds, which the page's markup always holds. */
-function element<T extends Element>(selector: string, kind: new () => T): T {
-  const match = document.querySelector(selector);
-  if (!(match instanceof kind)) {
-    throw new Error(`the page has no ${selector}, which the network page draws into`);
-  }
-  return match;
-}
 
 const view = element("#map-view", HTMLElement);
 const draw = element("#map-draw", SVGSVGElement);
@@ -46,8 +37,6 @@ const keys = element("#keys", HTMLDialogElement);
 
 /** The ring round the device the keys are on, outside its box. */
 const RING = { out: 4, round: 8 } as const;
-/** The worst standing first, the one the page says. */
-const WORST_FIRST = ["broken", "stale", "connecting", "live"];
 const MAP_ITEM = ".n-item";
 const FOUND_ROW = "#found .row";
 
@@ -58,7 +47,7 @@ view.tabIndex = 0;
 
 const map = new MapView(view, draw);
 const told = new Set<string>();
-const standings = new Map<string, Standing>();
+const standings = new Standings();
 // The last thing each watch couldn't read, said until it reads another.
 const heard = new Map<string, string>();
 
@@ -70,26 +59,12 @@ let opened: string | null = null;
 let fitted = false;
 let linked = false;
 let saidNothing = false;
-// Whether any of net's feeds was ever live, which the lede says counts after.
-let answered = false;
 
 const now = (): number => Date.now() / 1000;
 
-/** How the worst of net's feeds stands, or undefined before any has said. */
-function worst(): Standing | undefined {
-  return [...standings.values()].sort(
-    (one, other) => WORST_FIRST.indexOf(one.state) - WORST_FIRST.indexOf(other.state),
-  )[0];
-}
-
-/** How net's feeds stand, for the lede. */
-function answering(): Answering {
-  return { answered, worst: worst()?.state };
-}
-
 /** Says whether the map is live, and what couldn't be read. */
 function sayWhen(): void {
-  const stands = worst();
+  const stands = standings.worst();
   const problems = [...(network?.unread ?? []), ...heard.values()];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
   tell(
@@ -178,11 +153,11 @@ function render(): void {
   network = networkOf(watched, told);
   sayWhen();
   if (network === undefined) {
-    sayStandsNow(lede, answering(), undefined);
+    sayStandsNow(lede, standings.answering(), undefined);
     return;
   }
   shape = study(network);
-  sayStandsNow(lede, answering(), context());
+  sayStandsNow(lede, standings.answering(), context());
   const stacked = map.narrowerThan(ACROSS_LEAST);
   const flipped = drawn !== undefined && drawn.stacked !== stacked;
   drawn = drawMap(draw, network, shape, { now: now(), stacked });
@@ -491,9 +466,8 @@ function watch(kind: (typeof KINDS)[number]): Held {
       // standing here as well as from each drawing.
       stands: (stands) => {
         standings.set(kind, stands);
-        answered ||= stands.state === "live";
         sayWhen();
-        sayStandsNow(lede, answering(), context());
+        sayStandsNow(lede, standings.answering(), context());
       },
       problem: (what) => {
         heard.set(kind, `${kind}: ${what}`);
