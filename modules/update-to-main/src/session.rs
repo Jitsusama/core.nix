@@ -728,9 +728,9 @@ mod tests {
         // isn't root.
         let folder = tempfile::tempdir().unwrap();
         let file = folder.path().join(ERR);
-        fs::write(&file, "root's own\n").unwrap();
+        fs::write(&file, "the account's own\n").unwrap();
         let owner = fs::metadata(folder.path()).unwrap().uid();
-        assert_eq!(read_owned(&file, KEPT, owner).unwrap(), b"root's own\n");
+        assert_eq!(read_owned(&file, KEPT, owner).unwrap(), b"the account's own\n");
         let refused = read_owned(&file, KEPT, owner.wrapping_add(1)).unwrap_err();
         assert_eq!(refused.to_string(), "it isn't its folder's owner's");
     }
@@ -751,9 +751,11 @@ mod tests {
              on a full disk leaves it",
             "an empty status that stayed empty was waited on for the hour"
         );
+        let waited = since.elapsed();
         assert!(
-            since.elapsed() >= lands,
-            "an empty status was told lost before it had stayed empty for its bound"
+            waited >= lands && waited < within - 4 * EVERY,
+            "an empty status was told lost after {waited:?}, not once it had stayed empty for \
+             its bound"
         );
     }
 
