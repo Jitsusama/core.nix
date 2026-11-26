@@ -403,14 +403,18 @@ fn a_clear_asked_under_a_writers_hold_says_it_clears_from_before_its_survey() {
 }
 
 /// A subvolume has a device number of its own, which names no watched
-/// disk: they're known by their pool.
+/// disk: they're known by their pool. Off Btrfs a disk's pool is its
+/// device, so only a Btrfs folder can tell the two apart.
 #[test]
+#[ignore = "needs TMPDIR on Btrfs, which the sandbox and the shell's tmpfs aren't: \
+            run with --ignored and TMPDIR on a Btrfs folder"]
 fn a_clear_in_a_subvolume_under_a_writers_hold_says_it_clears() {
     let home = Home::new();
-    if !crate::pool::on_btrfs(&home.root) {
-        eprintln!("skipped: {} isn't on Btrfs", home.root.display());
-        return;
-    }
+    assert!(
+        crate::pool::on_btrfs(&home.root),
+        "{} isn't on Btrfs, so no subvolume can be made there",
+        home.root.display()
+    );
     crate::pool::subvolume(&home.root, "scratch");
     let (_, seen) = clear_under_a_hold(&home);
     assert!(
