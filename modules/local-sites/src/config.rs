@@ -55,6 +55,10 @@ pub struct Answering {
     /// unless a test stands a folder laid out as it in, so the guard reads
     /// the same anywhere the test runs, whatever unit runs the test.
     pub processes: PathBuf,
+    /// The ssh-tpm-agent gate's places, where agents' work runs, by which
+    /// a press's process is told an agent's (peer.rs), so the two judge
+    /// alike.
+    pub places: PathBuf,
 }
 
 /// One daemon a page may read, and how much of it.
@@ -214,10 +218,18 @@ fn answering(said: &Value, runtime: Option<&Path>) -> Result<Answering, String> 
         Some(Value::String(path)) if Path::new(path).is_absolute() => PathBuf::from(path),
         Some(_) => return Err("answers' processes isn't an absolute folder".to_owned()),
     };
+    let (looks, node) = (socket("looks")?, socket("node")?);
+    let places = said
+        .get("places")
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .ok_or("answers names no absolute file of the places agents' work runs in")?;
     Ok(Answering {
-        looks: socket("looks")?,
-        node: socket("node")?,
+        looks,
+        node,
         processes,
+        places,
     })
 }
 
@@ -339,7 +351,8 @@ mod tests {
     fn the_answers_daemons_are_read_under_the_runtime_folder_or_refused() {
         let answering = WHOLE.replace(
             r#""mounts""#,
-            r#""answers": {"looks": "daemons/to-do.sock", "node": "/run/node.sock"}, "mounts""#,
+            r#""answers": {"looks": "daemons/to-do.sock", "node": "/run/node.sock",
+                "places": "/etc/gate"}, "mounts""#,
         );
         let config =
             Config::from_json(&answering, Some(Path::new("/run/user/1000"))).expect("it reads");
@@ -349,9 +362,19 @@ mod tests {
                 looks: PathBuf::from("/run/user/1000/daemons/to-do.sock"),
                 node: PathBuf::from("/run/node.sock"),
                 processes: PathBuf::from("/proc"),
+                places: PathBuf::from("/etc/gate"),
             }),
             "the kernel's own was not asked where none is named"
         );
+        for unplaced in ["", r#", "places": "gate""#] {
+            let said = answering.replace(
+                r#",
+                "places": "/etc/gate""#,
+                unplaced,
+            );
+            let why = Config::from_json(&said, Some(Path::new("/run"))).expect_err("refused");
+            assert!(why.contains("no absolute file of the places"), "{why}");
+        }
         let stood_in = answering.replace(
             r#""/run/node.sock""#,
             r#""/run/node.sock", "processes": "/tmp/kernel""#,

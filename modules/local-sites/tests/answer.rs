@@ -28,6 +28,9 @@ use serde_json::{Value, json};
 
 mod common;
 
+/// The ssh-tpm-agent gate's places, which the server judges agents' by.
+const GATE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../ssh-tpm-agent/gate.conf");
+
 /// How long a test waits for the server.
 const PATIENCE: Duration = Duration::from_secs(10);
 
@@ -248,7 +251,7 @@ fn served(name: &str) -> Served {
         "home": home,
         "mounts": {},
         "feeds": {},
-        "answers": {"looks": socket, "node": socket, "processes": kernel.root},
+        "answers": {"looks": socket, "node": socket, "processes": kernel.root, "places": GATE},
     });
     let file = folder.join("config.json");
     std::fs::write(&file, config.to_string()).expect("the config");

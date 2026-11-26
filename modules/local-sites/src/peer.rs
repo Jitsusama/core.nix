@@ -6,34 +6,33 @@
 //! own to forge, and a fenced agent shares the loopback network, so the
 //! kernel is asked instead: the connection's socket, by its two ends, in
 //! `/proc/net/tcp`; the process holding that socket, by its inode, among
-//! this account's open files; and that process told as the node tells who
-//! asks it to steer (mycelium's asker), an agent's by the unit it runs in
-//! or a pi among its forebears, the person's once its forebears end
-//! without one. A socket of another account, or one nothing can be read
-//! of, is told as nothing, and refused as an agent's is.
+//! this account's open files; and that process told as the ssh-tpm-agent
+//! gate tells who may sign as the person: an agent's where it or any of
+//! its forebears runs in a place the gate names (its `gate.conf`, the
+//! places core's slices give agents' work), or in nix-offload's, which
+//! mycelium's asker names too, or is a pi; the person's once its forebears
+//! end without one. A socket of another account, or one nothing can be
+//! read of, is told as nothing, and refused as an agent's is.
 //!
-//! As the node's, this is a fence against habit and mistakes, not a
-//! boundary: within one account a process can move itself out of an
-//! agent's unit or out from under pi. It keeps an agent from passing a
-//! press off as the person's by the plain way, a request with forged
-//! headers. Only Linux tells a socket's holder; elsewhere nothing here can
-//! be asked, and the server takes no answers.
+//! As the gate's, this is a fence against habit and mistakes, not a
+//! boundary: within one account a process can start itself as a unit of
+//! its own, out from under everything an agent runs, or make itself
+//! unreadable, which leaves it out of those judged. It keeps an agent from
+//! passing a press off as the person's by the plain ways, a request with
+//! forged headers or a browser it drives. Only Linux tells a socket's
+//! holder; elsewhere nothing here can be asked, and the server takes no
+//! answers.
 
 use std::fs;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
-/// How the names of the units the machine runs its agents in begin, below
-/// the person's service manager's own unit, as mycelium's asker names them:
-/// pi's hosts, each held session's scope, and the queues agents' commands
-/// wait in.
-const AGENTS_UNITS: [&str; 4] = [
-    "agents.slice/pi-host-",
-    "agents.slice/mycelium-pi-",
-    "jobs.slice/",
-    "offload.slice/",
-];
+use regex_lite::Regex;
+
+/// The slice nix-offload's work runs in, which mycelium's asker counts as
+/// agents' and the gate leaves to whoever started it.
+const OFFLOAD: &str = "/offload.slice/";
 
 /// The name pi's own process goes by.
 const PI: &str = "pi";
@@ -62,6 +61,36 @@ pub enum Told {
     Untold(&'static str),
 }
 
+/// The places agents' work runs in, each a pattern over a cgroup's path.
+#[derive(Debug, Clone)]
+pub struct Places(Vec<Regex>);
+
+impl Places {
+    /// The places `text` names, written as the gate's `gate.conf` is: a
+    /// `refuse` line for each, `#` comments and blank lines aside. Any other
+    /// line is refused, so a verdict this doesn't know of can't pass for one
+    /// it does.
+    pub fn read(text: &str) -> Result<Self, String> {
+        text.lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .map(|line| {
+                let pattern = line
+                    .strip_prefix("refuse ")
+                    .ok_or_else(|| format!("the gate's line `{line}` refuses nothing"))?;
+                Regex::new(pattern.trim())
+                    .map_err(|why| format!("the gate's `{pattern}` isn't a pattern: {why}"))
+            })
+            .collect::<Result<_, _>>()
+            .map(Self)
+    }
+
+    /// Whether a process in the cgroup `path` runs where agents' work does.
+    fn name(&self, path: &str) -> bool {
+        path.contains(OFFLOAD) || self.0.iter().any(|place| place.is_match(path))
+    }
+}
+
 /// Where the kernel tells of this machine's processes, and whose they are.
 #[derive(Debug, Clone)]
 pub struct Processes {
@@ -69,6 +98,8 @@ pub struct Processes {
     root: PathBuf,
     /// This server's account, the only one whose processes are read.
     uid: u32,
+    /// Where agents' work runs.
+    places: Places,
 }
 
 impl Processes {
@@ -77,15 +108,15 @@ impl Processes {
     /// None where it tells no `self`, as where no kernel tells a socket's
     /// holder (no `/proc` off Linux).
     #[must_use]
-    pub fn under(root: &Path) -> Option<Self> {
+    pub fn under(root: &Path, places: Places) -> Option<Self> {
         let uid = fs::metadata(root.join("self")).ok()?.uid();
-        Some(Self::at(root.to_path_buf(), uid))
+        Some(Self::at(root.to_path_buf(), uid, places))
     }
 
     /// Those a folder laid out as `/proc` tells, of the account `uid`.
     #[must_use]
-    pub const fn at(root: PathBuf, uid: u32) -> Self {
-        Self { root, uid }
+    pub const fn at(root: PathBuf, uid: u32, places: Places) -> Self {
+        Self { root, uid, places }
     }
 
     /// Who holds the end `peer` of a connection to this server at `server`.
@@ -167,23 +198,24 @@ impl Processes {
         holders
     }
 
-    /// What is told of process `pid`: an agent's by its unit, else by its
-    /// forebears.
+    /// What is told of process `pid`: an agent's where it or a forebear
+    /// runs where agents' work does, or is a pi, judged nearest first, as
+    /// the gate judges a peer and then each parent.
     fn process(&self, pid: i32) -> Told {
-        let process = self.root.join(pid.to_string());
-        if let Some(unit) = fs::read_to_string(process.join("cgroup"))
-            .ok()
-            .as_deref()
-            .and_then(agents_unit)
-        {
-            return Told::Agent(unit);
-        }
         let mut at = pid;
         for _ in 0..FOREBEARS {
-            let status = fs::read_to_string(self.root.join(at.to_string()).join("status")).ok();
-            let Some((name, parent)) = status.as_deref().and_then(named) else {
+            let process = self.root.join(at.to_string());
+            let read = |file: &str| fs::read_to_string(process.join(file)).ok();
+            let (Some(status), Some(cgroup)) = (read("status"), read("cgroup")) else {
                 return Told::Untold("a forebear of its process can't be read");
             };
+            let (Some((name, parent)), Some(place)) = (named(&status), placed(&cgroup)) else {
+                return Told::Untold("a forebear of its process can't be read");
+            };
+            if self.places.name(place) {
+                let unit = place.rsplit('/').find(|part| !part.is_empty());
+                return Told::Agent(unit.unwrap_or(place).to_owned());
+            }
             if name == PI || name == PI_HOST {
                 return Told::Agent(format!("{name}'s process {at}"));
             }
@@ -219,23 +251,13 @@ fn address(written: &str) -> Option<SocketAddr> {
     Some(SocketAddr::new(ip, port))
 }
 
-/// The agent's unit a process runs in, as its `cgroup` file tells it, or
-/// none for any other, read as mycelium's asker reads it.
-fn agents_unit(cgroup: &str) -> Option<String> {
-    cgroup.lines().find_map(|line| {
-        // Control groups v2 tell one line: `0::<path>`.
-        let path = line.strip_prefix("0::")?;
-        let (_, below) = path.split_once(".service/").filter(|(manager, _)| {
-            manager
-                .rsplit('/')
-                .next()
-                .is_some_and(|unit| unit.starts_with("user@"))
-        })?;
-        AGENTS_UNITS
-            .iter()
-            .any(|unit| below.starts_with(unit))
-            .then(|| below.rsplit('/').next().unwrap_or(below).to_owned())
-    })
+/// The cgroup a process runs in, as its `cgroup` file tells it: control
+/// groups v2 tell one line, `0::<path>`.
+fn placed(cgroup: &str) -> Option<&str> {
+    cgroup
+        .lines()
+        .find_map(|line| line.strip_prefix("0::"))
+        .map(str::trim)
 }
 
 /// A process's name and its parent's id, as its `status` file tells them.
@@ -318,8 +340,14 @@ mod tests {
         }
 
         fn processes(&self) -> Processes {
-            Processes::at(self.root.clone(), uid_of(&self.root))
+            Processes::at(self.root.clone(), uid_of(&self.root), gate())
         }
+    }
+
+    /// The places the ssh-tpm-agent gate refuses, as the machine gives it.
+    fn gate() -> Places {
+        let text = include_str!("../../ssh-tpm-agent/gate.conf");
+        Places::read(text).expect("the gate's places read")
     }
 
     fn uid_of(path: &Path) -> u32 {
@@ -448,28 +476,85 @@ mod tests {
     }
 
     #[test]
-    fn only_the_units_mycelium_names_are_agents() {
-        for (cgroup, unit) in [
-            ("agents.slice/pi-host-a.service", Some("pi-host-a.service")),
+    fn the_places_agents_work_runs_in_are_the_gates_and_offloads() {
+        let places = gate();
+        let account = MANAGER.trim_start_matches("0::");
+        for (cgroup, agents) in [
+            ("agents.slice/pi-host-a.service", true),
             (
-                "agents.slice/mycelium-pi-b.scope",
-                Some("mycelium-pi-b.scope"),
+                "agents.slice/pi-conversation-work-attended@01a1.service",
+                true,
             ),
-            ("jobs.slice/run-1.scope", Some("run-1.scope")),
-            ("offload.slice/o.scope", Some("o.scope")),
-            ("agents.slice/kitty.scope", None),
-            ("app.slice/chromium.scope", None),
+            ("agents.slice/mycelium-pi-b.scope", true),
+            ("agents.slice/kitty-4336-3.scope", true),
+            ("agents.slice/sessions-kitty.service", true),
+            ("jobs.slice/pi-spawner-1-a.scope", true),
+            ("jobs.slice/run-1.scope", true),
+            ("shared.slice/run-p1-i1.scope", true),
+            ("background.slice/pi-jobs-ab12.scope", true),
+            ("offload.slice/o.scope", true),
+            ("app.slice/app-niri-chromium-1.scope", false),
+            ("jobs.slice/jobs-awaited.slice/awaited.service", false),
+            ("background.slice/health.service", false),
+            ("init.scope", false),
         ] {
             assert_eq!(
-                agents_unit(&format!("{MANAGER}{cgroup}\n")).as_deref(),
-                unit,
+                places.name(&format!("{account}{cgroup}")),
+                agents,
                 "{cgroup}"
             );
         }
+        let refused = Places::read("serve /app\\.slice/\n").expect_err("refused");
+        assert!(refused.contains("refuses nothing"), "{refused}");
+        let refused = Places::read("refuse /(\n").expect_err("refused");
+        assert!(refused.contains("isn't a pattern"), "{refused}");
+    }
+
+    #[test]
+    fn a_press_below_an_agents_place_is_an_agents_wherever_it_moved() {
+        if cfg!(target_endian = "big") {
+            return;
+        }
+        let (peer, server) = ends();
+        let proc = Proc::new("moved");
+        let uid = uid_of(&proc.root);
+        proc.connected(uid, 777);
+        proc.process(900, "systemd", 1, &format!("{MANAGER}init.scope\n"));
+        // A hosted conversation's node, whose name is no pi's.
+        let conversation = "agents.slice/pi-conversation-work-attended@01a1.service";
+        proc.process(950, "node", 900, &format!("{MANAGER}{conversation}\n"));
+        proc.process(951, "bash", 950, &format!("{MANAGER}{conversation}\n"));
+        // Its command, moved with systemd-run --scope to an app's slice.
+        let moved = format!("{MANAGER}app.slice/run-u1.scope\n");
+        proc.process(952, "chromium", 951, &moved);
+        proc.holds(952, 777);
         assert_eq!(
-            agents_unit("0::/system.slice/jobs.slice/x.scope\n"),
-            None,
-            "a unit outside the person's service manager is no agent's"
+            proc.processes().tell(peer, server),
+            Told::Agent("pi-conversation-work-attended@01a1.service".to_owned()),
+            "a command moved out from under a conversation was the person's"
+        );
+    }
+
+    #[test]
+    fn a_socket_any_agent_holds_too_is_an_agents() {
+        if cfg!(target_endian = "big") {
+            return;
+        }
+        let (peer, server) = ends();
+        let proc = Proc::new("shared");
+        let uid = uid_of(&proc.root);
+        proc.connected(uid, 777);
+        proc.process(900, "systemd", 1, &format!("{MANAGER}init.scope\n"));
+        let app = format!("{MANAGER}app.slice/app-chromium.scope\n");
+        proc.process(910, "chromium", 900, &app);
+        let agents = format!("{MANAGER}jobs.slice/pi-spawner-1-a.scope\n");
+        proc.process(920, "curl", 900, &agents);
+        proc.holds(910, 777);
+        proc.holds(920, 777);
+        assert_eq!(
+            proc.processes().tell(peer, server),
+            Told::Agent("pi-spawner-1-a.scope".to_owned()),
+            "a socket an agent shares with the browser was the person's"
         );
     }
 }

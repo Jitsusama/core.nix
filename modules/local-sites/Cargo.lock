@@ -137,6 +137,7 @@ version = "0.1.0"
 dependencies = [
  "daemon-serve",
  "httparse",
+ "regex-lite",
  "serde_json",
  "terminal-kit",
  "tungstenite",
@@ -194,6 +195,12 @@ name = "rand_core"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63b8176103e19a2643978565ca18b50549f6101881c443590420e4dc998a3c69"
+
+[[package]]
+name = "regex-lite"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cab834c73d247e67f4fae452806d17d3c7501756d98c8808d7c9c7aa7d18f973"
 
 [[package]]
 name = "serde"

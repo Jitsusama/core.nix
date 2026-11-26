@@ -96,6 +96,9 @@ let
           {
             looks = "daemons/to-do.sock";
             node = "mycelium/${realm}.sock";
+            # A press is told an agent's where the ssh-tpm-agent gate would
+            # refuse it a signature, by the same places.
+            places = "${../ssh-tpm-agent/gate.conf}";
           };
     }
   );

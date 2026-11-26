@@ -50,7 +50,7 @@ use crate::answer::Answers;
 use crate::config::Config;
 use crate::door::Door;
 use crate::http::Server;
-use crate::peer::Processes;
+use crate::peer::{Places, Processes};
 use crate::upstream::Upstreams;
 
 fn help() -> Help {
@@ -130,11 +130,28 @@ fn serve(file: &PathBuf) -> Result<(), Failure> {
     })?;
     // Only a kernel that tells who holds a connection lets an answer be
     // known as the person's (peer.rs); elsewhere the pages answer in For You.
+    let places = config
+        .answers
+        .as_ref()
+        .map(|at| {
+            std::fs::read_to_string(&at.places)
+                .map_err(|why| why.to_string())
+                .and_then(|text| Places::read(&text))
+                .map_err(|why| {
+                    Failure::new(
+                        Exit::Failed,
+                        "local-sites can't read where agents' work runs",
+                    )
+                    .because(why)
+                })
+        })
+        .transpose()?;
     let answers = config
         .answers
         .as_ref()
-        .and_then(|at| {
-            let processes = Processes::under(&at.processes);
+        .zip(places)
+        .and_then(|(at, places)| {
+            let processes = Processes::under(&at.processes, places);
             if processes.is_none() {
                 eprintln!(
                     "local-sites: takes no answers here, since it can't tell who presses one"

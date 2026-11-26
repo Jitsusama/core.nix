@@ -23,6 +23,8 @@ rustPlatform.buildRustPackage rec {
       ../daemon-serve/src
       ../terminal-kit/Cargo.toml
       ../terminal-kit/src
+      # The places agents' work runs in, which a press is judged by.
+      ../ssh-tpm-agent/gate.conf
     ];
   };
   sourceRoot = "${src.name}/local-sites";

@@ -17,6 +17,10 @@ daemon-serve = { path = "../daemon-serve" }
 # A request's head, read where it was only peeked, so a feed's handshake
 # still finds it.
 httparse = "1.10.1"
+# The ssh-tpm-agent gate's places, each a pattern over a cgroup's path,
+# read as the gate reads them, so a press is told an agent's where a
+# signature would be.
+regex-lite = "0.1"
 serde_json = "1.0.154"
 # A page's feed, over a WebSocket on a plain thread per page, as every
 # daemon here serves a client; only the handshake and frames, no TLS,
