@@ -167,7 +167,15 @@ mod tests {
         let planes = pixels(&red);
         let area = SIDE * SIDE;
         assert_eq!(planes.len(), 3 * area);
-        assert!(planes[..area].iter().all(|&v| (v - 1.0).abs() < 1e-5));
-        assert!(planes[area..].iter().all(|&v| (v + 1.0).abs() < 1e-5));
+        assert_eq!(
+            planes[..area].iter().find(|&&v| (v - 1.0).abs() >= 1e-5),
+            None,
+            "red's plane isn't all one"
+        );
+        assert_eq!(
+            planes[area..].iter().find(|&&v| (v + 1.0).abs() >= 1e-5),
+            None,
+            "green's and blue's planes aren't all minus one"
+        );
     }
 }

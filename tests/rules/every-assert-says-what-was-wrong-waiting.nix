@@ -37,13 +37,6 @@
   "modules/dictation/src/bin/call-transcripts/summarizer.rs" = 6;
   "modules/dictation/src/bin/call-transcripts/summary_tests.rs" = 17;
   "modules/dictation/src/bin/dictation-chord.rs" = 1;
-  "modules/dictation/src/bin/meaning/known.rs" = 8;
-  "modules/dictation/src/bin/meaning/quiet.rs" = 4;
-  "modules/dictation/src/bin/meaning/sight.rs" = 2;
-  "modules/dictation/src/bin/meaning/store.rs" = 1;
-  "modules/dictation/src/bin/meaning/text.rs" = 4;
-  "modules/dictation/src/bin/screen-text/read.rs" = 1;
-  "modules/dictation/src/bin/screen-text/shelf.rs" = 2;
   "modules/dictation/src/cache.rs" = 1;
   "modules/dictation/src/daemon.rs" = 2;
   "modules/dictation/src/mel.rs" = 2;
