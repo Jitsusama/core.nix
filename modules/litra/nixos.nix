@@ -16,13 +16,14 @@
 # cameras' files (../v4l2loopback) and the USB cameras' (../usb-camera-holders).
 # A light plugged in while a camera streams is lit as udev opens it. The
 # watch sleeps on inotify between changes, so it costs nothing while
-# nothing changes; litra.rs says how.
+# nothing changes; litra.rs and the files beside it say how.
 { lib, pkgs, ... }:
 let
   # The standard library alone, so it builds with rustc and no crates.
   litra = pkgs.runCommandCC "litra" { nativeBuildInputs = [ pkgs.rustc ]; } ''
     mkdir -p $out/bin
-    rustc --edition 2024 -C opt-level=3 -D warnings -o $out/bin/litra ${./litra.rs}
+    rustc --edition 2024 -C opt-level=3 -D warnings -o $out/bin/litra \
+      ${import ./source.nix { inherit lib; }}/litra.rs
   '';
 in
 {

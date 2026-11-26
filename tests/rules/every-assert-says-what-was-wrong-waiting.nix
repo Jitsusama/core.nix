@@ -161,7 +161,6 @@
   "modules/key-counts/src/tally.rs" = 5;
   "modules/lag-watch/src/kernel.rs" = 2;
   "modules/lid/docked/src/main.rs" = 11;
-  "modules/litra/litra.rs" = 11;
   "modules/load-proof/src/frames.rs" = 2;
   "modules/load-proof/src/run.rs" = 4;
   "modules/load-proof/src/save.rs" = 1;
