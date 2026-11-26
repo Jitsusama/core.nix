@@ -3346,11 +3346,12 @@
   '';
   pi-state-moves-before-any-pi-starts = ''
     the harness's state that every pi reads as it starts, the mesh's presence, leases and runs, the
-    quests' session records, the run ledgers, the work tool's records of its trees and each further
-    realm's state, is each given a subvolume of its own as the account's manager starts, before
-    every pi host of every realm, the node and the folder's other writers the account has, and
-    with no host named too, while nothing else of the harness's moves, its worktrees and the
-    mesh's messages included
+    quests' session records, the run ledgers, the work tool's records of its trees and a further
+    realm's own presence, leases, runs and session records, is each given a subvolume of its own
+    as the account's manager starts, before every pi host of every realm, the node, a further
+    realm's own node and the folder's other writers, each by name, and with no host named too,
+    while nothing else of the harness's moves, its worktrees and every realm's mesh messages
+    included
   '';
   pi-sweeps-work-trees-in-a-unit-of-its-own = ''
     ended pi sessions' work trees are swept by one oneshot unit of their own at the top of each

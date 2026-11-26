@@ -13,12 +13,13 @@
 # The folders are those the start and turn paths write and read: the
 # mesh's presence, leases and runs, the quests' session records, the run
 # ledgers' SQLite files, the work tool's records of the trees it cut, and
-# each further realm's own state. Some stay in the home's tree, since a
-# copy each boot must fit the wait every pi start gives it: the worktrees,
-# some 1,700 of them, and the mesh's messages, 135,907 files on the
-# workstation measured on 26 November, where the largest folder moved here held 6,180. At the
-# 12,000 files in 25 s Chrome's copy took on a loaded disk, that is about
-# 13 s, and two minutes is the most any is given.
+# each further realm's own presence, leases, runs and session records.
+# Some stay in the home's tree, since a copy each boot must fit the wait
+# every pi start gives it: the worktrees, some 1,700 of them, and every
+# realm's mesh messages, 135,907 files for the home realm on the
+# workstation measured on 26 November, where the largest folder moved here
+# held 6,180. At the 12,000 files in 25 s Chrome's copy took on a loaded
+# disk, that is about 13 s, and two minutes is the most any is given.
 #
 # Every pi writes in them, and pi always runs, so a folder moves only as
 # the account's manager starts, which a lingering account's does at boot
@@ -26,9 +27,10 @@
 # start; a pi started by hand before the move keeps a file open there, and
 # the folder stays until the next start that finds nothing holding it.
 # A subvolume's edge refuses a rename across it. Where the harness's mesh,
-# quest and work records rename, read on 26 November, they stage a file
-# beside where it lands or file a message into its day's folder, so none
-# crosses these folders' edges.
+# quest and work records rename, read on 26 November, and the node's
+# records, read at its source of 23 November, they stage a file beside
+# where it lands or file a message into its day's folder, so none crosses
+# these folders' edges.
 {
   config,
   lib,
@@ -41,6 +43,7 @@ let
   state = lib.removePrefix "${config.home.homeDirectory}/" harness;
   realms = lib.attrNames config.jitsusama.pi.hosts;
   homeRealm = lib.attrByPath [ "jitsusama" "mycelium" "realm" ] null config;
+  joined = lib.attrByPath [ "jitsusama" "mycelium" "alsoJoins" ] { } config;
   # Each host holds many conversations, and starts each conversation's
   # own unit itself, so a move before the hosts is before them all.
   hosts = lib.concatMap (
@@ -67,10 +70,30 @@ let
     "work/cut" = present [ "pi-sweep.service" ];
   }
   # A realm other than the machine's own keeps its state under realms/,
-  # whole, and its folders are small, so each moves as one.
-  // lib.genAttrs (map (realm: "realms/${realm}") (
-    lib.filter (realm: homeRealm != null && realm != homeRealm) realms
-  )) (_: [ ]);
+  # as the harness names it only with a name of its own folder's letters,
+  # digits and dashes, and with no home realm named every realm is home.
+  # Its own node, where the machine joins it, writes its mesh too.
+  // lib.listToAttrs (
+    lib.concatMap (
+      realm:
+      map (
+        folder:
+        lib.nameValuePair "realms/${realm}/${folder}" (
+          lib.optional (joined ? ${realm}) "mycelium-${realm}.service"
+        )
+      ) realmFolders
+    ) further
+  );
+  further = lib.filter (
+    realm: homeRealm != null && realm != homeRealm && builtins.match "[a-z0-9-]+" realm != null
+  ) realms;
+  # A further realm's folders, those of the home realm it has.
+  realmFolders = [
+    "mesh-workflow/presence"
+    "mesh-workflow/leases"
+    "mesh-workflow/runs"
+    "quest-workflow"
+  ];
 in
 {
   imports = [ ../../subvolumes/home.nix ];
