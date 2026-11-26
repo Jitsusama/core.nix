@@ -3566,7 +3566,7 @@ impl Wifid<'_> {
             let minutes = lasts.as_secs() / 60;
             println!("<7>{card}'s chooser keeps off {from} for {minutes} minutes, as it warned");
             change(self.state, |state| {
-                state.warned_off(card, from, Instant::now() + lasts)
+                state.warned_off(card, from, Instant::now() + lasts);
             });
         }
         match followed {
