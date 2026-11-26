@@ -76,17 +76,18 @@ impl<'a> Repo<'a> {
     /// The repository of the input the flake calls `name`.
     pub fn followed(config: &'a Config, name: &str, follow: &'a Follow) -> Repo<'a> {
         let folder = config.follows_folder();
-        // An input of an input is named by its path, core/mycelium, and
-        // its copy sits beside the others rather than inside a folder
-        // named for its parent.
-        let file = name.replace('%', "%25").replace('/', "%2F");
+        // An input of an input is named by its path, core/mycelium, and its
+        // copy sits at that path, in a folder named for its parent beside
+        // the parent's own copy (core.git). A copy's path goes into a
+        // git+file URL, which Nix decodes, so an escape such as %2F in a
+        // file's name would lead Nix to a copy that isn't there.
         Repo {
             config,
             url: &follow.repository,
             branch: &follow.branch,
             signers: &follow.signers,
-            copy: folder.join(format!("{file}.git")),
-            keyring: folder.join(format!("{file}.gnupg")),
+            copy: folder.join(format!("{name}.git")),
+            keyring: folder.join(format!("{name}.gnupg")),
             called: format!("{name}'s main"),
         }
     }

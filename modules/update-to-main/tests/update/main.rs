@@ -3283,6 +3283,25 @@ fn an_input_asked_for_moves_only_when_asked_and_stays_till_the_lock_passes_it() 
         },
         "a plain ask didn't keep mycelium where it was asked, past the lock's pin"
     );
+    // A lock gone off the line of what was asked rules again, rather than
+    // refusing every update with no ask able to clear it.
+    let mycelium = world.root.join("mycelium");
+    git(&mycelium, &["checkout", "--quiet", "-b", "side", &pinned]);
+    let side = world.commit_in("mycelium", "side", true);
+    git(&mycelium, &["checkout", "--quiet", "main"]);
+    fs::write(
+        world.origin.join("flake.lock"),
+        pinning_nested(&core, &side),
+    )
+    .unwrap();
+    git(&world.origin, &["add", "flake.lock"]);
+    let aside = world.signed("aside");
+    world.system(&aside);
+    assert_eq!(
+        world.update().1,
+        done(&aside),
+        "mycelium was held where it was asked once the lock pinned it off that line"
+    );
     fs::write(
         world.origin.join("flake.lock"),
         pinning_nested(&core, &wanted),
@@ -3307,8 +3326,8 @@ fn an_input_asked_for_is_held_to_the_lock_of_the_core_built_with_it() {
     let core_at_older = world.core_pinning("pins older", &older);
     let core_at_later = world.core_pinning("pins later", &later);
     let head = world.signed_pinning("one", &core_at_older);
-    // main's own lock pins core's mycelium at the oldest, so only core's
-    // lock at the core asked for can refuse the middle.
+    // main's own lock doesn't pin core's mycelium, so only core's lock at
+    // the core asked for can refuse the middle.
     let at = |core: &str| {
         BTreeMap::from([
             ("core".to_owned(), core.to_owned()),
@@ -3336,6 +3355,16 @@ fn an_input_asked_for_is_held_to_the_lock_of_the_core_built_with_it() {
         done_following(&head, &[("core", &core_at_older), (NESTED, &middle)]),
         "an ask at both inputs, mycelium past core's pin, didn't build both"
     );
+    let overridden = world.read("overridden");
+    for (input, commit) in [("core", &core_at_older), (NESTED, &middle)] {
+        assert!(
+            overridden
+                .lines()
+                .any(|line| line.starts_with(&format!("{input} git+file://"))
+                    && line.ends_with(&format!("rev={commit}"))),
+            "the build wasn't given {input} at the commit asked for: {overridden}"
+        );
+    }
 }
 
 #[test]

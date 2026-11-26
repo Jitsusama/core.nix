@@ -215,6 +215,9 @@ pub struct Follower {
     /// Whether main is a host's, whose endings name main's head while the
     /// follower's looks name where its folder last changed.
     hosted: bool,
+    /// The inputs that move only when asked, which its looks leave out,
+    /// so an ending that names one is read without it.
+    only_asked: Vec<String>,
     /// When the machine last switched, for an ask of its own or as its
     /// system profile says.
     switched: Option<Instant>,
@@ -242,6 +245,12 @@ impl Follower {
     /// Counts whether main is a host's, as the config read last says.
     pub fn hosted(&mut self, hosted: bool) {
         self.hosted = hosted;
+    }
+
+    /// Counts the inputs that move only when asked, as the config read
+    /// last names them.
+    pub fn only_asked(&mut self, names: Vec<String>) {
+        self.only_asked = names;
     }
 
     /// Counts the system the machine runs now, as its profile leads to it.
@@ -287,6 +296,14 @@ impl Follower {
     /// when the ending's inputs agree with them.
     fn ran(&self, heads: &Followed, commit: &str, followed: &Followed) -> Option<Runs> {
         let system = self.system.clone()?;
+        // An ending names an input kept where it was asked for, which the
+        // looks leave out: counted, the machine would never run what they
+        // find, and a busy one would be asked again and again.
+        let followed: Followed = followed
+            .iter()
+            .filter(|(name, _)| !self.only_asked.contains(name))
+            .map(|(name, commit)| (name.clone(), commit.clone()))
+            .collect();
         let mut ran = followed.clone();
         if self.hosted {
             let inputs: Followed = heads
@@ -294,7 +311,7 @@ impl Follower {
                 .filter(|(name, _)| name.as_str() != MAIN)
                 .map(|(name, commit)| (name.clone(), commit.clone()))
                 .collect();
-            if inputs != *followed {
+            if inputs != followed {
                 return None;
             }
             if let Some(main) = heads.get(MAIN) {
@@ -1098,6 +1115,42 @@ pub(crate) mod tests {
             None,
             "an ending from before the follower started was counted as what the machine runs"
         );
+    }
+
+    #[test]
+    fn an_input_kept_where_it_was_asked_for_leaves_the_machine_running_what_it_looked_at() {
+        for hosted in [false, true] {
+            let mut f = Follower::default();
+            f.hosted(hosted);
+            f.only_asked(vec!["core/mycelium".to_owned()]);
+            f.saw_system(Some(system_n(1)));
+            let mut heads = main_at("a");
+            heads.insert("core".to_owned(), "c1".to_owned());
+            let ending = Line::Done {
+                commit: "a".to_owned(),
+                applied: crate::line::Applied::Now,
+                restart: None,
+                restarted: Vec::new(),
+                boots: None,
+                followed: Followed::from([
+                    ("core".to_owned(), "c1".to_owned()),
+                    ("core/mycelium".to_owned(), "m1".to_owned()),
+                ]),
+            };
+            f.asked(
+                heads.clone(),
+                &ending,
+                "",
+                Some(system_n(1)),
+                Instant::now(),
+            );
+            assert_eq!(
+                f.runs().map(|runs| &runs.heads),
+                Some(&heads),
+                "an input kept where it was asked for left the machine behind what it looked at \
+                 (hosted: {hosted})"
+            );
+        }
     }
 
     #[test]

@@ -58,9 +58,10 @@ pub const STOP: &str = "stop";
 /// given for runs on, since someone waits on its switch.
 pub const STOP_FOR_NEWER: &str = "stop-for-newer";
 
-/// How long an asker has to say its ask, and the most it may send.
+/// How long an asker has to say its ask, and the most it may send: room
+/// for a few inputs asked for at once, each named and at a full commit.
 const ASK_WITHIN: Duration = Duration::from_secs(5);
-const ASK_AT_MOST: u64 = 128;
+const ASK_AT_MOST: u64 = 1024;
 
 /// How long a finished update waits for its askers to hear the ending
 /// before the program starts itself again.
@@ -236,6 +237,8 @@ fn answer(
     let following = ask.trim() == FOLLOW;
     let at = if following {
         Some(Ok(Followed::new()))
+    } else if cut_off(&ask) {
+        Some(Err(format!("an ask is at most {ASK_AT_MOST} bytes")))
     } else {
         asked_at(ask.trim())
     };
@@ -360,6 +363,13 @@ fn stop(current: &Mutex<Option<Arc<Answer>>>, asked: Asked) -> String {
     } else {
         stopped
     }
+}
+
+/// Whether an ask was cut off at the most it may send, which would lose
+/// the inputs past the cut while seeming whole, so it's refused rather
+/// than half done.
+fn cut_off(ask: &str) -> bool {
+    u64::try_from(ask.len()).is_ok_and(|len| len >= ASK_AT_MOST) && !ask.ends_with('\n')
 }
 
 /// The followed inputs' commits a person's ask names: none for `update`,
@@ -641,6 +651,30 @@ mod tests {
         for ask in ["update /nix/store/something", "follow", "stop"] {
             assert_eq!(asked_at(ask), None, "{ask:?} was taken as an update");
         }
+    }
+
+    #[test]
+    fn an_ask_cut_off_at_the_most_it_may_send_is_told_from_a_whole_one() {
+        let commit = "a".repeat(40);
+        let four: String = ["core", "core/mycelium", "core/mycelium/kit", "core/nixpkgs"]
+            .iter()
+            .map(|input| format!(" {input} {commit}"))
+            .collect();
+        let whole = format!("update at{four}\n");
+        assert!(
+            !cut_off(&whole),
+            "an ask at four inputs was taken as cut off"
+        );
+        let long = format!("update at{}", four.repeat(8));
+        let cut = &long[..usize::try_from(ASK_AT_MOST).expect("the most fits")];
+        assert!(
+            cut_off(cut),
+            "an ask cut off at {ASK_AT_MOST} bytes was taken as whole"
+        );
+        assert!(
+            !cut_off("update"),
+            "a short ask without its newline was taken as cut off"
+        );
     }
 
     #[test]

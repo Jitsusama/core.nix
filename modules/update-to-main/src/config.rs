@@ -426,6 +426,15 @@ impl Config {
         self.state.join("gnupg")
     }
 
+    /// The inputs it follows only when asked, by name.
+    pub fn only_asked(&self) -> Vec<String> {
+        self.follows
+            .iter()
+            .filter(|(_, follow)| follow.asked)
+            .map(|(name, _)| name.clone())
+            .collect()
+    }
+
     /// The folder root keeps each followed input's copy and keyring in.
     pub fn follows_folder(&self) -> PathBuf {
         self.state.join("follows")

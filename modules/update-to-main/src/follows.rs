@@ -28,8 +28,11 @@ pub type Followed = BTreeMap<String, String>;
 ///
 /// An input followed only when asked (`asked`) stays where its lock pins
 /// it until an ask names a commit of it, so a person chooses when it moves.
-/// Once asked, it stays at that commit until its lock pins it or past it,
-/// since falling back to an older pin would undo what was asked for.
+/// Once asked, it stays at that commit while it is ahead of what its lock
+/// pins, since falling back to an older pin would undo what was asked
+/// for. Once the lock pins it, past it or off its line, the lock rules
+/// again: holding an ask against a lock gone another way would refuse
+/// every update, and no ask could clear it.
 pub fn heads(
     config: &Config,
     head: &str,
@@ -59,7 +62,12 @@ pub fn heads(
         let (pinned, pins) = pinned(config, &lock, name, &followed)?;
         let commit = match at.get(name) {
             None if follow.asked => match kept {
-                Some(kept) if !git::descends(&repo, kept, &pinned)? => kept.clone(),
+                Some(kept)
+                    if git::descends(&repo, &pinned, kept)?
+                        && !git::descends(&repo, kept, &pinned)? =>
+                {
+                    kept.clone()
+                }
                 _ => continue,
             },
             None => main,

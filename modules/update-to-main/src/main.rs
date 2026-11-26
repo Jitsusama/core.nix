@@ -325,6 +325,7 @@ fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
             return started_in_place(&program);
         }
         follower.hosted(config.hosted.is_some());
+        follower.only_asked(config.only_asked());
         follower.saw_system(follow::system(&config.profile));
         match follow::heads(&config, seen.as_ref()) {
             Ok(heads) => {
