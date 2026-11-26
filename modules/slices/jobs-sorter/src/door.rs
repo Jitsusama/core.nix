@@ -124,9 +124,9 @@ pub const YOUNG: u64 = 500;
 const MS_PER_TICK: u64 = 10;
 
 /// Whether a command line, its words, is Nix work that grows: an
-/// evaluation, a `nix flake check`, a build, a shell or a run, a
-/// `nix path-info` of a flake, which evaluates it, and `nix-offload there`
-/// told to run here.
+/// evaluation, a `nix flake check`, a build, a shell or a run, a search,
+/// a `nix path-info` or another verb given a flake, which evaluates it,
+/// and `nix-offload there` told to run here.
 pub fn heavy(words: &[&str]) -> bool {
     let Some(program) = words.first() else {
         return false;
@@ -151,27 +151,66 @@ pub fn heavy(words: &[&str]) -> bool {
         // map chains ran it beside the World walks.
         "tec" => verbs.any(|word| matches!(*word, "eval" | "instantiate" | "build")),
         "nix" => match verbs.next() {
-            Some(&("eval" | "build" | "develop" | "shell" | "run")) => true,
+            Some(
+                &("eval" | "build" | "develop" | "shell" | "run" | "print-dev-env" | "search"),
+            ) => true,
             Some(&"flake") => verbs.next() == Some(&"check"),
-            // A flake is named by its `#` or a path from here, and none
-            // named means the one here; a store path's info, a build's
-            // `result` link's too, is read from the store, evaluating
-            // nothing.
-            Some(&"path-info") => {
-                let mut named = verbs.peekable();
-                named.peek().is_none()
-                    || named.any(|word| {
-                        let link = word
-                            .rsplit('/')
-                            .next()
-                            .is_some_and(|it| it.starts_with("result"));
-                        word.contains('#') || (word.starts_with('.') && !link)
-                    })
+            Some(&("path-info" | "derivation" | "why-depends" | "copy" | "log")) => {
+                evaluates(&words[1..])
             }
             _ => false,
         },
         _ => false,
     }
+}
+
+/// Whether a Nix command given installables, its words after `nix`,
+/// evaluates. A flake is named by its `#`, a URL or a path, an expression
+/// or a file by its option, and the flake here by naming nothing; a store
+/// path, a build's `result` link to one, every path in the store and paths
+/// given on its input are read from the store, evaluating nothing.
+fn evaluates(words: &[&str]) -> bool {
+    if words
+        .iter()
+        .any(|word| matches!(*word, "-f" | "--file" | "--expr"))
+    {
+        return true;
+    }
+    if words
+        .iter()
+        .any(|word| matches!(*word, "--all" | "--stdin"))
+    {
+        return false;
+    }
+    let link = |word: &str| {
+        word.rsplit('/')
+            .next()
+            .is_some_and(|it| it.starts_with("result"))
+    };
+    let mut named = false;
+    let mut words = words.iter();
+    while let Some(word) = words.next() {
+        // An option's value is neither a flake nor a store path.
+        let values = match *word {
+            "--store" | "--eval-store" | "--to" | "--from" | "-I" | "--include" => 1,
+            "--option" | "--override-input" | "--arg" | "--argstr" => 2,
+            _ => 0,
+        };
+        if values > 0 {
+            words.nth(values - 1);
+            continue;
+        }
+        if word.starts_with('-') {
+            continue;
+        }
+        let stored = word.starts_with("/nix/store/") || link(word);
+        let path = word.starts_with('.') || word.starts_with('/');
+        if word.contains('#') || word.contains(':') || (path && !stored) {
+            return true;
+        }
+        named |= stored;
+    }
+    !named
 }
 
 /// The share of the last minute every task waited on memory, in percent,
@@ -335,6 +374,9 @@ pub enum Done {
     Ranked(u32, u64),
     /// Held for its turn, as starts come in paced.
     Paced(u32),
+    /// Let in late unranked, since its rank was refused, which ends the
+    /// rush it came in with.
+    Unranked(u32),
 }
 
 impl Door {
@@ -367,6 +409,13 @@ impl Door {
         let mut room = machine
             .free
             .saturating_sub(self.growing(&memory, grows, now));
+        // A rush's caps are shares of the room it came into, not what it
+        // needs, so once each has ramped, with room again and nothing
+        // stalling, they're lifted, rather than holding an evaluation
+        // under its share, in swap, for its life.
+        if !machine.calling && machine.stalled <= STALLED && room >= grows + need {
+            self.lift_caps(now, &mut act);
+        }
         // A switch lands every merged fix, so with no call on it needs
         // room only for its own growth: what the rest keep is mostly held
         // by sessions that no waiting frees.
@@ -485,6 +534,10 @@ impl Door {
         act: &mut impl FnMut(&Path, Act) -> bool,
     ) -> Vec<Done> {
         let mut done = Vec::new();
+        // A refused rank ends the rush it was in, not every rush after.
+        if self.held.is_empty() {
+            self.rank_refused = false;
+        }
         if machine.calling {
             return done;
         }
@@ -531,7 +584,11 @@ impl Door {
             };
             // Let in uncapped, its rank refused, it ends the rush until a
             // rank holds again.
-            self.rank_refused = matches!(came, Done::LetIn(_));
+            let came = match came {
+                Done::LetIn(pid) => Done::Unranked(pid),
+                came => came,
+            };
+            self.rank_refused = matches!(came, Done::Unranked(_));
             done.push(came);
             if self.rank_refused {
                 room = room.saturating_sub(grows);
@@ -562,6 +619,20 @@ impl Door {
             .retain(|scope, _| memory.contains_key(scope.as_path()));
         let admitted = &self.admitted;
         self.capped.retain(|scope, _| admitted.contains_key(scope));
+    }
+
+    /// Lifts the cap of each start a rush let in [`RAMP`] or more before
+    /// `now`, keeping the cap of any whose lift `act` couldn't make, to
+    /// try again.
+    fn lift_caps(&mut self, now: Instant, act: &mut impl FnMut(&Path, Act) -> bool) {
+        let admitted = &self.admitted;
+        self.capped.retain(|scope, _| {
+            let ramped = admitted
+                .get(scope)
+                .is_some_and(|at| now.saturating_duration_since(*at) >= RAMP);
+            // systemd reads the most a u64 holds as no limit.
+            !(ramped && act(scope, Act::Rank { high: u64::MAX }))
+        });
     }
 
     /// What the starts let in within [`RAMP`] of `now` are yet to grow to,
@@ -931,6 +1002,21 @@ mod tests {
             "nix path-info nixpkgs#hello",
             // With no installable it reads the flake here.
             "nix path-info --json",
+            "nix path-info --store daemon",
+            // A flake named by its path or its URL.
+            "nix path-info /home/j/src/x",
+            "nix path-info path:/w",
+            "nix path-info git+file:///w",
+            "nix path-info -f <nixpkgs> hello",
+            "nix path-info --expr 1",
+            // Other verbs evaluate what they're given as path-info does.
+            "nix derivation show .#x",
+            "nix derivation show",
+            "nix why-depends .#a .#b",
+            "nix copy --to ssh://h .#x",
+            "nix log .#x",
+            "nix print-dev-env",
+            "nix search nixpkgs hello",
             "tec --git-dir /w/.git --ref main instantiate //areas/x:y",
             "/nix/store/t-tec/bin/tec eval --json //areas/x",
         ] {
@@ -944,6 +1030,14 @@ mod tests {
             // A build's link into the store.
             "nix path-info -rsSh ./result",
             "nix path-info ./out/result-bin",
+            // Every path in the store, or those given on its input.
+            "nix path-info --all",
+            "nix path-info --stdin",
+            // An option's value names no flake.
+            "nix path-info -I ./nixpkgs /nix/store/x-y",
+            "nix copy --to ssh://h /nix/store/x-y",
+            "nix log /nix/store/x.drv",
+            "nix derivation show /nix/store/x.drv",
             "nix-store -q",
             "nix-offload progress host",
             // Evaluated and built on builders, never here unasked: on 9
@@ -1474,7 +1568,7 @@ mod tests {
 
     fn let_in(done: &[Done]) -> usize {
         done.iter()
-            .filter(|done| matches!(done, Done::LetIn(_) | Done::Ranked(..)))
+            .filter(|done| matches!(done, Done::LetIn(_) | Done::Ranked(..) | Done::Unranked(_)))
             .count()
     }
 
@@ -1636,10 +1730,37 @@ mod tests {
         });
         assert_eq!(
             came,
-            [Done::LetIn(100), Done::LetIn(101), Done::LetIn(102)],
-            "the first let in uncapped ends the rush"
+            [Done::LetIn(100), Done::LetIn(101), Done::Unranked(102)],
+            "the first let in uncapped ends the rush, said as unranked"
         );
         assert_eq!(door.held.len(), 3, "the rest wait SPACED");
+    }
+
+    // A refused rank says nothing of a rush hours later: once what waited
+    // with it has gone, the next rush comes in together.
+    #[test]
+    fn a_refused_rank_ends_with_the_backlog_it_was_in() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let work = &thirteen()[..6];
+        let calling = Machine {
+            calling: true,
+            ..free(ROOM + GROWS)
+        };
+        assert_eq!(held(&door.look(work, calling, at, 1000, |_, _| true)), 6);
+        let short = free(1 << 30);
+        assert_eq!(door.look(work, short, at + MINUTE, 1001, |_, _| true), []);
+        let longest = at + MINUTE + LONGEST;
+        let roomy = free(ROOM + 12 * GROWS);
+        let refuses = |_: &Path, act: Act| !matches!(act, Act::Rank { .. });
+        assert_eq!(let_in(&door.look(work, roomy, longest, 1002, refuses)), 3);
+        assert!(door.rank_refused);
+        let gone = longest + Duration::from_secs(10);
+        assert_eq!(door.look(&work[..3], roomy, gone, 1003, |_, _| true), []);
+        assert!(
+            !door.rank_refused,
+            "with nothing left held, the refusal stayed to space the next rush"
+        );
     }
 
     // A rank refused once is likely refused again, so the rush stays over
@@ -1684,6 +1805,149 @@ mod tests {
             [Done::Ranked(104, 4 * GROWS), Done::Ranked(105, 4 * GROWS)],
             "with a rank held, the rest come in together again"
         );
+    }
+
+    /// Six held through a call, let in at `longest` with twelve GROWS free
+    /// past what's kept: the pace's two, then four sharing the rest.
+    fn rushed(door: &mut Door, at: Instant) -> (Vec<Coming<'static>>, Instant) {
+        let work = thirteen()[..6].to_vec();
+        let calling = Machine {
+            calling: true,
+            ..free(ROOM + GROWS)
+        };
+        assert_eq!(held(&door.look(&work, calling, at, 1000, |_, _| true)), 6);
+        assert_eq!(
+            door.look(&work, free(1 << 30), at + MINUTE, 1001, |_, _| true),
+            []
+        );
+        let longest = at + MINUTE + LONGEST;
+        let came = door.look(&work, free(ROOM + 12 * GROWS), longest, 1002, |_, _| true);
+        assert_eq!(let_in(&came), 6);
+        (work, longest)
+    }
+
+    // One let in late with plenty free isn't counted as taking all of it.
+    #[test]
+    fn a_late_start_is_never_given_past_a_quarter_of_memory() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let work = &thirteen()[..3];
+        let calling = Machine {
+            calling: true,
+            ..free(ROOM + GROWS)
+        };
+        assert_eq!(held(&door.look(work, calling, at, 1000, |_, _| true)), 3);
+        assert_eq!(
+            door.look(work, free(1 << 30), at + MINUTE, 1001, |_, _| true),
+            []
+        );
+        let longest = at + MINUTE + LONGEST;
+        assert_eq!(
+            door.look(work, free(ROOM + 20 * GROWS), longest, 1002, |_, _| true),
+            [
+                Done::LetIn(100),
+                Done::LetIn(101),
+                Done::Ranked(102, TOTAL / 4)
+            ],
+            "the eighteen GROWS past what's kept are capped at a quarter of memory"
+        );
+    }
+
+    // Only those that waited LONGEST share the room; one held since the
+    // call ended waits on, and takes none of it.
+    #[test]
+    fn a_rush_shares_its_room_among_those_that_waited_longest_alone() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let work = thirteen();
+        let calling = Machine {
+            calling: true,
+            ..free(ROOM + GROWS)
+        };
+        assert_eq!(
+            held(&door.look(&work[..6], calling, at, 1000, |_, _| true)),
+            6
+        );
+        let short = free(1 << 30);
+        assert_eq!(
+            door.look(&work[..6], short, at + MINUTE, 1001, |_, _| true),
+            []
+        );
+        let later = at + MINUTE + Duration::from_secs(10);
+        door.look(&work[..8], short, later, 1002, |_, _| true);
+        assert_eq!(door.held.len(), 8);
+        let longest = at + MINUTE + LONGEST;
+        let share = 10 * GROWS / 4;
+        assert_eq!(
+            door.look(
+                &work[..8],
+                free(ROOM + 12 * GROWS),
+                longest,
+                1003,
+                |_, _| true
+            ),
+            [
+                Done::LetIn(100),
+                Done::LetIn(101),
+                Done::Ranked(102, share),
+                Done::Ranked(103, share),
+                Done::Ranked(104, share),
+                Done::Ranked(105, share),
+            ],
+            "the four that waited share the ten GROWS, and the two held later wait on"
+        );
+    }
+
+    // A cap is the room the rush came into, not what the start needs, so
+    // once it has ramped with room again it's lifted.
+    #[test]
+    fn a_rushs_caps_are_lifted_once_they_have_ramped_with_room() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let (work, longest) = rushed(&mut door, at);
+        let mut lifted = Vec::new();
+        let stalled = Machine {
+            stalled: STALLED + 1.0,
+            ..free(ROOM + 12 * GROWS)
+        };
+        door.look(&work, stalled, longest + RAMP, 1003, |scope, act| {
+            lifted.push((scope.to_path_buf(), act));
+            true
+        });
+        assert!(lifted.is_empty(), "lifted while memory stalled: {lifted:?}");
+        door.look(
+            &work,
+            free(ROOM + 12 * GROWS),
+            longest + RAMP,
+            1004,
+            |scope, act| {
+                lifted.push((scope.to_path_buf(), act));
+                true
+            },
+        );
+        lifted.sort_by(|a, b| a.0.cmp(&b.0));
+        let max = Act::Rank { high: u64::MAX };
+        assert_eq!(
+            lifted,
+            (102..106)
+                .map(|n| (PathBuf::from(format!("/c/work-{}-1.scope", n - 100)), max))
+                .collect::<Vec<_>>(),
+            "each of the rush's four ranked is lifted, and nothing else"
+        );
+        assert!(door.capped.is_empty());
+    }
+
+    // A scope's cap goes with it, so a later scope at the same path isn't
+    // counted at an old rush's share.
+    #[test]
+    fn a_rushs_caps_go_with_their_scopes() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let (work, longest) = rushed(&mut door, at);
+        assert_eq!(door.capped.len(), 4);
+        let gone = longest + Duration::from_secs(10);
+        door.look(&work[..2], free(ROOM + 12 * GROWS), gone, 1003, |_, _| true);
+        assert!(door.capped.is_empty(), "caps outlived their scopes");
     }
 
     #[test]
@@ -1754,7 +2018,7 @@ mod tests {
                     Done::Held(pid) | Done::Paced(pid) => {
                         held_at.insert(pid, now);
                     }
-                    Done::LetIn(pid) | Done::Ranked(pid, _) => {
+                    Done::LetIn(pid) | Done::Ranked(pid, _) | Done::Unranked(pid) => {
                         each[(look / 6) as usize] += 1;
                         let since = held_at.remove(&pid).unwrap_or(from);
                         longest = longest.max(now - since);
