@@ -131,22 +131,43 @@ const FILLERS: [&str; 2] = ["shit", "crap"];
 /// that joins it, so "and some shit" and "or other crap" are fillers too.
 const FILLER_JOINS: [&str; 2] = ["and", "or"];
 
-/// Whether the swear at `at` closes a list rather than swearing at it.
-fn filler(each: &[&str], at: usize) -> bool {
-    let before = |back: usize| at.checked_sub(back).map(|i| each[i]);
-    FILLERS.contains(&each[at])
-        && (before(1).is_some_and(|w| FILLER_JOINS.contains(&w))
-            || before(1).is_some_and(|w| ["some", "other"].contains(&w))
-                && before(2).is_some_and(|w| FILLER_JOINS.contains(&w)))
+/// The words that may stand between a filler's join and its swear.
+const FILLER_BETWEEN: [&str; 2] = ["some", "other"];
+
+/// Whether the swear at `at` in a clause's words closes a list rather
+/// than swearing at it: a filler after a join that follows something
+/// listed in the same sentence, so "tax brackets, rates and shit" closes
+/// a list and "and shit, it wiped my branch" swears.
+fn filler(clause: &[&str], at: usize) -> bool {
+    let before = at.checked_sub(1).map(|i| clause[i]);
+    let join = if before.is_some_and(|w| FILLER_BETWEEN.contains(&w)) {
+        at.checked_sub(2)
+    } else {
+        at.checked_sub(1)
+    };
+    FILLERS.contains(&clause[at])
+        && join.is_some_and(|j| j > 0 && FILLER_JOINS.contains(&clause[j]))
 }
 
-/// Whether words swear: a swear not before a word of praise, nor one
-/// closing a list.
-fn swore(each: &[&str]) -> bool {
-    each.iter().enumerate().any(|(at, w)| {
-        (SWEARS.iter().any(|s| w.starts_with(s)) || *w == "ass")
-            && !each.get(at + 1).is_some_and(|next| PRAISE.contains(next))
-            && !filler(each, at)
+/// The sentences of lowered text, split after stops and line ends, each
+/// as whether it exclaims and its words; a comma ends none, since a list
+/// runs across them.
+fn sentences(low: &str) -> Vec<(bool, Vec<&str>)> {
+    low.split_inclusive(|c: char| ENDS.contains(&c) || c == '\n')
+        .map(|sentence| (sentence.trim_end().ends_with('!'), words_of(sentence)))
+        .collect()
+}
+
+/// Whether lowered text swears: a swear not before a word of praise, nor
+/// one closing a list in a clause that doesn't exclaim, since "it broke
+/// and shit!" is said in anger.
+fn swore(low: &str) -> bool {
+    sentences(low).iter().any(|(exclaims, words)| {
+        words.iter().enumerate().any(|(at, w)| {
+            (SWEARS.iter().any(|s| w.starts_with(s)) || *w == "ass")
+                && !words.get(at + 1).is_some_and(|next| PRAISE.contains(next))
+                && (*exclaims || !filler(words, at))
+        })
     })
 }
 
@@ -172,28 +193,33 @@ fn warns(words: &[&str]) -> bool {
 /// the agent.
 fn swears(low: &str) -> bool {
     let each = words_of(low);
-    if !swore(&each) {
+    if !swore(low) {
         return false;
     }
     let at_what_came = low
-        .split(|c: char| ENDS.contains(&c) || c == ',')
-        .map(words_of)
-        .any(|words| swore(&words) && !warns(&words));
+        .split_inclusive(|c: char| ENDS.contains(&c) || c == ',')
+        .any(|clause| swore(clause) && !warns(&words_of(clause)));
     if !at_what_came {
         return false;
     }
-    let sentences: Vec<(bool, Vec<&str>)> = low
+    let sentences: Vec<(bool, &str, Vec<&str>)> = low
         .split_inclusive(ENDS)
-        .map(|sentence| (sentence.trim_end().ends_with(ASKS), words_of(sentence)))
+        .map(|sentence| {
+            (
+                sentence.trim_end().ends_with(ASKS),
+                sentence,
+                words_of(sentence),
+            )
+        })
         .collect();
     let eased = sentences
         .iter()
-        .any(|(asked, words)| !asked && REASSURING.iter().any(|ease| said(words, ease)));
+        .any(|(asked, _, words)| !asked && REASSURING.iter().any(|ease| said(words, ease)));
     let asked_swearing = sentences
         .iter()
-        .any(|(asked, words)| *asked && swore(words));
+        .any(|(asked, sentence, _)| *asked && swore(sentence));
     let gave_up = GIVING_UP.iter().any(|up| said(&each, up))
-        || sentences.iter().any(|(_, words)| whatever_then(words));
+        || sentences.iter().any(|(_, _, words)| whatever_then(words));
     !eased || asked_swearing || gave_up
 }
 
@@ -488,6 +514,36 @@ mod tests {
             assert!(
                 kinds(hurt, AT, &[]).contains(&"swore"),
                 "a swear at what came, or outside the warning, was spared: {hurt}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_filler_closes_only_a_list_said_before_it_and_never_an_exclaimed_one() {
+        let none: Vec<&str> = Vec::new();
+        for filler in [
+            "add the costs and other crap",
+            "add the costs or crap",
+            "consider the brackets, deductions, and shit",
+        ] {
+            assert_eq!(
+                kinds(filler, AT, &[]),
+                none,
+                "a list's filler swore: {filler}"
+            );
+        }
+        for hurt in [
+            "And shit, it wiped my branch",
+            "and shit",
+            "the costs some shit",
+            "the costs.\nand shit",
+            "it wiped my branch and shit!",
+            "add the costs and shit, this fucking page",
+        ] {
+            assert!(
+                kinds(hurt, AT, &[]).contains(&"swore"),
+                "a swear with no list before its join, no join, exclaimed, or beside a \
+                 filler was heard as a filler: {hurt}"
             );
         }
     }
