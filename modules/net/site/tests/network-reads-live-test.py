@@ -336,7 +336,9 @@ ROOM_AND_DRAWN = """() => {
 # at it both match, and the map's room is a block the page scrolls past. And how much of the
 # drawing across, at the smallest zoom, a widened window leaves below its room's first sight.
 LEAST_DESK_HEIGHT = 34 * 16
-BELOW_SIGHT_PX = 160
+# Measured: net.json's house drawn across is 552 units tall, 509 px at the smallest zoom, and a
+# desk holds 142 px around the room, so a window just past 34rem leaves 107 px below sight.
+BELOW_SIGHT_PX = 96
 
 
 def short_desk(page: Page) -> tuple[int, int]:
