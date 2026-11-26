@@ -1605,65 +1605,41 @@ in
             (builtins.tryEval (builtins.deepSeq (declaredAs { needsIn = [ (rule // extra) ]; }) true)).success;
           locked = "${self.inputs.mycelium}/src";
           linesOf = file: lib.splitString "\n" (builtins.readFile "${locked}/${file}");
-          # The attribute and doc lines over item ITEM in LINES, nearest
-          # first, and the lines of its body, or null where it isn't found.
-          item =
-            lines: start:
-            let
-              from = lib.lists.findFirstIndex (line: line == start) null lines;
-              rest = lib.drop (from + 1) lines;
-              to = lib.lists.findFirstIndex (line: line == "}") null rest;
-              before = lib.reverseList (lib.take from lines);
-              unmarked = line: !lib.hasPrefix "#[" line && !lib.hasPrefix "///" line;
-              marks = lib.lists.findFirstIndex unmarked (lib.length before) before;
-            in
-            if from == null || to == null then
-              null
-            else
-              {
-                over = lib.take marks before;
-                body = lib.filter (line: !lib.hasPrefix "    ///" line) (lib.take to rest);
-              };
-          # The variants of enum ENUM in FILE as serde names them: one word
-          # each, lowercased, serde told only RENAMING over it, each plain
-          # or holding one of HOLDS. Any other line there, a variant
-          # renamed, skipped, of two words or holding fields, or no such
-          # enum gives null, so what it can't read fails rather than passing
-          # unread.
-          variantsOf =
-            file: enum: renaming: holds:
-            let
-              found = item (linesOf file) "pub enum ${enum} {";
-              # POSIX refuses an empty group, so a plain enum's pattern has none.
-              plain = "    ([A-Z][a-z]*),";
-              holding = "    ([A-Z][a-z]*)(\\((${holds})\\))?,";
-              variant = builtins.match (if holds == null then plain else holding);
-              serde = lib.filter (lib.hasPrefix "#[serde") found.over;
-              unread = lib.any (line: variant line == null) found.body;
-            in
-            if found == null || serde != [ renaming ] || unread then
-              null
-            else
-              map (line: lib.toLower (lib.head (variant line))) found.body;
-          # The fields of struct STRUCT in declared.rs by name, or null.
-          fieldsOf =
-            struct:
-            let
-              found = item (linesOf "declared.rs") "pub struct ${struct} {";
-            in
-            if found == null then
-              null
-            else
-              map lib.head (
-                lib.filter (field: field != null) (
-                  map (builtins.match "    pub ([a-z_][a-z0-9_]*): .*,") found.body
-                )
-              );
-          declaredOver = (item (linesOf "declared.rs") "pub struct Declared {").over or null;
-          rules = fieldsOf "NeedsIn";
-          kinds =
-            variantsOf "placement.rs" "Need" "#[serde(rename_all = \"snake_case\")]"
-              "String|AcceleratorKind";
+          # What the locked source's items hold, read failing closed.
+          rust = import ./rust-items.nix { inherit lib; };
+          need = rust.enumIn (linesOf "placement.rs") "Need";
+          accelerators = rust.enumIn (linesOf "facts.rs") "AcceleratorKind";
+          declaration = rust.structIn (linesOf "declared.rs") "Declared";
+          # needs_in's field, or null on a lock from before it.
+          needsIn = lib.findFirst (field: field.name == "needs_in") null (declaration.fields or [ ]);
+          rule' = rust.structIn (linesOf "declared.rs") "NeedsIn";
+          kinds = map (variant: variant.name) (need.variants or [ ]);
+          # Rust's lines as a fixture gives them.
+          fixture = text: lib.splitString "\n" text;
+          # A field and an enum the reader takes, each changed by one line
+          # in the cases below to show it refuses what it can't read.
+          fields = over: body: ''
+
+            ${over}
+            pub struct Rule {
+                /// Its folders.
+            ${body}
+                pub needs: Vec<Need>,
+            }
+          '';
+          variants = over: body: ''
+
+            ${over}
+            pub enum Need {
+                /// A network.
+                Reach(String),
+            ${body}
+            }
+          '';
+          derived = "#[derive(Debug, Deserialize)]";
+          words = "    pub words: Vec<String>,";
+          read = over: body: rust.structIn (fixture (fields over body)) "Rule";
+          readEnum = over: body: rust.enumIn (fixture (variants over body)) "Need";
           said =
             kind: if kind == "cloud" then kind else "${kind}=${if kind == "accelerator" then "gpu" else "a"}";
         in
@@ -1681,38 +1657,129 @@ in
             ];
           }
         ]
-        # Every kind the type takes, no more and no fewer, and each taken.
+        # Every kind the type takes, no more and no fewer, each holding what
+        # the declaration writes of it, cloud nothing, and each taken.
+        && need.serde or null == [ "#[serde(rename_all = \"snake_case\")]" ]
         &&
-          kinds == [
-            "machine"
-            "system"
-            "arch"
-            "reach"
-            "accelerator"
-            "tool"
-            "cloud"
+          need.variants or null == [
+            {
+              name = "machine";
+              holds = "String";
+            }
+            {
+              name = "system";
+              holds = "String";
+            }
+            {
+              name = "arch";
+              holds = "String";
+            }
+            {
+              name = "reach";
+              holds = "String";
+            }
+            {
+              name = "accelerator";
+              holds = "AcceleratorKind";
+            }
+            {
+              name = "tool";
+              holds = "String";
+            }
+            {
+              name = "cloud";
+              holds = null;
+            }
           ]
         && lib.all (kind: taken { needs = [ (said kind) ]; }) kinds
+        && accelerators.serde or null == [ "#[serde(rename_all = \"lowercase\")]" ]
         &&
-          variantsOf "facts.rs" "AcceleratorKind" "#[serde(rename_all = \"lowercase\")]" null == [
-            "gpu"
-            "npu"
+          accelerators.variants or null == [
+            {
+              name = "gpu";
+              holds = null;
+            }
+            {
+              name = "npu";
+              holds = null;
+            }
           ]
-        # A lock from before needs_in takes it unread only while Declared
-        # refuses no field; one with it names it and its rule's fields
-        # as written here, which pins them from the lock that first does.
-        && declaredOver != null
-        && !lib.any (lib.hasInfix "deny_unknown_fields") declaredOver
-        && lib.elem "needs_in" (fieldsOf "Declared") == (rules != null)
+        && taken { needs = [ "accelerator=npu" ]; }
+        # A lock from before needs_in takes it unread only while nothing
+        # over Declared refuses a field; one with it names it, its type
+        # and its rule's fields and types as written here, which pins them
+        # from the lock that first does.
+        && declaration != null
+        && !lib.any (lib.hasInfix "deny_unknown_fields") declaration.over
+        && (needsIn == null) == (rule' == null)
+        && (needsIn == null || needsIn.type == "Vec<NeedsIn>")
         && (
-          rules == null
+          rule' == null
           ||
-            rules == [
-              "folders"
-              "words"
-              "needs"
+            map (field: { inherit (field) name type; }) rule'.fields == [
+              {
+                name = "folders";
+                type = "Vec<PathBuf>";
+              }
+              {
+                name = "words";
+                type = "Vec<String>";
+              }
+              {
+                name = "needs";
+                type = "Vec<Need>";
+              }
             ]
         )
+        # The reader reads what it's shown, multi-line attributes joined,
+        # and gives null for each kind of line it can't read.
+        &&
+          read derived "    #[serde(\n        default,\n    )]\n    pub folders: Vec<PathBuf>," == {
+            over = [ derived ];
+            serde = [ ];
+            fields = [
+              {
+                name = "folders";
+                type = "Vec<PathBuf>";
+                serde = [ "default," ];
+              }
+              {
+                name = "needs";
+                type = "Vec<Need>";
+                serde = [ ];
+              }
+            ];
+          }
+        &&
+          (read "#[serde(\n    deny_unknown_fields,\n)]\n${derived}" words).serde or null == [
+            "#[serde(deny_unknown_fields,)]"
+          ]
+        && read derived words != null
+        && read "#[derive(Debug)]" words == null
+        && read "// a note\n${derived}" words == null
+        && read "#[repr(C)]\n${derived}" words == null
+        && read derived "    #[serde(\n        default," == null
+        && read derived "    #[serde(rename = \"dirs\")]\n    pub folders: Vec<PathBuf>," == null
+        && read derived "    #[serde(alias = \"dirs\")]\n    pub folders: Vec<PathBuf>," == null
+        && read derived "    folders: Vec<PathBuf>," == null
+        && read derived "    pub folders:\n        Vec<PathBuf>," == null
+        && read derived "    // a note" == null
+        &&
+          (readEnum derived "    Cloud,").variants or null == [
+            {
+              name = "reach";
+              holds = "String";
+            }
+            {
+              name = "cloud";
+              holds = null;
+            }
+          ]
+        && readEnum "#[derive(Debug)]" "    Cloud," == null
+        && readEnum derived "    #[serde(skip)]\n    Cloud," == null
+        && readEnum derived "    Cloud { at: String }," == null
+        && readEnum derived "    Cloud(String, String)," == null
+        && readEnum derived "    CloudRoom," == null
         && !((declared linux) ? needs_in)
         && taken { }
         && taken { words = [ ]; }
