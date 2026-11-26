@@ -5,7 +5,9 @@
 use std::fs;
 use std::io;
 use std::path::Path;
-use std::process::{Command, Output};
+use std::process::Output;
+
+use crate::unasked;
 
 /// Where the harness's history is fetched from.
 pub(super) const HARNESS: &str = "https://github.com/Jitsusama/agentic-harness.pi";
@@ -138,9 +140,12 @@ fn made(clone: &Path, seed: &str) -> io::Result<()> {
 /// Runs git in `dir` with no account or system config, so no setting of
 /// Joel's, a rename limit or a diff driver, turns what it judges, and a
 /// link that stalls gives up in half a minute rather than holding the
-/// card. Upkeep is git's own, as cadence owns its clones.
+/// card. It never asks for a password, as [`unasked::git`] runs it: the
+/// hour runs unattended, so a remote wanting one fails at once rather than
+/// opening a prompt on the desktop. Upkeep is git's own, as cadence owns
+/// its clones.
 fn run(dir: &Path, args: &[&str]) -> io::Result<Output> {
-    Command::new("git")
+    unasked::git()
         .arg("-C")
         .arg(dir)
         .args([
@@ -178,6 +183,7 @@ fn failed(step: &str, out: &Output) -> io::Error {
 #[cfg(test)]
 pub(super) mod tests {
     use std::path::PathBuf;
+    use std::process::Command;
 
     use super::*;
 
