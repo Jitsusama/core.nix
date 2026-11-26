@@ -164,12 +164,21 @@ ShellRoot {
                     && hidden[0].verbs().every(row => !row.side.includes("$")),
                 hidden.map(row => row.side).join(", "));
 
-            // Typing on looks through only what the letters before matched;
-            // taking a letter back, or a run coming, looks through them all.
+            // Typing on looks through only what the letters before matched:
+            // with those kept cut to one, a letter typed on finds only it.
             const typedOn = names(runs.search("fle").rows);
             expect("what the letters matched, kept", typedOn === "fleet-live, fleet-dead"
-                && runs.poolFor(runs.all, "flee") === runs.lastMatched.rows
-                && runs.poolFor(runs.all, "f") === runs.all, typedOn);
+                && names(runs.lastMatched.rows) === typedOn, names(runs.lastMatched.rows));
+            runs.lastMatched = Object.assign({}, runs.lastMatched,
+                { rows: runs.lastMatched.rows.slice(0, 1) });
+            const narrowed = names(runs.search("flee").rows);
+            expect("typing on looks only through them", narrowed === "fleet-live", narrowed);
+            // One its id alone matches is kept as typing goes on.
+            runs.search("2026");
+            const byIdOn = names(runs.search("202610").rows);
+            expect("one found by its id, typed on", byIdOn === "council on core.nix#380", byIdOn);
+            // A run coming makes the rows anew, which are looked through whole.
+            runs.search("fle");
             runs.records = root.records.concat([{ key: "run:fleet.fleet-new", kind: "run",
                 id: "fleet.fleet-new", about: "fleet-new", parent: "s-gone", state: "done" }]);
             const since = names(runs.search("flee").rows);
