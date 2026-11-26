@@ -323,10 +323,8 @@ fn gather(
     all.extend(measures::clean(&text(
         &state_home.join("code-health/hour.json"),
     )));
-    let apps = fs::read_to_string(state_home.join(measures::apps::FILE)).ok();
-    all.extend(measures::apps::apps(apps.as_deref(), now_ms() / 1000));
-    let watched = measures::load::read(&state_home, now);
-    all.push(measures::load::load(&watched, now));
+    all.extend(measures::apps::read(state_home));
+    all.push(measures::load::hour(state_home, now));
     let wifid = measures::wifi::read(now);
     all.push(measures::wifi::video(wifid.as_deref(), &TimeZone::system()));
     // The balance service names a day's file by the date here, so read yesterday's too.

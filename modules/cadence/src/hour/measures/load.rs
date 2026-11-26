@@ -163,6 +163,12 @@ impl Minute {
     }
 }
 
+/// The hour to `now` judged from lag-watch's windows beside `state_home`.
+#[must_use]
+pub fn hour(state_home: &Path, now: i64) -> Measure {
+    load(&read(state_home, now), now)
+}
+
 /// lag-watch's windows in the hour to `now`, from the end of each day's
 /// file the hour touches, today's and, early in the day, yesterday's.
 #[must_use]
@@ -258,7 +264,7 @@ pub fn load(text: &str, now: i64) -> Measure {
         );
         behind.push((spent, line));
     }
-    behind.sort_by(|a, b| b.0.cmp(&a.0));
+    behind.sort_by_key(|a| std::cmp::Reverse(a.0));
     Measure {
         key: KEY.to_owned(),
         class: Class::Apps,

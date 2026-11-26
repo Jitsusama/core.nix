@@ -1,6 +1,7 @@
 //! How a miss's test is read from its line and found where it runs.
 
 use std::path::Path;
+use std::process::Command;
 
 use super::*;
 

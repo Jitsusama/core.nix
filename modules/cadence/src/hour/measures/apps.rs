@@ -6,6 +6,8 @@
 //! video and audio while the machine is totally under all the
 //! pressures"), so the card leads with them and their drag comes first.
 
+use std::path::Path;
+
 use serde_json::Value;
 
 use super::{Class, Measure};
@@ -43,8 +45,17 @@ pub const LOST: f64 = 6.0;
 /// a drag on it stays open until it reads again. With no hour, one older than two, or one
 /// with no figure to read, a single line says which, judged once the last
 /// hour read is `LOST` hours old.
-/// `now` is the clock as the hour is read, not as cadence's began, since
-/// apps-under-load may write it meanwhile and one dated after `now` is unread.
+/// His apps' figures from apps-under-load's hour beside `state_home`, judged
+/// by the clock as it's read, not as cadence's hour began: apps-under-load
+/// may write it meanwhile, as cadence's ran 17 minutes at 03:10 on 26
+/// November, and an hour dated after the clock it's judged by is unread.
+#[must_use]
+pub fn read(state_home: &Path) -> Vec<Measure> {
+    let text = std::fs::read_to_string(state_home.join(FILE)).ok();
+    apps(text.as_deref(), crate::now_ms() / 1000)
+}
+
+/// `now` is the clock as the hour is read: see [`read`].
 #[must_use]
 pub fn apps(text: Option<&str>, now: i64) -> Vec<Measure> {
     let read: Value = text
