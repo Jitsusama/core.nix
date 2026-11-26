@@ -14,11 +14,13 @@ use crate::bluetooth::bluetooth;
 use crate::cameras::{Loopback, cameras};
 use crate::displays::{displays, names_a_monitor};
 use crate::inotify::{
-    IN_CLOSE_NOWRITE, IN_CLOSE_WRITE, IN_CREATE, IN_DELETE, IN_MOVED_TO, IN_OPEN, names, watches,
+    IN_CLOSE_NOWRITE, IN_CLOSE_WRITE, IN_CREATE, IN_DELETE, IN_MOVED_TO, IN_OPEN, Inotify, Kernel,
+    names,
 };
 use crate::keyboards::keyboards;
 use crate::own_sound::{a_jack_changed, control, open_control};
 use crate::sound::sound;
+use crate::watches::Watches;
 use crate::writing::{json, write};
 
 const AF_NETLINK: c_int = 16;
@@ -40,6 +42,10 @@ const SOUND: u8 = 2;
 const CAMERAS: u8 = 4;
 const BLUETOOTH: u8 = 8;
 const KEYBOARDS: u8 = 16;
+/// Every kind, read again when what changed can't be known.
+const EVERY: u8 = DISPLAYS | SOUND | CAMERAS | BLUETOOTH | KEYBOARDS;
+/// A socket's refusal once its buffer ran over, losing what it held.
+const ENOBUFS: i32 = 105;
 /// The kernel's uevents that change a fact, and the kinds each changes.
 const HEARD: [(&[u8], u8); 7] = [
     (b"SUBSYSTEM=drm", DISPLAYS),
@@ -140,14 +146,22 @@ const SETTLING: [Duration; 4] = [
     Duration::from_secs(2),
 ];
 
-/// How long poll waits: until the next read while sound settles, and
-/// otherwise until something is heard.
-fn waiting_for(settling: Option<(Instant, usize)>, now: Instant) -> c_int {
-    settling
-        .and_then(|(since, step)| SETTLING.get(step).map(|after| since + *after))
-        .map_or(-1, |at| {
-            let left = at.saturating_duration_since(now).as_millis();
-            c_int::try_from(left).unwrap_or(c_int::MAX)
+/// How often a folder that can't be watched yet is tried again, at the
+/// least, since nothing tells of room come free for a watch or inotify.
+const RETRY: Duration = Duration::from_secs(10);
+
+/// How long poll waits: until the next read while sound settles, no later
+/// than `retry` while a folder waits to be watched, and otherwise until
+/// something is heard.
+fn waiting_for(settling: Option<(Instant, usize)>, retry: Option<Instant>, now: Instant) -> c_int {
+    let settles = settling.and_then(|(since, step)| SETTLING.get(step).map(|after| since + *after));
+    [settles, retry]
+        .into_iter()
+        .flatten()
+        .map(|at| at.saturating_duration_since(now))
+        .min()
+        .map_or(-1, |left| {
+            c_int::try_from(left.as_millis()).unwrap_or(c_int::MAX)
         })
 }
 
@@ -187,17 +201,25 @@ fn stopping() -> io::Result<File> {
 }
 
 /// Reads everything waiting on a descriptor, saying which kinds of fact
-/// `heard` found it to change.
-fn heard(file: &mut File, heard: &dyn Fn(&[u8]) -> u8) -> u8 {
+/// `heard` found it to change: every kind, once the uevents' socket says
+/// its buffer ran over and lost some. A read interrupted is read again,
+/// and any other refusal is the error.
+fn heard(file: &mut impl Read, heard: &dyn Fn(&[u8]) -> u8) -> io::Result<u8> {
     let mut kinds = 0;
     let mut buffer = [0; 8192];
-    while let Ok(read) = file.read(&mut buffer) {
-        if read == 0 {
-            break;
+    loop {
+        match file.read(&mut buffer) {
+            Ok(0) => return Ok(kinds),
+            Ok(read) => kinds |= heard(&buffer[..read]),
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => return Ok(kinds),
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) if error.raw_os_error() == Some(ENOBUFS) => {
+                eprintln!("<4>uevents were lost, so every fact is read again");
+                kinds = EVERY;
+            }
+            Err(error) => return Err(error),
         }
-        kinds |= heard(&buffer[..read]);
     }
-    kinds
 }
 
 /// What `run` hears and reads from: the files it writes, the Pebble's
@@ -233,13 +255,19 @@ impl Desk {
     /// no more, and let go of when sound is read again.
     fn heard_from_controls(&mut self, waiting: &mut [PollFd]) -> u8 {
         let mut due = 0;
-        for (watched, (_, control)) in waiting.iter_mut().zip(&mut self.controls) {
+        for (watched, (number, control)) in waiting.iter_mut().zip(&mut self.controls) {
             if watched.revents & (POLLERR | POLLHUP) != 0 {
                 watched.fd = -1;
                 due |= SOUND;
             } else if watched.revents & POLLIN != 0 {
-                due |= heard(control, &|events| {
+                let jacks = heard(control, &|events| {
                     if a_jack_changed(events) { SOUND } else { 0 }
+                });
+                // One that can't be read is as one gone.
+                due |= jacks.unwrap_or_else(|error| {
+                    eprintln!("<4>can't read card {number}'s controls: {error}");
+                    watched.fd = -1;
+                    SOUND
                 });
             }
         }
@@ -316,6 +344,204 @@ fn rewrite(due: u8, desk: &mut Desk) {
     }
 }
 
+/// The folders facts come from, watched: sound's, cameras' holders and the
+/// monitors' facts.
+struct Folders<K: Kernel = Inotify> {
+    changes: Watches<K>,
+    held: Watches<K>,
+    said: Watches<K>,
+}
+
+impl<K: Kernel> Folders<K> {
+    /// The descriptors poll waits on, which change as inotify starts.
+    fn fds(&self) -> [c_int; 3] {
+        [self.changes.fd(), self.held.fd(), self.said.fd()]
+    }
+
+    /// Whether a folder waits with nothing to wake it, so poll wakes to try
+    /// it again.
+    fn wait(&self) -> bool {
+        self.unheard() != 0
+    }
+
+    /// The kinds of the folders that wait with nothing to wake them, which
+    /// are read each time poll's wait runs out, and on a wake once `RETRY`
+    /// has passed since the last try (`woken`), so a folder refused for a
+    /// while, or for good, leaves its kind's facts no staler than `RETRY`.
+    fn unheard(&self) -> u8 {
+        [
+            (&self.changes, SOUND),
+            (&self.held, CAMERAS),
+            (&self.said, DISPLAYS),
+        ]
+        .into_iter()
+        .filter(|(watches, _)| watches.waits())
+        .fold(0, |kinds, (_, kind)| kinds | kind)
+    }
+
+    /// The kinds the folders say changed. A folder watched since, or
+    /// removed, has its kind read again for what it holds now. A folder
+    /// refused in a way waiting can't mend is an error.
+    fn heard(&mut self) -> io::Result<u8> {
+        let mut due = 0;
+        let (events, moved) = self.changes.read()?;
+        if moved || names_one(&events, "pebble-lights") {
+            due |= SOUND;
+        }
+        let (events, moved) = self.held.read()?;
+        if moved || !events.is_empty() {
+            due |= CAMERAS;
+        }
+        let (events, moved) = self.said.read()?;
+        if moved || names_a_monitor(&events) {
+            due |= DISPLAYS;
+        }
+        Ok(due)
+    }
+}
+
+/// Points poll's slots for the folders at their inotify, which changes as
+/// it starts, and gives how long poll waits: no later than `RETRY` past
+/// `retried`, when the folders were last tried, while a folder waits with
+/// nothing to wake it.
+fn asked<K: Kernel>(
+    folders: &Folders<K>,
+    settling: &Settling,
+    slots: &mut [PollFd],
+    retried: Instant,
+    now: Instant,
+) -> c_int {
+    for (slot, fd) in slots.iter_mut().zip(folders.fds()) {
+        slot.fd = fd;
+    }
+    let retry = folders.wait().then_some(retried + RETRY);
+    waiting_for(settling.since, retry, now)
+}
+
+/// What's read again while it settles, and how far it has: sound, and
+/// cameras, whose sensor powers up a moment after a program takes the
+/// loopback.
+#[derive(Default)]
+struct Settling {
+    /// When it began, and how many of `SETTLING`'s reads are done.
+    since: Option<(Instant, usize)>,
+    kinds: u8,
+}
+
+impl Settling {
+    /// Settles anew the kinds among `due` that settle.
+    fn begin(&mut self, due: u8, now: Instant) {
+        if due & (SOUND | CAMERAS) != 0 {
+            self.since = Some((now, 0));
+            self.kinds |= due & (SOUND | CAMERAS);
+        }
+    }
+
+    /// The kinds read again now, if their next read is due.
+    fn step(&mut self, now: Instant) -> u8 {
+        if waiting_for(self.since, None, now) != 0 {
+            return 0;
+        }
+        self.since = settled_once(self.since);
+        let due = self.kinds;
+        if self.since.is_none() {
+            self.kinds = 0;
+        }
+        due
+    }
+}
+
+/// What's due once poll's wait runs out: settling's next read if it's due,
+/// and, while a folder waits with nothing to wake it, what the folders say
+/// once each is tried again, which settles as anything heard does, and the
+/// kinds of those still waiting, as nothing says when theirs change.
+fn timed_out<K: Kernel>(
+    folders: &mut Folders<K>,
+    settling: &mut Settling,
+    now: Instant,
+) -> io::Result<u8> {
+    let mut due = settling.step(now);
+    if folders.wait() {
+        let heard = folders.heard()?;
+        settling.begin(heard, now);
+        due |= heard | folders.unheard();
+    }
+    Ok(due)
+}
+
+/// What's due as poll returns: what `timed_out` gives where poll's wait
+/// `ran_out`, or where a folder waits and `RETRY` has passed since
+/// `retried`, when they were last tried, which it moves on to `now`; and
+/// nothing otherwise. So wakeups sooner than `RETRY`, each asking a fresh
+/// wait, can't keep a waiting folder's kind unread.
+fn woken<K: Kernel>(
+    folders: &mut Folders<K>,
+    settling: &mut Settling,
+    retried: &mut Instant,
+    ran_out: bool,
+    now: Instant,
+) -> io::Result<u8> {
+    let due = ran_out || (folders.wait() && now >= *retried + RETRY);
+    if !due {
+        return Ok(0);
+    }
+    *retried = now;
+    timed_out(folders, settling, now)
+}
+
+/// Ends the hearing with its facts removed, so nothing reads them stale:
+/// a run's that failed, or one killed before it could remove them, which
+/// the next run finds if it fails at its start.
+fn end(desk: &Desk, code: ExitCode) -> ExitCode {
+    for file in &desk.files {
+        let _ = fs::remove_file(file);
+    }
+    code
+}
+
+/// What `run` starts with, or, when it can't start, the refusal said and
+/// the hearing ended with its facts removed, which a run killed before it
+/// could remove them may have left.
+fn started<T>(desk: &Desk, opened: Result<T, String>) -> Result<T, ExitCode> {
+    opened.map_err(|refusal| {
+        eprintln!("<3>{refusal}");
+        end(desk, ExitCode::FAILURE)
+    })
+}
+
+/// The stop signals', the uevents' and the folders' descriptors.
+type Opened = (File, File, Folders);
+
+/// Opens what `run` hears, by the folders each `Watches` is given.
+fn opened(
+    sounds: &[(PathBuf, u32)],
+    holders: &[(PathBuf, u32)],
+    monitors: &[(PathBuf, u32)],
+) -> Result<Opened, String> {
+    match (
+        stopping(),
+        uevents(),
+        Watches::new(sounds),
+        Watches::new(holders),
+        Watches::new(monitors),
+    ) {
+        (Ok(stop), Ok(kernel), Ok(changes), Ok(held), Ok(said)) => Ok((
+            stop,
+            kernel,
+            Folders {
+                changes,
+                held,
+                said,
+            },
+        )),
+        (Err(error), ..)
+        | (_, Err(error), ..)
+        | (_, _, Err(error), ..)
+        | (_, _, _, Err(error), _)
+        | (.., Err(error)) => Err(format!("can't hear the desk's devices: {error}")),
+    }
+}
+
 pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
     let lighting = folder
         .parent()
@@ -331,183 +557,78 @@ pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
         PathBuf::from(HOLDERS),
         IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE | IN_DELETE,
     )];
+    let mut desk = Desk::new(folder, lighting, loopbacks);
     // Made before it's watched for the monitors' facts.
-    if let Err(error) = fs::create_dir_all(folder) {
-        eprintln!("<3>can't make {}: {error}", folder.display());
-        return ExitCode::FAILURE;
+    let made = fs::create_dir_all(folder)
+        .map_err(|error| format!("can't make {}: {error}", folder.display()));
+    if let Err(code) = started(&desk, made) {
+        return code;
     }
     let monitors = vec![(folder.to_owned(), IN_MOVED_TO | IN_DELETE)];
-    let (mut stop, mut kernel, mut changes, mut held, mut said) = match (
-        stopping(),
-        uevents(),
-        watches(&sounds),
-        watches(&holders),
-        watches(&monitors),
-    ) {
-        (Ok(stop), Ok(kernel), Ok(changes), Ok(held), Ok(said)) => {
-            (stop, kernel, changes, held, said)
-        }
-        (Err(error), ..)
-        | (_, Err(error), ..)
-        | (_, _, Err(error), ..)
-        | (_, _, _, Err(error), _)
-        | (.., Err(error)) => {
-            eprintln!("<3>can't hear the desk's devices: {error}");
-            return ExitCode::FAILURE;
-        }
-    };
-    let mut desk = Desk::new(folder, lighting, loopbacks);
+    let (mut stop, mut kernel, mut folders) =
+        match started(&desk, opened(&sounds, &holders, &monitors)) {
+            Ok(opened) => opened,
+            Err(code) => return code,
+        };
     let mut due = DISPLAYS | SOUND | CAMERAS | BLUETOOTH | KEYBOARDS;
-    let mut settling = None;
-    // What's read again while it settles: sound, and cameras, whose sensor
-    // powers up a moment after a program takes the loopback.
-    let mut unsettled = 0;
+    let mut settling = Settling::default();
+    let mut retried = Instant::now();
     loop {
         rewrite(due, &mut desk);
-        let mut waiting: Vec<PollFd> = [
-            stop.as_raw_fd(),
-            kernel.as_raw_fd(),
-            changes.as_raw_fd(),
-            held.as_raw_fd(),
-            said.as_raw_fd(),
-        ]
-        .into_iter()
-        .chain(desk.controls.iter().map(|(_, file)| file.as_raw_fd()))
-        .map(PollFd::reading)
-        .collect();
+        let mut waiting: Vec<PollFd> = [stop.as_raw_fd(), kernel.as_raw_fd(), -1, -1, -1]
+            .into_iter()
+            .chain(desk.controls.iter().map(|(_, file)| file.as_raw_fd()))
+            .map(PollFd::reading)
+            .collect();
         due = 0;
         while due == 0 {
-            let wait = waiting_for(settling, Instant::now());
+            let now = Instant::now();
+            let wait = asked(&folders, &settling, &mut waiting[2..5], retried, now);
             let count = waiting.len() as u64;
             // SAFETY: valid pollfds for the length given.
             let ready = unsafe { poll(waiting.as_mut_ptr(), count, wait) };
             if ready < 0 {
                 continue;
             }
-            if ready == 0 {
-                settling = settled_once(settling);
-                due |= unsettled;
-                if settling.is_none() {
-                    unsettled = 0;
-                }
-                continue;
-            }
-            if waiting[0].revents & POLLIN != 0 {
+            // A fault of the program's, or inotify failing a read, fails
+            // the unit, as at the start, so systemd starts it afresh, ever
+            // more slowly, the fault in the journal each time.
+            let heard = if ready == 0 {
+                Ok(0)
+            } else if waiting[0].revents & POLLIN != 0 {
                 let _ = stop.read(&mut [0; 128]);
-                for file in &desk.files {
-                    let _ = fs::remove_file(file);
+                return end(&desk, ExitCode::SUCCESS);
+            } else {
+                due |= desk.heard_from_controls(&mut waiting[5..]);
+                // A card's devices, a display's EDID and a stream's
+                // parameters settle a moment after the first word of them.
+                std::thread::sleep(Duration::from_millis(150));
+                let said = heard(&mut kernel, &matters)
+                    .map_err(|error| io::Error::new(error.kind(), format!("uevents: {error}")))
+                    .and_then(|kinds| {
+                        due |= kinds;
+                        folders.heard()
+                    });
+                if let Ok(kinds) = said {
+                    settling.begin(due | kinds, Instant::now());
                 }
-                return ExitCode::SUCCESS;
-            }
-            due |= desk.heard_from_controls(&mut waiting[5..]);
-            // A card's devices, a display's EDID and a stream's parameters
-            // settle a moment after the first word of them.
-            std::thread::sleep(Duration::from_millis(150));
-            due |= heard(&mut kernel, &matters);
-            due |= heard(&mut changes, &|events| {
-                if names_one(events, "pebble-lights") {
-                    SOUND
-                } else {
-                    0
+                said
+            };
+            let heard = heard.and_then(|kinds| {
+                let now = Instant::now();
+                woken(&mut folders, &mut settling, &mut retried, ready == 0, now)
+                    .map(|more| kinds | more)
+            });
+            match heard {
+                Ok(heard) => due |= heard,
+                Err(error) => {
+                    eprintln!("<3>can't hear the desk's devices: {error}");
+                    return end(&desk, ExitCode::FAILURE);
                 }
-            });
-            due |= heard(&mut held, &|events| {
-                if events.is_empty() { 0 } else { CAMERAS }
-            });
-            due |= heard(&mut said, &|events| {
-                if names_a_monitor(events) { DISPLAYS } else { 0 }
-            });
-            if due & (SOUND | CAMERAS) != 0 {
-                settling = Some((Instant::now(), 0));
-                unsettled |= due & (SOUND | CAMERAS);
             }
         }
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::inotify::IN_Q_OVERFLOW;
-    use crate::tests::*;
-
-    /// A uevent as the kernel sends it: fields split by NULs.
-    fn uevent(fields: &[&str]) -> Vec<u8> {
-        fields.join("\0").into_bytes()
-    }
-
-    #[test]
-    fn each_uevent_reads_again_only_the_kinds_it_changes() {
-        let display = uevent(&[
-            "change@/devices/pci0000:00/0000:00:02.0/drm/card0",
-            "ACTION=change",
-            "SUBSYSTEM=drm",
-            "HOTPLUG=1",
-        ]);
-        assert_eq!(matters(&display), DISPLAYS);
-        let card = uevent(&["add@/devices/.../sound/card1", "SUBSYSTEM=sound"]);
-        assert_eq!(matters(&card), SOUND);
-        let camera = uevent(&[
-            "add@/devices/.../video4linux/video1",
-            "SUBSYSTEM=video4linux",
-        ]);
-        assert_eq!(matters(&camera), CAMERAS);
-        let plugged = uevent(&["add@/devices/.../usb3/3-4", "SUBSYSTEM=usb"]);
-        assert_eq!(matters(&plugged), SOUND | CAMERAS);
-        let battery = uevent(&["change@/devices/.../BAT0", "SUBSYSTEM=power_supply"]);
-        assert_eq!(matters(&battery), 0);
-        let mouse = uevent(&[
-            "add@/devices/virtual/misc/uhid/0005:25A7:FAA0.0001",
-            "SUBSYSTEM=hid",
-        ]);
-        assert_eq!(matters(&mouse), BLUETOOTH);
-        let input = uevent(&["add@/devices/.../input/input42", "SUBSYSTEM=input"]);
-        assert_eq!(matters(&input), BLUETOOTH | KEYBOARDS);
-    }
-
-    #[test]
-    fn sound_is_read_again_as_it_settles_and_then_only_when_heard() {
-        let since = Instant::now();
-        assert_eq!(
-            waiting_for(None, since),
-            -1,
-            "nothing settling waits for events"
-        );
-        assert_eq!(waiting_for(Some((since, 0)), since), 250);
-        assert_eq!(waiting_for(Some((since, 3)), since), 2000);
-        assert_eq!(
-            waiting_for(Some((since, 1)), since + Duration::from_secs(9)),
-            0,
-            "one overdue reads at once"
-        );
-        let mut settling = Some((since, 0));
-        let mut reads = 0;
-        while settling.is_some() {
-            settling = settled_once(settling);
-            reads += 1;
-        }
-        assert_eq!(reads, SETTLING.len());
-    }
-
-    #[test]
-    fn a_sound_device_opening_or_the_lighting_changing_is_heard() {
-        assert!(
-            names_one(&event(IN_OPEN, "pcmC1D0p"), "pebble-lights"),
-            "a sound device opening"
-        );
-        assert!(
-            names_one(&event(IN_MOVED_TO, "pebble-lights"), "pebble-lights"),
-            "the lighting written whole"
-        );
-        let mut other = event(IN_CLOSE_WRITE, "quickshell-locked");
-        other.extend(event(IN_CLOSE_WRITE, "pebble-lights.new"));
-        assert!(
-            !names_one(&other, "pebble-lights"),
-            "neither the lock nor the lighting's copy"
-        );
-        assert!(
-            names_one(&event(IN_Q_OVERFLOW, ""), "pebble-lights"),
-            "an overflow, which may have hidden either"
-        );
-    }
-}
+mod tests;

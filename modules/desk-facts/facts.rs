@@ -83,10 +83,38 @@ fn word(bytes: &[u8], at: usize) -> u32 {
 }
 
 /// Asks a device a question by its ioctl, V4L2's, UVC's or ALSA's control
-/// device's, saying whether it answered.
-fn ask(node: &File, request: u64, buffer: &mut [u8]) -> bool {
-    // SAFETY: each request is given a buffer of the size its number says.
+/// device's, saying whether it answered. A buffer of another size than the
+/// request's number says is refused unasked, and said in the journal, since
+/// it's the program's mistake rather than the device's.
+///
+/// # Safety
+///
+/// Where the request's struct holds a pointer, as ALSA's element list and
+/// UVC's control query do, the buffer must hold one to memory that lasts
+/// the call and is as long as the struct says.
+unsafe fn ask(node: &File, request: u64, buffer: &mut [u8]) -> bool {
+    if !fits(request, buffer.len()) {
+        return false;
+    }
+    // SAFETY: the buffer is as long as the request says, and the caller
+    // vouches for any pointer it holds.
     unsafe { ioctl(node.as_raw_fd(), request, buffer.as_mut_ptr()) == 0 }
+}
+
+/// The size of the struct an ioctl's number says it reads and writes: the
+/// 14 bits above its type and number.
+fn asks_for(request: u64) -> usize {
+    (request >> 16 & 0x3FFF) as usize
+}
+
+/// Whether a buffer is as long as a request's number says, saying in the
+/// journal when it isn't.
+fn fits(request: u64, length: usize) -> bool {
+    let asked = asks_for(request);
+    if asked != length {
+        eprintln!("<3>ioctl {request:#x} asks for {asked} bytes, but was given {length}");
+    }
+    asked == length
 }
 
 /// A device's facts, in the order they're shown.
@@ -101,13 +129,17 @@ fn fact(facts: &mut Facts, name: &str, value: impl Into<String>) {
 
 // Each kind of device is read in a file of its own, and how changes are heard
 // in another. What several kinds read alike (USB descriptors, the input
-// layer's capabilities, inotify's events) has a file of its own too, so a file
-// imports the one that holds what it needs rather than a neighbour's.
+// layer's capabilities and buses, inotify's events) has a file of its own too,
+// so a file imports the one that holds what it needs rather than a neighbour's.
+// Sound is the one kind read in two files: a USB card's in sound.rs and a
+// built-in card's in own_sound.rs, which share how ALSA says a stream runs.
 
 mod bluetooth;
 mod cable;
 mod cameras;
 mod displays;
+#[cfg(test)]
+mod fake_inotify;
 mod hearing;
 mod inotify;
 mod input;
@@ -115,6 +147,7 @@ mod keyboards;
 mod own_sound;
 mod sound;
 mod usb;
+mod watches;
 mod writing;
 
 fn main() -> ExitCode {
@@ -224,16 +257,83 @@ Capture:
 
     /// An inotify event for a name, padded as the kernel pads it.
     pub(crate) fn event(mask: u32, name: &str) -> Vec<u8> {
+        event_on(1, mask, name)
+    }
+
+    /// An inotify event on a watch, by its number, for a name.
+    pub(crate) fn event_on(wd: i32, mask: u32, name: &str) -> Vec<u8> {
         let mut padded = name.as_bytes().to_vec();
         if !name.is_empty() {
             padded.resize((name.len() / 16 + 1) * 16, 0);
         }
         let mut event = Vec::new();
-        event.extend_from_slice(&1i32.to_ne_bytes());
+        event.extend_from_slice(&wd.to_ne_bytes());
         event.extend_from_slice(&mask.to_ne_bytes());
         event.extend_from_slice(&0u32.to_ne_bytes());
         event.extend_from_slice(&u32::try_from(padded.len()).unwrap().to_ne_bytes());
         event.extend_from_slice(&padded);
         event
+    }
+
+    #[test]
+    fn every_rust_file_beside_the_root_is_one_of_its_modules() {
+        // source.nix copies every .rs file here, so one left out of the
+        // list below would build into nothing, and its tests never run.
+        let root = include_str!("facts.rs");
+        let folder = Path::new(file!()).parent().unwrap();
+        let mut files = 0;
+        for entry in fs::read_dir(folder).unwrap().flatten() {
+            let path = entry.path();
+            let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
+                continue;
+            };
+            if path.extension().is_some_and(|ext| ext == "rs") && stem != "facts" {
+                files += 1;
+                assert!(
+                    root.lines().any(|line| line == format!("mod {stem};")),
+                    "{} isn't a module of facts.rs",
+                    path.display()
+                );
+            } else if path.is_dir() {
+                // A module's own folder holds its child modules.
+                let parent = fs::read_to_string(path.with_extension("rs"))
+                    .unwrap_or_else(|_| panic!("{} is no module's folder", path.display()));
+                for child in fs::read_dir(&path).unwrap().flatten() {
+                    let child = child.path();
+                    let name = child.file_stem().and_then(|stem| stem.to_str());
+                    assert!(
+                        name.is_some_and(|name| {
+                            parent
+                                .lines()
+                                .any(|line| line.trim() == format!("mod {name};"))
+                        }),
+                        "{} isn't a module of {stem}.rs",
+                        child.display()
+                    );
+                }
+            }
+        }
+        assert!(files > 0, "no modules were found beside {}", file!());
+    }
+
+    #[test]
+    fn an_ioctl_s_number_says_the_size_of_what_it_asks() {
+        // The largest the program asks, the smallest, and one between,
+        // each above the direction bits and below the type.
+        assert_eq!(asks_for(0xC4C8_5512), 1224, "ALSA's element value");
+        assert_eq!(asks_for(0xC0D0_5604), 208, "V4L2's format");
+        assert_eq!(asks_for(0xC004_5516), 4, "ALSA's subscribe");
+        // The top two of the 14 bits, which no request asked uses.
+        assert_eq!(asks_for(0xE000_7800), 0x2000, "the 14th bit");
+        assert_eq!(asks_for(0xD000_7800), 0x1000, "the 13th bit");
+    }
+
+    #[test]
+    fn a_buffer_is_asked_with_only_at_the_size_its_request_says() {
+        assert_eq!(
+            [208, 207, 209, 0].map(|length| fits(0xC0D0_5604, length)),
+            [true, false, false, false],
+            "V4L2's format was let ask with a buffer of the wrong size"
+        );
     }
 }

@@ -4,11 +4,8 @@ use std::fs;
 use std::path::Path;
 
 use crate::Facts;
-use crate::input::{Heard, set_bits};
+use crate::input::{BLUETOOTH_BUS, Heard, set_bits};
 use crate::usb::release;
-
-/// The Bluetooth bus, as the HID layer numbers it.
-pub(crate) const BLUETOOTH_BUS: &str = "0005";
 
 /// A HID device on the Bluetooth bus: its address, as bluetoothd writes it,
 /// and how it's carried, its ids, and what its inputs take. One that
@@ -136,6 +133,7 @@ mod tests {
 
     #[test]
     fn a_classic_keyboard_says_its_keys_and_a_usb_device_is_left_out() {
+        // The USB keyboard has a serial, so only its bus leaves it out.
         let sys = Sys::new("keyboard");
         sys.hid(
             "devices/pci0000:00/0000:00:14.7/bluetooth/hci0/hci0:3",
@@ -146,7 +144,7 @@ mod tests {
         sys.hid(
             "devices/pci0000:00/0000:00:14.0/usb3/3-1",
             "0003:3297:4976.0003",
-            "HID_ID=0003:00003297:00004976\nHID_UNIQ=\n",
+            "HID_ID=0003:00003297:00004976\nHID_UNIQ=0C2A8F31\n",
             ["0100\n", "fffffffffffffffe ffffffffffffffff\n", "0\n"],
         );
         let found = bluetooth(&sys.0);
@@ -167,6 +165,42 @@ mod tests {
                 .iter()
                 .any(|(name, _)| name == "buttons" || name == "wheel"),
             "a keyboard says no buttons or wheel: {facts:?}"
+        );
+    }
+
+    #[test]
+    fn a_device_with_several_hid_devices_is_told_as_one() {
+        let sys = Sys::new("several");
+        let home = "devices/pci0000:00/0000:00:14.7/bluetooth/hci0/hci0:3";
+        let uevent = "HID_ID=0005:000005AC:00000265\nHID_UNIQ=aa:bb:cc:dd:ee:ff\n";
+        // A keyboard's keys, and a touchpad's five buttons and both wheels.
+        sys.hid(
+            home,
+            "0005:05AC:0265.0004",
+            uevent,
+            ["0110\n", "fffffffffffffffe ffffffffffffffff\n", "0\n"],
+        );
+        sys.hid(
+            home,
+            "0005:05AC:0265.0005",
+            uevent,
+            ["0110\n", "1f0000 0 0 0 0\n", "943\n"],
+        );
+        let said: Vec<(String, String)> = [
+            ("connection", "Classic, HIDP"),
+            ("buttons", "5"),
+            ("wheel", "vertical and horizontal"),
+            ("keys", "126"),
+            ("id", "05ac:0265"),
+            ("release", "1.10"),
+        ]
+        .into_iter()
+        .map(|(name, value)| (name.to_owned(), value.to_owned()))
+        .collect();
+        assert_eq!(
+            bluetooth(&sys.0),
+            vec![("AA:BB:CC:DD:EE:FF".to_owned(), said)],
+            "a device's HID devices weren't told as one"
         );
     }
 }

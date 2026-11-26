@@ -367,7 +367,41 @@ mod tests {
     use super::*;
     use crate::tests::*;
 
+    use crate::cable::tests::partner;
     use crate::inotify::{IN_DELETE, IN_MOVED_TO};
+
+    /// Which connected displays say the USB-C cable's facts, with one
+    /// monitor on a cable and the machine's own panel, and `more`.
+    fn saying_the_cable(name: &str, more: &[&str]) -> Vec<String> {
+        let sys = Sys::new(name);
+        partner(&sys.0, "port1");
+        let edid = bytes(Z27K_G3);
+        for connector in ["eDP-1", "DP-1"].iter().chain(more) {
+            let folder = sys.0.join(format!("class/drm/card1-{connector}"));
+            fs::create_dir_all(&folder).unwrap();
+            fs::write(folder.join("status"), "connected\n").unwrap();
+            fs::write(folder.join("edid"), &edid).unwrap();
+        }
+        displays(&sys.0, &sys.0.join("told"))
+            .into_iter()
+            .filter(|(_, facts)| named(facts, "USB-C").is_some())
+            .map(|(connector, _)| connector)
+            .collect()
+    }
+
+    #[test]
+    fn the_cable_s_facts_go_to_the_one_external_display() {
+        assert_eq!(
+            saying_the_cable("cable-one", &[]),
+            ["DP-1"],
+            "the cable's facts went to the panel, or to no display"
+        );
+        assert_eq!(
+            saying_the_cable("cable-two", &["DP-2"]),
+            [] as [String; 0],
+            "with two monitors, one was said to be the cable's"
+        );
+    }
 
     /// The HP Z27k G3's EDID, as it gave it on 2026-10-24.
     const Z27K_G3: &str = "\

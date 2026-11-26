@@ -9,15 +9,16 @@
 # firmware and what it streams, and a loopback camera's mode, sensor, which
 # way it faces and whether it's powered; a Bluetooth input device's link,
 # buttons, wheels or keys and ids; and another keyboard's or a USB mouse's
-# polling rate, keys or buttons and wheel, and firmware. desk-facts, run as the person at
-# the machine, keeps them as JSON in $XDG_RUNTIME_DIR/desk, one file a kind,
-# rewriting a file only when a uevent, a sound device opening or closing, a
-# jack, a camera's holders changing or a monitor's facts being kept alters
-# what it says; facts.rs and the files beside it say how. The Pebble X Plus's lighting it reads
-# from what pebble-lights writes (../creative-pebble-x-plus), who streams
-# from /run/camera-holders (../usb-camera-holders), and which loopback
-# camera is which, and its sensor, from v4l2loopback's holders, where that
-# module is imported (../v4l2loopback).
+# polling rate, keys or buttons and wheel, and firmware. desk-facts, run as
+# the person at the machine, keeps them as JSON in $XDG_RUNTIME_DIR/desk, one
+# file a kind, rewriting a file only when a uevent, a sound device opening or
+# closing, a jack, a camera's holders changing or a monitor's facts being kept
+# alters what it says; facts.rs and the files beside it say how. The Pebble X
+# Plus's lighting it reads from what pebble-lights writes
+# (../creative-pebble-x-plus), who streams from /run/camera-holders
+# (../usb-camera-holders), and which loopback camera is which, and its
+# sensor, from v4l2loopback's holders, where that module is imported
+# (../v4l2loopback).
 {
   config,
   lib,
@@ -49,12 +50,23 @@ in
   systemd.user.services.desk-facts = {
     description = "Facts about the desk's displays and sound cards, for the launcher";
     wantedBy = [ "default.target" ];
-    # A person's, so not a system account's lingering manager's.
-    unitConfig.ConditionUser = "!@system";
+    unitConfig = {
+      # A person's, so not a system account's lingering manager's.
+      ConditionUser = "!@system";
+      # A fault that comes back each start is tried again ever more slowly,
+      # up to thirty seconds apart, rather than every second for good or
+      # never again; a folder it can't watch yet, or an inotify it can't
+      # start yet, doesn't fail it. The cap is short since systemd counts
+      # restarts across a long healthy run, so a lone fault after weeks
+      # would otherwise leave the launcher's facts stale for minutes.
+      StartLimitIntervalSec = 0;
+    };
     serviceConfig = {
       ExecStart = "${facts}/bin/desk-facts %t/desk ${loopbacks}";
       Restart = "on-failure";
-      RestartSec = 5;
+      RestartSec = 2;
+      RestartSteps = 4;
+      RestartMaxDelaySec = 30;
       NoNewPrivileges = true;
       # The kernel's uevents come over netlink, and only into the machine's
       # own network namespace, so it keeps that one and may open nothing

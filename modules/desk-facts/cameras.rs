@@ -81,7 +81,8 @@ fn fastest(node: &File, format: u32, width: u32, height: u32) -> u32 {
         for (at, value) in [(0, index), (4, format), (8, width), (12, height)] {
             asked[at..at + 4].copy_from_slice(&value.to_ne_bytes());
         }
-        if !ask(node, VIDIOC_ENUM_FRAMEINTERVALS, &mut asked) {
+        // SAFETY: a frame interval's struct holds no pointer.
+        if !unsafe { ask(node, VIDIOC_ENUM_FRAMEINTERVALS, &mut asked) } {
             break;
         }
         // A discrete interval, or a range's shortest.
@@ -100,7 +101,8 @@ fn formats(node: &File) -> Vec<(u32, Vec<Mode>)> {
         let mut asked = [0u8; 64];
         asked[..4].copy_from_slice(&index.to_ne_bytes());
         asked[4..8].copy_from_slice(&CAPTURE.to_ne_bytes());
-        if !ask(node, VIDIOC_ENUM_FMT, &mut asked) {
+        // SAFETY: a format's description holds no pointer.
+        if !unsafe { ask(node, VIDIOC_ENUM_FMT, &mut asked) } {
             break;
         }
         let format = word(&asked, 44);
@@ -109,7 +111,8 @@ fn formats(node: &File) -> Vec<(u32, Vec<Mode>)> {
             let mut sizes = [0u8; 44];
             sizes[..4].copy_from_slice(&size.to_ne_bytes());
             sizes[4..8].copy_from_slice(&format.to_ne_bytes());
-            if !ask(node, VIDIOC_ENUM_FRAMESIZES, &mut sizes) {
+            // SAFETY: a frame size's struct holds no pointer.
+            if !unsafe { ask(node, VIDIOC_ENUM_FRAMESIZES, &mut sizes) } {
                 break;
             }
             // A discrete size, or a range's largest.
@@ -135,7 +138,10 @@ fn now_streaming(node: &File) -> Option<String> {
     format[..4].copy_from_slice(&CAPTURE.to_ne_bytes());
     let mut parameters = [0u8; 204];
     parameters[..4].copy_from_slice(&CAPTURE.to_ne_bytes());
-    if !ask(node, VIDIOC_G_FMT, &mut format) || !ask(node, VIDIOC_G_PARM, &mut parameters) {
+    // SAFETY: a capture's format and its parameters hold no pointer; only
+    // an overlay's format does.
+    if !unsafe { ask(node, VIDIOC_G_FMT, &mut format) && ask(node, VIDIOC_G_PARM, &mut parameters) }
+    {
         return None;
     }
     Some(format!(
@@ -178,7 +184,9 @@ fn field_of_view(node: &File, unit: u8) -> Option<&'static str> {
     query[..3].copy_from_slice(&[unit, 5, UVC_GET_CUR]);
     query[4..6].copy_from_slice(&1u16.to_ne_bytes());
     query[8..].copy_from_slice(&(value.as_mut_ptr() as usize as u64).to_ne_bytes());
-    if !ask(node, UVCIOC_CTRL_QUERY, &mut query) {
+    // SAFETY: the query points at `value`, as long as its size says, which
+    // lasts the call.
+    if !unsafe { ask(node, UVCIOC_CTRL_QUERY, &mut query) } {
         return None;
     }
     match value[0] {
@@ -189,15 +197,21 @@ fn field_of_view(node: &File, unit: u8) -> Option<&'static str> {
     }
 }
 
-/// A camera's name as its holders file is named: trimmed, one plain file
-/// name (modules/v4l2loopback/holders' `camera_file`).
-fn holders_name(name: &str) -> String {
+/// A camera's name as its holders file is named: trimmed, cut to 64
+/// characters, one plain file name, or its node's where nothing is left
+/// (modules/v4l2loopback/holders' `camera_file`).
+fn holders_name(name: &str, node: &str) -> String {
     let called: String = name
         .trim()
         .chars()
         .map(|c| if c.is_control() { '?' } else { c })
+        .take(64)
         .collect();
-    called.replace('/', "-").trim_start_matches('.').to_owned()
+    let called = called.replace('/', "-");
+    match called.trim_start_matches('.') {
+        "" => node.to_owned(),
+        called => called.to_owned(),
+    }
 }
 
 /// A loopback camera a relay fills from a sensor that isn't on USB: its
@@ -340,7 +354,7 @@ pub(crate) fn cameras(
             }
             continue;
         }
-        let name = holders_name(&read("name"));
+        let name = holders_name(&read("name"), &entry.file_name().to_string_lossy());
         let Ok(node) = File::open(dev.join(entry.file_name())) else {
             continue;
         };
@@ -426,11 +440,21 @@ mod tests {
     #[test]
     fn a_camera_is_keyed_as_its_holders_file_is_named() {
         assert_eq!(
-            holders_name("MX Brio 705 for Business\n"),
+            holders_name("MX Brio 705 for Business\n", "video0"),
             "MX Brio 705 for Business"
         );
-        assert_eq!(holders_name("A/B .cam"), "A-B .cam");
-        assert_eq!(holders_name(".hidden"), "hidden");
+        assert_eq!(holders_name("A/B .cam", "video0"), "A-B .cam");
+        assert_eq!(holders_name(".hidden", "video0"), "hidden");
+        assert_eq!(
+            holders_name("..", "video2"),
+            "video2",
+            "a name of dots alone"
+        );
+        assert_eq!(
+            holders_name(&"x".repeat(100), "video0").len(),
+            64,
+            "a name past the longest holders writes"
+        );
     }
 
     #[test]
