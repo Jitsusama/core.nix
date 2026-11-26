@@ -160,12 +160,12 @@ assert.equal(
 // A keyed package's loads take turns: two extensions loading at once, one of
 // them twice, wait while the first evaluates their library, are each given
 // it once it has finished, and the extension loading twice is evaluated
-// once. Each reads the library as its factory runs, so one given it
-// part-way through sees nothing.
+// once, as the library is. Each reads the library as its factory runs, so
+// one given it part-way through sees nothing.
 afresh();
 const turnsAt = join(scratch, "turns");
 write(join(turnsAt, "package.json"), manifest(keyedManifest));
-write(join(turnsAt, "lib", "gated.ts"), gated("turn", "ready"));
+write(join(turnsAt, "lib", "gated.ts"), `${counted("turn")}\n${gated("turn", "ready")}`);
 const turns = ["one", "two"].map((name) => {
   write(
     join(turnsAt, "extensions", name, "index.ts"),
@@ -202,6 +202,7 @@ assert.equal(
   1,
   "an extension loading twice at once was evaluated twice",
 );
+assert.equal(evaluations().turn, 1, "loads taking turns evaluated their library more than once");
 
 // A link that moves on lets go of the copy it pointed at, once no extension
 // resolves into it still, though one of the link's extensions last loaded
@@ -250,6 +251,7 @@ await open("held-direct", [heldOne]);
 pointAt(held, join(scratch, "held-second"));
 await open("held-b", [throughHeld[0]]);
 await open("held-c", [heldOne]);
+await open("held-d", [join(heldFirst, "extensions", "two", "index.ts")]);
 assert.equal(
   evaluations()["held-first"],
   1,

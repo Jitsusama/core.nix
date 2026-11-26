@@ -3547,8 +3547,10 @@
     extension runs is given only finished modules, so one that threw, or whose throw its load
     caught, is evaluated afresh by its own import or require again, a sibling's and a later load,
     a load and a late import racing each evaluate their own, an import during its own load shares
-    what that load finished and is given part-way what it is still evaluating, and a builtin, a
-    data URL, JSON and a module jiti leaves to Node are jiti's own, evaluated no second time
+    what that load finished, is given part-way what it is still evaluating and fails with it, as
+    does what a failed load's modules import after it, however deep, two late imports of one
+    module at once share one evaluation, and a builtin, a data URL, JSON and a module jiti leaves
+    to Node are jiti's own, evaluated no second time
   '';
   pi-hosted-keeps-each-conversations-keys = ''
     pi built with the host's patches, applied exactly, marks a model runtime that reads keys and

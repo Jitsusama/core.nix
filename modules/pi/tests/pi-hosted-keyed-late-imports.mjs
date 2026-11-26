@@ -7,8 +7,10 @@
 // of its own: one that throws leaves nothing for a load or a sibling's
 // import, asynchronous or synchronous, after it; one racing a load is never
 // given a module the load is still evaluating, nor the load one of its;
-// and one made while its own load is still under way shares what that load
-// finished. The first keyed-modules test covers the rest.
+// one made while its own load is still under way shares what that load
+// finished and goes with it should it fail, as does what a failed load's
+// modules import after it, however deep; and two at once share one
+// evaluation. The first keyed-modules test covers the rest.
 // Run as: node THIS PI_ROOT, with the helper beside it.
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
@@ -23,6 +25,7 @@ import {
   evaluations,
   folder,
   gate,
+  gated,
   library,
   loadExtensionsCached,
   manifest,
@@ -208,14 +211,155 @@ assert.equal(
   1,
   "an import made during its own load evaluated again what the load had finished",
 );
+const waits = globalThis.parentedWaits();
 assert.equal(
-  await pendingAfter(globalThis.parentedWaits(), 200),
+  await pendingAfter(waits, 200),
   false,
   "an import made during its own load evaluated again what the load was evaluating",
+);
+assert.equal(
+  await waits,
+  undefined,
+  "an import made during its own load wasn't given part-way what the load was evaluating",
 );
 parentGate.putAway();
 parentGate.open();
 await within(parentLoad, "a load whose module imported beside it never ended");
+
+// What an import made during a load evaluates goes with that load: should
+// the load then fail, a retry evaluates it again beside the rest, so no
+// module the retry shares was made from one the failed load left. So too
+// what a failed load's modules import once it has ended, however deep,
+// which no import after the retry joins while it is still evaluating.
+afresh();
+const doomedAt = join(scratch, "doomed");
+write(join(doomedAt, "package.json"), manifest(keyedManifest));
+write(join(doomedAt, "lib", "counted.ts"), library("doomed", "doomed"));
+write(
+  join(doomedAt, "lib", "early.ts"),
+  [
+    'import { version } from "./counted.ts";',
+    'globalThis.doomedLater = async () => (await import("./uses.ts")).used;',
+    'globalThis.doomedAfter = async () => (await import("./after.ts")).after;',
+    'globalThis.doomedLingers = async () => (await import("./lingers.ts")).lingered;',
+    "export const early = version;",
+    "",
+  ].join("\n"),
+);
+write(
+  join(doomedAt, "lib", "uses.ts"),
+  `import { version } from "./counted.ts";\n${counted("doomed-uses")}\nexport const used = version;\n`,
+);
+write(
+  join(doomedAt, "lib", "after.ts"),
+  [
+    'import { version } from "./counted.ts";',
+    counted("doomed-after"),
+    'globalThis.doomedDeeper = async () => (await import("./deeper.ts")).deeper;',
+    "export const after = version;",
+    "",
+  ].join("\n"),
+);
+write(
+  join(doomedAt, "lib", "deeper.ts"),
+  `import { version } from "./counted.ts";\n${counted("doomed-deeper")}\nexport const deeper = version;\n`,
+);
+write(
+  join(doomedAt, "lib", "lingers.ts"),
+  `import { version } from "./counted.ts";\n${counted("doomed-lingers")}\n${gated("lingers", "lingered")}export const lingered = version;\n`,
+);
+write(join(doomedAt, "lib", "waits.ts"), gated("doomed", "waited"));
+write(
+  join(doomedAt, "lib", "throws.ts"),
+  'if (globalThis.doomedFails) throw new Error("not yet");\nexport const thrown = "recovered";\n',
+);
+const doomed = join(doomedAt, "extensions", "one", "index.ts");
+write(
+  doomed,
+  [
+    'import { early } from "../../lib/early.ts";',
+    'import { doomed as waited } from "../../lib/waits.ts";',
+    'import { thrown } from "../../lib/throws.ts";',
+    "export default function () { return [early, waited, thrown]; }",
+    "",
+  ].join("\n"),
+);
+globalThis.doomedFails = true;
+const doomedGate = gate("doomed");
+const doomedLoad = loadExtensionsCached([doomed], folder("doomed"));
+await doomedGate.reached;
+assert.equal(
+  await within(globalThis.doomedLater(), "an import during a load that will fail never ended"),
+  "doomed",
+);
+doomedGate.putAway();
+doomedGate.open();
+assert.equal((await doomedLoad).errors.length, 1, "a load whose library throws didn't fail");
+assert.equal(
+  await within(globalThis.doomedAfter(), "an import after a failed load never ended"),
+  "doomed",
+);
+assert.equal(
+  await within(globalThis.doomedDeeper(), "an import below one after a failed load never ended"),
+  "doomed",
+);
+const failedLingers = globalThis.doomedLingers;
+const lingersGate = gate("lingers");
+const lingering = failedLingers();
+await lingersGate.reached;
+lingersGate.putAway();
+globalThis.doomedFails = false;
+await open("doomed-retried", [doomed]);
+assert.equal(
+  await within(globalThis.doomedLater(), "an import after a retry never ended"),
+  "doomed",
+);
+assert.equal(
+  await pendingAfter(globalThis.doomedLingers(), 200),
+  false,
+  "an import after a retry joined one a failed load's module began",
+);
+lingersGate.open();
+await within(lingering, "an import a failed load's module began never ended");
+assert.equal(
+  await within(globalThis.doomedAfter(), "an import after a retry never ended"),
+  "doomed",
+);
+assert.equal(
+  await within(globalThis.doomedDeeper(), "an import below one after a retry never ended"),
+  "doomed",
+);
+assert.deepEqual(
+  evaluations(),
+  { doomed: 2, "doomed-uses": 2, "doomed-after": 2, "doomed-deeper": 2, "doomed-lingers": 2 },
+  "a retry was given a module an import made during or after the failed load evaluated",
+);
+
+// Two imports of one module at once, made as an extension runs after its
+// load, share one evaluation of it.
+afresh();
+const twiceAt = join(scratch, "twice");
+write(join(twiceAt, "package.json"), manifest(keyedManifest));
+write(join(twiceAt, "lib", "twice.ts"), library("twice", "twice"));
+write(
+  join(twiceAt, "extensions", "one", "index.ts"),
+  [
+    "export default function (pi) {",
+    '  pi.registerCommand("twice", { description: "", handler: async () => {',
+    '    const [one, other] = await Promise.all([import("../../lib/twice.ts"), import("../../lib/twice.ts")]);',
+    "    return one === other;",
+    "  } });",
+    "}",
+    "",
+  ].join("\n"),
+);
+const twice = await open("twice", [join(twiceAt, "extensions", "one", "index.ts")]);
+assert.equal(
+  await within(twice("twice"), "two imports at once never ended"),
+  true,
+  "two imports at once were given two modules",
+);
+assert.equal(evaluations().twice, 1, "two imports at once evaluated their module twice");
 
 // An import or require made as an extension runs of what jiti doesn't
 // evaluate itself, a builtin, a data URL, JSON or a module it leaves to
