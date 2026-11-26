@@ -60,7 +60,8 @@ TV_NAME = "<b>Den</b> TV"
 KESTREL = "mac:00:00:5e:00:53:20"
 # What a first visit to the network page may cost, drawn from the stand-in's house. The kit's
 # head.css, the head every live page shares, is one of the files and a few of the kilobytes,
-# within the room the budget held before it.
+# within the room the budget held before it, and so is the kit's early.js, the script the page
+# once wrote into itself, which the sites' policy now runs only from a file.
 BUDGET = Budget(files=36, kilobytes=505, elements=335)
 # The lede once net has answered, counting what stands, and while it never has.
 COUNTED = re.compile(r"^\d+ devices? on \d+ eeros? across \d+ floors?, and .+\.$")
