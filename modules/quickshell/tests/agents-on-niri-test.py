@@ -139,7 +139,8 @@ WORKS_ON = (
 )
 # What the paused one works on, as long. Its drawer keeps some of it over its fold opened,
 # since its four acts stand on one line, where the listening one's five (Park among them)
-# take two and leave its prose no line to keep.
+# take two and leave its prose no line to keep, all of it given way to the fold, as the z a
+# case for a live session pins.
 PAUSED_ON = (
     "Paused Quest: A reviewer under the owner's plan, which reads each change the builders"
     " put up against the plan it serves: whether its tests pin what it says, whether its"
@@ -916,19 +917,7 @@ def test_za_shows_a_sessions_fold_above_its_more_line_its_prose_giving_way(shell
     sight, and z a would change nothing seen. The prose gives up whole lines from its end for
     the fold instead, its rest counted under the more line (VKCF3Z, bfdad751).
     """
-    found(shell, "paused quest", "Paused Quest")
-    shell.launcher_until(lambda shown: shown["drawer"]["shown"] and shown["drawer"]["nerd"])
-    shell.normal()
-    shell.send_chars("za")
-
-    # Read once every bit is made, which the repeater does after it counts them.
-    def laid(shown: Json) -> bool:
-        drawer = shown["drawer"]
-        lasts = drawer["lines"]["nerdLast"]
-        return drawer["folded"] is False and len(lasts) == len(drawer["nerd"]) and None not in lasts
-
-    shell.launcher_until(laid)
-    opened = shell.showing()["drawer"]
+    opened = fold_opened(shell, "paused quest", "Paused Quest")
     shell.send_chars("za")
     shell.launcher_until(lambda shown: shown["drawer"]["folded"] is True)
     shut = shell.showing()["drawer"]
@@ -955,6 +944,47 @@ def test_za_shows_a_sessions_fold_above_its_more_line_its_prose_giving_way(shell
         f"its fade not drawn just where effects are: {opened}"
     )
     assert shut.get("wordsFade") is None, f"shut, its prose still fades: {shut}"
+    fold_stands_in_sight(opened)
+
+
+def test_za_on_a_live_session_keeps_its_fold_in_sight_its_prose_all_given_way(
+    shell: Shell,
+) -> None:
+    """Opened by z a on a listening session, its fold stands above the more line.
+
+    A live session's acts, Park among them, take two lines, which leave its prose no line to
+    keep over the fold, so all of it gives way and is counted under the more line, as the
+    drawer lays it (Drawer.qml's wordsKept), rather than the fold standing out of sight.
+    """
+    opened = fold_opened(shell, "listening quest", "Listening Quest")
+    shell.send_chars("za")
+    shell.launcher_until(lambda shown: shown["drawer"]["folded"] is True)
+    shell.on_find()
+    parks = [act for act in opened["acts"] if act.split(" ")[-1] == "Park"]
+    assert parks, f"its acts don't offer Park: {opened}"
+    assert len(cast("list[int]", opened["actsLaid"])) > 1, f"its acts stand one line: {opened}"
+    fold_stands_in_sight(opened)
+
+
+def fold_opened(shell: Shell, typed: str, name: str) -> Json:
+    """Open by z a the fold of the session `typed` finds as `name`, and read it once laid."""
+    found(shell, typed, name)
+    shell.launcher_until(lambda shown: shown["drawer"]["shown"] and shown["drawer"]["nerd"])
+    shell.normal()
+    shell.send_chars("za")
+
+    # Read once every bit is made, which the repeater does after it counts them.
+    def laid(shown: Json) -> bool:
+        drawer = shown["drawer"]
+        lasts = drawer["lines"]["nerdLast"]
+        return drawer["folded"] is False and len(lasts) == len(drawer["nerd"]) and None not in lasts
+
+    shell.launcher_until(laid)
+    return cast("Json", shell.showing()["drawer"])
+
+
+def fold_stands_in_sight(opened: Json) -> None:
+    """Check an opened fold's line and first bit stand above the foot, no bit cut by it."""
     _, *bits = cast("list[float]", opened["lines"]["nerd"])
     foot = cast("float", opened["foot"])
     assert bits, f"its fold opens on no bits: {opened}"

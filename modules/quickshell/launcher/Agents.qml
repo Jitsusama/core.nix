@@ -1627,8 +1627,11 @@ Provider {
             pause: () => act("pause", { run: steered("pause") }),
             resume: () => act("resume", { run: steered("resume") }),
             // Park frees what it holds until it's woken: the harness parks
-            // one idle at once and one at work once its turn settles, and
-            // says a refusal on the foot as Pause's is.
+            // one idle at once and one at work once its turn settles. Only
+            // the node's refusal comes back to the foot, as Pause's does;
+            // the harness says a Park it waits on, drops or refuses in the
+            // session's own window and journal, and the row shows it
+            // parked once it is.
             park: () => act("park", { run: steered("park") }),
             // Stop ends the turn under way, which nothing puts back, so it's
             // an ending: Return writes :interrupt and a second runs it, as d

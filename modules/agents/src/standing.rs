@@ -96,10 +96,15 @@ fn truthy(value: Option<&Value>) -> bool {
 /// to, paused, resumed and stopped; one with no window offers no Go To,
 /// and only one under way can be stopped. One parked has no process to
 /// pause or stop and no window known to go to: it can be woken, or talked
-/// to, which wakes it too. One not paused can be parked, freeing what it
-/// holds until it's woken: the harness parks one idle at once and one at
-/// work once its turn settles, and refuses one under another hold, so a
-/// paused one isn't offered it (agentic-harness.pi #2159). Only one here
+/// to, which wakes it too. One known to run and not paused can be parked,
+/// freeing what it holds until it's woken: the harness parks one idle at
+/// once and one at work once its turn settles, and refuses one under
+/// another hold, so a paused one isn't offered it (agentic-harness.pi
+/// #2159). One off, with no presence to say how it stands, may be parked
+/// already, and the node wakes a parked session for any steer, so a Park
+/// there would wake what it meant to park. A Park relays to another
+/// machine's session as any steer of Joel's does, the node there checking
+/// it as the harness reads it (mycelium's steer.rs). Only one here
 /// can be closed, last, since the harness ends a session on a close Joel
 /// steers it from this machine and drops one a node relays (harness
 /// #1023).
@@ -117,7 +122,10 @@ pub fn acts(stands: Stands, windowed: bool, here: bool) -> Vec<&'static str> {
     } else {
         "pause"
     });
-    if stands != Stands::Paused {
+    if matches!(
+        stands,
+        Stands::Needs | Stands::Working | Stands::InLine | Stands::Listening
+    ) {
         ids.push("park");
     }
     if matches!(stands, Stands::Working | Stands::InLine) {
@@ -362,6 +370,7 @@ mod tests {
             (Stands::Needs, true, false, "switch talk pause park"),
             (Stands::Paused, true, true, "switch talk resume close"),
             (Stands::Parked, false, true, "wake talk"),
+            (Stands::Off, false, true, "talk pause close"),
         ];
         for (stands, windowed, here, want) in cases {
             let got = acts(stands, windowed, here).join(" ");

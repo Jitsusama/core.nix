@@ -39,7 +39,10 @@ QtObject {
         // A session's acts follow how it stands: one at work or in line can
         // be stopped, one paused resumed, one not paused parked, one parked
         // only woken or talked to, with no window known to go to. One here closes, last; one
-        // elsewhere can't, since its node's relay of a close is dropped.
+        // elsewhere can't, since its node's relay of a close is dropped. Once the daemon
+        // serves its row, its acts are the row's; before, Agents.qml asks these as "off",
+        // which offers no Park, since one parked already would be woken by it: the node
+        // wakes a parked session for any steer.
         const acts = [
             ["working", true, true, "switch talk pause park stop close"],
             ["working", true, false, "switch talk pause park stop"],
@@ -47,7 +50,9 @@ QtObject {
             ["listening", true, true, "switch talk pause park close"],
             ["needs", true, false, "switch talk pause park"],
             ["paused", true, true, "switch talk resume close"],
-            ["parked", false, true, "wake talk"]
+            ["parked", false, true, "wake talk"],
+            ["off", false, true, "talk pause close"],
+            ["off", true, false, "switch talk pause"]
         ];
         for (const [state, windowed, here, want] of acts) {
             const got = SessionRow.acts(state, windowed, here).join(" ");

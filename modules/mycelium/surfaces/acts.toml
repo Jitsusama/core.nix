@@ -92,10 +92,11 @@ by = "KP0L6A"
 due = "2026-11-26 18:00"
 why = "it hands talk to the launcher, and shows nothing back"
 
-# Talk to a cell asking him shows its question and answers it (core.nix#6387).
+# Talk to a cell asking him shows its question and answers it (core.nix#6387),
+# read by the words that change brought, never the verb that came before it.
 [act.launcher.has]
-file = "modules/quickshell/launcher/words/agents.json"
-holds = '"id": "verb:agent:talk"'
+file = "modules/quickshell/launcher/TalkAnswers.js"
+holds = "function asked"
 
 [[act]]
 name = "asked"
