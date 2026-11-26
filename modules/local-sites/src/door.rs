@@ -87,6 +87,20 @@ impl Door {
         let other = self.side(host) == Some(Side::Sites) && !name.eq_ignore_ascii_case(first);
         (other && path.starts_with('/')).then(|| format!("http://{first}:{}{path}", self.port))
     }
+
+    /// Whether a cookie a document planted reaches what's asked under `host`:
+    /// a document may set one for its own name or the name just above it, as
+    /// `sites.localhost` is above `documents.sites.localhost`, so only under
+    /// those two. Never under another, as `localhost`, whose cookies every
+    /// server on it shares and no document may set.
+    pub fn planted(&self, host: &str) -> bool {
+        let Some((name, _)) = host.rsplit_once(':') else {
+            return false;
+        };
+        let name = name.to_ascii_lowercase();
+        let above = self.documents.split_once('.').map(|(_, above)| above);
+        self.side(host).is_some() && (name == self.documents || above == Some(name.as_str()))
+    }
 }
 
 #[cfg(test)]
@@ -123,6 +137,23 @@ mod tests {
             Some(Side::Documents),
             "the documents' name"
         );
+    }
+
+    #[test]
+    fn a_documents_cookies_reach_its_name_and_the_one_above_alone() {
+        let door = Door::new(
+            &["sites.localhost".to_owned(), "localhost".to_owned()],
+            "documents.sites.localhost",
+            8484,
+        );
+        assert!(
+            door.planted("Documents.Sites.Localhost:8484"),
+            "its own name"
+        );
+        assert!(door.planted("sites.localhost:8484"), "the name above it");
+        assert!(!door.planted("localhost:8484"), "every server's name");
+        assert!(!door.planted("sites.localhost:9000"), "another server");
+        assert!(!door.planted("sites.localhost"), "no port");
     }
 
     #[test]

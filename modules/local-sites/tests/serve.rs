@@ -756,6 +756,42 @@ fn a_browser_is_swept_once_by_the_first_page_of_the_sites_own() {
 }
 
 #[test]
+fn a_head_its_cookies_outgrew_is_answered_and_cleared_where_a_document_planted_them() {
+    let served = served("crumbs");
+    // Past what one head may hold, and past what the server drops after
+    // answering, so an answer sent before it's read is reset under it.
+    let planted = format!("Cookie: crumbs={}\r\n", "x".repeat(200 * 1024));
+    let too_long = "HTTP/1.1 431 Request Header Fields Too Large";
+    let documents = format!("{DOCUMENTS}:{}", served.port);
+    let (status, headers, _) = asked(served.port, &documents, "GET /mycelium/", &planted);
+    assert_eq!(status, too_long, "under the documents' name");
+    assert_eq!(
+        header(&headers, "clear-site-data"),
+        Some("\"cookies\""),
+        "what a document planted was kept"
+    );
+    // The name just above the documents', as sites.localhost is live.
+    let above = format!("localhost:{}", served.port);
+    let (status, headers, _) = asked(served.port, &above, "GET /kit/", &planted);
+    assert_eq!(status, too_long, "under the name above the documents'");
+    assert_eq!(
+        header(&headers, "clear-site-data"),
+        Some("\"cookies\""),
+        "the home's name kept what a document planted for it"
+    );
+    let address = format!("127.0.0.1:{}", served.port);
+    let (status, headers, _) = asked(served.port, &address, "GET /kit/", &planted);
+    assert_eq!(status, too_long, "under 127.0.0.1");
+    assert_eq!(
+        header(&headers, "clear-site-data"),
+        None,
+        "a name no document reaches was cleared"
+    );
+    let (status, _, _) = asked(served.port, &address, "GET /kit/", "Cookie: crumbs=few\r\n");
+    assert_eq!(status, "HTTP/1.1 200 OK", "a head of a few cookies");
+}
+
+#[test]
 fn no_page_keeps_a_worker() {
     let served = served("worker");
     let sites = format!("localhost:{}", served.port);

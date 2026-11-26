@@ -53,6 +53,11 @@ const PATIENCE: Duration = Duration::from_secs(10);
 /// How much an answered client may still send, and for how long in all,
 /// before its connection is let go of whatever is left.
 const LINGERING: (usize, Duration) = (16 * 1024, Duration::from_secs(1));
+/// The most of an overlong head read and dropped before it's answered: a
+/// browser holds about 180 cookies of up to 4 KiB for a name, some 720 KiB.
+const LONGEST: usize = 1024 * 1024;
+/// What the server answers a head too long to read.
+const TOO_LONG: u16 = 431;
 
 /// The sandbox a session's file runs in under the sites' names: its
 /// scripts, its forms and the windows it opens, each in an origin of no
@@ -111,8 +116,9 @@ pub fn answer(server: &Server, mut stream: TcpStream) {
         return;
     }
     let head = match head(&stream) {
-        Ok(Some(head)) => head,
-        Ok(None) => {
+        Ok(Ok(head)) => head,
+        Ok(Err(Unread::Long(host))) => return too_long(server, &mut stream, host.as_deref()),
+        Ok(Err(Unread::Garbled)) => {
             return send(
                 &mut stream,
                 400,
@@ -460,8 +466,17 @@ fn holds(held: &str, tag: &str) -> bool {
         .any(|one| one == tag || one == "*")
 }
 
-/// Peeks the request's head, answering none where it isn't HTTP.
-fn head(stream: &TcpStream) -> io::Result<Option<Head>> {
+/// Why a request's head isn't answered as it asks.
+enum Unread {
+    /// It isn't HTTP/1.1.
+    Garbled,
+    /// It runs past `HEAD`, as one carrying a page's worth of cookies does,
+    /// asked under the host its first lines name, where they name one.
+    Long(Option<String>),
+}
+
+/// Peeks the request's head, or says why it isn't answered as it asks.
+fn head(stream: &TcpStream) -> io::Result<Result<Head, Unread>> {
     let mut buffer = vec![0; HEAD];
     loop {
         let peeked = stream.peek(&mut buffer)?;
@@ -481,7 +496,7 @@ fn head(stream: &TcpStream) -> io::Result<Option<Head>> {
                 };
                 let upgrade = header("upgrade")
                     .is_some_and(|upgrade| upgrade.eq_ignore_ascii_case("websocket"));
-                return Ok(Some(Head {
+                return Ok(Ok(Head {
                     method: request.method.unwrap_or("").to_owned(),
                     path: request.path.unwrap_or("/").to_owned(),
                     host: header("host").map(str::to_owned),
@@ -498,8 +513,76 @@ fn head(stream: &TcpStream) -> io::Result<Option<Head>> {
                 // More of the head is on its way; peek again once it's here.
                 std::thread::sleep(Duration::from_millis(5));
             }
-            _ => return Ok(None),
+            Ok(httparse::Status::Partial) => {
+                return Ok(Err(Unread::Long(host_named(&buffer[..peeked]))));
+            }
+            Err(_) => return Ok(Err(Unread::Garbled)),
         }
+    }
+}
+
+/// The host a head's first lines name, read line by line, since a head too
+/// long to parse whole still says it near its start.
+fn host_named(raw: &[u8]) -> Option<String> {
+    raw.split(|&byte| byte == b'\n')
+        .skip(1)
+        .map_while(|line| line.strip_suffix(b"\r"))
+        .take_while(|line| !line.is_empty())
+        .find_map(|line| {
+            let (name, value) = std::str::from_utf8(line).ok()?.split_once(':')?;
+            name.eq_ignore_ascii_case("host")
+                .then(|| value.trim().to_owned())
+        })
+}
+
+/// Answers a head too long to read. A document may plant cookies for the
+/// sites' name above its own until every head is, which no page there could
+/// then load until Joel cleared them by hand; so under the two names they
+/// reach, the browser is told to clear their cookies, and heals at the next
+/// load, swept again of its storage once since the sweep's mark goes too.
+/// Under another name nothing is cleared.
+fn too_long(server: &Server, stream: &mut TcpStream, host: Option<&str>) {
+    drain_head(stream);
+    let cleared: &[(&str, &str)] = if host.is_some_and(|host| server.door.planted(host)) {
+        &[("Clear-Site-Data", "\"cookies\"")]
+    } else {
+        &[]
+    };
+    let told = Told {
+        kind: "text/plain",
+        body: b"a request's head is at most 16 KiB\n",
+        sent: true,
+    };
+    write_answer(
+        stream,
+        (TOO_LONG, "Request Header Fields Too Large"),
+        &told,
+        cleared,
+    );
+}
+
+/// Reads and drops the rest of an overlong head, as much as `LONGEST` and
+/// for as long as `LINGERING` lets, so its answer isn't reset under what's
+/// still unread as the connection closes.
+fn drain_head(stream: &mut TcpStream) {
+    let until = Instant::now() + LINGERING.1;
+    let mut chunk = vec![0; HEAD];
+    let mut tail = Vec::new();
+    let mut read = 0;
+    while read < LONGEST {
+        let left = until.saturating_duration_since(Instant::now());
+        if left.is_zero() || stream.set_read_timeout(Some(left)).is_err() {
+            return;
+        }
+        let Ok(got @ 1..) = stream.read(&mut chunk) else {
+            return;
+        };
+        read += got;
+        tail.extend_from_slice(&chunk[..got]);
+        if tail.windows(4).any(|four| four == b"\r\n\r\n") {
+            return;
+        }
+        tail.drain(..tail.len().saturating_sub(3));
     }
 }
 
