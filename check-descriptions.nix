@@ -4279,6 +4279,10 @@
     opens it to all; and a house's address, alone or in a list, is held to well-formed IPv4 or
     IPv6, an IPv4 one written as IPv6, mapped or compatible, refused in each spelling tried
   '';
+  shaper-holds-a-link-under-its-network = ''
+    a link's download line above its network's is refused as the machine builds, naming the link,
+    while one under or at it, or on a network whose line isn't known, builds
+  '';
   shaper-refuses-a-house-key-it-can-t-read = ''
     a house's key file that the shaper's service can't read, under /root, /home, /tmp or /var/tmp,
     or spelled through doubled slashes or dot folders, is refused as the machine builds, and so are
