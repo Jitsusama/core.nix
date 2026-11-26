@@ -36,24 +36,16 @@ pub fn write_whole(path: &Path, text: &str) -> io::Result<()> {
 
 /// The lines of `bytes` that are text, joined again, beside the number of
 /// the first line that isn't, counted from one, so a reader can say the
-/// file isn't whole rather than read its other lines as all of it. A last
-/// line ending in no newline, cut partway through a character, is left
-/// out with no number, as its writer is still writing it there and a
-/// later read finds it whole; one holding a byte no later write can make
-/// text is numbered like any other.
+/// file isn't whole rather than read its other lines as all of it. A file
+/// written whole and moved into place, as each read here is, is never
+/// caught half written, so a last line cut short is named like any other.
 pub fn text_lines(bytes: &[u8]) -> (String, Option<usize>) {
     let mut kept = Vec::new();
     let mut first_not = None;
-    let mut lines = bytes.split(|&byte| byte == b'\n').enumerate().peekable();
-    while let Some((n, line)) = lines.next() {
+    for (n, line) in bytes.split(|&byte| byte == b'\n').enumerate() {
         match std::str::from_utf8(line) {
             Ok(text) => kept.push(text),
-            Err(err) if lines.peek().is_some() || err.error_len().is_some() => {
-                first_not = first_not.or(Some(n + 1));
-            }
-            // Kept as an empty last line, so the line before still reads
-            // as ended, as it is.
-            Err(_) => kept.push(""),
+            Err(_) => first_not = first_not.or(Some(n + 1)),
         }
     }
     (kept.join("\n"), first_not)
@@ -125,13 +117,8 @@ mod tests {
         );
         assert_eq!(
             text_lines(b"a\nb\xc3"),
-            ("a\n".to_owned(), None),
-            "a last line still being written was named, or kept"
-        );
-        assert_eq!(
-            text_lines(b"a\nb\xff"),
             ("a".to_owned(), Some(2)),
-            "a last line no later write can make text wasn't named"
+            "a last line cut short partway through a character wasn't named"
         );
         assert_eq!(
             text_lines(b"a\nb\xff\n"),

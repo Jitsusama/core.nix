@@ -49,13 +49,18 @@ pub struct Kept {
     /// read as unread rather than as none of his asks.
     #[serde(default)]
     pub asks: Seen,
+    /// Why what the last hour kept couldn't be read, so this hour says the
+    /// asks list unread rather than read against nothing seen of it. Never
+    /// kept: the hour after reads what this one saw.
+    #[serde(skip)]
+    pub unread: Option<String>,
 }
 
 impl Kept {
     /// What the last hour kept at `path`, or nothing kept when it isn't
     /// there. One there that won't read is said, as starting from nothing
     /// kept forgets what the hour saw of the asks list and so reads one
-    /// written over as whole.
+    /// written over as whole, and leaves this hour's asks unread.
     pub fn last(path: &Path) -> Self {
         let read = match fs::read_to_string(path) {
             Err(err) if err.kind() == io::ErrorKind::NotFound => return Self::default(),
@@ -64,7 +69,10 @@ impl Kept {
         };
         read.unwrap_or_else(|err| {
             eprintln!("cadence: the hour kept can't be read, so it starts from nothing: {err}");
-            Self::default()
+            Self {
+                unread: Some("what the last hour saw of it can't be read".to_owned()),
+                ..Self::default()
+            }
         })
     }
 }
@@ -209,6 +217,7 @@ pub fn compose(
         out: kept.out.clone(),
         out_told: kept.out_told.clone(),
         asks: kept.asks,
+        unread: None,
     };
     (card, next)
 }

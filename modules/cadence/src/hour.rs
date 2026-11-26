@@ -256,7 +256,10 @@ fn gather(
     let quarantine = quarantine(&core);
     let card_text = fresh_card(folder, now);
     let [core_log, harness_log, machine_log] = axes::repository::mains(folder, now);
+    // Read even when what the last hour kept of it is lost, so the next
+    // hour has this one's count to read against.
     let (asks, asks_unread) = ledger::whole(&mission.join("asks.jsonl"), &mut kept.asks, now);
+    let asks_unread = kept.unread.clone().or(asks_unread);
     let switches = text(&state_home.join("integration/switches.jsonl"));
     // The work system's findings count against their owners, and one
     // naming none is the orchestrator's to assign.

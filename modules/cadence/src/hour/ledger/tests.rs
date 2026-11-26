@@ -107,8 +107,8 @@ fn a_list_short_for_two_hours_is_taken_as_pruned_and_counted_afresh() {
     let (_, early) = read_at(folder.path(), &list(4), &mut seen, NOW);
     assert_eq!(
         early.as_deref(),
-        Some("it holds 4 ask records, under half the 10 read in it"),
-        "a list short of half its asks wasn't said unread, with why"
+        Some("it holds 4 ask records, fewer than the 10 read in it"),
+        "a list short of its asks wasn't said unread, with why"
     );
     let (_, still) = read_at(folder.path(), &list(4), &mut seen, NOW + SHORT_LASTS - 1);
     assert!(
@@ -168,7 +168,7 @@ fn a_running_clock_stops_while_the_list_holds_no_asks() {
     assert_eq!(
         seen.short_since,
         Some(NOW),
-        "a list short of half its asks started no clock"
+        "a list short of its asks started no clock"
     );
     read_at(folder.path(), "{\"ts\": 1}\n", &mut seen, NOW + 3600);
     assert_eq!(
@@ -190,23 +190,32 @@ fn a_running_clock_stops_while_the_list_holds_no_asks() {
 
 #[test]
 fn an_hour_the_list_is_unread_stops_a_running_clock() {
-    let folder = tempfile::tempdir().expect("a scratch folder");
-    let mut seen = Seen::default();
-    read_at(folder.path(), &list(10), &mut seen, NOW);
-    read_at(folder.path(), &list(4), &mut seen, NOW);
-    let torn = format!("{}{{\"at\":\"x\"\n", list(4));
-    let (_, why) = read_at(folder.path(), &torn, &mut seen, NOW + 3600);
-    assert!(why.is_some(), "a list with a torn line was read");
-    assert_eq!(
-        seen.short_since, None,
-        "an hour the list was unread left the clock running"
-    );
-    let after = NOW + SHORT_LASTS + 1;
-    let (text, why) = read_at(folder.path(), &list(4), &mut seen, after);
-    assert!(
-        text.is_empty() && why.is_some(),
-        "a list short again after an hour unread was taken as pruned at once: {text}"
-    );
+    let mut not_text = list(4).into_bytes();
+    not_text.extend_from_slice(b"{\"at\":\"x\",\"words\":\"\xff\"}\n");
+    let torn = format!("{}{{\"at\":\"x\"\n", list(4)).into_bytes();
+    for unread in [Some(torn), Some(not_text), None] {
+        let folder = tempfile::tempdir().expect("a scratch folder");
+        let path = folder.path().join("asks.jsonl");
+        let mut seen = Seen::default();
+        read_at(folder.path(), &list(10), &mut seen, NOW);
+        read_at(folder.path(), &list(4), &mut seen, NOW);
+        match &unread {
+            Some(bytes) => fs::write(&path, bytes).expect("the asks list is written"),
+            None => fs::remove_file(&path).expect("the asks list is gone"),
+        }
+        let (_, why) = whole(&path, &mut seen, NOW + 3600);
+        assert!(why.is_some(), "a list torn, not text or gone was read");
+        assert_eq!(
+            seen.short_since, None,
+            "an hour the list was unread ({why:?}) left the clock running"
+        );
+        let after = NOW + SHORT_LASTS + 1;
+        let (text, why) = read_at(folder.path(), &list(4), &mut seen, after);
+        assert!(
+            text.is_empty() && why.is_some(),
+            "a list short again after an hour unread was taken as pruned at once: {text}"
+        );
+    }
 }
 
 #[test]
@@ -249,48 +258,78 @@ fn a_record_torn_within_its_text_leaves_the_list_unread_saying_which() {
         Some("its line 7 isn't a record"),
         "a list with a torn record wasn't said unread, with which"
     );
+    let mut first = glued.into_bytes();
+    first.extend_from_slice(b"{\"at\":\"x\",\"words\":\"\xff\"}\n");
+    fs::write(folder.path().join("asks.jsonl"), first).expect("the asks list is written");
+    let (_, why) = whole(&folder.path().join("asks.jsonl"), &mut seen, NOW);
+    assert_eq!(
+        why.as_deref(),
+        Some("its line 7 isn't a record"),
+        "a torn record before a line that's no text wasn't named first"
+    );
+    let (_, why) = read_at(folder.path(), &format!("{}1\n", list(4)), &mut seen, NOW);
+    assert_eq!(
+        why.as_deref(),
+        Some("its line 7 isn't a record"),
+        "a line of JSON that's no object was read as a record"
+    );
 }
 
 #[test]
-fn a_last_line_still_being_written_is_left_out_and_the_rest_read() {
+fn a_last_line_cut_short_leaves_the_list_unread_and_one_whole_is_read() {
     let folder = tempfile::tempdir().expect("a scratch folder");
     let path = folder.path().join("asks.jsonl");
-    let mut bytes = list(4).into_bytes();
-    bytes.extend_from_slice(b"{\"at\":\"z\",\"words\":\"caf\xc3");
-    fs::write(&path, bytes).expect("the asks list is written");
+    let mut mid_character = list(4).into_bytes();
+    mid_character.extend_from_slice(b"{\"at\":\"z\",\"words\":\"caf\xc3");
+    fs::write(&path, mid_character).expect("the asks list is written");
     let mut seen = Seen::default();
     let (text, why) = whole(&path, &mut seen, NOW);
-    assert!(
-        why.is_none(),
-        "a list caught mid-write was said unread: {why:?}"
-    );
+    assert!(text.is_empty(), "a list cut short was read: {text}");
     assert_eq!(
-        text,
-        list(4),
-        "the line being written was read, or a whole line was lost"
+        why.as_deref(),
+        Some("its line 7 isn't text"),
+        "a list cut short partway through a character wasn't said unread, with which"
     );
-    assert_eq!(seen.most, 4, "the line being written was counted");
-    let cut = format!("{}{{\"at\":\"z\",\"wor", list(4));
-    let (_, why) = read_at(folder.path(), &cut, &mut seen, NOW);
+    // Cut within its text, and a crash's tail of zeroes, each no record.
+    for tail in ["{\"at\":\"z\",\"wor", "\0\0\0\0"] {
+        let (_, why) = read_at(folder.path(), &format!("{}{tail}", list(4)), &mut seen, NOW);
+        assert_eq!(
+            why.as_deref(),
+            Some("its line 7 isn't a record"),
+            "a list ending {tail:?} wasn't said unread, with which"
+        );
+    }
+    let unended = format!("{}{{\"at\":\"z\",\"words\":\"ok\"}}", list(4));
+    let (text, why) = read_at(folder.path(), &unended, &mut seen, NOW);
     assert!(
-        why.is_none(),
-        "a list caught mid-write within its text was said unread: {why:?}"
+        text == unended && why.is_none(),
+        "a whole last record with no newline after it was said unread: {why:?}"
     );
+    assert_eq!(seen.most, 5, "a whole last record wasn't counted");
 }
 
 #[test]
-fn a_list_that_grows_or_keeps_half_its_asks_is_read() {
+fn a_list_that_grows_is_read_and_one_a_record_short_is_not() {
     let folder = tempfile::tempdir().expect("a scratch folder");
     let mut seen = Seen::default();
     read_at(folder.path(), &list(10), &mut seen, NOW);
-    let (half, why) = read_at(folder.path(), &list(5), &mut seen, NOW);
+    let (grown, why) = read_at(folder.path(), &list(12), &mut seen, NOW);
     assert!(
-        half == list(5) && why.is_none(),
-        "a list holding half the asks read before was said unread: {why:?}"
+        grown == list(12) && why.is_none(),
+        "a list grown since was said unread: {why:?}"
     );
-    assert_eq!(seen.most, 10, "a shorter read lowered the most asks seen");
-    read_at(folder.path(), &list(12), &mut seen, NOW);
     assert_eq!(seen.most, 12, "a longer read didn't raise the most");
+    let (text, why) = read_at(folder.path(), &list(11), &mut seen, NOW);
+    assert!(
+        text.is_empty(),
+        "a list one record short of what was read in it was read: {text}"
+    );
+    assert_eq!(
+        why.as_deref(),
+        Some("it holds 11 ask records, fewer than the 12 read in it"),
+        "a list one record short wasn't said unread, with why"
+    );
+    assert_eq!(seen.most, 12, "a shorter read lowered the most asks seen");
 }
 
 #[test]

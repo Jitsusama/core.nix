@@ -71,6 +71,10 @@ fn a_look_by_hand_prints_the_card_and_keeps_and_tells_nothing() {
         card.contains("the backup notice stayed up after later runs succeeded · 88LQC0"),
         "the look didn't print the open miss: {card}"
     );
+    assert!(
+        !said.contains("the hour kept can't be read"),
+        "a first hour, with nothing kept, said what it kept can't be read: {said}"
+    );
     assert_eq!(
         files(account.path()),
         before,
@@ -232,7 +236,8 @@ fn a_torn_ledger_leaves_the_misses_unjudged_and_carried() {
 }
 
 /// A last hour kept that's there but won't read is said, torn or not text
-/// alike, as starting from nothing forgets what the hour saw of the asks.
+/// alike, and its hour's asks are unread on the card, as starting from
+/// nothing forgets what the hour saw of the asks.
 #[test]
 fn a_last_hour_that_wont_read_is_said() {
     for last in [&b"{\"asks\":"[..], b"{\"open\": [\"\xff\"]}"] {
@@ -248,7 +253,45 @@ fn a_last_hour_that_wont_read_is_said() {
             said.contains("the hour kept can't be read, so it starts from nothing"),
             "a last hour that won't read went unsaid: {said}"
         );
+        let card = String::from_utf8_lossy(&ran.stdout);
+        assert!(
+            card.contains("the asks list unread: what the last hour saw of it can't be read"),
+            "an hour starting from nothing read the asks against nothing: {card}"
+        );
     }
+}
+
+/// What one hour sending its card saw of the asks list guards the next, so
+/// a list written over between them is unread, not none of his asks.
+#[test]
+fn what_an_hour_saw_of_the_asks_guards_the_next() {
+    let account = account();
+    let asks = account.path().join("state/mission/asks.jsonl");
+    let records: String = (1..=4)
+        .map(|day| {
+            format!("{{\"at\":\"2026-11-1{day}T10:00:00-05:00\",\"words\":\"ask {day}\"}}\n")
+        })
+        .collect();
+    fs::write(&asks, records).expect("the asks list");
+    let ran = hour(account.path(), &["--to", "WCJQSG"]);
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(ran.status.success(), "cadence failed: {said}");
+    let kept =
+        fs::read_to_string(account.path().join("state/cadence/hour.json")).expect("the hour kept");
+    assert!(
+        kept.contains(r#""asks":{"most":4"#),
+        "the hour didn't keep what it saw of the asks: {kept}"
+    );
+
+    fs::write(&asks, "{\"ts\": 1}\n").expect("the asks list written over");
+    let ran = hour(account.path(), &["--to", "WCJQSG"]);
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(ran.status.success(), "cadence failed: {said}");
+    let card = String::from_utf8_lossy(&ran.stdout);
+    assert!(
+        card.contains("the asks list unread: it holds no ask records, where 4 were read in it"),
+        "a list written over after an hour saw it was read: {card}"
+    );
 }
 
 /// A card that can't be sent leaves last hour kept as it was, so the
