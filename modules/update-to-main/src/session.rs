@@ -30,6 +30,12 @@ const WITHIN: Duration = Duration::from_hours(1);
 /// How often root looks whether the job has ended.
 const EVERY: Duration = Duration::from_millis(250);
 
+/// How long an empty status may stay empty before it's told as the job's
+/// end with its number lost. A status written in place lands within a
+/// write; one still empty after this was left so by a write that failed,
+/// as on a full disk, so root says so rather than waiting out its hour.
+const LANDS: Duration = Duration::from_secs(10);
+
 /// How much of the end of a job's file root reads: to tell why it failed,
 /// and of what it printed when it ended well, which neither caller reads.
 const KEPT: u64 = 64 * 1024;
@@ -104,7 +110,7 @@ fn in_session(
         folder.file_name().unwrap_or_default().to_string_lossy()
     );
     let ended = start(launchctl, account, command, &folder, &label)
-        .and_then(|()| wait(&folder, what, WITHIN));
+        .and_then(|()| wait(&folder, what, WITHIN, LANDS));
     // Read before the job is stopped, so a job that ran out its hour is told
     // by what it was doing, not by Nix's own word on being stopped.
     let (out, err) = (kept(&folder.join(OUT), KEPT), kept(&folder.join(ERR), KEPT));
@@ -120,9 +126,17 @@ fn in_session(
 /// The last `most` bytes of one of a job's files. The account owns the
 /// job's folder and may have put anything there, so root opens the file
 /// without following a link or waiting on a pipe, and reads only a plain
-/// file with no other name, since a hard link would let the account have
-/// root read a file it can't.
+/// file the folder's owner owns, with no other name, since a hard link
+/// would let the account have root read a file it can't. A hard link to
+/// a file whose other name is gone has no other name, but keeps its own
+/// owner, so the owner is what refuses it.
 fn read_end(path: &Path, most: u64) -> std::io::Result<Vec<u8>> {
+    let folder = path.parent().unwrap_or(Path::new("/"));
+    read_owned(path, most, fs::symlink_metadata(folder)?.uid())
+}
+
+/// `read_end` of a file that must be `owner`'s.
+fn read_owned(path: &Path, most: u64, owner: u32) -> std::io::Result<Vec<u8>> {
     use std::io::{Read, Seek, SeekFrom};
     use std::os::unix::fs::OpenOptionsExt;
     let mut file = fs::OpenOptions::new()
@@ -135,6 +149,9 @@ fn read_end(path: &Path, most: u64) -> std::io::Result<Vec<u8>> {
     }
     if found.nlink() > 1 {
         return Err(std::io::Error::other("it has another name"));
+    }
+    if found.uid() != owner {
+        return Err(std::io::Error::other("it isn't its folder's owner's"));
     }
     file.seek(SeekFrom::Start(found.len().saturating_sub(most)))?;
     let mut bytes = Vec::new();
@@ -286,12 +303,21 @@ fn give(path: &Path, account: &Account) -> std::io::Result<()> {
 /// only to its last few bytes, so one the account made a link, a pipe or a
 /// large file is refused rather than followed, waited on or read whole.
 /// An empty one is a status written in place but not yet, so it's waited
-/// on as one not there.
-fn wait(folder: &Path, what: &str, within: Duration) -> Result<i32, Failure> {
+/// on as one not there, for `lands` at most: one empty longer was left so
+/// by a failed write, and the job has ended.
+fn wait(folder: &Path, what: &str, within: Duration, lands: Duration) -> Result<i32, Failure> {
     let since = Instant::now();
+    let mut empty: Option<Instant> = None;
     loop {
         match read_end(&folder.join(STATUS), STATUS_KEPT) {
-            Ok(bytes) if bytes.is_empty() => {}
+            Ok(bytes) if bytes.is_empty() => {
+                if empty.get_or_insert_with(Instant::now).elapsed() >= lands {
+                    return Err(Failure::new(format!(
+                        "{what} in the login session ended, but its status stayed empty, \
+                         as a write on a full disk leaves it"
+                    )));
+                }
+            }
             Ok(bytes) => {
                 let status = String::from_utf8_lossy(&bytes);
                 return status.trim().parse().map_err(|_| {
@@ -378,7 +404,8 @@ pub fn job(folder: &Path) -> i32 {
         // One that can't be moved into place, as on a full disk, is written
         // where it goes, rather than root waiting out its hour on a job that
         // ended: root waits on an empty one, as when it's caught before its
-        // bytes land, and reads whatever lands as the job's end.
+        // bytes land, and reads whatever lands as the job's end, or tells
+        // one still empty after `LANDS` as an end whose number was lost.
         let _ = fs::write(folder.join(STATUS), said);
     }
     status
@@ -458,7 +485,7 @@ mod tests {
     #[test]
     fn a_job_that_didnt_end_is_told_with_the_last_it_had_said() {
         let folder = tempfile::tempdir().unwrap();
-        let waited = wait(folder.path(), "fetching the input secrets", Duration::ZERO);
+        let waited = wait(folder.path(), "fetching the input secrets", Duration::ZERO, LANDS);
         let out = "waiting for lock on /nix/store/x.lock\n";
         let err = "error: interrupted by the user\n";
         let told = said_by(waited, "fetching", Some(out), Some(err));
@@ -548,7 +575,7 @@ mod tests {
     fn a_job_whose_status_isnt_a_number_is_told_with_what_it_said() {
         let folder = tempfile::tempdir().unwrap();
         fs::write(folder.path().join(STATUS), "x\n").unwrap();
-        let ended = wait(folder.path(), "fetching", WITHIN);
+        let ended = wait(folder.path(), "fetching", WITHIN, LANDS);
         let told = said_by(ended, "fetching", Some(""), Some("said\n")).unwrap_err();
         assert_eq!(
             (told.why.as_str(), told.lines),
@@ -563,7 +590,7 @@ mod tests {
     fn an_empty_status_is_waited_on_as_one_not_written() {
         let folder = tempfile::tempdir().unwrap();
         fs::write(folder.path().join(STATUS), "").unwrap();
-        let told = wait(folder.path(), "fetching", Duration::ZERO).unwrap_err();
+        let told = wait(folder.path(), "fetching", Duration::ZERO, LANDS).unwrap_err();
         assert_eq!(
             told.why, "fetching in the login session didn't end within 0 minutes",
             "an empty status, as one written in place but not yet, was read as the job's end"
@@ -577,7 +604,7 @@ mod tests {
         // One x ahead of the last bytes, so a read of the first bytes
         // shows apart from one of the last.
         fs::write(folder.path().join(STATUS), format!("x{}", "y".repeat(kept))).unwrap();
-        let told = wait(folder.path(), "fetching", Duration::ZERO).unwrap_err();
+        let told = wait(folder.path(), "fetching", Duration::ZERO, LANDS).unwrap_err();
         assert_eq!(
             told.why,
             format!(
@@ -684,13 +711,41 @@ mod tests {
     }
 
     #[test]
+    fn a_jobs_file_not_its_folders_owners_is_left_unread() {
+        // A hard link whose other name is gone has one name, so only its
+        // owner, root's and not the account's, tells it apart. A test
+        // can't make a file another account owns, so it names another
+        // owner instead.
+        let folder = tempfile::tempdir().unwrap();
+        let file = folder.path().join(ERR);
+        fs::write(&file, "root's own\n").unwrap();
+        let owner = fs::metadata(folder.path()).unwrap().uid();
+        assert_eq!(read_owned(&file, KEPT, owner).unwrap(), b"root's own\n");
+        let refused = read_owned(&file, KEPT, owner.wrapping_add(1)).unwrap_err();
+        assert_eq!(refused.to_string(), "it isn't its folder's owner's");
+    }
+
+    #[test]
+    fn a_status_left_empty_is_told_as_an_end_whose_number_was_lost() {
+        let folder = tempfile::tempdir().unwrap();
+        fs::write(folder.path().join(STATUS), "").unwrap();
+        let told = wait(folder.path(), "fetching", WITHIN, Duration::ZERO).unwrap_err();
+        assert_eq!(
+            told.why,
+            "fetching in the login session ended, but its status stayed empty, as a write \
+             on a full disk leaves it",
+            "an empty status that stayed empty was waited on for the hour"
+        );
+    }
+
+    #[test]
     fn a_jobs_status_that_is_a_link_is_refused_rather_than_followed() {
         let folder = tempfile::tempdir().unwrap();
         let elsewhere = folder.path().join("elsewhere");
         fs::write(&elsewhere, "0\n").unwrap();
         std::os::unix::fs::symlink(&elsewhere, folder.path().join(STATUS)).unwrap();
         // No wait, so a refusal taken as not yet there fails at once.
-        let told = wait(folder.path(), "fetching", Duration::ZERO).unwrap_err();
+        let told = wait(folder.path(), "fetching", Duration::ZERO, LANDS).unwrap_err();
         assert!(
             told.why
                 .starts_with("fetching in the login session left its status unread:"),
@@ -706,7 +761,7 @@ mod tests {
         // SAFETY: `path` is a C string this frame owns.
         let made = unsafe { libc::mkfifo(path.as_ptr(), 0o600) };
         assert_eq!(made, 0, "no pipe made");
-        let told = wait(folder.path(), "fetching", Duration::ZERO).unwrap_err();
+        let told = wait(folder.path(), "fetching", Duration::ZERO, LANDS).unwrap_err();
         assert_eq!(
             told.why,
             "fetching in the login session left its status unread: it isn't a plain file"
