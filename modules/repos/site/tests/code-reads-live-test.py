@@ -13,7 +13,8 @@ drawn, when it's back, say stale when the server goes, move its ages on while
 nothing is written, make today's growth yesterday's once the day turns, move no
 row or tree as the cursor steps, keep focus where it was through a redraw, let
 Tab reach the head's keys once, open on a headline and lede taking the lines
-the live ones take when nothing waits, not shift as its feeds arrive on a reload, nor
+the live ones take when nothing waits or one change fails, not shift as its
+feeds arrive on a reload, nor
 hold room for what a reload forgets or at another width, draw a
 second's burst of records a few times rather than each, draw a thread for
 each cell joining two repositories on the map under the work and walk it by
@@ -698,11 +699,13 @@ def test_tab_reaches_the_keys_at_the_head_once(code_page: Page) -> None:
 
 
 # The room index.html holds from the last visit, which a first visit has none of.
-HELD_ROOM = """() => [...document.documentElement.style]
-  .filter((property) => property.startsWith("--room-"))"""
-# The lede when nothing waits, the one form whose lines the opening words are matched to: a
-# phone's lede runs two to five lines with what's worth a look, and only this one takes two.
+ROOM_KEPT = """() => Array.from(document.documentElement.style).filter(
+  (property) => property.startsWith("--room-"))"""
+# The lede's first sentence when nothing waits, the one form whose lines the opening words are
+# matched to: a phone's lede runs two to five lines with what's worth a look, and this one two.
 STILL_AIR = "Still air: nothing waits on you."
+# What the stand-in's grove holds worth a look, its one change failing, which the lede says first.
+FAILING = "has 1 change whose checks fail."
 
 
 @pytest.mark.parametrize("size", [*SIZES, WIDE_DESK])
@@ -718,11 +721,19 @@ def test_the_opening_words_take_the_lines_the_head_will(
         page = opened.page
         says_it_stands(page, "live")
         expect(row(page, "github:owl/core"), "Code drew no row for core").to_be_visible()
-        expect(page.locator("#lede"), "the lede wasn't the still air's").to_contain_text(STILL_AIR)
-        held = page.evaluate(HELD_ROOM)
+        lede = page.locator("#lede")
+        expect(lede, "the lede never said the failing change").to_contain_text(FAILING)
+        held = page.evaluate(ROOM_KEPT)
         assert held == [], f"a first visit held {held}, so its head wasn't laid out by its words"
-        heights = page.evaluate(HEAD_HEIGHTS, [["title", "lede"], {}])
-        moved = {part: said for part, said in heights.items() if said["live"] != said["opening"]}
+        # The same lede with nothing worth a look: still air, then what grew most.
+        still, swapped = re.subn(rf"^.*?{re.escape(FAILING)}", STILL_AIR, lede.inner_html())
+        assert swapped == 1, "the lede didn't open on the failing change"
+        heights = page.evaluate(HEAD_HEIGHTS, [["title", "lede"], {"lede": [still]}])
+        moved = {
+            part: said
+            for part, said in heights.items()
+            if any(px != said["opening"] for px in [said["live"], *said["forms"]])
+        }
         assert not moved, f"at {size} the head's opening and live heights differ: {moved}"
     finally:
         opened.close()
