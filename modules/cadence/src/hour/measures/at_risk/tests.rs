@@ -339,7 +339,7 @@ fn no_record_no_line_or_a_stale_one_is_unread_not_none_shared() {
 }
 
 #[test]
-fn a_line_dated_ahead_is_passed_over_for_the_fresh_ones_after_it() {
+fn a_branch_is_read_by_its_last_line_written_whatever_the_stamps_say() {
     let refusals = list(&[
         gate_line("gates", NOW + DAY, "drift", &[]),
         gate_line("gates", NOW - 60, "drift", &["README.md"]),
@@ -348,6 +348,24 @@ fn a_line_dated_ahead_is_passed_over_for_the_fresh_ones_after_it() {
         drifted(Some(&refusals), "gates", NOW),
         Ok(vec!["README.md".to_owned()]),
         "one line dated a day ahead hid the fresh line written after it"
+    );
+    let stepped = list(&[
+        gate_line("stepped", NOW - 600, "drift", &[]),
+        gate_line("stepped", NOW + 600, "refused", &["flake.nix"]),
+    ]);
+    assert_eq!(
+        drifted(Some(&stepped), "stepped", NOW),
+        Err("its latest line for stepped is dated ahead".to_owned()),
+        "a branch whose latest line is dated ahead was read by an older line"
+    );
+    let back = list(&[
+        gate_line("back", NOW - 60, "drift", &[]),
+        gate_line("back", NOW - 600, "refused", &["flake.nix"]),
+    ]);
+    assert_eq!(
+        drifted(Some(&back), "back", NOW),
+        Ok(vec!["flake.nix".to_owned()]),
+        "a latest line stamped before the one ahead of it was passed over"
     );
 }
 
@@ -363,6 +381,24 @@ fn a_part_naming_no_change_leaves_the_whole_piece_unread() {
     assert!(
         m.says.contains("(1 unread; the first, two halves: ") && m.target.is_none(),
         "a half naming no change was dropped and the rest judged safe: {} {:?}",
+        m.says,
+        m.target
+    );
+}
+
+/// Of several dates unread, the card counts them all and names the first
+/// by its ask's time and words, whatever order the list holds them in.
+#[test]
+fn dates_unread_are_counted_and_the_first_by_its_ask_is_named() {
+    let halves = (NOW + 600, "core.nix#6000, Org/world#123");
+    let text = list(&[
+        ask_waiting("b second", "A", halves, &json!({"branch": "halves"})),
+        ask_waiting("a first", "B", halves, &json!({"branch": "halves"})),
+    ]);
+    let m = read(&text);
+    assert!(
+        m.says.contains("(2 unread; the first, a first: ") && m.target.is_none(),
+        "dates unread went uncounted, or the first wasn't the first ask: {} {:?}",
         m.says,
         m.target
     );

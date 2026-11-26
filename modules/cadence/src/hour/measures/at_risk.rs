@@ -110,27 +110,25 @@ const AHEAD: i64 = 5 * 60;
 /// The files `branch` shares with main by the latest line for it in the
 /// zone gate's `refusals` at `now`, its hourly drift or a refusal,
 /// whichever came last: each line holds the branch, when it was `at` and
-/// the `overlap`. A line dated ahead is passed over, so one bad clock
-/// can't hide the lines written after it. No record, no line for the
-/// branch, none in the last two hours, only lines dated ahead or one
-/// naming no overlap is unread, never none shared.
+/// the `overlap`. The gate adds its lines in the order it writes them, so
+/// the last for the branch is its latest, whatever its stamp says: an
+/// earlier line dated ahead hides none written after it, and a stamp
+/// older than one before it is no reason to read an older line. No
+/// record, no line for the branch, a latest line dated ahead or none in
+/// the last two hours, or one naming no overlap is unread, never none
+/// shared.
 pub fn drifted(refusals: Option<&str>, branch: &str, now: i64) -> Shared {
     let text = refusals.ok_or_else(|| "the zone's merge gate keeps no record yet".to_owned())?;
     let theirs: Vec<Value> = lines(text)
         .filter(|line| line["branch"].as_str() == Some(branch))
         .collect();
     let line = theirs
-        .iter()
-        .filter(|line| seconds(&line["at"]).is_none_or(|at| at <= now + AHEAD))
-        .max_by_key(|line| seconds(&line["at"]))
-        .ok_or_else(|| {
-            if theirs.is_empty() {
-                format!("the zone's gate wrote no line for {branch}")
-            } else {
-                format!("its every line for {branch} is dated ahead")
-            }
-        })?;
+        .last()
+        .ok_or_else(|| format!("the zone's gate wrote no line for {branch}"))?;
     let at = seconds(&line["at"]).unwrap_or_default();
+    if at > now + AHEAD {
+        return Err(format!("its latest line for {branch} is dated ahead"));
+    }
     if at < now - DRIFT_LASTS {
         let hours = (now - at) / 3600;
         return Err(format!("its latest line for {branch} is {hours} h old"));
