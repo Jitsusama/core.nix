@@ -958,18 +958,6 @@ in
           holds = "It Asks You"
           ${says}
         '';
-      # A help that wraps inside the phrase its act holds, as mycelium's
-      # 60 columns may, so the check must read across the line.
-      wrapped = act "wrapped" ''
-        [act.cli.has]
-        command = "steer"
-        holds = "pause, resume, stop or close"
-        [act.launcher]
-        waived = "none"
-      '';
-      wraps = pkgs.writeShellScript "mycelium" ''
-        printf '%s\n' 'Or it does something, as its act: pause, resume,' '  stop or close; fill, putting its text'
-      '';
       # Each way of straying the check has to catch, with what it says.
       strays = [
         {
@@ -1196,11 +1184,6 @@ in
       }
       if ! ${check} ${clean} ${root} ${lib.getExe untested} > said; then
         echo "The surfaces check refused the clean act, so no stray shows its own fault."
-        cat said
-        exit 1
-      fi
-      if ! ${check} ${wrapped} ${root} ${wraps} > said; then
-        echo "The surfaces check refused a phrase its help wraps across a line."
         cat said
         exit 1
       fi

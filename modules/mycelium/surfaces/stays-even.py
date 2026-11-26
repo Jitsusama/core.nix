@@ -109,13 +109,10 @@ def command_faults(
     said = sources.help_of(command)
     if said is None:
         return [f"{where}: mycelium {command} --help failed, {sources.why_failed(command)}"]
-    # Help wraps at mycelium's width, so a phrase may break across a line:
-    # both sides are read with every run of whitespace as one space.
-    flat = " ".join(said.split())
     return [
         f'{where}: mycelium {command} --help doesn\'t say "{one}"'
         for one in words
-        if " ".join(one.split()) not in flat
+        if one not in said
     ]
 
 
