@@ -1877,12 +1877,12 @@ Provider {
     function underWay(key) {
         return sprouting === key || openings.some(one => one.key === key);
     }
-    // The last start that started, `{ key, words, at }`, so the same words
-    // given again to the same act say when they started rather than
-    // starting the work twice (Joel, 2026-11-25: "no clue if i did it once,
-    // twice, thrice or not at all"). Kept for the shell's life alone, since
-    // the daemon keeps none of Joel's words (starts.rs).
-    property var sproutLast: null
+    // The starts made this hour, started or unanswered (StartSaid.made), so
+    // the same words given again to the same act say when they started
+    // rather than starting the work twice (Joel, 2026-11-25: "no clue if i
+    // did it once, twice, thrice or not at all"). Kept for the shell's life
+    // alone, since the daemon keeps none of Joel's words (starts.rs).
+    property var sproutsMade: []
     function sproutSays(key, text, mark) {
         sproutSaid = Object.assign({}, sproutSaid, { [key]: String(text ?? "") });
         sproutMarked = Object.assign({}, sproutMarked,
@@ -1906,9 +1906,14 @@ Provider {
             sproutReaches({ started: false, why: words.busy });
             return;
         }
-        const again = StartSaid.startedAlready(sproutLast, key, said, Date.now());
+        const again = StartSaid.again(sproutsMade, key, said, Date.now());
         if (again !== null) {
-            sproutSays(key, String(words.again ?? "").replace("{at}", again), "done");
+            sproutsMade = StartSaid.told(sproutsMade, again, Date.now());
+            const told = again.answered ? words.again : words.againUnanswered;
+            sproutSays(key, String(told ?? "").replace("{at}", StartSaid.at(again)),
+                again.answered ? "done" : "pending");
+            console.info("launcher: new work wasn't started again: the same words were "
+                + `asked at ${StartSaid.at(again)}`);
             return;
         }
         const ask = Sprouting.ask(said, folder);
@@ -2101,8 +2106,7 @@ Provider {
         sproutsKept(rowsKind?.held ?? {});
         Report.say(how.started ? `sprouted new work on ${how.machine}`
             : `couldn't sprout new work: ${how.why}`);
-        if (how.started)
-            sproutLast = { key: key, words: sproutGiven.words, at: Date.now() };
+        sproutsMade = StartSaid.made(sproutsMade, key, sproutGiven.words, how, Date.now());
         if (how.started && how.held !== "") {
             openings = openings.concat([{ key: key, held: how.held, machine: how.machine,
                 since: Date.now(), letters: provider.launcher?.lettersAt ?? 0 }]);

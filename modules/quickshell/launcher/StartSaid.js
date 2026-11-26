@@ -13,20 +13,54 @@ const MINUTE = 60;
 // already made, an hour: past it, work said the same way is likely new.
 const AGAIN_MS = 60 * MINUTE * SECOND;
 
-// When `last` ({ key, words, at }, the last start that started) began, as
-// hours and minutes, where `said` to the act `key` at `now` is the same
-// start given again: the same act, the same words but for the space round
-// them, within AGAIN_MS. Otherwise null, and it may start.
-function startedAlready(last, key, said, now) {
-    if (last === null || last === undefined || last.key !== key) {
-        return null;
+// How long after Start New Work said a start was made already a Return
+// with the same words starts it once more, two minutes: he was just told,
+// so giving them again is meant. Past it, he's told again first.
+const MEANT_MS = 2 * MINUTE * SECOND;
+
+// How many starts are kept to say again, more than an hour's work holds.
+const MOST_MADE = 12;
+
+// Whether two starts' words are the same but for the space round them.
+function same(words, said) {
+    return String(words).trim() === String(said).trim();
+}
+
+// The starts made (`made`, each { key, words, at, answered, toldAt }), the
+// act `key` given `said` at `now` and ended `how` (Sprouting.ended) among
+// them, in place of any made before with the same words. One counts where
+// it started, or where nothing answered, since that one may still have
+// started; a refused one began nothing. Those an hour old go.
+function made(list, key, said, how, now) {
+    const kept = (Array.isArray(list) ? list : []).filter(one => now - one.at < AGAIN_MS
+        && !(one.key === key && same(one.words, said)));
+    if (how?.started !== true && how?.unanswered !== true) {
+        return kept;
     }
-    if (String(last.words).trim() !== String(said).trim() || now - last.at >= AGAIN_MS) {
-        return null;
-    }
-    const at = new Date(last.at);
+    const one = { key, words: String(said), at: now, answered: how.started === true, toldAt: 0 };
+    return kept.concat([one]).slice(-MOST_MADE);
+}
+
+// The start among `list` that `said` given to the act `key` at `now` makes
+// again, to be told rather than started: the same act, the same words,
+// within AGAIN_MS, unless he was told of it within MEANT_MS. Otherwise
+// null, and it may start.
+function again(list, key, said, now) {
+    return (Array.isArray(list) ? list : []).find(one => one.key === key
+        && same(one.words, said) && now - one.at < AGAIN_MS
+        && !(one.toldAt > 0 && now - one.toldAt < MEANT_MS)) ?? null;
+}
+
+// `list` with `told` marked told at `now`, so a Return just after starts it.
+function told(list, toldOne, now) {
+    return list.map(one => (one === toldOne ? Object.assign({}, one, { toldAt: now }) : one));
+}
+
+// When the start `one` was asked, as hours and minutes.
+function at(one) {
+    const asked = new Date(one.at);
     const two = number => String(number).padStart(2, "0");
-    return `${two(at.getHours())}:${two(at.getMinutes())}`;
+    return `${two(asked.getHours())}:${two(asked.getMinutes())}`;
 }
 
 // How long a start under way has waited, from `since` to `now`, both in
