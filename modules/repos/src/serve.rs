@@ -135,7 +135,9 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
     })?;
     serve::accept(Arc::clone(&shared), listener);
     eprintln!("{}", ready(started.elapsed()));
-    working.read(folders_of(&record));
+    if let Some(said) = working.read(folders_of(&record)) {
+        eprintln!("repos: {said}");
+    }
     shared.change(working.said(&record), feed::sources(&record));
     // Once views are answered, so writing the homes never holds up the
     // first.
@@ -168,7 +170,9 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
         };
         // Every reading of the disk, whole or not, holds every folder, so
         // each hands them on and takes what /proc has read since.
-        working.read(folders_of(&record));
+        if let Some(said) = working.read(folders_of(&record)) {
+            eprintln!("repos: {said}");
+        }
         shared.change(working.said(&record), feed::sources(&record));
         keep(homes.as_mut(), &record);
     }
@@ -278,9 +282,7 @@ impl Working {
         let shared = Arc::clone(&held);
         std::thread::spawn(move || {
             let mut last: Option<Sample> = None;
-            // None until two readings have said whether a share is
-            // measured, so the first says why it isn't.
-            let mut measuring: Option<bool> = None;
+            let mut journal = Journal::default();
             // The folders the reading before looked in: a process in one
             // it didn't had no time to measure its share from.
             let mut looked: BTreeSet<PathBuf> = BTreeSet::new();
@@ -291,11 +293,8 @@ impl Working {
                 let folders = holding(&shared.0).folders.clone();
                 let now = sample(&folders);
                 let measured = using::measured(last.as_ref(), &now);
-                if let Some(why) = measures(last.as_ref(), &now, measuring) {
+                if let Some(why) = journal.step(last.as_ref(), &now) {
                     eprintln!("repos: {why}");
-                }
-                if last.is_some() {
-                    measuring = Some(measured);
                 }
                 let mut used = using::using(last.as_ref(), &now);
                 for (folder, one) in &mut used {
@@ -344,8 +343,10 @@ impl Working {
     /// it's `old` with none newer, judged as it's taken too, so a reading
     /// that waited in the slot past that is never said as now. Where none
     /// has answered by then, the journal says so, as a restart reaching a
-    /// process still holding its memory map would leave it.
-    fn read(&mut self, folders: Vec<PathBuf>) {
+    /// process still holding its memory map would leave it: what it says,
+    /// once as the reading grows stale and once as it answers again, is
+    /// returned.
+    fn read(&mut self, folders: Vec<PathBuf>) -> Option<String> {
         let (lock, ready) = &*self.held;
         let mut held = holding(lock);
         held.folders = folders;
@@ -366,18 +367,16 @@ impl Working {
         }
         let age = self.at.unwrap_or(self.since).elapsed();
         if age < self.old {
-            if self.stale {
-                eprintln!("repos: the reading of /proc answers again");
-            }
+            let was = self.stale;
             self.stale = false;
-            return;
+            return was.then(|| "the reading of /proc answers again".to_owned());
         }
         let was = self.stale;
         self.stale = true;
         self.used.clear();
         self.measured = false;
         if was {
-            return;
+            return None;
         }
         // A restart reads the same process again, and waits on it again,
         // so the line names it rather than offering one.
@@ -392,10 +391,9 @@ impl Working {
         } else {
             format!("no reading of /proc has answered in {} s", age.as_secs())
         };
-        eprintln!(
-            "repos: {late}{held}, so what works in each repository is said unread until it \
-             answers"
-        );
+        Some(format!(
+            "{late}{held}, so what works in each repository is said unread until it answers"
+        ))
     }
 
     /// Whether what works in each repository can't be said: no reading has
@@ -414,6 +412,26 @@ impl Working {
             said.extend(feed::using(record, &self.used, self.measured, &self.placed));
         }
         said
+    }
+}
+
+/// What the journal last said of the share of a core: nothing until two
+/// readings have said whether one is measured, so the first says why it
+/// isn't, and after that whether it was, so a loss is said once.
+#[derive(Default)]
+struct Journal {
+    measuring: Option<bool>,
+}
+
+impl Journal {
+    /// What to say of the share `now` measures after `before`, holding
+    /// what it measured for the next.
+    fn step(&mut self, before: Option<&Sample>, now: &Sample) -> Option<String> {
+        let why = measures(before, now, self.measuring);
+        if before.is_some() {
+            self.measuring = Some(using::measured(before, now));
+        }
+        why
     }
 }
 

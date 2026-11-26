@@ -11,8 +11,8 @@ use serde_json::{Value, json};
 use repos::using::{LONGEST as LONGEST_SHARE, Process, Sample};
 
 use super::{
-    Disk, LONGEST, Of, QUIET, SAMPLED, SPACED, STALE, Working, folders_of, health, measures, ready,
-    settle,
+    Disk, Journal, LONGEST, Of, QUIET, SAMPLED, SPACED, STALE, Working, folders_of, health,
+    measures, ready, settle,
 };
 
 fn of(name: &str) -> Of {
@@ -339,9 +339,12 @@ fn a_walk_that_cannot_read_proc_says_what_works_unread_not_idle() {
 }
 
 #[test]
-fn a_first_reading_that_never_answers_is_said_late_as_one_that_stopped() {
+fn a_first_reading_that_never_answers_is_said_late_once() {
     // The restart above leaves the page unread, and the journal must say
-    // why and which process holds it, as it does for a reading that stops.
+    // why, as it does for a reading that stops, but as none that ever
+    // answered. The first read waits out SAMPLED, past the pace's
+    // STALE, so it's already late; what holds the reading up is named
+    // only where one is, which a stand-in reading never is.
     let (free, freed) = mpsc::channel::<()>();
     let freed = std::sync::Mutex::new(freed);
     let folders = vec![PathBuf::from("/home/someone/trees/fix")];
@@ -354,13 +357,18 @@ fn a_first_reading_that_never_answers_is_said_late_as_one_that_stopped() {
             Sample::default()
         },
     );
-    working.read(folders.clone());
+    let said = working.read(folders.clone()).unwrap_or_default();
     assert!(working.unread(), "a reading not yet answered was said");
-    std::thread::sleep((working.since + BRISK * STALE).saturating_duration_since(Instant::now()));
-    working.read(folders);
     assert!(
-        working.stale,
-        "no reading answered in {STALE} paces, and the journal wasn't told"
+        said.starts_with("no reading of /proc has answered in ")
+            && said
+                .ends_with(" s, so what works in each repository is said unread until it answers"),
+        "the journal didn't say no reading answered: {said:?}"
+    );
+    assert_eq!(
+        working.read(folders),
+        None,
+        "the journal said a late reading twice"
     );
     drop(free);
 }
@@ -614,6 +622,53 @@ fn a_reading_left_waiting_past_stale_paces_is_never_said_as_now() {
 /// now, whether the readings before measured a share, and what the journal
 /// says.
 type Case = (&'static str, Sample, Sample, Option<bool>, Option<String>);
+
+#[test]
+fn the_journal_says_a_lost_share_once_and_its_return_once() {
+    // Over a run of readings, the step holds what each measured, so a
+    // loss lasting three readings, two slow walks and the reading after
+    // them, is said once, and its end once.
+    let one = Process {
+        pid: 1,
+        parent: 0,
+        folder: None,
+        started: 1,
+        own: 0,
+        children: 0,
+        memory: None,
+    };
+    let read = |awake: Option<u64>| Sample {
+        at: 100,
+        awake,
+        processes: vec![one.clone()],
+    };
+    let run = [
+        read(Some(100)),
+        read(Some(200)),
+        read(None),
+        read(None),
+        read(Some(300)),
+        read(Some(400)),
+    ];
+    let mut journal = Journal::default();
+    let said: Vec<Option<String>> = (0..run.len())
+        .map(|at| journal.step(at.checked_sub(1).map(|before| &run[before]), &run[at]))
+        .collect();
+    assert_eq!(
+        said,
+        [
+            None,
+            None,
+            Some(
+                "the share of a core goes unmeasured, as this walk of /proc took over 2 s"
+                    .to_owned()
+            ),
+            None,
+            None,
+            Some("the share of a core is measured again".to_owned()),
+        ],
+    );
+}
 
 #[test]
 fn the_journal_says_why_a_share_goes_unmeasured_and_only_what_changed() {
