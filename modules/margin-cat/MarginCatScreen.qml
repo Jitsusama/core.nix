@@ -1734,6 +1734,13 @@ PanelWindow {
             // Whether its rest has begun, from which a pet may come; not
             // `resting`, the pause before it sets off on a walk.
             restBegun: window.stillSince >= 0,
+            // How long before this niri's newest scroll began, as the cat
+            // dated it, null for none, and how long niri's spring takes,
+            // so a check can tell a cat put on its seat at once since it
+            // heard of a scroll already done from one that missed it.
+            scrolled: (window.scrollHeard?.at ?? null) === null ? null
+                : Math.round(Date.now() - window.scrollHeard.at),
+            slides: window.slideMs,
             // Whether it's held still under the launcher's card, which
             // what Joel's hand set off never is.
             stilled: window.stilled && !window.byHand,
