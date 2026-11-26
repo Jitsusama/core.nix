@@ -176,8 +176,8 @@ QtObject {
                 .output], ["Virtual-3", "Virtual-4"]);
         // And go where their sessions went, whatever order each comes back in.
         const twinsLast = [twins[1], twins[0]];
-        const sessions = Reopening.placedGiven(twinsLast, bothBack, "Virtual-3", [twins, twins],
-            []);
+        const sessions = Reopening.placedGiven(twinsLast, bothBack, "Virtual-3",
+            { moments: [twins, twins], before: [] });
         const sessionsGiven = sessions.given;
         expect("a twin window back renumbered goes where its sessions went",
             [Places.whereKept(twins[0], twins, bothBack,
@@ -188,14 +188,14 @@ QtObject {
         // so the other twin's windows still have a connector to go to; one
         // whose twin's sessions said nothing keeps what it took.
         const early = [{ at: twins[0], output: "Virtual-3" }];
-        const seeded = Reopening.placedGiven(twinsLast, bothBack, "Virtual-3", [twins, twins],
-            early).given;
+        const seeded = Reopening.placedGiven(twinsLast, bothBack, "Virtual-3",
+            { moments: [twins, twins], before: early }).given;
         expect("a window back before its sessions gives way to them",
             [seeded.map(one => one.output), Places.whereKept(twins[1], twins, bothBack,
                 { given: seeded, inUse: "Virtual-3" }).output],
             [["Virtual-3", "Virtual-4"], "Virtual-3"]);
-        const twinFirst = Reopening.placedGiven([twins[1]], bothBack, "Virtual-3", [twins], early)
-            .given;
+        const twinFirst = Reopening.placedGiven([twins[1]], bothBack, "Virtual-3",
+            { moments: [twins], before: early }).given;
         expect("nor keeps a connector the other twin's sessions were given",
             [twinFirst.map(one => one.output), Places.whereKept(twins[1], twins, bothBack,
                 { given: twinFirst, inUse: "Virtual-3" }).output], [["Virtual-3"], "Virtual-3"]);
@@ -203,8 +203,8 @@ QtObject {
         // what the twin's was when kept.
         const panelThere = { "Virtual-1": panel, "Virtual-3": twin, "Virtual-4": twin };
         const panelAt = { screen: panel, output: "Virtual-1", workspace: 1, column: 1, tile: 1 };
-        const panelFirst = Reopening.placedGiven([panelAt], panelThere, "Virtual-1", [[]], early)
-            .given;
+        const panelFirst = Reopening.placedGiven([panelAt], panelThere, "Virtual-1",
+            { moments: [[]], before: early }).given;
         expect("nor gives way to another screen's session",
             [panelFirst.map(one => one.output), Places.whereKept(twins[1], twins, panelThere,
                 { given: panelFirst, inUse: "Virtual-1" }).output],
@@ -215,8 +215,8 @@ QtObject {
         // away on a screen showing its own is the twin gone's case below.)
         const tookFirst = [{ at: twins[1], output: "Virtual-3" }];
         const givenNone = (why, screens, inUse) => {
-            const given = Reopening.placedGiven([twins[1]], screens, inUse, [twins], tookFirst)
-                .given;
+            const given = Reopening.placedGiven([twins[1]], screens, inUse,
+                { moments: [twins], before: tookFirst }).given;
             expect(`nor gives way to its twin's session ${why}`,
                 [given.map(one => one.output ?? "none"), Places.whereKept(twins[0], twins,
                     bothBack, { given, inUse: "Virtual-3" }).output],
@@ -231,7 +231,7 @@ QtObject {
         // named, never last boot's with no screen said, nor a twin's on one
         // not heard yet, nor a prototype's name, nor any with no screens.
         const windowOn = (at, screens, inUse) =>
-            Reopening.keptBack(at, twins, screens, [], inUse).gives.output ?? "none";
+            Reopening.keptBack(at, twins, screens, { given: [], inUse }).gives.output ?? "none";
         const unnamed = { output: "Virtual-3", workspace: 1, column: 1, tile: 1 };
         expect("a window put back gives only a connector showing its screen",
             [windowOn(twins[1], bothBack, "Virtual-3"), windowOn(unnamed, bothBack, "Virtual-3"),
@@ -244,7 +244,7 @@ QtObject {
         // yet, it goes back there and gives none; found on the connector its
         // own sessions were given, it gives that one.
         const backAt = (screens, given, inUse) => {
-            const back = Reopening.keptBack(twins[1], twins, screens, given, inUse);
+            const back = Reopening.keptBack(twins[1], twins, screens, { given, inUse });
             return [back.kept.output, back.gives.at === twins[1], back.gives.output ?? "none"];
         };
         expect("a window put back gives givenOn's connector, not the one it's found on",
@@ -254,7 +254,7 @@ QtObject {
                 ["Virtual-3", true, "Virtual-3"]]);
         // And past a connector given its twin this pass, so split twins take one each.
         const pastTwin = Reopening.keptBack(twins[1], twins, bothBack,
-            [{ at: twins[0], output: "Virtual-3" }], "Virtual-3");
+            { given: [{ at: twins[0], output: "Virtual-3" }], inUse: "Virtual-3" });
         expect("a window put back passes its twin's given connector by",
             [pastTwin.kept.output, pastTwin.gives.output], ["Virtual-4", "Virtual-4"]);
         expect("one whose twin's sessions said nothing keeps what it took",
@@ -265,8 +265,8 @@ QtObject {
         // them, and one kept nowhere gives nothing.
         const oneTwin = [twins[0], twins[1], null];
         expect("a twin gone gives its windows no connector, nor one kept nowhere",
-            Reopening.placedGiven(oneTwin, { "Virtual-3": twin }, "Virtual-3",
-                [twins, twins, []], []).given.map(one => [one.at.output, one.output ?? "none"]),
+            Reopening.placedGiven(oneTwin, { "Virtual-3": twin }, "Virtual-3", { moments: [twins,
+                twins, []], before: [] }).given.map(one => [one.at.output, one.output ?? "none"]),
             [["Virtual-1", "Virtual-3"], ["Virtual-2", "none"]]);
         // A window back joins its own twin's windows, not the other's, though
         // both monitors are one screen to look at.

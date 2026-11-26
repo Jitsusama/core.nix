@@ -1673,9 +1673,9 @@ Singleton {
         const walk = told === root.carryOn;
         const connectedNow = root.screensThere();
         // Placed and given by the one screens answer (Reopening.js's placedGiven).
-        const placing = Reopening.placedGiven(placeable, connectedNow, inUse,
+        const placing = Reopening.placedGiven(placeable, connectedNow, inUse, { moments:
             here.map(one => momentOf(one.id)).map(moment => Array.isArray(moment) ? moment : []),
-            puttingBack?.given);
+            before: puttingBack?.given });
         const places = placing.places;
         // Its windows go back by the screen in use as its own sessions are
         // placed, and to the twin connectors they're given, not as a
@@ -2497,7 +2497,7 @@ Singleton {
         // Each window put back gives its twins' connectors, after its
         // sessions', so twin monitors on new connectors take one each:
         // only one connected now showing its screen (Reopening.js's keptBack).
-        const back = Reopening.keptBack(at, going.kept, there, going.given, inUse);
+        const back = Reopening.keptBack(at, going.kept, there, { given: going.given, inUse });
         const kept = back.kept;
         going.given.push(back.gives);
         const output = found.output ?? kept.output ?? inUse;
