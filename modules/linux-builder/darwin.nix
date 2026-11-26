@@ -255,6 +255,9 @@ let
   # The builders Nix reads: the builder's line while the Mac has room, and
   # nothing otherwise.
   offered = "${home}/offered";
+  # What the room job says, named in the file it writes so a withheld
+  # builder says where to read when.
+  roomLog = "/var/log/linux-builder-room.log";
 
   line = lib.concatStringsSep " " [
     "ssh-ng://linux-builder"
@@ -513,7 +516,8 @@ in
     '';
 
     # Every 15 seconds, so a Mac that starts swapping stops taking builds
-    # within that. It writes its log only when the offer changes. A first
+    # within that. It writes its log when the offer changes, when a look
+    # fails and when a failure clears (room.sh says which). A first
     # look counts as short, so after the switch that brings it the builder
     # waits out the hold before it's offered, and a Linux build meanwhile
     # fails for want of it.
@@ -528,20 +532,21 @@ in
         home
         (toString cfg.room.floor)
         (toString cfg.room.hold)
+        roomLog
       ];
       # sed, grep, cp, mv, date and what bash needs, from macOS itself, where only
       # root can write, since the job runs as root.
       EnvironmentVariables.PATH = "/usr/sbin:/usr/bin:/bin";
       StartInterval = 15;
       RunAtLoad = true;
-      StandardErrorPath = "/var/log/linux-builder-room.log";
+      StandardErrorPath = roomLog;
     };
     # A few lines at each change of offer, which a Mac at its line could
     # make every 15 seconds, so macOS's newsyslog moves it aside past
     # 512 KB, keeping three before it. The job opens it anew at each run.
     environment.etc."newsyslog.d/linux-builder-room.conf".text = ''
       # logfilename                    mode count size(KB) when flags
-      /var/log/linux-builder-room.log  644  3     512      *    N
+      ${roomLog}  644  3     512      *    N
     '';
   };
 }

@@ -329,14 +329,27 @@ Item {
     // type"). The first line keeps its band, `lineTall` high, and the field
     // grows by `wrapsTall` under it, which the surface holding it adds.
     property bool wraps: false
+    // Whether what's typed takes lines of its own under the path, at the
+    // path's first word, rather than the room the path leaves it on the
+    // line: words given to start work are a sentence or two, and beside a
+    // folder's path they had a sliver, scrolled to a lone mark (Joel,
+    // 2026-11-25 14:33: "i have no room to type once i choose a folder").
+    // It keeps `composeLines` from the start, so nothing grows as he types
+    // ("growing as i type would look like shit"), and grows only past them.
+    property bool composes: false
+    property int composeLines: 6
+    // Whether the words typed were taken, and stand in muted ink until
+    // what they were given to says how it went.
+    property bool taken: false
     property real lineTall: height
     // TextInput says no count of its lines, so they're counted by its face's spacing.
     // While nothing's typed the hint's lines count, since it wraps as typing would.
     readonly property int typedLines: wraps
-        ? Math.max(1, Math.round((hintText.visible ? hintText.contentHeight : input.contentHeight)
-            / typedFace.lineSpacing))
+        ? Math.max(composes ? composeLines : 1, Math.round((hintText.visible
+            ? hintText.contentHeight : input.contentHeight) / typedFace.lineSpacing))
         : 1
-    readonly property real wrapsTall: (typedLines - 1) * typedFace.lineSpacing
+    // Composed, every line is under the path's; else the first is the line's own.
+    readonly property real wrapsTall: (typedLines - (composes ? 0 : 1)) * typedFace.lineSpacing
     // How far below the field's top its first capital's top stands, so a
     // surface sets the field's ink the inset under its frame.
     readonly property real capsTop: lineBaseline - figureCaps.tightBoundingRect.height
@@ -546,7 +559,7 @@ Item {
     }
     // Where the field starts in the line, after the path.
     readonly property real fieldX: Theme.space.rung.inset + ledWidth
-        + (held.visible ? held.width + pathGap : 0)
+        + (held.visible && !composes ? held.width + pathGap : 0)
 
     // Puts the caret at a place in what's typed, as a save's name puts it
     // before the extension.
@@ -1261,7 +1274,9 @@ Item {
         const width = text => Math.ceil(Measures.drawnWidth(crumbsFace, text)
             ?? titleMeasure.widthOf(text)) + 1;
         const least = Reading.crumbsLeast(crumbSteps, width, betweenWide);
-        return Math.max(0, line - typingRoom, Math.min(least, line));
+        // Composed, what's typed is on lines of its own, so the path has the line.
+        return composes ? Math.max(0, line)
+            : Math.max(0, line - typingRoom, Math.min(least, line));
     }
     readonly property var crumbSteps: chips.map(chip =>
         ({ text: chip.text, yields: chip.yields === true }))
@@ -1474,7 +1489,9 @@ Item {
         x: prompt.fieldX + prompt.shownFrom
         width: Math.max(0, input.width - prompt.shownFrom)
         height: prompt.height
-        baselineOffset: input.y + input.baselineOffset
+        // The line's own baseline, which the path, its lead and the glyph stand on, even
+        // while the words composed stand on the lines under it.
+        baselineOffset: prompt.composes ? prompt.lineBaseline : input.y + input.baselineOffset
         clip: prompt.scrolled
     }
 
@@ -1530,7 +1547,8 @@ Item {
         // empty, it's one line tall, and a wrapped hint's last line went undrawn.
         height: hintText.visible
             ? Math.max(implicitHeight, hintText.y + hintText.contentHeight) : implicitHeight
-        y: prompt.lineBaseline - baselineOffset
+        // Composed, its first line is the one under the path's.
+        y: prompt.composes ? prompt.lineTall : prompt.lineBaseline - baselineOffset
         focus: true
         clip: true
         // A question asked draws in its place, and the field keeps the
@@ -1540,7 +1558,7 @@ Item {
         echoMode: prompt.secret ? TextInput.Password : TextInput.Normal
         passwordCharacter: "\u25cf"
         passwordMaskDelay: 0
-        color: Theme.strong
+        color: prompt.taken ? Theme.muted : Theme.strong
         selectionColor: Theme.selection
         selectedTextColor: Theme.strong
         font.family: Theme.level.figure.family

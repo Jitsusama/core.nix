@@ -123,6 +123,7 @@
       ${copied [
         "launcher/Openings.js"
         "launcher/Sprouting.js"
+        "launcher/StartSaid.js"
       ]}
       cp ${(import ../launcher/words.nix).places.agents} words.json
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -150,6 +151,26 @@
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml start-new-work-places.qml
+      touch $out
+    '';
+
+  # Start New Work's In the Cloud is offered only where the node's providers
+  # could make a machine, lists the places another machine knows by name, and
+  # asks a sprout that needs the cloud, as
+  # modules/quickshell/tests/start-new-work-cloud.qml holds launcher/Cloud.js to
+  # it in Qt's own engine.
+  start-new-work-goes-to-the-cloud =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "start-new-work-goes-to-the-cloud" { } ''
+      cp ${../tests/start-new-work-cloud.qml} start-new-work-cloud.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      ${copied [ "launcher/Cloud.js" ]}
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml start-new-work-cloud.qml
       touch $out
     '';
 

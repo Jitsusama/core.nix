@@ -152,6 +152,7 @@
     "launcher/NowDrawers.js"
     "launcher/Zones.js"
   ];
+  "launcher/Cloud.js" = [ "launcher/Sprouting.js" ];
   "launcher/Displays.qml" = [
     "Fuzzy.js"
     "Hearing.js"
