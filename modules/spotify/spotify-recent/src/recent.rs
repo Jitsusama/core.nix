@@ -356,7 +356,10 @@ mod tests {
                 size: "212".into(),
             }
         );
-        assert!(!asked.iter().any(|uri| uri.contains("show")));
+        assert!(
+            !asked.iter().any(|uri| uri.contains("show")),
+            "a show was asked its name, which its episode already says: {asked:?}"
+        );
     }
 
     #[test]
@@ -384,8 +387,14 @@ mod tests {
         assert_eq!(album.kind, "album");
         assert_eq!(album.detail, "Singer, Guest");
         // So does one from a playlist Spotify won't name.
-        assert!(uris(&rows).contains(&"spotify:album:a4"));
-        assert!(!uris(&rows).contains(&"spotify:playlist:p2"));
+        assert!(
+            uris(&rows).contains(&"spotify:album:a4"),
+            "a track from a playlist Spotify won't name didn't fall back to its album"
+        );
+        assert!(
+            !uris(&rows).contains(&"spotify:playlist:p2"),
+            "a playlist Spotify won't name was listed"
+        );
     }
 
     #[test]
@@ -393,25 +402,50 @@ mod tests {
         let (rows, asked) = listed(&Value::Null);
         assert!(
             rows.iter()
-                .all(|row| matches!(row.kind.as_str(), "playlist" | "album" | "show"))
+                .all(|row| matches!(row.kind.as_str(), "playlist" | "album" | "show")),
+            "a row wasn't a playlist, album or show: {rows:?}"
         );
-        assert!(!uris(&rows).iter().any(|uri| uri.contains("collection")));
-        assert!(!uris(&rows).contains(&"spotify:artist:r1"));
+        assert!(
+            !uris(&rows).iter().any(|uri| uri.contains("collection")),
+            "liked songs were listed"
+        );
+        assert!(
+            !uris(&rows).contains(&"spotify:artist:r1"),
+            "an artist was listed"
+        );
         // Nor is either's album listed in its place.
-        assert!(!uris(&rows).contains(&"spotify:album:a9"));
-        assert!(!uris(&rows).contains(&"spotify:album:a10"));
-        assert!(!asked.iter().any(|uri| uri.contains("artist")));
+        assert!(
+            !uris(&rows).contains(&"spotify:album:a9"),
+            "a liked song's album was listed in its place"
+        );
+        assert!(
+            !uris(&rows).contains(&"spotify:album:a10"),
+            "an artist's track's album was listed in its place"
+        );
+        assert!(
+            !asked.iter().any(|uri| uri.contains("artist")),
+            "an artist was asked its name: {asked:?}"
+        );
     }
 
     #[test]
     fn nine_at_most_and_nothing_without_a_context() {
         let (with_now, _) = listed(&fixture(include_str!("../fixtures/player.json")));
         assert_eq!(with_now.len(), MOST);
-        assert!(!uris(&with_now).contains(&"spotify:album:a8"));
+        assert!(
+            !uris(&with_now).contains(&"spotify:album:a8"),
+            "the tenth album was listed beside what's playing"
+        );
         let (lately, _) = listed(&Value::Null);
         assert_eq!(lately.len(), MOST);
-        assert_eq!(lately.last().unwrap().uri, "spotify:album:a8");
-        assert!(!uris(&lately).iter().any(|uri| uri.contains("local")));
+        assert_eq!(
+            lately.last().expect("nine rows were listed").uri,
+            "spotify:album:a8"
+        );
+        assert!(
+            !uris(&lately).iter().any(|uri| uri.contains("local")),
+            "a track played from no context was listed"
+        );
     }
 
     #[test]
@@ -419,8 +453,11 @@ mod tests {
         let (rows, _) = listed(&Value::Null);
         let line = find(&rows, "spotify:album:a2").line();
         assert_eq!(line.matches('\t').count(), 5);
-        assert!(line.contains("\tTab Album Two\t"));
-        assert!(!line.contains('\n'));
+        assert!(
+            line.contains("\tTab Album Two\t"),
+            "a tab in a name wasn't made a space: {line:?}"
+        );
+        assert!(!line.contains('\n'), "a line holds a newline: {line:?}");
     }
 
     #[test]

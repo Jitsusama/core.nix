@@ -214,7 +214,8 @@ fn a_spent_sign_in_is_refreshed_and_kept_before_anything_is_asked() {
     assert!(
         heard[1..]
             .iter()
-            .all(|asked| asked.bearer() == Some("fresh-access"))
+            .all(|asked| asked.bearer() == Some("fresh-access")),
+        "an ask after the refresh didn't carry the fresh access token"
     );
     let kept: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&token).unwrap()).unwrap();
@@ -235,7 +236,8 @@ fn a_spent_sign_in_is_refreshed_and_kept_before_anything_is_asked() {
     assert_eq!(lines.len(), 9);
     // The second run finds the sign-in fresh, and refreshes nothing.
     let again = StandIn::new(spotify);
-    assert!(run(&again, &token, &["liked"]).status.success());
+    let second = run(&again, &token, &["liked"]);
+    assert!(second.status.success(), "the second run failed: {second:?}");
     assert_eq!(again.lines(), ["GET /v1/me/tracks?limit=1 HTTP/1.1"]);
 }
 
@@ -264,7 +266,7 @@ fn a_sign_in_refreshed_while_it_waited_is_taken_as_it_is() {
     .unwrap();
     lock.unlock().unwrap();
     let out = child.wait_with_output().unwrap();
-    assert!(out.status.success());
+    assert!(out.status.success(), "the waiting run failed: {out:?}");
     // Refreshing again would spend the refresh token the other was given.
     assert_eq!(stand_in.lines(), ["GET /v1/me/tracks?limit=1 HTTP/1.1"]);
     assert_eq!(stand_in.heard()[0].bearer(), Some("theirs"));
@@ -351,7 +353,11 @@ fn a_refresh_spotify_refuses_is_signed_out_and_keeps_the_file() {
         std::fs::read_to_string(&token).unwrap(),
         include_str!("../fixtures/token.json")
     );
-    assert!(!String::from_utf8_lossy(&out.stderr).contains("old-refresh"));
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !said.contains("old-refresh"),
+        "a refused refresh said its refresh token: {said}"
+    );
 }
 
 #[test]
@@ -360,7 +366,10 @@ fn no_sign_in_is_signed_out_without_asking() {
     let missing = std::env::temp_dir().join("spotify-recent-nobody/token.json");
     let out = run(&stand_in, &missing, &[]);
     assert_eq!(out.status.code(), Some(78), "no sign-in isn't 78: {out:?}");
-    assert!(stand_in.heard().is_empty());
+    assert!(
+        stand_in.heard().is_empty(),
+        "Spotify was asked with no sign-in"
+    );
 }
 
 #[test]
