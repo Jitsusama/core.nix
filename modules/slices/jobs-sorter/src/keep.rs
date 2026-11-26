@@ -273,8 +273,9 @@ pub struct Keeping {
 }
 
 impl Keeping {
-    /// The windows a sorter before this one kept, as each scope's
-    /// memory.low reads: at an orchestrator's floor or a pi's. Its floors are
+    /// The windows whose memory.low reads at an orchestrator's floor or a
+    /// pi's, taken as a sorter before this one kept them, though only their
+    /// height says so. A sorter's floors are
     /// the user manager's runtime properties, so they outlive it, and a
     /// sorter that took up none would fit its first looks as though nothing
     /// kept them. Each is changed, as any kept window is, once what it holds

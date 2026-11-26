@@ -1923,7 +1923,9 @@ impl Fitting {
     /// about the sorter's floors. It says what those take beside what fits
     /// the units, not that one left the other short, since windows only
     /// named and the units' own floors take from the same room. What fits
-    /// is fit's offer, which a unit's floor reaches a step at a time.
+    /// is fit's offer, which a unit's floor never passes: it keeps its last
+    /// while that fits, and is raised only to what a step less room fits
+    /// ([`budget::steady`]).
     fn filled(
         &mut self,
         slice: &str,
