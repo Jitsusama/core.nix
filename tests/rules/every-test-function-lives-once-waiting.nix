@@ -5,7 +5,6 @@
 # holding fewer until its count here is lowered, so the list only shrinks.
 {
   "hardware/microsoft-surface-laptop-4-1958/firmware/tests/offers-its-firmware.sh" = 1;
-  "modules/backlight/src/monitor/tests.rs" = 1;
   "modules/bluetooth-disk-prompt/seal-test.sh" = 1;
   "modules/collector/tests/collector.rs" = 1;
   "modules/desk-facts/facts.rs" = 1;
