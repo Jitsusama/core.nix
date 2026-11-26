@@ -3,13 +3,15 @@
 //! above it while the line waited, and a tree gone, each judged before an
 //! archive is taken, a link put there later redirecting none, one that
 //! can't be cleared keeping the tree as the line clears the copy, one a
-//! killed run left above it going before anything is read, and links at
+//! killed run left above it going before anything is read, files handed
+//! over once it went waited for, and links at
 //! the copies' folder or the copy, put while it's made, leaving it
 //! untaken, or put as the list of what's brought back is sorted, cutting
 //! the list, and a link put at the job's folder in the copy before it's
 //! entered leaving it untaken.
 
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use super::crossing::refusing;
 use super::handing::pinning;
@@ -77,19 +79,24 @@ PATH=${{PATH#*:}} exec mkdir "$@""#
     }
 }
 
-#[test]
-fn a_link_a_killed_run_left_above_the_job_s_handover_goes_before_anything_is_read() {
-    // A uname that, as the far line begins, moves the folder each job of
-    // the quest is handed over in aside, with a link to it at its name,
-    // as a run killed with no stop leaves it for the next job: cleared,
-    // or left where it can't be, the job is untaken, never refused.
-    let swapping = format!(
+/// A uname that, as the far line begins, moves the folder each job of
+/// the quest is handed over in aside, with a link to it at its name, as
+/// a run killed with no stop leaves it for the next job.
+fn moving_the_handovers_aside() -> String {
+    format!(
         r#"[ -e "$HOME/swapped" ] || {{
   at='{FIRST}' && moved="$HOME/${{at%/*/*/*}}"
   mv "$moved" "$HOME/aside" && ln -s "$HOME/aside" "$moved" && : > "$HOME/swapped"
 }}
 PATH=${{PATH#*:}} exec uname "$@""#
-    );
+    )
+}
+
+#[test]
+fn a_link_a_killed_run_left_above_the_job_s_handover_goes_before_anything_is_read() {
+    // The handovers moved aside as a killed run leaves them: cleared, or
+    // left where it can't be, the job is untaken, never refused.
+    let swapping = moving_the_handovers_aside();
     let (rm, pinned) = refusing("rm", &format!("*\"/{HANDOVER} \"*"), "exit 1");
     for (stays, said) in [
         (false, "a link at the job's handover was cleared"),
@@ -125,28 +132,6 @@ PATH=${{PATH#*:}} exec uname "$@""#
         );
         let _ = std::fs::remove_dir_all(&home);
     }
-    // A link cleared before anything crossed sinks nothing: files handed
-    // over after, here the very ones moved aside, are waited for.
-    let archive = archive_of("a", "inside");
-    let list = format!("{}\t0.tar\nend\n", archive.len());
-    let (code, err, home) = far_line(
-        Left::Listed(&list),
-        &[("0.tar", &archive)],
-        "touch ../ran",
-        &kind(""),
-        Some(&|tree| {
-            let (home, handovers) = (tree.ancestors().nth(9), tree.ancestors().nth(2));
-            std::fs::rename(home.unwrap().join("aside"), handovers.unwrap()).unwrap();
-        }),
-        &[("uname", swapping.as_str())],
-    );
-    assert!(
-        code == Some(0)
-            && err.contains("a link at the job's handover was cleared")
-            && work(&home).join("ran").exists(),
-        "a job whose files crossed after a link was cleared didn't run ({code:?}): {err}"
-    );
-    let _ = std::fs::remove_dir_all(&home);
     // With nothing at the handover, a run that goes through the wait, the
     // job and the bring-back says nothing of a link there.
     let archive = archive_of("a", "inside");
@@ -159,6 +144,47 @@ PATH=${{PATH#*:}} exec uname "$@""#
             && !err.contains("so the wait may run out")
             && !err.contains("handover wasn't cleared"),
         "a far line with no link at its handover said one ({code:?}): {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn files_handed_over_once_a_link_above_the_handover_is_cleared_are_waited_for() {
+    // A link cleared before anything crossed sinks nothing: files handed
+    // over after, here the very ones moved aside, are waited for. They're
+    // handed over once the far line moved them aside and cleared the link,
+    // however long a busy machine takes, and never where it didn't, which
+    // leaves the wait to run out and the case to fail in its own words.
+    let swapping = moving_the_handovers_aside();
+    let archive = archive_of("a", "inside");
+    let list = format!("{}\t0.tar\nend\n", archive.len());
+    let (code, err, home) = far_line(
+        Left::Listed(&list),
+        &[("0.tar", &archive)],
+        "touch ../ran",
+        &kind(""),
+        Some(&|tree| {
+            let (home, handovers) = (tree.ancestors().nth(9), tree.ancestors().nth(2));
+            let (Some(home), Some(handovers)) = (home, handovers) else {
+                return;
+            };
+            let aside = home.join("aside");
+            let by = Instant::now() + Duration::from_secs(60);
+            while !aside.is_dir() || std::fs::symlink_metadata(handovers).is_ok() {
+                if Instant::now() > by {
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            let _ = std::fs::rename(aside, handovers);
+        }),
+        &[("uname", swapping.as_str())],
+    );
+    assert!(
+        code == Some(0)
+            && err.contains("a link at the job's handover was cleared")
+            && work(&home).join("ran").exists(),
+        "a job whose files crossed after a link was cleared didn't run ({code:?}): {err}"
     );
     let _ = std::fs::remove_dir_all(&home);
 }
