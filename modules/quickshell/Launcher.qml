@@ -10950,12 +10950,14 @@ Scope {
     property string openInto: ""
     property string openChord: ""
     // A place that marks itself never kept, as asks do, isn't kept
-    // (Arming.keepsPlace); every other place is, and while the screen may
-    // be shared its kept rows are never drawn (Wanted.keptPlaceListed), nor
-    // left drawn once a share begins as it opens (sharedMidOpening).
+    // (Arming.keepsSteps, by its name's source and its steps'); every
+    // other place is, and while the screen may be shared its kept rows are
+    // never drawn (Wanted.keptPlaceListed), nor left drawn once a share
+    // begins as it opens (sharedMidOpening).
     function keepPlace(name) {
         if (held.length === 0
-            || !Arming.keepsPlace(collections.find(one => one.settings.name === name)))
+            || !Arming.keepsSteps(collections.find(one => one.settings.name === name) ?? null,
+                held))
             return;
         placesKept[name] = { held: held, matches: matches, depth: homeDepth,
             under: keptUnder(name), led: ledPlaces.includes(name) };

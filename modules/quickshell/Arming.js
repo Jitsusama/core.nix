@@ -127,6 +127,15 @@ function keepsPlace(source) {
     return source?.keptNever !== true;
 }
 
+// Whether a place may be kept, judged by the source its name finds,
+// `source`, and by the source each of its `steps` comes from (a step's
+// row.from), so a chord naming a place otherwise than its source, its
+// lookup unfound, can't keep a never-kept one's steps. A step from no
+// source, and a name no source has, keep, as home's led places do.
+function keepsSteps(source, steps) {
+    return keepsPlace(source) && steps.every(step => keepsPlace(step.row?.from));
+}
+
 // Nothing armed.
 function rest() {
     return { key: "", keys: -1, at: 0 };
