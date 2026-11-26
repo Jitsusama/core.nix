@@ -444,8 +444,8 @@ qint64 sweepsOf(const QJSEngine &engine) {
 // Whether a burst kept past twice the room, growing the chunks by
 // BURST_ROOMS rooms, collects at least once and no more than once for
 // each room it grows by, with `litter` objects made and dropped after
-// the sweep and before the ask, on a heap holding over
-// twice what's live in runs too small for it, as Joel's shell held 201 to
+// the closing's collection and before the opening asks again, on a heap
+// holding over twice what's live in runs too small for it, as Joel's shell held 201 to
 // 209 MB for 63 to 68 live. Past twice the room beyond where it was left,
 // a limit below what's held would start a collection at every miss, one
 // for each chunk the burst takes: two openings of Joel's shell each spent
@@ -459,6 +459,11 @@ bool pacesABurstPastTheRoom(int litter) {
                        "m: i }); return made.filter((_, i) => i % %2 === 0); })()")
             .arg(HOLED)
             .arg(HOLED_KEPT_ONE_IN));
+    // The closing asks and collects, and the opening asks again, as the
+    // shell does: the second ask runs on a heap whose full sweep's count
+    // keepRoom has raised past what the sweep kept.
+    engine.collectGarbage();
+    heap.leaveRoom(SMALL_ROOM_MB);
     engine.collectGarbage();
     const qint64 swept = sweepsOf(engine);
     const double sweptAtAsk = sweptOf(engine);
@@ -475,7 +480,6 @@ bool pacesABurstPastTheRoom(int litter) {
                          !dropped.isError() &&
                          (litter == 0 || littered > BURST_ROOMS * SMALL_ROOM_MB);
     heap.leaveRoom(SMALL_ROOM_MB);
-    engine.collectGarbage();
     const Room closed = roomOf(heap);
     const double sweptClosed = sweptOf(engine);
     QStringList values;
