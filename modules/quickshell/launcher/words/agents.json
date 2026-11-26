@@ -366,6 +366,8 @@
         "startedDisowned": "started in its host \u00b7 not viewed for now, the window that came isn't seen as its own",
         "startedOpening": "started in its host \u00b7 its window was asked for a moment ago",
         "startedUntaken": "started in its host \u00b7 its window didn't open when asked",
+        "stillComing": "not viewed yet \u00b7 no answer came in a minute when its window was asked for, so it may yet come",
+        "startedStillComing": "started in its host \u00b7 no answer came in a minute when its window was asked for, so it may yet come",
         "askedAgain": "asked again \u00b7 its own window didn't come for its first ask",
         "startedAskedAgain": "started in its host \u00b7 its window was asked for once more",
         "cameAgain": "viewed \u00b7 its own window came when asked for once more",

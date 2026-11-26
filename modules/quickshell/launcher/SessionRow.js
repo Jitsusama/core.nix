@@ -209,7 +209,7 @@ const WHY_TONES = {
     opening: "plain", startedOpening: "plain", askedAgain: "plain",
     startedAskedAgain: "plain", cameAgain: "plain", startedCameAgain: "plain",
     cameAfter: "plain", startedCameAfter: "plain", ownAfterAll: "plain",
-    startedOwnAfterAll: "plain",
+    startedOwnAfterAll: "plain", stillComing: "plain", startedStillComing: "plain",
     disowned: "alert", startedDisowned: "alert", untaken: "alert",
     startedUntaken: "alert", unowned: "alert", hosted: "alert", hostless: "alert",
     unnamed: "alert", unviewable: "alert", unviewableHost: "alert"
