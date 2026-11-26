@@ -708,6 +708,10 @@ QtObject {
             ["a refused Wake, by the node's reason, its address said by name", "wake",
                 "so PARKED went", true, "so Parked Quest went"],
             ["a Wake never answered, as no reason, said not woken yet", "wake", "", true, ""],
+            ["a refused Park, by the node's reason", "park", "so PARKED went", true,
+                "so Parked Quest went"],
+            ["a Park never answered, said not parked yet", "park", "", true, ""],
+            ["nor a Park whose row isn't becoming parked", "park", "PARKED is busy", false, null],
             ["never for a Pause refused meanwhile", "pause", "PARKED is busy", true, null],
             ["nor a Pause never answered", "pause", "", true, null],
             ["nor words talked to it", "", "PARKED is busy", true, null],
@@ -790,6 +794,54 @@ QtObject {
             const got = JSON.stringify(ReopenTally.told(now, said));
             if (got !== want)
                 failures.push(`told, ${what}: ${got}, not ${want}`);
+        }
+
+        // A Park pressed is watched until its session parks or goes; one at
+        // work, waiting on Joel or not yet said waits, its idle moment
+        // forgotten, and one idle and unparked PARK_SETTLES_MS after the
+        // press, or after its turn ended, is said not parked.
+        const settles = SessionRow.PARK_SETTLES_MS;
+        const parksPressed = [
+            ["parked", { asked: 0, idleAt: null }, "parked", 5000, "parked", null],
+            ["closed", { asked: 0, idleAt: 1000 }, "gone", 5000, "gone", null],
+            ["at work", { asked: 0, idleAt: 1000 }, "working", settles * 3, "waiting", null],
+            ["waiting on Joel", { asked: 0, idleAt: null }, "needs", settles * 3, "waiting", null],
+            ["in line", { asked: 0, idleAt: null }, "inLine", settles * 3, "waiting", null],
+            ["not said yet", { asked: 0, idleAt: null }, "off", settles * 3, "waiting", null],
+            ["first seen idle", { asked: 0, idleAt: null }, "listening", 4000, "waiting", 4000],
+            ["idle, not yet settled since its turn ended", { asked: 0, idleAt: 4000 },
+                "listening", 4000 + settles - 1, "waiting", 4000],
+            ["idle and settled since its turn ended", { asked: 0, idleAt: 4000 },
+                "listening", 4000 + settles, "unparked", 4000],
+            ["idle since before the press, not yet settled since it",
+                { asked: 9000, idleAt: 1000 }, "listening", 9000 + settles - 1, "waiting", 1000],
+            ["idle since before the press, settled since it",
+                { asked: 9000, idleAt: 1000 }, "paused", 9000 + settles, "unparked", 1000]
+        ];
+        for (const [what, pending, stands, now, verdict, idleAt] of parksPressed) {
+            const stood = SessionRow.parkStands(pending, stands, now);
+            if (stood.verdict !== verdict || stood.idleAt !== idleAt)
+                failures.push(`parkStands, ${what}: ${JSON.stringify(stood)}`);
+        }
+        if (!(SessionRow.PARK_WAITS_MS > settles))
+            failures.push("parkStands: a Park waits on a turn no longer than it settles");
+
+        // A row parking says so where it said what it's doing, its tier and
+        // what it spent kept where they were.
+        const sideDoings = [
+            ["neither tier nor spent", SessionRow.side("listening", ""), "parking"],
+            ["spent", SessionRow.side("working", "$4.00"), "parking $4.00"],
+            ["tier and spent", SessionRow.side("listening", "$4.00", "81%"), "81% parking $4.00"],
+            ["nothing yet", [], "parking"]
+        ];
+        for (const [what, items, want] of sideDoings) {
+            const made = SessionRow.sideDoing(items, "parking");
+            const got = made.map(item => item.said).join(" ");
+            const kept = JSON.stringify(made) === JSON.stringify(SessionRow.side("parking",
+                items.find(item => item.said === "$4.00")?.said ?? "",
+                items.find(item => item.keep === 5)?.said ?? ""));
+            if (got !== want || !kept)
+                failures.push(`sideDoing, ${what}: "${got}" ${JSON.stringify(made)}`);
         }
 
         for (const failure of failures)

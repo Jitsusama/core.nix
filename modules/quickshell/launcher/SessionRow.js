@@ -208,6 +208,42 @@ function withheld(row, id, parked) {
     return id !== "park" || served.includes("park") ? "" : "unsent";
 }
 
+// How long a Park pressed is given, once its session stands idle, to
+// show parked before it's said not to: the harness parks one idle at once
+// and one at work as its turn ends (its pausing.ts), and the node lists it
+// parked within a refresh.
+const PARK_SETTLES_MS = 20000;
+// How long a Park pressed waits on a turn under way, as its row is held:
+// past it, the launcher says it's not parked yet (Becoming's late).
+const PARK_WAITS_MS = 1800000;
+
+// How a Park pressed at `pending.asked` stands `now`, its session standing
+// as `stands`: a row's state, "parked" once the shell holds it parked, or
+// "gone" once the shell holds it nowhere. It's "waiting" while it works,
+// waits on Joel or isn't said yet, as the harness parks one at work once
+// its turn ends; "unparked" once it's stood idle and unparked for
+// PARK_SETTLES_MS since the press or since its turn ended, as the harness
+// drops a Park from before Joel's last words, or one a later act called
+// off, saying so only in its own window. `idleAt` is when it was first
+// seen idle since, null while it works.
+function parkStands(pending, stands, now) {
+    if (stands === "parked" || stands === "gone") {
+        return { verdict: stands, idleAt: null };
+    }
+    const busy = ["working", "needs", "inLine", "off"].includes(stands);
+    const idleAt = busy ? null : (pending.idleAt ?? now);
+    const settled = !busy && now - Math.max(pending.asked, idleAt) >= PARK_SETTLES_MS;
+    return { verdict: settled ? "unparked" : "waiting", idleAt };
+}
+
+// A row's side, `items` as side made them, saying `doing` in place of
+// what it said the session is doing, its tier and what it spent kept.
+function sideDoing(items, doing) {
+    const tier = items.find(item => item.keep === 5)?.said ?? "";
+    const spent = items.find(item => item.keep === (tier !== "" ? 3 : 4))?.said ?? "";
+    return side(doing, spent, tier);
+}
+
 // What the foot says of an act `withheld` kept back, by its word's key,
 // in the act's own name: said plainly, as nothing failed.
 function unsent(said, why, act) {
@@ -375,21 +411,22 @@ function refusal(said, refused) {
     return [called, words.replace("{why}", () => reason)];
 }
 
-// Why a row drawn as woken is taken back at once, for a steer its node
-// refused or never answered, or null where it's left be. Only a Wake takes
-// it back: another act refused meanwhile, a Pause or words talked to it,
-// is said as itself (refusal) and leaves the Wake's row as it was to
-// become. A Wake with no answer is taken back too, as "", which the
-// launcher says as not woken yet, with no answer (becameNot): no answer is
-// still coming, but the Wake may still land. From Agents, no answer means
+// Why a row drawn as woken or parking is taken back at once, for a steer
+// its node refused or never answered, or null where it's left be. Only a
+// Wake or a Park takes it back, the act its row is becoming: another act
+// refused meanwhile, a Pause or words talked to it, is said as itself
+// (refusal) and leaves the row as it was to become. One with no answer is
+// taken back too, as "", which the launcher says as not woken, or not
+// parked, yet, with no answer (becameNot): no answer is still coming, but
+// the act may still land. From Agents, no answer means
 // the agents daemon's line was gone or went while it waited, and it may
 // already have sent the steer, so nobody is blamed. Held for Becoming's
 // 30 s, the row read woken all that time (#5878's follow-up). `refused` is as refusal
 // takes it, the act by its id ("wake"), and `refused.held` whether the row
-// is becoming woken.
+// is becoming what that act makes it.
 function takesBack(refused) {
     const { act, why, address, name, held } = refused;
-    if (act !== "wake" || !held) {
+    if (!["wake", "park"].includes(act) || !held) {
         return null;
     }
     return reasonOf(why, address, name);
