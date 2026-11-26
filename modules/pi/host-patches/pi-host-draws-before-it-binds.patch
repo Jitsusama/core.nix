@@ -7,9 +7,11 @@ session_start handlers reading shared state off a stalled disk, and the
 person's window stayed blank the whole time: nothing on it said which
 conversation it was or what had been said.
 
-A hosted screen now draws the conversation's messages first, then binds,
-and after the bind draws only the entries the extensions' session_start
-added meanwhile, where startup would have drawn them all. Nothing already
+A hosted screen now draws the conversation's messages first and sends
+that frame at once, since a session_start holding the thread would hold
+a frame only requested. It then binds, and after the bind draws only
+the entries the extensions' session_start added meanwhile, where
+startup would have drawn them all. Nothing already
 on the screen is cleared, so the notices startup made before the bind
 stay. Where the bind did more than add (a compaction, a move in the
 tree), so the entries drawn are no longer the conversation's first, the
@@ -28,7 +30,7 @@ unchanged.
 
 --- a/packages/coding-agent/src/modes/interactive/interactive-mode.ts
 +++ b/packages/coding-agent/src/modes/interactive/interactive-mode.ts
-@@ -1185,12 +1185,23 @@ export class InteractiveMode {
+@@ -1185,12 +1185,28 @@ export class InteractiveMode {
  		this.setupEditorSubmitHandler();
  		this.ui.requestRender();
  
@@ -38,7 +40,12 @@ unchanged.
 +		// still land above them, in their own container.
 +		const hosted = Boolean(this.options.hosted);
 +		const drawn = hosted ? this.sessionManager.buildContextEntries().map((entry) => entry.id) : [];
-+		if (hosted) this.renderInitialMessages();
++		if (hosted) {
++			this.renderInitialMessages();
++			// Sent now rather than requested: a session_start that holds the thread, reading a stalled
++			// disk, would hold a requested frame with it.
++			this.ui.renderNow();
++		}
  		await this.rebindCurrentSession();
  		if (this.hostedStartupEnded()) return;
  

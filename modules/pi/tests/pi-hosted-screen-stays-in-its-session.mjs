@@ -23,14 +23,17 @@ const jiti = source.endsWith(".ts")
       import.meta.url,
     )
   : undefined;
-function loadModule(path) {
-  return jiti ? jiti.import(path) : import(path);
-}
+const loadModule = (path) => (jiti ? jiti.import(path) : import(path));
 const { InteractiveMode } = await loadModule(source);
 const themeSource = join(dirname(source), `theme/theme${source.endsWith(".ts") ? ".ts" : ".js"}`);
 const { onThemeChange, setThemeInstance } = await loadModule(themeSource);
 
 afterEach(() => mock.restoreAll());
+// A conversation empty when first drawn, and one entry longer once a session_start ran.
+const grows = () => {
+  const asked = [];
+  return () => (asked.push(true) === 1 ? [] : [{ id: "added" }]);
+};
 
 function screen() {
   const exits = [];
@@ -49,7 +52,7 @@ function screen() {
     runtimeHost: {
       dispose: mock.fn(),
       session: {
-        sessionManager: { isPersisted: () => false, buildContextEntries: () => [] },
+        sessionManager: { isPersisted: () => false, buildContextEntries: grows() },
         modelRuntime: { getError: () => undefined },
         settingsManager: {
           getExternalEditorCommand: () => "false",
@@ -158,17 +161,10 @@ function startingScreen(quitAt) {
     renderSessionEntries: mock.fn(),
     footerDataProvider: { onBranchChange: mock.fn() },
   });
-  for (const part of [
-    "documentContainer",
-    "pendingMessagesContainer",
-    "statusContainer",
-    "widgetContainerAbove",
-    "editorContainer",
-    "widgetContainerBelow",
-    "footerContainer",
-  ]) {
-    mode[part] = {};
+  for (const part of ["document", "pendingMessages", "status", "editor", "footer"]) {
+    mode[`${part}Container`] = {};
   }
+  Object.assign(mode, { widgetContainerAbove: {}, widgetContainerBelow: {} });
   mode.options.initialMessage = "hello";
   mode.runtimeHost.session.settingsManager.getFullscreenScrollbar = () => "auto";
   Object.assign(mode.themeController, {
@@ -196,14 +192,15 @@ for (const quitAt of ["colors", "tools", "extensions", "providers"]) {
     assert.equal(mode.ui.start.mock.callCount(), 1);
     // No theme listener outlives it in the host's one theme: its stop has run, so one held here leaks.
     assert.equal(mode.themeChangeUnsubscribe, undefined, "a theme listener was left behind");
-    // Drawn once just before the bind (pi-host-draws-before-it-binds.patch), and nothing after a quit.
+    // Drawn and sent once before the bind (pi-host-draws-before-it-binds.patch); the tail only by a later quit.
     const drawn = quitAt === "extensions" || quitAt === "providers" ? 1 : 0;
     assert.equal(mode.renderInitialMessages.mock.callCount(), drawn);
-    assert.equal(mode.renderSessionEntries.mock.callCount(), 0, "it drew after a quit");
+    const past = quitAt === "providers" ? 1 : 0;
+    assert.equal(mode.renderSessionEntries.mock.callCount(), past, "drew past its quit");
     // None is subscribed, prompted or rendered after the quit; one before is its stop's to release.
-    assert.equal(mode.subscribeToAgent.mock.callCount(), quitAt === "providers" ? 1 : 0);
+    assert.equal(mode.subscribeToAgent.mock.callCount(), past);
     assert.equal(mode.runtimeHost.session.prompt.mock.callCount(), 0);
-    assert.equal(mode.ui.renderNow.mock.callCount(), 0);
+    assert.equal(mode.ui.renderNow.mock.callCount(), drawn);
     // A late event never starts it again.
     await mode.init();
     assert.equal(mode.ui.start.mock.callCount(), 1);

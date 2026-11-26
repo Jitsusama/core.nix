@@ -146,6 +146,7 @@ it("a hosted screen draws its conversation while its extensions still bind", asy
     1,
     "the window was blank while its extensions bound",
   );
+  assert.equal(mode.ui.renderNow.mock.callCount(), 1, "the frame waited on the bind");
   assert.equal(mode.subscribeToAgent.mock.callCount(), 0, "it heard the agent before it bound");
   // An extension's session_start adds to the conversation while it binds.
   const note = entry("a session_start's note");
