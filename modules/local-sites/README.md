@@ -20,7 +20,11 @@ a session wrote is served under a name of its own,
 so its script runs in the documents' origin and can never act as one of
 those pages, which run only the scripts Nix served beside them. It reads
 what sits beside it, the kit and the home's rows among them, but no feed,
-and keeps its look apart from theirs, the cost of that.
+and keeps its look apart from theirs, the cost of that. A browser going to
+one of the sites' pages by another of their names, `localhost` or
+`127.0.0.1`, is sent on to the first, `sites.localhost`, since each name
+is an origin with its look and kept room apart; a tool's request, which
+names no destination, is answered where it asked.
 
 A live site is TypeScript on the kit, built by Nix: [`site.nix`][site]
 typechecks it at its strictest, runs its tests and compiles it beside its

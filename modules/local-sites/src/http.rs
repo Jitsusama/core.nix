@@ -217,8 +217,12 @@ fn serve_file(server: &Server, stream: &mut TcpStream, head: &Head, side: Side) 
     match files::find(&server.config, path) {
         Found::File(file, made) => match placed(side, made, files::kind_of(&file)) {
             Placed::Here => {
-                let told = told_for(head, made, side, files::kind_of(&file));
-                send_file(stream, head, &file, &told);
+                if let Some(to) = settled(&server.door, head) {
+                    moved(stream, &to);
+                } else {
+                    let told = told_for(head, made, side, files::kind_of(&file));
+                    send_file(stream, head, &file, &told);
+                }
             }
             Placed::Across => across(&server.door, stream, head, side),
             Placed::Refused => send(
@@ -316,6 +320,23 @@ fn across(door: &Door, stream: &mut TcpStream, head: &Head, side: Side) {
             b"a path starts at /\n",
         );
     };
+    moved(stream, &to);
+}
+
+/// Where a browser going to a file answered here under another of the
+/// sites' names goes on to: the first, so it keeps one set of their looks
+/// and rooms. A tool, which names no destination, and a page's own parts,
+/// which name theirs, are answered where they asked; a page that goes
+/// across goes straight to the documents' name.
+fn settled(door: &Door, head: &Head) -> Option<String> {
+    let going = head.fetch_dest.as_deref() == Some("document");
+    let host = head.host.as_deref().filter(|_| going)?;
+    door.settled(host, &head.path)
+}
+
+/// Sends the browser on to `to`, for a while, since the names and the
+/// places they lead may change with the server's config.
+fn moved(stream: &mut TcpStream, to: &str) {
     let told = Told {
         kind: "text/plain",
         body: b"",
@@ -325,7 +346,7 @@ fn across(door: &Door, stream: &mut TcpStream, head: &Head, side: Side) {
         stream,
         (307, "Temporary Redirect"),
         &told,
-        &[("Location", &to)],
+        &[("Location", to)],
     );
 }
 

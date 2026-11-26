@@ -184,7 +184,7 @@ fn started(folder: &Path, socket: &Path) -> (Child, u16) {
         .port();
     let config = json!({
         "listen": format!("127.0.0.1:{port}"),
-        "names": ["localhost"],
+        "names": ["localhost", "127.0.0.1"],
         "documentsName": DOCUMENTS,
         "documents": documents,
         "home": folder.join("home"),
@@ -525,6 +525,48 @@ fn a_page_goes_to_the_origin_of_whoever_made_it_and_nowhere_else() {
         let (status, headers, _) = asked(served.port, &sites, &format!("GET {whole}"), "");
         assert_eq!(status, "HTTP/1.1 400 Bad Request", "{whole} was taken");
         assert_eq!(header(&headers, "location"), None, "{whole} was sent on");
+    }
+}
+
+#[test]
+fn a_browser_at_another_of_the_sites_names_goes_on_to_the_first() {
+    let served = served("settled");
+    let (first, other) = (
+        format!("localhost:{}", served.port),
+        format!("127.0.0.1:{}", served.port),
+    );
+    let going = "Sec-Fetch-Dest: document\r\n";
+    let (status, headers, _) = asked(served.port, &other, "GET /kit/?at=2", going);
+    assert_eq!(
+        (status.as_str(), header(&headers, "location")),
+        (
+            "HTTP/1.1 307 Temporary Redirect",
+            Some(format!("http://{first}/kit/?at=2").as_str())
+        ),
+        "a browser going to a page by 127.0.0.1 should go on to localhost, path whole"
+    );
+    let (status, headers, _) = asked(served.port, &other, "GET /mycelium/", going);
+    assert_eq!(
+        (status.as_str(), header(&headers, "location")),
+        (
+            "HTTP/1.1 307 Temporary Redirect",
+            Some(format!("http://{DOCUMENTS}:{}/mycelium/", served.port).as_str())
+        ),
+        "a document asked by 127.0.0.1 should go straight to its own name"
+    );
+    // A tool names no destination, and a page's sheet names its own, so
+    // each is answered where it asked; and the first name is where to stay.
+    for (host, path, extra) in [
+        (&other, "/kit/", ""),
+        (&other, "/kit/theme.css", "Sec-Fetch-Dest: style\r\n"),
+        (&first, "/kit/", going),
+    ] {
+        let (status, headers, _) = asked(served.port, host, &format!("GET {path}"), extra);
+        assert_eq!(
+            (status.as_str(), header(&headers, "location")),
+            ("HTTP/1.1 200 OK", None),
+            "{path} at {host} with {extra:?} should be answered there"
+        );
     }
 }
 

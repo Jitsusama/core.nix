@@ -75,6 +75,18 @@ impl Door {
         };
         Some(format!("http://{name}:{}{path}", self.port))
     }
+
+    /// The address of `path` under the first of the sites' names, where
+    /// `host` names them by another: each name is an origin of its own, with
+    /// its own kept look and room, so a browser kept to one sees one set of
+    /// them whichever name a visit began at. None where `host` is the first
+    /// already, or names no page of the sites' own.
+    pub fn settled(&self, host: &str, path: &str) -> Option<String> {
+        let first = self.names.first()?;
+        let (name, _) = host.rsplit_once(':')?;
+        let other = self.side(host) == Some(Side::Sites) && !name.eq_ignore_ascii_case(first);
+        (other && path.starts_with('/')).then(|| format!("http://{first}:{}{path}", self.port))
+    }
 }
 
 #[cfg(test)]
@@ -138,6 +150,41 @@ mod tests {
             !door().admits("http://documents.sites.localhost:8484"),
             "a session's document"
         );
+    }
+
+    #[test]
+    fn another_of_the_sites_names_settles_on_the_first() {
+        assert_eq!(
+            door()
+                .settled("127.0.0.1:8484", "/notes/?at=2#end")
+                .as_deref(),
+            Some("http://sites.localhost:8484/notes/?at=2#end"),
+            "a visit by another of the sites' names should move to the first, path whole"
+        );
+        assert_eq!(
+            door()
+                .settled("127.0.0.1:8484", "//evil.example/")
+                .as_deref(),
+            Some("http://sites.localhost:8484//evil.example/"),
+            "a path that reads as another host should stay on this server"
+        );
+        assert_eq!(
+            door().settled("127.0.0.1:8484", "@evil.example/"),
+            None,
+            "only a path from the root should be taken"
+        );
+        for host in [
+            "sites.localhost:8484",
+            "SITES.localhost:8484",
+            "documents.sites.localhost:8484",
+            "127.0.0.1:9999",
+        ] {
+            assert_eq!(
+                door().settled(host, "/"),
+                None,
+                "{host} is the first name, or none of the sites', so stays"
+            );
+        }
     }
 
     #[test]
