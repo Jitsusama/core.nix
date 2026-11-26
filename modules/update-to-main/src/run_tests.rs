@@ -77,8 +77,7 @@ fn a_quiet_build_whose_pieces_work_runs_on_but_not_for_ever() {
     let worked = quiet("sleep 1.6; echo done", &working);
     assert!(
         worked.is_ok(),
-        "a quiet build whose pieces work was stopped: {:?}",
-        worked.err().map(|f| f.why)
+        "a quiet build whose pieces work was stopped: {worked:?}"
     );
     // Its pieces stopped working, so it's stopped at the next look.
     let started = Instant::now();
@@ -199,11 +198,10 @@ fn a_piece_building_may_stay_quiet_longer_but_waiting_for_one_may_not() {
         "building '/nix/store/a-x.drv' on 'ssh-ng://builder'...",
         "building '/nix/store/a-x.drv'...",
     ] {
-        let built = after(first);
+        let ran = after(first);
         assert!(
-            built.is_ok(),
-            "a quiet piece after {first:?} was stopped: {:?}",
-            built.err().map(|f| f.why)
+            ran.is_ok(),
+            "a quiet piece after {first:?} was stopped: {ran:?}"
         );
     }
     // Before any piece builds, a quiet build is one waiting on a
