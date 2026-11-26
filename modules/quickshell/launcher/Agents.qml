@@ -1145,8 +1145,12 @@ Provider {
     }
 
     // Joel has read what a session answered him.
+    // Only his own reading counts: a walk's Switch goes to the session but
+    // marks nothing read, and says nothing of it, since the walk did what it
+    // asked.
     function heard(address) {
-        rowsKind?.ask({ ask: "heard", address });
+        if (Sprouting.fromJoel(launcher))
+            rowsKind?.ask({ ask: "heard", address });
     }
 
     // What the foot says once words have gone to a session.
@@ -1356,6 +1360,8 @@ Provider {
     // Said `now`, it goes into the run under way after its tool rather than waiting for the
     // turn to end (modules/agents/src/acts.rs).
     function say(heard, text, now) {
+        if (!joelsOwn("talk"))
+            return;
         const said = Object.assign({ ask: "talk", address: heard.to, text },
             now ? { now: true } : {});
         if (rowsKind)
@@ -1510,6 +1516,8 @@ Provider {
     // frame (Joel, 2026-11-07: "it should show right away") until it's
     // parked no more, however it comes back, listening or at work.
     function wakeNow(session) {
+        if (!joelsOwn("wake"))
+            return;
         const key = `agent:${session.address}`;
         const id = String(session.presence?.session ?? "");
         const asleep = word("parked");
@@ -1551,6 +1559,8 @@ Provider {
     // `took`, where given, may take the answer as its own, saying true,
     // before it's said as the steer's.
     function actOn(session, id, fields, took) {
+        if (!joelsOwn(id))
+            return;
         const acts = rowsKind?.held?.[`row:agents:${session.address}`]?.row?.acts ?? [];
         const ask = acts.find(one => one.key === `verb:agent:${id}`)?.ask
             ?? { ask: id, address: session.address };
@@ -1561,6 +1571,23 @@ Provider {
         }
         rowsKind.ask(said, answer => took?.(answer)
             || Sessions.steered(session.address, answer, id));
+    }
+
+    // Whether an act the daemon does as Joel (its AS_JOEL, main.rs) may go
+    // now: only from his own Return, never a walk from outside (`qs ipc call
+    // launcher runWith`, `launcher do`), which any program of his may ask, an
+    // agent's among them. The daemon takes the shell's asks as his and can't
+    // tell the two apart, so this is their only guard and fails closed
+    // (Sprouting.fromJoel). Refused, the walk is told why, and only the
+    // journal says it, as a refused sprout's is: a notice would let any
+    // program put one on his screen.
+    function joelsOwn(act) {
+        if (Sprouting.fromJoel(launcher))
+            return true;
+        const outside = String((Words.of("agents").said ?? {}).actWalked ?? "");
+        console.info(`launcher: agents' ${act} wasn't done from a walk: ${outside}`);
+        launcher?.walkRefused?.(outside);
+        return false;
     }
 
     // Reopens a closed orchestrator, its row reading as listening until its
@@ -1643,6 +1670,9 @@ Provider {
                         provider.answerIn(current(), text, ret.answers);
                         return;
                     }
+                    // Refused, nothing's kept as said, so the Talk never shows it going.
+                    if (!provider.joelsOwn("talk"))
+                        return;
                     provider.actOn(session, "talk", { text });
                     talk.said(text);
                     provider.told = (Words.of("orchestrators").said ?? {}).sent
@@ -2719,10 +2749,12 @@ Provider {
             SessionRow.asks(session.presence)).map(id => sessionAct(session, id));
     }
     // Joel reads a landing, which the daemon keeps, and tells as its record
-    // moves; one read already is asked nothing.
+    // moves; one read already is asked nothing. Only his own reading counts:
+    // a walk that opens a landing reads nothing, and says nothing of it, as
+    // heard's Switch doesn't, since the walk did what it asked.
     function readLanding(key) {
         const one = landingRecord(key)?.landed;
-        if (!one || one.read !== null)
+        if (!one || one.read !== null || !Sprouting.fromJoel(launcher))
             return;
         rowsKind.ask({ ask: "read", keys: [key] });
     }
@@ -2831,7 +2863,7 @@ Provider {
     }
     function feedback(key, words) {
         const text = words.trim();
-        if (text === "")
+        if (text === "" || !joelsOwn("feedback"))
             return;
         const said = Words.of("agents:landed").said ?? {};
         const at = Date.now();

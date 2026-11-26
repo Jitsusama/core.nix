@@ -1069,6 +1069,37 @@ def test_a_sessions_drawer_beside_the_one_drawn_comes_with_its_key(shell: Shell)
     assert not short, f"{names[1]}'s row was drawn before its drawer: {short}"
 
 
+ACT_WALKED = "a session is steered only from your own Return in the launcher"
+"""What a walk from outside is told of a session's act the shell does only as Joel."""
+
+
+def test_a_sessions_acts_walked_from_outside_steer_nothing_and_say_why(shell: Shell) -> None:
+    """A walk from outside, as an agent's `launcher do` is, steers no session as Joel.
+
+    The agents daemon takes the shell's asks as Joel's and can't tell a walk from his Return,
+    so the shell refuses it (Agents.qml's joelsOwn): a sure Resume or Talk walked to a session
+    reaches none of its inbox, and the walk is told why.
+    """
+    fold = ["agents", ORCHESTRATING, FOLD]
+    inboxes = [STEER / "PAUSED", STEER / "LISTEN"]
+    before = {path for inbox in inboxes for path in inbox.glob("*.json")}
+    try:
+        for steps, words in (
+            ([*fold, "Paused Quest", "Resume"], ""),
+            ([*fold, "Listening Quest", "Talk"], "how goes it?"),
+        ):
+            walked = {"steps": steps, "words": words, "sure": True}
+            did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
+            assert did.get("refused") == ACT_WALKED, (steps, did)
+            shell.close_launcher()
+        time.sleep(LINK_QUIET)
+        after = {path for inbox in inboxes for path in inbox.glob("*.json")}
+        assert after == before, sorted(after - before)
+    finally:
+        for path in {path for inbox in inboxes for path in inbox.glob("*.json")} - before:
+            path.unlink()
+
+
 def test_a_paused_sessions_return_lands_on_resume_and_a_second_sends_it(shell: Shell) -> None:
     """A paused session's Return lands on Resume, which changes how it stands; a second resumes."""
     row = found(shell, "paused quest", "Paused Quest")
