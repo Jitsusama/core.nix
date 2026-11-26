@@ -498,7 +498,9 @@ def copy_a_password(desktop: Desktop) -> float:
     """Copy the console's password from Passwords by its Return, and give when, monotonic.
 
     The first step in asks 1Password, through op, and leads with it locked until it's
-    answered, so the place is opened again once it has, to stand as Joel finds it then.
+    answered, so the place is opened again once it has, to stand as Joel finds it then. Its
+    Copy the Password is chosen by name among the entry's acts, since the entry's own Return
+    types it instead while a window is under the launcher, as a terminal or a page is here.
     """
     machine = desktop.machine
     desktop.answer("passwords")
@@ -511,6 +513,9 @@ def copy_a_password(desktop: Desktop) -> float:
     desktop.as_account("qs ipc call launcher collection passwords")
     desktop.launcher_ready()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == ENTRY)
+    desktop.follow()
+    desktop.launcher_until(lambda shown: "Copy the Password" in shown["rows"])
+    desktop.down_to("Copy the Password")
     copied = time.monotonic()
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: not shown["open"])
