@@ -110,21 +110,16 @@ fn the_subvolumes_of_one_btrfs_pool_are_one_filesystem() {
     );
 }
 
-/// Any process the guard weighs for a freeze may hold a pipe open, and a
-/// clear may be asked of one, so a pipe's pool is its folder's, read
-/// without opening it: on Btrfs, opening it would wait for a writer and
-/// hold the guard until one came. Elsewhere no pool opens anything.
+/// Any process the guard weighs for a freeze may hold a pipe open, as
+/// one of its open files, which the guard reads through the process's
+/// link to it. A pipe holds none of its disk's bytes, so its pool is its
+/// own device, read without opening it, since on Btrfs an open would wait
+/// for a writer, and through the link the kernel follows rather than the
+/// name the link says, which may be gone or another namespace's.
 #[test]
-#[ignore = "needs TMPDIR on Btrfs, which the sandbox and the shell's tmpfs aren't: \
-            run with --ignored and TMPDIR on a Btrfs folder"]
-fn a_pipe_s_pool_is_its_folder_s_read_without_waiting_for_a_writer() {
+fn a_held_pipe_s_pool_is_its_own_device_read_without_waiting_for_a_writer() {
     use std::os::unix::ffi::OsStrExt;
     let dir = tempfile::tempdir().unwrap();
-    assert!(
-        on_btrfs(dir.path()),
-        "{} isn't on Btrfs, where a pipe's open would wait",
-        dir.path().display()
-    );
     let pipe = dir.path().join("pipe");
     let name = std::ffi::CString::new(pipe.as_os_str().as_bytes()).unwrap();
     // SAFETY: a plain system call on a name this test owns.
@@ -133,14 +128,24 @@ fn a_pipe_s_pool_is_its_folder_s_read_without_waiting_for_a_writer() {
         0,
         "no pipe made"
     );
+    let device = fs::metadata(&pipe).unwrap().dev();
+    // Opened for reading and writing, which Linux lets a pipe do at once.
+    let held = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&pipe)
+        .unwrap();
+    fs::remove_file(&pipe).unwrap();
+    let link = Path::new("/proc/self/fd").join(held.as_raw_fd().to_string());
     let (sent, heard) = std::sync::mpsc::channel();
-    std::thread::spawn(move || sent.send(pool(&pipe).ok()));
+    std::thread::spawn(move || sent.send(pool(&link).ok()));
     let answered = heard.recv_timeout(std::time::Duration::from_secs(5));
     assert_eq!(
         answered.ok(),
-        Some(Some(pool(dir.path()).unwrap())),
-        "a pipe's pool, read within five seconds, as its folder's"
+        Some(Some(device)),
+        "a held pipe's pool, read within five seconds through its link, as its own device"
     );
+    drop(held);
 }
 
 #[test]

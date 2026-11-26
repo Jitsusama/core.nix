@@ -693,16 +693,17 @@ fn mapped_path(line: &str) -> Option<PathBuf> {
 /// the pool, whose subvolumes each have a device number of their own,
 /// and elsewhere the device. A pool's number has its top bit set, which
 /// no device number has, so the two never meet. A pipe, a socket or a
-/// device lives in its folder's subvolume, so its pool is that of the
-/// folder it really lies in, past any link to it such as a process's open
-/// file, read without opening it: a pipe's open would wait for a writer,
-/// and a device's driver would be asked what only Btrfs answers. A pipe no
-/// folder holds is on no filesystem.
+/// device holds none of its disk's bytes, so its pool is its own device,
+/// read without opening it: a pipe's open would wait for a writer, and a
+/// device's driver would be asked what only Btrfs answers. Read past any
+/// link to it, such as a process's open file, as the kernel follows that
+/// link, rather than by the name the link says, which may be gone or name
+/// another mount namespace's file.
 pub fn pool(path: &Path) -> io::Result<u64> {
     let found = fs::metadata(path)?;
     let device = found.dev();
     if !(found.is_dir() || found.is_file()) {
-        return fs::canonicalize(path)?.parent().map_or(Ok(device), pool);
+        return Ok(device);
     }
     if !is_btrfs(&rustix::fs::statfs(path)?) {
         return Ok(device);
@@ -791,8 +792,8 @@ fn btrfs_id(path: &Path) -> io::Result<[u8; 16]> {
     use rustix::fs::OFlags;
     // Found without opening it, and opened only as a file or a folder, through
     // what was found, so nothing swapped in between is opened: a pipe's open
-    // would wait for a writer. A file a writer holds a lease on is opened as
-    // any open does, which breaks the lease within the kernel's lease time.
+    // would wait for a writer. A file a writer holds a lease on refuses the
+    // open at once, rather than holding the guard while the lease breaks.
     let none = rustix::fs::Mode::empty();
     let found = rustix::fs::open(path, OFlags::PATH | OFlags::CLOEXEC, none)?;
     let kind = rustix::fs::FileType::from_raw_mode(rustix::fs::fstat(&found)?.st_mode);
@@ -806,7 +807,7 @@ fn btrfs_id(path: &Path) -> io::Result<[u8; 16]> {
         ));
     }
     let again = format!("/proc/self/fd/{}", found.as_raw_fd());
-    let flags = OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOCTTY;
+    let flags = OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOCTTY | OFlags::NONBLOCK;
     let fd = rustix::fs::open(again, flags, none)?;
     // struct btrfs_ioctl_fs_info_args is 1024 bytes: max_id and
     // num_devices, then the 16-byte fsid.
