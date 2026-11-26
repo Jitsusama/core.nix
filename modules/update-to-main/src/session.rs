@@ -729,7 +729,10 @@ mod tests {
     fn a_status_left_empty_is_told_as_an_end_whose_number_was_lost() {
         let folder = tempfile::tempdir().unwrap();
         fs::write(folder.path().join(STATUS), "").unwrap();
-        let told = wait(folder.path(), "fetching", WITHIN, Duration::ZERO).unwrap_err();
+        // Long enough to look more than once, short enough that a wait
+        // which forgets the bound fails as a job that didn't end.
+        let within = Duration::from_secs(5);
+        let told = wait(folder.path(), "fetching", within, Duration::ZERO).unwrap_err();
         assert_eq!(
             told.why,
             "fetching in the login session ended, but its status stayed empty, as a write \
