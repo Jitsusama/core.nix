@@ -162,7 +162,7 @@ impl Searched {
                 }
             };
             let given = found_when(&answer, site);
-            let oldest = given.iter().map(|(_, at)| at.clone()).min();
+            let oldest = oldest(&given);
             for (thread, at) in given {
                 // One read since and unchanged holds nothing new, and one
                 // a search before gave is read already.
@@ -250,11 +250,25 @@ impl Searched {
     }
 }
 
+/// When the least lately changed of what a search `given` last changed,
+/// as GitHub stamps it; one that doesn't say is passed over, as an empty
+/// stamp sorts first and would ask what's older with no end. None where
+/// none says.
+fn oldest(given: &[(Thread, String)]) -> Option<String> {
+    given
+        .iter()
+        .map(|(_, at)| at)
+        .filter(|at| !at.is_empty())
+        .min()
+        .cloned()
+}
+
 #[cfg(test)]
 mod tests {
+    use pineapple::github::Thread;
     use pineapple::progress::Own;
 
-    use super::{OWN_LAG, Searched};
+    use super::{OWN_LAG, Searched, oldest};
 
     /// When the reader's rounds begin in these cases, in seconds.
     const SINCE: u64 = 100_000;
@@ -296,6 +310,31 @@ mod tests {
             searched.reach(),
             SINCE - 3 * OWN_LAG,
             "an hour before the search it held back, not an hour before the rounds begin"
+        );
+    }
+
+    #[test]
+    fn the_oldest_a_search_gave_passes_over_one_that_doesnt_say() {
+        let thread = |number| Thread {
+            site: "github".to_owned(),
+            repo: "example/shop".to_owned(),
+            number,
+            pull: false,
+        };
+        let given = [
+            (thread(1), "2026-11-26T05:00:00Z".to_owned()),
+            (thread(2), String::new()),
+            (thread(3), "2026-11-26T04:00:00Z".to_owned()),
+        ];
+        assert_eq!(
+            oldest(&given).as_deref(),
+            Some("2026-11-26T04:00:00Z"),
+            "the least lately changed that says when"
+        );
+        assert_eq!(
+            oldest(&given[1..2]),
+            None,
+            "none where none says, so the search before bounds it"
         );
     }
 
