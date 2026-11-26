@@ -10,16 +10,19 @@
 //! name an allowed host for a session with another, since it can't make
 //! that host's signature over the other's identifier.
 //!
-//! A host is one this agent is told of when `--hosts` names it, or when
-//! root's file names it as a builder lent now (src/lent.rs), read
-//! afresh at each binding; a session with a lent builder is marked so,
-//! since only the builders' key signs for one, and only as their account.
+//! A host is one this agent is told of when `--hosts` names it, when
+//! root's file names it as a builder lent now (src/lent.rs), or when
+//! gcloud's known hosts name it as an OS Login instance (`src/os_login.rs`),
+//! each file read afresh at each binding. A session is marked with which
+//! it reached, since only the builders' key signs for a lent builder, and
+//! only as their account, and only the OS Login key for an instance.
 
 use signature::Verifier;
 use ssh_key::public::KeyData;
 use ssh_key::{PublicKey, Signature};
 
 use crate::lent::Lent;
+use crate::os_login::OsLogin;
 use crate::said::{Refusal, Why};
 use crate::wire::Fields;
 
@@ -51,20 +54,29 @@ impl Hosts {
     }
 }
 
+/// How a host is one this agent is told of.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Reach {
+    /// `--hosts` names it.
+    Told,
+    /// It's a builder lent to the machine (src/lent.rs).
+    Lent,
+    /// It's an OS Login instance gcloud reached (`src/os_login.rs`).
+    OsLogin,
+}
+
 /// A session a client's ssh bound, with a host this agent is told of.
 struct Bound {
     session: Vec<u8>,
     host: KeyData,
-    /// Whether the host is a builder lent to the machine (src/lent.rs)
-    /// rather than one of the hosts in `--hosts`.
-    lent: bool,
+    reach: Reach,
 }
 
-/// A login the proxy may sign: the host of the session it's for, whether
-/// that host is a lent builder, and the account it logs in as.
+/// A login the proxy may sign: the host of the session it's for, how
+/// that host is one it's told of, and the account it logs in as.
 pub struct Permit<'a> {
     pub host: &'a KeyData,
-    pub lent: bool,
+    pub reach: Reach,
     pub user: Vec<u8>,
 }
 
@@ -79,8 +91,15 @@ pub struct Bindings {
 
 impl Bindings {
     /// Take a `session-bind@openssh.com` extension's fields, keeping the
-    /// session when its host is one in `hosts` and that host signed it.
-    pub fn bind(&mut self, hosts: &Hosts, lent: &Lent, fields: &mut Fields) -> Result<(), Refusal> {
+    /// session when its host is one in `hosts`, a builder `lent` lends or
+    /// an instance `os_login` knows, and that host signed it.
+    pub fn bind(
+        &mut self,
+        hosts: &Hosts,
+        lent: &Lent,
+        os_login: Option<&OsLogin>,
+        fields: &mut Fields,
+    ) -> Result<(), Refusal> {
         let host = fields.string()?;
         let session = fields.string()?;
         let signed = fields.string()?;
@@ -95,14 +114,18 @@ impl Bindings {
         }
         let host = PublicKey::from_bytes(host)
             .map_err(|error| format!("a host key it can't read: {error}"))?;
-        let told = hosts.allows(host.key_data());
-        let lends = !told && lent.lends(host.key_data());
-        if !told && !lends {
+        let reach = if hosts.allows(host.key_data()) {
+            Reach::Told
+        } else if lent.lends(host.key_data()) {
+            Reach::Lent
+        } else if os_login.is_some_and(|os_login| os_login.knows(host.key_data())) {
+            Reach::OsLogin
+        } else {
             return Err(
                 Refusal::new(Why::UntoldHost, "a session with a host it isn't told of")
                     .at(host.key_data()),
             );
-        }
+        };
         let signed = Signature::try_from(signed).map_err(|error| {
             Refusal::from(format!("a host signature it can't read: {error}")).at(host.key_data())
         })?;
@@ -112,7 +135,7 @@ impl Bindings {
         self.bound.push(Bound {
             session: session.to_vec(),
             host: host.key_data().clone(),
-            lent: lends,
+            reach,
         });
         Ok(())
     }
@@ -145,7 +168,7 @@ impl Bindings {
             login(&mut fields, key, &bound.host).map_err(|refusal| refusal.at(&bound.host))?;
         Ok(Permit {
             host: &bound.host,
-            lent: bound.lent,
+            reach: bound.reach,
             user,
         })
     }

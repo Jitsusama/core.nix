@@ -20,6 +20,8 @@ var where = {
   dotted: account + "session.slice/tuning.v2.service",
   undotted: account + "session.slice/tuningXv2.service",
   another: "/user.slice/user-1001.slice/user@1001.service/session.slice/pipewire.service",
+  anotherWanted:
+    "/user.slice/user-1001.slice/user@1001.service/session.slice/noise-cancelled.service",
   below: account + "session.slice/pipewire-pulse.service/sub",
   stray: account + "app.slice/run-u21.service",
   service: account + "session.slice/jobs-sorter.service",
@@ -69,8 +71,14 @@ function asking(id) {
 }
 
 var failed = 0;
+// A rule that throws is a case failing, said as one, not the run stopping.
 function expectOf(what, action, place, said, atTheSeat) {
-  var answer = polkit._runRules(action, asker(pids[place] || 99, atTheSeat));
+  var answer;
+  try {
+    answer = polkit._runRules(action, asker(pids[place] || 99, atTheSeat));
+  } catch (thrown) {
+    answer = "a throw (" + thrown + ")";
+  }
   if (answer !== said) {
     failed += 1;
     print("FAIL " + what + " from " + place + ": " + answer + ", not " + said);
@@ -136,14 +144,14 @@ for (var k = 0; k < agents.length; k += 1) {
 expect("another action", asking("org.example.another"), "pipewire", null);
 
 // A service one account's home-manager gives is a sound service only for
-// that account, so another asking by its name keeps rtkit's own answer,
-// while PipeWire's own is sound for every account, and an account named as
-// an object's own key is no account's.
+// that account, so another asking by its name from its own manager keeps
+// rtkit's own answer, while PipeWire's own is sound for every account, and
+// an account named as an object's own key is no account's.
 user = "another";
-expect("real time for another account", realTime, "wanted", null);
-expect("real time for another account", realTime, "pipewire", "yes");
+expect("real time for another account", realTime, "anotherWanted", null);
+expect("real time for another account", realTime, "another", "yes");
 user = "constructor";
-expect("real time for an object's key", realTime, "wanted", null);
+expect("real time for an object's key", realTime, "anotherWanted", null);
 user = "someone";
 
 // Each grant leaves its line, naming the process, what it runs and where

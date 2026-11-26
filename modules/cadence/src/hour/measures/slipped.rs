@@ -7,14 +7,17 @@ use super::*;
 
 const NOW: i64 = 1_794_700_000;
 
-fn at(seconds: i64) -> String {
+/// A moment, `seconds` since 1970, as the asks list writes one; the
+/// measures beside this one read their asks' times with it too.
+pub(super) fn at(seconds: i64) -> String {
     Timestamp::from_second(seconds)
         .map(|t| t.to_string())
         .unwrap_or_default()
 }
 
-/// The asks list `asks` would make, one line each.
-fn list(asks: &[Value]) -> String {
+/// The asks list `asks` would make, one line each; the measures beside
+/// this one write their asks lists with it too.
+pub(super) fn list(asks: &[Value]) -> String {
     asks.iter()
         .map(ToString::to_string)
         .collect::<Vec<_>>()

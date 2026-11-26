@@ -114,8 +114,9 @@ TO_THE_CORNER = -10000
 # How long a pointer resting on the cat takes to pet it, and how long its lean holds after the
 # pointer goes (modules/margin-cat/MarginCat.js), in seconds.
 PETS, PETTED = 0.3, 0.6
-# How long the cat must have sat still before a pointer coming onto it can pet it
-# (MarginCat.SETTLED, 200 ms), with a frame's margin on a loaded builder, in seconds.
+# How long the cat must have rested before a pointer coming onto it can pet it
+# (MarginCat.SETTLED, 200 ms), with a frame's margin on a loaded builder, in seconds, from
+# when it says its rest began, which niri's answer for its sitting frame decides.
 PETTED_FROM = 0.3
 # What a PNG's header says of niri's screenshot: eight bits a channel, in red, green and
 # blue, with alpha or without.
@@ -1525,7 +1526,8 @@ def seat(shell: Shell, window: Json, since: int) -> Json:
     and a pointer it comes to under as it walks never pets it (a builder, 2026-11-15). Its
     way there may climb from the floor to a top, which a builder drawing slowly took past
     the shell's usual wait to finish (2026-11-16: it sat a moment after the wait gave up), so
-    its two waits share as long as a cat is given to settle.
+    its two waits share as long as a cat is given to settle. Rested, too, since its rest begins
+    only once niri answers for its sitting frame, which a loaded builder holds up (#6382).
     """
 
     def still_on(said: str) -> bool:
@@ -1535,6 +1537,7 @@ def seat(shell: Shell, window: Json, since: int) -> Json:
             and at.get("window") == window["id"]
             and at.get("walk") is None
             and at.get("move") is None
+            and at.get("restBegun")
         )
 
     deadline = time.monotonic() + SETTLES_BY
@@ -1549,7 +1552,7 @@ def seat(shell: Shell, window: Json, since: int) -> Json:
 
 
 def settled(shell: Shell, window: Json, away_from: float, since: int) -> Json:
-    """Wait until the cat sits still on this window but not at `away_from` across; give where."""
+    """Wait until the cat rests on this window but not at `away_from` across; give where."""
 
     def still_elsewhere(said: str) -> bool:
         at = placed(said)
@@ -1559,6 +1562,7 @@ def settled(shell: Shell, window: Json, away_from: float, since: int) -> Json:
             and at["x"] != away_from
             and at.get("walk") is None
             and at.get("move") is None
+            and at.get("restBegun")
         )
 
     heard(shell, still_elsewhere, since)

@@ -56,7 +56,9 @@ import "SessionRow.js" as SessionRow
 import "SpendDrawer.js" as SpendDrawer
 import "Sprouting.js" as Sprouting
 import "StartsStopped.js" as StartsStopped
+import "TalkAnswers.js" as TalkAnswers
 import "TalkTo.js" as TalkTo
+import "Wheres.js" as Wheres
 import "Wanted.js" as Wanted
 
 Provider {
@@ -839,12 +841,11 @@ Provider {
             .replace("{machine}", session.machine).replace("{why}", why ?? "");
     }
 
-    // What the foot names a session by (SessionRow.footName): its row's
+    // What the foot names a session by (SessionRow.footNameOf): its row's
     // name, else its quest's title, its address only when neither is known.
     function footName(session) {
-        return SessionRow.footName(provider.standingOf(session.address)?.name,
-            session.presence ? Sessions.named(session.presence).title : "",
-            session.address);
+        return SessionRow.footNameOf(provider.standingOf(session.address)?.name, session,
+            presence => Sessions.named(presence).title);
     }
 
     // A session elsewhere that couldn't be joined, a hosted one with no
@@ -867,10 +868,13 @@ Provider {
                 Theme.alert]]);
         }
 
-        // Said by why it held, in words of its own (Sessions' unhosted).
+        // Said by why it held, in words of its own (Sessions' unhosted),
+        // plainly where it tells of a viewer opening or viewed, the alert
+        // kept for a press that didn't view (SessionRow.viewedWhy).
         function onUnhosted(session, why) {
             provider.launcher?.tellOnOpen([[provider.footName(session),
-                provider.elsewhere(why, session), why === "opening" ? Theme.text : Theme.alert]]);
+                provider.elsewhere(why, session),
+                SessionRow.viewedWhy(why) ? Theme.text : Theme.alert]]);
         }
 
         function onUnopened(session) {
@@ -1171,6 +1175,93 @@ Provider {
                     provider.heard(to);
             }
         };
+    }
+
+    // Joel's answers to what each session asks, given in its Talk, by its address in capitals,
+    // newest first (TalkAnswers.js's said), so the Talk shows each as sent, then answered.
+    property var answeredTo: ({})
+    // What each session's Talk last drew it asking that his words answer, by its address in
+    // capitals, null where it asked nothing he can answer: his Return answers what he was
+    // shown, not what's held by the time he presses it. Changed in place, so drawing it
+    // notifies nothing.
+    readonly property var answersShown: ({})
+
+    // What the session `session` asks Joel that its Talk answers (TalkAnswers.js's asked): its
+    // want's answers while it asks and isn't parked, as Now's rows read it (Now.qml's asking).
+    function answersOf(session) {
+        const asking = SessionRow.asks(session.presence) && !Sessions.parkedAs(session.address);
+        return { want: wantOf(session.address), asking };
+    }
+
+    // What a Talk to `session` shows before its talks: what it asks in full while it asks, first
+    // so it has the first exchange's eight lines (TalkSpoken.qml), then Joel's answers to it,
+    // newest first (Joel at 13:15 on 2026-11-24, of a cell asking him from the realm's map: "no
+    // feedback at all"), each in TalkLine.js's exchange shape.
+    function answerTalks(session) {
+        // A want that comes while the Talk is open draws it again (wantOf reads the held rows).
+        void rowsKind?.revision;
+        const to = String(session.address).toUpperCase();
+        const said = Words.of("verb:agent:talk").said ?? {};
+        const stages = Words.of("orchestrators:talk").said ?? {};
+        const words = Object.assign({}, said, { sent: stages.sent ?? "",
+            unsent: stages.failed ?? "" });
+        const days = { yesterday: String((Words.of("agents:line").said ?? {}).yesterday ?? ""),
+            date: (date, format) => Qt.formatDate(date, format) };
+        const dayOf = since => When.day(since, Date.now(), days);
+        const working = stateOf(session) === "working";
+        const now = answersOf(session);
+        const asked = TalkAnswers.question(now, session.title, words, dayOf);
+        const answers = TalkAnswers.asked(now.want, now.asking);
+        answersShown[to] = answers;
+        // While it asks, only answers to what it asks show; asking what he can't answer here,
+        // none do.
+        const want = now.asking ? answers?.want ?? null : "";
+        return (asked === null ? [] : [asked]).concat(TalkAnswers
+            .standing(answeredTo[to] ?? [], want, Date.now())
+            .map(one => TalkAnswers.shown(one, working, words, dayOf)));
+    }
+
+    // Joel's `text` to `session`, which asks `answers`, answering it: shown sent at once, then
+    // answered once the node has put it in the session's inbox, or why not (answerWant), naming
+    // the want he was shown so a newer ask is never answered by it. His words stay kept under
+    // its address, as a talk's do until delivered (Drafts.qml), so the field gives them back
+    // where they never went while their ask stands, the foot saying why. Words naming none of
+    // the choices it takes only are let go, the foot saying what it takes, so they're never
+    // given back to answer a later ask.
+    function answerIn(session, text, answers) {
+        const to = String(session.address).toUpperCase();
+        const said = Words.of("verb:agent:talk").said ?? {};
+        const answer = TalkAnswers.answerOf(text, answers);
+        if (answer === null) {
+            told = TalkAnswers.filled(said.takesOnly ?? "", {
+                choices: answers.choices.map(one => String(one.label ?? one.value))
+                    .join(" \u00b7 ") });
+            launcher?.drafts?.settle({ [to]: [{ words: text.trim(), stage: "answered" }] });
+            // A walk from a terminal is told so, as nothing went (Launcher.qml's walkedRun).
+            launcher?.walkRefused?.(told);
+            return;
+        }
+        const one = TalkAnswers.said(answer.label, Date.now(), answers.want);
+        const keep = changed => {
+            answeredTo = Object.assign({}, answeredTo,
+                { [to]: TalkAnswers.kept(answeredTo[to], changed) });
+        };
+        keep(one);
+        told = TalkAnswers.filled((Words.of("orchestrators").said ?? {}).sent ?? "",
+            { name: session.title });
+        const fields = Object.assign({ want: answers.want }, answer.value !== undefined
+            ? { value: answer.value } : { other: answer.other });
+        answerWant(session.address, fields, (put, why) => {
+            keep(TalkAnswers.put(one, put, why));
+            // His words stay only for the ask they were meant for: once it asks something else,
+            // given back they'd answer the new ask with words for the old one, so they show
+            // only as not delivered, and the foot says why.
+            const now = answersOf(sessionAt(session.address) ?? session);
+            if (put || TalkAnswers.asked(now.want, now.asking)?.want !== answers.want)
+                launcher?.drafts?.settle({ [to]: [{ words: text.trim(), stage: "answered" }] });
+            if (!put && (why ?? "") !== "")
+                told = why;
+        });
     }
 
     // Who hears a line said from anywhere (TalkLine.qml), `{ to, name }`: the one standing at
@@ -1480,18 +1571,44 @@ Provider {
         const steered = what => () => provider.actOn(current(), what);
         const talked = () => {
             const talk = provider.talking(session.address, session.title);
+            const talkWords = Words.of("verb:agent:talk");
+            // While it asks Joel something, Return answers it, as its inbox goes unread until
+            // its ask ends, and the Talk shows what it asks first (answerTalks).
+            const asks = () => {
+                const now = provider.answersOf(current());
+                return TalkAnswers.asked(now.want, now.asking);
+            };
+            const draft = String(session.address).toUpperCase();
             return act("talk", {
-                ask: Words.of("verb:agent:talk").ask ?? "",
+                ask: asks() !== null ? talkWords.said?.answerAsk ?? "" : talkWords.ask ?? "",
                 chip: session.title,
                 // Kept by whom it goes to until its talk is delivered.
-                draft: String(session.address).toUpperCase(),
+                draft,
                 state: () => provider.told,
-                talks: talk.talks,
+                talks: () => provider.answerTalks(current()).concat(talk.talks()),
                 heard: talk.heard,
                 given: words => {
                     const text = words.trim();
                     if (text === "")
                         return;
+                    // What the Talk showed it asking when he pressed Return, while that Talk is
+                    // the one held; a walk from a terminal, which draws none, answers what it
+                    // asks now.
+                    const held = provider.launcher?.asking?.draft === draft
+                        && draft in provider.answersShown;
+                    const answers = held ? provider.answersShown[draft] : asks();
+                    // An answer goes as Joel's, so only his own Return gives one: a walk from
+                    // outside, which any program of his may ask, is refused (Sprouting.fromJoel).
+                    if (answers !== null && !Sprouting.fromJoel(provider.launcher)) {
+                        provider.told = TalkAnswers.filled(talkWords.said?.answerWalked ?? "",
+                            { name: session.title });
+                        provider.launcher?.walkRefused?.(provider.told);
+                        return;
+                    }
+                    if (answers !== null) {
+                        provider.answerIn(current(), text, answers);
+                        return;
+                    }
                     provider.actOn(session, "talk", { text });
                     talk.said(text);
                     provider.told = (Words.of("orchestrators").said ?? {}).sent
@@ -1659,8 +1776,9 @@ Provider {
         const words = Words.of("agents:start-new-work");
         const inside = () => [newWorkAct("link", "",
             Words.name("verb:agents:start-new-work:link"))]
-            .concat((source("quests")?.folders() ?? []).map(one => newWorkAct("in", one.folder,
-                Words.name("verb:agents:start-new-work:in").replace("{folder}", one.name))));
+            .concat(startWheres().map(one => newWorkAct("in", one.folder,
+                Words.name("verb:agents:start-new-work:in").replace("{folder}", () => one.name),
+                one.start)));
         return Object.assign(thingRow({
             key: "agents:start-new-work",
             name: Words.name("agents:start-new-work"),
@@ -1677,9 +1795,14 @@ Provider {
         });
     }
 
-    // One of Start New Work's acts: `id` link or in, sprouting in `folder`
-    // where one is given, as `name`.
-    function newWorkAct(id, folder, name) {
+    // One of Start New Work's acts: `id` link or in, at `folder` where one
+    // is given, as `name`, sprouting in `start`, the folder unless said.
+    // Keyed by its folder, never its start, so a list of places landing
+    // while Joel is on a row that changes how it starts (a quest's folder
+    // found to be a zone) leaves him on the same row, not a dimmed one. Its
+    // start is read again at Return, so a field entered before the list
+    // landed starts as the row now says.
+    function newWorkAct(id, folder, name, start) {
         const key = folder === "" ? `verb:agents:start-new-work:${id}`
             : `verb:agents:start-new-work:${id}:${folder}`;
         return thing({
@@ -1693,7 +1816,8 @@ Provider {
             // one carried here (askWhere).
             offered: () => id === "in" ? provider.sproutCarried : "",
             state: () => provider.sproutSaid[key] ?? "",
-            given: said => provider.sprout(key, said, folder)
+            given: said => provider.sprout(key, said, start === undefined ? folder
+                : Wheres.startAt(startWheres(), folder, start))
         });
     }
 
@@ -1970,8 +2094,7 @@ Provider {
     // stepped back (Sprouting.stepsBack). Whether it did.
     function askWhere(key) {
         const launcher = provider.launcher ?? null;
-        const folders = (source("quests")?.folders() ?? []).length;
-        if (!Sprouting.stepsBack(launcher, key, sproutGiven.letters, folders))
+        if (!Sprouting.stepsBack(launcher, key, sproutGiven.letters, startWheres().length))
             return false;
         sproutCarried = sproutGiven.words;
         // A link's From a Link (newWorkFor) opens over Agents' rows, not Start New Work's, so
@@ -1982,6 +2105,42 @@ Provider {
             launcher.enter(startNewWorkMade());
         console.info("launcher: new work wanted a repository; asking where it starts");
         return true;
+    }
+    // Where Start New Work can begin, as the realm's node last listed them
+    // (the agents daemon's places.rs), asked again each time the launcher
+    // opens, so a zone or checkout made since is there by the next, and read
+    // once as each list comes (Wheres.listable). None until it first
+    // answers, which leaves the quests' folders; where it can't, the last
+    // list stays, why journalled once as each new why comes rather than at
+    // every opening (Wheres.heard). One ask is out at a time, so a node
+    // that's stuck isn't asked again at each opening; the daemon answers
+    // every ask, with none when it goes (Daemon.qml's gone). A new list
+    // says the rows changed, so one landing while Joel is inside Start New
+    // Work is drawn there and then, not at the next opening.
+    property var startPlaces: []
+    property string startPlacesUnlisted: ""
+    property bool startPlacesAsking: false
+    function askPlaces() {
+        const daemon = rowsKind ?? null;
+        if (daemon === null || provider.startPlacesAsking)
+            return;
+        provider.startPlacesAsking = true;
+        daemon.ask({ ask: "places" }, answer => {
+            provider.startPlacesAsking = false;
+            const heard = Wheres.heard(provider.startPlacesUnlisted, answer);
+            if (heard.places !== null && Wheres.differs(provider.startPlaces, heard.places)) {
+                provider.startPlaces = heard.places;
+                provider.changed();
+            }
+            provider.startPlacesUnlisted = heard.unlisted;
+            if (heard.journal !== null)
+                console.info(`launcher: no places to start in: ${heard.journal}`);
+        });
+    }
+    // Start New Work's In rows (Wheres.wheres): his quests' folders, then the
+    // node's places, a big repository's zones among them.
+    function startWheres() {
+        return Wheres.wheres(source("quests")?.folders() ?? [], startPlaces);
     }
     // Tells Joel how starts ended: in the foot while the card is up, and
     // as a notice while it's shut or if it shuts soon after the foot said
@@ -2216,6 +2375,8 @@ Provider {
         function onOpenChanged() {
             provider.wrapAhead();
             provider.wrapForTyping();
+            if (provider.launcher.open)
+                provider.askPlaces();
             // Shut, no drawer shows, so none is watched.
             if (!provider.launcher.open) {
                 provider.drawerWanted = "";
@@ -2402,7 +2563,8 @@ Provider {
             then(Sessions.steered(address, null));
             return;
         }
-        rowsKind.ask(said, reply => then(Sessions.steered(address, reply)));
+        rowsKind.ask(said, reply => then(Sessions.steered(address, reply),
+            String(reply?.error?.message ?? "")));
     }
 
     property string fedBack: ""

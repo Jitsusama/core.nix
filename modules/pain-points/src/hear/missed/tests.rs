@@ -180,6 +180,7 @@ fn only_a_named_owner_the_routes_allow_owns_a_miss() {
         fallback: None,
         ledgers: Some(keeper.into()),
         never: vec!["VOID01".into()],
+        told: Vec::new(),
     };
     // Blank, spaces alone, refused in another case, and padded.
     let ledgers = lines(&[("a", ""), ("b", "   "), ("c", "void01"), ("d", " Y2YBTS ")]);

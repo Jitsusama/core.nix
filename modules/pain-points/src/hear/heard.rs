@@ -63,6 +63,11 @@ pub struct Heard {
     /// How many sends of it the node never took.
     #[serde(default)]
     pub tries: u32,
+    /// When a note to the ledgers' keeper of it, sent to its owner, was
+    /// first held for a node that wasn't answering: it goes in the next
+    /// run's note.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unnoted_since: Option<i64>,
     /// The peer that took it up, by answering or passing on its question,
     /// or the session's own cell, by answering him where he said it.
     #[serde(default)]
@@ -186,6 +191,7 @@ mod tests {
             to: None,
             routed_at: None,
             tries: 0,
+            unnoted_since: None,
             taken_by: None,
             answered_at: None,
             closed_by: None,

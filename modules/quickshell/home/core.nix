@@ -3,6 +3,7 @@
 [
   "shell.qml"
   "KeyNames.js"
+  "KeyActs.js"
   "QueryKeys.js"
   "CommandLine.qml"
   "Editing.js"
@@ -62,6 +63,7 @@
   "launcher/Flash.js"
   "launcher/Makings.js"
   "launcher/Presented.js"
+  "launcher/KeysSaid.js"
   "launcher/ChangesPresented.js"
   "launcher/Spots.js"
   "launcher/Wanted.js"

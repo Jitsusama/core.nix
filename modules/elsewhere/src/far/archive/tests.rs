@@ -1,4 +1,4 @@
-use super::{CLOSED, Part, archived, at_most, record, taken, write};
+use super::{CLOSE, CLOSED, Part, archived, at_most, record, split, taken, write, writing};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
@@ -16,6 +16,31 @@ fn unpacked(from: &Path, parts: &[Part], into: &Path) {
             .unwrap();
         assert!(status.success(), "tar couldn't unpack {}", part.name);
     }
+}
+
+#[test]
+fn a_link_left_at_an_archive_s_name_is_never_written_through() {
+    let root = crate::far::tests::scratch("archive-left-link");
+    std::fs::create_dir_all(root.join("tree")).unwrap();
+    std::fs::write(root.join("tree/a"), "a").unwrap();
+    std::fs::write(root.join("outside"), "kept").unwrap();
+    let parts = root.join("parts");
+    std::fs::create_dir_all(&parts).unwrap();
+    for name in [writing(0), "0.tar".to_owned()] {
+        std::os::unix::fs::symlink(root.join("outside"), parts.join(name)).unwrap();
+    }
+    let written = write(&root.join("tree"), ["a"], &parts, 1 << 20, u64::MAX).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(root.join("outside")).unwrap(),
+        "kept",
+        "an archive was written through a link at its name"
+    );
+    let archive = std::fs::symlink_metadata(parts.join(&written[0].name)).unwrap();
+    assert!(
+        archive.is_file(),
+        "the archive isn't a plain file of its own"
+    );
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 #[test]
@@ -135,12 +160,13 @@ fn what_a_file_takes_is_its_entry_and_the_archives_stay_within_their_bound() {
     std::fs::create_dir_all(&parts).unwrap();
     let takes = |path: &str, size: usize| taken(path, u64::try_from(size).unwrap());
     // Alone, each file's archive is what it takes and a close, a pax
-    // header and all.
+    // header and all, as written on the disk, not only as answered.
     for (path, size) in files {
         let alone = write(&tree, [path], &parts, 1 << 20, u64::MAX).unwrap();
+        let on_disk = std::fs::metadata(parts.join(&alone[0].name)).unwrap().len();
         assert_eq!(
-            alone[0].size,
-            takes(path, size) + CLOSED,
+            (alone[0].size, on_disk),
+            (takes(path, size) + CLOSED, takes(path, size) + CLOSED),
             "what {path} takes isn't its entry"
         );
     }
@@ -318,9 +344,19 @@ fn a_file_that_would_take_the_archives_past_their_total_is_refused_unwritten() {
             "a third archive past {all} bytes in all wasn't refused: {refused:?}"
         );
         assert!(
-            !parts.join("2.tar").exists(),
+            !parts.join("2.tar").exists() && !parts.join(writing(2)).exists(),
             "the archive past the total was begun before it was refused"
         );
+        // What a share would carry: only closed archives, never the one
+        // still open when c was refused.
+        for part in std::fs::read_dir(&parts).unwrap() {
+            let name = part.unwrap().file_name().to_string_lossy().into_owned();
+            let data = std::fs::read(parts.join(&name)).unwrap();
+            assert!(
+                name.starts_with('.') || data.ends_with(&[0; CLOSE]),
+                "{name} lay under its own name unclosed, in all {all}"
+            );
+        }
         let lying: u64 = std::fs::read_dir(&parts)
             .unwrap()
             .map(|part| part.unwrap().metadata().unwrap().len())
@@ -384,6 +420,64 @@ fn a_file_whose_folder_is_now_a_link_is_refused_not_read_through_it() {
         write(&root, ["outside/b/f"], &parts, 1 << 20, u64::MAX).is_ok(),
         "a file under the tree's own folders was refused"
     );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_path_at_ustar_s_edges_is_split_where_it_fits_and_given_a_pax_record_where_not() {
+    let (p155, p156) = ("p".repeat(155), "p".repeat(156));
+    let (n100, n101) = ("n".repeat(100), "n".repeat(101));
+    // Each with the prefix and name ustar's header holds it in, or none
+    // where a pax record must hold it: at each field's length and a byte
+    // past it, and with two folders, split at the one that fits.
+    let edges = [
+        (n100.clone(), Some((String::new(), n100.clone()))),
+        (n101.clone(), None),
+        (format!("{p155}/{n100}"), Some((p155, n100.clone()))),
+        (format!("{p156}/{n100}"), None),
+        (format!("d/{n101}"), None),
+        (
+            format!("{}/{}/{n100}", "p".repeat(100), "q".repeat(54)),
+            Some((format!("{}/{}", "p".repeat(100), "q".repeat(54)), n100)),
+        ),
+    ];
+    let root = crate::far::tests::scratch("archive-edges");
+    let (tree, parts) = (root.join("tree"), root.join("parts"));
+    std::fs::create_dir_all(&parts).unwrap();
+    for (path, held) in &edges {
+        let at = tree.join(path);
+        std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+        std::fs::write(&at, path.len().to_string()).unwrap();
+        let found = split(path).map(|(prefix, name)| (prefix.to_owned(), name.to_owned()));
+        assert_eq!(&found, held, "a {} byte path was split wrongly", path.len());
+        let written = write(&tree, [path.as_str()], &parts, 1 << 20, u64::MAX).unwrap();
+        let archive = std::fs::read(parts.join(&written[0].name)).unwrap();
+        // Where it is split, its one header holds the two as they are.
+        if let Some((prefix, name)) = held {
+            let field = |bytes: &[u8]| bytes.split(|&byte| byte == 0).next().unwrap().to_vec();
+            assert_eq!(
+                (field(&archive[345..500]), field(&archive[..100])),
+                (prefix.as_bytes().to_vec(), name.as_bytes().to_vec()),
+                "a {} byte path's header doesn't hold its split",
+                path.len()
+            );
+        }
+        assert_eq!(
+            archive.len() as u64,
+            taken(path, path.len().to_string().len() as u64) + CLOSED,
+            "a {} byte path's archive isn't what it takes",
+            path.len()
+        );
+        let into = root.join("out");
+        unpacked(&parts, &written, &into);
+        assert_eq!(
+            std::fs::read_to_string(into.join(path)).ok(),
+            Some(path.len().to_string()),
+            "a {} byte path didn't come out of the system's tar as it went in",
+            path.len()
+        );
+        let _ = std::fs::remove_dir_all(&into);
+    }
     let _ = std::fs::remove_dir_all(&root);
 }
 

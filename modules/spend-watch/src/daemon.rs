@@ -42,6 +42,21 @@ enum Wake {
 
 /// The fewest seconds between passes, while things keep changing.
 const BUSY: Duration = Duration::from_secs(30);
+/// How many times as long as a pass took the next one waits, at the
+/// least. A pass reads its hours from the history, and once the machine has
+/// dropped them from memory, as it did within 30 seconds on 24 November,
+/// each pass reads them from the disk again: about 60 MB, in passes of 8 to
+/// 40 seconds 30 seconds apart, reading 1.3 to 3.6 MB a second. Waiting four times as
+/// long keeps the daemon reading for a fifth of the time while a pass takes
+/// 7.5 to 30 seconds, and a quicker pass keeps the 30 seconds.
+const PACE: u32 = 4;
+/// The most a pass waits while things keep changing, however slow the last
+/// was. Warnings are told only in a pass, so this bounds how late one comes
+/// once a pass ends. `budgets.json` is stamped as a pass starts, so before
+/// the next replaces it, it ages by both passes and the wait between: for
+/// passes up to this long, inside the `FAILING` the command line trusts it
+/// for while the daemon listens.
+const BUSIEST: Duration = Duration::from_secs(120);
 /// The most, while nothing does: the clocks and the day move regardless.
 const IDLE: Duration = Duration::from_secs(300);
 const HEARTBEAT: Duration = Duration::from_secs(30);
@@ -52,7 +67,8 @@ const HARNESS: Duration = Duration::from_secs(300);
 const REFRESH: Duration = Duration::from_secs(10);
 /// How long the heartbeat goes on without a pass that worked: past this,
 /// the shell is let see a watch that isn't working as one that stopped.
-const FAILING: Duration = Duration::from_mins(2 * 5 + 1);
+/// The command line trusts the last pass's `budgets.json` as long.
+pub(crate) const FAILING: Duration = Duration::from_mins(2 * 5 + 1);
 
 struct Feed {
     config: FeedConfig,
@@ -483,7 +499,9 @@ fn answer(stream: &UnixStream, wake: &Sender<Wake>, hub: &Hub) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
     let mut reader = BufReader::new(stream);
     let mut asked = String::new();
-    if reader.read_line(&mut asked).is_err() {
+    // A connection that says nothing asks nothing: the command line opens
+    // one only to learn the daemon is still there.
+    if matches!(reader.read_line(&mut asked), Err(_) | Ok(0)) {
         return;
     }
     if asked.trim_start().starts_with('{') {
@@ -933,6 +951,7 @@ pub fn run(config: &Config) -> Result<(), String> {
         .checked_sub(IDLE)
         .unwrap_or_else(Instant::now);
     let mut last_harness = Instant::now();
+    let mut took = Duration::ZERO;
     let mut dirty = true;
     let mut refresh = Refresh {
         waiting: Vec::new(),
@@ -952,10 +971,10 @@ pub fn run(config: &Config) -> Result<(), String> {
             dirty = true;
         }
         let answered = refresh.owed.is_empty() || Instant::now() >= refresh.until;
-        let due = (dirty && last_pass.elapsed() >= BUSY)
-            || last_pass.elapsed() >= IDLE
+        let due = until_pass(dirty, took, last_pass.elapsed()).is_zero()
             || (!refresh.waiting.is_empty() && answered);
         if due {
+            let began = Instant::now();
             read_logs(&history, config, &mut walks, watches.as_deref());
             match pass(
                 &history,
@@ -970,6 +989,7 @@ pub fn run(config: &Config) -> Result<(), String> {
                 Err(error) => eprintln!("a pass failed: {error}"),
             }
             last_pass = Instant::now();
+            took = timed(began);
             dirty = false;
             refresh.owed.clear();
             for reply in refresh.waiting.drain(..) {
@@ -982,7 +1002,7 @@ pub fn run(config: &Config) -> Result<(), String> {
             beat(config, status, now);
             *at = Instant::now();
         }
-        let timeout = wait_for(&feeds, &refresh, dirty, last_pass);
+        let timeout = wait_for(&feeds, &refresh, dirty, last_pass, took);
         let first = match inbox.recv_timeout(timeout) {
             Ok(first) => Some(first),
             Err(mpsc::RecvTimeoutError::Timeout) => None,
@@ -1091,14 +1111,44 @@ fn repace(history: &History, feeds: &mut [Feed], pace: Pace, now: f64) -> Pace {
     paced
 }
 
+/// How long the pass that `began` took, journalled when it ran past the
+/// busiest wait, the most the pacing promises a warning is late by.
+fn timed(began: Instant) -> Duration {
+    let took = began.elapsed();
+    if took > BUSIEST {
+        eprintln!(
+            "a pass took {:.1} s, past the {} s a busy wait is capped at, so its warnings came late",
+            took.as_secs_f64(),
+            BUSIEST.as_secs()
+        );
+    }
+    took
+}
+
+/// How long until the next pass is due, `since` the last one ended after
+/// taking `took`: while the logs grow, the busy pace or `PACE` times as
+/// long as it took, at most `BUSIEST`; while they don't, the idle wait.
+/// The loop asks this both to start a pass and to sleep until one, so the
+/// two can't disagree and spin.
+fn until_pass(dirty: bool, took: Duration, since: Duration) -> Duration {
+    let between = if dirty {
+        took.saturating_mul(PACE).clamp(BUSY, BUSIEST)
+    } else {
+        IDLE
+    };
+    between.saturating_sub(since)
+}
+
 /// How long to wait for something, but never past when a pass or a feed
 /// is due, or a refresh has waited long enough.
-fn wait_for(feeds: &[Feed], refresh: &Refresh, dirty: bool, last_pass: Instant) -> Duration {
-    let until_pass = if dirty {
-        BUSY.saturating_sub(last_pass.elapsed())
-    } else {
-        IDLE.saturating_sub(last_pass.elapsed())
-    };
+fn wait_for(
+    feeds: &[Feed],
+    refresh: &Refresh,
+    dirty: bool,
+    last_pass: Instant,
+    took: Duration,
+) -> Duration {
+    let until_pass = until_pass(dirty, took, last_pass.elapsed());
     let until_feed = feeds
         .iter()
         .filter(|feed| feed.child.is_none())
@@ -1518,6 +1568,87 @@ mod tests {
         );
         // With no cap watched, the meter is all there is to go on.
         assert_eq!(heard(&findings, None)[1].severity, Severity::Warning);
+    }
+
+    // A quick pass keeps the busy pace, a slow one waits four times as
+    // long as it took, none waits past two minutes while the logs grow,
+    // and a quiet spell waits the idle five whatever the last pass took.
+    #[test]
+    fn a_slow_pass_waits_longer_before_the_next() {
+        let after = |took: f64| until_pass(true, Duration::from_secs_f64(took), Duration::ZERO);
+        assert_eq!(after(0.0), BUSY, "the first pass waited past the busy pace");
+        assert_eq!(after(7.0), BUSY, "a pass under the pace's edge moved it");
+        assert_eq!(
+            after(8.0),
+            Duration::from_secs(32),
+            "a pass over the pace's edge kept the busy pace"
+        );
+        assert_eq!(
+            after(16.0),
+            Duration::from_secs(64),
+            "a slow pass didn't wait four times as long"
+        );
+        assert_eq!(
+            after(29.0),
+            Duration::from_secs(116),
+            "a pass under the cap's edge was capped"
+        );
+        assert_eq!(after(31.0), BUSIEST, "a pass over the cap's edge missed it");
+        assert_eq!(
+            after(600.0),
+            BUSIEST,
+            "a very slow pass waited past the cap"
+        );
+        assert_eq!(
+            until_pass(true, Duration::MAX, Duration::ZERO),
+            BUSIEST,
+            "the longest pass there can be didn't saturate to the cap"
+        );
+        assert_eq!(
+            until_pass(false, Duration::from_secs(600), Duration::ZERO),
+            IDLE,
+            "a quiet spell didn't wait the idle pace"
+        );
+    }
+
+    // `budgets.json` is stamped as a pass starts, so it ages by that pass,
+    // the wait and the pass that replaces it. For every pass up to the cap,
+    // busy or quiet, that stays inside the time the command line trusts it,
+    // with a minute to spare for the loop's own work between passes.
+    #[test]
+    fn the_budgets_last_from_one_pass_to_the_next() {
+        let spare = Duration::from_mins(1);
+        for seconds in 0..=BUSIEST.as_secs() {
+            let took = Duration::from_secs(seconds);
+            for dirty in [true, false] {
+                let oldest = took * 2 + until_pass(dirty, took, Duration::ZERO) + spare;
+                assert!(
+                    oldest.as_secs_f64() <= crate::cli::WRITTEN_LASTS,
+                    "passes of {seconds} s left budgets.json {oldest:?} old, busy: {dirty}"
+                );
+            }
+        }
+    }
+
+    // The time left shrinks as the wait goes by and stops at nothing, so a
+    // pass falls due once its whole wait has gone by, and stays due however
+    // late the loop comes to ask.
+    #[test]
+    fn a_pass_falls_due_as_its_wait_runs_out() {
+        let took = Duration::from_secs(16);
+        assert_eq!(
+            until_pass(true, took, Duration::from_secs(60)),
+            Duration::from_secs(4),
+            "the wait left didn't count down"
+        );
+        assert!(
+            until_pass(true, took, Duration::from_secs(64)).is_zero(),
+            "a pass wasn't due when its wait ran out"
+        );
+        assert!(
+            until_pass(true, took, Duration::from_mins(15)).is_zero(),
+            "a pass long overdue wasn't due"
+        );
     }
 
     // Five seconds first, as the contract says, doubling while a feed

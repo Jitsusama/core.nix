@@ -54,8 +54,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use inotify::{Inotify, WatchMask};
 use onepassword_manager::{
-    LET_IN, Leave, OPENING, Stands, UNASKED, account, entry, in_account, lets_its_command_in,
-    passwords, period, reason, settings_file, value,
+    LET_IN, Leave, OPENING, Stands, UNASKED, account, around_the_app, entry, in_account,
+    lets_its_command_in, passwords, period, reason, settings_file, value,
 };
 use serde_json::{Map, Value, json};
 use terminal_kit::{Exit, Failure, Help, flags};
@@ -741,7 +741,17 @@ impl Manager {
             stands: true,
             reason: format!("couldn't run 1Password's command: {why}"),
         };
-        let mut child = Command::new(&self.op)
+        // op reaches 1Password only through its app's desktop integration,
+        // so 1Password asks Joel before a fresh process reads a secret: a
+        // service account's token, a Connect server's or a signed-in
+        // session's would go round that, so none reaches op from here.
+        let mut command = Command::new(&self.op);
+        for (name, _) in std::env::vars_os() {
+            if around_the_app(&name.to_string_lossy()) {
+                command.env_remove(name);
+            }
+        }
+        let mut child = command
             .args(args)
             .stdin(if input.is_some() {
                 Stdio::piped()

@@ -26,6 +26,9 @@
 //! Joel's row says so ([`crate::ears::Through`]), and that span is never
 //! read. So it's said first in a row of its own ([`missed`]), kept a week
 //! in a file the reader's stop leaves, until Joel says he has looked. A
+//! busy stretch reads on each round, each time past a span of its own, so
+//! a search's spans within [`MEET`] of one another are said as one row,
+//! as parts of it where a read stretch lies between them. A
 //! reader in shadow keeps both rows in its own folder, which For You never
 //! reads, so they're its record until it writes where For You reads.
 
@@ -471,6 +474,13 @@ const MISSED_FOR: u64 = 7 * 24 * 60 * 60 * 1000;
 /// What names each row saying what was never read.
 const MISSED: &str = "pineapple-slack-missed-";
 
+/// How near one search's spans never read come, in milliseconds, to be
+/// said in one row: ten minutes, as long as the reader's own look back,
+/// as one stretch Joel searches at once. Spans that keep coming that near
+/// chain into one row however long the stretch, said as parts once any
+/// of it was read; farther apart they're rows of their own.
+pub const MEET: u64 = 10 * 60 * 1000;
+
 /// The row saying what `search` read on past is never read, from `from`
 /// to `to`, each in milliseconds since 1970 or unknown, as Joel reads it
 /// when it's raised, `at`: as minutes before then, so no zone is named.
@@ -480,6 +490,13 @@ const MISSED: &str = "pineapple-slack-missed-";
 /// written.
 #[must_use]
 pub fn missed(search: Search, from: Option<u64>, to: Option<u64>, at: u64) -> Value {
+    said(search, from, to, at, true)
+}
+
+/// The row [`missed`] makes, or with `whole` false the one saying only
+/// parts of its span were never read, as rows met in it left read
+/// stretches between them.
+fn said(search: Search, from: Option<u64>, to: Option<u64>, at: u64, whole: bool) -> Value {
     let ago = |then: u64| at.saturating_sub(then);
     let span = match (
         from.map(|from| ago(from).div_ceil(60_000)),
@@ -503,13 +520,15 @@ pub fn missed(search: Search, from: Option<u64>, to: Option<u64>, at: u64) -> Va
             "Look in Slack's Activity for a stop that mentioned you then",
         ),
     };
+    let what = if whole { "what" } else { "parts of what" };
     json!({
         "id": format!("{MISSED}{name}-{}-{}", from.unwrap_or(0), to.unwrap_or(at)),
         "title": "The Safe Word Missed Part of Slack",
         "why": format!(
-            "The safe word never read what {unheard} {span}, as more was said than it could \
+            "The safe word never read {what} {unheard} {span}, as more was said than it could \
              read, so a stop said then wasn't heard"
         ),
+        "whole": whole,
         "raisedAt": slack_people::messages::iso(at),
         "minutes": 2,
         "ready": true,
@@ -527,12 +546,20 @@ fn minutes(count: u64) -> String {
 }
 
 /// Adds `row`, raised `at` in milliseconds, to the rows in `file` saying
-/// what was never read, in place of one naming the same span, or the same
-/// known start for its search, as a gap read on again after its round was
-/// thrown away ends later, keeping those whose span ended in the
-/// [`MISSED_FOR`] before. It's a file of its own, which the reader's stop
-/// doesn't take away as it does the row saying it can't hear, since what
-/// it says stays true once the reader hears again or restarts. One not
+/// what was never read, keeping those whose span ended in the
+/// [`MISSED_FOR`] before. Its search's rows whose spans come within
+/// [`MEET`] of its own are said with it as one row, raised `at`, spanning
+/// them all: whole where they overlap, as a gap read on again after its
+/// round was thrown away does, and otherwise as parts. Rows that meet
+/// only what it spans once it has taken others are taken too, as a file
+/// written before rows met holds. That row is named anew, so one Joel
+/// said he'd looked at comes back holding what's new; one not made by
+/// [`missed`] meets nothing, and one whose start can't be told meets only
+/// its own name, so no dated row is lost into it.
+///
+/// `file` is a file of its own, which the reader's stop doesn't take
+/// away as it does the row saying it can't hear, since what it says stays
+/// true once the reader hears again or restarts. One not
 /// there holds no row; one that can't be read, or holds no rows, is left
 /// as it is, so no row it holds is lost.
 ///
@@ -561,30 +588,36 @@ pub fn keep_missed(file: &Path, row: Value, at: u64) -> std::io::Result<()> {
             .and_then(|raised| raised.parse::<u64>().ok())
             .is_some_and(|raised| raised.saturating_add(MISSED_FOR) >= at)
     };
-    // What names the row up to where its span ends, when its start is
-    // known: a row naming it again is the same gap.
-    let id = row["id"].as_str().unwrap_or_default().to_owned();
-    let begun = id
-        .rsplit_once('-')
-        .map(|(begun, _)| format!("{begun}-"))
-        .filter(|begun| !begun.ends_with("-0-"));
-    let same = |kept: &Value| {
-        kept["id"].as_str().is_some_and(|kept| {
-            kept == id
-                || begun
-                    .as_deref()
-                    .is_some_and(|begun| kept.starts_with(begun))
-        })
-    };
     let mut rows: Vec<Value> = kept
         .as_ref()
         .and_then(|kept| kept["items"].as_array())
         .into_iter()
         .flatten()
-        .filter(|kept| recent(kept) && !same(kept))
+        .filter(|kept| recent(kept))
         .cloned()
         .collect();
-    rows.push(row);
+    let mut own = span_of(&row);
+    let mut met = false;
+    if let Some(span) = own.as_mut() {
+        loop {
+            let before = rows.len();
+            rows.retain(|earlier| match span_of(earlier) {
+                Some(theirs) if span.meets(&theirs) => {
+                    span.take(&theirs);
+                    false
+                }
+                _ => true,
+            });
+            if rows.len() == before {
+                break;
+            }
+            met = true;
+        }
+    }
+    rows.push(match own {
+        Some(span) if met => said(span.search, span.from, Some(span.to), at, span.whole),
+        _ => row,
+    });
     let file_of = json!({
         "v": 2,
         "updated": slack_people::messages::iso(at),
@@ -592,4 +625,57 @@ pub fn keep_missed(file: &Path, row: Value, at: u64) -> std::io::Result<()> {
         "items": rows,
     });
     make(file, &Change::Tell(file_of))
+}
+
+/// The span a row saying what was never read names, read back from its
+/// name and fields: its search, its start, if known, and end, in
+/// milliseconds, and whether all of it was never read.
+struct Span {
+    search: Search,
+    from: Option<u64>,
+    to: u64,
+    whole: bool,
+}
+
+impl Span {
+    /// Whether `theirs` is the same search's and comes within [`MEET`];
+    /// where either start can't be told, only the same span meets.
+    fn meets(&self, theirs: &Span) -> bool {
+        self.search == theirs.search
+            && match (self.from, theirs.from) {
+                (Some(own), Some(other)) => {
+                    own <= theirs.to.saturating_add(MEET) && other <= self.to.saturating_add(MEET)
+                }
+                (None, None) => self.to == theirs.to,
+                _ => false,
+            }
+    }
+
+    /// Spans `theirs` too, staying whole only where both are and overlap.
+    fn take(&mut self, theirs: &Span) {
+        let overlap = self.from.unwrap_or(0) <= theirs.to && theirs.from.unwrap_or(0) <= self.to;
+        self.whole = self.whole && theirs.whole && overlap;
+        self.from = self
+            .from
+            .zip(theirs.from)
+            .map(|(own, other)| own.min(other));
+        self.to = self.to.max(theirs.to);
+    }
+}
+
+fn span_of(row: &Value) -> Option<Span> {
+    let (name, span) = row["id"].as_str()?.strip_prefix(MISSED)?.split_once('-')?;
+    let (from, to) = span.split_once('-')?;
+    let search = match name {
+        "phrase" => Search::Phrase,
+        "tag" => Search::Tag,
+        _ => return None,
+    };
+    let from: u64 = from.parse().ok()?;
+    Some(Span {
+        search,
+        from: (from != 0).then_some(from),
+        to: to.parse().ok()?,
+        whole: row["whole"].as_bool().unwrap_or(true),
+    })
 }

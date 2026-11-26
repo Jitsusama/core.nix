@@ -88,15 +88,6 @@
     "test": "still-windows-draw-nothing-as-animations-start-on-niri"
   },
   {
-    "at": 1795370179,
-    "commit": "f7ac6f58a5082a2265c27068330e16230cdb9f9b",
-    "due": "2026-11-24",
-    "owner_pr": 6065,
-    "owner_session": "orchestrator",
-    "reason": "failed, then passed, at f7ac6f58a508",
-    "test": "the-margin-cat-sits-above-its-column"
-  },
-  {
     "at": 1795371090,
     "commit": "0e420d94fa7838778caa94587407fceeacb91fec",
     "due": "2026-11-24",
@@ -169,5 +160,43 @@
       "test_what_in_slack_wants_joel_is_counted_in_now_and_never_an_old_count"
     ],
     "test": "vm-desktop-launcher-reads-mail"
+  },
+  {
+    "at": 1795490696,
+    "commit": "9628f50d6f5b3d6fd925243b0e699dde28fa1720",
+    "due": "2026-11-28",
+    "due_why": "Its owner, C2597D63 (ZINAWZ's cell), on 23 Nov after it failed 2 of 12 train runs since 21 Nov (candidates 0bc340d5 on 22 Nov 16:11 and 9c092938 on 23 Nov 18:33) and once in #6247's gate at 9628f50d. Each time the launcher never showed what's wanted after typing tada: Emoji's answer for tada was never taken, the rows for t stood, and nothing asked again. Daemon.qml drops a line it can't parse and says nothing when its socket drops, so the cause isn't seen yet. #6287 journals both, puts Emoji's search state in the failure's message, and has ReadyRows ask again once the daemon says hello on reconnect; its new lines must not say ERROR or Error:, which the part's every case refuses, or a tada miss fails that case too and nothing excuses it. It comes off once twenty net runs in a row after #6287 merges exit 0, counted by exit code, since a failure only here is recorded as passed; at 2 in 12, twenty clean runs come by luck about 1 time in 40. A later fix for a cause a failure's new message names starts that count again rather than ending it. If twenty haven't passed by 27 Nov, its owner moves the due and says why before this one passes. The tada search was split from test_emoji_makes_a_row_only_for_an_emoji_it_shows into a subtest of its own, so the bounds on the rows Emoji makes (the 30 MB of heap EMOJI_MADE_MOST bounds) and on Super+E listing only Unicode's groups run unexcused. While it stands nothing types a whole word into Emoji on niri; opening-on-niri's one-letter Emoji search, emoji-marks-on-niri's first group, the clipboard's search.rs tests and this check's other subtests still run.",
+    "owner_pr": 6287,
+    "owner_session": "C2597D63",
+    "reason": "failed 2 of 12 train runs and once in #6247's gate at 9628f50d6f5b",
+    "subtests": [
+      "test_emoji_finds_a_whole_word_typed_in_it"
+    ],
+    "test": "the-launcher-answers-whats-typed-on-niri"
+  },
+  {
+    "at": 1795652869,
+    "commit": "2a131056d2eb61e7cafeabece51f02f507d66a08",
+    "due": "2026-11-28",
+    "owner_pr": 6609,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at 2a131056d2eb",
+    "subtests": [
+      "test_a_held_chord_opens_the_launcher_once_and_a_held_return_does_its_row_once",
+      "test_a_screen_coming_back_leaves_the_launcher_open_on_the_other",
+      "test_a_sleep_with_the_launcher_open_and_it_works_after",
+      "test_after_the_wake_the_launchers_foot_still_tells_the_time",
+      "test_both_screens_go_with_the_launcher_open_and_come_back",
+      "test_polkits_prompt_comes_up_after_both_screens_go_and_come_back",
+      "test_polkits_prompt_comes_up_on_the_screen_left_once_the_first_goes",
+      "test_quickshell_warned_of_nothing_as_the_screens_came_and_went",
+      "test_super_s_line_comes_up_again_after_both_screens_go_and_come_back",
+      "test_the_first_screen_comes_back_and_the_launcher_works_on_both",
+      "test_the_first_screen_goes_with_the_launcher_open_on_it",
+      "test_the_launcher_opens_finds_and_runs_a_row_on_each_screen",
+      "test_the_second_screen_comes_back_and_the_launcher_works_on_both",
+      "test_the_second_screen_goes_with_the_launcher_open_on_it"
+    ],
+    "test": "vm-screens-keep-the-launcher"
   }
 ]

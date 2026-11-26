@@ -386,14 +386,17 @@
   # over one connection, records of two kinds from a daemon holding both, kinds
   # told as the mycelium node tells them, and a watch answered whole of only some
   # keys, as the passwords child answers its asks' rows (daemon-kinds.py); and a
-  # line's handlers read when it was heard (Hearing.js). The stand-ins are in
-  # modules/quickshell/tests/stand-ins.
+  # line's handlers read when it was heard (Hearing.js); and a client the shell
+  # lets go with an ask in flight says it let the connection go, never that it
+  # went, read from the log under the name its own link to the socket gives it.
+  # The stand-ins are in modules/quickshell/tests/stand-ins.
   the-desktop-holds-a-daemons-records =
     let
       people = pkgs.callPackage ../../people/package.nix { };
     in
     pkgs.runCommandLocal "the-desktop-holds-a-daemons-records" { } ''
       mkdir -p runtime/daemons && chmod 700 runtime
+      ln -s people.sock runtime/daemons/letting-go.sock
       cat > sources.json <<EOF
       {"sources": [{"name": "slack",
         "command": ["${lib.getExe pkgs.bash}", "${../tests/stand-ins/daemon-source.sh}"]},
@@ -406,7 +409,12 @@
       export FONTCONFIG_FILE=${noFonts} PEOPLE=${lib.getExe people} SOURCES=$PWD/sources.json
       export PYTHON=${lib.getExe pkgs.python3} KINDS=${../tests/stand-ins/daemon-kinds.py}
       ${shellFolderLint}
-      timeout 90 ${qs} -p shell.qml
+      timeout 90 ${qs} -p shell.qml 2>&1 | tee log
+      grep -F 'letting-go: let its connection go with 1 ask unanswered' log
+      if grep -F 'letting-go: the connection went' log; then
+        echo 'a connection the shell let go was said as one gone wrong' >&2
+        exit 1
+      fi
       touch $out
     '';
 

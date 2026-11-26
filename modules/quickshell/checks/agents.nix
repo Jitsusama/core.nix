@@ -129,6 +129,27 @@
       touch $out
     '';
 
+  # Start New Work's In rows list his quests' folders, then the places the
+  # realm's node names, each folder once and only in plain words, a zone
+  # started by its name, and Wheres.startAt giving a row picked before the
+  # places land the start it says after, as
+  # modules/quickshell/tests/start-new-work-places.qml
+  # holds launcher/Wheres.js to it in Qt's own engine.
+  start-new-work-finds-places =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "start-new-work-finds-places" { } ''
+      cp ${../tests/start-new-work-places.qml} start-new-work-places.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      ${copied [ "launcher/Wheres.js" ]}
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml start-new-work-places.qml
+      touch $out
+    '';
+
   # Starts Stopped's Return steps in rather than lifting the stop, and only
   # Joel's own Return asks Let Them Start, never a walk from outside, as
   # modules/quickshell/tests/starts-stopped.qml holds launcher/StartsStopped.js
@@ -293,6 +314,26 @@
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml told.qml
+      touch $out
+    '';
+
+  # Talk to It on a session asking Joel something shows what it asks whole, with
+  # what it takes, and his words answer it, a choice by its label or value or
+  # his own where it takes them, reading sent, then answered or working, or not
+  # delivered and why, as modules/quickshell/tests/talk-answers.qml holds
+  # launcher/TalkAnswers.js to in Qt's own engine.
+  a-talk-answers-what-its-session-asks =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-talk-answers-what-its-session-asks" { } ''
+      cp ${../tests/talk-answers.qml} talk-answers.qml
+      ${copied [ "launcher/TalkAnswers.js" ]}
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml talk-answers.qml
       touch $out
     '';
 

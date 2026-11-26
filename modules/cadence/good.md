@@ -210,10 +210,41 @@ holding a space, as one broken across two lines does, is counted too.
 
 - Measures: `slips`, `slips-derived`
 - Target: 0 dates that passed in the last day without landing, or passed since with no landing,
-  meeting or move from their owner, nor the ask put down.
+  meeting or move from their owner, nor the ask put down or parked on a ruling.
 - Joel, 11 Nov 16:4x: "i need for you to make faster progress. i don't understand why so much
   has not been completed."
 - Over costs him: a date he was given passed, and what was promised isn't there.
+
+## Dates at Risk
+
+- Measures: `dates-at-risk`, `dates-at-risk-derived`
+- Target: 0 dates still to come that wait on a merge whose change shares files with what main
+  has changed since the two parted, unless the change landed or its piece or ask was put down.
+  Only core.nix changes and the zone's branches are judged. A date whose change can't be read
+  is counted apart as unread, and with none at risk beside it the hour goes unjudged.
+- Joel, 14 Nov: "something constantly evaluating how we can ship more and faster"
+- Over costs him: a date is said to stand while its change will be refused or checked again,
+  so it slips with no warning.
+
+## Slips Parked
+
+- Measures: `slips-parked`, `slips-parked-derived`
+- Target: none, since an ask parked on a ruling waits on that ruling, not its owner, and each is
+  named by the ruling's message id so the parking itself is read.
+- Joel, 22 Nov 15:2x: "WE NEED TO FOCUS ON SPREADING LOAD NOW! WE NEED TO QUICKEN MOVING STUFF
+  INTO THE CLOUD!"
+- Over costs him: nothing judged. An ask parked and forgotten would never slip, so the count
+  by ruling stays on the card.
+
+## Dates Told Late
+
+- Measures: `dates-told-late`, `dates-told-late-derived`
+- Target: 0 dates moved later in the last day with 15 minutes or less left before them, unless
+  landed or met before the move, or parked on a ruling or put down. A date that passes before
+  it moves is a slip, counted there.
+- Joel, 22 Nov 18:10: "don't wait till monday to ask on shit."
+- Over costs him: whoever waits on a date learns it moved only once it was too late to plan
+  around.
 
 ## Broken on Main
 
@@ -235,6 +266,27 @@ holding a space, as one broken across two lines does, is counted too.
 - Target: 0 quarantined tests with no date to come back.
 - Joel, 14 Nov: "delivering insane quality, both functionally, and by maintaining clean zones"
 - Over costs him: a test switched off for good without anyone saying so.
+
+## Holds Undated
+
+- Measures: `holds-undated`
+- Target: 0 live holds on the mesh with no ask dating the fix that ends them.
+- Joel, 24 Nov: "I need my agents to be able to get work done, they can't be neutered."
+- Over costs him: agents stopped from working with nobody saying when they start again.
+
+## Lines Citing No Owner
+
+- Measures: `lines-uncited`
+- Target: 0 lines to him in the last day giving a live or switch time, or asking him to act or
+  decide, with no message from a cell other than the writer cited before them, and 0 items the
+  morning note puts to him naming no such message. A time counts as cited only when the message
+  cited says it, and a switch time only from the cell running the switches. A message sent more
+  than two days before backs nothing. A log, citation or message that can't be read leaves the
+  hour unjudged.
+- Joel, 25 Nov 09:04: "2 - you should not be presenting me with this, a cell concerned with
+  this should."
+- Over costs him: a time nobody running the work gave, or a decision nobody who owns it put to
+  him, which he acts on as if they had.
 
 ## Budgets Billed Under Logged
 

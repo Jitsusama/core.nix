@@ -8,9 +8,11 @@
 # whose frames stopped waits 10 s, and a camera that frames again after each
 # is made again each time and never ended. No VM has a camera, so two inputs
 # stand in: one never hands a frame on, as a camera whose setup outlasts the
-# wait, and one gives two seconds of frames and stops, as one that dies mid
-# call. The tests are relay-waits-vm-test.py, which pytest runs inside the
-# driver (tests/lib/vm_pytest.py). It runs about four minutes, past the two
+# wait, and one gives fifteen seconds of frames and stops, as one that dies
+# mid call, framing for longer than the wait so a wait counted from the
+# start rather than the last frame shows. The tests are
+# relay-waits-vm-test.py, which pytest runs inside the driver
+# (tests/lib/vm_pytest.py). It runs about four minutes, past the two
 # a VM test splits by, and splitting can't shorten it: the camera that
 # never frames alone takes the patch's two 90 s waits, and a build with
 # shorter ones would test a relay no machine runs.
@@ -31,9 +33,9 @@ let
   inputs = {
     # A valve shut for good passes no frame, as a camera still setting up.
     never = "${frames} ! valve drop=true ! ${picture}";
-    # Sixty frames at thirty a second, then nothing, though the pipeline
-    # stays up, as a camera that stops mid call.
-    stops = "${frames} num-buffers=60 ! ${picture}";
+    # Fifteen seconds of frames at thirty a second, then nothing, though
+    # the pipeline stays up, as a camera that stops mid call.
+    stops = "${frames} num-buffers=450 ! ${picture}";
   };
   # A relay of each input, into a loopback of its own, as the shared cameras'
   # services run theirs, though left stopped until a test starts it, and
@@ -55,8 +57,10 @@ let
       environment = {
         GST_PLUGIN_PATH = plugins;
         # GStreamer's errors and warnings, so a pipeline the relay can't make
-        # says why in the test's log.
-        GST_DEBUG = "2";
+        # says why in the test's log, and its state changes, so one it made
+        # says so.
+        GST_DEBUG = "2,GST_STATES:4";
+        GST_DEBUG_NO_COLOR = "1";
       };
       serviceConfig.RuntimeDirectory = "relay-${name}";
       preStart = "${ctl} add -n 'Relayed ${name}' -b 4 -x 1 > ${device}";

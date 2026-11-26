@@ -137,16 +137,18 @@ fn only_the_copies_of_runs_here_that_are_gone_are_cleared() {
     let job = "4242-1763912345678901234";
     copy(&runs, job, &format!("{gone} {here}"));
     std::fs::write(runs.join(format!("{job}.names")), "n").unwrap();
+    std::fs::write(runs.join(format!("{job}.tar")), "t").unwrap();
     std::fs::write(runs.join(format!("{job}.back")), "b").unwrap();
     std::fs::write(runs.join(format!("{job}.back.lost")), "l").unwrap();
     closed(&runs.join(job));
     let beyond = closed(&root.join("beyond"));
     std::os::unix::fs::symlink(root.join("beyond"), runs.join(job).join("inner")).unwrap();
-    // Gone, its job having made folders where its names, its
-    // brought-back list and a list's leftovers go, and closed one in each.
+    // Gone, its job having made folders where its names, its archive,
+    // its brought-back list and a list's leftovers go, and closed one in
+    // each.
     let made = "4243-1763912345678901235";
     copy(&runs, made, &format!("{gone} {here}"));
-    for beside in [".names", ".back", ".back.lost"] {
+    for beside in [".names", ".tar", ".back", ".back.lost"] {
         closed(&runs.join(format!("{made}{beside}")));
     }
     // Gone, but its copy is a link, which goes alone.

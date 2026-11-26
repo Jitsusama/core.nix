@@ -14,14 +14,33 @@
 # usage: lookups.sh <state folder> <slow, in ms> <names, by commas> [servers, by commas]
 set -euo pipefail
 
+# A round that ends early says so as an error too, since quiet means well
+# and bash's own words go only to the job's log, which health never reads.
+# It may end before any name is looked up or after every one, at the save,
+# so it says neither. A round launchd stops, as at a switch or a logout,
+# isn't said: bash runs this with the status of the last command before the
+# signal, and every command the round runs between its probes ends 0, so
+# only a TERM landing the moment a probe ends could be said.
+ended() {
+  local ended=$1
+  if [[ ${ended} -ne 0 ]]; then
+    logger -p user.err -t name-lookups "name-lookups: a round ended early (exit ${ended})," \
+      "before it had said and kept all it found; the job's log says why" || true
+  fi
+}
+trap 'ended "$?"' EXIT
+
 state=$1
 slow=$2
 IFS=, read -r -a names <<<"$3"
 IFS=, read -r -a servers <<<"${4-}"
 
 # How long one lookup may take before it counts as failed, in seconds: under
-# the minute between rounds, and past the 17 s the worst storm took.
+# the minute between rounds, and past the 17 s the worst storm took. A probe
+# that outlives timeout's TERM is killed this many seconds on, so a round
+# can't hang on one.
 within=20
+killed=5
 # mDNSResponder's share of a core past which it's busy, in percent, and the
 # rounds running it may be.
 busy=50
@@ -33,14 +52,17 @@ mkdir -p "${state}"
 # running it was wrong of any kind, kept as
 # "<check> <rounds> <red> <outcome> <wrong rounds>". A count that isn't a
 # number is read as none, since bash's arithmetic would run what it holds,
-# and a line naming no check is passed over, since bash refuses an empty
-# key and the round would end before it kept anything.
+# and so is a zero before other digits, as in 09, which it reads as octal
+# and refuses past 7: in a round where that check is wrong, the refusal
+# drops it and the names after it, though mDNSResponder is still judged and
+# the round saves. A line naming no check is passed over, since bash
+# refuses an empty key and the round would end before it kept anything.
 declare -A running=() red=() kind=() bad=()
 if [[ -r "${state}/running" ]]; then
   while read -r check count was outcome any; do
     [[ -n ${check} ]] || continue
-    [[ ${count} =~ ^[0-9]+$ ]] || count=0
-    [[ ${any-} =~ ^[0-9]+$ ]] || any=${count}
+    [[ ${count} =~ ^(0|[1-9][0-9]*)$ ]] || count=0
+    [[ ${any-} =~ ^(0|[1-9][0-9]*)$ ]] || any=${count}
     running[${check}]=${count}
     red[${check}]=${was-no}
     kind[${check}]=${outcome-}
@@ -72,15 +94,15 @@ judge() {
   case ${outcome} in
     failed)
       words="${words}, ${count} rounds running"
-      [[ ${count} -ge 2 || ${any} -ge 3 ]] && wrong=yes
+      if [[ ${count} -ge 2 || ${any} -ge 3 ]]; then wrong=yes; fi
       ;;
     slow)
       words="${words}, past ${slow} ms ${count} rounds running"
-      [[ ${count} -ge 2 || ${any} -ge 3 ]] && wrong=yes
+      if [[ ${count} -ge 2 || ${any} -ge 3 ]]; then wrong=yes; fi
       ;;
     busy)
       words="${words}, past ${busy}% ${count} rounds running"
-      [[ ${count} -ge ${rounds} ]] && wrong=yes
+      if [[ ${count} -ge ${rounds} ]]; then wrong=yes; fi
       ;;
     *) ;;
   esac
@@ -105,6 +127,33 @@ since() {
   echo $(((ended - started) / 1000))
 }
 
+# What a probe's exit, $1, says of probe $2 when it gave no address after
+# $3 ms, as `why`: timeout's 124 is no answer in time, as is 137, a probe
+# it killed once it outlived its TERM, but only from when -k's KILL lands,
+# since any KILL, macOS's own under memory pressure among them, ends 137
+# too; 125 to 127 a program that couldn't run, which is no lookup at all,
+# so it's never said as the name failing. dig
+# ends 9 when the server never replied, within its own five seconds, and 10
+# on an error of its own. Any other end but 0 is said as it is, an address
+# printed beside it included.
+why() {
+  case $2:$1 in
+    *:0) why="" ;;
+    *:124) why="no answer within ${within} s" ;;
+    *:137)
+      if [[ $3 -ge $(((within + killed) * 1000)) ]]; then
+        why="no answer within ${within} s, killed ${killed} s on"
+      else
+        why="$2 was killed, exit 137, before timeout's own KILL at $((within + killed)) s"
+      fi
+      ;;
+    *:125 | *:126 | *:127) why="timeout or $2 couldn't run (exit $1), so this wasn't a lookup" ;;
+    dig:9) why="no reply from the server" ;;
+    dig:10) why="dig failed on its own (exit 10), so this wasn't a lookup" ;;
+    *) why="$2 ended $1" ;;
+  esac
+}
+
 # Whether a lookup's time is past the slow mark.
 outcome() {
   if [[ $1 -gt ${slow} ]]; then
@@ -118,28 +167,36 @@ for name in ${names[@]+"${names[@]}"}; do
   started=${EPOCHREALTIME}
   # dscacheutil asks the system's resolver, as getaddrinfo does, and prints
   # an address line for each address, or nothing for a name it can't find.
-  answer=$(timeout "${within}" dscacheutil -q host -a name "${name}" 2>/dev/null) || answer=""
+  ran=0
+  answer=$(timeout -k "${killed}" "${within}" dscacheutil -q host -a name "${name}" \
+    2>/dev/null) || ran=$?
   took=$(since "${started}")
   check="system:${name}"
-  if grep -qE '^ipv?6?_address:' <<<"${answer}"; then
+  if [[ ${ran} -eq 0 ]] && grep -qE '^ipv?6?_address:' <<<"${answer}"; then
     result=$(outcome "${took}")
     judge "${check}" "${result}" "the system looked up ${name} in ${took} ms"
   else
-    judge "${check}" failed "the system couldn't look up ${name} (${took} ms)"
+    why "${ran}" dscacheutil "${took}"
+    judge "${check}" failed "the system couldn't look up ${name} (${took} ms${why:+, ${why}})"
   fi
   last+=("${check} ${took}")
   for server in ${servers[@]+"${servers[@]}"}; do
     started=${EPOCHREALTIME}
-    answer=$(timeout "${within}" dig +tries=1 +time=5 +noall +answer "@${server}" "${name}" A \
-      2>/dev/null) || answer=""
+    ran=0
+    answer=$(timeout -k "${killed}" "${within}" dig +tries=1 +time=5 +noall +answer \
+      "@${server}" "${name}" A 2>/dev/null) || ran=$?
     took=$(since "${started}")
     check="${server}:${name}"
-    # An address record, not only a CNAME pointing at a name that has none.
-    if grep -qE '[[:space:]]IN[[:space:]]+A[[:space:]]' <<<"${answer}"; then
+    # An IPv4 address record, not only a CNAME pointing at a name that has
+    # none; a server is asked for A alone, so one timing a name is one
+    # answer.
+    if [[ ${ran} -eq 0 ]] && grep -qE '[[:space:]]IN[[:space:]]+A[[:space:]]' <<<"${answer}"; then
       result=$(outcome "${took}")
       judge "${check}" "${result}" "${server} answered ${name} in ${took} ms"
     else
-      judge "${check}" failed "${server} gave no address for ${name} (${took} ms)"
+      why "${ran}" dig "${took}"
+      judge "${check}" failed \
+        "${server} gave no IPv4 address for ${name} (${took} ms${why:+, ${why}})"
     fi
     last+=("${check} ${took}")
   done
