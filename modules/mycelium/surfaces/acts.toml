@@ -197,9 +197,7 @@ through = "mycelium steer ADDRESS with act pause or resume, and holds ID again f
 
 [act.cli.has]
 command = "steer"
-# Single words, since steer's help wraps at 60 columns and a phrase
-# may break across a line.
-holds = ["pause", "resume"]
+holds = "pause, resume, stop or close"
 
 [act.session.owed]
 by = "85PKB2"
@@ -222,7 +220,7 @@ through = "mycelium steer ADDRESS with act stop"
 
 [act.cli.has]
 command = "steer"
-holds = "stop"
+holds = "pause, resume, stop or close"
 
 [act.session.owed]
 by = "85PKB2"
@@ -245,7 +243,7 @@ through = "mycelium steer ADDRESS with act close"
 
 [act.cli.has]
 command = "steer"
-holds = "close"
+holds = "pause, resume, stop or close"
 
 [act.session.owed]
 by = "85PKB2"
