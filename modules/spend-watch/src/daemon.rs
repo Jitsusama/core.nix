@@ -662,6 +662,7 @@ pub fn pass(
     let findings = crate::findings::settle(history, &raised, now)?;
     steps.ended("findings");
     let standing = crate::standing::standing(&picture, config, None);
+    steps.ended("standing");
     // Keeping what was said over an allowance is best effort too: the
     // figures are written whether or not it could be.
     match crate::over::keep(history, &picture, &standing, &findings, &config.reports()) {
@@ -690,6 +691,7 @@ pub fn pass(
     let mut shown = status::status(&picture, &said);
     shown.tokens = tokens;
     let collection = crate::collection::collection(&picture, &findings, config);
+    steps.ended("status");
     writer.write(&config.runtime()?, &shown, &collection, Some(&standing))?;
     hub.publish(&collection, Some(&standing));
     hub.offer(&shown.actions);
@@ -1214,91 +1216,142 @@ fn timed(steps: &Steps) -> Duration {
              late: {}",
             took.as_secs_f64(),
             BUSIEST.as_secs(),
-            steps.said()
+            steps.said(Instant::now())
         );
     }
     took
 }
 
 /// The steps of one pass as it goes, each with what it cost: its time, the
-/// bytes the process read from the disk, and the pages it brought back
-/// from swap or a file. On 26 November passes took 136 to 1,284 s at a
-/// load near 200 while spending under 4 minutes of processor time in 100,
-/// and between passes the kernel moved most of the daemon's 560 MB to swap.
-/// A slow pass's journal line alone couldn't say whether it waited on its
+/// bytes its thread read, the faults its thread waited on, and the pages
+/// the daemon's service brought back from swap on the disk and from
+/// compressed memory. On 26 November passes took 136 to 1,284 s at a load
+/// near 200 while spending under 4 minutes of processor time in 100, and
+/// between passes the kernel moved most of the daemon's 560 MB to swap. A
+/// slow pass's journal line alone couldn't say whether it waited on its
 /// reads or on its own memory, nor in which step; this says both.
+///
+/// The reads and faults are the pass's own thread's, so the socket's and
+/// the watch's threads aren't charged to a step. A read counts a page
+/// swapped in from the disk as well as a file's, which is why the swap-ins
+/// are said apart; those come from the service's memory counts, the only
+/// place the kernel splits them, and so cover all its threads.
 pub struct Steps {
     began: Instant,
     last: Mark,
     spent: Vec<Spent>,
 }
 
-/// What the process had used up at one moment.
+/// What had been used up at one moment.
 #[derive(Clone, Copy)]
 struct Mark {
     at: Instant,
+    used: Used,
+}
+
+/// The counts a step is charged, each `None` where the kernel won't say.
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+struct Used {
+    /// Bytes the pass's thread read from a disk, swap included.
     read: Option<u64>,
+    /// Faults the pass's thread waited on a page for.
     faults: Option<u64>,
+    /// Pages the service swapped in from the disk.
+    from_disk: Option<u64>,
+    /// Pages the service swapped in from compressed memory.
+    from_memory: Option<u64>,
 }
 
 /// What one step cost.
 struct Spent {
     name: &'static str,
     took: Duration,
-    read: Option<u64>,
-    faults: Option<u64>,
+    used: Used,
 }
 
 impl Steps {
     /// A pass beginning now.
     #[must_use]
     pub fn begun() -> Self {
-        let last = Mark::now();
+        Self::begun_at(Mark::now())
+    }
+
+    /// A pass beginning at `mark`.
+    fn begun_at(mark: Mark) -> Self {
         Self {
-            began: last.at,
-            last,
+            began: mark.at,
+            last: mark,
             spent: Vec::new(),
         }
     }
 
     /// The step `name` ended now.
     pub fn ended(&mut self, name: &'static str) {
-        let now = Mark::now();
-        self.spent.push(Spent {
-            name,
-            took: now.at.duration_since(self.last.at),
-            read: now
-                .read
-                .zip(self.last.read)
-                .map(|(to, from)| to.saturating_sub(from)),
-            faults: now
-                .faults
-                .zip(self.last.faults)
-                .map(|(to, from)| to.saturating_sub(from)),
-        });
-        self.last = now;
+        self.ended_at(name, Mark::now());
     }
 
-    /// Each step and what it cost, for the journal.
-    fn said(&self) -> String {
-        self.spent
-            .iter()
-            .map(Spent::said)
-            .collect::<Vec<_>>()
-            .join("; ")
+    /// The step `name` ended at `mark`, charged what was used since the
+    /// step before it.
+    fn ended_at(&mut self, name: &'static str, mark: Mark) {
+        self.spent.push(Spent {
+            name,
+            took: mark.at.saturating_duration_since(self.last.at),
+            used: mark.used.since(self.last.used),
+        });
+        self.last = mark;
+    }
+
+    /// Each step and what it cost, for the journal, then the time from the
+    /// last step to `now` where it's long enough to be a step that failed
+    /// before it could end.
+    fn said(&self, now: Instant) -> String {
+        let mut said: Vec<String> = self.spent.iter().map(Spent::said).collect();
+        let unended = now.saturating_duration_since(self.last.at);
+        if unended >= UNENDED {
+            said.push(format!(
+                "{:.1} s in a step that didn't end",
+                unended.as_secs_f64()
+            ));
+        }
+        said.join("; ")
+    }
+}
+
+/// The least time after a pass's last step that's said as a step that
+/// didn't end, rather than the moment it takes to say the pass ended.
+const UNENDED: Duration = Duration::from_millis(100);
+
+impl Used {
+    /// What was used between `earlier` and this.
+    fn since(self, earlier: Self) -> Self {
+        let less = |to: Option<u64>, from: Option<u64>| {
+            to.zip(from).map(|(to, from)| to.saturating_sub(from))
+        };
+        Self {
+            read: less(self.read, earlier.read),
+            faults: less(self.faults, earlier.faults),
+            from_disk: less(self.from_disk, earlier.from_disk),
+            from_memory: less(self.from_memory, earlier.from_memory),
+        }
     }
 }
 
 impl Spent {
-    /// The step, its time, and what it read and brought back where the
-    /// process can say.
+    /// The step, its time, and what it used where the kernel can say.
     fn said(&self) -> String {
         let mut said = format!("{} {:.1} s", self.name, self.took.as_secs_f64());
-        if let Some(read) = self.read {
+        let used = self.used;
+        if let Some(read) = used.read {
             let _ = write!(said, ", {} MB read", read / BYTES_IN_MB);
         }
-        if let Some(faults) = self.faults {
-            let _ = write!(said, ", {faults} pages brought back");
+        if let Some(faults) = used.faults {
+            let _ = write!(said, ", {faults} faults waited on");
+        }
+        if let (Some(disk), Some(memory)) = (used.from_disk, used.from_memory) {
+            let _ = write!(
+                said,
+                ", {disk} pages swapped in from the disk and {memory} from compressed memory"
+            );
         }
         said
     }
@@ -1308,19 +1361,46 @@ impl Spent {
 const BYTES_IN_MB: u64 = 1_000_000;
 
 impl Mark {
-    /// What the process has used up so far, as `/proc` says it; neither
-    /// count where there's no `/proc` to ask.
+    /// What has been used up so far, as `/proc` and the service's memory
+    /// counts say it; none of it where there's nothing to ask.
     fn now() -> Self {
+        let read = |path: &str| std::fs::read_to_string(path).ok();
+        let memory = read("/proc/self/cgroup")
+            .and_then(|groups| memory_stat(&groups))
+            .and_then(|path| std::fs::read_to_string(path).ok());
         Self {
             at: Instant::now(),
-            read: std::fs::read_to_string("/proc/self/io")
-                .ok()
-                .and_then(|io| read_bytes(&io)),
-            faults: std::fs::read_to_string("/proc/self/stat")
-                .ok()
-                .and_then(|stat| major_faults(&stat)),
+            used: Used {
+                read: read("/proc/thread-self/io").and_then(|io| read_bytes(&io)),
+                faults: read("/proc/thread-self/stat").and_then(|stat| major_faults(&stat)),
+                from_disk: memory.as_deref().and_then(|stat| counted(stat, "pswpin")),
+                from_memory: memory.as_deref().and_then(|stat| counted(stat, "zswpin")),
+            },
         }
     }
+}
+
+/// Where the memory counts of the group a process is in are, from its
+/// `/proc/<pid>/cgroup`, which under the unified hierarchy holds one line.
+fn memory_stat(groups: &str) -> Option<PathBuf> {
+    let group = groups.lines().find_map(|line| line.strip_prefix("0::"))?;
+    Some(
+        Path::new("/sys/fs/cgroup")
+            .join(group.trim_start_matches('/'))
+            .join("memory.stat"),
+    )
+}
+
+/// The count `name` in a group's `memory.stat`.
+fn counted(stat: &str, name: &str) -> Option<u64> {
+    stat.lines().find_map(|line| {
+        let (key, value) = line.split_once(' ')?;
+        if key == name {
+            value.trim().parse().ok()
+        } else {
+            None
+        }
+    })
 }
 
 /// The bytes a process read from the disk, from its `/proc/<pid>/io`.
@@ -1996,6 +2076,26 @@ mod tests {
             None,
             "a short stat read as some"
         );
+        let groups = "0::/user.slice/background.slice/spend-watch.service\n";
+        assert_eq!(
+            memory_stat(groups),
+            Some(PathBuf::from(
+                "/sys/fs/cgroup/user.slice/background.slice/spend-watch.service/memory.stat"
+            )),
+            "the group's memory counts weren't found"
+        );
+        let stat = "pgmajfault 1574266\npswpin 111897\nzswpin 1461251\n";
+        assert_eq!(counted(stat, "pswpin"), Some(111_897), "pswpin wasn't read");
+        assert_eq!(
+            counted(stat, "zswpin"),
+            Some(1_461_251),
+            "zswpin wasn't read"
+        );
+        assert_eq!(
+            counted(stat, "pswp"),
+            None,
+            "a prefix of a count read as it"
+        );
     }
 
     // Each step is said with its time, then what it read and brought back
@@ -2003,52 +2103,77 @@ mod tests {
     #[test]
     fn a_slow_pass_says_what_each_step_cost() {
         let begun = Instant::now();
-        let steps = Steps {
-            began: begun,
-            last: Mark {
-                at: begun,
-                read: None,
-                faults: None,
-            },
-            spent: vec![
-                Spent {
-                    name: "logs",
-                    took: Duration::from_millis(2_100),
+        let mut steps = Steps::begun_at(Mark {
+            at: begun,
+            used: Used::default(),
+        });
+        steps.spent = vec![
+            Spent {
+                name: "logs",
+                took: Duration::from_millis(2_100),
+                used: Used {
                     read: Some(12_400_000),
                     faults: Some(40),
+                    from_disk: Some(3),
+                    from_memory: Some(30),
                 },
-                Spent {
-                    name: "picture",
-                    took: Duration::from_secs(300),
-                    read: None,
-                    faults: None,
-                },
-            ],
-        };
+            },
+            Spent {
+                name: "picture",
+                took: Duration::from_secs(300),
+                used: Used::default(),
+            },
+        ];
         assert_eq!(
-            steps.said(),
-            "logs 2.1 s, 12 MB read, 40 pages brought back; picture 300.0 s",
+            steps.said(begun),
+            "logs 2.1 s, 12 MB read, 40 faults waited on, 3 pages swapped in from the disk and \
+             30 from compressed memory; picture 300.0 s",
             "a step's costs weren't said as they were spent"
+        );
+        assert_eq!(
+            steps.said(begun + Duration::from_secs(7)),
+            "logs 2.1 s, 12 MB read, 40 faults waited on, 3 pages swapped in from the disk and \
+             30 from compressed memory; picture 300.0 s; 7.0 s in a step that didn't end",
+            "the time a failing step took wasn't said"
         );
     }
 
-    // A step that ends takes what was used since the step before it, so
-    // the steps' times add up to the pass's.
+    // A step is charged what was used since the step before it, not since
+    // the pass began, and a count the kernel stopped giving is left out
+    // rather than taken as nothing used.
     #[test]
     fn a_step_takes_only_what_was_used_since_the_last() {
-        let mut steps = Steps::begun();
-        steps.ended("logs");
-        steps.ended("picture");
-        let names: Vec<&str> = steps.spent.iter().map(|spent| spent.name).collect();
+        let begun = Instant::now();
+        let mark = |secs: u64, read: u64, faults: Option<u64>| Mark {
+            at: begun + Duration::from_secs(secs),
+            used: Used {
+                read: Some(read),
+                faults,
+                from_disk: Some(secs),
+                from_memory: Some(secs * 10),
+            },
+        };
+        let mut steps = Steps::begun_at(mark(0, 100, Some(5)));
+        steps.ended_at("logs", mark(2, 350, Some(9)));
+        steps.ended_at("picture", mark(7, 400, None));
+        let charged: Vec<(&str, u64, Used)> = steps
+            .spent
+            .iter()
+            .map(|spent| (spent.name, spent.took.as_secs(), spent.used))
+            .collect();
+        let used = |read, faults, from_disk, from_memory| Used {
+            read: Some(read),
+            faults,
+            from_disk: Some(from_disk),
+            from_memory: Some(from_memory),
+        };
         assert_eq!(
-            names,
-            ["logs", "picture"],
-            "the steps weren't kept in order"
-        );
-        let summed: Duration = steps.spent.iter().map(|spent| spent.took).sum();
-        assert!(
-            summed <= steps.began.elapsed(),
-            "the steps took longer than the pass"
+            charged,
+            [
+                ("logs", 2, used(250, Some(4), 2, 20)),
+                ("picture", 5, used(50, None, 5, 50)),
+            ],
+            "a step wasn't charged only what was used since the one before it"
         );
     }
 }
