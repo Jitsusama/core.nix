@@ -3608,7 +3608,8 @@ impl Wifid<'_> {
             ("Type", zvariant::Value::from("active")),
             ("Channels", zvariant::Value::from(over)),
         ]);
-        let scan = || answered(self.bus, &path, "Scan", &(&looking,));
+        let asked = (&looking,);
+        let scan = || answered(self.bus, &path, "Scan", &asked);
         let mhz: Vec<String> = channels.iter().map(ToString::to_string).collect();
         let mhz = mhz.join(", ");
         let said = |card: &str, after: u32| {
