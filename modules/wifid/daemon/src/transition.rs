@@ -26,7 +26,10 @@
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
+use tokio::time::Duration;
 use zbus::zvariant::{OwnedValue, Value};
+
+use crate::choose::SETTLE;
 
 /// One request, as wpa_supplicant said it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -35,11 +38,13 @@ pub struct Request {
     pub warns: bool,
     /// Whether it warns its whole network will.
     pub leaves_network: bool,
-    /// Whether the card's link protects the frame it came in, so only the
-    /// point could have sent it.
+    /// Whether the card's link protects management frames. It says how
+    /// the link was joined, not how this frame came: only the kernel's
+    /// dropping an unprotected one on such a link, as mac80211 does, means
+    /// only the point could have sent it.
     pub protected: bool,
-    /// In how many milliseconds, where it warns; 0 for at once, or for
-    /// one that doesn't say.
+    /// In how many milliseconds, where it warns; 0 where the point sets no
+    /// timer, which says nothing of when rather than at once.
     pub in_ms: u32,
     /// How long its candidates hold, in milliseconds.
     pub valid_ms: u32,
@@ -55,19 +60,22 @@ pub struct Candidate {
     /// How much the point asking would rather the card were there, from 1
     /// to 255; 0 rules it out, and `None` is no preference given.
     pub preference: Option<u8>,
+    /// The channel it's on, in MHz, as the point gave it; `None` for one
+    /// wpa_supplicant couldn't place.
+    pub frequency: Option<u32>,
 }
 
 /// What the signal says: whether the point warns, whether its whole
-/// network does and whether the frame was protected, in how long and for
-/// how long in milliseconds, and each candidate's address and preference,
-/// -1 for none.
+/// network does and whether the link protects its frames, in how long and
+/// for how long in milliseconds, and each candidate's address, preference,
+/// -1 for none, and channel in MHz, 0 for none.
 struct Said {
     warns: bool,
     leaves_network: bool,
     protected: bool,
     in_ms: u32,
     valid_ms: u32,
-    candidates: Vec<(Vec<u8>, i16)>,
+    candidates: Vec<(Vec<u8>, i16, u32)>,
 }
 
 /// What wifid does with a request.
@@ -88,12 +96,48 @@ pub enum Heed {
     /// Moves the card to this point, the one it would rather of those the
     /// card hears.
     Move(String),
+    /// Looks over these channels, in MHz, for the points the request
+    /// names, as the card hears none of them. wpa_supplicant forgets a
+    /// point it hasn't heard for 3 minutes, and a card on a strong link
+    /// looks only once an hour, so a card long on its point most often
+    /// hears none of them as it's warned. A look over a few channels
+    /// takes a fraction of a second, where one over all of them takes 5
+    /// to 6 s, as long as a point most often gives the card.
+    Look(Vec<u32>),
     /// Lets the card join any point of its network, as it hears none the
-    /// request names that wifid can move it to, so wpa_supplicant rejoins
-    /// wherever it can once dropped. It has most likely answered the
-    /// request by then, as it does so as soon as it's said, so it can't
-    /// follow it.
+    /// request names that wifid can move it to, having looked, so
+    /// wpa_supplicant rejoins wherever it can once dropped. It has most
+    /// likely answered the request by then, as it does so as soon as it's
+    /// said, so it can't follow it.
     LetGo,
+}
+
+impl Heed {
+    /// Whether the card leaves the point that warned it this way, so no
+    /// move of its goes back there should it miss, and its chooser keeps
+    /// off that point for a time (`Request::keeps_off`). One that stays,
+    /// unheld or already leaving is none: the first two follow no warning,
+    /// and the last was warned before.
+    pub fn leaves(&self) -> bool {
+        matches!(
+            self,
+            Heed::Move(_) | Heed::Look(_) | Heed::LetGo | Heed::NetworkDrops
+        )
+    }
+}
+
+/// How far a card has looked for the points a request names, so it looks
+/// once and is then moved or let go, rather than looking until it's
+/// dropped.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Looked {
+    /// Not yet: the request was just said.
+    Not,
+    /// A look already under way, maybe over other channels, was stopped,
+    /// so the card looks for them once it ends.
+    Stopped,
+    /// The card looked over the request's channels.
+    Done,
 }
 
 impl Request {
@@ -127,11 +171,16 @@ impl Request {
             let Value::Structure(candidate) = value else {
                 return None;
             };
-            let [Value::Array(address), Value::I16(preference)] = candidate.fields() else {
+            let [
+                Value::Array(address),
+                Value::I16(preference),
+                Value::U32(frequency),
+            ] = candidate.fields()
+            else {
                 return None;
             };
             let address = address.iter().map(byte).collect::<Option<Vec<u8>>>()?;
-            Some((address, *preference))
+            Some((address, *preference, *frequency))
         };
         let candidates = candidates
             .iter()
@@ -153,11 +202,12 @@ impl Request {
         let candidates = said
             .candidates
             .into_iter()
-            .filter_map(|(address, preference)| {
+            .filter_map(|(address, preference, frequency)| {
                 let address: [u8; 6] = address.try_into().ok()?;
                 Some(Candidate {
                     bssid: bssid(address),
                     preference: u8::try_from(preference).ok(),
+                    frequency: Some(frequency).filter(|&frequency| frequency != 0),
                 })
             })
             .collect();
@@ -169,6 +219,14 @@ impl Request {
             valid_ms: said.valid_ms,
             candidates,
         }
+    }
+
+    /// How long a card that left the point asking keeps its chooser off it:
+    /// as long as its candidates hold, and at least as long as a move the
+    /// chooser makes itself holds the card still, so the next minute's
+    /// choice can't send the card back to a point that just shed it.
+    pub fn keeps_off(&self) -> Duration {
+        Duration::from_millis(self.valid_ms.into()).max(SETTLE)
     }
 
     /// What the journal says of it, for a card on a point, or on none
@@ -201,8 +259,6 @@ impl Request {
         } else {
             said.push_str(", warning it drops the card");
         }
-        // A point that sets no timer says nothing of when, which isn't at
-        // once.
         if self.in_ms == 0 {
             said.push_str(", saying not when");
         } else {
@@ -219,14 +275,18 @@ impl Request {
     /// the point asking would rather, of those heard and not ruled out,
     /// the more strongly heard of two it would as soon. Only a card wifid
     /// holds, `held`, is moved, and only to a point `heard` names: one the
-    /// card itself heard on its network. A card already `leaving` a point
-    /// that warned it is left to that move.
+    /// card itself heard on its network. One hearing none looks for them
+    /// first, unless it already has, `looked`, or no channel of theirs is
+    /// known. A card whose whole network drops it is let go, even one
+    /// already on a move within it, and one already `leaving` a point that
+    /// warned it is otherwise left to that move.
     pub fn heed(
         &self,
         from: Option<&str>,
         heard: &[(String, i16)],
         held: bool,
         leaving: bool,
+        looked: bool,
     ) -> Heed {
         if !self.warns && !self.leaves_network {
             return Heed::Stay;
@@ -234,17 +294,19 @@ impl Request {
         if !held {
             return Heed::Unheld;
         }
-        if leaving {
-            return Heed::Leaving;
-        }
         if self.leaves_network {
             return Heed::NetworkDrops;
         }
+        if leaving {
+            return Heed::Leaving;
+        }
         let elsewhere = |bssid: &str| from.is_none_or(|from| !from.eq_ignore_ascii_case(bssid));
-        let chosen = self
+        let ways_out = self
             .candidates
             .iter()
-            .filter(|candidate| candidate.preference != Some(0) && elsewhere(&candidate.bssid))
+            .filter(|candidate| candidate.preference != Some(0) && elsewhere(&candidate.bssid));
+        let chosen = ways_out
+            .clone()
             .filter_map(|candidate| {
                 let (_, signal) = heard
                     .iter()
@@ -256,7 +318,19 @@ impl Request {
                 Some((rank, *signal, &candidate.bssid))
             })
             .max_by_key(|&(rank, signal, _)| (rank, signal));
-        chosen.map_or(Heed::LetGo, |(_, _, bssid)| Heed::Move(bssid.clone()))
+        if let Some((_, _, bssid)) = chosen {
+            return Heed::Move(bssid.clone());
+        }
+        let mut channels: Vec<u32> = ways_out
+            .filter_map(|candidate| candidate.frequency)
+            .collect();
+        channels.sort_unstable();
+        channels.dedup();
+        if looked || channels.is_empty() {
+            Heed::LetGo
+        } else {
+            Heed::Look(channels)
+        }
     }
 }
 
@@ -274,11 +348,19 @@ mod tests {
     const NEAR: &str = "02:00:00:00:05:00";
     const FAR: &str = "02:00:00:00:06:00";
 
+    /// A point the request names, on channel 6.
     fn named(bssid: &str, preference: Option<u8>) -> Candidate {
         Candidate {
             bssid: bssid.to_owned(),
             preference,
+            frequency: Some(2437),
         }
+    }
+
+    /// How a card holding to its point, leaving none, heeds a request
+    /// before it's looked.
+    fn heeds(request: &Request, heard_now: &[(&str, i16)]) -> Heed {
+        request.heed(Some(ON), &heard(heard_now), true, false, false)
     }
 
     fn warning(candidates: Vec<Candidate>) -> Request {
@@ -308,28 +390,28 @@ mod tests {
             in_ms: 2048,
             valid_ms: 25_600,
             candidates: vec![
-                (vec![2, 0, 0, 0, 5, 0], 255),
-                (vec![2, 0, 0, 0, 6], 200),
-                (vec![2, 0, 0, 0, 0x6a, 0xff], -1),
-                (vec![2, 0, 0, 0, 0, 0], 0),
+                (vec![2, 0, 0, 0, 5, 0], 255, 2437),
+                (vec![2, 0, 0, 0, 6], 200, 2437),
+                (vec![2, 0, 0, 0, 0x6a, 0xff], -1, 0),
+                (vec![2, 0, 0, 0, 0, 0], 0, 2437),
             ],
         });
-        let expected = warning(vec![
-            named(NEAR, Some(255)),
-            named("02:00:00:00:6a:ff", None),
-            named(ON, Some(0)),
-        ]);
+        let unplaced = Candidate {
+            frequency: None,
+            ..named("02:00:00:00:6a:ff", None)
+        };
+        let expected = warning(vec![named(NEAR, Some(255)), unplaced, named(ON, Some(0))]);
         assert_eq!(
             read, expected,
-            "the candidates as given, the five-byte one left out"
+            "the candidates as given, the five-byte one left out, channel 0 none"
         );
     }
 
     #[test]
     fn the_signal_is_read_from_its_dictionary_and_refused_out_of_shape() {
         let candidates = vec![
-            (vec![2_u8, 0, 0, 0, 5, 0], 255_i16),
-            (vec![2, 0, 0, 0, 6, 0], -1),
+            (vec![2_u8, 0, 0, 0, 5, 0], 255_i16, 2437_u32),
+            (vec![2, 0, 0, 0, 6, 0], -1, 2437),
         ];
         let mut args = HashMap::from([
             ("Disassociating".to_owned(), OwnedValue::from(true)),
@@ -354,6 +436,16 @@ mod tests {
             "a field of another type is out of shape"
         );
         args.insert("ValidMs".to_owned(), OwnedValue::from(25_600_u32));
+        let unplaced = vec![(vec![2_u8, 0, 0, 0, 5, 0], 255_i16)];
+        args.insert(
+            "Candidates".to_owned(),
+            OwnedValue::try_from(Value::from(unplaced)).expect("candidates as a value"),
+        );
+        assert_eq!(
+            Request::from_args(&args),
+            None,
+            "a candidate with no channel is an older patch's"
+        );
         args.remove("Protected");
         assert_eq!(
             Request::from_args(&args),
@@ -412,13 +504,46 @@ mod tests {
     }
 
     #[test]
+    fn only_a_heed_that_leaves_the_warning_point_keeps_it_off() {
+        let leaving = [
+            Heed::Move(NEAR.to_owned()),
+            Heed::Look(vec![2437]),
+            Heed::LetGo,
+            Heed::NetworkDrops,
+        ];
+        for heed in leaving {
+            assert!(
+                heed.leaves(),
+                "{heed:?} would send the card back to the drop"
+            );
+        }
+        for heed in [Heed::Stay, Heed::Unheld, Heed::Leaving] {
+            assert!(!heed.leaves(), "{heed:?} follows no new warning");
+        }
+    }
+
+    #[test]
+    fn a_warning_point_is_kept_off_as_long_as_its_candidates_hold_or_a_move_settles() {
+        assert_eq!(
+            warning(Vec::new()).keeps_off(),
+            SETTLE,
+            "25.6 s of candidates is shorter than a move settles"
+        );
+        let long = Request {
+            valid_ms: 3_600_000,
+            ..warning(Vec::new())
+        };
+        assert_eq!(long.keeps_off(), Duration::from_hours(1));
+    }
+
+    #[test]
     fn a_request_that_warns_nothing_moves_nothing() {
         let request = Request {
             warns: false,
             ..warning(vec![named(NEAR, Some(255))])
         };
         assert_eq!(
-            request.heed(Some(ON), &heard(&[(NEAR, -40)]), true, false),
+            heeds(&request, &[(NEAR, -40)]),
             Heed::Stay,
             "wifid chooses by how a point carries, so a plain ask is only said",
         );
@@ -431,6 +556,7 @@ mod tests {
                 Some(ON),
                 &heard(&[(NEAR, -40)]),
                 false,
+                false,
                 false
             ),
             Heed::Unheld,
@@ -442,9 +568,29 @@ mod tests {
     fn a_card_already_leaving_a_point_that_warned_it_keeps_to_its_move() {
         let again = warning(vec![named(FAR, Some(255)), named(NEAR, Some(100))]);
         assert_eq!(
-            again.heed(Some(ON), &heard(&[(NEAR, -40), (FAR, -30)]), true, true),
+            again.heed(
+                Some(ON),
+                &heard(&[(NEAR, -40), (FAR, -30)]),
+                true,
+                true,
+                false
+            ),
             Heed::Leaving,
             "a warning said again isn't a move asked again",
+        );
+    }
+
+    #[test]
+    fn a_card_leaving_for_a_point_of_a_network_that_drops_it_is_let_go() {
+        let whole = Request {
+            warns: false,
+            leaves_network: true,
+            ..warning(vec![named(NEAR, Some(255))])
+        };
+        assert_eq!(
+            whole.heed(Some(ON), &heard(&[(NEAR, -40)]), true, true, false),
+            Heed::NetworkDrops,
+            "a move to another point of the network would land on one that drops the card",
         );
     }
 
@@ -456,7 +602,7 @@ mod tests {
             ..warning(vec![named(NEAR, Some(255))])
         };
         assert_eq!(
-            whole.heed(Some(ON), &heard(&[(NEAR, -40)]), true, false),
+            heeds(&whole, &[(NEAR, -40)]),
             Heed::NetworkDrops,
             "no point of a network that drops the card keeps it",
         );
@@ -470,17 +616,12 @@ mod tests {
             named("02:00:00:00:07:00", None),
         ]);
         assert_eq!(
-            request.heed(
-                Some(ON),
-                &heard(&[(NEAR, -70), ("02:00:00:00:07:00", -30)]),
-                true,
-                false
-            ),
+            heeds(&request, &[(NEAR, -70), ("02:00:00:00:07:00", -30)]),
             Heed::Move(NEAR.to_owned()),
             "the unheard favourite is passed over, and any preference beats none",
         );
         assert_eq!(
-            request.heed(Some(ON), &heard(&[(FAR, -80), (NEAR, -30)]), true, false),
+            heeds(&request, &[(FAR, -80), (NEAR, -30)]),
             Heed::Move(FAR.to_owned()),
             "a preference outranks a stronger signal",
         );
@@ -490,7 +631,7 @@ mod tests {
     fn a_warned_card_takes_the_stronger_of_two_the_point_would_as_soon() {
         let request = warning(vec![named(NEAR, Some(100)), named(FAR, Some(100))]);
         assert_eq!(
-            request.heed(Some(ON), &heard(&[(NEAR, -70), (FAR, -50)]), true, false),
+            heeds(&request, &[(NEAR, -70), (FAR, -50)]),
             Heed::Move(FAR.to_owned()),
         );
     }
@@ -503,26 +644,57 @@ mod tests {
                 Some(&ON.to_uppercase()),
                 &heard(&[(ON, -30), (NEAR, -40)]),
                 true,
+                false,
                 false
             ),
             Heed::LetGo,
-            "its own point however written, and a point at 0, are no way out",
+            "its own point however written, and a point at 0, are no way out, nor looked for",
         );
     }
 
     #[test]
-    fn a_warned_card_hearing_no_candidate_is_let_go() {
+    fn a_warned_card_hearing_no_candidate_looks_over_their_channels_once() {
+        let on_36 = Candidate {
+            frequency: Some(5180),
+            ..named("02:00:00:00:07:00", None)
+        };
+        let request = warning(vec![named(FAR, Some(255)), on_36, named(NEAR, Some(10))]);
         assert_eq!(
-            warning(vec![named(FAR, Some(255))]).heed(
-                Some(ON),
-                &heard(&[(NEAR, -40)]),
-                true,
-                false
-            ),
-            Heed::LetGo,
+            heeds(&request, &[(ON, -40)]),
+            Heed::Look(vec![2437, 5180]),
+            "each channel once, in order",
         );
         assert_eq!(
-            warning(Vec::new()).heed(Some(ON), &heard(&[(NEAR, -40)]), true, false),
+            request.heed(Some(ON), &heard(&[(ON, -40)]), true, false, true),
+            Heed::LetGo,
+            "one that looked and still hears none is let go",
+        );
+        assert_eq!(
+            request.heed(
+                Some(ON),
+                &heard(&[(ON, -40), (NEAR, -60)]),
+                true,
+                false,
+                true
+            ),
+            Heed::Move(NEAR.to_owned()),
+            "one that looked goes to what it heard",
+        );
+    }
+
+    #[test]
+    fn a_warned_card_with_no_channel_to_look_over_is_let_go() {
+        let unplaced = Candidate {
+            frequency: None,
+            ..named(FAR, Some(255))
+        };
+        assert_eq!(
+            heeds(&warning(vec![unplaced]), &[(NEAR, -40)]),
+            Heed::LetGo,
+            "a look over every channel takes as long as the point gives",
+        );
+        assert_eq!(
+            heeds(&warning(Vec::new()), &[(NEAR, -40)]),
             Heed::LetGo,
             "one naming nothing leaves wpa_supplicant to rejoin where it can",
         );

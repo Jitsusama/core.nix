@@ -1089,7 +1089,7 @@ mod tests {
     }
 
     #[test]
-    fn a_move_away_from_a_point_that_drops_the_card_put_back_keeps_nothing_off() {
+    fn a_saved_move_away_from_a_point_that_drops_the_card_kept_nothing_off() {
         let mut arrivals = Arrivals::default();
         let now = Instant::now();
         arrivals.asked("wlan0", Some(DESK), FAR, now);

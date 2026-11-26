@@ -101,7 +101,7 @@ use stall::Stalls;
 use state::{Progress, Reach, State, Trouble};
 use store::{Saved, Store};
 use supplicant::{InterfaceProxy, JoinableProxy, Step, SupplicantProxy};
-use transition::{Heed, Request};
+use transition::{Heed, Looked, Request};
 
 /// Where wifid keeps what it must remember between starts.
 const STATE: &str = "/var/lib/wifid";
@@ -496,17 +496,22 @@ async fn take_signal(
         wifid.take_off(&card, free(&card)).await;
     }
     for card in std::mem::take(&mut air.left) {
+        // Dropped already, so what its point asked is past following.
+        air.looking_for.remove(&card);
         wifid.came_off(&card, free(&card)).await;
     }
     for card in std::mem::take(&mut air.settled) {
         wifid.settled(&card, free(&card)).await;
     }
     for card in std::mem::take(&mut air.gone) {
+        air.looking_for.remove(&card);
         wifid.gone(&card);
     }
     let joining = joining.map(|joining| joining.card.as_str());
-    for (card, request) in std::mem::take(&mut air.asked) {
-        wifid.asked(&card, &request, joining).await;
+    for (card, request, looked) in std::mem::take(&mut air.asked) {
+        if let Some(looked) = wifid.asked(&card, &request, joining, looked).await {
+            air.looking_for.insert(card, (request, looked));
+        }
     }
 }
 
@@ -757,8 +762,11 @@ struct Air<'a> {
     /// move kept of them to be forgotten.
     gone: Vec<String>,
     /// The cards their access point has just asked to move, by name, with
-    /// what it asked.
-    asked: Vec<(String, Request)>,
+    /// what it asked and how far each has looked for the points it names.
+    asked: Vec<(String, Request, Looked)>,
+    /// The cards looking for the points a request names, by name, each
+    /// heeding it again as its look ends.
+    looking_for: HashMap<String, (Request, Looked)>,
     /// The access point each card was last said to be at, by the card's
     /// path and the point's, as wpa_supplicant said them in turn. A join
     /// is credited to the point it was said at, since by the time wifid
@@ -802,6 +810,7 @@ impl<'a> Air<'a> {
             tried: Vec::new(),
             gone: Vec::new(),
             asked: Vec::new(),
+            looking_for: HashMap::new(),
             at: HashMap::new(),
             owner,
             departed: VecDeque::new(),
@@ -898,6 +907,10 @@ impl<'a> Air<'a> {
                 } else {
                     println!("<7>{card}'s look failed");
                     change(&self.state, State::look_ended);
+                }
+                // Heard by now, as what a card heard is said first.
+                if let Some((request, looked)) = self.looking_for.remove(&card) {
+                    self.asked.push((card, request, looked));
                 }
             }
             // How an enterprise network's join went: the server proving
@@ -1018,9 +1031,20 @@ impl<'a> Air<'a> {
         let Some(card) = self.named(bus, path).await else {
             return;
         };
-        match Request::from_args(args) {
-            Some(request) => self.asked.push((card, request)),
-            None => println!("<4>{card} was asked to move in a shape wifid can't read"),
+        let Some(request) = Request::from_args(args) else {
+            println!("<4>{card} was asked to move in a shape wifid can't read");
+            return;
+        };
+        // A point warns again until the card is gone, so one asked again
+        // as it looks for the points named takes the newer ask as the look
+        // ends, rather than stopping the look it's waiting on.
+        if let Some((waiting, _)) = self.looking_for.get_mut(&card) {
+            let from = self.state.borrow().point_of(&card);
+            println!("<6>{}", request.said(&card, from.as_deref()));
+            println!("<7>{card} heeds the newer ask once its look ends");
+            *waiting = request;
+        } else {
+            self.asked.push((card, request, Looked::Not));
         }
     }
 
@@ -2690,6 +2714,11 @@ impl Wifid<'_> {
     /// isn't moved for anyone else until it lands, and one that's warned
     /// is moved whatever step it's at: its point can warn it mid-rekey,
     /// which isn't a join on its way to the point it's sent to.
+    ///
+    /// `missed` says where a move that misses goes, and so whether it's a
+    /// warned move, the only kind that lets the card join what it hears:
+    /// that also decides whether a move under way refuses it, whether a
+    /// look is stopped for it and whether it's timed from the point left.
     async fn roam_card(
         &self,
         card: &str,
@@ -2747,15 +2776,27 @@ impl Wifid<'_> {
                 let mut looking = interface.scanning().await.unwrap_or(false);
                 // A look over every channel takes 5 to 6 s, as long as a
                 // point that drops the card may give it, so a warned move
-                // ends the look rather than wait for it.
+                // ends the look rather than wait for it. That's whoever's
+                // look it is: one the launcher or the chooser asked for
+                // ends short, with what it heard so far, and says nothing
+                // of why, a fair trade with a drop seconds away.
                 if looking && !returns {
                     match interface.abort_scan().await {
                         Ok(()) => {
                             println!("<6>{card} stops looking to move before it's dropped");
                             looking = false;
                         }
+                        // wpa_supplicant refuses alike a look it can't stop
+                        // and one that ended since it was asked, which
+                        // brings no end of look to wait for: so it's asked
+                        // again whether the card still looks.
                         Err(error) => {
-                            println!("<4>{card} moves once its look ends, not stopped: {error}");
+                            looking = interface.scanning().await.unwrap_or(true);
+                            if looking {
+                                println!(
+                                    "<4>{card} moves once its look ends, not stopped: {error}"
+                                );
+                            }
                         }
                     }
                 }
@@ -3385,7 +3426,17 @@ impl Wifid<'_> {
     /// again until the card is gone, and one whose whole network drops it
     /// is let go. A card in the join the shell asked for, `joining`, has
     /// its networks turned on by the join as it ends.
-    async fn asked(&self, card: &str, request: &Request, joining: Option<&str>) {
+    ///
+    /// A card hearing none of the points named looks over their channels
+    /// first. Says how far it's looked where it waits on a look, so the
+    /// request is heeded again as the look ends, with what it heard.
+    async fn asked(
+        &self,
+        card: &str,
+        request: &Request,
+        joining: Option<&str>,
+        looked: Looked,
+    ) -> Option<Looked> {
         let (from, heard) = {
             let state = self.state.borrow();
             let heard: Vec<(String, i16)> = state
@@ -3395,14 +3446,24 @@ impl Wifid<'_> {
                 .collect();
             (state.point_of(card), heard)
         };
-        println!("<6>{}", request.said(card, from.as_deref()));
+        if looked == Looked::Not {
+            println!("<6>{}", request.said(card, from.as_deref()));
+        }
         let held = self.held.borrow().contains_key(card);
         let leaving = self.arrivals.borrow().leaves_a_drop(card);
-        let followed = request.heed(from.as_deref(), &heard, held, leaving);
-        if matches!(followed, Heed::Move(_) | Heed::LetGo | Heed::NetworkDrops)
+        let followed = request.heed(
+            from.as_deref(),
+            &heard,
+            held,
+            leaving,
+            looked == Looked::Done,
+        );
+        if followed.leaves()
             && let Some(from) = from.as_deref()
         {
             self.arrivals.borrow_mut().wont_return(card, from);
+            let until = Instant::now() + request.keeps_off();
+            change(self.state, |state| state.warned_off(card, from, until));
         }
         match followed {
             Heed::Stay => println!("<7>{card} stays where it is, as the ask warns nothing"),
@@ -3424,9 +3485,69 @@ impl Wifid<'_> {
                     println!("<4>{card} couldn't move to {bssid} before it's dropped: {refused:?}");
                 }
             },
+            Heed::Look(channels) => {
+                let looks = self.look_for_asked(card, &channels, looked).await;
+                if looks.is_some() {
+                    return looks;
+                }
+                println!("<6>{card} can't look for the points asked, so may join any again");
+                self.let_go(card, joining != Some(card)).await;
+            }
             Heed::LetGo => {
                 println!("<6>{card} hears none of the points asked, so may join any again");
                 self.let_go(card, joining != Some(card)).await;
+            }
+        }
+        None
+    }
+
+    /// Has a card look over these channels for the points a request names,
+    /// saying how far it's looked once the look is asked. A look already
+    /// under way may be over other channels, as the chooser's are, so it's
+    /// stopped the first time and this one asked as it ends; asked whoever
+    /// began it, it ends short, as a warned move's does (`roam_card`).
+    async fn look_for_asked(&self, card: &str, channels: &[u32], looked: Looked) -> Option<Looked> {
+        let path = self.supplicant.get_interface(card).await.ok()?;
+        let interface = interface(self.bus, path).await.ok()?;
+        let looking = || {
+            let over: Vec<(u32, u32)> = channels.iter().map(|&frequency| (frequency, 20)).collect();
+            HashMap::from([
+                ("Type", zvariant::Value::from("active")),
+                ("Channels", zvariant::Value::from(over)),
+            ])
+        };
+        let mhz: Vec<String> = channels.iter().map(ToString::to_string).collect();
+        let mhz = mhz.join(", ");
+        let said = |card: &str| {
+            println!("<6>{card} hears none of the points asked, so looks over {mhz} MHz");
+            Some(Looked::Done)
+        };
+        match interface.scan(looking()).await {
+            Ok(()) => said(card),
+            Err(_) if looked == Looked::Not && interface.scanning().await.unwrap_or(false) => {
+                match interface.abort_scan().await {
+                    Ok(()) => println!("<6>{card} stops looking to look over {mhz} MHz"),
+                    // A look that ended as it was stopped is refused alike,
+                    // and its end may be heard before this card waits on
+                    // it, so one that's over is asked for again at once.
+                    Err(_) if !interface.scanning().await.unwrap_or(true) => {
+                        return match interface.scan(looking()).await {
+                            Ok(()) => said(card),
+                            Err(error) => {
+                                println!("<4>{card} didn't look over {mhz} MHz: {error}");
+                                None
+                            }
+                        };
+                    }
+                    Err(error) => {
+                        println!("<4>{card} looks over {mhz} MHz once its look ends: {error}");
+                    }
+                }
+                Some(Looked::Stopped)
+            }
+            Err(error) => {
+                println!("<4>{card} didn't look over {mhz} MHz: {error}");
+                None
             }
         }
     }

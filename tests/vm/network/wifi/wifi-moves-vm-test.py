@@ -2,9 +2,10 @@
 
 Here the card moves between the access points of one network: on from one that doesn't answer, to
 another when an account asks, keeping its neighbours, to another when its point warns it drops the
-card, and free of both when that other doesn't answer, back to the one it left when the one it was
-asked to has gone, and free to join any network when it can't get back either; a network of
-another name forgets those neighbours.
+card, looking first for one it doesn't hear and ending a look under way, free of its point when
+the whole network drops it, and free of both when that other doesn't answer, back to the one it
+left when the one it was asked to has gone, and free to join any network when it can't get back
+either; a network of another name forgets those neighbours.
 tests/vm/network/wifi.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
 its opening comment says what the test proves. The tests run in the order written, each taking the
 machine on from where the one before left it, so one run alone with -k starts from Lantern joined
@@ -302,6 +303,51 @@ def held_to(machine: BaseMachine, wifid: Wifid, bssid: str) -> bool:
     return "goes back to" not in said and "may join any access point" not in said
 
 
+def held_nowhere(machine: BaseMachine) -> bool:
+    """Say whether Lantern joins at any of its points, as wpa_supplicant holds it."""
+    lantern = machine.succeed(
+        "wpa_cli -i wlan2 list_networks | awk -F'\\t' '$2 == \"Lantern\" {print $1}'"
+    ).strip()
+    # wpa_supplicant answers FAIL for a network's address once it's held to none.
+    return machine.succeed(f"wpa_cli -i wlan2 get_network {lantern} bssid").strip() == "FAIL"
+
+
+def warning(machine: BaseMachine, wifid: Wifid) -> str:
+    """Hold the card to Lantern's second, and give the ask that warns it drops the card there.
+
+    The ask names Lantern's first on channel 6, op class 81, which is 2437 MHz.
+    """
+    retry(lambda _: hears(machine, wifid, SECOND), timeout=timedelta(seconds=60))
+    retry(lambda _: held_to(machine, wifid, SECOND), timeout=timedelta(seconds=60))
+    station = machine.succeed("wpa_cli -i wlan2 status | sed -n 's/^address=//p'").strip()
+    return (
+        f"hostapd_cli -p /run/hostapd-lantern-two -i wlan5 bss_tm_req {station}"
+        f" pref=1 valid_int=200 neighbor={FIRST},0x0000,81,6,7,0301ff"
+        " disassoc_imminent=1 disassoc_timer=50"
+    )
+
+
+def reached_in_time(machine: BaseMachine, since: str, *said: str) -> None:
+    """Check wifid said each line in order and the card reached the first before its drop."""
+    reached = f"^wlan2 reached {FIRST} [0-9]+ ms after it was asked"
+    machine.wait_until_succeeds(
+        f"journalctl -o cat -u wifid --after-cursor='{since}' | grep -qE '{reached}'",
+        timeout=timedelta(seconds=10),
+    )
+    timed = said_since(machine, since)
+    lines = [line for _, line in timed]
+    place = -1
+    for words in said:
+        place = first_line(lines, words, place)
+    heard = next((at for at, line in timed if "warning it drops the card" in line), None)
+    landed = next((at for at, line in timed if line.startswith(f"wlan2 reached {FIRST} ")), None)
+    assert heard is not None, f"wifid never said the warning in:\n{lines}"
+    assert landed is not None, f"wifid never said the card reached {FIRST} in:\n{lines}"
+    took = (landed - heard) // 1000
+    assert took < DROPS_IN_MS, f"the card took {took} ms, past the {DROPS_IN_MS} ms warned of"
+    machine.succeed(f"wpa_cli -i wlan2 status | grep -qx bssid={FIRST}")
+
+
 def said_since(machine: BaseMachine, since: str) -> list[tuple[int, str]]:
     """Give each line wifid said since the cursor, with when, in microseconds since boot."""
     lines = machine.succeed(f"journalctl -o json -u wifid --after-cursor='{since}'")
@@ -341,7 +387,9 @@ def test_a_held_card_says_its_points_asks_and_moves_when_one_warns_it_drops_it(
         )
         said = machine.succeed(f"journalctl -o cat -u wifid --after-cursor='{since}'")
         assert "before it's dropped" not in said, f"wifid moved the card for a plain ask:\n{said}"
-        machine.succeed(f"wpa_cli -i wlan2 status | grep -qx bssid={SECOND}")
+        # Whether wpa_supplicant left the point on its own is read by the warned ask below:
+        # the second answers OK only for a card still joined to it, and a status read here
+        # could come before a move wpa_supplicant began after the signal.
         since = wifid.journal_now()
         machine.succeed(f"{ask} disassoc_imminent=1 disassoc_timer=50 | grep -qx OK")
         warned = f"{asked}, warning it drops the card in {DROPS_IN_MS} ms"
@@ -365,6 +413,92 @@ def test_a_held_card_says_its_points_asks_and_moves_when_one_warns_it_drops_it(
         assert took < DROPS_IN_MS, f"the card took {took} ms, past the {DROPS_IN_MS} ms warned of"
         machine.succeed(f"wpa_cli -i wlan2 status | grep -qx bssid={FIRST}")
     finally:
+        machine.succeed("systemctl stop lantern-two")
+
+
+# wpa_supplicant forgets a point three minutes after it last heard it, and on a strong link the
+# laptop looks once an hour, so most warnings name points the card doesn't hear. It can't move to
+# one it hasn't heard, so it looks over the channels the warning names, a fraction of a second
+# where a look over every channel takes 5 to 6.
+def test_a_warned_card_that_hears_none_of_the_points_named_looks_on_their_channels(
+    machine: BaseMachine, wifid: Wifid
+) -> None:
+    """A warned card that hears none of the points named looks over their channels, and moves."""
+    machine.succeed("systemctl start lantern-two")
+    since = wifid.journal_now()
+    try:
+        ask = warning(machine, wifid)
+        # Forgets every point but the one the card is on, and says so to wifid ahead of the
+        # warning, on the same bus.
+        machine.succeed("wpa_cli -i wlan2 bss_flush 0 | grep -qx OK")
+        assert FIRST not in machine.succeed("wpa_cli -i wlan2 scan_results"), "still heard"
+        since = wifid.journal_now()
+        machine.succeed(f"{ask} | grep -qx OK")
+        reached_in_time(
+            machine,
+            since,
+            "warning it drops the card in 5120 ms",
+            "wlan2 hears none of the points asked, so looks over 2437 MHz",
+            f"wlan2 moves to {FIRST} before it's dropped",
+        )
+    finally:
+        machine.log(machine.succeed(f"journalctl -o short-precise --after-cursor='{since}'"))
+        machine.succeed("systemctl stop lantern-two")
+
+
+# A look over every channel takes 5 to 6 s, as long as a warning gives, so a warned move ends a
+# look under way rather than wait for it.
+def test_a_warned_card_stops_looking_to_move_before_it_s_dropped(
+    machine: BaseMachine, wifid: Wifid
+) -> None:
+    """A card warned while it looks over every channel stops looking, and moves in time."""
+    machine.succeed("systemctl start lantern-two")
+    since = wifid.journal_now()
+    try:
+        ask = warning(machine, wifid)
+        since = wifid.journal_now()
+        machine.succeed(f"wpa_cli -i wlan2 scan | grep -qx OK && {ask} | grep -qx OK")
+        reached_in_time(
+            machine,
+            since,
+            "warning it drops the card in 5120 ms",
+            "wlan2 stops looking to move before it's dropped",
+            f"wlan2 moves to {FIRST} before it's dropped",
+        )
+    finally:
+        machine.log(machine.succeed(f"journalctl -o short-precise --after-cursor='{since}'"))
+        machine.succeed("systemctl stop lantern-two")
+
+
+# An access point that says its whole network drops the card names no point to go to, so the card
+# is let join any point, and any network, rather than held to one that drops it.
+def test_a_card_whose_whole_network_drops_it_may_join_any_point_again(
+    machine: BaseMachine, wifid: Wifid
+) -> None:
+    """A card warned its whole network drops it is let go of its point."""
+    machine.succeed("systemctl start lantern-two")
+    since = wifid.journal_now()
+    try:
+        warning(machine, wifid)
+        station = machine.succeed("wpa_cli -i wlan2 status | sed -n 's/^address=//p'").strip()
+        since = wifid.journal_now()
+        machine.succeed(
+            "hostapd_cli -p /run/hostapd-lantern-two -i wlan5"
+            f" ess_disassoc {station} 50 https://api.lantern/ | grep -qx OK"
+        )
+        said = (
+            f"wlan2 was asked by {SECOND} to move, naming no point,"
+            f" warning its whole network drops the card in {DROPS_IN_MS} ms"
+        )
+        machine.wait_until_succeeds(
+            f"journalctl -o cat -u wifid --after-cursor='{since}' | grep -qxF '{said}'"
+            f" && journalctl -o cat -u wifid --after-cursor='{since}'"
+            ' | grep -qxF "wlan2\'s whole network drops it, so it may join any point again"',
+            timeout=timedelta(seconds=10),
+        )
+        assert held_nowhere(machine), "still held to the point whose network drops it"
+    finally:
+        machine.log(machine.succeed(f"journalctl -o short-precise --after-cursor='{since}'"))
         machine.succeed("systemctl stop lantern-two")
 
 
@@ -394,6 +528,9 @@ def test_a_warned_card_whose_way_out_doesnt_answer_is_let_go_rather_than_sent_ba
         said = machine.succeed(f"journalctl -o cat -u wifid --after-cursor='{since}'")
         sent_back = f"so goes back to {SECOND}"
         assert sent_back not in said, f"sent back to the point that drops it:\n{said}"
+        # The line is said before the hold is let go, so the hold is read as well, while the
+        # first is still frozen: a card left held to it would be stranded off its network.
+        retry(lambda _: held_nowhere(machine), timeout=timedelta(seconds=10))
     finally:
         try:
             # Logged first, so a clean-up that fails can't hide why.
@@ -402,10 +539,17 @@ def test_a_warned_card_whose_way_out_doesnt_answer_is_let_go_rather_than_sent_ba
             # Lantern goes on, and the second off, whatever fails, so the subtests after this
             # one aren't left a frozen point or a second. wpa_supplicant ignores the first a
             # while for the joins it refused, which would keep the card off it below.
-            machine.succeed(
-                "systemctl kill -s CONT lantern && wpa_cli -i wlan2 bssid_ignore clear"
-                " && systemctl stop lantern-two"
-            )
+            # Each is run whether or not the one before it fails, and all are judged together.
+            cleaned = {
+                step: machine.execute(step)[0]
+                for step in (
+                    "systemctl kill -s CONT lantern",
+                    "wpa_cli -i wlan2 bssid_ignore clear | grep -qx OK",
+                    "systemctl stop lantern-two",
+                )
+            }
+            failed = [step for step, status in cleaned.items() if status != 0]
+            assert not failed, f"the clean-up failed at: {failed}"
 
 
 # On 16 Nov 2026 a move found its access point gone, and the card scanned

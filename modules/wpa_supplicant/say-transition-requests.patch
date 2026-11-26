@@ -18,15 +18,21 @@ since a signal's table holds three arguments at most: Disassociating
 (b), whether it warns of a disassociation from the BSS; LeavingNetwork
 (b), whether from the whole ESS, where no other BSS of it would keep the
 station; Protected (b), whether the association protects management
-frames, as upstream's ESS warning says too, so the request can't be a
-forgery; DisassociationMs (u), in how long; ValidMs (u), how long its
-candidate list holds; and Candidates (a(ayn)), each as its BSSID and its
-preference, or -1 where the access point gave none, in the order given.
-How upstream answers the request is left as it was. Both times are
-worked out from beacon intervals in 64 bits: the access point sets the
-interval and the counts, and their product can pass a signed int. Each
-is then said in 32 bits, which only a beacon interval past 64000 TU,
-over a minute, could pass.
+frames, as upstream's ESS warning says too; DisassociationMs (u), in how
+long; ValidMs (u), how long its candidate list holds; and Candidates
+(a(aynu)), each as its BSSID, its preference, or -1 where the access
+point gave none, and the frequency of its channel in MHz, or 0 where its
+operating class and channel name none known, in the order given. The
+frequency lets the program look on the candidates' channels alone, in a
+fraction of a second, for one it hasn't heard lately.
+
+Protected is said of the link, not of the frame: it means the request
+can't be a forgery only where the kernel drops an unprotected robust
+action frame on such a link, as mac80211 does. How upstream answers the
+request is left as it was. Both times are worked out from beacon
+intervals in 64 bits: the access point sets the interval and the counts,
+and their product can pass a signed int. Each is then said in 32 bits,
+which only a beacon interval past 64000 TU, over a minute, could pass.
 diff -ru a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
 --- a/wpa_supplicant/dbus/dbus_new.c
 +++ b/wpa_supplicant/dbus/dbus_new.c
@@ -38,7 +44,7 @@ diff -ru a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
  #include "dbus_new_helpers.h"
  #include "dbus_dict_helpers.h"
  #include "dbus_new.h"
-@@ -1159,6 +1160,99 @@
+@@ -1159,6 +1160,106 @@
  }
  
  
@@ -50,7 +56,9 @@ diff -ru a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
 + *	disassociated from this BSS
 + * @leaving_network: Whether it warns of a disassociation from the whole ESS
 + * @protected_frames: Whether the association protects management frames,
-+ *	so the request can't have been forged by another station
++ *	said of the link, not of the frame: only where the kernel drops an
++ *	unprotected robust action frame on such a link, as mac80211 does, can
++ *	the request not have been forged by another station
 + * @disassociation_ms: In how long, where it warns
 + * @valid_ms: How long the candidate list holds
 + * @candidates: The candidates, in the order the access point gave them
@@ -58,8 +66,9 @@ diff -ru a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
 + *
 + * Said as one dictionary: Disassociating (b), LeavingNetwork (b),
 + * Protected (b), DisassociationMs (u), ValidMs (u) and Candidates
-+ * (a(ayn)), each candidate its BSSID and its preference, or -1 where the
-+ * access point gave none.
++ * (a(aynu)), each candidate its BSSID, its preference, or -1 where the
++ * access point gave none, and the frequency of its channel in MHz, or 0
++ * where its operating class and channel name none known here.
 + */
 +void wpas_dbus_signal_bss_tm_request(struct wpa_supplicant *wpa_s,
 +				     bool disassociating,
@@ -98,13 +107,15 @@ diff -ru a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
 +	    !wpa_dbus_dict_append_uint32(&dict, "DisassociationMs",
 +					 disassociation_ms) ||
 +	    !wpa_dbus_dict_append_uint32(&dict, "ValidMs", valid_ms) ||
-+	    !wpa_dbus_dict_begin_array(&dict, "Candidates", "(ayn)",
++	    !wpa_dbus_dict_begin_array(&dict, "Candidates", "(aynu)",
 +				       &entry, &value, &array))
 +		goto fail;
 +	for (i = 0; i < num_candidates; i++) {
 +		const u8 *address = candidates[i].bssid;
 +		dbus_int16_t preference = candidates[i].preference_present ?
 +			candidates[i].preference : -1;
++		dbus_uint32_t frequency = candidates[i].freq > 0 ?
++			candidates[i].freq : 0;
 +
 +		if (!dbus_message_iter_open_container(&array, DBUS_TYPE_STRUCT,
 +						      NULL, &candidate) ||
@@ -118,6 +129,8 @@ diff -ru a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
 +		    !dbus_message_iter_close_container(&candidate, &bssid) ||
 +		    !dbus_message_iter_append_basic(&candidate, DBUS_TYPE_INT16,
 +						    &preference) ||
++		    !dbus_message_iter_append_basic(&candidate, DBUS_TYPE_UINT32,
++						    &frequency) ||
 +		    !dbus_message_iter_close_container(&array, &candidate))
 +			goto fail;
 +	}
@@ -138,7 +151,7 @@ diff -ru a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
  void wpas_dbus_signal_sae_password_mismatch(struct wpa_supplicant *wpa_s)
  {
  	struct wpas_dbus_priv *iface;
-@@ -4472,6 +4566,12 @@
+@@ -4472,6 +4573,12 @@
  		  END_ARGS
  	  }
  	},

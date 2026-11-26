@@ -8,6 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::net::Ipv4Addr;
 
 use serde::{Deserialize, Serialize};
+use tokio::time::Instant;
 use zlink::introspect::{CustomType, Type};
 
 use crate::air::Heard;
@@ -52,6 +53,9 @@ pub struct State {
     at: BTreeMap<String, String>,
     /// The gateway each card's default route goes through, by link index.
     gateways: BTreeMap<i32, Ipv4Addr>,
+    /// The access point that last warned each card it drops it, by the
+    /// card's name, and until when the card's chooser isn't told of it.
+    warned_off: BTreeMap<String, (String, Instant)>,
 }
 
 /// A card on a network through an access point it hears, and the gateway
@@ -477,6 +481,32 @@ impl State {
             .collect()
     }
 
+    /// What a card hears around it, as `around` says, for its chooser to
+    /// choose from at `now`: less the point that warned it drops the card,
+    /// until `warned_off` says, unless the card is on that point again.
+    /// The chooser hears nothing of a warning itself, so the minute after
+    /// a warned move it would otherwise send the card straight back to a
+    /// point that carried better and drops it again.
+    pub fn around_to_choose(&self, card: &str, now: Instant) -> Vec<Heard> {
+        let mut around = self.around(card);
+        if let Some((point, until)) = self.warned_off.get(card)
+            && now < *until
+            && self
+                .point_of(card)
+                .is_none_or(|on| !on.eq_ignore_ascii_case(point))
+        {
+            around.retain(|heard| !heard.bssid.eq_ignore_ascii_case(point));
+        }
+        around
+    }
+
+    /// Keeps the access point that warned a card it drops it from the
+    /// card's chooser until then, in place of any it was warned by before.
+    pub fn warned_off(&mut self, card: &str, point: &str, until: Instant) {
+        self.warned_off
+            .insert(card.to_owned(), (point.to_owned(), until));
+    }
+
     /// The address of the access point the card is at, where it hears it,
     /// whether or not it has a gateway yet.
     pub fn point_of(&self, card: &str) -> Option<String> {
@@ -587,6 +617,8 @@ fn card_of(path: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
+
+    use tokio::time::Duration;
 
     use super::*;
     use crate::network::{Address, Network};
@@ -1294,6 +1326,43 @@ mod tests {
         assert!(
             state.around("wlan9").is_empty(),
             "a card on no network hears none"
+        );
+    }
+
+    #[test]
+    fn a_card_s_chooser_hears_nothing_of_the_point_that_warned_it_while_that_holds() {
+        let mut state = at_the_inn();
+        let on = state.point_of("wlan2").expect("on a point");
+        let signals = |around: Vec<Heard>| -> Vec<i16> {
+            around.into_iter().map(|heard| heard.signal).collect()
+        };
+        let other = state
+            .around("wlan2")
+            .into_iter()
+            .find(|heard| heard.bssid != on)
+            .expect("another point of the inn");
+        let now = Instant::now();
+        state.warned_off(
+            "wlan2",
+            &other.bssid.to_uppercase(),
+            now + Duration::from_secs(600),
+        );
+
+        assert_eq!(
+            signals(state.around_to_choose("wlan2", now)),
+            [-52],
+            "the point that warned, however written, is left out"
+        );
+        assert_eq!(
+            signals(state.around_to_choose("wlan2", now + Duration::from_secs(600))),
+            [-52, -60],
+            "and heard again once the warning's time is up"
+        );
+        state.warned_off("wlan2", &on, now + Duration::from_secs(600));
+        assert_eq!(
+            signals(state.around_to_choose("wlan2", now)),
+            [-52, -60],
+            "a card back on the point that warned it hears it, and the earlier point again"
         );
     }
 
