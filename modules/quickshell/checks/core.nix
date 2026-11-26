@@ -467,7 +467,7 @@ in
       strayedAlone = strayedWith { };
       strayed = strayedWith outsideGiven;
       bothSay = line: lib.elem line strayedAlone && lib.elem line strayed;
-      outsideGiven = lib.genAttrs outside (file: builtins.toFile "Planted-outside.js" "");
+      outsideGiven = lib.genAttrs outside (_file: builtins.toFile "Planted-outside.js" "");
       # Given alone, with no import astray, they must still stop the step.
       outsideAlone = programStepWith table [ ] (ownImporting "../${picked}" // outsideGiven);
       outsideCopied = !(lib.elem "exit 1" (lines outsideAlone));
