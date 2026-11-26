@@ -2,7 +2,7 @@
 
 import importlib.util
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -28,7 +28,8 @@ OWN = """<!doctype html>
 def judged(folder: Path, body: str) -> list[str]:
     """Say what the check finds in a page holding `body` in `folder`."""
     (folder / "index.html").write_text(f"<!doctype html><body>\n{body}\n</body>")
-    return own_scripts.faults(folder)
+    # Loaded by its path, the check is a module mypy can't read the types of.
+    return cast("list[str]", own_scripts.faults(folder))
 
 
 def test_a_page_of_its_own_scripts_passes(tmp_path: Path) -> None:
