@@ -398,7 +398,7 @@ ShellRoot {
     // from any step says it without Qt's enum beside it.
     function failure(code) {
         if (code === null)
-            return "connected, with nothing failed since";
+            return "none failed since it last connected or was relinked, if it tried at all";
         const named = { "-1": "unknown", 0: "refused", 1: "closed by the daemon",
             2: "found nothing there", 3: "not allowed" }[code];
         return `failed with ${code}${named === undefined ? "" : `, ${named}`}`;
@@ -857,8 +857,10 @@ ShellRoot {
         }
     }
 
-    // The whole run ends here, short of the check's 120 s timeout, so a run slowed past it
-    // fails with its FAIL line, naming the step it was on, rather than killed with none.
+    // The whole run ends here, short of the check's 150 s timeout, so a run slowed past it
+    // fails with its FAIL line, naming the step it was on, rather than killed with none. This
+    // counts from the file loading, the timeout from the shell starting, so the 40 s between
+    // are the shell's own start as well as the FAIL line's.
     Timer {
         running: true
         interval: 110000
