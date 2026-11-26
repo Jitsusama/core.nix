@@ -1706,7 +1706,7 @@ Provider {
                     // his own Return gives one: a walk from outside, which any program of his
                     // may ask, is refused (TalkAnswers.onReturn).
                     const ret = TalkAnswers.onReturn(TalkAnswers.answering(
-                        provider.launcher?.asking?.draft, draft, provider.answersShown, asks()),
+                        provider.launcher?.drafting, draft, provider.answersShown, asks()),
                         Sprouting.fromJoel(provider.launcher));
                     if (ret.act === "refused") {
                         provider.told = TalkAnswers.filled(talkWords.said?.answerWalked ?? "",

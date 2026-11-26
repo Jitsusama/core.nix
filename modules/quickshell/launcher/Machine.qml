@@ -501,7 +501,9 @@ Provider {
                 // The ask names who it's told to (VKCF3Z, 2026-11-08).
                 ask: answering() ? own.ask : (talk.ask ?? "").replace("{name}", session.title),
                 chip: session.title,
-                draft: own?.draft,
+                // Its words are the session's only while they answer its ask, else
+                // words typed to it there would lead what the disk guard says.
+                draft: () => answering() ? own.draft : "",
                 opening: () => answering() ? own.opening() : undefined,
                 state: () => answering() ? own.state() : provider.talked,
                 talks: () => answering() ? own.talks() : talking?.talks() ?? [],
