@@ -184,6 +184,11 @@ QtObject {
         Expect.same("a list with a place more is drawn again",
             Wheres.differs([harness], [harness, pond]), true);
         Expect.same("the first list, after none, is drawn", Wheres.differs([], [harness]), true);
+        Expect.same("a zone checked out since, the list as long, is drawn again",
+            Wheres.differs([pond, unchecked], [pond, Object.assign({}, unchecked, { out: false })]),
+            true);
+        Expect.same("and so is a place renamed",
+            Wheres.differs([pond], [Object.assign({}, pond, { name: "//system/lake" })]), true);
         Expect.same("no quests' folders list the node's alone",
             Wheres.wheres(null, [harness]).map(one => one.name), ["~/src/harness"]);
 
@@ -203,13 +208,16 @@ QtObject {
             folder: `/home/j/big/src/areas/clients/team-${at}/service-${at}/components/main`,
             name: `//clients/team-${at}/service-${at}/main`, kind: "zone", out: false
         }));
+        // The fastest of 5, so a builder busy with VM tests or a collection
+        // in Qt's engine doesn't fail it; rounds stop only past 5 s, which
+        // the old reading took on its first.
         const spans = [];
-        for (let round = 0; round < 3 && !spans.some(span => span > 1000); round += 1) {
+        for (let round = 0; round < 5 && !spans.some(span => span > 5000); round += 1) {
             const begun = Date.now();
             Wheres.differs(Wheres.heard("", { places: node }).places, node);
             spans.push(Date.now() - begun);
         }
-        Expect.same("a node's 2000 places are read and weighed in under 50 ms, the fastest of 3",
+        Expect.same("a node's 2000 places are read and weighed in under 50 ms, the fastest of 5",
             Math.min(...spans) < 50 ? "under 50 ms" : `${spans.join(", ")} ms`, "under 50 ms");
         Expect.same("and a place whose name holds a turn among them is still left out",
             Wheres.listable(node.slice(0, 9).concat([{ folder: "/home/j/a", name: "a\u202eb" }]))

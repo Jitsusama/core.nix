@@ -34,11 +34,12 @@ const NO_WHY = "the agents daemon gave no reason";
 const NO_ANSWER = "the agents daemon isn't answering";
 
 // Printable ASCII, not all spaces, which holds no control, format or blank
-// character, so a line of it is read no further. Each opening asks for the places
-// (Agents.qml's askPlaces), and reading each of a node's 2000 a character
-// at a time held the shell 5 to 7 s after the opening (Joel's journal,
-// 25 November).
-const PRINTABLE = /^[ -~]*[!-~][ -~]*$/u;
+// character, so a line of it is read no further. Reading each of a node's
+// 2000 a character at a time held the shell 5 to 7 s after each opening,
+// which asked for them then (Joel's journal, 25 November). Its leading
+// run is of spaces alone, so a line it refuses is read once, not tried at
+// every split.
+const PRINTABLE = /^ *[!-~][ -~]*$/u;
 
 // Whether `text` is a plain, non-empty line of at most MOST_NAMED
 // characters: nothing a control, format or blank character would hide,

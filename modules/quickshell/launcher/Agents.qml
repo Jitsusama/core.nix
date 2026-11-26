@@ -1836,6 +1836,10 @@ Provider {
         });
         if (offer === null)
             return null;
+        // A link's act opens over Agents' rows, never through Start New
+        // Work's, so it asks for the places itself: refused for want of a
+        // repository, it steps back onto them (askWhere).
+        provider.askPlaces();
         const act = newWorkAct("link", "", Words.name("verb:agents:start-new-work:link"));
         // Fresh words, so how the last start ended is no longer theirs to show,
         // unless one is still starting.
@@ -2136,8 +2140,16 @@ Provider {
         provider.startPlacesAsked = true;
         daemon.ask({ ask: "places" }, answer => {
             provider.startPlacesAsking = false;
+            const begun = Date.now();
             const heard = Wheres.heard(provider.startPlacesUnlisted, answer);
-            if (heard.places !== null && Wheres.differs(provider.startPlaces, heard.places)) {
+            const differs = heard.places !== null
+                && Wheres.differs(provider.startPlaces, heard.places);
+            // Read outside every opening's own measure, so a list that
+            // holds the thread past a frame or three says so itself.
+            const took = Date.now() - begun;
+            if (took > 50)
+                console.info(`launcher: places read in ${took} ms`);
+            if (differs) {
                 provider.startPlaces = heard.places;
                 provider.changed();
             }
