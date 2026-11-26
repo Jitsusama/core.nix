@@ -5772,7 +5772,8 @@ Scope {
     }
 
     // Hands over what was typed, and empties the field for another try
-    // while the footer says how it went. `pressed` is when its Return was
+    // while the footer says how it went, but for words that start work,
+    // which stay (below). `pressed` is when its Return was
     // pressed, or heard where no press was stamped, from which the frame
     // showing what became of the words is timed, held to design.md's 50 ms
     // as Super+S's line is.
