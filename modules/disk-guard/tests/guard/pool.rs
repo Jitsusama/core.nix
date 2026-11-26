@@ -200,6 +200,31 @@ fn a_leased_file_s_pool_is_its_subvolume_s_read_without_waiting_out_the_lease() 
     drop(held);
 }
 
+/// A writer may give its file a mode that lets nobody read it, which a
+/// reading open would meet; so its pool is read without one, or a writer
+/// could keep its file off every disk and so out of every freeze.
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "needs TMPDIR on Btrfs, which the sandbox and the shell's tmpfs aren't: \
+            run with --ignored and TMPDIR on a Btrfs folder"]
+fn a_file_nobody_may_read_s_pool_is_its_subvolume_s() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    assert!(
+        on_btrfs(dir.path()),
+        "{} isn't on Btrfs",
+        dir.path().display()
+    );
+    let file = dir.path().join("unreadable");
+    fs::write(&file, "written").unwrap();
+    fs::set_permissions(&file, fs::Permissions::from_mode(0o000)).unwrap();
+    assert_eq!(
+        pool(&file).ok(),
+        pool(dir.path()).ok(),
+        "a file nobody may read, on its subvolume's pool"
+    );
+}
+
 #[test]
 fn the_volumes_of_one_apfs_container_share_its_pool() {
     let data = apfs_container("apfs", "/dev/disk3s5").unwrap();
