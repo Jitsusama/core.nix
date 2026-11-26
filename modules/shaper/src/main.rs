@@ -337,9 +337,9 @@ struct Shaped {
     /// Whether the spell told is held by a ceiling alone, a trial's, the
     /// network's or its house's, with nothing the controller judged holding it.
     ceiling: bool,
-    /// The ceiling the upload was held under at the last step, in kbit/s,
-    /// a trial's, the network's or its house's, where one held it: what
-    /// its queues hold is never left over it (`due`).
+    /// The steady ceiling the upload is held under this step, in kbit/s,
+    /// where one holds it (`under`): what its queues hold is never left
+    /// over it (`due`).
     under: Option<u64>,
     /// Whether a call's or a screen share's traffic crosses the link, and
     /// whether it did at the last look.
@@ -1895,10 +1895,7 @@ fn step_links(
         None => (None, replay::Rates::default()),
     };
     let why = live.why(now);
-    let heard_ceiling = live
-        .heard()
-        .and_then(|(_, heard)| heard.ceiling)
-        .map(rate::whole);
+    let controller_ceiling = live.ceiling();
     let share = live.vpn_share(now);
     let agents = live.agents_share(now);
     // What the link the recorder follows carried down its last second,
@@ -1950,14 +1947,11 @@ fn step_links(
         }
         let rates = led(rates, held, most);
         let why = if held { &why } else { &why::Judged::Nothing };
-        // The ceiling the upload is held under: the network's or its
-        // house's, and on the link the controller holds, a trial's too,
-        // as the controller heard it.
-        s.under = if held {
-            lower(most, heard_ceiling)
-        } else {
-            most
-        };
+        s.under = under(
+            held,
+            ceilings.get(&s.network).copied().map(rate::whole),
+            controller_ceiling,
+        );
         hold(s, rates, why, room);
     }
 }
@@ -2217,16 +2211,29 @@ fn hold(s: &mut Shaped, rates: replay::Rates, why: &why::Judged, room: Option<u6
     go_straight(s, straight);
 }
 
+/// The steady ceiling a link's upload is held under, in kbit/s: its
+/// network's `written` one, and on the link the controller holds, the
+/// lowest of a trial's, the network's and its house's steady one as the
+/// controller holds it, `steady`. A house's ceiling of each second, which
+/// moves with the other machine's sawtooth, is left out, so the queues
+/// don't follow it (exact ceiling round 1's F1, F10 and F12).
+fn under(held: bool, written: Option<u64>, steady: Option<u64>) -> Option<u64> {
+    if held {
+        lower(written, steady)
+    } else {
+        written
+    }
+}
+
 /// Whether a link's upload `rate` is put on its queues afresh, against
 /// what they hold, `applied`: when it moved by more than 1%, so a rate
 /// that wavers doesn't change the queues each second, or when what they
-/// hold is over the ceiling the upload is held `under`, so a ceiling
-/// holds exactly rather than up to 1% over. On 23 November the call test
-/// read 6035 kbit/s held under a trial's 6000: the queues kept a rate
-/// 0.58% over it, a move under 1% being left alone.
+/// hold is over the ceiling the upload is held `under` and the rate isn't,
+/// so a ceiling holds exactly rather than up to 1% over. On 23 November
+/// the call test read 6035 kbit/s held under a trial's 6000: the queues
+/// kept a rate 0.58% over it, a move under 1% being left alone.
 fn due(rate: u64, applied: u64, under: Option<u64>) -> bool {
-    let moved = rate.abs_diff(applied) * 100 > applied;
-    moved || under.is_some_and(|most| applied > most && rate != applied)
+    moved(Some(applied), rate) || under.is_some_and(|most| applied > most && rate <= most)
 }
 
 /// What a link's download is held to, the link's state, and whether what
@@ -2363,7 +2370,6 @@ fn go_straight(s: &mut Shaped, straight: bool) {
 /// ceiling that holds it: its own, or for a follower the lower of its
 /// leader's and its own.
 fn apply(s: &mut Shaped, most: u64) {
-    let moved = |a: u64, b: u64| a.abs_diff(b) * 100 > b;
     let (up, down) = (s.up.rate, s.down.rate);
     if due(up, s.applied.0, s.under) {
         // The lanes move with the rate at once, so the classes never
@@ -2384,7 +2390,10 @@ fn apply(s: &mut Shaped, most: u64) {
             Err(e) => eprintln!("{e}"),
         }
     }
-    if moved(down, s.applied.1) {
+    // The download keeps the 1% alone: no ceiling holds it, and a call's
+    // room sits a tenth under the line, so queues up to 1% over it keep
+    // no promise waiting (exact ceiling round 1's F8 and F15).
+    if moved(Some(s.applied.1), down) {
         match sh(&qdisc::change_down(&s.ifb, down)) {
             Ok(_) => s.applied.1 = down,
             Err(e) => eprintln!("{e}"),
@@ -2619,15 +2628,44 @@ mod tests {
             "under the ceiling, a move under 1% leaves them alone"
         );
         assert!(
-            !due(6_000, 6_000, Some(6_000)),
-            "the queues at the ceiling already"
+            !due(5_990, 6_000, Some(6_000)),
+            "queues at the ceiling aren't over it"
         );
         assert!(
             !due(6_035, 6_035, Some(6_000)),
             "a rate the queues hold already isn't put again each second"
         );
+        assert!(
+            !due(6_040, 6_035, Some(6_000)),
+            "a rate over the ceiling too leaves the queues, so it can't move them each second"
+        );
         assert!(due(7_000, 6_000, Some(9_000)), "a move past 1%");
         assert!(due(5_000, 6_000, None), "a move past 1% down");
+    }
+
+    #[test]
+    fn a_link_is_held_under_its_steady_ceilings_alone() {
+        assert_eq!(
+            under(true, None, Some(6_000)),
+            Some(6_000),
+            "the held link under a trial's ceiling"
+        );
+        assert_eq!(
+            under(true, Some(9_000), Some(6_000)),
+            Some(6_000),
+            "a trial lower than its network's"
+        );
+        assert_eq!(
+            under(true, Some(5_000), Some(6_000)),
+            Some(5_000),
+            "its network's, lower than the controller's"
+        );
+        assert_eq!(
+            under(false, Some(9_000), Some(6_000)),
+            Some(9_000),
+            "a link the controller doesn't hold takes no trial meant for the one it does"
+        );
+        assert_eq!(under(false, None, Some(6_000)), None, "nor any ceiling");
     }
 
     // A call's room lies under whatever the controller asks, never over

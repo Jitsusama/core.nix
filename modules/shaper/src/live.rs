@@ -475,6 +475,15 @@ impl Live {
         self.follow.heard()
     }
 
+    /// The ceiling the upload of the link the controller holds is held
+    /// under, in kbit/s, where one is: the lowest of a trial's, its
+    /// network's and its house's steady one, as `poll` caps the rate by,
+    /// from a stay's start, whether or not a second has been stepped on
+    /// (exact ceiling round 1's F3 and F13).
+    pub fn ceiling(&self) -> Option<u64> {
+        self.follow.tuning().most_kbit.map(crate::rate::whole)
+    }
+
     /// The link the recorder follows and what it carried down in its last
     /// second, while that second is fresh at `now` (`Follow::carried`).
     pub fn carried(&self, now: SystemTime) -> Option<Carried<'_>> {
