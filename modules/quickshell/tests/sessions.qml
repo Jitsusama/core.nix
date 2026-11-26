@@ -1156,7 +1156,9 @@ ShellRoot {
     // didn't draw is never taken for a viewer: not raised or focused, not
     // let go of as one come, nor a running session's window. The pid read
     // is kept through a restart, so the case lets it go as it ends, leaving
-    // any case after it the app id alone.
+    // any case after it the app id alone. Each window is heard as niri's
+    // signal hears it, but called, so a throw fails the check rather than
+    // passing as the signal's warning.
     function drawn() {
         const view = ["mycelium", "--realm", "harbour", "attach", "--host", "harbour-attended",
             "--session", "s-forged"];
@@ -1182,14 +1184,14 @@ ShellRoot {
         // As Go To asks for its viewer, so the one coming is focused.
         Sessions.goingTo = { app: named, at: Date.now(), from: Niri.focused };
         Niri.acted = null;
-        Niri.windowOpenedOrChanged(forged);
+        Sessions.windowHeard(forged);
         expect("nor is it taken for the viewer come, nor focused as Go To's",
             Sessions.viewerComing(named) && Niri.acted === null
             && Sessions.goingTo?.app === named,
             `${JSON.stringify(Sessions.attaching)} ${JSON.stringify(Niri.acted)}`);
         const drawnHere = { id: 89, pid: 4242, opened: named };
         Niri.windows = Object.assign({}, unforged, { "88": forged, "89": drawnHere });
-        Niri.windowOpenedOrChanged(drawnHere);
+        Sessions.windowHeard(drawnHere);
         expect("while the one the sessions' kitty drew is taken as come, and focused",
             !Sessions.viewerComing(named) && Sessions.goingTo === null && focused(89),
             `${JSON.stringify(Sessions.attaching)} ${JSON.stringify(Niri.acted)}`);
@@ -1230,10 +1232,7 @@ ShellRoot {
         Niri.windows = Object.assign({}, unforged, { "88": forged, "93": cameRefused });
         root.unhosted = "";
         root.unhostedWhy = "";
-        // Heard directly first, so a throw in it fails the check rather
-        // than passing as a warning of the signal's.
-        Sessions.heardWindow(cameRefused);
-        Niri.windowOpenedOrChanged(cameRefused);
+        Sessions.windowHeard(cameRefused);
         expect("the press waiting on it is told its own came refused",
             root.unhosted === "FORGED" && root.unhostedWhy === "disowned",
             `${root.unhosted} ${root.unhostedWhy}`);
@@ -1322,6 +1321,437 @@ ShellRoot {
         expect("once the window that came closes, Go To opens its own again, said so",
             Niri.spawns.length === goneFrom + 2 && root.unhostedWhy === "unowned",
             `${root.unhostedWhy} ${Niri.spawns.slice(goneFrom).join(" | ")}`);
+        // No kitty took the ask whose window came refused, so that window
+        // was another program's, not its own drawn by a pid read wrong: the
+        // refusal goes, and Go To opens its own beside it, saying why,
+        // rather than holding it unopenable while that window stays. A
+        // give-up older than the ask is another's and leaves it.
+        const untook = "pi-hosted.s-untook";
+        const untookWords = view.slice(0, -1).concat(["s-untook"]);
+        const untookSession = { address: "UNTOOK", presence: { hosted: true,
+            session: "s-untook" }, attach: untookWords, here: true };
+        Sessions.viewWith(untookWords, untook, null, "untook", { address: "UNTOOKFIRST" });
+        const untookAsked = Number(Sessions.attaching[untook]);
+        const untookStray = { id: 102, pid: 880, opened: untook };
+        Niri.windows = Object.assign({}, unforged, { "102": untookStray });
+        Sessions.windowHeard(untookStray);
+        const refusedBefore = Sessions.refusedOwn(untook);
+        // A press meanwhile, said disowned, takes the focus its own would;
+        // once no kitty took the ask, it's told so, and that focus is let
+        // go, as nothing it asked for comes.
+        const goingBeforeUntook = Sessions.goingTo;
+        Sessions.goTo(untookSession);
+        const untookPressTook = Sessions.goingTo?.app === untook;
+        // A give-up none of the ask's ends no refusal, nor lets the press's
+        // focus go, nor tells it anything.
+        const untookHeld = () => Sessions.refusedOwn(untook) && Sessions.goingTo?.app === untook
+            && untook in Sessions.disownedSaid && root.unhostedWhy === "disowned";
+        Sessions.untaken(untook, String(untookAsked - 1));
+        const keptOnOlder = untookHeld();
+        // A time from when the script can no longer answer for that ask is
+        // none of its give-ups either.
+        Sessions.untaken(untook, String(untookAsked + Sessions.answerPatience));
+        const keptOnLast = untookHeld();
+        Sessions.untaken(untook, String(untookAsked + Sessions.answerPatience + 1));
+        const keptOnLater = untookHeld();
+        root.unhosted = "";
+        root.unhostedWhy = "";
+        Sessions.untaken(untook, String(untookAsked));
+        const untookTold = `${root.unhosted} ${root.unhostedWhy}`;
+        const untookLetGo = Sessions.goingTo?.app !== untook;
+        expect("a give-up timed past the script's answer ends no refusal, nor touches the press",
+            keptOnLast && keptOnLater, `${keptOnLast} ${keptOnLater} `
+                + `${JSON.stringify(Sessions.refusedAsks)} ${JSON.stringify(Sessions.goingTo)}`);
+        expect("a press told disowned is told no kitty took it, its focus let go",
+            untookPressTook && untookTold === "UNTOOK untaken" && untookLetGo,
+            `${untookPressTook} ${untookTold} ${JSON.stringify(Sessions.goingTo)}`);
+        const untookFrom = Niri.spawns.length;
+        root.unhostedWhy = "";
+        Sessions.goTo(untookSession);
+        expect("a refusal goes once no kitty took its ask, so Go To opens its own, said so",
+            refusedBefore && keptOnOlder && !Sessions.refusedOwn(untook)
+            && Niri.spawns.length === untookFrom + 1 && root.unhostedWhy === "unowned",
+            `${refusedBefore} ${keptOnOlder} ${root.unhostedWhy} `
+                + Niri.spawns.slice(untookFrom).join(" | "));
+        Sessions.forgetAsk(untook);
+        Sessions.goingTo = goingBeforeUntook;
+        Niri.windows = Object.assign({}, unforged, { "88": forged });
+        // A viewer Reopen Them All kept a place for, opened there by itself
+        // once Joel isn't on it, that no kitty took keeps that place, as it
+        // was, so it opens there once a kitty can, rather than wherever
+        // niri puts it next, or nowhere.
+        const keptNamed = "pi-hosted.s-kept-untaken";
+        const keptPlace = { workspace: 5, column: 1, at: Date.now(), asked: true,
+            waiting: view.slice(0, -1).concat(["s-kept-untaken"]), named: keptNamed,
+            title: "Reef" };
+        const keptBeforeUntaken = Sessions.keptPlaces;
+        Sessions.keepPlaces({ "s-kept-untaken": keptPlace });
+        const keptFrom = Niri.spawns.length;
+        const keptSpawns = () => Niri.spawns.slice(keptFrom)
+            .filter(command => command.includes(keptNamed)).length;
+        Niri.acted = null;
+        Sessions.viewKept();
+        const keptAsked = keptSpawns() === 1
+            && Sessions.keptPlaces["s-kept-untaken"] === undefined;
+        const keptAskedAt = JSON.stringify(Niri.acted);
+        Sessions.untaken(keptNamed, String(Sessions.attaching[keptNamed]));
+        const keptBack = JSON.stringify(Sessions.keptPlaces["s-kept-untaken"]);
+        // It's asked for again only once a kitty draws under another pid,
+        // as one alive that only didn't answer may yet draw the first ask's
+        // window, and one down comes back under a new one.
+        Sessions.viewKept();
+        const keptHeld = keptSpawns() === 1
+            && Sessions.keptPlaces["s-kept-untaken"] !== undefined;
+        // Written as a kitty started again writes it, in a folder made
+        // anew, which no watch hears, its unit then saying it started
+        // (kittyStarted), as niri may say nothing while Joel is away.
+        kittyPidFile.setText("4343\n");
+        Niri.acted = null;
+        Sessions.kittyStarted?.();
+        const keptAskedAgain = keptSpawns() === 2 && keptAskedAt.includes(keptNamed)
+            && JSON.stringify(Niri.acted) === keptAskedAt;
+        expect("a kept viewer no kitty took keeps its place as it was, under the kitty's pid",
+            keptAsked
+            && keptBack === JSON.stringify(Object.assign({}, keptPlace, { keptUnder: "4242" })),
+            `${keptAsked} ${keptBack}`);
+        expect("and is asked there again only once a kitty draws under another pid",
+            keptHeld && keptAskedAgain,
+            `${keptHeld} ${keptSpawns()} ${keptAskedAt} ${JSON.stringify(Niri.acted)}`);
+        // Given up on again, its place is let go, so a kitty that stays down
+        // isn't asked for it again with every move of niri's.
+        Sessions.untaken(keptNamed, String(Sessions.attaching[keptNamed]));
+        const keptLetGo = Sessions.keptPlaces["s-kept-untaken"] === undefined;
+        kittyPidFile.setText("4444\n");
+        Sessions.readKittyPid();
+        Sessions.viewKept();
+        expect("given up on again, its place is let go, and it's asked for no more",
+            keptLetGo && keptSpawns() === 2,
+            `${JSON.stringify(Sessions.keptPlaces["s-kept-untaken"])} ${keptSpawns()}`);
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        Sessions.forgetAsk(keptNamed);
+        // A kitty down as it's asked, its pid file gone with its folder,
+        // keeps the place under the pid last read, held while the file
+        // says none, and asked for again once a kitty writes another.
+        const keptOne = (id, marks) => Object.assign({}, keptPlace,
+            { waiting: view.slice(0, -1).concat([id]), named: `pi-hosted.${id}` }, marks ?? {});
+        const spawnsOf = (named, from) => Niri.spawns.slice(from)
+            .filter(command => command.includes(named)).length;
+        // The pid a place was kept under, kept still or asked for since.
+        const keptUnderOf = id => Sessions.keptPlaces[id]?.keptUnder
+            ?? Sessions.keptAsks[`pi-hosted.${id}`]?.place?.keptUnder;
+        const downNamed = "pi-hosted.s-kept-down";
+        Sessions.keepPlaces({ "s-kept-down": keptOne("s-kept-down") });
+        const downFrom = Niri.spawns.length;
+        kittyPidFile.setText("\n");
+        Sessions.viewKept();
+        Sessions.untaken(downNamed, String(Sessions.attaching[downNamed]));
+        const downUnder = Sessions.keptPlaces["s-kept-down"]?.keptUnder;
+        Sessions.viewKept();
+        const downHeld = spawnsOf(downNamed, downFrom) === 1;
+        kittyPidFile.setText("5353\n");
+        Sessions.kittyStarted?.();
+        expect("a kitty down as it's asked keeps the place under the pid last read, held so",
+            downUnder === "4242" && downHeld, `${downUnder} ${spawnsOf(downNamed, downFrom)}`);
+        expect("and a kitty come back, as its unit says it started, is asked for it",
+            spawnsOf(downNamed, downFrom) === 2, String(spawnsOf(downNamed, downFrom)));
+        Sessions.untaken(downNamed, String(Sessions.attaching[downNamed]));
+        Sessions.forgetAsk(downNamed);
+        // A kitty started again while the script waited, its pid read
+        // before the give-up is heard, as its unit says it started first,
+        // isn't the one the ask went to: the place is kept under the pid
+        // asked, and the new kitty asked as it's kept, as nothing else
+        // would ask while niri is quiet.
+        const lateNamed = "pi-hosted.s-kept-late";
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        Sessions.keepPlaces({ "s-kept-late": keptOne("s-kept-late") });
+        const lateFrom = Niri.spawns.length;
+        Sessions.viewKept();
+        kittyPidFile.setText("6363\n");
+        Sessions.readKittyPid();
+        Sessions.untaken(lateNamed, String(Sessions.attaching[lateNamed]));
+        const lateUnder = keptUnderOf("s-kept-late");
+        expect("a kitty started again before the give-up is heard is asked, as not the one asked",
+            lateUnder === "4242" && spawnsOf(lateNamed, lateFrom) === 2,
+            `${lateUnder} ${spawnsOf(lateNamed, lateFrom)}`);
+        Sessions.untaken(lateNamed, String(Sessions.attaching[lateNamed]));
+        Sessions.forgetAsk(lateNamed);
+        // A kitty down as it's asked, come back while the script waits up
+        // to 20 s for its socket, is the one the script asks: kept under it,
+        // it isn't asked again at once, as it may yet draw the first ask's
+        // window, which a second ask would open another beside.
+        const backNamed = "pi-hosted.s-kept-back";
+        Sessions.keepPlaces({ "s-kept-back": keptOne("s-kept-back") });
+        const backFrom = Niri.spawns.length;
+        kittyPidFile.setText("\n");
+        Sessions.viewKept();
+        kittyPidFile.setText("5454\n");
+        Sessions.kittyStarted?.();
+        Sessions.untaken(backNamed, String(Sessions.attaching[backNamed]));
+        const backUnder = keptUnderOf("s-kept-back");
+        expect("a kitty come back while the script waited is taken as asked, not asked again",
+            backUnder === "5454" && spawnsOf(backNamed, backFrom) === 1,
+            `${backUnder} ${spawnsOf(backNamed, backFrom)}`);
+        Sessions.forgetAsk(backNamed);
+        // A kitty the shell didn't hear start, as when the unit's word is
+        // missed, asked by the pid its file says, isn't taken for another
+        // at the give-up: the file is read again, not the pid last heard.
+        const staleNamed = "pi-hosted.s-kept-stale";
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        Sessions.keepPlaces({ "s-kept-stale": keptOne("s-kept-stale") });
+        const staleFrom = Niri.spawns.length;
+        kittyPidFile.setText("6565\n");
+        Sessions.viewKept();
+        Sessions.untaken(staleNamed, String(Sessions.attaching[staleNamed]));
+        const staleUnder = keptUnderOf("s-kept-stale");
+        expect("a kitty the shell didn't hear start, asked, isn't asked again at the give-up",
+            staleUnder === "6565" && spawnsOf(staleNamed, staleFrom) === 1,
+            `${staleUnder} ${spawnsOf(staleNamed, staleFrom)}`);
+        Sessions.forgetAsk(staleNamed);
+        // A press holding the ask (heldBack), asked again of a kitty come
+        // since, is told it's opening and keeps its focus, as its viewer is
+        // on its way, rather than told that ask is over.
+        const pressedNamed = "pi-hosted.s-kept-pressed";
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        Sessions.keepPlaces({ "s-kept-pressed": keptOne("s-kept-pressed") });
+        const pressedFrom = Niri.spawns.length;
+        Sessions.viewKept();
+        const goingBeforePressed = Sessions.goingTo;
+        Sessions.goTo({ address: "PRESSED",
+            presence: { hosted: true, session: "s-kept-pressed" },
+            attach: keptOne("s-kept-pressed").waiting, here: true });
+        kittyPidFile.setText("6666\n");
+        Sessions.readKittyPid();
+        root.unhosted = "";
+        root.unhostedWhy = "";
+        Sessions.untaken(pressedNamed, String(Sessions.attaching[pressedNamed]));
+        expect("a press asked again of a kitty come since is told it's opening, focus kept",
+            spawnsOf(pressedNamed, pressedFrom) === 2
+            && `${root.unhosted} ${root.unhostedWhy}` === "PRESSED opening"
+            && Sessions.goingTo?.app === pressedNamed
+            && Sessions.pressedFor[pressedNamed]?.address === "PRESSED",
+            `${spawnsOf(pressedNamed, pressedFrom)} ${root.unhosted} ${root.unhostedWhy} `
+                + `${JSON.stringify(Sessions.goingTo)}`);
+        Sessions.goingTo = goingBeforePressed;
+        Sessions.untaken(pressedNamed, String(Sessions.attaching[pressedNamed]));
+        Sessions.forgetAsk(pressedNamed);
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        // With no kitty's pid ever read, a kitty come again can't be told
+        // from the one given up on, so the place is let go, not held unasked.
+        const unknownNamed = "pi-hosted.s-kept-unknown";
+        kittyPidFile.setText("\n");
+        Sessions.kittyPidRead = "";
+        Sessions.keepPlaces({ "s-kept-unknown": keptOne("s-kept-unknown") });
+        Sessions.viewKept();
+        const unknownAsked = unknownNamed in Sessions.keptAsks;
+        Sessions.untaken(unknownNamed, String(Sessions.attaching[unknownNamed]));
+        const unknownLeft = JSON.stringify(Sessions.keptPlaces["s-kept-unknown"]);
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        expect("with no kitty's pid known, a kept viewer no kitty took has its place let go",
+            unknownAsked && unknownLeft === undefined, `${unknownAsked} ${unknownLeft}`);
+        Sessions.forgetAsk(unknownNamed);
+        // A press since the walk's ask, its window come refused and closed,
+        // asks afresh; no kitty taking that, the walk's place isn't kept
+        // again, as only the walk's own ask let it go, and the press is
+        // told, its focus let go.
+        const freshNamed = "pi-hosted.s-kept-fresh";
+        const freshWords = view.slice(0, -1).concat(["s-kept-fresh"]);
+        Sessions.keepPlaces({ "s-kept-fresh":
+            Object.assign({}, keptPlace, { waiting: freshWords, named: freshNamed }) });
+        Sessions.viewKept();
+        const freshKeptAsk = freshNamed in Sessions.keptAsks;
+        const freshStray = { id: 109, pid: 880, opened: freshNamed };
+        const listedBeforeFresh = Niri.windows;
+        Niri.windows = Object.assign({}, listedBeforeFresh, { "109": freshStray });
+        Sessions.windowHeard(freshStray);
+        Niri.windows = listedBeforeFresh;
+        Sessions.viewWith(freshWords, freshNamed, null, "Reef", { address: "FRESHASK" });
+        const goingBeforeFresh = Sessions.goingTo;
+        // Joel's Go To while that ask comes takes it over, focus and all
+        // (heldBack).
+        Sessions.goTo({ address: "FRESH", presence: { hosted: true, session: "s-kept-fresh" },
+            attach: freshWords, here: true });
+        const freshTook = Sessions.goingTo?.app === freshNamed;
+        root.unhosted = "";
+        root.unhostedWhy = "";
+        Sessions.untaken(freshNamed, String(Sessions.attaching[freshNamed]));
+        expect("a press since the walk's ask, no kitty taking it, keeps no walk's place, told so",
+            freshKeptAsk && freshTook && Sessions.keptPlaces["s-kept-fresh"] === undefined
+            && `${root.unhosted} ${root.unhostedWhy}` === "FRESH untaken"
+            && Sessions.goingTo === null,
+            `${freshKeptAsk} ${JSON.stringify(Sessions.keptPlaces["s-kept-fresh"])} `
+                + `${root.unhosted} ${root.unhostedWhy} ${JSON.stringify(Sessions.goingTo)}`);
+        Sessions.goingTo = goingBeforeFresh;
+        Sessions.forgetAsk(freshNamed);
+        // A walk's viewer whose window came refused, no kitty taking its ask,
+        // keeps the walk's place as one no window came for does, under the
+        // kitty's pid, as the refusal ends (refusedUntaken).
+        const refusedKept = "pi-hosted.s-kept-refused";
+        const refusedKeptPlace = Object.assign({}, keptPlace,
+            { waiting: view.slice(0, -1).concat(["s-kept-refused"]), named: refusedKept });
+        Sessions.keepPlaces({ "s-kept-refused": refusedKeptPlace });
+        Sessions.viewKept();
+        const refusedKeptAsk = refusedKept in Sessions.keptAsks;
+        const refusedKeptStray = { id: 110, pid: 880, opened: refusedKept };
+        const listedBeforeRefusedKept = Niri.windows;
+        Niri.windows = Object.assign({}, listedBeforeRefusedKept, { "110": refusedKeptStray });
+        Sessions.windowHeard(refusedKeptStray);
+        const refusedKeptAt = Sessions.refusedAt[refusedKept];
+        Sessions.untaken(refusedKept, String(refusedKeptAt));
+        const refusedKeptBack = JSON.stringify(Sessions.keptPlaces["s-kept-refused"]);
+        expect("a walk's viewer come refused, no kitty taking it, keeps the walk's place",
+            refusedKeptAsk && refusedKeptAt !== undefined && !Sessions.refusedOwn(refusedKept)
+            && refusedKeptBack
+                === JSON.stringify(Object.assign({}, refusedKeptPlace, { keptUnder: "4242" })),
+            `${refusedKeptAsk} ${refusedKeptAt} ${refusedKeptBack}`);
+        Niri.windows = listedBeforeRefusedKept;
+        Sessions.forgetAsk(refusedKept);
+        Sessions.keepPlaces(keptBeforeUntaken);
+        // A stray come for an ask while its press waits is said disowned at
+        // once, as a pid read wrong is likelier. A press again meanwhile is
+        // said so too, but takes the focus its own would; and its own come
+        // after, the stray still listed, is focused and said come, so the
+        // foot doesn't keep saying it isn't viewed.
+        const cameAfter = "pi-hosted.s-came-after";
+        const cameAfterWords = view.slice(0, -1).concat(["s-came-after"]);
+        const cameAfterRow = { address: "CAMEAFTER", here: true, attach: cameAfterWords,
+            presence: { hosted: true, session: "s-came-after" }, window: null };
+        const listedBeforeAfter = Niri.windows;
+        const goingBeforeAfter = Sessions.goingTo;
+        Sessions.viewWith(cameAfterWords, cameAfter, null, "Reef", { address: "FIRSTPRESS" });
+        const strayFirst = { id: 104, pid: 880, opened: cameAfter };
+        Niri.windows = Object.assign({}, listedBeforeAfter, { "104": strayFirst });
+        root.unhostedWhy = "";
+        Sessions.windowHeard(strayFirst);
+        const saidFirst = `${root.unhosted} ${root.unhostedWhy}`;
+        Sessions.goingTo = null;
+        root.unhostedWhy = "";
+        Sessions.goTo(cameAfterRow);
+        const saidAgain = `${root.unhosted} ${root.unhostedWhy}`;
+        const tookFocus = Sessions.goingTo?.app === cameAfter;
+        const ownAfter = { id: 105, pid: 4242, opened: cameAfter };
+        Niri.windows = Object.assign({}, listedBeforeAfter, { "104": strayFirst, "105": ownAfter });
+        Niri.acted = null;
+        root.unhostedWhy = "";
+        Sessions.windowHeard(ownAfter);
+        expect("a stray come for an ask is said disowned at once",
+            saidFirst === "FIRSTPRESS disowned", saidFirst);
+        expect("a press again meanwhile is said disowned, taking the focus its own would",
+            saidAgain === "CAMEAFTER disowned" && tookFocus, `${saidAgain} ${tookFocus}`);
+        expect("its own come after is focused, and said come after the stray",
+            focused(105) && root.unhosted === "CAMEAFTER" && root.unhostedWhy === "cameAfter",
+            `${JSON.stringify(Niri.acted)} ${root.unhosted} ${root.unhostedWhy}`);
+        Sessions.forgetAsk(cameAfter);
+        Sessions.goingTo = goingBeforeAfter;
+        Niri.windows = listedBeforeAfter;
+        // The window refused for an ask, seen as the kitty's once its pid is
+        // read again, is said viewed as its own after all, not as one come
+        // after another, as no other came.
+        const ownAll = "pi-hosted.s-own-after-all";
+        Sessions.viewWith(view.slice(0, -1).concat(["s-own-after-all"]), ownAll, null, "Reef",
+            { address: "OWNALL" });
+        const misread = { id: 106, pid: 880, opened: ownAll };
+        Niri.windows = Object.assign({}, listedBeforeAfter, { "106": misread });
+        Sessions.windowHeard(misread);
+        kittyPidFile.setText("880\n");
+        Sessions.readKittyPid();
+        root.unhosted = "";
+        root.unhostedWhy = "";
+        Sessions.windowHeard(misread);
+        const ownAllSaid = `${root.unhosted} ${root.unhostedWhy}`;
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        expect("the window refused, seen as its own once the pid is read again, is said so",
+            ownAllSaid === "OWNALL ownAfterAll", ownAllSaid);
+        Sessions.forgetAsk(ownAll);
+        Niri.windows = listedBeforeAfter;
+        // And so as Go To raises it, its pid read first, though niri says
+        // nothing of it changing: the press told disowned is told then.
+        const ownRaised = "pi-hosted.s-own-raised";
+        const ownRaisedWords = view.slice(0, -1).concat(["s-own-raised"]);
+        Sessions.viewWith(ownRaisedWords, ownRaised, null, "Reef", { address: "OWNRAISED" });
+        const misreadRaised = { id: 111, pid: 880, opened: ownRaised };
+        Niri.windows = Object.assign({}, listedBeforeAfter, { "111": misreadRaised });
+        Sessions.windowHeard(misreadRaised);
+        // A press meanwhile is told disowned and takes the focus its own
+        // would; raised, its own focused by the press that raised it, that
+        // focus is let go, or a retitle would take Joel back to it.
+        const goingBeforeRaised = Sessions.goingTo;
+        Sessions.goingTo = null;
+        const raisedRow = { presence: { hosted: true, session: "s-own-raised" },
+            attach: ownRaisedWords, here: true };
+        Sessions.goTo(Object.assign({ address: "RAISEDFIRST" }, raisedRow));
+        const raisedTookFocus = Sessions.goingTo?.app === ownRaised;
+        kittyPidFile.setText("880\n");
+        root.unhosted = "";
+        root.unhostedWhy = "";
+        Niri.acted = null;
+        Sessions.goTo(Object.assign({ address: "RAISER" }, raisedRow));
+        const ownRaisedSaid = `${root.unhosted} ${root.unhostedWhy}`;
+        const raisedFocused = focused(111);
+        const raisedLetGo = Sessions.goingTo === null;
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        expect("the window refused, raised by Go To once its pid is read again, is said so then",
+            raisedFocused && ownRaisedSaid === "RAISEDFIRST ownAfterAll",
+            `${raisedFocused} ${ownRaisedSaid}`);
+        expect("and the focus a press told disowned took is let go as it's raised",
+            raisedTookFocus && raisedLetGo,
+            `${raisedTookFocus} ${JSON.stringify(Sessions.goingTo)}`);
+        Sessions.goingTo = goingBeforeRaised;
+        Sessions.forgetAsk(ownRaised);
+        Niri.windows = listedBeforeAfter;
+        // And as a row's Reopen raises it, waiting for its host
+        // (reopenWaiting), as Go To does.
+        const ownWaiting = "pi-hosted.s-own-waiting";
+        Sessions.viewWith(view.slice(0, -1).concat(["s-own-waiting"]), ownWaiting, null,
+            "Reef", { address: "OWNWAITING" });
+        const misreadWaiting = { id: 113, pid: 880, opened: ownWaiting };
+        Niri.windows = Object.assign({}, listedBeforeAfter, { "113": misreadWaiting });
+        Sessions.windowHeard(misreadWaiting);
+        kittyPidFile.setText("880\n");
+        root.unhosted = "";
+        root.unhostedWhy = "";
+        Niri.acted = null;
+        Sessions.reopenWaiting({ id: "s-own-waiting" });
+        const ownWaitingSaid = `${root.unhosted} ${root.unhostedWhy}`;
+        const waitingFocused = focused(113);
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        expect("and so as a row's Reopen raises it, waiting for its host",
+            waitingFocused && ownWaitingSaid === "OWNWAITING ownAfterAll",
+            `${waitingFocused} ${ownWaitingSaid}`);
+        Sessions.forgetAsk(ownWaiting);
+        Niri.windows = listedBeforeAfter;
+        // A press whose ask came refused long ago, its window seen as the
+        // kitty's only now, isn't told: the script long done with that ask,
+        // its words would meet Joel's next open of the launcher, whatever
+        // he opens it for.
+        const ownStale = "pi-hosted.s-own-stale";
+        Sessions.viewWith(view.slice(0, -1).concat(["s-own-stale"]), ownStale, null, "Reef",
+            { address: "OWNSTALE" });
+        const misreadStale = { id: 112, pid: 880, opened: ownStale };
+        Niri.windows = Object.assign({}, listedBeforeAfter, { "112": misreadStale });
+        Sessions.windowHeard(misreadStale);
+        Sessions.refusedAt = Object.assign({}, Sessions.refusedAt,
+            { [ownStale]: Date.now() - Sessions.answerPatience - 1 });
+        kittyPidFile.setText("880\n");
+        Sessions.readKittyPid();
+        root.unhosted = "";
+        root.unhostedWhy = "";
+        Sessions.windowHeard(misreadStale);
+        const ownStaleSaid = `${root.unhosted} ${root.unhostedWhy}`;
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        expect("a press refused past the script's answer isn't told its window was its own",
+            ownStaleSaid === " ", ownStaleSaid);
+        Sessions.forgetAsk(ownStale);
+        Niri.windows = listedBeforeAfter;
         // A stray come long after an ask that never came isn't taken for
         // that ask's own refused, so Go To would open its own beside it.
         const stale = "pi-hosted.s-stale";
@@ -1329,7 +1759,7 @@ ShellRoot {
             { [stale]: Date.now() - Sessions.viewPatience - 1 });
         const lateStray = { id: 94, pid: 880, opened: stale };
         Niri.windows = Object.assign({}, unforged, { "94": lateStray });
-        Niri.windowOpenedOrChanged(lateStray);
+        Sessions.windowHeard(lateStray);
         expect("a stray come after its ask's patience is no ask's own refused",
             !(stale in Sessions.refusedAsks), JSON.stringify(Sessions.refusedAsks));
         Niri.windows = Object.assign({}, unforged, { "88": forged, "93": cameRefused });
@@ -1364,7 +1794,7 @@ ShellRoot {
             { "88": forged, "93": cameRefused, "95": listedStray });
         const askedBefore = Sessions.viewWith(view.slice(0, -1).concat(["s-before"]), before,
             null, "before");
-        Niri.windowOpenedOrChanged(listedStray);
+        Sessions.windowHeard(listedStray);
         expect("a stray listed before its ask is no ask's own refused as it changes",
             askedBefore && !(before in Sessions.refusedAsks),
             `${askedBefore} ${JSON.stringify(Sessions.refusedAsks)}`);
@@ -1398,8 +1828,7 @@ ShellRoot {
             null, "walk");
         Niri.windows = Object.assign({}, unforged, { "88": forged, "93": cameRefused,
             "97": refusedWalk });
-        Sessions.heardWindow(refusedWalk);
-        Niri.windowOpenedOrChanged(refusedWalk);
+        Sessions.windowHeard(refusedWalk);
         const goneOnRefused = Sessions.reopening?.waiting === null
             && Sessions.reopening?.late.includes(waitedRefused) === false
             && waitedRefused.opened === null
@@ -1421,7 +1850,9 @@ ShellRoot {
         const goneOnUntaken = Sessions.reopening?.waiting === null
             && Sessions.reopening?.late.includes(waitedUntaken) === false
             && Sessions.reopening?.begun.includes("s-untaken-walk") === false;
-        const wentOn = Sessions.reopening?.queue.length === 0;
+        // Begun at once, the pace before it moot, no pace stands to hold
+        // the walk's settling (reopenPaced).
+        const wentOn = Sessions.reopening?.queue.length === 0 && Sessions.reopenPaced === false;
         Sessions.reopening = null;
         Sessions.forgetAsk(refusedWalk.opened);
         // The script waits a minute for the kitty's answer, past the walk's
@@ -1503,13 +1934,24 @@ ShellRoot {
         Niri.windows = listedBeforeSlow;
         // Beside another still late, or behind the lock, where the walk is
         // settled once the lock lets go (placeBehind), it goes on without
-        // it: neither late nor begun, so a press asks for it again.
-        const lateGoesOn = (named, others, locked) => {
+        // it: neither late nor begun, so a press asks for it again. The
+        // lock is held (locked) or let go a moment ago, niri not yet given
+        // the keys back (lettingGo); either way the lock's end then settles
+        // the walk, which ends, as reopenSettling's first round finds
+        // nothing to place.
+        const lateGoesOn = (named, others, locked, lettingGo) => {
             const given = { id: named.slice("pi-hosted.".length), classed: named, opened: null };
+            // One held behind the lock whose window is gone, which only the
+            // lock's end lets go (placeBehind), so the walk ending shows it
+            // ran.
+            const behind = locked || lettingGo ? [{ entry: { id: "s-behind-gone", at: null } }]
+                : [];
             Sessions.reopening = { waiting: null, late: [given].concat(others), queue: [],
-                placed: [], behind: [], begun: [given.id].concat(others.map(one => one.id)),
+                placed: [], behind, begun: [given.id].concat(others.map(one => one.id)),
                 looking: null, settling: false, back: null, focused: false };
             Sessions.behindTheLock = locked;
+            if (lettingGo)
+                Sessions.lockLetGo = false;
             Sessions.viewWith(view.slice(0, -1).concat([given.id]), named, null, "walk");
             Sessions.untaken(named, String(Date.now()));
             const going = Sessions.reopening;
@@ -1517,23 +1959,42 @@ ShellRoot {
             const on = going !== null && going.late.length === others.length
                 && !going.begun.includes(given.id)
                 && others.every(one => going.late.includes(one) && going.begun.includes(one.id));
+            let ends = null;
+            let parts = "";
+            if (locked || lettingGo) {
+                Sessions.behindTheLock = false;
+                // No pace stands: the walk's, begun by the cases above, ended
+                // as its next was begun (reopenSoon, which the walk's pace
+                // case proves), so the lock's end settles the walk itself
+                // (placeBehind). Each part is said, so a failure says which.
+                const paced = Sessions.reopenPaced === true;
+                Sessions.lockGone();
+                const letGoBehind = Sessions.reopening?.behind.length === 0;
+                const settling = Sessions.reopening?.settling === true;
+                Sessions.settleNextReopened();
+                const ended = Sessions.reopening === null;
+                ends = !paced && letGoBehind && settling && ended;
+                parts = JSON.stringify({ paced, letGoBehind, settling, ended });
+            }
             // Let go with no walk left for it, and at once, as the cases
             // after it place what they open.
             Sessions.reopening = null;
             Sessions.behindTheLock = false;
             Sessions.lockLetGo = true;
             Sessions.forgetAsk(named);
-            return { on, left };
+            return { on, left, ends, parts };
         };
         const stillLate = { id: "s-still-late", classed: "pi-hosted.s-still-late", opened: null };
         const besideLate = lateGoesOn("pi-hosted.s-late-beside", [stillLate], false);
         const lockedLate = lateGoesOn("pi-hosted.s-late-locked", [], true);
+        const lettingGoLate = lateGoesOn("pi-hosted.s-late-letting-go", [], false, true);
         expect("the walk waits no more on one whose window came refused, nor keeps it",
             goneOnRefused, JSON.stringify(Sessions.reopening ?? waitedRefused));
         expect("nor on one no kitty took, which a press asks for again", goneOnUntaken,
             JSON.stringify(waitedUntaken));
         expect("the next waits out the walk's pace", paced, "begun at once");
-        expect("and once it has passed, is begun", wentOn, "left queued");
+        expect("and once it has passed, is begun, no pace left standing", wentOn,
+            "left queued or paced");
         expect("nor keeps one its patience gave up on, so the walk ends", endedOnLate,
             lateLeft);
         expect("nor one whose window came refused once its patience gave up, so it ends",
@@ -1548,6 +2009,11 @@ ShellRoot {
             besideLate.left);
         expect("nor behind the lock, the walk left for the lock's end to settle",
             lockedLate.on, lockedLate.left);
+        expect("and the lock's end settles it, the walk ending", lockedLate.ends === true,
+            lockedLate.parts);
+        expect("nor as the lock lets go, niri not yet given the keys, the lock's end settling it",
+            lettingGoLate.on && lettingGoLate.ends === true,
+            `${lettingGoLate.left} ${lettingGoLate.parts}`);
         Niri.windows = Object.assign({}, unforged, { "88": forged, "93": cameRefused });
         // A start's window in the sessions kitty is held to its pid too,
         // as any program can name its window as a start's.
@@ -1582,7 +2048,7 @@ ShellRoot {
             !Sessions.drawnHere(anew) && Sessions.sessionsKittyPid === "4242",
             Sessions.sessionsKittyPid);
         Niri.windows = Object.assign({}, unforged, { "90": anew });
-        Niri.windowOpenedOrChanged(anew);
+        Sessions.windowHeard(anew);
         expect("one drawn by the kitty started again is taken as come",
             !Sessions.viewerComing(named), JSON.stringify(Sessions.attaching));
         // Go To reads it again first, its viewer drawn by a kitty since
@@ -1609,7 +2075,7 @@ ShellRoot {
         Sessions.attaching = Object.assign({}, Sessions.attaching, { [named]: Date.now() });
         const between = { id: 91, pid: 880, opened: named };
         Niri.windows = Object.assign({}, unforged, { "91": between });
-        Niri.windowOpenedOrChanged(between);
+        Sessions.windowHeard(between);
         Niri.windows = unforged;
         expect("while it says none, another program's is still no viewer",
             Sessions.refusedAsks[named] === "91" && Sessions.sessionsKittyPid === "7171",
@@ -1618,10 +2084,100 @@ ShellRoot {
         // stray one retitling would read the file with every title.
         kittyPidFile.setText("880\n");
         Niri.windows = Object.assign({}, unforged, { "91": between });
-        Niri.windowOpenedOrChanged(between);
+        Sessions.windowHeard(between);
         Niri.windows = unforged;
         expect("a window refused once reads no file as it changes",
             Sessions.sessionsKittyPid === "7171", Sessions.sessionsKittyPid);
+        // A start pi's host took reads the pid first, as Go To does, so a
+        // viewer drawn by a kitty started again since is raised, not
+        // another opened beside it.
+        const startedViewer = "pi-hosted.s-started";
+        const footedStart = { address: "q-started", machine: "", name: "Reef" };
+        kittyPidFile.setText("8282\n");
+        const startedSince = { id: 86, pid: 8282, opened: startedViewer };
+        Niri.windows = Object.assign({}, unforged, { "86": startedSince });
+        Niri.acted = null;
+        const startedFrom = Niri.spawns.length;
+        Sessions.viewStarted("harbour-attended", "s-started", startedViewer, "Reef", "/tmp",
+            footedStart);
+        expect("a start raises its viewer drawn by a kitty started again since",
+            focused(86) && Niri.spawns.length === startedFrom,
+            `${JSON.stringify(Niri.acted)} ${Niri.spawns.slice(startedFrom).join(" | ")}`);
+        // One whose viewer came refused, that window still listed, is said
+        // disowned, opening none, as a press of it is, but led by its start,
+        // so the foot never reads as the start not taking.
+        const disownedStart = "pi-hosted.s-disowned-start";
+        const refusedStart = { id: 84, pid: 880, opened: disownedStart };
+        Niri.windows = Object.assign({}, unforged, { "84": refusedStart });
+        Sessions.refusedAsks = Object.assign({}, Sessions.refusedAsks, { [disownedStart]: "84" });
+        Sessions.refusedAt = Object.assign({}, Sessions.refusedAt,
+            { [disownedStart]: Date.now() - Sessions.answerPatience - 1 });
+        root.unhosted = "";
+        root.unhostedWhy = "";
+        // Its ask long past what the script could answer for, it takes no
+        // focus, as nothing of that ask's can come now.
+        const goingBeforeDisowned = Sessions.goingTo;
+        Sessions.viewStarted("harbour-attended", "s-disowned-start", disownedStart, "Reef",
+            "/tmp", footedStart);
+        expect("a start whose viewer came refused is said disowned, as started, opening none",
+            root.unhosted === "q-started" && root.unhostedWhy === "startedDisowned"
+            && Niri.spawns.length === startedFrom && Sessions.goingTo === goingBeforeDisowned,
+            `${root.unhosted} ${root.unhostedWhy} ${JSON.stringify(Sessions.goingTo)} `
+                + Niri.spawns.slice(startedFrom).join(" | "));
+        Sessions.forgetAsk(disownedStart);
+        Sessions.goingTo = goingBeforeDisowned;
+        // A start again while the script may still answer for the ask whose
+        // window came refused takes the focus its own would, and its own
+        // come after is focused and said viewed, led by its start.
+        const afterStart = "pi-hosted.s-start-after";
+        Niri.windows = unforged;
+        Sessions.viewStarted("harbour-attended", "s-start-after", afterStart, "Reef", "/tmp",
+            footedStart);
+        // A start again while its viewer comes is said opening, led by the
+        // start too.
+        root.unhosted = "";
+        root.unhostedWhy = "";
+        Sessions.viewStarted("harbour-attended", "s-start-after", afterStart, "Reef", "/tmp",
+            footedStart);
+        const heldStart = `${root.unhosted} ${root.unhostedWhy}`;
+        const strayStart = { id: 107, pid: 880, opened: afterStart };
+        Niri.windows = Object.assign({}, unforged, { "107": strayStart });
+        root.unhosted = "";
+        root.unhostedWhy = "";
+        Sessions.windowHeard(strayStart);
+        const saidStray = `${root.unhosted} ${root.unhostedWhy}`;
+        Sessions.goingTo = null;
+        Sessions.viewStarted("harbour-attended", "s-start-after", afterStart, "Reef", "/tmp",
+            footedStart);
+        const startTook = Sessions.goingTo?.app === afterStart;
+        const ownStart = { id: 108, pid: Number(Sessions.sessionsKittyPid), opened: afterStart };
+        Niri.windows = Object.assign({}, unforged, { "107": strayStart, "108": ownStart });
+        Niri.acted = null;
+        root.unhostedWhy = "";
+        Sessions.windowHeard(ownStart);
+        expect("a start again while its viewer comes is said opening, as started",
+            heldStart === "q-started startedOpening", heldStart);
+        expect("a start again after a stray takes the focus, its own come said viewed, as started",
+            saidStray === "q-started startedDisowned" && startTook && focused(108)
+            && root.unhostedWhy === "startedCameAfter",
+            `${saidStray} ${startTook} ${JSON.stringify(Niri.acted)} ${root.unhostedWhy}`);
+        Sessions.forgetAsk(afterStart);
+        Sessions.goingTo = goingBeforeDisowned;
+        // And one whose viewer no kitty took is said so, as started too.
+        const untakenStart = "pi-hosted.s-untaken-start";
+        Niri.windows = unforged;
+        const untakenFrom = Niri.spawns.length;
+        Sessions.viewStarted("harbour-attended", "s-untaken-start", untakenStart, "Reef",
+            "/tmp", footedStart);
+        root.unhosted = "";
+        root.unhostedWhy = "";
+        Sessions.untaken(untakenStart, String(Date.now()));
+        expect("a start whose viewer no kitty took is said untaken, as started",
+            Niri.spawns.length === untakenFrom + 1 && root.unhosted === "q-started"
+            && root.unhostedWhy === "startedUntaken",
+            `${root.unhosted} ${root.unhostedWhy} ${Niri.spawns.slice(untakenFrom).join(" | ")}`);
+        Sessions.forgetAsk(untakenStart);
+        Niri.windows = unforged;
         kittyPidFile.setText("");
         Sessions.kittyPidRead = "";
         if (failed.length > 0)

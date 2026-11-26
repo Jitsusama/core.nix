@@ -127,7 +127,8 @@ block larger than a page without retrying, as the IOMMU's own allocator
 does: such a block still pays one round of reclaim and compaction, but
 no more. A buffer still gets single pages when
 nothing larger is free. The XPS 14's checks read the patched source for
-those three lines, since no test can fragment memory on cue to run them.
+each of the patch's lines, each once and where it sits, since no test can
+fragment memory on cue to run them.
 Neither 7.3.4 nor mainline changes it.
 
 The hibernation fix is for a hibernated machine that showed nothing while it

@@ -3484,6 +3484,7 @@ Scope {
             .find(one => one.actKey === key);
         if (act === undefined)
             return false;
+        keyActs();
         run(act, false);
         return true;
     }
@@ -5990,33 +5991,42 @@ Scope {
     Connections {
         target: prompt
 
-        // Only a key that may act moves the clock (Held.movesClock): a
-        // modifier alone, as the Shift before a capital, or a letter
-        // typed into the find leaves it at the key before, so a source
-        // changing beside one is left to the pacing, as Slack's answers
-        // arriving while Joel types are.
+        // Only a key that acted moves the clock, as the prompt says it
+        // (its keyActed, before counting the key): a modifier alone, as
+        // the Shift before a capital, a letter typed into the find or a
+        // count begun leaves it at the key before, so a source changing
+        // beside one is left to the pacing, as Slack's answers arriving
+        // while Joel types are.
         function onKeysTakenChanged() {
             root.guessed = Held.passedOver(root.guessed, prompt.keyAlone);
-            if (!Held.movesClock(prompt.keyAlone, prompt.typingNow, prompt.keyTaken))
-                return;
-            const heard = KeyTimes.now();
-            root.keyHeardAt = heard;
-            root.keyHeardName = prompt.keyTaken;
-            root.keyCollectedAt = Heap.collected();
-            root.keyHeardKeys = prompt.keysTaken;
-            root.keyHeardMoved = Held.movedSaid(false, prompt.keysTaken, prompt.keysTaken,
-                prompt.keyMoved);
-            // Its work is done once its handler has returned.
-            Qt.callLater(() => {
-                if (root.keyHeardAt === heard)
-                    root.keyDoneAt = KeyTimes.now();
-            });
+            if (prompt.keyActed)
+                root.keyActs();
         }
 
         function onKeyMovedChanged() {
             root.keyHeardMoved = Held.movedSaid(root.keyHeardMoved, root.keyHeardKeys,
                 prompt.keysTaken, prompt.keyMoved);
         }
+    }
+
+    // Times the clock from the key the prompt took last. The prompt calls a
+    // key acting by what it read; one it gave over as meaning nothing, or
+    // as Escape at rest, acts after all where the launcher does something
+    // with it (doKeyed, the prompt's onRested), which times it before it
+    // does, so the rows that act changes count as Joel's.
+    function keyActs() {
+        const heard = KeyTimes.now();
+        keyHeardAt = heard;
+        keyHeardName = prompt.keyTaken;
+        keyCollectedAt = Heap.collected();
+        keyHeardKeys = prompt.keysTaken;
+        keyHeardMoved = Held.movedSaid(false, prompt.keysTaken, prompt.keysTaken,
+            prompt.keyMoved);
+        // Its work is done once its handler has returned.
+        Qt.callLater(() => {
+            if (root.keyHeardAt === heard)
+                root.keyDoneAt = KeyTimes.now();
+        });
     }
 
     // The acts whose refresh has run, begun at `begun`, to be timed by the
@@ -6542,13 +6552,17 @@ Scope {
         // one he watched, so it guesses nothing new (Held.keyed).
         // refreshed records an act for a source's change to a place on
         // screen heard within keyedWithin of the work of the key the clock
-        // is timed from, that key not a move (Pacing.keyed). A modifier
-        // alone or a letter typed into the find leaves the clock at the
-        // key before (Held.movesClock), so such an act stays his across
-        // one; any other key ends it. A change heard past keyedWithin or
-        // after a move, or an answer heard so, joins the act, and an act
-        // whose source was already waiting on a refresh is recorded
-        // joined, either way no longer his alone (Held.changeDoes). A
+        // is timed from, that key not a move (Pacing.keyed). A key that
+        // acted on nothing leaves the clock at the key before, as the
+        // prompt reads it (KeyActs.acts): a modifier alone, a letter or
+        // Shift+Left typed into the find, a caret move or an edit on it, a
+        // count or a sequence begun. So such an act stays his across one,
+        // and only a key that acted ends it, but for Tab into a row with
+        // no parts, which acts by the table and opens nothing. A change
+        // heard past keyedWithin or after a move, or an answer heard so,
+        // joins the act, and an act whose source was already waiting on
+        // a refresh is recorded joined, either way no longer his alone
+        // (Held.changeDoes). A
         // change heard within keyedWithin of an acting key is his
         // whoever made it, a share's too: the leave off its row goes
         // unheld. An answer heard so records nothing and leaves his acts
@@ -8274,7 +8288,8 @@ Scope {
     // sources still to answer and when they were asked; or null.
     property var answersAwaited: null
     // A key listed past its wait: what was typed, the sources that hadn't
-    // answered, and when they were asked, so each says how late it came.
+    // answered, and when they were asked, so each says how late it came;
+    // let go when the launcher closes, since then nobody waits on them.
     property var answersLate: null
     // Kept to the clock, since QML's Timer steps with the frames and ended
     // this hold a median 47 ms in (key-times/walltimer.h).
@@ -8290,6 +8305,13 @@ Scope {
             // a sync still open said up to now (Awaited.frameOpen).
             waited.timedOut = true;
             waited.firedAt = KeyTimes.now();
+            // A wait ended after its closing lists nothing, so it marks
+            // nothing late and says no key listed (onOpenChanged); the
+            // held key is let go as searchAwaited lets one go shut.
+            if (!root.open) {
+                root.searchAwaited();
+                return;
+            }
             root.answersLate = { text: waited.text, sources: waited.sources,
                 began: waited.began };
             // The words as Trials's slow key says them (Presented.typedShown).
@@ -10483,8 +10505,10 @@ Scope {
                 // line whole, and where its last line's box may end.
                 drawnFacts: drawerCard.facts.map(fact => fact.heading ?? fact.label ?? ""),
                 // Each fact's value as it's drawn, null while it's asked, in
-                // drawnFacts' order: facts above is what was given, and the
-                // card drops a fact that repeats its title.
+                // drawnFacts' order: facts above is what was given, by label,
+                // and parts from it where the card drops a fact that repeats
+                // its title (DrawerValue.factsShown) and where a fact's
+                // heading names it in place of its label.
                 values: drawerCard.facts.map(fact => fact.value ?? null),
                 // Each fact's figure drawn beside its value, by its shape,
                 // "" for none or one given way.
@@ -11162,9 +11186,14 @@ Scope {
         // takes forever to load).
         let lapped = KeyTimes.now();
         const parts = { before: open && openAsked >= 0 ? lapped - openAsked : 0 };
-        // A link's hold on the first keys lasts only the opening it made.
-        if (!open)
+        // A link's hold on the first keys lasts only the opening it made,
+        // and a key listed without answers is late only while its
+        // opening waits on them: kept, the next unheld answer, maybe hours
+        // on, would say it came that late (answersLate).
+        if (!open) {
             prompt.unlinked();
+            answersLate = null;
+        }
         tallyMarked();
         // An opening's selection rests anew, never on the last opening's.
         restsOn = null;
@@ -12683,6 +12712,9 @@ Scope {
         const weighing = Math.round(weighed - collected);
         const live = Math.round(weight.live);
         const held = Math.round(weight.held);
+        // What's held in memory, since a lent page the kernel took stays
+        // held but costs nothing (heap.h's weigh).
+        const resident = Math.round(weight.resident);
         const outside = Math.round(weight.outside);
         const free = Math.round(weight.free);
         const chunks = Math.round(weight.chunks);
@@ -12692,7 +12724,8 @@ Scope {
         const outsideAt = Math.round(reached.collectsOutsideAt);
         console.info(
             `launcher: collected after closing in ${took} ms: ${live} MB live of ${held} MB`
-            + ` held, ${free} MB of it in free pages, ${outside} MB outside, chunks`
+            + ` held, ${resident} MB of it resident, ${free} MB of it in free pages,`
+            + ` ${outside} MB outside, chunks`
             + ` ${chunks} MB; before it, chunks ${reachedChunks} of ${chunksAt} MB and`
             + ` outside ${reachedOutside} of ${outsideAt} MB, weighed in ${weighing} ms,`
             + ` ${lent} MB of free pages lent in ${lending} ms, the kernel holding`
@@ -14373,10 +14406,13 @@ Scope {
                         // asked for, as it leaves what's begun, and closes
                         // nothing (Joel, 2026-11-05: "fuck escape quitting").
                         onRested: {
-                            if (root.listing)
+                            if (root.listing) {
+                                root.keyActs();
                                 root.listing = false;
-                            else if (root.asking)
+                            } else if (root.asking) {
+                                root.keyActs();
                                 root.back();
+                            }
                         }
                         // A held arrow's drawer comes as it's let go.
                         onLetGo: root.drawerLetGo()

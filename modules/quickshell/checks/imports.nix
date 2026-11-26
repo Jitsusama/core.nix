@@ -49,6 +49,7 @@
     "Bands.js"
     "Confirm.js"
     "Editing.js"
+    "KeyActs.js"
     "KeyNames.js"
     "MarkSize.js"
     "Measures.js"
@@ -148,7 +149,6 @@
     "launcher/Keeping.js"
     "launcher/Moment.js"
     "launcher/NowDrawers.js"
-    "launcher/Numbers.js"
     "launcher/Zones.js"
   ];
   "launcher/Displays.qml" = [
@@ -348,6 +348,7 @@
     "launcher/NowDrawers.js"
     "launcher/Numbers.js"
   ];
+  "launcher/Wheres.js" = [ "launcher/Sprouting.js" ];
   "launcher/WindowTargets.qml" = [ "launcher/HeldWindows.js" ];
   "launcher/Windows.qml" = [
     "Fuzzy.js"

@@ -63,12 +63,26 @@ pub struct Seat {
     pub transient: PathBuf,
 }
 
-/// The threads whose waits hold up what Joel sends, as Chromium names
-/// them, cut to 15 bytes: the software encoder and the thread that hands
-/// its packets to the network. The 08:35 test call of 23 Nov found both
-/// waiting in its renderer. Every thread of a capture process counts too,
-/// since it makes the frames the encoder takes.
-const SENDING: [&str; 3] = ["CodecWorker", "WebRTC_W_and_N", "VideoCaptureThr"];
+/// The threads whose waits hold up what Joel sends, cut to 15 bytes as the
+/// kernel keeps them. Chromium's, Meet's and Slack's: the software encoder
+/// and the thread that hands its packets to the network, which the 08:35
+/// test call of 23 Nov found waiting in its renderer. Tuple's, which runs
+/// WebRTC's own queues rather than Chromium's: its video and audio
+/// encoders' queues, which lag-watch named as the call's worst-waiting
+/// threads 21 times in Joel's Tuple call from 10:00 on 24 Nov, when the
+/// watch, knowing only Chromium's names, judged none of them; and WebRTC's
+/// pacer, which hands Tuple's packets to the network as `WebRTC_W_and_N`
+/// does Chromium's. Every thread of a capture process
+/// but its watchdog counts too, since it makes the frames the encoder
+/// takes.
+const SENDING: [&str; 6] = [
+    "CodecWorker",
+    "WebRTC_W_and_N",
+    "VideoCaptureThr",
+    "VideoEncoderQue",
+    "AudioEncoderQue",
+    "TaskQueuePacedS",
+];
 
 /// Only letters, digits and `_.-`, at most 32, from text another process
 /// wrote, before it reaches the history and cadence's card.
@@ -99,9 +113,15 @@ pub fn role(cmdline: &str) -> String {
     clean(kind)
 }
 
+/// A capture process's thread that makes no frames: Chromium's watchdog,
+/// which only looks for hung threads. Joel's call at 16:35 on 24 Nov read
+/// as 2000 ms a second at its p99, all of it this thread's, while
+/// lag-watch saw his call's threads waiting far less.
+const WATCHING: &str = "HangWatcher";
+
 /// Whether a thread's wait holds up what Joel sends.
 pub fn sending(role: &str, comm: &str) -> bool {
-    SENDING.contains(&comm) || role == "video_capture"
+    SENDING.contains(&comm) || (role == "video_capture" && comm != WATCHING)
 }
 
 /// How long a thread has waited for a CPU in all, in ns: schedstat's
@@ -730,7 +750,31 @@ mod tests {
             sending("video_capture", "Chrome_ChildIOT"),
             "a capture process counts whole"
         );
+        assert!(
+            !sending("video_capture", "HangWatcher"),
+            "a capture process's watchdog, which makes no frames, was judged as sending"
+        );
         assert!(!sending("renderer", "Compositor"), "drawing isn't sending");
+        // Tuple's encoders, as the kernel cuts their queues' names, and
+        // the threads it shows that receive.
+        assert!(
+            sending("main", "VideoEncoderQue"),
+            "Tuple's video encoder sends"
+        );
+        assert!(
+            sending("main", "AudioEncoderQue"),
+            "Tuple's audio encoder sends"
+        );
+        assert!(
+            sending("main", "TaskQueuePacedS"),
+            "Tuple's pacer, which hands its packets to the network, sends"
+        );
+        for receiving in ["IncomingVideoSt", "VideoDecoderQue"] {
+            assert!(
+                !sending("main", receiving),
+                "Tuple's {receiving} was judged as sending"
+            );
+        }
     }
 
     #[test]

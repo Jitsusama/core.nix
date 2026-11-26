@@ -9,10 +9,12 @@ which asks it once, and while it's signed out the place leads with 1Password's r
 it's locked, whose Return unlocks it, and a window of 1Password's opening for that ask closes the
 launcher and takes the keys. Refused the first time, as a dismissed prompt is, the launcher says why
 the next time it opens. Once in, GitHub leads as a favourite, its username at its side, its Return
-copies its password through the daemon to the clipboard and the launcher goes, the margin wearing
-the clipboard's mark and the foot, opened again, saying when it clears; resting on it reads it in
-full, its drawer never saying its password, and stepped into, it holds its acts in the design's
-order. Open the Website, Chrome's a stand-in that writes down what it's given, hands Chrome GitHub's
+types its password into the window the launcher opened over, through the daemon once the launcher
+has gone; its Copy the Password copies it through the daemon to the clipboard and the launcher
+goes, the margin wearing the clipboard's mark and the foot, opened again, saying when it clears;
+resting on it reads it in full, its drawer never saying its password, and stepped into, it holds
+its acts in the design's order, Type the Password leading while there's a window to type into.
+Open the Website, Chrome's a stand-in that writes down what it's given, hands Chrome GitHub's
 website as the launcher goes, its foot saying 1Password offers to fill it there. A walk from outside
 the launcher, as `launcher show` and `launcher do` make, finds no entry and asks the manager
 nothing.
@@ -42,6 +44,11 @@ LOGS = Path(os.environ["LOGS"])
 ASKED = LOGS / "passwords-asked.log"
 # The stand-in's only secret, which the clipboard holds and no screen shows.
 STAND_IN = "stand-in-password"
+# What the window under the launcher read of what was typed into it.
+TYPED = LOGS.resolve() / "typed"
+# Twice the key language's timeoutlen (modules/keys/language.toml's wait), so a Return after
+# a landing is a second press, not the landing's own doubled.
+PAUSE = 0.6
 # The row leading the place while 1Password is locked: the manager, by its name.
 LOCKED = "1Password"
 # What the foot says, opened again, after 1Password didn't let the launcher in.
@@ -228,18 +235,50 @@ def test_passwords_asks_nothing_until_stepped_into_and_leads_with_letting_it_in(
     let_in(shell)
 
 
-def test_an_entrys_return_copies_its_password_and_the_foot_says_when_it_clears(
-    shell: Shell,
-) -> None:
-    """An entry's Return copies its password and goes, its mark in the margin till it clears."""
+def under(shell: Shell) -> Json:
+    """Open a window for the launcher to open over, which writes down each key typed into it.
+
+    Its terminal is raw, so each key reaches it as it's typed, with no Return to end a line.
+    """
+    reading = f"stty raw -echo; head -c {len(STAND_IN)} > {TYPED}; sleep 3600"
+    window = shell.opened("Sign In", running=f"sh -c {shlex.quote(reading)}")
+    focus_reaches(shell, window)
+    return window
+
+
+def test_an_entrys_return_types_its_password_into_the_window_under_it(shell: Shell) -> None:
+    """An entry's Return types its password into the window the launcher opened over.
+
+    Copying is off on a real machine, so typing is what Return does: the daemon types it once
+    the launcher has let go of the keys, into that window alone (modules/passwords/src/typing.rs).
+    Typing changes something where Joel is, as a paste does, so a Return from the find lands on
+    the row first, and the next types.
+    """
     let_in(shell)
+    window = under(shell)
     opened(shell)
     # Let in, the favourite leads, then what changed lately.
     shell.launcher_until(lambda shown: shown["rows"][:2] == ["GitHub", "Bank Card"])
     row = cast("Json", shell.showing()["selected"])
     assert row["name"] == "GitHub", row
     assert (row["side"], row["note"]) == ("ada", "github.com"), row
-    assert row["verb"] == "copy", row
+    assert row["verb"] == "type", row
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["mode"] == "normal")
+    assert shell.showing()["open"], "the first Return typed from the find, not landing"
+    assert not TYPED.exists() or TYPED.read_text() == "", "typed on landing"
+    time.sleep(PAUSE)
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: not shown["open"])
+    shell.launcher_until(lambda _: TYPED.exists() and TYPED.read_text() == STAND_IN)
+    shell.close(window)
+
+
+def test_copy_the_password_copies_it_and_the_foot_says_when_it_clears(shell: Shell) -> None:
+    """Copy the Password copies it and goes, its mark in the margin till it clears."""
+    let_in(shell)
+    opened(shell)
+    shell.launcher_until(lambda shown: shown["rows"][:2] == ["GitHub", "Bank Card"])
     # Rested on, its drawer comes out and its Website says its note, so the row says it
     # nowhere else, and its right nothing while nothing's happening to it.
     shell.launcher_until(
@@ -254,6 +293,9 @@ def test_an_entrys_return_copies_its_password_and_the_foot_says_when_it_clears(
     )
     # The launcher goes as it copies, as every copy does, so Joel can paste at once, and the
     # margin wears the clipboard's mark until the copy clears.
+    shell.step_in("ctrl-bracketright")
+    shell.launcher_until(lambda shown: "Copy the Password" in shown["rows"])
+    shell.down_to("Copy the Password")
     since = shell.mark()
     shell.send_key("ret")
     shell.launcher_until(lambda shown: not shown["open"])
@@ -297,9 +339,16 @@ def test_resting_on_an_entry_reads_it_in_full_and_it_holds_its_acts_in_order(
     assert facts.get("Strength") == "fantastic", drawer
     assert STAND_IN not in json.dumps(shown)
     # Read already, stepping in holds every act in the design's order, its one-time code's
-    # among them.
+    # among them, and typing leading while a window is under the launcher to type into.
+    shell.close_launcher()
+    window = under(shell)
+    opened(shell)
+    shell.launcher_until(
+        lambda shown: "One-Time Code" in str((shown["selected"] or {}).get("drawer") or {})
+    )
     shell.step_in("ctrl-bracketright")
     acts = [
+        "Type the Password",
         "Copy the Password",
         "Copy the One-Time Code",
         "Copy the Username",
@@ -309,6 +358,8 @@ def test_resting_on_an_entry_reads_it_in_full_and_it_holds_its_acts_in_order(
     ]
     shell.launcher_until(lambda shown: shown["rows"] == acts)
     shell.launcher_until(lambda shown: shown["held"] == ["passwords", "GitHub"])
+    shell.close_launcher()
+    shell.close(window)
 
 
 def test_open_the_website_hands_chrome_the_website_as_the_launcher_goes(shell: Shell) -> None:

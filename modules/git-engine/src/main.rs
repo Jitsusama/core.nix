@@ -25,6 +25,7 @@ mod graph;
 mod hash;
 mod index;
 mod odb;
+mod pack_index;
 mod pattern;
 mod refs;
 mod reftable;

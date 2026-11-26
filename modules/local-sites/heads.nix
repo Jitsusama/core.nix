@@ -204,7 +204,6 @@ let
   # so do it only to unblock a merge, and say so.
   waitingForTheHead = [
     "Code"
-    "Forage"
     "Home"
     "Machines"
     "Map"

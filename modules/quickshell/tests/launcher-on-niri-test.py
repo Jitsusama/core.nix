@@ -392,8 +392,7 @@ def test_a_drawers_nerdy_bits_open_on_za_and_stay_as_left(shell: Shell) -> None:
     shell.answer("time")
     shell.launcher_until(
         lambda shown: (
-            shown["drawer"]["nerd"] == ["Unix Time", "Julian Day"]
-            and shown["drawer"]["folded"] is False
+            shown["drawer"]["nerd"] == ["Unix Time", "TAI"] and shown["drawer"]["folded"] is False
         )
     )
     shell.normal()
@@ -1476,6 +1475,46 @@ def test_notices_answered_late_come_in_with_the_selection_on_its_row(shell: Shel
     now = shell.showing()["selected"]["name"]
     shell.close_launcher()
     assert now == selected, f"the notices came in and the selection went from {selected} to {now}"
+
+
+# How long a case holds the notices daemon after the launcher closed, in seconds, so a late
+# answer to a key typed before the closing says at least this long after it.
+HELD_PAST_CLOSING = 1.5
+# A notices' answer come after its key was listed without it, with how late (Presented.js's
+# answeredLateSaid).
+NOTICES_LATE = re.compile(r"launcher: notices answered .+? (\d+) ms after its key")
+
+
+def test_a_closing_ends_the_keys_its_answers_came_late_for(shell: Shell) -> None:
+    """A key listed without the notices' answer is let go when the launcher closes.
+
+    Its answer, come after the closing, is no key's being late: nobody waits on it. Kept, the
+    mark is said late by the first unheld notices' answer: here the stopped daemon's, as it
+    resumes with the launcher shut, since it answers the words still wanted. The reopening
+    types them again, so its opening is read too. A notice brought in with the launcher open,
+    which would say a kept mark however many hours on, isn't driven: no case here brings one
+    in open, and waiting for its row timed out (2026-11-25).
+    """
+    with shell.told("shows card Windows of the past"):
+        shell.as_account("notify-send --expire-time=1000 'Windows of the past' 'a late notice'")
+    shell.notices_gone()
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    since = shell.mark()
+    with launcher_on_niri.notices_stopped():
+        shell.type_in("windows", selecting="windows")
+        shell.reported("listed without answers", lambda rest: rest == "", since)
+        closed = shell.mark()
+        shell.close_launcher()
+        time.sleep(HELD_PAST_CLOSING)
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("windows", selecting="windows")
+    shell.close_launcher()
+    logged = launcher_on_niri.logged_since(shell, closed)
+    lates = [int(late) for late in NOTICES_LATE.findall(logged)]
+    held = [late for late in lates if late >= HELD_PAST_CLOSING * 1000]
+    assert not held, f"the notices came late for a key typed before the closing: {held} ms"
 
 
 def test_for_yous_filter_steps_into_a_kind_and_minus_comes_back_out(shell: Shell) -> None:
@@ -2694,16 +2733,16 @@ def test_an_emoji_shows_the_drawer_the_shell_makes_of_it(shell: Shell) -> None:
 
 
 def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
-    """Super+E lists Unicode's groups, and the clipboard's history finds what's typed there.
+    """Super+E lists Unicode's groups, and makes a row only for an emoji a step shows.
 
     Every one of Emoji's 1,914 rows was made as the shell started, kept for Super+E and matched
     in the shell, about 30 MB of what its heap held (Y2YBTS's lab, 2026-11-19). The history
-    finds them now (clipboard/src/search.rs), so the start makes only its groups' rows, a
-    group's row moved over makes none of its emoji, and closing lets go of those a step into a
-    group made, which were otherwise held for the shell's life. The tally counts every row since
-    the shell started, and a case before this one in its part steps into a group, so each
-    count here is from this case's start; the start itself is judged by having made fewer than
-    Emoji holds, which a step into one group never reaches.
+    finds what's typed now (clipboard/src/search.rs, the whole-word case below), so the start
+    makes only its groups' rows, a group's row moved over makes none of its emoji, and closing
+    lets go of those a step into a group made, which were otherwise held for the shell's life.
+    The tally counts every row since the shell started, and a case before this one in its part
+    steps into a group, so each count here is from this case's start; the start itself is
+    judged by having made fewer than Emoji holds, which a step into one group never reaches.
     """
     launcher_on_niri.warmed(shell)
     before = shell.rows_made("emoji")
@@ -2755,6 +2794,9 @@ def test_emoji_finds_a_whole_word_typed_in_it(shell: Shell) -> None:
     """
     shell.as_account(shell.ipc("collection", "emoji"))
     shell.launcher_ready()
+    # Its groups listed, Emoji has heard from the history, so a case run alone types into a
+    # search that can ask it, as one run after the rows case does.
+    shell.launcher_until(lambda shown: shown["rows"][:1] == [FIRST_GROUP])
     # Twice a failure here showed the rows held from "t" and never tada's, with nothing in the
     # journal to say why (2026-11-23), so a failure says how Emoji's search of the history stood.
     try:

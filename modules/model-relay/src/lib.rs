@@ -803,6 +803,10 @@ enum Unreachable {
     Late,
     /// It was refused, or failed on the way.
     Refused,
+    /// The origin's name couldn't be looked up, as when the network the
+    /// machine looks names up through is down, so pi's person reads that,
+    /// not the origin, as what failed.
+    Unnamed,
     /// It was reached, but not as this relay can carry a request to it:
     /// its certificate isn't one the relay trusts, or it doesn't speak
     /// HTTP/2. pi reaches it directly instead, as it would with no relay.
@@ -821,6 +825,10 @@ impl Unreachable {
             Unreachable::Refused => said(
                 StatusCode::BAD_GATEWAY,
                 "this relay couldn't reach its origin\n",
+            ),
+            Unreachable::Unnamed => said(
+                StatusCode::BAD_GATEWAY,
+                "this relay couldn't look up its origin's name\n",
             ),
             Unreachable::Unfit => said(StatusCode::MISDIRECTED_REQUEST, CANT_CARRY),
         }
@@ -1931,16 +1939,22 @@ impl Relay {
     /// says when it's retired, counting it as one taking requests.
     async fn connect(&self, named: Named) -> Result<SendRequest<Sent>, Unreachable> {
         let within = self.clocks.connect_within;
+        let looked_up = AtomicBool::new(false);
         let opening = async {
             let on_the_way = |why: io::Error| {
-                let unreachable = if why.kind() == io::ErrorKind::TimedOut {
+                let unreachable = if why
+                    .get_ref()
+                    .is_some_and(<dyn std::error::Error + Send + Sync>::is::<Unnamed>)
+                {
+                    Unreachable::Unnamed
+                } else if why.kind() == io::ErrorKind::TimedOut {
                     Unreachable::Late
                 } else {
                     Unreachable::Refused
                 };
                 (why, unreachable)
             };
-            let tcp = reach(&self.origin.host, self.origin.port, within)
+            let tcp = reach(&self.origin.host, self.origin.port, within, &looked_up)
                 .await
                 .map_err(on_the_way)?;
             let name = ServerName::try_from(self.origin.host.clone())
@@ -1991,14 +2005,7 @@ impl Relay {
                 );
                 return Err(unreachable);
             }
-            Err(_) => {
-                eprintln!(
-                    "model-relay: {} wasn't made within {} ms",
-                    named.tried(),
-                    within.as_millis()
-                );
-                return Err(Unreachable::Late);
-            }
+            Err(_) => return Err(unmade(named, within, &looked_up)),
         };
         self.counts.opened.fetch_add(1, Ordering::Relaxed);
         let open = self.counts.open.fetch_add(1, Ordering::Relaxed) + 1;
@@ -2158,13 +2165,75 @@ fn with_causes(why: &dyn std::error::Error) -> String {
     said
 }
 
-/// A TCP connection to `host`'s `port`, from the first address the name
-/// resolves to that answers.
-async fn reach(host: &str, port: u16, within: Duration) -> io::Result<TcpStream> {
-    let addresses: Vec<SocketAddr> = tokio::net::lookup_host((host, port)).await?.collect();
-    if addresses.is_empty() {
-        return Err(io::Error::other(format!("{host} resolved to no address")));
+/// What `named`, not made `within` its time, is said as. A lookup that
+/// hangs rather than fails is the name's doing too, so one that hadn't
+/// resolved by then is said as that, and lateness only once it had.
+fn unmade(named: Named, within: Duration, looked_up: &AtomicBool) -> Unreachable {
+    if looked_up.load(Ordering::Relaxed) {
+        eprintln!(
+            "model-relay: {} wasn't made within {} ms",
+            named.tried(),
+            within.as_millis()
+        );
+        Unreachable::Late
+    } else {
+        eprintln!(
+            "model-relay: {} wasn't made within {} ms, before its origin's name resolved",
+            named.tried(),
+            within.as_millis()
+        );
+        Unreachable::Unnamed
     }
+}
+
+/// A name that couldn't be looked up, and why, if the lookup said.
+#[derive(Debug)]
+struct Unnamed {
+    /// The name looked up.
+    host: String,
+    /// What the lookup failed with; none when it found no address.
+    why: Option<io::Error>,
+}
+
+impl fmt::Display for Unnamed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.why {
+            Some(_) => write!(f, "{} couldn't be looked up", self.host),
+            None => write!(f, "{} resolved to no address", self.host),
+        }
+    }
+}
+
+impl std::error::Error for Unnamed {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.why
+            .as_ref()
+            .map(|why| why as &(dyn std::error::Error + 'static))
+    }
+}
+
+/// A TCP connection to `host`'s `port`, from the first address the name
+/// resolves to that answers, marking `looked_up` once the name has resolved.
+async fn reach(
+    host: &str,
+    port: u16,
+    within: Duration,
+    looked_up: &AtomicBool,
+) -> io::Result<TcpStream> {
+    let unnamed = |why| {
+        io::Error::other(Unnamed {
+            host: host.to_owned(),
+            why,
+        })
+    };
+    let addresses: Vec<SocketAddr> = tokio::net::lookup_host((host, port))
+        .await
+        .map_err(|why| unnamed(Some(why)))?
+        .collect();
+    if addresses.is_empty() {
+        return Err(unnamed(None));
+    }
+    looked_up.store(true, Ordering::Relaxed);
     let tcp = reach_any(&addresses, within).await?;
     fit(&tcp)?;
     Ok(tcp)
@@ -2354,9 +2423,9 @@ mod tests {
     use hyper::body::Body as _;
 
     use super::{
-        BODY_WITHIN, Counts, HELD_AHEAD_AT_MOST, InPieces, Origin, Retiring, SAID_AT_MOST,
-        SLEPT_AT_LEAST, Sender, Slot, Unread, fails_the_path, goes_again, goes_direct,
-        goes_once_more, reach, reach_any, read_whole, slept, with_causes,
+        BODY_WITHIN, Counts, HELD_AHEAD_AT_MOST, InPieces, Named, Origin, Retiring, SAID_AT_MOST,
+        SLEPT_AT_LEAST, Sender, Slot, Unnamed, Unreachable, Unread, fails_the_path, goes_again,
+        goes_direct, goes_once_more, reach, reach_any, read_whole, slept, unmade, with_causes,
     };
 
     /// How the origin ends a request it hasn't answered.
@@ -2844,15 +2913,66 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn a_name_no_lookup_finds_is_unnamed_and_never_marked_looked_up() {
+        let looked_up = AtomicBool::new(false);
+
+        // The trailing dot makes the name whole, so no search domain the
+        // machine's resolver adds can turn it into one that resolves.
+        let reaching = reach(
+            "model-relay.invalid.",
+            443,
+            Duration::from_secs(2),
+            &looked_up,
+        );
+        // The budget given to reach bounds the connection, not the lookup,
+        // which the relay bounds from outside; this bounds it here, so a
+        // resolver that never answers fails the test rather than hangs it.
+        let failed = tokio::time::timeout(Duration::from_secs(10), reaching)
+            .await
+            .expect("the machine's resolver took over 10 s to fail a name under .invalid");
+
+        let unnamed = failed
+            .err()
+            .and_then(std::io::Error::into_inner)
+            .is_some_and(|why| why.is::<Unnamed>());
+        assert!(unnamed, "a name no lookup finds wasn't said as unnamed");
+        assert!(
+            !looked_up.load(Ordering::Relaxed),
+            "a name no lookup finds was marked as looked up"
+        );
+    }
+
+    #[test]
+    fn a_connection_not_made_in_time_before_its_name_resolved_is_the_names_doing() {
+        // Once the name resolved it is late instead, which the 504
+        // integration test already shows end to end.
+        let unresolved = unmade(
+            Named { at: 0, number: 0 },
+            Duration::from_secs(10),
+            &AtomicBool::new(false),
+        );
+
+        assert!(
+            matches!(unresolved, Unreachable::Unnamed),
+            "a lookup outlasting the budget wasn't said as the name's"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn a_connection_to_the_origin_holds_few_bytes_unsent() {
         let origin = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("a port");
         let port = origin.local_addr().expect("its address").port();
 
-        let tcp = reach("127.0.0.1", port, Duration::from_secs(2))
-            .await
-            .expect("a connection");
+        let tcp = reach(
+            "127.0.0.1",
+            port,
+            Duration::from_secs(2),
+            &AtomicBool::new(false),
+        )
+        .await
+        .expect("a connection");
 
         assert_eq!(
             socket2::SockRef::from(&tcp)

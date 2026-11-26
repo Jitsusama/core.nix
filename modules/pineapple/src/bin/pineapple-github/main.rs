@@ -4,8 +4,9 @@
 //! minute, with Joel's own sign-in (gh's, printed by the program
 //! `SIGN_IN_KEYRING` names, only read), which pull requests and issues he
 //! takes part in changed, and, since GitHub never notifies him of his own
-//! words, which of those name the word, as a search finds them. It reads
-//! what was said on each since it last asked: its opening, comments,
+//! words, which of those name the word, as a search finds them (own.rs). It
+//! reads what was said on each since it last asked, or on one the search
+//! found from an hour before the search reaches: its opening, comments,
 //! review comments and reviews. Whatever holds "pineapple" or tags him
 //! is judged with the pull request it was said on as its place
 //! (src/github.rs, then judging.rs), and the decision goes in
@@ -57,9 +58,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use pineapple::github::{
-    self, Kind, Said, Thread, add_page, found, found_when, notified, worth_judging,
-};
+use pineapple::github::{self, Kind, Said, Thread, add_page, found, notified, worth_judging};
 use pineapple::progress::{self, Judged};
 use pineapple::sign_in::{self, SignIn};
 use pineapple::{Context, Joel};
@@ -68,8 +67,10 @@ use terminal_kit::{Exit, Failure, Format, Help, flags};
 use ureq::Agent;
 
 mod judging;
+mod own;
 
 use judging::judge;
+use own::Searched;
 
 /// How often GitHub is asked, unless a test says otherwise: with the
 /// enforcer's few seconds after, a stop lands well inside five minutes.
@@ -83,10 +84,11 @@ const LOOK_BACK: u64 = 10 * 60;
 /// that finds twice is known by its key.
 const OVERLAP: u64 = 60;
 
-/// How far before the last round a search asks from, in seconds: a
-/// search's index can lag an update by more than a minute, and a pull
-/// request it indexed late would otherwise never be read. What that
-/// finds again is known by its key.
+/// How far before the last round a site with no notifications is
+/// searched from, in seconds, and how far before a first start's look
+/// back Joel's own words are: a search's index can lag an update by more
+/// than a minute, and a pull request it indexed late would otherwise
+/// never be read. What that finds again is known by its key.
 const INDEX_LAG: u64 = 10 * 60;
 
 /// The most repositories one reader searches. A site allows a signed-in
@@ -367,14 +369,14 @@ fn last_read(context: &terminal_kit::Context) -> Result<(), Failure> {
 /// The reader, which runs until its service stops it.
 fn run(how: &Run) -> Result<(), Failure> {
     let state = state();
-    let mut judged = progress::read(&state, &how.site).unwrap_or_else(|| Judged {
+    let kept = progress::read(&state, &how.site);
+    let first = kept.is_none();
+    let mut judged = kept.unwrap_or_else(|| Judged {
         since: seconds().saturating_sub(LOOK_BACK),
         keys: Vec::new(),
+        own: None,
     });
-    let mut own = Searched {
-        from: judged.since,
-        read: HashMap::new(),
-    };
+    let mut own = Searched::new(judged.since, judged.own, first, INDEX_LAG);
     let agent: Agent = Agent::config_builder()
         .timeout_global(Some(PATIENCE))
         .http_status_as_error(false)
@@ -569,14 +571,6 @@ fn searched(github: &GitHub<'_>, query: &str) -> Result<Value, Unread> {
     Ok(answer)
 }
 
-/// Where Joel's own words were last searched from whole, which a failed
-/// search leaves where it was, and when each pull request or issue that
-/// search found had last changed, so one is read again only once it has.
-struct Searched {
-    from: u64,
-    read: HashMap<String, String>,
-}
-
 /// One round: what changed since the last, judged oldest first, and how
 /// far it has read moved on only once every pull request and issue it
 /// named was read; Joel's own search only once it was whole too.
@@ -599,43 +593,27 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
             return;
         }
     };
-    // GitHub never notifies Joel of what he says himself, so his own stop
-    // where nobody else said anything is found by searching for the word,
-    // from as far back as a search's index lags. One that fails doesn't
-    // cost what notified him: it's searched from as far back next round.
-    let (mut threads, mut whole, mut seen) = (Vec::new(), true, HashMap::new());
-    if how.authored_by.is_none() {
-        let lagged = own.from.saturating_sub(INDEX_LAG);
-        let query = format!(
-            "pineapple involves:{login} updated:>={}",
-            github::stamp(lagged)
-        );
-        match searched(github, &query) {
-            Ok(answer) => {
-                // One read since and unchanged holds nothing new.
-                for (thread, at) in found_when(&answer, &how.site) {
-                    let key = thread.key();
-                    if own.read.get(&key) != Some(&at) {
-                        threads.push((thread, lagged));
-                    }
-                    seen.insert(key, at);
-                }
-            }
-            Err(Unread::Gone(why) | Unread::Failed(why)) => {
-                eprintln!(
-                    "<4>couldn't search {} for what Joel said, so it's searched from as \
-                     far back next round: {why}",
-                    github.name
-                );
-                whole = false;
-            }
-        }
+    // Joel's own stop where nobody else spoke is found by a search, and
+    // read from an hour before what it reaches, so his stop from then is
+    // told of. Each thread is judged from one time and read from another.
+    let mine = how.authored_by.is_none();
+    let hits = mine.then(|| own.search(github, &how.site, &login));
+    let reach = own.reach();
+    let mut threads: Vec<(Thread, u64, u64)> = Vec::new();
+    for thread in hits.iter().flat_map(|hits| hits.threads.iter()) {
+        threads.push((thread.clone(), reach, own.read_from()));
     }
     for thread in notified {
-        if !threads.iter().any(|(listed, _)| *listed == thread) {
-            threads.push((thread, from));
+        if !threads.iter().any(|(listed, _, _)| *listed == thread) {
+            threads.push((thread, from, from));
         }
     }
+    // Where logins are addresses, what Joel says is by his address.
+    let joel = Joel {
+        slack_ids: Vec::new(),
+        logins: vec![login.clone()],
+        emails: how.authored_by.iter().cloned().collect(),
+    };
     // Where anyone may comment: GitHub's own, however its site is named.
     let open = how.authored_by.is_none()
         || how
@@ -643,16 +621,23 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
             .trim_end_matches('/')
             .eq_ignore_ascii_case(GITHUB);
     let (mut heard, mut learned) = (Vec::new(), HashMap::new());
-    for (thread, from) in &threads {
+    for (thread, from, read_from) in &threads {
         // What this round judges, which alone is worth asking about a repository.
         let keeps = |said: &Said| {
             said.at >= *from
                 && !judged.keys.contains(&said.key)
                 && worth_judging(&said.text, &login)
         };
-        let since = github::stamp(*from);
+        let since = github::stamp(*read_from);
         match said_on(github, thread, &since, (open, &login), &keeps, &mut learned) {
-            Ok(found) => heard.extend(found.into_iter().filter(|(said, _, _, _)| keeps(said))),
+            Ok(found) => {
+                if mine {
+                    for (said, _, _, _) in &found {
+                        own.too_old(said, &joel, &judged.keys);
+                    }
+                }
+                heard.extend(found.into_iter().filter(|(said, _, _, _)| keeps(said)));
+            }
             Err(Unread::Gone(why)) => eprintln!("<4>{} can't be read: {why}", thread.key()),
             Err(Unread::Failed(why)) => {
                 eprintln!("<4>couldn't read {}: {why}", thread.key());
@@ -661,22 +646,19 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
         }
     }
     heard.sort_by_key(|(said, _, _, _)| said.at);
-    // Where logins are addresses, what Joel says is by his address.
-    let joel = Joel {
-        slack_ids: Vec::new(),
-        logins: vec![login],
-        emails: how.authored_by.iter().cloned().collect(),
-    };
     for (said, thread, context, outsider) in heard {
         let place = (&thread, context, outsider);
         judge(state, &joel, &said, place, how.shadow);
         judged.keys.push(said.key);
     }
     judged.since = began;
-    if whole {
-        own.from = began;
-        own.read = seen;
+    if let Some(hits) = hits.filter(|hits| hits.whole) {
+        own.moved_on(began, hits.seen);
     }
+    // Kept only where Joel's words are searched for, as a site read by
+    // what he opened never moves it on, and dropping that flag later
+    // would search from its first start.
+    judged.own = mine.then(|| own.kept());
     let over = judged.keys.len().saturating_sub(KEPT);
     judged.keys.drain(..over);
     progress::write(state, &how.site, judged, millis());

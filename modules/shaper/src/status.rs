@@ -76,7 +76,9 @@ fn said(link: &LinkStatus, room: Room) -> Vec<String> {
         layout::one_line(&link.name),
         layout::one_line(&link.network)
     )];
-    let mut say = |line: String| lines.extend(set(&line, INSET.len(), room));
+    // Each line of status hangs, so where one ends and the next begins
+    // reads at a glance, as disk-guard's holders do.
+    let mut say = |line: String| lines.extend(layout::hanging(&line, INSET.len(), room));
     say(format!("up {}, down {}", mbit(link.up), mbit(link.down)));
     for line in link.lanes.as_ref().map(lanes_said).unwrap_or_default() {
         say(line);
@@ -126,28 +128,6 @@ fn said(link: &LinkStatus, room: Room) -> Vec<String> {
     // trips and never leaves a host on one line and its time on the next.
     say(format!("quiet round trips: {}", pings.join(layout::ITEMS)));
     lines
-}
-
-/// A line of status set `inset` cells in, wrapped at whole words to the
-/// room and hung two cells further under its first words, so where one
-/// line ends and the next begins reads at a glance, as disk-guard's
-/// holders do. A line that fits, and any line into a pipe, stays whole.
-fn set(line: &str, inset: usize, room: Room) -> Vec<String> {
-    let whole = layout::one_line(line);
-    if room
-        .cells()
-        .is_none_or(|cells| inset + layout::width(&whole) <= cells)
-    {
-        return vec![format!("{}{whole}", " ".repeat(inset))];
-    }
-    layout::hung(line, inset + layout::GAP, room)
-        .split('\n')
-        .enumerate()
-        .map(|(at, part)| {
-            let lead = if at == 0 { inset } else { 0 };
-            format!("{}{part}", " ".repeat(lead))
-        })
-        .collect()
 }
 
 /// How the upload is shared between its lanes, Joel's first, and the
@@ -296,7 +276,7 @@ impl Spent {
         }
         lines
             .iter()
-            .flat_map(|line| set(line, 0, room.for_prose()))
+            .flat_map(|line| layout::hanging(line, 0, room.for_prose()))
             .collect()
     }
 }
@@ -546,6 +526,20 @@ mod tests {
         assert!(
             next.starts_with("    ") && !next.starts_with("     "),
             "{next:?} doesn't hang two cells in from {:?}",
+            lines[at]
+        );
+        // The first line keeps the cells only the lines under it hang by.
+        // This why sets no item apart and leaves no widow, so with the
+        // first line's whole room the next line's first word wouldn't
+        // have fit on it; given the hung measure, as `hung` gave it, it
+        // would have.
+        let word = next
+            .split_whitespace()
+            .next()
+            .expect("the next line has words");
+        assert!(
+            layout::width(&lines[at]) + 1 + layout::width(word) > 80,
+            "{:?} left room for {word:?}, as it does when wrapped to the hung measure",
             lines[at]
         );
         let why = held().heard.and_then(|heard| heard.why).expect("a why");

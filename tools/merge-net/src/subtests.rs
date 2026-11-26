@@ -133,15 +133,17 @@ pub fn finished(log: impl IntoIterator<Item = impl AsRef<str>>) -> bool {
 
 /// Whether a narrowed run's log says its subtests can't be built alone,
 /// so the whole test runs there instead: a commit from before 29 October
-/// has no `subtests`, and a check on a nested niri isn't a VM test, which
-/// run-subtests refuses. On 14 November that refusal counted as the
-/// chords failing again, and the net held main 18 minutes on a flake.
+/// has no `subtests`, a check on a nested niri isn't a VM test, and a VM
+/// test whose script doesn't hand its tests to pytest has none to pick,
+/// each of which run-subtests refuses. On 14 November such a refusal
+/// counted as the chords failing again, and the net held main 18 minutes
+/// on a flake.
 #[must_use]
 pub fn unbuildable(log: impl IntoIterator<Item = impl AsRef<str>>) -> bool {
     let (mut missing, mut subtests) = (false, false);
     for line in log {
         let line = line.as_ref();
-        if line.contains(NOT_A_VM_TEST) {
+        if line.contains(NOT_A_VM_TEST) || line.contains(NOT_HANDED_TO_PYTEST) {
             return true;
         }
         missing |= line.contains("does not provide attribute");
@@ -155,6 +157,10 @@ const LOST: &str = " - BrokenPipeError";
 
 /// What run-subtests' `subtests` throws for a check that isn't a VM test.
 const NOT_A_VM_TEST: &str = "isn't a VM test, so it has no subtests";
+
+/// What run-subtests says, inside the build, of a VM test whose script
+/// doesn't hand its tests to pytest.
+const NOT_HANDED_TO_PYTEST: &str = "doesn't hand its tests to pytest";
 
 #[cfg(test)]
 mod tests {
@@ -298,6 +304,12 @@ mod tests {
         assert!(
             unbuildable(nested.lines()),
             "a check on a nested niri has no subtests to build alone"
+        );
+        let unhanded = "vm-test-run-vm-desktop-x> run-subtests: vm-desktop-x's script doesn't \
+                        hand its tests to pytest (tests/lib/vm_pytest.py), so it has none to pick";
+        assert!(
+            unbuildable(unhanded.lines()),
+            "a VM test whose script doesn't hand its tests to pytest has none to build alone"
         );
         assert!(
             !unbuildable("error: builder failed".lines()),

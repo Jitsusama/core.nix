@@ -20,7 +20,8 @@ onLinux {
   the-litra-follows-the-cameras =
     pkgs.runCommandCC "the-litra-follows-the-cameras" { nativeBuildInputs = [ pkgs.rustc ]; }
       ''
-        rustc --edition 2024 --test -D warnings -o tests ${./litra.rs}
+        rustc --edition 2024 --test -D warnings -o tests \
+          ${import ./source.nix { inherit (pkgs) lib; }}/litra.rs
         ./tests
         touch $out
       '';

@@ -65,7 +65,7 @@ pub fn parked(text: &str, which: Tracking) -> Measure {
 mod tests {
     use serde_json::json;
 
-    use super::super::slipped::at;
+    use super::super::slipped::{at, list};
     use super::super::slips;
     use super::*;
 
@@ -80,13 +80,6 @@ mod tests {
             ask.extend(more.clone());
         }
         ask
-    }
-
-    fn list(asks: &[Value]) -> String {
-        asks.iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join("\n")
     }
 
     #[test]

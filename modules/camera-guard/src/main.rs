@@ -1,0 +1,308 @@
+//! camera-guard keeps every agent from opening a camera from a quarter
+//! hour before one of Joel's meetings until it ends, and leaves Joel's own
+//! programs free to.
+//!
+//! At 09:51 on 24 Nov Joel saw his camera in use before a meeting, and it
+//! was an agent's read, asked for by another agent. Agents run as Joel's
+//! own account, so no permission tells them from his Meet; only where
+//! systemd runs them does: his programs in app.slice, agents and their
+//! work in jobs.slice, agents.slice and shared.slice. So this runs as root, asks the
+//! google daemon for his meetings each minute, and from fifteen minutes
+//! before each until it ends keeps a cgroup device program on the agents'
+//! slices that refuses every video4linux device (src/bpf.rs). app.slice,
+//! the system's camera relays and everything else are never touched.
+//!
+//! It fails closed: a calendar that can't be read leaves the meetings it
+//! last said standing, kept in the state folder across restarts
+//! (src/meetings.rs), so a known meeting keeps the guard up. It looks every
+//! five seconds, so a slice made again since the last look is guarded
+//! within that (src/guard.rs). It says in the journal when the guard goes
+//! up and comes down, and each slice it couldn't guard.
+
+mod bpf;
+mod guard;
+mod meetings;
+
+use std::path::{Component, Path, PathBuf};
+use std::process::ExitCode;
+use std::sync::mpsc;
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use terminal_kit::{Exit, Failure, Help};
+
+/// How often the calendar is asked, and how often the slices are looked at.
+const ASK_EVERY: Duration = Duration::from_secs(60);
+const LOOK_EVERY: Duration = Duration::from_secs(5);
+
+/// What `camera-guard --help` says.
+fn help() -> Help {
+    Help::new(
+        "camera-guard",
+        "keeps agents off the camera near Joel's meetings",
+    )
+    .example(
+        "camera-guard joel jobs.slice agents.slice shared.slice",
+        "as its unit runs it",
+    )
+    .argument("ACCOUNT", "the account whose meetings and agents it minds")
+    .argument(
+        "SLICE",
+        "an agents' slice under the account's manager, one or more",
+    )
+    .exit(Exit::Unavailable, "the kernel refused the guard's program")
+    .exit(Exit::Config, "the account or its slices can't be found")
+}
+
+fn main() -> ExitCode {
+    terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
+        let (account, slices) = words(&context.args)?;
+        let passwd = std::fs::read_to_string("/etc/passwd").unwrap_or_default();
+        let uid = uid(&passwd, &account)
+            .ok_or_else(|| Failure::new(Exit::Config, format!("there's no account {account}")))?;
+        let manager = PathBuf::from(format!(
+            "/sys/fs/cgroup/user.slice/user-{uid}.slice/user@{uid}.service"
+        ));
+        let paths: Vec<PathBuf> = slices.iter().map(|slice| manager.join(slice)).collect();
+        let socket = PathBuf::from(format!("/run/user/{uid}/daemons/google.sock"));
+        let state = std::env::var_os("STATE_DIRECTORY")
+            .map_or_else(|| PathBuf::from("/var/lib/camera-guard"), PathBuf::from);
+        let program = bpf::Guard::load().map_err(|error| {
+            Failure::new(Exit::Unavailable, "the kernel refused the guard's program")
+                .because(error.to_string())
+        })?;
+        watch(&program, &paths, &socket, &state.join("meetings.json"));
+        Ok(())
+    })
+}
+
+/// The account and its slices, from the words it's started with.
+///
+/// # Errors
+///
+/// Asked wrongly, 64: no account, no slice, a flag, or a slice that climbs
+/// out of the account's manager, names no slice, or is app.slice.
+fn words(args: &[String]) -> Result<(String, Vec<PathBuf>), Failure> {
+    let wrongly = |what: String| Failure::new(Exit::Usage, what).try_this("camera-guard --help");
+    if let Some(flag) = args.iter().find(|arg| arg.starts_with('-')) {
+        return Err(wrongly(format!("{flag} isn't a flag it takes")));
+    }
+    let [account, slices @ ..] = args else {
+        return Err(wrongly(
+            "camera-guard takes an account and its slices".into(),
+        ));
+    };
+    if slices.is_empty() {
+        return Err(wrongly(format!(
+            "camera-guard takes {account}'s slices to guard"
+        )));
+    }
+    let slices: Vec<PathBuf> = slices.iter().map(PathBuf::from).collect();
+    if let Some(out) = slices.iter().find(|slice| !within(slice)) {
+        return Err(wrongly(format!(
+            "{} isn't a slice under the account's manager other than app.slice",
+            out.display()
+        )));
+    }
+    Ok((account.clone(), slices))
+}
+
+/// Whether `slice` names a slice under the manager, neither outside it,
+/// the manager itself, which would take in app.slice, nor app.slice, where
+/// Joel's Meet and Tuple run.
+fn within(slice: &Path) -> bool {
+    let mut names = slice.components().map(|component| match component {
+        Component::Normal(name) => name.to_str(),
+        _ => None,
+    });
+    let first = names.next().flatten();
+    first.is_some_and(|name| name != "app.slice")
+        && names.all(|name| name.is_some())
+        // systemd's unit names are told apart by case, so only `.slice` is.
+        && slice.extension().is_some_and(|kind| kind == "slice")
+}
+
+/// The account's number, from passwd's text.
+fn uid(passwd: &str, account: &str) -> Option<u32> {
+    passwd.lines().find_map(|line| {
+        let mut fields = line.split(':');
+        (fields.next() == Some(account))
+            .then(|| fields.nth(1)?.parse().ok())
+            .flatten()
+    })
+}
+
+fn now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| {
+            u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
+        })
+}
+
+/// Guards `paths` for as long as it runs.
+///
+/// The calendar is asked on a thread of its own, one ask at a time, so a
+/// daemon that stalls mid-answer never stops the looks: a meeting already
+/// known still puts the guard up on time. An ask still out when the next is
+/// due is heard as the calendar not answering, so the meetings last said
+/// stand, and no other is sent until it ends, so a stalled daemon holds one
+/// thread, not one a minute. Until it ends, a meeting the calendar adds is
+/// unheard. Each stall and each failure to keep is said once.
+fn watch(program: &bpf::Guard, paths: &[PathBuf], socket: &Path, kept: &Path) {
+    // Why the meetings heard are still to be kept, after a read or write of
+    // the kept file failed, so the next answer writes them afresh.
+    let mut unkept: Option<String> = None;
+    let mut watch = guard::Watch::from(meetings::kept(kept).unwrap_or_else(|why| {
+        println!(
+            "<4>the meetings kept can't be read, so none stand until the calendar says: {why}"
+        );
+        unkept = Some(why);
+        Vec::new()
+    }));
+    let mut asked: Option<Instant> = None;
+    let mut out: Option<mpsc::Receiver<Result<Vec<meetings::Meeting>, String>>> = None;
+    // Whether the ask still out has been heard as unanswered.
+    let mut stalled = false;
+    loop {
+        let answer = match out.as_ref().map(mpsc::Receiver::try_recv) {
+            Some(Ok(answer)) => {
+                out = None;
+                Some(answer)
+            }
+            Some(Err(mpsc::TryRecvError::Disconnected)) => {
+                out = None;
+                Some(Err("the calendar's ask ended with no answer".to_owned()))
+            }
+            Some(Err(mpsc::TryRecvError::Empty))
+                if !stalled && asked.is_some_and(|at| at.elapsed() >= ASK_EVERY) =>
+            {
+                stalled = true;
+                Some(Err(format!(
+                    "{} hasn't answered in a minute",
+                    socket.display()
+                )))
+            }
+            Some(Err(mpsc::TryRecvError::Empty)) | None => None,
+        };
+        if let Some(answer) = answer {
+            let answered = answer.is_ok();
+            let (said, changed) = watch.heard(answer);
+            for line in said {
+                println!("{line}");
+            }
+            if answered && (changed || unkept.is_some()) {
+                match meetings::keep(kept, &watch.meetings) {
+                    Ok(()) => unkept = None,
+                    Err(why) => {
+                        if unkept.as_ref() != Some(&why) {
+                            println!("<4>the meetings couldn't be kept for the next run: {why}");
+                        }
+                        unkept = Some(why);
+                    }
+                }
+            }
+        }
+        if out.is_none() && asked.is_none_or(|at| at.elapsed() >= ASK_EVERY) {
+            let (tell, hear) = mpsc::channel();
+            let socket = socket.to_owned();
+            thread::spawn(move || {
+                // The guard may have stopped listening; nothing is lost.
+                let _ = tell.send(meetings::ask(&socket).and_then(|said| meetings::read(&said)));
+            });
+            out = Some(hear);
+            asked = Some(Instant::now());
+            stalled = false;
+        }
+        for line in watch.look(program, paths, now()) {
+            println!("{line}");
+        }
+        thread::sleep(LOOK_EVERY);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use terminal_kit::Environment;
+
+    /// How the kit ends camera-guard started with `words`, its body reading
+    /// only its words.
+    fn started(said: &[&str]) -> (Exit, String) {
+        let ending = terminal_kit::run(
+            &help(),
+            "0.1.0",
+            &Environment::of([false; 3], &[]),
+            said.iter().map(|word| (*word).to_owned()).collect(),
+            |context| words(&context.args).map(drop),
+        );
+        (ending.exit, ending.stderr)
+    }
+
+    #[test]
+    fn its_unit_s_words_are_read_as_the_account_and_its_slices() {
+        // As nixos.nix's ExecStart gives them, since a start it refuses now
+        // fails the unit rather than restarting it.
+        let unit = ["joel", "jobs.slice", "agents.slice", "shared.slice"];
+        let (account, slices) = words(&unit.map(String::from)).unwrap();
+        assert_eq!(account, "joel", "the account wasn't the first word");
+        assert_eq!(
+            slices,
+            vec![
+                PathBuf::from("jobs.slice"),
+                PathBuf::from("agents.slice"),
+                PathBuf::from("shared.slice")
+            ],
+            "the slices weren't the words after it"
+        );
+        assert_eq!(
+            started(&unit).0,
+            Exit::Done,
+            "the kit refused its unit's words"
+        );
+    }
+
+    #[test]
+    fn a_start_asked_wrongly_ends_64_naming_its_help() {
+        for said in [
+            &[][..],
+            &["joel"],
+            &["joel", "--all"],
+            &["joel", "../user-0.slice"],
+            &["joel", "/sys/fs/cgroup"],
+            &["joel", ""],
+            &["joel", "."],
+            &["joel", "app.slice"],
+            &["joel", "app.slice/app-meet.slice"],
+            &["joel", "jobs.slice/../app.slice"],
+            &["joel", "jobs.slice/jobs.service"],
+        ] {
+            let (exit, error) = started(said);
+            assert_eq!(
+                exit,
+                Exit::Usage,
+                "{said:?} wasn't refused as asked wrongly: {error}"
+            );
+            assert!(
+                error.contains("camera-guard --help"),
+                "{said:?}'s refusal didn't name its help: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_account_s_number_is_read_from_passwd() {
+        let passwd = "root:x:0:0::/root:/bin/sh\njoel:x:1000:100::/home/joel:/bin/zsh\n\
+                      joelle:x:1001:100::/home/joelle:/bin/sh\n";
+        assert_eq!(uid(passwd, "joel"), Some(1000), "joel's number wasn't read");
+        assert_eq!(
+            uid(passwd, "joelle"),
+            Some(1001),
+            "a longer name was confused"
+        );
+        assert_eq!(
+            uid(passwd, "ada"),
+            None,
+            "an account not there was given a number"
+        );
+    }
+}

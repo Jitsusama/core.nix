@@ -15,8 +15,9 @@ pub(super) fn at(seconds: i64) -> String {
         .unwrap_or_default()
 }
 
-/// The asks list `asks` would make, one line each.
-fn list(asks: &[Value]) -> String {
+/// The asks list `asks` would make, one line each; the measures beside
+/// this one write their asks lists with it too.
+pub(super) fn list(asks: &[Value]) -> String {
     asks.iter()
         .map(ToString::to_string)
         .collect::<Vec<_>>()

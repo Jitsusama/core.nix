@@ -164,11 +164,14 @@ function escaped(text) {
 }
 
 // A text as rich text, each place the pattern's found washed: its ink and
-// ground as the wash gives them, as Neovim's Search draws a match.
-function washed(text, pattern, wash) {
+// ground as the wash gives them, as Neovim's Search draws a match. A
+// `spaced` text's breaks each stand for a space, as a title's do, so a
+// match runs on across one as the eye reads it; any other's end a match.
+function washed(text, pattern, wash, spaced) {
     let at = 0;
     let html = "";
-    for (const [start, end] of found(pattern, text)) {
+    const read = spaced === true ? text.replace(newline, " ") : text;
+    for (const [start, end] of found(pattern, read)) {
         html += escaped(text.slice(at, start))
             + `<span style="color:${wash.ink};background-color:${wash.ground}">`
             + `${escaped(text.slice(start, end))}</span>`;
