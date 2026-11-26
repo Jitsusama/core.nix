@@ -24,7 +24,6 @@
   "modules/quickshell/Launcher.qml"
   "modules/quickshell/Prompt.qml"
   "modules/quickshell/Sessions.qml"
-  "modules/quickshell/clipboard/src/main.rs"
   "modules/quickshell/home.nix"
   "modules/quickshell/launcher/Accessories.qml"
   "modules/quickshell/launcher/Agents.qml"

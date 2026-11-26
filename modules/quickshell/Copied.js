@@ -60,7 +60,7 @@ const DOCUMENT = /\.(pdf|xps|oxps|epub|fb2|mobi|djvu|djv|ps|eps)$/i;
 // `now:clipboard`, `{ key, kind: "now", now: { types, text } }`, as
 // { types, text }: the types it's offered as, and its text, "" for one
 // with none to read, as one cleared or a password manager's. Null while
-// it holds no such record (clipboard/src/main.rs).
+// it holds no such record (clipboard/src/history.rs).
 function held(record) {
     const said = record?.now;
     if (said === null || typeof said !== "object") {

@@ -8592,7 +8592,7 @@ Scope {
         // to the window in a frame of their own, before the closing's work,
         // which took a paste's keys 91 ms on Joel's machine (2026-11-10):
         // the clipboard's history presses the paste keys once niri says
-        // the launcher let go (clipboard/src/main.rs).
+        // the launcher let go (clipboard/src/paste.rs).
         if (choice.now) {
             choice.run();
             lettingGo = true;
