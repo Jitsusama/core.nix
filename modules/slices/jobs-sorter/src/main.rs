@@ -1919,7 +1919,10 @@ impl Fitting {
     /// unsaid. Said once, when they're short by a [`budget::STEP`] or more,
     /// and again only once they've been given all they'd add and are short
     /// again; units short with no window floored say nothing, since then
-    /// it's no floor of the sorter's that left them short.
+    /// it's no floor of the sorter's that left them short. It says what
+    /// the sorter's floors take beside what the units are given, not that
+    /// one left the other short, since windows only named and the units'
+    /// own floors take from the same room.
     fn filled(
         &mut self,
         slice: &str,
@@ -1939,7 +1942,7 @@ impl Fitting {
             return None;
         }
         Some(format!(
-            "The windows the sorter floors in {slice} take {} MiB of its {} MiB floor, so the \
+            "The windows the sorter floors in {slice} take {} MiB of its {} MiB floor, while the \
              units Joel is at are given {} MiB of the {} MiB they'd add.",
             windows >> 20,
             low >> 20,
@@ -1958,11 +1961,10 @@ impl Fitting {
     /// named quoted, the first [`SAID`] of them, since a child's name is
     /// whatever started it chose, and a window the sorter floors itself,
     /// claiming past the windows' cap as a stray does, is said to be one,
-    /// so the reader looks to the sorter's floors rather than a stranger;
-    /// one it keeps and doesn't hold is said to be past the windows' cap or
-    /// raised past its floor, since either leaves it a stray's claim and
-    /// only what runs in it can have raised it. The rest the sorter can't
-    /// trim.
+    /// so the reader looks to the sorter's floors rather than a stranger,
+    /// held or kept, and is said to be past the windows' cap or raised
+    /// past its floor, since either leaves it a stray's claim and only what
+    /// runs in it can have raised it. The rest the sorter can't trim.
     fn overran(
         &mut self,
         slice: &str,
@@ -1986,8 +1988,10 @@ impl Fitting {
                 // A kept window nothing holds claims within the cap no more than the floor
                 // keep.rs set it, and only while the cap has room for it, so what it claims past
                 // the cap is that floor once the cap is full, or what runs in it raising its own.
+                // A held one is bounded by a window's floor too, so what it claims past the
+                // cap is the same: the cap full, or what runs in it raising its own.
                 let whose = if self.floored.held.contains(&scope) {
-                    ", a window the sorter floors"
+                    ", a window the sorter floors, past the windows' cap or raised past its floor"
                 } else if self.floored.kept(&scope).is_some() {
                     ", a window the sorter keeps, past the windows' cap or raised past its floor"
                 } else {
@@ -5733,7 +5737,7 @@ mod tests {
                 .as_deref(),
             Some(
                 "The windows the sorter floors in agents.slice take 6144 MiB of its 6348 MiB \
-                 floor, so the units Joel is at are given 0 MiB of the 512 MiB they'd add."
+                 floor, while the units Joel is at are given 0 MiB of the 512 MiB they'd add."
             ),
             "the sorter's own floors starving the units Joel is at are said, with no stray \
              past the room"
@@ -5793,7 +5797,8 @@ mod tests {
                 "\"kitty-2-14.scope\" 512 MiB, a window the sorter keeps, past the windows' cap \
                  or raised past its floor, \
                  \"kitty-3-1.scope\" \
-                 1024 MiB, a window the sorter floors, \"run-u7.scope\" 1024 MiB."
+                 1024 MiB, a window the sorter floors, past the windows' cap or raised past \
+                 its floor, \"run-u7.scope\" 1024 MiB."
             ),
             "the sorter's own floors past the windows' cap aren't named as strangers: {said}"
         );
