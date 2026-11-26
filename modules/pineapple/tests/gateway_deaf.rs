@@ -157,6 +157,31 @@ fn a_search_left_unasked_round_after_round_beside_one_answered_is_told_unread() 
 }
 
 #[test]
+fn a_heard_round_or_a_deaf_one_of_another_cause_starts_each_run_afresh() {
+    let round = |n: u32| AT + u64::from(n) * 30_000;
+    let runs = [Round::Unasked, Round::Partly(Some(Search::Tag))];
+    let breaks = [Round::Heard, Round::Deaf(Deafness::Refused)];
+    for (run, broken_by) in runs.into_iter().flat_map(|run| breaks.map(|by| (run, by))) {
+        let mut deaf = Deaf::through_gateway();
+        for n in 1..=UNREACHED {
+            assert_eq!(deaf.heard(run, round(n)), Change::Keep, "{run:?} round {n}");
+        }
+        assert_eq!(
+            deaf.heard(broken_by, round(UNREACHED + 1)),
+            Change::Keep,
+            "{broken_by:?} once, after {run:?} rounds that told nothing, tells nothing"
+        );
+        for n in UNREACHED + 2..=2 * UNREACHED + 1 {
+            assert_eq!(
+                deaf.heard(run, round(n)),
+                Change::Keep,
+                "after {broken_by:?}, {run:?} counts afresh, so round {n} isn't told yet"
+            );
+        }
+    }
+}
+
+#[test]
 fn a_reader_through_a_gateway_never_sends_joel_to_sign_in_to_slack() {
     let mut deaf = Deaf::through_gateway();
     let refused = Round::Deaf(Deafness::Refused);
