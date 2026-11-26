@@ -258,12 +258,17 @@ mod tests {
             left.join("mark").exists() && fs::read_dir(&*first).expect("made").next().is_none(),
             "the folder in the way was taken over, or the new one wasn't empty"
         );
-        let mode = fs::metadata(&*first).expect("made").permissions().mode() & 0o777;
-        assert_eq!(mode, 0o700, "the new folder was left open to other users");
+        let permitted = fs::metadata(&*first).expect("made").permissions().mode() & 0o777;
+        assert_eq!(
+            permitted, 0o700,
+            "the new folder was left open to other users"
+        );
     }
 
     #[test]
-    #[should_panic(expected = "can't make")]
+    // Named by the folder under the missing one, so a setup failing to make
+    // its own folder can't pass for it.
+    #[should_panic(expected = "missing/litra-under-")]
     fn a_folder_that_cant_be_made_fails_the_test_rather_than_being_passed_over() {
         let parent = root("unmade");
         made_in(&parent.join("missing"), "under", &AtomicUsize::new(0));

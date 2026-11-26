@@ -7,13 +7,13 @@ use std::io::{self, ErrorKind, Read};
 use std::os::fd::{AsRawFd, FromRawFd};
 use std::path::Path;
 use std::process::ExitCode;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::evening::{Evening, Setting, own, read_kept, tonight, written_kept};
 use crate::found::{about, lights, plugged};
 use crate::light::{
     BRIGHTNESS, BRIGHTNESS_IS, Light, POWER, POWER_IS, State, TEMPERATURE, TEMPERATURE_IS,
-    find_out, percent,
+    find_out, next_retry, percent, until,
 };
 use crate::{
     IN_ATTRIB, IN_CLOEXEC, IN_CREATE, IN_DELETE, POLLIN, PollFd, inotify_add_watch, inotify_init1,
@@ -65,19 +65,25 @@ fn wanted(folder: &Path, lock: Option<&Path>) -> bool {
     streaming(folder) && !lock.is_some_and(locked)
 }
 
-/// Puts every light plugged in out, saying what failed.
-fn put_out_all() {
+/// Puts every light plugged in out, saying what failed, and whether
+/// every one was told.
+fn put_out_all() -> bool {
+    let mut told = true;
     for node in lights(Path::new("/sys"), Path::new("/dev")) {
         if let Err(error) = Light::open(&node).and_then(|mut light| light.tell(POWER, &[0])) {
             eprintln!("{}: {error}", node.display());
+            told = false;
         }
     }
+    told
 }
 
 /// Lights every light plugged in, saying what failed. Given a file to keep
 /// each light's own setting in, each is lit at its own, or the evening's
-/// of it in the evening, and its own is kept by its serial.
-fn light_all(evening: bool, kept: Option<&Path>) {
+/// of it in the evening, and its own is kept by its serial. Says whether
+/// every one was lit.
+fn light_all(evening: bool, kept: Option<&Path>) -> bool {
+    let mut told = true;
     let mut owns = kept
         .and_then(|kept| fs::read_to_string(kept).ok())
         .map(|text| read_kept(&text))
@@ -87,6 +93,7 @@ fn light_all(evening: bool, kept: Option<&Path>) {
         let owns = kept.is_some().then_some(&mut owns);
         if let Err(error) = light(&node, evening, owns) {
             eprintln!("{}: {error}", node.display());
+            told = false;
         }
     }
     if let Some(kept) = kept
@@ -95,6 +102,7 @@ fn light_all(evening: bool, kept: Option<&Path>) {
     {
         eprintln!("{}: {error}", kept.display());
     }
+    told
 }
 
 /// Lights one light. Given its own settings, it's asked its setting while
@@ -232,20 +240,28 @@ pub(crate) fn follow(folder: &Path, lock: Option<&Path>, evening: Option<&Evenin
     let mut for_evening = false;
     let mut lights_seen = Vec::new();
     let mut buffer = [0u8; 4096];
+    // When every light is told again for one that wasn't, as when another
+    // held its turn past the bound, and how long was waited for the last.
+    let mut retry: Option<(Instant, Duration)> = None;
     loop {
         let wanted = wanted(folder, lock);
         // A light that has come since is told too, whatever it was doing,
         // and so is one plugged back in under its old name.
         let now = plugged(Path::new("/sys"), Path::new("/dev"));
-        if Some(wanted) != lit || now != lights_seen {
-            if wanted {
+        let due = retry.is_some_and(|(at, _)| Instant::now() >= at);
+        if Some(wanted) != lit || now != lights_seen || due {
+            let told = if wanted {
                 if lit != Some(true) {
                     for_evening = evening.is_some_and(|evening| tonight(evening.profile));
                 }
-                light_all(for_evening, evening.map(|evening| evening.kept));
+                light_all(for_evening, evening.map(|evening| evening.kept))
             } else {
-                put_out_all();
-            }
+                put_out_all()
+            };
+            retry = (!told).then(|| {
+                let wait = next_retry(retry.map(|(_, wait)| wait));
+                (Instant::now() + wait, wait)
+            });
             lit = Some(wanted);
             lights_seen = now;
         }
@@ -262,7 +278,7 @@ pub(crate) fn follow(folder: &Path, lock: Option<&Path>, evening: Option<&Evenin
             },
         ];
         // SAFETY: two valid pollfds for the length given.
-        if unsafe { poll(waiting.as_mut_ptr(), 2, -1) } < 0 {
+        if unsafe { poll(waiting.as_mut_ptr(), 2, until(retry.map(|(at, _)| at))) } <= 0 {
             continue;
         }
         if waiting[1].revents & POLLIN != 0 {

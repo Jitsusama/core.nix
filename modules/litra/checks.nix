@@ -16,7 +16,10 @@ onLinux {
   # its lumens and the name and serial its HID device gives. A call after
   # rhythm's wind-down lights it warm and at 70% of its own brightness,
   # whose setting it keeps by serial, and takes a setting Joel picked since
-  # as his own.
+  # as his own. A light's turn is waited for within its bound, taken once
+  # let go of, and left free between one litra's sends for another, and a
+  # light not told is tried again ever later; its test folders are its
+  # user's alone.
   the-litra-follows-the-cameras =
     pkgs.runCommandCC "the-litra-follows-the-cameras" { nativeBuildInputs = [ pkgs.rustc ]; }
       ''
