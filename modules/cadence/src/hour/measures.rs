@@ -33,7 +33,7 @@ pub mod rounds;
 mod slipped;
 mod slips;
 pub mod spent;
-mod told_late;
+pub mod told_late;
 #[cfg(test)]
 mod tracked;
 pub mod unbilled;
@@ -129,9 +129,9 @@ impl Measure {
 /// The measure to move this hour: the first class with one past its
 /// target, and within it the one furthest past. A merge's rounds past five
 /// can't move, so they are filed to its owner apart and never lead; nor
-/// can a date already told late, which stays on the card for its day but
-/// never leads, since asking its owner to steer it each hour moves
-/// nothing; nor do the queues, whose worst is asked apart once a day.
+/// can a date already told late, which stays on the card for its day and
+/// is filed to each owner apart, but never leads, since asking its owner
+/// to steer it each hour moves nothing; nor do the queues, whose worst is asked apart once a day.
 #[must_use]
 pub fn drag(measures: &[Measure]) -> Option<&Measure> {
     measures

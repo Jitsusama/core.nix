@@ -1,6 +1,8 @@
 //! The dates told late, read from asks lists in the shapes the list's
 //! keeper writes.
 
+use jiff::Timestamp;
+use jiff::tz::{TimeZone, offset};
 use serde_json::{Value, json};
 
 use super::super::slipped::{at, list};
@@ -259,6 +261,44 @@ fn an_ask_parked_or_put_down_after_its_late_move_keeps_it() {
             "put down after, moved 6 min before its date · B",
         ],
         "a move told late was wiped by what came after it"
+    );
+}
+
+/// An ask its keeper parks in place, on its one line, after its late move
+/// keeps the move, by the minute its note gives the park, read in the
+/// clock its dates were given in. Parked before the move, in the pass
+/// that moved it, or with no note naming the ruling, it owes no word.
+#[test]
+fn an_ask_parked_in_place_is_judged_by_when_its_note_says_it_was_parked() {
+    let moved = NOW - 1360;
+    let east = TimeZone::fixed(offset(-5));
+    let local = |seconds: i64, format: &str| {
+        Timestamp::from_second(seconds)
+            .map(|t| t.to_zoned(east.clone()).strftime(format).to_string())
+            .unwrap_or_default()
+    };
+    let parked_at = |words: &str, park: i64, ruling: &str| {
+        let more = json!({"parked": "b95ea57b"});
+        let mut ask = ask_moved(words, "A", (NOW - 1000, moved), &more);
+        ask["promised"][1]["given"] = json!(local(moved, "%Y-%m-%dT%H:%M:%S%:z"));
+        let minute = "%Y-%m-%d %H:%M";
+        let (moved_in, parked_in) = (local(moved, minute), local(park, minute));
+        ask["note"] = json!(format!(
+            "{moved_in} J7XHQN: moved | {parked_in} J7XHQN: parked: {ruling}, the ruling"
+        ));
+        ask
+    };
+    let text = list(&[
+        parked_at("parked after", moved + 120, "b95ea57b"),
+        parked_at("parked before", moved - 600, "b95ea57b"),
+        parked_at("parked as it moved", moved, "b95ea57b"),
+        parked_at("parked on another", moved + 120, "5fa32250"),
+    ]);
+    let m = told_late(&text, NOW, Tracking::His);
+    assert_eq!(
+        m.behind,
+        ["parked after, moved 6 min before its date · A"],
+        "an ask parked in place was judged by the park, not by when its note says it came"
     );
 }
 

@@ -2,10 +2,10 @@
 //! its owners, due a day on, or a week for a queue's change, and each drag
 //! filed before closed once it is back in.
 //!
-//! Long because each kind of drag, Joel's misses, a merge's rounds, the
-//! work system's findings, the worst queue and each measure's lines by
-//! owner, is filed and closed by rules of its own, and its tests sit
-//! beside them.
+//! Long because each kind of drag, Joel's misses, a merge's rounds, dates
+//! told late, the work system's findings, the worst queue and each
+//! measure's lines by owner, is filed and closed by rules of its own, and
+//! its tests sit beside them.
 
 use std::collections::BTreeMap;
 
@@ -17,7 +17,7 @@ use super::lines::figure;
 use super::measures::queues::{self, QUEUE};
 use super::measures::{
     BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, UNTESTED, apps, drag, held_for_good,
-    held_unseen, rounds,
+    held_unseen, rounds, told_late,
 };
 
 /// How long a queue's ask has before it goes late: long enough for the
@@ -175,6 +175,9 @@ fn filed(m: &Measure) -> Vec<Filed> {
             says,
         }];
     }
+    if m.key.starts_with(told_late::KEY) {
+        return told_late_asked(m, &says);
+    }
     if m.key == FINDINGS {
         return findings_filed(m);
     }
@@ -219,6 +222,37 @@ fn filed(m: &Measure) -> Vec<Filed> {
         ),
         says,
     }]
+}
+
+/// Each owner's ask about the dates of theirs moved too late to warn
+/// whoever waited, each line naming its owner last as the misses' do. A
+/// move can't be taken back, so its figure never comes in by steering: it
+/// closes once none of the measure's lines names them, a day after.
+fn told_late_asked(m: &Measure, says: &str) -> Vec<Filed> {
+    let mut owners: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (date, owner) in m.behind.iter().filter_map(|line| line.rsplit_once(" · ")) {
+        owners
+            .entry(owner.to_owned())
+            .or_default()
+            .push(date.to_owned());
+    }
+    owners
+        .into_iter()
+        .map(|(owner, dates)| {
+            let dates = dates.join("; ");
+            Filed {
+                key: format!("hour:{}:{owner}", m.key),
+                says: format!("{says}, yours: {dates}"),
+                text: format!(
+                    "cadence hour: {says}, and these moves are yours: {dates}. A date moved \
+                     this late leaves whoever waits on it no time to plan round it. Please \
+                     reply with what held the word back and what tells the next move sooner. \
+                     It closes by itself once none of them is left, a day after its move."
+                ),
+                owner,
+            }
+        })
+        .collect()
 }
 
 /// Each owner's ask for a test that runs to catch their misses again, in
@@ -301,6 +335,16 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
     let key = key.strip_prefix("hour:").unwrap_or(key);
     if key.starts_with(rounds::FRUITLESS) {
         return !measures.iter().any(|m| m.key == key) && measures.iter().any(rounds::read_whole);
+    }
+    // A date told late is its owner's until no line of the measure, read,
+    // names them; with the asks list unread it says nothing, so stays open.
+    let late = measures.iter().find_map(|m| {
+        let owner = key.strip_prefix(m.key.as_str())?.strip_prefix(':')?;
+        m.key.starts_with(told_late::KEY).then_some((m, owner))
+    });
+    if let Some((m, owner)) = late {
+        let named = format!(" · {owner}");
+        return m.target.is_some() && !m.behind.iter().any(|line| line.ends_with(&named));
     }
     // An unread file leaves only its one line, never a figure, so a drag
     // isn't closed while its figure can't be seen; a figure written with no
@@ -418,7 +462,8 @@ pub fn file(
     // miss with no test that runs is asked of its owner the same way.
     dragging.extend(measures.iter().filter(|m| {
         let beside = [FINDINGS, UNTESTED].contains(&m.key.as_str());
-        (m.key.starts_with(rounds::FRUITLESS) || beside) && m.past().is_some()
+        let apart = m.key.starts_with(rounds::FRUITLESS) || m.key.starts_with(told_late::KEY);
+        (apart || beside) && m.past().is_some()
     }));
     // Nor do the queues; the worst is asked for its next change once a
     // day, as Joel asked of them, whatever else leads.
@@ -984,6 +1029,54 @@ mod tests {
         assert!(alone[0].open, "closed though the review record went unread");
         file(&mut alone, &[median], "2026-11-20", 90_000);
         assert!(!alone[0].open, "never closed once the merge left the day");
+    }
+
+    #[test]
+    fn a_date_told_late_goes_to_each_owner_apart_and_closes_once_its_line_is_gone() {
+        let mut late = measure(told_late::KEY, Class::Slip, 2.0, Some(0.0));
+        late.behind = vec![
+            "a fix, moved 6 min before its date · J7XHQN".to_owned(),
+            "a switch, moved in its last minute · 16V6F4".to_owned(),
+        ];
+        let median = measure(rounds::KEY, Class::Ship, 2.0, Some(rounds::TARGET));
+        let both = [median, late.clone()];
+        assert!(drag(&both).is_none(), "a date told late led the drag");
+        let mut ledger = Vec::new();
+        let told = file(&mut ledger, &both, "2026-11-25", 1000);
+        let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
+        assert_eq!(
+            owners,
+            ["16V6F4", "J7XHQN"],
+            "a date told late wasn't put to each owner"
+        );
+        assert!(
+            told[1]
+                .1
+                .contains("these moves are yours: a fix, moved 6 min before its date."),
+            "the owner wasn't told which move was theirs: {}",
+            told[1].1
+        );
+        late.behind.remove(1);
+        late.now = 1.0;
+        let mut unread = late.clone();
+        unread.behind.clear();
+        unread.target = None;
+        file(&mut ledger, &[unread], "2026-11-25", 4600);
+        assert!(
+            ledger.iter().all(|e| e.open),
+            "a move closed while the asks list went unread"
+        );
+        file(&mut ledger, &[late], "2026-11-25", 8200);
+        let open: Vec<&str> = ledger
+            .iter()
+            .filter(|e| e.open)
+            .map(|e| e.key.as_str())
+            .collect();
+        assert_eq!(
+            open,
+            [format!("hour:{}:J7XHQN", told_late::KEY)],
+            "a move closed while its line stood, or stayed open once it was gone"
+        );
     }
 
     #[test]

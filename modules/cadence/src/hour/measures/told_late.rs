@@ -6,6 +6,9 @@
 
 use std::collections::BTreeMap;
 
+use jiff::Timestamp;
+use jiff::civil::DateTime;
+use jiff::tz::Offset;
 use serde_json::Value;
 
 use super::promised::promised;
@@ -30,9 +33,11 @@ type Late = (i64, String, String);
 /// it isn't counted; nor is a move given while its ask was [`parked`] on a
 /// ruling, which owes none while it stands, or put down. An ask parked or
 /// put down after its move was told late keeps the move, since the word
-/// came too late all the same. Each ask's dates are read from its latest
-/// line, which carries every date it was given, so a move is counted
-/// once however often the ask is written again.
+/// came too late all the same: parked in place on its one line, as the
+/// keeper parks, it's parked after the move when its note says so. Each
+/// ask's dates are read from its latest line, which carries every date
+/// it was given, so a move is counted once however often the ask is
+/// written again.
 #[must_use]
 pub fn told_late(text: &str, now: i64, which: Tracking) -> Measure {
     let mut written: BTreeMap<[String; 2], (usize, Vec<Value>)> = BTreeMap::new();
@@ -91,20 +96,66 @@ fn moved_late(versions: &[Value], now: i64, which: Tracking) -> Vec<Late> {
 /// Whether the ask of `versions` owed a word when its date was moved at
 /// `moved`: of the kind `which`, neither parked nor put down, on the first
 /// line that gave the date after the move, or on the latest when none
-/// says when it was given.
+/// says when it was given. Parked on that line, it still owed one when
+/// its note says it was parked in a minute after the move's.
 fn owed_at(versions: &[Value], moved: i64, which: Tracking) -> bool {
-    let gave = |line: &&Value| {
-        line["promised"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .any(|promise| seconds(&promise["given"]) == Some(moved))
-    };
-    versions
+    let line = versions.iter().find(|line| given_at(line, moved).is_some());
+    line.or(versions.last()).is_some_and(|line| {
+        let parked_after = || {
+            given_at(line, moved)
+                .and_then(|given| parked_since(line, given))
+                .is_some_and(|park| park.div_euclid(60) > moved.div_euclid(60))
+        };
+        tracking::of(line) == Some(which) && (parked::ruling(line).is_none() || parked_after())
+    })
+}
+
+/// The time, as written, that `line`'s `promised` says a date was given
+/// at `moved`, if it says so.
+fn given_at(line: &Value, moved: i64) -> Option<&str> {
+    let promises = line["promised"].as_array()?;
+    let promise = promises
         .iter()
-        .find(gave)
-        .or(versions.last())
-        .is_some_and(|line| tracking::of(line) == Some(which) && parked::ruling(line).is_none())
+        .find(|promise| seconds(&promise["given"]) == Some(moved))?;
+    promise["given"].as_str()
+}
+
+/// When the ask on `line` was parked on the ruling it names, by the first
+/// entry of its note saying so. The keeper's note only grows, entries
+/// joined by " | ", each opening with the local minute of the pass that
+/// wrote it and no zone, as "2026-11-24 19:26 J7XHQN: parked: b95ea57b",
+/// so the minute is read in the offset of `given`, a time the same keeper
+/// wrote. None when no entry says so in that shape.
+fn parked_since(line: &Value, given: &str) -> Option<i64> {
+    let ruling = parked::ruling(line)?;
+    let offset = offset_of(given)?;
+    let said = format!("parked: {ruling}");
+    line["note"].as_str()?.split(" | ").find_map(|entry| {
+        let (stamp, rest) = entry.trim().split_at_checked(16)?;
+        let (_, words) = rest.split_once(": ")?;
+        if !words.starts_with(&said) {
+            return None;
+        }
+        let minute: DateTime = format!("{}:00", stamp.replacen(' ', "T", 1)).parse().ok()?;
+        offset.to_timestamp(minute).ok().map(Timestamp::as_second)
+    })
+}
+
+/// The offset a time written as `given` ends with, "Z" or "-05:00".
+fn offset_of(given: &str) -> Option<Offset> {
+    if given.ends_with('Z') {
+        return Some(Offset::UTC);
+    }
+    let tail = given.get(given.len().checked_sub(6)?..)?;
+    let (sign, clock) = tail.split_at_checked(1)?;
+    let (hours, minutes) = clock.split_once(':')?;
+    let seconds = hours.parse::<i32>().ok()? * 3600 + minutes.parse::<i32>().ok()? * 60;
+    let seconds = match sign {
+        "+" => seconds,
+        "-" => -seconds,
+        _ => return None,
+    };
+    Offset::from_seconds(seconds).ok()
 }
 
 /// How a move `left` seconds before its date reads on the card.
