@@ -26,7 +26,7 @@ pub const MEASURES: [&str; 23] = [
     "long-files",
     "quarantined-tests",
     "shared-files",
-    "stale-paths",
+    hour::STALE_PATHS,
     hour::STRAY_OWNERS,
     "suppressions",
     "tf-invalid",

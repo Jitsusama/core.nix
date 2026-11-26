@@ -432,17 +432,14 @@ fn duplicated(code: &[&File]) -> (usize, Vec<String>) {
 }
 
 /// Each file whose comments can't be known, and the comments naming
-/// what's gone, but none while any file's comments can't be known: what
-/// such a file names can't be told, so a figure without it would read as
-/// a gain, and two such day records in a row would ratchet the target
-/// down. With no figure, a day isn't held against the target at all, so
-/// a misreading lasting a week lets the target rise back to the one set,
-/// never under what's true; the misreading itself is held to none.
+/// what's gone in the files that could be. What a file that couldn't be
+/// known names can't be told, so the figure may count short; it's put
+/// anyway, so its owners still see it, and the hour holds no target to
+/// a day it was short on (hour.rs), while the misreading itself is held
+/// to none.
 fn put_stale(health: &mut Health, stale: stale::Stale) {
-    if stale.unread.is_empty() {
-        let count = stale.gone.len();
-        health.put("stale-paths", stale.gone, count);
-    }
+    let count = stale.gone.len();
+    health.put(hour::STALE_PATHS, stale.gone, count);
     let count = stale.unread.len();
     health.put(hour::UNREAD_COMMENTS, stale.unread, count);
 }
@@ -466,7 +463,7 @@ mod tests {
     }
 
     #[test]
-    fn a_file_whose_comments_cant_be_known_is_counted_apart_and_leaves_no_stale_figure() {
+    fn a_file_whose_comments_cant_be_known_is_counted_apart_beside_the_stale_figure() {
         let stale = |unread: &[&str]| stale::Stale {
             gone: vec!["a.sh:1: modules/b".to_owned()],
             unread: unread.iter().map(|&file| file.to_owned()).collect(),
@@ -479,17 +476,21 @@ mod tests {
         assert_eq!(
             figures(&["c.sh"]),
             (
-                BTreeMap::from([(hour::UNREAD_COMMENTS, 1.0)]),
-                BTreeMap::from([(hour::UNREAD_COMMENTS, vec!["c.sh".to_owned()])])
+                BTreeMap::from([(hour::STALE_PATHS, 1.0), (hour::UNREAD_COMMENTS, 1.0)]),
+                BTreeMap::from([
+                    (hour::STALE_PATHS, vec!["a.sh:1: modules/b".to_owned()]),
+                    (hour::UNREAD_COMMENTS, vec!["c.sh".to_owned()])
+                ])
             ),
-            "a file whose comments can't be known wasn't counted apart, or left a stale figure"
+            "a file whose comments can't be known wasn't counted apart, or the stale paths \
+             of the rest went unsaid"
         );
         assert_eq!(
             figures(&[]),
             (
-                BTreeMap::from([("stale-paths", 1.0), (hour::UNREAD_COMMENTS, 0.0)]),
+                BTreeMap::from([(hour::STALE_PATHS, 1.0), (hour::UNREAD_COMMENTS, 0.0)]),
                 BTreeMap::from([
-                    ("stale-paths", vec!["a.sh:1: modules/b".to_owned()]),
+                    (hour::STALE_PATHS, vec!["a.sh:1: modules/b".to_owned()]),
                     (hour::UNREAD_COMMENTS, Vec::new())
                 ])
             ),

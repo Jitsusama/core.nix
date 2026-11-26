@@ -184,7 +184,9 @@
           "--owner"
           "some=someone"
         ]
-        && !pkgs.lib.hasInfix "unread-comments" started
+        # The repository's owner is the one owner handed, so no measure's
+        # owner is, whatever the measure is named.
+        && builtins.length (pkgs.lib.splitString "--owner" started) == 2
       );
 
   # clippy finds nothing in code-health, its tests included.
