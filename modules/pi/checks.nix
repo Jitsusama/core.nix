@@ -19,6 +19,9 @@ let
     inherit pkgs;
     folder = "pi-monorepo";
   };
+  # pi as a windowed session runs it, every windowed patch applied exactly
+  # (windowed-pi).
+  windowedPi = import ./windowed-pi { inherit pkgs; };
 in
 # The hosts' own checks change with host.nix alone, the harness's settings
 # check with harness-settings.nix alone, and the timers' checks and the
@@ -451,6 +454,20 @@ import ./host-checks.nix args
         HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
           ${./tests/pi-hosted-screen-reaches-its-viewers.mjs} \
           ${hostedPi}/lib/node_modules/pi-monorepo
+        touch $out
+      '';
+
+  # A windowed pi reads light what its log's kept view leaves out, every
+  # reader seeing what a whole read sees: a move to a left-out entry holds
+  # its context whole, a later compaction lets go of what it leaves out
+  # where pi knows the entry's place, a rewrite holds all whole first, and a
+  # log pi migrates or with an unfinished last line is read whole.
+  pi-windowed-reads-left-out-entries-light =
+    pkgs.runCommandLocal "pi-windowed-reads-left-out-entries-light" { }
+      ''
+        HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+          ${./tests/pi-windowed-reads-left-out-entries-light.mjs} \
+          ${windowedPi}/lib/node_modules/pi-monorepo
         touch $out
       '';
 
