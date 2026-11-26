@@ -164,10 +164,11 @@ fn help() -> Help {
                 .argument("<model-dir>", "the speech model's folder")
                 .argument("<set>", "the meetings' folder, as meetings.nix lays it out")
                 .argument("[ceiling]", "the most percent wrong that passes")
+                .argument("[joels]", "the most percent of Joel's wrong")
                 .example("call-transcripts score ~/m ~/set 19", "fails above 19%")
                 .exit(
                     Exit::Failed,
-                    "a file can't be read, or it's above the ceiling",
+                    "a file can't be read, or it's above a ceiling",
                 ),
         )
         .subcommand(mark::help())
@@ -251,17 +252,23 @@ fn act(args: &[String]) -> Result<(), Failure> {
             transcribe(Path::new(model), Path::new(mine), Path::new(theirs))
         }
         ["hear", model, ref clips @ ..] if !clips.is_empty() => hear_clips(Path::new(model), clips),
-        ["score", model, set] => score::score(Path::new(model), Path::new(set), None),
-        ["score", model, set, ceiling] => match score::ceiling(ceiling) {
-            Some(most) => score::score(Path::new(model), Path::new(set), Some(most)),
-            None => {
+        ["score", model, set] => score::score(Path::new(model), Path::new(set), [None, None]),
+        ["score", model, set, ref ceilings @ ..] if ceilings.len() <= 2 => {
+            let Some(most) = ceilings
+                .iter()
+                .copied()
+                .map(score::ceiling)
+                .collect::<Option<Vec<usize>>>()
+            else {
                 return Err(Failure::new(
                     Exit::Usage,
-                    "the ceiling is a percentage below 100, to one place at most",
+                    "each ceiling is a percentage below 100, to one place at most",
                 )
-                .try_this(format!("call-transcripts score {model} {set} 19")));
-            }
-        },
+                .try_this(format!("call-transcripts score {model} {set} 19 12")));
+            };
+            let ceilings = [most.first().copied(), most.get(1).copied()];
+            score::score(Path::new(model), Path::new(set), ceilings)
+        }
         ["mark", file, reference] => mark::mark(Path::new(file), Path::new(reference), None),
         ["mark", file, reference, mine] => {
             mark::mark(Path::new(file), Path::new(reference), Some(mine))

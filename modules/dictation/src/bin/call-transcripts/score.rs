@@ -148,8 +148,9 @@ fn joels(lines: &[Line]) -> Vec<&Line> {
 
 /// Scores every meeting of `set` with the speech model in `model`, says
 /// each one's errors and the set's, and fails when the set's, as written
-/// down, are above `ceiling` tenths of a percent.
-pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), String> {
+/// down, are above `ceilings`' first in tenths of a percent, or Joel's
+/// side's above its second.
+pub fn score(model: &Path, set: &Path, ceilings: [Option<usize>; 2]) -> Result<(), String> {
     // Every reference and recording is read before the model loads, so a
     // bad one is refused at once rather than after the meetings before it
     // are heard.
@@ -175,7 +176,8 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
     if total.words == 0 {
         return Err(format!("{} has no words to hear", set.display()));
     }
-    let [rate, joels] = rated(&all, ceiling, None);
+    let [most, joels] = ceilings;
+    let [rate, joels] = rated(&all, most, joels);
     let (held, failed) = say_each([Some(all_times.verdict(times::INSIDE)), rate, joels]);
     for passed in held {
         println!("{passed}");
@@ -194,8 +196,11 @@ fn rated(
 ) -> [Option<Result<String, String>>; 2] {
     let mut total = all.written[0];
     total += all.written[1];
-    let _ = joels;
-    [most.map(|most| verdict(total.tenths(), most)), None]
+    let his = all.written[index(Side::Mine)];
+    [
+        most.map(|most| verdict(total.tenths(), most, "the words")),
+        joels.map(|most| verdict(his.tenths(), most, "Joel's words")),
+    ]
 }
 
 /// Of the verdicts given, each that passed, and every one that failed in
@@ -376,17 +381,17 @@ pub fn ceiling(text: &str) -> Option<usize> {
     (tenths < 1000).then_some(tenths)
 }
 
-/// Whether `tenths` of a percent wrong passes a ceiling of `most`, said
-/// either way, as the report says it.
-fn verdict(tenths: usize, most: usize) -> Result<String, String> {
+/// Whether `tenths` of a percent of `whose` wrong passes a ceiling of
+/// `most`, said either way, as the report says it.
+fn verdict(tenths: usize, most: usize, whose: &str) -> Result<String, String> {
     let (said, may) = (percent(tenths), percent(most));
     if tenths > most {
         Err(format!(
-            "it misheard {said} of the words, above the {may} it may"
+            "it misheard {said} of {whose}, above the {may} it may"
         ))
     } else {
         Ok(format!(
-            "it misheard {said} of the words, within the {may} it may"
+            "it misheard {said} of {whose}, within the {may} it may"
         ))
     }
 }
@@ -740,11 +745,11 @@ mod tests {
     #[test]
     fn a_rate_is_held_to_its_ceiling_as_it_is_said() {
         assert_eq!(
-            verdict(199, 199),
+            verdict(199, 199, "the words"),
             Ok("it misheard 19.9% of the words, within the 19.9% it may".to_owned())
         );
         assert_eq!(
-            verdict(200, 199),
+            verdict(200, 199, "the words"),
             Err("it misheard 20.0% of the words, above the 19.9% it may".to_owned())
         );
     }
@@ -816,7 +821,7 @@ mod tests {
         };
         assert_eq!(rate(&errors), "20.0% of 4000 words");
         assert!(
-            verdict(errors.tenths(), 199).is_err_and(|said| said.contains("20.0%")),
+            verdict(errors.tenths(), 199, "the words").is_err_and(|said| said.contains("20.0%")),
             "the verdict says the rate the report does"
         );
     }
