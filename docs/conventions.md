@@ -172,6 +172,19 @@ is installed system-wide only when it's worth having outside any project.
   usual mistakes never land.
 - A check has to earn its place in the loop; see [Testing][1].
 
+## A Failed Read Says So
+
+A file that can't be read is not a file that holds nothing. Read as empty,
+one lost, torn or barred counts no slips, no failures and no answers, so
+what it feeds reads as met while nothing was looked at. A program says it
+couldn't read, as an error or as a measure left unjudged, and takes a
+failure as nothing only where that's true, such as a file not yet written,
+with a comment saying why. `every-failed-read-says-why` holds Rust to it:
+a `fs::read_to_string` or `fs::read` outside its tests whose error becomes
+a default says why on its statement or just above it. Those before the rule
+wait, counted by file, in `tests/rules/every-failed-read-says-why-waiting.nix`,
+and a count only falls.
+
 ## Checks Before Switches
 
 Nothing is applied to a machine until the checks its change touched pass

@@ -1318,6 +1318,10 @@
     counts a whole path, and no home found is said; a count above none runs as given and ends
     0, and --help runs no du
   '';
+  every-failed-read-says-why = ''
+    every Rust file read outside tests whose error becomes a default says why in a comment, but
+    those still waiting to say it couldn't read
+  '';
   every-fixed-wait-says-why = ''
     every sleep in a test polls, or says what passes while it waits in a comment or by a named
     constant, but those still waiting to become waits on their events

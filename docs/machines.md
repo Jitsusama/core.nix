@@ -536,6 +536,21 @@ every-script-finds-what-it-imports = core.lib.everyScriptFindsWhatItImports pkgs
 };
 ```
 
+Its Rust says when a file read fails rather than reading nothing, as core's
+does, through a twelfth:
+
+```nix
+every-failed-read-says-why = core.lib.everyFailedReadSaysWhy pkgs {
+  src = ./.;
+  # How many reads that take a failure as nothing each file holds while they go.
+  waiting = { };
+};
+```
+
+A `fs::read_to_string` or `fs::read` outside its tests whose error becomes
+a default says why in a comment on its statement or just above it, as
+[conventions.md][6] says.
+
 Its names say the glossary's words, as core's do, through a check that reads
 the glossary of the core it locks:
 
