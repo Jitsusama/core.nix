@@ -508,6 +508,15 @@ mod tests {
     fn a_machine_is_judged_by_the_shared_cases() {
         let cases = cases_in(include_str!("../../../mycelium/site/tests/machines.txt"));
         assert!(cases.len() > 20, "the shared machine cases are read");
+        // The cases hold the length bound's own edge in plain letters, so
+        // neither copy can move it and pass.
+        let plain_at = |at: usize, is: bool| {
+            cases.iter().any(|(said, text)| {
+                *said == is && text.len() == at && text.bytes().all(|b| b.is_ascii_alphanumeric())
+            })
+        };
+        assert!(plain_at(LONGEST, true), "no case is a name at the edge");
+        assert!(plain_at(LONGEST + 1, false), "no case is past the edge");
         for (is, text) in cases {
             assert_eq!(named(&text), is, "{text:?}");
         }
@@ -946,14 +955,6 @@ mod tests {
         ] {
             assert!(read(&link).is_err(), "{link} was followed");
         }
-    }
-
-    #[test]
-    fn a_name_is_never_a_flag_to_qs() {
-        for name in ["-help", "--version", ".hidden", "_x"] {
-            assert!(!named(name), "{name} was taken for a name");
-        }
-        assert!(named("repo.core-nix"), "a network's name was refused");
     }
 
     fn stamp_in(test: &str) -> PathBuf {

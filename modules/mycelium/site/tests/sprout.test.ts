@@ -147,7 +147,16 @@ it("says why no link was given: no words, or a machine no link can name", () => 
   assert.equal(unsprouted("  ", null), NO_WORDS, "no words should be said as no words");
   assert.equal(unsprouted("", "os prey"), NO_WORDS, "with no words, those come first");
   assert.equal(unsprouted("tidy", "os prey"), NO_MACHINE, "words on a bad machine name it");
-  assert.equal(sproutLink("tidy", null, "os prey"), null, "and that machine gives no link");
+  assert.equal(unsprouted("tidy", "osprey"), null, "words on a machine a link names go");
+  for (const typed of ["", " \t", "tidy", "\u200b"]) {
+    for (const on of [null, "", "osprey", "cloud", "os prey", "-help"]) {
+      assert.equal(
+        sproutLink(typed, "DAHTNJ", on) === null,
+        unsprouted(typed, on) !== null,
+        `${JSON.stringify(typed)} on ${JSON.stringify(on)}: a link only where nothing is said`,
+      );
+    }
+  }
 });
 
 it("keeps words for a machine only while the map still has it", () => {
@@ -160,6 +169,9 @@ it("keeps words for a machine only while the map still has it", () => {
 
 /** The escape a case may hold: 1 to 6 capital hex digits (README.md, The Address Cases). */
 const ESCAPE = /\\u\{([0-9A-F]{1,6})\}/gu;
+
+/** Plain letters and digits, as a machine case at the length bound's edge is written. */
+const PLAIN_LETTERS = /^[a-z0-9]+$/iu;
 
 /** A case's text with each escape made the character it names, failing on any other. */
 function caseText(written: string): string {
@@ -246,6 +258,10 @@ it("judges each shared address case", () => {
 it("judges each shared machine case, as mycelium-link does", () => {
   const cases = casesIn(readFileSync(new URL("machines.txt", import.meta.url), "utf8"));
   assert.ok(cases.length > 20, "the shared cases should be read");
+  // The length bound's own edge, in plain letters, so neither copy can move it and pass.
+  const plainAt = (at: number, is: boolean) =>
+    cases.some(([said, text]) => said === is && text.length === at && PLAIN_LETTERS.test(text));
+  assert.ok(plainAt(64, true) && plainAt(65, false), "the cases should hold the edge at 64");
   for (const [is, text] of cases) {
     assert.equal(isMachine(text), is, `${JSON.stringify(text)} should ${is ? "" : "not "}be one`);
   }

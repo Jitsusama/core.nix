@@ -93,5 +93,15 @@ read it in their tests: the sites' kit's `isNamed`
 links all use, tested here through `isMachine`; and mycelium-link's `named`
 (`modules/quickshell/mycelium-link/src/main.rs`), which takes in
 `cases_in` from `addresses.rs`. The Launcher's reading of a link's `on:`
-doesn't read it yet. Editing it rebuilds the map site and mycelium-link,
-and a bad line fails both.
+(`plain` in `modules/quickshell/launcher/Cloud.js`) doesn't read it; it is
+looser, taking every name these cases call one and some they don't, such
+as `_x` and 200 letters, so it refuses nothing a link carries. The notices
+daemon writes a cell link's `@machine` too, by its own `machine_shaped`
+(`modules/notices/src/notice.rs`), which doesn't read it either; it is
+stricter, a host name's label of 63 at most with no dots, so every machine
+it names, mycelium-link takes.
+
+Editing it, its notes included, rebuilds the map site and mycelium-link.
+mycelium-link holds it in its source and runs its tests as it builds, and
+only graphical NixOS machines build it, so a bad line fails those
+machines' switches until it is reverted, as well as the map site's build.

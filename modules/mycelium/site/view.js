@@ -3850,6 +3850,12 @@ import {
       sproutOnBox.checked = onTicked;
     }
   });
+  // A tick changed changes what Return would send, so why it sent nothing
+  // is said again only at the next Return: unticking a machine no link can
+  // name lets the words go, as its bubble says.
+  for (const box of [sproutFromBox, sproutOnBox]) {
+    box.addEventListener("change", () => sproutInput.setCustomValidity(""));
+  }
   // A key that opens, closes or sends the line does so once, whatever
   // opened it and wherever focus lands: the keys down as it does are
   // held, so a held s types nothing, a held Return sends once and never
