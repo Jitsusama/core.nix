@@ -1297,6 +1297,31 @@ QtObject {
         for (const [what, pattern, want] of besideOn)
             holds(`the drawer's search runs on ${what}`,
                 Page.matchesIn(beside, pattern).map(match => [match.line, match.letter]), want);
+        // The spaces a line holds before its paragraph's break, or at its
+        // text's end, its `trailing`, are no letters the cursor stands on,
+        // but the wash takes them in, so the search reads them too: one
+        // begun in them lands on the line's last letter, the nearest it
+        // stands, and none runs past them into the next paragraph.
+        const ending = (words, text, trailing) =>
+            ({ words, text, length: text.length, on: null, trailing });
+        const [ends, next] = [{}, {}];
+        const ended = [
+            laid(ending(ends, "Ends here", "  ")),
+            laid(ending(next, "next", " "))
+        ];
+        const endedOn = [
+            ["into the spaces before a paragraph's break", "here ", [[0, 5]]],
+            ["into the spaces at a text's end", "next ", [[1, 0]]],
+            ["landing on a line's last letter from the spaces it ends with", "  ",
+                [[0, 8]]],
+            ["so a space finds those once a line, beside its own", " ",
+                [[0, 4], [0, 8], [1, 3]]],
+            ["never past them", "here   ", []],
+            ["nor from them into the next paragraph", "here  next", []]
+        ];
+        for (const [what, pattern, want] of endedOn)
+            holds(`the drawer's search reads ${what}`,
+                Page.matchesIn(ended, pattern).map(match => [match.line, match.letter]), want);
     }
 
     // What would change the drawer, which a page can't be: Vim's E21, as
@@ -2064,6 +2089,19 @@ QtObject {
         ];
         for (const [what, raw, kept, want] of runsOn)
             holds(`a laid line runs on with ${what}`, Lines.runsOn(raw, kept), want);
+        // What a laid line that ends its paragraph or its text holds past
+        // the letters it keeps, before its break (DrawerLines.trailing),
+        // which the wash takes in and so the search reads.
+        const trailing = [
+            ["the spaces before a plain text's break", "ends  \n", 4, "  "],
+            ["the spaces before a log's line", "line 14 \u2028", 7, " "],
+            ["the spaces before a styled text's", "end \u2029", 3, " "],
+            ["the spaces at a text's end", "end ", 3, " "],
+            ["nothing where its break follows its letters", "end\u2029", 3, ""],
+            ["nothing of the next paragraph's", "one\n two", 3, ""]
+        ];
+        for (const [what, raw, kept, want] of trailing)
+            holds(`a laid line ends with ${what}`, Lines.trailing(raw, kept), want);
         // How pieces become laid lines (DrawerLines.linesOf): those sharing
         // a baseline one line, its parts left to right, each keeping what
         // it wrapped at, which a search runs on with (DrawerPage.textsOf).
