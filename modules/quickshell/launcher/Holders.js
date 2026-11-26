@@ -24,7 +24,7 @@ function owners(sessions, holder) {
     const text = value => typeof value === "string" ? value : undefined;
     const loaded = one => text(one.presence?.questInfo?.id) ?? text(one.presence?.quest) ?? "";
     const owned = one => (Array.isArray(one.presence?.owns) ? one.presence.owns : [])
-        .filter(quest => typeof quest === "string" && quest.startsWith("QEST-"));
+        .filter(id => typeof id === "string" && id.startsWith("QEST-"));
     const quest = text(owner.name) ?? "";
     const onQuest = one => quest !== "" && (owned(one).includes(quest) || loaded(one) === quest);
     const inside = folder => typeof folder === "string" && path !== ""
