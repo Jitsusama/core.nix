@@ -387,11 +387,17 @@ def test_a_home_not_built_yet_links_no_cell_by_the_record_a_session_wrote(
     code_opened: Opened, repos_daemon: StandIn, tmp_path: Path
 ) -> None:
     # Before the home's builder writes its rows, as after a reboot, the server answers 503
-    # for them, and the record, which a session writes, never stands in for them.
+    # for them, and the record, which a session writes, never stands in for them. The page
+    # first opened reads the rows, so its read is let finish, the cell linked by them, before
+    # they go, or its answer could be the one the reload is waiting for.
+    code_page = code_opened.page
+    says_it_stands(code_page, "live")
+    grove_written_now(repos_daemon)
+    home = code_page.locator(f'#open a[href="../{CELL_HOME}"]')
+    expect(home, "the rows didn't link the cell home").to_contain_text("E2ZIAQ", timeout=PACE_MS)
     (tmp_path / "home" / "rows.json").unlink()
     (tmp_path / "documents" / "sites.json").write_text(json.dumps(SITES))
     code_opened.expecting("the server responded with a status of 503")
-    code_page = code_opened.page
     unbuilt = re.compile(r"/rows\.json$")
     with code_page.expect_response(lambda answer: bool(unbuilt.search(answer.url))) as asked:
         code_page.reload()
@@ -401,7 +407,6 @@ def test_a_home_not_built_yet_links_no_cell_by_the_record_a_session_wrote(
     expect(code_page.locator("#open"), "the cell at work wasn't drawn").to_contain_text(
         "E2ZIAQ", timeout=PACE_MS
     )
-    home = code_page.locator(f'#open a[href="../{CELL_HOME}"]')
     expect(home, "the record a session wrote linked a cell home").to_have_count(0)
 
 
