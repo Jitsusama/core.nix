@@ -93,10 +93,14 @@ ShellRoot {
         property int homeDepth: 0
         readonly property var sources: [theChooser, drive]
 
-        function into(name) {
+        // Into the chooser, then through the folders on the way, as the
+        // launcher walks them.
+        function into(name, way) {
             open = true;
             into_ = name;
             held = [{ row: { key: "", from: theChooser }, rows: [] }];
+            for (const row of way ?? [])
+                enter(row);
         }
 
         function enter(row) {
