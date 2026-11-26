@@ -4,7 +4,8 @@
 //! it's said once whether the nobody or the watch of a camera met it; and
 //! the node a camera's watch couldn't say in `.devices/` is said once it
 //! can be, its trouble said once, and only then is the run ready; and as
-//! its camera goes, a node file it couldn't remove is tried again.
+//! its camera goes or its watch stops, the node file goes only once its
+//! nobody is written, and one it couldn't remove is tried again.
 
 use std::fs::{self, File, Permissions};
 use std::os::unix::fs::{PermissionsExt, symlink};
@@ -131,6 +132,25 @@ impl Watch {
             |watch| fs::read_to_string(watch.file()).is_ok_and(|said| said.is_empty()),
             "a camera let go wasn't said held by nobody",
         );
+    }
+
+    /// Stops the watch as its unit does, and waits up to twenty seconds
+    /// for it to end.
+    fn stop(&mut self) {
+        let pid = i32::try_from(self.program.id()).unwrap();
+        // SAFETY: a plain call, to our own child.
+        assert_eq!(
+            unsafe { kill(pid, SIGTERM) },
+            0,
+            "the watch couldn't be stopped"
+        );
+        for _ in 0..400 {
+            if self.program.try_wait().unwrap().is_some() {
+                return;
+            }
+            sleep(Duration::from_millis(50));
+        }
+        panic!("a stopped watch didn't end");
     }
 
     fn read(&self, name: &str) -> String {
@@ -463,25 +483,72 @@ fn a_stopped_watch_keeps_its_node_named_while_its_nobody_cant_be_written() {
         File::create(watch.folder.join("probe")).is_err(),
         "a locked folder still took a file, as it does for root"
     );
-    let pid = i32::try_from(watch.program.id()).unwrap();
-    // SAFETY: a plain call, to our own child.
-    assert_eq!(
-        unsafe { kill(pid, SIGTERM) },
-        0,
-        "the watch couldn't be stopped"
-    );
-    let mut ended = false;
-    for _ in 0..400 {
-        if watch.program.try_wait().unwrap().is_some() {
-            ended = true;
-            break;
-        }
-        sleep(Duration::from_millis(50));
-    }
-    assert!(ended, "a stopped watch didn't end");
+    watch.stop();
     assert!(
         watch.names(&camera),
         "a stopped watch unnamed its node with its nobody unwritten"
+    );
+}
+
+#[test]
+fn a_stopped_watch_unnames_its_node_once_its_nobody_is_written() {
+    let mut watch = Watch::owned("stopping");
+    watch.until(
+        |watch| ready(&watch.read("log")) == 1,
+        "a camera whose files were written wasn't said ready",
+    );
+    watch.stop();
+    assert!(
+        fs::read_to_string(watch.file()).is_ok_and(|said| said.is_empty()),
+        "a stopped watch wasn't said held by nobody"
+    );
+    assert!(
+        !watch.device().exists(),
+        "a stopped watch left its node named with its nobody written"
+    );
+}
+
+#[test]
+fn a_gone_cameras_node_file_stays_until_its_nobody_is_written() {
+    let watch = Watch::owned("went");
+    let camera = watch.root.join("camera");
+    watch.until(
+        |watch| ready(&watch.read("log")) == 1,
+        "a camera whose files were written wasn't said ready",
+    );
+    // Held as it goes, so the nobody said after is a write of its own.
+    let held = File::open(&camera).unwrap();
+    watch.until(
+        |watch| fs::read_to_string(watch.file()).is_ok_and(|said| !said.is_empty()),
+        "a camera held wasn't said held",
+    );
+    // The holders file's folder locked, the node files' folder not.
+    fs::set_permissions(&watch.folder, Permissions::from_mode(0o555)).unwrap();
+    assert!(
+        File::create(watch.folder.join("probe")).is_err(),
+        "a locked folder still took a file, as it does for root"
+    );
+    // Gone, then let go, so the look its closing wakes finds it gone.
+    fs::remove_file(&camera).unwrap();
+    drop(held);
+    watch.until(
+        |watch| complaints_of(watch, &watch.file()) == 1,
+        "a nobody it couldn't write as its camera went went unsaid",
+    );
+    // Past a look of the watch's, every two seconds, and a try after it.
+    sleep(Duration::from_millis(3500));
+    assert!(
+        watch.device().exists(),
+        "a gone camera's node file was removed before its nobody was written"
+    );
+    fs::set_permissions(&watch.folder, Permissions::from_mode(0o755)).unwrap();
+    watch.until(
+        |watch| fs::read_to_string(watch.file()).is_ok_and(|said| said.is_empty()),
+        "a gone camera's nobody it couldn't write wasn't tried again",
+    );
+    watch.until(
+        |watch| !watch.device().exists(),
+        "a gone camera's node file stayed once its nobody was written",
     );
 }
 

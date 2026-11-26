@@ -678,8 +678,8 @@ fn loopback(events: &mut Events, options: &Options, run: &mut Run) {
     loop {
         let Some(node) = camera::node_of(&options.sysfs, &options.source, options.card.as_deref())
         else {
-            // Its holders file first, as the removals keep it, so no
-            // holder is ever said with no node file to find the camera by.
+            // Its holders file first, as the removals keep it, so a node
+            // file goes only once no holder is said beside it.
             if !told {
                 told = say_nobody(&options.output, run);
             }
