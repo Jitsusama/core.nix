@@ -39,9 +39,8 @@ let
     "srgb(${channel 0},${channel 1},${channel 2})";
 
   # A stand-in for one of the shell's singletons, and the shell's files a
-  # check names, each copied with what it imports as imports.nix says, so a
-  # new import can't go uncopied or unguarded here (quickshell's helpers.nix).
-  inherit (import ../quickshell/checks/helpers.nix args) copied singleton;
+  # program's step in the launcher is drawn from (quickshell's helpers.nix).
+  inherit (import ../quickshell/checks/helpers.nix args) programStep singleton;
 in
 # The reader draws through Wayland and EGL, on the Linux desktop.
 onLinux {
@@ -125,21 +124,7 @@ onLinux {
       mkdir -p launcher share/applications
       cp ${entry} share/applications/reader.desktop
       cp ${home.xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      ${copied [
-        "Copied.js"
-        "Copied.qml"
-        "Daemon.qml"
-        "FileFacts.js"
-        "Files.qml"
-        "Options.qml"
-        "Words.qml"
-        "launcher/Applications.qml"
-        "launcher/Listed.qml"
-        "launcher/Provider.qml"
-        "launcher/ReadyRows.qml"
-        "launcher/Recents.qml"
-        "launcher/words.json"
-      ]}
+      ${programStep}
       cp ${./ReaderProgram.qml} launcher/ReaderProgram.qml
       cp ${./Reader.js} launcher/Reader.js
       cp ${./tests/reader-program.qml} shell.qml

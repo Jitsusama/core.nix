@@ -11,9 +11,8 @@ args@{
 }:
 let
   # A stand-in for one of the shell's singletons, and the shell's files a
-  # check names, each copied with what it imports as imports.nix says, so a
-  # new import can't go uncopied or unguarded here (quickshell's helpers.nix).
-  inherit (import ../quickshell/checks/helpers.nix args) copied singleton;
+  # program's step in the launcher is drawn from (quickshell's helpers.nix).
+  inherit (import ../quickshell/checks/helpers.nix args) programStep singleton;
 in
 onLinux {
   # Inkscape's step in the launcher, its provider's as Applications.qml
@@ -96,21 +95,7 @@ onLinux {
       mkdir -p launcher share/applications
       cp ${entry} share/applications/org.inkscape.Inkscape.desktop
       cp ${home.xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      ${copied [
-        "Copied.js"
-        "Copied.qml"
-        "Daemon.qml"
-        "FileFacts.js"
-        "Files.qml"
-        "Options.qml"
-        "Words.qml"
-        "launcher/Applications.qml"
-        "launcher/Listed.qml"
-        "launcher/Provider.qml"
-        "launcher/ReadyRows.qml"
-        "launcher/Recents.qml"
-        "launcher/words.json"
-      ]}
+      ${programStep}
       cp ${./InkscapeProgram.qml} launcher/InkscapeProgram.qml
       cp ${./Inkscape.js} launcher/Inkscape.js
       cp ${./tests/inkscape-program.qml} shell.qml

@@ -1,6 +1,8 @@
 # What more than one of the folder's checks uses: stand-ins, the shell as the
 # account gets it, and the harnesses that run the shell offscreen or on niri.
-# Each place's file takes what it needs of these by name.
+# Each place's file takes what it needs of these by name, as do the reader's,
+# mpv's and Inkscape's launcher checks, which import it with the arguments
+# every folder's checks get.
 {
   account,
   bareNixos,
@@ -78,6 +80,29 @@ let
         echo "imports.nix doesn't say what these import: ${lib.concatStringsSep ", " wrong}" >&2
         exit 1
       '';
+  # The shell's files a program's step in the launcher is drawn from, as
+  # Applications.qml holds it, copied for the reader's, mpv's and Inkscape's
+  # checks. imports.nix sees only a file's import lines, so two kinds of
+  # file are named here as roots by hand: a type taken from its own folder
+  # or through `import qs`, as Applications.qml takes Provider and
+  # ReadyRows, and a program's own file takes Listed and Words; and a shell
+  # file a program's own file imports, as Reader.js does FileFacts.js, since
+  # those are copied apart. What each root imports comes with it, guarded.
+  programStep = copied [
+    "Copied.js"
+    "Copied.qml"
+    "Daemon.qml"
+    "FileFacts.js"
+    "Files.qml"
+    "Options.qml"
+    "Words.qml"
+    "launcher/Applications.qml"
+    "launcher/Listed.qml"
+    "launcher/Provider.qml"
+    "launcher/ReadyRows.qml"
+    "launcher/Recents.qml"
+    "launcher/words.json"
+  ];
   # Runs a test that times itself in Qt's engine, in a fresh process each
   # time, until one is fast enough. How fast the engine runs the same code
   # differs from one process to the next by as much as half, while a
@@ -625,6 +650,7 @@ in
 {
   inherit
     copied
+    programStep
     timedQml
     singleton
     qs
