@@ -178,35 +178,42 @@ ShellRoot {
             const byIdOn = names(runs.search("202610").rows);
             expect("one found by its id, typed on", byIdOn === "council on core.nix#380", byIdOn);
             // A run coming makes the list anew, but keeps each finished run's
-            // row, which the letters before still judge: with none of them
-            // matched, only the rows made since are looked through, the new
-            // run's and the one at work's, made again with each update.
-            runs.search("fle");
-            runs.lastMatched = Object.assign({}, runs.lastMatched, { rows: [] });
+            // row, which the letters before still judge: typed on, the search
+            // looks through what they matched, the new run's row and the one
+            // at work's, made again with each update, and not a kept row
+            // they didn't match.
+            runs.search("cou");
+            const wholeBefore = runs.all;
             runs.records = root.records.concat([{ key: "run:fleet.fleet-new", kind: "run",
                 id: "fleet.fleet-new", about: "fleet-new", parent: "s-gone", state: "done" }]);
-            const since = runs.search("flee").rows.map(row => row.name);
-            expect("a run come since is found, and one made again, not one kept",
-                since.includes("fleet-new") && since.includes("fleet-live")
-                    && !since.includes("fleet-dead"), since.join(", "));
+            expect("the list made anew", runs.all !== wholeBefore, "the same list");
+            const pool = names(runs.poolFor(runs.all, "coun"));
+            expect("typed on through an update, looked through only what may match",
+                pool === "fleet-live, council on core.nix#380, fleet-new", pool);
+            const since = names(runs.search("coun").rows);
+            expect("found through an update", since === "council on core.nix#380", since);
 
             // Typed on a letter at a time, with a session coming or going
             // between letters to make the one at work's row again, each
-            // search finds what a search of every row finds.
+            // search matches what a search of every row matches, at every
+            // grade, not only the finest shown.
             const sessionsThen = Sessions.running;
             for (const word of ["council", "2026", "fleet", "core"]) {
                 for (let end = 1; end <= word.length; end++) {
                     const soFar = word.slice(0, end);
                     Sessions.running = end % 2 === 0 ? [] : sessionsThen;
-                    const stepped = names(runs.search(soFar).rows);
+                    runs.search(soFar);
                     const chain = runs.lastMatched;
+                    const stepped = names(chain.rows);
                     runs.matchedIn(null, "", []);
-                    const whole = names(runs.search(soFar).rows);
+                    runs.search(soFar);
+                    const whole = names(runs.lastMatched.rows);
                     runs.lastMatched = chain;
-                    expect(`"${soFar}" typed on finds what a whole search does`,
+                    expect(`"${soFar}" typed on matches what a whole search does`,
                         stepped === whole, `${stepped} against ${whole}`);
                 }
             }
+            Sessions.running = sessionsThen;
 
             // A run's own kind, where the harness wrote it beside the node's.
             runs.records = [{ key: "run:review.r7-1", kind: "run", "run.kind": "judge",

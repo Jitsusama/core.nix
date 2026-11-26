@@ -553,11 +553,12 @@ Scope {
     // anew, as a new notice makes them, are looked at too: when a change
     // makes the list anew but keeps some of its rows, as Runs keeps every
     // finished run's while one at work is made again each update, a kept
-    // row the letters before didn't match still can't match, since its
-    // text is as it was. Without that, every update the node sent while a
-    // run was at work had the next letter search the whole day again
-    // (2026-11-26). A search says what it matched, at any grade, with
-    // `matchedIn`.
+    // row the letters before didn't match still can't match, since what a
+    // search reads of it, `prepared` and `keywords`, is never changed in
+    // place: Copies changes a kept row's side alone. Without that, every
+    // update the node sent while a run was at work had the next letter
+    // search the whole day again (2026-11-26). A search says what it
+    // matched, at any grade, with `matchedIn`.
     property var lastMatched: ({ from: null, words: "", rows: [] })
 
     function poolFor(rows, typed) {
