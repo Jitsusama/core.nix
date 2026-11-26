@@ -179,6 +179,20 @@ fn a_failed_run_says_why() {
     let stop = AtomicBool::new(false);
     let failed = optimise(Some(&run), &nix, &stop).unwrap_err();
     assert!(failed.contains("database is locked"), "{failed}");
+    // A nix.conf line Nix refuses may hold a token, so it's left out here
+    // as from the guard's other Nix commands, and the help line after it
+    // passed over.
+    let (run, nix) = fakes(
+        dir.path(),
+        "echo \"error: illegal configuration line 'access-tokens x=SECRET' in \
+         '/etc/nix/nix.conf'\" >&2\n\
+         echo \"Try 'nix-store --help' for more information.\" >&2; exit 1\n",
+    );
+    let failed = optimise(Some(&run), &nix, &stop).unwrap_err();
+    assert!(
+        !failed.contains("SECRET") && failed.contains("<22 bytes left out>"),
+        "a refused nix.conf line was told, or Nix's refusal passed over: {failed}"
+    );
 }
 
 #[test]

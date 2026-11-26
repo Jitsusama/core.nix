@@ -148,7 +148,6 @@ function sayWhen(): void {
   }
   const state = now?.state ?? "connecting";
   const spoken = words.length === 0 ? "Reaching the system daemon." : `${words.join(" · ")}.`;
-  // The words are the head's one live region, so tell writes them only when they change.
   tell(standingWords, spoken, state);
   standingLine.dataset["state"] = state;
   const problems = [...(system?.unread ?? []), ...heard.values()];
@@ -436,8 +435,10 @@ listen({
     ...Object.fromEntries(machineJumps),
     "0": () => toSection("across"),
   },
-  // A row is the cursor, not a control of its own, so the keys answer on one.
-  answersAt: (target) => target.closest("a[data-row]") !== null || !hasOwnKeys(target),
+  // A row is the cursor, not a control of its own, so the keys answer on one,
+  // and on a look's act, a link whose only key of its own is Return.
+  answersAt: (target) =>
+    target.closest("a[data-row], #looks a.launch") !== null || !hasOwnKeys(target),
 });
 
 /**

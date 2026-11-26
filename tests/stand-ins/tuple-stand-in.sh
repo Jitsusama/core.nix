@@ -8,7 +8,8 @@
 # it's asked on, which the list of asks says without a race, its reason
 # holding what markup reads. From the third, it's refused only once the test
 # writes $XDG_RUNTIME_DIR/go-<start or stop>-<time asked>, so the test changes
-# the call while Tuple has yet to answer.
+# the call while Tuple has yet to answer. Each refusal is kept in the list too,
+# as `answered <command> <time asked>`, so the test can see it was given.
 
 if [ "${3:-} ${4:-}" = "state follow" ]; then
   exec tail -n +1 -f "$XDG_RUNTIME_DIR/stream"
@@ -26,6 +27,7 @@ case "$*" in
       # Looks for the test's go about as often as a frame is drawn.
       sleep 0.05
     done
+    echo "answered $* $n" >>"$asked"
     echo "no webcam to $2 <&>" >&2
     exit 1
   fi

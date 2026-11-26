@@ -284,8 +284,9 @@ Floating {
         font.features: drawer.eyebrowLevel.features
     }
     readonly property string title: shown ? shown.title ?? "" : ""
-    // Its facts, less any that only says the title again (DrawerValue.js).
-    readonly property var facts: shown ? Value.factsShown(shown.facts, title) : []
+    // Its facts, less any that only says the title again
+    // (DrawerValue.factsDrawn).
+    readonly property var facts: shown ? Value.factsDrawn(shown.facts, title) : []
     // A fact's row is kept once made, each reading the fact at its place
     // and hidden past the facts shown, so only a thing with more facts
     // than any before makes rows: they were made afresh for every fact
@@ -881,10 +882,13 @@ Floating {
             // next line of another paragraph begins past the break, which
             // getText gives as Qt's selection does: a \n in a plain text,
             // a paragraph or line separator in a styled one.
+            // One that ends its paragraph or its text keeps the spaces it
+            // ends with, which the wash takes in (DrawerLines.trailing).
             const raw = words.getText(from, next);
             const length = raw.replace(/\s+$/, "").length;
-            pieces.push({ text, words, from, y, length,
-                on: at + 1 < words.lineCount ? Lines.runsOn(raw, length, text.spaced) : null,
+            const on = at + 1 < words.lineCount ? Lines.runsOn(raw, length, text.spaced) : null;
+            pieces.push({ text, words, from, y, length, on,
+                trailing: on === null ? Lines.trailing(raw, length) : "",
                 x: place.x, top: place.y, height: box.height,
                 base: place.y + words.baselineOffset, caps: words.caps });
         }
@@ -2049,15 +2053,23 @@ Floating {
     readonly property bool fadeDrawn: wordsFaded.item !== null
     // Its words as drawn, laid in lines as Qt wraps them, each its letters,
     // without the space a laid line ends on, and how wide Qt draws them,
-    // for the launcher to report. Laid by layLines, as proseLaid is.
+    // for the fade and the launcher to report. Laid by layLines, as
+    // proseLaid is: only while a line fades, and to it, since nothing else
+    // reads them and each word laid is measured, which for a notice of
+    // 34 kB opened whole would hold its drawer seconds (2026-11-25).
     property var proseLines: []
     readonly property var linesAsked: [bodySaid, shown?.styled === true, wordsBox.width,
-        bodyText.font]
+        bodyText.font, wordsKept < bodyLines ? wordsKept : 0]
     onLinesAskedChanged: layLines()
     function layLines() {
+        const most = linesAsked[4];
+        if (most === 0) {
+            proseLines = [];
+            return;
+        }
         const plain = shown?.styled === true ? Prose.lettersOf(bodySaid).plain : bodySaid;
         const width = drawnWidthOf(Measures.drawnFace(bodyText.font, "plain"));
-        proseLines = Prose.laid(plain, wordsBox.width, width).map(line => {
+        proseLines = Prose.laid(plain, wordsBox.width, width, most).map(line => {
             const letters = plain.slice(line.start, line.end).replace(/\s+$/, "");
             return { letters, width: width(letters) };
         });

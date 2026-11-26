@@ -605,6 +605,25 @@ fn a_producer_is_run_and_its_failure_told() {
     assert_eq!(outcome, Outcome::Failed("it exited 3: no room".to_owned()));
 }
 
+/// The guard's own `nix store gc --max` runs as a producer, so a nix.conf
+/// line Nix refuses there is told by its length alone, with the line
+/// before Nix's closing pointer at --help, as every Nix failure is.
+#[test]
+fn a_producer_s_refused_nix_conf_line_is_told_by_its_length_alone() {
+    let said = "echo \"error: illegal configuration line 'access-tokens SECRET' in \
+                '/etc/nix/nix.conf'\" >&2; \
+                echo \"Try 'nix --help' for more information.\" >&2; exit 1";
+    let (_, outcome, _) = run(&["/bin/sh", "-c", said], Duration::from_secs(10));
+    assert_eq!(
+        outcome,
+        Outcome::Failed(
+            "it exited 1: error: illegal configuration line '<20 bytes left out>' in \
+             '/etc/nix/nix.conf'"
+                .to_owned()
+        )
+    );
+}
+
 #[test]
 fn a_producer_that_takes_its_time_keeps_the_guard_beating() {
     // A guard silent for two minutes reads as dead on the desktop, and a

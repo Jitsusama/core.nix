@@ -91,15 +91,20 @@ in
   # the unit's own kitty from before it listened, waiting for one starting
   # again and opening nothing with neither, as the script the shell links
   # and runs does, through each door (modules/quickshell/tests/
-  # opens-in-sessions-doors.sh), in about a second.
+  # opens-in-sessions-doors.sh), and the packaged kitten says an unanswered
+  # launch in the words the script reads. Each door's run is cut at 20 s,
+  # and the whole at twenty minutes, past every run's cut together (32
+  # runs and the packaged kitten's half minute, under twelve minutes), so
+  # a wait that runs on fails by name, even in each run at once.
   the-sessions-kitty-is-asked-only-its-own-way =
     let
       linked = (account graphical).xdg.configFile."quickshell/opens-in-sessions.sh".source;
     in
     pkgs.runCommandLocal "the-sessions-kitty-is-asked-only-its-own-way" { } ''
-      ${lib.getExe' pkgs.coreutils "timeout"} 60 ${lib.getExe pkgs.bash} \
+      ${lib.getExe' pkgs.coreutils "timeout"} 1200 ${lib.getExe pkgs.bash} \
         ${../tests/opens-in-sessions-doors.sh} ${pkgs.bash}/bin/sh ${linked} \
-        ${lib.getExe pkgs.python3} ${../Sessions.qml}
+        ${lib.getExe pkgs.python3} ${../Sessions.qml} \
+        ${lib.getExe' pkgs.kitty "kitten"}
       touch $out
     '';
 

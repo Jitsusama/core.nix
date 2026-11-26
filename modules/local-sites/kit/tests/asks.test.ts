@@ -196,10 +196,12 @@ it("nothing is posted for a value the look doesn't offer or a look that has ende
 it("a press posts the look and the value alone, and a refusal is said with what to do", async () => {
   const choice = { value: "yes", label: "Merge It", follows: "" };
   const posted: string[] = [];
-  const answering = (status: number, text: string) => (body: string): Promise<Posted> => {
-    posted.push(body);
-    return Promise.resolve({ status, text });
-  };
+  const answering =
+    (status: number, text: string) =>
+    (body: string): Promise<Posted> => {
+      posted.push(body);
+      return Promise.resolve({ status, text });
+    };
   const carried = await carry(look("l1", "abc"), choice, NOW, answering(200, "{}"));
   assert.deepEqual(carried, {
     carried: true,
