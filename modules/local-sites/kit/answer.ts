@@ -65,6 +65,7 @@ const REFUSALS: Readonly<Record<string, string>> = {
   cookie: "The sites' server restarted since this page opened: reload it to answer.",
   unreadable: `The server couldn't read the answer this page sent: ${FOR_YOU}.`,
   answered: "It was answered already.",
+  answering: "Your answer to it is already on its way.",
   unknown: `Its session has cleared it, ${NOT_SENT}.`,
   unwhole: `It can't be read whole, ${NOT_SENT}: ${FOR_YOU}.`,
   ended: NO_LONGER,
@@ -73,6 +74,7 @@ const REFUSALS: Readonly<Record<string, string>> = {
   quiet: NO_LONGER,
   unoffered: `That answer is no longer offered, ${NOT_SENT}.`,
   unaddressed: `It doesn't say which session asked: ${FOR_YOU}.`,
+  unread: `The server couldn't read it as it stands, ${NOT_SENT}: ${FOR_YOU}.`,
   unreached: UNREACHED,
   unsteered: UNREACHED,
 };

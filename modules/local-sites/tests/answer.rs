@@ -44,19 +44,36 @@ fn look() -> Value {
     })
 }
 
-/// A look whose session has ended, on a quest whose own session goes on.
-fn ended_look() -> Value {
+/// The look `id` the stand-in holds, as `look()` but for who it's from:
+/// `l1` is ABC123's; `ended` is a session's that has ended, on a quest
+/// whose own session goes on; `away` is one whose machine is out of reach,
+/// on that quest; `nowhere` names no session; and `slow` is SLOW12's, whose
+/// steer is answered only once l1's is carried.
+fn held(id: &str) -> Option<Value> {
     let mut look = look();
-    look["id"] = json!("ended");
-    look["address"] = json!("gone12");
-    look["quest"] = json!("QEST-20261124-LIVE12");
-    look
+    look["id"] = json!(id);
+    let from = |look: &mut Value, address: &str| {
+        look["address"] = json!(address);
+        look["quest"] = json!("QEST-20261124-LIVE12");
+    };
+    match id {
+        "l1" => {}
+        "ended" => from(&mut look, "gone12"),
+        "away" => from(&mut look, "away12"),
+        "slow" => look["address"] = json!("slow12"),
+        "nowhere" => {
+            look.as_object_mut()?.remove("address");
+        }
+        _ => return None,
+    }
+    Some(look)
 }
 
 /// A daemon standing in for the to-do daemon and the node at once: it
-/// answers a get of `look:l1` or `look:ended` with that look, and a steer
+/// answers a get of a look it holds (`held`) with that look, and a steer
 /// as the node does, refusing one to GONE12, whose session has ended, and
-/// keeping every steer it was asked.
+/// one to AWAY12, whose machine is out of reach, and keeping every steer
+/// it was asked.
 fn stand_in(socket: &Path) -> Arc<Mutex<Vec<Value>>> {
     let listener = UnixListener::bind(socket).expect("the stand-in listens");
     let steered = Arc::new(Mutex::new(Vec::new()));
@@ -79,21 +96,31 @@ fn answer(stream: UnixStream, steered: &Mutex<Vec<Value>>) {
         let id = asked["id"].clone();
         let answer = match asked["ask"].as_str() {
             Some("hello") => json!({"id": id, "version": 1, "domain": "stand-in"}),
-            Some("get") if asked["keys"] == json!(["look:l1"]) => {
-                json!({"id": id, "records": [{"key": "look:l1", "kind": "look", "look": look()}]})
+            Some("get") => {
+                let key = asked["keys"][0].as_str().unwrap_or("");
+                let records: Vec<Value> = key
+                    .strip_prefix("look:")
+                    .and_then(held)
+                    .map(|look| json!({"key": key, "kind": "look", "look": look}))
+                    .into_iter()
+                    .collect();
+                json!({"id": id, "records": records})
             }
-            Some("get") if asked["keys"] == json!(["look:ended"]) => {
-                json!({"id": id, "records": [{"key": "look:ended", "kind": "look", "look": ended_look()}]})
-            }
-            Some("get") => json!({"id": id, "records": []}),
             Some("steer") => {
                 steered.lock().expect("the steers").push(asked.clone());
-                if asked["address"] == "GONE12" {
-                    let why = "no session goes by GONE12 now";
-                    json!({"id": id, "error": {"code": "refused", "message": why}})
-                } else {
-                    json!({"id": id, "steered": {"machine": "here"}})
-                }
+                let why = match asked["address"].as_str() {
+                    Some("GONE12") => Some("no session goes by GONE12 now"),
+                    Some("AWAY12") => Some("AWAY12's machine is out of reach"),
+                    Some("SLOW12") => {
+                        held_until_l1_is_steered(steered);
+                        None
+                    }
+                    _ => None,
+                };
+                why.map_or_else(
+                    || json!({"id": id, "steered": {"machine": "here"}}),
+                    |why| json!({"id": id, "error": {"code": "refused", "message": why}}),
+                )
             }
             _ => json!({"id": id, "error": {"code": "unknown-ask"}}),
         };
@@ -333,6 +360,20 @@ fn cookie(headers: &str, name: &str) -> Option<String> {
     })
 }
 
+/// Waits, as a session slow to take a steer, until l1's answer was steered
+/// beside it, or the test's patience runs out.
+fn held_until_l1_is_steered(steered: &Mutex<Vec<Value>>) {
+    let began = Instant::now();
+    while began.elapsed() < PATIENCE {
+        let steers = steered.lock().expect("the steers");
+        if steers.iter().any(|steer| steer["address"] == "ABC123") {
+            return;
+        }
+        drop(steers);
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
 /// The answer's body for `value`.
 fn pressing(value: &str) -> String {
     json!({"look": "l1", "value": value}).to_string()
@@ -439,6 +480,69 @@ fn an_answer_whose_session_ended_goes_to_its_quests_as_the_launchers_does() {
         [json!("GONE12"), json!("LIVE12")],
         "the answer wasn't tried at its own session, then at its quest's"
     );
+}
+
+#[test]
+fn an_answer_a_session_refuses_for_another_reason_goes_nowhere_else_and_may_come_again() {
+    let served = served("away");
+    let page = from_a_page(served.port, &given(&served));
+    let pressed = json!({"look": "away", "value": "yes"}).to_string();
+    for tries in 1..=2 {
+        let (status, _, body) = asked(&served, "POST /answer", &page, &pressed);
+        assert_eq!(status, "HTTP/1.1 502 Bad Gateway", "{body}");
+        assert!(body.contains("\"refused\":\"unsteered\""), "{body}");
+        let told: Vec<Value> = served
+            .steered
+            .lock()
+            .expect("the steers")
+            .iter()
+            .map(|steer| steer["address"].clone())
+            .collect();
+        assert_eq!(
+            told,
+            vec![json!("AWAY12"); tries],
+            "an answer its session may still take went to its quest's, or wasn't sent again"
+        );
+    }
+    let nowhere = json!({"look": "nowhere", "value": "yes"}).to_string();
+    let (status, _, body) = asked(&served, "POST /answer", &page, &nowhere);
+    assert_eq!(status, "HTTP/1.1 409 Conflict", "{body}");
+    assert!(body.contains("\"refused\":\"unaddressed\""), "{body}");
+}
+
+#[test]
+fn a_session_slow_to_answer_holds_up_no_other_looks_press_and_its_own_once() {
+    let served = served("slow");
+    let page = from_a_page(served.port, &given(&served));
+    let slow = json!({"look": "slow", "value": "yes"}).to_string();
+    thread::scope(|both| {
+        let first = both.spawn(|| asked(&served, "POST /answer", &page, &slow));
+        let began = Instant::now();
+        while !served
+            .steered
+            .lock()
+            .expect("the steers")
+            .iter()
+            .any(|steer| steer["address"] == "SLOW12")
+        {
+            assert!(
+                began.elapsed() < PATIENCE,
+                "the slow look's answer never went"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        let (status, _, body) = asked(&served, "POST /answer", &page, &slow);
+        assert_eq!(status, "HTTP/1.1 409 Conflict", "{body}");
+        assert!(body.contains("\"refused\":\"answering\""), "{body}");
+        // The slow session takes its steer only once this one is carried.
+        let (status, _, body) = asked(&served, "POST /answer", &page, &pressing("yes"));
+        assert_eq!(status, "HTTP/1.1 200 OK", "{body}");
+        let (status, _, body) = first.join().expect("the first press");
+        assert_eq!(
+            status, "HTTP/1.1 200 OK",
+            "the slow look's press was held up: {body}"
+        );
+    });
 }
 
 #[test]

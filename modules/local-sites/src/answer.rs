@@ -68,11 +68,23 @@ pub struct Answers {
     node: PathBuf,
     /// The cookie's value this run, which only a page of the sites' own is sent.
     secret: String,
-    /// The looks answered since the server started, each refused a second.
-    answered: Mutex<BTreeSet<String>>,
+    /// The looks answered since the server started, and those whose answer
+    /// is on its way, each refused another.
+    claims: Mutex<Claims>,
     /// Who pressed: the person, an agent, or nothing told.
     tell: Teller,
 }
+
+/// The looks whose answers were carried, and those on their way.
+#[derive(Default)]
+struct Claims {
+    answered: BTreeSet<String>,
+    going: BTreeSet<String>,
+}
+
+/// The words the node refuses a steer with when no session goes by its
+/// address now, the one refusal the next session is told in its place for.
+const GONE: &str = "no session goes by ";
 
 /// What a request to answer says of itself.
 pub struct Asked<'a> {
@@ -112,7 +124,7 @@ impl Answers {
             looks,
             node,
             secret,
-            answered: Mutex::new(BTreeSet::new()),
+            claims: Mutex::default(),
             tell,
         }
     }
@@ -141,14 +153,40 @@ impl Answers {
         self.pressed_here(asked)?;
         self.pressed_by_the_person(asked)?;
         let (id, value) = said(asked.body)?;
-        // Held while the answer goes, so two presses can't both be carried.
-        let mut answered = self.answered.lock().unwrap_or_else(PoisonError::into_inner);
-        if answered.contains(&id) {
+        self.claim(&id)?;
+        let carried = self.steer(&id, &value);
+        let mut claims = self.claims.lock().unwrap_or_else(PoisonError::into_inner);
+        claims.going.remove(&id);
+        if carried.is_ok() {
+            claims.answered.insert(id);
+        }
+        carried
+    }
+
+    /// Claims look `id` for this press, so a second can't be carried beside
+    /// it, held only as long as it takes to claim: what follows asks the
+    /// daemons, and one slow to answer holds up no other look's press.
+    fn claim(&self, id: &str) -> Result<(), Refused> {
+        let mut claims = self.claims.lock().unwrap_or_else(PoisonError::into_inner);
+        if claims.answered.contains(id) {
             return Err(refused("answered", 409, "this look was answered already"));
         }
-        let look = self.look(&id)?;
+        if !claims.going.insert(id.to_owned()) {
+            return Err(refused(
+                "answering",
+                409,
+                "an answer to this look is on its way",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Sends `value` as the answer to look `id`, once it's read again and
+    /// offers it, to the first of its sessions the node takes it for.
+    fn steer(&self, id: &str, value: &str) -> Result<Value, Refused> {
+        let look = self.look(id)?;
         let now = now();
-        offered(&look, &value, now)?;
+        offered(&look, value, now)?;
         let answerers = answerers(&look);
         if answerers.is_empty() {
             return Err(refused(
@@ -174,15 +212,19 @@ impl Answers {
                     &format!("the node doesn't answer: {failed}"),
                 )
             })?;
-            // The node refuses a session it can't tell, as one no session
-            // goes by now, so the next is told in its place.
             let Some(error) = told.get("error") else {
-                answered.insert(id.clone());
                 let steered = told.get("steered").cloned().unwrap_or(Value::Null);
                 return Ok(json!({"answered": id, "steered": steered}));
             };
             why.clear();
             why.push_str(error.get("message").and_then(Value::as_str).unwrap_or(""));
+            // Only a session no one goes by now has the next told in its
+            // place, as For You sends to the quest's once the one that
+            // asked has ended; any other refusal stops here, since the
+            // session that asked may still be there.
+            if !why.starts_with(GONE) {
+                break;
+            }
         }
         Err(refused(
             "unsteered",
@@ -253,7 +295,7 @@ impl Answers {
         let key = format!("look:{id}");
         let asked = json!({"ask": "get", "keys": [key]});
         let told = page::once(&self.looks, &asked)
-            .map_err(|why| refused("unreached", 502, &format!("the looks don't answer: {why}")))?;
+            .map_err(|why| refused("unread", 502, &format!("the looks don't answer: {why}")))?;
         told.get("records")
             .and_then(Value::as_array)
             .and_then(|records| {
@@ -495,7 +537,7 @@ mod tests {
         let pressed_here = pressed(ours, Some("same-origin"), cookie);
         let why = answers.carry(&pressed_here).expect_err("no daemon stands");
         assert_eq!(
-            why.word, "unreached",
+            why.word, "unread",
             "a page's answer passed the door: {}",
             why.why
         );
@@ -516,7 +558,7 @@ mod tests {
             pressed_here_but(|asked| asked.content_type = Some("Application/JSON; charset=utf-8"));
         let why = answers().carry(&asked).expect_err("no daemon stands");
         assert_eq!(
-            why.word, "unreached",
+            why.word, "unread",
             "JSON with a charset was refused: {}",
             why.why
         );
@@ -578,10 +620,13 @@ mod tests {
             untold.cookie_for(&asking).map_err(|why| why.word),
             Err("untold")
         );
-        let tell: Teller = Box::new(|_, _| Told::Person);
-        let drawn = Answers::new(PathBuf::new(), PathBuf::new(), tell).expect("a cookie drawn");
+        let draw = || {
+            let tell: Teller = Box::new(|_, _| Told::Person);
+            Answers::new(PathBuf::new(), PathBuf::new(), tell).expect("a cookie drawn")
+        };
+        let (drawn, again) = (draw(), draw());
         assert_eq!(drawn.secret.len(), 32, "the cookie is drawn from 16 bytes");
-        assert_ne!(drawn.secret, answers().secret);
+        assert_ne!(drawn.secret, again.secret, "the cookie wasn't drawn fresh");
     }
 
     #[test]
