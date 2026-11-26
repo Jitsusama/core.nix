@@ -1,4 +1,4 @@
-use disk_guard::garbage::{Batch, Dead, Listing, list, parse, temp_roots};
+use disk_guard::garbage::{Batch, Dead, Listing, list, min_free, parse, temp_roots};
 use disk_guard::units::float;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -152,6 +152,102 @@ fn a_listing_that_fails_says_why() {
         list(&fake_nix(none.path(), 0), Path::new(STORE), false).unwrap(),
         []
     );
+}
+
+/// A nix.conf line Nix refuses is quoted whole, and may hold a token, so
+/// it's told by its length alone, the rest of what Nix said kept: the
+/// file it's in, or nothing where Nix names none. Nix ends such a refusal
+/// with a line saying to try --help, so the line before it is told.
+#[test]
+fn a_refused_nix_conf_line_is_told_by_its_length_alone() {
+    let refused = "error: syntax error in configuration line 'access-tokens github.com=SECRET'";
+    let help = "echo \"Try 'nix-store --help' for more information.\" >&2";
+    for (said, told) in [
+        (
+            format!("echo \"{refused} in '/etc/nix/nix.conf'\" >&2\n{help}"),
+            "configuration line '<31 bytes left out>' in '/etc/nix/nix.conf'",
+        ),
+        (
+            format!("echo \"{refused} with more\" >&2"),
+            "configuration line '<42 bytes left out>",
+        ),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        script(&dir.path().join("nix-store"), &format!("{said}\nexit 1\n"));
+        let failed = list(&dir.path().join("nix"), Path::new(STORE), false).unwrap_err();
+        assert!(
+            !failed.contains("SECRET") && failed.ends_with(told),
+            "a refused nix.conf line was told, or what was around it lost: {failed}"
+        );
+    }
+}
+
+/// The min-free read runs at the guard's own priority, not the idle one
+/// its collections take: the stand-in prints its scheduling policy as the
+/// value, which is the test's own unless the read lowered it to idle, 5.
+/// A build already at idle, as core's nix-daemon runs one, can't tell the
+/// two apart, so there the test holds only that the read still answers.
+#[test]
+#[cfg(target_os = "linux")]
+fn a_min_free_read_runs_at_the_guard_s_own_priority() {
+    // The 41st field of a process's stat, its policy, past a name with no
+    // blanks in it: the stand-in's, and this test's own.
+    const POLICY: &str = "set -- $stat\nshift 40\necho \"$1\"\n";
+    let dir = tempfile::tempdir().unwrap();
+    script(
+        &dir.path().join("nix"),
+        &format!("read -r stat < /proc/$$/stat\n{POLICY}"),
+    );
+    let stat = fs::read_to_string("/proc/self/stat").unwrap();
+    let own: u64 = stat
+        .rsplit(')')
+        .next()
+        .unwrap()
+        .split_whitespace()
+        .nth(38)
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert_eq!(min_free(&dir.path().join("nix")), Ok(own));
+}
+
+/// The guard's log is often readable by any account, and a Nix printing
+/// its whole config, or refusing a nix.conf line, could quote an access
+/// token on either stream, so a read of min-free that isn't a number, or
+/// that fails, is told by its length alone.
+#[test]
+fn a_min_free_read_tells_none_of_what_nix_printed() {
+    let asked = "--extra-experimental-features nix-command config show min-free";
+    for (printed, told) in [
+        (
+            "echo 'access-tokens = github.com=SECRET'\n",
+            "said 33 bytes",
+        ),
+        (
+            "echo \"error: illegal configuration line 'access-tokens github.com=SECRET'\" >&2\n\
+             exit 1\n",
+            "exited 1, saying 67 bytes",
+        ),
+        (
+            "echo 'access-tokens = github.com=SECRET' >&2\nkill -KILL $$\n",
+            "was ended by a signal, saying 33 bytes",
+        ),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        script(
+            &dir.path().join("nix"),
+            &format!("[ \"$*\" = '{asked}' ] || exit 9\n{printed}"),
+        );
+        let failed = min_free(&dir.path().join("nix")).unwrap_err();
+        assert!(
+            !failed.contains("SECRET"),
+            "told what Nix printed: {failed}"
+        );
+        assert!(
+            failed.contains(told),
+            "didn't tell how much Nix printed: {failed}"
+        );
+    }
 }
 
 const DAY: f64 = 86400.0;

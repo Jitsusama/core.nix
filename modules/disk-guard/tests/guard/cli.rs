@@ -437,6 +437,42 @@ fn status_fits_a_narrow_terminal_without_folding() {
             out.contains("cisternadm-tx-state-4074137-48"),
             "the path's end names it: {out}"
         );
+        // The holder hangs: its first line at the label's two cells, filled
+        // to the prose's room, and each after it two cells further in.
+        let lines: Vec<&str> = out.lines().collect();
+        let first = lines
+            .iter()
+            .position(|line| line.starts_with("  The worktree"))
+            .unwrap_or_else(|| panic!("the holder is said at {cells} columns:\n{out}"));
+        let hung: Vec<&str> = lines[first + 1..]
+            .iter()
+            .take_while(|line| line.starts_with("    "))
+            .copied()
+            .collect();
+        assert!(
+            !hung.is_empty(),
+            "the holder wraps at {cells} columns:\n{out}"
+        );
+        for line in &hung {
+            assert!(
+                !line.starts_with("     "),
+                "at {cells} columns, {line:?} hangs other than two cells under the first in\n{out}"
+            );
+        }
+        // The first line keeps the cells only the lines under it hang by.
+        // These words set no item apart and leave no widow, so with the
+        // first line's whole room the next line's first word wouldn't
+        // have fit on it; given the hung measure, as `hung` gave it, it
+        // would have.
+        let word = hung[0]
+            .split_whitespace()
+            .next()
+            .unwrap_or_else(|| panic!("the hung line has words at {cells} columns:\n{out}"));
+        assert!(
+            layout::width(lines[first]) + 1 + layout::width(word) > cells.min(layout::MEASURE),
+            "at {cells} columns, the holder's first line left room for {word:?}, as it does \
+             when wrapped to the hung measure:\n{out}"
+        );
     }
 }
 
@@ -581,6 +617,26 @@ fn the_journal_is_read_oldest_first_and_since_when_asked() {
     let entries = answer["entries"].as_array().unwrap();
     assert_eq!(entries.len(), 1, "only what's newer than an hour: {out}");
     assert_eq!(entries[0]["path"], "/new", "{out}");
+}
+
+#[test]
+fn the_journal_says_which_walk_read_how_much_and_for_how_long() {
+    let machine = Machine::new();
+    let walk = format!(
+        r#"{{"event":"walk","at":{},"step":"holders","seconds":95.0,"read":9663676416}}"#,
+        wall() - 60.0
+    );
+    fs::write(machine.env.state.join("journal.jsonl"), format!("{walk}\n")).unwrap();
+    let (code, out, _) = machine.run("journal");
+    assert_eq!(code, 0, "{out}");
+    let row = out.lines().find(|row| row.contains("walked"));
+    assert!(
+        row.is_some_and(|row| row.contains("holders")
+            && row.contains("9.0 GiB")
+            && row.contains(&format!("in {}", disk_guard::words::span(95.0)))
+            && !row.contains('?')),
+        "a walk should say which, what it read, for how long and no band: {out}"
+    );
 }
 
 #[test]

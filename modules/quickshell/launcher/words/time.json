@@ -83,6 +83,11 @@
       "name": "Next Change"
     },
     {
+      "id": "time:zone:after",
+      "in": "time:zone",
+      "name": "After That"
+    },
+    {
       "id": "time:zone:database",
       "in": "time:zone",
       "name": "Zone Database"

@@ -33,6 +33,7 @@ import "Measures.js" as Measures
 import "MarkSize.js" as MarkSize
 import "Editing.js" as Editing
 import "KeyNames.js" as KeyNames
+import "KeyActs.js" as KeyActs
 import "QueryKeys.js" as QueryKeys
 import "Operators.js" as Operators
 import "Typing.js" as Typing
@@ -193,6 +194,11 @@ Item {
         if (!drawerHere && QueryKeys.paged(mode))
             mode = "normal";
     }
+    // Whether Tab in normal goes into the selected row, and - up from
+    // where the rows stand (Launcher.qml's goesIn and canGoUp), so a key
+    // that only says it can't is read as acting on nothing (KeyActs.acts).
+    property bool intoHere: true
+    property bool upHere: true
     // The mode typing goes back to: the find, or insert on words.
     readonly property string typingMode: words ? "insert" : "find"
     // Words handed over or left go back to the find, never to an insert
@@ -217,6 +223,10 @@ Item {
     // key as its answer, Return doing it and any other letting it go
     // (Confirm.answer), so none reaches the line while it stands.
     property bool confirming: false
+    // Whether the ask standing takes a key as its answer, by its name,
+    // as it answers it (Launcher.qml's answerAsk, by Confirm.answer): one
+    // pressed before the ask is ready is let go doing nothing.
+    property var answerTaken: key => true
     signal answered(string key)
     // How soon after visual's operator the same key again is taken with
     // it (Operators.takenWith), as his Neovim's timeoutlen
@@ -328,14 +338,27 @@ Item {
     // type"). The first line keeps its band, `lineTall` high, and the field
     // grows by `wrapsTall` under it, which the surface holding it adds.
     property bool wraps: false
+    // Whether what's typed takes lines of its own under the path, at the
+    // path's first word, rather than the room the path leaves it on the
+    // line: words given to start work are a sentence or two, and beside a
+    // folder's path they had a sliver, scrolled to a lone mark (Joel,
+    // 2026-11-25 14:33: "i have no room to type once i choose a folder").
+    // It keeps `composeLines` from the start, so nothing grows as he types
+    // ("growing as i type would look like shit"), and grows only past them.
+    property bool composes: false
+    property int composeLines: 6
+    // Whether the words typed were taken, and stand in muted ink until
+    // what they were given to says how it went.
+    property bool taken: false
     property real lineTall: height
     // TextInput says no count of its lines, so they're counted by its face's spacing.
     // While nothing's typed the hint's lines count, since it wraps as typing would.
     readonly property int typedLines: wraps
-        ? Math.max(1, Math.round((hintText.visible ? hintText.contentHeight : input.contentHeight)
-            / typedFace.lineSpacing))
+        ? Math.max(composes ? composeLines : 1, Math.round((hintText.visible
+            ? hintText.contentHeight : input.contentHeight) / typedFace.lineSpacing))
         : 1
-    readonly property real wrapsTall: (typedLines - 1) * typedFace.lineSpacing
+    // Composed, every line is under the path's; else the first is the line's own.
+    readonly property real wrapsTall: (typedLines - (composes ? 0 : 1)) * typedFace.lineSpacing
     // How far below the field's top its first capital's top stands, so a
     // surface sets the field's ink the inset under its frame.
     readonly property real capsTop: lineBaseline - figureCaps.tightBoundingRect.height
@@ -392,7 +415,8 @@ Item {
             prompt.accepted();
     }
 
-    signal cancelled
+    // Escape, or a secret's Ctrl+C, on a line with no modes, by its name.
+    signal cancelled(string key)
     // Escape at rest in normal, which closes nothing but lets go what
     // the launcher shows over the rows, as the key list (Launcher.qml).
     signal rested
@@ -545,7 +569,7 @@ Item {
     }
     // Where the field starts in the line, after the path.
     readonly property real fieldX: Theme.space.rung.inset + ledWidth
-        + (held.visible ? held.width + pathGap : 0)
+        + (held.visible && !composes ? held.width + pathGap : 0)
 
     // Puts the caret at a place in what's typed, as a save's name puts it
     // before the extension.
@@ -607,7 +631,7 @@ Item {
             : key === "Ctrl+w" ? Typing.wordStart(input.text, at)
             : key === "Ctrl+h" ? Math.max(0, at - 1) : -1;
         if (key === "Ctrl+c") {
-            prompt.cancelled();
+            prompt.cancelled("Ctrl+c");
             event.accepted = true;
         } else if (from >= 0) {
             input.remove(from, at);
@@ -644,6 +668,11 @@ Item {
     // which changes nothing a source holds, so the launcher never takes a
     // source changing beside it for the key's doing.
     property bool keyMoved: false
+    // Whether the last of them acted (KeyActs.acts), said before it's
+    // counted, so the launcher times a change beside it from it only
+    // where it did something: a letter typed, a count begun or a caret
+    // moved on the find doesn't.
+    property bool keyActed: false
 
     // A key reaching a modal line, before it does anything, so what the
     // line acts on can be brought up to now first, as a launcher drawing
@@ -659,19 +688,34 @@ Item {
             awaitsRegister = false;
             return false;
         }
-        if (awaitsRegister && event.text !== "") {
+        if (!takesRegister(event, key))
+            return false;
+        if (registersLetter(event)) {
             awaitsRegister = false;
             event.accepted = true;
             if (!event.isAutoRepeat)
                 prompt.registered(event.text);
             return true;
         }
-        if (key === "Ctrl+r" && !event.isAutoRepeat) {
+        if (opensRegister(event, key)) {
             awaitsRegister = true;
             event.accepted = true;
             return true;
         }
         return false;
+    }
+
+    // Whether registerKey takes the key, as Ctrl+R or the letter after it,
+    // so what the key does is read from the same test that takes it.
+    function takesRegister(event: KeyEvent, key: string): bool {
+        return registers && mode === "insert"
+            && (registersLetter(event) || opensRegister(event, key));
+    }
+    function registersLetter(event: KeyEvent): bool {
+        return awaitsRegister && event.text !== "";
+    }
+    function opensRegister(event: KeyEvent, key: string): bool {
+        return key === "Ctrl+r" && !event.isAutoRepeat;
     }
 
     function modalKey(event: KeyEvent) {
@@ -680,6 +724,26 @@ Item {
         keyMoved = false;
         keyAlone = KeyNames.alone(event.key, Qt);
         keyTaken = key;
+        // What the key does is read before it's counted, so whether it
+        // acted is said with the count; reading changes nothing, and each
+        // step below reads it as it stands here.
+        const after = visualOperated;
+        const read = QueryKeys.read(standing, key, mode, editsWords);
+        const operated = Operators.takenWith(after, key, Date.now(), wait);
+        keyActed = KeyActs.acts(read, {
+            alone: keyAlone,
+            registering: takesRegister(event, key),
+            answering: confirming,
+            answerTaken: confirming && answerTaken(key),
+            operated,
+            commands: QueryKeys.opensCommands(key, mode, input.text),
+            drawerHere,
+            intoHere,
+            upHere,
+            reselectHere: KeyActs.reselectHere(mode, reselectable, lastChosen),
+            mode,
+            text: input.text
+        });
         // A press is a key taken as it comes; a repeat only once it's
         // known to do something (QueryKeys.heldDoes, below).
         if (!event.isAutoRepeat)
@@ -696,10 +760,9 @@ Item {
         }
         // The operator pressed again just after visual's is taken with it;
         // a key with no name, as Shift alone, lets nothing go.
-        const after = visualOperated;
         if (key !== "")
             visualOperated = null;
-        if (Operators.takenWith(after, key, Date.now(), wait)) {
+        if (operated) {
             event.accepted = true;
             return;
         }
@@ -713,7 +776,6 @@ Item {
             prompt.commanded("");
             return;
         }
-        const read = QueryKeys.read(standing, key, mode, editsWords);
         keyMoved = QueryKeys.repeats(read.act);
         // A key held where nothing types repeats only a move, as Vim's
         // motions do: any other act, and a count or a sequence begun, is a
@@ -751,7 +813,8 @@ Item {
         const at = input.cursorPosition;
         // gv on the rows with no selection before it does nothing, as
         // Vim's; with one, the rows take it back before visual begins round
-        // the cursor. The drawer's gv goes back to the mode it chose in.
+        // the cursor. The drawer's gv goes back to the mode it chose in,
+        // and with nothing chosen does nothing (Drawer.qml's reselect).
         const onRows = !QueryKeys.paged(mode);
         if (read.act === "reselect" && onRows) {
             if (!reselectable)
@@ -1231,7 +1294,9 @@ Item {
         const width = text => Math.ceil(Measures.drawnWidth(crumbsFace, text)
             ?? titleMeasure.widthOf(text)) + 1;
         const least = Reading.crumbsLeast(crumbSteps, width, betweenWide);
-        return Math.max(0, line - typingRoom, Math.min(least, line));
+        // Composed, what's typed is on lines of its own, so the path has the line.
+        return composes ? Math.max(0, line)
+            : Math.max(0, line - typingRoom, Math.min(least, line));
     }
     readonly property var crumbSteps: chips.map(chip =>
         ({ text: chip.text, yields: chip.yields === true }))
@@ -1444,7 +1509,9 @@ Item {
         x: prompt.fieldX + prompt.shownFrom
         width: Math.max(0, input.width - prompt.shownFrom)
         height: prompt.height
-        baselineOffset: input.y + input.baselineOffset
+        // The line's own baseline, which the path, its lead and the glyph stand on, even
+        // while the words composed stand on the lines under it.
+        baselineOffset: prompt.composes ? prompt.lineBaseline : input.y + input.baselineOffset
         clip: prompt.scrolled
     }
 
@@ -1500,7 +1567,8 @@ Item {
         // empty, it's one line tall, and a wrapped hint's last line went undrawn.
         height: hintText.visible
             ? Math.max(implicitHeight, hintText.y + hintText.contentHeight) : implicitHeight
-        y: prompt.lineBaseline - baselineOffset
+        // Composed, its first line is the one under the path's.
+        y: prompt.composes ? prompt.lineTall : prompt.lineBaseline - baselineOffset
         focus: true
         clip: true
         // A question asked draws in its place, and the field keeps the
@@ -1510,7 +1578,7 @@ Item {
         echoMode: prompt.secret ? TextInput.Password : TextInput.Normal
         passwordCharacter: "\u25cf"
         passwordMaskDelay: 0
-        color: Theme.strong
+        color: prompt.taken ? Theme.muted : Theme.strong
         selectionColor: Theme.selection
         selectedTextColor: Theme.strong
         font.family: Theme.level.figure.family
@@ -1532,7 +1600,7 @@ Item {
         Keys.onTabPressed: event => prompt.dropped(event) ? undefined
             : prompt.modal ? prompt.tabled(event) : prompt.completed()
         Keys.onEscapePressed: event => prompt.dropped(event) ? undefined
-            : prompt.modal ? prompt.tabled(event) : prompt.cancelled()
+            : prompt.modal ? prompt.tabled(event) : prompt.cancelled("Escape")
         onCursorPositionChanged: prompt.rest()
         Keys.onReleased: event => {
             if (!event.isAutoRepeat && prompt.keyHeld) {

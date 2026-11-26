@@ -161,7 +161,6 @@
   "modules/key-counts/src/tally.rs" = 5;
   "modules/lag-watch/src/kernel.rs" = 2;
   "modules/lid/docked/src/main.rs" = 11;
-  "modules/litra/litra.rs" = 11;
   "modules/load-proof/src/frames.rs" = 2;
   "modules/load-proof/src/run.rs" = 4;
   "modules/load-proof/src/save.rs" = 1;
@@ -256,7 +255,6 @@
   "modules/update-to-main/src/ask.rs" = 3;
   "modules/update-to-main/src/follow.rs" = 21;
   "modules/update-to-main/src/hosted.rs" = 8;
-  "modules/update-to-main/src/run.rs" = 9;
   "modules/update-to-main/src/session.rs" = 1;
   "modules/update-to-main/src/system.rs" = 11;
   "modules/update-to-main/tests/update/main.rs" = 11;
@@ -310,7 +308,6 @@
   "tools/merge-net/src/rules/mod.rs" = 17;
   "tools/merge-net/src/watch.rs" = 24;
   "tools/merge-net/src/world.rs" = 11;
-  "tools/run-subtests/run-subtests-test.py" = 5;
   "tools/shell-preview/src/desktop.rs" = 3;
   "tools/shell-preview/src/layout.rs" = 3;
   "tools/shell-preview/tests/shell_preview.rs" = 1;

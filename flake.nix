@@ -202,6 +202,7 @@
         dig = ./modules/dig/home.nix;
         direnv = ./modules/direnv/home.nix;
         disk-guard = ./modules/disk-guard/home.nix;
+        du = ./modules/du/home.nix;
         eero = ./modules/eero/home.nix;
         elsewhere = ./modules/elsewhere/home.nix;
         ergodox = moduleFrom ./modules/ergodox/home.nix { inherit qmk lufa printf; };
@@ -297,6 +298,7 @@
           inherit (self.homeModules) quickshell;
         };
         ssh-tpm-agent = ./modules/ssh-tpm-agent/home.nix;
+        subvolumes = ./modules/subvolumes/home.nix;
         sudo = ./modules/sudo/home.nix;
         swayidle = ./modules/swayidle/home.nix;
         swayimg = moduleFrom ./modules/swayimg/home.nix { inherit (self.homeModules) niri quickshell; };
@@ -369,6 +371,7 @@
         btrfs = ./modules/btrfs/nixos.nix;
         call-transcripts = ./modules/call-transcripts/nixos.nix;
         camera = ./modules/camera/nixos.nix;
+        camera-guard = ./modules/camera-guard/nixos.nix;
         cargo = ./modules/cargo/nixos.nix;
         chrome = ./modules/chrome/nixos.nix;
         chrony = ./modules/chrony/nixos.nix;

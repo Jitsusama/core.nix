@@ -8,7 +8,10 @@
 //! than any moment is closed under referrers, and deleting it needs
 //! nothing newer.
 
-use crate::commands::{self, Job, Ran};
+mod ran;
+
+use ran::{failed, name, output};
+pub(crate) use ran::{last_words, ran};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cmp::Reverse;
@@ -176,17 +179,41 @@ pub const NEAR_MIN_FREE_EVERY: Duration = Duration::from_mins(5);
 
 /// The `min-free` Nix is set to on this machine, in bytes: what a
 /// person's own `nix.conf` says, which the guard reads rather than
-/// repeats. None where Nix can't say, which leaves the guard to its bands.
-pub fn min_free(nix: &Path) -> Option<u64> {
+/// repeats. Why not where Nix can't say, which leaves the guard to its
+/// bands.
+pub fn min_free(nix: &Path) -> Result<u64, String> {
     let argv: Vec<&OsStr> = std::iter::once(nix.as_os_str())
         .chain(NIX_COMMAND.iter().map(OsStr::new))
         .chain(["config", "show", "min-free"].map(OsStr::new))
         .collect();
-    ran(&argv, Duration::from_secs(30), true)
-        .ok()?
-        .trim()
-        .parse()
-        .ok()
+    // Only the length of what Nix said is told, on either stream: the
+    // guard's log is often readable by any account, and a Nix printing
+    // more than the one value, or quoting a nix.conf line it refuses,
+    // could print its access tokens.
+    // Not idle, unlike the guard's collections: it's one quick read, and on
+    // a Mac the background band throttles it most while the machine is
+    // busiest, which is when a read past its thirty seconds keeps the guard
+    // from its floor. That lifts the system guard's read; an account's
+    // guard runs wholly in the background band, as its launchd agent's
+    // ProcessType puts it so the account's own work comes first, and so
+    // does this read.
+    let (status, said) = output(&argv, Duration::from_secs(30), false, &[])?;
+    if status != Some(0) {
+        let ended = status.map_or_else(
+            || "was ended by a signal".to_owned(),
+            |code| format!("exited {code}"),
+        );
+        return Err(format!(
+            "nix config show min-free {ended}, saying {} bytes on its error stream",
+            said.trim().len()
+        ));
+    }
+    said.trim().parse().map_err(|error| {
+        format!(
+            "nix config show min-free said {} bytes that aren't a number: {error}",
+            said.trim().len()
+        )
+    })
 }
 
 /// What the `nix` command needs to be told before any of the commands the
@@ -257,9 +284,6 @@ pub(crate) const CHUNK: usize = 1000;
 pub(crate) const LIST_TIMEOUT: Duration = Duration::from_mins(30);
 /// How long describing one chunk may take.
 const DESCRIBE_TIMEOUT: Duration = Duration::from_mins(5);
-/// The most of a command's output read: a listing of 12,000 paths is
-/// 4 MiB, and a chunk's description about 3.
-const OUTPUT_LIMIT: usize = 256 << 20;
 
 /// Every dead path in the store at `store`, and what each weighs and
 /// refers to, through `nix path-info` beside `nix`. With `idle`, at idle
@@ -470,8 +494,8 @@ pub fn delete(
         if left_of_it.is_zero() {
             return Err(format!("{} ran past {DELETE_TIMEOUT:?}", name(&argv)));
         }
-        let (ok, said) = output(&argv, left_of_it, idle, &input)?;
-        if ok {
+        let (status, said) = output(&argv, left_of_it, idle, &input)?;
+        if status == Some(0) {
             return Ok(Deleted {
                 refused: forbidden,
                 ran,
@@ -493,60 +517,6 @@ pub fn delete(
             },
         }
     }
-}
-
-/// What a command printed, or why it failed, in its own last words.
-pub(crate) fn ran(argv: &[&OsStr], timeout: Duration, idle: bool) -> Result<String, String> {
-    match output(argv, timeout, idle, &[])? {
-        (true, stdout) => Ok(stdout),
-        (false, stderr) => Err(failed(argv, &stderr)),
-    }
-}
-
-/// Whether a command succeeded, with what it printed if so and what it
-/// said on its error stream if not.
-fn output(
-    argv: &[&OsStr],
-    timeout: Duration,
-    idle: bool,
-    input: &[u8],
-) -> Result<(bool, String), String> {
-    let name = name(argv);
-    let job = Job {
-        argv: argv.iter().map(|&arg| arg.to_owned()).collect(),
-        cwd: None,
-        env: Vec::new(),
-        timeout,
-        limit: OUTPUT_LIMIT,
-        idle,
-    };
-    match commands::fed(&job, input).map_err(|error| format!("starting {name}: {error}"))? {
-        Ran::TimedOut => Err(format!("{name} ran past {timeout:?}")),
-        Ran::Stopped => Err(format!("{name} was stopped with the guard")),
-        Ran::Finished(output) if output.truncated => Err(format!("{name} said more than it may")),
-        Ran::Finished(output) if output.status == Some(0) => {
-            let stdout = String::from_utf8(output.stdout);
-            Ok((
-                true,
-                stdout.map_err(|_| format!("{name} printed what isn't text"))?,
-            ))
-        }
-        Ran::Finished(output) => Ok((false, String::from_utf8_lossy(&output.stderr).into_owned())),
-    }
-}
-
-fn failed(argv: &[&OsStr], said: &str) -> String {
-    let last = said
-        .lines()
-        .rev()
-        .find(|line| !line.trim().is_empty())
-        .unwrap_or("");
-    format!("{} failed: {last}", name(argv))
-}
-
-fn name(argv: &[&OsStr]) -> String {
-    let program = Path::new(argv[0]).file_name().unwrap_or_default();
-    program.to_string_lossy().into_owned()
 }
 
 impl Listing {

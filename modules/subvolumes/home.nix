@@ -1,0 +1,149 @@
+# Gives the home folders of the programs Joel waits on, and of the ones that
+# write beside them all day, Btrfs subvolumes of their own, moved there as
+# the account's manager starts (own-subvolumes.sh says how, and how it
+# fails open).
+#
+# A home is one Btrfs tree, and every write in it takes the lock on that
+# tree's root in turn. Probed on 24 November under agents' load, a small
+# write and fsync, as SQLite commits one, waited a median of 137 to 981 ms
+# a minute in the home's tree, most of it on that lock, and 9 to 27 ms in a
+# fresh subvolume beside it, where the lock never showed. Both still took
+# the stalls the whole filesystem takes as it commits.
+#
+# Each module whose folder should be its own adds it to
+# jitsusama.subvolumes.folders, with the units that write in it, so the
+# folder goes wherever the program does, and the machines that don't
+# import it never see it.
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+let
+  cfg = config.jitsusama.subvolumes;
+  ownSubvolumes = pkgs.writeShellApplication {
+    name = "own-subvolumes";
+    runtimeInputs = [
+      pkgs.btrfs-progs
+      pkgs.coreutils
+      pkgs.findutils
+      pkgs.gawk
+      pkgs.systemd
+    ];
+    text = builtins.readFile ./own-subvolumes.sh;
+  };
+  # A unit's name from the folder's path: .config/google-chrome gives
+  # own-subvolume-config-google-chrome.
+  unitOf =
+    folder:
+    "own-subvolume-"
+    + lib.concatStringsSep "-" (
+      lib.filter (part: part != "") (lib.splitString "/" (lib.replaceStrings [ "." ] [ "" ] folder))
+    );
+  # One move a folder, so a folder waits only for its own writers and a
+  # slow copy holds back nothing but them, and one waiter beside it. It's wanted by the account's
+  # manager, never needed by a writer: a run that fails leaves the folder
+  # as it was, and they start all the same.
+  unitsFor =
+    folder: settings:
+    let
+      # A switch starts the unit with its writers already running, and one
+      # between writes may hold nothing open, so they're named to it too.
+      writers = lib.concatMapStrings (writer: "--writer ${writer} ") settings.before;
+      named = "${lib.getExe ownSubvolumes} ${writers}";
+      waiter = "${unitOf folder}-after-quit.service";
+      move = "${named}--waiter ${waiter} ${toString settings.seconds}";
+      # The waiter is named to itself, as the move names it, so both keep
+      # its counts under one name.
+      waits = "${named}--waiter ${waiter} --after-quit ${unitOf folder}.service";
+    in
+    [
+      {
+        name = unitOf folder;
+        value = {
+          Unit = {
+            Description = "Moves ~/${folder} into a subvolume of its own";
+            Before = settings.before;
+          };
+          Service = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+            ExecStart = "${move} %h/${folder}";
+            # The copy is bounded. Past it come up to three walks of the
+            # folder and five of /proc, seconds each under agents' load,
+            # and a few renames, so this is only a backstop.
+            TimeoutStartSec = settings.seconds + 120;
+          };
+          Install.WantedBy = [ "default.target" ];
+        };
+      }
+      # Started by the move when a process holds the folder, as Chrome or
+      # Slack does at a switch, so the folder moves the first time that
+      # program quits rather than at the next boot. It waits on nothing
+      # but what holds the folder and the writers named, and nothing starts
+      # it otherwise.
+      {
+        name = lib.removeSuffix ".service" waiter;
+        value = {
+          Unit.Description = "Moves ~/${folder} into a subvolume once nothing holds it";
+          Service.ExecStart = "${waits} %h/${folder}";
+        };
+      }
+    ];
+  units = lib.concatLists (lib.mapAttrsToList unitsFor cfg.folders);
+in
+{
+  options.jitsusama.subvolumes.folders = lib.mkOption {
+    type = lib.types.attrsOf (
+      lib.types.submodule {
+        options = {
+          before = lib.mkOption {
+            type = lib.types.listOf lib.types.str;
+            default = [ ];
+            description = ''
+              The account's units that write in the folder and start with
+              its manager, so they wait for the move rather than find it.
+              While one runs, as at a switch, the folder stays where it
+              is. A writer the session waits on makes the session wait
+              too.
+            '';
+          };
+          seconds = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 300;
+            description = ''
+              How long the copy may take before it's given up, the folder
+              left as it was and tried again as the account's manager next
+              starts. Under
+              agents' load on 25 November, Slack's profile of 53,000 files
+              took 165 s, and Chrome's of 12,000, 25 s.
+            '';
+          };
+        };
+      }
+    );
+    default = { };
+    description = ''
+      Folders under the home, by their paths from it, each moved into a
+      Btrfs subvolume of its own as the account's manager starts, or,
+      when a process held it then, once that process quits.
+    '';
+  };
+
+  config = lib.mkIf pkgs.stdenv.hostPlatform.isLinux {
+    systemd.user.services = lib.listToAttrs units;
+
+    # systemd orders nothing against a unit it doesn't have, so a writer
+    # named wrongly would race its folder's move unseen.
+    assertions = lib.concatLists (
+      lib.mapAttrsToList (
+        folder: settings:
+        map (writer: {
+          assertion = config.systemd.user.services ? ${lib.removeSuffix ".service" writer};
+          message = "~/${folder}'s move comes before ${writer}, which isn't a user service here";
+        }) settings.before
+      ) cfg.folders
+    );
+  };
+}

@@ -76,9 +76,12 @@ CELLS = 8
 # their own; about 668 KB since the builders, the legend's moving samples and
 # new work's line, and since no comment is sent, view.js's and the styles'
 # included, a little more with the drawer's acts and its whole question, and
-# under the 677 KB allowed; new work's line and its hidden controls draw about 20 elements of the
-# 611.
-BUDGET = Budget(files=33, kilobytes=677, elements=620)
+# 677.4 KB once a network's label keeps what tells it apart, and 678.2 KB
+# once a cloud machine says it's kept, a little more once a long lease counts
+# days, and about 0.4 KB more once every label is kept apart and in its room,
+# under the 680 KB allowed; new work's line and its hidden controls draw about
+# 20 elements of the 611.
+BUDGET = Budget(files=33, kilobytes=680, elements=620)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -94,6 +97,8 @@ BASIN = "shoal"
 BASIN_MARK = f"{BASIN} basin"
 BASIN_MACHINES = ("pool-a", "pool-b")
 BASIN_CELLS = ("HERON1", "HERON2")
+# A cloud machine made for the person to keep declares its end in this year.
+KEPT_UNTIL = "9999-01-01T00:00:00Z"
 # A cell find is asked for by name, and the title its drawer heads it with.
 SOUGHT = "TERN03"
 SOUGHT_TITLE = "Count the Cleats"
@@ -289,6 +294,16 @@ def basins() -> dict[str, list[dict[str, object]]]:
     return {**reading, "machine": reading["machine"] + pool, "cell": cells}
 
 
+def lent() -> dict[str, list[dict[str, object]]]:
+    """Node.json's realm with osprey a cloud machine the person keeps."""
+    reading = json.loads((HERE / "node.json").read_text())["kinds"]
+    machines = copy.deepcopy(reading["machine"])
+    for machine in machines:
+        if machine["name"] == "osprey":
+            machine["declared"] = {"reach": ["internet"], "leaves_at": KEPT_UNTIL}
+    return {**reading, "machine": machines}
+
+
 def feeding(cell: str, ago: timedelta = timedelta()) -> dict[str, object]:
     """FED_RECEPTOR feeding `cell` a call's summary, `ago` before now, as the node serves it."""
     said = datetime.now(UTC) - ago
@@ -402,6 +417,13 @@ def crowd_served(tmp_path: Path) -> Iterator[Served]:
 @pytest.fixture
 def basins_served(tmp_path: Path) -> Iterator[Served]:
     stand_in = StandIn(tmp_path / "basins.sock", "node", basins()).start()
+    yield from serve(tmp_path, stand_in)
+    stand_in.leave()
+
+
+@pytest.fixture
+def lent_served(tmp_path: Path) -> Iterator[Served]:
+    stand_in = StandIn(tmp_path / "lent.sock", "node", lent()).start()
     yield from serve(tmp_path, stand_in)
     stand_in.leave()
 
@@ -910,6 +932,78 @@ def test_the_view_and_now_answer_their_keys(mycelium_opened: Opened) -> None:
     page.keyboard.press("-")
     expect(page, "- didn't climb to the cell's network").to_have_url(
         re.compile(r"/mycelium/#net=orchestration\.tern01$"),
+    )
+
+
+# The map's width and the drawer's, in pixels: a fit is made for the map's width less the
+# drawer's while the drawer is open, and for the whole of it while shut.
+WIDTHS = """[document.getElementById("world").ownerSVGElement.getBoundingClientRect().width,
+  document.getElementById("panel").offsetWidth]"""
+
+
+# How far the window narrows under a view moved by hand.
+NARROWED_PX = 80
+# How far Shift and an arrow pan the view (view.js's PAN).
+PANNED_PX = 80
+
+
+def fitted_about(view: tuple[float, float, float], wide: float) -> float:
+    """Say which point of the map a view `wide` pixels across fits in its middle (viewOf)."""
+    tx, _, k = view
+    return (wide / 2 - tx) / k
+
+
+def test_a_fit_takes_the_whole_width_until_the_drawer_opens(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.locator("#map-view").focus()
+    page.keyboard.press("0")
+    shut = settled(page, "0 didn't fit the whole map")
+    whole, drawer = page.evaluate(WIDTHS)
+    middle = fitted_about(shut, whole)
+    # Opening Now opens the drawer, and a view following the whole map fits it again clear of
+    # it, about the same middle; a gutter kept while shut would put that middle a half a
+    # drawer off, and a glide stopped part way would leave it somewhere between.
+    page.keyboard.press(".")
+    expect(page.locator("#now-control"), ". didn't open Now").to_have_attribute(
+        "aria-expanded", "true"
+    )
+    opened = settled(page, "the map never stood still once Now opened")
+    clear = max(whole - drawer, whole / 2)
+    assert fitted_about(opened, clear) == pytest.approx(middle, abs=1), (
+        f"shut, the map was fitted about {middle} across {whole} px, and open about "
+        f"{fitted_about(opened, clear)} across the {clear} px the drawer leaves"
+    )
+    assert opened[2] <= shut[2], f"the map grew from {shut} as the drawer took room: {opened}"
+    page.keyboard.press(".")
+    expect(page.locator("#now-control"), ". didn't close Now").to_have_attribute(
+        "aria-expanded", "false"
+    )
+    assert settled(page, "the map never stood still once Now shut") == pytest.approx(
+        shut, abs=0.05
+    ), "shutting the drawer didn't fit the map across the whole width again"
+    # Moved by hand, the view keeps its middle through a resize by the map's own change in
+    # width, the drawer open or not: measured by the room the drawer leaves, it would jump
+    # half a drawer the first resize after the drawer opened.
+    # Unmoved, the view would follow the whole map and fit it afresh, which can shift it the same
+    # way, so the pan is checked to have landed.
+    page.keyboard.press("Shift+ArrowLeft")
+    moved = settled(page, "the map never stood still once moved")
+    assert moved == pytest.approx((shut[0] + PANNED_PX, shut[1], shut[2]), abs=0.05), (
+        f"Shift+Left didn't pan the map {PANNED_PX} px from {shut}: {moved}"
+    )
+    page.keyboard.press(".")
+    expect(page.locator("#now-control"), ". didn't open Now again").to_have_attribute(
+        "aria-expanded", "true"
+    )
+    held = settled(page, "the moved map never stood still once Now opened")
+    width, height = SIZES[-1]
+    page.set_viewport_size({"width": width - NARROWED_PX, "height": height})
+    resized = settled(page, "the moved map never stood still once the window narrowed")
+    narrowed, _ = page.evaluate(WIDTHS)
+    assert resized[0] - held[0] == pytest.approx((narrowed - whole) / 2, abs=1), (
+        f"the map narrowed from {whole} to {narrowed} px with the drawer open, and the view "
+        f"moved from {held} to {resized}, not by half that"
     )
 
 
@@ -1615,6 +1709,12 @@ def test_a_basins_machines_are_drawn_as_one(browser: Browser, basins_served: Ser
         body = page.locator("#panel-body")
         said = "A basin, drawn as one machine: 2 machines"
         expect(body, "the drawer didn't say it was a basin").to_contain_text(said)
+        # The Launcher's Machines has a row for each of its machines, none for
+        # it: its name holds a space, which no machine's name does, so the
+        # map never offers a link to a row that isn't there.
+        expect(
+            body.locator('a[href^="mycelium:machine/"]'), "the basin linked a row it has none of"
+        ).to_have_count(0)
         for name in BASIN_MACHINES:
             exactly = page.locator(".name", has_text=re.compile(f"^{re.escape(name)}$"))
             row = body.locator(".health .row", has=exactly)
@@ -1973,6 +2073,9 @@ def test_a_reading_that_moves_no_shape_is_painted_over_the_map_as_drawn(
     page.keyboard.press(".")
     legend = page.locator('#panel-body details[data-keep="legend"] > summary')
     expect(legend, ". never opened Now with its legend").to_be_visible()
+    # Opening the drawer fits the whole map clear of it, a glide that places the names as it
+    # goes, so the case marks them only once the view stands still.
+    settled(page, "the map never stood still once Now opened")
     page.evaluate(MARK_DRAWN)
     *_, focused = page.evaluate(STILL_DRAWN)
     assert focused, "the legend's summary took no focus"
@@ -2159,6 +2262,55 @@ def spent(page: Page) -> list[str]:
     expect(fold.locator("ul.rows").first, "the Spent Today fold never opened").to_be_visible()
     lines = [line for line in fold.inner_text().splitlines() if line.strip()]
     return lines[1:2] + lines[3:]
+
+
+def test_a_machines_drawer_opens_its_row_in_the_launcher(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate("location.hash = '#machine=osprey'")
+    expect(page.locator("#panel-title"), "osprey's drawer never opened").to_have_text("osprey")
+    # Its row's acts are where Joel starts work on it, as the system page's link is.
+    link = page.locator("#panel-body").get_by_role("link", name="Open It in the Launcher")
+    expect(link, "osprey's drawer didn't open its row").to_have_attribute(
+        "href", "mycelium:machine/osprey"
+    )
+
+
+def test_a_kept_cloud_machine_says_so_and_opens_its_row(
+    browser: Browser, lent_served: Served
+) -> None:
+    root, _ = lent_served
+    opened = Opened(browser, f"{root}mycelium/#machine=osprey", SIZES[-1], "light")
+    try:
+        page = opened.page
+        the_map_stands(page, "live")
+        body = page.locator("#panel-body")
+        expect(body.locator(".carries"), "osprey didn't say it was kept").to_contain_text(
+            "A cloud machine, kept until you let it go. A cord runs from it"
+        )
+        expect(
+            body.locator(".health"), "osprey's health counted down a kept lease"
+        ).to_contain_text("kept until you let it go")
+        link = body.get_by_role("link", name="Open It in the Launcher")
+        expect(link, "a cloud machine's drawer didn't open its row").to_have_attribute(
+            "href", "mycelium:machine/osprey"
+        )
+        # It is no device on the home network, so the network page has no row.
+        expect(
+            body.get_by_role("link", name="osprey on the network page"),
+            "a cloud machine linked the home network's page",
+        ).to_have_count(0)
+        # A cell on it says so where it says the machine it runs on, and in
+        # its machine's row.
+        page.evaluate("location.hash = '#cell=GULL01'")
+        kept = "on osprey, a cloud machine, kept until you let it go"
+        expect(body, "GULL01 didn't say its machine was kept").to_contain_text(kept)
+        row = body.locator(".rows .row", has=page.locator(".name", has_text=re.compile("^osprey$")))
+        expect(row, "GULL01's machine row counted down a kept lease").to_contain_text(
+            "a cloud machine, kept until you let it go"
+        )
+    finally:
+        opened.close()
 
 
 def test_what_each_spent_today_is_listed_most_first(mycelium_opened: Opened) -> None:

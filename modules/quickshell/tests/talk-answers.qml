@@ -45,6 +45,23 @@ QtObject {
             Expect.same("one offering no answers still shows what it asks",
                 Answers.question(asks(Object.assign({}, want, { answers: null }), true), "S",
                     words, dayOf).answers, [asked]);
+            // Its whole question, as the harness keeps it beside the short line (85PKB2,
+            // 2026-11-24): its lines and indentation kept, its blank lines before and spaces
+            // after let go.
+            const wholly = "Which signing pause?\n\n- Yes: sign all\n  - the old ones too\n- No";
+            Expect.same("a want saying more than its short line shows it whole",
+                Answers.question(asks(Object.assign({}, want, { whole: `\n${wholly}  \n` }), true),
+                    "S", words, dayOf).answers,
+                [wholly, "Yes \u00b7 No \u00b7 Partly, or your own words"]);
+            Expect.same("a whole question is told where its short line is the title",
+                Answers.question(asks(Object.assign({}, want, { asked: "Sign the Commits",
+                    said: "", whole: wholly }), true), "S", words, dayOf).answers[0], wholly);
+            Expect.same("its first line's indentation is kept, its blank lines around dropped",
+                Answers.whole({ whole: "\n \n  - low\n- high \n" }), "  - low\n- high");
+            Expect.same("no want, no whole", Answers.whole(null), "");
+            Expect.same("a blank whole leaves the short line",
+                Answers.question(asks(Object.assign({}, want, { whole: " \n " }), true), "S",
+                    words, dayOf).answers[0], asked);
             Expect.same("a name with $& in it goes in as written",
                 Answers.question(asks(want, true), "A $& B", words, dayOf).line,
                 "A $& B asks you");

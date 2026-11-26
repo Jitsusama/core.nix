@@ -51,9 +51,11 @@ function margin(page) {
 // a line each stands, and on across a line Qt wrapped with what the piece
 // broke at, its `on`, as Vim's search runs on across its wrap. A text's
 // end, or a piece's `on` of null or none, stops it, and so does another
-// text beside it, which the wash never runs into either. Matches never
-// overlap, as the wash's don't, so one crossing a wrap takes letters
-// another would have begun the next line with.
+// text beside it, which the wash never runs into either, though a match
+// takes in the spaces a text's line holds before it stops, its
+// `trailing`, as the wash does. Matches never overlap, as the wash's
+// don't, so one crossing a wrap takes letters another would have begun
+// the next line with.
 function matchesIn(lines, pattern) {
     const find = Search.finder(pattern);
     const matches = [];
@@ -64,11 +66,14 @@ function matchesIn(lines, pattern) {
                 along += 1;
             }
             // One begun at the spaces a piece wrapped at lands on the
-            // next, which a text's `on` is only ever put before.
+            // next, which a text's `on` is only ever put before, and one
+            // begun at those a text stops with, after its last piece, on
+            // that piece's last letter, the nearest the cursor stands.
             const { line, at, from, length } = places[along];
             const next = places[along + 1];
             matches.push(start - from < length ? { line, letter: at + start - from }
-                : { line: next.line, letter: next.at });
+                : next ? { line: next.line, letter: next.at }
+                    : { line, letter: at + Math.max(0, length - 1) });
         }
     }
     // Texts side by side are read one after the other, so their matches
@@ -83,9 +88,10 @@ function matchesIn(lines, pattern) {
 // each piece wrapped at between it and the next: { text, places }, each
 // place { line, at, from, length }, its piece's line, its first letter
 // there and in the text, and how many letters it has. A line's parts are
-// its pieces, each { words, length, on } (DrawerLines.linesOf), its text
-// theirs in turn; a line with none is one piece of a text of its own. A
-// piece runs on only into its own words' piece on the very next line.
+// its pieces, each { words, length, on, trailing } (DrawerLines.linesOf),
+// its text theirs in turn; a line with none is one piece of a text of its
+// own. A piece runs on only into its own words' piece on the very next
+// line, and one that stops its text ends it with its `trailing`.
 function textsOf(lines) {
     const texts = [];
     let open = new Map();
@@ -94,7 +100,7 @@ function textsOf(lines) {
         const parts = line.parts ?? [{ words: line, length: said.length, on: null }];
         const going = new Map();
         let letter = 0;
-        for (const { words, length, on } of parts) {
+        for (const { words, length, on, trailing } of parts) {
             const was = open.get(words);
             const text = was?.text ?? { text: "", places: [] };
             if (was) {
@@ -108,6 +114,8 @@ function textsOf(lines) {
             text.text += letters;
             if ((on ?? null) !== null) {
                 going.set(words, { text, on });
+            } else {
+                text.text += trailing ?? "";
             }
             letter += length;
         }

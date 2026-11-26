@@ -38,6 +38,7 @@
     nixosModules.bluetooth-again
     nixosModules.bluetooth-links
     nixosModules.camera
+    nixosModules.camera-guard
     nixosModules.console
     nixosModules.creative-pebble-x-plus
     nixosModules.dbus

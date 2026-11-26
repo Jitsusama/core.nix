@@ -55,6 +55,8 @@ interface Figures {
   readonly onBattery: boolean | undefined;
   readonly updatedAt: string | undefined;
   readonly updateStep: string | undefined;
+  /** Why its last update didn't go ahead, as its node says, when it says. */
+  readonly updateWhy: string | undefined;
 }
 
 /** What Joel can do with a machine: the launcher's link and the commands. */
@@ -150,6 +152,8 @@ function figuresOf(said: Fields): Figures {
     onBattery: flag(said, "on_battery"),
     updatedAt: text(said, "updated_at"),
     updateStep: text(said, "update_step"),
+    // An empty why is none, as the daemon has it, so no sentence ends on a colon.
+    updateWhy: text(said, "update_why") || undefined,
   };
 }
 

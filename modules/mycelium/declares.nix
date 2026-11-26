@@ -81,19 +81,23 @@ rec {
         default = false;
         description = "Whether work on this machine costs money.";
       };
-      # A Mac's pi in pi-fence's launcher can't reach its own state, so a
-      # session started there for a fenced kind runs bare once pi lays
-      # its own sandbox profile round each command it runs.
+      # A Mac's pi in pi-fence's launcher can't reach its own state, so the
+      # realm's agent program, pi unless `agents` names another, held there
+      # for a fenced kind starts alone where the machine declares pi fences
+      # itself, so it is fenced only as it fences each command it runs.
       piFencesItself = lib.mkOption {
         type = lib.types.bool;
         default = false;
         description = ''
-          Whether pi here lays its own fence round each command it runs, as
-          a Mac's pi does from the harness that fences each command with a
-          sandbox profile, so a fenced or strict session starts as pi alone
-          rather than within the fence's launcher. Then only the commands pi
-          runs are fenced, not pi's own reads and calls. Refused on Linux,
-          where pi lays no such fence.
+          Whether pi here lays a sandbox profile round each command it runs,
+          as a Mac's pi does from its harness, so the realm's agent program,
+          as `agents` names it or else pi, held fenced or strict, starts
+          alone rather than within the fence's launcher, told which fence to
+          keep. Then the fence rests on that program: only the commands it
+          runs are fenced, and only as it fences them itself, as pi does,
+          never its own reads and calls. Refused on Linux, whose pi fences
+          each command with Landlock instead, and whose node holds it so
+          unasked.
         '';
       };
       taints = lib.mkOption {
@@ -126,6 +130,38 @@ rec {
           each minute.
         '';
       };
+      # The node adds these only to a sprout placement chooses for, so one
+      # naming a machine, asking needs of its own or staying here starts as
+      # asked; a mycelium that predates them ignores them.
+      needsIn = lib.mkOption {
+        type = lib.types.listOf needRule;
+        # A rule naming neither folders nor words would name no work, so
+        # it's refused rather than taken as meaning none.
+        apply = map (
+          rule:
+          lib.throwIf (rule.folders == [ ] && rule.words == [ ])
+            "jitsusama.mycelium.declares.needsIn: the rule needing ${lib.concatStringsSep ", " rule.needs} names no folder and no word"
+            rule
+        );
+        default = [ ];
+        example = [
+          {
+            folders = [ "src/inner" ];
+            words = [ "forge.example" ];
+            needs = [ "reach=inner" ];
+          }
+        ];
+        description = ''
+          What work sprouted here needs wherever placement sends it: work
+          begun in one of a rule's folders or below, or whose words hold
+          one of its words in any case, needs each of its needs. Work met
+          only by a probe is refused while no machine's probe answers,
+          rather than started where it can't work. It keeps work from a
+          machine it can't work on, and is no fence: a sprout naming its
+          own machine or needs, an agent's included, starts as it asks. A
+          mycelium that predates this ignores it.
+        '';
+      };
       # A carry an orchestrator orders lands only in a kind at least as
       # strict as the session's own, behind no door it lacked, judged from
       # what each machine says here; a kind left unsaid is one no ordered carry lands in, so the
@@ -150,15 +186,71 @@ rec {
         description = ''
           The fences an agent session runs in here, by kind, unfenced (none),
           fenced (fence) or strictly fenced (strict), each with the doors it
-          opens, so an orchestrator's carry never lands in a weaker kind or
-          behind a door it lacked. The kinds aren't the same on each system:
-          a Mac's strict reads the home folder but what pi's fence hides,
-          where Linux's reads only what it lists, and it writes the account's
-          temporary folder, yet both say strict. So a carry from Linux to a
-          Mac lands looser in what it may read and write. On a Mac declaring
-          piFencesItself, the kind fences only the commands pi runs, while
-          pi's own reads, writes and calls stand outside it.
+          opens, so an orchestrator's carry never lands in a weaker kind, as
+          each machine names it, or behind a door it lacked. The kinds aren't
+          the same on each system: a Mac's strict reads the home folder but
+          what pi's fence hides, where Linux's reads only what it lists, and
+          it writes the account's temporary folder, yet both say strict. So a carry from Linux to a
+          Mac lands looser in what its commands may read and write. Where
+          the realm's agent program is held alone, on Linux and on a
+          Mac declaring piFencesItself, the kind fences only the commands
+          it runs, as it fences them itself, while its own reads, writes
+          and calls stand outside it. So a carry from a Mac that doesn't
+          declare it, to Linux or to a Mac that does, lands looser for the
+          agent itself, which the carry's judge, reading kinds, can't see.
         '';
+      };
+    };
+  };
+  # Work begun in some folders, or naming some words, and what it needs,
+  # each need as `mycelium sprout --need` takes it.
+  needRule = lib.types.submodule {
+    options = {
+      # Mycelium compares folders part by part, expanding nothing, so a
+      # folder written from `~` or `$`, with an empty, `.` or `..` part
+      # (home itself, the root alone or a trailing `/` among them), or
+      # with space at an end, would match nothing, or everything.
+      folders = lib.mkOption {
+        type = lib.types.listOf (
+          lib.types.addCheck lib.types.str (
+            folder:
+            builtins.match "[~$].*|[[:space:]].*|.*[[:space:]]|.*/[$].*" folder == null
+            && lib.all (part: part != "" && part != "." && part != "..") (
+              lib.splitString "/" (lib.removePrefix "/" folder)
+            )
+          )
+          // {
+            description = "folder within home or whole, of plain parts";
+          }
+        );
+        default = [ ];
+        example = [ "src/inner" ];
+        description = "The folders, each within home unless whole, of plain parts never from ~ or $, whose work or work below needs these.";
+      };
+      words = lib.mkOption {
+        type = lib.types.listOf lib.types.nonEmptyStr;
+        default = [ ];
+        example = [ "forge.example" ];
+        description = "The words, such as a link's host, whose naming anywhere in work's words, in any case, needs these.";
+      };
+      # Each value in the shape a machine says it: a machine as a realm
+      # names one, an accelerator of a kind mycelium knows, and a reach,
+      # always or by a probe, system, architecture or tool as a lowercase
+      # name. Only the shape is judged here; which machine says it is
+      # placement's to find.
+      needs = lib.mkOption {
+        type = lib.types.nonEmptyListOf (
+          lib.types.strMatching (
+            lib.concatStringsSep "|" [
+              "cloud"
+              "machine=[a-z0-9][a-z0-9-]*"
+              "accelerator=(gpu|npu)"
+              "(reach|system|arch|tool)=[a-z0-9][a-z0-9_.-]*"
+            ]
+          )
+        );
+        example = [ "reach=inner" ];
+        description = "What such work needs: cloud, or kind=value, as `mycelium sprout --need` takes it.";
       };
     };
   };

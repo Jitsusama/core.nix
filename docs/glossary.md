@@ -109,11 +109,12 @@ the queue and conclude. The trees, checkouts and changes agents work in are
 | Journey | a quest's dated log of what happened | | `quest journal` |
 | session | a pi working for Joel on a quest, in a window of its own | | `agents` in the launcher |
 | carry | moving a quest's work and its session to another machine; Agents lists the day's in a row of their own, each by its session's title, else its quest's, how it stands, where it went and when it was ordered, and since a carry asks nothing of Joel, none stands in For You | | `carry`, `agents:carried` |
-| stuck | the node's word for work standing still: a carry it judges stuck, by its own rule, said in alert in Agents' row of carries with the node's reason, or a network's cell standing paused, which the node counts stuck in that network's counts and its site draws stuck | | a carry's `stuck`, a network's `stuck` count |
+| stuck | the node's word for work standing still: a carry it judges stuck, by its own rule, said in alert in Agents' row of carries with the node's reason, or a network's cell standing paused and wanting nothing at all, which the node counts stuck in that network's counts and its site draws stuck; Agents' row of that network moves some cells into stuck or out of it: one whose want Joel put off, one whose want waits on someone else, and a lead wearing Joel's mark for a session under it | | a carry's `stuck`, a network's `stuck` count, `networks.rs`'s `as_marked` |
 | orchestrator | a session whose quest holds other quests: it hands out their work and gathers what waits on Joel | steward | `orchestrator: true` |
 | orchestration | an orchestrator and every session on a quest below it | | `#orchestration/<address>` |
 | talk | Joel's words to an orchestrator or a session, typed in its field from outside its window | steer | `steer/<ADDRESS>/` |
 | offered work | words a page's mycelium: link puts in Start New Work's From a Link, which start only on Joel's own Return once he has checked them; the session the page says they're from is its claim, never vouched for | suggested work | `newWork`, Sprouting.js's `offered` |
+| the Cloud | where Start New Work's In the Cloud starts work: a machine that costs money, one already up with room or one the node's providers make for it, which the node picks | | the need `cloud`, Cloud.js |
 | talk line | one line at the top of the screen, on Super+S, to say something to the focused window's session, else The Void, without opening the launcher | | `agents:line`, TalkLine.qml |
 | pause | Joel stopping a session after its turn, from outside its window, until he resumes it, talks to it or types in it | | presence `paused` |
 | resume | Joel letting a paused session carry on where it left off | | |
@@ -447,7 +448,7 @@ off.
 | charger | the power cable, and what it's plugged into | mains | AC |
 | Keep Awake | the setting that keeps the machine from sleeping or locking while it's on | Caffeinate | |
 | sleep | the machine paused with its memory kept, until it wakes | suspend | `systemctl suspend`, s2idle |
-| wake | coming back from sleep, as the machine does, or from a park, as a session does | | |
+| wake | coming back from sleep, as the machine does, from a park, as a session does, or from standby, as a television does when net wakes it | | `net devices NAME wake` |
 | idle | of the machine, every session left untouched past the screens going off, and nothing holding it awake | inactive | logind's `IdleHint` |
 | idle sleep | the sleep a laptop falls into left idle on battery, never on the charger | autosuspend | `idle-sleep`, logind's `IdleAction` |
 | hibernate | the machine off with its memory written to the swap file, until it starts again from it | | `systemctl hibernate` |
@@ -694,7 +695,7 @@ says which module broke.
 | ---- | ----- | --- | ------- |
 | check | a check that `nix flake check` builds, one promise held | | `checks.x86_64-linux.<name>` |
 | VM test | a check that boots machines in VMs | | a `vm-` name |
-| subtest | one of a VM test's pytest tests, as the driver's log names it, which can run alone | | `test_` functions in a `*-vm-test.py` |
+| subtest | one of a VM test's pytest tests, named by its function, which can run alone; the driver's log heads its part with its docstring's first line | | `test_` functions in a `*-vm-test.py` |
 | example machine | a whole machine built only from core's outputs, as a machine repository would | | `example-nixos`, `example-laptop`, `example-apple-laptop`, `example-darwin` |
 | bare machine | the least machine of a class that evaluates, which a check adds one module to, for checks only | | `lib.bareNixosModule`, `lib.bareDarwinModule`, `bareNixos` |
 | stand-in | something standing in for a real program or device in a check | fake | |

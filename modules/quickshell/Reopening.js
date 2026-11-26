@@ -208,18 +208,33 @@ function leadersFirst(queue) {
 // connected (`screens`, Places.js's connected), else the one in use `now`,
 // as with none in use then: a window needs a screen to go to.
 function inUseFor(placed, now, screens) {
-    return typeof placed === "string" && placed in (screens ?? {}) ? placed : now;
+    return typeof placed === "string" && Object.keys(screens ?? {}).includes(placed) ? placed : now;
+}
+
+// The connector a place found now (`place`, of one kept on `screen`) was given, or undefined.
+// It must be connected now (`screens`, Places.js's connected) and show that screen, and the place
+// must not be away. A place left as kept, with no screen said or none in use, keeps last boot's
+// connector, which may be gone or another screen's now, so it was given none, as with no
+// `screens` at all, which fails closed rather than stopping Reopen Them All's walk.
+function givenOn(screen, place, screens) {
+    const output = place?.output;
+    // Own keys alone, so a prototype's name is never connected, as Sprouting.js's untold.
+    const shows = Object.keys(screens ?? {}).includes(output)
+        && (!screen || screens[output] === screen);
+    return place?.away || !shows ? undefined : output;
 }
 
 // The connectors Reopen Them All's sessions were given (`places`, Places.js's placed, of the
 // places `kept`), as whereKept's `given`, so its windows put back after take the same twin
-// connectors as their sessions, whatever order they come back in: none for one gone. Those
-// windows put back took `before` stay only for a connector its screen kept that no session's place
-// on that screen given a connector was, given one no session was, so they never contradict the
-// sessions' nor leave the other twin's windows none to go to.
-function givenBy(kept, places, before) {
-    const given = kept.map((at, index) => ({ at, output: places[index]?.away ? undefined
-        : places[index]?.output })).filter(one => one.at);
+// connectors as their sessions, whatever order they come back in. A session counts as given a
+// connector only by givenOn, with `screens` connected now. An earlier window's entry (`before`)
+// stays unless a session kept on the same screen and connector was given a connector, or a
+// session was given the connector it took. So those windows never contradict the sessions, nor
+// leave the other twin's windows none to go to.
+function givenBy(kept, places, before, screens) {
+    const given = kept
+        .map((at, index) => ({ at, output: givenOn(at?.screen, places[index], screens) }))
+        .filter(one => one.at);
     const keptOn = one => JSON.stringify([one.at.screen, one.at.output]);
     const placed = given.filter(one => one.output !== undefined);
     const said = new Set(placed.map(keptOn));

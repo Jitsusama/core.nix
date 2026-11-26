@@ -111,8 +111,8 @@
   # Start New Work asks the realm's node only a sprout of what Joel said, in no
   # window, in one of the repositories his quests work in, and says how it ended
   # in the node's or sprout's own words, as
-  # modules/quickshell/tests/start-new-work.qml holds launcher/Sprouting.js to
-  # it in Qt's own engine.
+  # modules/quickshell/tests/start-new-work.qml holds launcher/Sprouting.js and
+  # launcher/Openings.js to it in Qt's own engine.
   start-new-work-asks-only-a-sprout =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -120,12 +120,57 @@
     pkgs.runCommandLocal "start-new-work-asks-only-a-sprout" { } ''
       cp ${../tests/start-new-work.qml} start-new-work.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
-      ${copied [ "launcher/Sprouting.js" ]}
+      ${copied [
+        "launcher/Openings.js"
+        "launcher/Sprouting.js"
+        "launcher/StartSaid.js"
+      ]}
       cp ${(import ../launcher/words.nix).places.agents} words.json
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts} QML_XHR_ALLOW_FILE_READ=1
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml start-new-work.qml
+      touch $out
+    '';
+
+  # Start New Work's In rows list his quests' folders, then the places the
+  # realm's node names, each folder once and only in plain words, a zone
+  # started by its name, Wheres.startAt giving a row picked before the places
+  # land the start it says after, and a node's 2000 read in under 50 ms of the
+  # shell's thread, as modules/quickshell/tests/start-new-work-places.qml
+  # holds launcher/Wheres.js to it in Qt's own engine.
+  start-new-work-finds-places =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "start-new-work-finds-places" { } ''
+      cp ${../tests/start-new-work-places.qml} start-new-work-places.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      ${copied [ "launcher/Wheres.js" ]}
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml start-new-work-places.qml
+      touch $out
+    '';
+
+  # Start New Work's In the Cloud is offered only where the node's providers
+  # could make a machine, lists the places another machine knows by name, and
+  # asks a sprout that needs the cloud, as
+  # modules/quickshell/tests/start-new-work-cloud.qml holds launcher/Cloud.js to
+  # it in Qt's own engine.
+  start-new-work-goes-to-the-cloud =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "start-new-work-goes-to-the-cloud" { } ''
+      cp ${../tests/start-new-work-cloud.qml} start-new-work-cloud.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      ${copied [ "launcher/Cloud.js" ]}
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml start-new-work-cloud.qml
       touch $out
     '';
 

@@ -11,8 +11,10 @@
 // once it's drawn; one whose pace is lifted, as the launcher opens, is
 // asked again once its frame is drawn; a search's answer is given to it and never held; one no
 // source knows any more is let go; the keys it watches ahead come to be
-// held, asked ahead; a get is answered by id, asked as a step-in; the
-// daemon stopping is said, keeping what was held and giving a get none,
+// held, asked ahead; a get is answered by id, asked as a step-in; one
+// the shell lets go with an ask in flight goes, its ask given none, and
+// says so as let go, read from the log; the daemon stopping is said,
+// keeping what was held and giving a get none,
 // unless the client is one that lets what it held go in a gap; and once
 // it starts again, the client connects again by itself, asks ahead
 // again, and the one that let go holds again. A client of a daemon
@@ -35,12 +37,16 @@
 // reads when its line was heard, and one of a watch's whole answer, or one
 // it puts off, reads none. Each daemon's lines and their length are
 // counted by its name, for the launcher's census, and begun again once
-// said. A client
+// said. A going says the asks it left unanswered, apart where the shell
+// let the connection go itself. A client
 // holding its wire watches neither its socket nor its folder. A socket that refuses is tried again twice as late
 // each time, a minute at most, counted again from its next answer. Each
 // step waits on what the client says, at most ten seconds.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
-// Its stand-ins are in modules/quickshell/tests/stand-ins.
+// Its stand-ins are in modules/quickshell/tests/stand-ins. Long because
+// its cases run in turn against one real people daemon and its stand-ins,
+// each starting from the state the last left, so split apart each file
+// would start the daemon and walk the client back to that state again.
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -85,6 +91,20 @@ ShellRoot {
         kind: "person"
         watching: ({ listed: true })
     }
+
+    // Let go by the shell with an ask in flight, as OnSelection lets its
+    // connection go once nothing needs it, through a link of its own to the
+    // people daemon's socket, so its going is said under its own name
+    // (checks/shell.nix reads the log for it).
+    Daemon {
+        id: lettingGo
+
+        socket: `${root.runtime}/daemons/letting-go.sock`
+        kind: "person"
+    }
+    property bool letGo: false
+    // What its ask in flight was given as it went: undefined until then.
+    property var letGoGiven: undefined
 
     // Letting what it held go while the daemon isn't answering.
     Daemon {
@@ -364,6 +384,8 @@ ShellRoot {
             + `, kinds ${JSON.stringify(kinds.held)}`
             + `, lapsing ${wholeFor.state} ${root.heldLapsing} ${JSON.stringify(wholeFor.held)}`
             + `, answered ${JSON.stringify(root.answered)}`
+            + `, letting go ${lettingGo.state} ${root.letGo} ${JSON.stringify(root.letGoGiven)}`
+            + ` awaiting ${Object.keys(lettingGo.awaited).length}`
             + `, the census heard ${root.heardSaid} of ${root.heardLines.join(" and ")}`);
         Qt.exit(1);
     }
@@ -397,7 +419,13 @@ ShellRoot {
             run: () => {
                 peopleRunning.running = true;
             },
+            // The let-go link shares this daemon's socket through a symlink
+            // and may connect only on its tries, the last of its first three
+            // 14 s in, so it's waited for here, as long as a restart's, rather
+            // than inside the let-go step's ten seconds.
+            polls: 400,
             holds: () => people.state === "answering" && "slack" in people.sources
+                && lettingGo.wire !== null
         },
         {
             what: "a watch narrowed to those listed holds them alone",
@@ -472,6 +500,33 @@ ShellRoot {
             },
             holds: () => root.answered?.records?.[0]?.key === root.grace
                 && root.heldWay(root.grace) === "step"
+        },
+        {
+            // The socket's own handler may say its going before
+            // onConnectsChanged does: a going read from who called it was
+            // said as one gone wrong (#6513's F1). Which runs first isn't
+            // pinned here, since connectAgain sets the loader's `active`,
+            // which drops its binding. This step only lets it go: what its
+            // going said, and at what level, checks/shell.nix reads from the
+            // log. It comes before the daemon stops, while the link holds
+            // the connection the daemon's start waited for: after the restart,
+            // when it connects again rests on its watch of a symlinked
+            // socket or on its tries, which no step waits on. It asks for
+            // Grace, whom the step before held as a step-in, since a get is
+            // a step-in told to the daemon at once, and one for Ada would
+            // turn the way she's held, which the next step reads.
+            what: "a connection the shell lets go with an ask in flight goes, its ask given none",
+            holds: () => {
+                if (!root.letGo && lettingGo.wire !== null) {
+                    lettingGo.get([root.grace], 5000, answer => {
+                        root.letGoGiven = answer;
+                    });
+                    lettingGo.connects = false;
+                    root.letGo = true;
+                }
+                return root.letGo && lettingGo.wire === null
+                    && Object.keys(lettingGo.awaited).length === 0 && root.letGoGiven === null;
+            }
         },
         {
             what: "the daemon stopping is said, and what was held stays unless let go",
@@ -693,6 +748,26 @@ ShellRoot {
                     && after.said === "" && after.minutes === 3 && after.lines === 0
                     && names === "machine eero mycelium/personal clipboard-history wifid/rows"
                         + " passwords-child x/y a child";
+            }
+        },
+        {
+            // A connection the shell let go itself, as OnSelection's does
+            // once nothing needs it, was said as one gone wrong (#6287's
+            // F31), so a journal read for a daemon's faults found ones
+            // nobody had.
+            what: "a going says its asks unanswered, apart where the shell let the"
+                + " connection go, and nothing where none was",
+            holds: () => {
+                const ids = Array.from({ length: 9 }, (_, at) => String(at + 1));
+                return Hearing.goneSaid("people", ["7"], false)
+                        === "people: the connection went with 1 ask unanswered: 7"
+                    && Hearing.goneSaid("people", ids, false)
+                        === "people: the connection went with 9 asks unanswered:"
+                            + " 1, 2, 3, 4, 5, 6, 7, 8"
+                    && Hearing.goneSaid("people", ["7", "8"], true)
+                        === "people: let its connection go with 2 asks unanswered: 7, 8"
+                    && Hearing.goneSaid("people", [], false) === ""
+                    && Hearing.goneSaid("people", [], true) === "";
             }
         },
         {

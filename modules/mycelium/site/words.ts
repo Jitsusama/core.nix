@@ -387,3 +387,161 @@ export const SHARED_WORD: Readonly<Record<string, string>> = {
   repository: "repository",
   group: "group",
 };
+
+/** A network as its name is told: its key, its name and what it carries. */
+export interface Named {
+  readonly key: string;
+  readonly name: string;
+  readonly carries: string;
+}
+
+/**
+ * Each network's name, told apart from the others': networks whose titles
+ * share their name, as several slices of one project do, are named with
+ * what each carries too, so no two read alike on the map, in the tree or in
+ * Now; whole titles that repeat are told apart by their ids, the part of
+ * the key after its kind, and any still alike, as a title written to read
+ * as another's told name is, by their whole keys until none are.
+ */
+export const toldApart = (networks: readonly Named[]): ReadonlyMap<string, string> => {
+  const names = new Map(networks.map((n) => [n.key, n.name]));
+  tell(networks, names, (n) => (n.carries && n.carries !== n.name ? `: ${n.carries}` : ""));
+  tell(networks, names, (n) => ` ${idHint(n)}`);
+  // Keys are unique, so each pass leaves fewer alike; one per network
+  // bounds it whatever the titles say.
+  for (let pass = 0; pass < networks.length; pass++) {
+    if (!tell(networks, names, (n) => ` [${n.key}]`)) {
+      break;
+    }
+  }
+  return names;
+};
+
+/**
+ * Each network's label on the map, which clips a name to `room`: a told
+ * name clipped alike to another's, its tell cut off, is the network's own
+ * name clipped shorter with its id after it, so none read alike there
+ * either. A label kept whole that reads like another's id-hinted one, as a
+ * title written to does, takes its own id in turn; hinted labels still
+ * alike, as two long ids clipped alike are, are numbered in order.
+ */
+export const labelsApart = (
+  networks: readonly Named[],
+  told: ReadonlyMap<string, string>,
+  clip: (text: string, room: number) => string,
+  room: number,
+): ReadonlyMap<string, string> => {
+  const labels = new Map(networks.map((n) => [n.key, clip(told.get(n.key) ?? n.name, room)]));
+  const hinted = new Set<string>();
+  // Each pass hints at least one more network or ends, so one per network
+  // bounds it.
+  for (let pass = 0; pass < networks.length; pass++) {
+    const seen = timesEach(labels.values());
+    const alike = networks.filter(
+      (n) => !hinted.has(n.key) && (seen.get(labels.get(n.key) ?? "") ?? 0) > 1,
+    );
+    if (alike.length === 0) {
+      break;
+    }
+    for (const n of alike) {
+      labels.set(n.key, hintedLabel(n, clip, room));
+      hinted.add(n.key);
+    }
+  }
+  numberAlike(networks, labels, clip, room);
+  return labels;
+};
+
+/**
+ * Each label in `labels` still reading like another's clipped short enough
+ * to end on a number, the least that leaves it reading like no label
+ * already standing, so none read alike. Two sets clipped to one stem share
+ * its numbers, and each set is numbered in its networks' key order, so a
+ * network keeps its number while the networks alike with it stay the same.
+ */
+const numberAlike = (
+  networks: readonly Named[],
+  labels: Map<string, string>,
+  clip: (text: string, room: number) => string,
+  room: number,
+): void => {
+  const seen = timesEach(labels.values());
+  const isAlike = (n: Named): boolean => (seen.get(labels.get(n.key) ?? "") ?? 0) > 1;
+  const alike = networks.filter(isAlike).toSorted((a, b) => byKey(a.key, b.key));
+  if (alike.length === 0) {
+    return;
+  }
+  const taken = new Set(networks.filter((n) => !isAlike(n)).map((n) => labels.get(n.key)));
+  // No number passes the count of networks, so the widest is kept room for.
+  const stemRoom = room - ` ${networks.length}`.length;
+  for (const n of alike) {
+    const stem = clip(labels.get(n.key) ?? "", stemRoom);
+    let place = 1;
+    while (taken.has(`${stem} ${place}`)) {
+      place++;
+    }
+    const label = `${stem} ${place}`;
+    taken.add(label);
+    labels.set(n.key, label);
+  }
+};
+
+/** Two keys in the order their characters sort, the same in every locale. */
+const byKey = (a: string, b: string): number => {
+  if (a === b) {
+    return 0;
+  }
+  return a < b ? -1 : 1;
+};
+
+// The fewest characters of its name a label keeps beside its id, so a
+// clip is never asked for less room than its own three dots take.
+const LEAST_NAME = 8;
+
+/**
+ * A network's name clipped to leave room for its id after it, or, where
+ * the id is too long to leave a name any room, the id alone clipped to the
+ * room, so a label never runs past it.
+ */
+const hintedLabel = (
+  n: Named,
+  clip: (text: string, room: number) => string,
+  room: number,
+): string => {
+  const hint = idHint(n);
+  const left = room - hint.length - 1;
+  return left < LEAST_NAME ? clip(hint, room) : `${clip(n.name, left)} ${hint}`;
+};
+
+/** A network's id as a hint: the part of its key after its kind. */
+const idHint = (n: Named): string => `(${n.key.slice(n.key.indexOf(".") + 1).toUpperCase()})`;
+
+/** How many times each text comes. */
+const timesEach = (texts: Iterable<string>): ReadonlyMap<string, number> => {
+  const seen = new Map<string, number>();
+  for (const text of texts) {
+    seen.set(text, (seen.get(text) ?? 0) + 1);
+  }
+  return seen;
+};
+
+/**
+ * Adds `more` to each name that repeats, and says whether any did; a
+ * network `more` has nothing for keeps its name.
+ */
+const tell = (
+  networks: readonly Named[],
+  names: Map<string, string>,
+  more: (n: Named) => string,
+): boolean => {
+  const seen = timesEach(names.values());
+  let any = false;
+  for (const n of networks) {
+    const name = names.get(n.key) ?? n.name;
+    if ((seen.get(name) ?? 0) > 1) {
+      names.set(n.key, `${name}${more(n)}`);
+      any = true;
+    }
+  }
+  return any;
+};

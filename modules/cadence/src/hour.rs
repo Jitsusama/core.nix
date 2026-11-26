@@ -17,10 +17,12 @@
 
 mod card;
 mod good;
+mod ledger;
 mod lines;
 mod measures;
 mod moved;
 mod owing;
+mod parted;
 mod records;
 mod reviews;
 mod stuck;
@@ -83,10 +85,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     let (_, state_home, folder) = folders()?;
     let now = now_ms() / 1000;
     let kept_at = folder.join("hour.json");
-    let mut kept: Kept = fs::read_to_string(&kept_at)
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default();
+    let mut kept = Kept::last(&kept_at);
     // Read once, so the misses measured and the words told for them come
     // from the same ledger; one not read whole leaves the misses unjudged.
     // A miss gone from it isn't carried, so the hour after judges the
@@ -99,15 +98,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     // asks, so each leaves without Joel being told it is; the card shows a
     // none's why for a day, and the asks track a carried one's fix.
     measures::forget_unfixed(&misses, &mut kept.open);
-    let mut measures = gather(
-        &folder,
-        &state_home,
-        &misses,
-        now,
-        checkouts,
-        &mut kept.fetched,
-        to,
-    )?;
+    let mut measures = gather(&folder, &state_home, &misses, now, checkouts, &mut kept, to)?;
     if !whole {
         unread_misses(&mut measures);
     }
@@ -257,7 +248,7 @@ fn gather(
     misses: &str,
     now: i64,
     checkouts: &[String],
-    fetched: &mut Vec<i64>,
+    kept: &mut Kept,
     orchestrator: Option<&str>,
 ) -> io::Result<Vec<Measure>> {
     let text = |path: &Path| fs::read_to_string(path).unwrap_or_default();
@@ -266,7 +257,10 @@ fn gather(
     let quarantine = quarantine(&core);
     let card_text = fresh_card(folder, now);
     let [core_log, harness_log, machine_log] = axes::repository::mains(folder, now);
-    let asks = text(&mission.join("asks.jsonl"));
+    // Read even when what the last hour kept of it is lost, so the next
+    // hour has this one's count to read against.
+    let (asks, asks_unread) = ledger::whole(&mission.join("asks.jsonl"), &mut kept.asks, now);
+    let asks_unread = kept.unread.clone().or(asks_unread);
     let switches = text(&state_home.join("integration/switches.jsonl"));
     // The work system's findings count against their owners, and one
     // naming none is the orchestrator's to assign.
@@ -283,9 +277,11 @@ fn gather(
         measures::untested(misses, folder, checkouts, &switches),
         measures::slips(&asks, now, Tracking::His),
         measures::parked(&asks, Tracking::His),
+        measures::told_late(&asks, now, Tracking::His),
         measures::to_first_slice(&asks, now, Tracking::His),
         measures::slips(&asks, now, Tracking::Derived),
         measures::parked(&asks, Tracking::Derived),
+        measures::told_late(&asks, now, Tracking::Derived),
         measures::to_first_slice(&asks, now, Tracking::Derived),
         measures::undated(&quarantine, &today(now), NET_RULES),
         measures::reverts(&text(&folder.join("reverted.json")), now, NET_RULES),
@@ -299,11 +295,19 @@ fn gather(
         landed(&core_log, &harness_log, &machine_log, now),
     ];
     all.extend(measures::said_none(misses, now));
+    all.push(measures::cited::read(
+        state_home,
+        now,
+        &today(now),
+        orchestrator,
+    ));
     all.push(measures::holds::read(state_home, &asks, now));
+    all.extend(parted::dates_at_risk(state_home, &core, &asks, now));
     all.extend(found);
     let per_merge = rounds_per_merge(state_home, &core, &core_log, &harness_log, now);
     all.extend(per_merge);
     all.extend(measures::merge_to_on(&card_text, NET_RULES));
+    let fetched = &mut kept.fetched;
     all.extend(measures::unlocked(&core, checkouts, now, BUMPS, fetched));
     if let Some((median, target)) = measures::card_median(&card_text, "Last commit to merge") {
         all.push(Measure {
@@ -350,6 +354,7 @@ fn gather(
         },
         now,
     ));
+    ledger::unless_whole(&mut all, asks_unread.as_deref());
     Ok(all)
 }
 

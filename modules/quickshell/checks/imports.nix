@@ -32,6 +32,7 @@
   "Files.qml" = [ "FileFacts.js" ];
   "Finding.js" = [ "LineEditing.js" ];
   "ForYouHolds.qml" = [ "pieces/Holding.js" ];
+  "KeyActs.js" = [ "QueryKeys.js" ];
   "KeyboardLayout.qml" = [ "launcher/Keyboards.js" ];
   "Mark.qml" = [ "MarkSize.js" ];
   "ModeMarks.js" = [ "QueryKeys.js" ];
@@ -39,6 +40,7 @@
   "NoiseCancelling.qml" = [ "launcher/ByEar.js" ];
   "NoticeLine.qml" = [ "NoticeLine.js" ];
   "NoticeRow.qml" = [ "Columns.js" ];
+  "Pasting.qml" = [ "Pasting.js" ];
   "PiSource.qml" = [ "PiSource.js" ];
   "PixelMark.qml" = [
     "MarkSize.js"
@@ -49,6 +51,7 @@
     "Bands.js"
     "Confirm.js"
     "Editing.js"
+    "KeyActs.js"
     "KeyNames.js"
     "MarkSize.js"
     "Measures.js"
@@ -148,15 +151,20 @@
     "launcher/Keeping.js"
     "launcher/Moment.js"
     "launcher/NowDrawers.js"
-    "launcher/Numbers.js"
     "launcher/Zones.js"
   ];
+  "launcher/Cloud.js" = [ "launcher/Sprouting.js" ];
   "launcher/Displays.qml" = [
     "Fuzzy.js"
     "Hearing.js"
     "launcher/Order.js"
     "launcher/Presented.js"
     "launcher/Seen.js"
+  ];
+  "launcher/Emoji.qml" = [
+    "launcher/EmojiDrawer.js"
+    "launcher/EmojiSearch.js"
+    "launcher/ReadyRows.js"
   ];
   "launcher/EmojiSearch.js" = [ "Fuzzy.js" ];
   "launcher/Explainer.qml" = [ "launcher/Explaining.js" ];
@@ -236,6 +244,7 @@
     "launcher/Presented.js"
     "launcher/SessionRow.js"
     "launcher/Showing.js"
+    "launcher/TalkAnswers.js"
     "pieces/Holding.js"
   ];
   "launcher/NowGroups.js" = [ "launcher/Order.js" ];
@@ -251,6 +260,7 @@
     "launcher/Notice.js"
   ];
   "launcher/Power.qml" = [ "launcher/Seen.js" ];
+  "launcher/Presented.js" = [ "launcher/KeysSaid.js" ];
   "launcher/Program.js" = [
     "FileFacts.js"
     "launcher/Numbers.js"
@@ -348,6 +358,7 @@
     "launcher/NowDrawers.js"
     "launcher/Numbers.js"
   ];
+  "launcher/Wheres.js" = [ "launcher/Sprouting.js" ];
   "launcher/WindowTargets.qml" = [ "launcher/HeldWindows.js" ];
   "launcher/Windows.qml" = [
     "Fuzzy.js"

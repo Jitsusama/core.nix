@@ -51,9 +51,11 @@ const BUSY: Duration = Duration::from_secs(30);
 /// 7.5 to 30 seconds, and a quicker pass keeps the 30 seconds.
 const PACE: u32 = 4;
 /// The most a pass waits while things keep changing, however slow the last
-/// was. Warnings are told only in a pass, so this bounds how late one comes,
-/// and the shell trusts `budgets.json` for six minutes, which two passes of
-/// up to two minutes and this wait between them still keep inside.
+/// was. Warnings are told only in a pass, so this bounds how late one comes
+/// once a pass ends. `budgets.json` is stamped as a pass starts, so before
+/// the next replaces it, it ages by both passes and the wait between: for
+/// passes up to this long, inside the `FAILING` the command line trusts it
+/// for while the daemon listens.
 const BUSIEST: Duration = Duration::from_secs(120);
 /// The most, while nothing does: the clocks and the day move regardless.
 const IDLE: Duration = Duration::from_secs(300);
@@ -65,7 +67,19 @@ const HARNESS: Duration = Duration::from_secs(300);
 const REFRESH: Duration = Duration::from_secs(10);
 /// How long the heartbeat goes on without a pass that worked: past this,
 /// the shell is let see a watch that isn't working as one that stopped.
-const FAILING: Duration = Duration::from_mins(2 * 5 + 1);
+/// The command line trusts the last pass's `budgets.json` as long.
+pub(crate) const FAILING: Duration = Duration::from_mins(2 * 5 + 1);
+/// How long the watch waits as it starts for the history to be its own:
+/// its lock, and the database a reader may be writing. With no watch
+/// running, a reader brings an older history to this one's shape under
+/// the lock, and on 25 November that held a 1.9 GB history for minutes
+/// after a switch. A watch that gave up at once ended three times on the
+/// lock and once on the database, four minutes in all, with the budgets
+/// unwatched until a restart came after the reader was done. The lock
+/// and the database share the one wait.
+const TURN: Duration = Duration::from_mins(10);
+/// How often a watch waiting its turn asks again.
+const TURN_ASKED: Duration = Duration::from_secs(1);
 
 struct Feed {
     config: FeedConfig,
@@ -172,6 +186,14 @@ fn backoff(last: Option<Duration>, ran: Duration) -> Duration {
 /// Held by whatever writes the history from the sources, so two never
 /// read the same log at once.
 pub fn lock(state: &Path) -> Result<std::fs::File, String> {
+    let path = state.join("lock");
+    taken(state)?.ok_or_else(|| format!("another spend-watch holds {}", path.display()))
+}
+
+/// The history's lock, or nothing while something else holds it. A
+/// state folder that can't be made or opened is its own error, so a wait
+/// for the lock never waits out a fault nothing will mend.
+fn taken(state: &Path) -> Result<Option<std::fs::File>, String> {
     std::fs::create_dir_all(state)
         .map_err(|error| format!("making {}: {error}", state.display()))?;
     let path = state.join("lock");
@@ -181,9 +203,11 @@ pub fn lock(state: &Path) -> Result<std::fs::File, String> {
         .write(true)
         .open(&path)
         .map_err(|error| format!("opening {}: {error}", path.display()))?;
-    rustix::fs::flock(&file, rustix::fs::FlockOperation::NonBlockingLockExclusive)
-        .map_err(|_| format!("another spend-watch holds {}", path.display()))?;
-    Ok(file)
+    match rustix::fs::flock(&file, rustix::fs::FlockOperation::NonBlockingLockExclusive) {
+        Ok(()) => Ok(Some(file)),
+        Err(rustix::io::Errno::WOULDBLOCK) => Ok(None),
+        Err(error) => Err(format!("locking {}: {error}", path.display())),
+    }
 }
 
 /// The watch's inotify instance and the folder each of its watches
@@ -496,7 +520,9 @@ fn answer(stream: &UnixStream, wake: &Sender<Wake>, hub: &Hub) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
     let mut reader = BufReader::new(stream);
     let mut asked = String::new();
-    if reader.read_line(&mut asked).is_err() {
+    // A connection that says nothing asks nothing: the command line opens
+    // one only to learn the daemon is still there.
+    if matches!(reader.read_line(&mut asked), Err(_) | Ok(0)) {
         return;
     }
     if asked.trim_start().starts_with('{') {
@@ -898,6 +924,55 @@ fn written(runtime: &std::path::Path, name: &str) -> String {
 #[cfg(not(target_os = "linux"))]
 fn rewrites(_runtime: &std::path::Path, _wake: Sender<Wake>) {}
 
+/// The history's lock, waited for until `by` while something else holds
+/// it, and said once in the journal so a slow start reads as a wait, not
+/// a hang. Held still at `by`, it ends the watch as it did at once
+/// before, and a state folder that can't be had ends it at once.
+fn waited(state: &Path, by: Instant) -> Result<std::fs::File, String> {
+    let mut said = false;
+    loop {
+        if let Some(file) = taken(state)? {
+            return Ok(file);
+        }
+        if Instant::now() >= by {
+            return lock(state);
+        }
+        if !said {
+            eprintln!(
+                "another spend-watch holds {}; waiting up to {} s for it",
+                state.join("lock").display(),
+                by.saturating_duration_since(Instant::now()).as_secs()
+            );
+            said = true;
+        }
+        std::thread::sleep(TURN_ASKED);
+    }
+}
+
+/// The history at `path`, opened once no reader is writing it, trying
+/// again until `by`. Opening makes an index where it's missing, and a
+/// reader opening it at the same moment may be making it too, past the
+/// database's own ten-second wait.
+fn opened_in_turn(path: &Path, by: Instant) -> Result<History, String> {
+    loop {
+        match opened(path) {
+            Err(why) if busy(&why) && Instant::now() < by => {
+                eprintln!("{why}; trying again");
+                std::thread::sleep(TURN_ASKED);
+            }
+            opened => return opened,
+        }
+    }
+}
+
+/// Whether a history's error is another connection's write: SQLite's
+/// words for `SQLITE_BUSY`, as `history::sql` gives them, since the
+/// history's errors reach here only as words. A test holds a real write
+/// to pin them.
+fn busy(why: &str) -> bool {
+    why.contains("database is locked")
+}
+
 /// The history at `path`, said in the journal as it's brought up from an
 /// older shape: that holds it for minutes on a large one with nothing
 /// else to show, and a restart meanwhile only starts the move again.
@@ -920,10 +995,11 @@ fn opened(path: &Path) -> Result<History, String> {
 }
 
 pub fn run(config: &Config) -> Result<(), String> {
-    let _lock = lock(&config.state)?;
+    let by = Instant::now() + TURN;
+    let _lock = waited(&config.state, by)?;
     config.runtime()?;
     hold(config)?;
-    let history = opened(&config.history())?;
+    let history = opened_in_turn(&config.history(), by)?;
     let (wake, inbox): (Sender<Wake>, Receiver<Wake>) = mpsc::channel();
     let hub = hub(config)?;
     hub.doing(doer(config, wake.clone()));
@@ -984,7 +1060,7 @@ pub fn run(config: &Config) -> Result<(), String> {
                 Err(error) => eprintln!("a pass failed: {error}"),
             }
             last_pass = Instant::now();
-            took = began.elapsed();
+            took = timed(began);
             dirty = false;
             refresh.owed.clear();
             for reply in refresh.waiting.drain(..) {
@@ -1104,6 +1180,20 @@ fn repace(history: &History, feeds: &mut [Feed], pace: Pace, now: f64) -> Pace {
         }
     }
     paced
+}
+
+/// How long the pass that `began` took, journalled when it ran past the
+/// busiest wait, the most the pacing promises a warning is late by.
+fn timed(began: Instant) -> Duration {
+    let took = began.elapsed();
+    if took > BUSIEST {
+        eprintln!(
+            "a pass took {:.1} s, past the {} s a busy wait is capped at, so its warnings came late",
+            took.as_secs_f64(),
+            BUSIEST.as_secs()
+        );
+    }
+    took
 }
 
 /// How long until the next pass is due, `since` the last one ended after
@@ -1558,13 +1648,23 @@ mod tests {
     fn a_slow_pass_waits_longer_before_the_next() {
         let after = |took: f64| until_pass(true, Duration::from_secs_f64(took), Duration::ZERO);
         assert_eq!(after(0.0), BUSY, "the first pass waited past the busy pace");
-        assert_eq!(after(7.5), BUSY, "a pass at the edge of the pace moved it");
+        assert_eq!(after(7.0), BUSY, "a pass under the pace's edge moved it");
+        assert_eq!(
+            after(8.0),
+            Duration::from_secs(32),
+            "a pass over the pace's edge kept the busy pace"
+        );
         assert_eq!(
             after(16.0),
             Duration::from_secs(64),
             "a slow pass didn't wait four times as long"
         );
-        assert_eq!(after(30.0), BUSIEST, "a pass at the cap's edge missed it");
+        assert_eq!(
+            after(29.0),
+            Duration::from_secs(116),
+            "a pass under the cap's edge was capped"
+        );
+        assert_eq!(after(31.0), BUSIEST, "a pass over the cap's edge missed it");
         assert_eq!(
             after(600.0),
             BUSIEST,
@@ -1582,8 +1682,28 @@ mod tests {
         );
     }
 
-    // The time left shrinks as the wait goes by and stops at nothing, so
-    // the loop starts a pass exactly when it stops sleeping for one.
+    // `budgets.json` is stamped as a pass starts, so it ages by that pass,
+    // the wait and the pass that replaces it. For every pass up to the cap,
+    // busy or quiet, that stays inside the time the command line trusts it,
+    // with a minute to spare for the loop's own work between passes.
+    #[test]
+    fn the_budgets_last_from_one_pass_to_the_next() {
+        let spare = Duration::from_mins(1);
+        for seconds in 0..=BUSIEST.as_secs() {
+            let took = Duration::from_secs(seconds);
+            for dirty in [true, false] {
+                let oldest = took * 2 + until_pass(dirty, took, Duration::ZERO) + spare;
+                assert!(
+                    oldest.as_secs_f64() <= crate::cli::WRITTEN_LASTS,
+                    "passes of {seconds} s left budgets.json {oldest:?} old, busy: {dirty}"
+                );
+            }
+        }
+    }
+
+    // The time left shrinks as the wait goes by and stops at nothing, so a
+    // pass falls due once its whole wait has gone by, and stays due however
+    // late the loop comes to ask.
     #[test]
     fn a_pass_falls_due_as_its_wait_runs_out() {
         let took = Duration::from_secs(16);
@@ -1614,5 +1734,84 @@ mod tests {
         let most = Duration::from_secs(300);
         assert_eq!(backoff(Some(most), quick), most);
         assert_eq!(backoff(Some(second), Duration::from_secs(600)), first);
+    }
+
+    // A watch starting while a reader holds the history's lock, as one
+    // bringing it to a newer shape does, takes it once the reader lets go,
+    // where it used to end at once and be restarted into the same lock.
+    #[test]
+    fn a_watch_starting_beside_a_reader_takes_the_lock_once_it_is_let_go() {
+        let dir = tempfile::tempdir().unwrap();
+        let held = lock(dir.path()).unwrap();
+        let letting_go = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(1500));
+            drop(held);
+        });
+        let began = Instant::now();
+        let taken = waited(dir.path(), began + Duration::from_secs(30));
+        letting_go.join().unwrap();
+        assert!(
+            taken.is_ok(),
+            "the watch didn't take the lock its reader let go: {:?}",
+            taken.err()
+        );
+        assert!(
+            began.elapsed() >= Duration::from_secs(1),
+            "the watch took a lock that was still held"
+        );
+    }
+
+    // Something holding the lock past the wait still ends the watch, so a
+    // second watch run by hand beside the unit's goes rather than waits on.
+    #[test]
+    fn a_watch_whose_lock_stays_held_past_its_wait_ends() {
+        let dir = tempfile::tempdir().unwrap();
+        let _held = lock(dir.path()).unwrap();
+        let taken = waited(dir.path(), Instant::now() + Duration::from_millis(1200));
+        assert!(taken.is_err(), "the watch took a lock another still held");
+    }
+
+    // A state folder that can't be made is no lock to wait for: the watch
+    // ends at once rather than ten minutes later.
+    #[test]
+    fn a_watch_whose_state_folder_cannot_be_made_ends_at_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = dir.path().join("state");
+        std::fs::write(&state, "a file where the folder goes").unwrap();
+        let began = Instant::now();
+        let taken = waited(&state, began + Duration::from_secs(30));
+        assert!(
+            taken.is_err(),
+            "the watch took a lock in a folder that isn't one"
+        );
+        assert!(
+            began.elapsed() < Duration::from_secs(5),
+            "the watch waited out a state folder nothing will mend"
+        );
+    }
+
+    // The words a retried open is told apart by are SQLite's own for a
+    // write another connection holds, as the history reports them.
+    #[test]
+    fn another_connections_write_reads_as_busy() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        drop(History::open(&path).unwrap());
+        let writer = rusqlite::Connection::open(&path).unwrap();
+        writer.execute_batch("BEGIN IMMEDIATE;").unwrap();
+        let other = rusqlite::Connection::open(&path).unwrap();
+        other.busy_timeout(Duration::ZERO).unwrap();
+        let refused = other
+            .execute_batch("BEGIN IMMEDIATE;")
+            .expect_err("a second writer began while the first held the history");
+        let why = crate::history::sql(refused);
+        assert!(
+            busy(&why),
+            "another connection's write didn't read as busy: {why}"
+        );
+        assert!(
+            !busy("no such table: meta"),
+            "a history that doesn't read was taken for a busy one"
+        );
     }
 }

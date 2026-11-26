@@ -57,13 +57,21 @@ pub const SETTLE: Duration = Duration::from_secs(600);
 pub const TRIAL: Duration = Duration::from_secs(300);
 
 /// How long after a move a minute must be taken to hold none of the card's
-/// first minute on the point: that minute, and a minute's reach past it
-/// (`measure::MINUTE`), less the second a choice can be held back by, so a
-/// move made on the minute is judged at its third minute even when its own
-/// choice ran later than the one two minutes on. Measured from when the move
-/// is asked, so wherever in the minute it fell, at most that second of its
-/// first minute is judged, and the seconds the roam itself takes, which the
-/// chooser doesn't see.
+/// first minute on the point: two minutes' choices, less a second of slack,
+/// so a move made on the minute is judged at its third minute when its own
+/// choice ran up to a second later than the one two minutes on. A minute
+/// taken then reaches back `measure::MINUTE`, so at most half a second of
+/// the first minute is in it. A choice waits behind a measure, about 2 s
+/// where echoes go unanswered, as `measure::MINUTE` says, so choices drift
+/// against each other; a move whose own choice ran later than the one two
+/// minutes on by more than the slack, and by up to a minute, is judged a
+/// minute later, at its fourth minute, still inside `TRIAL`. The slack
+/// isn't wider because each second of it lets another second of the first
+/// minute on the point into a judged minute, the minute a trial is meant to
+/// judge none of.
+/// Measured from when the move is asked, so wherever in the minute it fell,
+/// the seconds the roam itself takes, which the chooser doesn't see, are in
+/// that first minute.
 const ARRIVED: Duration = Duration::from_secs(119);
 
 /// How many minutes past `ARRIVED` a trial is judged early by.
@@ -84,7 +92,11 @@ pub const SPURNED: Duration = Duration::from_secs(3600);
 /// four, at that night's tries it would have been tried three times
 /// before 04:00, and tried again as each keep-off ended, four. Twelve
 /// hours still tries such a point at another time of day, where it may
-/// carry well.
+/// carry well. It's kept by access point, not by where the laptop is:
+/// carried elsewhere awake, the card hears other access points, each
+/// counted afresh, so only one heard from both places stays kept off
+/// there, until its keep-off ends, a trial of it stands as the usual, or
+/// wifid restarts.
 pub const SPURNED_MOST: Duration = Duration::from_hours(12);
 
 /// Past either, an access point carries badly enough to try another: a
@@ -342,7 +354,12 @@ struct Kept {
     /// failing link for `SPURNED` at most, as it always did: past that,
     /// what it carried is old, and kept off longer (`SPURNED_MOST`) it
     /// could otherwise hold a card on a failing link, the one other point
-    /// in reach, for half a day.
+    /// in reach, for half a day. A link failing yields, as it carries
+    /// nothing; one only slow doesn't: on the night of 23 Nov 2026 each of
+    /// five tries of the desk's ch52 radio left its 2.4 GHz radio carrying
+    /// 106 to 939 ms at p95 with at most 2.5% lost, and each went back on
+    /// 0.8 to 2.8 s with 3.3 to 22.6% lost, so yielding to slowness would
+    /// try such a point every hour all the same.
     firm: Instant,
     /// The access point the move kept off left, where a trial judged
     /// against what that point carried earned it, so only another trial
@@ -4225,6 +4242,41 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_move_whose_choice_ran_more_than_a_second_late_is_judged_a_minute_later() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let start = Instant::now();
+        let near = [hall(-53, Some(20), None)];
+        let badly = carried(119, 0.5);
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &near, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+
+        // The move's own choice ran 1.5 s late against the minutes after it,
+        // past the second of slack, so the minute to 118.5 s may hold some of
+        // its first minute on the point and isn't judged.
+        let held = Measured {
+            moving: Some(15),
+            ..carried(754, 1.9)
+        };
+        let minutes = [58_500, 118_500, 178_500, 238_500].map(|millis| (millis, held.clone()));
+        let choices = by_minutes(&mut chooser, start, HALL, &minutes);
+
+        let judged = vec![
+            Choice::Stay,
+            Choice::Stay,
+            Choice::Stay,
+            Choice::Back(DESK.into()),
+        ];
+        assert_eq!(
+            choices, judged,
+            "judged at its fourth minute, by the two past its arrival"
+        );
+        assert!(
+            Duration::from_millis(238_500) < TRIAL,
+            "its fourth minute falls past its trial"
+        );
+    }
+
+    #[test]
     fn a_move_off_the_minute_is_judged_by_the_minutes_past_the_one_it_arrived_in() {
         // Moved where a look ended, 5 s before the minute.
         let tried_off_the_minute = |minutes: &[(u64, Measured)]| {
@@ -5503,6 +5555,71 @@ pub(crate) mod tests {
             yields,
             Choice::Try(DESK.into()),
             "a failing link was held off ch52, the one other point, past its first hour"
+        );
+    }
+
+    #[test]
+    fn a_slow_link_is_held_off_a_point_kept_off_longer_past_its_first_hour() {
+        // As the 2.4 GHz radio carried at 02:48 on 24 Nov 2026: slow and
+        // lossy, but not failing.
+        let slow = carried(939, 2.5);
+        let ch52 = [desk_at(-48, None)];
+        let chosen_after = |after: Duration| {
+            let (mut chooser, fourth) = found_worse(4, Instant::now());
+            chooser.badly_on = Some(NEAR.into());
+            chooser.choose(fourth + after, (NEAR, &slow, -50, CH6), &ch52, false)
+        };
+
+        let held = chosen_after(HOUR * 2);
+        let ended = chosen_after(HOUR * 8);
+
+        assert_ne!(
+            held,
+            Choice::Try(DESK.into()),
+            "a slow link that isn't failing left for ch52 inside its eight-hour keep-off"
+        );
+        assert_eq!(
+            ended,
+            Choice::Try(DESK.into()),
+            "a slow link didn't leave for ch52 once its keep-off ended"
+        );
+    }
+
+    #[test]
+    fn a_trial_standing_through_a_longer_keep_off_forgets_the_count_and_keeps_the_rest() {
+        let (mut chooser, fourth) = found_worse(4, Instant::now());
+        chooser.badly_on = Some(NEAR.into());
+        let failing = carried(400, 15.0);
+        let ch52 = [desk_at(-48, None)];
+        let tried_at = fourth + HOUR;
+        let tried = chooser.choose(tried_at, (NEAR, &failing, -50, CH6), &ch52, false);
+        assert_eq!(
+            tried,
+            Choice::Try(DESK.into()),
+            "a failing link didn't leave for ch52 past its keep-off's first hour"
+        );
+        let stood_at = tried_at + TRIAL;
+        let well = carried(15, 0.0);
+        let stood = chooser.choose(stood_at, (DESK, &well, -48, CH52), &[], false);
+        assert!(
+            !matches!(stood, Choice::Back(_)),
+            "ch52 carrying 15 ms off a failing link went back: {stood:?}"
+        );
+
+        // With no usual to stand as, the keep-off runs to its end.
+        let left = chooser.kept_for(DESK, stood_at);
+        let ended = stood_at + left.unwrap_or_default();
+        let later = tried_ch52_and_back(&mut chooser, ended);
+
+        assert_eq!(
+            left,
+            Some((HOUR * 7).saturating_sub(TRIAL)),
+            "ch52 standing well cut short the keep-off it was tried through"
+        );
+        assert_eq!(
+            chooser.kept_for(DESK, later),
+            Some(HOUR),
+            "ch52 found worse after standing well wasn't kept off an hour, as at first"
         );
     }
 
