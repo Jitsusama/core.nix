@@ -178,14 +178,8 @@ function frameSwapped(acts) {
 // holds its key's frame that once, and raises the median after. It was
 // 3 ms until For You's drawers, made in 4 to 7, came the frame after in 71
 // of Joel's 74 that day, each a median of 72 ms from its key (Y2YBTS,
-// 2026-11-16); Slack's, made in over 20, still come after. It was 8 until
-// Joel's drawers from 24 to 25 November on his 60 Hz screen: 52 of 331
-// came the frame after, kinds such as on's, collections' and notices' made
-// in a median of 7 to 8, and 32% of those were within 50 ms of the key,
-// against 64% of the 25 made in 8 to 12 that came in it. Joining cost
-// those keys' frames a median of 24 ms against 16 to 18, and 88% were
-// still within 50 ms. `makings` holds each kind's last eight, in ms, and
-// is never changed.
+// 2026-11-16), then 8 until on's, made in 7 to 8, came in 50 ms only 32% of
+// the time (tests/pacing.qml). `makings`, each kind's last eight, never changes.
 const drawerMakingsKept = 8;
 const drawerJoinsUnder = 13;
 
