@@ -28,7 +28,10 @@ to zswap's pool or the disk, until it's touched again, so a builder short of mem
 round low and the next one at its true height. The kernel's counts of those are the whole
 machine's, so they bound what it could have taken of the shell, and on a quiet builder are nothing.
 On a busy one they grow with every other build, so the shell bounds them too: a page taken of its
-heap stays held, so no more was taken than any of the round's closings held but hadn't resident.
+heap stays held, so no more was taken than any of the round's closings held but hadn't resident,
+give or take its chunks' headers, which resident counts and held doesn't, and each figure's
+rounding to a MB. The headers can only tighten it, so a busy builder may fail a sound round by
+them, never pass a climb.
 The round before is let the lesser higher, which says why the bound was loose when it is.
 """
 
@@ -114,7 +117,9 @@ def resident_after_closings(shell: Shell) -> list[tuple[int, int]]:
     return [
         (int(held), int(resident.split()[0]) if resident[0].isdigit() else -1)
         for held, resident in re.findall(
-            r" of (\d+) MB held, (\d+ MB|an unknown amount) of it resident,", said
+            r"collected after closing in \d+ ms: \d+ MB live of (\d+) MB held, "
+            r"(\d+ MB|an unknown amount) of it resident,",
+            said,
         )
     ]
 
@@ -169,8 +174,9 @@ def test_a_round_of_every_place_keeps_no_more_live(capsys: pytest.CaptureFixture
     ]
     # A take in the third round only lowers it, so only what was taken before it counts: no more
     # than the machine took anywhere, nor than the shell held but hadn't resident at any of the
-    # second round's closings, since a page taken of its heap stays held. The machine's count
-    # alone would let a busy builder pass any climb.
+    # second round's closings, since a page taken of its heap stays held, give or take the
+    # headers and rounding the docstring names. The machine's count alone would let a busy
+    # builder pass any climb.
     machine = (taken[1] - started) * os.sysconf("SC_PAGE_SIZE") / 2**20
     shell_took = max((max(held - said, 0) for held, said in residents[1] if said >= 0), default=0)
     allowed = min(machine, float(shell_took))

@@ -479,11 +479,12 @@ bool givesBack() {
     const double given = heap.giveBack();
     const Weight after = weighed(engine, heap);
     const ReadBack read = readBack(engine, few);
-    // Free is -1 where the kernel won't say, which is never read as none.
+    // Free and resident are -1 where the kernel won't say, which is never
+    // read as none.
     const bool taken = after.free >= 0 && after.free < GIVEN_LEFT_MB;
     const bool said = thinned.free >= 0 && given > thinned.free / 2 &&
                       given <= thinned.free + GIVEN_LEFT_MB;
-    const bool resident = thinned.resident >= thinned.free &&
+    const bool resident = after.resident >= 0 && thinned.resident >= thinned.free &&
                           thinned.resident - after.resident > given / 2;
     if (!taken || !said || !resident || !read.asMade())
         std::fprintf(stderr,
@@ -557,8 +558,10 @@ struct Lending {
     }
 
     // Whether the kernel marked at least half as many pages lent, which
-    // giving them back never does, where it counts them.
-    [[nodiscard]] bool markedAsLent() const { return marked < 0 || marked > free / 2; }
+    // giving them back never does, where it counts them and free is known.
+    [[nodiscard]] bool markedAsLent() const {
+        return free >= 0 && (marked < 0 || marked > free / 2);
+    }
 
     // Whether the kernel's take left next to none of the free pages resident.
     [[nodiscard]] bool goneOnceTaken() const {
@@ -626,14 +629,19 @@ bool lendsBack() {
     const Lending lending = first.calm ? first : lentOnce();
     const bool firstAsLent = first.calm || first.asLent();
     const bool asLent = lending.asLent();
-    const bool held = !lending.calm || (lending.lentBefore >= 0 &&
-                                        lending.lentAfter - lending.lentBefore > lending.free / 2);
-    const bool kept = !lending.calm || lending.freeLent > lending.free / 2;
+    // Free and resident are -1 where the kernel won't say, which is never
+    // read as none.
+    const bool held =
+        !lending.calm || (lending.free >= 0 && lending.lentBefore >= 0 &&
+                          lending.lentAfter - lending.lentBefore > lending.free / 2);
+    const bool kept =
+        !lending.calm || (lending.free >= 0 && lending.freeLent > lending.free / 2);
     // What's held counted resident falls by what the kernel took, so a count
     // that ignored which pages are in memory fails; a take the kernel made
     // early has already lowered it, so only a calm lending is judged.
-    const bool fell =
-        !lending.calm || lending.residentLent - lending.residentTaken > lending.lent / 2;
+    const bool fell = !lending.calm || (lending.residentTaken >= 0 &&
+                                        lending.residentLent - lending.residentTaken >
+                                            lending.lent / 2);
     const ReadBack &read = lending.read;
     if (!lending.counted)
         std::fprintf(stderr,
@@ -1120,9 +1128,10 @@ constexpr int PAGE_SWAPPED_BIT = 62;
 // The MB of the heap's own pages the kernel has swapped out, in its chunks
 // and its large items, or -1 when the kernel won't say. Only the heap's,
 // since the whole process's would let another allocator's swapped pages
-// stand in for a chunk the count leaves out. A large item is read for its
-// size from its chunk's start, short of the item's end by its header, so
-// what's counted swapped is never more than the heap's.
+// stand in for a chunk the count leaves out. A large item is read over the
+// span weigh reads it resident over (heap.cpp's spanOf): its segment whole,
+// or its header and size to a page and at least a chunk, the heap's either
+// way, and pages past the item were never written, so none is swapped.
 double swappedHeld(const QV4::MemoryManager &manager) {
     QFile pagemap(QStringLiteral("/proc/self/pagemap"));
     if (!pagemap.open(QIODevice::ReadOnly | QIODevice::Unbuffered))
@@ -1146,7 +1155,12 @@ double swappedHeld(const QV4::MemoryManager &manager) {
             if (!count(chunk, QV4::Chunk::ChunkSize))
                 return -1;
     for (const auto &huge : manager.hugeItemAllocator.chunks)
-        if (!count(huge.chunk, huge.size))
+        if (!count(huge.chunk,
+                   huge.segment != nullptr
+                       ? huge.size
+                       : std::max<std::size_t>(
+                             (huge.size + QV4::Chunk::HeaderSize + page - 1) & ~(page - 1),
+                             QV4::Chunk::ChunkSize)))
             return -1;
     return megabytesOf(swapped * page);
 }
@@ -1166,7 +1180,9 @@ double swappedHeld(const QV4::MemoryManager &manager) {
 // counts, come first. A page of the heap the kernel swapped out is no
 // longer resident, so what's live is judged less what of the heap it has
 // swapped, and only the heap's, so no other memory of the process can
-// make up for an allocator the count leaves out.
+// make up for an allocator the count leaves out. A swapped page is held
+// but not resident, so the two together stay within what's held and its
+// headers too, which fails a swap count that read the wrong bit or pages.
 bool residentCoversWhatsLive() {
     QJSEngine engine;
     Heap heap(&engine);
@@ -1181,8 +1197,13 @@ bool residentCoversWhatsLive() {
             .arg(HUGE_LENGTH));
     const Weight weight = weighed(engine, heap);
     const QV4::MemoryManager *manager = engine.handle()->memoryManager;
-    // A refusal counts nothing swapped, which can only fail a sound count.
-    const double swapped = std::max(swappedHeld(*manager), 0.0);
+    // A refusal counts nothing swapped, which can only fail a sound count,
+    // and says so, so a failure isn't laid on the resident count.
+    const double swappedSaid = swappedHeld(*manager);
+    if (swappedSaid < 0)
+        std::fprintf(stderr, "note: the kernel wouldn't give the heap's page map, so nothing "
+                             "of it is counted swapped\n");
+    const double swapped = std::max(swappedSaid, 0.0);
     const double shapes = megabytesOf(manager->icAllocator.usedMem());
     const double large = megabytesOf(manager->getLargeItemsMem());
     const auto page = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
@@ -1205,13 +1226,13 @@ bool residentCoversWhatsLive() {
     }
     const bool made = shapes > 1 && chunked >= LARGE_ITEMS && segmented >= 1;
     const bool covers = weight.resident >= 0 && weight.resident + swapped >= weight.live;
-    const bool bounded = weight.resident <= weight.held + megabytesOf(over);
+    const bool bounded = weight.resident + swapped <= weight.held + megabytesOf(over);
     if (kept.isError() || !made || !covers || !bounded)
         std::fprintf(stderr,
                      "FAIL what's held resident covers the %.1f MB live, less %.1f MB swapped, "
                      "%.1f MB of it shapes and %.1f MB large items, %d made by the chunk "
-                     "allocator and %d with a segment, and passes the %.1f MB held by at most "
-                     "%.2f MB: %.1f MB resident\n",
+                     "allocator and %d with a segment, and with what's swapped passes the "
+                     "%.1f MB held by at most %.2f MB: %.1f MB resident\n",
                      weight.live, swapped, shapes, large, chunked, segmented, weight.held,
                      megabytesOf(over), weight.resident);
     return !kept.isError() && made && covers && bounded;
