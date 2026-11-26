@@ -6,8 +6,8 @@
 //! first appears, it sends a notice that knocks even in a call, and
 //! closes it once the row stops standing, resumed or left, so Joel's
 //! alarm doesn't outlive what it was about. A notice that couldn't be
-//! sent, as while the notices server starts again, is sent again at each
-//! look for a while, so a stop said then still knocks.
+//! sent, as while the notices server starts again, is sent again every
+//! few looks for two minutes, so a stop said then still knocks.
 //!
 //! It takes Joel's Pause All Agents the same way, as the ask `pause`, and
 //! while that stop stands it freezes agents' work started since, each
@@ -37,7 +37,7 @@ use daemon_serve::serve::{Shared, accept, listen};
 use serde_json::{Value, json};
 
 use crate::acts::{self, Refused};
-use crate::pause;
+use crate::pause::{self, Runs};
 use crate::peer::{Peer, may_act};
 use crate::phone::{self, Alert};
 use crate::record;
@@ -62,11 +62,21 @@ pub const EVERY: Duration = Duration::from_secs(2);
 /// a week old goes.
 const REMADE: Duration = Duration::from_secs(60);
 
-/// How long a live row's notice that couldn't be sent is sent again at
-/// each look: long enough for the notices server to start again, as at a
-/// switch, and no longer, so one that's gone doesn't fill the journal.
-/// Its row still stands in Needs You after.
+/// How long a live row's notice that couldn't be sent is sent again:
+/// long enough for the notices server to start again, as at a switch.
+/// Its row still stands in Needs You after, and Joel's phone is told
+/// whether or not it knocked.
 const KNOCK_FOR: Duration = Duration::from_secs(120);
+
+/// How many looks pass between tries of a notice that couldn't be sent,
+/// so a notices server that's gone isn't asked at every look.
+const KNOCK_LOOKS: u32 = 8;
+
+/// How long notify-send is given before it's ended, so a notices server
+/// that never answers can't hold up the look that freezes agents' work
+/// while a stop stands. One ended at its limit may have shown its notice,
+/// so the next try can show a second: one too many beats none.
+const KNOCK_LIMIT: Duration = Duration::from_secs(5);
 
 /// What the daemon is started with.
 #[derive(Debug)]
@@ -181,6 +191,8 @@ pub fn serve(serving: Serving) -> std::io::Result<()> {
             hold_paused(plan, &state, &host);
         }
         let mark = mark(&state);
+        // Looked at each time while a notice is to be sent again, so its
+        // next try isn't left for a change.
         if looked.as_ref() != Some(&mark) || made.elapsed() >= REMADE || !unknocked.is_empty() {
             let rows = tell::rows(&tell::kept(&state), now_ms(), &words);
             let (served, shadow): (Vec<Value>, Vec<Value>) =
@@ -188,6 +200,7 @@ pub fn serve(serving: Serving) -> std::io::Result<()> {
             let knocking = Knocking {
                 notify: notify.as_deref(),
                 busctl: busctl.as_deref(),
+                again: every.saturating_mul(KNOCK_LOOKS),
             };
             tell_new(
                 &state,
@@ -196,6 +209,7 @@ pub fn serve(serving: Serving) -> std::io::Result<()> {
                 &knocking,
                 &mut told,
                 &mut unknocked,
+                Instant::now(),
             );
             shared.change(served, json!({"stops": "answering"}));
             looked = Some(mark);
@@ -419,10 +433,12 @@ fn read_told(state: &Path) -> BTreeMap<String, Option<Shown>> {
     }
 }
 
-/// The programs a notice is sent and closed with.
+/// The programs a notice is sent and closed with, and how long passes
+/// between tries of one that couldn't be sent.
 struct Knocking<'a> {
     notify: Option<&'a Path>,
     busctl: Option<&'a Path>,
+    again: Duration,
 }
 
 /// What a row is told as: its key and the saying it shows, so an alert
@@ -436,20 +452,22 @@ fn told_as(row: &Value) -> String {
 }
 
 /// Tells each row new since the last: a notice for a live one, and for
-/// every one a line in would-tell.jsonl with the message Joel's own Slack
-/// would be sent, which nothing sends yet. What's told is kept only for
-/// rows standing, so it never grows past them, and the notice of one that
-/// no longer stands is closed. A live row whose notice couldn't be sent
-/// isn't told yet: `unknocked` keeps when it was first tried, and it's
-/// tried again each look until [`KNOCK_FOR`] has passed, then told as
-/// unknocked, its journal saying so.
+/// every one a line in would-tell.jsonl, written as it first appears,
+/// which Joel's phone is told from (src/bin/pineapple-slack/alerts.rs).
+/// What's told is kept only for rows standing, so it never grows past
+/// them, and the notice of one that no longer stands is closed. A live
+/// row whose notice couldn't be sent isn't told yet: `unknocked` keeps
+/// when it was first and last tried, and it's tried again each time
+/// `knocking.again` has passed, until [`KNOCK_FOR`] has since the first,
+/// then told as unknocked, its journal saying so. `now` is this look's.
 fn tell_new(
     state: &Path,
     served: &[Value],
     shadow: &[Value],
     knocking: &Knocking,
     told: &mut BTreeMap<String, Option<Shown>>,
-    unknocked: &mut BTreeMap<String, Instant>,
+    unknocked: &mut BTreeMap<String, Tried>,
+    now: Instant,
 ) {
     let standing: BTreeSet<String> = served.iter().chain(shadow).map(told_as).collect();
     unknocked.retain(|key, _| standing.contains(key));
@@ -467,45 +485,43 @@ fn tell_new(
         if told.contains_key(&key) {
             continue;
         }
+        let tried = unknocked.get(&key).copied();
+        if tried.is_some_and(|tried| now.duration_since(tried.last) < knocking.again) {
+            continue;
+        }
         let live = row["shadow"] == false;
         let knock = match knocking.notify {
-            Some(program) if live => notice(program, row),
-            _ => Knock::Missed,
+            Some(program) if live => Some(notice(program, row)),
+            _ => None,
         };
-        let knocked = matches!(knock, Knock::Sent(_));
-        if live && !knocked && knocking.notify.is_some() {
-            let first = *unknocked.entry(key.clone()).or_insert_with(Instant::now);
-            if first.elapsed() < KNOCK_FOR {
+        if tried.is_none() {
+            write_down(state, row, live, matches!(knock, Some(Ok(_))));
+        }
+        if let Some(Err(why)) = &knock {
+            let said = row["key"].as_str().unwrap_or_default();
+            let first = tried.map_or(now, |tried| tried.first);
+            if now.duration_since(first) < KNOCK_FOR {
+                if tried.is_none() {
+                    eprintln!(
+                        "<4>a notice couldn't be sent, so it's sent again for {} s: {said}: \
+                         {why}",
+                        KNOCK_FOR.as_secs()
+                    );
+                }
+                unknocked.insert(key, Tried { first, last: now });
                 continue;
             }
             eprintln!(
-                "<3>a notice couldn't be sent for {} s, so it's let go; its row still \
-                 stands in Needs You: {}",
-                KNOCK_FOR.as_secs(),
-                row["key"].as_str().unwrap_or_default()
+                "<3>a notice couldn't be sent in {} s, so it's let go; its row still stands \
+                 in Needs You: {said}: {why}",
+                KNOCK_FOR.as_secs()
             );
         }
         unknocked.remove(&key);
         let shown = match (knock, knocking.busctl) {
-            (Knock::Sent(Some(id)), Some(busctl)) => {
-                server(busctl).map(|server| Shown { id, server })
-            }
+            (Some(Ok(Some(id))), Some(busctl)) => server(busctl).map(|server| Shown { id, server }),
             _ => None,
         };
-        let would = json!({
-            "at": now_ms(),
-            "key": row["key"],
-            "saying": row["saying"],
-            "shadow": !live,
-            "knocked": knocked,
-            "title": row["title"],
-            "words": row["words"],
-            "link": row["link"],
-            "dm": dm(row),
-        });
-        if let Err(error) = record::append(&state.join("would-tell.jsonl"), &would) {
-            eprintln!("<4>couldn't write what it would tell: {error}");
-        }
         told.insert(key, shown);
         moved = true;
     }
@@ -523,47 +539,61 @@ fn tell_new(
     }
 }
 
-/// Whether a notice went, and the number it was given, which closes it.
-enum Knock {
-    Missed,
-    Sent(Option<u32>),
+/// When a live row's notice that couldn't be sent was first tried, and
+/// when last.
+#[derive(Clone, Copy, Debug)]
+struct Tried {
+    first: Instant,
+    last: Instant,
+}
+
+/// Writes a row down in would-tell.jsonl as it first appears, with the
+/// message Joel's phone is told, and whether its first knock went.
+fn write_down(state: &Path, row: &Value, live: bool, knocked: bool) {
+    let would = json!({
+        "at": now_ms(),
+        "key": row["key"],
+        "saying": row["saying"],
+        "shadow": !live,
+        "knocked": knocked,
+        "title": row["title"],
+        "words": row["words"],
+        "link": row["link"],
+        "dm": dm(row),
+    });
+    if let Err(error) = record::append(&state.join("would-tell.jsonl"), &would) {
+        eprintln!("<4>couldn't write what it would tell: {error}");
+    }
 }
 
 /// Knocks: a notice that sounds even while notices are held or Joel is in
-/// a call, which the notices daemon gives this category (2RCBOJ).
-fn notice(notify: &Path, row: &Value) -> Knock {
+/// a call, which the notices daemon gives this category (2RCBOJ). It
+/// answers the number the notice was given, which closes it, or why it
+/// couldn't be sent within [`KNOCK_LIMIT`].
+fn notice(notify: &Path, row: &Value) -> Result<Option<u32>, String> {
     let title = row["title"].as_str().unwrap_or_default();
     let body = format!(
         "{}\n{}",
         row["words"].as_str().unwrap_or_default(),
         row["link"].as_str().unwrap_or_default()
     );
-    let sent = Command::new(notify)
-        .args([
-            "--urgency=critical",
-            "--category=pineapple.stop",
-            "--app-name=pineapple",
-            "--print-id",
-            // Ends the options, so words said that open with `--` are shown
-            // rather than taken as one.
-            "--",
-            title,
-            &body,
-        ])
-        .output();
-    match sent {
-        Ok(output) if output.status.success() => {
-            Knock::Sent(String::from_utf8_lossy(&output.stdout).trim().parse().ok())
-        }
-        Ok(output) => {
-            eprintln!("<4>notify-send ended {}", output.status);
-            Knock::Missed
-        }
-        Err(error) => {
-            eprintln!("<4>couldn't run notify-send: {error}");
-            Knock::Missed
-        }
-    }
+    let args: Vec<String> = [
+        "--urgency=critical",
+        "--category=pineapple.stop",
+        "--app-name=pineapple",
+        "--print-id",
+        // Ends the options, so words said that open with `--` are shown
+        // rather than taken as one.
+        "--",
+        title,
+        &body,
+    ]
+    .iter()
+    .map(|arg| (*arg).to_owned())
+    .collect();
+    let mut runs = pause::System { limit: KNOCK_LIMIT };
+    runs.run(notify, &args)
+        .map(|printed| printed.trim().parse().ok())
 }
 
 /// The notices server's name on the bus now, which changes whenever it
@@ -649,32 +679,104 @@ mod tests {
             std::env::temp_dir().join(format!("pineapple-unknocked-{}", std::process::id()));
         let _ = fs::remove_dir_all(&state);
         fs::create_dir_all(&state).expect("a state folder");
-        let row = json!({"key": "slack:C1:1.0", "saying": "pineapple override",
-            "shadow": false, "title": "Someone stopped agents", "words": "w", "link": "l"});
+        let row = |key: &str, shadow: bool| {
+            json!({"key": key, "saying": "pineapple override", "shadow": shadow,
+                "title": "Someone stopped agents", "words": "w", "link": "l"})
+        };
         let gone = state.join("no-notify-send");
         let knocking = Knocking {
             notify: Some(&gone),
             busctl: None,
+            again: Duration::from_secs(10),
         };
         let (mut told, mut unknocked) = (BTreeMap::new(), BTreeMap::new());
-        let rows = [row];
-        tell_new(&state, &rows, &[], &knocking, &mut told, &mut unknocked);
-        assert!(told.is_empty(), "not told while it may yet knock: {told:?}");
-        assert_eq!(unknocked.len(), 1, "kept to try again: {unknocked:?}");
+        let (live, shadow) = ([row("slack:C1:1.0", false)], [row("slack:C2:1.0", true)]);
+        let lives = |told: &BTreeMap<String, Option<Shown>>| {
+            told.contains_key("slack:C1:1.0@pineapple override")
+        };
         let would = state.join("would-tell.jsonl");
-        assert!(!would.exists(), "nor written down yet");
-        let long_ago = Instant::now()
-            .checked_sub(KNOCK_FOR)
-            .expect("a time that long ago");
-        unknocked.values_mut().for_each(|first| *first = long_ago);
-        tell_new(&state, &rows, &[], &knocking, &mut told, &mut unknocked);
-        assert_eq!(told.len(), 1, "told once tried for long enough: {told:?}");
-        assert!(unknocked.is_empty(), "and not tried again: {unknocked:?}");
-        let written = fs::read_to_string(&would).expect("written down");
-        assert_eq!(written.lines().count(), 1, "once: {written}");
+        let written = || {
+            fs::read_to_string(&would)
+                .unwrap_or_default()
+                .lines()
+                .filter(|line| line.contains("slack:C1:1.0"))
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        };
+        let start = Instant::now();
+        tell_new(
+            &state,
+            &live,
+            &shadow,
+            &knocking,
+            &mut told,
+            &mut unknocked,
+            start,
+        );
+        assert!(!lives(&told), "not told while it may yet knock: {told:?}");
         assert!(
-            written.contains("\"knocked\":false"),
-            "as not knocked: {written}"
+            told.contains_key("slack:C2:1.0@pineapple override"),
+            "a shadow row is told at once: {told:?}"
+        );
+        assert_eq!(unknocked.len(), 1, "kept to try again: {unknocked:?}");
+        let first = written();
+        assert_eq!(
+            first.len(),
+            1,
+            "written down at once, for Joel's phone: {first:?}"
+        );
+        assert!(
+            first[0].contains("\"knocked\":false"),
+            "as not knocked: {first:?}"
+        );
+        let soon = start + Duration::from_secs(5);
+        tell_new(
+            &state,
+            &live,
+            &shadow,
+            &knocking,
+            &mut told,
+            &mut unknocked,
+            soon,
+        );
+        assert!(!lives(&told), "not tried again before its pace: {told:?}");
+        assert_eq!(
+            unknocked["slack:C1:1.0@pineapple override"].last, start,
+            "nor tried"
+        );
+        let late = start + KNOCK_FOR;
+        tell_new(
+            &state,
+            &live,
+            &shadow,
+            &knocking,
+            &mut told,
+            &mut unknocked,
+            late,
+        );
+        assert!(lives(&told), "told once tried for long enough: {told:?}");
+        assert!(unknocked.is_empty(), "and not tried again: {unknocked:?}");
+        assert_eq!(written(), first, "and written down only the once");
+        let kept = fs::read_to_string(state.join("told.json")).unwrap_or_default();
+        assert!(kept.contains("slack:C1:1.0@"), "and kept as told: {kept}");
+        let quiet = Knocking {
+            notify: None,
+            busctl: None,
+            again: knocking.again,
+        };
+        let other = [row("slack:C3:1.0", false)];
+        tell_new(
+            &state,
+            &other,
+            &[],
+            &quiet,
+            &mut told,
+            &mut unknocked,
+            start,
+        );
+        assert!(
+            told.contains_key("slack:C3:1.0@pineapple override") && unknocked.is_empty(),
+            "with no notify-send, a live row is told at once: {told:?}"
         );
         fs::remove_dir_all(&state).expect("the state folder goes");
     }

@@ -232,26 +232,35 @@ fn a_stops_notice_that_couldnt_be_sent_is_sent_again_and_told_once() {
         .env("XDG_STATE_HOME", &dir)
         .env("PINEAPPLE_PAUSE", dir.join("no-plan.json"));
     let daemon = Daemon::start(&mut command, socket, dir.clone());
-    let would_tell = dir.join("pineapple/would-tell.jsonl");
     until("the live stop was never told", || {
-        fs::read_to_string(&would_tell).is_ok_and(|text| text.contains("slack:C1:1.0"))
+        fs::read_to_string(dir.join("pineapple/told.json"))
+            .is_ok_and(|told| told.contains("slack:C1:1.0@"))
     });
-    let knocks = fs::read_to_string(&notified).expect("the knocks were heard");
-    assert_eq!(
-        knocks
+    let knocks = || {
+        fs::read_to_string(&notified)
+            .unwrap_or_default()
             .lines()
             .filter(|line| line.contains("stopped agents"))
-            .count(),
-        3,
-        "knocked again until it went, and not after: {knocks}"
-    );
-    let told = fs::read_to_string(&would_tell).expect("written down");
+            .count()
+    };
+    assert_eq!(knocks(), 3, "knocked again until it went");
+    // Long enough for a dozen looks, each of which could knock again.
+    std::thread::sleep(std::time::Duration::from_millis(600));
+    assert_eq!(knocks(), 3, "and not once it went");
+    let told = fs::read_to_string(dir.join("pineapple/would-tell.jsonl")).expect("written down");
     let live: Vec<&str> = told
         .lines()
         .filter(|line| line.contains("slack:C1:1.0"))
         .collect();
-    assert_eq!(live.len(), 1, "written down once: {told}");
-    assert!(live[0].contains("\"knocked\":true"), "as knocked: {told}");
+    assert_eq!(
+        live.len(),
+        1,
+        "written down once, at its first look: {told}"
+    );
+    assert!(
+        live[0].contains("\"knocked\":false"),
+        "as that first knock didn't go: {told}"
+    );
     drop(daemon);
 }
 
