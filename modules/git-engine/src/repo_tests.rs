@@ -247,7 +247,13 @@ fn the_system_files_are_where_the_git_built_beside_reads_them() {
     // The package's build names the files from the git beside it, and its
     // tests run in the same shell, so they see what it named. A build by
     // cargo alone, in a dev shell or not, names none and reads /etc's.
+    // The package says it's the package apart from naming the files, so a
+    // package that stopped naming them fails here rather than read /etc.
     let named = std::env::var("GIT_ENGINE_CONFIG_SYSTEM").ok();
+    assert!(
+        std::env::var_os("GIT_ENGINE_PACKAGED").is_none() || named.is_some(),
+        "the package's build named no system files for the engine to read"
+    );
     assert_eq!(
         option_env!("GIT_ENGINE_CONFIG_SYSTEM"),
         named.as_deref(),

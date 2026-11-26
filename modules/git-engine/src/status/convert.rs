@@ -335,6 +335,8 @@ mod tests {
              [filter \"skipping\"]\n process = git-lfs filter-process --skip\n\
              [filter \"skipclean\"]\n clean = git-lfs clean --skip -- %f\n\
              [filter \"skipafter\"]\n process = git-lfs filter-process --skip x\n\
+             [filter \"skipnamed\"]\n process = git-lfs filter-process --skip %f\n\
+             [filter \"skipdashed\"]\n process = git-lfs filter-process --skip -- %f\n\
              [filters]\n x = y\n",
         );
         let runs = |name: &str| (name.to_owned(), Driver::Runs);
@@ -362,6 +364,8 @@ mod tests {
                 lfs("skipping"),
                 runs("skipclean"),
                 runs("skipafter"),
+                lfs("skipnamed"),
+                lfs("skipdashed"),
             ]),
             "took a filter only smudging, with an empty or emptied command, an empty \
              process over a clean one, or another section's keys; missed one with a dot \

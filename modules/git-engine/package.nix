@@ -24,6 +24,9 @@ rustPlatform.buildRustPackage {
   sourceRoot = "source/git-engine";
   cargoLock.lockFile = ./Cargo.lock;
   nativeBuildInputs = [ git ];
+  # Said apart from the files named below, so the tests can tell the
+  # package that stopped naming them from a build by cargo alone.
+  env.GIT_ENGINE_PACKAGED = "1";
   # Each answer is kept apart first, so a git that can't answer fails the
   # build rather than naming an empty path.
   preBuild = ''
