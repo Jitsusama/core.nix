@@ -948,10 +948,10 @@ constexpr int LONG_RUN_STORES = 800;
 // first and none drained; no case that weighs what's made reaches the last.
 // It holds only if the last bin has runs of chunks using both more and
 // less, so a layout that left none there fails it rather than passing with
-// nothing tried. It walks the objects' allocator alone: the shapes' runs
-// through the same sweep, so it proves nothing more, and a few shapes on a
-// fresh engine rarely mix chunks of differing use, so walking it would
-// read as a check with nothing tried.
+// nothing tried. It walks the objects' allocator alone: the shapes'
+// allocator goes through the same sweep, so it proves nothing more, and a
+// fresh engine's few shapes rarely mix chunks of differing use, so walking
+// it would read as a check with nothing tried.
 bool sortsEachBinFullestFirst() {
     QJSEngine engine;
     Heap heap(&engine);

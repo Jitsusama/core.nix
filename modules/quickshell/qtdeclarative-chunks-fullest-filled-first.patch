@@ -20,15 +20,22 @@ last bin and may take a new chunk, but it fills at least half of it.
 The kept chunks are put in that order where they lie, which the
 partition before it already shuffles each sweep. The list the sort
 uses is the allocator's, keeping its room from sweep to sweep, so a
-sweep allocates nothing once it's grown, and emptied after each, so it
-holds no chunk a later sweep frees. Ties go by address through
+sweep allocates nothing once it's grown. It's emptied before each sweep,
+so one cut short leaves the next nothing stale to write back, and after,
+so it holds no chunk a later sweep frees. Ties go by address through
 std::less, which orders any two pointers, so the order is the same from
 sweep to sweep.
 
 ---
 --- a/src/qml/memory/qv4mm.cpp
 +++ b/src/qml/memory/qv4mm.cpp
-@@ -546,6 +546,28 @@ void BlockAllocator::sweep()
+@@ -28,4 +28,5 @@
+ #include <algorithm>
+ #include <chrono>
+ #include <cstdlib>
++#include <functional>
+ 
+@@ -546,6 +547,30 @@ void BlockAllocator::sweep()
          return chunks.at(i)->sweep(engine);
      });
      const auto firstEmptyChunk = chunks.begin() + firstEmptyChunkPos;
@@ -42,9 +49,11 @@ sweep to sweep.
 +    // long run passes at most a few runs too short for it in the last bin, and may take a new
 +    // chunk, which it fills at least half of. The partition above already shuffles the chunks
 +    // each sweep, so nothing counts on the order they lay in. The list is the allocator's,
-+    // keeping its room from sweep to sweep, so a sweep allocates nothing once it has grown,
-+    // and emptied after, so it holds no chunk a later sweep frees. Ties go by address through
++    // keeping its room from sweep to sweep, so a sweep allocates nothing once it has grown.
++    // It's emptied before, so a sweep cut short leaves the next nothing stale to write back,
++    // and after, so it holds no chunk a later sweep frees. Ties go by address through
 +    // std::less, which orders any two pointers, so the order is the same from sweep to sweep.
++    byUse.clear();
 +    for (auto kept = chunks.begin(); kept != firstEmptyChunk; ++kept)
 +        byUse.emplace_back((*kept)->nUsedSlots(), *kept);
 +    std::sort(byUse.begin(), byUse.end(), [](const auto &one, const auto &other) {
