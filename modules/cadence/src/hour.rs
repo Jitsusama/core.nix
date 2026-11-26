@@ -12,8 +12,9 @@
 //!
 //! This file reads the measures and runs the hour; `card` composes what it
 //! says and keeps, `good` holds each measure to the definition of good,
-//! `owing` files its drag with each owner, `records` reads the queues'
-//! records, and `reviews` the harness's review records.
+//! `owing` files its drag with each owner, `net` reads the merge net's two
+//! files, `records` reads the queues' records, and `reviews` the
+//! harness's review records.
 
 mod card;
 mod good;
@@ -21,6 +22,7 @@ mod ledger;
 mod lines;
 mod measures;
 mod moved;
+mod net;
 mod owing;
 mod parted;
 mod records;
@@ -238,42 +240,6 @@ fn quarantine(core: &Path) -> String {
     .unwrap_or_default()
 }
 
-/// The file at `path` whole, or why it can't be read.
-fn read(path: &Path) -> Result<String, String> {
-    fs::read_to_string(path).map_err(|err| format!("{} can't be read: {err}", path.display()))
-}
-
-/// The merges the net reverted, from cadence's `reverted.json` in
-/// `folder`, and the checks broken on main, from the net's results under
-/// `state_home`, each read whole or said unread. Read as empty, a file
-/// lost or torn would count none reverted and none broken, and close both
-/// lines as fixed while nothing was looked at.
-fn from_the_net(
-    folder: &Path,
-    state_home: &Path,
-    core: &Path,
-    quarantine: &str,
-    now: i64,
-) -> [Measure; 2] {
-    let kept = read(&folder.join("reverted.json")).and_then(|text| {
-        serde_json::from_str::<serde_json::Value>(&text)
-            .map(|_| text)
-            .map_err(|err| format!("reverted.json isn't JSON: {err}"))
-    });
-    let reverts = match kept {
-        Ok(text) => measures::reverts(&text, now, NET_RULES),
-        Err(why) => measures::unread(measures::reverts("", now, NET_RULES), &why),
-    };
-    let broken = |text: &str, main: &measures::Main| {
-        measures::broken(text, now, NET, main, &measures::failed_in)
-    };
-    let broken = match read(&state_home.join("net/results.jsonl")) {
-        Ok(text) => broken(&text, &measures::Main::read(core, quarantine)),
-        Err(why) => measures::unread(broken("", &measures::Main::default()), &why),
-    };
-    [reverts, broken]
-}
-
 /// Reads every measure from the machine: the orchestrator's misses and
 /// asks, the work system's findings on the mesh, the net's quarantine,
 /// reverts and results, the tick's card, the three mains, code health's
@@ -322,7 +288,7 @@ fn gather(
         measures::undated(&quarantine, &today(now), NET_RULES),
         landed(&core_log, &harness_log, &machine_log, now),
     ];
-    all.extend(from_the_net(folder, state_home, &core, &quarantine, now));
+    all.extend(net::read_both(folder, state_home, &core, &quarantine, now));
     all.extend(measures::said_none(misses, now));
     all.push(measures::cited::read(
         state_home,
@@ -729,47 +695,6 @@ fn landed(core: &str, harness: &str, machine: &str, now: i64) -> Measure {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_nets_files_lost_or_torn_leave_their_lines_unjudged_not_fixed() {
-        let root = tempfile::tempdir().expect("a scratch folder");
-        let (folder, state) = (root.path().join("cadence"), root.path().join("state"));
-        fs::create_dir_all(state.join("net")).expect("the net's folder");
-        fs::create_dir_all(&folder).expect("cadence's folder");
-        let core = root.path().join("core.git");
-        let [reverts, broken] = from_the_net(&folder, &state, &core, "", 1_000);
-        assert_eq!(
-            reverts.target, None,
-            "a lost reverted.json was judged: {}",
-            reverts.says
-        );
-        assert_eq!(
-            broken.target, None,
-            "lost results were judged: {}",
-            broken.says
-        );
-        assert!(
-            reverts.says.contains("unread"),
-            "a lost file went unsaid: {}",
-            reverts.says
-        );
-        fs::write(folder.join("reverted.json"), "{\"reverts\":").expect("a torn file");
-        let [reverts, _] = from_the_net(&folder, &state, &core, "", 1_000);
-        assert_eq!(
-            reverts.target, None,
-            "a torn reverted.json was judged: {}",
-            reverts.says
-        );
-        fs::write(folder.join("reverted.json"), "{}").expect("a whole file");
-        fs::write(state.join("net/results.jsonl"), "").expect("no results yet");
-        let [reverts, broken] = from_the_net(&folder, &state, &core, "", 1_000);
-        assert_eq!(
-            reverts.target,
-            Some(0.0),
-            "a whole reverted.json went unjudged"
-        );
-        assert_eq!(broken.target, Some(0.0), "whole results went unjudged");
-    }
 
     #[test]
     fn a_merges_rounds_go_to_the_session_that_merged_it_not_its_quest() {
