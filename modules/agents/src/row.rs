@@ -776,6 +776,7 @@ mod tests {
                 "parked by the node, {what}, it reads parked and its Return wakes it"
             );
             let mut said_parked = record.clone();
+            said_parked["standing"] = json!("running");
             said_parked["presence"]["state"] = json!("parked");
             let twin = made(&said_parked, Place::default(), &given());
             assert_eq!(
@@ -887,6 +888,13 @@ mod tests {
             marks(&record("parked")),
             "waitsOnJoel:muted:muted:false:true",
             "one parked keeps a parked one's muted hue, as its mark does, not a listening one's"
+        );
+        let mut node_parked = record("listening");
+        node_parked["standing"] = json!("parked");
+        assert_eq!(
+            marks(&node_parked),
+            "waitsOnJoel:muted:muted:false:true",
+            "one the node parks keeps a parked one's muted hue though its presence last listened"
         );
         let nearing = json!({"presence": {"addresses": ["P"], "session": "s-1",
             "wants": {"kind": "approval", "said": "May I push?"},

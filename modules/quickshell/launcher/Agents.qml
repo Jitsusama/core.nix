@@ -943,7 +943,8 @@ Provider {
             ? presence.owns.find(owned => /^QEST-/.test(owned)) ?? "" : "";
         const place = { depth: served.depth, orchestrates: !!held.orchestrates };
         const said = items => (items ?? []).map(item => item.said).join(" \u00b7 ");
-        const returning = SessionRow.returnOf(served.acts, held.returns);
+        const returning = SessionRow.drawn(served, windowedOf(session),
+            Sessions.parkedAs(session.address) !== null).marked;
         const row = member({
             thing: true,
             key: served.row,
@@ -1434,14 +1435,13 @@ Provider {
     }
 
     // The acts a session's row offers and the one its Return does, as the
-    // agents daemon serves its row (SessionRow.offered), so its drawer and
-    // its step in list the same; while its row isn't held, SessionRow.js's
-    // own (SessionRow.fallbackOf).
+    // agents daemon serves its row, so its drawer, its step in and its Return
+    // (sessionRow) agree; while its row isn't held, or while the shell holds
+    // it parked, SessionRow.js's own (SessionRow.drawn).
     function offeredOf(session) {
         const row = rowsKind?.held?.[`row:agents:${session.address}`]?.row ?? null;
-        return SessionRow.offered(row?.acts, row?.held?.returns,
-            SessionRow.fallbackOf(row !== null, windowedOf(session),
-                Sessions.parkedAs(session.address) !== null));
+        return SessionRow.drawn(row, windowedOf(session),
+            Sessions.parkedAs(session.address) !== null);
     }
 
     // A session's own acts, in the order its row offers them, each steering

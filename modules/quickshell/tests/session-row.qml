@@ -135,6 +135,12 @@ QtObject {
                 "verb:agent:talk", [], "talk pause", "talk"],
             ["a Return the shell doesn't make marks its first", served(["talk", "pause"]),
                 "verb:agent:hush", [], "talk pause", "talk"],
+            // Return never falls to an act that steers or ends it, whatever
+            // order a newer daemon serves.
+            ["a Return it doesn't make passes over Park", served(["park", "stop", "talk"]),
+                "verb:agent:hush", [], "park stop talk", "talk"],
+            ["no harmless act served puts Talk first", served(["park", "stop"]), undefined, [],
+                "talk park stop", "talk"],
             ["only acts it can't make served, the shell's own", served(["hush"]),
                 "verb:agent:hush", ["talk"], "talk", "talk"]
         ];
@@ -165,19 +171,32 @@ QtObject {
             if (got !== want)
                 failures.push(`fallback ${what}: "${got}", not "${want}"`);
         }
-        // A held row's Return does the act its drawer marks, whatever it serves.
-        const returnsOf = [
-            ["one paused", served(["switch", "talk", "resume"]), "verb:agent:resume", "resume"],
-            ["one the shell doesn't make", served(["talk", "pause"]), "verb:agent:hush",
-                "talk"],
-            ["one it doesn't list", served(["talk"]), "verb:agent:switch", "switch"],
-            ["nothing it makes", served(["hush"]), "verb:agent:hush", "talk"]
+        // What a drawer offers and its Return does, from its row, whether it has
+        // a window, and whether the shell holds it parked: the shell's parked
+        // word wins over a row still served live, and nothing it offers is
+        // kept back at the press (withheld, below).
+        const rowOf = (acts, returns) => ({ acts: served(acts), held: { returns } });
+        const live = rowOf(["switch", "talk", "pause", "park", "close"], "verb:agent:talk");
+        const draws = [
+            ["held live", live, true, false, "switch talk pause park close", "talk"],
+            ["held live, parked by the shell", live, true, true, "wake talk", "wake"],
+            ["held paused", rowOf(["switch", "talk", "resume"], "verb:agent:resume"), true,
+                false, "switch talk resume", "resume"],
+            ["held with nothing it makes, parked by the shell",
+                rowOf(["hush"], "verb:agent:hush"), false, true, "wake talk", "wake"],
+            ["held with nothing it makes", rowOf(["hush"], "verb:agent:hush"), true, false,
+                "talk", "talk"],
+            ["unheld, with a window", null, true, false, "switch talk", "switch"],
+            ["unheld, parked by the shell", null, true, true, "wake talk", "wake"]
         ];
-        for (const [what, acts, returns, want] of returnsOf) {
-            const got = SessionRow.returnOf(acts, returns);
-            const marked = SessionRow.offered(acts, returns, ["talk"]).marked;
-            if (got !== want || got !== marked)
-                failures.push(`Return of ${what}: ${got}, marked ${marked}, not ${want}`);
+        for (const [what, row, windowed, parked, want, mark] of draws) {
+            const { ids, marked } = SessionRow.drawn(row, windowed, parked);
+            if (ids.join(" ") !== want || marked !== mark)
+                failures.push(`drawn ${what}: "${ids.join(" ")}" marking ${marked}, `
+                    + `not "${want}" marking ${mark}`);
+            const kept = ids.filter(id => SessionRow.withheld(row, id, parked) !== "");
+            if (kept.length > 0)
+                failures.push(`drawn ${what}: offers ${kept.join(" ")}, which it keeps back`);
         }
         // Pressed, an act is kept back only where it would wake what it meant to
         // steer: anything but Wake and Talk once parked, by its row or by the
@@ -222,15 +241,19 @@ QtObject {
                 failures.push(`${what}: words.json says nothing of "${got}" naming the act`);
         }
         // What the foot says of one kept back, in the act's own name, plainly.
+        // The act's name goes where its words say {act}, taken as it is; the
+        // words are a stand-in, so rewording the foot fails nothing here.
+        const keptWords = { unsent: "{act} held", unsentParked: "{act}: parked",
+            unsentUnheld: "unknown, so {act} stays" };
         const unsents = [
-            ["unsent", "Park", "Park not sent, its row doesn't offer it now"],
-            ["unsentParked", "Stop", "Stop not sent, it's parked now, and that would wake it"],
-            ["unsentUnheld", "Pause", "Pause not sent, how it stands isn't known yet"],
-            ["unsent", "$& {act}", "$& {act} not sent, its row doesn't offer it now"],
+            ["unsent", "Park", "Park held"],
+            ["unsentParked", "Stop", "Stop: parked"],
+            ["unsentUnheld", "Pause", "unknown, so Pause stays"],
+            ["unsent", "$& {act}", "$& {act} held"],
             ["unknown", "Park", ""]
         ];
         for (const [why, act, want] of unsents) {
-            const got = SessionRow.unsent(keptSaid, why, act);
+            const got = SessionRow.unsent(keptWords, why, act);
             if (got !== want)
                 failures.push(`unsent ${why} of ${act}: "${got}", not "${want}"`);
         }

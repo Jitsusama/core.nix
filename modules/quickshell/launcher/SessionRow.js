@@ -102,22 +102,42 @@ function known(key) {
     return KNOWN.includes(id) ? id : "";
 }
 
+// The acts Return may fall to when the row names none the shell makes:
+// those that leave a session as it is, or wake it, as Wake is Return for a
+// parked one.
+const HARMLESS = ["switch", "talk", "wake"];
+
 // The acts a session's row offers, by their ids, and `marked`, the one its
 // Return does: those its row serves (`rowActs`) that the shell makes, in
 // their order, and its `returns` (modules/agents/src/row.rs), else
-// `fallback`, the shell's own list, with Return on its first. An act
-// Return does that the row doesn't list leads it, so nothing marks an act
-// Return won't do. Its drawer and its step in read the same list.
+// `fallback`, the shell's own list. An act Return does that the row
+// doesn't list leads it, so nothing marks an act Return won't do. With no
+// Return the shell makes, Return is the first act that leaves the session
+// as it is, else Talk, put first, never one that steers or ends it,
+// whatever order a newer daemon serves (standing.rs's returns). Its drawer
+// and its step in read the same list.
 function offered(rowActs, returns, fallback) {
     const served = (Array.isArray(rowActs) ? rowActs : [])
         .map(one => known(one?.key))
         .filter(id => id !== "");
     const ids = served.length > 0 ? served : fallback.slice();
-    const returning = known(returns);
-    if (returning !== "" && !ids.includes(returning)) {
+    const returning = known(returns) || (ids.find(id => HARMLESS.includes(id)) ?? "talk");
+    if (!ids.includes(returning)) {
         ids.unshift(returning);
     }
-    return { ids, marked: returning === "" ? ids[0] ?? "" : returning };
+    return { ids, marked: returning };
+}
+
+// What a session's drawer offers and its Return does, from its `row` as
+// the agents daemon serves it, or null before it's held, whether it's
+// `windowed`, and whether the shell holds it `parked`. Parked by the
+// shell's word, it offers a parked one's acts whatever its row still
+// serves, since `withheld` keeps back every other act then, so what's
+// offered and what goes agree.
+function drawn(row, windowed, parked) {
+    const fallback = fallbackOf(row !== null && row !== undefined, windowed, parked);
+    return parked ? offered([], "", fallback)
+        : offered(row?.acts, row?.held?.returns, fallback);
 }
 
 // The shell's own acts for a session's row, `offered`'s fallback: for one
@@ -135,11 +155,6 @@ function fallbackOf(held, windowed, parked) {
     return windowed && !held ? ["switch", "talk"] : ["talk"];
 }
 
-// The act a held row's Return does, read as its drawer marks it, so the
-// two never name different acts.
-function returnOf(rowActs, returns) {
-    return offered(rowActs, returns, fallbackOf(true, false, false)).marked;
-}
 
 // Why an act pressed on a session's row isn't steered, asked of the row
 // as it's served at the press, and whether the shell holds it `parked`,
