@@ -7,7 +7,7 @@
 //! its camera goes, a node file it couldn't remove is tried again.
 
 use std::fs::{self, File, Permissions};
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -50,12 +50,14 @@ impl Watch {
         })
     }
 
-    /// Starts the watch on a camera of the test's own, a file it can
-    /// remove, as a relay's node goes when its camera does.
+    /// Starts the watch on a camera of the test's own, a link to a node
+    /// nothing on the machine holds, which it can remove, as a relay's node
+    /// goes when its camera does. A device, since only a device's holders
+    /// are read.
     fn owned(name: &str) -> Self {
         let camera = Self::root(name).join("camera");
         Self::started(name, camera.to_str().unwrap(), |folder| {
-            fs::write(folder.parent().unwrap().join("camera"), "").unwrap();
+            symlink("/dev/random", folder.parent().unwrap().join("camera")).unwrap();
         })
     }
 
@@ -342,6 +344,7 @@ fn a_node_file_it_couldnt_remove_as_its_camera_went_is_tried_again() {
     // so no look writes it again.
     let devices = watch.folder.join(".devices");
     fs::set_permissions(&devices, Permissions::from_mode(0o555)).unwrap();
+    // Gone, then let go, so the look its closing wakes finds it gone.
     fs::remove_file(&camera).unwrap();
     drop(held);
     watch.until(
