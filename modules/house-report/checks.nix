@@ -95,6 +95,8 @@ let
     "  houseReportWhy=\"is a link\""
     "elif [ ! -f \"$houseReportRead\" ]; then"
     "  houseReportWhy=\"isn't there as a file\""
+    "elif [ \"$(/usr/bin/stat -f %l \"$houseReportRead\")\" != 1 ]; then"
+    "  houseReportWhy=\"has another name, which another account may have given it\""
     "elif [ \"$(/usr/bin/stat -f %u \"$houseReportRead\")\" != 0 ]; then"
     "  houseReportWhy=\"isn't root's\""
     "elif [ -n \"$(/usr/bin/find \"$houseReportRead\" -maxdepth 0 -perm +066)\" ]; then"
@@ -116,20 +118,28 @@ let
   ];
   # Whether a refusal says to make the key anew, decided apart from
   # which refusal is said, as only the first that holds is: by the
-  # owner, mode and access list of the file the key's name comes to,
-  # every link followed, whatever refused it, so no order of the
+  # owner, mode, access list and names of the file the key's name comes
+  # to, every link followed, whatever refused it, so no order of the
   # refusals can lose it (made anew round 3's F6; keys said plainly
   # round 1's F3 and F14; round 2's F1, F8 and F10; round 3's F1, F5,
-  # F6, F7 and F10); `known` pins the words.
+  # F6, F7 and F10), and by whether a folder of it, which an account may
+  # change, refused it, since that account may have put another of
+  # root's files at its name by a hard link (round 6's F4); `known` pins
+  # the words.
   seen = "/usr/bin/readlink -f \"$houseReportRead\" 2>/dev/null";
   advised = lib.concatStringsSep "\n" [
     "houseReportSeen=$(${seen}) || houseReportSeen="
-    "if [ -z \"$houseReportWhy\" ] || [ -z \"$houseReportFolder\" ] \\"
+    "if [ -z \"$houseReportWhy\" ]; then"
+    "  :"
+    "elif [ \"\${houseReportWhy#is under }\" != \"$houseReportWhy\" ]; then"
+    "  houseReportDo=$houseReportKnown"
+    "elif [ -z \"$houseReportFolder\" ] \\"
     "  || [ ! -f \"$houseReportSeen\" ] || [ -L \"$houseReportSeen\" ]; then"
     "  :"
     "elif [ \"$(/usr/bin/stat -f %u \"$houseReportSeen\")\" != 0 ] \\"
     "  || [ -n \"$(/usr/bin/find \"$houseReportSeen\" -maxdepth 0 -perm +066)\" ] \\"
-    "  || /bin/ls -le \"$houseReportSeen\" | /usr/bin/grep -qE \"$houseReportKnowing\"; then"
+    "  || /bin/ls -le \"$houseReportSeen\" | /usr/bin/grep -qE \"$houseReportKnowing\" \\"
+    "  || [ \"$(/usr/bin/stat -f %l \"$houseReportSeen\")\" != 1 ]; then"
     "  houseReportDo=$houseReportKnown"
     "fi"
   ];
@@ -159,7 +169,7 @@ let
   ];
   # Each test the walk makes of a folder, whole, refusing as it says:
   # its owner, its mode and its access list's rights (round 5's F3 and
-  # F6).
+  # F6), each saying the key "is under" it, which `advised` reads.
   folderTests = [
     (lib.concatStringsSep "\n" [
       "if [ \"$(/usr/bin/stat -f %u \"$houseReportFolder\")\" != 0 ]; then"
@@ -344,9 +354,9 @@ in
         && placed "houseReportDo=\n" < placed chained
         && placed chained < placed advised
         && placed advised < placed refusing
-        && times "houseReportKnown" keyedPrepared == 4
+        && times "houseReportKnown" keyedPrepared == 5
         && times "houseReportKnowing" keyedPrepared == 3
-        && times "houseReportDo" keyedPrepared == 3
+        && times "houseReportDo" keyedPrepared == 4
         && lib.hasInfix "&& pwd -P)" keyedPrepared
         && walksWhole
         && lib.hasInfix readInRealFolder keyedPrepared

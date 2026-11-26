@@ -62,13 +62,18 @@ let
   # F10 and F14; round 2's F6 and F9; round 3's F8 and F11). Only the
   # first refusal that holds is said, so whether to say it is decided
   # apart from them, by the same three tests of the file the key's name
-  # comes to, every link followed, whatever refusal is said: one of its
-  # folder, its link, its copy's folder or one of the key's own (keys
-  # said plainly round 2's F1, F8 and F10; round 3's F1, F5, F6, F7 and
-  # F10). Those tests copy nothing, so a folder another account may
-  # change can only make the advice wrong, never hand a key over; a
-  # folder another account may change gives no advice of its own, as
-  # that account can spoil the key but not learn it by that alone. Each
+  # comes to, every link followed, and by its names, whatever refusal is
+  # said: one of its folder, its link, its copy's folder or one of the
+  # key's own (keys said plainly round 2's F1, F8 and F10; round 3's F1,
+  # F5, F6, F7 and F10). Those tests copy nothing, so a folder another
+  # account may change can only make the advice wrong, never hand a key
+  # over. A folder's refusal, which says the key "is under" it, says to
+  # make the key anew too, since an account that may change the folder
+  # may have put another of root's files at the key's name by a hard
+  # link, which outlasts the folder's fix; and a key with a second name
+  # is refused, saying the same (keys said plainly round 6's F4).
+  # Following every link takes readlink's -f, which macOS has from 12.3
+  # (round 6's F1, F2, F5 and F6). Each
   # run copies through a name of its own, so two runs
   # can't move the same file (round 4's F21), though a failing run may
   # take away the copy one beside it just made, or a slower one put back
@@ -121,6 +126,8 @@ let
       houseReportWhy="is a link"
     elif [ ! -f "$houseReportRead" ]; then
       houseReportWhy="isn't there as a file"
+    elif [ "$(/usr/bin/stat -f %l "$houseReportRead")" != 1 ]; then
+      houseReportWhy="has another name, which another account may have given it"
     elif [ "$(/usr/bin/stat -f %u "$houseReportRead")" != 0 ]; then
       houseReportWhy="isn't root's"
     elif [ -n "$(/usr/bin/find "$houseReportRead" -maxdepth 0 -perm +066)" ]; then
@@ -137,12 +144,17 @@ let
       houseReportWhy="couldn't be copied for nobody"
     fi
     houseReportSeen=$(/usr/bin/readlink -f "$houseReportRead" 2>/dev/null) || houseReportSeen=
-    if [ -z "$houseReportWhy" ] || [ -z "$houseReportFolder" ] \
+    if [ -z "$houseReportWhy" ]; then
+      :
+    elif [ "''${houseReportWhy#is under }" != "$houseReportWhy" ]; then
+      houseReportDo=$houseReportKnown
+    elif [ -z "$houseReportFolder" ] \
       || [ ! -f "$houseReportSeen" ] || [ -L "$houseReportSeen" ]; then
       :
     elif [ "$(/usr/bin/stat -f %u "$houseReportSeen")" != 0 ] \
       || [ -n "$(/usr/bin/find "$houseReportSeen" -maxdepth 0 -perm +066)" ] \
-      || /bin/ls -le "$houseReportSeen" | /usr/bin/grep -qE "$houseReportKnowing"; then
+      || /bin/ls -le "$houseReportSeen" | /usr/bin/grep -qE "$houseReportKnowing" \
+      || [ "$(/usr/bin/stat -f %l "$houseReportSeen")" != 1 ]; then
       houseReportDo=$houseReportKnown
     fi
     houseReportSaid=${copied}.said
