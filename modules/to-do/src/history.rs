@@ -263,7 +263,7 @@ fn side(done: &Done, words: &Words) -> Value {
 /// leave no blank. A second-form look carries a why and an ask its harness
 /// made from it too, which For You leaves unsaid, so History does as well.
 fn words_of(look: &Value) -> String {
-    let text = |field: &str| look[field].as_str().unwrap_or_default().trim();
+    let text = |field: &str| trimmed(look[field].as_str().unwrap_or_default());
     if text("happened").is_empty() {
         [text("why"), text("ask")]
             .into_iter()
@@ -278,6 +278,22 @@ fn words_of(look: &Value) -> String {
             .collect::<Vec<_>>()
             .join(" ")
     }
+}
+
+/// The byte-order mark, which JavaScript's `trim` takes as a space.
+const BYTE_ORDER_MARK: u32 = 0xFEFF;
+/// The next-line control, which JavaScript's `trim` keeps.
+const NEXT_LINE: u32 = 0x85;
+
+/// `part` trimmed as For You trims it, with JavaScript's `trim`: of
+/// Unicode's spaces and line ends and the byte-order mark, though not the
+/// next-line control, where Rust's own `trim` takes the one and not the
+/// other, so a look's words read the same in both.
+fn trimmed(part: &str) -> &str {
+    part.trim_matches(|c: char| {
+        let code = u32::from(c);
+        code == BYTE_ORDER_MARK || (c.is_whitespace() && code != NEXT_LINE)
+    })
 }
 
 /// `part` ending as a sentence ends, as LookForm.js's `ENDED` reads one: a
@@ -336,7 +352,7 @@ fn row(done: &Done, words: &Words) -> Value {
     });
     json!({
         "key": format!("row:{PLACE}:{id}"), "thing": format!("look:{id}"), "place": PLACE,
-        "kind": "look", "name": text("title"), "note": text("why").trim(), "glyph": glyph(kind),
+        "kind": "look", "name": text("title"), "note": trimmed(text("why")), "glyph": glyph(kind),
         "hue": "muted", "side": [side],
         "drawer": {
             "title": text("title"), "facts": facts, "nerd": nerd, "body": body, "prose": true,
@@ -453,7 +469,16 @@ mod tests {
                 ("It flickers.", " Merge it? "),
                 ("It flickers.\n\nMerge it?", "It flickers."),
             ),
+            (
+                (" It flickers. ", "Merge it?"),
+                ("It flickers.\n\nMerge it?", "It flickers."),
+            ),
             (("It flickers.", "   "), ("It flickers.", "It flickers.")),
+            (("\u{feff}", "Merge it?"), ("Merge it?", "")),
+            (
+                ("It flickers.", "\u{85}"),
+                ("It flickers.\n\n\u{85}", "It flickers."),
+            ),
             (("   ", "Merge it?"), ("Merge it?", "")),
             ((" ", " "), ("", "")),
         ];

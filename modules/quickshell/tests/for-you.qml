@@ -396,6 +396,17 @@ QtObject {
             [wordsOf({ why: "   ", ask: "Merge it?" }, "Y"),
                 wordsOf({ why: " ", ask: " " }, "B")],
             ["Merge it?", ""]);
+        expect("a look's words, its why padded around its words, trimmed",
+            wordsOf({ why: " it touches the launcher ", ask: "Merge it?" }, "D"),
+            "it touches the launcher\n\nMerge it?");
+        // Its row notes who asks while it waits, else its why, each trimmed as
+        // its drawer is, so words only of spaces note nothing.
+        const noted = (fields, asker) => LookForm.noteOf(Object.assign({ state: "waiting",
+            why: "it touches the launcher" }, fields), () => asker);
+        expect("a look's note, who asks while it waits, else its why, trimmed",
+            [noted({}, " Core "), noted({}, "  "), noted({ why: " it flickers " }, ""),
+                noted({ why: "   " }, ""), noted({ state: "opened" }, "Core")],
+            ["Core", "it touches the launcher", "it flickers", "", "it touches the launcher"]);
 
         // A look's choices are offered on its row, each answered by a steer to
         // the session that left it, or its quest's once that's ended, and shown
