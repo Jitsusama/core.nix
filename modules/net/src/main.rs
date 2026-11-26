@@ -88,11 +88,11 @@ fn run(context: &Context) -> Result<(), Failure> {
         }
         ["devices" | "device", name, "press", key] => {
             let network = record()?;
-            television::press(context, views::find(&network, name)?, key)
+            television::press(context, &network, views::find(&network, name)?, key)
         }
         ["devices" | "device", name, "wake"] => {
             let network = record()?;
-            television::wake(context, views::find(&network, name)?)
+            television::wake(context, &network, views::find(&network, name)?)
         }
         _ => Err(Failure::new(Exit::Usage, "net doesn't know those words").try_this("net --help")),
     }
