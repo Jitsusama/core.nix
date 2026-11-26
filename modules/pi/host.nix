@@ -28,7 +28,7 @@ let
   launch = import ./host-launch.nix { inherit lib; };
   inherit (launch) kinds loadsCode stopSeconds;
   entry = launch.entry config;
-  growthTakenBy = import ./heap-growth-taken.nix { inherit lib pkgs; };
+  growthTakenBy = import ./heap-growth-taken { inherit lib pkgs; };
 
   # Whether pi's SSH agent proxy runs here, as home.nix decides it, so a
   # host is pointed at its socket only where there is one. Hosts are Linux
@@ -559,7 +559,10 @@ in
               own growth. A node that doesn't know the flag refuses it as a bad
               option, which would end each conversation as it starts, so the
               generation builds the realm's node running with it first, and a
-              node that refuses it fails the switch by name.
+              node that refuses it fails the switch by name. So the realm's
+              node must be one its build can reach, from the store and with
+              its context, as lib.getExe gives one. A machine built elsewhere,
+              whose builder can't run its programs, goes without that proof.
             '';
           };
           asyncContextFrame = lib.mkOption {

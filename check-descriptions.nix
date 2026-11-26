@@ -3613,8 +3613,9 @@
   '';
   pi-conversations-refuse-a-node-without-growth = ''
     a realm whose node refuses --heap-growing-percent as a bad option fails the build its
-    conversations' unit names, saying the realm, the percent and the node, while node 22, which
-    pi is built with, takes it
+    conversations' unit names, saying the realm, the percent and the node, one whose node fails
+    another way or can't be run fails saying which, node 22, which pi is built with, takes it,
+    and a machine built elsewhere has the proof stand unproven
   '';
   pi-conversations-take-heap-growth = ''
     node 22, which pi is built with, and the tree's own node, each started with the word a realm's

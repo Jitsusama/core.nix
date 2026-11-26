@@ -48,7 +48,7 @@ let
   };
   # The command a unit starts with, or nothing where there's no such unit.
   startOf = services: unit: lib.head (lib.toList (services.${unit}.Service.ExecStart or ""));
-  growthTakenBy = import ./heap-growth-taken.nix { inherit lib pkgs; };
+  growthTakenBy = import ./heap-growth-taken { inherit lib pkgs; };
 in
 {
   # Each realm-kind host gets a template its conversations' own processes
@@ -285,7 +285,8 @@ in
           startOf growing "pi-conversation-${realm}-attended@"
         );
       # Refused when a realm naming it doesn't evaluate at all: each is a
-      # whole workstation's evaluation of its own.
+      # whole workstation's evaluation of its own, and one in range on the
+      # same path evaluating shows a refusal comes from the range.
       refused =
         percent:
         let
@@ -294,7 +295,7 @@ in
         !(builtins.tryEval (builtins.deepSeq start start)).success;
     in
     holds "pi-conversations-set-heap-growth"
-      "A realm's percent of heap growth for its conversations doesn't reach their own processes as V8's growing percent, before the harness's program, with the build proving its own node takes that percent and its context, or it reaches its hosts or a realm that names none, or 10 or 100 percent isn't taken, or 9 or 101 isn't refused."
+      "A realm's percent of heap growth for its conversations doesn't reach their own processes as V8's growing percent, before the harness's program, with the build proving its own node takes that percent and its context, or it reaches its hosts or a realm that names none, or 10 or 100 percent isn't taken, or 9 or 101 isn't refused where 50 in its place is taken."
       (
         lib.all
           (
@@ -312,12 +313,15 @@ in
         && taken "most" 100
         && refused 9
         && refused 101
+        && !(refused 50)
       );
 
   # A realm whose node refuses the growing percent fails the generation's
   # build, naming the realm, the percent and the node, rather than ending
-  # each conversation as it starts, and one whose node the build can't run
-  # fails saying so; node 22, which pi is built with, takes it.
+  # each conversation as it starts; one whose node fails another way, or
+  # the build can't run, fails saying so; node 22, which pi is built with,
+  # takes it; and a machine built elsewhere, whose node its builder can't
+  # run, has the proof stand unproven rather than fail.
   pi-conversations-refuse-a-node-without-growth =
     let
       # Refuses the word as node refuses an option it doesn't know, and runs
@@ -333,11 +337,33 @@ in
         "jitsusama.pi.hosts.one.conversationHeapGrowingPercent is 70, "
         "but ${refusing} refuses --heap-growing-percent=70, so each"
       ];
+      # Fails with the word, as a node that can't start does, but not as
+      # node refuses an option.
+      failing = pkgs.writeShellScript "node" ''
+        if [ "$1" = --heap-growing-percent=70 ]; then
+          echo "$0: can't start" >&2
+          exit 3
+        fi
+      '';
+      failed = pkgs.testers.testBuildFailure (growthTakenBy "one" "${failing}" 70);
+      failedSaid = "but ${failing} failed with --heap-growing-percent=70 other than by refusing it";
       # Named outside the store, as no build's sandbox holds.
       unrun = pkgs.testers.testBuildFailure (growthTakenBy "one" "/nowhere/node" 70);
       unrunSaid = "but the build proving the realm's node takes it can't run /nowhere/node: give";
       taken = growthTakenBy "one" (lib.getExe pkgs.nodejs_22) 70;
+      # A machine whose programs are built for one its builder can't run.
+      elsewhere = import ./heap-growth-taken {
+        inherit lib;
+        pkgs = pkgs // {
+          stdenv = pkgs.stdenv // {
+            hostPlatform = lib.systems.elaborate "riscv64-linux";
+          };
+        };
+      } "one" "/nowhere/node" 70;
     in
+    # Kept in Nix because each line reads a build Nix gives it for words
+    # Nix makes from that build's own inputs, which a script of its own
+    # would only be handed back.
     pkgs.runCommandLocal "pi-conversations-refuse-a-node-without-growth" { } ''
       says() {
         if ! grep -qF "$2" "$1/testBuildFailure.log"; then
@@ -349,8 +375,14 @@ in
       says ${refused} ${lib.escapeShellArg refusedSaid} "refusing the percent"
       says ${refused} ${lib.escapeShellArg "${refusing}: bad option: --heap-growing-percent=70"} \
         "refusing the percent"
+      says ${failed} ${lib.escapeShellArg failedSaid} "failing another way"
+      says ${failed} ${lib.escapeShellArg "${failing}: can't start"} "failing another way"
       says ${unrun} ${lib.escapeShellArg unrunSaid} "the build can't run"
       test -e ${taken}
+      if ! grep -qF 'was not run with --heap-growing-percent=70' ${elsewhere}; then
+        echo "a machine built elsewhere didn't have its proof stand unproven"
+        exit 1
+      fi
       touch $out
     '';
 
