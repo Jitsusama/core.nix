@@ -89,19 +89,25 @@ def moved(machine: BaseMachine) -> BaseMachine:
     return machine
 
 
+def waiter(folder: str) -> str:
+    """Give the unit that waits out a folder's holder, as home.nix names it."""
+    return f"own-subvolume-{folder}-after-quit.service"
+
+
 def waited(machine: BaseMachine, folder: str) -> str:
     """Give what a folder's waiter said in the journal."""
-    waiter = unit(folder).replace(".service", "-after-quit.service")
-    return as_account(machine, f"journalctl --user -u {waiter} -o cat")
+    return as_account(machine, f"journalctl --user -u {waiter(folder)} -o cat")
 
 
 def nothing_beside(machine: BaseMachine, name: str) -> None:
-    """Find neither a kept folder nor a half copy beside `name`.
+    """Find no kept folder, half copy, mark or split beside `name`.
 
     Each is looked for alone, since ls fails when any one of several is missing.
     """
     machine.fail(f"ls -d {HOME}/{name}.before-subvolume-*")
     machine.fail(f"test -e {HOME}/{name}.subvolume-new")
+    machine.fail(f"test -e {HOME}/{name}.subvolume-new.keep")
+    machine.fail(f"ls -d {HOME}/{name}.split-*")
 
 
 def test_each_move_comes_with_the_manager_before_its_writers(moved: BaseMachine) -> None:
@@ -147,8 +153,8 @@ def test_a_folder_whose_writer_runs_stays_though_nothing_is_open(moved: BaseMach
     assert "busy.service is running, so" in said(moved, "busy")
     nothing_beside(moved, "busy")
     # Nothing holds it, so nothing would say when to move it, and no waiter ever started.
-    waiter = unit("busy").replace(".service", "-after-quit.service")
-    started = as_account(moved, f"systemctl --user show -P InvocationID {waiter}").strip()
+    started = as_account(moved, f"systemctl --user show -P InvocationID {waiter('busy')}")
+    started = started.strip()
     assert started == "", f"a waiter started for a writer alone, as {started}"
 
 
@@ -209,8 +215,7 @@ def test_a_second_run_leaves_a_subvolume_as_it_is(moved: BaseMachine) -> None:
     before = moved.succeed(f"ls -d {HOME}/moved.before-subvolume-*")
     as_account(moved, "chmod 600 unreadable/file")
     # The held folders' waiters would start the same moves as their holders stop.
-    waiters = (unit(f).replace(".service", "-after-quit.service") for f in ("held", "mapped"))
-    as_account(moved, "systemctl --user stop " + " ".join(waiters))
+    as_account(moved, f"systemctl --user stop {waiter('held')} {waiter('mapped')}")
     as_account(moved, "systemctl --user stop holder mapper writer busy")
     freed = ("moved", "held", "mapped", "unreadable", "busy")
     as_account(moved, "systemctl --user restart " + " ".join(unit(f) for f in freed))
@@ -234,3 +239,64 @@ def test_a_run_stopped_after_its_exchange_keeps_the_folder_as_it_was(moved: Base
     kept = moved.succeed(f"grep -l older {HOME}/moved.before-subvolume-*/file").split()
     assert len(kept) == 1, f"the folder left by the stopped run is kept once, not {kept}"
     assert inode(moved, f"{HOME}/moved") == "256"
+
+
+def test_a_marked_copy_beside_a_subvolume_goes_only_once_nothing_reached_it(
+    moved: BaseMachine,
+) -> None:
+    """A mark alone is cleared, and the folder as it was goes aside only if unchanged since it.
+
+    The mark bears the time its copy began, so a file changed after it is a write the subvolume
+    may lack, and each run fails until Joel has dealt with it.
+    """
+    restart = f"systemctl --user restart {unit('moved')}"
+    as_account(moved, "touch moved.subvolume-new.keep")
+    as_account(moved, restart)
+    moved.fail(f"test -e {HOME}/moved.subvolume-new.keep")
+    # Stopped as it looked, with nothing written since the copy began.
+    as_account(moved, "mkdir moved.subvolume-new && echo calm > moved.subvolume-new/file")
+    as_account(moved, "touch moved.subvolume-new.keep")
+    as_account(moved, restart)
+    moved.fail(f"test -e {HOME}/moved.subvolume-new")
+    moved.fail(f"test -e {HOME}/moved.subvolume-new.keep")
+    moved.succeed(f"grep -l calm {HOME}/moved.before-subvolume-*/file")
+    assert "held nothing more" in said(moved, "moved")
+    # Written in after the copy began, which each run then says until it's dealt with.
+    as_account(moved, "mkdir moved.subvolume-new")
+    as_account(moved, "touch -d '1 minute ago' moved.subvolume-new.keep")
+    as_account(moved, "echo late > moved.subvolume-new/file")
+    for _ in range(2):
+        as_account(moved, restart, succeed=False)
+        moved.succeed(f"grep -qx late {HOME}/moved.subvolume-new/file")
+        moved.succeed(f"test -e {HOME}/moved.subvolume-new.keep")
+    told = said(moved, "moved")
+    assert "changed as it moved" in told, f"the run didn't say what changed: {told}"
+    as_account(moved, "rm -r moved.subvolume-new moved.subvolume-new.keep")
+    as_account(moved, restart)
+
+
+def test_a_folder_with_late_writes_set_aside_stays_until_they_are_dealt_with(
+    moved: BaseMachine,
+) -> None:
+    """A marked copy or a split beside a folder keeps it, and says so though something holds it."""
+    restart = f"systemctl --user restart {unit('missing')}"
+    as_account(moved, "mkdir missing && echo here > missing/file")
+    as_account(moved, "mkdir missing.subvolume-new && touch missing.subvolume-new.keep")
+    as_account(
+        moved,
+        f"systemd-run --user --unit keeper bash -c 'exec 3< {HOME}/missing/file; sleep infinity'",
+    )
+    holds = "test -e /proc/$(systemctl --user show -P MainPID keeper)/fd/3"
+    as_account(moved, f"timeout 30 sh -c 'until {holds}; do sleep 0.2; done'")
+    as_account(moved, restart, succeed=False)
+    told = said(moved, "missing")
+    assert "a copy with writes in it is kept" in told, f"the held run said: {told}"
+    as_account(moved, "systemctl --user stop keeper")
+    as_account(moved, "rm -r missing.subvolume-new missing.subvolume-new.keep")
+    as_account(moved, "mkdir missing.split-1")
+    as_account(moved, restart, succeed=False)
+    assert inode(moved, f"{HOME}/missing") != "256", "the folder moved past its split"
+    assert "missing.split-1" in said(moved, "missing")
+    as_account(moved, "rmdir missing.split-1")
+    as_account(moved, restart)
+    assert inode(moved, f"{HOME}/missing") == "256"

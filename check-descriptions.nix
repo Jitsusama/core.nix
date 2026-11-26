@@ -6791,8 +6791,9 @@
     it was kept beside it; one a process of the account's holds open stays and says so; one a
     program opens as it's copied stays whole; each a process held moves by itself once that
     process quits; a missing one passes; one that can't be copied is left whole with no half
-    copy, its unit failing and its writer starting all the same; and a second run leaves a
-    subvolume as it is
+    copy, its unit failing and its writer starting all the same; a second run leaves a
+    subvolume as it is; and a copy marked for its late writes, or a split, keeps its folder and
+    fails each run, though a mark with nothing written since its copy began is cleared
   '';
   vm-joel-comes-first = ''
     on an eighth of the laptop's memory, with agents' sessions, their work and shared work each under

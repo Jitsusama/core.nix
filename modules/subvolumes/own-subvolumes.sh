@@ -279,7 +279,7 @@ in_use() {
 # waiter starts may find it. A copy that ends in no move is a whole copy
 # spent, so after three the folder waits for the manager's next start.
 left() {
-  local folder=$1 why=$2 real=$3 holder base copies wait=''
+  local folder=$1 why=$2 real=$3 holder base copies writer wait=''
   case $why in
   /proc/*) holder=$why ;;
   *) holder=$(holding "$real") ;;
@@ -287,14 +287,12 @@ left() {
   base=$(counted)
   copies=$(copies_made)
   [ -z "$holder" ] || wait=yes
-  case $why in
-  *" is running"*)
-    if [ -n "$base" ] && [ -e "$base.waits" ]; then
-      wait=yes
-    fi
-    ;;
-  *) ;;
-  esac
+  # The writers are asked again rather than read from the reason, which may
+  # be the name of a file in the folder.
+  if [ -z "$holder" ] && [ -n "$base" ] && [ -e "$base.waits" ]; then
+    writer=$(running)
+    [ -z "$writer" ] || wait=yes
+  fi
   if [ -n "$wait" ] && [ -n "$waiter" ] && [ "$copies" -ge 3 ]; then
     echo "$why, so $folder stays in the home's tree until the account's manager next" \
       "starts, as $copies copies of it since the machine started ended in no move"
@@ -323,7 +321,8 @@ left() {
 # Moves `$1` into a subvolume of its own, or says why it's left as it was.
 # Returns 1 only when something failed.
 own() {
-  local folder=$1 real fs inode why late new stamp swapped aside base copies marked=''
+  local folder=$1 real fs inode why late still='' new beside name stamp swapped aside
+  local base copies marked=''
   if [ ! -d "$folder" ] || [ -L "$folder" ]; then
     echo "$folder isn't a folder here, so it's left as it is"
     return 0
@@ -342,25 +341,47 @@ own() {
     # marked, and the subvolume in use may lack what was written in it, so
     # each run says so until Joel has looked.
     new=$(making "$real")
-    if [ -e "$new.keep" ]; then
-      echo "✕ $folder is a subvolume, but what was written in it as it moved is at $new;" \
-        "once what's wanted is out of it, removing it and $new.keep ends this" >&2
+    [ -e "$new.keep" ] || return 0
+    # The mark bears the time the copy began, so once nothing holds the
+    # folder as it was, a walk says whether anything reached it since; a
+    # run stopped as it looked is resolved here when nothing did.
+    why=$(holding "$new")
+    [ -n "$why" ] || why=$(changed "$new" "$new.keep")
+    if [ -n "$why" ]; then
+      echo "✕ $folder is a subvolume, but the folder as it was, at $new, changed as it" \
+        "moved ($why); once what's wanted is out of it, removing it and $new.keep" \
+        "ends this" >&2
       return 1
     fi
+    aside=$(kept "$real")
+    mv -T -- "$new" "$aside" || return 1
+    rm -f -- "$new.keep"
+    echo "$folder is a subvolume of its own, and the folder as it was, left by a run" \
+      "stopped as it moved, held nothing more, so it's kept at $aside"
     return 0
   fi
   tidy "$real"
+  # What a move kept for the writes in it is said before anything else, so
+  # a folder held all day says so at each run, not only once it's free.
+  new=$(making "$real")
+  if [ -e "$new.keep" ]; then
+    echo "✕ a copy with writes in it is kept at $new, so $folder stays as it is;" \
+      "once what's wanted is out of it, removing it and $new.keep lets it move" >&2
+    return 1
+  fi
+  beside=$(dirname -- "$real")
+  name=$(basename -- "$real")
+  aside=$(find "$beside" -maxdepth 1 -name "$name.split-*" -print -quit 2> /dev/null) || true
+  if [ -n "$aside" ]; then
+    echo "✕ what was written in $folder as it last moved is at $aside, so it stays as it" \
+      "is; once what's wanted is out of it, removing it lets the folder move" >&2
+    return 1
+  fi
   why=$(running)
   [ -n "$why" ] || why=$(holding "$real")
   if [ -n "$why" ]; then
     left "$folder" "$why" "$real"
     return 0
-  fi
-  new=$(making "$real")
-  if [ -e "$new.keep" ]; then
-    echo "✕ a copy with writes in it is kept at $new, so $folder stays as it is;" \
-    "once what's wanted is out of it, removing it and $new.keep lets it move" >&2
-    return 1
   fi
   stamp=$(mktemp) || return 1
   if ! btrfs -q subvolume create "$new" > /dev/null; then
@@ -404,8 +425,8 @@ own() {
   # Until the looks below find what sits at the copy's path holds nothing
   # the folder lacks, it's marked, so a run stopped meanwhile, or an
   # exchange back that fails, leaves it to Joel, never to the next run to
-  # clear.
-  if touch -- "$new.keep"; then
+  # clear. It bears the time the copy began, for the run that next finds it.
+  if touch -r "$stamp" -- "$new.keep"; then
     marked=yes
   fi
   # The look above takes seconds, and a program started meanwhile, as Joel
@@ -436,7 +457,11 @@ own() {
     # folder lacks. A writer named running says nothing of the copy, so
     # it isn't asked.
     late=$(holding "$new")
-    [ -n "$late" ] || late=$(changed "$new" "$swapped")
+    if [ -n "$late" ]; then
+      still=", which may go on writing there until it quits"
+    else
+      late=$(changed "$new" "$swapped")
+    fi
     rm -f -- "$swapped"
     if [ -n "$late" ]; then
       # A name of its own, so no earlier split in the same second is in
@@ -456,7 +481,7 @@ own() {
       fi
       rm -f -- "$new.keep"
       echo "✕ $folder was in use as it moved, so it's back, and what was written" \
-        "in the copy meanwhile ($late) is kept at $aside" >&2
+        "in the copy meanwhile ($late) is kept at $aside$still" >&2
       return 1
     fi
     # Known to hold nothing, the copy is unmarked first, so a removal

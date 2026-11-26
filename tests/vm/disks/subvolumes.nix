@@ -5,7 +5,9 @@
 # runs, holding nothing open, stays, as at a switch; one a program opens as
 # it's copied stays whole; each a process held moves once that process
 # quits; and one that can't be copied is left whole, its unit failing,
-# with the writer it comes before started all the same. Each turns on
+# with the writer it comes before started all the same; and a copy kept
+# for what was written in it as it moved keeps the folder until it's dealt
+# with, while a mark that kept nothing is cleared. Each turns on
 # Btrfs's own answers, a subvolume's root, a reflink across subvolumes and
 # an account removing one it emptied, so only a machine with Btrfs shows
 # them. The test is subvolumes-vm-test.py, which
