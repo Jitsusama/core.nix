@@ -618,6 +618,29 @@ mod tests {
     }
 
     #[test]
+    fn joel_talking_over_them_after_changing_to_a_quieter_microphone_is_his_own() {
+        // Most of what he says alone is on a headset, 20 dB louder than the
+        // laptop microphone he changes to: his voice is what it is near
+        // his word, not what it was for most of the call.
+        let headset = "Morning all, I'm on my headset for now, so let me know if the \
+                       sound drops out at any point.";
+        let laptop = "Can you all still hear me now?";
+        let over = "Hang on, wait.";
+        let mut mine = at_level(timed(headset, 0), -20.0);
+        mine.extend(at_level(timed(laptop, 60_000), -40.0));
+        mine.extend(at_level(timed(over, 70_100), -40.0));
+        let theirs = at_level(
+            timed("We could meet next week if that suits", 70_000),
+            -20.0,
+        );
+        assert_eq!(
+            cut_from(&[theirs], &[mine]),
+            [format!("{headset} {laptop} {over}")],
+            "Joel talking over them on a quieter microphone was judged by his old one's level"
+        );
+    }
+
+    #[test]
     fn joel_talking_over_them_through_a_quiet_microphone_is_his_own() {
         // Each side's level is its own recorder's, so a quiet microphone
         // or a loud call app puts all of his voice far below theirs: his
