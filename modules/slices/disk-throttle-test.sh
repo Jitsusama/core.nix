@@ -136,6 +136,12 @@ echo 0 > "$throttle"
 printf %s 9999999999 > "$WRITEBACK_GOAL_RUN/nvme0n1"
 exits 0 "$goal" nvme0n1 kernel
 reads "$throttle" 9999999999
+# A throttle read at ten digits is recorded as the disk's own.
+echo 9999999999 > "$throttle"
+exits 0 "$goal" nvme0n1 0
+reads "$WRITEBACK_GOAL_RUN/nvme0n1" 9999999999
+exits 0 "$goal" nvme0n1 kernel
+reads "$throttle" 9999999999
 # A throttle read past ten digits is recorded as the kernel's default,
 # since the giving back wouldn't take that record as the disk's own.
 echo 99999999999 > "$throttle"
