@@ -1245,22 +1245,42 @@ Provider {
         // quarter hour.
         const want = TalkAnswers.shownWant(now, answers);
         // Words given back for an ask it no longer asks go, as the refusal may have come before
-        // the want that replaced it; later, since this runs as the Talk draws. While it asks
-        // and its want isn't held, as for a moment after the daemon restarts, which want it
-        // asks isn't known, so none go.
-        const standsFor = answers?.want ?? "";
-        const stale = now.asking === true && answers === null ? []
-            : TalkAnswers.stale(answeredTo[to], standsFor);
-        if (stale.length > 0)
-            Qt.callLater(() => {
-                launcher?.drafts?.settle({ [to]: stale
-                    .map(typed => ({ words: typed, stage: "answered" })) });
-                answeredTo = Object.assign({}, answeredTo,
-                    { [to]: TalkAnswers.letGo(answeredTo[to], standsFor) });
-            });
+        // the want that replaced it; later, since this runs as the Talk draws. The Talk's own
+        // opening lets them go first (letGoStale), so this is for a want that comes while open.
+        if (letsGo(session, now, answers).stale.length > 0)
+            Qt.callLater(() => letGoStale(session));
         return (asked === null ? [] : [asked]).concat(TalkAnswers
             .standing(answeredTo[to] ?? [], want, Date.now())
             .map(one => TalkAnswers.shown(one, working, words, dayOf)));
+    }
+
+    // What of `session`'s answers is stale, given what it asks `now` (answersOf's) and
+    // `answers` (TalkAnswers.asked's): `stale`, the words given back for an ask it no longer
+    // asks, and `standsFor`, the want it asks. While it asks and its want isn't held, as for a
+    // moment after the daemon restarts, which want it asks isn't known, so none are stale.
+    function letsGo(session, now, answers) {
+        const to = String(session.address).toUpperCase();
+        const standsFor = answers?.want ?? "";
+        const stale = now.asking === true && answers === null ? []
+            : TalkAnswers.stale(answeredTo[to], standsFor);
+        return { stale, standsFor };
+    }
+
+    // Lets go of the words given back to `session` for an ask it no longer asks, at once: its
+    // field's draft of them too (Drafts.js's settled), and, open, the field holding just them
+    // (Launcher.qml's wordsLetGo), so they never answer the ask that replaced theirs. Run as
+    // its Talk opens, before the field is given what's kept, and as it draws (answerTalks).
+    function letGoStale(session) {
+        const to = String(session.address).toUpperCase();
+        const now = answersOf(sessionAt(session.address) ?? session);
+        const going = letsGo(session, now, TalkAnswers.asked(now.want, now.asking));
+        if (going.stale.length === 0)
+            return;
+        launcher?.drafts?.settle({ [to]: going.stale
+            .map(typed => ({ words: typed, stage: "answered" })) });
+        launcher?.wordsLetGo?.(to, going.stale);
+        answeredTo = Object.assign({}, answeredTo,
+            { [to]: TalkAnswers.letGo(answeredTo[to], going.standsFor) });
     }
 
     // Joel's `text` to `session`, which asks `answers`, answering it: shown sent at once, then
@@ -1671,6 +1691,9 @@ Provider {
                 chip: session.title,
                 // Kept by whom it goes to until its talk is delivered.
                 draft,
+                // Words given back for an ask it no longer asks go before the field opens on
+                // what's kept, so it never opens on them (letGoStale).
+                opening: () => provider.letGoStale(current()),
                 state: () => provider.told,
                 talks: () => provider.answerTalks(current()).concat(talk.talks()),
                 heard: talk.heard,

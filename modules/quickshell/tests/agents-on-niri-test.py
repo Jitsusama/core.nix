@@ -4962,3 +4962,68 @@ def test_a_folders_talk_to_its_session_asking_joel_shows_what_it_asks_and_answer
             one.unlink()
         shell.close_launcher()
         left_the_node("s-toprow")
+
+
+def test_words_given_back_for_an_ask_that_went_never_answer_the_next(shell: Shell) -> None:
+    """Words an answer couldn't put are given back while their ask stands, and go once it's gone.
+
+    A node that can't put Joel's answer in the session's inbox, here one it may not write,
+    refuses it, so the Talk gives his words back to answer it again. Once the session asks
+    something else they'd answer that with words for the old ask, so they go: from the open
+    field as the new ask draws, and, closed, before the field opens (Agents.qml's letGoStale),
+    and they're kept as a draft neither way.
+    """
+    _, inbox, steered = asking_left_or_right("GIVEBK", "Given Back Quest")
+
+    def asks(said: str) -> Callable[[Json], bool]:
+        def drawn(shown: Json) -> bool:
+            first = cast("Json", (shown["talks"] or [{}])[0])
+            return bool(shown["asking"]) and said in "".join(first.get("answers") or [])
+
+        return drawn
+
+    def wants(said: str) -> None:
+        at = datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        choices = [{"value": "left", "label": "Left"}, {"value": "right", "label": "Right"}]
+        ask = {"question": said, "choices": choices, "allowOther": False}
+        lay("GIVEBK", "Given Back Quest", {"state": "listening", "busy": False,
+            "wants": {"kind": "question", "since": at, "said": said, "ask": ask}})  # fmt: skip
+
+    def talk() -> None:
+        shell.close_launcher()
+        did = followed(shell, "talkTo", "GIVEBK")
+        assert did["done"], did
+
+    def refused(words: str, said: str) -> None:
+        talk()
+        shell.launcher_until(asks(said))
+        shell.send_chars(words)
+        shell.launcher_until(lambda shown: shown["typed"] == words)
+        shell.send_key("ret")
+        shell.launcher_until(lambda shown: shown["typed"] == "")
+        # Not put, they're given back to the Talk opened again, as its ask still stands.
+        talk()
+        shell.launcher_until(lambda shown: asks(said)(shown) and shown["typed"] == words)
+        assert set(inbox.glob("*.json")) == steered, sorted(inbox.glob("*.json"))
+
+    inbox.chmod(0o500)
+    try:
+        refused("right", "Which way?")
+        # Open as it asks something else, the field lets them go as the new ask draws.
+        wants("Which way now?")
+        shell.launcher_until(lambda shown: asks("Which way now?")(shown) and shown["typed"] == "")
+        talk()
+        no_words_come_back(shell, asks("Which way now?"), "words for a gone ask came back")
+        # Closed as it asks something else, the Talk opens on nothing.
+        refused("left", "Which way now?")
+        shell.close_launcher()
+        wants("Which way at last?")
+        talk()
+        no_words_come_back(shell, asks("Which way at last?"), "words for a gone ask opened it")
+    finally:
+        inbox.chmod(0o700)
+        (PRESENCE / "givebk.json").unlink(missing_ok=True)
+        for one in set(inbox.glob("*.json")) - steered:
+            one.unlink()
+        shell.close_launcher()
+        left_the_node("s-givebk")

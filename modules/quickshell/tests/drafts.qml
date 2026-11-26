@@ -66,6 +66,27 @@ QtObject {
         Expect.expect("nothing settled is the same state, so nothing is written",
             Drafts.settled(sending, {}) === sending, "a new state for nothing settled");
 
+        // Words given back to a field are a draft of them once it opens, so words spent as
+        // an answer, or let go for an ask it no longer asks, go as a draft too.
+        const givenBack = Drafts.typed(sending, "8GYNJ6", { text: "what's on screen",
+            caret: 16 }, now);
+        const spent = { "8GYNJ6": [{ words: "what's on screen", stage: "answered" }] };
+        Expect.same("words answered go, given back to the field or not",
+            Drafts.kept(Drafts.settled(givenBack, spent), "8GYNJ6", now),
+            { text: "", caret: 0 });
+        Expect.same("what he typed since stays, as it isn't what was answered",
+            Drafts.kept(Drafts.settled(Drafts.typed(givenBack, "8GYNJ6",
+                { text: "what's on screen now", caret: 20 }, now), spent), "8GYNJ6", now),
+            { text: "what's on screen now", caret: 20 });
+        Expect.same("and a draft of words only delivered stays, as he typed them again",
+            Drafts.kept(Drafts.settled(givenBack, delivered), "8GYNJ6", now),
+            { text: "what's on screen", caret: 16 });
+        Expect.same("another address's answer leaves this draft",
+            Drafts.kept(Drafts.settled(givenBack,
+                { "P9R1KI": [{ words: "what's on screen", stage: "answered" }] }), "8GYNJ6",
+                now),
+            { text: "what's on screen", caret: 16 });
+
         // As written and read again by a shell starting.
         const back = Drafts.read(
             JSON.stringify(Drafts.typed(sending, "8GYNJ6", { text: "and", caret: 3 }, now)),

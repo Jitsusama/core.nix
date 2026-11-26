@@ -5792,6 +5792,9 @@ Scope {
         // words a start gave it (Agents' askWhere), opens past their end,
         // where Return gives them again.
         const carried = typeof offered === "string" ? "" : String(row.offered?.() ?? "");
+        // A row may let go of what it kept before the field opens on it (Agents' Talk).
+        if (typeof offered !== "string")
+            row.opening?.();
         const kept = typeof offered === "string" ? { text: offered, caret: 0 }
             : carried !== "" ? { text: carried, caret: carried.length }
             : row.draft ? drafts.kept(row.draft) : { text: "", caret: 0 };
@@ -5838,6 +5841,18 @@ Scope {
     function drafted() {
         if (drafting !== "")
             drafts.typed(drafting, prompt.text, prompt.keptCaret());
+    }
+
+    // Words let go for the talk to `key` (Agents' letGoStale): the field open for it empties
+    // when it holds just one of them, given back for an ask that's gone, so Return never gives
+    // them to the ask that replaced it. Words he's typed since stay.
+    function wordsLetGo(key, words) {
+        if (drafting === "" || drafting.toUpperCase() !== String(key).toUpperCase())
+            return;
+        if (!(words ?? []).map(one => String(one).trim()).includes(prompt.text.trim()))
+            return;
+        prompt.text = "";
+        searchNow();
     }
 
     // A collection whose things changed while it's open is searched again,
