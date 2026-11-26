@@ -2,8 +2,8 @@
 //! alert are served as rows titled in the vocabulary's words, a shadow
 //! stop isn't and is only written down as what it would have told, and
 //! a press from anything but Joel's shell, as this test is, is refused
-//! and changes nothing; and a live stop's notice is closed once it's
-//! resumed.
+//! and changes nothing; a live stop's notice is closed once it's
+//! resumed, and one that couldn't be sent is sent again.
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -202,6 +202,56 @@ fn a_live_stops_notice_is_closed_once_it_is_resumed() {
         ],
         "the resumed stop's notice alone is closed, by the number it was given"
     );
+    drop(daemon);
+}
+
+#[test]
+fn a_stops_notice_that_couldnt_be_sent_is_sent_again_and_told_once() {
+    let dir = state("again");
+    let socket = dir.join("pineapple.sock");
+    let notified = dir.join("notified");
+    // Refuses the stop's first two knocks, as while the notices server
+    // starts again, and takes every one after.
+    let program = dir.join("notify-send");
+    let script = format!(
+        "#!/bin/sh\necho \"$*\" >> {heard}\ncase \"$*\" in *\"stopped agents\"*)\n\
+         [ \"$(grep -c 'stopped agents' {heard})\" -gt 2 ] || exit 1 ;;\nesac\necho 7\n",
+        heard = notified.display()
+    );
+    fs::write(&program, script).expect("a stand-in is written");
+    fs::set_permissions(&program, fs::Permissions::from_mode(RUNS)).expect("it runs");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_pineapple"));
+    command
+        .args(["serve", "--socket"])
+        .arg(&socket)
+        .arg("--vocabulary")
+        .arg(dir.join("words.json"))
+        .arg("--notify-send")
+        .arg(&program)
+        .args(["--every", "50"])
+        .env("XDG_STATE_HOME", &dir)
+        .env("PINEAPPLE_PAUSE", dir.join("no-plan.json"));
+    let daemon = Daemon::start(&mut command, socket, dir.clone());
+    let would_tell = dir.join("pineapple/would-tell.jsonl");
+    until("the live stop was never told", || {
+        fs::read_to_string(&would_tell).is_ok_and(|text| text.contains("slack:C1:1.0"))
+    });
+    let knocks = fs::read_to_string(&notified).expect("the knocks were heard");
+    assert_eq!(
+        knocks
+            .lines()
+            .filter(|line| line.contains("stopped agents"))
+            .count(),
+        3,
+        "knocked again until it went, and not after: {knocks}"
+    );
+    let told = fs::read_to_string(&would_tell).expect("written down");
+    let live: Vec<&str> = told
+        .lines()
+        .filter(|line| line.contains("slack:C1:1.0"))
+        .collect();
+    assert_eq!(live.len(), 1, "written down once: {told}");
+    assert!(live[0].contains("\"knocked\":true"), "as knocked: {told}");
     drop(daemon);
 }
 

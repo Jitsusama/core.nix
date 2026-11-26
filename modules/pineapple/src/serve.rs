@@ -5,7 +5,9 @@
 //! asks (src/acts.rs), only from his shell (src/peer.rs); and as a row
 //! first appears, it sends a notice that knocks even in a call, and
 //! closes it once the row stops standing, resumed or left, so Joel's
-//! alarm doesn't outlive what it was about.
+//! alarm doesn't outlive what it was about. A notice that couldn't be
+//! sent, as while the notices server starts again, is sent again at each
+//! look for a while, so a stop said then still knocks.
 //!
 //! It takes Joel's Pause All Agents the same way, as the ask `pause`, and
 //! while that stop stands it freezes agents' work started since, each
@@ -59,6 +61,12 @@ pub const EVERY: Duration = Duration::from_secs(2);
 /// How often the rows are made again however nothing moved, so an alert
 /// a week old goes.
 const REMADE: Duration = Duration::from_secs(60);
+
+/// How long a live row's notice that couldn't be sent is sent again at
+/// each look: long enough for the notices server to start again, as at a
+/// switch, and no longer, so one that's gone doesn't fill the journal.
+/// Its row still stands in Needs You after.
+const KNOCK_FOR: Duration = Duration::from_secs(120);
 
 /// What the daemon is started with.
 #[derive(Debug)]
@@ -165,6 +173,7 @@ pub fn serve(serving: Serving) -> std::io::Result<()> {
     let listener = listen(&socket)?;
     accept(Arc::clone(&shared), listener);
     let mut told = read_told(&state);
+    let mut unknocked = BTreeMap::new();
     let mut looked: Option<Vec<(String, u64, u128)>> = None;
     let mut made = Instant::now();
     loop {
@@ -172,7 +181,7 @@ pub fn serve(serving: Serving) -> std::io::Result<()> {
             hold_paused(plan, &state, &host);
         }
         let mark = mark(&state);
-        if looked.as_ref() != Some(&mark) || made.elapsed() >= REMADE {
+        if looked.as_ref() != Some(&mark) || made.elapsed() >= REMADE || !unknocked.is_empty() {
             let rows = tell::rows(&tell::kept(&state), now_ms(), &words);
             let (served, shadow): (Vec<Value>, Vec<Value>) =
                 rows.into_iter().partition(|row| row["shadow"] == false);
@@ -180,7 +189,14 @@ pub fn serve(serving: Serving) -> std::io::Result<()> {
                 notify: notify.as_deref(),
                 busctl: busctl.as_deref(),
             };
-            tell_new(&state, &served, &shadow, &knocking, &mut told);
+            tell_new(
+                &state,
+                &served,
+                &shadow,
+                &knocking,
+                &mut told,
+                &mut unknocked,
+            );
             shared.change(served, json!({"stops": "answering"}));
             looked = Some(mark);
             made = Instant::now();
@@ -423,15 +439,20 @@ fn told_as(row: &Value) -> String {
 /// every one a line in would-tell.jsonl with the message Joel's own Slack
 /// would be sent, which nothing sends yet. What's told is kept only for
 /// rows standing, so it never grows past them, and the notice of one that
-/// no longer stands is closed.
+/// no longer stands is closed. A live row whose notice couldn't be sent
+/// isn't told yet: `unknocked` keeps when it was first tried, and it's
+/// tried again each look until [`KNOCK_FOR`] has passed, then told as
+/// unknocked, its journal saying so.
 fn tell_new(
     state: &Path,
     served: &[Value],
     shadow: &[Value],
     knocking: &Knocking,
     told: &mut BTreeMap<String, Option<Shown>>,
+    unknocked: &mut BTreeMap<String, Instant>,
 ) {
     let standing: BTreeSet<String> = served.iter().chain(shadow).map(told_as).collect();
+    unknocked.retain(|key, _| standing.contains(key));
     let before = told.len();
     told.retain(|key, shown| {
         let stands = standing.contains(key);
@@ -452,6 +473,19 @@ fn tell_new(
             _ => Knock::Missed,
         };
         let knocked = matches!(knock, Knock::Sent(_));
+        if live && !knocked && knocking.notify.is_some() {
+            let first = *unknocked.entry(key.clone()).or_insert_with(Instant::now);
+            if first.elapsed() < KNOCK_FOR {
+                continue;
+            }
+            eprintln!(
+                "<3>a notice couldn't be sent for {} s, so it's let go; its row still \
+                 stands in Needs You: {}",
+                KNOCK_FOR.as_secs(),
+                row["key"].as_str().unwrap_or_default()
+            );
+        }
+        unknocked.remove(&key);
         let shown = match (knock, knocking.busctl) {
             (Knock::Sent(Some(id)), Some(busctl)) => {
                 server(busctl).map(|server| Shown { id, server })
@@ -603,4 +637,45 @@ fn dm(row: &Value) -> String {
         words: row["words"].as_str().unwrap_or_default(),
         link: row["link"].as_str().unwrap_or_default(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_notice_that_cant_be_sent_is_tried_again_then_told_unknocked() {
+        let state =
+            std::env::temp_dir().join(format!("pineapple-unknocked-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&state);
+        fs::create_dir_all(&state).expect("a state folder");
+        let row = json!({"key": "slack:C1:1.0", "saying": "pineapple override",
+            "shadow": false, "title": "Someone stopped agents", "words": "w", "link": "l"});
+        let gone = state.join("no-notify-send");
+        let knocking = Knocking {
+            notify: Some(&gone),
+            busctl: None,
+        };
+        let (mut told, mut unknocked) = (BTreeMap::new(), BTreeMap::new());
+        let rows = [row];
+        tell_new(&state, &rows, &[], &knocking, &mut told, &mut unknocked);
+        assert!(told.is_empty(), "not told while it may yet knock: {told:?}");
+        assert_eq!(unknocked.len(), 1, "kept to try again: {unknocked:?}");
+        let would = state.join("would-tell.jsonl");
+        assert!(!would.exists(), "nor written down yet");
+        let long_ago = Instant::now()
+            .checked_sub(KNOCK_FOR)
+            .expect("a time that long ago");
+        unknocked.values_mut().for_each(|first| *first = long_ago);
+        tell_new(&state, &rows, &[], &knocking, &mut told, &mut unknocked);
+        assert_eq!(told.len(), 1, "told once tried for long enough: {told:?}");
+        assert!(unknocked.is_empty(), "and not tried again: {unknocked:?}");
+        let written = fs::read_to_string(&would).expect("written down");
+        assert_eq!(written.lines().count(), 1, "once: {written}");
+        assert!(
+            written.contains("\"knocked\":false"),
+            "as not knocked: {written}"
+        );
+        fs::remove_dir_all(&state).expect("the state folder goes");
+    }
 }
