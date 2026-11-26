@@ -21,6 +21,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
 use std::process::{Child, Command};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
 use daemon_client::{Client, until};
@@ -60,6 +61,11 @@ case "$*" in
   "call accept") echo "no call is ringing" >&2; exit 1 ;;
 esac
 "#;
+
+/// How many daemons this run has started, which makes each one's folder
+/// its own: two tests given the same name once shared one, and each
+/// clearing it at its start took away the other's sockets.
+static STARTED: AtomicUsize = AtomicUsize::new(0);
 
 /// The daemon, with a folder standing in for the runtime, data and state
 /// folders, and Tuple's daemon's socket, which answers while it's held.
@@ -120,7 +126,11 @@ impl Running {
     /// Started by `launcher` and its arguments, each given the socket's
     /// path where it says `{socket}`, rather than on its own.
     fn through(test: &str, answering: bool, launcher: &[&str], waits: &[&str]) -> Running {
-        let folder = std::env::temp_dir().join(format!("tuple-call-{test}-{}", std::process::id()));
+        let folder = std::env::temp_dir().join(format!(
+            "tuple-call-{test}-{}-{}",
+            std::process::id(),
+            STARTED.fetch_add(1, Ordering::Relaxed)
+        ));
         let _ = std::fs::remove_dir_all(&folder);
         for inner in ["run/daemons", "data/tuple/0", "state", "bin"] {
             std::fs::create_dir_all(folder.join(inner)).unwrap();
