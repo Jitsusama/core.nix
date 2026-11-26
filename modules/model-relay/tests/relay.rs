@@ -660,7 +660,9 @@ impl Relay {
 
     /// What the relay has said up to `mark`, read as it says it, so a test
     /// can act the moment it does; all it said, should it leave first, or
-    /// once it's stopped for not saying it `within`.
+    /// once it's stopped for not saying it `within`. Called from the test's
+    /// own thread, as on a current-thread runtime, whose name its note on a
+    /// stop opens with: a runtime's worker would name itself instead.
     fn heard_by(&mut self, mark: &str, within: Duration) -> &str {
         // Held while the relay is stopped, so once this returns no stop can
         // follow, onto this relay or a process given its pid after it.

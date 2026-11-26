@@ -1729,6 +1729,8 @@ QtObject {
             shownLabels(valueless, "undefined"), ["Unset", "Asked", "Blank"]);
         holds("and under no title, every fact is drawn, a blank one too",
             shownLabels(valueless, ""), ["Unset", "Asked", "Blank"]);
+        holds("but under no title still none that isn't there",
+            shownLabels([null, ...given, undefined], ""), ["Name", "Kind", "Port"]);
         // Where a fact's figure stands: a stroke of 100 that reads down to
         // 30, a spark of 100 that reads only whole (VKCF3Z, 2026-11-09).
         const stroke = { shape: "stroke", usual: 100, least: 30 };
@@ -1881,22 +1883,21 @@ QtObject {
                 JSON.stringify(want));
     }
 
-    // How tall a drawer's preview stands, on a pitch of 24, two beats of
-    // 12, with groups 20 apart: so the facts after it start on the first
-    // beat at least the groups' gap below a picture, never a band rounded up
-    // to the pitch (VKCF3Z, 2026-11-08); lines whole lines of the pitch.
     // Whether a key acted (KeyActs.acts), from what the table reads each
     // of `keys` as, in turn from rest, the last the one asked of, in
-    // `mode` on a line holding `text`, with how else the line stood.
+    // `mode` on a line holding `text`, a prompt's words where `words`,
+    // with how else the line stood: by default with a row to go into, a
+    // place above, a selection to take back and an ask taking answers.
     function acting(keys, mode, line = {}) {
         let standing = Keys.rest();
         let read = null;
         for (const key of keys) {
-            read = Keys.read(standing, key, mode);
+            read = Keys.read(standing, key, mode, line.words ?? false);
             standing = read.standing;
         }
         return KeyActs.acts(read, Object.assign({ alone: false, registering: false,
-            answering: false, operated: false, commands: false, drawerHere: false, mode,
+            answering: false, answerTaken: true, operated: false, commands: false,
+            drawerHere: false, intoHere: true, upHere: true, reselectHere: true, mode,
             text: "slack" }, line));
     }
 
@@ -1904,11 +1905,17 @@ QtObject {
         // [what, keys, mode, line]
         const idle = [
             ["a letter typed into the find", ["a"], "find", {}],
+            ["Space typed into the find", ["Space"], "find", {}],
+            ["Shift+Space, typing a space as Space does", ["Shift+Space"], "find", {}],
             ["Shift+Left, the field's own", ["Shift+Left"], "find", {}],
             ["Alt+a, the field's own", ["Alt+a"], "find", {}],
             ["a key the table can't name", [""], "find", {}],
             ["the caret moved on the find", ["Left"], "find", {}],
             ["or to its start", ["Home"], "find", {}],
+            ["or right", ["Right"], "find", {}],
+            ["or to its end", ["End"], "find", {}],
+            ["Ctrl+H on a find with words, as Backspace", ["Ctrl+h"], "find", {}],
+            ["Ctrl+Y completing the find", ["Ctrl+y"], "find", {}],
             ["Backspace on a find with words", ["Backspace"], "find", {}],
             ["Ctrl+W on the find", ["Ctrl+w"], "find", {}],
             ["Ctrl+U on the find", ["Ctrl+u"], "find", {}],
@@ -1919,6 +1926,29 @@ QtObject {
             ["Escape letting a count go", ["2", "Escape"], "normal", {}],
             ["a key meaning nothing in normal", ["Alt+z"], "normal", {}],
             ["the drawer's key with no drawer out", ["Ctrl+w", "l"], "normal", {}],
+            ["l on a row, which only says the way in", ["l"], "normal", {}],
+            ["h on a row, which only says the way out", ["h"], "normal", {}],
+            ["Backspace on a row, as h", ["Backspace"], "normal", {}],
+            ["Left on a row, as h", ["Left"], "normal", {}],
+            ["q on a row, which only says how to close", ["q"], "normal", {}],
+            ["q in the drawer", ["q"], "page", {}],
+            ["x in the drawer, which only says E21", ["x"], "page", {}],
+            ["Tab in normal on a row with nothing to go into", ["Tab"], "normal",
+                { intoHere: false }],
+            ["- with nothing above", ["-"], "normal", { upHere: false }],
+            ["gv on the rows with nothing to take back", ["g", "v"], "normal",
+                { reselectHere: false }],
+            ["l moving the caret on a prompt's words", ["l"], "normal", { words: true }],
+            ["or w", ["w"], "normal", { words: true }],
+            ["or 0", ["0"], "normal", { words: true }],
+            ["or $", ["$"], "normal", { words: true }],
+            ["x deleting a letter of them", ["x"], "normal", { words: true }],
+            ["or dw a word", ["d", "w"], "normal", { words: true }],
+            ["u undoing an edit of them", ["u"], "normal", { words: true }],
+            ["the operator again, swallowed after visual's", ["d"], "normal",
+                { operated: true }],
+            ["a key before an ask takes answers", ["y"], "normal",
+                { answering: true, answerTaken: false }],
             ["a modifier alone, as the line asks", ["y"], "normal",
                 { alone: true, answering: true }],
             ["Return naming a register after Ctrl+R", ["Return"], "insert",
@@ -1933,17 +1963,49 @@ QtObject {
             ["Down on the find", ["Down"], "find", {}],
             ["Return on the find", ["Return"], "find", {}],
             ["j in normal", ["j"], "normal", {}],
+            ["Tab in normal into a row with parts", ["Tab"], "normal", {}],
+            ["Tab on the find, which goes in or on to the next row", ["Tab"], "find",
+                { intoHere: false }],
+            ["- going up", ["-"], "normal", {}],
+            ["gv taking a selection back", ["g", "v"], "normal", {}],
+            ["j on a prompt's words, still the rows'", ["j"], "normal", { words: true }],
+            ["cw on a prompt's words, going into insert as i does", ["c", "w"], "normal",
+                { words: true }],
+            ["d ending the drawer's choice, though it says E21", ["d"], "pageVisual", {}],
+            ["or c ending its choice of lines", ["c"], "pageVisualLine", {}],
             ["gg's second g", ["g", "g"], "normal", {}],
             ["the drawer's key with a drawer out", ["Ctrl+w", "l"], "normal",
                 { drawerHere: true }],
-            ["a key answering what the line asks", ["y"], "normal", { answering: true }],
-            ["the operator again after visual's", ["d"], "normal", { operated: true }],
-            ["a colon opening the command line", [":"], "find", { commands: true, text: "" }]
+            ["a key the ask takes, whatever it is", ["Alt+z"], "normal",
+                { answering: true }],
+            ["a key opening the command line, whatever the table reads it as", ["a"],
+                "find", { commands: true }]
         ];
         for (const [what, keys, mode, line] of acted)
             holds(`${what} acts`, acting(keys, mode, line), true);
     }
 
+    // Whether gv has something to take back (KeyActs.reselectHere), by
+    // where the keys are, whether the rows hold a selection and the kind
+    // the drawer last chose by.
+    function reselectsHere(holds) {
+        // [what, mode, a selection on the rows, the drawer's last kind, has]
+        const cases = [
+            ["the rows with a selection", "normal", true, "", true],
+            ["the rows with none, whatever the drawer chose", "normal", false, "pageVisual",
+                false],
+            ["the drawer having chosen", "page", false, "pageVisual", true],
+            ["the drawer with nothing chosen, whatever the rows hold", "page", true, "", false]
+        ];
+        for (const [what, mode, rows, chosen, has] of cases)
+            holds(`gv on ${what} has ${has ? "something" : "nothing"} to take back`,
+                KeyActs.reselectHere(mode, rows, chosen), has);
+    }
+
+    // How tall a drawer's preview stands, on a pitch of 24, two beats of
+    // 12, with groups 20 apart: so the facts after it start on the first
+    // beat at least the groups' gap below a picture, never a band rounded up
+    // to the pitch (VKCF3Z, 2026-11-08); lines whole lines of the pitch.
     function drawerPreviewHeights(holds) {
         const grid = { pitch: 24, beat: 12, gap: 20 };
         // [what, the picture's height, lines of words, what it stands]
@@ -3090,6 +3152,7 @@ QtObject {
         drawerValueLines(holds);
         drawerPreviewHeights(holds);
         keysActing(holds);
+        reselectsHere(holds);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);

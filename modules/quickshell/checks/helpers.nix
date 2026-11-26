@@ -1,6 +1,8 @@
 # What more than one of the folder's checks uses: stand-ins, the shell as the
 # account gets it, and the harnesses that run the shell offscreen or on niri.
-# Each place's file takes what it needs of these by name.
+# Each place's file takes what it needs of these by name, as do the reader's,
+# mpv's and Inkscape's launcher checks, which import it with the arguments
+# every folder's checks get.
 {
   account,
   bareNixos,
@@ -36,25 +38,27 @@ let
     );
   # Copies each file a check names into the folder it runs in, where the
   # shell's folder holds it, with everything it imports, once each. A file
-  # whose imports aren't what imports.nix says fails the check instead,
-  # naming what differs, so the table can't drift from the files. The
-  # launcher's words.json is the one its places' files join to
-  # (launcher/words.nix), as the shell reads it. Options.qml, which the
-  # account's configuration writes, is a stand-in holding only whether
-  # reports are on, and they're off, as on a machine that hasn't chosen,
-  # for a check whose files say a line by it (Presented.rowShown).
-  copied =
-    files:
+  # whose imports aren't what imports.nix says, in whatever order its row
+  # lists them, fails the check instead, naming what differs, so the table
+  # can't drift from the files. The launcher's words.json is the one its
+  # places' files join to (launcher/words.nix), as the shell reads it.
+  # Options.qml, which the account's configuration writes, is a stand-in
+  # holding only whether reports are on, and they're off, as on a machine
+  # that hasn't chosen, for a check whose files say a line by it
+  # (Presented.rowShown). The table is given, so a check can give it another
+  # (core.nix's a-check-copies-what-each-file-imports).
+  copiedWith =
+    table: files:
     let
       bring =
         seen: file:
-        if lib.elem file seen then seen else lib.foldl' bring (seen ++ [ file ]) (imports.${file} or [ ]);
+        if lib.elem file seen then seen else lib.foldl' bring (seen ++ [ file ]) (table.${file} or [ ]);
       every = lib.sort lib.lessThan (lib.foldl' bring [ ] files);
       wrong = lib.filter (
         file:
         (lib.hasSuffix ".qml" file || lib.hasSuffix ".js" file)
         && file != "Options.qml"
-        && lib.sort lib.lessThan (importing file) != imports.${file} or [ ]
+        && lib.sort lib.lessThan (importing file) != lib.sort lib.lessThan (table.${file} or [ ])
       ) every;
       folders = lib.unique (lib.filter (folder: folder != ".") (map dirOf every));
       words = (import ../launcher/words.nix).file;
@@ -75,9 +79,36 @@ let
       )
     else
       ''
-        echo "imports.nix doesn't say what these import: ${lib.concatStringsSep ", " wrong}" >&2
+        # Named in full, since a program's check that fails here lives in another folder.
+        echo "modules/quickshell/checks/imports.nix doesn't say what these import:" \
+          "${lib.concatStringsSep ", " wrong}" \
+          "(under modules/quickshell; make each one's row there list what it imports)" >&2
         exit 1
       '';
+  copied = copiedWith imports;
+  # The shell's files a program's step in the launcher is drawn from, as
+  # Applications.qml holds it, copied for the reader's, mpv's and Inkscape's
+  # checks. imports.nix sees only a file's import lines, so two kinds of
+  # file are named here as roots by hand: a type taken from its own folder
+  # or through `import qs`, as Applications.qml takes Provider and
+  # ReadyRows, and a program's own file takes Listed and Words; and a shell
+  # file a program's own file imports, as Reader.js does FileFacts.js, since
+  # those are copied apart. What each root imports comes with it, guarded.
+  programStep = copied [
+    "Copied.js"
+    "Copied.qml"
+    "Daemon.qml"
+    "FileFacts.js"
+    "Files.qml"
+    "Options.qml"
+    "Words.qml"
+    "launcher/Applications.qml"
+    "launcher/Listed.qml"
+    "launcher/Provider.qml"
+    "launcher/ReadyRows.qml"
+    "launcher/Recents.qml"
+    "launcher/words.json"
+  ];
   # Runs a test that times itself in Qt's engine, in a fresh process each
   # time, until one is fast enough. How fast the engine runs the same code
   # differs from one process to the next by as much as half, while a
@@ -625,6 +656,8 @@ in
 {
   inherit
     copied
+    copiedWith
+    programStep
     timedQml
     singleton
     qs

@@ -1,6 +1,6 @@
 # The checks of the reader, which checks.nix gathers with every other
 # folder's; its opening comment says what each kind of check proves.
-{
+args@{
   account,
   graphical,
   holds,
@@ -38,16 +38,9 @@ let
     in
     "srgb(${channel 0},${channel 1},${channel 2})";
 
-  # A stand-in for one of the shell's singletons, holding only what a check
-  # needs of it.
-  singleton =
-    name: body:
-    pkgs.writeText name ''
-      pragma Singleton
-      import Quickshell
-      import QtQuick
-      Singleton { ${body} }
-    '';
+  # A stand-in for one of the shell's singletons, and the shell's files a
+  # program's step in the launcher is drawn from (quickshell's helpers.nix).
+  inherit (import ../quickshell/checks/helpers.nix args) programStep singleton;
 in
 # The reader draws through Wayland and EGL, on the Linux desktop.
 onLinux {
@@ -92,35 +85,6 @@ onLinux {
       qs = lib.getExe' graphical.pkgs.quickshell "qs";
       # What each program had open lately is the programs daemon's.
       programs = pkgs.callPackage ../programs/package.nix { };
-      # The launcher's own files the step is made from, each by itself so
-      # no other change there builds this again.
-      launcher = ../quickshell/launcher;
-      launched = [
-        "Provider.qml"
-        "Asking.js"
-        "Member.js"
-        "Numbers.js"
-        "Applications.qml"
-        "ReadyRows.qml"
-        "ReadyRows.js"
-        "Presented.js"
-        "KeysSaid.js"
-        "ActForms.js"
-        "Moved.js"
-        "Beneath.js"
-        "Found.js"
-        "Interfaces.js"
-        "HeldWindows.js"
-        "Order.js"
-        "Program.js"
-        "Media.js"
-        "Recents.qml"
-        "Listed.qml"
-        "Recents.js"
-        "Recent.js"
-        "Captured.js"
-        "Ago.js"
-      ];
       # A reader's window, its process showing now.md. Kept in Nix because
       # it's a stand-in's few properties, as each program's check in the
       # launcher writes its niri.
@@ -160,21 +124,7 @@ onLinux {
       mkdir -p launcher share/applications
       cp ${entry} share/applications/reader.desktop
       cp ${home.xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      cp ${../quickshell/Fuzzy.js} Fuzzy.js
-      cp ${../quickshell/ProgramGlyphs.js} ProgramGlyphs.js
-      cp ${../quickshell/Music.js} Music.js
-      cp ${../quickshell/Words.qml} Words.qml
-      cp ${../quickshell/Files.qml} Files.qml
-      cp ${../quickshell/Daemon.qml} Daemon.qml
-      cp ${../quickshell/Hearing.js} Hearing.js
-      cp ${../quickshell/Mending.js} Mending.js
-      cp ${../quickshell/FileFacts.js} FileFacts.js
-      cp ${../quickshell/When.js} When.js
-      cp ${../quickshell/Confirm.js} Confirm.js
-      ${lib.concatMapStrings (file: ''
-        cp ${launcher + "/${file}"} launcher/${file}
-      '') launched}
-      cp ${(import ../quickshell/launcher/words.nix).file} launcher/words.json
+      ${programStep}
       cp ${./ReaderProgram.qml} launcher/ReaderProgram.qml
       cp ${./Reader.js} launcher/Reader.js
       cp ${./tests/reader-program.qml} shell.qml
@@ -184,10 +134,6 @@ onLinux {
       cp ${niri} Niri.qml
       cp ${playing} launcher/Playing.qml
       cp ${singleton "Shortcuts.qml" "property var actions: []"} Shortcuts.qml
-      # Reports are off, as on a machine that hasn't chosen.
-      cp ${singleton "Options.qml" "readonly property bool reports: false"} Options.qml
-      cp ${../quickshell/Copied.qml} Copied.qml
-      cp ${../quickshell/Copied.js} Copied.js
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export XDG_DATA_HOME=$TMPDIR/data XDG_DATA_DIRS=$PWD/share NOW=$(date +%s)
       mkdir -m 700 $XDG_RUNTIME_DIR

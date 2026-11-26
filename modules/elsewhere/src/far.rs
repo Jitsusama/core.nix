@@ -329,11 +329,10 @@ if {{ [ ! -L "$runs" ] || rm -f "$runs"; }} && mkdir -p "$runs" &&
 # What was taken as an archive may be a folder the job named as one. A
 # link standing at the copies' folder or at the copy as it's checked, or
 # a copy gone with one cleared, leaves it untaken, as this machine's, as
-# does a refusal that may have read through one; one put after is the
-# cd's to catch, where it fails.
+# does a refusal that may have read through one; one put after, the cd
+# asks of once it's in.
 [ -z "$mine" ] || if copies; then rm -f "$work.names"; cleared "$work.tar"
-  [ "$why" -eq 2 ] || placed ||
-    {{ printf "elsewhere: the job's copy was moved or linked from its place\n" >&2; why=2; }}
+  [ "$why" -eq 2 ] || placed || {{ moved; why=2; }}
 else why=2; fi
 # The tree and the copy go as `freed` says.
 if [ "$why" -ne 0 ]; then
@@ -345,11 +344,12 @@ if [ "$why" -ne 0 ]; then
 fi
 cd {folder} || {{
   placed && printf "elsewhere: the job's folder holds nothing that travels\n" >&2; why=$?
-  [ "$why" -eq 0 ] || printf "elsewhere: the job's copy was moved or linked from its place\n" >&2
+  [ "$why" -eq 0 ] || moved
   {freed}  [ "$why" -ne 0 ] || {{ say {refused}; exit {REFUSES}; }}
   say {untaken}
   exit {UNTAKEN}
 }}
+placed || {{ moved; {freed}  say {untaken}; exit {UNTAKEN}; }}
 say {started}
 (
   {{ {setup}
