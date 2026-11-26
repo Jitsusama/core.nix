@@ -54,6 +54,11 @@ pub struct Routes {
     /// rather than asked, since its owner answers it.
     #[serde(default)]
     pub told: Vec<String>,
+    /// Cells whose work lies outside the ledgers, as his own errands do:
+    /// the keeper hears nothing of a pain sent to one, since its owner
+    /// carries it and the asks and misses ledgers don't hold that work.
+    #[serde(default)]
+    pub apart: Vec<String>,
 }
 
 impl Routes {
@@ -71,6 +76,16 @@ impl Routes {
             .as_deref()
             .is_some_and(|f| f.eq_ignore_ascii_case(address));
         !fallback && self.told.iter().any(|n| n.eq_ignore_ascii_case(address))
+    }
+
+    /// Whether the keeper hears nothing of a pain sent to `address`, in
+    /// any case: never the fallback's, which went to no owner of its own.
+    pub fn keeps_apart(&self, address: &str) -> bool {
+        let fallback = self
+            .fallback
+            .as_deref()
+            .is_some_and(|f| f.eq_ignore_ascii_case(address));
+        !fallback && self.apart.iter().any(|n| n.eq_ignore_ascii_case(address))
     }
 
     /// Why routes.json can't be used, when it's there but can't be read.
@@ -388,6 +403,7 @@ mod tests {
             ledgers: Some("ORCH01".into()),
             never: vec!["VOID01".into()],
             told: Vec::new(),
+            apart: Vec::new(),
         }
     }
 
@@ -534,6 +550,23 @@ mod tests {
             "the fallback, though named told"
         );
         assert!(!routes.only_tells("GHI789"), "a cell not named told");
+    }
+
+    #[test]
+    fn the_keeper_still_hears_of_what_went_to_the_fallback_though_named_apart() {
+        let routes = Routes {
+            apart: vec!["abc123".into(), "orch01".into()],
+            ..routes()
+        };
+        assert!(
+            routes.keeps_apart("ABC123"),
+            "a cell named apart, in any case"
+        );
+        assert!(
+            !routes.keeps_apart("ORCH01"),
+            "the fallback, though named apart"
+        );
+        assert!(!routes.keeps_apart("GHI789"), "a cell not named apart");
     }
 
     #[test]

@@ -685,7 +685,8 @@ fn note_for_keeper(
             // would for its owner.
             !pain.carried
                 && !stalled::is(pain)
-                && route::owner(&pain.session, pain.void, cells, routes).is_some()
+                && route::owner(&pain.session, pain.void, cells, routes)
+                    .is_some_and(|owner| !routes.keeps_apart(&owner))
                 && pain.routed_at.is_none()
                 && pain.tries < 2 * SEND_TRIES
                 && pain.at >= ears.at - DAY_MS
@@ -701,7 +702,9 @@ fn note_for_keeper(
                 h.to.as_ref()
                     .is_some_and(|to| to.eq_ignore_ascii_case(keeper));
             let waits = owned.contains(&h.key) || h.unnoted_since.is_some();
-            (waits && !stalled::is(h) && !to_keeper) || late.contains(n)
+            // Nor of what went to a cell whose work the ledgers don't hold.
+            let apart = h.to.as_deref().is_some_and(|to| routes.keeps_apart(to));
+            (waits && !stalled::is(h) && !to_keeper && !apart) || late.contains(n)
         })
         // A late one went to no owner, so the keeper is asked of it,
         // whoever's cell it was heard in.
