@@ -2578,7 +2578,10 @@ Provider {
     // Each asking is a pass of the to-dos', sessions' and kinds' keeping,
     // so what's no longer there is let go; a look is let go once its file
     // is, since History's looks are kept beside them.
+    // Each part is lapped for the step that asks (Launcher's stepLap), so
+    // a slow step into For You says which part made it slow.
     function waitingRows() {
+        const lap = name => provider.launcher?.stepLap?.(name);
         const now = Date.now();
         const bands = bandsAt(now);
         const keeps = [itemsKept, wantsKept, kindsKept, cellsKept];
@@ -2587,17 +2590,25 @@ Provider {
             delete itemsNow[identity];
         for (const address of Object.keys(wantsNow))
             delete wantsNow[address];
+        lap("banding");
         const asked = kindRow("agent", bandRows(bands.agent, now));
-        const rows = latelyRows(now).filter(latelyComingIn).concat(
-            cellRows(bands.now, now, asked, bands.agent[0]?.weight ?? 0),
-            kindRow("look", bandRows(bands.look, now)),
-            kindRow("try", bandRows(bands.try, now)), kindRow("read", bandRows(bands.read, now)),
+        lap("agents asking");
+        const lately = latelyRows(now).filter(latelyComingIn);
+        lap("lately");
+        const cells = cellRows(bands.now, now, asked, bands.agent[0]?.weight ?? 0);
+        lap("cells");
+        const lookRows = kindRow("look", bandRows(bands.look, now));
+        const tryRows = kindRow("try", bandRows(bands.try, now));
+        const readRows = kindRow("read", bandRows(bands.read, now));
+        lap("kinds");
+        const rows = lately.concat(cells, lookRows, tryRows, readRows,
             laterRow === null ? [] : [laterRow], historyRow === null ? [] : [historyRow]);
         keeps.forEach(keeping => keptOnly(keeping));
         for (const file of Object.keys(looksKept.rows)) {
             if (!(file in lookTexts))
                 delete looksKept.rows[file];
         }
+        lap("letting go");
         return rows;
     }
 

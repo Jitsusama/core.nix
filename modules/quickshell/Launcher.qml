@@ -5501,10 +5501,20 @@ Scope {
     // step, a sound output's use, and an answer's levels its copy. Null
     // where it holds nothing. `spent`, where given, is told how long its
     // acts, its parts and their ordering took, so a step's line says which
-    // of its making to cut (Stepped.steppedMaking).
+    // of its making to cut (Stepped.steppedMaking), and the laps its acts'
+    // maker closed (stepLap).
     function inside(row, things, spent) {
         const began = KeyTimes.now();
-        const own = stepRows(row, things);
+        const outer = stepLaps;
+        stepLaps = { at: began, parts: {} };
+        let own = null;
+        let laps = {};
+        try {
+            own = stepRows(row, things);
+        } finally {
+            laps = stepLaps.parts;
+            stepLaps = outer;
+        }
         const acted = KeyTimes.now();
         const parts = things ? partsIn(row) : [];
         const parted = KeyTimes.now();
@@ -5513,7 +5523,7 @@ Scope {
             ? Catalogue.quietFirst(into, one => root.commandNamed(one)) : into;
         if (spent)
             Object.assign(spent, { acts: acted - began, parts: parted - acted,
-                ordering: KeyTimes.now() - parted });
+                ordering: KeyTimes.now() - parted, laps });
         return ordered;
     }
 
@@ -11523,6 +11533,18 @@ Scope {
     // "letting go", the hold let go and the opening named (intoKept).
     // "showing" is now only what `opening` turning moves.
     property var openLaps: ({ at: -1, parts: {} })
+    // A step's acts in laps, as an opening's are, closed by the provider
+    // whose verbs make them: For You's took a median 12 ms of making 2 to
+    // 16 rows, with nothing saying which of its bands it went on (Joel's
+    // journal from 2026-11-23). Only while inside() makes a step's acts.
+    property var stepLaps: ({ at: -1, parts: {} })
+    function stepLap(name) {
+        if (stepLaps.at < 0)
+            return;
+        const now = KeyTimes.now();
+        stepLaps.parts[name] = (stepLaps.parts[name] ?? 0) + now - stepLaps.at;
+        stepLaps.at = now;
+    }
     function openLap(name) {
         if (openAsked < 0 || openLaps.at < 0)
             return;
