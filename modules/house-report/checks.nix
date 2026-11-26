@@ -395,12 +395,7 @@ in
         ];
       }
       ''
-        while IFS= read -r line; do
-          grep -qE -- "$pattern" <<<"$line" || { echo "not taken as known: $line" >&2; exit 1; }
-        done <"$leakingPath"
-        while IFS= read -r line; do
-          if grep -qE -- "$pattern" <<<"$line"; then echo "taken as known: $line" >&2; exit 1; fi
-        done <"$lesserPath"
+        "$BASH" ${./lists-test.sh} "$pattern" "$leakingPath" "$lesserPath"
         touch "$out"
       '';
 
