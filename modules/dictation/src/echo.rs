@@ -234,6 +234,7 @@ pub struct Cut {
     pub at: usize,
     pub after: isize,
     pub text: String,
+    pub below: Option<f32>,
 }
 
 /// `lines` with the others' echo cut from each of Joel's whose words
@@ -298,6 +299,7 @@ pub fn cut_echoes<S: BuildHasher>(
                     at: word.at,
                     after: later(word.at, theirs[j].at),
                     text: word.text.clone(),
+                    below: None,
                 });
             }
         }
@@ -763,8 +765,41 @@ mod tests {
                 at: 5_000 * RATE / 1000,
                 after: 0,
                 text: "Lunch at noon".to_owned(),
+                below: None,
             }]
         );
+    }
+
+    #[test]
+    fn what_was_cut_for_its_level_says_how_far_below_theirs_it_was() {
+        // A word cut for its level echoes none of theirs in particular,
+        // so how late it came says nothing; how far below them it was
+        // does, where the margin is judged on a live call. Their words
+        // spelled alike are cut for that, as before.
+        let theirs = at_level(timed("Lunch at noon on Thursday then.", 5_000), -20.0);
+        let own = at_level(
+            timed("Fine by me, I'll book the room for us.", 1_000),
+            -20.0,
+        );
+        for (heard, below) in [
+            ("Bunch had moon in Tuesday", Some(22.0)),
+            ("Lunch at noon on Thursday then.", None),
+        ] {
+            let mut mine = own.clone();
+            mine.extend(at_level(timed(heard, 5_050), -42.0));
+            let lines = [worded(Side::Theirs, &theirs), worded(Side::Mine, &mine)];
+            let words = HashMap::from([(0, theirs.clone()), (1, mine)]);
+            let (_, cuts) = cut_echoes(&lines, &words, |left| Some(left.to_owned()));
+            let told: Vec<(&str, Option<f32>)> = cuts
+                .iter()
+                .map(|cut| (cut.text.as_str(), cut.below))
+                .collect();
+            assert_eq!(
+                told,
+                [(heard, below)],
+                "the cut of {heard:?} didn't say how far below theirs it was by level alone"
+            );
+        }
     }
 
     #[test]
