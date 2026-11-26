@@ -508,12 +508,13 @@ pub fn file(
             .into_iter()
             .map(move |f| (m, f))
     }) {
-        // Owed once while open, and asked at most once in the day it was
-        // given to answer: a measure hovering at its line, back in one
-        // hour and out the next, would otherwise ask its owner hourly.
+        // Owed once while open, and asked at most once a day from when it
+        // was last asked, whatever its due: a measure hovering at its line,
+        // back in one hour and out the next, would otherwise ask its owner
+        // hourly, and a due a week on would keep a queue unasked a week.
         if ledger
             .iter()
-            .any(|e| e.key == one.key && (e.open || e.due > now))
+            .any(|e| e.key == one.key && (e.open || now < e.last_to + DAY))
         {
             continue;
         }
@@ -675,6 +676,45 @@ mod tests {
         assert!(
             ledger[0].open,
             "a quiet queue closed the ask, though a wedged one reads the same"
+        );
+    }
+
+    #[test]
+    fn a_queue_whose_ask_closed_is_asked_again_a_day_on_not_a_week() {
+        let queue = measure(
+            &format!("{QUEUE}world-walks"),
+            Class::Queues,
+            180.0,
+            Some(60.0),
+        );
+        let mut ledger = Vec::new();
+        file(
+            &mut ledger,
+            std::slice::from_ref(&queue),
+            "2026-11-21",
+            1000,
+        );
+        ledger[0].open = false;
+        assert!(
+            file(
+                &mut ledger,
+                std::slice::from_ref(&queue),
+                "2026-11-21",
+                1000 + DAY - 1
+            )
+            .is_empty(),
+            "a queue closed within its day was asked again that day"
+        );
+        assert_eq!(
+            file(
+                &mut ledger,
+                std::slice::from_ref(&queue),
+                "2026-11-22",
+                1000 + DAY
+            )
+            .len(),
+            1,
+            "a queue closed a day ago waited out its week-long due unasked"
         );
     }
 

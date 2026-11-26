@@ -11,7 +11,7 @@
 //! harness keeps its own needs in (`lib/mesh/need-route.ts`'s `NeedRecord`,
 //! which a line it wrote pins below), so one judge reads both.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -241,6 +241,8 @@ pub fn put_late(
     }
     let mut put = Vec::new();
     let mut lines = Vec::new();
+    let mut drags: BTreeSet<String> = BTreeSet::new();
+    let mut dragged = 0;
     // One back, its figure in, waits only on its owner's word of the fix,
     // which it was asked for, so it goes to nobody else.
     for entry in ledger
@@ -277,6 +279,14 @@ pub fn put_late(
             continue;
         }
         entry.late = true;
+        // The hour files every measure past its target, so its red lines
+        // go late together; each is said as one count, which would
+        // otherwise crowd the day's worse and better off its note.
+        if entry.kind.as_deref() == Some(DRAG) {
+            dragged += 1;
+            drags.insert(entry.owner.clone().unwrap_or_else(|| "no owner".to_owned()));
+            continue;
+        }
         lines.push(format!(
             "Late: {}, open since {}, with {}",
             entry.words,
@@ -284,8 +294,18 @@ pub fn put_late(
             entry.owner.as_deref().unwrap_or("no owner")
         ));
     }
+    if dragged > 0 {
+        let with: Vec<String> = drags.into_iter().collect();
+        lines.push(format!(
+            "Late: {dragged} of the hour's red lines asked of their owners, with {}",
+            with.join(", ")
+        ));
+    }
     (put, lines)
 }
+
+/// The kind the hour files a measure past its target as.
+const DRAG: &str = "drag";
 
 /// Each of `put` as the need the mesh keeps, asked by `asker` at `at_ms`,
 /// its id the asker's and the moment's with its place among them, so no
@@ -518,6 +538,29 @@ mod tests {
             "a must left the quest that filed it: {put:?}"
         );
         assert_eq!(lines.len(), 1, "a must past its date wasn't said late");
+    }
+
+    #[test]
+    fn the_hours_red_lines_gone_late_are_said_as_one_count() {
+        let mut ledger = ledger("crashes:chrome");
+        ledger[0].kind = Some("hole".into());
+        for (key, owner) in [("hour:a", "B"), ("hour:b", "C"), ("hour:c", "B")] {
+            let mut drag = self::ledger(key).remove(0);
+            drag.kind = Some(DRAG.into());
+            drag.owner = Some(owner.into());
+            ledger.push(drag);
+        }
+        let (put, lines) = put_late(&mut ledger, &[], |_| true, 2 * DAY + 1);
+        assert!(put.is_empty(), "a red line went to a hub: {put:?}");
+        assert_eq!(
+            lines,
+            [
+                "Late: crashes:chrome got worse, open since d1, with A",
+                "Late: 3 of the hour's red lines asked of their owners, with B, C"
+            ],
+            "the hour's red lines took a line each, or the must lost its own"
+        );
+        assert!(ledger.iter().all(|e| e.late), "one wasn't marked late");
     }
 
     #[test]
