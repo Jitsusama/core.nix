@@ -41,8 +41,7 @@ let
   # A legacy key as sd-switch reads it (its ini.rs to_bool): written as
   # home-manager writes the value, then lowered, so a Nix true, an int 1
   # and "Yes" all read as yes. An absent key reads as neither.
-  spelled =
-    value: lib.toLower (if lib.isBool value then lib.boolToString value else toString value);
+  spelled = value: lib.toLower (if lib.isBool value then lib.boolToString value else toString value);
   yes =
     value:
     lib.elem (spelled value) [
