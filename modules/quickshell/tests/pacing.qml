@@ -317,6 +317,13 @@ QtObject {
             "; its thread ran 15 ms of the stall, waited 9 for a CPU and slept 0");
         check(failures, "an opening that never stalled says nothing of it",
             Thread.said(0, { ran: 0, waited: 0 }, "the stall"), "");
+        check(failures, "a frame's drawing is said apart by its render thread's times",
+            Thread.drawingApart({ syncing: 3, rendering: 117, heard: 1 }),
+            " (3 syncing, 117 rendering, 1 before the shell heard it swapped)");
+        check(failures, "a frame whose times weren't read says nothing of them",
+            Thread.drawingApart(null), "");
+        check(failures, "nor does a split without its sync",
+            Thread.drawingApart({ rendering: 117, heard: 1 }), "");
         const paging = [[16, { ran: 5, waited: 1, faulted: 3 }],
             [132, { ran: 20, waited: 2, faulted: 1206 }]];
         const pagedStall = paging.reduce((was, [at, thread]) => Pacing.feltTicked(was, at, pace,

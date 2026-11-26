@@ -12299,6 +12299,7 @@ Scope {
         openFramesSized = 0;
         openFramesWaited = 0;
         openFirstDrawn = -1;
+        openFirstSplit = null;
         openFirstMade = null;
         openAskedMade = tallies();
         openLap("tallying");
@@ -12352,6 +12353,12 @@ Scope {
     // When its first frame was swapped, so its drawing is that frame's
     // own, and the frames waited for niri's size are said apart as sizing.
     property real openFirstDrawn: -1
+    // And that frame's drawing said apart as a key's is (frameSplit), read
+    // as its swap is heard, since the render thread keeps only its last 16
+    // frames' times and an opening may wait 20 for its size: Joel's at
+    // 10:28 spent 121 ms drawing, unsplit, so nothing said whether its
+    // sync or its render held it (2026-11-26). Null where it wasn't read.
+    property var openFirstSplit: null
     // The rows each source had made by then, so what's said made before
     // the frame is made before that first one, not by a source while
     // niri's size was awaited. They're counted from the ask, as what the
@@ -12381,6 +12388,7 @@ Scope {
         openFramesWaited += 1;
         if (openFirstDrawn < 0) {
             openFirstDrawn = KeyTimes.now();
+            openFirstSplit = frameSplit({ frame, begun }, openFirstDrawn);
             openFirstMade = tallies();
             openFirstWeighings = keysWeighings;
             openFirstRedone = redone();
@@ -13213,9 +13221,11 @@ Scope {
         const parts = partsSaid(openParts);
         const settled = openSettled < 0 ? asked + openWorked : openSettled;
         const begun = openBegun < 0 ? drawn : openBegun;
-        const after = { settling: Math.round(settled - asked - openWorked),
+        const split = openFirstSplit;
+        openFirstSplit = null;
+        const after = Object.assign({ settling: Math.round(settled - asked - openWorked),
             waiting: Math.round(begun - settled), drawing: Math.round(drawn - begun),
-            sizing: Math.round(sized - drawn) };
+            sizing: Math.round(sized - drawn) }, split ?? {});
         const worked = Math.round(openWorked);
         const { thread, collecting } = Thread.workingSpent(openAskedClocks, openWorkedClocks);
         const workingSaid = Collector.workingSaid(collecting)
@@ -13261,7 +13271,8 @@ Scope {
             fillSaidLate();
         console.info(`launcher: opening took ${took} ms to its frame, ${worked} ms working`
             + ` (${parts}), then ${after.settling} settling, ${after.waiting} waiting for a`
-            + ` frame and ${after.drawing} drawing it, ${rows} rows made (${most})`
+            + ` frame and ${after.drawing} drawing it${Thread.drawingApart(split)}, ${rows} rows`
+            + ` made (${most})`
             + (kept ? `, drawn from what was kept, at its size after ${openFramesWaited} frames`
                 + ` and ${after.sizing} ms` : "")
             + (first ? ", the first since the shell started" : "")
