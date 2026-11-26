@@ -204,11 +204,13 @@ const ASKER_ANSWERS_MS = PATIENCE_MS + 10000 + SETTLE_MS;
 // dropped with the daemon is said again as its watch answers anyway.
 const TOLD_AGAIN_MS = 30000;
 
-// How long a start this shell never asked stands seen before it's told: the
-// asker, up beside a new shell for up to 70 s while a switch hands over
-// (TOLD_AGAIN_MS's), keeps a record untold while it watches its session,
-// so only once it's surely gone, and the daemon still keeps the record
-// (stillKept), is the start this shell's to tell and watch.
+// How long a start this shell never asked stands seen before it's told, at
+// the least: the asker keeps a record untold while it watches its session,
+// and stays up beside a new shell while a switch hands over, for as long as
+// Joel keeps the launcher or Super+S's line open (shell-hands-over.sh). So
+// it's told only once the daemon takes this shell as the unit's (theShells)
+// and still keeps the record (stillKept): the asker is ended within 3 s of
+// that, and this is room for a busy one's last told to land first.
 const HANDED_OVER_MS = 70000 + SETTLE_MS;
 
 // Of the starts the agents daemon keeps ended and untold (`kept`, each
@@ -247,10 +249,18 @@ function untold(kept, known, seen, now) {
 // yet. With no answer, or a refusal, none is told yet.
 function stillKept(tell, answer) {
     const kept = answer?.kept;
-    if (!Array.isArray(kept)) {
+    if (!Array.isArray(kept) || !theShells(answer)) {
         return [];
     }
     return tell.filter(one => kept.includes(one.token));
+}
+
+// Whether the daemon's `answer` to sprout-kept takes this shell as the
+// unit's: a shell held beside the one it replaces isn't yet, so it tells
+// none of that one's starts, which it may still be watching. An older
+// daemon says nothing of it, and is taken as it was, saying yes.
+function theShells(answer) {
+    return answer?.shell !== false;
 }
 
 // Why `ask` would ask nothing, in `said`'s words (`empty` or

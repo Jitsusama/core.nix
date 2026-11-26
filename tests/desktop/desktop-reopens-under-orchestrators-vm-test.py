@@ -1239,6 +1239,7 @@ def test_a_start_a_switch_cut_off_is_told_once(desktop: Desktop) -> None:
         old = desktop.as_account("systemctl --user show quickshell -p MainPID --value").strip()
         desktop.as_account("systemctl --user stop agents")
         desktop.as_account("systemctl --user reload --no-block quickshell")
+        reloaded = time.monotonic()
         desktop.as_account("systemctl --user start agents")
         # The daemon's words for it, not the shell's for an answer that never came.
         noticed(desktop, CUT_OFF, cut, dt.timedelta(seconds=120))
@@ -1249,13 +1250,14 @@ def test_a_start_a_switch_cut_off_is_told_once(desktop: Desktop) -> None:
             ),
             timeout=dt.timedelta(seconds=120),
         )
-        # The held shell, served it as it came up, would tell it once its asker had surely
-        # told it: at its first look every START_SETTLES past that, so as late as a second
-        # step on, its notice landing after. There's no event for a notice never sent, so
-        # that's waited.
-        waited = time.monotonic() - asked
-        latest = ASKER_ANSWERS + 2 * START_SETTLES + NOTICE_LANDS
-        machine.sleep(max(NOTICE_LANDS, int(latest - waited) + 1))
+        # The held shell, served it as it came up, would tell it once it had the unit, its
+        # asker had surely told it and it had stood seen HANDED_OVER: at its first look
+        # every START_SETTLES past the later of those, so as late as a second step on, a
+        # step more for its first serving after the daemon came back, its notice landing
+        # after. There's no event for a notice never sent, so that's waited.
+        latest = max(asked + ASKER_ANSWERS, reloaded + HANDED_OVER)
+        latest += 3 * START_SETTLES + NOTICE_LANDS
+        machine.sleep(max(NOTICE_LANDS, int(latest - time.monotonic()) + 1))
         told = starts_noticed(desktop)
         assert told == before + 1, f"a cut-off start was noticed {told - before} times"
     finally:
@@ -1317,6 +1319,8 @@ NOTICE_LANDS = 3
 # and from the start's asking (its ASKER_ANSWERS_MS).
 START_SETTLES = 5
 ASKER_ANSWERS = 75
+# Seconds a start a shell never asked stands seen before it may tell it (its HANDED_OVER_MS).
+HANDED_OVER = 75
 STARTS_NOTICED = '.notices[]? | select(.app == "Agents" and .summary == "Start New Work")'
 UNANSWERED = (
     "the node didn't answer in time; it may still start it, so look in Agents before asking again"

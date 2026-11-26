@@ -72,6 +72,20 @@ function toldOf(waiting, late, texts) {
     });
 }
 
+// One pass of Agents.qml's openSprouted over `openings`: how they stand
+// (settled's `stood`, by `found`, `now` and `times`), each late one with
+// the words `said` gives it (`late`, each `{ one, text }`), and the
+// openings to keep (`kept`): every one still waiting, as counted, kept on
+// a pass that settles nothing too, since each counts its wait from what
+// the last pass kept. `settles` says whether it settled any.
+function pass(openings, found, now, times, said) {
+    const stood = settled(openings, found, now, times);
+    const late = stood.late.map(one => ({ one, text: said(one) }));
+    const kept = toldOf(stood.waiting, stood.late, late.map(each => each.text));
+    const settles = stood.late.length + stood.up.length + stood.gone.length > 0;
+    return { stood, late, kept, settles };
+}
+
 // What the foot told (`footed`, Agents.qml's sproutFooted, `{ told, ... }`)
 // without the first tell reading `text`, as a start's window opening
 // answers what was said of it, while each other start's tell stays to be

@@ -62,6 +62,10 @@ fn the_daemons_socket_takes_no_sprout_from_anyone_but_the_shell() {
         "kept, as the file says, with its told refused: {kept_answer}"
     );
     assert_eq!(
+        kept_answer["shell"], false,
+        "said not the shell, as a connection outside its unit isn't: {kept_answer}"
+    );
+    assert_eq!(
         told_answer["error"]["code"], "untold",
         "took a told: {told_answer}"
     );

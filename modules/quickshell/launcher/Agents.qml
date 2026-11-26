@@ -2182,12 +2182,14 @@ Provider {
     }
     // Tells those of `tell` the daemon still keeps by its `answer` to
     // sprout-kept (Sprouting.stillKept): one its asker told since is kept
-    // no more. With no answer, or a refusal, they're asked again in a moment.
+    // no more. With no answer, or a refusal, or while this shell is held
+    // beside the one it replaces (Sprouting.theShells), they're asked again
+    // in a moment.
     function sproutsChecked(tell, answer) {
         tell.forEach(one => {
             delete sproutChecking[one.token];
         });
-        if (!Array.isArray(answer?.kept)) {
+        if (!Array.isArray(answer?.kept) || !Sprouting.theShells(answer)) {
             sproutAgainIn(Sprouting.SETTLE_MS);
             return;
         }
@@ -2301,10 +2303,15 @@ Provider {
             sproutTokens[sproutToken] = "ended";
         }
         sproutToken = "";
-        // Marked before the kept starts are looked at below, which would say it told.
+        // Marked, and its opening kept, before the kept starts are looked at
+        // below, which would say it told, and before anything that could
+        // throw between them leaves it watched with nothing watching.
         const watches = how.started && how.held !== "";
-        if (watches)
+        if (watches) {
             sproutWatching(token);
+            const given = Object.assign({}, sproutGiven, { token });
+            openings = openings.concat([Openings.opening(how, key, given, Date.now())]);
+        }
         const where = Sprouting.asksWhere(how) && askWhere(key);
         const text = where ? Sprouting.toldWhere(how, sproutWords())
             : Sprouting.told(Openings.promised(how, sproutGiven), sproutWords());
@@ -2316,11 +2323,8 @@ Provider {
             : `couldn't sprout new work: ${how.why}`);
         sproutsMade = StartSaid.made(sproutsMade,
             { key: key, words: sproutGiven.words, on: sproutGiven.on }, how, Date.now());
-        if (watches) {
-            const given = Object.assign({}, sproutGiven, { token });
-            openings = openings.concat([Openings.opening(how, key, given, Date.now())]);
+        if (watches)
             openSprouted();
-        }
     }
 
     // Says how a start ended beyond its own row (Sprouting.reach): in the
@@ -2528,18 +2532,22 @@ Provider {
     // foot for the starts Joel still waits on, and as a notice for the rest
     // (Openings.toldWhere).
     function openSprouted() {
-        const stood = Openings.settled(openings, one => sessionOf(one), Date.now(),
-            openingPatience);
-        const late = stood.late.map(one => ({ one, text: said(one, "unopened") }));
-        // Kept on every pass, one that settles nothing too, as each counts its
-        // wait from what the last pass kept (Openings.settled).
-        openings = Openings.toldOf(stood.waiting, stood.late, late.map(each => each.text));
-        if (stood.late.length + stood.up.length + stood.gone.length === 0)
+        // Kept on every pass, one that settles nothing too (Openings.pass).
+        const pass = Openings.pass(openings, one => sessionOf(one), Date.now(),
+            openingPatience, one => said(one, "unopened"));
+        openings = pass.kept;
+        if (!pass.settles)
             return;
+        const stood = pass.stood;
+        const late = pass.late;
         // The up and gone are out of `openings` now, so their records are said told
         // however telling them ends, never left watched for the shell's life.
         try {
             tellPass(stood, late);
+        } catch (error) {
+            // Journalled, not thrown on, so the pass's caller still tells
+            // the daemon what it had to.
+            sproutJournal(`telling a pass of new work threw: ${error}`);
         } finally {
             sproutWatched(Openings.settledTokens(stood));
         }
@@ -2568,7 +2576,7 @@ Provider {
             } catch (error) {
                 sproutJournal(`new work held ${one.held} is up, but opening it threw: ${error}`);
                 text = Openings.filled(sproutWords(), Openings.upWord(one),
-                    { machine: one.machine, title: footName(one.session) });
+                    { machine: one.machine, title: titleOf(one) });
             }
             if (text !== "")
                 told.push({ one, text });
@@ -2582,6 +2590,16 @@ Provider {
     }
     function sessionOf(one) {
         return Sprouting.sproutedOf(Sessions.running, one.held, one.machine);
+    }
+    // `one`'s session as the foot names it, or what it's held as where
+    // naming it throws, as it may where opening it just did.
+    function titleOf(one) {
+        try {
+            return footName(one.session);
+        } catch (error) {
+            sproutJournal(`naming new work held ${one.held} threw: ${error}`);
+            return one.held;
+        }
     }
     // Says `word` of `one` on its act, unless the act was pressed again
     // since (Openings.saysOnAct), and gives the words for the foot, its

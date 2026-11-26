@@ -273,19 +273,24 @@ QtObject {
             const longer = Object.assign({}, counted, { waited: minutes - 5000 });
             Expect.same("and to its patience", Openings.settled([longer], () => null,
                 now + 5000, times).late.length, 1);
-            // As Agents.qml's openSprouted keeps each pass's waiting, a pass that
+            // Agents.qml's openSprouted keeps each pass's `kept`, a pass that
             // settles nothing too: kept, the 5 s passes reach the minute; the
             // opening as made, kept, never does.
+            const quiet = Openings.pass([counted], () => null, now + 5000, times, () => "");
+            Expect.same("a pass that settles nothing says so, and keeps it counted",
+                [quiet.settles, quiet.kept.length, quiet.kept[0]?.waited], [false, 1, 5000]);
             let kept = [counted];
             let lateAt = -1;
-            for (let pass = 1; pass <= 24 && lateAt < 0; pass += 1) {
-                const stood = Openings.settled(kept, () => null, now + pass * 5000, times);
-                kept = Openings.toldOf(stood.waiting, stood.late, stood.late.map(() => ""));
-                if (stood.late.length > 0)
-                    lateAt = pass * 5000;
+            for (let at = 1; at <= 24 && lateAt < 0; at += 1) {
+                const each = Openings.pass(kept, () => null, now + at * 5000, times,
+                    () => "late");
+                kept = each.kept;
+                if (each.settles)
+                    lateAt = at * 5000;
             }
             Expect.same("passes kept, settling nothing, are late at the minute", lateAt,
                 minutes);
+            Expect.same("and keep the words said of it late", kept[0]?.told, "late");
             Expect.same("the opening as made, kept, is never late", Openings.settled(
                 [counted], () => null, now + 2 * minutes, times).late.length, 0);
         }
@@ -750,6 +755,17 @@ QtObject {
             Sprouting.stillKept(untold.tell, null), []);
         Expect.same("nor with a refusal, as from a daemon before sprout-kept",
             Sprouting.stillKept(untold.tell, { error: { code: "unknown-ask" } }), []);
+        // Held beside the shell it replaces, which may still watch for it, a shell
+        // tells none until the daemon takes it as the unit's; a daemon before the
+        // word is taken as saying it is.
+        Expect.same("none while it's held", Sprouting.stillKept(untold.tell,
+            { kept: ["a-1"], shell: false }), []);
+        Expect.same("held, it's asked again", Sprouting.theShells({ kept: [], shell: false }),
+            false);
+        Expect.same("once it's the unit's, it's told", Sprouting.stillKept(untold.tell,
+            { kept: ["a-1"], shell: true }).map(one => one.token), ["a-1"]);
+        Expect.same("an older daemon's answer is taken as the shell's",
+            Sprouting.theShells({ kept: [] }), true);
         // Its asker, still up beside this shell while a switch hands over, says it told
         // first, so one first seen just now waits rather than being told twice.
         const fresh = Sprouting.untold(kept, known, {}, now);
