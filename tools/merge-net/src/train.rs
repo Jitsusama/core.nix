@@ -35,9 +35,9 @@
 //! changes that would merge alone board it rather than move main again
 //! (`right_of_way.rs`).
 //!
-//! A candidate that fails only checks that fail at its base too, or VM
-//! tests no rider touches that pass there, lands as a pass would, each
-//! told to its owner (`flaky.rs`).
+//! A candidate that fails only checks that fail at its base too, or that
+//! pass there and when built again at the candidate, lands as a pass
+//! would, each told to its owner (`flaky.rs`).
 //! A candidate that fails otherwise splits: the train takes the first half of its
 //! riders to board, and halves again while they fail, so the riders that
 //! broke nothing land together and the one that breaks it is found alone,
@@ -497,6 +497,7 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
     let mut splitting = Splitting::default();
     let mut waits = pulls::Waits::new();
     let ask = |rider: &Rider| pulls::asked_of(&slug, rider);
+    let mut flakes = flaky::Flakes::default();
     loop {
         let waiting = riders(&root);
         if waiting.is_empty() {
@@ -558,7 +559,9 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         match gate(&checkout, &log) {
             Gated::Passed => splitting.taken(),
             // A red that is main's or a flake's lands as a pass would.
-            Gated::Red if flaky::excuses(&root, url, &checkout, &base, &candidate, &log) => {
+            Gated::Red
+                if flaky::excuses(&root, url, &checkout, &base, &candidate, &log, &mut flakes) =>
+            {
                 splitting.taken();
             }
             Gated::Red => {

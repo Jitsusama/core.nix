@@ -2,14 +2,20 @@
 
 use super::*;
 
+/// What a builder says when `name` fails, as nix's `-L` prefixes it.
+fn broke(name: &str) -> String {
+    format!("{name}> error: {name} broke after 1799ms\n")
+}
+
 /// A gate's words, as changed-checks and nix say them, naming `built` as
 /// changed and each of `failed` a derivation whose builder failed.
 fn words(built: &[&str], failed: &[&str]) -> String {
     let rows = built.iter().map(|check| format!("changed  {check}\n"));
     let errors = failed.iter().map(|name| {
         format!(
-            "error: Cannot build '/nix/store/2pglmw1knj57yvg0rm4wv9fk70085wq2-{name}.drv'.\n       \
-             Reason: builder failed with exit code 1.\n"
+            "{}error: Cannot build '/nix/store/2pglmw1knj57yvg0rm4w-{name}.drv'.\n       \
+             Reason: builder failed with exit code 1.\n",
+            broke(name)
         )
     });
     std::iter::once("kind     check\n".to_owned())
@@ -19,21 +25,39 @@ fn words(built: &[&str], failed: &[&str]) -> String {
         .collect()
 }
 
-/// A judging whose names are none, whose untouched checks are `untouched`,
-/// and whose builds at the base end as `at_base` says of each.
+/// The words of a build at the base that fails `name` as the candidate did.
+fn as_before(name: &str) -> (Gated, String) {
+    (Gated::Red, words(&[], &[name]))
+}
+
+/// A judging whose names are none, whose builds at the base and again at
+/// the candidate end as `at_base` and `again` say, and whose ride excused
+/// each check's reds `excused` times already.
 fn judged(
     words: &str,
-    untouched: &[&str],
-    at_base: &dyn Fn(&str) -> Gated,
+    at_base: &dyn Fn(&str) -> (Gated, String),
+    again: &dyn Fn(&str) -> Gated,
+    excused: usize,
 ) -> Option<Vec<(String, Blame)>> {
-    let untouched: BTreeSet<String> = untouched.iter().map(|&check| check.to_owned()).collect();
-    let mut built = |check: &str| at_base(check);
+    let mut base_build = |check: &str| at_base(check);
+    let mut built_again = |check: &str| again(check);
     let mut judging = Judging {
         named: &|_| BTreeMap::new(),
-        untouched: &|_| untouched.clone(),
-        at_base: &mut built,
+        at_base: &mut base_build,
+        again: &mut built_again,
+        excused_before: &|_| excused,
     };
     judge(words, &mut judging)
+}
+
+/// A build that passed.
+fn passes(_: &str) -> Gated {
+    Gated::Passed
+}
+
+/// A build at the base that passed.
+fn passes_at_base(_: &str) -> (Gated, String) {
+    (Gated::Passed, String::new())
 }
 
 #[test]
@@ -46,8 +70,15 @@ fn a_failed_derivation_is_named_once_and_one_a_dependency_stopped_not_at_all() {
                 \x20      Reason: builder failed with exit code 1.\n";
     assert_eq!(
         failed_derivations(said),
-        ["the-margin-cat-on-niri"],
+        Some(vec!["the-margin-cat-on-niri".to_owned()]),
         "a derivation was named twice, or one a dependency stopped was named"
+    );
+    let timed_out = "error: Cannot build '/nix/store/cccc-vm-pi.drv'.\n\
+                     \x20      Reason: builder timed out after 3600 seconds.\n";
+    assert_eq!(
+        failed_derivations(&(said.to_owned() + timed_out)),
+        None,
+        "a derivation that failed some other way was passed over"
     );
 }
 
@@ -91,37 +122,80 @@ fn a_failed_derivation_is_placed_by_its_name_its_vm_run_or_what_nix_names_it() {
 
 #[test]
 fn a_rider_whose_unrelated_check_fails_once_stays_and_one_whose_own_fails_is_split() {
-    let said = words(
-        &["vm-pi", "a-theme-changes-everything"],
-        &["vm-test-run-vm-pi"],
+    let said = words(&["the-margin-cat-on-niri"], &["the-margin-cat-on-niri"]);
+    let unrelated = judged(&said, &passes_at_base, &passes, 0).unwrap();
+    assert_eq!(
+        unrelated,
+        [("the-margin-cat-on-niri".to_owned(), Blame::Flaky)]
     );
-    let passes = |_: &str| Gated::Passed;
-    let unrelated = judged(&said, &["vm-pi"], &passes).unwrap();
-    assert_eq!(unrelated, [("vm-pi".to_owned(), Blame::Flaky)]);
     assert!(
         excused(&unrelated),
-        "a flake no rider touches split the train"
+        "a check that passed when built again split the train"
     );
-    let own = judged(&said, &[], &passes).unwrap();
-    assert_eq!(own, [("vm-pi".to_owned(), Blame::Riders)]);
+    let own = judged(&said, &passes_at_base, &|_| Gated::Red, 0).unwrap();
+    assert_eq!(own, [("the-margin-cat-on-niri".to_owned(), Blame::Riders)]);
     assert!(
         !excused(&own),
-        "a VM test a rider touches was excused for passing at the base"
+        "a check red twice at the candidate was excused for passing at the base"
     );
 }
 
 #[test]
-fn a_check_that_fails_at_the_base_too_is_mains_and_one_untaken_there_the_riders() {
+fn a_check_excused_as_a_flake_twice_in_a_ride_is_the_riders_on_its_third_red() {
+    let said = words(&["vm-pi"], &["vm-test-run-vm-pi"]);
+    let built_again = std::cell::Cell::new(false);
+    let again = |_: &str| {
+        built_again.set(true);
+        Gated::Passed
+    };
+    assert_eq!(
+        judged(&said, &passes_at_base, &again, 1).unwrap(),
+        [("vm-pi".to_owned(), Blame::Flaky)]
+    );
+    built_again.set(false);
+    assert_eq!(
+        judged(&said, &passes_at_base, &again, MOST_EXCUSED).unwrap(),
+        [("vm-pi".to_owned(), Blame::Riders)],
+        "a check's third red in a ride was excused as a flake"
+    );
+    assert!(!built_again.get(), "a check out of excuses was built again");
+}
+
+#[test]
+fn a_check_failing_at_the_base_as_it_failed_is_mains_and_one_failing_anew_the_riders() {
     let said = words(&["formatting"], &["formatting"]);
-    let main = judged(&said, &[], &|_| Gated::Red).unwrap();
+    let main = judged(&said, &as_before, &passes, 0).unwrap();
     assert_eq!(main, [("formatting".to_owned(), Blame::Main)]);
     assert!(excused(&main), "main's own red split the train");
-    let untaken = judged(&said, &["formatting"], &|_| Gated::Unsent).unwrap();
+    let anew = said.clone() + "formatting> error: Ours.js has 600 lines\n";
+    assert_eq!(
+        judged(&anew, &as_before, &passes, 0).unwrap(),
+        [("formatting".to_owned(), Blame::Riders)],
+        "a second break of a check main fails hid behind main's"
+    );
+    let untaken = judged(&said, &|_| (Gated::Unsent, String::new()), &passes, 0).unwrap();
     assert_eq!(
         untaken,
         [("formatting".to_owned(), Blame::Riders)],
         "a build at the base no builder took excused the riders"
     );
+}
+
+#[test]
+fn the_same_failure_reads_alike_whatever_its_times_and_store_paths() {
+    let candidate = "formatting> error: /nix/store/aaaa-source/Presented.js has 503 lines\n";
+    let base = "formatting> error: /nix/store/bbbb-source/Presented.js has 501 lines\n\
+                formatting> Checked 300 files in 1799ms\n";
+    assert!(fails_as_at_base(candidate, base, "formatting"));
+    assert!(
+        !fails_as_at_base("", base, "formatting"),
+        "a failure whose builder said nothing was read as main's"
+    );
+    assert!(!fails_as_at_base(
+        "formatting> error: Other.js\n",
+        base,
+        "formatting"
+    ));
 }
 
 #[test]
@@ -132,12 +206,12 @@ fn a_red_is_excused_only_when_none_of_its_failures_is_the_riders() {
     );
     let at_base = |check: &str| {
         if check == "formatting" {
-            Gated::Passed
+            (Gated::Passed, String::new())
         } else {
-            Gated::Red
+            as_before("vm-test-run-vm-pi")
         }
     };
-    let judged = judged(&said, &[], &at_base).unwrap();
+    let judged = judged(&said, &at_base, &|_| Gated::Red, 0).unwrap();
     assert_eq!(
         judged,
         [
@@ -159,12 +233,12 @@ fn once_a_failure_is_the_riders_nothing_after_it_is_built_again() {
     let at_base = |check: &str| {
         asked.borrow_mut().push(check.to_owned());
         if check == "a" {
-            Gated::Red
+            as_before("a")
         } else {
-            Gated::Passed
+            (Gated::Passed, String::new())
         }
     };
-    let judged = judged(&said, &[], &at_base).unwrap();
+    let judged = judged(&said, &at_base, &|_| Gated::Red, 0).unwrap();
     assert_eq!(
         judged.iter().map(|(_, blamed)| *blamed).collect::<Vec<_>>(),
         [Blame::Main, Blame::Riders, Blame::Riders]
@@ -173,6 +247,22 @@ fn once_a_failure_is_the_riders_nothing_after_it_is_built_again() {
         *asked.borrow(),
         ["a", "b"],
         "a check was built again once the red was the riders'"
+    );
+}
+
+#[test]
+fn a_red_of_more_checks_than_are_rebuilt_is_the_riders_unbuilt() {
+    let many = ["a", "b", "c", "d", "e"];
+    assert!(many.len() > MOST_REBUILT);
+    let built = std::cell::Cell::new(false);
+    let at_base = |check: &str| {
+        built.set(true);
+        as_before(check)
+    };
+    assert_eq!(judged(&words(&many, &many), &at_base, &passes, 0), None);
+    assert!(
+        !built.get(),
+        "a red across main was built again check by check"
     );
 }
 
@@ -193,73 +283,20 @@ fn a_check_is_red_at_the_base_only_where_a_builder_failed_there() {
 #[test]
 fn words_naming_no_failed_derivation_say_nothing_of_whose_the_red_is() {
     let said = words(&["vm-pi"], &[]);
-    assert_eq!(judged(&said, &["vm-pi"], &|_| Gated::Passed), None);
+    assert_eq!(judged(&said, &passes_at_base, &passes, 0), None);
     let broken = words(&["vm-pi"], &["vm-test-run-vm-pi"])
         + "\u{2715} a check the change touched no longer evaluates\n";
     assert_eq!(
-        judged(&broken, &["vm-pi"], &|_| Gated::Passed),
+        judged(&broken, &passes_at_base, &passes, 0),
         None,
         "a check that no longer evaluates was passed over beside a flake"
     );
 }
 
-/// A tree of the test's own, gone once it ends.
-struct Tree(std::path::PathBuf);
-
-impl Tree {
-    fn new(name: &str) -> Self {
-        let root =
-            std::env::temp_dir().join(format!("merge-net-flaky-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).unwrap();
-        Self(root)
-    }
-
-    fn file(&self, path: &str, text: &str) {
-        let path = self.0.join(path);
-        fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(path, text).unwrap();
-    }
-}
-
-impl Drop for Tree {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
-
 #[test]
-fn only_a_vm_test_owning_none_of_the_files_is_untouched() {
-    let tree = Tree::new("untouched");
-    tree.file("flake.nix", "checks = import ./checks.nix;");
-    tree.file(
-        "checks.nix",
-        "vmHostPkgs = pkgs;\n\
-         vm-desktop-looks = import ./tests/desktop.nix { area = \"looks\"; };\n\
-         vm-pi = import ./tests/pi.nix { };",
-    );
-    tree.file(
-        "tests/desktop.nix",
-        "{ area, ... }: { tests = ./desktop/desktop-${area}-vm-test.py; }",
-    );
-    tree.file("tests/pi.nix", "{ }: { tests = ./pi-vm-test.py; }");
-    let checks: Vec<String> = ["vm-desktop-looks", "vm-pi", "formatting"]
-        .map(str::to_owned)
-        .to_vec();
-    let files = |files: &[&str]| {
-        files
-            .iter()
-            .map(|&file| file.to_owned())
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(
-        untouched(&tree.0, &files(&["tests/pi-vm-test.py"]), &checks),
-        BTreeSet::from(["vm-desktop-looks".to_owned()]),
-        "a VM test owning a rider's file, or a check no reading places, counted as untouched"
-    );
-    assert_eq!(
-        untouched(&tree.0, &files(&["flake.lock"]), &checks),
-        BTreeSet::new(),
-        "a change to flake.lock, which every test reads, left a test untouched"
-    );
+fn only_a_plain_check_name_goes_into_nix() {
+    assert!(plainly_named("the-margin-cat-on-niri"));
+    assert!(plainly_named("vm_pi'"));
+    assert!(!plainly_named("x${builtins.abort \"\"}"));
+    assert!(!plainly_named(""));
 }
