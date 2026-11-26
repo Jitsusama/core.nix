@@ -118,7 +118,10 @@ impl Peer {
     /// connected, as a live process keeps its pid, and one that has gone
     /// is said as gone rather than named by whatever took its number. A
     /// pid of 0 is the kernel saying the peer is outside wifid's pid
-    /// namespace, which it can't name, so it's said as none.
+    /// namespace, which it can't name, so it's said as none. A kernel
+    /// older than 6.5 gives no pidfd for a socket (`ENOPROTOOPT`), as the
+    /// builders' did on 26 Nov 2026, so there the path is read unproven,
+    /// as it was before, rather than said of no asker at all.
     pub fn on(socket: BorrowedFd<'_>, pid: Option<i32>, uid: Option<u32>) -> Peer {
         let pid = pid.filter(|&pid| pid > 0);
         let Some(number) = pid else {
@@ -127,12 +130,14 @@ impl Peer {
         };
         let held = pidfd_of(socket);
         let read = std::fs::read(format!("/proc/{number}/cgroup"));
+        let errno = held.as_ref().err().and_then(io::Error::raw_os_error);
         let cgroup = match held {
             Ok(held) if !holds_its_pid(&held) => Cgroup::Gone,
-            Ok(_) => judged(read, |path| Path::new("/sys/fs/cgroup").join(path).exists()),
-            Err(error) if error.raw_os_error() == Some(libc::ESRCH) => Cgroup::Gone,
-            // Without its pidfd, nothing says the path read is the asker's.
-            Err(error) => Cgroup::Unread(error.raw_os_error()),
+            Err(_) if errno == Some(libc::ESRCH) => Cgroup::Gone,
+            // Without its pidfd where the kernel gives one, nothing says
+            // the path read is the asker's.
+            Err(_) if errno != Some(libc::ENOPROTOOPT) => Cgroup::Unread(errno),
+            Ok(_) | Err(_) => judged(read, |path| Path::new("/sys/fs/cgroup").join(path).exists()),
         };
         Peer { pid, uid, cgroup }
     }
