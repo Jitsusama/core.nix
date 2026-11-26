@@ -802,5 +802,13 @@ mod tests {
             read.asks, kept.asks,
             "hour.json lost what the hour saw of the asks"
         );
+        // As an hour.json already on the machine says it, so a renamed key
+        // isn't read as nothing seen by the first hour after a switch.
+        let on_disk = r#"{"asks":{"most":853,"short_since":1794700000}}"#;
+        let read: Kept = serde_json::from_str(on_disk).expect("an hour.json as kept");
+        assert_eq!(
+            read.asks, kept.asks,
+            "an hour.json as kept no longer reads what the hour saw of the asks"
+        );
     }
 }

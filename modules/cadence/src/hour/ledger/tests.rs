@@ -72,7 +72,7 @@ fn a_list_never_seen_and_not_there_holds_no_asks_but_one_gone_is_unread() {
 }
 
 #[test]
-fn a_list_written_over_with_under_half_its_asks_is_unread_until_restored() {
+fn a_list_written_over_with_no_asks_is_unread_until_restored() {
     let folder = tempfile::tempdir().expect("a scratch folder");
     let mut seen = Seen::default();
     read_at(folder.path(), &list(853), &mut seen, NOW);
@@ -105,10 +105,15 @@ fn a_list_short_for_two_hours_is_taken_as_pruned_and_counted_afresh() {
     let mut seen = Seen::default();
     read_at(folder.path(), &list(10), &mut seen, NOW);
     let (_, early) = read_at(folder.path(), &list(4), &mut seen, NOW);
+    assert_eq!(
+        early.as_deref(),
+        Some("it holds 4 ask records, under half the 10 read in it"),
+        "a list short of half its asks wasn't said unread, with why"
+    );
     let (_, still) = read_at(folder.path(), &list(4), &mut seen, NOW + SHORT_LASTS - 1);
     assert!(
-        early.is_some() && still.is_some(),
-        "a list short for under two hours was read: {early:?} {still:?}"
+        still.is_some(),
+        "a list short for under two hours was read: {still:?}"
     );
     let (text, why) = read_at(folder.path(), &list(4), &mut seen, NOW + SHORT_LASTS);
     assert!(
@@ -155,26 +160,74 @@ fn a_list_holding_no_asks_is_never_taken_as_pruned() {
 }
 
 #[test]
-fn a_byte_that_is_no_text_leaves_out_its_line_and_no_other() {
+fn a_running_clock_stops_while_the_list_holds_no_asks() {
+    let folder = tempfile::tempdir().expect("a scratch folder");
+    let mut seen = Seen::default();
+    read_at(folder.path(), &list(10), &mut seen, NOW);
+    read_at(folder.path(), &list(4), &mut seen, NOW);
+    assert_eq!(
+        seen.short_since,
+        Some(NOW),
+        "a list short of half its asks started no clock"
+    );
+    read_at(folder.path(), "{\"ts\": 1}\n", &mut seen, NOW + 3600);
+    assert_eq!(
+        seen.short_since, None,
+        "an hour holding no asks left the clock running"
+    );
+    let after = NOW + SHORT_LASTS + 1;
+    let (text, why) = read_at(folder.path(), &list(4), &mut seen, after);
+    assert!(
+        text.is_empty() && why.is_some(),
+        "a list back to a few asks after none was taken as pruned at once: {text}"
+    );
+    assert_eq!(
+        seen.short_since,
+        Some(after),
+        "a list back to a few asks after none didn't start the two hours afresh"
+    );
+}
+
+#[test]
+fn a_line_that_is_no_text_leaves_the_list_unread_saying_which() {
     let folder = tempfile::tempdir().expect("a scratch folder");
     let path = folder.path().join("asks.jsonl");
     let mut bytes = list(4).into_bytes();
     bytes.extend_from_slice(b"{\"at\":\"x\",\"words\":\"torn \xff\"}\n");
     bytes.extend_from_slice(b"{\"at\":\"y\",\"words\":\"ok\"}\n");
+    fs::write(&path, bytes).expect("the asks list is written");
+    let mut seen = Seen::default();
+    let (text, why) = whole(&path, &mut seen, NOW);
+    assert!(
+        text.is_empty(),
+        "a list with a line that's no text was read: {text}"
+    );
+    assert_eq!(
+        why.as_deref(),
+        Some("its line 7 isn't text"),
+        "a list with a line that's no text wasn't said unread, with which"
+    );
+}
+
+#[test]
+fn a_last_line_still_being_written_is_left_out_and_the_rest_read() {
+    let folder = tempfile::tempdir().expect("a scratch folder");
+    let path = folder.path().join("asks.jsonl");
+    let mut bytes = list(4).into_bytes();
     bytes.extend_from_slice(b"{\"at\":\"z\",\"words\":\"caf\xc3");
     fs::write(&path, bytes).expect("the asks list is written");
     let mut seen = Seen::default();
     let (text, why) = whole(&path, &mut seen, NOW);
     assert!(
         why.is_none(),
-        "a list with torn bytes was said unread: {why:?}"
+        "a list caught mid-write was said unread: {why:?}"
     );
     assert_eq!(
-        text,
-        format!("{}{{\"at\":\"y\",\"words\":\"ok\"}}", list(4)),
-        "the lines holding torn bytes were read, or a whole line was lost"
+        Some(text.as_str()),
+        list(4).strip_suffix('\n'),
+        "the line being written was read, or a whole line was lost"
     );
-    assert_eq!(seen.most, 5, "a record holding a torn byte was counted");
+    assert_eq!(seen.most, 4, "the line being written was counted");
 }
 
 #[test]

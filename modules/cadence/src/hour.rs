@@ -17,7 +17,7 @@
 
 mod card;
 mod good;
-pub(crate) mod ledger;
+mod ledger;
 mod lines;
 mod measures;
 mod moved;
@@ -84,10 +84,15 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     let (_, state_home, folder) = folders()?;
     let now = now_ms() / 1000;
     let kept_at = folder.join("hour.json");
-    let mut kept: Kept = fs::read_to_string(&kept_at)
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default();
+    // One that won't read is said, as starting from nothing kept forgets
+    // what the hour saw of the asks list and so reads one written over.
+    let mut kept: Kept = match fs::read_to_string(&kept_at) {
+        Ok(text) => serde_json::from_str(&text).unwrap_or_else(|err| {
+            eprintln!("cadence: the hour kept can't be read, so it starts from nothing: {err}");
+            Kept::default()
+        }),
+        Err(_) => Kept::default(),
+    };
     // Read once, so the misses measured and the words told for them come
     // from the same ledger; one not read whole leaves the misses unjudged.
     // A miss gone from it isn't carried, so the hour after judges the
