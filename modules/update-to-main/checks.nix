@@ -149,10 +149,11 @@ in
   # can't tell, never room, from what it can't read or keep
   # (mac-room-test.sh).
   update-to-main-waits-for-a-macs-memory =
-    pkgs.runCommandLocal "update-to-main-waits-for-a-macs-memory" { } ''
-      $BASH ${./mac-room-test.sh} ${./mac-room.sh}
-      touch $out
-    '';
+    pkgs.runCommandLocal "update-to-main-waits-for-a-macs-memory" { }
+      ''
+        $BASH ${./mac-room-test.sh} ${./mac-room.sh}
+        touch $out
+      '';
   # launchd gives a job 256 open files unless it says otherwise, and git
   # opens every pack it reads: on 16 November a Mac's update failed with
   # "Could not read" an object, its main's checkout holding about 489
