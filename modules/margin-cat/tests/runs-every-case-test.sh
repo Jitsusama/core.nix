@@ -1,21 +1,23 @@
 # shellcheck shell=bash
 # Holds what runs-every-case.sh says of each way a case can end, over
-# stand-in cases a stand-in qml plays out, under limits of a second of the
-# processor's and three of the clock's: a pass, a failure, a case past its
-# own time, one killed from outside, a hang that stops the run, and one
-# left unrun after it.
+# stand-in cases a stand-in qml plays out, under a limit of a second of the
+# processor's: a pass, a failure, a case past its own time and one killed
+# from outside, under a guard of a minute by the clock, so a loaded builder
+# slowing the spinning case never makes it a hang; then, under a guard of
+# three seconds, a hang that stops the run and one that ignores the guard's
+# signal until its kill, each with a case left unrun after it; and limits
+# that aren't whole seconds, refused.
 # usage: runs-every-case-test.sh <runs-every-case.sh>
 set -euo pipefail
 
 runner=$1
 here=$(mktemp -d)
 trap 'rm -rf "$here"' EXIT
-cd "$here"
 
 # The stand-in qml plays out what its case's one line says, in the shell
 # running this, as a build has no /usr/bin/env.
-echo "#!$BASH" >qml
-cat >>qml <<'EOF'
+echo "#!$BASH" >"$here/qml"
+cat >>"$here/qml" <<'EOF'
 read -r how <"$1"
 case $how in
   pass) exit 0 ;;
@@ -24,48 +26,91 @@ case $how in
   die) kill -KILL $$ ;;
   # A hang is a case that waits on nothing past the runner's wall limit, using no CPU.
   hang) exec sleep 60 ;;
+  deaf)
+    trap '' TERM
+    # A deaf hang waits as a hang does, and ignores the guard's signal, so only its kill ends it.
+    exec sleep 60
+    ;;
 esac
 EOF
-chmod +x qml
-echo pass >a-passes.qml
-echo fail >b-fails.qml
-echo spin >c-spins.qml
-echo die >d-dies.qml
-echo hang >e-hangs.qml
-echo pass >f-follows.qml
-
-code=0
-said=$(CASE_LIMIT=1 CASE_GUARD=3 "$BASH" "$runner" ./qml 2>&1) || code=$?
-echo "$said"
+chmod +x "$here/qml"
 
 fails=0
-holds() {
-  if ! grep -qxF -- "$1" <<<"$said"; then
-    echo "FAIL: it never said: $1" >&2
-    fails=$((fails + 1))
-  fi
-}
-[ "$code" = 1 ] || {
-  echo "FAIL: it ended $code, not 1" >&2
+failing() {
+  echo "FAIL: $1" >&2
   fails=$((fails + 1))
 }
+
+# Runs the runner over a folder of its own, with a stand-in case for each
+# `name:how` given, under `limit` seconds of the processor's and `guard` of
+# the clock's, keeping what it said and how it ended.
+runs() {
+  local folder=$here/$1 limit=$2 guard=$3 each
+  shift 3
+  mkdir "$folder"
+  for each in "$@"; do
+    echo "${each#*:}" >"$folder/${each%%:*}.qml"
+  done
+  code=0
+  said=$(cd "$folder" && CASE_LIMIT=$limit CASE_GUARD=$guard "$BASH" "$runner" "$here/qml" 2>&1) ||
+    code=$?
+  echo "$said"
+}
+ends() {
+  [ "$code" = "$1" ] || failing "it ended $code, not $1"
+}
+holds() {
+  grep -qxF -- "$1" <<<"$said" || failing "it never said: $1"
+}
+never() {
+  if grep -qF -- "$1" <<<"$said"; then
+    failing "it said: $1"
+  fi
+}
+# That a case said its time, its own seconds and the clock's each matching
+# a pattern.
+took() {
+  grep -qE "^$1\.qml took ($2) s of its 1, ($3) s by the clock$" <<<"$said" ||
+    failing "$1.qml never said its time as $2 of its own and $3 by the clock"
+}
+
+runs ends 1 60 a-passes:pass b-fails:fail c-spins:spin d-dies:die
+ends 1
 holds "b-fails.qml failed, exit code 2"
 holds "c-spins.qml ran past its 1 s of its own time"
 holds "d-dies.qml was killed: out of memory, or past its hard 11 s"
+holds "3 of 4 cases failed:"
+never "a-passes.qml failed"
+took a-passes 0 "[0-9]+"
+took b-fails 0 "[0-9]+"
+# The spinning case's own second is all the processor's, however slow the
+# clock ran.
+took c-spins "1|2" "[0-9]+"
+# The killed one says its time too, though bash writes its job notice above
+# its timing.
+took d-dies 0 "[0-9]+"
+
+runs hangs 1 3 e-hangs:hang f-follows:pass
+ends 1
 holds "e-hangs.qml ran past the clock's 3 s, waiting on something"
 holds "left unrun after it: f-follows.qml"
-holds "4 of 6 cases failed:"
+holds "1 of 2 cases failed:"
 holds "  f-follows.qml left unrun"
-# Every case run says its time in whole seconds, the killed one's too,
-# whose job notice bash writes above its timing.
-for case in a-passes b-fails c-spins d-dies e-hangs; do
-  if ! grep -qE "^$case\.qml took [0-9]+ s of its 1, [0-9]+ s by the clock$" <<<"$said"; then
-    echo "FAIL: $case.qml never said its time" >&2
-    fails=$((fails + 1))
-  fi
-done
-if grep -q "a-passes.qml failed\|f-follows.qml took" <<<"$said"; then
-  echo "FAIL: a pass was failed, or a case ran after the hang" >&2
-  fails=$((fails + 1))
-fi
+never "f-follows.qml took"
+took e-hangs 0 "[3-9]|[1-9][0-9]+"
+
+# The guard kills it ten seconds after the signal it ignored, and a kill
+# that late by the clock is still the guard's, so the run stops there too.
+runs deaf 1 3 g-ignores:deaf h-follows:pass
+ends 1
+holds "g-ignores.qml ran past the clock's 3 s, waiting on something"
+holds "left unrun after it: h-follows.qml"
+never "g-ignores.qml was killed"
+took g-ignores 0 "1[3-9]|[2-9][0-9]"
+
+runs refused soon 60 a-passes:pass
+ends 2
+holds "CASE_LIMIT and CASE_GUARD must be whole seconds, not 'soon' and '60'"
+never "a-passes.qml took"
+
 [ "$fails" = 0 ]
