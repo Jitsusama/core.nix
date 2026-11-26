@@ -457,6 +457,26 @@ in
       touch $out
     '';
 
+  # The launcher's copy of a mesh address's shape, which Start New Work and
+  # Explain It read, says what every copy's shared cases say, as
+  # modules/quickshell/tests/address.qml holds launcher/Address.js to them in
+  # Qt's own engine.
+  the-launcher-reads-the-address-cases =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "the-launcher-reads-the-address-cases" { } ''
+      cp ${../tests/address.qml} address.qml
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      ${copied [ "launcher/Address.js" ]}
+      cp ${../../mycelium/site/tests/addresses.txt} addresses.txt
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts} QML_XHR_ALLOW_FILE_READ=1
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml address.qml
+      touch $out
+    '';
+
   # A place tied to a part of the system says how it stands by the system
   # daemon's judgement of it (VKCF3Z's a1ef0c0a): nothing while it's good or the
   # daemon's silent, a muted word while it couldn't be read, and else the

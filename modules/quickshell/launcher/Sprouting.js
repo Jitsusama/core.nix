@@ -1,4 +1,5 @@
 .pragma library
+.import "Address.js" as Address
 
 // Start New Work, Agents' act that begins new work from what Joel says: a
 // link alone, or words in one of the repositories his open quests work in
@@ -116,9 +117,6 @@ const SPACES = /\s+/;
 // A character written as a pair of UTF-16 halves, as an emoji is.
 const PAIRED = /[\uD800-\uDBFF][\uDC00-\uDFFF]/g;
 
-// The shape of a mesh address, as mycelium-link's `addressed` reads one.
-const ADDRESS = /^[A-Z0-9]{1,12}$/;
-
 // New work a mycelium: link offers (mycelium-link's sprout), as `qs ipc
 // call launcher newWork` hands it: its words after "words:" and the cell
 // it came from after "from:". Any program of Joel's can make that call,
@@ -146,7 +144,7 @@ function offered(words, from, nameOf) {
     }
     const cell = String(from ?? "");
     const address = cell.startsWith("from:") ? cell.slice("from:".length) : "";
-    const name = ADDRESS.test(address) && typeof nameOf === "function"
+    const name = Address.shaped(address) && typeof nameOf === "function"
         ? nameOf(address) : null;
     return {
         words: plain,

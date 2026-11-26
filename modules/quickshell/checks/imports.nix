@@ -160,7 +160,10 @@
   ];
   "launcher/EmojiSearch.js" = [ "Fuzzy.js" ];
   "launcher/Explainer.qml" = [ "launcher/Explaining.js" ];
-  "launcher/Explaining.js" = [ "launcher/OnSelection.js" ];
+  "launcher/Explaining.js" = [
+    "launcher/Address.js"
+    "launcher/OnSelection.js"
+  ];
   "launcher/Firmware.qml" = [ "launcher/Seen.js" ];
   "launcher/ForYou.js" = [ "launcher/Order.js" ];
   "launcher/ForYouFilter.js" = [ "launcher/Order.js" ];
@@ -317,6 +320,7 @@
     "Fuzzy.js"
     "launcher/SpendNow.js"
   ];
+  "launcher/Sprouting.js" = [ "launcher/Address.js" ];
   "launcher/StartsStopped.js" = [ "launcher/Sprouting.js" ];
   "launcher/Stepped.js" = [ "launcher/Order.js" ];
   "launcher/Subnets.js" = [
