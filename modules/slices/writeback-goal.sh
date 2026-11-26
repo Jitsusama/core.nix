@@ -58,20 +58,24 @@ if [ "$goal" = kernel ]; then
   # throttle BFQ or io.cost stood down, which reads 0, stays down. With no
   # record, as after a boot, -1 is the kernel's default goal, set by hand,
   # which disk-order stands down if io.cost takes the disk later. A record
-  # that isn't a number gives the default back too, rather than nothing.
+  # that isn't a number gives the default back too, rather than nothing,
+  # and so does one past ten digits, longer than any goal is (ten digits
+  # of microseconds is hours), which the kernel would refuse at every stop.
   before=-1
   if [ -e "$record" ]; then
     kept=$(< "$record")
-    if [[ $kept == -1 || (-n $kept && $kept != *[!0-9]*) ]]; then
+    if [[ $kept == -1 || $kept =~ ^[0-9]{1,10}$ ]]; then
       before=$kept
     else
       echo "writeback-goal: $disk's record reads '$kept', so it gets the kernel's default" >&2
     fi
   fi
   # A throttle that won't take it back keeps the record, so a later giving
-  # back tries the disk's own again.
+  # back tries the disk's own again; the line says how, since a unit
+  # stopped for good brings no later stop.
   if ! echo "$before" > "$held"; then
-    echo "writeback-goal: $disk's throttle won't take $before back" >&2
+    echo "writeback-goal: $disk's throttle won't take $before back;" \
+      "writeback-goal $disk kernel tries again" >&2
     exit 1
   fi
   rm -f "$record"

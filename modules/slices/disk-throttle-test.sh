@@ -3,9 +3,12 @@
 # refuses a wrong call before it looks for the disk, fails on a name that
 # reaches no throttle, gives back nothing quietly for a disk that's gone,
 # and gives back what the disk had before its first goal, or the kernel's
-# default where nothing whole was recorded; disk-order stands the throttle down
-# as io.cost takes the disk and gives the kernel's default back as it hands
-# it back.
+# default where nothing whole was recorded. A throttle that can't be read
+# is recorded as off; a goal the throttle won't take fails, dropping only
+# the record that call made; a giving back it won't take fails and keeps
+# its record; and a name is one disk's, of letters and digits. disk-order
+# stands the throttle down as io.cost takes the disk and gives the
+# kernel's default back as it hands it back.
 # Usage: disk-throttle-test <writeback-goal> <disk-order>, run in an empty
 # folder, where it builds the stand-in sysfs.
 set -euo pipefail
@@ -36,9 +39,10 @@ exits() {
 
 # says <text> <program> <words...>: the program, given the words, ends
 # well and says the text on its standard error; with no text, it says
-# nothing there.
+# nothing there. What it said is kept in said, as ends keeps it, so a
+# holds after either reads that call's words.
 says() {
-  local want=$1 said
+  local want=$1
   shift
   said=$("$@" 2>&1 > /dev/null) || {
     echo "${*##*/} failed, saying '$said'"
@@ -114,9 +118,10 @@ reads "$throttle" 0
 # With nothing recorded, as after a boot, the kernel's default comes back.
 exits 0 "$goal" nvme0n1 kernel
 reads "$throttle" -1
-# A record that isn't a number, empty or written by something else, gives
-# the kernel's default back rather than nothing, and goes with it.
-for kept in "" 20x; do
+# A record that isn't a number, empty or written by something else, or
+# one too long for any goal, gives the kernel's default back rather than
+# nothing, and goes with it.
+for kept in "" 20x 99999999999; do
   echo 0 > "$throttle"
   printf %s "$kept" > "$WRITEBACK_GOAL_RUN/nvme0n1"
   says "record reads '$kept', so it gets the kernel's default" "$goal" nvme0n1 kernel
@@ -146,7 +151,7 @@ if [[ -r $throttle ]]; then
 fi
 ends 0 "$goal" nvme0n1 75000
 holds "throttle can't be read, so it's recorded as off"
-holds "cat: "
+holds "Permission denied"
 chmod u+r "$throttle"
 reads "$WRITEBACK_GOAL_RUN/nvme0n1" 0
 reads "$throttle" 75000
@@ -171,7 +176,7 @@ chmod a-w "$throttle"
 ends 1 "$goal" nvme0n1 75000
 holds "throttle won't take 75000"
 ends 1 "$goal" nvme0n1 kernel
-holds "throttle won't take 2000 back"
+holds "throttle won't take 2000 back; writeback-goal nvme0n1 kernel tries again"
 chmod u+w "$throttle"
 reads "$WRITEBACK_GOAL_RUN/nvme0n1" 2000
 exits 0 "$goal" nvme0n1 kernel
