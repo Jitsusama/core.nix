@@ -45,7 +45,7 @@ use node::{Node, SEND_AT_MOST, SENDS_END, Silence, output_within};
 use route::{Cell, Routes};
 use said::Carried;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::fs::TryLockError;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
@@ -98,6 +98,13 @@ pub struct Ears {
     pub at: i64,
     /// His offset from UTC, in seconds, to say his own times.
     pub offset_s: i64,
+    /// The subjects' hubs the node names, which take a pain no live cell
+    /// of its own does before the fallback would.
+    pub hubs: Vec<subject_hubs::Hub>,
+    /// Why the node named no hubs, when it couldn't be asked for them.
+    pub hubless: Option<String>,
+    /// The harness's folder, whose day files keep each need put to a hub.
+    pub mesh: PathBuf,
 }
 
 /// How far into a run its asks of git may go, half a minute after its
@@ -199,6 +206,7 @@ pub fn listen(
     let mission = take("--ledgers").map_or_else(|| state.join("mission"), PathBuf::from);
     let mycelium = take("--mycelium").map_or_else(|| "mycelium".into(), PathBuf::from);
     let date = take("--date").map_or_else(|| "date".into(), PathBuf::from);
+    let (hubs, hubless) = hubs_named(&state);
     let ears = Ears {
         sessions: take("--sessions").map_or_else(|| home.join(".pi/agent/sessions"), PathBuf::from),
         state: own,
@@ -222,6 +230,9 @@ pub fn listen(
             .as_deref()
             .and_then(crate::offset_of)
             .unwrap_or(0),
+        hubs,
+        hubless,
+        mesh: state.join("pi/agentic-harness.pi"),
     };
     // A node that never answers would hold every later run behind this
     // one, so an ask that hangs is stopped, and the run's sends after it
@@ -238,11 +249,35 @@ pub fn listen(
     // reads whole; but each is said, so a quiet line isn't read as nothing
     // to send. Those held as the run ran out of time, or as the mycelium
     // couldn't be started, are among the hour's troubles, in hour.json
-    // too, so cadence's card says why; the journal names the error.
+    // too, so cadence's card says why; the journal names the error. A
+    // node that couldn't be asked for its hubs is said too, as pains then
+    // go to the fallback that hubs would have spared.
+    let hubless = ears.hubless.as_ref().map_or(String::new(), |why| {
+        format!(
+            "; the mycelium named no hubs ({why}), so pains no cell of their own takes \
+             go to the fallback"
+        )
+    });
     Ok((
-        [said(&hour), waits(&node)].concat(),
+        [said(&hour), waits(&node), hubless].concat(),
         !hour.troubles.is_empty(),
     ))
+}
+
+/// The hubs the node of this machine's realm names, from its socket in
+/// the runtime folder, and why none were read where it couldn't be asked.
+/// A machine in no realm has no node to ask, which is no error: its pains
+/// no cell of their own takes go to the fallback, as before hubs.
+fn hubs_named(state: &Path) -> (Vec<subject_hubs::Hub>, Option<String>) {
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
+    let realm = std::env::var("MYCELIUM_REALM").ok();
+    let Some(socket) = runtime.and_then(|r| subject_hubs::socket(&r, state, realm)) else {
+        return (Vec::new(), None);
+    };
+    match subject_hubs::listed(&socket) {
+        Ok(hubs) => (hubs, None),
+        Err(error) => (Vec::new(), Some(error.to_string())),
+    }
 }
 
 /// What the journal says of the sends `node` held, each by why.
@@ -412,7 +447,7 @@ pub fn hear_putting(
         answer
     };
     let mut asked = |to: &str, text: &str| guarded(to, text, Put::Asked);
-    let owned = route_waiting(ears, &routes, &cells, &mut kept, &mut asked, &heard_at);
+    let (owned, unkept) = route_waiting(ears, &routes, &cells, &mut kept, &mut asked, &heard_at);
     note_for_keeper(
         ears,
         &routes,
@@ -447,6 +482,7 @@ pub fn hear_putting(
             .is_some_and(|since| ears.at - since >= CELLLESS_AT_MOST_MS),
     );
     hour.troubles.extend(ledgered);
+    hour.troubles.extend(unkept);
     crate::write_whole(
         &ears.state.join("hour.json"),
         &serde_json::to_string(&hour).map_err(|e| e.to_string())?,
@@ -605,9 +641,21 @@ fn keep_stalls(
     }
 }
 
+/// How a pain no live cell of its own takes went to a holder of its
+/// subject: the hub's cell, and the subject it holds the pain by.
+struct Through {
+    hub: String,
+    subject: String,
+    words: Vec<String>,
+}
+
 /// Sends each pain of the last two hours not yet sent, nor carried, to its
 /// owner, one finding a cell, worst first, and gives the keys of those
-/// that went.
+/// that went, with the trouble of needs that couldn't be kept. A pain no
+/// live cell of its own takes goes to the least-held live holder of its
+/// subject that its hub names, kept as a need the way the harness keeps
+/// every need put to a hub, and only with no hub to take it to the
+/// fallback.
 fn route_waiting(
     ears: &Ears,
     routes: &Routes,
@@ -615,13 +663,29 @@ fn route_waiting(
     kept: &mut [Heard],
     send: &mut dyn FnMut(&str, &str) -> Sent,
     heard_at: &Path,
-) -> Vec<String> {
+) -> (Vec<String>, Option<String>) {
     // With no one named to send as, or no cell named never to send to,
     // nothing is sent: a listener nobody set up hears and counts alone.
     if !routes.sends() {
-        return Vec::new();
+        return (Vec::new(), None);
+    }
+    let live: BTreeSet<String> = cells
+        .values()
+        .filter(|cell| cell.live)
+        .map(|cell| cell.address.clone())
+        .collect();
+    // A holder is given the pain while it holds the fewest still open,
+    // counting each it is given now.
+    let mut held: BTreeMap<String, usize> = BTreeMap::new();
+    for to in kept
+        .iter()
+        .filter(|h| h.closed_by.is_none())
+        .filter_map(|h| h.to.clone())
+    {
+        *held.entry(to).or_default() += 1;
     }
     let mut by_owner: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    let mut through: BTreeMap<usize, Through> = BTreeMap::new();
     for (n, pain) in kept.iter().enumerate() {
         if pain.carried
             || pain.routed_at.is_some()
@@ -630,23 +694,66 @@ fn route_waiting(
         {
             continue;
         }
-        if let Some(owner) = route::owner(&pain.session, pain.void, cells, routes) {
+        // One said in a session the mycelium doesn't know waits, as it
+        // may yet name it.
+        let Some(cell) = cells.get(&pain.session) else {
+            continue;
+        };
+        let owner = route::own(&pain.session, pain.void, cells, routes).or_else(|| {
+            // Never back to its own cell, which the void's or a refused
+            // one may be, live as it is.
+            let mut takers = live.clone();
+            takers.remove(&cell.address);
+            let said = route::said(pain, cells, routes);
+            let Some((hub, fit, words)) = route::holder(&said, &ears.hubs, &takers, &held, routes)
+            else {
+                return routes.fallback.clone();
+            };
+            through.insert(
+                n,
+                Through {
+                    hub: hub.cell.clone(),
+                    subject: hub.subject.clone(),
+                    words,
+                },
+            );
+            Some(fit.to_owned())
+        });
+        if let Some(owner) = owner {
+            *held.entry(owner.clone()).or_default() += 1;
             by_owner.entry(owner).or_default().push(n);
         }
     }
     let mut owned = Vec::new();
+    let mut needs = Vec::new();
     for (owner, mut pains) in by_owner {
         pains.sort_by_key(|n| (std::cmp::Reverse(kept[*n].hits), kept[*n].at));
         pains.truncate(route::NAMED_AT_MOST);
         let named: Vec<&Heard> = pains.iter().map(|n| &kept[*n]).collect();
-        match send(&owner, &route::finding(&named, cells, ears.offset_s)) {
+        let held_as: BTreeMap<String, String> = pains
+            .iter()
+            .filter_map(|n| Some((kept[*n].key.clone(), through.get(n)?.subject.clone())))
+            .collect();
+        let finding = route::finding_held(&named, cells, ears.offset_s, &held_as);
+        match send(&owner, &finding) {
             Sent::Went => {
                 for n in pains {
                     kept[n].to = Some(owner.clone());
                     kept[n].routed_at = Some(ears.at);
                     owned.push(kept[n].key.clone());
+                    if let Some(went) = through.get(&n) {
+                        needs.push(subject_hubs::Need::put(
+                            routes.from.as_deref().unwrap_or_default(),
+                            needs.len(),
+                            ears.at,
+                            went.words.clone(),
+                            (&went.hub, &owner),
+                            live.len(),
+                        ));
+                    }
                 }
             }
+            // Only a send made and failed spends a try.
             Sent::Failed => {
                 for n in pains {
                     kept[n].tries += 1;
@@ -657,7 +764,10 @@ fn route_waiting(
         }
         let _ = keep(heard_at, kept);
     }
-    owned
+    let unkept = subject_hubs::keep(&ears.mesh, &needs)
+        .err()
+        .map(|error| format!("the needs put to hubs couldn't be kept: {error}"));
+    (owned, unkept)
 }
 
 /// Asks the ledgers' keeper of the pains just sent and those heard too

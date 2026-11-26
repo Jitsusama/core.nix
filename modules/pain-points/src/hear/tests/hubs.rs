@@ -1,0 +1,185 @@
+//! A pain no live cell of its own takes goes through its subject's hub to
+//! a holder of that subject, kept as a need, and to the fallback only
+//! where no hub takes it.
+
+use super::*;
+
+/// The day's cells, with a holder and a hub besides, and a live cell the
+/// routes say never to send to.
+const HELD: &str = r#"{"Ok":{"Sessions":[
+    {"id":"s-live","address":"ABC123","state":"busy"},
+    {"id":"s-void","address":"VOID01","state":"idle"},
+    {"id":"s-never","address":"NEVER1","state":"idle"},
+    {"id":"s-fit","address":"FIT002","state":"idle"},
+    {"id":"s-hub","address":"HUB001","state":"idle"}]}}"#;
+
+fn hub(subject: &str, cell: &str, fits: &[&str]) -> subject_hubs::Hub {
+    subject_hubs::Hub {
+        subject: subject.into(),
+        cell: cell.into(),
+        fits: fits.iter().map(|f| (*f).to_owned()).collect(),
+    }
+}
+
+/// This place's ears, hearing `hubs` from the node.
+fn ears_with(place: &Place, hubs: Vec<subject_hubs::Hub>) -> Ears {
+    Ears {
+        hubs,
+        ..place.ears()
+    }
+}
+
+/// Each question a run asked, by whom it went to and what it said.
+fn asked_in(ears: &Ears, cells: &str, answer: impl Fn(&str) -> Sent) -> Vec<(String, String)> {
+    let mut asked = Vec::new();
+    hear_putting(ears, cells, &mut |to, text, put| {
+        if put == Put::Asked {
+            asked.push((to.to_owned(), text.to_owned()));
+        }
+        answer(to)
+    })
+    .expect("a run");
+    asked
+}
+
+const VOIDS: &str = "why is the launcher so slow";
+
+#[test]
+fn a_void_pain_goes_to_a_holder_of_its_words_subject_and_is_kept_as_a_need() {
+    let place = Place::new("hub-void");
+    place.routes();
+    a_day(&place);
+    let ears = ears_with(
+        &place,
+        vec![hub("launcher", "HUB001", &["NEVER1", "VOID01", "FIT002"])],
+    );
+    let asked = asked_in(&ears, HELD, |_| Sent::Went);
+    let to: Vec<&str> = asked
+        .iter()
+        .filter(|(_, text)| text.contains(VOIDS))
+        .map(|(to, _)| to.as_str())
+        .collect();
+    assert_eq!(
+        to,
+        ["FIT002"],
+        "not the refused NEVER1, not the void's own VOID01, nor the fallback: {asked:?}"
+    );
+    let why = "put to you as a holder of launcher";
+    assert!(
+        asked
+            .iter()
+            .any(|(to, text)| to == "FIT002" && text.contains(why)),
+        "its holder wasn't told why a pain from another's session is its own: {asked:?}"
+    );
+    let heard = place.heard();
+    let void = heard
+        .iter()
+        .find(|h| h.words.contains(VOIDS))
+        .expect("the void's pain heard");
+    assert_eq!(void.to.as_deref(), Some("FIT002"), "{void:?}");
+    let needs = place.needs();
+    assert_eq!(needs.len(), 1, "one need wasn't kept: {needs:?}");
+    let need = &needs[0];
+    assert_eq!(
+        (
+            &need["asker"],
+            &need["words"],
+            &need["path"],
+            &need["fit"],
+            &need["cells"]
+        ),
+        (
+            &json!("EAR001"),
+            &json!(["launcher"]),
+            &json!(["HUB001", "FIT002"]),
+            &json!("FIT002"),
+            &json!(5)
+        ),
+        "the need wasn't kept as the harness keeps one: {need}"
+    );
+}
+
+#[test]
+fn an_ended_sessions_pain_goes_to_a_holder_of_what_it_worked_on() {
+    let place = Place::new("hub-ended");
+    place.routes();
+    a_day(&place);
+    let cells = r#"{"Ok":{"Sessions":[
+        {"id":"s-live","address":"ABC123","state":"ended","working_on":"the dock's drawer"},
+        {"id":"s-fit","address":"FIT002","state":"idle"},
+        {"id":"s-hub","address":"HUB001","state":"idle"}]}}"#;
+    let ears = ears_with(&place, vec![hub("dock:drawer", "HUB001", &["FIT002"])]);
+    let asked = asked_in(&ears, cells, |_| Sent::Went);
+    let to: Vec<&str> = asked
+        .iter()
+        .filter(|(_, text)| text.contains("broken again"))
+        .map(|(to, _)| to.as_str())
+        .collect();
+    assert_eq!(
+        to,
+        ["FIT002"],
+        "an ended session's pain didn't go by its purpose: {asked:?}"
+    );
+    assert!(
+        asked.iter().all(|(_, text)| !text.contains(VOIDS)),
+        "a pain said in a session the mycelium doesn't know didn't wait: {asked:?}"
+    );
+}
+
+#[test]
+fn one_no_hub_takes_goes_to_the_fallback_as_before() {
+    for (hubs, why) in [
+        (vec![], "no hub named"),
+        (
+            vec![hub("switch", "HUB001", &["FIT002"])],
+            "another subject's",
+        ),
+        (
+            vec![hub("launcher", "HUB001", &["VOID01", "NEVER1"])],
+            "its only holders its own and a refused one",
+        ),
+        (vec![hub("launcher", "GONE01", &["FIT002"])], "its hub gone"),
+    ] {
+        let place = Place::new("hub-none");
+        place.routes();
+        a_day(&place);
+        let asked = asked_in(&ears_with(&place, hubs), HELD, |_| Sent::Went);
+        let to: Vec<&str> = asked
+            .iter()
+            .filter(|(_, text)| text.contains(VOIDS))
+            .map(|(to, _)| to.as_str())
+            .collect();
+        assert_eq!(to, ["ORCH01"], "{why}: not to the fallback: {asked:?}");
+        assert!(
+            place.needs().is_empty(),
+            "{why}: a need was kept for the fallback"
+        );
+    }
+}
+
+#[test]
+fn only_a_send_to_a_holder_that_failed_spends_a_try() {
+    for (answer, tries) in [(Sent::Failed, 1), (Sent::Held, 0), (Sent::OutOfTime, 0)] {
+        let place = Place::new("hub-tries");
+        place.routes();
+        a_day(&place);
+        let ears = ears_with(&place, vec![hub("launcher", "HUB001", &["FIT002"])]);
+        let _ = asked_in(&ears, HELD, |to| {
+            if to == "FIT002" { answer } else { Sent::Went }
+        });
+        let heard = place.heard();
+        let void = heard
+            .iter()
+            .find(|h| h.words.contains(VOIDS))
+            .expect("the void's pain heard");
+        assert_eq!(
+            (void.tries, void.to.as_deref()),
+            (tries, None),
+            "{answer:?} to its holder spent the wrong tries, or was taken as sent: {void:?}"
+        );
+        assert!(
+            place.needs().is_empty(),
+            "{answer:?}: a need was kept for a send that didn't go"
+        );
+    }
+}

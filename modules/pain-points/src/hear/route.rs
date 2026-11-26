@@ -1,15 +1,21 @@
 //! Where each pain goes, and what it says there. A pain goes to the cell
 //! of the session he said it in, which was working on what hurt, as the
-//! mycelium's sessions name it; one said to the void, or to a session
-//! that has ended or the mycelium doesn't know, goes to the fallback the
-//! routes file names, and with none named it waits, counted open. The
-//! void is never sent anything. What a finding says stays short and
-//! carries links rather than context: the cell and the log entry it was
-//! heard at, so whoever reads it opens the rest.
+//! mycelium's sessions name it. One said to the void, or in a session
+//! that has ended, goes to a holder of its subject through that subject's
+//! hub, as the node names hubs: its session's purpose where it had one,
+//! else his words. Only where no hub takes it does it go to the fallback
+//! the routes file names, which once took every such pain and so was
+//! their funnel; with none named it waits, counted open, as one said in a
+//! session the mycelium doesn't know waits. The void is never sent
+//! anything, nor is any cell the routes file says never to send to.
+//!
+//! What a finding says stays short and carries links rather than
+//! context: the cell and the log entry it was heard at, so whoever reads
+//! it opens the rest.
 
 use crate::hear::heard::Heard;
 use serde::Deserialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
@@ -28,6 +34,8 @@ const WORDS_AT_MOST: usize = 280;
 pub struct Cell {
     pub address: String,
     pub live: bool,
+    /// What its session works on, as its forage names it, where it says.
+    pub purpose: Option<String>,
 }
 
 /// What the routes file, beside the listener's state, says: who findings
@@ -133,6 +141,8 @@ pub fn cells(printed: &str) -> BTreeMap<String, Cell> {
         address: String,
         #[serde(default)]
         state: String,
+        #[serde(default)]
+        working_on: Option<String>,
     }
     serde_json::from_str::<Printed>(printed)
         .map(|p| p.ok.sessions)
@@ -145,6 +155,7 @@ pub fn cells(printed: &str) -> BTreeMap<String, Cell> {
                 Cell {
                     address: s.address,
                     live,
+                    purpose: s.working_on.filter(|p| !p.trim().is_empty()),
                 },
             )
         })
@@ -161,12 +172,69 @@ pub fn owner(
 ) -> Option<String> {
     // A session this realm's mycelium doesn't know may be another realm's,
     // whose words don't cross into this one, so it waits, counted open.
-    let cell = cells.get(session)?;
-    if cell.live && !void && !routes.refuses(&cell.address) {
-        Some(cell.address.clone())
-    } else {
-        routes.fallback.clone()
+    cells.get(session)?;
+    own(session, void, cells, routes).or_else(|| routes.fallback.clone())
+}
+
+/// The words a pain's subject is read from where no live cell of its own
+/// takes it: its session's purpose, where the session had one and wasn't
+/// the void or a cell never sent to, since that is what the work was;
+/// else his words. A stall's words are the listener's own account, so
+/// they name a subject only where the provider failed him, which the
+/// provider's owner holds; another stall without a purpose names none.
+pub fn said(pain: &Heard, cells: &BTreeMap<String, Cell>, routes: &Routes) -> Vec<String> {
+    let purpose = cells
+        .get(&pain.session)
+        .filter(|cell| !pain.void && !routes.refuses(&cell.address))
+        .and_then(|cell| cell.purpose.as_deref());
+    if let Some(purpose) = purpose {
+        return subject_hubs::words(purpose);
     }
+    if super::stalled::is(pain) {
+        return if pain.words.contains(super::stalled::PROVIDER_FAILING) {
+            subject_hubs::words(super::stalled::PROVIDER_FAILING)
+        } else {
+            Vec::new()
+        };
+    }
+    subject_hubs::words(&pain.words)
+}
+
+/// The hub that takes what `said` names, and the holder it goes to: of
+/// the narrowest subject whose hub is live, the live holder holding the
+/// fewest of `held`, never one the routes say never to send to.
+pub fn holder<'a>(
+    said: &[String],
+    hubs: &'a [subject_hubs::Hub],
+    live: &BTreeSet<String>,
+    held: &BTreeMap<String, usize>,
+    routes: &Routes,
+) -> Option<(&'a subject_hubs::Hub, &'a str, Vec<String>)> {
+    let takes = |a: &str| live.contains(a) && !routes.refuses(a);
+    subject_hubs::taking(said, hubs, &takes)
+        .into_iter()
+        .find_map(|(hub, subject)| {
+            let fit = hub
+                .fits
+                .iter()
+                .filter(|f| takes(f))
+                .min_by_key(|f| held.get(f.as_str()).copied().unwrap_or_default())?;
+            Some((hub, fit.as_str(), subject))
+        })
+}
+
+/// Whether a pain said in `session` goes to its own cell: live, not the
+/// void, and not one the routes say never to send to.
+pub fn own(
+    session: &str,
+    void: bool,
+    cells: &BTreeMap<String, Cell>,
+    routes: &Routes,
+) -> Option<String> {
+    cells
+        .get(session)
+        .filter(|cell| cell.live && !void && !routes.refuses(&cell.address))
+        .map(|cell| cell.address.clone())
 }
 
 /// His local time of day for a moment, as HH:MM.
@@ -222,6 +290,18 @@ pub const FOR_THE_KEEPER: &str = "for you to carry into asks or misses";
 /// The finding a cell is sent for its pains, worst first, each with the
 /// link to where it was heard.
 pub fn finding(pains: &[&Heard], cells: &BTreeMap<String, Cell>, offset_s: i64) -> String {
+    finding_held(pains, cells, offset_s, &BTreeMap::new())
+}
+
+/// `finding`, saying of each pain put to the cell through a hub, by its
+/// key in `held_as`, the subject it holds that the pain went by, so it
+/// knows why a pain from another's session is its own.
+pub fn finding_held(
+    pains: &[&Heard],
+    cells: &BTreeMap<String, Cell>,
+    offset_s: i64,
+    held_as: &BTreeMap<String, String>,
+) -> String {
     let mut said = String::from(
         "Joel was hurt, as pain-points hear heard it in his sessions: by what he said, or a \
          turn that stalled him. For each: \
@@ -231,7 +311,10 @@ pub fn finding(pains: &[&Heard], cells: &BTreeMap<String, Cell>, offset_s: i64) 
          commit, or name its #entry beside them in your landing note.",
     );
     for (n, pain) in pains.iter().take(NAMED_AT_MOST).enumerate() {
-        let mut parts = vec![line(n, pain, "", cells, offset_s)];
+        let to = held_as.get(&pain.key).map_or(String::new(), |subject| {
+            format!(", put to you as a holder of {subject}")
+        });
+        let mut parts = vec![line(n, pain, &to, cells, offset_s)];
         if let Some(window) = &pain.looking_at {
             // A title is whatever a program named its window, so it is
             // quoted as what it says rather than said as a fact, and cut.
@@ -398,7 +481,8 @@ mod tests {
             cells.get("s-live"),
             Some(&Cell {
                 address: "ABC123".into(),
-                live: true
+                live: true,
+                purpose: None,
             })
         );
         assert_eq!(cells.get("s-ended").map(|c| c.live), Some(false));
@@ -438,6 +522,124 @@ mod tests {
             "the void's pains go to the fallback, never to the void"
         );
         assert_eq!(owner("s-ended", false, &cells, &Routes::default()), None);
+    }
+
+    fn hub(subject: &str, cell: &str, fits: &[&str]) -> subject_hubs::Hub {
+        subject_hubs::Hub {
+            subject: subject.into(),
+            cell: cell.into(),
+            fits: fits.iter().map(|f| (*f).to_owned()).collect(),
+        }
+    }
+
+    #[test]
+    fn a_pains_subject_is_its_sessions_purpose_else_his_words() {
+        let cells = super::cells(
+            r#"{"Ok":{"Sessions":[
+            {"id":"s-ended","address":"DEF456","state":"ended",
+             "working_on":"the launcher's width"},
+            {"id":"s-blank","address":"GHI789","state":"ended","working_on":" "},
+            {"id":"s-never","address":"VOID01","state":"idle","working_on":"the void"}]}}"#,
+        );
+        assert_eq!(
+            cells.get("s-ended").and_then(|c| c.purpose.as_deref()),
+            Some("the launcher's width"),
+            "a session's purpose wasn't read from what it works on"
+        );
+        assert_eq!(
+            cells.get("s-blank").and_then(|c| c.purpose.clone()),
+            None,
+            "a blank purpose was kept as one"
+        );
+        let routes = routes();
+        let said = |session: &str, words: &str, void: bool| {
+            let mut p = pain(session, "e", words, 1);
+            p.void = void;
+            super::said(&p, &cells, &routes)
+        };
+        assert_eq!(
+            said("s-ended", "no, wrong", false),
+            ["the", "launcher", "width"],
+            "an ended session's pain didn't go by what it worked on"
+        );
+        for (session, void, why) in [
+            ("s-ended", true, "the void's"),
+            ("s-never", false, "a refused cell's"),
+            ("s-blank", false, "one with no purpose"),
+            ("unknown", false, "an unknown session's"),
+        ] {
+            assert_eq!(
+                said(session, "why is the dock slow", void),
+                ["why", "the", "dock", "slow"],
+                "{why} pain didn't go by his words"
+            );
+        }
+        let stall = |why: &str| {
+            let words = format!("a turn of 90 s lost him 80 s, {why}");
+            let mut p = pain("s-blank", "turn-1", &words, 1);
+            p.kinds = vec![stalled::KIND.into()];
+            super::said(&p, &cells, &routes)
+        };
+        assert_eq!(
+            stall(stalled::PROVIDER_FAILING),
+            ["the", "provider", "failing"],
+            "the provider failing him named no subject"
+        );
+        assert!(
+            stall("he stopped it").is_empty(),
+            "the listener's own words for a stall named a subject"
+        );
+    }
+
+    #[test]
+    fn a_hub_gives_the_narrowest_subjects_least_held_live_holder_never_one_refused() {
+        let routes = routes();
+        let said = subject_hubs::words("why is the launcher's width so slow");
+        let live: BTreeSet<String> = ["HUB001", "HUB002", "VOID01", "A00001", "B00002", "C00003"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let hubs = [
+            hub("launcher", "HUB001", &["C00003"]),
+            hub(
+                "launcher:width",
+                "HUB002",
+                &["VOID01", "GONE01", "A00001", "B00002"],
+            ),
+            hub("launcher:dock", "HUB001", &["C00003"]),
+        ];
+        let held: BTreeMap<String, usize> =
+            [("A00001".to_owned(), 2), ("B00002".to_owned(), 1)].into();
+        let took = holder(&said, &hubs, &live, &held, &routes)
+            .map(|(hub, fit, words)| (hub.cell.as_str(), fit, words));
+        assert_eq!(
+            took,
+            Some((
+                "HUB002",
+                "B00002",
+                vec!["launcher".to_owned(), "width".to_owned()]
+            )),
+            "not the refused VOID01, nor GONE01 not live, nor A00001 holding more, nor the \
+             broader hub or one of a word not said"
+        );
+        let none = BTreeSet::from(["HUB001".to_owned(), "VOID01".to_owned()]);
+        let took = holder(&said, &hubs, &none, &held, &routes)
+            .map(|(hub, fit, _)| (hub.cell.as_str(), fit));
+        assert_eq!(
+            took, None,
+            "with its narrowest hub gone and the broader's holder gone, it was still given"
+        );
+        assert!(
+            holder(
+                &subject_hubs::words("the dock"),
+                &hubs,
+                &live,
+                &held,
+                &routes
+            )
+            .is_none(),
+            "a hub took a pain missing a word of its subject"
+        );
     }
 
     #[test]

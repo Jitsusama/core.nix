@@ -185,6 +185,10 @@ fn hear_over_nothing_hears_nothing_and_says_the_hour() {
         ])
         .env("HOME", &home)
         .env("XDG_STATE_HOME", home.join("state"))
+        // A realm whose node isn't running, so no node of the machine's
+        // own is asked for its hubs.
+        .env("XDG_RUNTIME_DIR", home.join("run"))
+        .env("MYCELIUM_REALM", "nowhere")
         .env_remove("JOURNAL_STREAM")
         .stdin(Stdio::null())
         .output()
@@ -199,6 +203,11 @@ fn hear_over_nothing_hears_nothing_and_says_the_hour() {
     assert!(
         said(&output.stdout).contains("0 pains heard"),
         "it never said the hour: {}",
+        said(&output.stdout)
+    );
+    assert!(
+        said(&output.stdout).contains("the mycelium named no hubs ("),
+        "a node that couldn't be asked for its hubs went unsaid: {}",
         said(&output.stdout)
     );
     assert!(
