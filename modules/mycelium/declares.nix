@@ -227,8 +227,14 @@ rec {
         example = [ "src/inner" ];
         description = "The folders, each within home unless whole, of plain parts never from ~ or $, whose work or work below needs these.";
       };
+      # A word with space at an end would miss the work it stands in.
       words = lib.mkOption {
-        type = lib.types.listOf lib.types.nonEmptyStr;
+        type = lib.types.listOf (
+          lib.types.addCheck lib.types.str (word: word != "" && lib.trim word == word)
+          // {
+            description = "word with no space at either end";
+          }
+        );
         default = [ ];
         example = [ "forge.example" ];
         description = "The words, such as a link's host, whose naming anywhere in work's words, in any case, needs these.";

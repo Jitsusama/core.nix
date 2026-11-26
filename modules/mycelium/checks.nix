@@ -1705,31 +1705,47 @@ in
             }
           ]
         && taken { needs = [ "accelerator=npu" ]; }
-        # A lock from before needs_in takes it unread only while nothing
-        # over Declared refuses a field; one with it names it, its type
-        # and its rule's fields and types as written here, which pins them
-        # from the lock that first does.
+        # A lock from before needs_in takes it unread only while no serde
+        # word over Declared, deny_unknown_fields among them, judges its
+        # fields; one with it names it, its type, that it defaults where
+        # unwritten and is read rule by rule, and its rule's fields, types
+        # and serde as written here, which pins them from the lock that
+        # first does.
         && declaration != null
-        && !lib.any (lib.hasInfix "deny_unknown_fields") declaration.over
+        && declaration.serde == [ ]
         && (needsIn == null) == (rule' == null)
-        && (needsIn == null || needsIn.type == "Vec<NeedsIn>")
+        && (
+          needsIn == null
+          ||
+            {
+              inherit (needsIn) type serde;
+            } == {
+              type = "Vec<NeedsIn>";
+              serde = [ "default, skip_serializing_if = \"Vec::is_empty\", deserialize_with = \"rules_read\"" ];
+            }
+        )
         && (
           rule' == null
           ||
-            map (field: { inherit (field) name type; }) rule'.fields == [
-              {
-                name = "folders";
-                type = "Vec<PathBuf>";
-              }
-              {
-                name = "words";
-                type = "Vec<String>";
-              }
-              {
-                name = "needs";
-                type = "Vec<Need>";
-              }
-            ]
+            rule'.serde == [ ]
+            &&
+              rule'.fields == [
+                {
+                  name = "folders";
+                  type = "Vec<PathBuf>";
+                  serde = [ "default" ];
+                }
+                {
+                  name = "words";
+                  type = "Vec<String>";
+                  serde = [ "default" ];
+                }
+                {
+                  name = "needs";
+                  type = "Vec<Need>";
+                  serde = [ ];
+                }
+              ]
         )
         # The reader reads what it's shown, multi-line attributes joined,
         # and gives null for each kind of line it can't read.
@@ -1741,7 +1757,7 @@ in
               {
                 name = "folders";
                 type = "Vec<PathBuf>";
-                serde = [ "default," ];
+                serde = [ "default" ];
               }
               {
                 name = "needs";
@@ -1752,9 +1768,34 @@ in
           }
         &&
           (read "#[serde(\n    deny_unknown_fields,\n)]\n${derived}" words).serde or null == [
-            "#[serde(deny_unknown_fields,)]"
+            "#[serde(deny_unknown_fields)]"
           ]
+        && read "#[derive(\n    Debug,\n    Deserialize,\n)]" words != null
+        &&
+          (read derived "    #[serde(default, deserialize_with = \"kept\")]\n    pub folders: Vec<PathBuf>,")
+          .fields or null == [
+            {
+              name = "folders";
+              type = "Vec<PathBuf>";
+              serde = [ "default, deserialize_with = \"kept\"" ];
+            }
+            {
+              name = "needs";
+              type = "Vec<Need>";
+              serde = [ ];
+            }
+          ]
+        && read "${derived}\n#[cfg_attr(test, derive(Default))]" words != null
         && read derived words != null
+        && read "#[serde(deny_unknown_fields)]\n\n${derived}" words == null
+        && read "#[serde(deny_unknown_fields)]\n// a note\n\n${derived}" words == null
+        && read "${derived}\n#[cfg_attr(test, serde(deny_unknown_fields))]" words == null
+        && read "${derived} // a note" words == null
+        && read derived "    #[serde(default)] // a note\n    pub folders: Vec<PathBuf>," == null
+        && read derived "    #[serde(skip)]\n    pub folders: Vec<PathBuf>," == null
+        && read derived "    #[serde(default, with = \"other\")]\n    pub folders: Vec<PathBuf>," == null
+        && read derived "    #[serde(flatten)]\n    pub folders: Vec<PathBuf>," == null
+        && readEnum "${derived}\n#[cfg_attr(test, serde(rename_all = \"UPPERCASE\"))]" "    Cloud," == null
         && read "#[derive(Debug)]" words == null
         && read "// a note\n${derived}" words == null
         && read "#[repr(C)]\n${derived}" words == null
@@ -1815,6 +1856,9 @@ in
         && !taken { folders = [ "src/inner/" ]; }
         && !taken { folders = [ "/" ]; }
         && !taken { words = [ "" ]; }
+        && !taken { words = [ " forge.example" ]; }
+        && !taken { words = [ "forge.example " ]; }
+        && taken { words = [ "forge.example" ]; }
       );
 
   # Each realm's node on either system reads what its machine declares from
