@@ -9,17 +9,21 @@
 //! Each check the gate's words say a builder failed is built once more, at
 //! the commit the candidate was cut on, on a lent builder, so like is
 //! compared with like; a fresh main tests something else, and the train
-//! cuts again when main moves anyway. One that fails there too, saying
-//! nothing there it didn't say at the candidate, is main's own red. One
-//! that passes there is built once more at the candidate itself: passing
+//! cuts again when main moves anyway. One of `REPORTS_EVERY_FAILURE` that
+//! fails there too, its builder saying nothing at the candidate it didn't
+//! say there, is main's own red. Only those: a check that stops at its
+//! first error says the same at both whatever the riders broke after it,
+//! so a rider's break would land hidden behind main's. One that passes
+//! there is built once more at the candidate itself: passing
 //! at the same commit it failed at, it is a flake, whatever kind of check
 //! it is, and a second red there is the riders'. Which files a check reads
 //! isn't asked: the train's gate builds no VM tests, which are all that
 //! `owners` reads, and it counts a role's test against the role's folder
 //! alone, on purpose, so it can't say a check is untouched.
 //!
-//! A derivation that failed for another reason than its builder or a
-//! dependency, one no check names, a check that no longer evaluates, a
+//! A red the gate didn't build whole, a part no builder took beside it,
+//! is never excused. A derivation that failed for another reason than its
+//! builder or a dependency, one no check names, a check that no longer evaluates, a
 //! build no builder took, more failed checks than `MOST_REBUILT`, and a
 //! check excused as a flake twice already in the ride count as the
 //! riders', so the train splits on them as before. Each check excused is
@@ -100,6 +104,20 @@ const MOST_REBUILT: usize = 4;
 /// riders', since a check that keeps failing isn't failing by chance.
 const MOST_EXCUSED: usize = 2;
 
+/// The checks whose red can be main's: each says every failure it finds
+/// before it fails, so a rider's break says a line the base's red doesn't.
+const REPORTS_EVERY_FAILURE: &[&str] = &[
+    // treefmt runs every formatter over every file, and its JavaScript
+    // lint runs biome with --max-diagnostics=none.
+    "formatting",
+    // Each rule gathers what it says for every file, then exits once.
+    "every-assert-says-what-was-wrong",
+    "every-long-file-says-why",
+    "every-fixed-wait-says-why",
+    "every-suppression-says-why",
+    "every-test-runs-or-fails",
+];
+
 /// The checks the gate's `words` name as added or changed, which it built,
 /// a row each of changed-checks' table: its kind, then its name.
 pub(super) fn built(words: &str) -> Vec<String> {
@@ -163,8 +181,9 @@ pub(super) fn checks_of(
 }
 
 /// What the builder of `derivation` said in `words`, as nix's `-L` prefixes
-/// it, each line with its store hashes and its numbers taken out, so a
-/// build's time or a file's count doesn't make the same failure differ.
+/// it, each line with its store hashes and its durations taken out, so a
+/// build's time doesn't make the same failure differ. Other numbers stay:
+/// a failure of subtest 7 isn't one of subtest 3.
 fn said_by(words: &str, derivation: &str) -> BTreeSet<String> {
     let prefix = format!("{derivation}> ");
     words
@@ -180,17 +199,47 @@ fn said_by(words: &str, derivation: &str) -> BTreeSet<String> {
                 rest = rest.split_once('-').map_or(rest, |(_, after)| after);
             }
             kept.push_str(rest);
-            let mut said = String::new();
-            for character in kept.chars() {
-                if !character.is_ascii_digit() {
-                    said.push(character);
-                } else if !said.ends_with('#') {
-                    said.push('#');
-                }
-            }
-            said
+            without_durations(&kept)
         })
         .collect()
+}
+
+/// The units a duration is said in, longest first, so `ms` isn't read as
+/// `m` then `s`.
+const DURATION_UNITS: &[&str] = &["ms", "us", "ns", "\u{b5}s", "s", "m", "h"];
+
+/// `line` with each duration, `1799ms` or `2.5s`, said as `#ms` or `#s`.
+fn without_durations(line: &str) -> String {
+    let mut said = String::new();
+    let mut rest = line;
+    while let Some(at) = rest.find(|character: char| character.is_ascii_digit()) {
+        let before = &rest[..at];
+        let number = rest[at..]
+            .find(|character: char| !character.is_ascii_digit() && character != '.')
+            .map_or(rest.len(), |end| at + end);
+        let after = &rest[number..];
+        let unit = DURATION_UNITS.iter().find(|unit| {
+            after.strip_prefix(**unit).is_some_and(|then| {
+                !then.starts_with(|character: char| character.is_alphanumeric())
+            })
+        });
+        // A number in a word, as in `vm2`, is part of the word.
+        let in_word = before.ends_with(|character: char| character.is_alphanumeric());
+        said.push_str(before);
+        match unit {
+            Some(unit) if !in_word => {
+                said.push('#');
+                said.push_str(unit);
+                rest = &after[unit.len()..];
+            }
+            _ => {
+                said.push_str(&rest[at..number]);
+                rest = after;
+            }
+        }
+    }
+    said.push_str(rest);
+    said
 }
 
 /// Whether `derivation` failed in the candidate's `words` only as it fails
@@ -208,7 +257,12 @@ pub(super) fn fails_as_at_base(words: &str, base: &str, derivation: &str) -> boo
 fn blame(words: &str, check: &str, derivation: &str, judging: &mut Judging<'_>) -> Blame {
     let (at_base, base_words) = (judging.at_base)(check);
     match at_base {
-        Gated::Red if fails_as_at_base(words, &base_words, derivation) => Blame::Main,
+        Gated::Red
+            if REPORTS_EVERY_FAILURE.contains(&check)
+                && fails_as_at_base(words, &base_words, derivation) =>
+        {
+            Blame::Main
+        }
         Gated::Passed if (judging.excused_before)(check) < MOST_EXCUSED => {
             if (judging.again)(check) == Gated::Passed {
                 Blame::Flaky
@@ -261,6 +315,19 @@ impl Flakes {
     /// How many of `check`'s reds this ride excused as flakes.
     fn of(&self, check: &str) -> usize {
         self.0.get(check).copied().unwrap_or(0)
+    }
+
+    /// Count each flake of an excused red's `judged` checks: those checks.
+    fn count<'a>(&mut self, judged: &'a [(String, Blame)]) -> Vec<&'a str> {
+        let flaked: Vec<&str> = judged
+            .iter()
+            .filter(|(_, blamed)| *blamed == Blame::Flaky)
+            .map(|(check, _)| check.as_str())
+            .collect();
+        for check in &flaked {
+            *self.0.entry((*check).to_owned()).or_default() += 1;
+        }
+        flaked
     }
 }
 
@@ -316,7 +383,6 @@ pub(super) fn excuses(
     let Some(judged) = judge(&words, &mut judging) else {
         return false;
     };
-    tell(root, url, red, &judged);
     let said = judged
         .iter()
         .map(|(check, blamed)| format!("{check} {}", said(*blamed)))
@@ -324,14 +390,13 @@ pub(super) fn excuses(
         .join("; ");
     let shown = short(red.candidate);
     if excused(&judged) {
-        for (check, blamed) in &judged {
-            if *blamed == Blame::Flaky {
-                *flakes.0.entry(check.clone()).or_default() += 1;
-                println!(
-                    "merge-net: flake {check} at {} on {}: red, then passed when built again",
-                    red.candidate, red.base
-                );
-            }
+        // Only a red that lands is told: one that splits is its riders'.
+        tell(root, url, red, &judged);
+        for check in flakes.count(&judged) {
+            println!(
+                "merge-net: flake {check} at {} on {}: red, then passed when built again",
+                red.candidate, red.base
+            );
         }
         println!(
             "merge-net: the candidate {shown} failed only checks that aren't its riders': \

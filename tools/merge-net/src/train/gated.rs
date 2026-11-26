@@ -29,6 +29,20 @@ pub(super) fn gated(code: Option<i32>, words: &str) -> Gated {
     }
 }
 
+/// Whether a red gate that exited `code` ran every part it was given, so
+/// the failures its words name are all it has to say: nix-offload's exit
+/// when nix or a build failed. A red with a part no builder took, or
+/// asked wrongly, leaves checks unbuilt, so nothing in it is excused.
+pub(super) fn ran_whole(code: Option<i32>) -> bool {
+    matches!(code, Some(NIX_FAILED | BUILD_FAILED))
+}
+
+/// nix-offload's exit when nix failed, a build's failure among them.
+const NIX_FAILED: i32 = 1;
+
+/// nix-offload's exit when a build failed.
+const BUILD_FAILED: i32 = 100;
+
 /// Whether a gate's `words` say a check failed: changed-checks' verdict,
 /// or nix's for a build that ran and failed, which a lost builder never
 /// says.

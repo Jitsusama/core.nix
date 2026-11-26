@@ -35,9 +35,10 @@
 //! changes that would merge alone board it rather than move main again
 //! (`right_of_way.rs`).
 //!
-//! A candidate that fails only checks that fail at its base too, or that
-//! pass there and when built again at the candidate, lands as a pass
-//! would, each told to its owner (`flaky.rs`).
+//! A candidate whose gate ran whole and failed only checks that report
+//! every failure and fail at its base as they fail at it, or that pass
+//! there and when built again at the candidate, lands as a pass would,
+//! each told to its owner (`flaky.rs`).
 //! A candidate that fails otherwise splits: the train takes the first half of its
 //! riders to board, and halves again while they fail, so the riders that
 //! broke nothing land together and the one that breaks it is found alone,
@@ -480,6 +481,20 @@ fn go_on_as_installed(root: &Path) {
     }
 }
 
+/// Say in the train's log that it runs changed-checks at `candidate`,
+/// which merged the heads `merged`.
+fn say_it_runs(candidate: &str, merged: &[String]) {
+    println!(
+        "merge-net: the train runs changed-checks at {} over {}",
+        short(candidate),
+        merged
+            .iter()
+            .map(|head| short(head))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+}
+
 /// Ride the train whose state is under `root` from the repository at
 /// `url`, until no one waits on it.
 fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
@@ -547,20 +562,23 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                  boards it until the run ends"
             );
         }
-        println!(
-            "merge-net: the train runs changed-checks at {} over {}",
-            short(&candidate),
-            done.merged
-                .iter()
-                .map(|head| short(head))
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-        match gate(&checkout, &log) {
+        say_it_runs(&candidate, &done.merged);
+        let (ended, code) = gate(&checkout, &log);
+        match ended {
             Gated::Passed => splitting.taken(),
-            // A red that is main's or a flake's lands as a pass would.
+            // A red that is main's or a flake's, every part of it run,
+            // lands as a pass would.
             Gated::Red
-                if flaky::excuses(&root, url, &checkout, &base, &candidate, &log, &mut flakes) =>
+                if gated::ran_whole(code)
+                    && flaky::excuses(
+                        &root,
+                        url,
+                        &checkout,
+                        &base,
+                        &candidate,
+                        &log,
+                        &mut flakes,
+                    ) =>
             {
                 splitting.taken();
             }
@@ -791,12 +809,12 @@ fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &
 }
 
 /// Run the gate in `checkout`, its words going to `log`: how it ended.
-fn gate(checkout: &Path, log: &Path) -> Gated {
+fn gate(checkout: &Path, log: &Path) -> (Gated, Option<i32>) {
     let Ok(words) = fs::File::create(log) else {
-        return Gated::Red;
+        return (Gated::Red, None);
     };
     let Ok(errors) = words.try_clone() else {
-        return Gated::Red;
+        return (Gated::Red, None);
     };
     let ran = Command::new("nix-offload")
         .args(["there", "--lent-only", "--changed"])
@@ -805,7 +823,9 @@ fn gate(checkout: &Path, log: &Path) -> Gated {
         .stdout(words)
         .stderr(errors)
         .status();
-    ran.map_or(Gated::Red, |status| gated(status.code(), &words_of(log)))
+    ran.map_or((Gated::Red, None), |status| {
+        (gated(status.code(), &words_of(log)), status.code())
+    })
 }
 
 /// `owner/name` of the repository at `url`.

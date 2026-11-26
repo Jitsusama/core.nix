@@ -182,10 +182,22 @@ fn a_check_failing_at_the_base_as_it_failed_is_mains_and_one_failing_anew_the_ri
 }
 
 #[test]
+fn a_check_that_may_stop_at_its_first_error_is_never_mains() {
+    let said = words(&["vm-pi"], &["vm-test-run-vm-pi"]);
+    let at_base = |_: &str| as_before("vm-test-run-vm-pi");
+    assert_eq!(
+        judged(&said, &at_base, &passes, 0).unwrap(),
+        [("vm-pi".to_owned(), Blame::Riders)],
+        "a check not known to report every failure was excused as main's"
+    );
+}
+
+#[test]
 fn the_same_failure_reads_alike_whatever_its_times_and_store_paths() {
-    let candidate = "formatting> error: /nix/store/aaaa-source/Presented.js has 503 lines\n";
-    let base = "formatting> error: /nix/store/bbbb-source/Presented.js has 501 lines\n\
-                formatting> Checked 300 files in 1799ms\n";
+    let candidate = "formatting> error: /nix/store/aaaa-source/Presented.js has 503 lines\n\
+                     formatting> Checked 300 files in 12ms, then 2.5s\n";
+    let base = "formatting> error: /nix/store/bbbb-source/Presented.js has 503 lines\n\
+                formatting> Checked 300 files in 1799ms, then 0.4s\n";
     assert!(
         fails_as_at_base(candidate, base, "formatting"),
         "the same failure, at other times and store paths, read as a new one"
@@ -198,27 +210,53 @@ fn the_same_failure_reads_alike_whatever_its_times_and_store_paths() {
         !fails_as_at_base("formatting> error: Other.js\n", base, "formatting"),
         "a failure the base didn't say was read as main's"
     );
+    assert!(
+        !fails_as_at_base(
+            "formatting> error: Presented.js has 601 lines\n",
+            "formatting> error: Presented.js has 503 lines\n",
+            "formatting"
+        ),
+        "a failure differing from main's only by a number was read as main's"
+    );
+    assert_eq!(
+        without_durations("vm2 ran 3 subtests in 41ms, 1.5s and 2 m"),
+        "vm2 ran 3 subtests in #ms, #s and 2 m",
+        "a number other than a duration's was taken out, or a duration kept"
+    );
+}
+
+#[test]
+fn a_ride_counts_each_flake_its_excused_reds_hold() {
+    let mut flakes = Flakes::default();
+    let judged = [
+        ("vm-pi".to_owned(), Blame::Flaky),
+        ("formatting".to_owned(), Blame::Main),
+    ];
+    assert_eq!(flakes.count(&judged), ["vm-pi"]);
+    flakes.count(&judged);
+    assert_eq!(flakes.of("vm-pi"), MOST_EXCUSED, "a flake went uncounted");
+    assert_eq!(flakes.of("formatting"), 0, "main's red was counted a flake");
 }
 
 #[test]
 fn a_red_is_excused_only_when_none_of_its_failures_is_the_riders() {
     let said = words(
-        &["vm-pi", "formatting"],
-        &["vm-test-run-vm-pi", "formatting"],
+        &["formatting", "vm-pi"],
+        &["formatting", "vm-test-run-vm-pi"],
     );
     let at_base = |check: &str| {
         if check == "formatting" {
-            (Gated::Passed, String::new())
+            as_before("formatting")
         } else {
-            as_before("vm-test-run-vm-pi")
+            (Gated::Passed, String::new())
         }
     };
     let judged = judged(&said, &at_base, &|_| Gated::Red, 0).unwrap();
     assert_eq!(
         judged,
         [
-            ("vm-pi".to_owned(), Blame::Main),
-            ("formatting".to_owned(), Blame::Riders),
+            ("formatting".to_owned(), Blame::Main),
+            ("vm-pi".to_owned(), Blame::Riders),
         ]
     );
     assert!(
@@ -230,12 +268,12 @@ fn a_red_is_excused_only_when_none_of_its_failures_is_the_riders() {
 
 #[test]
 fn once_a_failure_is_the_riders_nothing_after_it_is_built_again() {
-    let said = words(&["a", "b", "c"], &["a", "b", "c"]);
+    let said = words(&["formatting", "b", "c"], &["formatting", "b", "c"]);
     let asked = std::cell::RefCell::new(Vec::new());
     let at_base = |check: &str| {
         asked.borrow_mut().push(check.to_owned());
-        if check == "a" {
-            as_before("a")
+        if check == "formatting" {
+            as_before("formatting")
         } else {
             (Gated::Passed, String::new())
         }
@@ -247,7 +285,7 @@ fn once_a_failure_is_the_riders_nothing_after_it_is_built_again() {
     );
     assert_eq!(
         *asked.borrow(),
-        ["a", "b"],
+        ["formatting", "b"],
         "a check was built again once the red was the riders'"
     );
 }
