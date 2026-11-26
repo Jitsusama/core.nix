@@ -92,8 +92,9 @@ CELLS = 8
 # map's own head rules, and the kit's keys.js, which marks the page keyed at
 # its first key so a touch screen with a keyboard shows its key line, about
 # three more; the head and its link are seven elements more in the markup
-# than the map's header was, and the budget rose by three, the rest within
-# its room, and one more for the labels kept apart, 0.4 KB of it.
+# than the map's header was, and its elements rose by three, the rest within
+# their room; five kilobytes in all, and one more for the labels kept apart,
+# 0.4 KB of it.
 BUDGET = Budget(files=35, kilobytes=685, elements=623)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
