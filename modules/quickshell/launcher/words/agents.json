@@ -253,6 +253,7 @@
         "startingOn": "starting on {machine}",
         "unnamed": "that place has no name another machine knows it by; start it In a checkout or a zone",
         "unmachined": "that link names no machine by one plain word",
+        "untaken": "this machine's node can't start work in the cloud yet",
         "inTheCloud": "in the Cloud",
         "onMachine": "on {machine}",
         "started": "started on {machine}; its window opens once it's up",
