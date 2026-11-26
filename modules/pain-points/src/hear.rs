@@ -388,16 +388,7 @@ pub fn hear_putting(
         .and_then(|text| serde_json::from_slice(&text).ok())
         .unwrap_or_default();
     let heard_at = ears.state.join("heard.jsonl");
-    let mut kept: Vec<Heard> = fs::read_to_string(&heard_at)
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|line| serde_json::from_str(line).ok())
-        .filter(|h: &Heard| {
-            h.at >= ears.at - heard::KEPT_MS
-                || (h.is_miss() && h.closed_by.is_none())
-                || h.closed_at.is_some_and(|at| at >= ears.at - DAY_MS)
-        })
-        .collect();
+    let mut kept = still_kept(&heard_at, ears.at);
     let ledgers: Vec<heard::Line> = ears
         .ledgers
         .iter()
@@ -488,6 +479,22 @@ pub fn hear_putting(
         &serde_json::to_string(&hour).map_err(|e| e.to_string())?,
     )?;
     Ok(hour)
+}
+
+/// The pains `heard_at` keeps that are still kept at `at`: those heard
+/// within [`heard::KEPT_MS`], each miss still open, and each closed within
+/// the day.
+fn still_kept(heard_at: &Path, at: i64) -> Vec<Heard> {
+    fs::read_to_string(heard_at)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .filter(|h: &Heard| {
+            h.at >= at - heard::KEPT_MS
+                || (h.is_miss() && h.closed_by.is_none())
+                || h.closed_at.is_some_and(|closed| closed >= at - DAY_MS)
+        })
+        .collect()
 }
 
 /// Hears what's new in each session log written since `since`, keeping

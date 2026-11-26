@@ -288,7 +288,9 @@ fn quoted(words: &str) -> String {
 pub const FOR_THE_KEEPER: &str = "for you to carry into asks or misses";
 
 /// The finding a cell is sent for its pains, worst first, each with the
-/// link to where it was heard.
+/// link to where it was heard. Only tests ask for it with no pain put
+/// through a hub; the listener says each one's subject.
+#[cfg(test)]
 pub fn finding(pains: &[&Heard], cells: &BTreeMap<String, Cell>, offset_s: i64) -> String {
     finding_held(pains, cells, offset_s, &BTreeMap::new())
 }
@@ -418,6 +420,7 @@ pub fn ledger_note(
 
 #[cfg(test)]
 mod tests {
+    use super::super::stalled;
     use super::*;
 
     #[test]

@@ -44,6 +44,17 @@ fn asked_in(ears: &Ears, cells: &str, answer: impl Fn(&str) -> Sent) -> Vec<(Str
 
 const VOIDS: &str = "why is the launcher so slow";
 
+/// Whom the pains saying `words` were put to as their owner's, in `asked`:
+/// not the keeper's note of what was heard, which goes to the ledger
+/// whoever owns each.
+fn owners_of<'a>(asked: &'a [(String, String)], words: &str) -> Vec<&'a str> {
+    asked
+        .iter()
+        .filter(|(_, text)| !text.contains(route::FOR_THE_KEEPER) && text.contains(words))
+        .map(|(to, _)| to.as_str())
+        .collect()
+}
+
 #[test]
 fn a_void_pain_goes_to_a_holder_of_its_words_subject_and_is_kept_as_a_need() {
     let place = Place::new("hub-void");
@@ -54,15 +65,16 @@ fn a_void_pain_goes_to_a_holder_of_its_words_subject_and_is_kept_as_a_need() {
         vec![hub("launcher", "HUB001", &["NEVER1", "VOID01", "FIT002"])],
     );
     let asked = asked_in(&ears, HELD, |_| Sent::Went);
-    let to: Vec<&str> = asked
-        .iter()
-        .filter(|(_, text)| text.contains(VOIDS))
-        .map(|(to, _)| to.as_str())
-        .collect();
     assert_eq!(
-        to,
+        owners_of(&asked, VOIDS),
         ["FIT002"],
         "not the refused NEVER1, not the void's own VOID01, nor the fallback: {asked:?}"
+    );
+    assert!(
+        asked
+            .iter()
+            .any(|(to, text)| to == "ORCH01" && text.contains("sent to FIT002")),
+        "the ledger wasn't told the void's pain went to its holder: {asked:?}"
     );
     let why = "put to you as a holder of launcher";
     assert!(
@@ -110,13 +122,8 @@ fn an_ended_sessions_pain_goes_to_a_holder_of_what_it_worked_on() {
         {"id":"s-hub","address":"HUB001","state":"idle"}]}}"#;
     let ears = ears_with(&place, vec![hub("dock:drawer", "HUB001", &["FIT002"])]);
     let asked = asked_in(&ears, cells, |_| Sent::Went);
-    let to: Vec<&str> = asked
-        .iter()
-        .filter(|(_, text)| text.contains("broken again"))
-        .map(|(to, _)| to.as_str())
-        .collect();
     assert_eq!(
-        to,
+        owners_of(&asked, "broken again"),
         ["FIT002"],
         "an ended session's pain didn't go by its purpose: {asked:?}"
     );
