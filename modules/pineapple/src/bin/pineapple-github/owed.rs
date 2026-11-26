@@ -3,11 +3,14 @@
 //! flood past Joel's rate limit, holds back neither how far the reader
 //! has read nor anything else it names. One that fails is asked less
 //! often each time, so a broken thread costs his shared limit little, and
-//! after [`TRIES`] failed asks it's let go, the journal naming the span
-//! nobody read so he can look there himself.
+//! after [`TRIES`] failed asks it's let go, the journal and a row in For
+//! You naming the span nobody read, with its link, so he can look there
+//! himself.
 
 use pineapple::github::{self, Thread};
 use pineapple::progress::Owed;
+
+use super::Left;
 
 /// How many failed asks a pull request or issue is owed before it's let
 /// go. With each wait doubling up to [`LONGEST`] rounds, that's 224 rounds
@@ -72,7 +75,8 @@ fn merged(threads: &mut [Listed], thread: &Thread, from: u64, read_from: u64) ->
     true
 }
 
-/// What a round on the site `name` that `began` then owes, of the
+/// What a round on the site whose rows `tell` writes, which `began` then
+/// owes, of the
 /// `threads` it listed, as it `read` them (where they failed, where GitHub
 /// said they were gone, and where it stopped asking): those that failed,
 /// asked again later each time; those from where it stopped, which a
@@ -80,13 +84,13 @@ fn merged(threads: &mut [Listed], thread: &Thread, from: u64, read_from: u64) ->
 /// it owed `before` and didn't list, a round nearer due. One owed that
 /// GitHub says is gone is asked again as one that failed, as it says so
 /// of one that's there when an organization's sign-in lapses, and one
-/// truly gone is let go after its tries, its span named. One gone that
+/// truly gone is let go after its tries, its span named to Joel. One gone that
 /// wasn't owed goes, as it did before anything was owed: what notified
 /// Joel loses a round's span, but a search hit loses from its reach on,
 /// as the search gives it again only once it changes, and while a sign-in
 /// lapses each new one there goes so, under a warning each.
 pub(super) fn kept(
-    name: &str,
+    tell: &Left,
     threads: &[Listed],
     read: (&[usize], &[usize], usize),
     before: &[Owed],
@@ -104,7 +108,8 @@ pub(super) fn kept(
     let missed = (0..unasked).filter(|place| unread(*place)).count();
     if missed > 0 || unasked < threads.len() {
         eprintln!(
-            "<4>{name} read {} of the {} it named, so the rest is read again later",
+            "<4>{} read {} of the {} it named, so the rest is read again later",
+            tell.name,
             unasked - missed,
             threads.len()
         );
@@ -137,6 +142,7 @@ pub(super) fn kept(
                 github::stamp(at),
                 github::stamp(*from)
             );
+            tell.thread(thread, *from);
             continue;
         }
         // Asked the round after a first failure, then after waits doubling;
@@ -161,6 +167,13 @@ pub(super) fn kept(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// GitHub's rows in shadow, in a folder of this test run's own, which
+    /// only one let go writes.
+    fn left() -> Left {
+        let home = std::env::temp_dir().join(format!("pineapple-owed-{}", std::process::id()));
+        Left::new("github", "GitHub", "https://api.github.com", true, &home)
+    }
 
     /// example/shop's pull request `number`.
     fn thread(number: u64) -> Thread {
@@ -198,7 +211,7 @@ mod tests {
                 asked.push(round);
             }
             owing = kept(
-                "github",
+                &left(),
                 &threads,
                 (&failed, &[], threads.len()),
                 &owing,
@@ -271,7 +284,7 @@ mod tests {
             ..owed(14, 100, 11, 0)
         }];
         let threads = list(vec![(thread(12), 300, 300)], Vec::new(), &before);
-        let owing = kept("github", &threads, (&[], &[], 0), &before, 900);
+        let owing = kept(&left(), &threads, (&[], &[], 0), &before, 900);
 
         let fresh = Owed {
             at: 900,
@@ -288,7 +301,7 @@ mod tests {
     fn one_owed_that_github_says_is_gone_stays_owed_as_one_failed_and_one_new_goes() {
         let before = [owed(14, 100, 1, 0)];
         let threads = list(vec![(thread(12), 300, 300)], Vec::new(), &before);
-        let owing = kept("github", &threads, (&[], &[0, 1], 2), &before, 900);
+        let owing = kept(&left(), &threads, (&[], &[0, 1], 2), &before, 900);
 
         assert_eq!(
             owing,
