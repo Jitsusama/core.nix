@@ -1,8 +1,8 @@
 # What more than one of the folder's checks uses: stand-ins, the shell as the
 # account gets it, and the harnesses that run the shell offscreen or on niri.
 # Each place's file takes what it needs of these by name, as do the reader's,
-# mpv's and Inkscape's launcher checks, which import it with the arguments
-# every folder's checks get.
+# mpv's, Inkscape's and Spotify's launcher checks, which import it with the
+# arguments every folder's checks get.
 {
   account,
   bareNixos,
@@ -145,7 +145,8 @@ let
   # above the shell's folder, or one written from the root. So does an own
   # file given by anything but its plain place there, which would be copied
   # elsewhere. The table and the roots are given, so a check can give it
-  # others (core.nix's a-check-copies-what-each-file-imports).
+  # others: Spotify's, whose files nothing reaches through Applications.qml,
+  # and core.nix's a-check-copies-what-each-file-imports.
   programStepWith =
     table: roots: own:
     let

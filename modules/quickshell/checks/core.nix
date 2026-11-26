@@ -344,8 +344,8 @@ in
   # copied's walk and guard, by what it makes of tables given it, so nothing
   # is built: it copies every file a root reaches, walked here apart from it,
   # and nothing else; a row past the root in another order copies the same;
-  # and one left empty, or one two imports past the root naming an import
-  # more, is refused, copying nothing, as the guard names it (wrongWith),
+  # and one left empty or dropped, or one two imports past the root naming
+  # an import more, is refused, copying nothing, as the guard names it (wrongWith),
   # with imports.nix and that file said. Each case takes its file from imports.nix, so an edit to
   # one file's imports moves a case rather than failing it. Today's rows are
   # all sorted, so only this sees the order case break. A program's own file,
@@ -384,6 +384,8 @@ in
       withEmptied = table // {
         ${picked} = [ ];
       };
+      # With no row at all, as a file that had none gains its first import.
+      withDropped = removeAttrs table [ picked ];
       # A file past the root's own row, so a guard reading only the root's
       # imports can't pass it, given a row naming an import it doesn't hold.
       deep = lib.findFirst (file: file != root && !(lib.elem file (rowOf root))) null reached;
@@ -540,6 +542,9 @@ in
       emptiedRefused =
         wrongWith withEmptied [ root ] == [ picked ]
         && refusedNaming picked (copiedWith withEmptied [ root ]);
+      droppedRefused =
+        wrongWith withDropped [ root ] == [ picked ]
+        && refusedNaming picked (copiedWith withDropped [ root ]);
       padded = copiedWith withPadded [ root ];
       paddedRefused = wrongWith withPadded [ root ] == [ deep ] && refusedNaming deep padded;
       plantedEmptied = programStepWith withEmptied [ ] (ownImporting "../${picked}");
@@ -562,6 +567,7 @@ in
           ++ lib.optional (realBeyond != null) "${realSaidBeyond}${realBeyond}"
           ++ lib.optional (!sameTurned) "${picked}'s row, reversed, copied otherwise"
           ++ lib.optional (!emptiedRefused) "${picked}'s row, emptied, went unrefused"
+          ++ lib.optional (!droppedRefused) "${picked}'s row, dropped, went unrefused"
           ++ lib.optional (!paddedRefused) "${deep}'s row, naming ${padding} too, went unrefused"
           ++ lib.optional (!plantedEmptiedRefused) plantedEmptiedSaid
           ++ lib.optional (unplanted != [ ]) unplantedSaid
