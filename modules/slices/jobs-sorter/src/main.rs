@@ -1959,9 +1959,10 @@ impl Fitting {
     /// whatever started it chose, and a window the sorter floors itself,
     /// claiming past the windows' cap as a stray does, is said to be one,
     /// so the reader looks to the sorter's floors rather than a stranger;
-    /// one it keeps and doesn't hold is said to be raised past its floor,
-    /// since only what runs in it can have raised it. The rest the sorter
-    /// can't trim.
+    /// one it keeps and doesn't hold is said to be past the windows' cap or
+    /// raised past its floor, since either leaves it a stray's claim and
+    /// only what runs in it can have raised it. The rest the sorter can't
+    /// trim.
     fn overran(
         &mut self,
         slice: &str,
@@ -1982,12 +1983,13 @@ impl Fitting {
             .take(SAID)
             .map(|(name, claim)| {
                 let scope = Path::new(slice).join(name);
-                // A kept window nothing holds claims within the cap only the floor keep.rs set
-                // it, so what it claims past it is what runs in it raising its own.
+                // A kept window nothing holds claims within the cap no more than the floor
+                // keep.rs set it, and only while the cap has room for it, so what it claims past
+                // the cap is that floor once the cap is full, or what runs in it raising its own.
                 let whose = if self.floored.held.contains(&scope) {
                     ", a window the sorter floors"
                 } else if self.floored.kept(&scope).is_some() {
-                    ", a window the sorter keeps, raised past its floor"
+                    ", a window the sorter keeps, past the windows' cap or raised past its floor"
                 } else {
                     ""
                 };
@@ -5788,7 +5790,8 @@ mod tests {
             .unwrap_or_default();
         assert!(
             said.ends_with(
-                "\"kitty-2-14.scope\" 512 MiB, a window the sorter keeps, raised past its floor, \
+                "\"kitty-2-14.scope\" 512 MiB, a window the sorter keeps, past the windows' cap \
+                 or raised past its floor, \
                  \"kitty-3-1.scope\" \
                  1024 MiB, a window the sorter floors, \"run-u7.scope\" 1024 MiB."
             ),
@@ -5978,7 +5981,7 @@ mod tests {
     }
 
     #[test]
-    fn within_the_cap_held_floors_claim_first_then_kept_ones_then_scopes_only_named() {
+    fn within_the_cap_held_and_kept_floors_claim_ahead_of_scopes_only_named() {
         const MIB: u64 = 1 << 20;
         let held = ["kitty-1-1.scope", "mycelium-pi-1.scope"];
         let named = [
@@ -6103,7 +6106,7 @@ mod tests {
             order: order.iter().map(|name| slice.join(name)).collect(),
             kept: HashMap::new(),
         };
-        let (_, strays, _) = claims(
+        let (_, strays, ours) = claims(
             &slice,
             32768 * MIB,
             &["kitty-".to_owned(), "mycelium-pi-".to_owned()],
@@ -6123,6 +6126,11 @@ mod tests {
             ["mycelium-pi-1.scope", stale],
             "the cap's three floors didn't go to the first three focus holds, or a stale hold \
              came before this look's"
+        );
+        assert_eq!(
+            ours,
+            3 * 2048 * MIB,
+            "the floors the sorter holds within the cap weren't counted as its own"
         );
     }
 
@@ -6368,7 +6376,7 @@ mod tests {
     // At agents.slice's own floor, a tenth of 62 GiB, a held window holding past a window's
     // floor with its memory.low raised claims that floor first and the rest as strays do.
     #[test]
-    fn a_held_window_claims_first_no_more_than_a_windows_floor() {
+    fn a_held_window_claims_no_more_than_a_windows_floor() {
         const MIB: u64 = 1 << 20;
         let slice = slice_with(
             "fit-held-past",
