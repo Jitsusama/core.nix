@@ -998,21 +998,25 @@ mod tests {
 
     #[test]
     fn each_kind_of_look_says_its_whole_why() {
-        let mut studio = laptop(&[], "nearly-full");
-        studio["state"] = json!("unreachable");
-        studio["power"] = json!({"on_battery": true, "charge": 12});
-        studio["firmware"] = json!({"error_before_boot": 600});
+        // This machine's backup is looked at, and another's own code, so
+        // no one machine wears every kind.
+        let mut here = laptop(&[], "nearly-full");
+        here["state"] = json!("unreachable");
+        here["power"] = json!({"on_battery": true, "charge": 12});
+        here["firmware"] = json!({"error_before_boot": 600});
+        let mut studio = json!({"name": "studio", "state": "ready", "disk_band": "healthy"});
         studio["health"] = json!({"parts": {"code": "watch"}});
         let part = super::machines(
-            &Ok(realm(&[studio])),
+            &Ok(realm(&[here, studio])),
             &Err(String::new()),
             None,
             None,
             Some(Backup::Landed(7 * 3_600)),
         );
-        let mut said: Vec<(&str, &str)> = part.things[0]
-            .looks
+        let mut said: Vec<(&str, &str)> = part
+            .things
             .iter()
+            .flat_map(|thing| &thing.looks)
             .map(|look| (look.side.as_str(), look.matters.as_str()))
             .collect();
         said.sort_unstable();
