@@ -857,14 +857,15 @@ fn a_command_held_past_its_hold_lets_its_act_be_asked_afresh() {
         std::thread::sleep(Duration::from_millis(100));
     };
     // Asks a tenth of a second apart, so a four-second hold refuses one
-    // sent past three and runs one sent before six, a second or more to
-    // spare on each side for a builder that stalls the test.
+    // sent past three and runs one sent before five, nearly a second to
+    // spare on each side for a builder that stalls the test, while a hold
+    // of three seconds or five fails.
     assert!(
         refused >= Duration::from_secs(3),
         "the first stop's hold ended early, the last stop it refused sent after {refused:?}"
     );
     assert!(
-        ran < Duration::from_secs(6),
+        ran < Duration::from_secs(5),
         "the first stop's hold ended late, the first stop run afresh sent after {ran:?}"
     );
     assert_eq!(
