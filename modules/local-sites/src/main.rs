@@ -31,6 +31,7 @@ mod door;
 mod files;
 mod gate;
 mod http;
+mod pace;
 mod page;
 mod peer;
 mod posing;
