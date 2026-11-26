@@ -423,10 +423,34 @@ pub fn moved_into(
     lines_after: &[(f64, f64)],
     now: impl FnOnce(usize) -> usize,
 ) -> Option<f64> {
+    let (into, pt) = by_block(before, after, line, now)?;
+    Some(line_in(after, into, pt, lines_after).unwrap_or(pt))
+}
+
+/// Where a point lands as `moved_into` lands it, as far through its block,
+/// but on no line: a view's top stands where the view was scrolled to,
+/// above the page's first line or partway down another, and kept as a
+/// jump's place it lands there again, not on the line nearest it.
+pub fn moved_by_block(
+    before: &[(usize, f64)],
+    after: &[(usize, f64)],
+    line: (f64, f64),
+    now: impl FnOnce(usize) -> usize,
+) -> Option<f64> {
+    by_block(before, after, line, now).map(|(_, pt)| pt)
+}
+
+/// The block a line lands in, in the block `now` says its block is after,
+/// and where in it, as far through it as it was.
+fn by_block(
+    before: &[(usize, f64)],
+    after: &[(usize, f64)],
+    line: (f64, f64),
+    now: impl FnOnce(usize) -> usize,
+) -> Option<(usize, f64)> {
     let (block, into_pt) = line_at(before, line);
     let into = now(block);
-    let pt = pt_of(after, into, into_pt, height_of(before, block))?;
-    Some(line_in(after, into, pt, lines_after).unwrap_or(pt))
+    Some((into, pt_of(after, into, into_pt, height_of(before, block))?))
 }
 
 /// The top of the line in `block` nearest `pt`, of `lines` given by their
@@ -557,7 +581,10 @@ fn measured_at(mark: &Mark, width_pt: f64) -> bool {
 /// block's height was would land unscaled at every width, so on a page
 /// as wide as its distance was measured on it takes the height its block
 /// has, once that's known; a page at another width would give it a height
-/// its distance never had.
+/// its distance never had. One kept without its width, before marks said
+/// it or by an older reader, was measured as far as can be told on the
+/// page it first lands on, since the window opens as wide as it closed;
+/// it would otherwise never learn its block's height.
 pub fn take_kept(
     kept: &mut Vec<Mark>,
     marks: &mut HashMap<char, f64>,
@@ -571,14 +598,15 @@ pub fn take_kept(
         };
         if let std::collections::hash_map::Entry::Vacant(mark) = marks.entry(one.letter) {
             mark.insert(pt);
-            let block_pt = one.block_pt.or_else(|| {
-                height_of(starts, one.block).filter(|_| measured_at(one, taking.width_pt))
+            let taken = Mark {
+                width_pt: one.width_pt.or(Some(taking.width_pt)),
+                ..one.clone()
+            };
+            let block_pt = taken.block_pt.or_else(|| {
+                height_of(starts, taken.block).filter(|_| measured_at(&taken, taking.width_pt))
             });
             landed.push(Landed {
-                kept: Mark {
-                    block_pt,
-                    ..one.clone()
-                },
+                kept: Mark { block_pt, ..taken },
                 pt,
                 on_line: false,
             });
@@ -629,6 +657,17 @@ pub fn set_again(
     let again: HashMap<char, f64> = landed_again(landed, marks, after).into_iter().collect();
     for (letter, pt) in marks.iter_mut() {
         *pt = again.get(letter).copied().unwrap_or_else(|| moved(*pt));
+    }
+}
+
+/// Lets go of the kept marks a page set again took, once they're on their
+/// lines, when the file was `edited`: their blocks are numbered as it was
+/// read at opening, the best guess a mark kept without its words has, so
+/// they land there once and are his from then on, never landed again by
+/// numbers the edit may have moved. Unedited, they stay the kept ones.
+pub fn taken_as_his(landed: &mut Vec<Landed>, edited: bool) {
+    if edited {
+        landed.clear();
     }
 }
 

@@ -30,7 +30,9 @@ fn spots_moved<'a>(
     moving: &anchor::Moving,
 ) {
     for spot in spots.filter(|spot| spot.file == file) {
-        (spot.pt, spot.aim) = (moving.moved(spot.pt), moving.moved(spot.aim));
+        // Its place is a view's top, which needn't be on a line; its aim is
+        // the cursor's line, which is.
+        (spot.pt, spot.aim) = (moving.moved_view(spot.pt), moving.moved(spot.aim));
     }
 }
 
@@ -303,15 +305,10 @@ impl App {
             self.aim = landed;
         } else {
             // The whole page, set again at another width or saved, has the
-            // blocks the first screen's marks waited for. After an edit their
-            // blocks are numbered as the file was read at opening, the best
-            // guess a mark kept without its words has, so they land there
-            // once and are his from then on, never landed again from what
-            // was kept by numbers the edit may have moved.
+            // blocks the first screen's marks waited for, and after an edit
+            // they're his once they land.
             self.take_kept_marks();
-            if edited {
-                self.landed.clear();
-            }
+            place::taken_as_his(&mut self.landed, edited);
         }
         self.marks_on_lines();
         self.read_layout();
@@ -602,5 +599,39 @@ mod tests {
             [spot("notes.md", 30.0, 50.0), spot("other.md", 10.0, 30.0)]
         );
         assert_eq!(last, Some(spot("notes.md", 50.0, 50.0)));
+    }
+
+    #[test]
+    fn a_place_jumped_from_at_the_page_s_top_lands_there_again_at_another_width() {
+        // Set wider, the first block stands taller and "two" lower. A view
+        // scrolled to the page's top stands over its first block, its
+        // margin and eyebrow in view: it goes back there, not down onto
+        // "one" as a mark there would, and its cursor's line goes with
+        // "two".
+        let was = [line(20.0, "one"), line(40.0, "two")];
+        let now = [line(20.0, "one"), line(45.0, "two")];
+        let before = [(0, 8.0), (1, 25.0)];
+        let after = [(0, 8.0), (1, 30.0)];
+        let ends: Vec<(f64, f64)> = now.iter().map(moves::ends_of).collect();
+        let moving = anchor::Moving {
+            edited: false,
+            reflowed: true,
+            before: &before,
+            after: &after,
+            was: &was,
+            now: &now,
+            ends: &ends,
+            most_pt: 500.0,
+            said: std::cell::OnceCell::new(),
+        };
+        assert_eq!(moving.moved(0.0), 10.0, "a mark lands on the first line");
+        let mut last = Some(Spot {
+            file: "notes.md".into(),
+            pt: 0.0,
+            aim: 30.0,
+        });
+        spots_moved(last.iter_mut(), Path::new("notes.md"), &moving);
+        let landed = last.map(|spot| (spot.pt, spot.aim));
+        assert_eq!(landed, Some((0.0, 35.0)), "the view goes back to the top");
     }
 }
