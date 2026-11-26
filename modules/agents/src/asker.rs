@@ -23,11 +23,13 @@
 //! The read is jobs-broker's (../jobs-broker/src/peer.rs), which needs
 //! the pidfd for more than this does.
 
-use std::io;
+use std::io::{self, Read};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 /// The names quickshell's program goes by: Nix's wrapper runs the real
 /// one under this name, and an unwrapped build runs as itself.
@@ -96,9 +98,19 @@ pub fn takes(
     Ok(main_pid()? == seen.pid)
 }
 
-/// The shell's unit's main process, as this account's manager says it.
+/// How long this account's manager has to name the shell's main process.
+/// An answer waits on it before the node's own 5 s (acts.rs's PATIENCE),
+/// and the launcher lets Joel answer again once 30 s pass unheard
+/// (TalkAnswers.js's SENT_STANDS_MS), so the two stay well inside that.
+const MANAGER_PATIENCE: Duration = Duration::from_secs(3);
+
+/// How often a manager not yet done is looked at again.
+const MANAGER_LOOKS_EVERY: Duration = Duration::from_millis(10);
+
+/// The shell's unit's main process, as this account's manager says it
+/// within MANAGER_PATIENCE, the call ended where it doesn't.
 fn shells_main_pid() -> io::Result<u32> {
-    let said = Command::new("systemctl")
+    let mut asked = Command::new("systemctl")
         .args([
             "--user",
             "show",
@@ -106,15 +118,42 @@ fn shells_main_pid() -> io::Result<u32> {
             "--value",
             SHELL_UNIT,
         ])
-        .output()?;
-    if !said.status.success() {
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let deadline = Instant::now() + MANAGER_PATIENCE;
+    let status = loop {
+        if let Some(status) = asked.try_wait()? {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            let _ = asked.kill();
+            let _ = asked.wait();
+            return Err(io::Error::other(format!(
+                "systemd didn't say the shell's main process within {} s",
+                MANAGER_PATIENCE.as_secs()
+            )));
+        }
+        thread::sleep(MANAGER_LOOKS_EVERY);
+    };
+    // Its words are a line each, well inside a pipe's buffer, so it never
+    // waits on them being read before it ends.
+    let mut said = String::new();
+    let mut why = String::new();
+    if let Some(mut out) = asked.stdout.take() {
+        out.read_to_string(&mut said)?;
+    }
+    if let Some(mut err) = asked.stderr.take() {
+        err.read_to_string(&mut why)?;
+    }
+    if !status.success() {
         return Err(io::Error::other(format!(
             "systemd couldn't say the shell's main process: {}",
-            String::from_utf8_lossy(&said.stderr).trim()
+            why.trim()
         )));
     }
-    String::from_utf8_lossy(&said.stdout)
-        .trim()
+    said.trim()
         .parse()
         .map_err(|_| io::Error::other("systemd named no main process for the shell"))
 }

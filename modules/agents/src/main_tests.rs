@@ -219,6 +219,18 @@ fn only_the_shells_answer_reaches_the_node() {
         json!({"error": {"code": "refused", "message": ONLY_THE_SHELL}}),
         "another's answer is refused"
     );
+    // Refused before it's judged, so one naming no want gets no word of
+    // what the daemon holds.
+    assert_eq!(
+        answered(
+            Err("not the shell".to_owned()),
+            &wants,
+            &json!({"ask": "answer", "address": "NOBODY"}),
+            Some(&socket),
+        ),
+        json!({"error": {"code": "refused", "message": ONLY_THE_SHELL}}),
+        "another's answer naming no want is refused alike"
+    );
     assert!(
         listener
             .accept()
@@ -241,6 +253,12 @@ fn only_the_shells_answer_reaches_the_node() {
         ask
     });
     let taken = answered(Ok(()), &wants, &said, Some(&socket));
+    // Before the node's joined, so an answer that never reached it fails
+    // here rather than waiting on it for good.
+    assert!(
+        taken.get("error").is_none(),
+        "the shell's answer is taken: {taken}"
+    );
     let ask: Value =
         serde_json::from_str(&node.join().expect("the node stood in")).expect("the steer is JSON");
     let _ = std::fs::remove_file(&socket);

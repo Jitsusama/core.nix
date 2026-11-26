@@ -421,9 +421,12 @@ const ONLY_THE_SHELL: &str =
 /// (ISXEG8's R-agent-answers-own-ask).
 fn answered(asker: Result<(), String>, wants: &Wants, said: &Value, node: Option<&Path>) -> Value {
     if let Err(why) = asker {
-        // The asker's own words are a start's; why it was refused is
-        // journalled.
-        eprintln!("agents: an answer wasn't taken: {why}");
+        // Why it was refused is journalled with what it named, so an
+        // agent answering its own ask can be traced to it.
+        eprintln!(
+            "agents: an answer to {} for {} wasn't taken: {why}",
+            said["want"], said["address"]
+        );
         return json!({"error": {"code": "refused", "message": ONLY_THE_SHELL}});
     }
     // Only an answer reaches here, so the wants always have one to give.

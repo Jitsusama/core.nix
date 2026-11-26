@@ -6,7 +6,7 @@
 //! answers it offers to a single question (harness #1394), the one it
 //! recommends first, so the shell reads them rather than parsing every
 //! session's presence (KRINS0 item 2). Answering is asked of the daemon
-//! too, by the shell alone (`Wants::answer`), and `answer_of` finds the
+//! too, by the shell alone (main.rs's `answered`), and `answer_of` finds the
 //! want by the session's address; the
 //! shell names the want it was shown, and one the session no longer asks
 //! is refused. Each says too whether it rings the

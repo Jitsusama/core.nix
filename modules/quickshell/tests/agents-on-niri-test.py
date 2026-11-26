@@ -4501,10 +4501,10 @@ ONLY_THE_SHELL = (
 )
 
 
-def test_a_talk_to_an_asking_cell_shows_its_question_and_answers_it_from_return(
+def test_a_talk_to_an_asking_cell_shows_its_question_and_why_its_answer_wasnt_taken(
     shell: Shell,
 ) -> None:
-    """A Talk opened from a link on a cell asking Joel shows its ask and answers it from Return.
+    """A Talk opened from a link on a cell asking Joel shows its ask and why an answer isn't taken.
 
     Joel opened a Talk on a cell asking him from the realm's map and found nothing of its
     question there, and nothing said after he typed (13:15 on 2026-11-24: "no feedback at
