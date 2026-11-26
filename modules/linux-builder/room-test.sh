@@ -178,6 +178,32 @@ look 50 3
 chmod 755 "${state}"
 look 50 3
 holds withheld "" "a shortage a look couldn't write down was forgotten, skipping the hold"
+# Failing while withheld for want of room says so, so the file's reason
+# isn't left as a shortage while the job keeps failing.
+chmod 555 "${state}"
+look 50 3
+reason=$(head -n 1 "${offered}")
+failing="it failed, ending ${ended}"
+if [[ ${offer} != withheld || ${ended} == 0 || ${said} != *"isn't offered: ${failing}" ||
+  ${reason} != "# withheld by linux-builder-room: ${failing}" ]]; then
+  fail "a look that failed while withheld for want of room left the old reason"
+fi
+chmod 755 "${state}"
+
+# A move into place that fails says only that it failed, never the offer
+# it couldn't make. The stand-in mv refuses only the file Nix reads.
+mkdir -p "${bin}/stuck"
+mover=$(command -v mv)
+cat >"${bin}/stuck/mv" <<EOF
+#!${BASH}
+[[ \$1 != *offered.new ]] || exit 1
+exec ${mover} "\$@"
+EOF
+chmod +x "${bin}/stuck/mv"
+pressed_ago 601
+PATH=${bin}/stuck:${PATH} look 50 3
+[[ ${offer} == withheld && ${ended} != 0 && ${said} != *"offered again"* ]] ||
+  fail "a move that failed was said as the builder offered again"
 
 pressed_ago 601
 look 50 3

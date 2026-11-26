@@ -38,12 +38,17 @@ hold=$7
 # takes no room. Its record of when the Mac was last short is emptied too,
 # so a shortage this look saw but couldn't write down isn't forgotten: the
 # next look finds no record, counts the Mac short, and runs the hold.
+# A file withheld for want of room says it failed too, so its reason never
+# goes stale under a job that keeps failing; only the same failure again
+# is left unsaid.
 failed() {
-  local status=$? when
+  local status=$? when first="" says
   [ "${status}" -ne 0 ] || return 0
   : 2>/dev/null >"${state}/pressed" || true
-  if grep -qv '^#' "${offered}" 2>/dev/null; then
-    printf '%s\n' "# withheld by linux-builder-room: it failed, ending ${status}" \
+  says="# withheld by linux-builder-room: it failed, ending ${status}"
+  read -r first 2>/dev/null <"${offered}" || true
+  if [ "${first}" != "${says}" ]; then
+    printf '%s\n' "${says}" \
       "# linux-builder-room's log says when, as launchd's job names it" >"${offered}" || true
     when=$(date -u +%Y-%m-%dT%H:%M:%SZ) || when=""
     echo "${when} room: the builder isn't offered: it failed, ending ${status}" >&2 || true
