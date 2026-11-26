@@ -168,11 +168,17 @@ fn this_machine_is_off_home_only_while_neither_the_modem_nor_the_switch_answers(
             false,
         ),
         (vec![("modem", "answering"), ("eero", "unreachable")], false),
+        // Away from home, any web server at the switch's address that
+        // isn't the switch reads as signed out.
         (
             vec![("modem", "unreachable"), ("switch", "signed-out")],
+            true,
+        ),
+        (
+            vec![("modem", "answering"), ("switch", "signed-out")],
             false,
         ),
-        (vec![("switch", "signed-out")], false),
+        (vec![("switch", "signed-out")], true),
         (vec![("eero", "unreachable")], false),
         (vec![], false),
     ] {
@@ -252,11 +258,15 @@ fn only_a_file_that_wont_open_as_a_tvs_is_offered_forgetting() {
 #[test]
 fn a_refused_token_that_couldnt_be_forgotten_is_said_so_and_keeps_the_certificate() {
     let tv = device("Living", &["television"], &[]);
-    let failure = unforgotten(&tv, "mute").json(false);
+    let failure = unforgotten(&tv, "mute", "No space left on device (os error 28)").json(false);
     let because = failure["why"].as_str().unwrap_or_default();
     assert!(
         because.contains("couldn't forget"),
         "the failure says the token was forgotten: {because}"
+    );
+    assert!(
+        because.contains("No space left"),
+        "the failure doesn't say why the token couldn't be forgotten: {because}"
     );
     assert_eq!(
         failure["try"], "net devices mac:02:00:00:00:00:90 press mute",

@@ -242,13 +242,14 @@ address in the record. They answer `net.pressed/1` (`device`, `key`,
 - Try lines name the TV by its id, which `views::find` takes first, so
   they reach it even where another device shares its name. While a
   record from the last two minutes has neither the modem nor the switch
-  heard for two minutes, this machine is likely away from home: a TV
+  heard for two reads in a row, this machine is likely away from home: a TV
   that isn't heard, or a certificate not the kept one, says so rather
   than blaming the TV, and a first press isn't made, since it would pin
   whatever answers at the TV's address. A press with a pin kept still
-  goes, since the TV answers while only the modem is off. A switch that
-  signed net out was heard over the home network, so it counts as home;
-  a stale record, or one minute's missed read, says nothing of away.
+  goes, since the TV answers while only the modem is off. A switch read
+  as signed out counts as unheard, since its reader says so of any web
+  server at its address that doesn't show the switch's status; a stale
+  record, or one minute's missed read, says nothing of away.
 - The token and the pin are sealed with `systemd-creds --user` under
   `$XDG_STATE_HOME/net/televisions/`, one file named by the TV's hardware
   address and sealed under a name of its own, as eero-daemon seals its

@@ -126,16 +126,19 @@ const FRESH: u64 = 2 * 60;
 
 /// How long, in seconds, the modem and the switch must have gone unheard
 /// for this machine to be taken as away: one minute's read the modem
-/// misses is a hiccup, two in a row is the home network gone.
-const UNHEARD: u64 = 2 * 60;
+/// misses is a hiccup, two in a row is the home network gone. A source's
+/// `since` is the first miss's minute, so the second miss is a minute on.
+const UNHEARD: u64 = 60;
 
 /// Whether this machine is likely off the home network, at `now` in
 /// seconds since the epoch: the modem and the switch answer net only over
 /// it, and a fresh record names at least one of them and has none heard
-/// for `UNHEARD`. A switch that signed net out still answered over the
-/// home network, so it counts as home. A stale record says nothing, so
-/// nothing is said of being away. A TV that didn't answer while none was
-/// heard may be fine, and isn't blamed.
+/// for `UNHEARD`. A switch read as signed out counts as unheard, since
+/// the reader says so of any web server at its address that doesn't show
+/// the switch's status, which away from home is a stranger's; at home it
+/// costs only a first press while the modem is out too. A stale record
+/// says nothing, so nothing is said of being away. A TV that didn't answer
+/// while none was heard may be fine, and isn't blamed.
 fn off_home(network: &Network, now: u64) -> bool {
     if now.saturating_sub(network.collected_at) > FRESH {
         return false;
@@ -147,10 +150,12 @@ fn off_home(network: &Network, now: u64) -> bool {
         .peekable();
     home.peek().is_some()
         && home.all(|source| {
-            source.state == SourceState::Unreachable
-                && source
-                    .since
-                    .is_some_and(|since| network.collected_at.saturating_sub(since) >= UNHEARD)
+            matches!(
+                source.state,
+                SourceState::Unreachable | SourceState::SignedOut
+            ) && source
+                .since
+                .is_some_and(|since| network.collected_at.saturating_sub(since) >= UNHEARD)
         })
 }
 
@@ -232,8 +237,8 @@ pub fn press(
                 let _ = waiting.failed(&unallowed(device, &missed.why));
             }
             let forgetting = matches!(missed.why, remote::Why::Forgotten);
-            let held = missed.kept.as_ref().is_some_and(|kept_now| {
-                !keep_now(
+            let unkept = missed.kept.as_ref().and_then(|kept_now| {
+                keep_now(
                     context,
                     device,
                     mac,
@@ -241,6 +246,7 @@ pub fn press(
                     kept_now,
                     Keeping::Missed { forgetting },
                 )
+                .err()
             });
             // A stranger answering at the address fails the kept
             // certificate, which away from home isn't a reset TV.
@@ -252,13 +258,13 @@ pub fn press(
             {
                 return Err(away(format!("{} didn't answer", device.name)));
             }
-            if held && forgetting {
-                return Err(unforgotten(device, word));
+            if let Some(error) = unkept.filter(|_| forgetting) {
+                return Err(unforgotten(device, word, &error));
             }
             return Err(refused(device, word, missed.why));
         }
     };
-    keep_now(
+    let _ = keep_now(
         context,
         device,
         mac,
@@ -287,10 +293,10 @@ enum Keeping {
 }
 
 /// Keeps what the TV allowed now, where it differs from what was kept,
-/// answering whether it's kept. What can't be kept is warned of, since
+/// answering why it couldn't be. What can't be kept is warned of, since
 /// the TV will ask again, or its certificate is trusted afresh; a refused
-/// token that can't be forgotten is said by the failure alone, as it's
-/// carried again.
+/// token that can't be forgotten is said by the failure alone, with why,
+/// as it's carried again.
 fn keep_now(
     context: &Context,
     device: &Device,
@@ -298,16 +304,16 @@ fn keep_now(
     kept: Option<&kept::Kept>,
     kept_now: &kept::Kept,
     keeping: Keeping,
-) -> bool {
+) -> Result<(), String> {
     if kept == Some(kept_now) {
-        return true;
+        return Ok(());
     }
     let Err(error) = kept::keep(mac, kept_now) else {
-        return true;
+        return Ok(());
     };
     let name = &device.name;
     let key = match keeping {
-        Keeping::Missed { forgetting: true } => return false,
+        Keeping::Missed { forgetting: true } => return Err(error.to_string()),
         Keeping::Went => "the key went, but ",
         Keeping::Missed { forgetting: false } => "",
     };
@@ -317,24 +323,24 @@ fn keep_now(
         format!("{name}'s certificate couldn't be kept, so the next press trusts it afresh")
     };
     let _ = context.tell("!", "warning", &format!("{key}{lost}: {error}"));
-    false
+    Err(error.to_string())
 }
 
 /// Why a key wasn't pressed when the TV refused the token it handed and
 /// net couldn't forget it. Pressing again tries the forgetting again and
 /// keeps the certificate the TV just proved it holds, which removing the
 /// file would lose.
-fn unforgotten(device: &Device, word: &str) -> Failure {
+fn unforgotten(device: &Device, word: &str, error: &str) -> Failure {
     let name = &device.name;
     Failure::new(
         Exit::Refused,
         format!("{name} no longer allows this machine"),
     )
-    .because(
-        "it refused the token it handed, and net couldn't forget it; the next press tries \
-         again to forget it, keeping its certificate, and once it's forgotten asks Allow on \
-         its screen",
-    )
+    .because(format!(
+        "it refused the token it handed, and net couldn't forget it: {error}; the next press \
+         tries again to forget it, keeping its certificate, and once it's forgotten asks \
+         Allow on its screen"
+    ))
     .try_this(again(device, word))
 }
 
