@@ -3093,9 +3093,9 @@ pub(crate) mod tests {
         let mut chooser = after_a_bad_minute(DESK);
         let start = Instant::now();
         let badly = carried(119, 0.5);
-        let near = hall(-53, Some(20), None);
+        let the_hall = hall(-53, Some(20), None);
         let on = (DESK, &badly, -50, CH52);
-        let tried = chooser.choose(start, on, &[near], false);
+        let tried = chooser.choose(start, on, &[the_hall], false);
         assert_eq!(tried, Choice::Try(HALL.into()), "the hall is tried");
 
         // A give-way waits out a move's `BETWEEN`, the chooser's own included.
@@ -3115,8 +3115,8 @@ pub(crate) mod tests {
         let mut chooser = after_a_bad_minute(DESK);
         let start = Instant::now();
         let badly = carried(119, 0.5);
-        let near = hall(-53, Some(20), None);
-        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &[near], false);
+        let the_hall = hall(-53, Some(20), None);
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &[the_hall], false);
         assert_eq!(tried, Choice::Try(HALL.into()), "the hall is tried");
 
         let gave = start + fading::BETWEEN;

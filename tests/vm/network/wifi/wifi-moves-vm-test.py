@@ -685,12 +685,30 @@ def test_a_card_losing_its_echoes_during_a_call_gives_way_to_another_at_once(
         machine.succeed(f"ip netns exec air iw dev {radio} set txpower fixed 2000")
     try:
         gives_way_as_it_loses(machine, wifid)
+        wifid.holds_address("10.42.0.")
+        machine.succeed("ping -c 1 -W 2 10.42.0.1")
     finally:
-        for radio in radios:
-            machine.succeed(f"ip netns exec air iw dev {radio} set txpower auto")
-    wifid.holds_address("10.42.0.")
-    machine.succeed("ping -c 1 -W 2 10.42.0.1")
-    machine.succeed("systemctl stop lantern-two")
+        # The first's loss, both radios' power, the call and the second are each undone whether
+        # or not the one before fails, and judged together, so the subtests after this one
+        # aren't left a lossy first, a call on for its lapse or a second up. The call is over
+        # before the second goes, so its going isn't given way from.
+        lossless = (
+            "! ip netns exec air tc qdisc show dev wlan0 | grep -q netem"
+            " || ip netns exec air tc qdisc del dev wlan0 root"
+        )
+        steps = [
+            lossless,
+            *(f"ip netns exec air iw dev {radio} set txpower auto" for radio in radios),
+        ]
+        cleaned = {step: machine.execute(step)[0] for step in steps}
+        try:
+            over = wifid.acting({"act": "calling", "on": False})
+        finally:
+            stop = "systemctl stop lantern-two"
+            cleaned[stop] = machine.execute(stop)[0]
+        failed = [step for step, status in cleaned.items() if status != 0]
+        assert over == {"id": 1, "done": True}, f"the call wasn't said over: {over}"
+        assert not failed, f"the clean-up failed at: {failed}"
     machine.wait_until_succeeds(
         "s=$(wpa_cli -i wlan2 status)"
         ' && echo "$s" | grep -qx wpa_state=COMPLETED'
@@ -762,10 +780,8 @@ def gives_way_as_it_loses(machine: BaseMachine, wifid: Wifid) -> None:
             timeout=timedelta(seconds=30),
         )
     finally:
+        # Its caller undoes the loss and the call, whatever fails here.
         machine.log(machine.succeed(f"journalctl -o short-precise --after-cursor='{quiet}'"))
-        machine.succeed("ip netns exec air tc qdisc del dev wlan0 root")
-        answer = wifid.acting({"act": "calling", "on": False})
-        assert answer == {"id": 1, "done": True}, answer
 
 
 # On 16 Nov 2026 a move found its access point gone, and the card scanned

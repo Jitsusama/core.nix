@@ -3667,9 +3667,12 @@ impl Wifid<'_> {
         if let Some(lasts) = request.keeps_off(&followed)
             && let Some(from) = from.as_deref()
         {
-            let until = Instant::now() + lasts;
+            let at = Instant::now();
+            let until = at + lasts;
             self.arrivals.borrow_mut().warned(card, from, until);
-            change(self.state, |state| state.warned_off(card, from, until));
+            change(self.state, |state| {
+                state.warned_off(card, from, (at, until))
+            });
             let minutes = lasts.as_secs() / 60;
             println!("<7>{card}'s chooser keeps off {from} for {minutes} minutes, as it warned");
         }

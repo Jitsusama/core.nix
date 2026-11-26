@@ -59,8 +59,9 @@ pub struct State {
     /// The gateway each card's default route goes through, by link index.
     gateways: BTreeMap<i32, Ipv4Addr>,
     /// The access point that last warned each card it drops it, by the
-    /// card's name, and until when the card's chooser isn't told of it.
-    warned_off: BTreeMap<String, (String, Instant)>,
+    /// card's name, when it warned, and until when the card's chooser
+    /// isn't told of it.
+    warned_off: BTreeMap<String, (String, Instant, Instant)>,
 }
 
 /// A card on a network through an access point it hears, and the gateway
@@ -535,7 +536,7 @@ impl State {
     /// the card, until `warned_off` says, unless the card is on it again.
     /// A point merely unheard isn't kept off: a move there looks for it.
     pub fn warned_from(&self, card: &str, now: Instant) -> Option<&str> {
-        let (point, until) = self.warned_off.get(card)?;
+        let (point, _, until) = self.warned_off.get(card)?;
         let away = self
             .point_of(card)
             .is_none_or(|on| !on.eq_ignore_ascii_case(point));
@@ -543,10 +544,22 @@ impl State {
     }
 
     /// Keeps the access point that warned a card it drops it from the
-    /// card's chooser until then, in place of any it was warned by before.
-    pub fn warned_off(&mut self, card: &str, point: &str, until: Instant) {
+    /// card's chooser from when it warned until then, in place of any it
+    /// was warned by before.
+    pub fn warned_off(&mut self, card: &str, point: &str, (at, until): (Instant, Instant)) {
         self.warned_off
-            .insert(card.to_owned(), (point.to_owned(), until));
+            .insert(card.to_owned(), (point.to_owned(), at, until));
+    }
+
+    /// When the access point a card is on warned it drops the card, if it
+    /// did and that's still kept to at `now`: the warning's own heed is
+    /// then moving the card off it, looking first or letting it go.
+    pub fn warned_on(&self, card: &str, now: Instant) -> Option<Instant> {
+        let (point, at, until) = self.warned_off.get(card)?;
+        let on = self
+            .point_of(card)
+            .is_some_and(|on| on.eq_ignore_ascii_case(point));
+        (now < *until && on).then_some(*at)
     }
 
     /// The address of the access point the card is at, where it hears it,
@@ -1438,7 +1451,12 @@ mod tests {
         state.warned_off(
             "wlan2",
             &other.bssid.to_uppercase(),
-            now + Duration::from_secs(600),
+            (now, now + Duration::from_secs(600)),
+        );
+        assert_eq!(
+            state.warned_on("wlan2", now),
+            None,
+            "a card was said to be on the point that warned it, though it's on another"
         );
 
         assert_eq!(
@@ -1461,7 +1479,17 @@ mod tests {
             [-52, -60],
             "and heard again once the warning's time is up"
         );
-        state.warned_off("wlan2", &on, now + Duration::from_secs(600));
+        state.warned_off("wlan2", &on, (now, now + Duration::from_secs(600)));
+        assert_eq!(
+            state.warned_on("wlan2", now),
+            Some(now),
+            "a card on the point that warned it wasn't said to be, as of the warning"
+        );
+        assert_eq!(
+            state.warned_on("wlan2", now + Duration::from_secs(600)),
+            None,
+            "a warning was said to hold past its time"
+        );
         assert_eq!(
             signals(state.around_to_choose("wlan2", now)),
             [-52, -60],

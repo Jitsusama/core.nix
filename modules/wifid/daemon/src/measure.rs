@@ -390,10 +390,9 @@ pub async fn follow(
                 let now = Instant::now();
                 if calling.borrow().on(now) {
                     for on in &joined {
-                        let around = state.borrow().around(&on.card);
                         let chooser = choosers.entry(on.card.clone()).or_default();
                         let with = (&asks, &state, &looked);
-                        moves::give_way(chooser, now, on, &around, &measures, with);
+                        moves::give_way(chooser, now, on, &measures, with);
                     }
                 }
             }

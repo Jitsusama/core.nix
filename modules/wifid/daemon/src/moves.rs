@@ -133,12 +133,13 @@ pub fn choose(
 
 /// Has a card on a call give way at once to another access point of its
 /// network, where its link is fading (fading.rs), or look for one where
-/// it hears none, and says why.
+/// it hears none, and says why. What it hears is read here, as `choose`
+/// reads it, so no caller can give a call way to a point that warned it
+/// drops the card.
 pub fn give_way(
     chooser: &mut Chooser,
     now: Instant,
     on: &Joined,
-    around: &[Heard],
     lately: &Measures,
     (asks, air, looked): (
         &mpsc::Sender<Ask>,
@@ -147,7 +148,8 @@ pub fn give_way(
     ),
 ) {
     let measured = lately.lately(&on.point, now, fading::WINDOW);
-    match given(chooser, now, on, around, measured) {
+    let next = given_hearing(chooser, now, on, &air.borrow(), measured);
+    match next {
         Some(Next::Move(to)) => {
             tokio::spawn(roam(asks.clone(), air.clone(), on.card.clone(), to));
         }
@@ -157,6 +159,32 @@ pub fn give_way(
         }
         None => {}
     }
+}
+
+/// Where a card on a call goes next, as `given` says, from what it hears
+/// less a point that warned it drops the card (`State::around_to_choose`):
+/// given way back to that point, the call would be dropped there again.
+///
+/// A card still on a point that warned it, under `fading::BETWEEN` since,
+/// gives way to none: the warning's heed is moving it off already, or
+/// looking first, and a give-way meanwhile would be refused as the card
+/// leaves a drop, yet taken in as made, its point kept off an hour as one
+/// never reached. Past that, any such move has had its time.
+fn given_hearing(
+    chooser: &mut Chooser,
+    now: Instant,
+    on: &Joined,
+    air: &State,
+    measured: (usize, Option<i32>),
+) -> Option<Next> {
+    let heeding = air
+        .warned_on(&on.card, now)
+        .is_some_and(|at| now.duration_since(at) < fading::BETWEEN);
+    if heeding {
+        return None;
+    }
+    let around = air.around_to_choose(&on.card, now);
+    given(chooser, now, on, &around, measured)
 }
 
 /// Where a card on a call goes next from a link fading as `measured` says
@@ -1121,6 +1149,61 @@ mod tests {
             "it gives way to the hall"
         );
         assert_eq!(again, None, "not again while the move may be under way");
+    }
+
+    #[test]
+    fn a_losing_call_never_gives_way_to_the_point_that_warned_it_drops_the_card() {
+        let mut air = State::default();
+        air.heard("/Interfaces/0/BSSs/1", Some(heard(DESK, -40)));
+        air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)));
+        air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
+        let start = Instant::now();
+        let on = joined(HALL);
+
+        let unwarned = given_hearing(&mut Chooser::default(), start, &on, &air, LOSING);
+        air.warned_off("wlan2", DESK, (start, start + Duration::from_secs(600)));
+        let warned = given_hearing(&mut Chooser::default(), start, &on, &air, LOSING);
+
+        assert_eq!(
+            unwarned,
+            Some(Next::Move(DESK.into())),
+            "unwarned, the louder desk wasn't given way to"
+        );
+        assert_eq!(
+            warned,
+            Some(Next::Look),
+            "a call gave way to the desk, which warned it drops the card"
+        );
+    }
+
+    #[test]
+    fn a_losing_call_waits_on_the_warned_move_off_its_point_before_it_gives_way() {
+        let mut air = State::default();
+        air.heard("/Interfaces/0/BSSs/1", Some(heard(DESK, -40)));
+        air.heard("/Interfaces/0/BSSs/2", Some(heard(HALL, -60)));
+        air.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
+        let start = Instant::now();
+        let on = joined(HALL);
+        air.warned_off("wlan2", HALL, (start, start + Duration::from_secs(600)));
+
+        let mut chooser = Chooser::default();
+        let moving = given_hearing(&mut chooser, start, &on, &air, LOSING);
+        let late = start + fading::BETWEEN;
+        let stuck = given_hearing(&mut chooser, late, &on, &air, LOSING);
+
+        assert_eq!(
+            moving, None,
+            "a call gave way as its warned point's move was under way"
+        );
+        assert!(
+            !chooser.call_keeps_off(DESK, late),
+            "the desk was kept off by a give-way never made"
+        );
+        assert_eq!(
+            stuck,
+            Some(Next::Move(DESK.into())),
+            "a call still on its warned point once a move had its time didn't give way"
+        );
     }
 
     #[test]
