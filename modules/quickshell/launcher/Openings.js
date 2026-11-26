@@ -78,7 +78,7 @@ function toldOf(waiting, late, texts) {
 // openings to keep (`kept`): every one still waiting, as counted, kept on
 // a pass that settles nothing too, since each counts its wait from what
 // the last pass kept. `settles` says whether it settled any.
-function pass(openings, found, now, times, said) {
+function pass(openings, found, { now, times, said }) {
     const stood = settled(openings, found, now, times);
     const late = stood.late.map(one => ({ one, text: said(one) }));
     const kept = toldOf(stood.waiting, stood.late, late.map(each => each.text));
@@ -176,7 +176,7 @@ function unpromised(openings) {
 // watch.
 function watching(openings, how, act, now) {
     if (how.started !== true || how.held === ""
-        || openings.some(one => one.held === how.held && one.machine === how.machine)) {
+        || openings.some(was => was.held === how.held && was.machine === how.machine)) {
         return null;
     }
     const waited = act.kept === true && Number.isFinite(act.asked)
@@ -233,12 +233,13 @@ function takenBack(footed, one) {
 function passTakenBack(footed, stood) {
     let left = footed ?? null;
     const cleared = [];
-    stood.up.concat(stood.gone).forEach(one => {
+    for (const one of stood.up.concat(stood.gone)) {
         const taken = takenBack(left, one);
         left = taken.footed;
-        if (taken.cleared !== null)
+        if (taken.cleared !== null) {
             cleared.push(taken.cleared);
-    });
+        }
+    }
     return { footed: left, cleared };
 }
 
@@ -251,10 +252,12 @@ function passTakenBack(footed, stood) {
 // and its end; else it's "sprouted" on the act, ends "late" (lateTold),
 // or was "recorded", told already by its record.
 function heardAs(answered, { state, late, current }) {
-    if (!answered && (state === "asking" || late))
+    if (!answered && (state === "asking" || late)) {
         return "awaits";
-    if (current)
+    }
+    if (current) {
         return "sprouted";
+    }
     return late ? "late" : "recorded";
 }
 
@@ -271,7 +274,8 @@ function heardState(taken, state) {
 // again, nothing, since the patience said so and Joel would be told
 // nothing answered twice.
 function lateTold(how, onAct, reached) {
-    if (how.unanswered === true)
+    if (how.unanswered === true) {
         return { onAct: false, notice: null, watch: false };
+    }
     return { onAct, notice: reached, watch: how.started === true };
 }

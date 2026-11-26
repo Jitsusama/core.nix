@@ -42,7 +42,7 @@ pub const CUT_OFF: &str = "a restart cut it off before the node answered; it may
 
 /// How many starts are kept at most, the oldest let go first: a shell
 /// that never says what it told would otherwise grow the file for good.
-/// KEPT_FOR_MS lets one go first in any day's use, so this never lets go
+/// `KEPT_FOR_MS` lets one go first in any day's use, so this never lets go
 /// a start a shell still watches for.
 const KEPT_AT_MOST: usize = 200;
 

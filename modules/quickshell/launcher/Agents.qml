@@ -2533,8 +2533,8 @@ Provider {
     // (Openings.toldWhere).
     function openSprouted() {
         // Kept on every pass, one that settles nothing too (Openings.pass).
-        const pass = Openings.pass(openings, one => sessionOf(one), Date.now(),
-            openingPatience, one => said(one, "unopened"));
+        const pass = Openings.pass(openings, one => sessionOf(one), { now: Date.now(),
+            times: openingPatience, said: one => said(one, "unopened") });
         openings = pass.kept;
         if (!pass.settles)
             return;

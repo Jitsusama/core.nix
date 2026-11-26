@@ -4,6 +4,9 @@
 // modules/quickshell/launcher/Sprouting.js, Openings.js and StartSaid.js,
 // tests/lib/Expect.js
 // and Agents' words, as words.json, beside this file and runs it offscreen.
+// Long because a start is one path from what it asks the agents daemon to
+// how its opening, its late end and its kept record each read, and its
+// cases share the words and the stand-in openings they're told with.
 import QtQuick
 import "Expect.js" as Expect
 import "launcher/Openings.js" as Openings
@@ -276,14 +279,15 @@ QtObject {
             // Agents.qml's openSprouted keeps each pass's `kept`, a pass that
             // settles nothing too: kept, the 5 s passes reach the minute; the
             // opening as made, kept, never does.
-            const quiet = Openings.pass([counted], () => null, now + 5000, times, () => "");
+            const quiet = Openings.pass([counted], () => null,
+                { now: now + 5000, times, said: () => "" });
             Expect.same("a pass that settles nothing says so, and keeps it counted",
                 [quiet.settles, quiet.kept.length, quiet.kept[0]?.waited], [false, 1, 5000]);
             let kept = [counted];
             let lateAt = -1;
             for (let at = 1; at <= 24 && lateAt < 0; at += 1) {
-                const each = Openings.pass(kept, () => null, now + at * 5000, times,
-                    () => "late");
+                const each = Openings.pass(kept, () => null,
+                    { now: now + at * 5000, times, said: () => "late" });
                 kept = each.kept;
                 if (each.settles)
                     lateAt = at * 5000;
