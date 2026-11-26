@@ -2640,9 +2640,10 @@ Singleton {
     // "disowned", told opening none, the window that came for the one it
     // asked for was refused too (refusedAsks), as a pid read wrong refuses
     // its own; "untaken", told to the press that asked, no kitty took the
-    // window it asked for (untaken); "askedAgain", told to the press that
-    // asked, no kitty took it but it's asked for again of a kitty come
-    // since (pressedAgain), "startedAskedAgain" for a hosted start.
+    // window it asked for (untaken); "askedAgain", told to the press
+    // holding the ask, no kitty took it but it's asked for again of a
+    // kitty come since (pressedAgain), "startedAskedAgain" for a hosted
+    // start.
     // A row's Reopen or a hosted start tells it too, why naming the one
     // that held: "hostless", no host serves it and its entry gives no
     // words to wait with; "opening", its viewer was asked for moments ago
@@ -2955,16 +2956,19 @@ Singleton {
         if (!(named in refusedAsks) || !(refusedAt[named] <= asked)
             || asked - refusedAt[named] >= answerPatience)
             return;
-        console.info(`sessions: no sessions kitty took ${named}, so window `
-            + `${refusedAsks[named]}, come refused, was another program's, and a press asks `
-            + "afresh");
+        const refused = refusedAsks[named];
         const told = disownedSaid[named] ?? null;
         const back = keptAsks[named];
         const going = goingTo?.app === named ? goingTo : null;
         forgetAsk(named);
         if (going !== null)
             goingTo = null;
-        if (keepAgain(back, named))
+        const again = keepAgain(back, named);
+        console.info(`sessions: no sessions kitty took ${named}, so window ${refused}, come `
+            + "refused, was another program's, and "
+            + (again ? "it's asked for again of the kitty come since" : "a press asks afresh")
+            + (told !== null ? "; its press is told" : ""));
+        if (again)
             pressedAgain(named, told, going);
         else if (told !== null)
             unhosted(told, told.startedInHost ? "startedUntaken" : "untaken");
@@ -2996,8 +3000,9 @@ Singleton {
     // time orders the script's own give-ups against newer presses, and
     // ends a refusal only within answerPatience of its ask. A call meant
     // can so end a refusal, let a press's focus go, keep a place again and
-    // have the foot say untaken, none past a boundary: any program of his
-    // could start a viewer, or reach the kitty's socket, itself anyway.
+    // have the foot say untaken, or asked again where a kitty has come
+    // since, none past a boundary: any program of his could start a
+    // viewer, or reach the kitty's socket, itself anyway.
     // The press that asked, which saw no window, is told "untaken", and the
     // focus it took is let go, as for a refusal ended (refusedUntaken).
     function untaken(named, asked) {
