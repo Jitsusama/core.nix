@@ -67,6 +67,16 @@ pub fn update_at(
     still_boots(config, ending)
 }
 
+/// An ask at `head` that switched nothing, which `still_boots` says the
+/// boot default of.
+fn unchanged(head: String, followed: follows::Followed) -> Line {
+    Line::Unchanged {
+        commit: head,
+        followed,
+        boots: None,
+    }
+}
+
 /// `ending`, when it switched nothing, with why the machine boots the
 /// system it booted before, while the system that why was kept beside still
 /// runs. Without it the machine read as booting what it ran from the next
@@ -188,11 +198,7 @@ fn run(
         Err(failure) => return failed(last, failure),
     };
     if last.as_deref() == Some(head.as_str()) && followed == last_followed {
-        return Line::Unchanged {
-            commit: head,
-            followed,
-            boots: None,
-        };
+        return unchanged(head, followed);
     }
     if let Some(refused) = untrusted(config, &main, last.as_deref(), &head) {
         return refused;
@@ -234,11 +240,7 @@ fn run(
         {
             return failed(Some(head), e);
         }
-        return Line::Unchanged {
-            commit: head,
-            followed,
-            boots: None,
-        };
+        return unchanged(head, followed);
     }
     // A pause or hold asked while it built or waited, up to an hour, is
     // seen here, before anything switches.
