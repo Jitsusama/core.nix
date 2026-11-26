@@ -264,12 +264,13 @@ fn a_link_at_the_copies_folder_that_wont_clear_stops_the_sweep_and_says_so() {
     let job = "4242-1763912345678901234";
     copy(&runs, job, &format!("{} {}", gone(), here()));
     // Another job of the quest moving the copies' folder aside, with a
-    // link to it at its name, as the sweep reads a gone run's file, and
-    // an rm that can't clear that link.
+    // link to it at its name, as the sweep's first head reads a gone
+    // run's file (the head after tr in its pipeline leaves it be), and an
+    // rm that can't clear that link.
     let (r, a) = (runs.display(), aside.display());
     let head = format!(
         "PATH=${{PATH#*:}}
-[ -e '{a}' ] || {{ mv '{r}' '{a}' && ln -s '{a}' '{r}'; }}
+[ \"$1\" != -c ] || {{ mv '{r}' '{a}' && ln -s '{a}' '{r}'; }}
 exec head \"$@\""
     );
     let rm = format!("case \"$*\" in *' {r}') exit 1 ;; esac\nPATH=${{PATH#*:}}\nexec rm \"$@\"");

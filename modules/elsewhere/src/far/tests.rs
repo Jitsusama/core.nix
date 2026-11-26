@@ -114,7 +114,7 @@ fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
             &kind(""),
             &command
         )
-        .contains("cd \"$work\" || {\n"),
+        .contains("cd \"$work\" && placed || {\n"),
         "a job at the tree's top wasn't run there plainly"
     );
     assert!(
