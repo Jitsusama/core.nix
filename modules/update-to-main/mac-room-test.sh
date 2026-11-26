@@ -66,7 +66,8 @@ reading 60 40 100
 look "a swap-out count started again" 40 7 0 "the swap-out count started again"
 reading 10 40 100
 look "readings too close" 40 100 0 "s ago, under 55 s"
-if [ "$(cut -d' ' -f2 "${record}")" != 40 ]; then
+read -r _ kept _ <"${record}"
+if [ "${kept}" != 40 ]; then
   echo "FAIL readings too close: the earlier reading wasn't kept" >&2
   failures=$((failures + 1))
 fi

@@ -205,7 +205,8 @@ one through, so a command that can never tell doesn't refuse the update
 that would mend it. A Mac refuses this way while
 `modules/update-to-main/mac-room.sh` says it's short of memory, for two
 hours at most: it has room only from two readings a minute or more apart,
-both at 35% free or over, with nothing swapped out between. Its load isn't read, since a load counts work nothing can move.
+both at 35% free or over, with nothing swapped out between. Its load isn't
+read, since a load counts work nothing can move.
 
 A repository whose host signs nothing is followed by what the host names
 instead. With `hosted` set, root asks the host for main over TLS with a
