@@ -38,8 +38,9 @@ fn found(numbers: &[u64], now: u64) -> Value {
     json!({ "items": items })
 }
 
-/// What a case's stand-in of GitHub answers.
-#[derive(Default)]
+/// What a case's stand-in of GitHub answers. It is `Copy`, being only
+/// figures and static lists, so the stand-in can own it.
+#[derive(Clone, Copy, Default)]
 struct Case {
     /// The pull requests Joel's search gives.
     found: &'static [u64],
