@@ -4853,6 +4853,32 @@ def to_asker(shell: Shell, title: str) -> list[str]:
     return ["Now", "For You", ASKING]
 
 
+def stepped_to(shell: Shell, name: str) -> None:
+    """Move the selection to the row named a key at a time, as down_to does, waiting on each.
+
+    A key that leaves the selection where it was fails with what the launcher showed before
+    and after it, rather than down_to's one wait for the end, since a lender's niri run once
+    found Up leaving For You's selection on History (OSPHT4, 2026-11-26 [d087e10b]).
+    """
+    keys = ("rows", "current", "mode", "typed", "held", "footer", "open", "keys")
+    for _ in range(20):
+        before = shell.showing()
+        rows = cast("list[str]", before["rows"])
+        selected = (before["selected"] or {}).get("name")
+        if selected == name:
+            return
+        assert name in rows, rows
+        at = rows.index(selected) if selected in rows else 0
+        shell.send_key("down" if rows.index(name) > at else "up")
+        deadline = time.monotonic() + 5
+        while ((shown := shell.showing())["selected"] or {}).get("name") == selected:
+            was = {key: before.get(key) for key in keys}
+            said = {key: shown.get(key) for key in keys}
+            assert time.monotonic() < deadline, f"a key left {selected} selected: {was} {said}"
+            time.sleep(0.1)
+    raise AssertionError(name)
+
+
 def footed(shown: Json, said: str) -> bool:
     """Whether the launcher's foot says this, its hard spaces read as spaces."""
     return said in shown["footer"].replace("\xa0", " ")
@@ -4879,7 +4905,7 @@ def test_a_choice_in_for_you_is_joels_alone_and_his_talk_there_takes_no_second(
         assert did.get("refused") == why, did
         assert set(inbox.glob("*.json")) == steered, sorted(inbox.glob("*.json"))
         to_asker(shell, "Choosing Quest")
-        shell.down_to("Choosing Quest")
+        stepped_to(shell, "Choosing Quest")
         shell.step_in()
         shell.launcher_until(lambda shown: {"Left", "Right"} <= set(shown["rows"]))
         shell.down_to("Right")
