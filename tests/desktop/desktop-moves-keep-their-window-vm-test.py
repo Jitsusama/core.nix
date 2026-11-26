@@ -318,22 +318,31 @@ def pressed_go_to(desktop: Desktop, session: str) -> float:
     # names it, once the launcher knows its window, or the act selected, done by its command.
     desktop.follow()
 
+    # Gone into its acts, Return's is selected, which is Talk for one listening in no window, so
+    # Go To is then one of the rows below it rather than the one selected.
     def offers_go_to(shown: Json) -> bool:
         acts = (shown.get("drawer") or {}).get("acts") or []
         selected = (shown["selected"] or {}).get("name")
         return shown["held"][:1] == ["agents"] and (
-            selected == "Go To" or any(str(act).endswith("Go To") for act in acts)
+            selected == "Go To"
+            or "Go To" in shown["rows"]
+            or any(str(act).endswith("Go To") for act in acts)
         )
 
     try:
-        desktop.launcher_until(offers_go_to)
+        offered = desktop.launcher_until(offers_go_to)
     except AssertionError as failed:
+        shown = desktop.showing()
         msg = (
-            f"the launcher offers no Go To: {desktop.showing()['drawer']},"
-            f" while the node says {node_row(desktop, session)}"
+            f"the launcher offers no Go To: rows {shown['rows']}, selected {shown['selected']},"
+            f" drawer {shown['drawer']}, while the node says {node_row(desktop, session)}"
             f" and niri {desktop.as_account('niri msg --json windows')}"
         )
         raise AssertionError(msg) from failed
+    if (offered["selected"] or {}).get("name") != "Go To" and "Go To" in offered["rows"]:
+        for _down in range(offered["rows"].index("Go To")):
+            desktop.next_row()
+        desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Go To")
     desktop.normal()
     machine.send_chars(":")
     desktop.launcher_until(lambda shown: shown["modeMark"] == "CMD")
