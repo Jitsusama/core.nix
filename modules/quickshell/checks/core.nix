@@ -350,7 +350,9 @@ in
       table = import ./imports.nix;
       root = "launcher/ReadyRows.qml";
       rowOf = file: table.${file} or [ ];
-      entries = map (key: { inherit key; });
+      entries = map (key: {
+        inherit key;
+      });
       walked = lib.genericClosure {
         startSet = entries [ root ];
         operator = entry: entries (rowOf entry.key);
@@ -358,8 +360,12 @@ in
       reached = map (entry: entry.key) walked;
       several = lib.filter (file: lib.length (rowOf file) > 1) reached;
       picked = lib.head several;
-      withTurned = table // { ${picked} = lib.reverseList (rowOf picked); };
-      withEmptied = table // { ${picked} = [ ]; };
+      withTurned = table // {
+        ${picked} = lib.reverseList (rowOf picked);
+      };
+      withEmptied = table // {
+        ${picked} = [ ];
+      };
       real = copiedWith table [ root ];
       copyLines = lib.filter (lib.hasPrefix "cp ") (lib.splitString "\n" real);
       uncopied = lib.filter (file: !(lib.any (lib.hasSuffix " ${file}") copyLines)) reached;
