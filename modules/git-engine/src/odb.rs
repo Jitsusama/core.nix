@@ -653,8 +653,9 @@ impl Odb {
     }
 
     /// The stamps that move once `oid` may be written loose: the folder each
-    /// store's loose copy of it would lie in, which git renames a new
-    /// object into. With `pack_stamps`, they move once it may be found.
+    /// store's loose copy of it would lie in, which git makes if it must
+    /// and renames a new object into. With `pack_stamps`, they move once it
+    /// may be found.
     pub fn folders_of(&self, oid: &Oid) -> Stamps {
         let hex = oid.hex();
         let mut stamps = Stamps::new();

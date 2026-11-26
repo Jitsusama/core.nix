@@ -32,6 +32,7 @@ mod reftable;
 mod repo;
 mod stamp;
 mod status;
+mod tags;
 mod walks;
 mod wildmatch;
 
@@ -627,6 +628,8 @@ mod tests {
     fn a_tag_whose_object_is_missing_settles_till_its_object_is_written() {
         let (commit, tag) = ([11; 20], [12; 20]);
         let (dir, loose, zlib) = tagged("missing", commit, tag);
+        // No folder for it yet, which git makes as the object arrives.
+        std::fs::remove_dir(&loose).unwrap();
         crate::stamp::tests::ahead(3);
         let mut engine = Engine::default();
         let mut tag_said = || {
@@ -636,15 +639,15 @@ mod tests {
         };
         let missing = tag_said();
         // v1 rewritten in place to name the commit itself, which moves no
-        // stamp the tags are kept by, so tags settled aren't read again.
-        std::fs::write(
-            dir.join(".git/refs/tags/v1"),
-            format!("{}\n", hash::Oid(commit).hex()),
-        )
-        .unwrap();
+        // stamp the tags are kept by, so tags settled aren't read again;
+        // then back, so only its object, once read, can name it.
+        let v1 = dir.join(".git/refs/tags/v1");
+        std::fs::write(&v1, format!("{}\n", hash::Oid(commit).hex())).unwrap();
         let settled = tag_said();
-        // The object written as git writes one, renamed into its folder,
-        // which moves the folder's stamp.
+        std::fs::write(&v1, format!("{}\n", hash::Oid(tag).hex())).unwrap();
+        // The object written as git writes one: its folder made, and the
+        // object written beside it and renamed into place.
+        std::fs::create_dir(&loose).unwrap();
         std::fs::write(loose.join("written"), &zlib).unwrap();
         std::fs::rename(
             loose.join("written"),
@@ -656,6 +659,105 @@ mod tests {
             (Some(String::new()), Some(String::new()), Some("v1".into())),
             "a tag whose object is missing was named, was read again with nothing \
              moved, or stayed unread once its object was written"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_tag_whose_object_is_missing_is_read_once_a_pack_brings_it() {
+        let (commit, tag) = ([13; 20], [14; 20]);
+        let (dir, _, _) = tagged("packed-in", commit, tag);
+        crate::stamp::tests::ahead(3);
+        let mut engine = Engine::default();
+        let mut tag_said = || {
+            engine
+                .ask(&dir, &options(&[]), false)
+                .map(|answer| answer.tag)
+        };
+        let missing = tag_said();
+        // A pack of the one tag object, its size of 71 bytes said in its
+        // header's two bytes, as a fetch writes one.
+        let object = format!(
+            "object {}\ntype commit\ntag v1\n\nv1\n",
+            hash::Oid(commit).hex()
+        );
+        assert_eq!(object.len(), 71, "the header below says another size");
+        let entry = [
+            &[0xC7, 0x04][..],
+            &miniz_oxide::deflate::compress_to_vec_zlib(object.as_bytes(), 1),
+        ]
+        .concat();
+        let packs = dir.join(".git/objects/pack");
+        std::fs::write(
+            packs.join("pack-01.pack"),
+            [b"PACK\0\0\0\x02\0\0\0\x01", &entry[..], &[0; 20]].concat(),
+        )
+        .unwrap();
+        std::fs::write(
+            packs.join("pack-01.idx"),
+            pack_index::tests::version_2_at(&[tag], &[12]),
+        )
+        .unwrap();
+        assert_eq!(
+            (missing, tag_said()),
+            (Some(String::new()), Some("v1".into())),
+            "a tag whose object is missing was named, or stayed unread once a pack \
+             brought its object"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_tag_whose_object_wouldnt_read_leaves_the_others_settled() {
+        let (commit, tag) = ([15; 20], [16; 20]);
+        let (dir, loose, _) = tagged("one-unread", commit, tag);
+        let hex = |oid: [u8; 20]| hash::Oid(oid).hex();
+        std::fs::write(loose.join(&hex(tag)[2..]), b"not zlib").unwrap();
+        let v0 = dir.join(".git/refs/tags/v0");
+        std::fs::write(&v0, format!("{}\n", hex(commit))).unwrap();
+        crate::stamp::tests::ahead(3);
+        let mut engine = Engine::default();
+        let mut tag_said = || {
+            engine
+                .ask(&dir, &options(&[]), false)
+                .map(|answer| answer.tag)
+        };
+        let first = tag_said();
+        // v0 rewritten in place to name another commit, which moves no
+        // stamp, so only tags read again for v1's sake would lose it.
+        std::fs::write(&v0, format!("{}\n", hex([17; 20]))).unwrap();
+        assert_eq!(
+            (first, tag_said()),
+            (Some("v0".into()), Some("v0".into())),
+            "a tag whose object wouldn't read had every other tag read again"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_packed_tag_peels_to_what_its_packed_line_says_without_its_object() {
+        let dir = repository("packed-peel");
+        let hex = |oid: [u8; 20]| hash::Oid(oid).hex();
+        let (commit, tag) = ([18; 20], [19; 20]);
+        std::fs::write(
+            dir.join(".git/refs/heads/main"),
+            format!("{}\n", hex(commit)),
+        )
+        .unwrap();
+        // The tag object isn't held anywhere: only its `^` line can peel it.
+        std::fs::write(
+            dir.join(".git/packed-refs"),
+            format!("{} refs/tags/v1\n^{}\n", hex(tag), hex(commit)),
+        )
+        .unwrap();
+        crate::stamp::tests::ahead(3);
+        let tag_said = Engine::default()
+            .ask(&dir, &options(&[]), false)
+            .map(|answer| answer.tag);
+        assert_eq!(
+            tag_said,
+            Some("v1".into()),
+            "a packed tag's peeled line was passed over for its object"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
