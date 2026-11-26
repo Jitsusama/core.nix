@@ -5033,16 +5033,26 @@ def test_a_drawer_resting_for_the_letters_names_the_row_selected(
     are taught each way in turn.
     """
 
+    marks: list[int] = []
+
     def footed(since: int) -> None:
+        marks.append(since)
         shell.reported("drawer follows program:foot", lambda _: True, since)
 
     with taught(shell, {"home program": CHEAP if cheap else DEAR}):
         said = typed_from_home(shell, "foot", footed)
+        # How each drawer came (in its key's frame, the frame after its letter or after
+        # resting) is said only in the shell's log, so a failure quotes it.
+        came = [
+            line
+            for line in said_once(shell, marks[0], DRAWER_SAID).splitlines()
+            if DRAWER_SAID.search(line)
+        ]
     follow = said.index("drawer follows program:foot")
     judged_cheap = f"{CHEAP_AFTER_LETTER}program:foot" in said[:follow]
     assert judged_cheap == cheap, (
         f"Foot's drawer, taught {'cheap' if cheap else 'dear'}, was judged otherwise: "
-        f"{drawer_trace(said)}"
+        f"{drawer_trace(said)}; {came}"
     )
     judged = said[follow:] if cheap else said[:follow]
     shown = [json.loads(one[len("showing ") :]) for one in judged if one.startswith("showing ")]
