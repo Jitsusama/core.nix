@@ -2715,9 +2715,9 @@ ShellRoot {
                 ["on:waiting:want:LEFTC", ""], ["on:look:c", ""],
                 ["on:heading:kinds", "yours alone"], ["on:waitingOnYou:kind:look", ""]]),
             JSON.stringify(closed));
-        // It holds no row, so what comes after it while the list holds
-        // still waits behind the foot's count, as under no heading
-        // (Steady.js's headingsUnder).
+        // It holds no row, so what comes after it stands under no heading,
+        // and a row arriving there comes in, since the end no longer reads
+        // as a cell's (Steady.js's headingsUnder).
         const closer = forYou().find(row => row.key === "on:heading:kinds");
         expect("the heading closing the cells holds no row",
             Array.isArray(closer?.holding) && closer.holding.length === 0,

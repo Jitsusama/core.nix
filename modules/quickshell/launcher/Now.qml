@@ -2517,8 +2517,8 @@ Provider {
     // follows, or while his own heading is already the last. Its key is its
     // own, since his group can stand higher up under his heading too. It's
     // `holding` none, so the rows after it stand under no heading, as
-    // before, and one arriving while For You is held still waits behind
-    // the foot's count (Steady.js's headingsUnder).
+    // before, and one arriving after them comes in, since the end no longer
+    // reads as a cell's (Steady.js's headingsUnder and endingHeading).
     function cellsClosed(cells, after) {
         const headings = cells.filter(row => row.heading === true);
         const last = headings[headings.length - 1];
