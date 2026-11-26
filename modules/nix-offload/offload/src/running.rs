@@ -470,11 +470,32 @@ mod tests {
         let state = tempfile::tempdir().unwrap();
         let first = at("abc", "/t", ASKED);
         let held = alone(state.path(), 1, &first, || 10, true);
+        // The first lets go once the second has said twice that it still
+        // waits, rather than after a fixed sleep: on 26 November a loaded
+        // builder's sleeps ran long, the lock fell before the second line,
+        // and the test failed an update with nothing wrong. Half a minute
+        // bounds a wait that never speaks, so it fails rather than hangs.
+        let (tell, heard) = std::sync::mpsc::channel::<String>();
         let ender = std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(1100));
+            let mut said = Vec::new();
+            while said
+                .iter()
+                .filter(|line: &&String| line.contains("still waits"))
+                .count()
+                < 2
+            {
+                match heard.recv_timeout(Duration::from_secs(30)) {
+                    Ok(line) => said.push(line),
+                    Err(_) => break,
+                }
+            }
             drop(held);
+            said.extend(heard.iter());
+            said
         });
-        let mut said = Vec::new();
+        let mut say = move |line: String| {
+            let _ = tell.send(line);
+        };
         let waited = alone_saying(
             state.path(),
             2,
@@ -482,9 +503,10 @@ mod tests {
             || 10,
             true,
             Duration::from_millis(300),
-            &mut |line| said.push(line),
+            &mut say,
         );
-        ender.join().unwrap();
+        drop(say);
+        let said = ender.join().unwrap();
         assert!(
             matches!(waited, Alone::Waited),
             "a second run didn't wait for the first"
