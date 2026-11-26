@@ -311,7 +311,6 @@ or a local fix.
 | `dp-byte-reads-only-when-longer`     | a failed 1-byte DPCD read isn't sent again             |
 | `dp-mst-dsc-skips-empty-ports`       | an MST hub's empty port isn't asked for its DSC caps   |
 | `edp-wakes-the-panel`                | the panel is woken before its eDP revision is read     |
-| `btintel-pcie-pm`                    | Bluetooth lets a hibernate power off                   |
 | `btintel-pcie-dbgc-to-wifi`          | Bluetooth's debug traces go to the Wi-Fi side          |
 
 `xe-shrinker-spares-buffers` is linux-next's split of xe's buffer shrinker
@@ -352,25 +351,27 @@ of niri overnight caught its draws waiting on a client's buffer lock for
 122 to 250 ms, three times in five minutes, and the section below, The
 Write-Combined Buffers Under Reclaim, says what held them.
 
-`btintel-pcie-pm` is four of mainline's commits from 2026-10-14:
-12997a385f71, 2926eb396711, 4f6ead67b93b and f2cee6e2aa35. At a
-hibernate's thaw, the driver reset the controller and probed it again,
-though freeze never cut its power. The probe waited on the controller's
+`btintel-pcie-pm`, four of mainline's commits from 2026-10-14
+(12997a385f71, 2926eb396711, 4f6ead67b93b and f2cee6e2aa35), reached
+the stable series in 7.3.6 with the mailbox handshake it had left out,
+so it left `kernel/next/`. At a hibernate's thaw, the driver had reset
+the controller and probed it again, though freeze never cut its power. The probe waited on the controller's
 firmware while user space was frozen. So the power-off asked a controller
 still in its bootloader for D3, timed out on its interrupt three times
 and returned -EBUSY. The hibernate rolled back, leaving the laptop on
 until its battery ran out. Thaw is now a plain wake, and only a restore
 or a resume from S3 resets. A missed interrupt is checked against the
 controller's boot stage register rather than a cache only the interrupt
-updates. This kernel lacks the mailbox handshake the third commit
-finishes, so that step is left out.
+updates. `bluetooth-lets-a-hibernation-power-off` reads the kernel's
+source for that plain thaw.
 
 `btintel-pcie-dbgc-to-wifi` is mainline's 0d3f5d805bff, from the same
 merge. The firmware sends its debug traces to the Wi-Fi side's debug
 collector rather than to buffers the driver allocates on the host. Intel
 pointed at it, with d572ea4b621c, for a BE201 that stopped the way this
 laptop's controller did; Bluetooth's Exceptions, below, says how.
-d572ea4b621c needs a mailbox parser this kernel lacks, so it is left out.
+d572ea4b621c came with 7.3.6, so the patch is mainline's commit as it
+stands.
 
 An assertion fails once the kernel is 7.4, which may have them, and the way
 through is to drop each patch that kernel has, then `kernel/next.nix`.

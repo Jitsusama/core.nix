@@ -17,9 +17,9 @@ diff --git a/drivers/gpu/drm/i915/display/intel_dp.c b/drivers/gpu/drm/i915/disp
 index 3152122..26c4535 100644
 --- a/drivers/gpu/drm/i915/display/intel_dp.c
 +++ b/drivers/gpu/drm/i915/display/intel_dp.c
-@@ -4785,6 +4785,38 @@ intel_edp_set_sink_rates(struct intel_dp *intel_dp)
- 	intel_edp_set_data_override_rates(intel_dp);
- }
+@@ -4831,6 +4831,38 @@ intel_edp_set_sink_rates(struct intel_dp *intel_dp)
+ 
+ static void intel_dp_detect_sdp_caps(struct intel_dp *intel_dp);
  
 +static void intel_edp_wake_sink(struct intel_dp *intel_dp)
 +{
@@ -56,7 +56,7 @@ index 3152122..26c4535 100644
  static bool
  intel_edp_init_dpcd(struct intel_dp *intel_dp, struct intel_connector *connector)
  {
-@@ -4795,6 +4827,12 @@ intel_edp_init_dpcd(struct intel_dp *intel_dp, struct intel_connector *connector
+@@ -4841,6 +4873,12 @@ intel_edp_init_dpcd(struct intel_dp *intel_dp, struct intel_connector *connector
  	/* this function is meant to be called only once */
  	drm_WARN_ON(display->drm, intel_dp->dpcd[DP_DPCD_REV] != 0);
  

@@ -267,7 +267,8 @@ in
   # afresh, so the power-off after found it still in its bootloader and
   # refused, rolling the hibernation back with the laptop left on. Nothing
   # takes the driver off the chip for it any more, so its thaw must be the
-  # plain wake btintel-pcie-pm makes it, and never the resume that resets.
+  # plain wake the kernel has made it since 7.3.6, and never the resume
+  # that resets.
   bluetooth-lets-a-hibernation-power-off =
     let
       driver = "drivers/bluetooth/btintel_pcie.c";
