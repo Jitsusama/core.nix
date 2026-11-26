@@ -3690,17 +3690,10 @@ fn follow_room(doorway: &mut Doorway, account: &Path, settings: &Settings) {
         return;
     };
     // Which slice waited, since one waiting on its own ceiling holds jobs
-    // down as surely as one jobs crowds.
+    // down as surely as one jobs crowds, and which couldn't be read, since
+    // that brings it down too though nothing may be waiting.
     let why = match why {
-        ceiling::Why::Waiting => {
-            let waited: Vec<&str> = room
-                .waited
-                .iter()
-                .chain(&room.unread)
-                .map(String::as_str)
-                .collect();
-            format!("{} waiting on memory", waited.join(" and "))
-        }
+        ceiling::Why::Waiting => fell_for(&room.waited, &room.unread),
         why => why.said().to_owned(),
     };
     let set = Command::new("busctl")
@@ -3782,6 +3775,19 @@ fn room(account: &Path, slice: &str, spare: &[String], meminfo: &str) -> Result<
         }
     }
     Ok(room)
+}
+
+/// Why the ceiling fell for spared slices: those that `waited` on memory,
+/// and those whose wait was `unread`.
+fn fell_for(waited: &[String], unread: &[String]) -> String {
+    let waiting =
+        (!waited.is_empty()).then(|| format!("{} waiting on memory", waited.join(" and ")));
+    let unknown = (!unread.is_empty()).then(|| format!("no wait read for {}", unread.join(" or ")));
+    match (waiting, unknown) {
+        (Some(waiting), Some(unknown)) => format!("{waiting}, and {unknown}"),
+        (Some(said), None) | (None, Some(said)) => said,
+        (None, None) => ceiling::Why::Waiting.said().to_owned(),
+    }
 }
 
 /// What the cpu.max of the slice at `place` in brake.rs's `BRAKED` reads,
@@ -4783,6 +4789,26 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("{name}-{}-{nanos}", std::process::id()));
         fs::create_dir(&dir).unwrap();
         OwnDir(dir)
+    }
+
+    #[test]
+    fn a_fall_for_a_wait_unread_says_so_rather_than_waiting() {
+        let names = |slices: &[&str]| slices.iter().map(|&it| it.to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            fell_for(&[], &names(&["app.slice"])),
+            "no wait read for app.slice",
+            "a slice whose wait couldn't be read was said to wait on memory"
+        );
+        assert_eq!(
+            fell_for(&names(&["session.slice"]), &names(&["app.slice"])),
+            "session.slice waiting on memory, and no wait read for app.slice",
+            "a fall for both didn't say which waited and which was unread"
+        );
+        assert_eq!(
+            fell_for(&names(&["app.slice", "session.slice"]), &[]),
+            "app.slice and session.slice waiting on memory",
+            "a fall for waits alone wasn't said as before"
+        );
     }
 
     #[test]

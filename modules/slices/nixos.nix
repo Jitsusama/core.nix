@@ -1137,12 +1137,24 @@ in
         # declared ceiling too, since one it lifted would stay up with
         # nothing to bring it down; an empty one would clear it. By hand,
         # `systemctl --user set-property --runtime jobs.slice MemoryHigh=`
-        # with jobsHigh's share does the same. Each is given 5 s, as the sorter's own sets are, so
-        # a stalled bus can't hold its stop. It goes back in one write
-        # rather than a fall at a time, since nothing paces it once the
-        # sorter has stopped, and a lifted ceiling left up is worse.
+        # with jobsHigh's share does the same. Each is given 5 s, as the
+        # sorter's own sets are, so a stalled bus can't hold its stop. The
+        # ceiling comes down from the sorter's top, 50% (TOP in
+        # jobs-sorter/src/ceiling.rs), a fall of about a sixteenth a write,
+        # as the sorter brings it down: the manager that writes memory.high
+        # reclaims what's past it itself, so one write from the top would
+        # have it reclaim a quarter of memory before it answers anything
+        # else. A step above where the ceiling stands only raises it for
+        # as long as the next write takes.
         ExecStopPost =
           let
+            declared = lib.toInt (lib.removeSuffix "%" jobsHigh);
+            fallTo = percent: "-${letGo "--user" "jobs.slice" "MemoryHigh=${toString percent}%%"}";
+            falls = builtins.filter (percent: percent > declared) [
+              44
+              38
+              32
+            ];
             letGo =
               manager: slice: property:
               lib.escapeShellArgs [
@@ -1160,8 +1172,9 @@ in
           [
             "-${letGo "--user" "jobs.slice" "CPUQuota="}"
             "-${letGo "--system" "build.slice" "CPUQuota="}"
-            "-${letGo "--user" "jobs.slice" "MemoryHigh=${unitPercent jobsHigh}"}"
-          ];
+          ]
+          ++ map fallTo falls
+          ++ [ "-${letGo "--user" "jobs.slice" "MemoryHigh=${unitPercent jobsHigh}"}" ];
         Restart = "on-failure";
         RestartSec = 5;
       };

@@ -62,9 +62,15 @@ pub const ROOM: u64 = 30;
 pub const TOP: u64 = 50;
 
 /// How long a ceiling that couldn't be set waits to be tried again, unless
-/// it was to come down: a fall is tried again at the next look, since a
-/// spared slice is waiting on it.
+/// it was to come down: a fall waits only [`FALL_AGAIN`], since a spared
+/// slice is waiting on it.
 pub const AGAIN: Duration = Duration::from_secs(30);
+
+/// How long a fall that couldn't be set waits to be tried again: as long
+/// as a set may take before it gives up, so a bus that answers nothing
+/// holds the sorter's look, its door and its call brake with it, half the
+/// time at most rather than all of it.
+pub const FALL_AGAIN: Duration = Duration::from_secs(5);
 
 /// Why a ceiling is set, as the sorter's journal says it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -183,10 +189,14 @@ impl Ceiling {
         let again = self
             .failed
             .is_some_and(|at| now.saturating_duration_since(at) < AGAIN);
+        let fall_again = self
+            .failed
+            .is_some_and(|at| now.saturating_duration_since(at) < FALL_AGAIN);
         // In whole MiB, so a ceiling risen to it reads back as at it.
         let top = (self::least(look.total, TOP) / MIB * MIB).max(least);
         let Some(set) = self.set else {
             return match down {
+                Some(_) if fall_again => None,
                 Some(why) => Some((least, why)),
                 None if again => None,
                 None if self.failed.is_some() => Some((least, Why::Again)),
@@ -194,6 +204,9 @@ impl Ceiling {
             };
         };
         if let Some(why) = down {
+            if fall_again {
+                return None;
+            }
             // Down a fall at most, from the top at most, and never below
             // the declared ceiling; one something else set under it stays
             // there until nothing waits, since raising it now would take
@@ -547,7 +560,7 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_fall_is_tried_again_at_the_next_look_from_where_it_stands() {
+    fn a_failed_fall_is_tried_again_soon_from_where_it_stands() {
         let now = Instant::now();
         let high = base() + 2 * FALL;
         let mut ceiling = standing(high, now);
@@ -564,17 +577,23 @@ mod tests {
         };
         assert_eq!(
             ceiling.wanted(&unlanded, base(), now + Duration::from_secs(1)),
-            Some((lower, Why::Waiting)),
-            "a fall that failed waited before it was tried again, or wasn't a fall"
+            None,
+            "a fall that failed was tried again before FALL_AGAIN"
         );
-        ceiling.failed(now + Duration::from_secs(1));
+        let tried = now + FALL_AGAIN;
+        assert_eq!(
+            ceiling.wanted(&unlanded, base(), tried),
+            Some((lower, Why::Waiting)),
+            "a fall that failed wasn't tried again at FALL_AGAIN, or wasn't a fall"
+        );
+        ceiling.failed(tried);
         // This time it landed late, so the next fall goes on from there.
         let landed = Look {
             high: Some(lower),
             ..waiting(high)
         };
         assert_eq!(
-            ceiling.wanted(&landed, base(), now + Duration::from_secs(2)),
+            ceiling.wanted(&landed, base(), tried + FALL_AGAIN),
             Some((base(), Why::Waiting)),
             "a fall that landed late wasn't followed from where it landed"
         );

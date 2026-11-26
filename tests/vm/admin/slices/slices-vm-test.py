@@ -298,7 +298,7 @@ def test_work_in_jobs_is_slowed_never_ended_past_a_ceiling_that_follows_room(
         jobs.write_into_jobs(
             "fills",
             f"{JOBS}/jobs.service",
-            f"{{ {coreutils}/cat /var/tmp/filler > /dev/null; {jobs.sleep} 1008; }}",
+            f"{{ {coreutils}/cat /var/tmp/filler > /dev/null; {jobs.sleep} 1009; }}",
         )
         machine.wait_until_succeeds(
             f"test $(cat {JOBS}/memory.high) -gt {declared}", timeout=RISING
@@ -314,7 +314,12 @@ def test_work_in_jobs_is_slowed_never_ended_past_a_ceiling_that_follows_room(
         put_back = int(jobs.read(f"{JOBS}/memory.high"))
         assert abs(put_back - declared) <= MIB, (put_back, declared)
     finally:
-        machine.succeed(f"pkill -xf '{jobs.sleep} 1008' || true; rm -f /var/tmp/filler")
+        # The bracket keeps the pattern from matching this shell's own command line, which
+        # names it, while it still matches the filling shell and a cat not yet done.
+        machine.succeed(
+            f"pkill -xf '{jobs.sleep} 1009' || true; pkill -f '/var/tmp/fille[r]' || true"
+            "; rm -f /var/tmp/filler"
+        )
         machine.succeed("systemctl -M alice@ --user start jobs-sorter.service")
 
 
