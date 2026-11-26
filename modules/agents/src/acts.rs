@@ -64,14 +64,17 @@ pub fn steer_of(said: &Value, now_ms: u128) -> Option<Result<Value, String>> {
 /// The answer to an act: the node's own, `steered` with the machine it
 /// was put on or the node's error, or an error saying why it wasn't
 /// asked, in the form the shell reads either (Sessions.qml's steer). One
-/// the node was sent but never answered is `unheard`, not `unsteered`,
-/// since the node may have put it, so the shell can't say it didn't go.
+/// the node was sent but never answered is `unanswered`, not
+/// `unsteered`, since the node may have put it; only an answer's Talk
+/// reads it yet (TalkAnswers.js's unheard), and Sessions.qml's steered
+/// still says any act not steered. Not tell.rs's `unheard`, which says
+/// nothing was sent.
 pub fn done(steer: Result<Value, String>, node: &Path) -> Value {
     let asked = steer.map(|steer| asked(node, &steer));
     match asked {
         Ok(Ok(answer)) => answer,
         Ok(Err(missed)) => json!({"error": {
-            "code": if missed.sent { "unheard" } else { "unsteered" },
+            "code": if missed.sent { "unanswered" } else { "unsteered" },
             "message": format!("the node didn't answer: {}", missed.why)}}),
         Err(why) => refused(&why),
     }
@@ -92,7 +95,7 @@ fn unsent(why: io::Error) -> Missed {
     Missed { sent: false, why }
 }
 
-fn unheard(why: io::Error) -> Missed {
+fn unanswered(why: io::Error) -> Missed {
     Missed { sent: true, why }
 }
 
@@ -105,7 +108,7 @@ fn asked(socket: &Path, steer: &Value) -> Result<Value, Missed> {
     ask["id"] = json!(2);
     writeln!(stream, "{}\n{ask}", json!({"id": 1, "ask": "hello"})).map_err(unsent)?;
     for line in BufReader::new(stream).lines() {
-        let Ok(mut answer) = serde_json::from_str::<Value>(&line.map_err(unheard)?) else {
+        let Ok(mut answer) = serde_json::from_str::<Value>(&line.map_err(unanswered)?) else {
             continue;
         };
         if answer.get("id") != Some(&json!(2)) {
@@ -116,7 +119,7 @@ fn asked(socket: &Path, steer: &Value) -> Result<Value, Missed> {
         }
         return Ok(answer);
     }
-    Err(unheard(io::Error::new(
+    Err(unanswered(io::Error::new(
         io::ErrorKind::UnexpectedEof,
         "it hung up before answering",
     )))
@@ -258,7 +261,7 @@ mod tests {
     }
 
     #[test]
-    fn an_act_the_node_took_but_never_answered_is_unheard() {
+    fn an_act_sent_to_a_node_that_hung_up_is_unanswered() {
         let socket =
             std::env::temp_dir().join(format!("agents-acts-mute-{}.sock", std::process::id()));
         let _ = std::fs::remove_file(&socket);
@@ -276,7 +279,7 @@ mod tests {
         assert!(ask.contains("MUTE"), "the node was sent the steer: {ask}");
         assert_eq!(
             answer["error"]["code"],
-            json!("unheard"),
+            json!("unanswered"),
             "one sent but never answered may have gone: {answer}"
         );
     }

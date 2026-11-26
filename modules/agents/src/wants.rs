@@ -316,8 +316,13 @@ fn answers(wants: &Value) -> Value {
 /// it, from `{ "ask": "answer", "address", "want", "value" }` or `"other"`
 /// for Joel's own words: the want found among `wants` by its address, so a
 /// want gone or answered since is refused rather than answered, as is one
-/// naming no `want`, or another than it asks, so words given to what he
-/// was shown never answer a newer ask. None for any other ask.
+/// naming another `want` than it asks, so words given to what he was
+/// shown never answer a newer ask. One naming none answers what it asks
+/// now, as before shells named it: this daemon restarts on a switch, and
+/// the shell before it, kept until the launcher's handed over, names none
+/// and says nothing of a refusal. Every shell since names one, so this
+/// goes once they all have (42P0R4, by Thu 3 Dec). None for any other
+/// ask.
 pub fn answer_of(said: &Value, wants: &[Value], now_ms: u128) -> Option<Result<Value, String>> {
     if said["ask"] != "answer" {
         return None;
@@ -332,12 +337,10 @@ pub fn answer_of(said: &Value, wants: &[Value], now_ms: u128) -> Option<Result<V
             "{address} asks Joel nothing he can answer here"
         )));
     };
-    match said["want"].as_str().filter(|named| !named.is_empty()) {
-        None => return Some(Err("an answer must name the ask Joel was shown".to_owned())),
-        Some(named) if named != want => {
-            return Some(Err(format!("{address} asks something else now")));
-        }
-        Some(_) => {}
+    if let Some(named) = said["want"].as_str().filter(|named| !named.is_empty())
+        && named != want
+    {
+        return Some(Err(format!("{address} asks something else now")));
     }
     let mut steer = json!({
         "act": "answer",
@@ -750,16 +753,14 @@ mod tests {
             ),
             "a session asking nothing is refused"
         );
-        assert!(
-            matches!(
-                answer_of(
-                    &json!({"ask": "answer", "address": "SKIFF",
-                        "want": "question@2026-11-13T05:00:00.000Z"}),
-                    &wants,
-                    0
-                ),
-                Some(Err(_))
+        assert_eq!(
+            answer_of(
+                &json!({"ask": "answer", "address": "SKIFF",
+                    "want": "question@2026-11-13T05:00:00.000Z"}),
+                &wants,
+                0
             ),
+            Some(Err("an answer needs a value or Joel's own words".to_owned())),
             "an answer with no words is refused"
         );
         assert_eq!(
@@ -768,9 +769,30 @@ mod tests {
                 &wants,
                 0
             ),
-            Some(Err("an answer must name the ask Joel was shown".to_owned())),
-            "one naming no want is refused, as it could answer a newer ask than he saw"
+            answer_of(
+                &json!({"ask": "answer", "address": "SKIFF", "value": "high",
+                    "want": "question@2026-11-13T05:00:00.000Z"}),
+                &wants,
+                0
+            ),
+            "one naming no want answers what it asks now, as a shell before a switch names none"
         );
+        for named in [json!(""), json!(null), json!(3)] {
+            assert_eq!(
+                answer_of(
+                    &json!({"ask": "answer", "address": "SKIFF", "value": "high",
+                        "want": named}),
+                    &wants,
+                    0
+                ),
+                answer_of(
+                    &json!({"ask": "answer", "address": "SKIFF", "value": "high"}),
+                    &wants,
+                    0
+                ),
+                "a want of {named} is one naming none"
+            );
+        }
         assert_eq!(
             answer_of(
                 &json!({"ask": "answer", "address": "SKIFF", "value": "high",
