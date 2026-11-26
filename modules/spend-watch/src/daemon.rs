@@ -966,7 +966,7 @@ fn opened_in_turn(path: &Path, by: Instant) -> Result<History, String> {
 }
 
 /// Whether a history's error is another connection's write: SQLite's
-/// words for SQLITE_BUSY, as `history::sql` gives them, since the
+/// words for `SQLITE_BUSY`, as `history::sql` gives them, since the
 /// history's errors reach here only as words. A test holds a real write
 /// to pin them.
 fn busy(why: &str) -> bool {
