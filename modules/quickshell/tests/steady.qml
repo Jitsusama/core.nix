@@ -332,11 +332,15 @@ QtObject {
         // last cell's.
         const shownAgain = [
             ["a row under no heading waits", "#A=a1 a1", "#A=a1 a1 look later", "#A a1", 2],
-            // The heading closing For You's cells holds none, so what comes
-            // after it stands under no heading (Now.qml's cellsClosed), and
-            // a row arriving there reads as no cell's, so comes in.
+            // The heading closing For You's cells holds none (Now.qml's
+            // cellsClosed), so it changes nothing of what comes after it:
+            // To Look At stands under no heading either way, and a row
+            // arriving past it reads as no cell's, so comes in, with the
+            // closer or without it.
             ["a row past the heading closing the cells comes in", "#A=a1 a1 #K= look",
                 "#A=a1 a1 #K= look later", "#A a1 #K look later", 0],
+            ["as it does past To Look At with no closer", "#A=a1 a1 look",
+                "#A=a1 a1 look later", "#A a1 look later", 0],
             ["and that heading comes only with the list made again", "#A=a1 a1 look",
                 "#A=a1 a1 #K= look", "#A a1 look", 0],
             ["and one above every heading", "#A=a1 a1", "x #A=a1 a1", "#A a1", 1],

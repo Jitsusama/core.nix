@@ -1998,8 +1998,10 @@ Provider {
     // at, weighed by ForYou.js, the heaviest first, since what blocks a
     // session or is due bubbles up whatever kind it is (VKCF3Z,
     // 2026-11-08); the mark and the drawer's eyebrow say the kind. What
-    // needs him now leads, under the cell behind each (cellRows), and what's to look at or to try
-    // and doesn't is each kind's one row after it (waitingRows). Then
+    // needs him now leads, under the cell behind each (cellRows), his own
+    // heading closing them while the last is a cell's (cellsClosed), and
+    // what's to look at or to try and doesn't is each kind's one row after
+    // it (waitingRows). Then
     // what's for later and the history, each one row. It counts and
     // colours only what he can do now, its note names the first of
     // those, else the first for later. With
@@ -2515,13 +2517,16 @@ Provider {
     // be "cell".
     function cellHeading(cell, held) {
         const name = cellSaid(cell);
-        const key = `on:heading:cell:${cell === null ? "yours"
-            : String(cell.address).toUpperCase()}`;
+        const key = cell === null ? ownHeadingKey
+            : `on:heading:cell:${String(cell.address).toUpperCase()}`;
         const holding = held.map(row => row.key);
         return keptAlike(cellsKept, key, [name, JSON.stringify(holding.slice().sort())],
             () => member({ key, name, heading: true, holding }));
     }
     readonly property var cellsKept: keeper()
+    // Joel's own heading's key, which cellsClosed reads his heading by. A
+    // cell's is its address upper-cased, so none is this.
+    readonly property string ownHeadingKey: "on:heading:cell:yours"
 
     // Joel's own heading again, closing what needs him now while the last
     // heading over it is a cell's, so To Look At and the rows after it,
@@ -2529,13 +2534,14 @@ Provider {
     // under it, down to the next (Y2YBTS, 2026-11-23). None while nothing
     // follows, or while his own heading is already the last. Its key is its
     // own, since his group can stand higher up under his heading too. It's
-    // `holding` none, so the rows after it stand under no heading, as
-    // before, and one arriving after them comes in, since the end no longer
-    // reads as a cell's (Steady.js's headingsUnder and endingHeading).
+    // for his reading alone: it's `holding` none, so the rows after it
+    // stand under no heading, as To Look At's row already did without it,
+    // and one arriving after them comes in, as it did (Steady.js's
+    // headingsUnder and endingHeading).
     function cellsClosed(cells, after) {
         const headings = cells.filter(row => row.heading === true);
         const last = headings[headings.length - 1];
-        if (after.length === 0 || last === undefined || last.key === "on:heading:cell:yours")
+        if (after.length === 0 || last === undefined || last.key === ownHeadingKey)
             return [];
         const key = "on:heading:kinds";
         const name = cellSaid(null);
@@ -2615,7 +2621,8 @@ Provider {
     // notice (latelyInForYou), since what's pressing leads, so Return,
     // Return reaches a low battery before any question (42P0R4 and
     // Y2YBTS, 2026-11-20); then what needs Joel now, under the cell behind
-    // each (cellRows), then To Look At, To Try and To Read, Later and
+    // each (cellRows), his own heading closing them while the last is a
+    // cell's (cellsClosed), then To Look At, To Try and To Read, Later and
     // History (VKCF3Z, 2026-11-09, and 2026-11-12 for To Read, which
     // nothing counts).
     // Each asking is a pass of the to-dos', sessions' and kinds' keeping,
