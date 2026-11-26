@@ -730,8 +730,11 @@ mod tests {
             locks: String::new(),
         };
         keep_walk(&kept, "old", DOTS, &before);
+        // The lock walk's ask holds the merges walk's words too, so it
+        // answers first: only the merges walk fails.
         let answers = [
             ("merge-base old new", "old\n"),
+            ("old..new -- home/a/dots/flake.lock", ""),
             ("old..new -- home/a/dots", FAILS),
         ];
         let asked = std::sync::Mutex::new(Vec::new());
@@ -747,7 +750,10 @@ mod tests {
             "a failed walk was kept, so the next read wouldn't walk again"
         );
         let none = kept_at("fails-whole");
-        let answers = [("new -- home/a/dots", FAILS)];
+        let answers = [
+            ("new -- home/a/dots/flake.lock", ""),
+            ("new -- home/a/dots", FAILS),
+        ];
         let git = answering(&asked, &answers);
         assert_eq!(
             walked(&git, &none, "new", DOTS, NOW),
