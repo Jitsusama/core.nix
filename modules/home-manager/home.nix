@@ -38,10 +38,11 @@ let
     ]
   ) timed;
   services = config.systemd.user.services;
-  # A legacy key as sd-switch reads it (its ini.rs to_bool): written as
+  # A legacy key as sd-switch 0.6.4 reads it (its ini.rs to_bool), the
+  # version nixpkgs ships, which checks.nix holds this to: written as
   # home-manager writes the value, then trimmed and lowered, so a Nix
-  # true, an int 1 and " Yes" all read as yes. An absent key reads as
-  # neither.
+  # true, an int 1 and " Yes" all read as yes. An absent key, or one
+  # in no spelling sd-switch knows, reads as neither, as there.
   spelled =
     value:
     let
@@ -69,8 +70,8 @@ let
       "off"
     ];
   # The switch method a timed oneshot takes unless it says its own: what
-  # its legacy keys say, in sd-switch's order (its unit_file.rs at
-  # 308f45c: reload, then a restart refused, then a stop refused), else
+  # its legacy keys say, in sd-switch's order (its unit_file.rs: reload,
+  # then a restart refused, then a stop refused), else
   # keep-old. A unit saying only X-RestartIfChanged = true or
   # X-StopIfChanged = true gets no method from sd-switch's legacy
   # reading, so sd-switch stops and starts it; it reads as stop-start

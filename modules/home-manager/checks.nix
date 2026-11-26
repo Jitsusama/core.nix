@@ -54,6 +54,10 @@ let
   #   restart wins; stop-probe refuses only a stop;
   # - mixed-probe refuses a stop but says yes to a restart, and the
   #   refused stop wins; halt-probe says yes only to a stop;
+  # - unreload-probe says no to a reload and refuses a stop, so the stop
+  #   decides; reload-restart-probe says yes to both, and reload wins;
+  #   kept-stop-probe refuses a restart but says yes to a stop, and the
+  #   refused restart wins;
   # - one-probe says X-ReloadIfChanged = 1;
   # - yes-0 to yes-5 say reload in each of sd-switch's yes spellings,
   #   padded and in capitals, and no-0 to no-5 refuse a stop in each of
@@ -63,7 +67,9 @@ let
   # - probe@one runs an instance of the template probe@;
   # - untimed-probe is a oneshot no timer runs;
   # - stray-probe's service nothing writes.
-  # sd-switch's to_bool spellings, at 308f45c's ini.rs.
+  # sd-switch's to_bool spellings, in 0.6.4's ini.rs, the sd-switch
+  # home.nix reads as.
+  sdSwitch = "0.6.4";
   yesSpellings = [
     "1"
     "yes"
@@ -92,10 +98,14 @@ let
   spelledProbes =
     spellingProbes "yes" "X-ReloadIfChanged" yesSpellings
     // spellingProbes "no" "X-StopIfChanged" noSpellings;
+  # One keep per spelling, so a failure names the spelling that broke.
   saysEach =
     kind: spellings: wanted: home:
-    lib.all (index: method home "${kind}-${toString index}" == wanted) (
-      lib.range 0 (lib.length spellings - 1)
+    lib.listToAttrs (
+      lib.imap0 (index: spelling: {
+        name = "sd-switch's ${kind} spelling \"${spelling}\", padded and in capitals, reads as ${kind}";
+        value = method home "${kind}-${toString index}" == wanted;
+      }) spellings
     );
 
   probes = {
@@ -112,6 +122,9 @@ let
         "stop-probe"
         "mixed-probe"
         "halt-probe"
+        "unreload-probe"
+        "reload-restart-probe"
+        "kept-stop-probe"
         "one-probe"
         "timeout-probe"
         "probe@one"
@@ -154,6 +167,24 @@ let
         };
       };
       halt-probe = oneshot { Unit.X-StopIfChanged = "T"; };
+      unreload-probe = oneshot {
+        Unit = {
+          X-ReloadIfChanged = "off";
+          X-StopIfChanged = false;
+        };
+      };
+      reload-restart-probe = oneshot {
+        Unit = {
+          X-ReloadIfChanged = true;
+          X-RestartIfChanged = true;
+        };
+      };
+      kept-stop-probe = oneshot {
+        Unit = {
+          X-RestartIfChanged = false;
+          X-StopIfChanged = "yes";
+        };
+      };
       one-probe = oneshot { Unit.X-ReloadIfChanged = 1; };
       timeout-probe = oneshot { Service.TimeoutSec = "10min"; };
       unit-probe-run = oneshot { };
@@ -174,7 +205,11 @@ let
     }
   );
 
-  keeps = {
+  keeps =
+    saysEach "yes" yesSpellings "reload" home // saysEach "no" noSpellings "restart" home // named;
+  named = {
+    "the sd-switch home.nix reads as is the one nixpkgs ships" =
+      exampleLaptop.pkgs.sd-switch.version == sdSwitch;
     "a timed oneshot saying nothing keeps its run over a switch" =
       method home "bare-probe" == "keep-old";
     "a timed oneshot with no bound of its own ends after three hours" = bound home "bare-probe" == "3h";
@@ -196,12 +231,10 @@ let
       method home "mixed-probe" == "restart";
     "a legacy stop key alone is read as sd-switch's stop-start" =
       method home "halt-probe" == "stop-start";
-    "each of sd-switch's yes spellings, padded and in capitals, reads as yes" =
-      saysEach "yes" yesSpellings "reload"
-        home;
-    "each of sd-switch's no spellings, padded and in capitals, reads as no" =
-      saysEach "no" noSpellings "restart"
-        home;
+    "a reload said no leaves the refused stop to decide" = method home "unreload-probe" == "restart";
+    "a legacy reload key wins over a restart said yes" = method home "reload-restart-probe" == "reload";
+    "a refused restart is read as keep-old, ahead of a stop said yes" =
+      method home "kept-stop-probe" == "keep-old";
     "a legacy key said as the number 1 is read as yes" = method home "one-probe" == "reload";
     "a TimeoutSec alone bounds the start too" = bound home "timeout-probe" == null;
     "a timer's Timer.Unit is the service it keeps" =
