@@ -6,7 +6,10 @@
 { lib }:
 let
   # LINES with each attribute rustfmt spreads over several lines joined into
-  # one, at the indent it opened at, and null where one never closes.
+  # one, at the indent it opened at, the comma rustfmt leaves before its
+  # close dropped, and null where one never closes. An attribute that
+  # neither closes on its line nor opens a list there, as one with a
+  # comment after it, reads as UNREAD, which no item takes.
   joined =
     lines:
     let
@@ -17,8 +20,10 @@ let
         in
         if acc.open != null then
           let
-            tight = lib.hasSuffix "(" acc.open || lib.hasPrefix ")" trimmed;
-            open = acc.open + (if tight then "" else " ") + trimmed;
+            closing = lib.hasPrefix ")" trimmed;
+            tight = lib.hasSuffix "(" acc.open || closing;
+            before = if closing then lib.removeSuffix "," acc.open else acc.open;
+            open = before + (if tight then "" else " ") + trimmed;
           in
           if lib.hasSuffix ")]" trimmed then
             acc
@@ -28,8 +33,10 @@ let
             }
           else
             acc // { inherit open; }
-        else if lib.hasPrefix "#[" trimmed && !lib.hasSuffix "]" trimmed then
+        else if lib.hasPrefix "#[" trimmed && lib.hasSuffix "(" trimmed then
           acc // { open = line; }
+        else if lib.hasPrefix "#[" trimmed && !lib.hasSuffix "]" trimmed then
+          acc // { lines = acc.lines ++ [ unread ]; }
         else
           acc // { lines = acc.lines ++ [ line ]; };
       read = lib.foldl' step {
@@ -39,10 +46,17 @@ let
     in
     if read.open == null then read.lines else null;
 
+  # What an attribute line joined can't read is put as, which no item's
+  # attributes or body take.
+  unread = "#[?]";
+
   # Item START's attributes, nearest first, its doc lines left out, and the
   # lines of its body, doc lines left out, in LINES; null where it isn't
   # there, isn't closed, or its attributes don't start after a blank line,
-  # as a comment or anything else between them would.
+  # as a comment or anything else between them would, or an attribute
+  # stands above that blank line, since Rust puts it on the item too. Over
+  # it, a cfg_attr may hold anything but serde's words, which it would
+  # give the item where its condition holds.
   item =
     lines: start:
     let
@@ -54,12 +68,28 @@ let
       marked = line: lib.hasPrefix "#[" line || lib.hasPrefix "///" line;
       marks = lib.lists.findFirstIndex (line: !marked line) (lib.length before) before;
       edged = marks == lib.length before || lib.elemAt before marks == "";
+      # The first line above that blank line that isn't one or a comment.
+      spoken =
+        line:
+        let
+          trimmed = lib.trim line;
+        in
+        trimmed != ""
+        && !lib.hasPrefix "//" trimmed
+        && !lib.hasPrefix "/*" trimmed
+        && !lib.hasPrefix "*" trimmed
+        && !lib.hasSuffix "*/" trimmed;
+      above = lib.findFirst spoken "" (lib.drop marks before);
+      gapped = lib.hasPrefix "#[" (lib.trim above);
       over = lib.filter (lib.hasPrefix "#[") (lib.take marks before);
       # Brackets as bracket expressions, since macOS's engine refuses `\]`.
-      known = builtins.match "#[[](derive|serde|cfg_attr)[(].*[)][]]";
+      known =
+        line:
+        builtins.match "#[[](derive|serde|cfg_attr)[(].*[)][]]" line != null
+        && !(lib.hasPrefix "#[cfg_attr" line && lib.hasInfix "serde" line);
     in
     if
-      all == null || from == null || to == null || !edged || lib.any (line: known line == null) over
+      all == null || from == null || to == null || !edged || gapped || lib.any (line: !known line) over
     then
       null
     else
@@ -114,9 +144,17 @@ let
     in
     if read == null then null else lib.head read;
 
-  # Words that name a field otherwise than its own name, or take it out of
-  # its place, so its name alone isn't what serde reads.
-  renames = words: builtins.match ".*(rename|alias|flatten|skip_deserializing).*" words != null;
+  # Whether a field's serde WORDS are only ones that leave it read by its
+  # own name, in its place: a default, when it's written, and a reader of
+  # its value. Any other, as a rename, an alias, a flatten, a skip or a
+  # `with`, isn't taken, so a word serde comes to know fails the check
+  # rather than passing unread.
+  plain =
+    words:
+    lib.all (
+      word:
+      builtins.match "default|(default|skip_serializing_if|deserialize_with) = \"[^\"]*\"" word != null
+    ) (lib.splitString ", " words);
 in
 {
   # Enum ENUM in LINES as `{ over, serde, variants }`: the attributes over
@@ -142,8 +180,8 @@ in
   # it, its serde ones alone, and each field as `{ name, type, serde }`, `serde` the words of the
   # serde attributes over the field; null where it isn't there, isn't read
   # from serde's words, or any line of it isn't a public field on one line
-  # or a serde attribute over one, or a field is renamed, aliased, flattened
-  # or never read.
+  # or a serde attribute over one, or a field's serde says more than how
+  # it defaults, when it's written and what reads its value (plain).
   structIn =
     lines: struct:
     let
@@ -158,7 +196,7 @@ in
           null
         else if words != null then
           acc // { pending = acc.pending ++ [ words ]; }
-        else if one != null && !lib.any renames acc.pending then
+        else if one != null && lib.all plain acc.pending then
           {
             fields = acc.fields ++ [ (one // { serde = acc.pending; }) ];
             pending = [ ];
