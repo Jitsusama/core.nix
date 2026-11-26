@@ -7,7 +7,8 @@
 //! are read: a pain they carry goes to no one again, and the keeper of
 //! the ledgers hears of each new one. Each pain sent is written into his
 //! misses ledger too (missed.rs), and stays open there and here until a
-//! landing a switch carried closes it. Nothing is ever sent to the void,
+//! landing a switch carried closes it, or its owner says on its misses
+//! line why it was no pain. Nothing is ever sent to the void,
 //! and nothing is posted anywhere.
 //!
 //! Unlike `read`, which keeps kinds and timings alone, `hear` keeps his
@@ -304,6 +305,24 @@ fn said(hour: &Hour) -> String {
     )
 }
 
+/// Closes each of `kept` whose owner said at its line of the misses
+/// ledger at `misses` that it was no pain, at `at` when first seen so.
+/// Before, only a landing closed a pain, so one heard wrongly stayed open
+/// in the hour, and its owner was asked of it again, until it aged out.
+/// A ledger that can't be read closes none, as nobody's word is read.
+fn close_said_none(misses: &Path, at: i64, kept: &mut [Heard]) {
+    let Ok(text) = fs::read_to_string(misses) else {
+        return;
+    };
+    let said = heard::said_none(&text);
+    for h in kept.iter_mut().filter(|h| h.none.is_none()) {
+        if let Some((_, why)) = said.iter().find(|(key, _)| *key == h.key) {
+            h.none = Some(why.clone());
+            h.closed_at.get_or_insert(at);
+        }
+    }
+}
+
 /// Writes what it heard whole, so what was sent stays marked sent however
 /// the run ends.
 fn keep(heard_at: &Path, kept: &[Heard]) -> Result<(), String> {
@@ -359,7 +378,7 @@ pub fn hear_putting(
         .filter_map(|line| serde_json::from_str(line).ok())
         .filter(|h: &Heard| {
             h.at >= ears.at - heard::KEPT_MS
-                || (h.is_miss() && h.closed_by.is_none())
+                || (h.is_miss() && !h.closed())
                 || h.closed_at.is_some_and(|at| at >= ears.at - DAY_MS)
         })
         .collect();
@@ -373,11 +392,12 @@ pub fn hear_putting(
     // it was open on an earlier run, and one still open is looked for
     // however old, as the keeper may carry it any day.
     for h in &mut kept {
-        let looked = h.at >= ears.at - DAY_MS || h.closed_by.is_none();
+        let looked = h.at >= ears.at - DAY_MS || !h.closed();
         if !h.carried && !stalled::is(h) && looked {
             h.carried = heard::carried(&h.words, &ledgers);
         }
     }
+    close_said_none(&ears.misses, ears.at, &mut kept);
 
     hear_logs(
         ears,
@@ -510,6 +530,7 @@ fn hear_logs(
                 thread: Vec::new(),
                 shared: false,
                 landed: Vec::new(),
+                none: None,
             });
         }
         // An answer read while the node names no cell for the session

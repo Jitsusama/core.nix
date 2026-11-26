@@ -17,7 +17,8 @@ const CARRIED_ALIKE: f64 = 0.75;
 const QUOTED_LEAST: usize = 16;
 
 /// How long a pain is kept, and hits are counted over; one sent and not
-/// yet fixed is kept past it, as only its fix running closes it.
+/// yet closed is kept past it, as only its fix running, or its owner's
+/// word that it was none, closes it.
 pub const KEPT_MS: i64 = 14 * 86_400_000;
 
 /// A landing its question's thread led to, or one naming its entry: the
@@ -97,9 +98,21 @@ pub struct Heard {
     /// Each landing its thread led to, kept until a switch carries one.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub landed: Vec<Landing>,
+    /// Why its owner said it was no pain, through `pain-points test
+    /// --none` on its line of the misses ledger, which closes it as a
+    /// landing the machine runs would.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub none: Option<String>,
 }
 
 impl Heard {
+    /// Whether it is closed: by a landing the machine runs, or by its
+    /// owner's word that it was no pain.
+    #[must_use]
+    pub const fn closed(&self) -> bool {
+        self.closed_by.is_some() || self.none.is_some()
+    }
+
     /// Whether it is a miss of ours for his ledger: sent to a cell, said
     /// where he wasn't in the void, carried by no ledger, and no stall.
     #[must_use]
@@ -162,6 +175,25 @@ pub fn carrier<'a>(words: &str, ledgers: &'a [Line]) -> Option<&'a Line> {
     })
 }
 
+/// Why each pain the misses ledger `text` holds was said to be none, by
+/// its key: a line pain-points wrote of it whose owner gave why, with the
+/// time they said it, as cadence reads a miss said none. A line giving
+/// why with no time stays open there, so it does here.
+pub fn said_none(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter(|line| {
+            line.get("none_at_ms")
+                .is_some_and(serde_json::Value::is_i64)
+        })
+        .filter_map(|line| {
+            let key = line.get(super::missed::PAIN)?.as_str()?;
+            let why = line.get("none")?.as_str()?.trim();
+            (!why.is_empty()).then(|| (key.to_owned(), why.to_owned()))
+        })
+        .collect()
+}
+
 /// How many of `kept` say the same as `words`, counting this one.
 pub fn hits(words: &str, kept: &[Heard]) -> usize {
     1 + kept
@@ -196,6 +228,7 @@ mod tests {
             answered_at: None,
             closed_by: None,
             closed_at: None,
+            none: None,
             thread: Vec::new(),
             shared: false,
             landed: Vec::new(),

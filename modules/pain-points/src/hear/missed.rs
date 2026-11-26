@@ -13,7 +13,8 @@
 //! name no keeper. One a line the keeper wrote before
 //! quotes is written too: said again, it is that miss come back, which
 //! needs a test of its own. No other line of the ledger is changed, and a
-//! pain closes only on its fix, never on how long it has been quiet.
+//! pain closes only on its fix, or on its owner's word at its line of why
+//! it was none, never on how long it has been quiet.
 //!
 //! Only pains sent, or heard and carried unsent, from `FROM_MS` on are
 //! written: the 214 sent before it had no thread kept, so most would only

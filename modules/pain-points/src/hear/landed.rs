@@ -20,7 +20,8 @@
 //! close a pain whose thread was never seen, or whose question held
 //! others.
 //!
-//! A pain stays open until its fix runs, however long that takes, so its
+//! A pain stays open until its fix runs, however long that takes, or its
+//! owner says it was none (hear.rs), so its
 //! thread is kept with it and each run reads only the messages sent since
 //! the last: a week of the mesh is some 600 megabytes, too much to read
 //! again every five minutes.
@@ -144,7 +145,7 @@ pub(super) fn stand(
     kept: &mut [Heard],
     read: Option<&Read>,
 ) -> Stood {
-    let still = |h: &Heard| h.closed_by.is_none() && !stalled::is(h) && h.routed_at.is_some();
+    let still = |h: &Heard| !h.closed() && !stalled::is(h) && h.routed_at.is_some();
     let Some(asker) = asker else {
         return Stood::default();
     };
