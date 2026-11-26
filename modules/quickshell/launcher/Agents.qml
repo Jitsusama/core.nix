@@ -286,7 +286,8 @@ Provider {
 
     function carryBack(row, ask) {
         const said = Words.of("verb:carry:back").said ?? {};
-        const shown = row.thing ?? row.key;
+        // Keyed as the launcher keys the row (Presented.js's keyMade), so what it becomes is it.
+        const shown = Presented.keyMade(row, row.key);
         let answered = false;
         provider.becomes(shown, {
             side: said.carrying ?? "",

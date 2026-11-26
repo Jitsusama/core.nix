@@ -18,8 +18,11 @@
 let
   # A Wi-Fi case run through the real Wireless.qml, ReadyRows.qml and
   # Daemon.qml, with the launcher stood in by the case itself and Wifi's card
-  # and the sign-in stood in here. Where `heard` names a script, it reads
-  # what the shell said once the case has passed.
+  # and the sign-in stood in here. A binding that threw, named nothing or came
+  # out undefined ran on something a stand-in lacks, so it fails the case,
+  # which could otherwise pass on code that never ran as in the shell. Where
+  # `heard` names a script, it reads what the shell said once the case has
+  # passed.
   wifiCase =
     name: case: heard:
     let
@@ -64,16 +67,13 @@ let
       export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      ${
-        if heard == null then
-          "timeout 60 ${qs} -p shell.qml"
-        else
-          ''
-            set -o pipefail
-            timeout 60 ${qs} -p shell.qml 2>&1 | tee said
-            ${pkgs.lib.getExe pkgs.bash} ${heard} said
-          ''
-      }
+      set -o pipefail
+      timeout 60 ${qs} -p shell.qml 2>&1 | tee said
+      if grep -aE 'TypeError|ReferenceError|Unable to assign' said; then
+        echo "a binding threw or came out undefined while the cases ran"
+        exit 1
+      fi
+      ${pkgs.lib.optionalString (heard != null) "${pkgs.lib.getExe pkgs.bash} ${heard} said"}
       touch $out
     '';
 in

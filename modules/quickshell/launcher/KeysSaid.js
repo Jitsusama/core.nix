@@ -16,7 +16,9 @@ const ownLength = 64;
 // there, which no id holds, so such a key is said by its kind alone. This test can't tell an id
 // from a one-word name, so a served row's key never claims an own kind: ReadyRows.qml's, Emoji's,
 // Copies' and a network's parts' are made by Presented.js's keyMade, and Agents' are its daemon's
-// `agent:` and `agents:` keys.
+// `agent:`, `agents:` and `carry:` keys. keyShown also says a served `program:<id>` whole where
+// its id is shaped as an app's, which holds while only the programs daemon serves two-part
+// `program:` keys: sound's are `program:<device>:<name>`, said as `program`.
 const ownId = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 
 // A kind's word, as the launcher and its daemons write one, at most 32 letters, and the keys
