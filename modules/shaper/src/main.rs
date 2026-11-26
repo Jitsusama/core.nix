@@ -1842,6 +1842,17 @@ fn watch_real_time(shaped: &mut BTreeMap<String, Shaped>, t: f64) {
     }
 }
 
+/// What a follower takes from the link it follows (`hold_followers`): its
+/// upload's rate and most, what the controller asked of its download and
+/// whether it left it unlimited, and its steady ceiling.
+#[derive(Clone, Copy)]
+struct Leader {
+    up: u64,
+    asked_down: (u64, bool),
+    most: u64,
+    under: Option<u64>,
+}
+
 /// Holds each follower to its leader's rates; its own pings still say its
 /// round trips. Its download is held as the controller holds its
 /// leader's, and under its own call's room, which `step_links` gave it
@@ -1852,17 +1863,28 @@ fn watch_real_time(shaped: &mut BTreeMap<String, Shaped>, t: f64) {
 /// judged against the lower of its leader's ceiling and its own, so its
 /// CAKE is never told a rate its own link can't carry.
 fn hold_followers(shaped: &mut BTreeMap<String, Shaped>) {
-    let rates: BTreeMap<String, (u64, (u64, bool), u64, Option<u64>)> = shaped
+    let rates: BTreeMap<String, Leader> = shaped
         .iter()
         .map(|(n, s)| {
-            let held = (s.up.rate, s.asked_down, s.up.bounds.max, s.under);
-            (n.clone(), held)
+            let leader = Leader {
+                up: s.up.rate,
+                asked_down: s.asked_down,
+                most: s.up.bounds.max,
+                under: s.under,
+            };
+            (n.clone(), leader)
         })
         .collect();
     for s in shaped.values_mut() {
         let leader = s.follows.as_ref().and_then(|l| rates.get(l));
-        if let Some(&(up, asked, most, under)) = leader {
-            let (down, straight) = held_down(asked, s.room.held());
+        if let Some(&Leader {
+            up,
+            asked_down,
+            most,
+            under,
+        }) = leader
+        {
+            let (down, straight) = held_down(asked_down, s.room.held());
             s.up.rate = up;
             s.down.rate = down;
             // A follower takes its leader's ceiling, so the two together
