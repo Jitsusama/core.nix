@@ -3612,8 +3612,9 @@
   '';
   pi-conversations-take-heap-growth = ''
     node 22, which pi is built with, and the tree's own node, each started with the word a realm's
-    conversation is given for a growth of 30 percent, grow every heap limit they trace by a
-    factor of 1.3, while the same program without it grows by a factor of V8's own
+    conversation is given for a growth of 70 percent, grow every heap limit they trace by a
+    factor of 1.7, more than V8's slow modes ever give, while the same program without it grows
+    by a factor of V8's own
   '';
   pi-hosts-start-with-the-session = ''
     each realm a machine names gets an attended and a background pi host, started with the
@@ -5543,7 +5544,8 @@
     account, started at boot once the store is mounted and again after a failure, given 150 s
     to park and 8192 open files, naming no store path a switch would restart it for, with no
     log launchd opens as root, and becoming node under a name mycelium tells as an agent's, as
-    its own kind with a log of its own, on a Mac that evaluates whole; a Mac naming none gets none
+    its own kind with a log of its own, keeping V8's own heap growth though its realm names a
+    percent for conversations, on a Mac that evaluates whole; a Mac naming none gets none
   '';
   the-mac-pi-host-starts-as-its-account = ''
     a Mac's pi host start, run under dash and bash with the Mac's programs stood in for, passes

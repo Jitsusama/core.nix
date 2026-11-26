@@ -266,11 +266,15 @@ in
           start = startOf (growingServicesOf { one = percent; }) "pi-conversation-one-attended@";
         in
         builtins.tryEval (builtins.deepSeq start start);
-      # Taken when the command evaluates and holds the percent's word.
+      # Taken when the command evaluates and holds the percent's word. Nix
+      # doesn't keep a function's answer, so each try is held once: each is
+      # a whole workstation's evaluation.
       taken =
         percent:
-        (tried percent).success
-        && lib.hasInfix " '--heap-growing-percent=${toString percent}' /" (tried percent).value;
+        let
+          try = tried percent;
+        in
+        try.success && lib.hasInfix " '--heap-growing-percent=${toString percent}' /" try.value;
       # Refused when the command doesn't evaluate at all.
       refused = percent: !(tried percent).success;
     in
@@ -295,22 +299,28 @@ in
         && refused 101
       );
 
-  # The word a realm's conversation is given for a growth of 30 percent, run
+  # The word a realm's conversation is given for a growth of 70 percent, run
   # on node 22, which pi is built with, and on this tree's own node, which
   # stands in for the next pi may be built with: V8 grows each heap limit by
-  # a factor of 1.3, in place of one of its own.
+  # a factor of 1.7, in place of one of its own. Not 30, whose 1.3 is the
+  # most V8 grows by in its own slow modes, so V8 could give it unasked.
   pi-conversations-take-heap-growth =
     let
-      start = startOf (growingServicesOf { one = 30; }) "pi-conversation-one-attended@";
-      # The one word between the heap and the program, or none.
+      start = startOf (growingServicesOf { one = 70; }) "pi-conversation-one-attended@";
+      # The one word between the heap and the program.
       words = builtins.match ".* '--max-old-space-size=4096' '([^']*)' /.*" (
         builtins.unsafeDiscardStringContext start
       );
-      word = if words == null then "" else lib.head words;
+      # Said rather than given to node as an empty word, which it would fail
+      # on as a missing script.
+      missing = "pi-conversations-take-heap-growth: no one word after the heap in";
+      word = if words == null then throw "${missing} ${start}" else lib.head words;
+      node22 = lib.getExe pkgs.nodejs_22;
+      test = ./tests/pi-conversations-take-heap-growth.mjs;
     in
     pkgs.runCommandLocal "pi-conversations-take-heap-growth" { } ''
-      for node in ${lib.getExe pkgs.nodejs_22} ${lib.getExe pkgs.nodejs}; do
-        ${lib.getExe pkgs.nodejs_22} ${./tests/pi-conversations-take-heap-growth.mjs} "$node" ${lib.escapeShellArg word} 1.3
+      for node in ${node22} ${lib.getExe pkgs.nodejs}; do
+        ${node22} ${test} "$node" ${lib.escapeShellArg word} 1.7
       done
       touch $out
     '';
