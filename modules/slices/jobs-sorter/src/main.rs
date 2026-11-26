@@ -1869,8 +1869,9 @@ struct Fitting {
 #[derive(Debug, Default)]
 struct Floored {
     held: HashSet<PathBuf>,
-    /// Those this look holds, in focus's order: the window Joel is at
-    /// first, each with its pi after it ([`hold_windows`]).
+    /// Those focus wants held this look, in its order: the window Joel is
+    /// at first, each with its pi after it ([`hold_windows`]), one whose
+    /// hold failed among them.
     order: Vec<PathBuf>,
     /// Those keep.rs keeps, by unit, each with the floor it set.
     kept: HashMap<String, u64>,
@@ -1914,18 +1915,19 @@ impl Floored {
 
 impl Fitting {
     /// What to say of `slice` when the windows the sorter floors itself
-    /// take `windows` of its floor `low` while `given` of the `wants` the
+    /// claim `windows` of its floor `low`, their peaks of the last minute
+    /// within the windows' cap, while `given` of the `wants` the
     /// units Joel is at would add fits: with no stray past the room,
     /// [`Fitting::overran`] says nothing, and the units' floors would fall
     /// unsaid. Said once, when they're short by a [`budget::STEP`] or more,
     /// and again only once all they'd add fits and they're short again;
     /// units short with no window floored say nothing, since the line is
-    /// about the sorter's floors. It says what those take beside what fits
+    /// about the sorter's floors. It says what those claim beside what fits
     /// the units, not that one left the other short, since windows only
     /// named and the units' own floors take from the same room. What fits
-    /// is fit's offer, which a unit's floor never passes: it keeps its last
-    /// while that fits, and is raised only to what a step less room fits
-    /// ([`budget::steady`]).
+    /// is fit's offer, which a unit's floor never passes: one with no floor
+    /// set yet takes it, and one with a floor keeps it while that fits and
+    /// is raised only to what a step less room fits ([`budget::steady`]).
     fn filled(
         &mut self,
         slice: &str,
@@ -1945,7 +1947,7 @@ impl Fitting {
             return None;
         }
         Some(format!(
-            "The windows the sorter floors in {slice} take {} MiB of its {} MiB floor, while {} \
+            "The windows the sorter floors in {slice} claim {} MiB of its {} MiB floor, while {} \
              MiB of the {} MiB the units Joel is at would add fits.",
             windows >> 20,
             low >> 20,
@@ -1995,7 +1997,7 @@ impl Fitting {
                 // A held one is bounded by a window's floor too, so what it claims past the
                 // cap is the same: the cap full, or something raising its floor.
                 let whose = if self.floored.held.contains(&scope) {
-                    ", a window the sorter floors, past the windows' cap or raised past its floor"
+                    ", a window the sorter holds, past the windows' cap or raised past its floor"
                 } else if self.floored.kept(&scope).is_some() {
                     ", a window the sorter keeps, past the windows' cap or raised past its floor"
                 } else {
@@ -2070,7 +2072,8 @@ fn claims(
     // The order only decides how far the units' floors are trimmed. The windows keep the
     // floors they were set, so once the children together are protected past the slice's own
     // floor, the kernel shares that floor among them by their protected usage, whatever this
-    // order says; Fitting::overran says so when it happens.
+    // order says. Fitting::overran says when what the others claim passes what the units Joel
+    // is at leave.
     // Only a scope the sorter holds takes its place in focus's order: one whose hold failed
     // this look is in the order but not held, and sorts among the unheld as any other does,
     // rather than ahead of what keep.rs keeps.
@@ -2137,9 +2140,10 @@ fn fit_ranked(
 /// at, then what the others beside them claim, then the rest. So the
 /// windows Joel types in, those under `prefixes`, keep theirs whole while
 /// those others fit in what the units Joel is at leave; past it the
-/// kernel shares the slice's floor among every child again, which is said
-/// once ([`Fitting::overran`]), as is the windows the sorter floors leaving
-/// the units Joel is at short ([`Fitting::filled`]). Each window claims its peak of the last
+/// kernel shares the slice's floor among every child again. What the
+/// others claim past what the units Joel is at leave is said once
+/// ([`Fitting::overran`]), as is those units being short beside the windows
+/// the sorter floors ([`Fitting::filled`]). Each window claims its peak of the last
 /// minute at `now` ([`budget::Peaks`]). A slice whose floor can't be read is left
 /// as ranked, and said once, as `fitting` remembers.
 fn fit_floors(
@@ -5740,7 +5744,7 @@ mod tests {
                 .filled("agents.slice", 6144 * MIB, 6348 * MIB, 0, 512 * MIB)
                 .as_deref(),
             Some(
-                "The windows the sorter floors in agents.slice take 6144 MiB of its 6348 MiB \
+                "The windows the sorter floors in agents.slice claim 6144 MiB of its 6348 MiB \
                  floor, while 0 MiB of the 512 MiB the units Joel is at would add fits."
             ),
             "the units Joel is at short beside the sorter's own floors are said, with no \
@@ -5802,7 +5806,7 @@ mod tests {
                 "\"kitty-2-14.scope\" 512 MiB, a window the sorter keeps, past the windows' cap \
                  or raised past its floor, \
                  \"kitty-3-1.scope\" \
-                 1024 MiB, a window the sorter floors, past the windows' cap or raised past \
+                 1024 MiB, a window the sorter holds, past the windows' cap or raised past \
                  its floor, \"run-u7.scope\" 1024 MiB."
             ),
             "the sorter's own floors past the windows' cap aren't named as strangers: {said}"
