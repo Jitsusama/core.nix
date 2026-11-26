@@ -163,8 +163,11 @@ mod tests {
         assert_eq!(disk.kind, Kind::Internal);
         assert_eq!(disk.bytes, 128_035_676_160);
         assert_eq!(disk.partitions.len(), 3);
-        assert!(disk.in_use());
-        assert!(!disk.installable());
+        assert!(
+            disk.in_use(),
+            "a disk with mounted partitions wasn't in use"
+        );
+        assert!(!disk.installable(), "a disk in use was installable");
     }
 
     #[test]
@@ -239,8 +242,14 @@ mod tests {
             device("sdb", None, true, None),
         ]))
         .unwrap();
-        assert!(disks.iter().all(|disk| disk.kind == Kind::Removable));
-        assert!(disks.iter().all(|disk| !disk.installable()));
+        assert!(
+            disks.iter().all(|disk| disk.kind == Kind::Removable),
+            "a USB or removable disk wasn't read as removable: {disks:?}"
+        );
+        assert!(
+            disks.iter().all(|disk| !disk.installable()),
+            "a removable disk was installable"
+        );
     }
 
     #[test]
@@ -250,7 +259,10 @@ mod tests {
             device("vda", None, false, None),
         ]))
         .unwrap();
-        assert!(disks.iter().all(Disk::installable));
+        assert!(
+            disks.iter().all(Disk::installable),
+            "an unused internal or VM disk wasn't installable: {disks:?}"
+        );
     }
 
     #[test]
@@ -263,7 +275,10 @@ mod tests {
         )]))
         .unwrap();
         assert_eq!(disks[0].partitions[0].mounted, ["/"]);
-        assert!(!disks[0].installable());
+        assert!(
+            !disks[0].installable(),
+            "a disk mounted through LUKS was installable"
+        );
     }
 
     #[test]

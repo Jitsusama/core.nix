@@ -103,7 +103,11 @@ mod tests {
             status.guid.as_deref(),
             Some("9bc745a8-c143-45ee-8216-3e6d0f6bb7d2")
         );
-        assert!(status.installed && status.secure_boot && !status.setup_mode);
+        assert_eq!(
+            (status.installed, status.secure_boot, status.setup_mode),
+            (true, true, false),
+            "the XPS wasn't read as keys installed, Secure Boot on and out of setup mode"
+        );
     }
 
     #[test]
@@ -143,9 +147,12 @@ mod tests {
             1,
             "sbctl requires root to run\n",
         );
-        assert!(matches!(
-            Status::observe(&mut stand_in),
-            Err(Fault::Refused { said, .. }) if said == "sbctl requires root to run"
-        ));
+        assert!(
+            matches!(
+                Status::observe(&mut stand_in),
+                Err(Fault::Refused { said, .. }) if said == "sbctl requires root to run"
+            ),
+            "sbctl's refusal wasn't passed on in its own words"
+        );
     }
 }

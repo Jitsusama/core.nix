@@ -192,7 +192,7 @@ mod tests {
         assert_eq!(booted.len(), 1);
         assert_eq!(booted[0].generation, Some(15));
         assert_eq!(booted[0].kind, Kind::Uki);
-        assert!(booted[0].default);
+        assert!(booted[0].default, "the entry booted wasn't the default");
     }
 
     #[test]

@@ -104,7 +104,10 @@ mod tests {
         assert_eq!(words.len(), 7776);
         let unique: std::collections::BTreeSet<_> = words.iter().collect();
         assert_eq!(unique.len(), words.len());
-        assert!(words.iter().all(|word| !word.contains(char::is_whitespace)));
+        assert!(
+            words.iter().all(|word| !word.contains(char::is_whitespace)),
+            "a word of the list holds a space"
+        );
     }
 
     #[test]
@@ -115,7 +118,8 @@ mod tests {
         assert!(words.iter().all(|word| list().contains(word)), "{words:?}");
         let words = f64::from(u32::try_from(list().len()).unwrap());
         let count = f64::from(u32::try_from(COUNT).unwrap());
-        assert!(words.log2() * count > 90.0);
+        let bits = words.log2() * count;
+        assert!(bits > 90.0, "a secret holds {bits} bits, not over 90");
         assert_ne!(made.expose(), super::made().unwrap().expose());
     }
 

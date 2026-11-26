@@ -160,7 +160,10 @@ mod tests {
         assert_eq!(header.bare(), BTreeSet::from([0]));
         assert_eq!(header.credentials().len(), 2);
         assert_ne!(header.credentials()[0], header.credentials()[1]);
-        assert!(header.has(&Kind::Recovery));
+        assert!(
+            header.has(&Kind::Recovery),
+            "the header had no recovery key: {header:?}"
+        );
     }
 
     #[test]
@@ -184,7 +187,8 @@ mod tests {
 
     #[test]
     fn what_isnt_a_header_is_refused() {
-        assert!(parse("{}").is_err());
-        assert!(parse(r#"{"keyslots": {"x": {}}}"#).is_err());
+        for text in ["{}", r#"{"keyslots": {"x": {}}}"#] {
+            assert!(parse(text).is_err(), "{text} was read as a header");
+        }
     }
 }

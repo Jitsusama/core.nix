@@ -236,12 +236,21 @@ mod tests {
         let directory = crate::Scratch::new("journal-outlives");
         let path = directory.join("state").join("journal");
         let mut journal = Journal::open(&path).unwrap();
-        assert!(!journal.knows("recovery-key", "typed back"));
+        assert!(
+            !journal.knows("recovery-key", "typed back"),
+            "a new journal knew a fact"
+        );
         journal.record("recovery-key", "typed back").unwrap();
 
         let again = Journal::open(&path).unwrap();
-        assert!(again.knows("recovery-key", "typed back"));
-        assert!(!again.knows("recovery-key", "printed"));
+        assert!(
+            again.knows("recovery-key", "typed back"),
+            "a fact recorded was gone once the journal was opened again"
+        );
+        assert!(
+            !again.knows("recovery-key", "printed"),
+            "a journal opened again knew a fact never recorded"
+        );
     }
 
     #[test]
@@ -283,7 +292,7 @@ mod tests {
             ])
         );
         journal.drop_copy().unwrap();
-        assert!(!copy.exists());
+        assert!(!copy.exists(), "a copy dropped was left on the disk");
         journal.record("enrol-5ci", "opened:def").unwrap();
         assert!(!copy.exists(), "a dropped copy takes no more facts");
     }
@@ -316,8 +325,14 @@ mod tests {
             ("enrol-nano".into(), "opened:abc".into()),
         ]);
         journal.learn(&earlier, &["run-from-memory"]).unwrap();
-        assert!(journal.knows("enrol-nano", "opened:abc"));
-        assert!(!journal.knows("run-from-memory", "in memory"));
+        assert!(
+            journal.knows("enrol-nano", "opened:abc"),
+            "a fact learnt from earlier wasn't known"
+        );
+        assert!(
+            !journal.knows("run-from-memory", "in memory"),
+            "a fact of a step left out was learnt"
+        );
     }
 
     #[test]

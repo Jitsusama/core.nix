@@ -150,7 +150,7 @@ mod tests {
     #[test]
     fn ssh_tpm_keygens_key_is_loadable_under_the_owners_storage_key() {
         let key = KeyFile::parse(KEY.as_bytes()).unwrap();
-        assert!(key.loadable);
+        assert!(key.loadable, "ssh-tpm-keygen's key wasn't loadable");
         assert_eq!(key.parent, OWNER);
         // Each half as the TPM marshals it: its size, then that many bytes.
         for half in [&key.public, &key.private] {
@@ -181,10 +181,13 @@ mod tests {
     #[test]
     fn a_key_cut_short_is_unreadable() {
         let cut: String = KEY.lines().take(3).collect::<Vec<_>>().join("\n");
-        assert!(matches!(
-            KeyFile::parse(cut.as_bytes()),
-            Err(Fault::Unreadable { .. })
-        ));
+        assert!(
+            matches!(
+                KeyFile::parse(cut.as_bytes()),
+                Err(Fault::Unreadable { .. })
+            ),
+            "a key cut short wasn't unreadable"
+        );
     }
 
     #[test]

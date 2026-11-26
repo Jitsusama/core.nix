@@ -554,7 +554,10 @@ mod tests {
         let mut partition = Partition::new(&mut disk, 0, BLOCK).unwrap();
         partition.seek(SeekFrom::Start(BLOCK - 2)).unwrap();
         assert_eq!(partition.write(b"abcd").unwrap(), 2);
-        assert!(partition.write(b"cd").is_err());
+        assert!(
+            partition.write(b"cd").is_err(),
+            "a write at the partition's end wasn't refused"
+        );
         partition.flush().unwrap();
         drop(partition);
         assert_eq!(disk.into_inner()[BLOCK_LENGTH], 0);

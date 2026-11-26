@@ -367,21 +367,33 @@ mod tests {
         assert_eq!(table.hashes(), "8:2");
         assert_eq!(table.data_bytes(), 1_114_522 * 4096);
         assert_eq!(table.hash_start(), 1);
-        assert!(!table.in_memory());
+        assert!(
+            !table.in_memory(),
+            "a table over the disk's own devices read as in memory"
+        );
         let moved = table.over("7:0", "7:1");
         assert_eq!(moved, TABLE.replace("8:3 8:2", "7:0 7:1"));
-        assert!(Table::parse(&moved).unwrap().in_memory());
+        assert!(
+            Table::parse(&moved).unwrap().in_memory(),
+            "a table moved onto memory's devices didn't read as in memory"
+        );
     }
 
     #[test]
     fn a_tables_optional_arguments_are_kept() {
         let with = format!("{TABLE} 1 ignore_zero_blocks");
         let table = Table::parse(&with).unwrap();
-        assert!(table.over("7:0", "7:1").ends_with(" 1 ignore_zero_blocks"));
+        assert!(
+            table.over("7:0", "7:1").ends_with(" 1 ignore_zero_blocks"),
+            "a table moved lost its optional arguments"
+        );
     }
 
     #[test]
     fn a_table_that_isnt_verity_is_refused() {
-        assert!(Table::parse("0 2048 linear 8:3 0").is_err());
+        assert!(
+            Table::parse("0 2048 linear 8:3 0").is_err(),
+            "a linear table was taken for verity"
+        );
     }
 }

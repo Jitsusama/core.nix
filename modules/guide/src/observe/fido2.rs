@@ -145,7 +145,10 @@ mod tests {
                 name: "linux-id".into(),
             }]
         );
-        assert!(tokens.iter().all(|token| token.vendor != YUBICO));
+        assert!(
+            tokens.iter().all(|token| token.vendor != YUBICO),
+            "a key of another vendor was read as a YubiKey"
+        );
     }
 
     #[test]
@@ -159,16 +162,22 @@ mod tests {
 
     #[test]
     fn a_key_with_hmac_secret_and_a_pin_can_be_the_persons() {
-        assert!(seals(qemu!("fido2-token-I.txt")));
+        assert!(
+            seals(qemu!("fido2-token-I.txt")),
+            "a key with hmac-secret and a PIN couldn't seal"
+        );
         let unset = qemu!("fido2-token-I.txt").replace(" clientPin,", " noclientPin,");
         assert!(seals(&unset), "a key whose PIN isn't set yet");
         let no_hmac = qemu!("fido2-token-I.txt").replace(" hmac-secret,", "");
-        assert!(!seals(&no_hmac));
+        assert!(!seals(&no_hmac), "a key without hmac-secret could seal");
     }
 
     #[test]
     fn the_xps_virtual_key_can_never_be_the_persons() {
-        assert!(!seals(xps!("fido2-token-I.txt")));
+        assert!(
+            !seals(xps!("fido2-token-I.txt")),
+            "the XPS's virtual key could seal"
+        );
     }
 
     #[test]
@@ -194,6 +203,9 @@ mod tests {
 
     #[test]
     fn a_line_in_another_shape_is_refused() {
-        assert!(parse("/dev/hidraw3 vendor 1050\n").is_err());
+        assert!(
+            parse("/dev/hidraw3 vendor 1050\n").is_err(),
+            "a line in another shape was read"
+        );
     }
 }

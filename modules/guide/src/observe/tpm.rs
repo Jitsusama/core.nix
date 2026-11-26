@@ -272,7 +272,11 @@ mod tests {
     #[test]
     fn the_xpss_tpm_leaves_its_lockout_unguarded() {
         let lockout = Lockout::parse(xps!("tpm2-properties-variable.txt")).unwrap();
-        assert!(!lockout.guarded && !lockout.locked);
+        assert_eq!(
+            (lockout.guarded, lockout.locked),
+            (false, false),
+            "the XPS's lockout read as guarded or locked"
+        );
         assert_eq!(lockout.left(), 32);
     }
 
@@ -288,28 +292,40 @@ mod tests {
                 size: 34,
             }
         );
-        assert!(public.is_pcrlocks());
+        assert!(
+            public.is_pcrlocks(),
+            "the pcrlock index wasn't read as pcrlock's"
+        );
         // The index its policy file names.
-        assert!(xps!("pcrlock-nvindex.json").contains(&public.index.to_string()));
+        assert!(
+            xps!("pcrlock-nvindex.json").contains(&public.index.to_string()),
+            "the index read isn't the one pcrlock's policy file names"
+        );
     }
 
     #[test]
     fn an_index_of_another_shape_isnt_pcrlocks() {
         let nvpcr = NvPublic::parse(xps!("tpm2-nvreadpublic-0x1d10200.txt")).unwrap();
         assert_eq!(nvpcr.size, 32);
-        assert!(!nvpcr.is_pcrlocks());
+        assert!(!nvpcr.is_pcrlocks(), "an NvPCR index was read as pcrlock's");
         let pcrlock = NvPublic::parse(xps!("tpm2-nvreadpublic-0x1accce4.txt")).unwrap();
         // Someone else's index in the same range, deletable by its policy.
         let deletable = NvPublic {
             attributes: pcrlock.attributes | 0x0000_0400,
             ..pcrlock
         };
-        assert!(!deletable.is_pcrlocks());
+        assert!(
+            !deletable.is_pcrlocks(),
+            "an index its policy may delete was read as pcrlock's"
+        );
         let elsewhere = NvPublic {
             index: 0x01C0_0002,
             ..pcrlock
         };
-        assert!(!elsewhere.is_pcrlocks());
+        assert!(
+            !elsewhere.is_pcrlocks(),
+            "an index outside pcrlock's was read as pcrlock's"
+        );
     }
 
     #[test]
@@ -336,9 +352,12 @@ mod tests {
     fn a_listing_without_the_counter_is_refused() {
         let text = surface!("tpm2-properties-variable.txt")
             .replace("TPM2_PT_LOCKOUT_COUNTER", "TPM2_PT_SOMETHING_ELSE");
-        assert!(matches!(
-            Lockout::parse(&text),
-            Err(Fault::Unreadable { why, .. }) if why == "no TPM2_PT_LOCKOUT_COUNTER"
-        ));
+        assert!(
+            matches!(
+                Lockout::parse(&text),
+                Err(Fault::Unreadable { why, .. }) if why == "no TPM2_PT_LOCKOUT_COUNTER"
+            ),
+            "a listing without the lockout counter wasn't refused for it"
+        );
     }
 }

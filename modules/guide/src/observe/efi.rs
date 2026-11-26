@@ -255,6 +255,9 @@ mod tests {
         let mut db =
             std::fs::read(format!("{}/efivar-db-{IMAGE_SECURITY}", fixtures::SURFACE)).unwrap();
         db.truncate(db.len() - 1);
-        assert!(certificates(&db).is_err());
+        assert!(
+            certificates(&db).is_err(),
+            "a signature list cut short was read"
+        );
     }
 }

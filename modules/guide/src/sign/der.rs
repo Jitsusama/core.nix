@@ -236,7 +236,10 @@ mod tests {
         ] {
             assert!(read(bad, "a test").is_err(), "{bad:02x?}");
         }
-        assert!(read(&[0x04, 0x05, 1, 2], "a test").is_err());
+        assert!(
+            read(&[0x04, 0x05, 1, 2], "a test").is_err(),
+            "a value saying more than it holds was read"
+        );
     }
 
     #[test]
