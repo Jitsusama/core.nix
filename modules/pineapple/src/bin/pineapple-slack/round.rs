@@ -46,10 +46,11 @@ pub(super) struct Reader {
 /// judged. What it gave is judged as its ears say it may be: messages a
 /// second ask agreed with in full, any other only for a stop, which may
 /// come from anyone, never for a resume a writer could type. One search
-/// unasked leaves the round counted neither way, though the other's
-/// messages are judged, unless it waits on a later page while the other's
-/// answer can't be read, which is said as that search deaf. Either way the next round asks both
-/// again, with no rest a poster could stretch.
+/// unasked leaves the round read in part, counted neither way, though the
+/// other's messages are judged, unless it waits on a later page while the
+/// other's answer can't be read, which is said as that search deaf; only
+/// both unasked, neither waiting, is a round unasked. Either way the next
+/// round asks both again, with no rest a poster could stretch.
 pub(super) fn round(
     ears: &mut dyn Ears,
     reader: &Reader,
@@ -82,10 +83,10 @@ pub(super) fn round(
     let unread = Round::Deaf(Deafness::Unreadable);
     let answers = [(PHRASE, &phrase), (tag.as_str(), &tagged)];
     let partly = in_part(ears, reader, account, state, &joel, judged, answers);
-    // One search unasked says nothing new of the other, so the round
-    // counts neither way, but the other's stops are heard as it read them,
-    // as is what the first read in part, and it has read as far as they
-    // reach; when Slack was read whole stays as it was.
+    // One search unasked says nothing new of the other, so the round is
+    // read in part and counts neither way, but the other's stops are
+    // heard as it read them, as is what the first read in part, and it has
+    // read as far as they reach; when Slack was read whole stays as it was.
     let alone = match (&phrase, &tagged) {
         (Ok(read), Err(Round::Unasked)) => Some((PHRASE, read)),
         (Err(Round::Unasked), Ok(read)) => Some((tag.as_str(), read)),
@@ -98,7 +99,7 @@ pub(super) fn round(
         if let Err(error) = judged::write(state, judged, judged::read_at(state)) {
             eprintln!("<3>couldn't keep how far it has read: {error}");
         }
-        return Round::Unasked;
+        return Round::Partly;
     }
     let (phrase, tagged, deaf) = match (phrase, tagged) {
         (Ok(phrase), Ok(tagged)) => (phrase, tagged, None),
@@ -125,16 +126,24 @@ pub(super) fn round(
                 }
             }
             // A refusal is said first, then a sign-in none could give.
-            // Both unasked, one blinking beside the other unreadable, or
-            // one beside the other's refused sign-in, say nothing new, so
-            // only both unread are told as both.
+            // One blinking beside the other unreadable, or waiting on a
+            // later page, says nothing new, so only both unread are told
+            // as both. Only both unasked, neither waiting, is a round no
+            // search was answered in, which a gateway's reader counts.
+            let unasked = Some(Round::Unasked);
+            let waits = ears.waiting(PHRASE) || ears.waiting(&tag);
+            let blinked = if failed == [unasked, unasked] && !waits {
+                Round::Unasked
+            } else {
+                Round::Partly
+            };
             return [
                 Round::Deaf(Deafness::Refused),
                 Round::Deaf(Deafness::NoSignIn),
-                Round::Unasked,
             ]
             .into_iter()
             .find(|round| failed.contains(&Some(*round)))
+            .or_else(|| failed.contains(&unasked).then_some(blinked))
             .unwrap_or(unread);
         }
     };

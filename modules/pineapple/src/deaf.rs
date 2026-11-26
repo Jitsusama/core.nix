@@ -59,8 +59,8 @@ pub enum Deafness {
     /// One search's answer can't be read, so only the other's messages
     /// are judged.
     Unread(Search),
-    /// The tool gateway Slack is heard through went unreached more than
-    /// [`UNREACHED`] rounds in a row.
+    /// The tool gateway Slack is heard through went unreached, or
+    /// answered neither search, more than [`UNREACHED`] rounds in a row.
     Unreached,
 }
 
@@ -87,8 +87,13 @@ pub enum Round {
     Heard,
     /// Nothing was read, or one search wasn't, for a reason Joel can fix.
     Deaf(Deafness),
-    /// Slack couldn't be asked: counted neither way.
+    /// Slack couldn't be asked, neither search answered: counted neither
+    /// way.
     Unasked,
+    /// One search answered while the other blinked, or one waits on a
+    /// later page: too little read to count either way, though Slack, or
+    /// its gateway, was reached.
+    Partly,
 }
 
 /// What changes in the file of what waits on Joel.
@@ -293,6 +298,12 @@ impl Deaf {
             }
             // Through a gateway, a run of rounds unasked is deaf as any
             // cause is, since nothing else hears Slack while it lasts.
+            // A round that read anything ends the run, as the gateway
+            // answered it.
+            Round::Partly => {
+                self.unasked = 0;
+                Change::Keep
+            }
             Round::Unasked if self.gateway => {
                 self.unasked = self.unasked.saturating_add(1);
                 if self.unasked > UNREACHED {
@@ -365,11 +376,12 @@ pub fn waits(why: Deafness, since: u64, at: u64) -> Value {
         ),
         Deafness::Unreached => (
             format!(
-                "The tool gateway the safe word hears Slack through can't be reached, {UNHEARD}"
+                "The tool gateway the safe word hears Slack through can't be reached, or \
+                 answers none of its searches, {UNHEARD}"
             ),
             vec![
-                "Ask an agent to read the reader's journal, which says why the gateway went \
-                 unreached",
+                "Ask an agent to read the reader's journal, which says why each search went \
+                 unanswered",
             ],
             json!({"by": "person"}),
         ),
