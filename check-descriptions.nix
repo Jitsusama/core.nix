@@ -2111,12 +2111,14 @@
   '';
   linux-builder-is-offered-only-with-room = ''
     the Mac's Nix reads its builders from the room job's file, which a job every 15 seconds,
-    given the set floor and hold in order, keeps clear of the builder below the floor, as at 34%
-    free, on a page swapped out, on a swap-out count that started again, with the room or its
+    given the set floor, hold and log in order, a log newsyslog moves aside, keeps clear of the
+    builder below the floor, as at 34% free, on a page swapped out, on a swap-out count that
+    started again, with the room or its
     own record unread or that record from later than now, or when a step fails, each starting
-    the hold, a shortage a failed write couldn't record among them, and saying why and where its
-    log says when; it gives the line back only after the hold, at 35% and 600 s but not 595 s,
-    saying each change once in one line opening with its UTC time, and a failure once
+    the hold, a shortage a failed write couldn't record among them, and saying why and naming
+    the log that says when; it gives the line back only after the hold, at 35% and 600 s but not
+    595 s, saying each change once in one line opening with its UTC time, a failure once, and
+    that it no longer fails at the look after
   '';
   linux-builder-gives-up-on-a-guest-that-stops-answering = ''
     the Mac's ssh to the Linux VM waits five minutes for a guest to greet it and, once in, gives
