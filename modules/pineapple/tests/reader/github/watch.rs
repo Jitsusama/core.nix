@@ -1,7 +1,7 @@
 //! Joel's own stop where GitHub's search hasn't indexed it yet: heard the
 //! round after he says it, since the newest comments where his account
 //! was last active list it at once, and read once however many rounds
-//! list it after.
+//! list it after, even where a repository before it is refused.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -163,6 +163,43 @@ fn github_a_list_that_fails_is_said_and_lists_no_more_that_round() {
         "the round lists no more once one list fails, so a slow site costs one wait: {asked:?}"
     );
     drop(asked);
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_a_watched_repository_refused_every_round_is_passed_by_for_the_rest() {
+    let (origin, _) = answering_whole(|line, now| {
+        if line.contains(" /repos/example/gone/issues/comments?") {
+            return Answered {
+                status: 404,
+                ..Answered::ok(json!({"message": "Not Found"}))
+            };
+        }
+        let mut said = unindexed(line, now);
+        if line.contains(&format!(" /users/{LOGIN}/events?")) {
+            said = json!([
+                {"created_at": stamp(now - 60), "repo": {"name": "example/gone"}},
+                {"created_at": stamp(now - 120), "repo": {"name": "example/shop"}},
+            ]);
+        }
+        Answered::ok(said)
+    });
+    let (home, _) = read_lately();
+    let mut reading = github_reader(&home, &origin, &[]);
+    until_decided(&home, 2);
+    reading.kill().expect("the reader stops");
+    reading.wait().expect("the reader is gone");
+    assert_eq!(
+        each(&decisions(&home), "verdict"),
+        ["stop-asked", "stop"],
+        "Joel's stop no search finds is heard where he was active after one refused"
+    );
+    let said = journal(&home);
+    assert!(
+        said.contains("answered 404 for /repos/example/gone/issues/comments?")
+            && said.contains("passed by"),
+        "the refusal is said, and that it's passed by: {said}"
+    );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 

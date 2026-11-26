@@ -8,15 +8,20 @@
 //! unchanged is answered 304, which his rate limit doesn't count; while
 //! his agents are busy most change, so a round costs up to seven of the
 //! 5,000 requests an hour his sign-in is allowed, 840 an hour at most.
-//! Where a list can't be read, the round lists no more, so a slow GitHub
-//! costs one wait, and his words wait on the search (own.rs).
+//! Where GitHub can't be asked, the round lists no more, so a slow GitHub
+//! costs one wait, and his words wait on the search (own.rs). A
+//! repository gone, or not his sign-in's to read, is passed by, so one
+//! refused every round can't keep the others unlisted.
 
 use std::collections::HashMap;
 
 use pineapple::github::{self, Kind, Thread, worth_judging};
 use serde_json::Value;
 
-use super::GitHub;
+use super::{GitHub, Unread};
+
+/// What a list that can't be read costs Joel, as the journal says it.
+const WAITS: &str = "so Joel's newest words there wait on its search";
 
 /// The most repositories watched: those his account was last active in.
 /// Each is one request a round, answered 304 while nothing changed.
@@ -49,8 +54,12 @@ impl Watched {
     ) -> Vec<Thread> {
         let feed = format!("/users/{login}/events?per_page={}", super::PAGE);
         let newest = |repo: &str| format!("/repos/{repo}/issues/comments?{NEWEST}");
-        let Some(events) = self.ask(github, &feed) else {
-            return Vec::new();
+        let events = match self.ask(github, &feed) {
+            Ok(events) => events,
+            Err(Unread::Gone(why) | Unread::Failed(why)) => {
+                eprintln!("<4>{why}, {WAITS}");
+                return Vec::new();
+            }
         };
         self.repos = active_in(&events);
         // Only what's still watched is kept, so the lists kept stay few.
@@ -59,8 +68,16 @@ impl Watched {
             .retain(|path, _| *path == feed || watched.contains(path));
         let mut threads = Vec::new();
         for repo in self.repos.clone() {
-            let Some(comments) = self.ask(github, &newest(&repo)) else {
-                break;
+            let comments = match self.ask(github, &newest(&repo)) {
+                Ok(comments) => comments,
+                Err(Unread::Gone(why)) => {
+                    eprintln!("<4>{why}; it's passed by, {WAITS}");
+                    continue;
+                }
+                Err(Unread::Failed(why)) => {
+                    eprintln!("<4>{why}, {WAITS}");
+                    break;
+                }
             };
             for comment in comments.as_array().into_iter().flatten() {
                 let Some((thread, key, at)) = his(comment, &repo, (site, login)) else {
@@ -76,9 +93,10 @@ impl Watched {
     }
 
     /// One list, asked with the tag GitHub last gave it: the list it
-    /// keeps when GitHub answers that nothing changed. One that can't be
-    /// read is said in the journal, and nothing is listed from it.
-    fn ask(&mut self, github: &GitHub<'_>, path: &str) -> Option<Value> {
+    /// keeps when GitHub answers that nothing changed. One gone or not
+    /// Joel's to read is told from GitHub failing, its rate limit included,
+    /// as a round tells them.
+    fn ask(&mut self, github: &GitHub<'_>, path: &str) -> Result<Value, Unread> {
         let url = format!("{}{path}", github.origin);
         let mut request = github
             .agent
@@ -91,38 +109,40 @@ impl Watched {
             request = request.header("If-None-Match", tag.as_str());
         }
         let name = github.name;
-        let waits = "so Joel's newest words there wait on its search";
-        let mut answer = match request.call() {
-            Ok(answer) => answer,
-            Err(error) => {
-                eprintln!("<4>couldn't list {path} on {name}, {waits}: {error}");
-                return None;
-            }
-        };
+        let mut answer = request
+            .call()
+            .map_err(|error| Unread::Failed(format!("couldn't list {path} on {name}: {error}")))?;
         let status = answer.status().as_u16();
         if status == 304 {
-            return self.kept.get(path).map(|(_, kept)| kept.clone());
+            let kept = self.kept.get(path).map(|(_, kept)| kept.clone());
+            return kept.ok_or_else(|| {
+                Unread::Failed(format!("{name} answered 304 for {path}, with nothing kept"))
+            });
         }
-        if status != 200 {
-            eprintln!("<4>{name} answered {status} for {path}, {waits}");
-            return None;
-        }
-        let tag = answer
-            .headers()
-            .get("etag")
-            .and_then(|tag| tag.to_str().ok())
-            .map(str::to_owned);
-        let listed: Value = match answer.body_mut().read_json() {
-            Ok(listed) => listed,
-            Err(error) => {
-                eprintln!("<4>{name}'s {path} couldn't be read, {waits}: {error}");
-                return None;
-            }
+        let header = |key: &str| {
+            let value = answer.headers().get(key)?;
+            value.to_str().ok().map(str::to_owned)
         };
+        let tag = header("etag");
+        let remaining = header("x-ratelimit-remaining");
+        let retry_after = header("retry-after").is_some();
+        if status != 200 {
+            let said: Value = answer.body_mut().read_json().unwrap_or_default();
+            let message = said["message"].as_str().unwrap_or("no reason");
+            let why = format!("{name} answered {status} for {path}: {message}");
+            let limited = github::rate_limited(status, remaining.as_deref(), retry_after, message);
+            return Err(match status {
+                403 | 404 | 410 if !limited => Unread::Gone(why),
+                _ => Unread::Failed(why),
+            });
+        }
+        let listed: Value = answer.body_mut().read_json().map_err(|error| {
+            Unread::Failed(format!("{name}'s {path} couldn't be read: {error}"))
+        })?;
         if let Some(tag) = tag {
             self.kept.insert(path.to_owned(), (tag, listed.clone()));
         }
-        Some(listed)
+        Ok(listed)
     }
 }
 
