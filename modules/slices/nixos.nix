@@ -255,6 +255,11 @@ let
   # floor inside its 42%, so a burst in any of them reclaims its own pages
   # first.
   agentsHigh = "42%";
+  # Where jobs' ceiling starts, and what jobs-sorter puts back as it stops.
+  jobsHigh = "26%";
+  # A percentage as an Exec line takes it: systemd reads a % there as the
+  # start of a specifier, even inside quotes.
+  unitPercent = lib.replaceStrings [ "%" ] [ "%%" ];
   account = "24%";
   above = "38%";
 
@@ -586,10 +591,12 @@ in
     # at the ceiling with up to 44 GiB swapped, they waited 0.024%, over 1% in
     # one. Jobs pays: it waited 12.7% of the time rather than 8.3%, its worst
     # minute at 55%, under the 80% for 30 s at which oomd ends it. MemoryHigh
-    # slows work past the ceiling and never ends it.
+    # slows work past the ceiling and never ends it. It's where the ceiling
+    # starts: jobs-sorter lifts it while nothing else waits on memory, and
+    # brings it back once anything does (jobs-sorter/src/ceiling.rs).
     systemd.user.slices.jobs.sliceConfig = {
       CPUWeight = "idle";
-      MemoryHigh = "26%";
+      MemoryHigh = jobsHigh;
       IOWeight = 1;
     };
     # The account's own daemons, 33 of them on 20 November (indexers, cadence,
@@ -1066,6 +1073,23 @@ in
             # call's end if later, and a switch never does.
             "--door"
             "jobs.slice"
+            # jobs' ceiling counts its page cache too: just after the boot
+            # of 25 November it sat there on 14.3 GB of cache, slowed
+            # 122,620 times in ten minutes and reading 19 GB back from the
+            # disk, while nothing else waited on memory and 26 GB was
+            # available. So it rises 2 GiB at a time while apps, sessions
+            # and agents have waited on memory under a tenth of a percent
+            # for 30 s, to half of memory at most, and falls back to its
+            # declared ceiling, 4 GiB a look, at the first wait, a call or
+            # memory short.
+            "--ceiling"
+            "jobs.slice=${unitPercent jobsHigh}"
+            "--spare"
+            "app.slice"
+            "--spare"
+            "session.slice"
+            "--spare"
+            "agents.slice"
             "--calls"
             (lib.getExe' pkgs.pipewire "pw-dump")
             # A call on another of Joel's machines, a meeting carried over
@@ -1109,12 +1133,30 @@ in
           );
         # A sorter stopping mid-call lets go of the brake it set, since a
         # sorter that isn't back before the call ends can't; a restart
-        # mid-call brakes again on its first look. Each is given 5 s, as the
-        # sorter's own sets are, so a stalled bus can't hold its stop.
+        # mid-call brakes again on its first look. It puts back jobs'
+        # declared ceiling too, since one it lifted would stay up with
+        # nothing to bring it down; an empty one would clear it. By hand,
+        # `systemctl --user set-property --runtime jobs.slice` with
+        # MemoryHigh=44%, then 38%, 32% and 26%, does the same. Each is
+        # given 5 s, as the sorter's own sets are, so a stalled bus can't
+        # hold its stop. The ceiling comes down from the sorter's top, 50%
+        # (TOP in jobs-sorter/src/ceiling.rs), a fall of about a sixteenth
+        # a write, as the sorter brings it down: the manager that writes
+        # memory.high reclaims what's past it itself, so one write from the
+        # top would have it reclaim a quarter of memory before it answers
+        # anything else. A step above where the ceiling stands only raises
+        # it for as long as the next write takes.
         ExecStopPost =
           let
+            declared = lib.toInt (lib.removeSuffix "%" jobsHigh);
+            fallTo = percent: "-${letGo "--user" "jobs.slice" "MemoryHigh=${toString percent}%%"}";
+            falls = builtins.filter (percent: percent > declared) [
+              44
+              38
+              32
+            ];
             letGo =
-              manager: slice:
+              manager: slice: property:
               lib.escapeShellArgs [
                 (lib.getExe' pkgs.coreutils "timeout")
                 "5"
@@ -1124,13 +1166,15 @@ in
                 "set-property"
                 "--runtime"
                 slice
-                "CPUQuota="
+                property
               ];
           in
           [
-            "-${letGo "--user" "jobs.slice"}"
-            "-${letGo "--system" "build.slice"}"
-          ];
+            "-${letGo "--user" "jobs.slice" "CPUQuota="}"
+            "-${letGo "--system" "build.slice" "CPUQuota="}"
+          ]
+          ++ map fallTo falls
+          ++ [ "-${letGo "--user" "jobs.slice" "MemoryHigh=${unitPercent jobsHigh}"}" ];
         Restart = "on-failure";
         RestartSec = 5;
       };
