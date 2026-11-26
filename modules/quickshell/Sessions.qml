@@ -2800,11 +2800,13 @@ Singleton {
         forgetRefusal(named);
         // An ask afresh is no longer the one viewKept let a place go for,
         // so its give-up keeps none again; viewKept marks its own after.
+        // Nor is it a re-ask, whose time pressedAgain sets after.
         if (named in keptAsks) {
             const asks = Object.assign({}, keptAsks);
             delete asks[named];
             keptAsks = asks;
         }
+        forgetAskedAgain(named);
         root.inSessions("pi-hosted", viewing(Viewers.titled(title, words)), into ?? null, named);
         return true;
     }
@@ -2876,11 +2878,7 @@ Singleton {
             delete pressed[named];
             pressedFor = pressed;
         }
-        if (named in askedAgainAt) {
-            const again = Object.assign({}, askedAgainAt);
-            delete again[named];
-            askedAgainAt = again;
-        }
+        forgetAskedAgain(named);
         if (named in listedAtAsk) {
             const listed = Object.assign({}, listedAtAsk);
             delete listed[named];
@@ -2895,10 +2893,19 @@ Singleton {
     // The session or row each viewer asked for by a press was asked for,
     // by its app id, so a give-up is said to it (untaken).
     property var pressedFor: ({})
-    // When each press pressedFor holds was told its viewer was asked for
-    // again, in ms, so it's told the viewer came only while the script
-    // could still answer for that ask (viewerCame).
+    // When each viewer was asked for again for a press told so, in ms, by
+    // its app id, not by the press: whoever holds the ask then is told the
+    // viewer came, while the script could still answer for it (viewerCame).
+    // An ask afresh ends it (viewWith); a re-ask whose window came refused
+    // lets its press go (heardWindow), leaving none to tell.
     property var askedAgainAt: ({})
+    function forgetAskedAgain(named) {
+        if (!(named in askedAgainAt))
+            return;
+        const again = Object.assign({}, askedAgainAt);
+        delete again[named];
+        askedAgainAt = again;
+    }
     // The ids of the windows niri listed under each viewer's app id as it
     // was asked for: none of them is the one that came for it, however it
     // changes while the ask stands (heardWindow).
