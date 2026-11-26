@@ -105,8 +105,8 @@ pub fn held(found: &[String], unread: &[String], waiting: &[String]) -> (Vec<Str
 /// own reader can't read that file, which only a change to the reader can
 /// fix, so a repository built on core needn't wait on one meanwhile. Its
 /// last word holds no `/`, so it's never a path a comment names. One whose
-/// file reads now, or listed more than once, is to come off, so the list
-/// only shrinks.
+/// file isn't among the unread, since it reads now or is gone, or one
+/// listed more than once, is to come off, so the list only shrinks.
 pub fn waived<'a>(unread: &'a [String], waiting: &[String]) -> (Vec<&'a String>, Vec<String>) {
     let mut waivers: BTreeMap<&str, usize> = BTreeMap::new();
     for file in waiting.iter().filter_map(|line| waiver(line)) {
@@ -121,7 +121,7 @@ pub fn waived<'a>(unread: &'a [String], waiting: &[String]) -> (Vec<&'a String>,
         .filter_map(|(file, times)| {
             let line = format!("{file} {WAIVED}");
             if !unread.iter().any(|unread| unread == file) {
-                Some(format!("{line} (read now: take it off)"))
+                Some(format!("{line} (read now or gone: take it off)"))
             } else if *times > 1 {
                 Some(format!("{line} (listed {times} times: list it once)"))
             } else {

@@ -903,7 +903,8 @@
   '';
   comments-name-what-exists = ''
     every comment naming a path from a top folder names what's there, as code-health's stale-paths
-    measure reads them, but those still waiting on their owners
+    measure reads them, but those still waiting on their owners, and every file's comments are
+    read, but those the list waives while code-health's reader learns them
   '';
   commands-agree = ''
     every command core's crates build keeps docs/commands.md's convention: built on the terminal

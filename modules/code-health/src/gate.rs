@@ -174,10 +174,23 @@ mod tests {
             Some(
                 "These wait on less now; list each as often as it's found:\n  \
                  f.py unread (listed 2 times: list it once)\n  \
-                 g.py unread (read now: take it off)\n"
+                 g.py unread (read now or gone: take it off)\n"
                     .to_owned()
             ),
             "a waiver listed twice, or one whose file reads now, wasn't told to come off"
+        );
+    }
+
+    #[test]
+    fn a_waiver_lets_through_only_its_own_file() {
+        let unread = stale::Stale {
+            gone: Vec::new(),
+            unread: owned(&["b c.sh", "f.py"]),
+        };
+        assert_eq!(
+            stale_verdict(&unread, &owned(&["f.py unread", "b c.sh old/z"])),
+            Some(format!("{UNREAD}\n  b c.sh\n")),
+            "a waiver let through a file it doesn't name, or didn't let its own through"
         );
     }
 }

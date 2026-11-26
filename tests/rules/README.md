@@ -11,8 +11,10 @@ when they came in. `comments-name-what-exists` has no `.py`: code-health's
 stale-paths measure says what breaks it, so the figure it counts each hour and
 the check held at each change are one rule, and its
 `comments-name-what-exists.sh` first sees that measure refuse a planted tree
-both ways, for a comment naming what isn't there and a waiting line nothing
-matches, each named.
+three ways, for a comment naming what isn't there, a waiting line nothing
+matches and a waiver for a file that reads, each named. Its list also takes
+`file unread` for a file the reader can't read yet, which only a change to
+the reader mends, and such a waiver must come off once its file reads.
 `checks.nix` runs all fourteen on core itself.
 Many entries because each rule keeps its three files side by side, where a
 reader opening one finds the others, rather than in a folder of its own.

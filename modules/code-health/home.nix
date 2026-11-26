@@ -47,7 +47,13 @@ let
   unreadComments = lib.pipe (builtins.readFile ./src/hour.rs) [
     (lib.splitString "\n")
     (map (builtins.match ''pub const UNREAD_COMMENTS: &str = "([^"]+)";''))
-    (lib.findFirst (named: named != null) (throw "hour.rs names no UNREAD_COMMENTS"))
+    (lib.findFirst (named: named != null) (
+      throw (
+        "hour.rs names no UNREAD_COMMENTS on one line as "
+        + "`pub const UNREAD_COMMENTS: &str = \"...\";`, the way home.nix reads it: "
+        + "keep it so, or mend the pattern in home.nix"
+      )
+    ))
     builtins.head
   ];
   # The files code-health's own reader couldn't read are its keeper's to
