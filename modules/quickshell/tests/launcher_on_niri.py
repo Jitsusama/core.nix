@@ -339,7 +339,7 @@ class Shell:
         return [row.split(" ")[0] for row in self.rows_made_since(place, before)]
 
     def rows_made_since(self, place: str, before: int) -> list[str]:
-        """Give the rows the place made after it had made `before`, whole and marked as kept."""
+        """Give the rows the place made after it had made `before`, whole, marked shut or walked."""
         made = self.made()
         count = int(made["rows"][place]) - before
         lately = made["lately"][place]

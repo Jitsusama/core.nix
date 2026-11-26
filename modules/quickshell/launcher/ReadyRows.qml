@@ -590,7 +590,7 @@ Scope {
             asking,
             reasked,
             lostTwice,
-            found: found.words,
+            foundWords: found.words,
             keysHeld: found.keys.length,
             foundAll: found.found,
             lost: lost?.words ?? null,
