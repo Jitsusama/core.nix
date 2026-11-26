@@ -250,9 +250,11 @@ named "${home}"
 # before its digits as well, which GNU's find refuses, so what this one
 # says is left out of what's read. ' -1' and '+-1' are -1, find's own no
 # limit, and zeros before a digit count for nothing however many there are.
-# A number past a long long, 2^64 + 1, is held at its most, and kept in
-# an int, as -1, where wrapping round would make it 1.
-for given in '+3' ' 3' '+ +3' ' -1' '+-1' '0000000000000000000003' '18446744073709551617'; do
+# A number past a long long, 2^64 + 1 or by one at 19 digits, is held at
+# its most, and kept in an int, as -1, where wrapping round would make it
+# 1 or 0.
+for given in '+3' ' 3' '+ +3' ' -1' '+-1' '0000000000000000000003' '18446744073709551617' \
+  '9223372036854775808'; do
   search "${home}" -maxdepth 1 -maxdepth "${given}" -name needle >/dev/null
   if ! grep -qxF "${note}" "${said}"; then
     echo "${who} with -maxdepth 1 then '${given}' ran as -maxdepth 1: $(<"${said}")" >&2
@@ -366,12 +368,15 @@ if ! grep -qxF "/${home#/}/Desktop" <<<"${said//\\/}" \
   exit 1
 fi
 # Each pruned search keeps its options and start first, as typed.
-for args in depth-test d-test f-path dashes shallow option exec-d semi-inside plus-alone; do
+for args in depth-test d-test f-path dashes shallow option exec-d semi-inside plus-led-early \
+  plus-alone-early plus-inside; do
   case ${args} in
     depth-test) lead=("${home}") && given "${home}" -depth 2 -name x ;;
     d-test) lead=("${home}") && given "${home}" -d 2 -name x ;;
     semi-inside) lead=("${home}") && given "${home}" -exec true 'x;' -mindepth 3 ';' ;;
-    plus-alone) lead=("${home}") && given "${home}" -exec true +x -mindepth 3 ';' ;;
+    plus-led-early) lead=("${home}") && given "${home}" -exec true +x -mindepth 3 ';' ;;
+    plus-alone-early) lead=("${home}") && given "${home}" -exec true + -mindepth 3 ';' ;;
+    plus-inside) lead=("${home}") && given "${home}" -exec true '{}' x+ -mindepth 3 ';' ;;
     f-path) lead=(-f "${home}") && given -f "${home}" -name x ;;
     dashes) lead=(-- "${home}") && given -- "${home}" -name x ;;
     shallow) lead=("${home}") && given "${home}" -mindepth 1 -name x ;;
