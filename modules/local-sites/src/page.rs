@@ -31,6 +31,9 @@ const TURN: Duration = Duration::from_millis(20);
 /// How long a daemon has to answer an ask asked once, in all.
 const PATIENCE: Duration = Duration::from_secs(10);
 
+/// The longest line an ask's answer is read to, as daemon-serve reads one.
+const LONGEST_LINE: usize = 16 << 20;
+
 /// Serves one page's feed until it closes.
 pub fn serve(
     mut socket: WebSocket<TcpStream>,
@@ -150,13 +153,35 @@ fn asked(
 /// it said to it, or that it didn't in time: a daemon telling line after
 /// line of something else can't hold the asker past its patience either.
 pub fn once(socket: &Path, asked: &Value) -> io::Result<Value> {
-    let deadline = Instant::now() + PATIENCE;
+    once_within(socket, asked, PATIENCE)
+}
+
+/// As `once`, with `patience` in all.
+fn once_within(socket: &Path, asked: &Value, patience: Duration) -> io::Result<Value> {
+    let deadline = Instant::now() + patience;
     let mut stream = UnixStream::connect(socket)?;
-    stream.set_write_timeout(Some(PATIENCE))?;
+    stream.set_write_timeout(Some(patience))?;
     let mut ask = asked.clone();
     ask["id"] = json!(2);
     writeln!(stream, "{}\n{ask}", json!({"id": 1, "ask": "hello"}))?;
     let mut lines = BufReader::new(stream);
+    loop {
+        let line = line_by(&mut lines, deadline)?;
+        // A daemon outside the interface ends this ask in the same words
+        // it ends a watch in, rather than leaving it to time out.
+        if let Some(answer) = daemon_serve::watch::spoken(&line)?
+            && answer.get("id") == Some(&json!(2))
+        {
+            return Ok(answer);
+        }
+    }
+}
+
+/// The next line `lines` tells by `deadline`, whose time left bounds each
+/// read, so a daemon trickling a line a byte at a time can't hold the asker
+/// past it either; and no longer than daemon-serve takes one.
+fn line_by(lines: &mut BufReader<UnixStream>, deadline: Instant) -> io::Result<String> {
+    let mut line = Vec::new();
     loop {
         let left = deadline.saturating_duration_since(Instant::now());
         if left.is_zero() {
@@ -166,19 +191,28 @@ pub fn once(socket: &Path, asked: &Value) -> io::Result<Value> {
             ));
         }
         lines.get_ref().set_read_timeout(Some(left))?;
-        let mut line = String::new();
-        if lines.read_line(&mut line)? == 0 {
+        let read = lines.fill_buf()?;
+        if read.is_empty() {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
                 "it hung up before answering",
             ));
         }
-        // A daemon outside the interface ends this ask in the same words
-        // it ends a watch in, rather than leaving it to time out.
-        if let Some(answer) = daemon_serve::watch::spoken(&line)?
-            && answer.get("id") == Some(&json!(2))
-        {
-            return Ok(answer);
+        let (taken, ended) = read
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map_or((read.len(), false), |at| (at + 1, true));
+        line.extend_from_slice(&read[..taken]);
+        lines.consume(taken);
+        if line.len() > LONGEST_LINE {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "it told a line past what's read",
+            ));
+        }
+        if ended {
+            return String::from_utf8(line)
+                .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "it told no text"));
         }
     }
 }
@@ -194,4 +228,67 @@ fn trimmed(feed: &Feed, mut answer: Value, id: &Value) -> Value {
             .collect();
     }
     answer
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+    use std::os::unix::net::UnixListener;
+
+    /// How long each case gives the daemon in all.
+    const BRIEF: Duration = Duration::from_millis(300);
+
+    /// A stand-in daemon at a fresh socket, which reads the ask and then
+    /// tells `told` a part at a time, `apart` between each.
+    fn telling(name: &str, told: Vec<Vec<u8>>, apart: Duration) -> std::path::PathBuf {
+        let socket =
+            std::env::temp_dir().join(format!("local-sites-once-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_file(&socket);
+        let listener = UnixListener::bind(&socket).expect("the stand-in listens");
+        thread::spawn(move || {
+            let Ok((mut stream, _)) = listener.accept() else {
+                return;
+            };
+            let mut ask = [0; 256];
+            let _ = stream.read(&mut ask);
+            for part in told {
+                if stream.write_all(&part).is_err() {
+                    return;
+                }
+                thread::sleep(apart);
+            }
+        });
+        socket
+    }
+
+    #[test]
+    fn a_daemon_trickling_or_telling_else_is_given_up_on_in_time() {
+        let trickled = br#"{"id": 2, "ok": true}"#.iter().map(|byte| vec![*byte]).collect();
+        let other = (0..100)
+            .map(|_| b"{\"id\": 1, \"ok\": true}\n".to_vec())
+            .collect();
+        for (name, told) in [("trickled", trickled), ("other", other)] {
+            let socket = telling(name, told, Duration::from_millis(40));
+            let asked = Instant::now();
+            let answer = once_within(&socket, &json!({"ask": "steer"}), BRIEF);
+            let took = asked.elapsed();
+            let _ = std::fs::remove_file(&socket);
+            assert!(answer.is_err(), "{name}: it answered {answer:?}");
+            assert!(took < BRIEF * 3, "{name}: it was held {took:?}");
+        }
+    }
+
+    #[test]
+    fn an_answer_told_in_parts_is_read_whole() {
+        let told = vec![br#"{"id": 2, "o"#.to_vec(), b"k\": true}\n".to_vec()];
+        let socket = telling("parts", told, Duration::from_millis(10));
+        let answer = once_within(&socket, &json!({"ask": "steer"}), BRIEF);
+        let _ = std::fs::remove_file(&socket);
+        assert_eq!(
+            answer.expect("it answered")["ok"],
+            json!(true),
+            "its answer was misread"
+        );
+    }
 }

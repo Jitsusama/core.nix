@@ -362,12 +362,14 @@ it("a page narrowed to a cell shows only its asks, and every one widened again",
   const sockets: StandIn[] = [];
   const holder = new Element("div");
   const asks = followAsks({ holder, make, address: "abc", reaching: reaching(sockets) });
-  telling(sockets[0], look("mine", "abc"), look("theirs", "def"));
-  assert.equal(holder.all("article").length, 1, "a cell was shown another's asks");
+  const titled = (id: string, address: string) => ({ ...look(id, address), title: id });
+  telling(sockets[0], titled("mine", "abc"), titled("theirs", "def"));
+  const shown = () => holder.all("h3").map((title) => title.words());
+  assert.deepEqual(shown(), ["mine"], "a cell was shown another's asks");
   asks.narrow(null);
-  assert.equal(holder.all("article").length, 2, "widened, the page didn't show every ask");
+  assert.deepEqual(shown().toSorted(), ["mine", "theirs"], "widened, not every ask showed");
   asks.narrow("def");
-  assert.deepEqual(holder.all("h3").length, 1);
+  assert.deepEqual(shown(), ["theirs"], "narrowed again, another cell's asks showed");
 });
 
 it("a page asks again whether its answers are taken once its feed comes back", async () => {
