@@ -75,6 +75,13 @@ function shareTurns(saying, heldSaying) {
     return { quiet: letsHeldGo(saying, heldSaying), armed: rest() };
 }
 
+// Whether `armed` still stood with the line at `keysTaken`, so a share's
+// turn letting it go (shareTurns, Launcher.qml's untold) is one the
+// journal says went: an arm a key since already let go of isn't.
+function stood(armed, keysTaken) {
+    return holds(armed, armed.key, keysTaken);
+}
+
 // What Return does on the selected row, from what `how` says of it: an
 // answer being given is given, a Return doubling a landing does nothing
 // more, a gone row is only run, and a held row is held before anything else, as every other

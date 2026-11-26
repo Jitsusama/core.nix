@@ -3570,6 +3570,8 @@ Scope {
         tagsBack = left.tags;
         lastPlace = left.last;
         markLetGo(wasLetGo, had);
+        if (Arming.stood(armed, prompt.keysTaken))
+            console.info("launcher: let go of an arm, as the screen may be shared");
         armed = Arming.rest();
         if (forgotten > 0)
             console.info(`launcher: forgot ${forgotten} words told and unread, `
@@ -3589,6 +3591,9 @@ Scope {
         if (left.quiet)
             say([]);
         heldSaying = [];
+        // Said in the journal, never the row's name, which a source served.
+        if (Arming.stood(armed, prompt.keysTaken))
+            console.info("launcher: let go of an arm, as a screen share turned");
         armed = left.armed;
         forgetLetGo();
     }

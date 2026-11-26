@@ -161,6 +161,12 @@ QtObject {
             ended.quiet, true);
         expect("but a share's end keeps another word said since",
             Arming.shareTurns([["q", "quit"]], heldWord).quiet, false);
+        // Whether an arm a share's turn lets go of still stood, so the
+        // launcher's journal says it went (Launcher.qml's unheld, untold).
+        const standing = { key: "reboot", keys: 4, at: 100 };
+        expect("an arm with no key taken since stood", Arming.stood(standing, 4), true);
+        expect("one with a key taken since didn't", Arming.stood(standing, 5), false);
+        expect("nor did none", Arming.stood(Arming.rest(), -1), false);
 
         // Which places may be kept to draw at once at the next opening
         // (Launcher.qml's keepPlace): never one that says it's never kept,
