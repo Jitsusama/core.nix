@@ -5,9 +5,10 @@ use std::collections::BTreeSet;
 #[test]
 fn a_cause_s_text_is_cut_and_a_stretch_says_only_so_many() {
     let mut watch = Watch::default();
-    // Two-byte characters, a bell and a C1 control, so the cut counts
-    // characters and the journal gets none of the daemon's controls.
-    let long = format!("\u{7}ab\u{9b}{}", "\u{e9}".repeat(5000));
+    // Two-byte characters, a bell, a newline that could forge a journal
+    // line and a C1 control, so the cut counts characters and the journal
+    // gets none of the daemon's controls.
+    let long = format!("\u{7}a\nb\u{9b}{}", "\u{e9}".repeat(5000));
     let said = watch.heard(Err(long)).0;
     assert_eq!(said.len(), 1, "the first cause wasn't said once");
     assert!(
@@ -27,6 +28,11 @@ fn a_cause_s_text_is_cut_and_a_stretch_says_only_so_many() {
     assert!(
         said[CAUSES - 1].ends_with("its further causes go unsaid until it answers"),
         "the journal wasn't told that further causes go unsaid: {said:?}"
+    );
+    assert_eq!(
+        watch.unread.as_ref().map(BTreeSet::len),
+        Some(CAUSES + 1),
+        "the causes kept grew past the one marking the stretch muted"
     );
     assert_eq!(
         watch.heard(Ok(Vec::new())).0,
@@ -73,6 +79,14 @@ fn each_failure_to_keep_is_said_once_and_keeping_again_is_said() {
         "the same failure to keep was said at every answer"
     );
     assert!(keeping.owed(), "a failed keep wasn't owed another");
+    let other = "meetings.json: No space left on device";
+    assert_eq!(
+        keeping.kept(Err(other.into())),
+        Some(format!(
+            "<4>the meetings couldn't be kept for the next run: {other}"
+        )),
+        "a keep failing for a new reason went unsaid"
+    );
     assert_eq!(
         keeping.kept(Ok(())),
         Some("<5>the meetings are kept for the next run again".to_owned()),
