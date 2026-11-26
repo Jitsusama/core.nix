@@ -183,7 +183,8 @@ class Cases:
             self.check("a 64 KiB secret pastes whole", None if pasted else "it never pasted")
             self.check("a 64 KiB secret makes nothing under TMPDIR", self.anything_made())
             self.check("a 64 KiB secret runs nothing", self.anything_ran())
-            locked = ended(copier) or unlocked(copier.pid, len(held))
+            # REDTEMP: asks 64 times the secret locked, as a copier locking too little would.
+            locked = ended(copier) or unlocked(copier.pid, 64 * len(held))
             self.check("a grown secret is locked", locked)
         finally:
             copier.kill()
