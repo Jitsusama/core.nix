@@ -22,10 +22,13 @@ let
   restoreFile = "${scripts}/restore-file.ts";
   windowsElsewhere = "${scripts}/windows-elsewhere.ts";
   sweepScript = "${scripts}/pi-sweep.ts";
-  # Whether the machine has room for a sweep to start (sweep-room.sh).
+  # Waits for the machine to have room for a sweep (sweep-room.sh).
   sweepRoom = pkgs.writeShellApplication {
     name = "pi-sweep-room";
-    runtimeInputs = [ pkgs.gawk ];
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.gawk
+    ];
     text = builtins.readFile ./sweep-room.sh;
   };
   sweepProviders = config.jitsusama.pi.sweep.providerModules;
@@ -173,9 +176,11 @@ in
       };
       Service = {
         Type = "oneshot";
-        # An hour whose machine is stalled on memory or I/O is skipped, not
-        # failed (sweep-room.sh says when).
-        ExecCondition = lib.getExe sweepRoom;
+        # A sweep waits up to 40 minutes for a machine stalled on memory or
+        # I/O, and never skips the hour, as two skipped hours would hand
+        # sweeping to the hosts (sweep-room.sh). The dash starts it anyway
+        # if the wait itself fails.
+        ExecStartPre = "-${lib.getExe sweepRoom}";
         ExecStart = "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${sweepScript}";
         # Where agents' own commands run, beneath everything Joel uses, and
         # a place the polkit rules and the TPM agent's gate both take as an
@@ -221,22 +226,20 @@ in
         # files, charged to this unit: on 23 November a run peaked at 5.8 GB
         # and the next at 2.9 GB, while the sweep's own memory stayed under
         # 0.26 GB and file pages under 0.6 GB. Past this mark the kernel
-        # takes that back from the sweep rather than from what Joel is
-        # using. At 1.5 GB it took back too much: on 26 November one run
-        # sat at the mark for 34 minutes while its git status read 8 GB
-        # from the disk and 741 KB through read(), so nearly all of it was
-        # a large repository's mapped pack files faulted in again, 1.8
-        # million times. Each tree's status maps those packs anew, so the
-        # mark holds them with room to spare. No hard limit of its own: a
-        # kill partway through a take leaves a tree moved aside for the
-        # next run to put back. The two-hour timeout above, systemd-oomd
+        # takes that back from the sweep. At 1.5 GB it took back too much:
+        # on 26 November one run sat at the mark for 34 minutes while its
+        # git status read 8 GB from the disk and 741 KB through read(), so
+        # nearly all of it was a large repository's mapped pack files
+        # faulted in again, 1.8 million times, as each tree's status maps
+        # those packs anew. A tenth of memory is 6.2 GB on a 62 GiB
+        # machine, over the 5.8 GB peak, and less on a smaller one. The
+        # mark reserves nothing: what Joel is using keeps its slices'
+        # floors beneath it. No hard limit of its own: a kill partway
+        # through a take leaves a tree moved aside for the next run to put
+        # back. The two-hour timeout above, systemd-oomd
         # watching the slice for pressure and the kernel's own OOM killer
         # may still end it.
-        MemoryHigh = "4G";
-        # A tenth of the I/O weight a unit gets by default, as nobody waits
-        # on the sweep: what it reads waits behind what agents and Joel
-        # are waiting for.
-        IOWeight = 10;
+        MemoryHigh = "10%";
       };
     };
     systemd.user.timers.pi-sweep = {

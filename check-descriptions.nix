@@ -3460,14 +3460,17 @@
     the store's node, the account's git, its hosts' folders, provider modules as a machine gave
     them, only the agents' SSH proxy its hosts get and none of the variables a pi host's unit
     clears, rather than on a host's thread; left running through a switch for up to two hours,
-    started only once it asks whether the machine has room, made to give memory back past 4 GiB
-    with no hard limit, its own, its slices' or its account manager's, to kill it at, reading at a
-    tenth of the default I/O weight, skipped where the harness isn't installed, and never on a Mac
+    started only once it has waited for the machine to have room, a wait whose failure still
+    starts it, made to give memory back past a tenth of the machine's with no hard limit, its
+    own, its slices' or its account manager's, to kill it at, skipped where the harness isn't
+    installed, and never on a Mac
   '';
   pi-sweep-waits-for-room = ''
-    the hourly sweep's room check lets it start when memory and I/O stalled little over five
-    minutes and a quarter of memory is free, and skips the hour with exit 1, saying why, when
-    either stalled past its mark or memory is short; one that can't read the machine lets it start
+    the hourly sweep's room check lets it start at once when memory and I/O stalled little over
+    five minutes and a quarter of memory is free, and when either stalled past its mark or memory
+    is short waits, saying why, then lets it start however the machine stands, never skipping the
+    hour; one that can't read the machine, or reads a value that isn't a number, lets it start at
+    once and runs nothing it read
   '';
   pi-packages-compiles-for-macos = ''
     pi-packages and its tests pass clippy as a Mac compiles them, where libproc says which
