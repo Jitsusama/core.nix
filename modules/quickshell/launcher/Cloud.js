@@ -84,6 +84,17 @@ function differs(before, now) {
         || now.some((one, at) => OFFERED.some(field => before[at][field] !== one[field]));
 }
 
+// What a start in the cloud is given as offered: the `offers` heard at
+// `at`, else, none heard yet, null while an ask is out (`asking`) or none
+// has come back, or `unoffered`, the why the last ask came back with, so a
+// node that can't say is never told as one still to answer (refused).
+function offeredNow(at, offers, asking, unoffered) {
+    if (at > 0) {
+        return offers;
+    }
+    return asking || unoffered === "" ? null : unoffered;
+}
+
 // Whether what the cloud offers, as last heard at `at`, is to be asked
 // again at `now`: never heard, or kept past OFFERS_KEPT_MS.
 function stale(at, now) {
@@ -157,7 +168,8 @@ function ask(text, place, on, offered) {
 // cloud as last `offered`, was refused when its words weren't: by Start
 // New Work's `words`, the place unnamed, the cloud not heard yet (null
 // offered, as a link's act Returned before the first offers came), the
-// cloud not taken, else where it starts misnamed.
+// why its last ask came back with no offers (a why offered, offeredNow),
+// the cloud not taken, else where it starts misnamed.
 function refused(place, on, offered, words) {
     if (!named(place)) {
         return words?.unnamed ?? "";
@@ -167,6 +179,9 @@ function refused(place, on, offered, words) {
     }
     if (offered === null) {
         return words?.unheard ?? "";
+    }
+    if (typeof offered === "string") {
+        return String(words?.unoffered ?? "").replace("{why}", offered);
     }
     return offering(offered) ? words?.unmachined ?? "" : words?.untaken ?? "";
 }

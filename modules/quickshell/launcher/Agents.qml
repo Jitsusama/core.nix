@@ -2043,8 +2043,13 @@ Provider {
                 + `asked at ${StartSaid.clock(again)}`);
             return;
         }
-        // Null while no offers have been heard, so that's said as not heard yet.
-        const offered = provider.cloudOffersAt > 0 ? provider.cloudOffers : null;
+        // With no offers heard, said as not heard yet while an ask is out,
+        // else as the why the last ask came back with (Cloud.offeredNow); a
+        // Return then asks again, so "Return" is never said of nothing.
+        const offered = Cloud.offeredNow(provider.cloudOffersAt, provider.cloudOffers,
+            provider.cloudAsking, provider.cloudUnoffered);
+        if (Cloud.onOf(elsewhere)?.needs !== undefined && !Array.isArray(offered))
+            provider.askOffers();
         const ask = elsewhere === "" ? Sprouting.ask(said, folder)
             : Cloud.ask(said, folder, elsewhere, offered);
         if (ask === null) {

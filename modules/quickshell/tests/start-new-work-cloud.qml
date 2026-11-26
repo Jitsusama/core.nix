@@ -12,7 +12,7 @@ QtObject {
 
     function cases() {
         const words = { unnamed: "unnamed", unmachined: "unmachined", untaken: "untaken",
-            unheard: "unheard" };
+            unheard: "unheard", unoffered: "unoffered: {why}" };
         const offered = [{ shape: "standard" }];
 
         // Joel, 2026-11-25: "we need full integation, from pi, from cli, from laucnher,
@@ -45,8 +45,10 @@ QtObject {
                 Cloud.differs([standard], [standard, { shape: "small" }]),
                 Cloud.differs([standard], [{ shape: "standard" }]),
                 Cloud.differs([standard], [Object.assign({}, standard)]),
-                Cloud.differs([], [])],
-            [true, true, true, true, true, false, false]);
+                Cloud.differs([], []),
+                Cloud.differs([standard, { shape: "large", hourly: "1.10", currency: "USD" }],
+                    [standard, { shape: "large", hourly: "1.40", currency: "USD" }])],
+            [true, true, true, true, true, false, false, true]);
         Expect.same("asked again only when never heard or ten minutes old",
             [Cloud.stale(0, 1000), Cloud.stale(1000, 1000 + 599999),
                 Cloud.stale(1000, 1000 + 600000)], [true, false, true]);
@@ -112,6 +114,22 @@ QtObject {
                 Cloud.refused("core.nix", "cloud", null, words),
                 Cloud.refused("/home/j/src/core.nix", "cloud", null, words)],
             [null, "unheard", "unnamed"]);
+        // One whose last ask came back with no offers, a machine with no node or a node
+        // down, is told why, never "not yet", which no Return would end (#6792's round).
+        const noNode = "this machine runs no node to ask what the cloud offers";
+        Expect.same("none heard is not yet while an ask is out or none came back, else its why",
+            [Cloud.offeredNow(0, [], true, noNode), Cloud.offeredNow(0, [], false, ""),
+                Cloud.offeredNow(0, [], false, noNode),
+                Cloud.offeredNow(1800000000000, offered, false, noNode)],
+            [null, null, noNode, offered]);
+        Expect.same("and a why the last ask came back with is said as it",
+            [Cloud.ask("fix it", "core.nix", "cloud", noNode),
+                Cloud.refused("core.nix", "cloud", noNode, words)],
+            [null, `unoffered: ${noNode}`]);
+        Expect.same("and a link naming nowhere is said as that, offers heard or not",
+            [Cloud.refused("core.nix", "-", null, words),
+                Cloud.refused("core.nix", "-", noNode, words)],
+            ["unmachined", "unmachined"]);
         Expect.same("a machine by its name needs no offer",
             Cloud.ask("https://github.com/o/r/issues/7", "", "skiff", []),
             { ask: "sprout", text: "https://github.com/o/r/issues/7", on: "skiff" });
