@@ -29,19 +29,23 @@ Singleton {
     }
 
     // Tuple finds someone by their email; the id Tuple knows them by is
-    // the one left when they have none.
+    // the one left when they have none. Each goes after "--", since tuple
+    // reads an argument that begins with a dash as a flag, and an email
+    // may begin with one.
     function who(contact) {
         return contact.email || String(contact.id);
     }
 
     // Calls one who isn't in a call and joins one who is.
     function pair(contact) {
-        Niri.spawn(["tuple", "call", contact.status === "busy" ? "join" : "start", who(contact)]);
+        Niri.spawn(["tuple", "call", contact.status === "busy" ? "join" : "start", "--",
+            who(contact)]);
     }
 
     // Tells Tuple they're a favourite or not; the daemon hears it from
     // Tuple, and the source shows it at once meanwhile.
     function favour(contact, wanted) {
-        Niri.spawn(["tuple", "contacts", wanted ? "favorite" : "unfavorite", who(contact)]);
+        Niri.spawn(["tuple", "contacts", wanted ? "favorite" : "unfavorite", "--",
+            who(contact)]);
     }
 }
