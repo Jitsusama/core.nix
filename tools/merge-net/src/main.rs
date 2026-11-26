@@ -483,20 +483,6 @@ fn stands(commit: &str, main: &str, behind: bool) -> String {
     }
 }
 
-/// What ready says of a head standing as `stands` says, the same change
-/// that passed at `newest` and `earlier`, where main since moved only
-/// `shared`.
-fn twice(stands: &str, newest: &str, earlier: &str, shared: &[String]) -> String {
-    format!(
-        "ready: {stands} and changed-checks built what it named at {} and {}, the same \
-         change, so a clean rebase needs no third run though main has since moved {}; the \
-         net tests it after it merges",
-        short(newest),
-        short(earlier),
-        shared.join(", ")
-    )
-}
-
 /// Whether `commit`, a head on `main` with no run of its own, is ready by
 /// an earlier commit of the same change, saying what to do when it isn't.
 fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result<ExitCode, String> {
@@ -507,10 +493,6 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
         before,
     } = earlier::judged(commit, main, on_main)?;
     match before {
-        ready::Before::Twice(newest, earlier, shared) => {
-            let said = twice(&stands, &newest, &earlier, &shared);
-            return Ok(may_merge(commit, main, &[&newest, &earlier], &files, &said));
-        }
         ready::Before::Clean(checked) => {
             let said = format!(
                 "ready: {stands} and changed-checks built what it named at {}, the same \

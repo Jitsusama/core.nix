@@ -30,6 +30,15 @@
 # while paused lets it go on for its grace to hear it. A job that can run
 # long names `runsAtMost`, the time it may run, its pauses aside. So
 # night-shift is on every account's path.
+#
+# A job can ease a slice's bar while Joel is away from the machine, with
+# `stopsWhileAway`, and the machine's with `stopMachineWhileAway`: a
+# browser left open stalls app.slice a little now and then with nobody at
+# it, which stopped a repack 19 times on 23 November's night. Away is
+# `away.after` with no key or touch and no call on this machine, as
+# swayidle-away's mark, rhythm's minutes and the calls module say; the
+# moment he's back, the job's own bars hold again (src/away.rs). An eased
+# bar only loosens: one under the bar it replaces is refused.
 {
   config,
   lib,
@@ -39,6 +48,39 @@
 let
   package = pkgs.callPackage ./package.nix { };
   jobs = config.jitsusama.night-shift.jobs;
+  away = config.jitsusama.night-shift.away;
+  # A path as systemd's command line reads it, its specifiers kept so %t
+  # and %S name the account's own folders; its type holds no space or
+  # quote, so it needs no quoting.
+  specifiedArg = lib.replaceStrings [ "$" ] [ "$$" ];
+  specifiedPath = lib.types.strMatching "[^[:space:]\"'\\;]+";
+  eases = job: job.stopsWhileAway != { } || job.stopMachineWhileAway != null;
+  awayArgs =
+    job:
+    lib.optionals (eases job) (
+      [
+        "--away-mark"
+        (specifiedArg away.mark)
+        "--away-seen"
+        (specifiedArg away.seen)
+        "--away-after"
+        (number away.after)
+      ]
+      ++ lib.optionals (away.call != [ ]) [
+        "--away-call"
+        (execArg (lib.concatStringsSep " " away.call))
+      ]
+      ++ lib.concatLists (
+        lib.mapAttrsToList (slice: bar: [
+          "--away-stop"
+          (execArg "${slice}=${number bar}")
+        ]) job.stopsWhileAway
+      )
+      ++ lib.optionals (job.stopMachineWhileAway != null) [
+        "--away-stop-machine"
+        (number job.stopMachineWhileAway)
+      ]
+    );
 
   # One argument as systemd's command line reads it: its own specifiers
   # and variables escaped, then quoted only when systemd would split it,
@@ -107,6 +149,10 @@ let
         "--rests"
         (number job.restsHours)
       ]
+      ++ lib.optionals (job.stopIo != null) [
+        "--stop-io"
+        (number job.stopIo)
+      ]
       ++ lib.optionals (job.waitsAtMost != null) [
         "--wait-at-most"
         (number job.waitsAtMost)
@@ -133,9 +179,10 @@ let
           "${disk}=${rate}"
         ]) job.readsAtMost
       )
-      ++ [ "--" ]
-      ++ job.command
-    );
+    )
+    + lib.optionalString (eases job) " ${lib.concatStringsSep " " (awayArgs job)}"
+    + " "
+    + lib.concatMapStringsSep " " execArg ([ "--" ] ++ job.command);
 
   jobOptions = {
     options = {
@@ -208,6 +255,36 @@ let
         '';
         type = lib.types.number;
         default = 25;
+      };
+      stopsWhileAway = lib.mkOption {
+        description = ''
+          Eased bars for slices in `stops`, each holding in place of its own
+          while Joel is away from the machine, as `away` tells; the moment
+          he's back, its own bar holds again.
+        '';
+        type = lib.types.attrsOf lib.types.number;
+        default = { };
+        example = {
+          "app.slice" = 10;
+          "session.slice" = 10;
+        };
+      };
+      stopIo = lib.mkOption {
+        description = ''
+          The machine's full io pressure over the last minute, in percent,
+          that the job starts only under and is stopped once past; null
+          leaves the disk unwatched.
+        '';
+        type = lib.types.nullOr lib.types.number;
+        default = null;
+      };
+      stopMachineWhileAway = lib.mkOption {
+        description = ''
+          An eased bar for the machine, in place of `stopMachine` while Joel
+          is away; null keeps `stopMachine` whether he's here or not.
+        '';
+        type = lib.types.nullOr lib.types.number;
+        default = null;
       };
       restsHours = lib.mkOption {
         description = "How long after a success a try does nothing, in hours.";
@@ -285,12 +362,69 @@ in
     default = { };
   };
 
+  # How a job easing its bars tells Joel is away, systemd's specifiers
+  # expanding in the paths.
+  options.jitsusama.night-shift.away = {
+    mark = lib.mkOption {
+      description = "The file there while someone touched a key or the pointer lately, as swayidle-away keeps it.";
+      type = specifiedPath;
+      default = "%t/someone-at-the-machine";
+    };
+    seen = lib.mkOption {
+      description = "rhythm's minutes at the machine, whose last says when Joel was last there as a job starts.";
+      type = specifiedPath;
+      default = "%S/rhythm/seen";
+    };
+    call = lib.mkOption {
+      description = ''
+        A program and its arguments exiting 0 while a call is on this
+        machine and 1 while none is, run at most every 30 seconds once
+        nothing else says he's here; any other answer counts as a call.
+        Empty asks about no call.
+      '';
+      type = lib.types.listOf (lib.types.strMatching "[^[:space:]]+");
+      default = [
+        (lib.getExe (pkgs.callPackage ../calls/package.nix { }))
+        "--here"
+      ];
+    };
+    after = lib.mkOption {
+      description = "How long with no key, touch or call, in seconds, before Joel counts as away.";
+      type = lib.types.ints.positive;
+      default = 1800;
+    };
+  };
+
   config = lib.mkIf pkgs.stdenv.hostPlatform.isLinux (
     lib.mkMerge [
       {
         # Every heavy job by day takes its turn through `night-shift turn`,
         # night job or none, so it is on every account's path.
         home.packages = [ package ];
+        # An eased bar replaces one of the job's own, so each names a slice
+        # the job stops at; night-shift refuses any other as it starts.
+        assertions =
+          lib.mapAttrsToList (name: job: {
+            assertion = lib.all (slice: job.stops ? ${slice}) (lib.attrNames job.stopsWhileAway);
+            message = "night-shift job ${name} eases a slice's bar it has no stop for: give each slice in stopsWhileAway a bar in stops";
+          }) jobs
+          # An eased bar only loosens: one under the job's own would stop
+          # it sooner while Joel is away, which night-shift refuses too.
+          ++ lib.mapAttrsToList (name: job: {
+            assertion =
+              lib.all (slice: !(job.stops ? ${slice}) || job.stopsWhileAway.${slice} >= job.stops.${slice}) (
+                lib.attrNames job.stopsWhileAway
+              )
+              && (job.stopMachineWhileAway == null || job.stopMachineWhileAway >= job.stopMachine);
+            message = "night-shift job ${name} eases a bar to under its own, which would tighten it while Joel is away: give stopsWhileAway and stopMachineWhileAway bars at or over stops and stopMachine";
+          }) jobs
+          # With nothing keeping the mark, it is never there, and Joel
+          # would always read as away, so a job eases only where
+          # swayidle-away runs.
+          ++ lib.mapAttrsToList (name: job: {
+            assertion = !(eases job) || config.systemd.user.services ? swayidle-away;
+            message = "night-shift job ${name} eases its bars while Joel is away, but nothing in this account keeps swayidle-away's mark of him at the machine, so he would always read as away: import core's swayidle module or ease nothing";
+          }) jobs;
       }
       (lib.mkIf (jobs != { }) {
         systemd.user.services = lib.mapAttrs' (

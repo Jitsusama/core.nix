@@ -1,7 +1,9 @@
 //! night-shift run against a stand-in machine: its pressure files and its
 //! own cgroup are files in a folder of the test's, and each job is a
-//! line of shell that can raise them as a real job's load would.
+//! line of shell that can raise them as a real job's load would. Its
+//! cases while Joel is away are in tests/away.
 
+mod away;
 mod common;
 
 use common::Folder;
@@ -477,6 +479,64 @@ fn a_job_stalling_only_itself_runs_on() {
     assert!(said.contains("finished"), "{said}");
     let samples = fs::read_to_string(machine.state("test-job.samples")).unwrap();
     assert!(samples.contains("own 60.00"), "{samples}");
+}
+
+#[test]
+fn a_busy_disk_starts_nothing_only_where_it_has_an_io_bar() {
+    let machine = Machine::new();
+    machine.set("proc/pressure/io", 0.0, 6.0);
+    let output = machine.run("--stop-io 5", "echo ran > ran");
+    assert!(output.status.success(), "{}", said(&output));
+    assert!(!machine.path("ran").exists(), "the job ran on a busy disk");
+    assert!(
+        said(&output).contains("not started: io full avg60 is 6.00%, not under 5%"),
+        "{}",
+        said(&output)
+    );
+    let unbarred = machine.run("", "echo ran > ran");
+    assert!(
+        machine.path("ran").exists(),
+        "a job with no io bar didn't run on a busy disk: {}",
+        said(&unbarred)
+    );
+}
+
+#[test]
+fn the_disk_stalling_past_its_io_bar_stops_the_job() {
+    let machine = Machine::new();
+    machine.set("proc/pressure/io", 0.0, 1.0);
+    // The minute's figure, as a job reading the disk hard would raise it.
+    let job = format!(
+        "printf '{}' > '{}'; sleep 30",
+        line(0.0, 6.0).replace('\n', "\\n"),
+        machine.path("proc/pressure/io").display()
+    );
+    let output = machine.run("--stop-io 5", &job);
+    let said = said(&output);
+    assert!(output.status.success(), "{said}");
+    assert!(
+        said.contains("stopping: io full avg60 is 6.00%, past 5%"),
+        "{said}"
+    );
+    assert!(said.contains("stopped; a later try goes on"), "{said}");
+    assert!(
+        !machine.state("test-job.done").exists(),
+        "a job stopped for the disk left a done mark"
+    );
+    let samples = fs::read_to_string(machine.state("test-job.samples")).unwrap();
+    assert!(samples.contains(" io 6.00 "), "{samples}");
+}
+
+#[test]
+fn an_io_bar_with_no_io_to_read_is_said() {
+    let machine = Machine::new();
+    let output = machine.run("--stop-io 5", "true");
+    assert!(output.status.success(), "{}", said(&output));
+    assert!(
+        said(&output).contains("the machine has no io pressure to read"),
+        "{}",
+        said(&output)
+    );
 }
 
 const UNIT: &str = "background.slice/job.service";
