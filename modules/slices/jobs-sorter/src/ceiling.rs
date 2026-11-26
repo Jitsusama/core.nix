@@ -166,10 +166,13 @@ impl Ceiling {
         // started takes it only as the declared ceiling, so one left by an
         // earlier sorter, or declared before a change, is set afresh, and
         // so is one read after its first set failed, which never stood.
+        // Only a failed set leaves a ceiling unknown once one has stood,
+        // and the declared one read back has stood, as much as a set has.
         match (self.set, look.high) {
             (Some(set), Some(high)) if !near(set, high) => self.set = Some(high),
-            (None, Some(high)) if (self.failed.is_some() && self.landed) || near(high, least) => {
+            (None, Some(high)) if self.landed || near(high, least) => {
                 self.set = Some(high);
+                self.landed = true;
             }
             _ => {}
         }
@@ -196,9 +199,13 @@ impl Ceiling {
             .is_some_and(|at| now.saturating_duration_since(at) < FALL_AGAIN);
         // In whole MiB, so a ceiling risen to it reads back as at it.
         let top = (self::least(look.total, TOP) / MIB * MIB).max(least);
+        // One read under the declared ceiling stays there until nothing
+        // waits, as a known one does, since raising it would take from
+        // what waits.
+        let under = look.high.is_some_and(|high| high < least);
         let Some(set) = self.set else {
             return match down {
-                Some(_) if fall_again => None,
+                Some(_) if fall_again || under => None,
                 Some(why) => Some((least, why)),
                 None if again => None,
                 None if self.failed.is_some() => Some((least, Why::Again)),
@@ -565,10 +572,13 @@ mod tests {
     }
 
     #[test]
-    fn a_first_set_that_failed_is_tried_again_whatever_memory_high_reads() {
+    fn a_first_set_that_failed_is_tried_again_unless_memory_high_reads_as_declared() {
         let now = Instant::now();
         let mut ceiling = Ceiling::default();
-        assert!(ceiling.wanted(&roomy(base()), base(), now).is_some());
+        assert!(
+            ceiling.wanted(&roomy(base()), base(), now).is_some(),
+            "a ceiling never set didn't want setting"
+        );
         ceiling.failed(now);
         // As an earlier sorter's stop that didn't finish could leave it.
         let left = Look {
@@ -579,6 +589,69 @@ mod tests {
             ceiling.wanted(&left, base(), now + AGAIN),
             Some((base(), Why::Again)),
             "a ceiling read after the first set failed was kept as standing"
+        );
+        // A spared slice waiting tries it again after a fall's wait.
+        ceiling.failed(now + AGAIN);
+        let waited = Look {
+            waiting: true,
+            ..left
+        };
+        assert_eq!(
+            ceiling.wanted(&waited, base(), now + AGAIN + FALL_AGAIN / 2),
+            None,
+            "a failed set with its ceiling unknown was tried again before FALL_AGAIN"
+        );
+        assert_eq!(
+            ceiling.wanted(&waited, base(), now + AGAIN + FALL_AGAIN),
+            Some((base(), Why::Waiting))
+        );
+    }
+
+    #[test]
+    fn a_rise_from_the_declared_ceiling_read_at_start_that_lands_late_stands() {
+        let now = Instant::now();
+        let mut ceiling = Ceiling::default();
+        let read = Look {
+            high: Some(base()),
+            ..roomy(base())
+        };
+        assert_eq!(ceiling.wanted(&read, base(), now), None);
+        // Its rise timed out, and the manager set it after.
+        ceiling.failed(now + QUIET_FOR);
+        let risen = Look {
+            high: Some(base() + STEP),
+            ..roomy(0)
+        };
+        assert_eq!(
+            ceiling.wanted(&risen, base(), now + QUIET_FOR + AGAIN),
+            None,
+            "a rise that landed late, from the declared ceiling read at start, was undone"
+        );
+    }
+
+    #[test]
+    fn a_ceiling_of_unknown_height_read_under_the_declared_stays_while_a_slice_waits() {
+        let now = Instant::now();
+        let mut ceiling = Ceiling::default();
+        let under = Look {
+            high: Some(least(TOTAL, 20)),
+            ..waiting(0)
+        };
+        assert_eq!(
+            ceiling.wanted(&under, base(), now),
+            None,
+            "a ceiling read under the declared one was raised while a spared slice waited"
+        );
+        assert_eq!(
+            ceiling.wanted(
+                &Look {
+                    waiting: false,
+                    ..under
+                },
+                base(),
+                now
+            ),
+            Some((base(), Why::Declared))
         );
     }
 

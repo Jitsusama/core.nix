@@ -3548,10 +3548,20 @@ struct Doorway {
     /// Whether a spared slice's pressure couldn't be read when last looked
     /// at, so the ceiling held down for it is said once.
     unspared: bool,
-    /// Whether the ceiling's own slice, or the machine's memory, couldn't
-    /// be read when last looked at, so the ceiling standing still is said
-    /// once.
-    unceiled: bool,
+    /// What of the ceiling's own reads couldn't be read when last looked
+    /// at, so the ceiling standing still, or not rising, is said once.
+    ceiling_read: CeilingRead,
+}
+
+/// How the ceiling's own reads went at the last look.
+#[derive(Clone, Copy, PartialEq)]
+enum CeilingRead {
+    /// Everything it needs was read.
+    Whole,
+    /// The machine's memory couldn't be, so the ceiling stands still.
+    NoMemory,
+    /// What its slice holds couldn't be, so the ceiling doesn't rise.
+    NoHolding,
 }
 
 impl Doorway {
@@ -3565,7 +3575,7 @@ impl Doorway {
             ceiling: ceiling::Ceiling::default(),
             unstalled: false,
             unspared: false,
-            unceiled: false,
+            ceiling_read: CeilingRead::Whole,
         }
     }
 }
@@ -3666,14 +3676,13 @@ fn follow_room(doorway: &mut Doorway, account: &Path, settings: &Settings) {
     let room = match room(account, slice, &settings.spare, &meminfo) {
         Ok(room) => room,
         Err(unread) => {
-            if !doorway.unceiled {
+            if doorway.ceiling_read != CeilingRead::NoMemory {
                 eprintln!("Can't read {unread}, so {slice}'s memory ceiling stands where it is.");
             }
-            doorway.unceiled = true;
+            doorway.ceiling_read = CeilingRead::NoMemory;
             return;
         }
     };
-    doorway.unceiled = false;
     if !room.unread.is_empty() && !doorway.unspared {
         eprintln!(
             "Can't read how long {} waited on memory, so {slice}'s ceiling comes back to what \
@@ -3682,12 +3691,23 @@ fn follow_room(doorway: &mut Doorway, account: &Path, settings: &Settings) {
         );
     }
     doorway.unspared = !room.unread.is_empty();
+    let read = if room.current.is_none() {
+        CeilingRead::NoHolding
+    } else {
+        CeilingRead::Whole
+    };
+    if read == CeilingRead::NoHolding && doorway.ceiling_read != read {
+        eprintln!("Can't read what {slice} holds, so its ceiling doesn't rise, but can fall.");
+    }
+    doorway.ceiling_read = read;
     let now = std::time::Instant::now();
     let (here, there) = calling(doorway, now);
     let look = ceiling::Look {
         total: room.total,
         available: room.available,
-        current: room.current,
+        // What can't be read counts as holding nothing, which never fills
+        // the ceiling, so it doesn't rise on it; a fall needs none of it.
+        current: room.current.unwrap_or(0),
         waiting: room.waiting(),
         calling: here || there,
         high: room.high,
@@ -3736,8 +3756,8 @@ struct Room {
     total: u64,
     /// The memory available, as the kernel counts it.
     available: u64,
-    /// What the slice holds now.
-    current: u64,
+    /// What the slice holds now, when it can be read.
+    current: Option<u64>,
     /// The slice's ceiling as its `memory.high` reads, when it can be read.
     high: Option<u64>,
     /// The spared slices that waited on memory past `ceiling::WAITING`.
@@ -3756,8 +3776,8 @@ impl Room {
 }
 
 /// What a look at `slice` and the `spare` slices under the account's
-/// cgroup `account` finds, `meminfo` being /proc/meminfo, or what of the
-/// slice's or the machine's memory couldn't be read. A spared slice with
+/// cgroup `account` finds, `meminfo` being /proc/meminfo, or that the
+/// machine's memory couldn't be read. A spared slice with
 /// no cgroup holds nothing, since systemd makes a slice's cgroup only
 /// while something runs in it, so it has nothing to wait for.
 fn room(account: &Path, slice: &str, spare: &[String], meminfo: &str) -> Result<Room, String> {
@@ -3766,8 +3786,7 @@ fn room(account: &Path, slice: &str, spare: &[String], meminfo: &str) -> Result<
     };
     let current = fs::read_to_string(account.join(slice).join("memory.current"))
         .ok()
-        .and_then(|text| text.trim().parse().ok())
-        .ok_or_else(|| format!("what {slice} holds"))?;
+        .and_then(|text| text.trim().parse().ok());
     let high = fs::read_to_string(account.join(slice).join("memory.high"))
         .ok()
         .as_deref()
@@ -3946,8 +3965,15 @@ mod tests {
         let _ = fs::remove_dir_all(&account);
         assert_eq!(
             room(&account, "jobs.slice", &spare, meminfo),
-            Err("what jobs.slice holds".to_owned()),
-            "a slice that can't be read was looked at"
+            Ok(Room {
+                total: 65_000_000 * 1024,
+                available: 30_000_000 * 1024,
+                current: None,
+                high: None,
+                waited: Vec::new(),
+                unread: Vec::new(),
+            }),
+            "a slice that can't be read kept the ceiling from falling, or was counted"
         );
         assert_eq!(
             room(&account, "jobs.slice", &spare, ""),
@@ -3978,7 +4004,7 @@ mod tests {
             Ok(Room {
                 total: 65_000_000 * 1024,
                 available: 30_000_000 * 1024,
-                current: 17_088_724_992,
+                current: Some(17_088_724_992),
                 high: Some(17_393_516_544),
                 // A tenth of a percent is waiting; idle.slice has no cgroup.
                 waited: vec!["app.slice".to_owned()],

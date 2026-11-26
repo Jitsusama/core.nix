@@ -276,8 +276,9 @@ def test_work_in_jobs_is_slowed_never_ended_past_a_ceiling_that_follows_room(
     """Work in jobs is slowed past 26% of memory, never ended, and the ceiling follows room.
 
     The ceiling rises while jobs fills it and nothing else waits, and goes back at a stop. When
-    it rises and falls is jobs-sorter's own tests' (src/ceiling.rs). This proves the sorter sets
-    it on the account's manager, and that its unit puts back the declared one as it stops,
+    it rises and falls is jobs-sorter's own tests' (src/ceiling.rs), and that it asks the
+    account's manager is theirs too (its call's argv). This proves the sorter's ceiling reaches
+    the slice's memory.high, and that its unit puts back the declared one as it stops,
     since a ceiling it lifted would otherwise stay up with nothing to bring it down. It is one
     subtest with the declared ceiling's, since both are about the one ceiling.
     """

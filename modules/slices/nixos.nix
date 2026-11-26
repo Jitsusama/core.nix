@@ -1138,14 +1138,14 @@ in
         # nothing to bring it down; an empty one would clear it. By hand,
         # `systemctl --user set-property --runtime jobs.slice` with
         # MemoryHigh=44%, then 38%, 32% and 26%, does the same. Each is
-        # given 5 s, as the sorter's own sets are, so a stalled bus can't hold its stop. The
-        # ceiling comes down from the sorter's top, 50% (TOP in
-        # jobs-sorter/src/ceiling.rs), a fall of about a sixteenth a write,
-        # as the sorter brings it down: the manager that writes memory.high
-        # reclaims what's past it itself, so one write from the top would
-        # have it reclaim a quarter of memory before it answers anything
-        # else. A step above where the ceiling stands only raises it for
-        # as long as the next write takes.
+        # given 5 s, as the sorter's own sets are, so a stalled bus can't
+        # hold its stop. The ceiling comes down from the sorter's top, 50%
+        # (TOP in jobs-sorter/src/ceiling.rs), a fall of about a sixteenth
+        # a write, as the sorter brings it down: the manager that writes
+        # memory.high reclaims what's past it itself, so one write from the
+        # top would have it reclaim a quarter of memory before it answers
+        # anything else. A step above where the ceiling stands only raises
+        # it for as long as the next write takes.
         ExecStopPost =
           let
             declared = lib.toInt (lib.removeSuffix "%" jobsHigh);
