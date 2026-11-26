@@ -748,15 +748,66 @@ mod tests {
 
     #[test]
     fn the_echo_of_their_last_words_reaches_under_a_second_past_his_last_cut() {
-        // Their last word is within a second of his "Right.", but the echo
-        // cut before it ended over a second earlier, so it's his answer.
-        let echo = at_level(timed("Bunch had moon in Tuesday", 5_050), -42.0);
-        let right = at_level(timed("Right.", 7_300), -42.0);
-        assert_eq!(
-            heard_under_their_lunch(-20.0, &[echo, right]),
-            ["Fine by me, I'll book the room for us. Right."],
-            "a word over a second past the echo's end was cut as its echo"
-        );
+        // Their last word is within a second of his "Right.", and the echo
+        // cut before it ends 950 ms or 1,050 ms before it: only the first
+        // is still their echo, the second his answer.
+        let own = "Fine by me, I'll book the room for us.";
+        for (from_ms, written) in [(7_200, own.to_owned()), (7_300, format!("{own} Right."))] {
+            let echo = at_level(timed("Bunch had moon in Tuesday", 5_050), -42.0);
+            let right = at_level(timed("Right.", from_ms), -42.0);
+            assert_eq!(
+                heard_under_their_lunch(-20.0, &[echo, right]),
+                [written],
+                "a word {from_ms} ms in, past the echo ending at 6250 ms, was judged wrongly"
+            );
+        }
+    }
+
+    #[test]
+    fn nothing_is_cut_for_its_level_until_five_of_his_words_are_heard_alone() {
+        let misheard = "Bunch had moon in Tuesday";
+        for (own, written) in [
+            ("Fine by me, sure.", format!("Fine by me, sure. {misheard}")),
+            (
+                "Fine by me, sure then.",
+                "Fine by me, sure then.".to_owned(),
+            ),
+        ] {
+            let theirs = at_level(timed("Lunch at noon on Thursday then.", 5_000), -20.0);
+            let mut mine = at_level(timed(own, 1_000), -20.0);
+            mine.extend(at_level(timed(misheard, 5_050), -42.0));
+            assert_eq!(
+                cut_from(&[theirs], &[mine]),
+                [written],
+                "their echo after Joel's {own:?} alone was judged wrongly"
+            );
+        }
+    }
+
+    #[test]
+    fn his_voice_is_the_middle_level_of_his_words_heard_alone() {
+        // His words alone at -20, -30 and -44 dB: his voice is the -30
+        // between, not the loudest, the quietest or their mean, -31.8.
+        let own = "Fine by me, I'll book the room for us.";
+        let levels = [
+            -20.0, -44.0, -20.0, -44.0, -30.0, -44.0, -20.0, -44.0, -20.0,
+        ];
+        for (level, written) in [
+            (-42.0, own.to_owned()),
+            (-41.0, format!("{own} Bunch had moon")),
+        ] {
+            let theirs = at_level(timed("Lunch at noon on Thursday then.", 5_000), -20.0);
+            let mut mine = timed(own, 1_000);
+            for (word, alone) in mine.iter_mut().zip(levels) {
+                word.level = alone;
+            }
+            mine.extend(at_level(timed("Bunch had moon", 5_050), level));
+            assert_eq!(
+                cut_from(&[theirs], &[mine]),
+                [written],
+                "a word {level} dB to his voice's -30 among louder and quieter was judged wrongly"
+            );
+        }
     }
 
     #[test]
