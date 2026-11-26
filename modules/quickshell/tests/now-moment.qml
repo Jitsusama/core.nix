@@ -2395,6 +2395,17 @@ ShellRoot {
                 && askedB.verbs()[askedB.verbs().length - 1].key === putOffB.key,
             JSON.stringify(Sessions.putOffAsked));
         Sessions.putOffAsked = [];
+        // A Put It Off goes to the daemon as Joel's, so a walk from outside puts nothing off
+        // and is told why.
+        theLauncher.cataloguing = true;
+        theLauncher.walkTold = [];
+        askedAnew.verbs().find(act => act.key.startsWith("verb:on:waiting:notNow:")).run();
+        theLauncher.cataloguing = false;
+        expect("a Put It Off a walk runs puts nothing off and is told why",
+            Sessions.putOffAsked.length === 0 && theLauncher.walkTold.length === 1
+                && theLauncher.walkTold[0].includes("steered only from your own Return"),
+            JSON.stringify([Sessions.putOffAsked, theLauncher.walkTold]));
+        theLauncher.walkTold = [];
         Sessions.knowns = {};
         // Two asking stand together in Agents Asking, never loose among the
         // to-dos (Joel, 2026-11-18 10:18), ahead of them, since each blocks

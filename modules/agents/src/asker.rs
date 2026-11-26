@@ -387,9 +387,79 @@ fn gone() -> io::Error {
     io::Error::new(io::ErrorKind::NotFound, "the process asking ended")
 }
 
+/// The most of what an ask names (its act, a session's address, a want's
+/// id) a refusal's journal line says, its quoted JSON cut short: each is
+/// far shorter.
+const NAMED_AT_MOST: usize = 120;
+
+/// What `value`, an asker's own, says in a journal line: its quoted JSON
+/// cut short, so no ask writes more than a line.
+#[must_use]
+pub fn named(value: &serde_json::Value) -> String {
+    value.to_string().chars().take(NAMED_AT_MOST).collect()
+}
+
+/// Why an ask [`the_shell`] refused wasn't taken, as its journal line says
+/// it: [`REFUSED`] is Joel's words for the launcher, so the journal says
+/// what the check found instead.
+#[must_use]
+pub fn journalled(why: &str) -> &str {
+    if why == REFUSED {
+        "who asked isn't the shell"
+    } else {
+        why
+    }
+}
+
+/// The journal line of an act done as Joel that [`the_shell`] refused:
+/// the act and, where it names one, the session it was for, each
+/// [`named`]. Most acts name no session, so none is said rather than a
+/// null.
+#[must_use]
+pub fn refused_line(why: &str, said: &serde_json::Value) -> String {
+    let whose = if said["address"].is_null() {
+        String::new()
+    } else {
+        format!(" for {}", named(&said["address"]))
+    };
+    format!(
+        "agents: a {}{whose} wasn't taken: {}",
+        named(&said["ask"]),
+        journalled(why)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refused_acts_line_names_a_session_only_where_it_names_one() {
+        let said = serde_json::json!({"ask": "forget", "session": "s-1"});
+        assert_eq!(
+            refused_line(REFUSED, &said),
+            "agents: a \"forget\" wasn't taken: who asked isn't the shell"
+        );
+        let said = serde_json::json!({"ask": "talk", "address": "P9R1KI"});
+        assert_eq!(
+            refused_line("who asked can't be told: gone", &said),
+            "agents: a \"talk\" for \"P9R1KI\" wasn't taken: who asked can't be told: gone"
+        );
+    }
+
+    #[test]
+    fn a_refused_acts_line_says_an_askers_own_words_short_and_on_one_line() {
+        let long = format!("{}\nagents: a forged line", "x".repeat(300));
+        let line = refused_line(
+            REFUSED,
+            &serde_json::json!({"ask": "talk", "address": long}),
+        );
+        assert!(!line.contains('\n'), "one line: {line}");
+        assert!(
+            line.len() < 200,
+            "the address cut to {NAMED_AT_MOST}: {line}"
+        );
+    }
 
     const SESSION: &str = "0::/user.slice/user-1000.slice/user@1000.service/session.slice";
 

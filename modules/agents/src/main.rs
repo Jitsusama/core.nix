@@ -503,10 +503,7 @@ fn hides_only(said: &Value) -> bool {
 /// refused (Sessions.qml's steered), journalled with what it named, so
 /// an agent acting as Joel can be traced to it.
 fn not_as_joel(why: &str, said: &Value) -> Value {
-    eprintln!(
-        "agents: a {} for {} wasn't taken: {why}",
-        said["ask"], said["address"]
-    );
+    eprintln!("{}", asker::refused_line(why, said));
     json!({"error": {"code": "refused", "message": NOT_AS_JOEL}})
 }
 
@@ -523,11 +520,6 @@ const NOT_AS_JOEL: &str =
 const ONLY_THE_SHELL: &str =
     "the agents daemon takes an answer only from the launcher, and couldn't tell this came from it";
 
-/// The most of a refused answer's `want` or `address` its journal line
-/// says, its quoted JSON cut short: a want's id and an address are far
-/// shorter.
-const NAMED_AT_MOST: usize = 120;
-
 /// Joel's answer to one of `wants`, steered through `node` only where
 /// `asker` says the shell asked it: the node takes it as his, so an
 /// agent answering its own ask through this daemon would answer as him
@@ -538,22 +530,11 @@ fn answered(asker: Result<(), String>, wants: &Wants, said: &Value, node: Option
         // line asker.rs writes of who asked, so an agent answering its own
         // ask can be traced to it. What it named is the asker's own, cut
         // short, so no ask writes more than a line.
-        let named = |value: &Value| {
-            value
-                .to_string()
-                .chars()
-                .take(NAMED_AT_MOST)
-                .collect::<String>()
-        };
-        let why: &str = if why == asker::REFUSED {
-            "who asked isn't the shell"
-        } else {
-            why.as_str()
-        };
         eprintln!(
-            "agents: an answer to {} for {} wasn't taken: {why}",
-            named(&said["want"]),
-            named(&said["address"])
+            "agents: an answer to {} for {} wasn't taken: {}",
+            asker::named(&said["want"]),
+            asker::named(&said["address"]),
+            asker::journalled(&why)
         );
         return json!({"error": {"code": "refused", "message": ONLY_THE_SHELL}});
     }

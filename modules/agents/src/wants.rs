@@ -817,6 +817,13 @@ mod tests {
                 "a want of {named} is one naming none"
             );
         }
+    }
+
+    /// Apart from the test above, which goes once every shell names its
+    /// want, since what it pins stays.
+    #[test]
+    fn an_answer_naming_a_want_goes_to_it_alone() {
+        let wants = skiff_asks();
         assert_eq!(
             answer_of(
                 &json!({"ask": "answer", "address": "SKIFF", "value": "high",
