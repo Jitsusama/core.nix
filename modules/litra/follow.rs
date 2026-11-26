@@ -9,7 +9,7 @@ use std::path::Path;
 use std::process::ExitCode;
 use std::time::Duration;
 
-use crate::evening::{Setting, own, read_kept, tonight, written_kept};
+use crate::evening::{Evening, Setting, own, read_kept, tonight, written_kept};
 use crate::found::{about, lights, plugged};
 use crate::light::{
     BRIGHTNESS, BRIGHTNESS_IS, Light, POWER, POWER_IS, State, TEMPERATURE, TEMPERATURE_IS,
@@ -215,14 +215,6 @@ fn folder_gone(events: &[u8]) -> bool {
         offset += 16 + length as usize;
     }
     false
-}
-
-/// Where the evening's light comes from: rhythm's profile, which says when
-/// Joel winds down tonight, and the file each light's own setting is kept
-/// in.
-pub(crate) struct Evening<'a> {
-    pub(crate) profile: &'a Path,
-    pub(crate) kept: &'a Path,
 }
 
 pub(crate) fn follow(folder: &Path, lock: Option<&Path>, evening: Option<&Evening>) -> ExitCode {
