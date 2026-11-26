@@ -6878,9 +6878,14 @@
     on a machine whose /home is Btrfs, each of an account's folders named by its modules is
     moved by a unit of its own as the account's manager starts, before the units that write in
     it: a free one becomes a subvolume's root with its files, hard links and links, the folder as
-    it was kept beside it; one a process of the account's holds open stays and says so; a missing
-    one passes; one that can't be copied is left whole with no half copy, its unit failing and
-    its writer starting all the same; and a second run leaves a subvolume as it is
+    it was kept beside it; one a process of the account's holds open stays and says so; one a
+    program opens as it's copied stays whole; each a process held moves by itself once that
+    process quits; a missing one passes; one that can't be copied is left whole with no half
+    copy, its unit failing and its writer starting all the same; a second run leaves a
+    subvolume as it is; and a copy marked for its late writes, or a split, keeps its folder and
+    fails each run, though a mark with nothing written since its copy began is cleared; and a
+    waiter that held nothing a minute three times running starts the move no more, its count cleared
+    once a start lands the move
   '';
   vm-joel-comes-first = ''
     on an eighth of the laptop's memory, with agents' sessions, their work and shared work each under
