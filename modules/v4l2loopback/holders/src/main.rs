@@ -56,7 +56,7 @@
 //! while a loopback's camera is watched. What went wrong is said once as
 //! it begins and once as it clears, for each file. The first time its
 //! files say who holds the camera as a read that worked found, and which
-//! node it is, or nobody where there's no camera, its log says
+//! node it is, or nobody and no node where there's no camera, its log says
 //! `ready in N ms`, once a run (src/ready.rs says why). Its help, its
 //! failures and its exits take the terminal kit's shape (`help()`).
 //!

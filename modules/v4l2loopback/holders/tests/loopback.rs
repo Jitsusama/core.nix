@@ -135,7 +135,7 @@ impl Watch {
     }
 
     /// Stops the watch as its unit does, and waits up to twenty seconds
-    /// for it to end.
+    /// for it to end as a stop should, not killed by the signal or failing.
     fn stop(&mut self) {
         let pid = i32::try_from(self.program.id()).unwrap();
         // SAFETY: a plain call, to our own child.
@@ -145,7 +145,12 @@ impl Watch {
             "the watch couldn't be stopped"
         );
         for _ in 0..400 {
-            if self.program.try_wait().unwrap().is_some() {
+            if let Some(ended) = self.program.try_wait().unwrap() {
+                assert!(
+                    ended.success(),
+                    "a stopped watch ended {ended}, and it complained {:?}",
+                    self.read("complaints")
+                );
                 return;
             }
             sleep(Duration::from_millis(50));
@@ -493,11 +498,19 @@ fn a_stopped_watch_keeps_its_node_named_while_its_nobody_cant_be_written() {
 #[test]
 fn a_stopped_watch_unnames_its_node_once_its_nobody_is_written() {
     let mut watch = Watch::owned("stopping");
+    let camera = watch.root.join("camera");
     watch.until(
         |watch| ready(&watch.read("log")) == 1,
         "a camera whose files were written wasn't said ready",
     );
+    // Held as it stops, so the nobody said after is the stop's doing.
+    let held = File::open(&camera).unwrap();
+    watch.until(
+        |watch| fs::read_to_string(watch.file()).is_ok_and(|said| !said.is_empty()),
+        "a camera held wasn't said held",
+    );
     watch.stop();
+    drop(held);
     assert!(
         fs::read_to_string(watch.file()).is_ok_and(|said| said.is_empty()),
         "a stopped watch wasn't said held by nobody"
