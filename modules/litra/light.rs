@@ -438,28 +438,33 @@ mod tests {
             locked(&holder, LOCK_EX | LOCK_NB),
             "another litra's turn wasn't taken"
         );
-        let light = stand_in(&node, Duration::from_secs(5));
-        let held = Duration::from_millis(200);
+        let bound = Duration::from_secs(5);
+        let light = stand_in(&node, bound);
+        let (began, beginning) = std::sync::mpsc::channel();
         let letting_go = std::thread::spawn(move || {
-            // Another litra's exchange, held this long before it lets go.
-            std::thread::sleep(held);
-            locked(&holder, LOCK_UN)
+            beginning.recv().expect("the light begins to wait");
+            // Another litra's exchange, held a while into the light's wait
+            // before it lets go. How long is no part of what's tested: the
+            // turn is held to when it was let go, not to a clock.
+            std::thread::sleep(Duration::from_millis(200));
+            let at = Instant::now();
+            (locked(&holder, LOCK_UN), at)
         });
-        let (taken, waited) = within_ten_seconds(move || {
-            let started = Instant::now();
+        let (taken, taken_at) = within_ten_seconds(move || {
+            began.send(()).expect("the holder waits for the light");
             let taken = light.take_turn().map_err(|error| error.kind());
-            (taken, started.elapsed())
+            (taken, Instant::now())
         });
-        let let_go = letting_go.join().expect("the holder lets go");
+        let (let_go, let_go_at) = letting_go.join().expect("the holder lets go");
+        // Taken then is within a few tries of the let-go; half the bound
+        // tells that from a turn taken only as the bound ran out, with room
+        // for a busy machine to wake the light late.
+        let after = taken_at.checked_duration_since(let_go_at);
         assert_eq!(
-            (
-                let_go,
-                taken,
-                waited >= held,
-                waited < Duration::from_secs(5)
-            ),
-            (true, Ok(()), true, true),
-            "a turn let go of mid-wait wasn't taken then ({waited:?})"
+            (let_go, taken, after.is_some_and(|after| after < bound / 2)),
+            (true, Ok(()), true),
+            "a turn let go of mid-wait wasn't taken after it was let go and well before \
+             the bound ({after:?} after)"
         );
     }
 
