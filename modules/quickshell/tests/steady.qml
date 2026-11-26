@@ -4,7 +4,9 @@
 // modules/quickshell/launcher/Steady.js beside this file and runs
 // `qml -platform offscreen steady.qml`. Each case is a promise Joel leans on
 // while a dozen agents change around him: rows keep the order they're shown
-// in, and the selection stays on its row.
+// in, and the selection stays on its row. Long because each of those
+// promises is a case over the same stand-in rows, and splitting them would
+// copy that stand-in into every file.
 import QtQuick
 import "Steady.js" as Steady
 

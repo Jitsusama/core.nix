@@ -221,7 +221,7 @@ function headingsUnder(rows, id) {
     for (const one of holders.filter(row => !row.repeated)
         .concat(holders.filter(row => row.repeated))) {
         // A row with no key holds no place, so no row of none is a cell's.
-        for (const key of one.holding.filter(key => typeof key === "string")) {
+        for (const key of one.holding.filter(held => typeof held === "string")) {
             holderOf[key] = holderOf[key] ?? one;
         }
     }
