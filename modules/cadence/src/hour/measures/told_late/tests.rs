@@ -269,28 +269,33 @@ fn an_ask_parked_or_put_down_after_its_late_move_keeps_it() {
 /// clock its dates were given in. Parked before the move, in the pass
 /// that moved it, or with no note naming the ruling, it owes no word; let
 /// go and parked again after it, the park standing is the note's last.
+/// A date given in summer's clock reads its note in that clock, not
+/// winter's, which would put a park made just before the move an hour
+/// after it.
 #[test]
 fn an_ask_parked_in_place_is_judged_by_when_its_note_says_it_was_parked() {
     let moved = NOW - 1360;
-    let east = TimeZone::fixed(offset(-5));
-    let local = |seconds: i64, format: &str| {
+    let local = |seconds: i64, hours: i8, format: &str| {
+        let clock = TimeZone::fixed(offset(hours));
         Timestamp::from_second(seconds)
-            .map(|t| t.to_zoned(east.clone()).strftime(format).to_string())
+            .map(|t| t.to_zoned(clock).strftime(format).to_string())
             .unwrap_or_default()
     };
-    let parked_at = |words: &str, park: i64, ruling: &str| {
+    let parked_in = |words: &str, park: i64, ruling: &str, hours: i8| {
         let more = json!({"parked": "b95ea57b"});
         let mut ask = ask_moved(words, "A", (NOW - 1000, moved), &more);
-        ask["promised"][1]["given"] = json!(local(moved, "%Y-%m-%dT%H:%M:%S%:z"));
+        let given = local(moved, hours, "%Y-%m-%dT%H:%M:%S%:z");
+        ask["promised"][1]["given"] = json!(given);
         let minute = "%Y-%m-%d %H:%M";
-        let (moved_in, parked_in) = (local(moved, minute), local(park, minute));
+        let (moved_in, parked_in) = (local(moved, hours, minute), local(park, hours, minute));
         ask["note"] = json!(format!(
             "{moved_in} J7XHQN: moved | {parked_in} J7XHQN: parked: {ruling}, the ruling"
         ));
         ask
     };
+    let parked_at = |words: &str, park: i64, ruling: &str| parked_in(words, park, ruling, -5);
     let mut again = parked_at("parked again", moved + 120, "b95ea57b");
-    let first = local(moved - 600, "%Y-%m-%d %H:%M");
+    let first = local(moved - 600, -5, "%Y-%m-%d %H:%M");
     let note = again["note"].as_str().unwrap_or_default().to_owned();
     again["note"] = json!(format!("{first} J7XHQN: parked: b95ea57b, first | {note}"));
     let text = list(&[
@@ -299,6 +304,8 @@ fn an_ask_parked_in_place_is_judged_by_when_its_note_says_it_was_parked() {
         parked_at("parked as it moved", moved, "b95ea57b"),
         parked_at("parked on another", moved + 120, "5fa32250"),
         again,
+        parked_in("parked before in summer", moved - 120, "b95ea57b", -4),
+        parked_in("parked after in summer", moved + 120, "b95ea57b", -4),
     ]);
     let m = told_late(&text, NOW, Tracking::His);
     assert_eq!(
@@ -306,6 +313,7 @@ fn an_ask_parked_in_place_is_judged_by_when_its_note_says_it_was_parked() {
         [
             "parked after, moved 6 min before its date · A",
             "parked again, moved 6 min before its date · A",
+            "parked after in summer, moved 6 min before its date · A",
         ],
         "an ask parked in place was judged by the park, not by when its note says it came"
     );
