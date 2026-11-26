@@ -82,9 +82,9 @@
 // sweep left, not from where leaveRoom set it, so asking twice leaves the
 // room once. weigh() says where the next starts. Every ask after a
 // collection moves the ceiling, so such a heap may climb by twice the room
-// at each: four rooms between closings when one ran while the launcher was
-// shut, six with the census, where main let it climb by the room at each
-// ask. The closing's line says what it holds.
+// at each, and twice what its sweeps kept: four rooms between closings when
+// one ran while the launcher was shut, six with the census, besides what
+// was kept, where main let it climb by the room at each ask. The closing's line says what it holds.
 //
 // What jemalloc holds is read because the shell's memory outside its heap
 // and files was 165 to 200 MB on Joel's shell, against 126 in the lab,

@@ -9,11 +9,12 @@
 // it makes more unless it's left room, and doesn't once it is, nor as it
 // makes strings whose text is held outside the heap, nor after the
 // collections that run once it is, as the shell's Qt leaves the room after
-// each (qtdeclarative-room-after-every-sweep.patch), and a burst kept within
-// one room, past twice it, collects about once for each room it grows by
-// rather than at every miss. Giving the free pages
-// back leaves next to none resident, says about as much as was counted, and
-// what's kept, and what's made after in their place, reads as it was made;
+// each (qtdeclarative-room-after-every-sweep.patch), and a burst kept past
+// twice the room collects about once for each room it grows by rather
+// than at every miss, even with garbage made before the ask. Giving the
+// free pages back leaves next to none resident, says about as much as was
+// counted, and what's kept, and what's made after in their place, reads as
+// it was made;
 // and lending them back says as much, the kernel holds that much lent while
 // they stay resident, and once it takes them, as under pressure, they're
 // gone and what's kept and made after reads as it was made too.
@@ -469,7 +470,9 @@ bool pacesABurstPastTheRoom(int litter) {
     // burst keeps, and no collection has swept it, or the case can't tell
     // a ceiling that counts it.
     const double littered = usedNowOf(engine) - sweptAtAsk;
-    const bool unswept = sweepsOf(engine) == swept && !dropped.isError() &&
+    const bool unswept = sweepsOf(engine) == swept &&
+                         !engine.handle()->memoryManager->gcStateMachine->inProgress() &&
+                         !dropped.isError() &&
                          (litter == 0 || littered > BURST_ROOMS * SMALL_ROOM_MB);
     heap.leaveRoom(SMALL_ROOM_MB);
     engine.collectGarbage();
@@ -523,13 +526,24 @@ bool roomCapsWhatsKept() {
     QJSEngine engine;
     Heap heap(&engine);
     const QJSValue few = keepScattered(engine);
+    // Garbage made after the sweep, in the runs it left, so the chunks
+    // count more in use at the ask than the sweep kept, and a baseline
+    // taken from them rather than from the sweep is told apart.
+    const qint64 swept = sweepsOf(engine);
+    const QJSValue dropped = engine.evaluate(
+        QStringLiteral("(() => { let last; for (let i = 0; i < %1; i++) last = { n: i, m: i }; "
+                       "return 0; })()")
+            .arg(KEPT / 10));
+    const double usedAtAsk = usedNowOf(engine);
     heap.leaveRoom(SMALL_ROOM_MB);
     const Room asked = roomOf(heap);
     QV4::MemoryManager *manager = engine.handle()->memoryManager;
     const std::size_t sweptAsked = manager->slotsSweptWhenRoomLeft;
     const double sweptAskedMb = static_cast<double>(sweptAsked * QV4::Chunk::SlotSize) /
                                 (1024.0 * 1024.0);
-    const bool fromTheSweep = std::abs(sweptAskedMb - sweptOf(engine)) < SAME_MB;
+    const bool fromTheSweep = !dropped.isError() && sweepsOf(engine) == swept &&
+                              std::abs(sweptAskedMb - sweptOf(engine)) < SAME_MB &&
+                              sweptAskedMb < usedAtAsk - SAME_MB;
     const double mb = 1024.0 * 1024.0;
     const double slotMb = static_cast<double>(QV4::Chunk::SlotSize) / mb;
     const double cap =
@@ -569,11 +583,13 @@ bool roomCapsWhatsKept() {
         std::fprintf(stderr,
                      "FAIL the ceiling is twice the room past what was held at the ask, and "
                      "twice what the sweeps keep beyond what the last sweep kept then: held "
-                     "%.2f MB at the ask, %.2f kept by the last sweep, grown to %.2f; "
+                     "%.2f MB at the ask, %.2f kept by the last sweep of %.2f in use, grown "
+                     "to %.2f; "
                      "collecting at %.2f, %.2f and %.2f MB for sweeps keeping as much, half "
                      "and %.2f MB more, against %.2f, %.2f and %.2f; made %s, from the sweep "
                      "%s\n",
-                     asked.chunks, sweptAskedMb, grown, same, less, more, moved / 2, cap, cap,
+                     asked.chunks, sweptAskedMb, usedAtAsk, grown, same, less, more, moved / 2, cap,
+                     cap,
                      cap + moved, made ? "yes" : "no", fromTheSweep ? "yes" : "no");
     return holds;
 }
