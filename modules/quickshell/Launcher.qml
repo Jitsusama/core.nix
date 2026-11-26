@@ -11516,8 +11516,8 @@ Scope {
     // finding, 2026-11-19). "asking" is all from the ask to the opening's
     // start, but for a kept place's "listing", its rows made, "placing",
     // the card given them, and "unholding", the hold let go and the
-    // opening named (intoKept);
-    // "showing" is now only what `opening` turning moves.
+    // opening named (intoKept). "showing" is now only what `opening`
+    // turning moves.
     property var openLaps: ({ at: -1, parts: {} })
     function openLap(name) {
         if (openAsked < 0 || openLaps.at < 0)
