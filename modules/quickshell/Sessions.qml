@@ -2810,13 +2810,15 @@ Singleton {
         forgetRefusal(named);
         // An ask afresh is no longer the one viewKept let a place go for,
         // so its give-up keeps none again; viewKept marks its own after.
-        // Nor is it a re-ask, whose time pressedAgain sets after.
+        // Nor is it a re-ask, whose time pressedAgain sets after, nor one
+        // the kitty didn't answer, its press told the window may yet come.
         if (named in keptAsks) {
             const asks = Object.assign({}, keptAsks);
             delete asks[named];
             keptAsks = asks;
         }
         forgetAskedAgain(named);
+        forgetStill(named);
         root.inSessions("pi-hosted", viewing(Viewers.titled(title, words)), into ?? null, named);
         return true;
     }
@@ -2853,12 +2855,19 @@ Singleton {
         // viewer already up; within the script's answer only, as above.
         const again = pressedFor[named] ?? null;
         const againRecent = Date.now() - (askedAgainAt[named] ?? 0) < answerPatience;
+        // A press told its window may yet come, as the kitty didn't answer,
+        // is told it came, for the same reason, within comingPatience.
+        const still = stillSaid[named] ?? null;
+        const stillRecent = Date.now() - (still?.at ?? 0) < comingPatience;
         forgetAsk(named);
         if (told && recent)
             unhosted(told, same && told.startedInHost ? "startedOwnAfterAll"
                 : same ? "ownAfterAll" : told.startedInHost ? "startedCameAfter" : "cameAfter");
         else if (again !== null && againRecent)
             unhosted(again, again.startedInHost ? "startedCameAgain" : "cameAgain");
+        else if (still !== null && stillRecent)
+            unhosted(still.said, still.said.startedInHost ? "startedComeAfterAll"
+                : "comeAfterAll");
     }
     // A press of a viewer whose window came refused and is listed now as
     // the kitty's, its pid read again as each press reads it, is its own
@@ -2889,6 +2898,7 @@ Singleton {
             pressedFor = pressed;
         }
         forgetAskedAgain(named);
+        forgetStill(named);
         if (named in listedAtAsk) {
             const listed = Object.assign({}, listedAtAsk);
             delete listed[named];
@@ -2915,6 +2925,22 @@ Singleton {
         const again = Object.assign({}, askedAgainAt);
         delete again[named];
         askedAgainAt = again;
+    }
+    // The press told each viewer's window may yet come (untaken), by its
+    // app id, and when, in ms, told it came if it does (viewerCame) within
+    // comingPatience: a kitty that didn't answer may draw it any time it
+    // can, and the launcher, shut meanwhile, keeps the words it was told
+    // until it opens (tellOnOpen). The 15 minutes an asked place keeps
+    // (Viewers.js) bound it, past which a window coming is told nothing.
+    // An ask afresh ends it (viewWith), its press holding the ask.
+    property var stillSaid: ({})
+    readonly property int comingPatience: 900000
+    function forgetStill(named) {
+        if (!(named in stillSaid))
+            return;
+        const still = Object.assign({}, stillSaid);
+        delete still[named];
+        stillSaid = still;
     }
     // The ids of the windows niri listed under each viewer's app id as it
     // was asked for: none of them is the one that came for it, however it
@@ -2996,6 +3022,17 @@ Singleton {
         if (cause === "unanswered") {
             console.info(`sessions: the sessions kitty didn't answer for ${named}, so window `
                 + `${refusedAsks[named]}, come refused, may yet be its own`);
+            // A place viewKept let go for the ask is kept again under the
+            // pid asked, as for any give-up, so a kitty come since asks for
+            // it once the refused window closes (viewKept keeps it while
+            // that window stays); left in keptAsks, it would be lost.
+            const back = keptAsks[named];
+            if (back !== undefined) {
+                const asks = Object.assign({}, keptAsks);
+                delete asks[named];
+                keptAsks = asks;
+                keepAgain(back, named, cause);
+            }
             return;
         }
         // The cause is journalled before keepAgain's own lines, and what
@@ -3041,9 +3078,9 @@ Singleton {
     // so the next press opens no second viewer beside it. One whose window
     // came refused, no longer opening, has its refusal ended so
     // (refusedUntaken).
-    // Any program of Joel's can call it, so only a viewer's app id, a time
-    // in ms and a cause it knows are taken, which stops a malformed ask,
-    // not one meant: the time orders the script's own give-ups against
+    // Any program of Joel's can call it, so only a viewer's app id and a
+    // time in ms are taken, and a cause only as one it knows, which stops a
+    // malformed ask, not one meant: the time orders the script's own give-ups against
     // newer presses, and ends a refusal only within answerPatience of its
     // ask. A call meant can so end or keep a refusal, let a press's focus
     // go, keep a place again and have the foot say untaken, may yet come,
@@ -3057,13 +3094,28 @@ Singleton {
     // (stillComing), as kitten's cancel does nothing, though it's no
     // longer taken as opening, the shell's own wait long over; one
     // refused or with no kitty to ask ("refused", "none"), or from a
-    // script that says no cause, is untaken. A cause it doesn't know is
-    // none of the script's, so it ends nothing.
+    // script that says no cause, is untaken. A cause it doesn't know, as
+    // a later script's may be, is taken as none given, said so, so the
+    // ask still ends rather than staying opening for viewPatience.
+    // A give-up heard with its cause and then again without, as the
+    // script's fallback sends when qs loses the shell's answer to the
+    // first (ipc-replies-whole.patch), is taken once: the second would end
+    // a refusal the first kept.
     function untaken(named, asked, cause) {
-        const why = cause === undefined ? "" : String(cause);
-        if (!String(named).startsWith("pi-hosted.") || !/^\d+$/.test(String(asked))
-            || !["", "none", "refused", "unanswered"].includes(why))
+        const given = cause === undefined ? "" : String(cause);
+        if (!String(named).startsWith("pi-hosted.") || !/^\d+$/.test(String(asked)))
             return;
+        const why = ["", "none", "refused", "unanswered"].includes(given) ? given : "";
+        if (why !== given)
+            console.info(`sessions: ${named}'s give-up gave a cause it doesn't know, `
+                + `${JSON.stringify(given.slice(0, 40))}, so it's taken as untaken`);
+        if (given === "" && causedAsks[named] === String(asked)) {
+            console.info(`sessions: ${named}'s give-up heard again without its cause, `
+                + "taken once");
+            return;
+        }
+        if (given !== "")
+            causedAsks = Object.assign({}, causedAsks, { [named]: String(asked) });
         if (attaching[named] === undefined) {
             refusedUntaken(named, Number(asked), why);
             return;
@@ -3089,13 +3141,18 @@ Singleton {
             + (said !== null ? "; its press is told" : ""));
         if (again)
             pressedAgain(named, said, going);
-        else if (said !== null && unanswered)
+        else if (said !== null && unanswered) {
             unhosted(said, said.startedInHost ? "startedStillComing" : "stillComing");
+            stillSaid = Object.assign({}, stillSaid, { [named]: { said, at: Date.now() } });
+        }
         else if (said !== null)
             unhosted(said, said.startedInHost ? "startedUntaken" : "untaken");
         waitedOnNoMore(named, unanswered ? "the sessions kitty didn't answer for it"
             : "no sessions kitty took it");
     }
+    // The time of the give-up last heard with a cause, by each viewer's app
+    // id, so its repeat without one is taken once (untaken).
+    property var causedAsks: ({})
     // Reopen Them All's walk waits on viewer `named` no more once its
     // window came refused (heardWindow) or no kitty took it (untaken),
     // since none can come for that ask: it goes on as its patience would,

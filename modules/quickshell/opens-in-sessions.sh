@@ -143,6 +143,13 @@ if [ -S "$sock" ]; then
       echo "sessions: the sessions kitty didn't answer for $class in a minute;" \
         "its window may yet come" >&2
       ;;
+    # Nothing listened on the socket, as a kitty crashed leaves until
+    # systemd clears its folder, so no kitty heard the ask (kitten's
+    # tools/cmd/at/socket_io.go).
+    *"Failed to connect to "*)
+      cause=none
+      echo "sessions: the sessions kitty wasn't listening for $class" >&2
+      ;;
     *)
       cause=refused
       echo "sessions: the sessions kitty opened no $class" >&2
@@ -164,8 +171,11 @@ told="no kitty took $class"
 # Within 5 s, so a shell stalled or starting again leaves no script behind,
 # and the shell's answerPatience holds. A shell from before the cause was
 # told has no untakenFor, and qs refuses a call of it before running
-# anything, so it's told the old way then, within the same 5 s; never
-# after a stall, which the cut ends, as the first may yet be heard.
+# anything (src/io/ipccomm.cpp's EntryNotFound), so it's told the old way
+# then, within the same 5 s; never after a stall, which the cut ends, as
+# the first may yet be heard. qs fails too where the shell ran the first
+# and its answer was lost (ipc-replies-whole.patch), whose repeat without
+# a cause the shell takes once (Sessions' untaken).
 # shellcheck disable=SC2016 # The words are the inner shell's, as given.
 timeout 5 sh -c 'qs ipc call sessions untakenFor "$1" "$2" "$3" ||
   qs ipc call sessions untaken "$1" "$2"' sh "$class" "$asked" "$cause" > /dev/null 2>&1 ||

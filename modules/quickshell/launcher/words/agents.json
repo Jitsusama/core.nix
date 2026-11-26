@@ -368,6 +368,8 @@
         "startedUntaken": "started in its host \u00b7 its window didn't open when asked",
         "stillComing": "not viewed yet \u00b7 no answer came in a minute when its window was asked for, so it may yet come",
         "startedStillComing": "started in its host \u00b7 no answer came in a minute when its window was asked for, so it may yet come",
+        "comeAfterAll": "viewed \u00b7 its window came after all, though no answer came in a minute when it was asked for",
+        "startedComeAfterAll": "started in its host \u00b7 viewed, its window came after all, though no answer came in a minute when it was asked for",
         "askedAgain": "asked again \u00b7 its own window didn't come for its first ask",
         "startedAskedAgain": "started in its host \u00b7 its window was asked for once more",
         "cameAgain": "viewed \u00b7 its own window came when asked for once more",
