@@ -892,13 +892,18 @@ ShellRoot {
         const noticed = () => now.forYouBands.now.filter(one => one.kind === "notice");
         const tray = () => ForYouHolds.count - trayBefore;
         const counts = () => JSON.stringify([noticed().length, tray()]);
+        // A session's rows stand inside Agents Asking, never at For You's top.
+        const asking = "on:waitingOnYou:kind:agent";
+        const inside = () => now.waitingRows().find(one => one.key === asking)?.verbs() ?? [];
         if (tried(() => {
-            const keys = now.waitingRows().map(one => one.key);
-            const row = now.waitingRows().find(one => one.key === "notice:40") ?? null;
-            expect("a session's notice served stands under it among what needs Joel as its row",
-                row !== null && tray() === 1 && keys.includes("on:heading:cell:KELP01")
-                    && keys.indexOf("on:heading:cell:KELP01") === keys.indexOf("notice:40") - 1,
-                `${counts()} ${JSON.stringify(keys)}`);
+            const top = now.waitingRows().map(one => one.key);
+            const keys = inside().map(one => one.key);
+            const row = inside().find(one => one.key === "notice:40") ?? null;
+            expect("a session's notice served stands under it in Agents Asking as its row",
+                row !== null && tray() === 1 && top.includes(asking) && !top.includes("notice:40")
+                    && keys.indexOf("on:heading:cell:KELP01") === keys.indexOf("notice:40") - 1
+                    && keys.includes("on:heading:cell:KELP01"),
+                `${counts()} ${JSON.stringify([top, keys])}`);
             expect("which :filter holds as a thing to do from the desktop",
                 row.forYou?.kind === "do" && row.forYou?.source === "desktop",
                 JSON.stringify(row.forYou ?? null));
@@ -921,7 +926,7 @@ ShellRoot {
             noticesDaemon.notices = noticesDaemon.notices.map(acted);
             expect("acted on from its row, it stays where it stood, its row with it",
                 noticed().length === 1 && tray() === 1
-                    && now.waitingRows().some(one => one.key === "notice:40"), counts());
+                    && inside().some(one => one.key === "notice:40"), counts());
             // Put away unread, then withdrawn by its session while For You
             // is open, which reads it and leaves it dismissed (held.rs's
             // close), it goes at once, since Joel never read it (Lately.js's
@@ -1667,9 +1672,11 @@ ShellRoot {
         // weighs (ForYou.js's agentAt): after a to-do overdue he can do now
         // (70), before one that only waits (10), each ask weighing 50 as it
         // blocks its session. Each kind's row stands for those it holds (our
-        // council on #5916, F7, 2026-11-20).
+        // council on #5916, F7, 2026-11-20), Agents Asking's cell headings
+        // aside, which say whose its rows are and are none of them.
         const standsFor = row => String(row.key).startsWith("on:waitingOnYou:kind:")
-            ? Array.from(row.targets()).map(one => one.key) : [row.key];
+            ? Array.from(row.targets()).filter(one => one.heading !== true).map(one => one.key)
+            : [row.key];
         const askingOf = (address, said) => ({ address, title: `Session ${address}`, presence: {
             session: `s-${address}`, addresses: [], wants: { kind: "question", said } } });
         const signHeld = { title: "Sign in to the bank", minutes: 2 };
@@ -2265,22 +2272,25 @@ ShellRoot {
             row.key === agentsAsking ? row.verbs() : []), []);
         const keys = rows => JSON.stringify(rows.map(row => row.key).sort());
         const heldFirst = forYou();
-        expect("For You holds the session, the to-dos and To Look At", keys(heldFirst)
-            === JSON.stringify(["on:heading:cell:WANTB", "on:heading:cell:yours",
+        expect("For You holds the session in Agents Asking, the to-dos and To Look At",
+            keys(heldFirst) === JSON.stringify(["on:heading:cell:WANTB",
                 "on:waiting:item:Say Yes", "on:waiting:item:Sign In", "on:waiting:want:WANTB",
-                "on:waitingOnYou:kind:look"]), keys(heldFirst));
-        // What needs Joel now stands by the cell behind it (What Needs Me,
-        // 2026-11-18): the session's heading, then what it wants, which
-        // blocks it and so weighs most, then Joel's own heading over the
-        // to-dos no session is behind, and To Look At after them all.
+                "on:waitingOnYou:kind:agent", "on:waitingOnYou:kind:look"]), keys(heldFirst));
+        // Joel's own rows stand loose, and what the session raised stands in
+        // Agents Asking, its heading over what it wants (Joel, 2026-11-25
+        // 21:52: "it also makes no sense for the agents to be top level"):
+        // first, since what it wants blocks it and so weighs most, then the
+        // to-dos, and To Look At after them all.
         const placed = key => heldFirst.findIndex(row => row.key === key);
-        const heldOrder = ["on:heading:cell:WANTB", "on:waiting:want:WANTB",
-            "on:heading:cell:yours"].map(placed);
+        const heldOrder = [agentsAsking, "on:heading:cell:WANTB", "on:waiting:want:WANTB"]
+            .map(placed);
         const toDosAt = ["on:waiting:item:Say Yes", "on:waiting:item:Sign In"].map(placed);
-        expect("each cell's heading over its rows, the heaviest cell first",
+        const top = now.waiting.verbs().map(row => row.key);
+        expect("the session's heading and want inside Agents Asking, before Joel's own",
             heldOrder.every((at, index) => at >= 0 && (index === 0 || at > heldOrder[index - 1]))
                 && toDosAt.every(at => at > heldOrder[2])
-                && placed("on:waitingOnYou:kind:look") > Math.max(...toDosAt),
+                && placed("on:waitingOnYou:kind:look") > Math.max(...toDosAt)
+                && !top.some(key => key.startsWith("on:heading:") || key.includes(":want:")),
             heldFirst.map(row => row.key));
         const same = (rows, from) => rows.length === from.length
             && rows.every((row, at) => row === from[at]);
@@ -2396,12 +2406,14 @@ ShellRoot {
     // What needs Joel now stands under the cell behind each (What Needs Me,
     // 2026-11-18): a look a session left under that session's heading,
     // beside what it wants, and each heading saying its cell as Agents'
-    // row for it does, its name and how the agents daemon says it stands,
-    // Joel's own heading over the to-dos no session is behind.
-    // A session whose want is an action asks it as one of its own to-dos,
-    // not in Agents Asking: that to-do leads its cell, under its heading,
-    // though a look it left long before outweighs it, and its standing
-    // moving is heard though it asks nothing as an agent.
+    // row for it does, its name and how the agents daemon says it stands.
+    // Every cell's heading and rows stand inside Agents Asking, and Joel's
+    // own to-dos loose at For You's top under no heading (Joel, 2026-11-25
+    // 21:52: "it also makes no sense for the agents to be top level").
+    // A session whose want is an action asks it as one of its own to-dos:
+    // that to-do leads its cell, under its heading, though a look it left
+    // long before outweighs it, and its standing moving is heard though it
+    // asks nothing as an agent.
     function ownToDoLeads(forYou) {
         const acted = { address: "ACTED", title: "Session E", presence: { session: "s-e",
             owns: ["QEST-E"], addresses: ["ACTED"], wants: { kind: "action", said: "Sign it" } } };
@@ -2420,7 +2432,7 @@ ShellRoot {
         const shown = () => forYou().map(row => [row.key, row.heading === true ? row.name : ""]);
         const read = shown();
         expect("a session's own to-do it asks leads its cell, under its heading",
-            JSON.stringify(read) === JSON.stringify([
+            JSON.stringify(read) === JSON.stringify([["on:waitingOnYou:kind:agent", ""],
                 ["on:heading:cell:ACTED", "Session E \u00b7 listening"],
                 ["on:waiting:item:Sign The Form", ""], ["on:look:e", ""]]),
             JSON.stringify(read));
@@ -2651,7 +2663,7 @@ ShellRoot {
         const working = shown();
         expect("its standing moving is heard, though it asks nothing as an agent",
             root.forYouHeardTimes > heardBefore
-                && JSON.stringify(working[0]) === JSON.stringify(
+                && JSON.stringify(working[1]) === JSON.stringify(
                     ["on:heading:cell:ACTED", "Session E \u00b7 working"]),
             JSON.stringify([root.forYouHeardTimes - heardBefore, working]));
         const heardWorking = root.forYouHeardTimes;
@@ -2680,28 +2692,28 @@ ShellRoot {
         const shown = () => forYou().map(row => [row.key, row.heading === true ? row.name : ""]);
         const read = shown();
         // What it asks leads its cell, as what holds it up, though the look
-        // it left an hour ago weighs as much.
+        // it left an hour ago weighs as much; the cell stands in Agents
+        // Asking, and Joel's own to-do loose after it, under no heading.
         expect("a look a session left stands under its heading, each heading saying its cell",
-            JSON.stringify(read) === JSON.stringify([
+            JSON.stringify(read) === JSON.stringify([["on:waitingOnYou:kind:agent", ""],
                 ["on:heading:cell:LEFTC", "Session C \u00b7 needs you"],
                 ["on:waiting:want:LEFTC", ""], ["on:look:c", ""],
-                ["on:heading:cell:yours", "yours alone"], ["on:waiting:item:Sign In", ""]]),
+                ["on:waiting:item:Sign In", ""]]),
             JSON.stringify(read));
-        // Two asking stand together in Agents Asking, first, above every
-        // heading, since a heading claims what's under it (Y2YBTS,
-        // 2026-11-18 15:49); the cell that left the look keeps its heading
-        // over the look alone, and no ask stands loose.
+        // Two asking stand in Agents Asking, each under its own heading over
+        // what it asks and left, and no ask stands loose.
         const asking = { address: "WANTD", title: "Session D", presence: { session: "s-d",
             addresses: [], wants: { kind: "question", said: "Which?" } } };
         Sessions.running = [left, asking];
         Sessions.wanting = [left, asking];
         const gathered = shown();
-        expect("two asking stand first in Agents Asking, above the headings",
+        expect("two asking stand in Agents Asking, each under its heading",
             JSON.stringify(gathered) === JSON.stringify([
                 ["on:waitingOnYou:kind:agent", ""],
-                ["on:waiting:want:LEFTC", ""], ["on:waiting:want:WANTD", ""],
-                ["on:heading:cell:LEFTC", "Session C \u00b7 needs you"], ["on:look:c", ""],
-                ["on:heading:cell:yours", "yours alone"], ["on:waiting:item:Sign In", ""]]),
+                ["on:heading:cell:LEFTC", "Session C \u00b7 needs you"],
+                ["on:waiting:want:LEFTC", ""], ["on:look:c", ""],
+                ["on:heading:cell:WANTD", "Session D"], ["on:waiting:want:WANTD", ""],
+                ["on:waiting:item:Sign In", ""]]),
             JSON.stringify(gathered));
         // A cell's standing moving alone, what it asks and left as they
         // were: For You hears it, so a heading held never goes on saying
@@ -2718,9 +2730,9 @@ ShellRoot {
         const working = shown();
         expect("a cell's standing moving alone is heard, and its heading says it",
             root.forYouHeardTimes > heardBefore
-                && listening[0][0] === "on:heading:cell:LEFTC"
-                && listening[0][1] === "Session C \u00b7 listening"
-                && JSON.stringify(working.slice(0, 3)) === JSON.stringify([
+                && listening[1][0] === "on:heading:cell:LEFTC"
+                && listening[1][1] === "Session C \u00b7 listening"
+                && JSON.stringify(working.slice(1, 4)) === JSON.stringify([
                     ["on:heading:cell:LEFTC", "Session C \u00b7 working"],
                     ["on:waiting:want:LEFTC", ""], ["on:look:c", ""]]),
             JSON.stringify([root.forYouHeardTimes - heardBefore, listening, working]));

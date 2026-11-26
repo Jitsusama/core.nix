@@ -99,9 +99,11 @@ QtObject {
         // The bands: a to-do needs Joel now, and a look or a thing to try
         // only while it blocks a session or is due within the day; the rest
         // stand in their kind's own row (VKCF3Z, 2026-11-09).
+        // The bands an item stands in, `all` aside, which holds what two of
+        // them do.
         const band = (kind, thing) => {
             const bands = ForYou.banded([{ kind, thing, name: "it" }], now);
-            return Object.keys(bands).filter(key => bands[key].length > 0);
+            return Object.keys(bands).filter(key => key !== "all" && bands[key].length > 0);
         };
         expect("a to-do needs him now", band("do", { kind: "todo" }), ["now"]);
         expect("a look that blocks a session is lifted", band("look",
@@ -165,7 +167,12 @@ QtObject {
         expect("the rest in their own band", [looked.now.map(one => one.name),
             looked.try.length], [["f"], 0]);
         expect("no items, five empty bands", ForYou.banded(undefined, now),
-            { now: [], agent: [], agentAt: 0, look: [], try: [], read: [] });
+            { now: [], agent: [], agentAt: 0, all: [], look: [], try: [], read: [] });
+        // What needs him now and what agents ask, whoever is behind each, in
+        // one order for For You to lay out by whose it is (ForYouCells.js).
+        expect("what needs him now and what agents ask, together, heaviest first",
+            asks({ kind: "do", thing: { kind: "todo" }, name: "b" }).all.map(one => one.name),
+            ["c", "a", "b"]);
         // The next moment time alone lifts a row into what needs him now, as
         // its due comes within the day, so For You bands again then: banded
         // only as its items changed, a look due tomorrow stayed in To Look
@@ -176,7 +183,7 @@ QtObject {
             now + 48 * hour);
         const bandAt = (item, at) => {
             const bands = ForYou.banded([item], at);
-            return Object.keys(bands).filter(key => bands[key].length > 0);
+            return Object.keys(bands).filter(key => key !== "all" && bands[key].length > 0);
         };
         expect("banded a moment before, it still waits", bandAt(dueIn(72), now + 48 * hour - 1),
             ["look"]);

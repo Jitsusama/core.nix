@@ -2535,8 +2535,8 @@ Provider {
     // Agents Asking is such a row too, gathering what the sessions raised
     // for Joel under each one's heading (cellRows), though each needs him
     // now, so it stands among what does where its heaviest weighs, its mark
-    // in the hue of what it holds rather than muted (Joel, 2026-11-18 10:18: "they are all loose amongst other
-    // things properly categorized").
+    // in the hue of what it holds rather than muted (Joel, 2026-11-18
+    // 10:18: "they are all loose amongst other things properly categorized").
     function kindRow(kind, rows) {
         if (rows.length === 0)
             return [];
