@@ -58,13 +58,15 @@ let
   # agents daemon and the shell's launcher watch orchestrators.json, a
   # watch an exchange of the folder under it would leave on the old one;
   # named, each holds the move back at a switch while it runs, as a
-  # writer does.
+  # writer does. The restore list reads the session records at every
+  # start, which, unordered, could hold the folder open as it moves.
   writers = {
     "mesh-workflow/presence" = [ ];
     "mesh-workflow/leases" = [ ];
     "mesh-workflow/runs" = [ ];
     quest-workflow = present [
       "agents.service"
+      "pi-restore-file.service"
       "pi-sweep.service"
       "quickshell.service"
     ];

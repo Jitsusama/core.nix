@@ -93,12 +93,16 @@
           // {
             quest-workflow = [
               "agents.service"
+              "pi-restore-file.service"
               "pi-sweep.service"
             ];
           }
           // lib.genAttrs (ofRealm "one") (_: [ "mycelium-one.service" ]);
         homeless = sweeps // {
-          quest-workflow = [ "pi-sweep.service" ];
+          quest-workflow = [
+            "pi-restore-file.service"
+            "pi-sweep.service"
+          ];
         };
       };
       sorted = names: lib.sort lib.lessThan (lib.toList names);
