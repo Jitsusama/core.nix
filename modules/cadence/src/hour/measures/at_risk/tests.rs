@@ -1,6 +1,8 @@
 //! The dates at risk, read from asks lists in the shapes the list's
 //! keeper writes, with what main changed given rather than asked of git.
 
+use jiff::Timestamp;
+use jiff::tz::{TimeZone, offset};
 use serde_json::{Value, json};
 
 use super::super::slipped::{at, list};
@@ -401,6 +403,38 @@ fn dates_unread_are_counted_and_the_first_by_its_ask_is_named() {
         "dates unread went uncounted, or the first wasn't the first ask: {} {:?}",
         m.says,
         m.target
+    );
+}
+
+/// Asks stamped in different offsets are named first by when they were
+/// asked, not by how their stamps read as text: an ask an hour later,
+/// written in Toronto's offset, reads earlier as text than one in UTC.
+#[test]
+fn the_first_date_unread_is_the_first_asked_whatever_offset_it_was_written_in() {
+    let halves = (NOW + 600, "core.nix#6000, Org/world#123");
+    let mut later = ask_waiting("a later", "A", halves, &json!({"branch": "halves"}));
+    later["at"] = json!(
+        Timestamp::from_second(NOW - DAY + 3600)
+            .map(|t| {
+                let east = TimeZone::fixed(offset(-5));
+                t.to_zoned(east)
+                    .strftime("%Y-%m-%dT%H:%M:%S%:z")
+                    .to_string()
+            })
+            .unwrap_or_default()
+    );
+    let earlier = ask_waiting("z earlier", "B", halves, &json!({"branch": "halves"}));
+    assert!(
+        later["at"].as_str() < earlier["at"].as_str(),
+        "the stand-ins don't read in the wrong order as text: {} {}",
+        later["at"],
+        earlier["at"]
+    );
+    let m = read(&list(&[later, earlier]));
+    assert!(
+        m.says.contains("(2 unread; the first, z earlier: "),
+        "the first named wasn't the first asked: {}",
+        m.says
     );
 }
 

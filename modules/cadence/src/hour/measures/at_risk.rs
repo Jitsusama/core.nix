@@ -48,9 +48,16 @@ pub fn at_risk(
     core: &dyn Fn(u32) -> Shared,
     world: &dyn Fn(&str) -> Shared,
 ) -> Measure {
-    let mut latest: BTreeMap<[String; 2], Value> = BTreeMap::new();
+    // Keyed by the moment each was asked before its words as written, so
+    // asks stamped in different offsets still come in the order asked.
+    let mut latest: BTreeMap<(Option<i64>, String, String), Value> = BTreeMap::new();
     for ask in lines(text) {
-        latest.insert([ask["at"].to_string(), ask["words"].to_string()], ask);
+        let asked = (
+            seconds(&ask["at"]),
+            ask["at"].to_string(),
+            ask["words"].to_string(),
+        );
+        latest.insert(asked, ask);
     }
     let mut risks: Vec<Risk> = Vec::new();
     let mut unread = 0;
