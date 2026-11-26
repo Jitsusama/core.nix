@@ -337,6 +337,10 @@ mod tests {
              [filter \"skipafter\"]\n process = git-lfs filter-process --skip x\n\
              [filter \"skipnamed\"]\n process = git-lfs filter-process --skip %f\n\
              [filter \"skipdashed\"]\n process = git-lfs filter-process --skip -- %f\n\
+             [filter \"processnamed\"]\n process = git-lfs filter-process %f\n\
+             [filter \"shelled\"]\n clean = $(true)/git-lfs clean -- %f\n\
+             [filter \"homed\"]\n process = ~/bin/git-lfs filter-process\n\
+             [filter \"usual\"]\n process = /nix/store/x-git-lfs-3.6.1/bin/git-lfs filter-process\n\
              [filters]\n x = y\n",
         );
         let runs = |name: &str| (name.to_owned(), Driver::Runs);
@@ -364,15 +368,21 @@ mod tests {
                 lfs("skipping"),
                 runs("skipclean"),
                 runs("skipafter"),
-                lfs("skipnamed"),
-                lfs("skipdashed"),
+                runs("skipnamed"),
+                runs("skipdashed"),
+                runs("processnamed"),
+                runs("shelled"),
+                runs("homed"),
+                lfs("usual"),
             ]),
             "took a filter only smudging, with an empty or emptied command, an empty \
              process over a clean one, or another section's keys; missed one with a dot \
              or a capital in its name; misjudged a required one; took for git-lfs's \
              a command other than its process or clean, one whose process runs \
-             another, or one piping it on; or missed git-lfs run through git, bare, \
-             given the file's name or its process told to skip smudging"
+             another, one piping it on, a process given the file's name git never \
+             expands for it, or a program the shell reads more into; or missed git-lfs \
+             run through git, bare, by its store path, given the file's name or its \
+             process told to skip smudging"
         );
     }
 
