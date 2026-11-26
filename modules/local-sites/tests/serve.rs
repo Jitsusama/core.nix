@@ -305,12 +305,25 @@ fn it_serves_the_documents_and_a_mount_at_its_own_path() {
 fn a_folder_asked_without_its_slash_is_sent_on_from_this_server_alone() {
     let served = served("folder");
     let documents = format!("{DOCUMENTS}:{}", served.port);
-    for (path, to) in [("/mycelium", "/mycelium/"), ("//mycelium", "/mycelium/")] {
+    for path in ["/mycelium", "//mycelium"] {
         let (status, headers, _) = asked(served.port, &documents, &format!("GET {path}"), "");
         assert_eq!(status, "HTTP/1.1 301 Moved Permanently", "{path}");
         let location = header(&headers, "location");
-        // `//mycelium/` would send the browser to the host `mycelium`.
-        assert_eq!(location, Some(to), "{path} was sent to another host");
+        // `//mycelium/` would send the browser to the host `mycelium`; one
+        // from `./` stays where it was asked.
+        assert_eq!(
+            location,
+            Some("./mycelium/"),
+            "{path} was sent to another host"
+        );
+    }
+    // A folder a session could make whose name a browser would read as a
+    // host, `/\evil.example/`, is refused before it could be sent on.
+    std::fs::create_dir_all(served.folder.join("sites/\\evil.example")).expect("its folder");
+    for path in ["/\\evil.example", "/%5Cevil.example"] {
+        let (status, headers, _) = asked(served.port, &documents, &format!("GET {path}"), "");
+        assert_eq!(status, "HTTP/1.1 403 Forbidden", "{path}");
+        assert_eq!(header(&headers, "location"), None, "{path} was sent on");
     }
 }
 
