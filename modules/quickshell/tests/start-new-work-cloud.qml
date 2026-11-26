@@ -120,12 +120,17 @@ QtObject {
         Expect.same("none heard is not yet while an ask is out or none came back, else its why",
             [Cloud.offeredNow(0, [], true, noNode), Cloud.offeredNow(0, [], false, ""),
                 Cloud.offeredNow(0, [], false, noNode),
-                Cloud.offeredNow(1800000000000, offered, false, noNode)],
-            [null, null, noNode, offered]);
+                Cloud.offeredNow(1800000000000, offered, false, noNode),
+                Cloud.offeredNow(1800000000000, offered, true, noNode),
+                Cloud.offeredNow(1800000000000, [], false, "can't yet")],
+            [null, null, noNode, offered, offered, []]);
         Expect.same("and a why the last ask came back with is said as it",
             [Cloud.ask("fix it", "core.nix", "cloud", noNode),
                 Cloud.refused("core.nix", "cloud", noNode, words)],
             [null, `unoffered: ${noNode}`]);
+        Expect.same("and a why the node wrote is said as written, its $ patterns kept",
+            Cloud.refused("core.nix", "cloud", "zone $& and $$ unknown", words),
+            "unoffered: zone $& and $$ unknown");
         Expect.same("and a link naming nowhere is said as that, offers heard or not",
             [Cloud.refused("core.nix", "-", null, words),
                 Cloud.refused("core.nix", "-", noNode, words)],

@@ -181,7 +181,8 @@ function refused(place, on, offered, words) {
         return words?.unheard ?? "";
     }
     if (typeof offered === "string") {
-        return String(words?.unoffered ?? "").replace("{why}", offered);
+        // A function, so a `$` in the node's words is said as written.
+        return String(words?.unoffered ?? "").replace("{why}", () => offered);
     }
     return offering(offered) ? words?.unmachined ?? "" : words?.untaken ?? "";
 }

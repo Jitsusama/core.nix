@@ -2044,8 +2044,9 @@ Provider {
             return;
         }
         // With no offers heard, said as not heard yet while an ask is out,
-        // else as the why the last ask came back with (Cloud.offeredNow); a
-        // Return then asks again, so "Return" is never said of nothing.
+        // else as the why the last ask came back with (Cloud.offeredNow),
+        // promising nothing of a Return, since a node missing stays so;
+        // a Return asks again all the same, in case what held it passed.
         const offered = Cloud.offeredNow(provider.cloudOffersAt, provider.cloudOffers,
             provider.cloudAsking, provider.cloudUnoffered);
         if (Cloud.onOf(elsewhere)?.needs !== undefined && !Array.isArray(offered))
@@ -2410,9 +2411,14 @@ Provider {
     property bool cloudAsking: false
     function askOffers() {
         const daemon = rowsKind ?? null;
-        if (daemon === null || provider.cloudAsking
-                || !Cloud.stale(provider.cloudOffersAt, Date.now()))
+        if (provider.cloudAsking || !Cloud.stale(provider.cloudOffersAt, Date.now()))
             return;
+        // With no daemon to ask, no answer comes, so it is heard as none
+        // (Cloud.heard's NO_ANSWER), never left as not heard yet for good.
+        if (daemon === null) {
+            provider.cloudUnoffered = Cloud.heard(provider.cloudUnoffered, null).unoffered;
+            return;
+        }
         provider.cloudAsking = true;
         daemon.ask({ ask: "offers" }, answer => {
             provider.cloudAsking = false;

@@ -255,7 +255,7 @@
         "unmachined": "that link names no machine by one plain word",
         "untaken": "this machine's node can't start work in the cloud yet",
         "unheard": "what the cloud offers hasn't come in yet; Return again in a moment",
-        "unoffered": "{why}; Return to ask again",
+        "unoffered": "{why}",
         "inTheCloud": "in the Cloud",
         "onMachine": "on {machine}",
         "started": "started on {machine}; its window opens once it's up",
