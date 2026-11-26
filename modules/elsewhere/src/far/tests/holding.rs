@@ -104,6 +104,7 @@ PATH=${{PATH#*:}} exec uname "$@""#
             home.join("swapped").exists()
                 && code == Some(75)
                 && err.contains(said)
+                && err.contains("so the wait may run out") != stays
                 && !err.contains("so its tree stays")
                 && !err.contains("put above the job's tree"),
             "a link left above the handover wasn't answered untaken, saying {said:?} \

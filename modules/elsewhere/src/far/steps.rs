@@ -71,11 +71,14 @@ pub(super) fn waiting(bytes: u64, untaken: &str) -> String {
     // No more than a share carries, which keeps the far sum in range.
     let bytes = bytes.min(MOST_BYTES);
     format!(
-        r#"unlinked || {{
+        r#"relinked=
+unlinked || {{
   printf "elsewhere: a link at the job's handover couldn't be cleared\n" >&2
   say {untaken}
   exit {UNTAKEN}
 }}
+[ -z "$relinked" ] ||
+  printf "elsewhere: what crossed through it is out of reach, so the wait may run out\n" >&2
 # By the clock, since a pass over a large tree takes long itself: each
 # pass spends what the clock moved over it, never less than the second
 # it slept, as when the clock steps back or stands still, nor more than
@@ -144,12 +147,13 @@ pub(super) fn stopping() -> String {
 # to be a folder of its own, since a job may close one so that nothing
 # below it, a link included, can be seen or cleared. False only when a
 # link stays, never for a folder that couldn't be opened, which fails what
-# follows in its own words.
+# follows in its own words. One cleared is said, and noted in `relinked`.
 unlinked() {{
   [ -L "${{job%/*/*/*}}" ] || chmod u+rwx "${{job%/*/*/*}}" 2>/dev/null
   for at in "${{job%/*/*}}" "${{job%/*}}" "$job"; do
     [ ! -L "$at" ] || {{ rm -f "$at" 2>/dev/null
-      [ -L "$at" ] || printf "elsewhere: a link at the job's handover was cleared\n" >&2; }}
+      [ -L "$at" ] || {{ relinked=1
+        printf "elsewhere: a link at the job's handover was cleared\n" >&2; }}; }}
     [ ! -L "$at" ] || return 1
     [ ! -d "$at" ] || chmod u+rwx "$at" 2>/dev/null
   done
