@@ -121,15 +121,16 @@ fn reached(device: &Device) -> Result<IpAddr, Failure> {
 
 /// Whether this machine is likely off the home network: the modem and
 /// the switch answer net only over it, and the record names at least one
-/// of them and has none answering. A TV that didn't answer then may be
-/// fine, and isn't blamed.
+/// of them and has none heard at all. A switch that signed net out still
+/// answered over the home network, so it counts as home. A TV that
+/// didn't answer while none was heard may be fine, and isn't blamed.
 fn off_home(network: &Network) -> bool {
     let mut home = network
         .sources
         .iter()
         .filter(|source| source.name == modem::ID || source.name == switch::NAME)
         .peekable();
-    home.peek().is_some() && home.all(|source| source.state != SourceState::Answering)
+    home.peek().is_some() && home.all(|source| source.state == SourceState::Unreachable)
 }
 
 /// Why a TV wasn't heard while this machine is likely off the home
@@ -193,11 +194,14 @@ pub fn press(
             if let Some(waiting) = waiting.take() {
                 let _ = waiting.failed(&unallowed(device, &missed.why));
             }
-            if let Some(kept_now) = &missed.kept {
-                keep_now(context, device, mac, kept.as_ref(), kept_now, false);
-            }
+            let held = missed.kept.as_ref().is_some_and(|kept_now| {
+                !keep_now(context, device, mac, kept.as_ref(), kept_now, false)
+            });
             if matches!(missed.why, remote::Why::Unreachable(_)) && off_home(network) {
                 return Err(away(format!("{} didn't answer", device.name)));
+            }
+            if held && matches!(missed.why, remote::Why::Forgotten) {
+                return Err(unforgotten(device, word));
             }
             return Err(refused(device, word, missed.why));
         }
@@ -215,8 +219,10 @@ pub fn press(
 }
 
 /// Keeps what the TV allowed now, where it differs from what was kept,
-/// warning where it can't be, that the TV will ask again. `went` says
-/// whether the key went.
+/// answering whether it's kept. A token the TV handed that can't be kept
+/// is warned of, since the TV will ask again; a refused token that can't
+/// be forgotten is said by the failure instead, as it's carried again.
+/// `went` says whether the key went.
 fn keep_now(
     context: &Context,
     device: &Device,
@@ -224,11 +230,14 @@ fn keep_now(
     kept: Option<&kept::Kept>,
     kept_now: &kept::Kept,
     went: bool,
-) {
+) -> bool {
     if kept == Some(kept_now) {
-        return;
+        return true;
     }
-    if let Err(error) = kept::keep(mac, kept_now) {
+    let Err(error) = kept::keep(mac, kept_now) else {
+        return true;
+    };
+    if kept_now.token.is_some() {
         let key = if went { "the key went, but " } else { "" };
         let _ = context.tell(
             "!",
@@ -238,6 +247,35 @@ fn keep_now(
                 device.name
             ),
         );
+    } else {
+        let _ = context.tell(
+            "!",
+            "warning",
+            &format!(
+                "the token {} refused couldn't be forgotten: {error}",
+                device.name
+            ),
+        );
+    }
+    false
+}
+
+/// Why a key wasn't pressed when the TV refused the token it handed and
+/// net couldn't forget it: every press carries it again until its file
+/// goes, which costs nothing the TV still honours.
+fn unforgotten(device: &Device, word: &str) -> Failure {
+    let name = &device.name;
+    let failure = Failure::new(
+        Exit::Refused,
+        format!("{name} no longer allows this machine"),
+    )
+    .because(
+        "it refused the token it handed, and net couldn't forget it, so each press carries \
+         it again until its file is removed; the next press then asks Allow on its screen",
+    );
+    match kept_file(device) {
+        Some(file) => failure.try_this(format!("rm {file} && {}", again(device, word))),
+        None => failure,
     }
 }
 
@@ -269,8 +307,8 @@ fn unallowed(device: &Device, why: &remote::Why) -> String {
 
 /// Why what the TV allowed can't be opened, with forgetting it as the
 /// way out only where its file won't open as a TV's: a file net can't
-/// look at, or a systemd-creds that won't run, isn't helped by losing
-/// the TV's token and pin.
+/// look at, or a systemd-creds that won't run or seals nothing now, isn't
+/// helped by losing the TV's token and pin.
 fn unopened_as(device: &Device, word: &str, unopened: kept::Unopened) -> Failure {
     let name = &device.name;
     let file = kept_file(device);
@@ -292,6 +330,15 @@ fn unopened_as(device: &Device, word: &str, unopened: kept::Unopened) -> Failure
         .because(format!(
             "{error}; systemd-creds comes with systemd, and opens the TV's token for this \
              account alone"
+        )),
+        kept::Unopened::Unserved => Failure::new(
+            Exit::Failed,
+            format!("net couldn't open what {name} allowed"),
+        )
+        .because(format!(
+            "systemd-creds can't seal or open anything for this account now, so {its} isn't to \
+             blame; a fenced session may be kept from the credential service, so press from \
+             outside it"
         )),
         kept::Unopened::Unsealed => forget(
             Failure::new(Exit::Failed, format!("what {name} allowed can't be opened")).because(
@@ -666,6 +713,11 @@ mod tests {
                 false,
             ),
             (vec![("modem", "answering"), ("eero", "unreachable")], false),
+            (
+                vec![("modem", "unreachable"), ("switch", "signed-out")],
+                false,
+            ),
+            (vec![("switch", "signed-out")], false),
             (vec![("eero", "unreachable")], false),
             (vec![], false),
         ] {
@@ -685,6 +737,7 @@ mod tests {
                 kept::Unopened::Unrun(std::io::ErrorKind::NotFound.into()),
                 false,
             ),
+            (kept::Unopened::Unserved, false),
             (kept::Unopened::Unsealed, true),
             (kept::Unopened::Unread, true),
         ];
@@ -692,12 +745,32 @@ mod tests {
             let said = format!("{unopened:?}");
             let failure = unopened_as(&tv, "mute", unopened).json(false);
             let tried = failure["try"].as_str().unwrap_or_default();
-            if !forgets {
-                assert!(failure["try"].is_null(), "{said} offers {tried}");
-            } else if kept_file(&tv).is_some() {
+            if forgets {
+                assert!(
+                    kept_file(&tv).is_some(),
+                    "no file is known to offer removing"
+                );
                 assert!(tried.starts_with("rm "), "{said} offers {tried}");
+            } else {
+                assert!(failure["try"].is_null(), "{said} offers {tried}");
             }
         }
+    }
+
+    #[test]
+    fn a_refused_token_that_couldnt_be_forgotten_is_said_so_and_offers_removing_it() {
+        let tv = device("Living", &["television"], &[]);
+        let failure = unforgotten(&tv, "mute").json(false);
+        let because = failure["why"].as_str().unwrap_or_default();
+        assert!(
+            because.contains("couldn't forget"),
+            "the failure says the token was forgotten: {because}"
+        );
+        let tried = failure["try"].as_str().unwrap_or_default();
+        assert!(
+            tried.starts_with("rm ") && tried.ends_with("press mute"),
+            "the try line doesn't remove the file and press again: {tried}"
+        );
     }
 
     #[test]

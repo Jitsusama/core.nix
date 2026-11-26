@@ -105,6 +105,10 @@ pub enum Unopened {
     Unseen(io::Error),
     /// systemd-creds couldn't be run.
     Unrun(io::Error),
+    /// systemd-creds ran and can't seal anything for this account now,
+    /// as where a fence keeps net from the credential service, so the
+    /// file isn't to blame.
+    Unserved,
     /// systemd-creds ran and couldn't open the file: it was sealed on
     /// another machine or for another account, or it's damaged.
     Unsealed,
@@ -131,10 +135,28 @@ pub fn open(mac: &str) -> Result<Option<Kept>, Unopened> {
         .output()
         .map_err(Unopened::Unrun)?;
     if !output.status.success() {
-        return Err(Unopened::Unsealed);
+        return Err(if serves() {
+            Unopened::Unsealed
+        } else {
+            Unopened::Unserved
+        });
     }
     let text = String::from_utf8_lossy(&output.stdout);
     Kept::read(text.trim()).map(Some).ok_or(Unopened::Unread)
+}
+
+/// Whether systemd-creds seals for this account now, asked by sealing
+/// nothing and throwing it away: a file it won't open while it seals is
+/// the file's fault, and one it won't open while it seals nothing is its
+/// own.
+fn serves() -> bool {
+    Command::new("systemd-creds")
+        .args(["--user", "encrypt", "--name=net-asks", "-", "-"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
 }
 
 /// Seals what the TV with hardware address `mac` allowed, replacing what
@@ -192,10 +214,10 @@ fn seal(mac: &str, kept: &Kept, fresh: &Path) -> io::Result<()> {
     whole.sync_all()
 }
 
-/// How old a half-made file must be before it's swept: longer than any
-/// press takes, the wait for Allow and the seal after it together, so a
-/// net still sealing is never swept, even one in another pid namespace,
-/// whose pid this machine's /proc doesn't show.
+/// How old a half-made file must be before it's swept: far longer than
+/// a seal takes, since the file is made only once the TV has answered,
+/// so a net still sealing is never swept, even one in another pid
+/// namespace, whose pid this machine's /proc doesn't show.
 const STALE: Duration = Duration::from_secs(120);
 
 /// Removes the TV `name`'s half-made files in `folder` whose net has
@@ -340,9 +362,9 @@ mod tests {
         fs::create_dir_all(&folder).expect("a folder");
         let name = "020000000090";
         let old = STALE * 2;
-        // No process has the largest id a pid may be, or one less.
+        // No process has an id past 4194303, the largest pid_max allows.
         let stopped = folder.join(format!("{name}.cred.4194304.new"));
-        let sealing = folder.join(format!("{name}.cred.4194303.new"));
+        let sealing = folder.join(format!("{name}.cred.4194305.new"));
         let running = folder.join(format!("{name}.cred.{}.new", std::process::id()));
         let kept = folder.join(format!("{name}.cred"));
         written(&stopped, old);

@@ -327,26 +327,35 @@ impl Waits for Silent {
 
 #[test]
 fn a_box_trickling_a_frame_holds_the_remote_no_longer_than_its_deadline() {
-    let started = Instant::now();
-    let until = started + Duration::from_millis(300);
-    let socket = Due {
-        socket: Trickle { sent: 0 },
-        until,
-    };
-    let mut socket = WebSocket::from_raw_socket(socket, tungstenite::protocol::Role::Client, None);
-    assert_eq!(
-        talked(&mut socket, "KEY_POWER", until, true),
-        Err(Why::Broke("it stopped answering".into()))
-    );
-    let took = started.elapsed();
-    assert!(
-        took < Duration::from_secs(2),
-        "a trickle held the remote {took:?}"
-    );
-    assert!(
-        socket.get_ref().socket.sent > 4,
-        "the trickle wasn't read at all"
-    );
+    // A first press waits on Allow, so its deadline passing is Allow
+    // unanswered; after a token was carried it's the TV gone quiet.
+    for (carried, why) in [
+        (true, Why::Broke("it stopped answering".into())),
+        (false, Why::Unanswered),
+    ] {
+        let started = Instant::now();
+        let until = started + Duration::from_millis(300);
+        let socket = Due {
+            socket: Trickle { sent: 0 },
+            until,
+        };
+        let mut socket =
+            WebSocket::from_raw_socket(socket, tungstenite::protocol::Role::Client, None);
+        assert_eq!(
+            talked(&mut socket, "KEY_POWER", until, carried),
+            Err(why),
+            "carrying a token: {carried}"
+        );
+        let took = started.elapsed();
+        assert!(
+            took < Duration::from_secs(2),
+            "a trickle held the remote {took:?}, carrying a token: {carried}"
+        );
+        assert!(
+            socket.get_ref().socket.sent > 4,
+            "the trickle wasn't read at all, carrying a token: {carried}"
+        );
+    }
 }
 
 #[test]
