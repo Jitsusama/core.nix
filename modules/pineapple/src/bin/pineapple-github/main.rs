@@ -65,7 +65,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use pineapple::Joel;
 use pineapple::github::{self, Said, Thread, add_page, found, notified, worth_judging};
-use pineapple::progress::{self, Judged};
+use pineapple::progress::{self, Judged, Owed};
 use pineapple::sign_in::{self, SignIn};
 use serde_json::{Value, json};
 use terminal_kit::{Exit, Failure, Format, Help, flags};
@@ -613,12 +613,23 @@ fn searched(github: &GitHub<'_>, query: &str) -> Result<Value, Unread> {
 }
 
 /// What the search `found`, then where Joel `spoke` lately that it didn't
-/// find, read from its `reach`: his words are listed there long before
-/// they're searched, and only what's fresh is read, so they're read first
-/// with the search's, and owed like them.
-fn with_spoken(mut found: Vec<Listed>, spoke: Option<Vec<Thread>>, reach: u64) -> Vec<Listed> {
+/// find and isn't `owed`, read from its `reach`: his words are listed
+/// there long before they're searched, and only what's fresh is read, so
+/// they're read first with the search's, and owed like them. One owed
+/// waits its turn, read from as far back, since the watch lists it each
+/// round until his words there are judged, where the search lists one
+/// again only once it changes: listed, it would be asked every round, so
+/// three failing would spend each round's [`FAILS`] before what notified
+/// him is read.
+fn with_spoken(
+    mut found: Vec<Listed>,
+    spoke: Option<Vec<Thread>>,
+    reach: u64,
+    owed: &[Owed],
+) -> Vec<Listed> {
+    let owes = |thread: &Thread| owed.iter().any(|owed| owed.thread == *thread);
     for thread in spoke.into_iter().flatten() {
-        if !found.iter().any(|(known, _, _)| *known == thread) {
+        if !found.iter().any(|(known, _, _)| *known == thread) && !owes(&thread) {
             found.push((thread, reach, reach));
         }
     }
@@ -665,7 +676,7 @@ fn round(
     let found = hits.iter().flat_map(|hits| hits.threads.iter());
     let found = found.map(|thread| (thread.clone(), reach, own.read_from()));
     let spoken = mine.then(|| watched.listed(github, (&how.site, &login), reach, &judged.keys));
-    let found = with_spoken(found.collect(), spoken, reach);
+    let found = with_spoken(found.collect(), spoken, reach, &judged.owed);
     let notified = notified.into_iter().map(|thread| (thread, from, from));
     let threads = owed::list(found, notified.collect(), &judged.owed);
     // Where logins are addresses, what Joel says is by his address.
