@@ -99,16 +99,16 @@ pub fn takes(
 }
 
 /// How long this account's manager has to name the shell's main process.
-/// An answer waits on it before the node's own 5 s (acts.rs's PATIENCE),
+/// An answer waits on it before the node's own 5 s (acts.rs's `PATIENCE`),
 /// and the launcher lets Joel answer again once 30 s pass unheard
-/// (TalkAnswers.js's SENT_STANDS_MS), so the two stay well inside that.
+/// (TalkAnswers.js's `SENT_STANDS_MS`), so the two stay well inside that.
 const MANAGER_PATIENCE: Duration = Duration::from_secs(3);
 
 /// How often a manager not yet done is looked at again.
 const MANAGER_LOOKS_EVERY: Duration = Duration::from_millis(10);
 
 /// The shell's unit's main process, as this account's manager says it
-/// within MANAGER_PATIENCE, the call ended where it doesn't.
+/// within `MANAGER_PATIENCE`, the call ended where it doesn't.
 fn shells_main_pid() -> io::Result<u32> {
     let mut asked = Command::new("systemctl")
         .args([
