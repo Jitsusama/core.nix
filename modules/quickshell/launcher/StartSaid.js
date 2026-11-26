@@ -64,7 +64,7 @@ function told(list, toldOne, now) {
 }
 
 // When the start `one` was asked, as hours and minutes.
-function at(one) {
+function clock(one) {
     const asked = new Date(one.at);
     const two = number => String(number).padStart(2, "0");
     return `${two(asked.getHours())}:${two(asked.getMinutes())}`;
