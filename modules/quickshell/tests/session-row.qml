@@ -226,9 +226,10 @@ QtObject {
         // for, a name every object answers included.
         const plainWhys = typeof SessionRow.viewedWhy !== "function" ? "none read"
             : ["opening", "startedOpening", "askedAgain", "startedAskedAgain", "cameAfter",
-                "startedCameAfter", "ownAfterAll", "startedOwnAfterAll", "disowned", "startedDisowned", "untaken",
-                "startedUntaken", "unowned", "hosted", "hostless", "unnamed", "unviewable",
-                "unviewableHost", "bogus", "toString", "", undefined]
+                "startedCameAfter", "ownAfterAll", "startedOwnAfterAll", "disowned",
+                "startedDisowned", "untaken", "startedUntaken", "unowned", "hosted",
+                "hostless", "unnamed", "unviewable", "unviewableHost", "bogus", "toString", "",
+                undefined]
                 .filter(why => SessionRow.viewedWhy(why)).join(" ");
         if (plainWhys !== "opening startedOpening askedAgain startedAskedAgain cameAfter "
             + "startedCameAfter ownAfterAll startedOwnAfterAll")
