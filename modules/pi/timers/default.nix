@@ -179,11 +179,13 @@ in
         # A sweep waits up to 15 minutes for a machine stalled on memory or
         # I/O, reading it every 30 s, and never skips the hour, as two
         # skipped hours hand sweeping to the hosts (sweep-room.sh). The
-        # hosts take over two hours after the last whole sweep ended, which
-        # its stamp says, so a sweep that starts at a quarter past still has
-        # 45 minutes more than the last one took to end in, and one whose
-        # stamp a wait would outlast, as after a sleep, starts at once. The
-        # dash starts it anyway if the wait itself fails.
+        # hosts take over two hours after the last whole sweep ended, by
+        # the stamp the harness's pi-sweep.ts dates as each run ends
+        # (markSweptOutside), and only while no sweep holds the lock, which
+        # the sweep takes as it starts and the wait doesn't. So the wait
+        # need only end before those two hours, and one whose stamp it
+        # would outlast, as after a sleep, starts at once. The dash starts
+        # the sweep anyway if the wait itself fails.
         ExecStartPre = lib.concatStringsSep " " [
           "-${lib.getExe sweepRoom} /proc/pressure /proc/meminfo 900 30"
           "%S/pi/agentic-harness.pi/work/sweep.lock.outside"
@@ -212,10 +214,13 @@ in
         # What would have node run code nobody gave it, as a pi host's unit
         # clears (host.nix's loadsCode), since this sweep runs git in every
         # session's trees as a host's would, and the TPM agent's socket, which
-        # a host hides from its conversations too. And the file bash reads
-        # before any script, as the room check is one.
+        # a host hides from its conversations too. And what bash reads as
+        # it starts a script, as the room check is one: a file to run, its
+        # options, and the trace prompt those options can expand.
         UnsetEnvironment = [
           "BASH_ENV"
+          "SHELLOPTS"
+          "PS4"
           "SSH_TPM_AUTH_SOCK"
           "NODE_OPTIONS"
           "NODE_PATH"
@@ -241,13 +246,12 @@ in
         # git status read 8 GB from the disk and 741 KB through read(), so
         # nearly all of it was a large repository's mapped pack files
         # faulted in again, 1.8 million times, as each tree's status maps
-        # those packs anew. 6 GB is over the 5.8 GB peak, and the same on
+        # those packs anew. 6 GiB is over the 5.8 GB peak, and the same on
         # every machine, as what thrashes is the packs and the trees, not
         # the memory there is, though on a machine under about 23 GiB
         # jobs.slice's own ceiling, at least a quarter of memory, may come
-        # first. The
-        # mark reserves nothing: what Joel is using keeps its slices'
-        # floors beneath it. No hard limit of its own: a kill partway
+        # first. The mark reserves nothing: what Joel is using keeps its
+        # slices' floors beneath it. No hard limit of its own: a kill partway
         # through a take leaves a tree moved aside for the next run to put
         # back. The two-hour timeout above, systemd-oomd
         # watching the slice for pressure and the kernel's own OOM killer

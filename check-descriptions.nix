@@ -3459,10 +3459,10 @@
     hour, catching up an hour missed while off, among agents' commands in jobs-work.slice, with
     the store's node, the account's git, its hosts' folders, provider modules as a machine gave
     them, only the agents' SSH proxy its hosts get and none of the variables a pi host's unit
-    clears, nor the file bash reads first, rather than on a host's thread; left running through
+    clears, nor what bash reads as it starts, rather than on a host's thread; left running through
     a switch for up to two hours, started only once it has waited up to 15 minutes for the
     machine to have room, reading when the last sweep ended, a wait whose failure still starts
-    it, made to give memory back past 6 GB with no hard limit, its own, its
+    it, made to give memory back past 6 GiB with no hard limit, its own, its
     slices' or its account manager's, to kill it at, skipped where the harness isn't installed,
     and never on a Mac
   '';

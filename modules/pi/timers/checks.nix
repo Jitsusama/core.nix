@@ -179,9 +179,15 @@ onLinux {
       proxied = account: account.systemd.user.sockets ? pi-agent-proxy;
       givenProfile = "${given.home.profileDirectory}/bin";
       cleared = unit: lib.sort lib.lessThan (lib.toList unit.UnsetEnvironment);
+      # What bash reads as it starts the room check, beyond what node reads.
+      bashReads = [
+        "BASH_ENV"
+        "PS4"
+        "SHELLOPTS"
+      ];
     in
     holds "pi-sweeps-work-trees-in-a-unit-of-its-own"
-      "pi's tree sweep doesn't run only at the top of each hour by the wall clock, catching up an hour missed while off, runs outside jobs-work.slice or a node off the PATH, isn't one run to its end, runs a script other than the one it checks for, logs node's module-type warning, fails where the harness isn't installed, is stopped by a switch or by its own clock before two hours, starts without waiting for the machine to have room, or fails if that wait does, waits for room past 15 minutes or without reading when the last sweep ended, isn't made to give back memory past 6 GB, or has a hard limit, its own, its slices' or its account manager's, to kill it at, has a PATH other than the account's git, its hosts' folders and the account's own, names provider modules other than a machine gave it, has an SSH agent other than the agents' proxy its hosts get, leaves a variable that loads code that a pi host's unit clears, or the file bash reads first, or reaches a Mac."
+      "pi's tree sweep doesn't run only at the top of each hour by the wall clock, catching up an hour missed while off, runs outside jobs-work.slice or a node off the PATH, isn't one run to its end, runs a script other than the one it checks for, logs node's module-type warning, fails where the harness isn't installed, is stopped by a switch or by its own clock before two hours, starts without waiting for the machine to have room, or fails if that wait does, waits for room past 15 minutes or without reading when the last sweep ended, isn't made to give back memory past 6 GiB, or has a hard limit, its own, its slices' or its account manager's, to kill it at, has a PATH other than the account's git, its hosts' folders and the account's own, names provider modules other than a machine gave it, has an SSH agent other than the agents' proxy its hosts get, leaves a variable that loads code that a pi host's unit clears, or what bash reads as it starts, or reaches a Mac."
       (
         lib.elem "timers.target" timer.Install.WantedBy
         &&
@@ -214,13 +220,8 @@ onLinux {
           ]
         && !(proxied home)
         &&
-          cleared service.Service == lib.sort lib.lessThan (
-            cleared givenHost
-            ++ [
-              "BASH_ENV"
-              "SSH_AUTH_SOCK"
-            ]
-          )
+          cleared service.Service
+          == lib.sort lib.lessThan (cleared givenHost ++ bashReads ++ [ "SSH_AUTH_SOCK" ])
         &&
           lib.toList givenSweep.Environment == [
             ''"PATH=${pkgs.gitMinimal}/bin:/tools/bin:/100%% sure/bin:/odd\"dir\\bin:${givenProfile}:/run/current-system/sw/bin"''
@@ -229,7 +230,7 @@ onLinux {
           ]
         && proxied given
         && lib.elem proxy (lib.toList givenHost.Environment)
-        && cleared givenSweep == lib.sort lib.lessThan (cleared givenHost ++ [ "BASH_ENV" ])
+        && cleared givenSweep == lib.sort lib.lessThan (cleared givenHost ++ bashReads)
         && !(mac.systemd.user.timers ? pi-sweep)
         && !(mac.systemd.user.services ? pi-sweep)
       );

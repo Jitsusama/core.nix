@@ -16,8 +16,45 @@
 # a reading it can't make. The stall marks, 3.5% and 1.4%, are 70% of the
 # 5% and 2% at which an agent's heavy work stops, held over five minutes
 # as a start is judged; a quarter free is the jobs door's own room.
-#
-#   pi-sweep-room <pressure folder> <meminfo> <seconds to wait> <seconds apart> <stamp>
+# Its help takes the shape every command of ours does (docs/commands.md),
+# by hand.
+
+say_help() {
+  cat << 'EOF'
+pi-sweep-room  wait for room before the tree sweep
+
+  Reads the kernel's memory and I/O stalls and free
+  memory every APART seconds, and ends once the machine
+  has room, or after WAIT seconds however it stands. It
+  ends at once when the last sweep, by its STAMP, ended
+  too long ago to wait, and on a reading it can't make.
+  The sweep's unit runs it before each hourly sweep.
+
+EXAMPLES
+  cd ~/.local/state/pi/agentic-harness.pi/work
+  pi-sweep-room /proc/pressure /proc/meminfo 900 30 \
+    sweep.lock.outside
+
+EXIT
+  0   the sweep may start
+  64  asked wrongly
+EOF
+}
+
+for word in "$@"; do
+  case $word in
+  -h | --help)
+    say_help
+    exit 0
+    ;;
+  *) ;;
+  esac
+done
+if [ "$#" -ne 5 ]; then
+  printf '%s\n' "pi-sweep-room takes PRESSURE MEMINFO WAIT APART STAMP" \
+    "  try  pi-sweep-room --help" >&2
+  exit 64
+fi
 
 pressure=$1
 meminfo=$2
