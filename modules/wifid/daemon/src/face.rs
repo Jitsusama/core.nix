@@ -333,7 +333,11 @@ impl Face {
 
     /// Answers one connection until it hangs up.
     async fn answer(self: Arc<Face>, stream: UnixStream) {
-        let peer = Peer::at(stream.peer_cred().ok().and_then(|peer| peer.pid()));
+        let said = stream.peer_cred().ok();
+        let peer = Peer::at(
+            said.and_then(|said| said.pid()),
+            said.map(|said| said.uid()),
+        );
         let (reading, mut writing) = stream.into_split();
         let (told, mut telling) = mpsc::channel::<String>(WAITING);
         let writer = tokio::spawn(async move {
@@ -472,9 +476,10 @@ impl Connection {
                 // elsewhere can be told from the launcher's: from 19:00 on
                 // 23 Nov 2026 eight roams a minute apart moved the card, on
                 // connections that asked for no rows, and nothing said who.
-                // The asker's cgroup is said whole: a process may name its
-                // own unit under its user's manager, but not move it out
-                // of user.slice, so a unit's name alone is only a hint.
+                // The asker's uid and its cgroup's path are said: a process
+                // may name its own unit under its user's manager, but not
+                // move it out of user.slice, so a unit's name alone is only
+                // a hint.
                 // The pid is the kernel's word for who connected, as the
                 // connection was taken, not for who holds it since.
                 println!("<6>{} asks {}", self.peer, acts::wanted(&said));

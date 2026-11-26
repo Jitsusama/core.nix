@@ -74,35 +74,50 @@ pub fn asked(line: &str, said: &Value) -> Result<bool, &'static str> {
 /// Who said something on a connection, as the kernel tells it.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Peer {
-    pub pid: Option<i32>,
-    /// The cgroup's whole path, as `cgroup_of` says it, or none when it
-    /// couldn't be read.
-    pub cgroup: Option<String>,
+    pid: Option<i32>,
+    /// The account the kernel says connected, which no cgroup nested too
+    /// deep to read can hide.
+    uid: Option<u32>,
+    /// The cgroup's path, as `cgroup_of` says it, or none when it couldn't
+    /// be read. Only `cgroup_of` makes one, so nothing unescaped reaches
+    /// the journal through it.
+    cgroup: Option<String>,
 }
 
 impl Peer {
     /// The peer at a pid, with the cgroup it's in, read as bytes so a path
-    /// that isn't UTF-8 is still said.
-    pub fn at(pid: Option<i32>) -> Peer {
+    /// that isn't UTF-8 is still said. The pid is read as wifid answers,
+    /// so a process that connected and exited before then could have its
+    /// pid taken by another, and the path name that one's cgroup: the
+    /// slice holds only while the pid isn't reused. The uid can't move
+    /// that way, since the kernel took it as the connection was made.
+    pub fn at(pid: Option<i32>, uid: Option<u32>) -> Peer {
         let cgroup = pid
             .and_then(|pid| std::fs::read(format!("/proc/{pid}/cgroup")).ok())
             .and_then(|cgroup| cgroup_of(&cgroup));
-        Peer { pid, cgroup }
+        Peer { pid, uid, cgroup }
     }
 }
 
 impl fmt::Display for Peer {
     fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match (self.pid, &self.cgroup) {
-            // The whole path, as a process names its own unit under its
-            // user's manager: a unit called wifid-calls.service there
-            // still reads as under user.slice, not system.slice.
-            (Some(pid), Some(cgroup)) => write!(out, "pid {pid} ({cgroup})"),
+        let Some(pid) = self.pid else {
+            return write!(out, "a process the kernel didn't name");
+        };
+        write!(out, "pid {pid}")?;
+        if let Some(uid) = self.uid {
+            write!(out, ", uid {uid}")?;
+        }
+        match &self.cgroup {
+            // The path from the root, as a process names its own unit
+            // under its user's manager: a unit called wifid-calls.service
+            // there still reads as under user.slice, not system.slice.
+            Some(cgroup) => write!(out, " ({cgroup})"),
             // A process may have gone, or nest its cgroup too deep for
             // the kernel to say, so a line it asks for says the path went
-            // unread rather than passing as one that has none.
-            (Some(pid), None) => write!(out, "pid {pid} (its cgroup unread)"),
-            (None, _) => write!(out, "a process the kernel didn't name"),
+            // unread rather than passing as one that has none, and its
+            // uid still says whose it is.
+            None => write!(out, " (its cgroup unread)"),
         }
     }
 }
@@ -112,7 +127,9 @@ impl fmt::Display for Peer {
 /// under its user's manager, so the name could otherwise hold a control
 /// character, which has journalctl show the whole line as a blob, or a
 /// `) asks a look; pid 2211 (` writing a second asker into the line. Bytes
-/// that aren't UTF-8 are said as `?` too.
+/// that aren't UTF-8 are said as `?` too. No name holds a line break, since
+/// the kernel's `cgroup_mkdir` refuses one to keep this file readable. A
+/// host with no unified hierarchy has no `0::` line, and reads as unread.
 fn cgroup_of(cgroup: &[u8]) -> Option<String> {
     let cgroup = String::from_utf8_lossy(cgroup);
     let path = cgroup.lines().find_map(|line| line.strip_prefix("0::/"))?;
@@ -136,22 +153,24 @@ fn cgroup_of(cgroup: &[u8]) -> Option<String> {
 const SLICE_MOST: usize = 64;
 
 /// The most of a cgroup's path at its end an ask's line says: a unit's
-/// name is at most 255 characters, and a scope or slice under it rarely
-/// more than a few.
-const UNIT_MOST: usize = 128;
+/// name is at most 255 characters, and the `/` before it one more.
+const UNIT_MOST: usize = 256;
 
-/// A path as an ask's line says it: whole up to `SLICE_MOST` and
-/// `UNIT_MOST` together, and past that its start and end around `...`. A
-/// process may nest cgroups under its own manager as deep as the kernel
-/// lets it, and journald splits a line past its `LineMax` into records of
-/// their own, the rest reading as wifid's. The path is ASCII by now, so a
-/// character is a byte.
+/// What stands for the middle of a path too long to say whole.
+const CUT: &str = "...";
+
+/// A path as an ask's line says it: whole up to `SLICE_MOST`, `CUT` and
+/// `UNIT_MOST` together, and past that its start and end around `CUT`. A
+/// process may nest cgroups under its own manager until the path nears
+/// `PATH_MAX`, past which the kernel refuses to say it, and 4 KB of
+/// `a/a/a/` on each line it asks would bury who asked. The path is ASCII
+/// by now, so a character is a byte.
 fn cut(path: &str) -> String {
-    if path.len() <= SLICE_MOST + UNIT_MOST {
+    if path.len() <= SLICE_MOST + CUT.len() + UNIT_MOST {
         return path.to_owned();
     }
     let (start, end) = (&path[..SLICE_MOST], &path[path.len() - UNIT_MOST..]);
-    format!("{start}...{end}")
+    format!("{start}{CUT}{end}")
 }
 
 #[cfg(test)]
@@ -241,28 +260,42 @@ mod tests {
     #[test]
     fn a_cgroup_nested_deep_says_its_slice_and_its_unit() {
         let user = "user.slice/user-1000.slice/user@1000.service/app.slice/";
-        let deep = format!("{user}{}wifid-calls.service", "a/".repeat(2000));
+        // A unit's name as long as one may be, so the end kept must hold
+        // all of it, and a start and end swapped would lose it.
+        let unit = format!("{}.service", "u".repeat(255 - ".service".len()));
+        let deep = format!("{user}{}{unit}", "a/".repeat(2000));
 
         let said = cgroup_of(format!("0::/{deep}\n").as_bytes()).expect("a path");
 
         assert_eq!(
-            said.len(),
-            SLICE_MOST + "...".len() + UNIT_MOST,
-            "a deep path wasn't cut: {said}"
+            said,
+            format!(
+                "{}...{}",
+                &deep[..SLICE_MOST],
+                &deep[deep.len() - UNIT_MOST..]
+            ),
+            "a deep path wasn't cut to its start and end"
         );
         assert!(
             said.starts_with("user.slice/user-1000.slice/user@1000.service/"),
             "a cut path lost whose manager runs it: {said}"
         );
         assert!(
-            said.ends_with("/a/wifid-calls.service"),
-            "a cut path lost its unit: {said}"
+            said.ends_with(&format!("/{unit}")),
+            "a cut path lost its unit's whole name: {said}"
         );
-        let whole = format!("{user}{}", "x".repeat(SLICE_MOST + UNIT_MOST - user.len()));
+        let most = SLICE_MOST + "...".len() + UNIT_MOST;
+        let whole = format!("{user}{}", "x".repeat(most - user.len()));
+        let past = format!("{whole}y");
         assert_eq!(
             cgroup_of(format!("0::/{whole}\n").as_bytes()),
             Some(whole),
-            "a path at the most was cut"
+            "a path no longer than its cut would be was cut"
+        );
+        assert_eq!(
+            cgroup_of(format!("0::/{past}\n").as_bytes()).map(|said| said.len()),
+            Some(most),
+            "a path one past the most wasn't cut"
         );
     }
 
@@ -290,24 +323,50 @@ mod tests {
     fn a_peer_says_what_the_kernel_named() {
         let named = Peer {
             pid: Some(42),
+            uid: Some(1000),
             cgroup: Some("system.slice/wifid-calls.service".into()),
         };
         assert_eq!(
             named.to_string(),
-            "pid 42 (system.slice/wifid-calls.service)"
+            "pid 42, uid 1000 (system.slice/wifid-calls.service)"
         );
         assert_eq!(
             Peer {
                 cgroup: None,
-                ..named
+                ..named.clone()
             }
             .to_string(),
-            "pid 42 (its cgroup unread)",
+            "pid 42, uid 1000 (its cgroup unread)",
             "a process whose cgroup went unread passed as one in none"
+        );
+        assert_eq!(
+            Peer { uid: None, ..named }.to_string(),
+            "pid 42 (system.slice/wifid-calls.service)",
+            "a peer with no uid said one"
         );
         assert_eq!(
             Peer::default().to_string(),
             "a process the kernel didn't name"
+        );
+    }
+
+    #[test]
+    fn a_peer_is_read_from_the_kernel_and_says_when_it_couldnt_be() {
+        // No pid reaches past pid_max, 2^22 at most, so none is there.
+        let gone = Peer::at(Some(i32::MAX), Some(1000));
+        let here = Peer::at(
+            Some(i32::try_from(std::process::id()).expect("a pid fits")),
+            Some(1000),
+        );
+
+        assert_eq!(
+            gone.to_string(),
+            format!("pid {}, uid 1000 (its cgroup unread)", i32::MAX),
+            "a pid that isn't there named a cgroup"
+        );
+        assert!(
+            here.cgroup.is_some(),
+            "this test's own cgroup went unread: {here}"
         );
     }
 }
