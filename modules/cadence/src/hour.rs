@@ -3,8 +3,9 @@
 //! delivering insane quality, both functionally, and by maintaining clean
 //! zones". Each hour it measures what shipped, what broke, what slipped
 //! and how clean the code is, each against a target, from what the
-//! machine already keeps; names the one biggest drag and files it with
-//! its owner in the loop's ledger, due a day on; says the next hour
+//! machine already keeps; names the one biggest drag; files it and every
+//! other measure past its target with its owner in the loop's ledger, due
+//! a day on, put to each owner as one question; says the next hour
 //! whether it moved; and sends the card to the orchestrator. A miss Joel
 //! found himself outranks every figure, and stays open until a check
 //! that would have caught it merges. The queues the work waits in show
@@ -12,8 +13,11 @@
 //!
 //! This file reads the measures and runs the hour; `card` composes what it
 //! says and keeps, `good` holds each measure to the definition of good,
-//! `owing` files its drag with each owner, `records` reads the queues'
+//! `owing` files its drag with each owner, `put` asks each owner of it, `records` reads the queues'
 //! records, and `reviews` the harness's review records.
+//!
+//! Long because the run reads each record the measures need and keeps the
+//! hour, its ledger and its sends in order, and its tests sit beside it.
 
 mod card;
 mod good;
@@ -23,6 +27,7 @@ mod measures;
 mod moved;
 mod owing;
 mod parted;
+mod put;
 mod records;
 mod reviews;
 mod stuck;
@@ -176,12 +181,16 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     let ledger_at = folder.join("findings.jsonl");
     let _held = findings::lock(&ledger_at)?;
     let mut ledger = findings::read(&ledger_at);
-    let told = file(&mut ledger, &measures, &today(now), now);
+    let date = today(now);
+    let told = file(&mut ledger, &measures, &date, now);
     let mesh = Mesh {
         root: state_home.join("pi/agentic-harness.pi"),
     };
-    for (owner, text) in told.into_iter().filter(|(owner, _)| !owner.is_empty()) {
-        mesh.send(&message(&owner, "finding", text))?;
+    // A question, so the line wakes its owner and wants an answer.
+    for (owner, text) in put::asks(told) {
+        let ask = message(&owner, "question", text);
+        put::mark_asked(&mut ledger, &owner, &date, &ask.id);
+        mesh.send(&ask)?;
     }
     let routes = fs::read_to_string(state_home.join("pain-points/routes.json")).ok();
     let keeper = measures::keeper(routes.as_deref());

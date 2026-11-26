@@ -189,7 +189,7 @@ fn filed(m: &Measure) -> Vec<Filed> {
                     key: format!("hour:{}:{owner}", m.key),
                     says: format!("{says}, yours: {files}"),
                     text: format!(
-                        "cadence hour: the biggest drag this hour is {says}, and these of \
+                        "cadence hour: a measure is past its target, {says}, and these of \
                          its {things} are yours: {files}. Please reply with their cause and fix \
                          within a day, or why they can't move. It closes by itself once \
                          {closes}."
@@ -203,7 +203,7 @@ fn filed(m: &Measure) -> Vec<Filed> {
         key: format!("hour:{}", m.key),
         owner: m.owner.clone(),
         text: format!(
-            "cadence hour: the biggest drag this hour is yours, {says}. Please reply with \
+            "cadence hour: a measure past its target is yours, {says}. Please reply with \
              its cause and fix within a day, or why it can't move. It closes by itself once \
              its figure is back in."
         ),
@@ -425,6 +425,8 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
 /// to whoever landed it, whatever else leads, each owner's findings in
 /// the work system's group open past a day, which WCJQSG ruled count
 /// against them as Joel's misses do, and the worst queue, once a day.
+/// Every other measure past its target is filed with its owner beside
+/// them, each owed once while it stays open.
 pub fn file(
     ledger: &mut Vec<Entry>,
     measures: &[Measure],
@@ -471,6 +473,16 @@ pub fn file(
         .iter()
         .any(|e| e.key.starts_with(&format!("hour:{QUEUE}")) && e.first == date);
     dragging.extend(queues::worst(measures).filter(|_| !asked_today));
+    // Every other measure past its target goes to its owner too, as Joel
+    // asked of the loops (26 November): a red line only the card shows
+    // steers nothing. A queue is still asked once a day, and a pain by
+    // its hearer.
+    dragging.extend(measures.iter().filter(|m| {
+        !matches!(m.class, Class::Queues | Class::Pains)
+            && !m.key.starts_with(rounds::FRUITLESS)
+            && !m.key.starts_with(told_late::KEY)
+            && m.past().is_some()
+    }));
     let mut told = Vec::new();
     for (m, one) in dragging
         .into_iter()
@@ -660,6 +672,41 @@ mod tests {
             "none told"
         );
         assert!(!ledger[0].open, "back in closes it");
+    }
+
+    #[test]
+    fn every_measure_past_its_target_is_filed_with_its_owner_not_only_the_lead() {
+        let mut ledger = Vec::new();
+        let lead = measure("slips", Class::Slip, 3.0, Some(0.0));
+        let mut ship = measure("ship", Class::Ship, 9.0, Some(4.0));
+        ship.owner = "SHIP01".to_owned();
+        let mut quiet = measure("quiet", Class::Ship, 1.0, Some(4.0));
+        quiet.owner = "QUIET1".to_owned();
+        let mut queue = measure(&format!("{QUEUE}x"), Class::Queues, 90.0, Some(60.0));
+        queue.owner = "QUEUE1".to_owned();
+        queue.behind = vec!["x · QUEUE1".to_owned()];
+        let told = file(&mut ledger, &[lead, ship, quiet, queue], "2026-11-26", 1000);
+        let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
+        assert!(
+            owners.contains(&"OWNER") && owners.contains(&"SHIP01") && !owners.contains(&"QUIET1"),
+            "a red measure that doesn't lead went to no one, or one in its target was told: \
+             {owners:?}"
+        );
+        let ship_told = told
+            .iter()
+            .find(|(to, _)| to == "SHIP01")
+            .map(|(_, t)| t.as_str());
+        assert!(
+            ship_told.is_some_and(
+                |t| t.contains("past its target is yours") && !t.contains("biggest drag")
+            ),
+            "a measure that doesn't lead was told it's the biggest drag: {ship_told:?}"
+        );
+        assert_eq!(
+            owners.iter().filter(|o| **o == "SHIP01").count(),
+            1,
+            "a red measure was filed twice in one hour: {owners:?}"
+        );
     }
 
     #[test]

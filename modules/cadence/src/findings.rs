@@ -77,6 +77,10 @@ pub struct Entry {
     /// `cadence owe --done`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fixed: Option<String>,
+    /// The id of the question its owner was asked it in, so a reply whose
+    /// re names that id answers this line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asked: Option<String>,
 }
 
 /// Whether a count is nought, so a line never reopened stays as it was.
@@ -218,6 +222,7 @@ pub fn update(
                 put_to: Vec::new(),
                 back: None,
                 fixed: None,
+                asked: None,
             });
         }
     }

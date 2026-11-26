@@ -128,6 +128,7 @@ pub fn owe(ledger: &mut Vec<Entry>, owed: Owed, date: &str, now: i64) {
         put_to: Vec::new(),
         back: None,
         fixed: None,
+        asked: None,
     });
 }
 
