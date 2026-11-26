@@ -329,17 +329,22 @@ fn a_writers_hold_stops_a_pass_until_the_disk_is_nearly_full() {
     );
 }
 
-#[test]
-fn a_clear_asked_under_a_writers_hold_says_it_clears_from_before_its_survey() {
-    // Its survey can walk for minutes, in which a status still saying the
-    // disk waits tells Joel his clear never started.
-    let home = Home::new();
+/// Asks a clear of cold scratch under a writers' hold, giving back the
+/// guard and the scratch entry it should take.
+fn clear_asked_under_a_hold(home: &Home) -> (Guard, PathBuf) {
     let mark = home.root.join("velocity-hold/disk-writers");
     fs::create_dir_all(mark.parent().unwrap()).unwrap();
     fs::write(&mark, "").unwrap();
     let scratch = home.cold_scratch("build");
     disk_guard::clears::ask(&home.root.join("state"), scratch.parent().unwrap(), 0.0).unwrap();
-    let mut guard = home.guard(held_by(&home, &mark, "0%"));
+    (home.guard(held_by(home, &mark, "0%")), scratch)
+}
+
+/// Steps a clear asked under a writers' hold, giving back the guard and,
+/// each time its survey looked, what the status said of the held disk's
+/// waiting (left out when false) and of the pass at work.
+fn clear_under_a_hold(home: &Home) -> (Guard, Vec<(serde_json::Value, serde_json::Value)>) {
+    let (mut guard, scratch) = clear_asked_under_a_hold(home);
     // Asked once its survey has walked, before any pass judges.
     let status = home.root.join("status.json");
     let seen = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
@@ -347,9 +352,10 @@ fn a_clear_asked_under_a_writers_hold_says_it_clears_from_before_its_survey() {
     guard.stop_when(Box::new(move || {
         if let Ok(text) = fs::read_to_string(&status) {
             let read: serde_json::Value = serde_json::from_str(&text).unwrap();
-            seeing
-                .borrow_mut()
-                .push(read["filesystems"][0]["waiting"].clone());
+            seeing.borrow_mut().push((
+                read["filesystems"][0]["waiting"].clone(),
+                read["passing"]["why"].clone(),
+            ));
         }
         false
     }));
@@ -358,17 +364,26 @@ fn a_clear_asked_under_a_writers_hold_says_it_clears_from_before_its_survey() {
         !scratch.exists(),
         "the clear asked for didn't run under the hold"
     );
-    let seen = seen.borrow();
+    guard.stop_when(Box::new(|| false));
+    let seen = seen.borrow().clone();
     assert!(
         !seen.is_empty(),
         "nothing read the status while the clear surveyed"
     );
-    // Left out of the status when false.
+    (guard, seen)
+}
+
+#[test]
+fn a_clear_asked_under_a_writers_hold_says_it_clears_from_before_its_survey() {
+    // Its survey can walk for minutes, in which a status still saying the
+    // disk waits tells Joel his clear never started.
+    let home = Home::new();
+    let (mut guard, seen) = clear_under_a_hold(&home);
     assert!(
-        seen.iter().all(|waiting| *waiting != true),
-        "a disk whose clear was surveying said it waits: {seen:?}"
+        seen.iter()
+            .all(|(waiting, why)| *waiting != true && why == "clear"),
+        "a disk whose clear was surveying wasn't told at work clearing: {seen:?}"
     );
-    drop(seen);
     // A clear of a folder with nothing in it to clear runs no pass, and
     // the disk is told at work no longer once it ends.
     let empty = home.root.join("scratch/nothing-here");
@@ -384,6 +399,50 @@ fn a_clear_asked_under_a_writers_hold_says_it_clears_from_before_its_survey() {
         home.status()["filesystems"][0]["waiting"],
         true,
         "the held disk didn't say it waits once its clear ended"
+    );
+}
+
+/// A subvolume has a device number of its own, which names no watched
+/// disk: they're known by their pool.
+#[test]
+fn a_clear_in_a_subvolume_under_a_writers_hold_says_it_clears() {
+    let home = Home::new();
+    if !crate::pool::on_btrfs(&home.root) {
+        eprintln!("skipped: {} isn't on Btrfs", home.root.display());
+        return;
+    }
+    crate::pool::subvolume(&home.root, "scratch");
+    let (_, seen) = clear_under_a_hold(&home);
+    assert!(
+        seen.iter()
+            .all(|(waiting, why)| *waiting != true && why == "clear"),
+        "a disk whose clear in a subvolume was surveying wasn't told at work clearing: {seen:?}"
+    );
+}
+
+/// A clear that fails still ends, and the held disk says it waits again
+/// rather than neither waiting nor clearing until its next status.
+#[test]
+fn a_clear_that_fails_under_a_writers_hold_leaves_its_disk_waiting() {
+    use std::os::unix::fs::PermissionsExt;
+    let home = Home::new();
+    let (mut guard, scratch) = clear_asked_under_a_hold(&home);
+    // Its ask can't be taken back, so the clear fails once it has run.
+    let asks = home.root.join("state").join(disk_guard::clears::DIR);
+    fs::set_permissions(&asks, fs::Permissions::from_mode(0o555)).unwrap();
+    let stepped = guard.step(&tick_at(0.0), &CALM);
+    fs::set_permissions(&asks, fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(stepped.is_err(), "a clear whose ask stayed didn't fail");
+    assert!(!scratch.exists(), "the clear didn't run before it failed");
+    assert!(
+        home.status()["passing"].is_null(),
+        "a failed clear left its disk told at work: {}",
+        home.status()["passing"]
+    );
+    assert_eq!(
+        home.status()["filesystems"][0]["waiting"],
+        true,
+        "the held disk didn't say it waits once its clear failed"
     );
 }
 
@@ -948,10 +1007,12 @@ fn passes_that_find_nothing_far_apart_are_not_two_in_a_row() {
 #[test]
 fn passes_that_find_nothing_are_in_a_row_only_within_a_filling_disk_s_longest_rest() {
     // The first pass rests a minute, to 3660 s. The second comes 890 s
-    // or 910 s after that rest ended, either side of the 15 minutes a
+    // or 1200 s after that rest ended, either side of the 15 minutes a
     // filling disk rests longest. In a row, it rests the hour, so a step
     // past the two minutes it would otherwise rest runs no third pass.
-    for (gap, third) in [(890.0, 2), (910.0, 3)] {
+    // The rest counts from the pass's real end, which a loaded builder
+    // delays, so the far side keeps five minutes in hand.
+    for (gap, third) in [(890.0, 2), (1200.0, 3)] {
         let home = Home::new();
         fs::create_dir_all(home.root.join("scratch")).unwrap();
         let mut guard = home.guard(home.config("100%", "100%"));
