@@ -155,8 +155,8 @@ pub fn heavy(words: &[&str]) -> bool {
                 &("eval" | "build" | "develop" | "shell" | "run" | "print-dev-env" | "search"),
             ) => true,
             Some(&"flake") => verbs.next() == Some(&"check"),
-            Some(&("path-info" | "derivation" | "why-depends" | "copy" | "log")) => {
-                evaluates(&words[1..])
+            Some(&verb @ ("path-info" | "derivation" | "why-depends" | "copy" | "log")) => {
+                evaluates(verb, &words[1..])
             }
             _ => false,
         },
@@ -164,30 +164,30 @@ pub fn heavy(words: &[&str]) -> bool {
     }
 }
 
-/// Whether a Nix command given installables, its words after `nix`,
-/// evaluates. A flake is named by its `#`, a URL or a path, an expression
-/// or a file by its option, and the flake here by naming nothing; a store
-/// path, a build's `result` link to one, every path in the store and paths
-/// given on its input are read from the store, evaluating nothing.
-fn evaluates(words: &[&str]) -> bool {
+/// Whether the Nix command `verb`, given installables, its words after
+/// `nix`, evaluates. A flake is named by its `#`, a URL or a path, an
+/// expression or a file by its option, and the flake here by naming
+/// nothing; a store path and a build's `result` link to one are read from
+/// the store, evaluating nothing, as are every path in the store and paths
+/// given on its input to `path-info` and `copy`, though a flake named
+/// beside them is evaluated all the same. `why-depends --all` shows every
+/// path between two it still evaluates.
+fn evaluates(verb: &str, words: &[&str]) -> bool {
     if words
         .iter()
         .any(|word| matches!(*word, "-f" | "--file" | "--expr"))
     {
         return true;
     }
-    if words
-        .iter()
-        .any(|word| matches!(*word, "--all" | "--stdin"))
-    {
-        return false;
-    }
+    let mut named = matches!(verb, "path-info" | "copy")
+        && words
+            .iter()
+            .any(|word| matches!(*word, "--all" | "--stdin"));
     let link = |word: &str| {
         word.rsplit('/')
             .next()
             .is_some_and(|it| it.starts_with("result"))
     };
-    let mut named = false;
     let mut words = words.iter();
     while let Some(word) = words.next() {
         // An option's value is neither a flake nor a store path.
@@ -268,6 +268,10 @@ pub struct Door {
     /// Each scope let in capped past what a start is counted to grow by,
     /// with its cap, which it's counted to grow to instead.
     capped: HashMap<PathBuf, u64>,
+    /// Each scope whose cap was lifted, with when and what it held then:
+    /// it's counted to grow by a start's growth past that while it ramps
+    /// again, as nothing else holds it.
+    lifted: HashMap<PathBuf, (Instant, u64)>,
     waited_in: Option<Instant>,
     /// Whether the last rank asked of a start that waited [`LONGEST`] was
     /// refused, so the rest come in one each [`SPACED`] until one holds.
@@ -377,6 +381,8 @@ pub enum Done {
     /// Let in late unranked, since its rank was refused, which ends the
     /// rush it came in with.
     Unranked(u32),
+    /// A rush's cap on the scope given, lifted once it ramped with room.
+    Lifted(PathBuf),
 }
 
 impl Door {
@@ -400,6 +406,8 @@ impl Door {
             .map(|it| (it.scope.as_path(), it.memory))
             .collect();
         self.forget_gone(coming, &memory);
+        self.lifted
+            .retain(|_, (at, _)| now.saturating_duration_since(*at) < RAMP);
         self.follow_call(machine, now);
         self.settle_pace(now);
         // Let in before the room is counted, so it counts as growing.
@@ -412,10 +420,9 @@ impl Door {
         // A rush's caps are shares of the room it came into, not what it
         // needs, so once each has ramped, with room again and nothing
         // stalling, they're lifted, rather than holding an evaluation
-        // under its share, in swap, for its life.
-        if !machine.calling && machine.stalled <= STALLED && room >= grows + need {
-            self.lift_caps(now, &mut act);
-        }
+        // under its share, in swap, for its life. One a look, as the room
+        // is one start's, and counted as growing, as a start let in is.
+        room -= self.lift_cap(machine, room, now, &memory, &mut act, &mut done);
         // A switch lands every merged fix, so with no call on it needs
         // room only for its own growth: what the rest keep is mostly held
         // by sessions that no waiting frees.
@@ -619,34 +626,69 @@ impl Door {
             .retain(|scope, _| memory.contains_key(scope.as_path()));
         let admitted = &self.admitted;
         self.capped.retain(|scope, _| admitted.contains_key(scope));
+        self.lifted.retain(|scope, _| admitted.contains_key(scope));
     }
 
-    /// Lifts the cap of each start a rush let in [`RAMP`] or more before
-    /// `now`, keeping the cap of any whose lift `act` couldn't make, to
-    /// try again.
-    fn lift_caps(&mut self, now: Instant, act: &mut impl FnMut(&Path, Act) -> bool) {
-        let admitted = &self.admitted;
-        self.capped.retain(|scope, _| {
-            let ramped = admitted
-                .get(scope)
-                .is_some_and(|at| now.saturating_duration_since(*at) >= RAMP);
-            // systemd reads the most a u64 holds as no limit.
-            !(ramped && act(scope, Act::Rank { high: u64::MAX }))
-        });
+    /// Lifts the cap of the start a rush let in longest before `now`, once
+    /// [`RAMP`] has passed, with no call on, nothing stalling and `room`
+    /// for a start and its growth, and gives the room it took. One whose
+    /// lift `act` couldn't make keeps its cap, to try again.
+    fn lift_cap(
+        &mut self,
+        machine: Machine,
+        room: u64,
+        now: Instant,
+        memory: &HashMap<&Path, u64>,
+        act: &mut impl FnMut(&Path, Act) -> bool,
+        done: &mut Vec<Done>,
+    ) -> u64 {
+        let grows = machine.grows();
+        if machine.calling || machine.stalled > STALLED || room < grows + machine.room() {
+            return 0;
+        }
+        let Some((_, scope)) = self
+            .capped
+            .keys()
+            .filter_map(|scope| Some((*self.admitted.get(scope)?, scope)))
+            .filter(|(at, _)| now.saturating_duration_since(*at) >= RAMP)
+            .min()
+        else {
+            return 0;
+        };
+        let scope = scope.clone();
+        // systemd reads the most a u64 holds as no limit.
+        if !act(&scope, Act::Rank { high: u64::MAX }) {
+            return 0;
+        }
+        self.capped.remove(&scope);
+        let held = memory.get(scope.as_path()).copied().unwrap_or(0);
+        self.lifted.insert(scope.clone(), (now, held));
+        done.push(Done::Lifted(scope));
+        grows
     }
 
     /// What the starts let in within [`RAMP`] of `now` are yet to grow to,
     /// each counted to grow by `grows`, less what its scope holds by
     /// `memory`.
     fn growing(&self, memory: &HashMap<&Path, u64>, grows: u64, now: Instant) -> u64 {
-        self.admitted
+        let admitted: u64 = self
+            .admitted
             .iter()
             .filter(|(_, at)| now.saturating_duration_since(**at) < RAMP)
             .map(|(scope, _)| {
                 let counted = self.capped.get(scope).copied().unwrap_or(grows);
                 counted.saturating_sub(memory[scope.as_path()])
             })
-            .sum()
+            .sum();
+        let lifted: u64 = self
+            .lifted
+            .iter()
+            .map(|(scope, (_, held))| {
+                let holds = memory.get(scope.as_path()).copied().unwrap_or(0);
+                (held + grows).saturating_sub(holds)
+            })
+            .sum();
+        admitted + lifted
     }
 
     /// Begins a paced stretch `now` as a call ends on `machine`, since
@@ -1013,6 +1055,10 @@ mod tests {
             "nix derivation show .#x",
             "nix derivation show",
             "nix why-depends .#a .#b",
+            // Its --all shows every path between two it evaluates.
+            "nix why-depends --all .#a .#b",
+            // A flake named beside paths on its input is evaluated too.
+            "nix path-info --stdin .#x",
             "nix copy --to ssh://h .#x",
             "nix log .#x",
             "nix print-dev-env",
@@ -1033,6 +1079,7 @@ mod tests {
             // Every path in the store, or those given on its input.
             "nix path-info --all",
             "nix path-info --stdin",
+            "nix copy --stdin --to ssh://h",
             // An option's value names no flake.
             "nix path-info -I ./nixpkgs /nix/store/x-y",
             "nix copy --to ssh://h /nix/store/x-y",
@@ -1906,25 +1953,39 @@ mod tests {
         let at = Instant::now();
         let (work, longest) = rushed(&mut door, at);
         let mut lifted = Vec::new();
+        let early = longest + RAMP.saturating_sub(Duration::from_secs(1));
+        door.look(&work, free(ROOM + 12 * GROWS), early, 1003, |scope, act| {
+            lifted.push((scope.to_path_buf(), act));
+            true
+        });
+        assert!(lifted.is_empty(), "lifted before it ramped: {lifted:?}");
         let stalled = Machine {
             stalled: STALLED + 1.0,
             ..free(ROOM + 12 * GROWS)
         };
-        door.look(&work, stalled, longest + RAMP, 1003, |scope, act| {
+        door.look(&work, stalled, longest + RAMP, 1004, |scope, act| {
             lifted.push((scope.to_path_buf(), act));
             true
         });
         assert!(lifted.is_empty(), "lifted while memory stalled: {lifted:?}");
-        door.look(
-            &work,
-            free(ROOM + 12 * GROWS),
-            longest + RAMP,
-            1004,
-            |scope, act| {
+        let calling = Machine {
+            calling: true,
+            ..free(ROOM + 12 * GROWS)
+        };
+        door.look(&work, calling, longest + RAMP, 1005, |scope, act| {
+            lifted.push((scope.to_path_buf(), act));
+            true
+        });
+        assert!(lifted.is_empty(), "lifted through a call: {lifted:?}");
+        // One a look, as the room is one start's.
+        for (n, second) in (1..=4).enumerate() {
+            let then = longest + RAMP + Duration::from_secs(second);
+            door.look(&work, free(ROOM + 12 * GROWS), then, 1006, |scope, act| {
                 lifted.push((scope.to_path_buf(), act));
                 true
-            },
-        );
+            });
+            assert_eq!(lifted.len(), n + 1, "look {second} lifted {lifted:?}");
+        }
         lifted.sort_by(|a, b| a.0.cmp(&b.0));
         let max = Act::Rank { high: u64::MAX };
         assert_eq!(
@@ -1938,6 +1999,38 @@ mod tests {
             door.capped.is_empty(),
             "caps left after the lift: {:?}",
             door.capped
+        );
+    }
+
+    // A lift systemd refuses keeps the cap, to be tried again, and one made
+    // counts as growing, so with room for one start the next look waits.
+    #[test]
+    fn a_lift_is_retried_and_counted_as_growing() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let (work, longest) = rushed(&mut door, at);
+        let ramped = longest + RAMP;
+        door.look(&work, free(ROOM + GROWS), ramped, 1003, |_, act| {
+            act != Act::Rank { high: u64::MAX }
+        });
+        assert_eq!(door.capped.len(), 4, "a refused lift took its cap away");
+        let mut lifted = 0;
+        let then = ramped + Duration::from_secs(1);
+        door.look(&work, free(ROOM + GROWS), then, 1004, |_, act| {
+            lifted += usize::from(act == Act::Rank { high: u64::MAX });
+            true
+        });
+        assert_eq!(lifted, 1, "the refused lift wasn't tried again");
+        let later = then + Duration::from_secs(1);
+        door.look(&work, free(ROOM + GROWS), later, 1005, |_, act| {
+            lifted += usize::from(act == Act::Rank { high: u64::MAX });
+            true
+        });
+        assert_eq!(lifted, 1, "a lift's growth wasn't counted, so another came");
+        assert_eq!(
+            door.growing(&HashMap::new(), GROWS, later),
+            GROWS,
+            "the lifted scope isn't counted to grow by a start's growth"
         );
     }
 
@@ -2022,6 +2115,7 @@ mod tests {
                     Done::Held(pid) | Done::Paced(pid) => {
                         held_at.insert(pid, now);
                     }
+                    Done::Lifted(_) => {}
                     Done::LetIn(pid) | Done::Ranked(pid, _) | Done::Unranked(pid) => {
                         each[(look / 6) as usize] += 1;
                         let since = held_at.remove(&pid).unwrap_or(from);
