@@ -10,10 +10,14 @@ Every page Joel opens from this machine comes from one server,
 `local-sites` ([`src/`][src]), on loopback at
 `http://sites.localhost:8484/`. It serves three things:
 
-- **Documents**: what sessions write into `~/.local/share/jitsusama/sites`.
-  Each carries a copy of the web kit as a `kit/` of its own and takes its
-  keys and theme switch from the shared kit's `document.js`. They're
-  state, never a Nix value, and the home lists them from `sites.json`.
+- **Documents**: what sessions write into `~/.local/share/jitsusama/sites`,
+  served under a name of their own, `documents.sites.localhost`, so their
+  scripts never run as the sites' own. Each carries a copy of the web kit
+  as a `kit/` of its own and takes its keys and theme switch from the
+  shared kit's `document.js`. They're state, never a Nix value, and the
+  home lists them from `sites.json`. The home itself is built apart, into
+  the login's runtime folder (`$XDG_RUNTIME_DIR/local-sites/home`), and
+  answers only the files its builder writes.
 - **Live sites**: TypeScript on the [kit][kit], built by Nix with
   [`site.nix`][site]'s `localSite`, typechecked at its strictest, its tests
   run as it builds, and mounted at `/<name>/` from
@@ -79,8 +83,10 @@ What holds it together:
    `.svg`, `.md`, `.txt` and `.js` files, and the modules its TypeScript
    compiles to, are shipped. Give it:
    - an `index.html` whose head follows the system page's: the `theme-color`
-     lines on `@dark-ground@` and `@light-ground@`, the script that
-     restores the theme, `favicon.svg`, the web kit's font preloads, then
+     lines on `@dark-ground@` and `@light-ground@`, the kit's
+     `../local-sites/kit/early.js`, which restores the theme, as a file
+     (the sites run no script written into a page, and the build refuses
+     one), `favicon.svg`, the web kit's font preloads, then
      `../local-sites/web/theme.css` (the build refuses a page without it),
      `base.css` and the kit's `switch.css` and `head.css` before its own
      styles, and one skip link, its head built as the web-design skill's
