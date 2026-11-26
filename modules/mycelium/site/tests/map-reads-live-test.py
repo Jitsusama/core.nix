@@ -1200,6 +1200,11 @@ HANDED_END = (
     "; nothing starts until you press Return there."
     " If it didn't open, wait a moment, then s brings the words back."
 )
+# What the map says when the machine the open line names leaves before Return.
+LEFT_OSPREY = (
+    "osprey has left the map, so the work won't start there;"
+    " Return starts it where new work starts."
+)
 # Where a box lies on the page, scrolled or not: left, top, width, height.
 PLACED = """(selector) => {
   const r = document.querySelector(selector).getBoundingClientRect();
@@ -2396,6 +2401,7 @@ def test_new_work_from_a_machines_drawer_starts_on_it_until_unticked(
     on = page.locator("#sprout-on-words")
     page.evaluate("location.hash = '#machine=kestrel'")
     expect(page.locator("#panel-title"), "kestrel's drawer never opened").to_have_text("kestrel")
+    sent_again(page, want)
     page.locator("#map-view").focus()
     page.keyboard.press("s")
     expect(on, "the kept words lost their machine").to_have_text("On osprey")
@@ -2409,6 +2415,7 @@ def test_new_work_from_a_machines_drawer_starts_on_it_until_unticked(
     page.keyboard.press("Escape")
     page.locator("#map-view").focus()
     page.keyboard.press("s")
+    expect(page.locator("#sprout"), "Escape kept the words").to_have_value("")
     expect(on, "s didn't offer the open machine").to_have_text("On kestrel")
     sent_as(page, "here", "mycelium:sprout?words=here&on=kestrel")
     # A tick lets it go, so the work starts where new work does when Joel
@@ -2454,6 +2461,47 @@ def test_new_works_words_kept_for_a_machine_that_left_go_with_it(
     expect(page.locator("#sprout-on-words"), "s didn't offer the open machine").to_have_text(
         "On kestrel"
     )
+
+
+def test_new_works_words_from_a_gone_cell_never_take_the_open_machine(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(TALK_HELD)
+    page.evaluate(f"location.hash = '#cell={NEEDING[1]}'")
+    page.locator("#panel-body").get_by_role("button", name="Start New Work From It").click()
+    page.keyboard.type("orphan")
+    page.keyboard.press("Enter")
+    page.evaluate("location.hash = '#machine=kestrel'")
+    expect(page.locator("#panel-title"), "kestrel's drawer never opened").to_have_text("kestrel")
+    mycelium_node.tell("cell", gone=[f"cell:{NEEDING[1]}"])
+    the_map_counts(page, "7 cells, 2 moving", "the gone cell was still counted")
+    # Words that went on no machine go again on none, though their cell
+    # has left and a machine's drawer is open: sent on kestrel, they'd
+    # start work where Joel never asked.
+    sent_again(page, "mycelium:sprout?words=orphan")
+
+
+def test_new_works_machine_that_leaves_while_the_line_is_open_is_let_go_at_return(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(TALK_HELD)
+    page.evaluate("location.hash = '#machine=osprey'")
+    expect(page.locator("#panel-title"), "osprey's drawer never opened").to_have_text("osprey")
+    page.locator("#panel-body").get_by_role("button", name="Start New Work Here").click()
+    page.keyboard.type("late")
+    osprey = page.locator('#world [data-key="m:osprey"]')
+    mycelium_node.tell("machine", gone=["machine:osprey"])
+    expect(osprey, "the map kept a machine that left").to_have_count(0, timeout=PACE_MS)
+    page.evaluate("window.talkedTo = null")
+    page.locator("#sprout").press("Enter")
+    assert page.evaluate("window.talkedTo") is None, "the words went to a machine that left"
+    expect(page.locator("#sprout-on-line"), "the gone machine stayed offered").to_be_hidden()
+    expect(page.locator("#where"), "the map didn't say the machine left").to_have_text(LEFT_OSPREY)
+    sent_as(page, "late", "mycelium:sprout?words=late")
 
 
 def test_what_each_spent_today_is_listed_most_first(mycelium_opened: Opened) -> None:

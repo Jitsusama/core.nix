@@ -12,6 +12,7 @@ import {
   isMachine,
   keptOnStands,
   LONGEST_WORDS,
+  leftWords,
   NO_MACHINE,
   NO_WORDS,
   onWords,
@@ -165,6 +166,15 @@ it("keeps words for a machine only while the map still has it", () => {
   assert.equal(keptOnStands("heron", names), false, "a machine that left should go");
   assert.equal(keptOnStands(CLOUD, []), true, "the cloud is no machine, and should stand");
   assert.equal(keptOnStands(null, []), true, "words sent on no machine should stand");
+});
+
+it("says a machine that left before Return, and where the work starts instead", () => {
+  assert.equal(
+    leftWords("osprey"),
+    "osprey has left the map, so the work won't start there; " +
+      "Return starts it where new work starts.",
+  );
+  assert.ok(leftWords(CLOUD).startsWith("the cloud has left"), "the cloud should be a place");
 });
 
 /** The escape a case may hold: 1 to 6 capital hex digits (README.md, The Address Cases). */
