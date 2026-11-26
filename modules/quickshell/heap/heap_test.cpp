@@ -868,16 +868,22 @@ bool fillsTheFullestFirst() {
         QStringLiteral("(kept) => { let j = 0; for (let i = 0; i < %1; i++) { const each = { "
                        "n: i }; if (i % 4 === 0) kept.quarter[j++] = each; } }")
             .arg(QUARTER_FULL));
-    quarter.call({kept});
+    const QJSValue quartered = quarter.call({kept});
     const double quarterMB =
         heap.standing().value(QStringLiteral("chunks")).toDouble() - halfChunks;
     const Weight swept = weighed(engine, heap);
     heap.leaveRoom(ROOM_MB);
-    engine
-        .evaluate(QStringLiteral("(kept) => { for (let i = 0; i < %1; i++) kept.made[i] = { n: "
-                                 "i }; kept.quarter = null; }")
-                      .arg(FILLING))
-        .call({kept});
+    const QJSValue made =
+        engine
+            .evaluate(QStringLiteral("(kept) => { for (let i = 0; i < %1; i++) kept.made[i] = { "
+                                     "n: i }; }")
+                          .arg(FILLING))
+            .call({kept});
+    // Weighed before the quarter-kept go, which would take from live as much
+    // again as half of what's made.
+    const Weight filled = weighed(engine, heap);
+    const QJSValue dropped =
+        engine.evaluate(QStringLiteral("(kept) => { kept.quarter = null; }")).call({kept});
     const Weight after = weighed(engine, heap);
     const QJSValue read =
         engine
@@ -888,9 +894,17 @@ bool fillsTheFullestFirst() {
     // Each object takes the same slots, so what's made is to the quarter-full
     // chunks as how many are made is to how many were made in them.
     const double madeMB = quarterMB * FILLING / QUARTER_FULL;
-    const bool tried = !kept.isError() && quarterMB > 0 &&
-                       swept.held - swept.live > quarterMB / 2 &&
-                       after.live - swept.live > madeMB / 2;
+    const bool ran =
+        !kept.isError() && !quartered.isError() && !made.isError() && !dropped.isError();
+    if (!ran)
+        std::fprintf(stderr, "FAIL the chunks half and a quarter full were made and filled: %s\n",
+                     qPrintable((kept.isError()        ? kept
+                                 : quartered.isError() ? quartered
+                                 : made.isError()      ? made
+                                                       : dropped)
+                                    .toString()));
+    const bool tried = ran && quarterMB > 0 && swept.held - swept.live > quarterMB / 2 &&
+                       filled.live - swept.live > madeMB / 2;
     const bool intact = read.toBool();
     const double beyond = after.held - after.live;
     const bool freed = beyond < quarterMB / 2;

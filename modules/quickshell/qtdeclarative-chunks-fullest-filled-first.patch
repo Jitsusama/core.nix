@@ -12,10 +12,17 @@ sorted in by the slots they use, the fullest last, so what's made next
 fills them, and the chunks using little are left to empty for a later
 sweep to free.
 
+The last bin is the one exception. A request there has no larger bin
+to look in and passes at most a few runs before taking a new chunk, and
+fullest first would put the shortest runs at its head, so that bin is
+turned round, the longest runs first, and a long request takes one that
+fits. The list the sort uses is kept from sweep to sweep, and the sort
+breaks ties by address, so a sweep allocates nothing once it's grown.
+
 ---
 --- a/src/qml/memory/qv4mm.cpp
 +++ b/src/qml/memory/qv4mm.cpp
-@@ -553,10 +553,21 @@ void BlockAllocator::sweep()
+@@ -553,10 +553,35 @@ void BlockAllocator::sweep()
  
      usedSlotsAfterLastSweep = 0;
  
@@ -26,17 +33,31 @@ sweep to free.
 +    // allocation fills first. Sorted in by what they use, the fullest last, what's made next
 +    // fills the chunks nearly full already, and the chunks using little are left to empty, for a
 +    // later sweep to free, rather than each keeping a few of what's made and none ever freed.
-+    std::vector<std::pair<std::size_t, Chunk *>> byUse;
-+    byUse.reserve(std::size_t(firstEmptyChunk - chunks.begin()));
-+    std::for_each(chunks.begin(), firstEmptyChunk, [&byUse](Chunk *c) {
++    // The list is kept from sweep to sweep, so a sweep allocates nothing once it has grown, and
++    // ties go by address, so the sort needs no buffer either.
++    static thread_local std::vector<std::pair<std::size_t, Chunk *>> byUse;
++    byUse.clear();
++    std::for_each(chunks.begin(), firstEmptyChunk, [](Chunk *c) {
 +        byUse.emplace_back(c->nUsedSlots(), c);
      });
-+    std::stable_sort(byUse.begin(), byUse.end(),
-+                     [](const auto &a, const auto &b) { return a.first < b.first; });
++    std::sort(byUse.begin(), byUse.end());
 +    for (const auto &[used, c] : byUse) {
 +        c->sortIntoBins(freeBins, NumBins);
 +        usedSlotsAfterLastSweep += used;
 +    }
++
++    // The last bin holds every run too long for the others, and a request there has no larger
++    // bin to fall back to, so one passing its tries takes a new chunk. Fullest first, its head
++    // would be the fullest chunks' runs, the shortest, so it's turned round: a long request
++    // finds first the runs of the chunks using least, the longest, and what fits is taken.
++    HeapItem *longestFirst = nullptr;
++    for (HeapItem *m = freeBins[NumBins - 1]; m;) {
++        HeapItem *next = m->freeData.next;
++        m->freeData.next = longestFirst;
++        longestFirst = m;
++        m = next;
++    }
++    freeBins[NumBins - 1] = longestFirst;
  
      // only free the chunks at the end to avoid that the sweep() calls indirectly
      // access freed memory
