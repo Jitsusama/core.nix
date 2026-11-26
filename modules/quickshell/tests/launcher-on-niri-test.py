@@ -3117,11 +3117,14 @@ def taught(shell: Shell, makings: dict[str, list[int]]) -> Iterator[None]:
         kept = cast("dict[str, Json]", json.loads(before[0] or "{}"))
         path.write_text(json.dumps({**kept, **makings}))
 
+    def put_back() -> None:
+        path.write_text(before[0])
+
     shell.restart(teach)
     try:
         yield
     finally:
-        shell.restart(lambda: path.write_text(before[0]))
+        shell.restart(put_back)
 
 
 def test_a_key_is_timed_on_its_swap_before_the_drawer_it_brings(shell: Shell) -> None:
@@ -3133,10 +3136,11 @@ def test_a_key_is_timed_on_its_swap_before_the_drawer_it_brings(shell: Shell) ->
     beside Slack's drawer made in 28, and onto mpv 39 beside 39 (2026-11-13, 20:05).
 
     A drawer whose kind made in under 13 ms of late is made in the key's own handler instead,
-    to come in the key's frame, and a program's makes in 4 to 14 ms here. So Programs' kind is
-    taught dear first, as Slack's is on Joel's machine, and its drawer comes the frame after.
+    to come in the key's frame, and a program's makes in 4 to 14 ms here. So programs' kind,
+    home's wherever they're listed, is taught dear first, as Slack's is on Joel's machine, and
+    its drawer comes the frame after.
     """
-    with taught(shell, {"applications program": DEAR}):
+    with taught(shell, {"home program": DEAR}):
         shell.as_account(shell.ipc("toggle"))
         shell.launcher_ready()
         stepped_into_programs(shell)
@@ -3155,7 +3159,7 @@ def test_a_key_is_timed_on_its_swap_before_the_drawer_it_brings(shell: Shell) ->
     assert drawn, "the drawer the key brought was never said presented"
     assert not came_in_its_keys_frame(drawn[-1]), (
         f"a program's drawer taught dear came in its key's frame, so the kind taught isn't "
-        f"Programs': {drawn[-1]}"
+        f"its: {drawn[-1]}"
     )
     order = [one for one in said if one.startswith(("drawer follows ", "key framed "))]
     assert order[:1] == ["key framed ↓"], f"the key was timed after its drawer: {order}"
