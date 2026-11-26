@@ -1934,7 +1934,11 @@ mod tests {
                 .collect::<Vec<_>>(),
             "each of the rush's four ranked is lifted, and nothing else"
         );
-        assert!(door.capped.is_empty(), "caps left after the lift: {:?}", door.capped);
+        assert!(
+            door.capped.is_empty(),
+            "caps left after the lift: {:?}",
+            door.capped
+        );
     }
 
     // A scope's cap goes with it, so a later scope at the same path isn't
