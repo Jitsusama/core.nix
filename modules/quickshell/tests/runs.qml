@@ -9,7 +9,8 @@
 // cost, and how long it ran; the session that started one is named beside
 // it, and Return goes to its window; stepping in lists its participants,
 // and one with an answer opens it in a terminal; while the screen is
-// shared no amount shows; and typing finds a run by the change or its id.
+// shared no amount shows; and typing finds a run by the change or its id,
+// typing on looking through only what the letters before it matched.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -162,6 +163,17 @@ ShellRoot {
                 hidden.every(row => !row.side.includes("$"))
                     && hidden[0].verbs().every(row => !row.side.includes("$")),
                 hidden.map(row => row.side).join(", "));
+
+            // Typing on looks through only what the letters before matched;
+            // taking a letter back, or a run coming, looks through them all.
+            const typedOn = names(runs.search("fle").rows);
+            expect("what the letters matched, kept", typedOn === "fleet-live, fleet-dead"
+                && runs.poolFor(runs.all, "flee") === runs.lastMatched.rows
+                && runs.poolFor(runs.all, "f") === runs.all, typedOn);
+            runs.records = root.records.concat([{ key: "run:fleet.fleet-new", kind: "run",
+                id: "fleet.fleet-new", about: "fleet-new", parent: "s-gone", state: "done" }]);
+            const since = names(runs.search("flee").rows);
+            expect("a run come since is found", since.includes("fleet-new"), since);
 
             // A run's own kind, where the harness wrote it beside the node's.
             runs.records = [{ key: "run:review.r7-1", kind: "run", "run.kind": "judge",
