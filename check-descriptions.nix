@@ -4465,8 +4465,10 @@
     saying it started on the node's machine, else the node's or sprout's why; and the words a
     mycelium: link offers are read again as one plain line of at most 1000 characters, its session
     kept only where one here has that address, named by its quest, the foot saying a page offered
-    it; and a slow start is said still coming up a minute after its answer, then told by name when
-    it's up or lost within a quarter hour, in the foot only while Joel still waits on its act
+    it; a slow start is said still coming up a minute after its answer, then told by name when
+    it's up or lost within a quarter hour, in the foot only while Joel still waits on its act; and
+    the same words given the same act within the hour say the time they started rather than
+    starting again, and a start's wait is counted to the second
   '';
   start-new-work-finds-places = ''
     Start New Work lists the open quests' folders, then the places the realm's node names, each
@@ -4476,6 +4478,14 @@
     gives a row picked before the places land the start it says once they have, found by its own
     folder alone, else the start it was made with; and a node's 2000 places, as long as Joel's,
     are read and weighed in under 50 ms of the shell's thread
+  '';
+  start-new-work-goes-to-the-cloud = ''
+    Cloud.js, behind Start New Work's In the Cloud, reads the offers the agents daemon passes on,
+    dropping them where the node can't take the cloud's need, its price the cheapest in one
+    currency; lists only the places another machine knows by name, a zone's path or a checkout's
+    last step, each once; reads a link's on: past its name; and asks a sprout that needs the
+    cloud, or names a machine by one plain word, refusing a place or a machine it couldn't say
+    and the cloud while it offers nothing
   '';
   starts-stopped-lifts-only-on-joels-return = ''
     Starts Stopped's Return steps in among its acts wherever the launcher drops its drawer's step,

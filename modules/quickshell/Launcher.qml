@@ -103,6 +103,7 @@ import "launcher/RowsPlace.js" as RowsPlace
 import "launcher/Reached.js" as Reached
 import "launcher/Headings.js" as Headings
 import "launcher/Most.js" as Most
+import "launcher/StartSaid.js" as StartSaid
 
 Scope {
     id: root
@@ -1592,12 +1593,14 @@ Scope {
     // takes Return only with the caret at the words' end, where he's read to (Prompt.qml's
     // linked), and the act starts only on his own Return (Sprouting.fromJoel), so no walk or
     // second link can start it. Like talkTo, it does nothing over a launcher in use, not even
-    // forget how his last start went. Says what it did as JSON, as talkTo does.
-    function newWork(words, from) {
+    // forget how his last start went. Says what it did as JSON, as talkTo does. `on` says where
+    // the page would start it, "cloud" or a machine by its name, which the act's name says and
+    // its Return asks; left out, the node places it as any start.
+    function newWork(words, from, on) {
         if (inUse())
             return inUseSaid;
         const agents = collections.find(one => one.settings.name === "agents") ?? null;
-        const offer = agents ? agents.newWorkFor(words, from) : null;
+        const offer = agents ? agents.newWorkFor(words, from, on ?? "") : null;
         // A link names the session it's from, so with reports off its address is counted, as
         // talkTo's is (Presented.whenceShown).
         const whence = Presented.whenceShown(offer?.from?.address, Options.reports);
@@ -5732,6 +5735,11 @@ Scope {
     // held last, when its row hands what's typed to `given`.
     readonly property var asking: held.length > 0 && held[held.length - 1].row.given
         ? held[held.length - 1].row : null
+    // An ask for words of some length, Start New Work's, which writes them on lines of
+    // their own under the path, kept from the moment it opens, rather than on the path's
+    // line (Joel, 2026-11-25: "i have no room to type once i choose a folder";
+    // "growing as i type would look like shit").
+    readonly property bool composing: asking !== null && asking.composes === true
 
     // An ask whose words go to an agent, Talk to It and its kin, shows the talk under the
     // field where the rows go, as Super+S's line does (TalkSpoken.qml), from what its place
@@ -5776,7 +5784,8 @@ Scope {
     }
 
     // Hands over what was typed, and empties the field for another try
-    // while the footer says how it went. `pressed` is when its Return was
+    // while the footer says how it went, but for words that start work,
+    // which stay (below). `pressed` is when its Return was
     // pressed, or heard where no press was stamped, from which the frame
     // showing what became of the words is timed, held to design.md's 50 ms
     // as Super+S's line is.
@@ -5799,7 +5808,12 @@ Scope {
         offerHeld = null;
         prompt.endWaits = false;
         asking.given(words);
-        prompt.text = "";
+        // Words that start work stay where he wrote them, muted while it starts
+        // (Prompt's taken), so the screen shows his Return took and what it took,
+        // and a second Return of them is told it started rather than lost (Joel,
+        // 2026-11-25 14:33: "no confirmation that it took my enter").
+        if (!composing)
+            prompt.text = "";
         searchNow();
         wordsGiven = { from: pressed, framing: false };
     }
@@ -8915,7 +8929,15 @@ Scope {
         // field, "words:" before them, and "from:" before the session it
         // came from, as a sprout link asks (root's newWork).
         function newWork(words: string, from: string): string {
-            return JSON.stringify(root.newWork(words, from));
+            return JSON.stringify(root.newWork(words, from, ""));
+        }
+
+        // newWork, for a link that says where its work starts, "on:"
+        // before "cloud" or a machine's name. A function of its own, so a
+        // link with no `on` keeps calling newWork with two arguments, as
+        // qs refuses a call whose count isn't the one declared.
+        function newWorkOn(words: string, from: string, on: string): string {
+            return JSON.stringify(root.newWork(words, from, on));
         }
 
         // Opens Agents' Networks on a network's row by its name, selected,
@@ -10035,6 +10057,24 @@ Scope {
     // the hairline, the rows' bands, the hairline and the status line, now
     // its Title is the line's size (VKCF3Z, 2026-11-06).
     readonly property real headTall: rowTall
+    // What words composed under the path take of the rows' room (Prompt's composes).
+    readonly property real composedTall: composing ? prompt.wrapsTall : 0
+    // How a composed ask's start stands, said under its words: what its act's state
+    // says, the mark it wears, and when it began, so the wait is counted out loud.
+    readonly property string startSays: composing && typeof asking.state === "function"
+        ? asking.state() : ""
+    readonly property string startMark: startSays !== "" && typeof asking.mark === "function"
+        ? asking.mark() : ""
+    readonly property real startSince: startSays !== "" && typeof asking.since === "function"
+        ? asking.since() : 0
+    property real startNow: Date.now()
+    Timer {
+        interval: 1000
+        repeat: true
+        triggeredOnStart: true
+        running: root.open && root.startSince > 0
+        onTriggered: root.startNow = Date.now()
+    }
     // A heading's line, the row's face at the note's size (Choice.qml's
     // heading).
     readonly property real headingTall: Math.ceil(headingFace.height)
@@ -10252,6 +10292,9 @@ Scope {
                 drawn: card.height - listBox.height
             },
             commandSaid: root.commandSays ? root.commandSaid : "",
+            // How a start stands under the words that began it, and how long it's waited.
+            start: { says: root.startSays, mark: root.startMark,
+                waited: StartSaid.waited(root.startSince, root.startNow) },
             // Whether Space ? lists the keys in the drawer, and whether
             // there's a place used last for Tab to go back to.
             listing: root.listing,
@@ -14173,7 +14216,9 @@ Scope {
                 // hairline, its line centred there by eye.
                 Item {
                     width: parent.width
-                    height: root.headTall
+                    // Words of some length take their lines under the path, which the
+                    // rows give up (listBox), so the frame keeps its height.
+                    height: root.headTall + root.composedTall
                     opacity: root.wordsShown
 
                     Prompt {
@@ -14222,6 +14267,13 @@ Scope {
                             ? root.held[0].row : null
                         // A secret is typed beside the padlock.
                         secret: root.asking !== null && root.asking.secret === true
+                        // Start New Work's words on lines of their own under the path, the
+                        // path's line keeping its band, and muted once given while it starts.
+                        wraps: root.composing
+                        composes: root.composing
+                        lineTall: root.headTall
+                        taken: root.composing && typeof root.asking.taken === "function"
+                            && root.asking.taken() === true
                         // The line stands on the rows' columns: a held
                         // thing's glyph, or the padlock, over their glyphs,
                         // where the find's / and the : line's : take its
@@ -14772,12 +14824,87 @@ Scope {
                         height: root.over !== null
                             ? Math.min(commandRows.count, 10) * root.rowTall
                             : root.talkAsked ? Math.min(root.tall, talksShown.tall)
-                            : root.tall
+                            : root.tall - root.composedTall
                         opacity: root.wordsShown
                         // It cuts the rows at its edges rather than the list
                         // at its own, so a row's ground reaches out over the
                         // gutter to the frame.
                         clip: true
+
+                        // How a start stands, on the first row's band under the words that
+                        // began it: its mark where a row's glyph stands, what it says where a
+                        // row's name does, and how long it has waited at the far end, as a
+                        // row's figure, so Return is seen to take, once, and the wait to
+                        // run rather than hang (Joel, 2026-11-25 14:33: "no confirmation
+                        // that it took my enter, no feedback at all").
+                        Item {
+                            objectName: "startSays"
+                            width: parent.width
+                            // Two lines at most, so what it says is read whole rather than cut
+                            // at its point, a long folder's name with it; the second a Figure
+                            // pitch under the first, as a drawer's lines are, not a row's band.
+                            height: root.rowTall + Theme.level.figure.pitch
+                                * Math.max(0, startSaysText.lineCount - 1)
+                            visible: root.startSays !== ""
+
+                            // On the rows' glyph column, so the words under the path and the
+                            // start's own line both stand on the column the head's mark does.
+                            Text {
+                                x: card.inset + root.columns.mark
+                                width: Theme.level.name.pitch
+                                horizontalAlignment: Text.AlignHCenter
+                                y: startSaysText.y + startSaysText.baselineOffset - baselineOffset
+                                text: Theme.glyph[root.startMark] ?? ""
+                                color: root.startMark === "failed" ? Theme.alert
+                                    : root.startMark === "done" ? Theme.success : Theme.muted
+                                font.family: Theme.level.figure.family
+                                font.pointSize: Theme.level.figure.pointSize
+                            }
+
+                            Text {
+                                id: startSaysText
+                                x: card.inset + root.columns.text
+                                width: startWaited.x - x - Theme.space.rung.groups
+                                y: Bands.baseline(root.rowTall, startCaps.tightBoundingRect.height,
+                                    startSmalls.tightBoundingRect.height) - baselineOffset
+                                text: root.startSays
+                                textFormat: Text.PlainText
+                                wrapMode: Text.Wrap
+                                maximumLineCount: 2
+                                lineHeightMode: Text.FixedHeight
+                                lineHeight: Theme.level.figure.pitch
+                                elide: Text.ElideRight
+                                color: Theme.text
+                                font.family: Theme.level.figure.family
+                                font.pointSize: Theme.level.figure.pointSize
+                                font.weight: Theme.level.figure.weight
+                                font.features: Theme.level.figure.features
+                            }
+
+                            Text {
+                                id: startWaited
+                                objectName: "startWaited"
+                                x: parent.width - card.inset - implicitWidth
+                                anchors.baseline: startSaysText.baseline
+                                text: StartSaid.waited(root.startSince, root.startNow)
+                                textFormat: Text.PlainText
+                                color: Theme.muted
+                                font.family: Theme.level.figure.family
+                                font.pointSize: Theme.level.figure.pointSize
+                                font.features: Theme.level.figure.features
+                            }
+
+                            TextMetrics {
+                                id: startCaps
+                                text: "H"
+                                font: startSaysText.font
+                            }
+                            TextMetrics {
+                                id: startSmalls
+                                text: "x"
+                                font: startSaysText.font
+                            }
+                        }
 
                         // The command line's menu, while : is open: its lines
                         // are the list, in the rows' place, each a row as any
