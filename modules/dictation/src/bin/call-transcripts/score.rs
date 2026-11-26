@@ -272,12 +272,11 @@ fn score_meeting(speech: &mut Parakeet, meeting: &Meeting) -> Result<(Scored, Ti
     };
     let (cut, cuts) = echo::cut_echoes(&lines, &word_times, said::spoken);
     for taken in &cuts {
-        let by = match taken.below {
-            Some(below) => format!("{below:.0} dB below theirs"),
-            None => {
-                let ms = taken.after * 1000 / isize::try_from(RATE).unwrap_or(isize::MAX);
-                format!("{ms} ms after theirs")
-            }
+        let by = if let Some(below) = taken.below {
+            format!("{below:.0} dB below theirs")
+        } else {
+            let ms = taken.after * 1000 / isize::try_from(RATE).unwrap_or(isize::MAX);
+            format!("{ms} ms after theirs")
         };
         println!(
             "{name}: Joel's words at {} taken for an echo, {by}: {}",
@@ -659,7 +658,7 @@ mod tests {
         let model = Path::new("/no/model/here");
         let write = |file: &str, text: &str| std::fs::write(set.path().join(file), text).unwrap();
         let refused = |why: &str| {
-            let said = score(model, set.path(), None).unwrap_err();
+            let said = score(model, set.path(), [None, None]).unwrap_err();
             assert!(said.contains(why), "refused for {said:?}, not {why:?}");
         };
         write("sides", "\n");
