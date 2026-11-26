@@ -7,8 +7,9 @@ declares it for a machine in a realm (NODE_KINDS). It must say it's live with
 the realm drawn, its networks and the lines joining them and their cells
 in one window that opens a cell clicked, follow a change within its pace,
 two cells sharing a title moving among them, say broken when the node
-stops while keeping the realm drawn, and live again when it's back, say stale
-when the server goes, draw a record's words as words and never as markup,
+stops while keeping the realm drawn, and live again when it's back, say
+broken when a reading fails to draw and live again once the next draws, say
+stale when the server goes, draw a record's words as words and never as markup,
 list what each cell, machine, network and branch spent today, most first,
 say what waits on a cell and what holds stand, as the node judges them,
 draw every cell until one is too small to read, thin every line as the map
@@ -1907,6 +1908,29 @@ def test_a_node_that_stops_is_said_broken_with_the_realm_kept_then_live(
     # A change after it's back shows the watch delivers again, not just the old map.
     mycelium_node.tell("cell", changed=[{"key": "cell:TERN03", "standing": "moving"}])
     the_map_counts(page, "8 cells, 3 moving, 1 stuck", "the map back live missed a change")
+
+
+# A reading the drawing can make nothing of, handed it as site.ts hands each, as a fault in the
+# drawing would leave one.
+UNDRAWABLE = """() => document.dispatchEvent(new CustomEvent("mycelium:now", { detail: null }))"""
+
+
+def test_a_reading_that_fails_to_draw_is_said_broken_until_the_next_draws(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    the_map_counts(page, COUNTED, "the map miscounted the realm")
+    mycelium_opened.expecting("mycelium: a reading failed to draw")
+    page.evaluate(UNDRAWABLE)
+    the_map_stands(page, "broken")
+    asof = page.locator("#asof")
+    expect(asof, "the map didn't say it couldn't draw").to_contain_text("The map couldn't draw")
+    # The node stays live throughout, so only the next reading drawn whole can say so again.
+    mycelium_node.tell("cell", changed=[{"key": "cell:TERN03", "standing": "moving"}])
+    the_map_counts(page, "8 cells, 3 moving, 1 stuck", "the map missed the next reading")
+    the_map_stands(page, "live")
+    expect(asof, "the map still said it couldn't draw").not_to_contain_text("couldn't draw")
 
 
 def test_a_server_that_goes_is_said_stale(mycelium_opened: Opened, mycelium_served: Served) -> None:

@@ -10,11 +10,12 @@ Wi-Fi chose drawn as words, drop a device that goes with its link,
 say in a machine's panel what runs there as the node moves and link it to its
 place on the mycelium map, say broken when net stops and live again, its
 devices read again, when it's back, say in its lede when net has never
-answered, say stale when the server goes and keep what it drew, draw every
+answered, to a page opened later too, and count what stands once it does,
+say stale when the server goes and keep what it drew, draw every
 device and wire within a phone's width with its zoom buttons a finger's reach,
 stack a bigger house with switches and a full floor
 within a phone's width and a laptop's, draw the other way as a window narrows
-to a phone's and widens back, stack in a window just too narrow for the map
+to a phone's and widens back, its lede still counting, stack in a window just too narrow for the map
 across once its floors' names are counted, keep to its budget,
 and pass the web-design skill's page checks at a phone's width and a desk's in
 both looks.
@@ -25,6 +26,7 @@ modules/local-sites/tests/live_page.py's.
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -58,6 +60,9 @@ KESTREL = "mac:00:00:5e:00:53:20"
 # head.css, the head every live page shares, is one of the files and a few of the kilobytes,
 # within the room the budget held before it.
 BUDGET = Budget(files=36, kilobytes=505, elements=335)
+# The lede once net has answered, counting what stands, and while it never has.
+COUNTED = re.compile(r"^\d+ devices? on \d+ eeros? across \d+ floors?, and .+\.$")
+UNANSWERED = "Net hasn't answered, so no device is drawn."
 
 
 @pytest.fixture
@@ -193,14 +198,28 @@ def test_a_net_that_never_answers_says_so_in_the_lede(
     net_daemon.leave()
     feeds = feeds_of(net_daemon, mycelium_node)
     with serving(tmp_path, {"network": os.environ["NETWORK_SITE"]}, feeds) as (root, _):
-        opened = Opened(browser, f"{root}network/", SIZES[-1], "dark")
+        first = Opened(browser, f"{root}network/", SIZES[-1], "dark")
+        later = None
         try:
-            lede = opened.page.locator("#lede")
+            lede = first.page.locator("#lede")
             expect(lede, "the lede still said net was being reached").to_have_text(
-                "Net hasn't answered, so no device is drawn.", timeout=BACK_MS
+                UNANSWERED, timeout=BACK_MS
             )
+            # A page joining the watch the server holds as broken is told
+            # every kind empty, which mustn't read as a calm, empty house.
+            later = Opened(browser, f"{root}network/", SIZES[-1], "dark")
+            expect(later.page.locator("#lede"), "a later page's lede didn't say so").to_have_text(
+                UNANSWERED, timeout=BACK_MS
+            )
+            net_daemon.start()
+            for page in (first.page, later.page):
+                expect(page.locator("#lede"), "the lede didn't count net once back").to_have_text(
+                    COUNTED, timeout=BACK_MS
+                )
         finally:
-            opened.close()
+            first.close()
+            if later is not None:
+                later.close()
 
 
 def test_a_sites_server_that_goes_is_said_stale(
@@ -291,11 +310,14 @@ def test_narrowing_a_desk_to_a_phone_draws_the_map_the_other_way(
         page = opened.page
         says_it_stands(page, "live")
         every_device_drawn(page)
+        lede = page.locator("#lede")
+        expect(lede, "a desk's lede didn't count what stands").to_have_text(COUNTED)
         assert page.evaluate(DRAWN_ACROSS, KESTREL), "a desk's map wasn't drawn across"
         page.set_viewport_size({"width": phone[0], "height": phone[1]})
         stacked = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === false"
         page.wait_for_function(stacked, arg=KESTREL, timeout=PACE_MS)
         every_device_drawn(page)
+        expect(lede, "the lede lost its count as the map stacked").to_have_text(COUNTED)
         stands_within_the_room(page, "a narrowed window")
         page.set_viewport_size({"width": desk[0], "height": desk[1]})
         across = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === true"
