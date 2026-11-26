@@ -35,6 +35,20 @@ compared only the Mac's. No change needs `nix flake check`, a
 read as any other: on a machine shared with other work, a whole run is what
 makes the loop slow, and the load it adds is what makes VM tests time out.
 
+A test proves a change only if it fails without it, so once a committed
+change's checks pass, `changed-checks` builds again each it built that the
+change's added or edited tests reach, with those tests laid over the
+base's code, and refuses the change if one still passes there, naming the
+check and the tests. On 26 November the most common cause behind review
+findings, across 42 changes, was a test that passed with its fix undone.
+Tests are told from code by path: a `tests`, `test` or `checks` folder, a
+`checks.nix`, or a name ending `_test`, `-test`, `.test` or `tests`. A change
+of tests alone, a moved test, a test added among code, a lint
+(`-passes-clippy`, `-passes-qmllint`) and a check reading the whole tree
+are said rather than refused, and a revert is excused. A test that pins
+behaviour already right passes on the base by design: a commit saying
+`Red-first: none, <why>` excuses its change, and the run says so.
+
 `nix fmt` lints as it formats, at each linter's strictest, test code
 included: ruff with every rule and mypy `--strict` for Python (`ruff.toml`,
 `mypy.ini`), shellcheck for shell with the optional checks no script

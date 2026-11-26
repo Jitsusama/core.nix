@@ -11,6 +11,7 @@ mod building;
 mod command;
 mod evaluating;
 mod keeping;
+mod red_first;
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -37,6 +38,13 @@ fn starting() -> MutexGuard<'static, ()> {
 /// commit; origin has that commit once a test writes `pushed`. A
 /// commit's tree is `tree`'s, or `basetree`, the change from the base
 /// is `diff`, and the base holds the paths `based` lists.
+///
+/// Asked of the change as red first asks it, its commits and their
+/// Red-first trailers are `log`, its files with renames found are
+/// `diff.whole`, and its added lines are `diff.lines`. Laying its tests
+/// over the base, each file it lists is a blob of HEAD's, what it indexes
+/// is added to `indexed`, and each commit it makes is added to `commits`
+/// and is `a1a1` for the tests alone and `b0b0` with files nothing names.
 const GIT: &str = r#"#!/bin/sh
 case "$1" in
   rev-parse)
@@ -58,17 +66,40 @@ case "$1" in
       ls-files) ;;
       rev-parse) cat "$STAND_IN/tree" 2>/dev/null || echo basetree ;;
       diff)
-        if [ -n "$7" ]; then cat "$STAND_IN/diff.between" 2>/dev/null
-        else cat "$STAND_IN/diff" 2>/dev/null; fi ;;
-      cat-file) grep -qxF "${5#*:}" "$STAND_IN/based" 2>/dev/null ;;
+        case "$4" in
+          --find-renames) cat "$STAND_IN/diff.whole" 2>/dev/null || : ;;
+          -U0) cat "$STAND_IN/diff.lines" 2>/dev/null || : ;;
+          *)
+            if [ -n "$7" ]; then cat "$STAND_IN/diff.between" 2>/dev/null
+            else cat "$STAND_IN/diff" 2>/dev/null; fi ;;
+        esac ;;
+      cat-file)
+        if [ "$4" = commit ]; then
+          printf 'tree basetree\nauthor someone <a@b> 7 +0000\ncommitter someone <a@b> 7 +0000\n\nbase\n'
+        else grep -qxF "${5#*:}" "$STAND_IN/based" 2>/dev/null; fi ;;
+      log) cat "$STAND_IN/log" 2>/dev/null || : ;;
+      read-tree|write-tree) echo laidtree ;;
+      ls-tree) shift 6; for file in "$@"; do printf '100644 blob 1111\t%s\0' "$file"; done ;;
+      update-index) tr '\0' '\n' >> "$STAND_IN/indexed" ;;
+      hash-object)
+        if [ "$4" = -t ]; then
+          commit=$(cat)
+          printf '%s\n' "$commit" >> "$STAND_IN/commits"
+          case "$commit" in
+            *'nothing names'*) echo b0b0b0b0b0b0b0b0b0b0 ;;
+            *) echo a1a1a1a1a1a1a1a1a1a1 ;;
+          esac
+        else cat > /dev/null; echo e69de29bb2d1d6434b8b29ae775ad8c2e48c5391; fi ;;
       show) cat "$STAND_IN/quarantine.json" 2>/dev/null || exit 128 ;;
     esac ;;
 esac
 "#;
 
 /// nix as changed-checks asks it: a side's checks by name, then their
-/// derivations, the base's being any flake at a revision; and a build,
+/// derivations, the base's being any flake at a revision but red first's
+/// commits, `a1a1`'s being `over` and `b0b0`'s `probed`; and a build,
 /// which it records, and which fails when it names a check `failing` lists,
+/// or, of a flake at a revision, one `failing-over` lists,
 /// saying `failing.said` as its log. It refuses an evaluation through its evaluation
 /// cache, which two at once would find busy. Once a test writes `meet`, an
 /// evaluation of
@@ -97,9 +128,11 @@ case "$1" in
       >> "$STAND_IN/built"
     exec 3>&2
     for word in "$@"; do
+      list="$STAND_IN/failing"
+      case "$word" in *'?rev='*) list="$STAND_IN/failing-over" ;; esac
       while read -r check; do
         case "$word" in *".$check") cat "$STAND_IN/failing.said" >&3 2>/dev/null; exit 1 ;; esac
-      done < "$STAND_IN/failing"
+      done < "$list"
     done 2>/dev/null
     exit 0 ;;
 esac
@@ -115,7 +148,11 @@ esac
 [ "$5" = builtins.currentSystem ] && { echo "asked Nix for this machine's system" >&2; exit 1; }
 [ "$6" = --no-eval-cache ] || { echo "evaluated through the cache" >&2; exit 1; }
 side=working
-case "$3" in *'?rev='*|path:*) side=base ;; esac
+case "$3" in
+  *'?rev=a1a1'*) side=over ;;
+  *'?rev=b0b0'*) side=probed ;;
+  *'?rev='*|path:*) side=base ;;
+esac
 under_way() { find "$STAND_IN" -maxdepth 1 -name 'evaluating.*' | wc -l; }
 case "$5" in
   builtins.attrNames) cat "$STAND_IN/$side-names.json" ;;

@@ -71,6 +71,10 @@
 //! rest, and its failure is said and blocks nothing, unless its entry
 //! names subtests and its log names a failure outside them, or none.
 //!
+//! Once they pass, each check built whose tests a committed change adds or
+//! edits is built with those tests over the base's code, and one passing
+//! there fails the run, as its tests pass without the change (`red_first.rs`).
+//!
 //! Each run that reaches its base adds a line to `changed-checks/runs.jsonl`
 //! under XDG's state folder, saying what each evaluation and the build took
 //! (`runs.rs` says what it holds).
@@ -88,6 +92,7 @@ mod keep;
 mod pressure;
 mod quarantine;
 mod reads;
+mod red_first;
 mod runs;
 #[cfg(test)]
 mod scratch;
@@ -100,7 +105,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::thread;
 
-use building::{built, clean_commit, passed_at, unpassed};
+use building::{built, clean_commit, passed_at, say_vm_tests, unpassed};
 use checks::Derivations;
 use evaluating::{derivations, evaluated, names, pure};
 use quarantine::Held;
@@ -197,25 +202,6 @@ impl Options {
         options.vm = whole && !no_vm;
         options.given = given;
         Ok(options)
-    }
-}
-
-/// Says how many VM tests a run builds, before it builds them. On 6
-/// November one `--build` for a change of the shell's alone sent 27 of
-/// them, which held every VM builder for 66 minutes while other changes'
-/// runs waited up to 53; the gate before merging needed none of them.
-fn say_vm_tests(targets: &[String]) {
-    let vm = targets
-        .iter()
-        .filter(|name| checks::is_vm_test(name))
-        .count();
-    if vm > 0 {
-        let tests = if vm == 1 { "test" } else { "tests" };
-        eprintln!(
-            "changed-checks: building {vm} VM {tests} whole, as --build asks. Before merging, \
-             a change needs only those `merge-net needs` names and `run-subtests --there` \
-             on the subtests its files reach; the net runs the rest after the merge."
-        );
     }
 }
 
@@ -341,6 +327,10 @@ fn changed(options: &Options, out: &Pen) -> Result<(), Failure> {
             Exit::Failed,
             "a check the change touched failed",
         )),
+        Compared::Unred => Err(Failure::new(
+            Exit::Failed,
+            "a check passes with the change's tests laid over the base's code",
+        )),
     }
 }
 
@@ -352,6 +342,8 @@ enum Compared {
     Broken,
     /// A check it built failed.
     Failed,
+    /// A check passes with the change's tests over the base's code.
+    Unred,
 }
 
 /// Keep `head`'s checks where runs are sent, from the keeper's own clone,
@@ -619,12 +611,19 @@ fn compare(
             noted.lent(build.sent.bytes);
         }
     }
-    Ok(if !whole {
-        Compared::Broken
-    } else if build.as_ref().is_none_or(|build| build.sent.passed) {
+    if !whole {
+        return Ok(Compared::Broken);
+    }
+    if build.as_ref().is_some_and(|build| !build.sent.passed) {
+        return Ok(Compared::Failed);
+    }
+    let asked = options.build.then(|| comparison.to_build(options.vm));
+    let at = red_first::At { root, base, system };
+    let red = red_first::judged(&at, asked, commit.is_some(), (&before, &after), noted)?;
+    Ok(if red {
         Compared::Passed
     } else {
-        Compared::Failed
+        Compared::Unred
     })
 }
 

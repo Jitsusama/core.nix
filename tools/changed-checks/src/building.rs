@@ -127,6 +127,21 @@ pub fn build(
             Err(why) => eprintln!("changed-checks: building here, since {why}"),
         }
     }
+    build_here(flake, system, targets, after)
+}
+
+/// Build `targets` from this machine, through its standing builders where
+/// it has them, each from the derivation `after` evaluated for it, or from
+/// `flake` where the store has collected that since. A flake no commit of
+/// origin's holds, such as the change's tests laid over its base
+/// (`red_first.rs`), is built so, since the lent builder fetches only
+/// origin's commits.
+pub fn build_here(
+    flake: &str,
+    system: &str,
+    targets: &[&str],
+    after: &Derivations,
+) -> Result<Sent, String> {
     // Each check is built from the derivation just evaluated, so no
     // evaluator runs beside the builds: one holds its whole heap until its
     // last build ends, 1.4 to 4 GiB through a VM test. A derivation the
@@ -153,6 +168,25 @@ pub fn build(
         bytes: None,
         failed,
     })
+}
+
+/// Says how many VM tests a run builds, before it builds them. On 6
+/// November one `--build` for a change of the shell's alone sent 27 of
+/// them, which held every VM builder for 66 minutes while other changes'
+/// runs waited up to 53; the gate before merging needed none of them.
+pub fn say_vm_tests(targets: &[String]) {
+    let vm = targets
+        .iter()
+        .filter(|name| crate::checks::is_vm_test(name))
+        .count();
+    if vm > 0 {
+        let tests = if vm == 1 { "test" } else { "tests" };
+        eprintln!(
+            "changed-checks: building {vm} VM {tests} whole, as --build asks. Before merging, \
+             a change needs only those `merge-net needs` names and `run-subtests --there` \
+             on the subtests its files reach; the net runs the rest after the merge."
+        );
+    }
 }
 
 /// What a build here asks for: the standing builders, where the machine
