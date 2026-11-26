@@ -11,6 +11,7 @@ use std::{fs, thread};
 use pineapple::deaf::{Deafness, Round};
 use pineapple::ears::{Ears, Through};
 use pineapple::mcp::{Called, Gateway};
+use pineapple::phone::{Alert, Missed, tell_self};
 use pineapple::sign_in::SignIn;
 use serde_json::{Value, json};
 
@@ -703,6 +704,43 @@ fn a_session_that_wont_open_is_not_reached_since_the_tool_was_never_asked() {
             "a gateway failing as a session opens never saw the tool asked, but one naming a \
              sign-in refused is still said as failing, so the reader can tell Joel of it: \
              {called:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+}
+
+#[test]
+fn an_alert_whose_send_may_have_gone_is_said_unsure_and_one_never_asked_unsent() {
+    let alert = Alert {
+        title: "Someone stopped your agents",
+        words: "pineapple override",
+        link: "https://example.slack.com/archives/C1/p1",
+    };
+    for (at, (code, said)) in [(502, "unsure"), (503, "unsure"), (429, "unsent")]
+        .into_iter()
+        .enumerate()
+    {
+        let dir = scratch(&format!("tell-self-{at}"));
+        let (url, seen) = gateway(move |one, _| match one.method.as_str() {
+            "initialize" => opened("s1"),
+            "tools/call" => status(code),
+            _ => status(202),
+        });
+        let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
+        let told = tell_self(&mut gateway, alert);
+        let heard = match &told {
+            Err(Missed::Unsure(_)) => "unsure",
+            Err(Missed::NotSent(_)) => "unsent",
+            _ => "something else",
+        };
+        let asked = methods(&seen)
+            .iter()
+            .filter(|method| *method == "tools/call")
+            .count();
+        assert!(
+            heard == said && asked == 1,
+            "a {code} to the send is {said}, asked once, not again without its words, as \
+             only a tool's own failing is: {asked} asked"
         );
         let _ = fs::remove_dir_all(&dir);
     }

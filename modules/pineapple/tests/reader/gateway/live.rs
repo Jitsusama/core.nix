@@ -5,8 +5,8 @@
 //! them; no reply is said and Slack's own API is never asked; and a search
 //! it reads on past is said in a row beside his row in For You. A second
 //! reader started on the folder it keeps ends at once, beside the keyring's
-//! reader too, and an alert left untold for its ten minutes is said to be
-//! let go, once.
+//! reader too, an alert left untold for its ten minutes is said to be let
+//! go, once, and searches failing round after round write Joel's row.
 
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -472,6 +472,38 @@ fn a_reader_over_a_gateway_live_with_no_sign_in_writes_joels_row() {
     assert!(
         tools(&called).is_empty(),
         "no tool is called without a sign-in"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn a_reader_over_a_gateway_whose_searches_always_fail_writes_joels_row() {
+    let (origin, _) = stand_in();
+    let (url, _) = serving(|tool, _, now| {
+        if tool == "slack_search_public_and_private" {
+            format!("{}Slack said: fatal_error", super::FAILS)
+        } else {
+            said(tool, now)
+        }
+    });
+    let home = home();
+    let mut reader = live(&home, &origin, &url);
+    let began = Instant::now();
+    while !home.join(WAITING).exists() && began.elapsed() < PATIENCE {
+        thread::sleep(Duration::from_millis(20));
+    }
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+    let row: Value = std::fs::read_to_string(home.join(WAITING))
+        .ok()
+        .and_then(|said| serde_json::from_str(&said).ok())
+        .unwrap_or_default();
+    assert!(
+        row["items"][0]["why"]
+            .as_str()
+            .is_some_and(|why| why.contains("isn't answering its searches")),
+        "a gateway whose searches fail each round, past its rounds, writes Joel's row: {row} {}",
+        journal(&home)
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
