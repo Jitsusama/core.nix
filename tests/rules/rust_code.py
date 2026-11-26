@@ -127,16 +127,48 @@ def predicate(tokens: list[str], at: int = 0) -> tuple[Predicate, int]:
     return (name, None), at
 
 
-def read_cfg(asked: str) -> Predicate:
-    """Read what a cfg asks, refusing one whose words don't make one predicate."""
+def read_cfg(asked: str, written: str) -> Predicate:
+    """Read what a cfg asks, refusing one whose words don't make one predicate.
+
+    It's read masked, as `asked`, and a refusal quotes it as `written`.
+    """
     tokens = TOKEN.findall(asked)
     try:
         read, end = predicate(tokens)
     except IndexError:
         end = -1
     if end != len(tokens):
-        raise ValueError(f"a cfg the reader can't read: cfg({asked})")
+        raise ValueError(f"a cfg the reader can't read: cfg({written})")
     return read
+
+
+def cfgs(module: re.Match[str], text: str) -> list[Predicate]:
+    """Read the cfgs among a module's attributes, found in its file's masked text.
+
+    The attributes are read masked, so a doc line that mentions a cfg asks
+    nothing, and each cfg is quoted from `text`, as written, if refused.
+    """
+    start = module.start(1)
+    return [
+        read_cfg(cfg.group(1), text[start + cfg.start(1) : start + cfg.end(1)])
+        for cfg in CFG.finditer(module.group(1))
+    ]
+
+
+def path_given(module: re.Match[str], text: str, blanked: str) -> re.Match[str] | None:
+    """Give the path attribute among a module's attributes, if one is there.
+
+    It's read from `text`, since masking blanks the path, but only where its
+    `#` is still there masked, so one in a doc line or a string is none.
+    """
+    return next(
+        (
+            given
+            for given in PATH.finditer(text, module.start(1), module.end(1))
+            if blanked[given.start()] == "#"
+        ),
+        None,
+    )
 
 
 def holds_only_under_test(asked: Predicate) -> bool:
@@ -164,25 +196,21 @@ def holds_wherever_tests_are_built(asked: Predicate) -> bool:
     return False
 
 
-def only_under_test(attributes: str) -> bool:
+def only_under_test(asked: list[Predicate]) -> bool:
     """Whether the cfgs among a module's attributes hold only where tests are built.
 
     Several cfgs must all hold, so one that holds only under test is enough.
-    The attributes are read masked, so a doc line that mentions a cfg asks
-    nothing.
     """
-    return any(holds_only_under_test(read_cfg(asked)) for asked in CFG.findall(attributes))
+    return any(holds_only_under_test(each) for each in asked)
 
 
-def needs_its_file(attributes: str) -> bool:
+def needs_its_file(asked: list[Predicate]) -> bool:
     """Whether a module read under test is built in every build of the tests.
 
     One whose cfg asks more than tests, such as a target, may be ruled out
     where its file isn't, so it needn't have one.
     """
-    return all(
-        holds_wherever_tests_are_built(read_cfg(asked)) for asked in CFG.findall(attributes)
-    )
+    return all(holds_wherever_tests_are_built(each) for each in asked)
 
 
 def read(path: Path) -> tuple[str, str]:
@@ -224,27 +252,49 @@ def read_by_tests_alone(src: Path) -> set[Path]:
         root = path.name in ("main.rs", "lib.rs", "mod.rs") or path.parent == bins
         here = path.parent if root or path in beside else path.with_suffix("")
         text, blanked = texts[path] if path in texts else read(path)
-        for module in MODULE.finditer(blanked):
-            attributes, name, body = module.groups()
-            if not (only_under_test(attributes) or path in tests):
-                continue
-            if body == "{":
-                folders.add(here / name)
-                continue
-            given = PATH.search(text, module.start(1), module.end(1))
-            file = path.parent / given.group(1) if given else here / f"{name}.rs"
-            if not given and not file.exists():
-                file = here / name / "mod.rs"
-            if not file.exists():
-                if needs_its_file(attributes):
-                    raise FileNotFoundError(f"{path}: mod {name} is built under test with no file")
-                continue
+        try:
+            read_from, inline = test_modules(path, here, (text, blanked), all_test=path in tests)
+        except ValueError as error:
+            raise ValueError(f"{path}: {error}") from error
+        folders.update(inline)
+        for file in read_from:
             if (file := file.resolve()) not in tests:
                 tests.add(file)
                 left.append(file)
     return {
         file for file in files if file in tests or any(folder in file.parents for folder in folders)
     }
+
+
+def test_modules(
+    path: Path, here: Path, texts: tuple[str, str], *, all_test: bool
+) -> tuple[list[Path], list[Path]]:
+    """Give where a file's modules built only under test are: files, and folders if inline.
+
+    `here` is where its modules are found, `texts` its text and that text
+    masked, and `all_test` whether tests alone read it, so every module it
+    declares is theirs.
+    """
+    text, blanked = texts
+    files: list[Path] = []
+    folders: list[Path] = []
+    for module in MODULE.finditer(blanked):
+        asked = cfgs(module, text)
+        name, body = module.group(2), module.group(3)
+        if not (only_under_test(asked) or all_test):
+            continue
+        if body == "{":
+            folders.append(here / name)
+            continue
+        given = path_given(module, text, blanked)
+        file = path.parent / given.group(1) if given else here / f"{name}.rs"
+        if not given and not file.exists():
+            file = here / name / "mod.rs"
+        if file.exists():
+            files.append(file)
+        elif needs_its_file(asked):
+            raise FileNotFoundError(f"{path}: mod {name} is built under test with no file")
+    return files, folders
 
 
 def block_end(blanked: str, at: int) -> int:
@@ -271,7 +321,7 @@ def without_inline_tests(text: str) -> str:
         # One inside a test module already cut goes with it.
         if module.group(3) != "{" or module.start() < at:
             continue
-        if not only_under_test(module.group(1)):
+        if not only_under_test(cfgs(module, text)):
             continue
         kept.append(text[at : module.start()])
         at = block_end(blanked, module.end())

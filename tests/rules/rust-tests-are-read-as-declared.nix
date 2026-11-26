@@ -51,6 +51,9 @@ let
       mod wrapped;
       #[allow(dead_code)] #[cfg(test)]
       mod shared_line;
+      /// Read from its own file: #[path = "documented.rs"]
+      #[cfg(test)]
+      mod doc_path;
 
       fn own() {}
 
@@ -70,11 +73,14 @@ let
       // that close nothing, and a test module in it, cut with it.
       #[cfg(test)]
       mod literals {
-          const RAW: &str = r#"
-      }"#;
+          const RAW: &str = r##"
+      "# }"##;
           const BRACE: char = '}';
+          const BYTE: u8 = b'}';
+          const BYTES: &[u8] = br#"}"#;
           // }
-          /* } /* } */ */
+          /* /* */ } */
+          fn l<'a>(x: &'a ()) -> char { let _: &'a () = x; '{' }
           fn t<'a>(x: &'a str) -> &'a str {
               let _ = "}\"}";
               x
@@ -94,6 +100,8 @@ let
     "any_test.rs" = "";
     "wrapped.rs" = "";
     "shared_line.rs" = "";
+    # Read by tests alone, though a doc line above it reads as a path.
+    "doc_path.rs" = "";
     # Real code, under two cfgs neither of which is test's.
     "neither.rs" = "";
     # Real code, though its name or doc line says tests, or it's read
@@ -176,6 +184,7 @@ let
     checks.rs
     checks/helper.rs
     deep/golden.rs
+    doc_path.rs
     elsewhere/linux.rs
     elsewhere/probe.rs
     fixtures/mod.rs
@@ -238,6 +247,9 @@ let
     mod wrapped;
     #[allow(dead_code)] #[cfg(test)]
     mod shared_line;
+    /// Read from its own file: #[path = "documented.rs"]
+    #[cfg(test)]
+    mod doc_path;
 
     fn own() {}
 
@@ -297,10 +309,11 @@ let
     };
     unread = {
       main = ''
-        #[cfg(all(test)]
+        #[cfg(all(feature = "x", test)]
         mod odd;
       '';
-      says = "a cfg the reader can't read";
+      # Said of its file, and as written, its string unmasked.
+      says = ''main.rs: a cfg the reader can't read: cfg(all(feature = "x", test)'';
     };
   };
   refused = lib.concatStrings (
