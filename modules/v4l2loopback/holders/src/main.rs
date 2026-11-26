@@ -363,6 +363,27 @@ fn say(line: &str) {
     }
 }
 
+/// What went wrong on a watch's last look at its file, said once as it
+/// begins or changes and once as it clears, since a look comes each second
+/// while it lasts.
+#[derive(Default)]
+struct Trouble(Option<String>);
+
+impl Trouble {
+    /// Takes this look's troubles, none when all went right, saying them
+    /// only when they differ from the last look's.
+    fn now(&mut self, output: &Path, troubles: &[String]) {
+        let now = (!troubles.is_empty()).then(|| troubles.join("; "));
+        if now != self.0 {
+            match &now {
+                Some(what) => complain(format_args!("{what}")),
+                None => complain(format_args!("{}: right again", output.display())),
+            }
+            self.0 = now;
+        }
+    }
+}
+
 /// Says the run is ready, the first time its file says who holds the
 /// camera as a read that worked found.
 fn written(ready: &mut Ready) {
@@ -395,9 +416,7 @@ fn watch(
     let every = Duration::from_secs(if sysfs.is_some() { 1 } else { 2 });
     // What the file holds, as last written.
     let mut said = None;
-    // What went wrong on the last look, said once as it begins and once
-    // as it clears, since a look comes each second while it lasts.
-    let mut trouble = None;
+    let mut trouble = Trouble::default();
     let mut pids = HashSet::new();
     loop {
         let mut troubles = Vec::new();
@@ -424,14 +443,7 @@ fn watch(
                     false
                 }
             };
-        let now = (!troubles.is_empty()).then(|| troubles.join("; "));
-        if now != trouble {
-            match &now {
-                Some(what) => complain(format_args!("{what}")),
-                None => complain(format_args!("{}: right again", output.display())),
-            }
-            trouble = now;
-        }
+        trouble.now(output, &troubles);
         let settled = seen && right;
         if settled {
             written(ready);
@@ -558,23 +570,39 @@ fn loopback(events: &mut Events, options: &Options, ready: &mut Ready) {
     let nobody = BTreeSet::new();
     // Nobody said is the watch serving only where it's so: no camera, or
     // its node gone. One it couldn't watch is still there, and nobody is
-    // a guess until the watch is tried again, so it isn't ready.
-    let say_nobody = |ready: Option<&mut Ready>| match write(&options.output, &nobody) {
-        Ok(()) => ready.into_iter().for_each(written),
-        Err(error) => complain(format_args!("{}: {error}", options.output.display())),
+    // a guess until the watch is tried again, so it isn't ready. Whether
+    // the file took it is answered, so one it didn't is written again.
+    let mut trouble = Trouble::default();
+    let mut say_nobody = |ready: Option<&mut Ready>| match write(&options.output, &nobody) {
+        Ok(()) => {
+            trouble.now(&options.output, &[]);
+            ready.into_iter().for_each(written);
+            true
+        }
+        Err(error) => {
+            let what = format!("{}: {error}", options.output.display());
+            trouble.now(&options.output, &[what]);
+            false
+        }
     };
     tidy(&options.output);
     if let Some(file) = device_file(&options.output) {
         tidy(&file);
     }
+    // Whether the camera's going was seen, and whether nobody was written
+    // since, which is tried each second until it is.
     let mut gone = false;
+    let mut told = false;
     loop {
         let Some(node) = camera::node_of(&options.sysfs, &options.source, options.card.as_deref())
         else {
             if !gone {
                 say_device(&options.output, None);
-                say_nobody(Some(&mut *ready));
                 gone = true;
+                told = false;
+            }
+            if !told {
+                told = say_nobody(Some(&mut *ready));
             }
             if let Woken::Stopped = events.sleep(Duration::from_secs(1)) {
                 return;
