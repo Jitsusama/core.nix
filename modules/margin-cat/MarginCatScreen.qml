@@ -434,8 +434,10 @@ PanelWindow {
             // Caught mid-leap, on a side or on the top it set off from,
             // it walks on to that window where niri moved it instead,
             // riding what moved, never held in the air until the keys
-            // rest (Stacked.standsOnTop).
-            if (going !== null && !byHand
+            // rest (Stacked.standsOnTop). A play plays on, as before: a
+            // key ends one (stroll), and a dozing puppy's visit is his
+            // being away, which a window taking the keys doesn't end.
+            if (going !== null && !going.kind && !byHand
                 && MarginCat.carries(saw, tilesOf(space?.id), goingTo) !== null) {
                 const was = goingTo;
                 const top = (saw ?? []).find(one => one.id === was);
