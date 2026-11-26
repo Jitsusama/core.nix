@@ -1320,14 +1320,19 @@ QtObject {
             ["so a space finds those once a line, beside its own", " ",
                 [[0, 4], [0, 8], [1, 3], [2, 0], [4, 0], [4, 3]]],
             ["never past them", "here   ", []],
-            ["nor from them into the next paragraph", "here  next", []],
-            ["nor into anything laid after them", "here  n", []],
+            ["nor from them into the next paragraph", "here  n", []],
             ["on a text of only spaces, at its line's start", "   ", [[2, 0]]],
             ["across a wrap into the spaces its last line ends with", "ps here ", [[3, 3]]]
         ];
         for (const [what, pattern, want] of endedOn)
             holds(`the drawer's search reads ${what}`,
                 Page.matchesIn(ended, pattern).map(match => [match.line, match.letter]), want);
+        // Each text the search reads ends with its own spaces and nothing
+        // joined after them, so a paragraph's are never read into the next
+        // however it would be joined.
+        holds("the drawer's search reads each paragraph to its spaces and no further",
+            Page.textsOf(ended).map(text => text.text),
+            ["Ends here  ", "next ", "   ", "Wraps here  "]);
         // Two spaces a line ends with land on one letter, so the foot
         // counts them once, as the cursor can stand there only once: from a
         // cursor past them, a second count would show in both numbers.
