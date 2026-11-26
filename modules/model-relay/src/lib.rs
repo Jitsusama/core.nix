@@ -3401,17 +3401,18 @@ mod tests {
             *relay.asked_at.lock().expect("its clocks") = (Instant::now(), then);
             relay.retire_after_a_sleep();
         };
-        let gap = Duration::from_secs(5);
+        let (gap, past) = (Duration::from_secs(5), Duration::from_secs(1));
+        let began = tokio::time::Instant::now();
 
         sleep();
         let probed = socket.keepalive().ok();
         // The clock is paused, so these waits pass at once, in order with
         // the relay's own.
-        tokio::time::sleep(gap).await;
+        tokio::time::sleep_until(began + gap).await;
         sleep();
-        tokio::time::sleep(PROBED_FOR_AFTER_A_SLEEP - gap + Duration::from_secs(1)).await;
+        tokio::time::sleep_until(began + PROBED_FOR_AFTER_A_SLEEP + past).await;
         let past_the_first = socket.keepalive().ok();
-        tokio::time::sleep(gap).await;
+        tokio::time::sleep_until(began + gap + PROBED_FOR_AFTER_A_SLEEP + past).await;
         let past_the_second = socket.keepalive().ok();
 
         assert_eq!(
