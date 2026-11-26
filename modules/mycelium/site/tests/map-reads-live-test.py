@@ -78,10 +78,11 @@ CELLS = 8
 # included, a little more with the drawer's acts and its whole question, and
 # 677.4 KB once a network's label keeps what tells it apart, and 678.2 KB
 # once a cloud machine says it's kept, a little more once a long lease counts
-# days, and about 0.4 KB more once every label is kept apart and in its room,
-# under the 680 KB allowed; new work's line and its hidden controls draw about
-# 20 elements of the 611.
-BUDGET = Budget(files=33, kilobytes=680, elements=620)
+# days, about 0.4 KB more once every label is kept apart and in its room, and
+# about 2.4 KB more once a machine's drawer starts new work on it, under the
+# 683 KB allowed; new work's line and its hidden controls draw about 20
+# elements of the 611.
+BUDGET = Budget(files=33, kilobytes=683, elements=620)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -1720,6 +1721,14 @@ def test_a_basins_machines_are_drawn_as_one(browser: Browser, basins_served: Ser
         expect(cloud, "the basin didn't start work on the cloud").to_have_attribute(
             "data-sprout-on", "cloud"
         )
+        page.evaluate(TALK_HELD)
+        cloud.click()
+        on = page.locator("#sprout-on-words")
+        expect(on, "the basin's button didn't offer the cloud").to_have_text("On the cloud")
+        page.keyboard.type("tidy")
+        page.keyboard.press("Enter")
+        handed = page.evaluate("window.talkedTo")
+        assert handed == "mycelium:sprout?words=tidy&on=cloud", f"the basin handed {handed}"
         for name in BASIN_MACHINES:
             exactly = page.locator(".name", has_text=re.compile(f"^{re.escape(name)}$"))
             row = body.locator(".health .row", has=exactly)
@@ -2339,17 +2348,36 @@ def test_new_work_from_a_machines_drawer_starts_on_it_until_unticked(
         f"{HANDED}, on osprey{HANDED_END}"
     )
     expect(here, "the keys didn't go back to the drawer's button").to_be_focused()
-    # s on the machine's drawer offers it too, and a tick lets it go, so
-    # the work starts where new work does when Joel names none.
+    # Words kept to send again go back to the machine they went to, even
+    # under another machine's drawer, as they go from the cell they did.
+    on = page.locator("#sprout-on-words")
+    page.evaluate("location.hash = '#machine=kestrel'")
+    expect(page.locator("#panel-title"), "kestrel's drawer never opened").to_have_text("kestrel")
     page.locator("#map-view").focus()
     page.keyboard.press("s")
-    expect(page.locator("#sprout-on-line"), "s didn't offer the open machine").to_be_visible()
+    expect(on, "the kept words lost their machine").to_have_text("On osprey")
+    # Escape lets the words go, so s offers the open drawer's machine.
+    page.keyboard.press("Escape")
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    expect(on, "s didn't offer the open machine").to_have_text("On kestrel")
+    page.locator("#sprout").fill("here")
+    page.locator("#sprout").press("Enter")
+    handed = page.evaluate("window.talkedTo")
+    assert handed == "mycelium:sprout?words=here&on=kestrel", f"s on kestrel handed {handed}"
+    # A tick lets it go, so the work starts where new work does when Joel
+    # names none.
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
     page.locator("#sprout-on").uncheck()
     page.locator("#sprout").fill("anywhere")
     page.locator("#sprout").press("Enter")
     handed = page.evaluate("window.talkedTo")
     assert handed == "mycelium:sprout?words=anywhere", f"the cleared tick handed {handed}"
-    # The whole map names no machine.
+    # The whole map names no machine, with no words kept to bring one back.
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    page.keyboard.press("Escape")
     page.evaluate("location.hash = ''")
     page.locator("#map-view").focus()
     page.keyboard.press("s")

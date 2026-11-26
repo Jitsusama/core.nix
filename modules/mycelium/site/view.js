@@ -3745,13 +3745,17 @@ import {
     holdKeysDown();
     sproutOpener = document.activeElement;
     closeFind({ said: false });
-    // Words kept to send again go from the cell they went from while it
-    // is still on the map, unless a drawer's button names its own.
+    // Words kept to send again go from the cell they went from, and on the
+    // machine they went to, while each is still on the map, unless a
+    // drawer's button names its own.
     const kept = sproutKept?.from;
     sproutKeptFromOffered =
       sproutKept !== null && !named && (kept === null || !!current?.byAddress.has(kept));
     offerFrom(sproutKeptFromOffered ? kept : from, { kept: sproutKeptFromOffered });
-    offerOn(sproutKeptFromOffered ? sproutKept.on : on, { kept: sproutKeptFromOffered });
+    const keptOn = sproutKept?.on;
+    const onKept =
+      sproutKeptFromOffered && (!keptOn || keptOn === CLOUD || !!current?.machines.some((x) => x.name === keptOn));
+    offerOn(onKept ? keptOn : on, { kept: onKept });
     trail.inert = true;
     sproutLine.hidden = false;
     sproutControl.setAttribute("aria-expanded", "true");

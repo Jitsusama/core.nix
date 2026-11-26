@@ -104,7 +104,7 @@ it("says the cell it comes from only when that is an address", () => {
   }
 });
 
-it("says the machine it starts on only when that is a machine's name", () => {
+it("says the machine it starts on, and hands nothing for a misshaped one", () => {
   assert.equal(
     sproutLink("tidy the rows", null, "osprey"),
     "mycelium:sprout?words=tidy%20the%20rows&on=osprey",
@@ -122,11 +122,16 @@ it("says the machine it starts on only when that is a machine's name", () => {
   );
   assert.equal(isMachine(null), false, "no machine should be no name");
   assert.equal(isMachine("a".repeat(64)), true, "64 letters should be a name");
-  for (const on of ["", "-help", ".hidden", "os prey", "osprey&words=x", "a".repeat(65)]) {
+  assert.equal(
+    sproutLink("tidy", null, ""),
+    "mycelium:sprout?words=tidy",
+    "an empty machine should name none, as mycelium-link reads it",
+  );
+  for (const on of ["-help", ".hidden", "os prey", "osprey&words=x", "a".repeat(65)]) {
     assert.equal(
       sproutLink("tidy", null, on),
-      "mycelium:sprout?words=tidy",
-      `${JSON.stringify(on)} isn't a machine's name, so it should be left out`,
+      null,
+      `${JSON.stringify(on)} isn't a machine's name, so work should start nowhere`,
     );
   }
   assert.equal(sproutLink("", null, "osprey"), null, "no words should hand nothing");

@@ -298,7 +298,8 @@ fn sprouted(query: &str) -> Result<Link, String> {
             "on" if on.is_some() => {
                 return Err("it names its machine more than once".to_owned());
             }
-            "on" => on = Some(decoded(value)?),
+            // A misshaped escape here is the machine's fault, not the words'.
+            "on" => on = Some(decoded(value).map_err(|_| "its machine isn't a name".to_owned())?),
             _ => {}
         }
     }
@@ -813,6 +814,11 @@ mod tests {
         assert!(
             read("mycelium:sprout?words=tidy&on=osprey&on=cloud").is_err(),
             "a link naming two machines was followed"
+        );
+        assert_eq!(
+            sprouted("words=tidy&on=%zz"),
+            Err("its machine isn't a name".to_owned()),
+            "a misshaped escape in the machine blamed something else"
         );
     }
 

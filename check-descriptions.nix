@@ -4539,7 +4539,7 @@
     decoded and its cell only as an address, each after a fixed word, on the machine it names
     through newWorkOn, and asks nothing for a link naming none of them, an address not in
     capitals, a name qs could take for a flag, a sprout's words missing or said twice, or a second
-    link within a few seconds
+    link within a few seconds, and calls only functions the launcher's IpcHandler has
   '';
   mycelium-link-passes-clippy = ''
     clippy finds nothing in mycelium-link, which opens a mycelium: link in the launcher, or its

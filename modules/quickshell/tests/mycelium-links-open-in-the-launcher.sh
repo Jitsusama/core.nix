@@ -11,12 +11,14 @@
 # and ones it mustn't pass on, and a second link within a few seconds of
 # the first.
 # usage: mycelium-links-open-in-the-launcher.sh <desktop entry> <niri's defaults>
-#   <mycelium-link asking a stand-in qs>
+#   <mycelium-link asking a stand-in qs> <Launcher.qml> <mycelium-link's main.rs>
 set -euo pipefail
 
 entry=$1
 defaults=$2
 asking_stand_in=$3
+launcher=$4
+link_source=$5
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 cd "$work"
@@ -126,4 +128,22 @@ if [ "$said" != '[ipc][call][launcher][talkTo][DAHTNJ]' ]; then
   echo "two links at once asked: $said"
   failed=1
 fi
+
+# The stand-in answers any call, so each function the program calls must
+# be one the launcher's IpcHandler has; qs refuses any other, and the link
+# opens nothing.
+handles=$(sed -n '/^    IpcHandler {$/,/^    }$/p' "$launcher" |
+  sed -n 's/^        function \([A-Za-z]*\)(.*/\1/p')
+calls=$(sed -n '/^    fn call(&self)/,/^    }$/p' "$link_source" | grep -oE '"[A-Za-z]+"' |
+  tr -d '"' | sort -u)
+if [ "$(wc -l <<< "$calls")" -lt 7 ]; then
+  echo "found too few of mycelium-link's calls to judge: $calls"
+  failed=1
+fi
+for function in $calls; do
+  if ! grep -qxF "$function" <<< "$handles"; then
+    echo "mycelium-link calls $function, which the launcher's IpcHandler hasn't"
+    failed=1
+  fi
+done
 [ "$failed" = 0 ]

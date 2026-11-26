@@ -2,8 +2,8 @@
 // launcher (modules/quickshell/mycelium-link): `mycelium:sprout` opens Start
 // New Work with his words filled in, from the cell it is started from
 // where one is open, and on the machine it is started on where a machine's
-// drawer asked, `cloud` for any of the cloud's. A page reads and never acts, so the map can't ask the
-// node to sprout; the launcher's own Return, pressed by him, is what starts
+// drawer asked, `cloud` for any of the cloud's. A page reads and never
+// acts, so the map can't ask the node to sprout; the launcher's own Return, pressed by him, is what starts
 // anything, as it is when he types there himself. What follows shapes only
 // the links this page writes: any page can write one, so mycelium-link and
 // the launcher hold their own bounds on what a link may carry.
@@ -69,8 +69,9 @@ export const sproutWords = (typed: string): string =>
  * starts on when `on` is a machine's name, or null when no words were
  * typed, since Start New Work opened empty asks nothing of it. An address
  * that isn't one is left out rather than sent for the launcher to refuse,
- * so the work still starts, from nowhere; so is a misshaped machine, so it
- * starts where new work does when Joel names none, as he can see there.
+ * so the work still starts, from nowhere. An empty machine names none, and
+ * a misshaped one gives null too, as mycelium-link refuses one: work started anywhere but where Joel
+ * asked is worse than none.
  */
 export const sproutLink = (
   typed: string,
@@ -78,12 +79,12 @@ export const sproutLink = (
   on: string | null = null,
 ): string | null => {
   const words = sproutWords(typed);
-  if (words === "") {
+  if (words === "" || (on && !isMachine(on))) {
     return null;
   }
   const link = `mycelium:sprout?words=${encodeURIComponent(words)}`;
   const fromLink = isAddress(from) ? `${link}&from=${from}` : link;
-  return isMachine(on) ? `${fromLink}&on=${on}` : fromLink;
+  return on ? `${fromLink}&on=${on}` : fromLink;
 };
 
 /**
