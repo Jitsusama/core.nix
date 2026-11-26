@@ -8,7 +8,9 @@
 # parent without opening it, unless the expression would open it (-empty, or
 # an -exec, -execdir, -ok or -okdir given it), when it isn't listed at all.
 # Either way find says on stderr that it left folders unsearched, or left them
-# out, so an empty answer never reads as nothing there. A folder listed can
+# out, so an empty answer needn't read as nothing there, though a search
+# sending stderr to /dev/null drops that too. A folder a -maxdepth keeps find
+# from opening is left as find leaves it, with no note. A folder listed can
 # still be opened by what its answer is piped to.
 # A search naming a guarded folder, or starting inside one, still searches it,
 # as with ripgrep and fd. A search find can't prune runs as given: one going
@@ -94,25 +96,81 @@ done
 expression=("${args[@]:at}")
 starts+=(${paths[@]+"${paths[@]}"})
 
-# macOS's -depth followed by a number tests a file's depth and walks as ever;
-# alone, as -d, it goes depth first. find tests nothing above -mindepth, so a
-# guarded folder there is never pruned. A command an -exec runs is its own
-# words, read no further than its ; or {} +, so its -d is never find's. -empty
+# macOS's -d or -depth followed by a number tests a file's depth and walks as
+# ever; alone, either goes depth first. find tests nothing above -mindepth, so
+# a guarded folder there is never pruned. A command an -exec runs is its own
+# words, read no further than a word starting with ;, or with + after {}, so
+# its -d is never find's. -empty
 # reads a folder to test it, and a command given a folder may open it, so
-# either opens a guarded folder it's run on.
+# either opens a guarded folder it's run on. A primary's operand, such as
+# -name's pattern, is its own word, never a primary, so -name -empty opens
+# nothing. find opens no folder at its -maxdepth, and reaches none past it.
 acts=false
 opens=false
 mindepth=0
+maxdepth=''
+# A depth as macOS's find reads it (find_parsenum in its function.c): one
+# leading + dropped, then strtoq's blanks, sign and digits, so `+2`, ` 2`
+# and `+ +2` are each 2, and ` -2` is -2, rather than left unread. strtoq
+# holds a number past a long long at its end, and find keeps the depth in
+# an int, its low 32 bits, so a huge depth is -1 there, which is no limit,
+# and 4294967295 is too. One find refuses, with no digits or something
+# after them, opens nothing, so the 0 or the digits it's read as here
+# don't matter. It's said in `read_depth`, apart from `depth`, whether the
+# walk goes depth first.
+depth_of() {
+  local word=${1#+} sign='' digits high value
+  word=${word#"${word%%[![:space:]]*}"}
+  case ${word} in
+    [-+]*) sign=${word:0:1} && word=${word:1} ;;
+    *) ;;
+  esac
+  digits=${word%%[!0-9]*}
+  digits=${digits#"${digits%%[!0]*}"}
+  high=${digits:0:10}
+  if [ "${#digits}" -gt 19 ] || { [ "${#digits}" -eq 19 ] \
+    && { [ "${high}" -gt 9223372036 ] || { [ "${high}" -eq 9223372036 ] \
+      && [ "$((10#${digits:10}))" -gt 854775807 ]; }; }; }; then
+    # Past a long long: its least, whose low 32 bits are 0, or its most,
+    # whose are -1.
+    if [ "${sign}" = - ]; then read_depth=0; else read_depth=-1; fi
+    return
+  fi
+  value=$(((${sign}10#${digits:-0}) & 0xFFFFFFFF))
+  if [ "${value}" -ge $((0x80000000)) ]; then
+    value=$((value - 0x100000000))
+  fi
+  read_depth=${value}
+}
 for ((at = 0; at < ${#expression[@]}; at++)); do
   arg=${expression[at]}
   next=${expression[at + 1]-}
   case ${arg} in
-    -depth) [[ ${next} =~ ^[-+]?[0-9]+$ ]] || depth=true ;;
-    -d | -delete) depth=true ;;
+    # As c_depth, which -d shares, does: a digit after up to two signs
+    # makes it a test of depth, which walks as ever.
+    -d | -depth)
+      word=${next#[-+]}
+      [[ ${word#[-+]} == [0-9]* ]] || depth=true
+      ;;
+    -delete) depth=true ;;
+    # A depth below 0 tests everything, and a -maxdepth of -1 is find's own
+    # no limit, so either is none here.
     -mindepth)
-      if [[ ${next} =~ ^[0-9]+$ ]]; then
-        mindepth=${next}
-      fi
+      depth_of "${next}"
+      mindepth=$((read_depth < 0 ? 0 : read_depth))
+      at=$((at + 1))
+      ;;
+    -maxdepth)
+      depth_of "${next}"
+      maxdepth=${read_depth}
+      [ "${read_depth}" -ne -1 ] || maxdepth=''
+      at=$((at + 1))
+      ;;
+    -name | -iname | -path | -ipath | -wholename | -iwholename | -regex | -iregex | -lname \
+      | -ilname | -type | -size | -perm | -user | -group | -uid | -gid | -links | -inum \
+      | -samefile | -fstype | -flags | -xattrname | -newer | -anewer | -cnewer | -mnewer \
+      | -Bnewer | -newer[aBcmt][aBcmt] | -[aBcm]time | -[aBcm]min)
+      at=$((at + 1))
       ;;
     -empty) opens=true ;;
     -exec | -execdir | -ok | -okdir)
@@ -121,12 +179,22 @@ for ((at = 0; at < ${#expression[@]}; at++)); do
       at=$((at + 1))
       while [ "${at}" -lt "${#expression[@]}" ]; do
         word=${expression[at]}
-        [ "${word}" = ';' ] && break
-        [ "${word}" = + ] && [ "${expression[at - 1]}" = '{}' ] && break
+        # c_exec ends a command at any word that starts with ; and at one
+        # starting with + after {}, so what follows is read as primaries.
+        [[ ${word} == ';'* ]] && break
+        [[ ${word} == +* ]] && [ "${expression[at - 1]}" = '{}' ] && break
         at=$((at + 1))
       done
       ;;
-    -print | -print0 | -printf | -fprint | -fprint0 | -fprintf | -ls | -fls) acts=true ;;
+    -print | -print0 | -ls) acts=true ;;
+    -printf | -fprint | -fprint0 | -fls)
+      acts=true
+      at=$((at + 1))
+      ;;
+    -fprintf)
+      acts=true
+      at=$((at + 2))
+      ;;
     *) ;;
   esac
 done
@@ -193,7 +261,12 @@ for ((at = 0; at < ${#starts[@]}; at++)); do
     fi
     [ -n "${starting[${target,,}]-}" ] && continue
     slashes=${rest//[^\/]/}
-    if [ $((${#slashes} + 1)) -lt "${mindepth}" ]; then
+    deep=$((${#slashes} + 1))
+    if [ -n "${maxdepth}" ] && { [ "${deep}" -gt "${maxdepth}" ] \
+      || { [ "${deep}" -eq "${maxdepth}" ] && [ "${opens}" = false ]; }; }; then
+      continue
+    fi
+    if [ "${deep}" -lt "${mindepth}" ]; then
       pruned=false
     fi
     [ ${#prunes[@]} -gt 0 ] && prunes+=(-o)

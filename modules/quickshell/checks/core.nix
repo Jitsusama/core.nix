@@ -614,8 +614,9 @@ in
   # flash, and an opening the collector stalled says where the heap stood
   # as it was asked, as modules/quickshell/tests/pacing.qml holds
   # launcher/ChangesPresented.js, launcher/Collector.js, launcher/Flash.js,
-  # launcher/Pacing.js, launcher/Presented.js, launcher/Spots.js,
-  # launcher/Thread.js and launcher/Wanted.js to it in Qt's own engine.
+  # launcher/Pacing.js, launcher/Presented.js with its launcher/KeysSaid.js,
+  # launcher/Spots.js, launcher/Thread.js and launcher/Wanted.js to it in
+  # Qt's own engine.
   the-launcher-paces-its-refreshes =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -627,6 +628,7 @@ in
       cp ${../launcher/ChangesPresented.js} ChangesPresented.js
       cp ${../launcher/Collector.js} Collector.js
       cp ${../launcher/Flash.js} Flash.js
+      cp ${../launcher/KeysSaid.js} KeysSaid.js
       cp ${../launcher/Makings.js} Makings.js
       cp ${../launcher/Order.js} Order.js
       cp ${../launcher/Pacing.js} Pacing.js

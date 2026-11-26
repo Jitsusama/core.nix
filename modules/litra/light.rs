@@ -4,7 +4,7 @@
 use std::ffi::c_int;
 use std::fs::{File, OpenOptions};
 use std::io::{self, ErrorKind, Read, Write};
-use std::os::fd::AsRawFd;
+use std::os::fd::{AsRawFd, RawFd};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -71,11 +71,25 @@ pub(crate) fn kelvin(asked: u16) -> u16 {
     (asked.clamp(WARMEST, COOLEST) + 50) / 100 * 100
 }
 
+/// A light's node, open. What's sent goes through `exchange`, which takes
+/// the light's turn first, so the file is the light's own.
 pub(crate) struct Light {
-    pub(crate) file: File,
+    file: File,
+}
+
+impl AsRawFd for Light {
+    fn as_raw_fd(&self) -> RawFd {
+        self.file.as_raw_fd()
+    }
 }
 
 impl Light {
+    /// Reads what the light says unasked, such as its buttons. Reading needs
+    /// no turn: only a report sent can be lost to one sent beside it.
+    pub(crate) fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        self.file.read(buffer)
+    }
+
     pub(crate) fn open(node: &Path) -> io::Result<Self> {
         let file = OpenOptions::new()
             .read(true)

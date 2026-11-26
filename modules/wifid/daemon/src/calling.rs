@@ -92,9 +92,13 @@ impl fmt::Display for Peer {
     fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
         match (self.pid, &self.unit) {
             // A process names its own cgroup under its user's manager, so
-            // the unit is escaped: a control byte in it would have
-            // journalctl show the whole line as a blob.
-            (Some(pid), Some(unit)) => write!(out, "pid {pid} ({})", unit.escape_debug()),
+            // the unit is quoted and escaped, as an ask's names are
+            // (`acts::quoted`): a control byte in it would have journalctl
+            // show the whole line as a blob, and a bare `) asks` in it
+            // would write a second pid into the line the kernel never
+            // named. A cgroup's name is at most 255 bytes, so it needs no
+            // cut.
+            (Some(pid), Some(unit)) => write!(out, "pid {pid} ({unit:?})"),
             (Some(pid), None) => write!(out, "pid {pid}"),
             (None, _) => write!(out, "a process the kernel didn't name"),
         }
@@ -189,15 +193,24 @@ mod tests {
             pid: Some(42),
             unit: Some("wifid-calls.service".into()),
         };
-        assert_eq!(named.to_string(), "pid 42 (wifid-calls.service)");
+        assert_eq!(named.to_string(), "pid 42 (\"wifid-calls.service\")");
         let escaping = Peer {
             pid: Some(42),
             unit: Some("\u{1b}[2Jx.service".into()),
         };
         assert_eq!(
             escaping.to_string(),
-            "pid 42 (\\u{1b}[2Jx.service)",
+            "pid 42 (\"\\u{1b}[2Jx.service\")",
             "a unit's control byte reached the journal raw"
+        );
+        let forging = Peer {
+            pid: Some(666),
+            unit: Some("init.scope\") asks a look; pid 2211 (\"quickshell.service".into()),
+        };
+        assert_eq!(
+            forging.to_string(),
+            "pid 666 (\"init.scope\\\") asks a look; pid 2211 (\\\"quickshell.service\")",
+            "a unit named to close its own quote wrote a second asker into the line"
         );
         assert_eq!(
             Peer::default().to_string(),
