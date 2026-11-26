@@ -4811,10 +4811,12 @@ def test_a_talk_to_an_asking_cell_shows_its_question_and_answers_it_from_return(
         left_the_node("s-choose")
 
 
-def asking_left_or_right(address: str, title: str) -> tuple[str, Path, set[Path]]:
-    """Lay a session asking Joel Left or Right, as the Talk case's does.
+def asking_left_or_right(shell: Shell, address: str, title: str) -> tuple[str, Path, set[Path]]:
+    """Lay a session asking Joel Left or Right, as the Talk case's does, and wait till it's known.
 
     Gives the want's time, as the agents daemon writes it, its inbox and what's in it already.
+    It's back once Agents shows it, as the node reads a record laid only on its next look, and a
+    Talk or walk to a session it hasn't read finds none (or the void, for another daemon's Talk).
     """
     since = datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
     choices = [{"value": "left", "label": "Left"}, {"value": "right", "label": "Right"}]
@@ -4823,6 +4825,10 @@ def asking_left_or_right(address: str, title: str) -> tuple[str, Path, set[Path]
     lay(address, title, {"state": "listening", "busy": False, "wants": wants})
     inbox = STEER / address
     inbox.mkdir(parents=True, exist_ok=True)
+    shell.as_account(shell.ipc("collection", "agents"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: title in shown["rows"])
+    shell.close_launcher()
     return since, inbox, set(inbox.glob("*.json"))
 
 
@@ -4841,8 +4847,12 @@ def test_a_choice_in_for_you_is_joels_alone_and_his_talk_there_takes_no_second(
     is kept among its answers as a Talk's is (Agents.qml's answerKept), so a second choice
     while it still asks goes nowhere, and its Talk shows the first and takes no second.
     """
-    since, inbox, steered = asking_left_or_right("FORYOU", "Choosing Quest")
+    since, inbox, steered = asking_left_or_right(shell, "FORYOU", "Choosing Quest")
     try:
+        # In For You before it's walked to, as Agents shows it a moment before For You does.
+        in_for_you(shell)
+        shell.launcher_until(lambda shown: "Choosing Quest" in shown["rows"])
+        shell.close_launcher()
         walked = {"steps": ["Now", "For You", "Choosing Quest", "Right"], "sure": True}
         did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
         why = "what Choosing Quest asks is answered only from your own Return in the launcher"
@@ -4906,7 +4916,7 @@ def test_a_folders_talk_to_its_session_asking_joel_shows_what_it_asks_and_answer
     folder.mkdir(parents=True, exist_ok=True)
     named = f"~/{folder.relative_to(Path.home())}"
     status = Path(os.environ["XDG_RUNTIME_DIR"]) / "disk-guard" / "status.json"
-    since, inbox, steered = asking_left_or_right("TOPROW", "Top Row Quest")
+    since, inbox, steered = asking_left_or_right(shell, "TOPROW", "Top Row Quest")
     guard_holds(
         status,
         {
@@ -4973,7 +4983,7 @@ def test_words_given_back_for_an_ask_that_went_never_answer_the_next(shell: Shel
     field as the new ask draws, and, closed, before the field opens (Agents.qml's letGoStale),
     and they're kept as a draft neither way.
     """
-    _, inbox, steered = asking_left_or_right("GIVEBK", "Given Back Quest")
+    _, inbox, steered = asking_left_or_right(shell, "GIVEBK", "Given Back Quest")
 
     def asks(said: str) -> Callable[[Json], bool]:
         def drawn(shown: Json) -> bool:
