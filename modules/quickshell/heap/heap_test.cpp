@@ -186,6 +186,17 @@ Room roomOf(const Heap &heap) {
             said.value(QStringLiteral("outside")).toDouble()};
 }
 
+// What the chunks held in use as the last sweep left them, in megabytes,
+// twice which is where Qt itself starts a collection at a miss. Large
+// items, which weigh() counts as live, have chunks of their own outside
+// it.
+double sweptOf(const QJSEngine &engine) {
+    const QV4::MemoryManager *manager = engine.handle()->memoryManager;
+    const std::size_t slotsLeft = manager->blockAllocator.usedSlotsAfterLastSweep +
+                                  manager->icAllocator.usedSlotsAfterLastSweep;
+    return static_cast<double>(slotsLeft * QV4::Chunk::SlotSize) / (1024.0 * 1024.0);
+}
+
 // Close enough for two readings of the same slots, in megabytes.
 constexpr double SAME_MB = 0.01;
 
@@ -226,8 +237,10 @@ bool growKeeping(const Heap &heap, const QJSValue &grow, const QJSValue &kept, d
 // nothing as it grows and keeps the whole room after a collection, and
 // asking again as it grew, as an opening asks after the closing, doesn't
 // move the ceiling; a heap whose sweeps keep what it grew into collects
-// at twice the room past what it held at that first ask, its sweeps on
-// misses leaving the room as a forced one does; an ask after a collection
+// at twice the room past what it held at that first ask, and twice what
+// its sweeps kept beyond what they kept then, which is never more than
+// twice what grew live, so a churn holds no more, its sweeps on misses
+// leaving the room as a forced one does; an ask after a collection
 // leaves the whole room again; asking for another room before a
 // collection counts it from the same place; and the room is held to the
 // most, and none for what's under nothing or isn't a number, from the
@@ -250,6 +263,7 @@ bool roomFollowsWhatsHeld() {
     const Room once = roomOf(heap);
     heap.leaveRoom(SMALL_ROOM_MB);
     const Room twice = roomOf(heap);
+    const double sweptTwice = sweptOf(engine);
     const bool asOne =
         expectRoom("asking for the same room twice leaves it once, in the heap and outside it",
                    std::abs(twice.collectsAt - once.collectsAt) < SAME_MB &&
@@ -278,17 +292,20 @@ bool roomFollowsWhatsHeld() {
     const bool collectedFar = heap.collected() > before;
     engine.collectGarbage();
     const Room grown = roomOf(heap);
-    const double ceiling = twice.chunks + 2 * SMALL_ROOM_MB;
-    const bool held = expectRoom("a heap whose sweeps keep what it grew into collects at twice "
-                                 "the room past what it held at the first ask",
-                                 grewFar && collectedFar &&
-                                     grown.chunks > ceiling - SMALL_ROOM_MB / 4 &&
-                                     grown.chunks < ceiling + SMALL_ROOM_MB &&
-                                     2 * grown.live < ceiling &&
-                                     std::abs(grown.collectsAt - ceiling) < SAME_MB,
-                                 twice, grown);
+    const double cap = twice.chunks + 2 * SMALL_ROOM_MB;
+    const double ceiling = cap + 2 * (sweptOf(engine) - sweptTwice);
+    const bool held = expectRoom(
+        "a heap whose sweeps keep what it grew into collects at twice the room past what it held "
+        "at the first ask, and twice what it kept since, which is never more than twice what "
+        "grew live",
+        grewFar && collectedFar && grown.chunks > cap - SMALL_ROOM_MB / 4 &&
+            grown.chunks < ceiling + SMALL_ROOM_MB && 2 * grown.live < ceiling &&
+            ceiling - cap <= 2 * (grown.live - twice.live) + SAME_MB &&
+            std::abs(grown.collectsAt - ceiling) < SAME_MB,
+        twice, grown);
     heap.leaveRoom(SMALL_ROOM_MB);
     const Room rearmed = roomOf(heap);
+    const double sweptRearmed = sweptOf(engine);
     const bool again = expectRoom(
         "an ask after a collection leaves the whole room again, past the ceiling before it",
         rearmed.collectsAt >= rearmed.chunks + SMALL_ROOM_MB - SAME_MB, grown, rearmed);
@@ -302,13 +319,15 @@ bool roomFollowsWhatsHeld() {
     const bool collectedOn = heap.collected() > asking;
     engine.collectGarbage();
     const Room other = roomOf(heap);
-    const double otherCeiling = rearmed.chunks + 2 * SMALLEST_ROOM_MB;
+    const double otherCap = rearmed.chunks + 2 * SMALLEST_ROOM_MB;
+    const double otherCeiling = otherCap + 2 * (sweptOf(engine) - sweptRearmed);
     const bool another = expectRoom(
         "asking for another room before a collection counts it from the same place",
         grewLittle && uncollected && little.chunks >= rearmed.chunks + SMALLEST_ROOM_MB &&
-            grewOn && collectedOn && other.chunks > otherCeiling - SMALLEST_ROOM_MB / 4 &&
-            other.chunks < otherCeiling + SMALLEST_ROOM_MB &&
-            2 * other.live < otherCeiling && std::abs(other.collectsAt - otherCeiling) < SAME_MB,
+            grewOn && collectedOn && other.chunks > otherCap - SMALLEST_ROOM_MB / 4 &&
+            other.chunks < otherCeiling + SMALLEST_ROOM_MB && 2 * other.live < otherCeiling &&
+            otherCeiling - otherCap <= 2 * (other.live - rearmed.live) + SAME_MB &&
+            std::abs(other.collectsAt - otherCeiling) < SAME_MB,
         rearmed, other);
     heap.leaveRoom(std::numeric_limits<double>::infinity());
     const Room endless = roomOf(heap);
@@ -386,17 +405,6 @@ qint64 sweepsOf(const QJSEngine &engine) {
     return engine.handle()
         ->memoryManager->gcStateMachine->executionTiming[QV4::GCStateMachine::DoSweep]
         .count;
-}
-
-// What the chunks held in use as the last sweep left them, in megabytes,
-// twice which is where Qt itself starts a collection at a miss. Large
-// items, which weigh() counts as live, have chunks of their own outside
-// it.
-double sweptOf(const QJSEngine &engine) {
-    const QV4::MemoryManager *manager = engine.handle()->memoryManager;
-    const std::size_t slotsLeft = manager->blockAllocator.usedSlotsAfterLastSweep +
-                                  manager->icAllocator.usedSlotsAfterLastSweep;
-    return static_cast<double>(slotsLeft * QV4::Chunk::SlotSize) / (1024.0 * 1024.0);
 }
 
 // Whether a burst made and kept within one room, past twice the room,
