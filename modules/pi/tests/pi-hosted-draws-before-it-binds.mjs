@@ -256,7 +256,8 @@ it("a hosted screen whose early draw throws draws after the bind, as startup doe
   assert.equal(mode.chatContainer.clear.mock.callCount(), 1, "half a draw was left on screen");
   bound();
   await started;
-  assert.deepEqual(steps, ["bind", "drawn"], "it was not drawn after the bind");
+  // Startup's own flush sends the frame once it is done, as stock pi does.
+  assert.deepEqual(steps, ["bind", "drawn", "sent"], "it was not drawn after the bind");
   assert.equal(mode.renderSessionEntries.mock.callCount(), 0);
   assert.equal(mode.rebuildChatFromMessages.mock.callCount(), 0);
   assert.equal(mode.subscribeToAgent.mock.callCount(), 1, "startup failed for a renderer");
