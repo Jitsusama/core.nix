@@ -348,12 +348,13 @@ fn a_character_left_open_is_read_on_from_where_rustc_stops_it() {
 fn a_byte_character_or_a_quote_after_a_name_is_read_as_rustc_reads_it() {
     // A byte character's quote opens no lifetime, so r.rs's is left open
     // at its line's end, while s.rs's `xb` is a name before a lifetime,
-    // whose string hides line 2, and y.rs's raw name `r#b`, like ys.rs's
-    // string suffix and yc.rs's character suffix `b`, ends before a
-    // lifetime and a character, so line 2 is code. A quote after the
-    // name a lifetime would open closes a character (t.rs), but not one
-    // further on (u.rs, or z.rs, where a quote follows), so each string
-    // after hides line 2. v.rs's emoji opens a lifetime, as in rustc,
+    // whose string hides line 2, and y.rs's raw name `r#b`, like the
+    // suffix `b` on ys.rs's string, yr.rs's raw string, whose hashes no
+    // plain string ends at, yc.rs's character and ye.rs's escaped one,
+    // ends before a lifetime and a character, so line 2 is code. A quote
+    // after the name a lifetime would open closes a character (t.rs), but
+    // not one further on (u.rs, or z.rs, where a quote follows), so each
+    // string after hides line 2. v.rs's emoji opens a lifetime, as in rustc,
     // and so here does w.rs's arrow, which rustc reads as a character.
     // x.rs's walk reads on from the `/` where its character stops, not
     // past it, so the comment it opens hides the quote after.
@@ -370,11 +371,20 @@ fn a_byte_character_or_a_quote_after_a_name_is_read_as_rustc_reads_it() {
             "ys.rs",
             "m!(\"x\"b'a '\"');\n#[allow(x)]\nfn f() {} // \"\n",
         ),
+        file(
+            "yr.rs",
+            "m!(r#\"x\"#b'a '\"');\n#[allow(x)]\nfn f() {} // \"\n",
+        ),
         file("yc.rs", "m!('x'b'a '\"');\n#[allow(x)]\nfn f() {} // \"\n"),
+        file(
+            "ye.rs",
+            "m!('\\n'b'a '\"');\n#[allow(x)]\nfn f() {} // \"\n",
+        ),
         file("z.rs", "m!('a \"'\n#[allow(x)]\n\");\n#[allow(x)]\n"),
     ];
     let paths = [
-        "r.rs", "s.rs", "t.rs", "u.rs", "v.rs", "w.rs", "x.rs", "y.rs", "ys.rs", "yc.rs", "z.rs",
+        "r.rs", "s.rs", "t.rs", "u.rs", "v.rs", "w.rs", "x.rs", "y.rs", "ys.rs", "yr.rs", "yc.rs",
+        "ye.rs", "z.rs",
     ]
     .map(str::to_owned);
     let health = measure(&paths, &files, &[]);
@@ -382,7 +392,7 @@ fn a_byte_character_or_a_quote_after_a_name_is_read_as_rustc_reads_it() {
         health.named["suppressions"],
         [
             "r.rs:1", "r.rs:2", "s.rs:4", "t.rs:4", "u.rs:4", "v.rs:4", "w.rs:4", "x.rs:1",
-            "x.rs:2", "y.rs:2", "ys.rs:2", "yc.rs:2", "z.rs:4"
+            "x.rs:2", "y.rs:2", "ys.rs:2", "yr.rs:2", "yc.rs:2", "ye.rs:2", "z.rs:4"
         ],
         "a byte character, a raw name's or suffix's `b`, a character closing after a name, a \
              lifetime before a quote or past ASCII, or a character stopping at a comment \

@@ -4452,7 +4452,9 @@
     saying it started on the node's machine, else the node's or sprout's why; and the words a
     mycelium: link offers are read again as one plain line of at most 1000 characters, its session
     kept only where one here has that address, named by its quest, the foot saying a page offered
-    it; the same words given the same act within the hour say the time they started rather than
+    it; a slow start is said still coming up a minute after its answer, then told by name when
+    it's up or lost within a quarter hour, in the foot only while Joel still waits on its act; and
+    the same words given the same act within the hour say the time they started rather than
     starting again, and a start's wait is counted to the second
   '';
   start-new-work-finds-places = ''

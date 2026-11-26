@@ -58,6 +58,17 @@ function again(list, key, said, now) {
         && same(one.words, said) && now - one.at < AGAIN_MS && !meant(one)) ?? null;
 }
 
+// Whether `asked`, { key, words, on }, is the start under way, `running`
+// (the same, or null while none runs), given again: the same act, the same
+// words and the same place, so it keeps the receipt it already says rather
+// than being told it's busy over it (Joel, 2026-11-25 14:33: "no clue if i
+// did it once, twice, thrice"). Every From a Link act shares one key, so
+// another page's words, or the same words for the cloud, are new work.
+function underWayAgain(running, asked) {
+    return running !== null && running.key === asked.key && same(running.words, asked.words)
+        && String(running.on ?? "") === String(asked.on ?? "");
+}
+
 // `list` with `toldOne` marked told at `now`, so a Return just after starts it.
 function told(list, toldOne, now) {
     return list.map(one => (one === toldOne ? Object.assign({}, one, { toldAt: now }) : one));
