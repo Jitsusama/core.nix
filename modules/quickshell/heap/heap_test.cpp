@@ -9,7 +9,9 @@
 // it makes more unless it's left room, and doesn't once it is, nor as it
 // makes strings whose text is held outside the heap, nor after the
 // collections that run once it is, as the shell's Qt leaves the room after
-// each (qtdeclarative-room-after-every-sweep.patch). Giving the free pages
+// each (qtdeclarative-room-after-every-sweep.patch), and a burst kept within
+// one room, past twice it, collects about once for each room it grows by
+// rather than at every miss. Giving the free pages
 // back leaves next to none resident, says about as much as was counted, and
 // what's kept, and what's made after in their place, reads as it was made;
 // and lending them back says as much, the kernel holds that much lent while
@@ -51,6 +53,7 @@
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QRegularExpression>
+#include <QStringList>
 #include <QTemporaryDir>
 #include <algorithm>
 #include <chrono>
@@ -360,6 +363,96 @@ bool roomKeepsQtsOwnLimits() {
             left.collectsAt >= own.collectsAt - SAME_MB &&
             left.collectsOutsideAt >= own.collectsOutsideAt - SAME_MB,
         own, left);
+}
+
+// A heap made to hold far more than is live with its free runs too small
+// for what's made next: objects of two values, one in HOLED_KEPT_ONE_IN
+// kept, so each run a sweep leaves between them is a few slots.
+constexpr int HOLED = 600000;
+constexpr int HOLED_KEPT_ONE_IN = 5;
+
+// What a burst makes and keeps, as an opening keeps its daemons' lines:
+// objects of this many values, each one item of about 17 slots, more than
+// any run left between the holed heap's objects, so each misses the free
+// lists. It's made in batches until the chunks have grown by this many
+// rooms, and never past the most.
+constexpr int BURST_VALUES = 64;
+constexpr int BURST_BATCH = 1000;
+constexpr int BURST_ROOMS = 4;
+constexpr int BURST_MOST = 200000;
+
+// How many collections the engine's collector has finished.
+qint64 sweepsOf(const QJSEngine &engine) {
+    return engine.handle()
+        ->memoryManager->gcStateMachine->executionTiming[QV4::GCStateMachine::DoSweep]
+        .count;
+}
+
+// What the chunks held in use as the last sweep left them, in megabytes,
+// twice which is where Qt itself starts a collection at a miss. Large
+// items, which weigh() counts as live, have chunks of their own outside
+// it.
+double sweptOf(const QJSEngine &engine) {
+    const QV4::MemoryManager *manager = engine.handle()->memoryManager;
+    const std::size_t slotsLeft = manager->blockAllocator.usedSlotsAfterLastSweep +
+                                  manager->icAllocator.usedSlotsAfterLastSweep;
+    return static_cast<double>(slotsLeft * QV4::Chunk::SlotSize) / (1024.0 * 1024.0);
+}
+
+// Whether a burst made and kept within one room, past twice the room,
+// collects about once for each room it grows by, on a heap holding over
+// twice what's live in runs too small for it, as Joel's shell held 201 to
+// 209 MB for 63 to 68 live. Past twice the room beyond where it was left,
+// a limit below what's held would start a collection at every miss, one
+// for each chunk the burst takes: two openings of Joel's shell each spent
+// about 27 collections' worth inside them, 1955 and 1949 ms of their 3269
+// and 3320 (2026-11-25).
+bool pacesABurstPastTheRoom() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    const QJSValue holed = engine.evaluate(
+        QStringLiteral("(() => { const made = []; for (let i = 0; i < %1; i++) made.push({ n: i, "
+                       "m: i }); return made.filter((_, i) => i % %2 === 0); })()")
+            .arg(HOLED)
+            .arg(HOLED_KEPT_ONE_IN));
+    engine.collectGarbage();
+    heap.leaveRoom(SMALL_ROOM_MB);
+    engine.collectGarbage();
+    const Room closed = roomOf(heap);
+    const double sweptClosed = sweptOf(engine);
+    QStringList values;
+    for (int each = 0; each < BURST_VALUES; each++)
+        values << QStringLiteral("v%1: i").arg(each);
+    const QJSValue kept = engine.newArray();
+    const QJSValue burst = engine.evaluate(
+        QStringLiteral("(kept) => { for (let i = 0; i < %1; i++) kept.push({ %2 }); }")
+            .arg(BURST_BATCH)
+            .arg(values.join(QStringLiteral(", "))));
+    const double upTo = closed.chunks + BURST_ROOMS * SMALL_ROOM_MB;
+    const qint64 before = sweepsOf(engine);
+    bool made = !holed.isError() && !burst.isError();
+    for (int count = 0; made && count < BURST_MOST && roomOf(heap).chunks < upTo;
+         count += BURST_BATCH)
+        made = !burst.call({kept}).isError();
+    const qint64 ran = sweepsOf(engine) - before;
+    const Room grown = roomOf(heap);
+    const double sweptGrown = sweptOf(engine);
+    // Held past twice what the sweeps left, and the room besides, before
+    // the burst and after it, so Qt's own limit would start a collection at
+    // every miss throughout, and only the room paces it.
+    const bool holedThrough = closed.chunks > 2 * sweptClosed + SMALL_ROOM_MB &&
+                              grown.chunks > 2 * sweptGrown;
+    const bool paced = ran <= BURST_ROOMS + 1;
+    if (!made || !holedThrough || grown.chunks < upTo || !paced)
+        std::fprintf(stderr,
+                     "FAIL a burst kept past twice the room within one room collects about once "
+                     "for each room it grows by: %lld collections over %.2f to %.2f MB of "
+                     "chunks, up to %.2f, swept %.2f then %.2f MB, collecting at %.2f then "
+                     "%.2f MB; made %s, holed throughout %s\n",
+                     static_cast<long long>(ran), closed.chunks, grown.chunks, upTo, sweptClosed,
+                     sweptGrown, closed.collectsAt, grown.collectsAt, made ? "yes" : "no",
+                     holedThrough ? "yes" : "no");
+    return made && holedThrough && grown.chunks >= upTo && paced;
 }
 
 // Blocks as large as the shell's answers' pieces, 32 MB in all, and how
@@ -2007,6 +2100,7 @@ int main(int argc, char **argv) {
                      SMALLEST_ROOM_MB, COLLECTIONS_SINCE);
     const bool reckoned = roomFollowsWhatsHeld();
     const bool ownLimits = roomKeepsQtsOwnLimits();
+    const bool burstPaced = pacesABurstPastTheRoom();
     const bool follows = allocatorFollows(heap);
     const bool given = givesBack();
     const bool lent = lendsBack();
@@ -2027,10 +2121,9 @@ int main(int argc, char **argv) {
     const bool chained = followsAChain();
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
                    roomyOutside && lasting && lastingOutside && stillCollectsOutside &&
-                   reckoned && ownLimits && follows && given && lent && fits && whole && fullest &&
-                   inOrder && census &&
-                   covered && placed && stands && underWay && holdsIt && waitsItOut && stray &&
-                   alone && swept && chained
+                   reckoned && ownLimits && burstPaced && follows && given && lent && fits &&
+                   whole && fullest && inOrder && census && covered && placed && stands &&
+                   underWay && holdsIt && waitsItOut && stray && alone && swept && chained
                ? 0
                : 1;
 }
