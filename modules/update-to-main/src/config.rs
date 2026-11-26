@@ -393,6 +393,12 @@ impl Config {
         self.state.join("behind")
     }
 
+    /// The file holding why the machine boots the system it booted before,
+    /// from the switch whose boot check failed until one passes.
+    pub fn boots_file(&self) -> PathBuf {
+        self.state.join("boots")
+    }
+
     /// The link that keeps the system being built from being collected.
     pub fn building_link(&self) -> PathBuf {
         self.state.join("building")
