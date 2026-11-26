@@ -209,7 +209,16 @@ ShellRoot {
     }
     function reach(row) {
         firstAct(row).run();
-        return Niri.spawned.join(" ");
+        return ran();
+    }
+
+    // What was run, argument by argument, so one that runs into the next,
+    // as "-- ada" given as one, isn't taken for two.
+    function ran() {
+        return JSON.stringify(Niri.spawned);
+    }
+    function told(...words) {
+        return JSON.stringify(words);
     }
 
     // A search, once the daemon has answered it.
@@ -490,16 +499,16 @@ ShellRoot {
                 expect("Return steps in, never calling", launcher.entered === open[0]
                     && Niri.spawned.length === 0, Niri.spawned.join(" "));
                 expect("calling one who's available",
-                    reach(open[0]) === "tuple call start -- ada@example.com",
-                    Niri.spawned.join(" "));
+                    reach(open[0]) === told("tuple", "call", "start", "--", "ada@example.com"),
+                    ran());
                 expect("one in a call is joined", live(open[1])[0].name === "Join Their Call",
                     live(open[1])[0].name);
                 expect("joining one in a call",
-                    reach(open[1]) === "tuple call join -- ben@example.com",
-                    Niri.spawned.join(" "));
+                    reach(open[1]) === told("tuple", "call", "join", "--", "ben@example.com"),
+                    ran());
                 expect("calling one who's offline",
-                    reach(open[3]) === "tuple call start -- cal@example.com",
-                    Niri.spawned.join(" "));
+                    reach(open[3]) === told("tuple", "call", "start", "--", "cal@example.com"),
+                    ran());
 
                 // Past Write in Slack's place, held while Slack is asked
                 // of her.
@@ -603,8 +612,8 @@ ShellRoot {
         seeking("hal", "one with no email", () => {
             const hal = found("hal");
             expect("found", names(hal) === "Hal", names(hal));
-            expect("called by their id", reach(hal[0]) === "tuple call start -- 108",
-                Niri.spawned.join(" "));
+            expect("called by their id",
+                reach(hal[0]) === told("tuple", "call", "start", "--", "108"), ran());
             expect("and nothing of theirs to copy",
                 names(hal[0].verbs()) === "Call Them, Favourite", names(hal[0].verbs()));
         }),
@@ -614,8 +623,8 @@ ShellRoot {
                 && making.side === "no" && making.verb === "star", `${making.side} ${making.verb}`);
             making.run();
             expect("telling Tuple of a favourite",
-                Niri.spawned.join(" ") === "tuple contacts favorite -- eli@example.com",
-                Niri.spawned.join(" "));
+                ran() === told("tuple", "contacts", "favorite", "--", "eli@example.com"),
+                ran());
             expect("the switch says so at once", making.side === "yes", making.side);
             expect("a new favourite at home at once",
                 names(people.all) === "Ada Brook, Ben Carrow, Dee Ellery, Eli Fenwick, Cal Dunmore",
@@ -625,8 +634,8 @@ ShellRoot {
 
             home("Dee Ellery").verbs().find(row => row.name === "Favourite").run();
             expect("telling Tuple of one no longer a favourite",
-                Niri.spawned.join(" ") === "tuple contacts unfavorite -- dee@example.com",
-                Niri.spawned.join(" "));
+                ran() === told("tuple", "contacts", "unfavorite", "--", "dee@example.com"),
+                ran());
             expect("one no longer a favourite, with nothing else between them, isn't listed",
                 names(people.all) === "Ada Brook, Ben Carrow, Eli Fenwick, Cal Dunmore",
                 names(people.all));
