@@ -69,6 +69,7 @@
   "launcher/Wanted.js"
   "launcher/Standing.js"
   "launcher/Steady.js"
+  "launcher/LaidAgain.js"
   "launcher/Joined.js"
   "launcher/Held.js"
   "launcher/RowsKept.js"

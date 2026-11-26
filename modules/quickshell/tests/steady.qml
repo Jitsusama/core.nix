@@ -4,7 +4,9 @@
 // modules/quickshell/launcher/Steady.js beside this file and runs
 // `qml -platform offscreen steady.qml`. Each case is a promise Joel leans on
 // while a dozen agents change around him: rows keep the order they're shown
-// in, and the selection stays on its row.
+// in, and the selection stays on its row. Long because each of those
+// promises is a case over the same stand-in rows, and splitting them would
+// copy that stand-in into every file.
 import QtQuick
 import "Steady.js" as Steady
 
@@ -233,6 +235,404 @@ QtObject {
             if (got !== want)
                 failures.push(`${what}: "${got}", not "${want}"`);
         }
+
+        // [what, the rows shown, the rows now, how they're shown after]: a
+        // row that arrives comes at the end, which reads as under the last
+        // heading there, so where that's another cell's, its own is said
+        // again over it, as it reads above, and nowhere else (Y2YBTS,
+        // 2026-11-22 [228cdeb9] and [4c5e154a]). A heading is "#" and its
+        // name, with "=" and the rows it holds, by key, where it names them
+        // as For You's do, one said again "+" after it, a pressing row "!",
+        // and one gone "-".
+        const underHeadings = said => said.split(" ").filter(one => one !== "").map(one => {
+            const gone = one.endsWith("-");
+            const bare = gone ? one.slice(0, -1) : one;
+            const again = bare.endsWith("+");
+            const named = again ? bare.slice(0, -1) : bare;
+            const presses = named.endsWith("!");
+            const [key, holding] = (presses ? named.slice(0, -1) : named).split("=");
+            return Object.assign({ key: key, side: "" },
+                key.startsWith("#") ? { heading: true } : {},
+                holding === undefined ? {} : { holding: holding.split(",") },
+                presses ? { pressing: true } : {},
+                again ? { repeated: true } : {}, gone ? { gone: true, went: true } : {});
+        });
+        // Said again "+", gone "-", and waiting unseen "?".
+        const readHeaded = list => list.map(row => row.key + (row.repeated ? "+" : "")
+            + (row.gone ? "-" : "") + (row.unseen === true ? "?" : "")).join(" ");
+        const headings = [
+            ["a row new to another cell's end gets its heading", "#A a1 #B b1", "#A a1 a2 #B b1",
+                "#A a1 #B b1 #A+ a2"],
+            ["a row new to its own cell's end gets none", "#A a1 #B b1", "#A a1 #B b1 b2",
+                "#A a1 #B b1 b2"],
+            ["a reopening has one heading for each cell", "", "#A a1 a2 #B b1", "#A a1 a2 #B b1"],
+            ["rows new to one cell share its heading", "#A a1 #B b1", "#A a1 a2 a3 #B b1",
+                "#A a1 #B b1 #A+ a2 a3"],
+            ["rows new to two cells get one each", "#A a1 #B b1", "#A a1 a2 #B b1 b2",
+                "#A a1 #B b1 #A+ a2 #B+ b2"],
+            ["a new cell's heading comes in over its row", "#A a1", "#A a1 #C c1",
+                "#A a1 #C+ c1"],
+            ["a heading said again stays where it was said", "#A a1 #B b1 #A+ a2",
+                "#A a1 a2 #B b1", "#A a1 #B b1 #A+ a2"],
+            ["and needs no other for a row new under it", "#A a1 #B b1 #A+ a2",
+                "#A a1 a2 a3 #B b1", "#A a1 #B b1 #A+ a2 a3"],
+            ["and goes dim with its cell", "#A a1 #B b1 #A+ a2", "#B b1",
+                "#A- a1- #B b1 #A+- a2-"],
+            ["and goes dim once no row under it stands", "#A a1 #B b1 #A+ a2", "#A a1 #B b1",
+                "#A a1 #B b1 #A+- a2-"],
+            ["and stays dim while none comes back", "#A a1 #B b1 #A+- a2-", "#A a1 #B b1",
+                "#A a1 #B b1 #A+- a2-"],
+            ["and lights again with a row come back under it", "#A a1 #B b1 #A+- a2-",
+                "#A a1 a2 #B b1", "#A a1 #B b1 #A+ a2"],
+            ["rows handed back with their headings said again keep one of each",
+                "#A a1 #B b1 #A+ a2", "#A a1 #B b1 #A+ a2", "#A a1 #B b1 #A+ a2"],
+            ["a row whose cell changes stays where it was shown", "#A a1 a2 #B b1",
+                "#A a1 #B b1 a2", "#A a1 a2 #B b1"],
+            ["his own rows stay unheaded as a cell's come", "a1 a2", "#Y=a1,a2 a1 a2 #C=c1 c1",
+                "a1 a2 #C+ c1"],
+            ["a heading new to the list comes only with a new row", "a1 c1",
+                "#Y=a1 a1 #C=c1 c1", "a1 c1"],
+            ["kept, a row of no heading comes in, for the list shown to withhold",
+                "#A=a1 a1", "#A=a1 a1 look", "#A a1 look?"],
+            ["a fold new to Repositories gets its heading past Projects", "#R r1 #P p1",
+                "#R r1 r:more #P p1", "#R r1 #P p1 #R+ r:more"],
+            ["with no heading, a new row comes in", "a1", "a1 x", "a1 x"],
+            ["reopened, every row shows", "", "#A=a1 a1 look", "#A a1 look"]
+        ];
+        for (const [what, shown, now, want] of headings) {
+            const got = readHeaded(Steady.kept(underHeadings(shown), underHeadings(now), id));
+            if (got !== want)
+                failures.push(`${what}: "${got}", not "${want}"`);
+        }
+        const saidAgain = Steady.kept(underHeadings("#A a1 #B b1 #A+ a2"),
+            [{ key: "#A", side: "two", heading: true }].concat(underHeadings("a1 a2 #B b1")), id);
+        if (saidAgain[4].side !== "two" || saidAgain[4].repeated !== true)
+            failures.push(`a heading said again reads as it reads now: "${saidAgain[4].side}"`);
+        // Handed back to itself, as For You's search hands back the rows it
+        // keeps, a list stays as it is, however often.
+        const handed = Steady.kept(underHeadings("#A a1 #B b1"), underHeadings("#A a1 a2 #B b1"),
+            id);
+        const twice = Steady.kept(Steady.kept(handed, handed, id), handed, id);
+        if (readHeaded(twice) !== readHeaded(handed))
+            failures.push(`a list handed back to itself: "${readHeaded(twice)}"`);
+        // A row whose cell changes says what it says now where it stands.
+        const moved = Steady.kept(underHeadings("#A a1 a2 #B b1"), underHeadings("#A a1 #B b1")
+            .concat([{ key: "a2", side: "blocked by B" }]), id);
+        if (moved[2].key !== "a2" || moved[2].side !== "blocked by B")
+            failures.push(`a row whose cell changed: "${moved[2].key}:${moved[2].side}"`);
+        // A key making the list afresh lets a heading go with its rows.
+        const madeAfresh = readHeaded(Steady.forgotten(Steady.kept(
+            underHeadings("#A a1 #B b1 #A+ a2"), underHeadings("#A a1 #B b1"), id)));
+        if (madeAfresh !== "#A a1 #B b1")
+            failures.push(`a heading whose rows went, made afresh: "${madeAfresh}"`);
+        // [what, the rows shown, the rows now, how they're shown after, how
+        // many wait]: as shown, a new row of no heading waits unseen, counted
+        // in the foot, unless it's pressing, when it comes in first, above
+        // every heading, as For You gathers Agents Asking there
+        // (ForYouCells.js's laidOut), since at the end it would read as the
+        // last cell's.
+        const shownAgain = [
+            ["a row under no heading waits", "#A=a1 a1", "#A=a1 a1 look later", "#A a1", 2],
+            ["and one above every heading", "#A=a1 a1", "x #A=a1 a1", "#A a1", 1],
+            ["but a pressing row comes in first", "#A=a1 a1", "#A=a1 a1 asked!", "asked #A a1",
+                0],
+            ["and a pressing one above every heading", "#A=a1 a1", "asked! #A=a1 a1",
+                "asked #A a1", 0],
+            ["and a cell's row after it comes in under its own heading", "#A=a1 a1",
+                "asked! #A=a1,a2 a1 a2", "asked #A a1 a2", 0],
+            ["and a row of no cell beside it still waits", "#A=a1 a1",
+                "asked! #A=a1 a1 look", "asked #A a1", 1],
+            ["where the end reads as under none, a pressing row comes in at the end",
+                "#A=a1 a1 look", "#A=a1 a1 look asked!", "#A a1 look asked", 0],
+            ["a cell's new row still gets its heading past the others", "#A=a1 a1 #B=b1 b1",
+                "#A=a1,a2 a1 a2 #B=b1 b1 look", "#A a1 #B b1 #A+ a2", 1],
+            ["a pressing row keeps no dim heading said again lit", "#A a1 #B b1 #A+ a2",
+                "asked! #A a1 #B b1", "asked #A a1 #B b1 #A+- a2-", 0],
+            ["a new row past a dim cell gets its heading", "#A=a1 a1 #B=b1 b1",
+                "#A=a1,a2 a1 a2", "#A a1 #B- b1- #A+ a2", 0],
+            ["with headings shown and none now, a new row waits", "#A=a1 a1 #Y=y1 y1",
+                "y1 look", "#A- a1- #Y- y1", 1],
+            ["with no heading, a new row comes in", "a1", "a1 x", "a1 x", 0],
+            ["a row of no cell waits behind a cell's first heading come with it", "a1 a2",
+                "#Y=a1,a2 a1 a2 #C=c1 c1 look", "a1 a2 #C+ c1", 1],
+            ["and behind his own rows' others", "a1 look1", "#Y=a1 a1 #C=c1 c1 look1 look2",
+                "a1 look1 #C+ c1", 1],
+            ["a pressing row shown before ends the heading above it", "#A=a1 a1 #B=b1 b1 asked!",
+                "asked! #A=a1 a1 #B=b1,b2 b1 b2", "#A a1 #B b1 asked #B+ b2", 0],
+            ["a row that left before it was shown is never counted", "#A=a1 a1",
+                "#A=a1 a1 look-", "#A a1", 0],
+            ["a row of no cell after one of none comes in", "#A=a1 a1 look",
+                "#A=a1 a1 look try", "#A a1 look try", 0],
+            ["a cell's new row after To Look At gets its heading", "#A=a1 a1 #B=b1 b1 look",
+                "#A=a1 a1 #B=b1,b2 b1 b2 look", "#A a1 #B b1 look #B+ b2", 0],
+            ["a row of no cell after a dim one of none comes in", "#A=a1 a1 look",
+                "#A=a1 a1 try", "#A a1 look- try", 0],
+            ["a row of an object's own name is its cell's", "#A=a1 a1 #B=b1 b1",
+                "#A=a1,__proto__ a1 __proto__ #B=b1 b1", "#A a1 #B b1 #A+ __proto__", 0]
+        ];
+        for (const [what, shown, now, want, waiting] of shownAgain) {
+            const got = Steady.refreshed(underHeadings(shown), underHeadings(now), id);
+            if (readHeaded(got.rows) !== want || got.waiting !== waiting)
+                failures.push(`${what}: "${readHeaded(got.rows)}" with ${got.waiting} waiting, `
+                    + `not "${want}" with ${waiting}`);
+        }
+        // A row's pressing may be what it says while asked, as Desktop's and
+        // Lately's rows say it: one that says no waits, and comes in once it
+        // says yes.
+        const critical = { now: false };
+        const asking = underHeadings("#A=a1 a1").concat([{ key: "notices", side: "",
+            pressing: () => critical.now }]);
+        for (const [what, now, want, waiting] of [
+            ["a row whose pressing says no waits", false, "#A a1", 1],
+            ["and comes in once it says yes", true, "notices #A a1", 0]
+        ]) {
+            critical.now = now;
+            const got = Steady.refreshed(underHeadings("#A=a1 a1"), asking, id);
+            if (readHeaded(got.rows) !== want || got.waiting !== waiting)
+                failures.push(`${what}: "${readHeaded(got.rows)}" with ${got.waiting} waiting, `
+                    + `not "${want}" with ${waiting}`);
+        }
+        // Kept unseen at a held step's end while it says no, as Held.js's
+        // keep lays it, and handed back once it says yes, it comes in as
+        // the row it was, all else it holds kept and no longer marked, and
+        // the step's own row keeps its mark; with nothing shown, as a list
+        // laid afresh from the step's rows is, it comes in unmarked too.
+        critical.now = false;
+        const keptUnseen = Steady.kept(underHeadings("#A=a1 a1"), asking, id);
+        critical.now = true;
+        const cameIn = Steady.refreshed(underHeadings("#A=a1 a1"), keptUnseen, id).rows
+            .find(row => row.key === "notices");
+        const stepOwn = keptUnseen.find(row => row.key === "notices");
+        const asSeenRead = row => row === undefined ? "none" : JSON.stringify([
+            "unseen" in row, row.side, row.pressing === asking[2].pressing,
+            Steady.seen([row], id).rows.length]);
+        if (asSeenRead(cameIn) !== JSON.stringify([false, "", true, 1])
+                || stepOwn?.unseen !== true)
+            failures.push(`a row kept unseen comes in as it was: ${asSeenRead(cameIn)}, `
+                + `the step's own ${stepOwn?.unseen}`);
+        const laidAfresh = Steady.refreshed([], keptUnseen, id).rows
+            .find(row => row.key === "notices");
+        if (asSeenRead(laidAfresh) !== JSON.stringify([false, "", true, 1]))
+            failures.push(`a row kept unseen, laid afresh: ${asSeenRead(laidAfresh)}`);
+        // Listed by a key as it stands (Steady.seen), one kept unseen that
+        // has become pressing since comes in first, as a refresh lays it,
+        // not counted new and hidden.
+        const pressedListed = Steady.seen(keptUnseen, id);
+        if (readHeaded(pressedListed.rows) !== "notices #A a1" || pressedListed.waiting !== 0)
+            failures.push(`a row kept unseen, pressing, listed: `
+                + `"${readHeaded(pressedListed.rows)}" with ${pressedListed.waiting} waiting`);
+        // Once the end reads as under none, what waited comes in at the end,
+        // after the row that ends the heading, not where it stands right
+        // after a cell's rows, where it would read as that cell's.
+        const waitedMid = underHeadings("#A=a1 a1 look try");
+        waitedMid[2].unseen = true;
+        const letIn = Steady.seen(waitedMid, id);
+        if (readHeaded(letIn.rows) !== "#A a1 try look" || letIn.waiting !== 0)
+            failures.push(`rows waiting let in once the end reads as under none: `
+                + `"${readHeaded(letIn.rows)}" with ${letIn.waiting} waiting`);
+        // A row marked unseen, then seen, hands on a getter it holds unread,
+        // as Member.js's copied does, so it's neither read at its cost nor
+        // frozen as it read then.
+        let reads = 0;
+        let preparing = "a";
+        const lazy = Object.defineProperty({ key: "lazy" }, "prepared", {
+            get: () => { reads += 1; return preparing; }, enumerable: true
+        });
+        const lazyKept = Steady.kept(underHeadings("#A=a1 a1"),
+            underHeadings("#A=a1 a1").concat([lazy]), id).filter(row => row.key === "lazy");
+        const lazySeen = Steady.searched(lazyKept);
+        const readsCopying = reads;
+        preparing = "b";
+        if (lazyKept[0]?.unseen !== true || lazySeen.length !== 1 || "unseen" in lazySeen[0]
+                || readsCopying !== 0
+                || lazySeen[0].prepared !== "b")
+            failures.push(`a getter seen: ${readsCopying} reads copying, `
+                + `reading "${lazySeen[0]?.prepared}"`);
+        // Found by what's typed in the step, by rank and with no heading, a
+        // row kept unseen is shown where it was found, and stays there as
+        // the list is said again and again, as it is while rows are held
+        // still, though the step hands it back marked each time, as a row
+        // that stops matching what's typed comes back from its rows.
+        const unheaded = rows => rows.filter(row => row.heading !== true && !row.repeated);
+        const lateStep = Steady.kept(underHeadings("#A=a1 a1"),
+            underHeadings("#A=a1 a1 look"), id);
+        const typedFound = Steady.searched([lateStep[2], lateStep[1]]);
+        const typedAgain = Steady.refreshed(typedFound, unheaded(lateStep), id);
+        const typedHeld = Steady.held(typedFound, unheaded(lateStep), id);
+        const typedThen = Steady.refreshed(typedAgain.rows, unheaded(lateStep), id);
+        const typedHeldThen = Steady.held(typedHeld.rows, unheaded(lateStep), id);
+        if (readHeaded(typedFound) !== "look a1" || readHeaded(typedAgain.rows) !== "look a1"
+                || typedAgain.waiting !== 0 || readHeaded(typedHeld.rows) !== "look a1"
+                || readHeaded(typedThen.rows) !== "look a1" || typedThen.waiting !== 0
+                || readHeaded(typedHeldThen.rows) !== "look a1"
+                || lateStep[2].unseen !== true)
+            failures.push(`a row kept unseen, found by what's typed: "${readHeaded(typedFound)}",`
+                + ` then "${readHeaded(typedAgain.rows)}" with ${typedAgain.waiting} waiting,`
+                + ` then "${readHeaded(typedThen.rows)}" with ${typedThen.waiting},`
+                + ` held "${readHeaded(typedHeld.rows)}", then`
+                + ` "${readHeaded(typedHeldThen.rows)}"`);
+        // What's typed taken away, the row a search found has been seen, so
+        // the step's rows as they stand, headings and all, show it and count
+        // nothing new; one the search didn't find still waits.
+        const clearedSeen = Steady.seen(Steady.seenAmong(lateStep, typedFound.map(id), id), id);
+        const clearedUnfound = Steady.seen(Steady.seenAmong(lateStep, [id(lateStep[1])], id),
+            id);
+        if (readHeaded(clearedSeen.rows) !== "#A a1 look" || clearedSeen.waiting !== 0
+                || readHeaded(clearedUnfound.rows) !== "#A a1"
+                || clearedUnfound.waiting !== 1)
+            failures.push(`a row found, then what's typed taken away: `
+                + `"${readHeaded(clearedSeen.rows)}" with ${clearedSeen.waiting} waiting, unfound `
+                + `"${readHeaded(clearedUnfound.rows)}" with ${clearedUnfound.waiting}`);
+        // Found once, it stays seen as the step is made again, hands it back
+        // marked and lists it after other lists were shown, as when Joel
+        // searches again or steps into a row and back out: Joel found it by
+        // name, so it isn't hidden again. It stands where the step keeps it,
+        // at the end, after every row shown, as each row that waited does.
+        const madeAgain = Steady.kept(lateStep, underHeadings("#A=a1 a1 look"), id);
+        const clearedLater = Steady.seen(Steady.seenAmong(madeAgain, typedFound.map(id), id),
+            id);
+        if (madeAgain[2]?.unseen !== true || readHeaded(clearedLater.rows) !== "#A a1 look"
+                || clearedLater.rows.some(row => row.unseen === true)
+                || clearedLater.waiting !== 0)
+            failures.push(`a row found, then the step made again and listed: `
+                + `"${readHeaded(clearedLater.rows)}" with ${clearedLater.waiting} waiting`);
+        // A key that forgets the rows gone may leave no heading above the
+        // end, so a row that waited there comes in where it stands, as the
+        // refresh after would let it, rather than at a moment no key says.
+        const headingsGo = Steady.kept(underHeadings("#A=a1 a1 #Y=y1 y1"),
+            underHeadings("y1 look"), id);
+        const keptHeaded = Steady.seen(headingsGo, id);
+        const headingsForgot = Steady.seen(Steady.forgotten(headingsGo), id);
+        if (readHeaded(keptHeaded.rows) !== "#A- a1- #Y- y1" || keptHeaded.waiting !== 1
+                || readHeaded(headingsForgot.rows) !== "y1 look"
+                || headingsForgot.waiting !== 0)
+            failures.push(`a row waiting, its headings forgotten: `
+                + `"${readHeaded(keptHeaded.rows)}" with ${keptHeaded.waiting} waiting, then `
+                + `"${readHeaded(headingsForgot.rows)}" with ${headingsForgot.waiting}`);
+        // A step lists its rows with nothing typed (Launcher.qml's listings):
+        // steadied, every row, its count the refresh's; else as they stand,
+        // what waits counted, but for one a search found, though its id is
+        // an object's own.
+        const protoStep = Steady.kept(underHeadings("#A=a1 a1"),
+            underHeadings("#A=a1 a1 __proto__"), id);
+        const steadiedList = Steady.listed(protoStep, [], id, true);
+        const standingList = Steady.listed(protoStep, [], id, false);
+        const foundList = Steady.listed(protoStep, ["__proto__"], id, false);
+        if (readHeaded(steadiedList.rows) !== "#A a1 __proto__?" || steadiedList.waiting !== null
+                || readHeaded(standingList.rows) !== "#A a1" || standingList.waiting !== 1
+                || readHeaded(foundList.rows) !== "#A a1 __proto__" || foundList.waiting !== 0)
+            failures.push(`a step listed: steadied "${readHeaded(steadiedList.rows)}" with `
+                + `${steadiedList.waiting}, standing "${readHeaded(standingList.rows)}" with `
+                + `${standingList.waiting}, found "${readHeaded(foundList.rows)}" with `
+                + `${foundList.waiting}`);
+        // Held still with a row shown that waits unseen, as one Return acted
+        // on may be, the rows held are those the rows shown put back, so a
+        // cell's new row waits too, rather than slip in among them.
+        const heldUnseen = Steady.held(lateStep, underHeadings("#A=a1,a2 a1 a2 look"), id);
+        if (readHeaded(heldUnseen.rows) !== "#A a1" || heldUnseen.waiting !== 2)
+            failures.push(`held, a row shown that waits unseen: `
+                + `"${readHeaded(heldUnseen.rows)}" with ${heldUnseen.waiting} waiting`);
+        // A row's id may name what every object has, and is kept as any.
+        const ownNames = Steady.refreshed(underHeadings("a1 constructor"),
+            underHeadings("a1 constructor __proto__ toString"), id);
+        if (readHeaded(ownNames.rows) !== "a1 constructor __proto__ toString")
+            failures.push(`rows named as an object's own: "${readHeaded(ownNames.rows)}"`);
+        // A row of no cell that comes while a held step's rows are made again,
+        // and leaves before it's shown, stops being counted once it's gone.
+        const waitedFrom = underHeadings("#A=a1 a1");
+        const cameStep = Steady.kept(waitedFrom, underHeadings("#A=a1 a1 look"), id);
+        const came = Steady.refreshed(waitedFrom, cameStep, id);
+        const left = Steady.refreshed(came.rows,
+            Steady.kept(cameStep, underHeadings("#A=a1 a1"), id), id);
+        if (came.waiting !== 1 || readHeaded(left.rows) !== "#A a1" || left.waiting !== 0)
+            failures.push(`a row that came and left while waiting: ${came.waiting}, then `
+                + `"${readHeaded(left.rows)}" with ${left.waiting} waiting`);
+        // A held step's rows are made again by kept (Held.js's keep), and the
+        // list shown is laid from them, so each row is laid twice, and again
+        // at each refresh after; a row of a cell is still its cell's, and one
+        // of none still counted.
+        for (const [what, shown, now, want, waiting] of [
+            ["a cell's new row, laid twice", "#A=a1 a1 #B=b1 b1", "#A=a1,a2 a1 a2 #B=b1 b1",
+                "#A a1 #B b1 #A+ a2", 0],
+            ["and a row of no cell, counted", "#A=a1 a1 #B=b1 b1", "#A=a1 a1 #B=b1 b1 look",
+                "#A a1 #B b1", 1],
+            ["and a pressing row, come in", "#A=a1 a1 #B=b1 b1", "asked! #A=a1 a1 #B=b1 b1",
+                "asked #A a1 #B b1", 0],
+            ["a new cell's row, its heading said again alone in the step's rows", "#A=a1 a1",
+                "#A=a1 a1 #C=c1 c1", "#A a1 #C+ c1", 0],
+            ["and Networks' headings, which name no rows", "#R r1 #P p1", "#R r1 r2 #P p1",
+                "#R r1 #P p1 #R+ r2", 0]
+        ]) {
+            const stepRows = Steady.kept(underHeadings(shown), underHeadings(now), id);
+            const first = Steady.refreshed(underHeadings(shown), stepRows, id);
+            const second = Steady.refreshed(first.rows,
+                Steady.kept(stepRows, underHeadings(now), id), id);
+            for (const [when, got] of [["laid", first], ["refreshed", second]]) {
+                if (readHeaded(got.rows) !== want || got.waiting !== waiting)
+                    failures.push(`${what}, ${when}: "${readHeaded(got.rows)}" with `
+                        + `${got.waiting} waiting, not "${want}" with ${waiting}`);
+            }
+        }
+        // A key lists a held step's rows as they stand (Steady.seen), so a
+        // row of no cell kept at their end still waits there, counted, made
+        // again however often, rather than reading as the last cell's; one
+        // of a cell after it still has its heading said, and it comes in
+        // once it's pressing.
+        // [what, the rows shown, each making of the step's rows after, how a
+        // key lists them, how many wait]
+        for (const [what, shown, makings, want, waiting] of [
+            ["a row of no cell kept at the end waits", "#A=a1 a1 #B=b1 b1",
+                ["#A=a1 a1 #B=b1 b1 look"], "#A a1 #B b1", 1],
+            ["and still waits made again", "#A=a1 a1 #B=b1 b1",
+                ["#A=a1 a1 #B=b1 b1 look", "#A=a1 a1 #B=b1 b1 look"], "#A a1 #B b1", 1],
+            ["with a cell's row come after it", "#A=a1 a1 #B=b1 b1",
+                ["#A=a1 a1 #B=b1 b1 look", "#A=a1,a2 a1 a2 #B=b1 b1 look"],
+                "#A a1 #B b1 #A+ a2", 1],
+            ["and comes in once it's pressing", "#A=a1 a1 #B=b1 b1",
+                ["#A=a1 a1 #B=b1 b1 look", "#A=a1 a1 #B=b1 b1 look!"], "look #A a1 #B b1", 0],
+            ["and leaves with nothing to dim", "#A=a1 a1 #B=b1 b1",
+                ["#A=a1 a1 #B=b1 b1 look", "#A=a1 a1 #B=b1 b1"], "#A a1 #B b1", 0]
+        ]) {
+            const stepRows = makings.reduce((rows, now) => Steady.kept(rows, underHeadings(now),
+                id), underHeadings(shown));
+            const listed = Steady.seen(Steady.forgotten(stepRows), id);
+            const shownNow = Steady.refreshed(underHeadings(shown), stepRows, id);
+            if (readHeaded(listed.rows) !== want || listed.waiting !== waiting)
+                failures.push(`${what}, listed by a key: "${readHeaded(listed.rows)}" with `
+                    + `${listed.waiting} waiting, not "${want}" with ${waiting}`);
+            if (readHeaded(shownNow.rows) !== want || shownNow.waiting !== waiting)
+                failures.push(`${what}, refreshed: "${readHeaded(shownNow.rows)}" with `
+                    + `${shownNow.waiting} waiting, not "${want}" with ${waiting}`);
+        }
+        // While the rows hold still, a heading said again or new is never
+        // counted among the rows that wait.
+        for (const [what, shown, now, waiting] of [
+            ["a row new to another cell waits as one", "#A a1 #B b1", "#A a1 a2 #B b1", 1],
+            ["and a new cell's row as one", "#A a1", "#A a1 #C c1", 1],
+            ["with a heading said again shown, a row under it", "#A a1 #B b1 #A+ a2",
+                "#A a1 a2 a3 #B b1", 1],
+            ["and another cell's", "#A a1 #B b1 #A+ a2", "#A a1 a2 #B b1 b2", 1],
+            ["and a row under no heading", "#A=a1 a1", "#A=a1,a2 a1 a2 look", 2],
+            ["and a pressing one, though it would come in first", "#A=a1 a1",
+                "asked! #A=a1 a1", 1]
+        ]) {
+            const got = Steady.held(underHeadings(shown), underHeadings(now), id).waiting;
+            if (got !== waiting)
+                failures.push(`${what}: ${got} waiting, not ${waiting}`);
+        }
+        // Held, the rows held are those shown, with nothing come in first.
+        const heldRaised = Steady.held(underHeadings("#A=a1 a1 #B=b1 b1"),
+            underHeadings("asked! #A=a1 a1 #B=b1 b1"), id);
+        if (readHeaded(heldRaised.rows) !== "#A a1 #B b1" || heldRaised.waiting !== 1)
+            failures.push(`held, a pressing row come: "${readHeaded(heldRaised.rows)}" with `
+                + `${heldRaised.waiting} waiting`);
+        // Held, a heading said again goes dim by the rows held, not by one
+        // that waits.
+        const heldDim = Steady.held(underHeadings("#A a1 #B b1 #A+ a2"),
+            underHeadings("#A a1 a3 #B b1"), id);
+        if (readHeaded(heldDim.rows) !== "#A a1 #B b1 #A+- a2-" || heldDim.waiting !== 1)
+            failures.push(`held, a heading over a row gone: "${readHeaded(heldDim.rows)}" with `
+                + `${heldDim.waiting} waiting`);
 
         // [what, the rows shown, whether an answer gave way, those that may
         // stand]: an ending is made again, and an answer given only while

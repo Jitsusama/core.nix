@@ -61,6 +61,7 @@
       cp ${../tests/copies-hidden.qml} copies-hidden.qml
       cp ${../launcher/Shared.js} Shared.js
       cp ${../launcher/Steady.js} Steady.js
+      cp ${../launcher/LaidAgain.js} LaidAgain.js
       cp ${../../../tests/lib/Expect.js} Expect.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}

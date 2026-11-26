@@ -2494,13 +2494,19 @@ Provider {
 
     // A cell's heading, its name and how it stands as the agents daemon
     // words them for Agents' own row (ForYouCells.js's headingName), and
-    // Joel's own heading where no cell is. Kept while it says the same. Its
-    // key sits outside on:waiting's, where a to-do's quest could be "cell".
-    function cellHeading(cell) {
+    // Joel's own heading where no cell is, and the rows it's `holding`, by
+    // key, of those it holds, `held` (Steady.js's headingsUnder). Kept
+    // while it says the same and holds the same rows in any order, since
+    // a to-do coming due moves up among its own rows and only its row is
+    // new. Its key sits outside on:waiting's, where a to-do's quest could
+    // be "cell".
+    function cellHeading(cell, held) {
         const name = cellSaid(cell);
         const key = `on:heading:cell:${cell === null ? "yours"
             : String(cell.address).toUpperCase()}`;
-        return keptAlike(cellsKept, key, [name], () => member({ key, name, heading: true }));
+        const holding = held.map(row => row.key);
+        return keptAlike(cellsKept, key, [name, JSON.stringify(holding.slice().sort())],
+            () => member({ key, name, heading: true, holding }));
     }
     readonly property var cellsKept: keeper()
 
@@ -2553,6 +2559,9 @@ Provider {
             name: Words.name(id),
             glyph: Words.glyph(id),
             hue: kind === "agent" ? rows[0].hue ?? "" : "muted",
+            // What agents ask never waits unseen behind the foot's "1 new"
+            // (Steady.js's laidAgain).
+            pressing: kind === "agent",
             side: String(rows.length),
             nested: true,
             thing: true,
@@ -2862,7 +2871,7 @@ Provider {
             latelyNow[fact.entry.mark] = fact.piece;
             return keptAlike(latelyKept, `piece:${band.source}`, [pieceSays(fact),
                 senders.join("\u241f")], () => made(fact, { forYou: forYou, count: "", note: "",
-                heldNames: senders }));
+                heldNames: senders, pressing: () => latelyCritical?.[band.source] === true }));
         });
         // Desktop's row is asked for whatever it holds (leadsTo), so it's
         // kept with nothing to read too, where its band is left out: let
@@ -2948,6 +2957,9 @@ Provider {
             // one place; Slack's, standing in while its daemon doesn't answer,
             // lists Slack's alone, so the rest stay on screen.
             gathers: from === "desktop",
+            // While it holds a critical notice unread, it leads For You
+            // and never waits unseen (Steady.js's laidAgain).
+            pressing: () => latelyCritical?.[from] === true,
             run: () => provider.launcher?.enter(row)
         });
         return row;

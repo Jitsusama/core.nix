@@ -412,11 +412,16 @@ Scope {
         keysWeighing = 0;
         drawerJoining = 0;
         readingBegun();
-        const composed = live((steadying && !ordering ? steadied(rows.concat(below), gaveWay)
-            : rows.concat(below)).concat(ending));
+        const steady = steadying && !ordering ? steadied(rows.concat(below), gaveWay) : null;
+        const composed = live((steady?.rows ?? rows.concat(below)).concat(ending));
         const listedRows = listedAs(composed);
         const puttingAt = KeyTimes.now();
         matches = listedRows;
+        // A list shown afresh at the top shows all it has, so nothing
+        // waits; a held step's own listing counts what it still leaves out.
+        // Said once the rows are in, so a source that throws before leaves
+        // the foot's count beside the rows it counts.
+        waitingRows = steady?.waiting ?? 0;
         const selectingAt = KeyTimes.now();
         const drawerPutting = drawerJoining;
         // An answer only started gives way to a name that starts the same,
@@ -5433,31 +5438,34 @@ Scope {
     // The row Return last changed something with, kept among what's found
     // until Joel types or steps again, so Wi-Fi Off that became Wi-Fi On
     // still shows it, though "wifi off" no longer finds it.
+    // Shown as a search's find is (Steady.searched), though the step's rows
+    // still mark it waiting unseen.
     property var acted: null
     function stillActed(found) {
         const row = acted ? onOffer(acted.key) : undefined;
-        return row && !found.some(one => one.key === row.key) ? [row] : [];
+        return row && !found.some(one => one.key === row.key) ? Steady.searched([row]) : [];
     }
 
     // Given `gaveWay`, an answer there only while nothing else was has given
     // way to what was found since, and goes (Steady.js's standing).
+    // { rows, waiting }: how many wait is the caller's to say once the rows
+    // are in, so a source that throws first leaves the count beside the
+    // rows it counts.
     function steadied(found, gaveWay) {
         const shown = Steady.standing(matches, gaveWay === true);
         const renamed = shown.filter(row => !row.gone && onOffer(row.key)
             && !found.some(one => one.key === row.key)).map(row => onOffer(row.key));
-        if (!holdingRows) {
-            waitingRows = 0;
-            return Steady.kept(shown, found.concat(renamed), pairedId);
-        }
-        const still = Steady.held(shown, found.concat(renamed), pairedId);
-        waitingRows = still.waiting;
-        return still.rows;
+        return holdingRows ? Steady.held(shown, found.concat(renamed), pairedId)
+            : Steady.refreshed(shown, found.concat(renamed), pairedId);
     }
 
     // While visual, a pending operator or the command line acts on the
     // rows, they hold still: what arrives waits, counted in the foot as
     // "2 new", and comes in at the end once it ends, as a refresh adds it
-    // (VKCF3Z's spec, the foot's fact by VKCF3Z, 2026-11-05).
+    // (VKCF3Z's spec, the foot's fact by VKCF3Z, 2026-11-05). A row For
+    // You gets of no cell waits so too, until the launcher next opens or
+    // a search finds it, since at the end it would read as the last
+    // cell's (Steady.js's laidAgain).
     readonly property bool holdingRows: open && (visual || pendingSaid !== ""
         || commanding !== null)
     property int waitingRows: 0
@@ -5466,6 +5474,34 @@ Scope {
     onHoldingRowsChanged: {
         if (!holdingRows && waitingRows > 0)
             reshow(held.length);
+    }
+
+    // The rows a search found this opening that waited unseen, by the
+    // steps to the list it searched and their ids, so each stays seen
+    // however many lists are shown after (Steady.seenAmong): searched
+    // again, or stepped into and back out of. Only those, as Emoji's
+    // search finds hundreds, none of them waiting. seenHere gives what was
+    // found as it's shown (Steady.searched). Plain, so keeping notifies
+    // nothing, and let go as the launcher closes. Of no prototype, as its
+    // keys are row ids, one of which may be `__proto__`. Each list is known
+    // by its steps' ids as JSON, since an id may hold the "/" stepsTaken
+    // joins them with, as a path does.
+    property var seenFound: Object.create(null)
+    function seenAt() {
+        return JSON.stringify(held.map(step => steadyId(step.row)));
+    }
+    function seenHere(rows) {
+        const at = seenAt();
+        const here = seenFound[at] ?? Object.create(null);
+        for (const row of rows) {
+            if (row.unseen === true)
+                here[steadyId(row)] = true;
+        }
+        seenFound[at] = here;
+        return Steady.searched(rows);
+    }
+    function seenSearched() {
+        return Object.keys(seenFound[seenAt()] ?? Object.create(null));
     }
 
     // Whether the step held last is a collection, whose members are things
@@ -7160,9 +7196,11 @@ Scope {
         if (holdsWords)
             held[held.length - 1].row.worded?.(letters);
         if (asking) {
+            // An ask lists nothing to come in, so says no "1 new".
             matches = [];
             answer = null;
             current = 0;
+            waitingRows = 0;
             return;
         }
         // A category's word and a space step into it, unless a name goes on
@@ -7202,9 +7240,18 @@ Scope {
             // went: Machine's and Desktop's said it all as rows (2026-11-11).
             const searchedAt = Date.now();
             gathered = [];
-            root.found = words.length === 0 ? offered.slice() : inCategory(letters);
+            // Listed as they stand, its members leave out those that wait
+            // unseen, counted, as a held step's rows do, but for one what
+            // was typed found, which has been seen (Steady.seenAmong).
+            const standing = words.length === 0
+                ? Steady.listed(offered, seenSearched(), steadyId, steadying && !ordering)
+                : { rows: [], waiting: 0 };
+            root.found = words.length === 0 ? standing.rows
+                : seenHere(inCategory(letters));
             const foundAt = Date.now();
             compose(!steadying);
+            if (!steadying || ordering)
+                waitingRows = standing.waiting;
             if (steadying)
                 return;
             if (backRow() < 0)
@@ -7226,6 +7273,7 @@ Scope {
             // not counted, so no list changes order as it grows. A part
             // named leads what's found.
             let found = [];
+            let unseen = 0;
             if (from && words.length === 0)
                 found = listedWhole(from);
             else if (from) {
@@ -7243,23 +7291,38 @@ Scope {
             // Meeting makes a time, lists them first. One that finds what's
             // typed past the rows it shows (`finds`), as Capture's Recent
             // finds among everything taken, lists what it finds instead.
-            else if (words.length === 0 && !holdsWords)
-                found = offered.slice();
-            else if (held[held.length - 1].row.finds)
-                found = held[held.length - 1].row.finds(letters);
+            // Listed as they stand, its rows leave out those that wait
+            // unseen (Steady.seen), counted, since the step keeps them at
+            // its end, where they'd read as the last cell's; steadied, they
+            // stay in, for the refresh to withhold and count. One what was
+            // typed found has been seen, so it stays as what's typed is
+            // taken away, the selection on it, and after (Steady.seenAmong).
+            else if (words.length === 0 && !holdsWords) {
+                const standing = Steady.listed(offered, seenSearched(), steadyId,
+                    steadying && !ordering);
+                found = standing.rows;
+                unseen = standing.waiting ?? 0;
+            } else if (held[held.length - 1].row.finds)
+                found = seenHere(held[held.length - 1].row.finds(letters));
             else
-                found = (held[held.length - 1].row.typed?.(letters) ?? [])
+                found = seenHere((held[held.length - 1].row.typed?.(letters) ?? [])
                     .concat(within(offered.reduce((all, row) => all.concat([row],
                         row.offers && row.verbs ? row.verbs() : []), []), letters,
                         picks.weights(Rank.stepped(held[held.length - 1].row.key ?? "",
-                            letters))));
+                            letters)))));
             found = found.concat(stillActed(found));
             answer = null;
             lined = holdsWords ? held[held.length - 1].row.line?.() ?? null : null;
             // Searched again only to say what's there now, it keeps the
             // order it's shown in, and the selection where it is (reshow).
+            // What's typed finds rows by rank, where nothing stands under a
+            // heading, so it's steadied with none, as it shows none; and a
+            // list in its own order shows all it has, but for what waits
+            // unseen.
             if (steadying) {
-                matches = unheaded(live(ordering ? found : steadied(found)));
+                const steady = ordering ? null : steadied(unheaded(found));
+                matches = unheaded(live(steady?.rows ?? found));
+                waitingRows = steady?.waiting ?? unseen;
                 if (current === -1 && !lined)
                     current = 0;
                 return;
@@ -7277,6 +7340,7 @@ Scope {
             const listedRows = listedAs(lived);
             const puttingAt = KeyTimes.now();
             matches = listedRows;
+            waitingRows = unseen;
             const selectingAt = KeyTimes.now();
             const drawerPutting = drawerJoining;
             // What's typed taken away whole leaves the selection on the row
@@ -10315,7 +10379,9 @@ Scope {
             // A count typed in normal, waiting for its move, and the keys
             // of a sequence begun, as gg's first g.
             counted: prompt.standing.count,
-            // How many rows wait behind rows held still (holdingRows).
+            // How many rows wait unseen (waitingRows): behind rows held still
+            // (holdingRows), or For You's of no cell, until the launcher next
+            // opens or a search finds it.
             waiting: root.waitingRows,
             begun: prompt.standing.typed.join(""),
             // The command line, while it's open: what it holds, the line
@@ -11347,10 +11413,13 @@ Scope {
         // A link's hold on the first keys lasts only the opening it made,
         // and a key listed without answers is late only while its
         // opening waits on them: kept, the next unheld answer, maybe hours
-        // on, would say it came that late (answersLate).
+        // on, would say it came that late (answersLate). What waited to be
+        // shown afresh is, at the next, as is what its searches found.
         if (!open) {
             prompt.unlinked();
             answersLate = null;
+            waitingRows = 0;
+            seenFound = Object.create(null);
         }
         tallyMarked();
         // An opening's selection rests anew, never on the last opening's.

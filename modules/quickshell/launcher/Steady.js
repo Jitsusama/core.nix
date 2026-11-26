@@ -8,17 +8,8 @@
 // (Rank.js). Apart from the launcher, so tests/steady.qml can hold it in
 // Qt's own engine.
 .pragma library
+.import "LaidAgain.js" as LaidAgain
 
-// The rows as they read now, in the order of those shown: each row shown
-// as it is now, or as it was, `gone` and `went`, where it's no longer
-// there, then each new one in its own order. A new one comes at the end,
-// out of any place a tree would give it, so one that says how it reads
-// ranked flat (`ranked`, as a session under its orchestrator does) reads so;
-// a list shown afresh has nothing new, and keeps every row's own. `went`
-// tells a row that left from one its source draws dimmed itself, gone but
-// there, as Write in Slack stands dimmed until Slack answers. A row is
-// known by `id`; rows alike in it pair off in their order, so two windows
-// titled alike keep their places.
 // The rows shown that may stand where they are as the list is said again:
 // what ends a search comes after it all and is made again with it, so it's
 // no row to hold in place (held, it stood dimmed above the one made
@@ -30,42 +21,97 @@ function standing(shown, gaveWay) {
     return shown.filter(row => !row.endedBy && !(gaveWay && row.answered));
 }
 
+// The rows as they read now, in the order of those shown: each row shown
+// as it is now, or as it was, `gone` and `went`, where it's no longer
+// there, then each new one in its own order. A new one comes at the end,
+// out of any place a tree would give it, so one that says how it reads
+// ranked flat (`ranked`, as a session under its orchestrator does) reads so;
+// a list shown afresh has nothing new, and keeps every row's own. `went`
+// tells a row that left from one its source draws dimmed itself, gone but
+// there, as Write in Slack stands dimmed until Slack answers. A row is
+// known by `id`; rows alike in it pair off in their order, so two windows
+// titled alike keep their places. The rows that wait unseen (laidAgain)
+// come in once the list is shown afresh.
+//
+// What waits unseen comes in here, at the end, marked `unseen`, as kept
+// makes a held step's rows again (Held.js's keep), the list shown laid from
+// them (refreshed), so a key listing the step's rows (seen) leaves it out
+// and counts it, rather than show it at the end as the last heading's.
 function kept(shown, now, id) {
-    const waiting = {};
-    now.forEach((row, at) => {
-        const said = id(row);
-        if (waiting[said] === undefined) {
-            waiting[said] = [];
-        }
-        waiting[said].push(at);
-    });
-    const taken = now.map(() => false);
-    const out = [];
-    for (const row of shown) {
-        const left = waiting[id(row)];
-        if (left && left.length > 0) {
-            const at = left.shift();
-            taken[at] = true;
-            out.push(now[at]);
-        } else {
-            out.push(row.went ? row : Object.assign({}, row, { gone: true, went: true }));
-        }
+    const again = LaidAgain.laidAgain(shown, now, id, false);
+    return again.lit(again.rows);
+}
+
+// The rows as kept lays them, but for the new ones that wait unseen, and
+// how many, counted in the foot as "1 new" (Launcher.qml's waitingRows):
+// { rows, waiting }.
+function refreshed(shown, now, id) {
+    const again = LaidAgain.laidAgain(shown, now, id, true);
+    return { rows: again.lit(again.rows), waiting: again.late };
+}
+
+// A held step's rows as kept lays them, listed as they stand, as a key
+// lists them: those that wait unseen left out, and how many still there,
+// while what's left ends under a heading, as laidAgain would withhold
+// them; once it doesn't, as a key forgetting the rows gone may leave it,
+// they come in where they stand, seen: { rows, waiting }.
+// They come in at the end, after what ends the heading, since where each
+// stands may be right after a cell's rows, reading as that cell's; and one
+// that has become pressing since comes in first, as laidAgain lays one.
+function seen(rows, id) {
+    const shown = rows.filter(row => row.unseen !== true);
+    const waitingNow = rows.filter(row => row.unseen === true && row.went !== true);
+    const none = LaidAgain.headingsUnder(shown, id).map(its => its === null);
+    if (LaidAgain.endingHeading(shown, none) === null) {
+        return { rows: shown.concat(waitingNow.map(LaidAgain.asSeen)), waiting: 0 };
     }
-    now.forEach((row, at) => {
-        if (!taken[at]) {
-            out.push(shown.length > 0 && typeof row.ranked === "function" ? row.ranked() : row);
-        }
-    });
-    return out;
+    const rising = waitingNow.filter(LaidAgain.pressing);
+    return { rows: rising.map(LaidAgain.asSeen).concat(shown),
+        waiting: waitingNow.length - rising.length };
+}
+
+// What a step lists of its rows, `offered`, with nothing typed, and how
+// many it leaves out unseen: { rows, waiting }. Steadied, as a refresh
+// lays them, it's every row, for the refresh to withhold and count, so
+// `waiting` is null, the refresh's to say (Launcher.qml's steadied); else
+// it's the rows as they stand (seen), one a search found this opening
+// (`found`) counted seen (seenAmong).
+function listed(offered, found, id, steadied) {
+    return steadied ? { rows: offered.slice(), waiting: null }
+        : seen(seenAmong(offered, found, id), id);
+}
+
+// What a search typed in a held step found, as it's shown: seen, so none
+// keeps the mark the refresh after would read as never shown and move to
+// the end, under the cursor and among rows held still.
+function searched(rows) {
+    return rows.map(LaidAgain.asSeen);
+}
+
+// A held step's rows with nothing typed: one waiting unseen that a search
+// found since it opened (its `id` in `found`, kept in a plain record, as
+// Qt 6.12 walks a Set whole, Rank.js) is seen, not hidden again, counted
+// new and losing the selection, however many lists came between.
+function seenAmong(rows, found, id) {
+    const ids = Object.assign(Object.create(null), ...found.map(one => ({ [one]: true })));
+    return rows.map(row => row.unseen === true && ids[id(row)] === true
+        ? LaidAgain.asSeen(row) : row);
 }
 
 // The rows shown, held still as kept holds them, with no new one among
 // them: while visual, a pending operator or the command line holds the
 // rows, what arrives waits, counted, and comes in at the end once it ends
-// (VKCF3Z's spec). { rows, waiting }.
+// (VKCF3Z's spec). { rows, waiting }. A heading is never a row, so none
+// is counted among what waits; what waits to be shown afresh is. A
+// heading said again is dimmed by the rows held, not by one that waits.
 function held(shown, now, id) {
-    const out = kept(shown, now, id);
-    return { rows: out.slice(0, shown.length), waiting: out.length - shown.length };
+    const again = LaidAgain.laidAgain(shown, now, id, true);
+    // Lit from the first, as `lit` knows each row by its place; what was
+    // raised above them waits too, though pressing, as all that arrives does.
+    const ends = again.raised + again.putBack;
+    return { rows: again.lit(again.rows.slice(0, ends)).slice(again.raised),
+        waiting: again.raised
+            + again.rows.slice(ends).filter(row => row.heading !== true).length + again.late };
 }
 
 // The rows without those that left since they were shown, as a key makes

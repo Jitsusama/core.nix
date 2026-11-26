@@ -2762,7 +2762,18 @@ operator is taken with it, so V j j d d acts on three. While a surface is
 in visual, operator-pending or on the command line, its rows hold still,
 and what arrives waits until the mode ends. The foot counts it as "2 new",
 its last status fact before the mode word, which never gives way, so it
-shows on a full list too; then the rows come in at the end.
+shows on a full list too; then the rows come in at the end. Where a list
+has headings, as For You's cells do, a row of no heading that arrives
+waits outside any mode as well while the list ends under a heading, since
+there it would read as that heading's: the foot counts it the same way,
+and it comes in once the list is shown afresh, as the launcher opens
+again, or once a search finds it. A pressing row never waits, as Agents
+Asking's does not, nor Desktop's or a Lately row's while a critical notice
+is unread; it comes in at the end and ends the heading above it. A row of
+another cell that arrives has its cell's heading said again over it, in
+the same words, where the heading above isn't its own. That heading stays
+where it was said, dimmed while no row of its stands under it, and a list
+shown afresh says each heading once.
 
 **Operator-pending** follows d, y or c: a motion, a count, a text object
 or the operator again. On a list a paragraph is a run of rows that ends at

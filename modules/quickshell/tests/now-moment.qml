@@ -2703,6 +2703,19 @@ ShellRoot {
                 ["on:heading:cell:LEFTC", "Session C \u00b7 needs you"], ["on:look:c", ""],
                 ["on:heading:cell:yours", "yours alone"], ["on:waiting:item:Sign In", ""]]),
             JSON.stringify(gathered));
+        // What a list held still reads off them (Steady.js's laidAgain):
+        // Agents Asking's row presses, so it never waits unseen, and each
+        // heading names the rows it holds, so they're its wherever they
+        // come to stand.
+        const laidRows = now.waiting.verbs();
+        const heldBy = key => laidRows.find(row => row.key === key)?.holding ?? null;
+        expect("Agents Asking's row presses, and each heading names the rows it holds",
+            laidRows.find(row => row.key === "on:waitingOnYou:kind:agent")?.pressing === true
+                && JSON.stringify([heldBy("on:heading:cell:LEFTC"),
+                    heldBy("on:heading:cell:yours")])
+                === JSON.stringify([["on:look:c"], ["on:waiting:item:Sign In"]]),
+            JSON.stringify(laidRows.map(row => [row.key, row.pressing ?? null,
+                row.holding ?? null])));
         // A cell's standing moving alone, what it asks and left as they
         // were: For You hears it, so a heading held never goes on saying
         // how its cell stood before. It still asks, since a look whose
@@ -3115,6 +3128,24 @@ ShellRoot {
                 && now.leadsTo("notices")[1].key === "on:waiting:desktop"
                 && now.leadsTo("notices").length === 2,
             JSON.stringify([keysOf(inForYou()), now.leadsTo("notices").map(row => row.key)]));
+        // It presses while it holds it, so it never waits unseen behind the
+        // foot's "1 new" (Steady.js's laidAgain).
+        const desktopPresses = () => inForYou().find(row => row.key === "on:waiting:desktop")
+            ?.pressing?.() ?? null;
+        expect("and Desktop presses while it holds it", desktopPresses() === true,
+            desktopPresses());
+        // Slack's row, made from its piece, presses the same way, by its own
+        // source's critical notices and no other's.
+        const slackPresses = () => forYou().find(row => row.key === "on:slack")
+            ?.pressing?.() ?? null;
+        expect("Slack's row made from its piece doesn't press for Desktop's notice",
+            slackPresses() === false, slackPresses());
+        const desktopCritical = Notices.history;
+        Notices.history = [{ id: 21, at: Date.now(), app: "Slack", summary: "Bo: are you there?",
+            urgency: "critical", read: false }].concat(desktopCritical);
+        expect("but presses while it holds a critical one of its own", slackPresses() === true,
+            slackPresses());
+        Notices.history = desktopCritical;
         // What's on screen is reached the same way, through For You.
         expect("and Super+N with notices on screen goes through For You to them",
             now.leadsTo("onScreen").length === 2 && now.leadsTo("onScreen")[0] === now.waiting
@@ -3128,6 +3159,7 @@ ShellRoot {
             .concat(told);
         expect("a critical notice read while the launcher's open keeps Desktop in For You",
             keysOf(inForYou()).includes("on:waiting:desktop"), JSON.stringify(keysOf(inForYou())));
+        expect("but no longer pressing", desktopPresses() === false, desktopPresses());
         // Withdrawn by its sender, or woken back onto the screen, it no
         // longer waits, but Desktop keeps the place Joel found it in until
         // the launcher closes, whatever moved the notice.
