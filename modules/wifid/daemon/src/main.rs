@@ -2698,14 +2698,13 @@ impl Wifid<'_> {
         missed: Missed,
     ) -> Result<(), Refused> {
         let card = card.to_owned();
-        if self.arrivals.borrow().going_back(&card) {
+        let busy = self
+            .arrivals
+            .borrow()
+            .busy(&card, missed == Missed::LetJoin);
+        if let Some(busy) = busy {
             return Err(Refused::Failed {
-                reason: format!("{card} is on its way back to the point it left"),
-            });
-        }
-        if missed == Missed::GoesBack && self.arrivals.borrow().leaves_a_drop(&card) {
-            return Err(Refused::Failed {
-                reason: format!("{card} is leaving a point that drops it"),
+                reason: format!("{card} {}", busy.why()),
             });
         }
         // A move already under way is put back as it stood if this ask
@@ -2745,14 +2744,28 @@ impl Wifid<'_> {
                 // A move asked while the card looks waits for the look,
                 // asked last, so one begun as its networks were turned off
                 // is seen.
-                let looking = interface.scanning().await.unwrap_or(false);
+                let mut looking = interface.scanning().await.unwrap_or(false);
+                // A look over every channel takes 5 to 6 s, as long as a
+                // point that drops the card may give it, so a warned move
+                // ends the look rather than wait for it.
+                if looking && !returns {
+                    match interface.abort_scan().await {
+                        Ok(()) => {
+                            println!("<6>{card} stops looking to move before it's dropped");
+                            looking = false;
+                        }
+                        Err(error) => {
+                            println!("<4>{card} moves once its look ends, not stopped: {error}");
+                        }
+                    }
+                }
                 {
                     let mut arrivals = self.arrivals.borrow_mut();
-                    arrivals.asked(&card, from.as_deref(), bssid, Instant::now());
                     // Timed from the point it's on all the same, so one that
                     // never leaves it, or falls short, is let go in time.
-                    if let Some(from) = from.as_deref().filter(|_| !returns) {
-                        arrivals.wont_return(&card, from);
+                    match from.as_deref().filter(|_| !returns) {
+                        Some(left) => arrivals.asked_away(&card, left, bssid, Instant::now()),
+                        None => arrivals.asked(&card, from.as_deref(), bssid, Instant::now()),
                     }
                     if looking {
                         arrivals.looking(&card);
@@ -3263,17 +3276,13 @@ impl Wifid<'_> {
     /// silent as one, 253 ms with 57 of them the look's (2026-11-15).
     async fn ready(&self, bssid: &str) -> Result<(), Refused> {
         let card = self.state.borrow().roamer(bssid)?;
-        // Held anew, a way back couldn't reach the point it went back to.
-        if self.arrivals.borrow().going_back(&card) {
+        // Held anew, a way back couldn't reach the point it went back to,
+        // and a card leaving a point that drops it would be held back to
+        // that point partway into the move.
+        let busy = self.arrivals.borrow().busy(&card, false);
+        if let Some(busy) = busy {
             return Err(Refused::Failed {
-                reason: format!("{card} is on its way back to the point it left"),
-            });
-        }
-        // Held where it is, a card leaving a point that drops it would be
-        // held back to that point partway into the move.
-        if self.arrivals.borrow().leaves_a_drop(&card) {
-            return Err(Refused::Failed {
-                reason: format!("{card} is leaving a point that drops it"),
+                reason: format!("{card} {}", busy.why()),
             });
         }
         let frequency = self
@@ -3371,9 +3380,11 @@ impl Wifid<'_> {
     /// Neither that move, nor one already under way from the point, goes
     /// back to the point that drops the card should it miss: the card is
     /// let join what it hears instead, its other networks on. A way back
-    /// `roam` refuses for keeps its hold and its timer. A card in the join
-    /// the shell asked for, `joining`, has its networks turned on by the
-    /// join as it ends.
+    /// `roam` refuses for keeps its hold and its timer. A card already
+    /// leaving the point on such a move keeps to it, as the point warns
+    /// again until the card is gone, and one whose whole network drops it
+    /// is let go. A card in the join the shell asked for, `joining`, has
+    /// its networks turned on by the join as it ends.
     async fn asked(&self, card: &str, request: &Request, joining: Option<&str>) {
         let (from, heard) = {
             let state = self.state.borrow();
@@ -3386,16 +3397,25 @@ impl Wifid<'_> {
         };
         println!("<6>{}", request.said(card, from.as_deref()));
         let held = self.held.borrow().contains_key(card);
-        let followed = request.heed(from.as_deref(), &heard, held);
-        if matches!(followed, Heed::Move(_) | Heed::LetGo)
+        let leaving = self.arrivals.borrow().leaves_a_drop(card);
+        let followed = request.heed(from.as_deref(), &heard, held, leaving);
+        if matches!(followed, Heed::Move(_) | Heed::LetGo | Heed::NetworkDrops)
             && let Some(from) = from.as_deref()
         {
             self.arrivals.borrow_mut().wont_return(card, from);
         }
         match followed {
-            Heed::Stay => {}
+            Heed::Stay => println!("<7>{card} stays where it is, as the ask warns nothing"),
             Heed::Unheld => {
-                println!("<6>{card} isn't held to its point, so wpa_supplicant follows it");
+                println!("<6>{card} isn't held to its point, so the ask is left to wpa_supplicant");
+            }
+            Heed::Leaving => {
+                let from = from.as_deref().unwrap_or("its point");
+                println!("<6>{card} is already leaving {from}, so its move stands");
+            }
+            Heed::NetworkDrops => {
+                println!("<6>{card}'s whole network drops it, so it may join any point again");
+                self.let_go(card, joining != Some(card)).await;
             }
             Heed::Move(bssid) => match self.roam_card(card, &bssid, joining, Missed::LetJoin).await
             {

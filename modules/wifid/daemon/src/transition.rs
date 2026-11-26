@@ -14,6 +14,14 @@
 //! time is up whatever wifid thinks of it. wpa_supplicant can't follow it
 //! for a card wifid holds to a point: only that point matches what it
 //! may join, so it keeps the card there until it's dropped.
+//!
+//! One warning that the whole network drops the card has no point of that
+//! network to go to, so the card is only let go. A warning read from a
+//! frame its link doesn't protect could have come from any station in
+//! range naming itself as the point. It's followed all the same, and said
+//! as unprotected: a station that can send it can as easily drop the card
+//! and answer as that point, so holding the card to the point never kept
+//! it from one.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -23,9 +31,13 @@ use zbus::zvariant::{OwnedValue, Value};
 /// One request, as wpa_supplicant said it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Request {
-    /// Whether the point warns it will drop the card, from itself or from
-    /// its whole network.
+    /// Whether the point warns it will drop the card.
     pub warns: bool,
+    /// Whether it warns its whole network will.
+    pub leaves_network: bool,
+    /// Whether the card's link protects the frame it came in, so only the
+    /// point could have sent it.
+    pub protected: bool,
     /// In how many milliseconds, where it warns; 0 for at once, or for
     /// one that doesn't say.
     pub in_ms: u32,
@@ -45,9 +57,18 @@ pub struct Candidate {
     pub preference: Option<u8>,
 }
 
-/// What the signal says: whether it warns, in how long and for how long in
-/// milliseconds, and each candidate's address and preference, -1 for none.
-type Said = (bool, u32, u32, Vec<(Vec<u8>, i16)>);
+/// What the signal says: whether the point warns, whether its whole
+/// network does and whether the frame was protected, in how long and for
+/// how long in milliseconds, and each candidate's address and preference,
+/// -1 for none.
+struct Said {
+    warns: bool,
+    leaves_network: bool,
+    protected: bool,
+    in_ms: u32,
+    valid_ms: u32,
+    candidates: Vec<(Vec<u8>, i16)>,
+}
 
 /// What wifid does with a request.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -55,8 +76,15 @@ pub enum Heed {
     /// Nothing but say it: the request doesn't warn.
     Stay,
     /// Nothing but say it, as wifid doesn't hold the card to its point:
-    /// wpa_supplicant follows the request itself.
+    /// the request is wpa_supplicant's to follow or turn down.
     Unheld,
+    /// Nothing but say it, as the card is already on a move away from the
+    /// point that warned it: a point can warn again until the card is
+    /// gone, and asking the move again would start it over.
+    Leaving,
+    /// Lets the card join any point again, as its whole network warns it
+    /// drops the card, so no other point of it would keep the card.
+    NetworkDrops,
     /// Moves the card to this point, the one it would rather of those the
     /// card hears.
     Move(String),
@@ -74,6 +102,12 @@ impl Request {
     pub fn from_args(args: &HashMap<String, OwnedValue>) -> Option<Request> {
         let value = |key: &str| args.get(key).map(|value| &**value);
         let Some(Value::Bool(warns)) = value("Disassociating") else {
+            return None;
+        };
+        let Some(Value::Bool(leaves_network)) = value("LeavingNetwork") else {
+            return None;
+        };
+        let Some(Value::Bool(protected)) = value("Protected") else {
             return None;
         };
         let Some(Value::U32(in_ms)) = value("DisassociationMs") else {
@@ -103,13 +137,21 @@ impl Request {
             .iter()
             .map(candidate)
             .collect::<Option<Vec<_>>>()?;
-        Some(Request::read((*warns, *in_ms, *valid_ms, candidates)))
+        Some(Request::read(Said {
+            warns: *warns,
+            leaves_network: *leaves_network,
+            protected: *protected,
+            in_ms: *in_ms,
+            valid_ms: *valid_ms,
+            candidates,
+        }))
     }
 
     /// Reads what the signal says. A candidate whose address isn't six
     /// bytes is passed over.
-    fn read((warns, in_ms, valid_ms, candidates): Said) -> Request {
-        let candidates = candidates
+    fn read(said: Said) -> Request {
+        let candidates = said
+            .candidates
             .into_iter()
             .filter_map(|(address, preference)| {
                 let address: [u8; 6] = address.try_into().ok()?;
@@ -120,9 +162,11 @@ impl Request {
             })
             .collect();
         Request {
-            warns,
-            in_ms,
-            valid_ms,
+            warns: said.warns,
+            leaves_network: said.leaves_network,
+            protected: said.protected,
+            in_ms: said.in_ms,
+            valid_ms: said.valid_ms,
             candidates,
         }
     }
@@ -148,10 +192,24 @@ impl Request {
             }
             let _ = write!(said, ", for {} ms", self.valid_ms);
         }
-        if self.warns {
-            let _ = write!(said, ", warning it drops the card in {} ms", self.in_ms);
-        } else {
+        if !self.warns && !self.leaves_network {
             said.push_str(", warning nothing");
+            return said;
+        }
+        if self.leaves_network {
+            said.push_str(", warning its whole network drops the card");
+        } else {
+            said.push_str(", warning it drops the card");
+        }
+        // A point that sets no timer says nothing of when, which isn't at
+        // once.
+        if self.in_ms == 0 {
+            said.push_str(", saying not when");
+        } else {
+            let _ = write!(said, " in {} ms", self.in_ms);
+        }
+        if !self.protected {
+            said.push_str(", unprotected");
         }
         said
     }
@@ -161,13 +219,26 @@ impl Request {
     /// the point asking would rather, of those heard and not ruled out,
     /// the more strongly heard of two it would as soon. Only a card wifid
     /// holds, `held`, is moved, and only to a point `heard` names: one the
-    /// card itself heard on its network.
-    pub fn heed(&self, from: Option<&str>, heard: &[(String, i16)], held: bool) -> Heed {
-        if !self.warns {
+    /// card itself heard on its network. A card already `leaving` a point
+    /// that warned it is left to that move.
+    pub fn heed(
+        &self,
+        from: Option<&str>,
+        heard: &[(String, i16)],
+        held: bool,
+        leaving: bool,
+    ) -> Heed {
+        if !self.warns && !self.leaves_network {
             return Heed::Stay;
         }
         if !held {
             return Heed::Unheld;
+        }
+        if leaving {
+            return Heed::Leaving;
+        }
+        if self.leaves_network {
+            return Heed::NetworkDrops;
         }
         let elsewhere = |bssid: &str| from.is_none_or(|from| !from.eq_ignore_ascii_case(bssid));
         let chosen = self
@@ -213,6 +284,8 @@ mod tests {
     fn warning(candidates: Vec<Candidate>) -> Request {
         Request {
             warns: true,
+            leaves_network: false,
+            protected: true,
             in_ms: 2048,
             valid_ms: 25_600,
             candidates,
@@ -228,17 +301,19 @@ mod tests {
 
     #[test]
     fn a_request_is_read_with_its_candidates_in_order_and_a_bad_address_passed_over() {
-        let read = Request::read((
-            true,
-            2048,
-            25_600,
-            vec![
+        let read = Request::read(Said {
+            warns: true,
+            leaves_network: false,
+            protected: true,
+            in_ms: 2048,
+            valid_ms: 25_600,
+            candidates: vec![
                 (vec![2, 0, 0, 0, 5, 0], 255),
                 (vec![2, 0, 0, 0, 6], 200),
                 (vec![2, 0, 0, 0, 0x6a, 0xff], -1),
                 (vec![2, 0, 0, 0, 0, 0], 0),
             ],
-        ));
+        });
         let expected = warning(vec![
             named(NEAR, Some(255)),
             named("02:00:00:00:6a:ff", None),
@@ -258,6 +333,8 @@ mod tests {
         ];
         let mut args = HashMap::from([
             ("Disassociating".to_owned(), OwnedValue::from(true)),
+            ("LeavingNetwork".to_owned(), OwnedValue::from(false)),
+            ("Protected".to_owned(), OwnedValue::from(true)),
             ("DisassociationMs".to_owned(), OwnedValue::from(2048_u32)),
             ("ValidMs".to_owned(), OwnedValue::from(25_600_u32)),
             (
@@ -275,6 +352,13 @@ mod tests {
             Request::from_args(&args),
             None,
             "a field of another type is out of shape"
+        );
+        args.insert("ValidMs".to_owned(), OwnedValue::from(25_600_u32));
+        args.remove("Protected");
+        assert_eq!(
+            Request::from_args(&args),
+            None,
+            "a field left out is out of shape"
         );
     }
 
@@ -303,13 +387,38 @@ mod tests {
     }
 
     #[test]
+    fn the_journal_says_a_whole_network_warning_one_saying_not_when_and_one_unprotected() {
+        let whole = Request {
+            warns: false,
+            leaves_network: true,
+            ..warning(Vec::new())
+        };
+        assert_eq!(
+            whole.said("wlan2", Some(ON)),
+            "wlan2 was asked by 02:00:00:00:00:00 to move, naming no point, \
+             warning its whole network drops the card in 2048 ms",
+        );
+        let untimed = Request {
+            in_ms: 0,
+            protected: false,
+            ..warning(Vec::new())
+        };
+        assert_eq!(
+            untimed.said("wlan2", Some(ON)),
+            "wlan2 was asked by 02:00:00:00:00:00 to move, naming no point, \
+             warning it drops the card, saying not when, unprotected",
+            "no timer isn't a drop at once, and a frame anyone could send is said so",
+        );
+    }
+
+    #[test]
     fn a_request_that_warns_nothing_moves_nothing() {
         let request = Request {
             warns: false,
             ..warning(vec![named(NEAR, Some(255))])
         };
         assert_eq!(
-            request.heed(Some(ON), &heard(&[(NEAR, -40)]), true),
+            request.heed(Some(ON), &heard(&[(NEAR, -40)]), true, false),
             Heed::Stay,
             "wifid chooses by how a point carries, so a plain ask is only said",
         );
@@ -318,9 +427,38 @@ mod tests {
     #[test]
     fn a_warned_card_wifid_doesnt_hold_is_left_to_wpa_supplicant() {
         assert_eq!(
-            warning(vec![named(NEAR, Some(255))]).heed(Some(ON), &heard(&[(NEAR, -40)]), false),
+            warning(vec![named(NEAR, Some(255))]).heed(
+                Some(ON),
+                &heard(&[(NEAR, -40)]),
+                false,
+                false
+            ),
             Heed::Unheld,
-            "wpa_supplicant follows the ask itself for a card free to join any point",
+            "a card free to join any point is wpa_supplicant's to move",
+        );
+    }
+
+    #[test]
+    fn a_card_already_leaving_a_point_that_warned_it_keeps_to_its_move() {
+        let again = warning(vec![named(FAR, Some(255)), named(NEAR, Some(100))]);
+        assert_eq!(
+            again.heed(Some(ON), &heard(&[(NEAR, -40), (FAR, -30)]), true, true),
+            Heed::Leaving,
+            "a warning said again isn't a move asked again",
+        );
+    }
+
+    #[test]
+    fn a_card_whose_whole_network_drops_it_is_let_go_whatever_it_names() {
+        let whole = Request {
+            warns: false,
+            leaves_network: true,
+            ..warning(vec![named(NEAR, Some(255))])
+        };
+        assert_eq!(
+            whole.heed(Some(ON), &heard(&[(NEAR, -40)]), true, false),
+            Heed::NetworkDrops,
+            "no point of a network that drops the card keeps it",
         );
     }
 
@@ -335,13 +473,14 @@ mod tests {
             request.heed(
                 Some(ON),
                 &heard(&[(NEAR, -70), ("02:00:00:00:07:00", -30)]),
-                true
+                true,
+                false
             ),
             Heed::Move(NEAR.to_owned()),
             "the unheard favourite is passed over, and any preference beats none",
         );
         assert_eq!(
-            request.heed(Some(ON), &heard(&[(FAR, -80), (NEAR, -30)]), true),
+            request.heed(Some(ON), &heard(&[(FAR, -80), (NEAR, -30)]), true, false),
             Heed::Move(FAR.to_owned()),
             "a preference outranks a stronger signal",
         );
@@ -351,7 +490,7 @@ mod tests {
     fn a_warned_card_takes_the_stronger_of_two_the_point_would_as_soon() {
         let request = warning(vec![named(NEAR, Some(100)), named(FAR, Some(100))]);
         assert_eq!(
-            request.heed(Some(ON), &heard(&[(NEAR, -70), (FAR, -50)]), true),
+            request.heed(Some(ON), &heard(&[(NEAR, -70), (FAR, -50)]), true, false),
             Heed::Move(FAR.to_owned()),
         );
     }
@@ -363,7 +502,8 @@ mod tests {
             request.heed(
                 Some(&ON.to_uppercase()),
                 &heard(&[(ON, -30), (NEAR, -40)]),
-                true
+                true,
+                false
             ),
             Heed::LetGo,
             "its own point however written, and a point at 0, are no way out",
@@ -373,11 +513,16 @@ mod tests {
     #[test]
     fn a_warned_card_hearing_no_candidate_is_let_go() {
         assert_eq!(
-            warning(vec![named(FAR, Some(255))]).heed(Some(ON), &heard(&[(NEAR, -40)]), true),
+            warning(vec![named(FAR, Some(255))]).heed(
+                Some(ON),
+                &heard(&[(NEAR, -40)]),
+                true,
+                false
+            ),
             Heed::LetGo,
         );
         assert_eq!(
-            warning(Vec::new()).heed(Some(ON), &heard(&[(NEAR, -40)]), true),
+            warning(Vec::new()).heed(Some(ON), &heard(&[(NEAR, -40)]), true, false),
             Heed::LetGo,
             "one naming nothing leaves wpa_supplicant to rejoin where it can",
         );

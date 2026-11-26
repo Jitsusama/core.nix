@@ -214,6 +214,25 @@ pub struct Unreached {
     pub returns: bool,
 }
 
+/// Why a card isn't to be moved now (`Arrivals::busy`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Busy {
+    /// It's on its way back to the point it left.
+    GoingBack,
+    /// It's on a move away from a point that warned it drops the card.
+    LeavingADrop,
+}
+
+impl Busy {
+    /// What a refusal says of the card.
+    pub fn why(self) -> &'static str {
+        match self {
+            Busy::GoingBack => "is on its way back to the point it left",
+            Busy::LeavingADrop => "is leaving a point that drops it",
+        }
+    }
+}
+
 /// Why a move is sent back.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Short {
@@ -254,6 +273,14 @@ impl Arrivals {
             lost: false,
         };
         self.moves.insert(card.to_owned(), moved);
+    }
+
+    /// Takes in that the card was asked to move to that access point away
+    /// from the one it's on, which warned it drops the card, so a move that
+    /// misses is let join what it hears, as `wont_return` says.
+    pub fn asked_away(&mut self, card: &str, from: &str, to: &str, now: Instant) {
+        self.asked(card, Some(from), to, now);
+        self.wont_return(card, from);
     }
 
     /// Takes in that the card was sent back to the access point it left.
@@ -304,9 +331,9 @@ impl Arrivals {
     /// move that never leaves, or falls short, still ends with its card
     /// let go and its other networks on, rather than held to a point it
     /// never reached until it's dropped.
+    /// A way back has no `from`, so it's never one.
     pub fn wont_return(&mut self, card: &str, from: &str) {
         if let Some(moving) = self.moves.get_mut(card)
-            && moving.way == Way::Returns
             && moving
                 .from
                 .as_deref()
@@ -324,6 +351,20 @@ impl Arrivals {
         self.moves
             .get(card)
             .is_some_and(|moving| moving.way == Way::LetsJoin)
+    }
+
+    /// Why the card isn't to be moved or held anew now, if it isn't: on
+    /// its way back, held anew it couldn't reach the point it went back
+    /// to; leaving a point that warned it drops the card, it would be held
+    /// back to that point, or have its move take longer, unless what's
+    /// asked is `warned` too, and so is that move's own.
+    pub fn busy(&self, card: &str, warned: bool) -> Option<Busy> {
+        let moving = self.moves.get(card)?;
+        match moving.way {
+            Way::Back => Some(Busy::GoingBack),
+            Way::LetsJoin if !warned => Some(Busy::LeavingADrop),
+            Way::LetsJoin | Way::Returns => None,
+        }
     }
 
     /// When the next move with a way back is due to take it, or the next
@@ -1003,8 +1044,7 @@ mod tests {
     fn a_move_from_a_point_that_drops_the_card_is_timed_and_handed_back_without_return() {
         let mut arrivals = Arrivals::default();
         let now = Instant::now();
-        arrivals.asked("wlan0", Some(DESK), FAR, now);
-        arrivals.wont_return("wlan0", DESK);
+        arrivals.asked_away("wlan0", DESK, FAR, now);
 
         let due = arrivals.due();
         let unstarted = arrivals.unreached(now + BACK_AFTER);
@@ -1040,14 +1080,35 @@ mod tests {
         arrivals.wont_return("wlan0", DESK);
 
         let off = arrivals.fell_off("wlan0");
-        let kept = arrivals.saved("wlan0").map(|saved| saved.goes_back());
 
         assert_eq!(
             off.map(|off| off.returns),
             Some(false),
             "handed back as it falls off, with no way back"
         );
-        assert_eq!(kept, Some(false), "said to keep nothing off, if put back");
+    }
+
+    #[test]
+    fn a_move_away_from_a_point_that_drops_the_card_put_back_keeps_nothing_off() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.asked("wlan0", Some(DESK), FAR, now);
+        let returning = arrivals.saved("wlan0").map(|saved| saved.goes_back());
+        arrivals.asked_away("wlan0", DESK, FAR, now);
+        let away = arrivals.saved("wlan0").map(|saved| saved.goes_back());
+
+        // Read before anything takes the move's point, as a failed ask
+        // reads it to put the move back.
+        assert_eq!(
+            returning,
+            Some(true),
+            "one that goes back keeps the rest off"
+        );
+        assert_eq!(
+            away,
+            Some(false),
+            "one that won't go back keeps nothing off"
+        );
     }
 
     #[test]
@@ -1056,23 +1117,44 @@ mod tests {
         let now = Instant::now();
         arrivals.asked("wlan0", Some(DESK), FAR, now);
         arrivals.wont_return("wlan0", HALL);
-        arrivals.back("wlan1", DESK, now);
-        arrivals.wont_return("wlan1", DESK);
 
         let late = arrivals.unreached(now + BACK_AFTER);
 
-        assert!(
-            late.iter().all(|late| late.returns),
-            "a move from another point keeps its way back: {late:?}"
+        assert_eq!(
+            late.iter().map(|late| late.returns).collect::<Vec<_>>(),
+            [true],
+            "a move from another point keeps its way back"
         );
         assert!(
             !arrivals.leaves_a_drop("wlan0"),
             "not leaving a point that drops it"
         );
-        assert!(
-            !arrivals.leaves_a_drop("wlan1"),
-            "a way back is no move away from one"
+    }
+
+    #[test]
+    fn a_card_going_back_or_leaving_a_drop_is_busy_but_for_a_warning_of_its_own() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.back("wlan0", DESK, now);
+        arrivals.asked_away("wlan1", DESK, FAR, now);
+        arrivals.asked("wlan2", Some(DESK), FAR, now);
+
+        let busy = |card: &str, warned: bool| arrivals.busy(card, warned);
+
+        assert_eq!(busy("wlan0", false), Some(Busy::GoingBack), "going back");
+        assert_eq!(
+            busy("wlan0", true),
+            Some(Busy::GoingBack),
+            "going back, warned"
         );
+        assert_eq!(
+            busy("wlan1", false),
+            Some(Busy::LeavingADrop),
+            "leaving a drop"
+        );
+        assert_eq!(busy("wlan1", true), None, "a warning moves it all the same");
+        assert_eq!(busy("wlan2", false), None, "a plain move may be asked over");
+        assert_eq!(busy("wlan3", false), None, "a card not moving is free");
     }
 
     #[test]
