@@ -2484,6 +2484,26 @@ ShellRoot {
         expect("a press told its window may yet come is told it came, once it does",
             heard() === "UNANSWERED comeAfterAll x1", heard());
         Sessions.forgetAsk(unansweredNamed);
+        // Told only within comingPatience, past which a window coming is
+        // told nothing, and only for the ask it was told of: a press since
+        // asks afresh, its own ask answered or not on its own.
+        Sessions.goTo(unansweredRow);
+        Sessions.untaken(unansweredNamed, String(Date.now()), "unanswered");
+        const stillBefore = Sessions.comingPatience;
+        Sessions.comingPatience = 0;
+        untell();
+        Sessions.windowHeard({ id: 130, pid: 4242, opened: unansweredNamed });
+        Sessions.comingPatience = stillBefore;
+        const pastComing = heard();
+        Sessions.forgetAsk(unansweredNamed);
+        Sessions.goTo(unansweredRow);
+        Sessions.untaken(unansweredNamed, String(Date.now()), "unanswered");
+        Sessions.goTo(unansweredRow);
+        untell();
+        Sessions.windowHeard({ id: 131, pid: 4242, opened: unansweredNamed });
+        expect("a window come past comingPatience, or for a press since, is told nothing",
+            pastComing === "  x0" && heard() === "  x0", `${pastComing} / ${heard()}`);
+        Sessions.forgetAsk(unansweredNamed);
         const unansweredStart = "pi-hosted.s-unanswered-start";
         Sessions.viewStarted("harbour-attended", "s-unanswered-start", unansweredStart, "Reef",
             "/tmp", footedStart);
@@ -2571,6 +2591,34 @@ ShellRoot {
         Sessions.untaken(unansweredRefused, noneAt, "none");
         expect("a refusal ends with no kitty to ask",
             !(unansweredRefused in Sessions.refusedAsks), JSON.stringify(Sessions.refusedAsks));
+        Sessions.forgetAsk(unansweredRefused);
+        // A refusal kept as the kitty didn't answer keeps, and its press
+        // is told the window came, as long as a press told its window may
+        // yet come is (comingPatience): the give-up comes about a minute
+        // after the ask, past the script's answer, and past that patience
+        // a stray listed for good would hold the viewer unopened.
+        const lateAt = refusedLateFor(127);
+        Sessions.disownedSaid = Object.assign({}, Sessions.disownedSaid,
+            { [unansweredRefused]: { address: "REFUSEDLATE", startedInHost: false } });
+        Sessions.untaken(unansweredRefused, lateAt, "unanswered");
+        Sessions.refusedAt = Object.assign({}, Sessions.refusedAt,
+            { [unansweredRefused]: Date.now() - Sessions.answerPatience - 1 });
+        untell();
+        Sessions.windowHeard({ id: 128, pid: 4242, opened: unansweredRefused });
+        expect("a disowned press whose kitty didn't answer is told its window came, late",
+            heard() === "REFUSEDLATE comeAfterAll x1", heard());
+        Sessions.forgetAsk(unansweredRefused);
+        const lapsedAt = refusedLateFor(129);
+        Sessions.untaken(unansweredRefused, lapsedAt, "unanswered");
+        const keptLapsing = Sessions.refusedOwn(unansweredRefused);
+        const comingBefore = Sessions.comingPatience;
+        Sessions.comingPatience = 0;
+        const lapsed = !Sessions.refusedOwn(unansweredRefused)
+            && Sessions.viewWith(view.slice(0, -1).concat(["s-unanswered-refused"]),
+                unansweredRefused, null, "refused lapsed");
+        Sessions.comingPatience = comingBefore;
+        expect("a refusal kept as the kitty didn't answer lapses past it, asked afresh",
+            keptLapsing && lapsed, `${keptLapsing} ${lapsed}`);
         Sessions.forgetAsk(unansweredRefused);
         Niri.windows = unforged;
         // A kitty down as its kept viewer is asked, its pid written but

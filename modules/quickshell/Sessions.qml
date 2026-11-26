@@ -2933,8 +2933,9 @@ Singleton {
     // until it opens (tellOnOpen). The 15 minutes an asked place keeps
     // (Viewers.js) bound it, past which a window coming is told nothing.
     // An ask afresh ends it (viewWith), its press holding the ask.
+    // Cases shorten comingPatience to see one too late.
     property var stillSaid: ({})
-    readonly property int comingPatience: 900000
+    property int comingPatience: 900000
     function forgetStill(named) {
         if (!(named in stillSaid))
             return;
