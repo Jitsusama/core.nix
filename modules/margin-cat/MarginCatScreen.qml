@@ -622,6 +622,9 @@ PanelWindow {
         if (!fallsYet())
             closedOn = null;
         if (plan === null) {
+            // A play it was in, cut short where it sits, is told as walks says.
+            if (going?.kind)
+                tell(going.kind);
             halt();
             sat = wanted;
             place = to;
@@ -635,7 +638,12 @@ PanelWindow {
     // A walk's frames are counted from begunAt, read once `going` has
     // set following, so no frame it counts begins unasked.
     function walks(plan: var): void {
-        const fresh = going === null;
+        // A play cut short by a walk, as a key ends the puppy's visit, is
+        // told as itself, its frames never filed under the walk after it.
+        const cut = Boolean(going?.kind) && going.kind !== plan.kind;
+        if (cut)
+            tell(going.kind);
+        const fresh = going === null || cut;
         if (fresh) {
             sayWalked();
             shown = [];
@@ -946,8 +954,14 @@ PanelWindow {
             // The puppy's visit is his being away, so a key ends it: the
             // puppy fades where it is and the cat sits from where it's got
             // to, never playing on while he types and wanting every tile.
+            // With nowhere to walk to, as niri says its column nowhere for
+            // a moment, the visit still ends where it is.
             if (going?.kind === "puppy")
                 walkFrom(true, null);
+            if (going?.kind === "puppy") {
+                tell("puppy");
+                halt();
+            }
             if (strolled !== null) {
                 roams = true;
                 strolled = null;
@@ -1560,6 +1574,9 @@ PanelWindow {
             puppy: puppyShown,
             walk: going === null || stepped === null ? null : {
                 t: Math.round(walker.elapsedTime * 10000) / 10,
+                // When it ends on the same clock, so a check can tell where
+                // its undrawn last frames would have had the puppy.
+                ends: Math.round(going.ends * 10) / 10,
                 beat: stepped.beat,
                 pose: stepped.pose,
                 facing: stepped.facing,

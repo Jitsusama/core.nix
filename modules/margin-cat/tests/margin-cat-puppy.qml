@@ -114,17 +114,32 @@ QtObject {
             all.every(puppy => puppy !== null && Number.isInteger(puppy.x)), true);
         const order = ["puppyWalkingA", "puppyWalkingC", "puppyWalkingB", "puppyWalkingD"];
         const coming = all.slice(0, Math.ceil(waits.ends));
-        // Counted from the cell before it stands at 110, 296 strides on
-        // from the first it takes at the edge.
+        // Each drawing it takes on is the next in the cat's order, after a
+        // whole stride of three cells; only the first, at the edge, may be
+        // short.
+        const strode = [];
+        for (const [t, puppy] of coming.entries()) {
+            if (t === 0 || puppy.pose !== coming[t - 1].pose)
+                strode.push({ pose: puppy.pose, cells: new Set() });
+            strode[strode.length - 1].cells.add(puppy.x);
+        }
+        const unordered = strode.filter((one, i) => i > 0 && order.indexOf(one.pose)
+            !== (order.indexOf(strode[i - 1].pose) + 1) % 4);
         expect("a new drawing each three cells it covers, in the cat's order",
-            coming.every(puppy => puppy.pose
-                === order[(296 - Math.floor(Math.max(puppy.x - 111, 0) / 3 + 1e-6)) % 4]), true);
+            [unordered.length, strode.slice(1).every(one => one.cells.size === 3)],
+            [0, true]);
         // However long its way in, the drawing it arrives in shows for a
         // whole stride, any short one left behind the room's edge, where at
-        // these widths a way counted from the edge left it 1 or 2 cells.
+        // these widths strides measured from the edge left it 1 or 2 cells;
+        // and it's the drawing before its standing, so one pair of legs
+        // moves into the stand, never both, where its drawings taken in
+        // turn from the edge had one of these widths arrive both pairs away
+        // and two in the standing. From either side, since its cells round
+        // the other way coming in from the left.
         const arrivals = [];
-        for (let width = 200; width < 206; width += 1) {
-            const inward = Puppy.visit(Seated.sat({ column: { left: 92, top: 30, width } }));
+        const sides = width => [Seated.sat({ column: { left: 92, top: 30, width } }),
+            Seated.sat({ seat: { x: 892, y: 20 }, column: { left: 908 - width, top: 30, width } })];
+        for (const inward of [200, 201, 202, 203, 204, 205].flatMap(sides).map(Puppy.visit)) {
             const trotted = Array.from({ length: Math.ceil(inward.beats[0].ends) },
                 (_, t) => Puppy.frame(inward, t));
             const arrives = trotted[trotted.length - 1].pose;
@@ -132,10 +147,13 @@ QtObject {
             while (first > 0 && trotted[first - 1].pose === arrives)
                 first -= 1;
             const cellsShown = new Set(trotted.slice(first).map(puppy => puppy.x)).size;
-            if (cellsShown !== inward.puppy.stride)
-                arrivals.push({ width, cellsShown });
+            const stands = Puppy.frame(inward, inward.beats[1].begins).pose;
+            if (cellsShown !== inward.puppy.stride || arrives !== "puppyWalkingC"
+                || stands !== "puppyWalkingB")
+                arrivals.push({ way: inward.way, cellsShown, arrives, stands });
         }
-        expect("arriving in a whole stride, however far it came", arrivals, []);
+        expect("arriving in a whole stride, the one before its stand, however far it came",
+            arrivals, []);
         expect("its strides all four drawings", Array.from(new Set(coming.map(puppy =>
             puppy.pose))).sort(), order.slice().sort());
         const runs = [];

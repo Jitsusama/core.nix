@@ -15,12 +15,11 @@
 .import "MarginCatWays.js" as Ways
 
 // How long each beat it holds lasts, in ms at the theme's pace: the cat's
-// ears going up as it stands, the cat's eyes on it as it bows (as long as
-// the cat thinks, besides), the cat's hop, and its ear after.
+// ears going up as it stands, and the cat's eyes on it as it bows (as long
+// as the cat thinks, besides). The cat's hop, and its ear after, are the
+// hop and the look every play has (Games.HOP, Games.LOOKS).
 const NOTICES = 160;
 const BOWS = 650;
-const HOP = { crouches: 220, lands: 160 };
-const LOOKS = 500;
 // How many of the cat's cells it stops short of the cat.
 const NEAR = 2;
 // Its strides, in turn, as the cat's are, each pair of legs apart two and
@@ -81,10 +80,10 @@ function visit(at) {
     way.facing = dir;
     Ways.holds(way, "notices", NOTICES);
     Ways.holds(way, "eyes", BOWS + (at.pause ?? 0));
-    Ways.holds(way, "crouches", HOP.crouches);
+    Ways.holds(way, "crouches", Games.HOP.crouches);
     Ways.leap(way, at.seat, 1, "hops");
-    Ways.holds(way, "lands", HOP.lands);
-    Ways.holds(way, "looks", LOOKS);
+    Ways.holds(way, "lands", Games.HOP.lands);
+    Ways.holds(way, "looks", Games.LOOKS);
     Ways.holds(way, "watches", trots.ms);
     return Object.assign(Ways.timed(way), { kind: "puppy", way: dir, yarn: null, puppy });
 }
@@ -93,11 +92,14 @@ function visit(at) {
 // by the theme's name, the way it faces and the room it's drawn `within`,
 // as the yarn is said (Games.frame); null where the play has none, or is
 // done. Trotting, it steps in whole cells at a steady pace, its drawing
-// the next of its strides each `stride` cells it covers. They're counted
-// from where it stands near the cat, the cell before it coming in, since
-// that last cell is the notice's standing: so a way in that isn't whole
-// strides leaves its short one behind the room's edge, not where it
-// arrives in plain sight.
+// the next of its strides each `stride` cells it covers. Coming in,
+// they're counted back from where it stands near the cat, the cell before
+// it, since that last cell is the notice's standing: so a way in that
+// isn't whole strides leaves its short one behind the room's edge, not
+// where it arrives in plain sight, and it always arrives in the stride
+// before its standing, so the stand is its next step and only one pair of
+// legs moves into it, as the cat never skids into place (Joel, 2026-11-14:
+// "i never want the kitty to skid into place").
 function frame(playing, t) {
     const beat = playing.puppy ? playing.beats.find(one => t < one.ends) : null;
     const track = beat ? playing.puppy.tracks[beat.name] : null;
@@ -111,9 +113,9 @@ function frame(playing, t) {
     const coming = track.to === near && track.from !== near;
     const strides = cells => Math.floor(Math.max(cells, 0) / playing.puppy.stride + 1e-6);
     const seen = Math.abs(x - near) / c - (coming ? 1 : 0);
-    // Coming in, its strides run on from the first, which it takes at the edge.
-    const taken = coming ? strides(Math.abs(track.from - near) / c - 1) - strides(seen)
-        : strides(seen);
+    const n = TROTS.length;
+    const arrives = (TROTS.indexOf(STANDS) + n - 1) % n;
+    const taken = coming ? ((arrives - strides(seen)) % n + n) % n : strides(seen);
     return {
         x,
         y: playing.from.y,

@@ -422,6 +422,26 @@ def came_behind(frames: list[Json], size: float, key: str = "yarn") -> Json | No
     return None if behind_its_edge(there, size) else yarn
 
 
+def went_behind(frames: list[Json], size: float) -> Json | None:
+    """Give where the puppy was as it went, or None where it went behind its edge.
+
+    It trots off to the play's end, behind its edge only for its last few cells, which a
+    loaded builder can leave undrawn: so where its last frame isn't behind the edge, it trots
+    it on at its last two frames' pace to the play's end (`walk`'s `ends`), and only a puppy
+    that wasn't behind the edge then went in open space.
+    """
+    shown = [frame["walk"] for frame in frames if frame["walk"]["puppy"]]
+    last = shown[-1]
+    puppy: Json = last["puppy"]
+    if behind_its_edge(puppy, size):
+        return None
+    if len(shown) < 2 or last["t"] == shown[-2]["t"]:
+        return puppy
+    pace = (puppy["x"] - shown[-2]["puppy"]["x"]) / (last["t"] - shown[-2]["t"])
+    there = {**puppy, "x": puppy["x"] + pace * (last["ends"] - last["t"])}
+    return None if behind_its_edge(there, size) else puppy
+
+
 def test_away_it_bats_a_ball_of_yarn_off_and_walks_back(shell: Shell) -> None:
     """Away, a ball of yarn rolls in, is batted and pounced on, and goes; it walks back.
 
@@ -467,7 +487,8 @@ def test_away_a_puppy_visits_and_the_cat_hops_where_it_sits(shell: Shell) -> Non
     size = frames[0]["size"]
     came = came_behind(frames, size, "puppy")
     assert came is None, f"the puppy came from nowhere: {came}"
-    assert behind_its_edge(seen[-1], size), f"the puppy went in open space: {seen[-1]}"
+    went = went_behind(frames, size)
+    assert went is None, f"the puppy went in open space: {went}"
     assert all(abs(at["x"] - seat["x"]) <= 1 for at in frames), f"the cat moved off: {frames}"
     aloft = [at for at in frames if at["y"] < seat["y"]]
     assert len(aloft) > 1, f"its hop was in the air for {len(aloft)} frames: {frames}"
@@ -489,7 +510,13 @@ def test_a_key_ends_the_puppys_visit(shell: Shell) -> None:
     def visiting(said: str) -> bool:
         return (playing(placed(said)) or {}).get("play") == "puppy"
 
-    shell.reported(SITS, visiting, since, STROLLS)
+    def in_sight(said: str) -> bool:
+        step = playing(placed(said)) or {}
+        return step.get("play") == "puppy" and step.get("beat") in PUPPY[1:-1]
+
+    # Pressed once the puppy stands by the cat in plain sight, so it ends a visit he can see,
+    # not one still behind the room's edge, where the puppy is drawn nowhere either way.
+    shell.reported(SITS, in_sight, since, VISITS)
     since = shell.mark()
     keyed = time.monotonic()
     shell.send_key("F24")

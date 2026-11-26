@@ -187,6 +187,10 @@ QtObject {
             Array.from(new Set(bothRest)).sort(), ["hop", "pounce", "wander"]);
         expect("its rest over, the yarn again", Plays.scene("idle", draws(0.8, 0.5), "",
             { restsIn: { yarn: 0 } }).name, "yarn");
+        expect("one's rest begun keeps the other's, and what's left of each runs down by the clock",
+            [Plays.restStarted({ yarn: 5 }, "puppy", 10, 0),
+                Plays.restsLeft({ yarn: 100, puppy: 30 }, 40)],
+            [{ yarn: 5, puppy: 1_200_010 }, { yarn: 60, puppy: -10 }]);
         let seed = 11;
         const random = () => {
             seed = (seed * 16_807) % 2_147_483_647;
