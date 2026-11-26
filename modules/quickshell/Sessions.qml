@@ -4228,8 +4228,14 @@ Singleton {
     // goTo's answer counts for it, and a can't-go is said rather than hidden.
     function wakeToGo(resting, session) {
         const woke = Boolean(resting) && !wokenByViewing(resting);
-        if (woke)
+        // This press is stamped before the wake, which a node out of reach
+        // refuses at once (PiSource's steer), so that refusal is told as
+        // this press's, never judged by the press before it (#6519's fifth
+        // round); goTo stamps it again as it goes.
+        if (woke) {
+            root.goneTo = { address: String(session.address ?? ""), at: Date.now() };
             wake(resting);
+        }
         // A session woken here reopens by its wake, so what goTo can't open meanwhile is
         // nothing refused, and isn't said as a press that did nothing (waking).
         root.waking = woke && resting.here !== false ? String(session.address ?? "") : "";
