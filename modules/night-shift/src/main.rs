@@ -562,6 +562,17 @@ fn watch(
             continue;
         }
         last_sample = Some(Instant::now());
+        // Whether he's away comes first, since asking about a call can
+        // take a moment, and the bars it gives are held to the pressures
+        // read after it rather than to older ones.
+        let away = presence.as_mut().is_some_and(away::Watch::is_away);
+        if let Some(news) = presence.as_mut().and_then(away::Watch::news) {
+            say(job, &news);
+        }
+        if away != was_away {
+            was_away = away;
+            say(job, if away { EASED } else { BACK });
+        }
         let own_now = own.and_then(pressure::read).unwrap_or_default();
         let machine = pressure::read(&pressures.machine()).unwrap_or_default();
         let mut line = format!(
@@ -569,11 +580,6 @@ fn watch(
             began.elapsed().as_secs(),
             machine.avg10
         );
-        let away = presence.as_mut().is_some_and(away::Watch::is_away);
-        if away != was_away {
-            was_away = away;
-            say(job, if away { EASED } else { BACK });
-        }
         let mut past = None;
         for (slice, file, bar) in watched {
             let reading = pressure::read(file).unwrap_or_default();

@@ -389,10 +389,18 @@ in
         home.packages = [ package ];
         # An eased bar replaces one of the job's own, so each names a slice
         # the job stops at; night-shift refuses any other as it starts.
-        assertions = lib.mapAttrsToList (name: job: {
-          assertion = lib.all (slice: job.stops ? ${slice}) (lib.attrNames job.stopsWhileAway);
-          message = "night-shift job ${name} eases a slice's bar it has no stop for: give each slice in stopsWhileAway a bar in stops";
-        }) jobs;
+        assertions =
+          lib.mapAttrsToList (name: job: {
+            assertion = lib.all (slice: job.stops ? ${slice}) (lib.attrNames job.stopsWhileAway);
+            message = "night-shift job ${name} eases a slice's bar it has no stop for: give each slice in stopsWhileAway a bar in stops";
+          }) jobs
+          # With nothing keeping the mark, it is never there, and Joel
+          # would always read as away, so a job eases only where
+          # swayidle-away runs.
+          ++ lib.mapAttrsToList (name: job: {
+            assertion = !(eases job) || config.systemd.user.services ? swayidle-away;
+            message = "night-shift job ${name} eases its bars while Joel is away, but nothing in this account keeps swayidle-away's mark of him at the machine, so he would always read as away: import core's swayidle module or ease nothing";
+          }) jobs;
       }
       (lib.mkIf (jobs != { }) {
         systemd.user.services = lib.mapAttrs' (

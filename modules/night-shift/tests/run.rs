@@ -599,9 +599,76 @@ fn with_joel_away_an_eased_bar_lets_the_job_run_on() {
 }
 
 #[test]
+fn with_joel_away_an_eased_bar_still_stops_the_job_past_it() {
+    let machine = Machine::new();
+    let app = format!("cgroups/{MANAGER}/app.slice/memory.pressure");
+    let job = format!("{}; sleep 30", raise(&machine, &app, 60.0));
+    let began = Instant::now();
+    let output = machine.run(&eased(&machine, Some(3600), ""), &job);
+    let said = said(&output);
+    assert!(output.status.success(), "{said}");
+    assert!(said.contains("Joel is away"), "{said}");
+    assert!(
+        said.contains("stopping: app.slice's memory full avg10 is 60.00%, past 50%"),
+        "an eased bar let a stall past it go on: {said}"
+    );
+    assert!(
+        began.elapsed() < Duration::from_secs(20),
+        "it waited for the job"
+    );
+}
+
+#[test]
+fn with_joel_away_the_machines_eased_bar_holds_and_still_stops() {
+    for (machine_at, stopped) in [(8.0, false), (15.0, true)] {
+        let machine = Machine::new();
+        let job = format!(
+            "{}; sleep 1",
+            raise(&machine, "proc/pressure/memory", machine_at)
+        );
+        let output = machine.run(
+            &eased(
+                &machine,
+                Some(3600),
+                "--stop-machine 5 --away-stop-machine 12",
+            ),
+            &job,
+        );
+        let said = said(&output);
+        assert!(output.status.success(), "at {machine_at}: {said}");
+        assert!(said.contains("Joel is away"), "at {machine_at}: {said}");
+        assert_eq!(
+            said.contains(&format!("memory full avg10 is {machine_at:.2}%, past 12%")),
+            stopped,
+            "at {machine_at}, the machine's eased bar of 12 wasn't the one held: {said}"
+        );
+        assert_eq!(
+            said.contains("finished"),
+            !stopped,
+            "at {machine_at}: {said}"
+        );
+    }
+}
+
+#[test]
+fn with_no_minutes_to_read_joel_counts_as_away_once_gone_long_enough() {
+    let machine = Machine::new();
+    let app = format!("cgroups/{MANAGER}/app.slice/memory.pressure");
+    let job = format!("sleep 2; {}; sleep 1", raise(&machine, &app, 1.5));
+    let output = machine.run(&eased(&machine, None, "--away-after 1"), &job);
+    let said = said(&output);
+    assert!(output.status.success(), "{said}");
+    assert!(
+        said.contains("Joel is away, so its eased bars hold"),
+        "no minutes to read kept him here for good: {said}"
+    );
+    assert!(said.contains("finished"), "it was stopped: {said}");
+}
+
+#[test]
 fn with_joel_here_or_lately_here_its_own_bar_holds() {
     for (why, ago, mark) in [
-        ("seen a minute ago", Some(30), false),
+        ("seen half a minute ago", Some(30), false),
         ("marked at the machine", Some(3600), true),
         ("no minutes to read", None, false),
     ] {
@@ -621,31 +688,104 @@ fn with_joel_here_or_lately_here_its_own_bar_holds() {
     }
 }
 
+/// The shell on the path, which the build's sandbox has though it has no
+/// /bin/sh, for a stand-in program's first line.
+fn shell() -> PathBuf {
+    std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+        .map(|folder| folder.join("sh"))
+        .find(|sh| sh.exists())
+        .expect("no sh on the path for the stand-in call program")
+}
+
+/// A stand-in call program in the machine's folder running `body`.
+fn call_program(machine: &Machine, body: &str) -> PathBuf {
+    let program = machine.path("a-call-is-on");
+    fs::write(&program, format!("#!{}\n{body}\n", shell().display())).unwrap();
+    Command::new("chmod")
+        .arg("+x")
+        .arg(&program)
+        .status()
+        .unwrap();
+    program
+}
+
 #[test]
 fn a_call_on_or_one_it_cant_tell_about_keeps_its_own_bar() {
-    for (why, code, stopped) in [
-        ("a call", 0, true),
-        ("no call", 1, false),
-        ("can't tell", 69, true),
+    for (why, body, stopped, says) in [
+        (
+            "a call",
+            "exit 0",
+            true,
+            "a call is on, so Joel counts as here",
+        ),
+        ("no call", "exit 1", false, ""),
+        (
+            "can't tell",
+            "exit 69",
+            true,
+            "the call program can't tell (it exited 69), so it counts as a call",
+        ),
     ] {
         let machine = Machine::new();
-        let probe = machine.path("a-call-is-on");
-        fs::write(&probe, format!("#!/bin/sh\nexit {code}\n")).unwrap();
-        Command::new("chmod")
-            .arg("+x")
-            .arg(&probe)
-            .status()
-            .unwrap();
+        let program = call_program(&machine, body);
         let options = eased(
             &machine,
             Some(3600),
-            &format!("--away-call {}", probe.display()),
+            &format!("--away-call {}", program.display()),
         );
         let output = machine.run(&options, &stalls_the_apps(&machine));
         let said = said(&output);
         assert!(output.status.success(), "{why}: {said}");
         assert_eq!(said.contains("past 1%"), stopped, "{why}: {said}");
+        assert!(said.contains(says), "{why} wasn't said: {said}");
     }
+}
+
+#[test]
+fn a_call_program_that_wont_start_counts_as_a_call() {
+    let machine = Machine::new();
+    let options = eased(
+        &machine,
+        Some(3600),
+        &format!("--away-call {}", machine.path("no-such-program").display()),
+    );
+    let output = machine.run(&options, &stalls_the_apps(&machine));
+    let said = said(&output);
+    assert!(output.status.success(), "{said}");
+    assert!(
+        said.contains("past 1%"),
+        "a missing program eased the bar: {said}"
+    );
+    assert!(
+        said.contains("the call program won't start"),
+        "it didn't say why he counts as here: {said}"
+    );
+}
+
+#[test]
+fn a_call_program_that_hangs_holds_no_stop_off() {
+    let machine = Machine::new();
+    let program = call_program(&machine, "exec sleep 60");
+    let app = format!("cgroups/{MANAGER}/app.slice/memory.pressure");
+    let job = format!("{}; sleep 30", raise(&machine, &app, 1.5));
+    let options = eased(
+        &machine,
+        Some(3600),
+        &format!("--away-call {}", program.display()),
+    );
+    let began = Instant::now();
+    let output = machine.run(&options, &job);
+    let said = said(&output);
+    assert!(output.status.success(), "{said}");
+    assert!(
+        said.contains("stopping: app.slice's memory full avg10 is 1.50%, past 1%"),
+        "a hung call program eased the bar: {said}"
+    );
+    assert!(
+        began.elapsed() < Duration::from_secs(20),
+        "a hung call program held the stop up for {:?}",
+        began.elapsed()
+    );
 }
 
 #[test]

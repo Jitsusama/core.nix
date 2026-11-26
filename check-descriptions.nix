@@ -2740,6 +2740,12 @@
   network-revive-passes-clippy = ''
     clippy finds nothing in network-revive or its tests
   '';
+  night-shift-eases-its-bars-only-while-joel-is-away = ''
+    a night job easing its bars while Joel is away tells he is from swayidle-away's mark, rhythm's
+    minutes and a call on this machine, their paths left to systemd to expand, gives each eased bar
+    and the wait before one, and is refused where it eases a slice it has no stop for or where
+    nothing in the account keeps the mark
+  '';
   night-shift-passes-clippy = ''
     clippy finds nothing in night-shift or its tests
   '';
@@ -2748,8 +2754,9 @@
     its hours however it was started (one on tries of its own only within hours it names, and
     hours holding no minute are refused), runs behind the account's work with the limits it names
     on the job's own cgroup, not its watcher's, stops by the apps', the desktop's and agents'
-    slices, escapes its command for systemd, and an account declaring none gets no unit but still
-    has night-shift on its path, for a heavy job's turn
+    slices, escapes its command for systemd, eases no bar while Joel is away unless given one to
+    ease, and an account declaring none gets no unit but still has night-shift on its path, for a
+    heavy job's turn
   '';
   night-shift-stops-for-joel = ''
     night-shift runs a job once a night on a quiet machine, starts nothing outside its hours, even

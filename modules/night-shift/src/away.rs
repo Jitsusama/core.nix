@@ -15,20 +15,43 @@
 //! keeps for two minutes after a key or a touch, and while a call is on,
 //! as `--away-call` says: a program and its arguments, split at spaces,
 //! exiting 0 during a call and 1 without one; a call it can't tell about
-//! counts as one. He's away once neither
+//! counts as one, and so does a program that won't start or doesn't
+//! answer within `CALL_ANSWERS_WITHIN`, which is stopped. The watch never
+//! waits on it longer than `CALL_WAITED_ON_AT_MOST`: while it hasn't
+//! answered, its last answer holds, or a call before any. Each time a call,
+//! or a probe that can't tell, starts keeping him counted as here, the
+//! run says so once. He's away once neither
 //! has held for `--away-after` seconds. At the start, the last minute he
 //! was there is the last line of `--away-seen`, rhythm's minutes, in
 //! seconds since 1970; with none to read, the run counts him there as it
 //! starts, so he must be gone `--away-after` within it before a bar eases.
+//!
+//! The mark is the account's own, so it says nothing of an account Joel
+//! isn't signed into: there he always reads as away. A slice's eased bar
+//! is that account's alone, but the machine's is the whole machine's, so
+//! only the account he works in should ease it.
 
 use std::fs;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// How often a call is asked about while nothing else says he's there:
 /// a program run each sample would cost more than the answer is worth.
 const CALL_ASKED_EVERY: Duration = Duration::from_secs(30);
+
+/// How long the call program may take before it counts as a call and is
+/// stopped, so one that hangs holds no bar off for longer.
+pub const CALL_ANSWERS_WITHIN: Duration = Duration::from_secs(10);
+
+/// How long one sample waits for the call program before it reads the
+/// slices; a quick program answers inside it, and a slow one is looked
+/// at again on the next sample rather than holding the stops up.
+const CALL_WAITED_ON_AT_MOST: Duration = Duration::from_secs(2);
+
+/// How often a sample looks whether the call program has answered.
+const CALL_LOOKED_AT_EVERY: Duration = Duration::from_millis(20);
 
 /// How a job tells Joel is away, and the bars it has while he is.
 #[derive(Debug, Clone, PartialEq)]
@@ -138,6 +161,9 @@ impl Away {
             away: self.clone(),
             here_at: seen.unwrap_or(now).min(now),
             call_asked: None,
+            asking: None,
+            told: None,
+            news: None,
         }
     }
 }
@@ -156,6 +182,26 @@ pub struct Watch {
     away: Away,
     here_at: SystemTime,
     call_asked: Option<(Instant, bool)>,
+    asking: Option<(Child, Instant)>,
+    told: Option<String>,
+    news: Option<String>,
+}
+
+/// What the call program's status says: whether a call counts as on,
+/// and, where it does, why.
+fn call_answer(status: ExitStatus) -> (bool, String) {
+    match status.code() {
+        Some(0) => (true, "a call is on, so Joel counts as here".into()),
+        Some(1) => (false, String::new()),
+        Some(code) => (
+            true,
+            format!("the call program can't tell (it exited {code}), so it counts as a call"),
+        ),
+        None => (
+            true,
+            "the call program was killed, so it counts as a call".into(),
+        ),
+    }
 }
 
 impl Watch {
@@ -177,26 +223,98 @@ impl Watch {
         true
     }
 
+    /// What the run should say of why he counts as here, once each time
+    /// a call, or a call program that can't tell, starts keeping him so.
+    pub fn news(&mut self) -> Option<String> {
+        self.news.take()
+    }
+
     /// Whether a call is on, asked at most every `CALL_ASKED_EVERY`; a
     /// call it can't ask about, or can't tell about, counts as one.
     fn on_a_call(&mut self) -> bool {
         let Some((program, args)) = self.away.call.split_first() else {
             return false;
         };
-        if let Some((at, on)) = self.call_asked
-            && at.elapsed() < CALL_ASKED_EVERY
-        {
-            return on;
+        if self.asking.is_none() {
+            if let Some((at, on)) = self.call_asked
+                && at.elapsed() < CALL_ASKED_EVERY
+            {
+                return on;
+            }
+            match Command::new(program)
+                .args(args)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+            {
+                Ok(child) => self.asking = Some((child, Instant::now())),
+                Err(error) => {
+                    return self.answer(
+                        true,
+                        format!("the call program won't start ({error}), so it counts as a call"),
+                    );
+                }
+            }
         }
-        let on = Command::new(program)
-            .args(args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map_or(true, |status| status.code() != Some(1));
+        let waited_from = Instant::now();
+        loop {
+            let Some((child, began)) = self.asking.as_mut() else {
+                return self.last_answer();
+            };
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    self.asking = None;
+                    let (on, why) = call_answer(status);
+                    return self.answer(on, why);
+                }
+                Ok(None) if began.elapsed() < CALL_ANSWERS_WITHIN => {}
+                Ok(None) | Err(_) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    self.asking = None;
+                    let why = format!(
+                        "the call program didn't answer within {}s, so it counts as a call",
+                        CALL_ANSWERS_WITHIN.as_secs()
+                    );
+                    return self.answer(true, why);
+                }
+            }
+            if waited_from.elapsed() >= CALL_WAITED_ON_AT_MOST {
+                return self.last_answer();
+            }
+            // A short look again for the program's exit: try_wait doesn't
+            // block, and a quick program answers within a few of these.
+            thread::sleep(CALL_LOOKED_AT_EVERY);
+        }
+    }
+
+    /// The answer before this one, while the program hasn't answered: a
+    /// call, before any.
+    fn last_answer(&self) -> bool {
+        self.call_asked.is_none_or(|(_, on)| on)
+    }
+
+    /// Keeps the program's answer, with news where why he's here changed.
+    fn answer(&mut self, on: bool, why: String) -> bool {
         self.call_asked = Some((Instant::now(), on));
+        if !on {
+            self.told = None;
+        } else if self.told.as_deref() != Some(why.as_str()) {
+            self.news = Some(why.clone());
+            self.told = Some(why);
+        }
         on
+    }
+}
+
+impl Drop for Watch {
+    /// A call program still running when the run ends goes with it.
+    fn drop(&mut self) {
+        if let Some((child, _)) = self.asking.as_mut() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
     }
 }
 
@@ -272,6 +390,24 @@ mod tests {
         );
         assert!((eased.machine_bar(25.0, false) - 25.0).abs() < f64::EPSILON);
         assert!((eased.machine_bar(25.0, true) - 12.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn why_a_call_keeps_him_here_is_news_once_each_time_it_starts() {
+        let mut watch = away(&[("--away-mark", "/run/here")]).watch();
+        assert!(watch.last_answer(), "no answer yet didn't count as a call");
+        assert!(watch.answer(true, "a call".into()));
+        assert_eq!(watch.news().as_deref(), Some("a call"));
+        assert!(watch.answer(true, "a call".into()));
+        assert_eq!(watch.news(), None, "the same reason was said twice");
+        assert!(!watch.answer(false, String::new()));
+        assert!(!watch.last_answer(), "no call didn't hold until the next");
+        assert!(watch.answer(true, "a call".into()));
+        assert_eq!(
+            watch.news().as_deref(),
+            Some("a call"),
+            "a call after none wasn't said again"
+        );
     }
 
     #[test]

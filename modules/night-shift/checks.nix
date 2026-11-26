@@ -104,7 +104,7 @@ onLinux {
         );
     in
     holds "night-shift-runs-only-at-night"
-      "A night job is tried by day or caught up on after a night slept through, runs by day when a switch starts it, keeps hours its own tries didn't name, drops hours it named, takes hours that hold no minute, runs outside background.slice or ahead of the account's work, drops a limit it names or puts it on its watcher too, is restarted by a switch, doesn't stop for the apps', the desktop's or agents' slices, passes its command's % to systemd unescaped, waits for the turn unasked, fails its unit for a wait it was let, names a window of running it wasn't given, loses its unit's limit set beside that window, or an account declaring no job gets one."
+      "A night job is tried by day or caught up on after a night slept through, runs by day when a switch starts it, keeps hours its own tries didn't name, drops hours it named, takes hours that hold no minute, runs outside background.slice or ahead of the account's work, drops a limit it names or puts it on its watcher too, is restarted by a switch, doesn't stop for the apps', the desktop's or agents' slices, passes its command's % to systemd unescaped, waits for the turn unasked, fails its unit for a wait it was let, names a window of running it wasn't given, loses its unit's limit set beside that window, eases a bar while Joel is away though it was given none to ease, or an account declaring no job gets one."
       (
         timer.OnCalendar == [
           "*-*-* 01:30/15"
@@ -151,26 +151,34 @@ onLinux {
   # A job easing its bars while Joel is away tells he is from
   # swayidle-away's mark, rhythm's minutes and a call on this machine,
   # their paths left to systemd to expand, and gives each eased bar; one
-  # easing a slice it has no stop for is refused.
+  # easing a slice it has no stop for is refused, and so is one in an
+  # account where nothing keeps the mark. The account here stands in an
+  # empty swayidle-away for core's swayidle, which the check needs only
+  # to be declared.
   night-shift-eases-its-bars-only-while-joel-is-away =
     let
       withJob =
-        job:
+        marked: job:
         account (bareNixos [
           self.nixosModules.workstation
           {
-            home-manager.users.someone.jitsusama.night-shift.jobs.eased = {
-              description = "Eases its bars while Joel is away";
-              command = [ "true" ];
-            }
-            // job;
+            home-manager.users.someone = {
+              jitsusama.night-shift.jobs.eased = {
+                description = "Eases its bars while Joel is away";
+                command = [ "true" ];
+              }
+              // job;
+              systemd.user.services = pkgs.lib.optionalAttrs marked { swayidle-away = { }; };
+            };
           }
         ]);
-      declared = withJob {
+      eases = {
         stopsWhileAway."app.slice" = 10;
         stopMachineWhileAway = 12;
       };
-      wrong = withJob { stopsWhileAway."agents-only.slice" = 10; };
+      declared = withJob true eases;
+      unmarked = withJob false eases;
+      wrong = withJob true { stopsWhileAway."agents-only.slice" = 10; };
       words = toString declared.systemd.user.services.night-shift-eased.Service.ExecStart;
       says = text: pkgs.lib.hasInfix text words;
       # night-shift's own, apart from what the rest of the account asserts.
@@ -178,7 +186,7 @@ onLinux {
         user: builtins.filter (rule: pkgs.lib.hasPrefix "night-shift job " rule.message) user.assertions;
     in
     holds "night-shift-eases-its-bars-only-while-joel-is-away"
-      "A job easing its bars while Joel is away escapes the specifiers in its mark's or minutes' paths, asks about calls beyond this machine or none at all, drops an eased bar or the wait before one, or eases a slice it has no stop for."
+      "A job easing its bars while Joel is away escapes the specifiers in its mark's or minutes' paths, asks about calls beyond this machine or none at all, drops an eased bar or the wait before one, eases a slice it has no stop for, or eases in an account where nothing keeps swayidle-away's mark."
       (
         says "--stop app.slice=1 "
         && says "--away-mark %t/someone-at-the-machine "
@@ -189,6 +197,9 @@ onLinux {
         && says "--away-stop-machine 12 "
         && says " -- true"
         && pkgs.lib.any (rule: !rule.assertion) (ours wrong)
+        && pkgs.lib.any (rule: !rule.assertion && pkgs.lib.hasInfix "swayidle-away" rule.message) (
+          ours unmarked
+        )
         && pkgs.lib.all (rule: rule.assertion) (ours declared)
         && ours declared != [ ]
       );

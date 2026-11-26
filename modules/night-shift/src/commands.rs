@@ -47,6 +47,12 @@ fn run() -> Help {
         .option("--memory-max SIZE", "the job's memory.max")
         .option("--swap-max SIZE", "the job's memory.swap.max")
         .option("--reads-at-most DISK=RATE", "the job's reads from a disk")
+        .option("--away-stop SLICE=PCT", "a slice's bar while Joel is away")
+        .option("--away-stop-machine PCT", "the machine's while he is")
+        .option("--away-mark FILE", "there while he's at the keys")
+        .option("--away-seen FILE", "rhythm's minutes he was there")
+        .option("--away-call PROGRAM", "exits 0 while a call is on")
+        .option("--away-after SECONDS", "how long gone is away; 1800")
         .exit(
             Exit::Failed,
             "its folders, lock or cgroup failed it, or the job didn't start",
