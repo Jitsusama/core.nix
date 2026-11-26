@@ -28,9 +28,17 @@
 let
   package = pkgs.callPackage ./package.nix { };
   realm = config.home.sessionVariables.MYCELIUM_REALM or null;
+  # The harness's needs folder, under the state folder, where hear keeps
+  # each pain it put to a hub.
+  needs = "pi/agentic-harness.pi/mesh-workflow/needs";
 in
 {
   home.packages = [ package ];
+
+  # Made at login, so hear's first run can write there before any pi
+  # session has made it. Its lines hold Joel's words, so only his account
+  # reads it.
+  systemd.user.tmpfiles.rules = [ "d ${config.xdg.stateHome}/${needs} 0700 - - -" ];
 
   systemd.user.services.pain-points = {
     Unit.Description = "Names the launcher's, pi's and Chrome's interactions that slowed Joel most today";
@@ -82,12 +90,12 @@ in
       ProtectHome = "read-only";
       # The misses ledger's folder, where it writes each pain it sent, and
       # the harness's needs folder, where it keeps each pain it put to a
-      # hub; one not made yet leaves the unit starting, its write a
-      # trouble said.
+      # hub. Login makes that one; should a run start before it is made,
+      # the unit still starts, its write a trouble said.
       ReadWritePaths = [
         "%S/pain-points"
         "-%S/mission"
-        "-%S/pi/agentic-harness.pi/mesh-workflow/needs"
+        "-%S/${needs}"
       ];
       # The mycelium's socket is a file under the runtime folder, which a
       # network namespace of its own leaves reachable while keeping it off

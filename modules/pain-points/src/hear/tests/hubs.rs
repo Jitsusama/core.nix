@@ -190,3 +190,30 @@ fn only_a_send_to_a_holder_that_failed_spends_a_try() {
         );
     }
 }
+
+#[test]
+fn a_need_that_couldnt_be_kept_is_a_trouble_and_the_pain_still_sent() {
+    let place = Place::new("hub-unkept");
+    place.routes();
+    a_day(&place);
+    // A file where the mesh's folder goes, so no needs folder can be made.
+    fs::write(place.root.join("mesh"), "").expect("a file in the folder's place");
+    let ears = ears_with(&place, vec![hub("launcher", "HUB001", &["FIT002"])]);
+    let hour = hear_putting(&ears, HELD, &mut |_, _, _| Sent::Went).expect("a run");
+    assert!(
+        hour.troubles
+            .iter()
+            .any(|t| t.starts_with("the needs put to hubs couldn't be kept: ")),
+        "a need lost wasn't said: {hour:?}"
+    );
+    let heard = place.heard();
+    let void = heard
+        .iter()
+        .find(|h| h.words.contains(VOIDS))
+        .expect("the void's pain heard");
+    assert_eq!(
+        void.to.as_deref(),
+        Some("FIT002"),
+        "a need not kept unsent its pain: {void:?}"
+    );
+}

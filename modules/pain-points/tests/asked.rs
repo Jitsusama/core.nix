@@ -320,6 +320,10 @@ fn heard_in(home: &std::path::Path) -> Output {
         ])
         .env("HOME", home)
         .env("XDG_STATE_HOME", home.join("state"))
+        // A realm whose node isn't running, so the run never asks the
+        // machine's own node for its hubs.
+        .env("XDG_RUNTIME_DIR", home.join("run"))
+        .env("MYCELIUM_REALM", "nowhere")
         .env_remove("JOURNAL_STREAM")
         .stdin(Stdio::null())
         .output()

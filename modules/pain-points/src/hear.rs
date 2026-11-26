@@ -206,7 +206,11 @@ pub fn listen(
     let mission = take("--ledgers").map_or_else(|| state.join("mission"), PathBuf::from);
     let mycelium = take("--mycelium").map_or_else(|| "mycelium".into(), PathBuf::from);
     let date = take("--date").map_or_else(|| "date".into(), PathBuf::from);
-    let (hubs, hubless) = hubs_named(&state);
+    let (hubs, hubless) = hubs_named(
+        &state,
+        std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from),
+        std::env::var("MYCELIUM_REALM").ok(),
+    );
     let ears = Ears {
         sessions: take("--sessions").map_or_else(|| home.join(".pi/agent/sessions"), PathBuf::from),
         state: own,
@@ -256,19 +260,22 @@ pub fn listen(
     ))
 }
 
-/// The hubs the node of this machine's realm names, from its socket in
-/// the runtime folder, and why none were read where it couldn't be asked.
-/// A machine in no realm has no node to ask, which is no error: its pains
-/// no cell of their own takes go to the fallback, as before hubs.
-fn hubs_named(state: &Path) -> (Vec<subject_hubs::Hub>, Option<String>) {
-    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
-    let realm = std::env::var("MYCELIUM_REALM").ok();
+/// The hubs the node of `realm` names, from its socket in the `runtime`
+/// folder, and why none were read where it couldn't be asked, naming the
+/// socket asked, so the card says which node to look at. A machine in no
+/// realm has no node to ask, which is no error: its pains no cell of
+/// their own takes go to the fallback, as before hubs.
+fn hubs_named(
+    state: &Path,
+    runtime: Option<PathBuf>,
+    realm: Option<String>,
+) -> (Vec<subject_hubs::Hub>, Option<String>) {
     let Some(socket) = runtime.and_then(|r| subject_hubs::socket(&r, state, realm)) else {
         return (Vec::new(), None);
     };
     match subject_hubs::listed(&socket) {
         Ok(hubs) => (hubs, None),
-        Err(error) => (Vec::new(), Some(error.to_string())),
+        Err(error) => (Vec::new(), Some(format!("{}: {error}", socket.display()))),
     }
 }
 
@@ -712,7 +719,8 @@ fn route_waiting(
             let mut takers = live.clone();
             takers.remove(&cell.address);
             let said = route::said(pain, cells, routes);
-            let Some((hub, fit, words)) = route::holder(&said, &ears.hubs, &takers, &held, routes)
+            let Some((hub, fit, words)) =
+                route::holder(&said, &ears.hubs, &takers, &held, routes, pain.tries)
             else {
                 return routes.fallback.clone();
             };

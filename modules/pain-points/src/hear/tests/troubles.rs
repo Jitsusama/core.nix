@@ -151,6 +151,25 @@ fn a_node_that_named_no_hubs_is_a_trouble_by_its_error() {
 }
 
 #[test]
+fn a_node_that_couldnt_be_asked_for_hubs_is_named_by_its_socket() {
+    let place = Place::new("hubless-socket");
+    let runtime = place.root.join("run");
+    let (hubs, why) = hubs_named(&place.root, Some(runtime.clone()), Some("nowhere".into()));
+    let socket = runtime.join("mycelium/nowhere.sock");
+    assert!(hubs.is_empty(), "a node never asked named hubs: {hubs:?}");
+    let why = why.expect("a node not there couldn't be asked");
+    assert!(
+        why.starts_with(&format!("{}: ", socket.display())),
+        "the socket asked isn't named: {why}"
+    );
+    assert_eq!(
+        hubs_named(&place.root, None, Some("nowhere".into())),
+        (Vec::new(), None),
+        "a machine with no runtime folder read as a node that couldn't be asked"
+    );
+}
+
+#[test]
 fn an_earlier_run_dated_ahead_of_this_one_holds_no_outage_back() {
     let place = Place::new("future-hour");
     place.routes();
