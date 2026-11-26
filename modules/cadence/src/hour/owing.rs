@@ -159,21 +159,8 @@ fn filed(m: &Measure) -> Vec<Filed> {
         figure(m.now),
         figure(m.target.unwrap_or_default())
     );
-    // A merge's rounds can't be taken back, so its figure never comes in:
-    // the owner is asked what they caught, and it closes as the merge
-    // leaves the day's count.
     if m.key.starts_with(rounds::FRUITLESS) {
-        return vec![Filed {
-            key: format!("hour:{}", m.key),
-            owner: m.owner.clone(),
-            text: format!(
-                "cadence hour: {says}. Past round five a round raises only what would \
-                 mislead Joel or break something. Please reply with what those rounds \
-                 caught that the fixes record misses, or what keeps the next merge to five. \
-                 It closes by itself once the merge is a day old."
-            ),
-            says,
-        }];
+        return vec![fruitless_asked(m, says)];
     }
     if m.key.starts_with(told_late::KEY) {
         return told_late_asked(m, &says);
@@ -222,6 +209,24 @@ fn filed(m: &Measure) -> Vec<Filed> {
         ),
         says,
     }]
+}
+
+/// The ask about a merge's rounds past five that caught nothing. Its
+/// rounds can't be taken back, so its figure never comes in: the owner is
+/// asked what they caught, and it closes as the merge leaves the day's
+/// count.
+fn fruitless_asked(m: &Measure, says: String) -> Filed {
+    Filed {
+        key: format!("hour:{}", m.key),
+        owner: m.owner.clone(),
+        text: format!(
+            "cadence hour: {says}. Past round five a round raises only what would \
+             mislead Joel or break something. Please reply with what those rounds \
+             caught that the fixes record misses, or what keeps the next merge to five. \
+             It closes by itself once the merge is a day old."
+        ),
+        says,
+    }
 }
 
 /// Each owner's ask about the dates of theirs moved too late to warn
