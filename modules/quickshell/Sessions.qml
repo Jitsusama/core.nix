@@ -2956,7 +2956,10 @@ Singleton {
         if (!(named in refusedAsks) || !(refusedAt[named] <= asked)
             || asked - refusedAt[named] >= answerPatience)
             return;
-        const refused = refusedAsks[named];
+        // The cause is journalled before keepAgain's own lines, and what
+        // came of it after, as keepAgain decides it.
+        console.info(`sessions: no sessions kitty took ${named}, so window `
+            + `${refusedAsks[named]}, come refused, was another program's`);
         const told = disownedSaid[named] ?? null;
         const back = keptAsks[named];
         const going = goingTo?.app === named ? goingTo : null;
@@ -2964,9 +2967,9 @@ Singleton {
         if (going !== null)
             goingTo = null;
         const again = keepAgain(back, named);
-        console.info(`sessions: no sessions kitty took ${named}, so window ${refused}, come `
-            + "refused, was another program's, and "
-            + (again ? "it's asked for again of the kitty come since" : "a press asks afresh")
+        console.info(`sessions: ${named} `
+            + (again ? "is asked for again of the kitty come since"
+                : "is asked afresh by the next press")
             + (told !== null ? "; its press is told" : ""));
         if (again)
             pressedAgain(named, told, going);
