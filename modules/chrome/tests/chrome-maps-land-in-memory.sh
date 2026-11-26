@@ -12,8 +12,9 @@
 # stops the move; that one still quitting after the half minute, with a
 # histogram mapped, is given up on for BrowserMetrics and the caches
 # alike, and the run looks once more and starts over once it has quit,
-# or ends within its minute, moving nothing, if it quits only after;
-# and that while a Chrome holds the profile nothing in it is touched,
+# or ends within its minute, moving nothing, if it quits only after,
+# or only BrowserMetrics, saying so, when it maps only a cache; and that
+# while a Chrome holds the profile nothing in it is touched,
 # though the folders in memory are still made, but for BrowserMetrics,
 # which Chrome deletes itself as it runs and which moves whenever nothing
 # of Chrome's maps or holds open a file still in it: a file it maps or
@@ -21,7 +22,8 @@
 # mapped or held open, nor one in a folder whose name only begins with
 # it, a quitting Chrome mapping one is waited for, what a session left in
 # memory goes unless it's mapped, and it moves when named after caches a
-# held profile keeps; that a Chrome on another host keeps BrowserMetrics
+# held profile keeps, while a running Chrome keeping it, the caches in
+# memory, ends the run quietly; that a Chrome on another host keeps BrowserMetrics
 # too, since its processes can't be seen; and that folders reaching
 # outside the profile are refused. The
 # folders are those a running Chrome was seen mapping shared and
@@ -494,6 +496,23 @@ wait "$quitting"
 run "outlasting Chrome's second"
 in_memory "once a Chrome that outlasted the last look had gone"
 
+# One mapping only a cache through the last look lets BrowserMetrics move,
+# so nothing it kept is left for the last look but the caches, and the run
+# still says how it ended, rather than its log ending on a wait.
+fill
+quit_later "$work/quit"
+run "outlasting cache's"
+if ! kill -0 "$quitting" 2>/dev/null; then
+  echo "the quitting stand-in ended before the run did, so no cache outlasted the last look"
+  exit 1
+fi
+untouched "while a Chrome mapping only a cache was still quitting after the last look"
+said "still had what it kept after the last look" "with a cache's Chrome quitting through it"
+touch "$work/quit"
+wait "$quitting"
+run "outlasting cache's second"
+in_memory "once a Chrome that mapped only a cache had gone"
+
 # A running Chrome mapping a file in BrowserMetrics, as its browser maps
 # its histograms, keeps it on the disk, and the run says why.
 fill
@@ -562,6 +581,29 @@ echo old >"$profile/BrowserMetrics/index"
 run "deleted open file's"
 kill "$chrome"
 metrics "with Chrome holding open a file it had deleted"
+
+# With the caches in memory, a running Chrome keeping BrowserMetrics is
+# all that brings the last look, which ends quietly while it runs. That
+# the look catches a Chrome quitting between the pass and it isn't shown,
+# since nothing here can time a quit into that moment.
+fill
+run "running-only first"
+rm "$profile/BrowserMetrics"
+mkdir "$profile/BrowserMetrics"
+echo old >"$profile/BrowserMetrics/index"
+cp "$BASH" "$profile/BrowserMetrics/chrome"
+"$profile/BrowserMetrics/chrome" -c 'while :; do sleep 1; done' &
+chrome=$!
+named "$chrome"
+ln -s "$here-$chrome" "$profile/SingletonLock"
+run "running-only"
+metrics_kept "with the caches in memory and a running Chrome mapping its histograms"
+if grep -q 'still had what it kept\|starts over' run.log; then
+  echo "a run with only a running Chrome's histograms kept didn't end quietly, saying:"
+  cat run.log
+  exit 1
+fi
+kill "$chrome"
 
 # BrowserMetrics moves while Chrome holds the profile even when named
 # after the caches it keeps, which are passed over rather than ending the
