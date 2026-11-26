@@ -240,6 +240,52 @@ fn a_link_pinned_at_the_handover_between_two_files_gets_neither_copy_through_it(
 }
 
 #[test]
+fn a_link_put_at_or_above_the_handover_between_two_files_is_cleared_and_the_list_ends_cut() {
+    let mut kind = kind("");
+    kind.brings_back = vec!["out".into()];
+    let at = format!("../../{HANDOVER}/1");
+    // A cp that, once the first file crossed, moves the handover's folder
+    // above, the one above that, the handover or its folder for copies
+    // aside to `beyond`, with a link to it at its name, so a second copy
+    // through it would land. Each link the far line may clear, and where
+    // one took the handover with it, the list is cut in a handover made
+    // again.
+    for (moved, back) in [
+        ("../../handover".to_owned(), "elsewhere/1/back"),
+        (format!("../../{HANDOVER}"), "1/back"),
+        (at.clone(), "back"),
+        (format!("{at}/{BACK}"), ""),
+    ] {
+        let swapping = format!(
+            "PATH=${{PATH#*:}} cp \"$@\" || exit\n\
+             [ -e \"$HOME/swapped\" ] || {{ mv {moved} \"$HOME/beyond\" && \
+             ln -s \"$HOME/beyond\" {moved} && : > \"$HOME/swapped\"; }}"
+        );
+        let programs = [("cp", swapping.as_str())];
+        let job = "mkdir out && printf a > out/a && printf b > out/b";
+        let (code, err, home) = far_line(Left::Whole, &[("x", "x")], job, &kind, None, &programs);
+        let listed = std::fs::read_to_string(handover(&home).join(BROUGHT)).unwrap_or_default();
+        assert!(
+            home.join("swapped").exists() && left_in(&home.join("beyond").join(back)) == ["0"],
+            "the far line copied the second file through a link at {moved} ({code:?}): {err}"
+        );
+        assert!(
+            code == Some(0)
+                && err.contains(
+                    "a link was put at its handover as it brought back, so the rest stays"
+                )
+                && !err.contains("cannot create")
+                && !err.contains("No such file")
+                && !listed.contains("out/b")
+                && listed.ends_with("\ncut\n"),
+            "a link at {moved} between files didn't leave the rest, or end the list cut \
+             ({code:?}): {listed:?} {err}"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+}
+
+#[test]
 fn a_link_put_at_a_copy_s_name_gets_no_copy_through_it_and_the_list_ends_cut() {
     let mut kind = kind("");
     kind.brings_back = vec!["out".into()];

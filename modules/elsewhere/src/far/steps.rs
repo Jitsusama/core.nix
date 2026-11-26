@@ -681,9 +681,13 @@ elif ! echo {END} >> "$job/{BROUGHT}"; then
 fi
 # Cut on a line of its own, so a line the full disk cut in half can't
 # hide it, and never through a link that couldn't be cleared at its name
-# or at the handover.
-[ $wrote -eq 0 ] || [ -z "$handed" ] || [ -L "$job/{BROUGHT}" ] ||
-  printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"
+# or at the handover. Where one cleared there took the job's folder with
+# it, the folder is made again, so the near side still reads the cut.
+if [ $wrote -ne 0 ] && [ -n "$handed" ] && [ ! -L "$job/{BROUGHT}" ]; then
+  [ -d "$job" ] || mkdir -p "$job" 2>/dev/null
+  {{ printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"; }} 2>/dev/null ||
+    printf "elsewhere: couldn't cut the list of what it brings back\n" >&2
+fi
 "#,
         freed = freed(),
     )
