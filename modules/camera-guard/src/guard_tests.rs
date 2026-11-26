@@ -5,13 +5,13 @@ use std::collections::BTreeSet;
 #[test]
 fn a_cause_s_text_is_cut_and_a_stretch_says_only_so_many() {
     let mut watch = Watch::default();
-    // Two-byte characters and a control character, so the cut counts
+    // Two-byte characters, a bell and a C1 control, so the cut counts
     // characters and the journal gets none of the daemon's controls.
-    let long = format!("\u{1b}[2J{}", "\u{e9}".repeat(5000));
+    let long = format!("\u{7}ab\u{9b}{}", "\u{e9}".repeat(5000));
     let said = watch.heard(Err(long)).0;
     assert_eq!(said.len(), 1, "the first cause wasn't said once");
     assert!(
-        said[0].ends_with(&format!(": [2J{}...", "\u{e9}".repeat(BRIEF - 3))),
+        said[0].ends_with(&format!(": ab{}...", "\u{e9}".repeat(BRIEF - 2))),
         "a long cause wasn't cut to its first {BRIEF} plain characters: {}",
         said[0]
     );
