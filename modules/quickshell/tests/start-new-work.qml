@@ -1,12 +1,14 @@
 // Start New Work, Agents' act that begins new work from a link or words, run
 // in Qt's own JavaScript engine, the one the shell runs it in. The
 // `start-new-work-asks-only-a-sprout` check copies
-// modules/quickshell/launcher/Sprouting.js and Openings.js, tests/lib/Expect.js
+// modules/quickshell/launcher/Sprouting.js, Openings.js and StartSaid.js,
+// tests/lib/Expect.js
 // and Agents' words, as words.json, beside this file and runs it offscreen.
 import QtQuick
 import "Expect.js" as Expect
 import "launcher/Openings.js" as Openings
 import "launcher/Sprouting.js" as Sprouting
+import "launcher/StartSaid.js" as StartSaid
 
 QtObject {
     // A case that doesn't hold throws, and ends the test as a failure.
@@ -459,7 +461,7 @@ QtObject {
                 { words: "w", letters: 3, keys: 7, at: 200 }, 55200);
             Expect.same("an opening is pressed from its Return and waited from its answer",
                 made, { key: "a", held: "h1", machine: "kestrel", since: 55200, asked: 200,
-                    keys: 7, letters: 3 });
+                    keys: 7, letters: 3, words: "w", on: "" });
             Expect.same("its act pressed after its Return, before its answer, it doesn't",
                 Openings.takesKeys(true, { a: 250 }, made), false);
             Expect.same("a slow answer isn't said to be still coming up seconds after",
@@ -663,5 +665,103 @@ QtObject {
             /^[a-z0-9]+-[a-z0-9]+$/u.test(token), true);
         Expect.same("two asked in one moment are told apart",
             token === Sprouting.token(1763500000000, 0.25), false);
+
+        // The same words given the same act again say when they started, rather than
+        // starting the work twice (Joel, 2026-11-25: "no clue if i did it once, twice,
+        // thrice or not at all").
+        const began = new Date(2026, 10, 25, 14, 30, 50).getTime();
+        const inA = "verb:agents:start-new-work:in:/src/a";
+        const inB = "verb:agents:start-new-work:in:/src/b";
+        const minute = 60 * 1000;
+        const up = { started: true, machine: "skiff", held: "h1" };
+        const barInA = { key: inA, words: "fix the bar" };
+        const bar = StartSaid.made([], barInA, up, began);
+        const asks = (key, said, on) => ({ key, words: said, on: on ?? "" });
+        const again = (list, key, said, at) =>
+            StartSaid.again(list, asks(key, said), at)?.words ?? null;
+        Expect.same("the same words again say when they started", StartSaid.clock(
+            StartSaid.again(bar, asks(inA, "  fix the bar "), began + minute)), "14:30");
+        // Every From a Link act shares one key, so where it starts tells two apart.
+        const barThere = StartSaid.made([], { key: inA, words: "fix the bar", on: "cloud" }, up,
+            began);
+        Expect.same("the same words started here, then asked for the cloud, start there",
+            StartSaid.again(bar, asks(inA, "fix the bar", "cloud"), began + minute), null);
+        Expect.same("and the same asked for the cloud again say when they started",
+            StartSaid.clock(StartSaid.again(barThere, asks(inA, "fix the bar", "cloud"),
+                began + minute)), "14:30");
+        Expect.same("other words start", again(bar, inA, "fix the foot", began + minute), null);
+        Expect.same("the same words in another folder start",
+            again(bar, inB, "fix the bar", began + minute), null);
+        Expect.same("an hour on, the same words start",
+            again(bar, inA, "fix the bar", began + 60 * minute), null);
+        Expect.same("nothing made, anything starts", again([], inA, "fix the bar", began), null);
+        // Every start of the hour is kept, not only the last: A, then B, then A again.
+        const both = StartSaid.made(bar, { key: inA, words: "fix the foot" }, up, began + minute);
+        Expect.same("an earlier start is still known after a later one",
+            again(both, inA, "fix the bar", began + 2 * minute), "fix the bar");
+        // Unanswered may have started, so it counts; refused or unread began nothing.
+        const unanswered = StartSaid.made([], barInA,
+            { started: false, unanswered: true, why: "nothing answered" }, began);
+        Expect.same("an unanswered start counts, as not known to have started",
+            StartSaid.again(unanswered, asks(inA, "fix the bar"), began + minute)?.answered,
+            false);
+        Expect.same("a refused start counts for nothing", StartSaid.made([], barInA,
+            { started: false, why: "no", refusal: "" }, began), []);
+        Expect.same("nor does one whose answer couldn't be read", StartSaid.made([], barInA,
+            { started: false, why: "unread" }, began), []);
+        // Told it was made, a Return with the same words just after is meant.
+        const told = StartSaid.told(bar, bar[0], began + minute);
+        Expect.same("just told, the same words start once more",
+            again(told, inA, "fix the bar", began + 2 * minute), null);
+        Expect.same("told long ago, he's told again first",
+            again(told, inA, "fix the bar", began + 4 * minute), "fix the bar");
+        // A Return held, or pressed twice, lands under a second after the one told.
+        Expect.same("a Return straight after he was told is told again",
+            again(told, inA, "fix the bar", began + minute + 300), "fix the bar");
+        Expect.same("a retry refused leaves the start made before it",
+            StartSaid.made(told, barInA, { started: false, why: "no", refusal: "" },
+                began + 2 * minute).map(one => one.words), ["fix the bar"]);
+        Expect.same("started once more, it's known as the new start alone",
+            StartSaid.made(told, barInA, up, began + 2 * minute).length, 1);
+        Expect.same("an hour's starts go", StartSaid.made(bar, { key: inB, words: "fix it" }, up,
+            began + 60 * minute).map(one => one.key), [inB]);
+        // A Return on the act whose start is under way keeps its receipt only
+        // for the same words, to the same place; every From a Link act shares
+        // one key, so anything else is new work. What's under way is the start
+        // asked and every opening still coming up, its session not yet up.
+        const link = "verb:agents:start-new-work:link";
+        const running = { key: link, words: "https://x/issues/1", on: "" };
+        const coming = Openings.opening({ held: "h2", machine: "skiff" }, inA,
+            { words: "fix the bar", on: "", keys: 4, letters: 2, at: began }, began + minute);
+        const underWay = asked => StartSaid.underWayAgain([running, coming], Object.assign(
+            { key: link, words: "https://x/issues/1", on: "" }, asked));
+        Expect.same("the same words to the same place again keep the receipt",
+            underWay({ words: " https://x/issues/1 " }) === running, true);
+        Expect.same("another page's link on the same act is new work",
+            underWay({ words: "https://x/issues/2" }), null);
+        Expect.same("the same words for the cloud are new work", underWay({ on: "cloud" }),
+            null);
+        Expect.same("another act is new work", underWay({ key: inB }), null);
+        Expect.same("a start still coming up given again keeps its receipt too",
+            underWay({ key: inA, words: "fix the bar" })?.held, "h2");
+        // Lost, a start no longer counts as made, so the same words start again;
+        // the same words for the cloud are another start, and kept.
+        const lostHere = StartSaid.forgot(StartSaid.made(barThere, barInA, up, began), coming);
+        Expect.same("a start whose session was lost is made no more, the same words start",
+            StartSaid.again(lostHere, asks(inA, "fix the bar"), began + minute), null);
+        Expect.same("but the same words in the cloud are still made",
+            lostHere.map(one => one.on), ["cloud"]);
+        Expect.same("nothing running, nothing is under way again",
+            StartSaid.underWayAgain([], running), null);
+        Expect.same("and Start New Work says so in its own words, with the time",
+            [written.again, written.againUnanswered].every(one => String(one ?? "")
+                .includes("{at}")), true);
+
+        // A start's wait is counted to the second, so it's seen to run.
+        Expect.same("nothing before it began", StartSaid.waited(0, began), "");
+        Expect.same("seconds at first", StartSaid.waited(began, began + 8400), "8 s");
+        Expect.same("then minutes and seconds", StartSaid.waited(began, began + 65000),
+            "1 min 05 s");
+        Expect.same("never less than nothing", StartSaid.waited(began, began - 5000), "0 s");
     }
 }
