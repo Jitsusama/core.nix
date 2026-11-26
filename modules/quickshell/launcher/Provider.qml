@@ -550,15 +550,26 @@ Scope {
     // word of a row, so typing on only ever finds fewer, and while what's
     // typed goes on from the last search of the same rows, only the rows
     // that one matched are looked at again, as Emoji's are. Rows made
-    // anew, as a new notice makes them, are looked through whole. A search
-    // says what it matched, at any grade, with `matchedIn`.
+    // anew, as a new notice makes them, are looked at too: when a change
+    // makes the list anew but keeps some of its rows, as Runs keeps every
+    // finished run's while one at work is made again each update, a kept
+    // row the letters before didn't match still can't match, since its
+    // text is as it was. Without that, every update the node sent while a
+    // run was at work had the next letter search the whole day again
+    // (2026-11-26). A search says what it matched, at any grade, with
+    // `matchedIn`.
     property var lastMatched: ({ from: null, words: "", rows: [] })
 
     function poolFor(rows, typed) {
         const words = Fuzzy.words(typed).join(" ");
         const last = lastMatched;
-        return last.from === rows && last.words !== "" && words.startsWith(last.words)
-            ? last.rows : rows;
+        if (last.from === null || last.words === "" || !words.startsWith(last.words))
+            return rows;
+        if (last.from === rows)
+            return last.rows;
+        const matched = new Set(last.rows);
+        const before = new Set(last.from);
+        return rows.filter(row => matched.has(row) || !before.has(row));
     }
 
     function matchedIn(rows, typed, matched) {
