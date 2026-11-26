@@ -161,19 +161,28 @@ impl Moving<'_> {
             .said
             .get_or_init(|| (said(before, self.was), said(self.after, self.now)));
         let at = was.iter().position(|(b, _)| *b == block)?;
+        // Each saying's places before and blocks now, read once, so trying
+        // every neighbour costs a look each rather than both pages again.
+        let mut sayings: std::collections::HashMap<&str, (Vec<usize>, Vec<usize>)> =
+            std::collections::HashMap::new();
+        for (place, (_, words)) in was.iter().enumerate() {
+            sayings.entry(words.as_str()).or_default().0.push(place);
+        }
+        for (b, words) in now {
+            if let Some((_, blocks)) = sayings.get_mut(words.as_str()) {
+                blocks.push(*b);
+            }
+        }
         let found = |at: usize| -> Option<usize> {
             let words = &was[at].1;
             if words.is_empty() {
                 return None;
             }
-            let nth = was[..at].iter().filter(|(_, w)| w == words).count();
-            let many = was.iter().filter(|(_, w)| w == words).count();
-            let same: Vec<usize> = now
-                .iter()
-                .filter(|(_, w)| w == words)
-                .map(|(b, _)| *b)
-                .collect();
-            same.get(nth).filter(|_| same.len() == many).copied()
+            let (places, same) = sayings.get(words.as_str())?;
+            let nth = places.partition_point(|place| *place < at);
+            same.get(nth)
+                .filter(|_| same.len() == places.len())
+                .copied()
         };
         if let Some(into) = found(at) {
             return Some(into);

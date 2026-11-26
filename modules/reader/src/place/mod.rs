@@ -594,12 +594,21 @@ pub fn take_kept(
 /// from the whole page; without it, a resize would land it unscaled for
 /// good. Only one measured on a page as wide, `width_pt`, learns it.
 pub fn heights_known(landed: &mut [Landed], starts: &[(usize, f64)], width_pt: f64) {
-    for one in landed
-        .iter_mut()
-        .filter(|one| one.kept.block_pt.is_none() && measured_at(&one.kept, width_pt))
-    {
+    for one in landed.iter_mut().filter(|one| wants_height(one, width_pt)) {
         one.kept.block_pt = height_of(starts, one.kept.block);
     }
+}
+
+/// Whether any landed mark would learn its block's height from a page
+/// `width_pt` wide, as `heights_known` gives it, so a page set at another
+/// width, which none does, isn't walked for one.
+pub fn heights_wanted(landed: &[Landed], width_pt: f64) -> bool {
+    landed.iter().any(|one| wants_height(one, width_pt))
+}
+
+/// Whether `one`, kept without its block's height, was measured at `width_pt`.
+fn wants_height(one: &Landed, width_pt: f64) -> bool {
+    one.kept.block_pt.is_none() && measured_at(&one.kept, width_pt)
 }
 
 /// Moves `marks` for the page set again, its blocks starting at `after`:

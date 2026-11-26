@@ -1,8 +1,8 @@
 use super::{
     Block, Landed, Mark, Opens, Place, Said, Taking, as_read, at, heading_of, heights_known,
-    keep_window_in, kept_at, landed_again, letter, line_in, listed_in, mark, mark_at, moved,
-    on_lines, opening, pt_of, read_in, set_again, still_waiting, take_kept, through, window_in,
-    write_in,
+    heights_wanted, keep_window_in, kept_at, landed_again, letter, line_in, listed_in, mark,
+    mark_at, moved, on_lines, opening, pt_of, read_in, set_again, still_waiting, take_kept,
+    through, window_in, write_in,
 };
 use std::collections::HashMap;
 
@@ -605,7 +605,16 @@ fn kept_marks_are_taken_as_read_and_one_kept_without_a_height_takes_its_blocks()
         "b takes its block's height here; c's block's isn't known on the first screen, \
          and f can't say it was measured at this width"
     );
-    // The whole page, at another width, says nothing of c's block.
+    // The whole page, at another width, says nothing of c's block, so
+    // none is walked for it.
+    assert!(
+        !heights_wanted(&landed, 500.0),
+        "a page at another width was walked for heights none can learn"
+    );
+    assert!(
+        heights_wanted(&landed, 400.0),
+        "c's height wasn't wanted at its own width"
+    );
     let wider = [(0, 36.0), (1, 120.0), (2, 260.0), (3, 300.0)];
     heights_known(&mut landed, &wider, 500.0);
     assert_eq!(

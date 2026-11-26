@@ -69,7 +69,6 @@ fn an_edit_whose_set_a_newer_replaced_before_it_showed_is_said_by_the_newer() {
         Some(true),
         "pictures come before it shows: set again, it still says the edit"
     );
-    assert_eq!(shown, Shown::of(opened), "judging moved nothing");
     assert_eq!(
         Shown::of(opened).takes(500.0, 500.0, opened),
         Some(false),

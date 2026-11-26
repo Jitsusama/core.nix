@@ -377,12 +377,11 @@ impl App {
     /// that height: one at another would pair it with a height it never
     /// had, and closing would keep that.
     fn take_kept_marks_as(&mut self, whole: bool) {
-        let lacking = self.landed.iter().any(|one| one.kept.block_pt.is_none());
-        if self.kept_marks.is_empty() && !lacking {
+        let width_pt = self.painter.width_pt();
+        if self.kept_marks.is_empty() && !place::heights_wanted(&self.landed, width_pt) {
             return;
         }
         let starts = place::starts(&self.painter.page().frame);
-        let width_pt = self.painter.width_pt();
         place::heights_known(&mut self.landed, &starts, width_pt);
         place::take_kept(
             &mut self.kept_marks,
