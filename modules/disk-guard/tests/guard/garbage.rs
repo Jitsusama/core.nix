@@ -266,8 +266,11 @@ fn a_min_free_read_tells_none_of_what_nix_printed() {
     }
 }
 
-/// The opening of a stand-in that answers only `asked`, and says what it
-/// was asked otherwise, so a wrong ask fails saying so.
+/// The opening of a stand-in that answers only `asked` and exits 9 for any
+/// other ask, so a wrong ask fails the test. It says what it was asked on
+/// its error stream, which the failure shows only where what's tested
+/// passes those words on, as a listing does; a min-free read tells their
+/// length alone.
 fn refusing(asked: &str) -> String {
     format!("[ \"$*\" = '{asked}' ] || {{ echo \"stand-in asked: $*\" >&2; exit 9; }}\n")
 }
