@@ -1729,6 +1729,8 @@ QtObject {
             shownLabels(valueless, "undefined"), ["Unset", "Asked", "Blank"]);
         holds("and under no title, every fact is drawn, a blank one too",
             shownLabels(valueless, ""), ["Unset", "Asked", "Blank"]);
+        holds("but under no title still none that isn't there",
+            shownLabels([null, ...given, undefined], ""), ["Name", "Kind", "Port"]);
         // Where a fact's figure stands: a stroke of 100 that reads down to
         // 30, a spark of 100 that reads only whole (VKCF3Z, 2026-11-09).
         const stroke = { shape: "stroke", usual: 100, least: 30 };
