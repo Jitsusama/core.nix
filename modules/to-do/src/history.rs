@@ -425,7 +425,7 @@ mod tests {
     #[test]
     fn a_second_form_look_s_drawer_leads_with_what_happened_as_for_you_s_does() {
         let drawn = |happened: &str, matters: &str| {
-            let look = json!({"v": 2, "id": "b2", "kind": "pr", "title": "Fix the build",
+            let look = json!({"v": 1, "id": "b2", "kind": "pr", "title": "Fix the build",
                 "state": "opened", "target": "https://github.com/Jitsusama/core.nix/pull/4369",
                 "happened": happened, "matters": matters,
                 "why": "Made by its harness.", "ask": "Also made.",
