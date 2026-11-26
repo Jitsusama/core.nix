@@ -2670,6 +2670,16 @@
     curl, fd, jq, mycelium, rg and websocat, its curl speaking wss:// over OpenSSL 3, so a tool
     one system lacks fails on that system's checks before a machine of it switches
   '';
+  mycelium-declares-what-work-needs = ''
+    a machine declaring what work begun in some of its folders, or naming some words, needs has
+    it written where mycelium reads it, in mycelium's words: a cloud need alone and every other
+    as its kind keyed to its value, as `mycelium sprout --need` takes them; nothing is written
+    where nothing is said. A need mycelium can't read or no machine could say, a rule naming no
+    need or no folder and no word, a folder that would match nothing or everything (from ~ or $,
+    with an empty, . or .. part, or space at an end) and an empty word are refused. The need
+    kinds are the locked mycelium's, read by a scan that fails on what it can't read, and once
+    the lock reads these rules, their field names are its own
+  '';
   mycelium-declares-what-a-machine-says = ''
     a machine declaring what mycelium's node can't measure (its reach, a probe saying whether a
     call is on there through a-call-is-on alone, what a held session outlives, whether work
