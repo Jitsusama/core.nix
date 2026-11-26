@@ -10,6 +10,11 @@
 // one is pressed, as For You does; what came of the press is said in the
 // row, in a line a screen reader hears. A look that lapses while the page is
 // open stops asking at that moment, by a timer ask.ts's waitFor sets.
+//
+// A press is taken only once the page has been in view for SETTLING, as a
+// browser holds its own prompts: another site can open or show a sites
+// page under the pointer between the two clicks of a double-click it
+// asked for, so the second lands on an answer Joel never saw.
 
 import { type Ask, asked, type Choice, waitFor } from "./ask.ts";
 import { carry, type Readying, ready, type Send } from "./answer.ts";
@@ -25,6 +30,29 @@ interface Made<Item> extends Drawn {
   append(...nodes: Item[]): void;
   addEventListener(type: "click", listener: () => void): void;
   focus?(): void;
+}
+
+/** How long a page is in view before a press on it is taken, in milliseconds. */
+const SETTLING = 500;
+
+/** When the page last came into view: loaded, or shown again from hidden. */
+type Arrived = () => number;
+
+/** When the browser's page last came into view, by `now`'s clock. */
+function browserArrived(now: () => number): Arrived {
+  let since = performance.timeOrigin;
+  const arrive = (): void => {
+    since = now();
+  };
+  // Not focus, which comes with the very press that brings a window in
+  // view forward, so it would cost Joel his first press on it.
+  window.addEventListener("pageshow", arrive);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      arrive();
+    }
+  });
+  return () => since;
 }
 
 /** The parts of a drawn row a press changes where they stand. */
@@ -206,7 +234,11 @@ interface Asking<Item extends Drawn> {
   readonly address?: string;
   /** Told how many rows show after each drawing, so a page can hide an empty part. */
   readonly counted?: (count: number) => void;
-  readonly reaching?: Reaching & { readonly send?: Send; readonly ready?: Readying };
+  readonly reaching?: Reaching & {
+    readonly send?: Send;
+    readonly ready?: Readying;
+    readonly arrived?: Arrived;
+  };
 }
 
 /** The asks a page follows: narrowed to one cell's or widened to all, and closed. */
@@ -221,6 +253,7 @@ function followAsks<Item extends Made<Item>>(asking: Asking<Item>): Following {
   const reaching = asking.reaching ?? {};
   let address = asking.address ?? null;
   const clock = reaching.clock ?? browserClock;
+  const arrived = reaching.arrived ?? browserArrived(clock.now);
   const pressed = new Map<string, string>();
   // Each row as drawn now, so a press changes its parts where they stand.
   const shown = new Map<string, Item>();
@@ -259,7 +292,7 @@ function followAsks<Item extends Made<Item>>(asking: Asking<Item>): Following {
     }
   };
   const press = (row: Waiting, choice: Choice): void => {
-    if (pressed.has(row.key)) {
+    if (pressed.has(row.key) || clock.now() - arrived() < SETTLING) {
       return;
     }
     tell(row.key, "Sending your answer.");
@@ -341,4 +374,4 @@ function followAsks<Item extends Made<Item>>(asking: Asking<Item>): Following {
 }
 
 export type { Asking, Following, Made, Make, View, Waiting };
-export { drawAsk, followAsks, waiting };
+export { drawAsk, followAsks, SETTLING, waiting };
