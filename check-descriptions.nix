@@ -1120,8 +1120,10 @@
     on a stand-in sysfs, writeback-goal refuses a wrong call with 64 before it looks for the
     disk, fails on a name that reaches no throttle, gives back a disk that's gone quietly, and
     gives back what the throttle had before its first goal, or the kernel's default where none
-    was recorded; disk-order stands the throttle down beside io.cost and gives the kernel's
-    default back as it hands the disk back
+    was recorded, recording a throttle that can't be read as off, failing a goal the throttle
+    won't take with only the record that call made gone, and failing a giving back it won't
+    take with the record kept; disk-order stands the throttle down beside io.cost and gives
+    the kernel's default back as it hands the disk back
   '';
   disks-are-scrubbed = ''
     the disk's Btrfs is scrubbed monthly, from its root
@@ -2426,10 +2428,11 @@
     relay and off a file or a link that isn't a socket, and logs nothing of a header or a body, a
     failure included; and its own cases hold a ping from behind an upload, with little held
     unsent in its sockets and short frames, retire a connection by its number alone, sparing one
-    opened since, and at most once a minute for a reset, have the kernel probe a connection a
-    sleep retired by count alone and stop once done, but not one opened since nor one let go,
-    nor hold that one open, nor stop a later sleep's probes, and say an error with its causes,
-    cut to a line
+    opened since, and at most once a minute for a reset, have the kernel probe by count alone
+    each connection still open as a relay finds the machine slept, however it was retired, and
+    stop once done, one marked but not named too, uncounted, but not one let go, nor hold that
+    one open, nor stop a later sleep's probes though ending their own, and say an error with its
+    causes, cut to a line
   '';
   model-relay-passes-clippy = ''
     clippy finds nothing in model-relay or its tests
@@ -5911,8 +5914,9 @@
     kinds names both in every watch, a field asked deep is mended with only what moved inside it
     while one not asked is replaced whole, a kind with none is known to hold none once answered, a
     whole answer after a gap lets go what went in it, one whole only of some keys lets go only those
-    that went, and a handler of a told change reads when its line was heard while one of a watch's
-    whole answer, or one it put off, reads none
+    that went, a handler of a told change reads when its line was heard while one of a watch's
+    whole answer, or one it put off, reads none, and a connection the shell lets go with an ask in
+    flight is said let go, as information rather than a warning
   '';
   the-desktop-reads-the-spend-watch = ''
     the AI spend piece draws what the watch wrote, and the tokens piece is there only while the
@@ -6354,7 +6358,12 @@
     so, and one that timed out, or a list that stalled there, kept unasked, one asked again each
     minute in turn and all at the next stream; all asked by the kernel's own call numbers and
     fields; a stop's rate left out for a moment's stretch, and a count unread at a line not
-    carried into the next; and a camera that goes as its unit is stopped said to have gone
+    carried into the next; and a camera that goes as its unit is stopped said to have gone; and a
+    file the watch couldn't write, a camera's streaming or idle or a loopback's, is written once
+    it can be, its trouble said once as it begins and once as it clears, even when the loopback's
+    nobody met it and its camera's watch clears it, and so is the node a camera's watch couldn't
+    say beside it, its trouble said once too; and a loopback's file is said ready only once it and
+    its node are written
   '';
   usb-camera-holders-forget-a-killed-run = ''
     each USB camera watch's unit, the relayed one's too, forgets what says its node in the folder it
@@ -6423,12 +6432,13 @@
     io.weight follows its CPU weight;
     app.slice holds a hard 13% of memory and a soft 20%, session.slice a hard and a soft 4.5 GiB,
     agents.slice a soft 10% and a hard 2 GiB, every slice above them a hard 24% and a soft 38%,
-    and jobs is slowed past 26%; timed work sits at 10000 inside idle jobs, and work in jobs can move
-    itself there; a unit work in jobs starts with systemd-run, naming no slice, lands in
-    jobs-work.slice; a scope it starts through systemd's own systemd-run goes back to the scope of
-    the work that started it, and one with a memory ceiling stays; each command written into
-    jobs.service gets a scope of its own in jobs-work.slice, at weight 100, with its own swap, and
-    the holder stays;
+    and jobs is slowed past 26%, a ceiling the sorter raises while jobs fills it and nothing it
+    spares waits on memory, and that its unit, not its fall, puts back as it stops; timed work
+    sits at 10000 inside idle jobs, and work in jobs can move itself there; a unit work in jobs
+    starts with systemd-run, naming no slice, lands in jobs-work.slice; a scope it starts through
+    systemd's own systemd-run goes back to the scope of the work that started it, and one with a
+    memory ceiling stays; each command written into jobs.service gets a scope of its own in
+    jobs-work.slice, at weight 100, with its own swap, and the holder stays;
     one naming a quest pi's sessions weigh goes in that quest's slice under jobs-work.slice at its
     weight for CPU and disk, which follows the file as it changes, and one naming none or an
     unlisted quest stays; two quests' work on one CPU shares it four to one by weight, and one
@@ -6683,7 +6693,9 @@
   '';
   vm-desktop-locks-and-asks = ''
     the lock screen takes only the right password, kills a hung check and tries it again, lets go
-    when released or told to by logind, and holds through a shell's restart; polkit's prompt and the askpass answer and hold
+    when released or told to by logind, and holds through a shell's restart; polkit's prompt and
+    the askpass answer and hold, and polkit's prompt comes up after polkit restarts three times
+    under the shell and after a hand-over that waited past 10 s for the launcher to close
   '';
   vm-desktop-looks = ''
     on the laptop's screen at 1.5 and at 2, a session sits a step in under its orchestrator, a

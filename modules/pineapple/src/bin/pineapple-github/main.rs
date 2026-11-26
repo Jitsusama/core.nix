@@ -33,8 +33,8 @@
 //! issue that changed (one the search finds, only when it says it has
 //! changed since it was read), one more for each repository where
 //! something on one is to be judged, and a page more for each hundred of
-//! a long list. One his limit refuses is tried again whole, so nothing it
-//! couldn't read is skipped.
+//! a long list. One his limit refuses is tried again whole, so nothing it couldn't read is
+//! skipped, but for a search of what's older than one GitHub cut short (own.rs).
 //!
 //! Unless `run` is given `--live`, it is in shadow: every stop's record
 //! says so, and nothing acting on records takes a shadow one for a stop.
@@ -589,7 +589,7 @@ fn searched(github: &GitHub<'_>, query: &str) -> Result<Value, Unread> {
 
 /// One round: what changed since the last, judged oldest first, and how
 /// far it has read moved on only once every pull request and issue it
-/// named was read; Joel's own search only once it was whole too.
+/// named was read; Joel's own search only once its first search answered.
 fn round(
     github: &GitHub<'_>,
     how: &Run,
@@ -682,8 +682,8 @@ fn round(
         judged.keys.push(said.key);
     }
     judged.since = began;
-    if let Some(hits) = hits.filter(|hits| hits.whole) {
-        own.moved_on(began, hits.seen);
+    if let Some(hits) = hits {
+        own.moved_on(began, hits);
     }
     // Kept only where Joel's words are searched for, as a site read by
     // what he opened never moves it on, and dropping that flag later
