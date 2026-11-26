@@ -1,9 +1,11 @@
 # Tuple's Linux alpha, newer than nixpkgs' v2026_09_16.1: v2026_11_25.0.
 # tuple-completes-in-zsh fails unless Tab offers its call, contacts,
 # state and webcam commands, among them call join, leave, mute, unmute
-# and start, and webcam start. Nothing checks the other commands run
-# against it: share, call accept and state follow from tuple-call,
-# contacts follow from tuple-people, and contacts favorite from the shell.
+# and start, and webcam start and stop. Nothing checks the other commands
+# run against it, nor the flags they pass: new, share, call accept and
+# --format json state follow --raw from tuple-call, --format json contacts
+# follow from tuple-people, and contacts favorite and unfavorite from the
+# shell.
 # New strings say a camera's or a video's colour space isn't handled, one
 # adding that it's converted as BT.601 limited; nobody has yet seen Tuple
 # say them. The log lines and stream keys tuple-call reads, the contacts'
