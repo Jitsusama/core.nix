@@ -101,10 +101,11 @@ check() {
     failed=1
   fi
 }
-# Asks for kind, and waits for the shell to have the ask. The folder the
-# ask names is made, the one its case looks for after, only when it's an
-# askpass folder of the runtime directory and there as it's asked, so a
-# name that never existed can't read as one removed.
+# Asks for kind, and waits for the shell to have the ask. $made holds the
+# folder the askpass made and named in its ask, the one its case looks for
+# after, only when it's an askpass folder of the runtime directory and
+# there as it's asked, so a name that never existed can't read as one
+# removed. askpass.sh names it by its mktemp template, askpass.XXXXXXXX.
 start() {
   : > said
   : > has
@@ -137,14 +138,14 @@ ended() {
   # What it said instead goes with a failure, as the failure's reason.
   complained() { grep -qF -- "$1" err || { cat err; false; }; }
   placed() { grep -qE ' (runs in|was started from) /' err || { cat err; false; }; }
-  # The folder this case's askpass made and named in its ask, by that
-  # name, so a folder moved elsewhere can't pass unseen, and a leak is
-  # blamed on the case that left it. A case whose ask named no folder it
-  # made fails too. Folders left by cases that never ask are the sweep's,
-  # at the end.
+  # The folder this case's askpass made and named in its ask is gone by
+  # that name, so a leak is blamed on the case that left it. A case whose
+  # ask named no folder it made fails too. A folder left under another
+  # askpass name, or by a case that never asks, is the sweep's, at the end.
   folder_gone() {
     if [ -z "$1" ]; then
-      echo "the ask named no askpass folder it had made (it named '$reply')"
+      echo "the ask named no folder $XDG_RUNTIME_DIR/askpass.XXXXXXXX it had made" \
+        "(it named '$reply'), as askpass.sh's mktemp would"
       return 1
     fi
     [ -e "$1" ] || return 0
