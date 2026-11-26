@@ -3,10 +3,12 @@
 //! the documents and from a mount, a file the browser holds answered by
 //! its tag alone and one written since sent again, the door shut to a
 //! stranger's name and a stranger's page, the documents on an origin of
-//! their own that reads nothing of the sites', a document sandboxed and the
+//! their own that reads nothing of the sites', a session's file there sandboxed and the
 //! sites' own pages held to their own scripts, and a feed whose pages share
 //! one watch on the daemon, hear each change, can't act, and are told
-//! when the daemon is gone.
+//! when the daemon is gone. Long because its cases share one server, one
+//! stand-in daemon and the raw requests that reach them, and each is a
+//! line of the server's policy, which reads best beside the others.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -443,15 +445,15 @@ fn a_strangers_page_cant_open_a_feed() {
 /// The policy a session's file is served under by the sites' names.
 const SANDBOXED: &str = "sandbox allow-scripts allow-popups allow-forms; frame-ancestors 'self'";
 
-/// The policy everything is served under by the documents' name.
-const DOCUMENTED: &str =
-    "sandbox allow-scripts allow-same-origin allow-popups allow-forms; frame-ancestors 'self'";
+/// The policy everything is served under by the documents' name, whose
+/// origin keeps them apart rather than a sandbox.
+const DOCUMENTED: &str = "frame-ancestors 'self'";
 
 /// The policy every page of the sites' own is served under.
 const OWN: &str = "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
 
 #[test]
-fn every_document_runs_sandboxed_whatever_it_is_and_however_its_answered() {
+fn every_document_keeps_its_policy_whatever_it_is_and_however_its_answered() {
     let served = served("sandbox");
     let sites = format!("localhost:{}", served.port);
     let documents = format!("{DOCUMENTS}:{}", served.port);
@@ -465,7 +467,11 @@ fn every_document_runs_sandboxed_whatever_it_is_and_however_its_answered() {
     ] {
         let (_, headers, _) = asked(served.port, host, &format!("GET {path}"), "");
         let policy = header(&headers, "content-security-policy");
-        assert_eq!(policy, Some(sandbox), "{path} at {host} wasn't sandboxed");
+        assert_eq!(
+            policy,
+            Some(sandbox),
+            "{path} at {host} wasn't held to its policy"
+        );
         let sniffed = header(&headers, "x-content-type-options");
         assert_eq!(
             sniffed,
@@ -480,7 +486,7 @@ fn every_document_runs_sandboxed_whatever_it_is_and_however_its_answered() {
         assert_eq!(
             policy,
             Some(sandbox),
-            "{path} at {host} kept unchanged lost its sandbox"
+            "{path} at {host} kept unchanged lost its policy"
         );
     }
 }

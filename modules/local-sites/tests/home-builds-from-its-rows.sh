@@ -448,8 +448,9 @@ grep -q '"name": "The grove"' "$work/rebooted/rows.json" ||
 
 # As the home is always built, into a folder of its own that holds a build,
 # a broken record keeps that build: the one in its own folder, not one among
-# the documents, which a build into its own folder takes away.
-rm "$index"
+# the documents, which a build into its own folder takes away, as the
+# reboot's just did.
+[ ! -e "$index" ] || fail "a build into its own folder left the home among the documents"
 cp "$work/own/index.html" "$work/own-last.html"
 said=$("$python" "$sources/home.py" "--into=$work/own" "$sources" "$root" \
   "$root/kit/theme.css" "$work/declared.json") || fail "a broken record failed its own build"

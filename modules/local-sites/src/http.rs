@@ -66,11 +66,13 @@ const LINGERING: (usize, Duration) = (16 * 1024, Duration::from_secs(1));
 /// or a window it opens; and held in a frame only by a page served here.
 const SANDBOXED: &str = "sandbox allow-scripts allow-popups allow-forms; frame-ancestors 'self'";
 
-/// The sandbox everything runs in under the documents' name: the documents'
-/// own origin, which reads nothing of the sites', with the same ways out
-/// closed.
-const DOCUMENTS: &str =
-    "sandbox allow-scripts allow-same-origin allow-popups allow-forms; frame-ancestors 'self'";
+/// What everything under the documents' name is held to: held in a frame
+/// only by a page of theirs. Their own origin, which reads nothing of the
+/// sites', is what keeps them apart, so no sandbox is asked: one that let
+/// them keep their origin, as their storage and their own files need,
+/// would close next to nothing more, and a browser warns on every page
+/// that it can be escaped.
+const DOCUMENTS: &str = "frame-ancestors 'self'";
 
 /// What the sites' own pages may run and be held in: only scripts served
 /// from here, none written into the page or evaluated from words, no
