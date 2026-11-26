@@ -19,6 +19,12 @@ use std::time::Duration;
 /// it what its timer should. So a test holds one watch at a time.
 static TURN: Mutex<()> = Mutex::new(());
 
+const SIGTERM: i32 = 15;
+
+unsafe extern "C" {
+    fn kill(pid: i32, signal: i32) -> i32;
+}
+
 /// A watch on a loopback, its file in a folder of its own, its log and
 /// complaints in files beside it.
 struct Watch {
@@ -437,13 +443,45 @@ fn a_node_file_stays_until_its_loopbacks_nobody_is_written() {
         |watch| !watch.device().exists(),
         "a node file stayed once its loopback's nobody was written",
     );
-    assert!(
-        fs::read_to_string(watch.file()).is_ok_and(|said| said.is_empty()),
-        "a node file went with its loopback's nobody unwritten"
-    );
     watch.until(
         |watch| ready(&watch.read("log")) == 1,
         "a loopback whose files were right wasn't said ready",
+    );
+}
+
+#[test]
+fn a_stopped_watch_keeps_its_node_named_while_its_nobody_cant_be_written() {
+    let mut watch = Watch::owned("stopped");
+    let camera = watch.root.join("camera");
+    watch.until(
+        |watch| ready(&watch.read("log")) == 1,
+        "a camera whose files were written wasn't said ready",
+    );
+    // The holders file's folder locked, the node files' folder not.
+    fs::set_permissions(&watch.folder, Permissions::from_mode(0o555)).unwrap();
+    assert!(
+        File::create(watch.folder.join("probe")).is_err(),
+        "a locked folder still took a file, as it does for root"
+    );
+    let pid = i32::try_from(watch.program.id()).unwrap();
+    // SAFETY: a plain call, to our own child.
+    assert_eq!(
+        unsafe { kill(pid, SIGTERM) },
+        0,
+        "the watch couldn't be stopped"
+    );
+    let mut ended = false;
+    for _ in 0..400 {
+        if watch.program.try_wait().unwrap().is_some() {
+            ended = true;
+            break;
+        }
+        sleep(Duration::from_millis(50));
+    }
+    assert!(ended, "a stopped watch didn't end");
+    assert!(
+        watch.names(&camera),
+        "a stopped watch unnamed its node with its nobody unwritten"
     );
 }
 

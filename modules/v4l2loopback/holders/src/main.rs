@@ -671,19 +671,13 @@ fn loopback(events: &mut Events, options: &Options, run: &mut Run) {
     if let Some(file) = device_file(&options.output) {
         tidy(&file);
     }
-    // Whether the camera's going was seen, and whether nobody was written
-    // and its node unnamed since, each tried each second until it is.
-    let mut gone = false;
+    // Whether nobody was written and the node unnamed since the last
+    // camera, each tried each second with no camera until it is.
     let mut told = false;
     let mut unnamed = false;
     loop {
         let Some(node) = camera::node_of(&options.sysfs, &options.source, options.card.as_deref())
         else {
-            if !gone {
-                gone = true;
-                told = false;
-                unnamed = false;
-            }
             // Its holders file first, as the removals keep it, so no
             // holder is ever said with no node file to find the camera by.
             if !told {
@@ -700,7 +694,6 @@ fn loopback(events: &mut Events, options: &Options, run: &mut Run) {
             }
             continue;
         };
-        gone = false;
         run.owe(&node);
         let ended = watch(
             events,
@@ -712,19 +705,21 @@ fn loopback(events: &mut Events, options: &Options, run: &mut Run) {
             run,
         );
         // A camera gone is said no more, so a node that comes next, which
-        // may not be sayable yet, never leaves the last one said. A gone
-        // node is unnamed by the pass with no camera, which tries until it
-        // can; a stop unnames it here, only once nobody is written.
-        let told = say_nobody(&options.output, run);
-        if let Ended::Stopped = ended {
-            if told {
-                run.unname(&options.output);
-            }
+        // may not be sayable yet, never leaves the last one said: nobody
+        // first, then a node gone or stopping is unnamed. What fails is
+        // tried again by the pass with no camera, which these tell.
+        told = say_nobody(&options.output, run);
+        unnamed = false;
+        let stopped = matches!(ended, Ended::Stopped);
+        if told && (stopped || !node.exists()) {
+            unnamed = run.unname(&options.output);
+        }
+        if stopped {
             return;
         }
         // So a node it can't watch is tried again, not spun on.
         if let Woken::Stopped = events.sleep(Duration::from_millis(500)) {
-            if told {
+            if told && !unnamed {
                 run.unname(&options.output);
             }
             return;
