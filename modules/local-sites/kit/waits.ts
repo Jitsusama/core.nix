@@ -21,7 +21,6 @@ type Loading = () => Promise<Pick<typeof import("./asks.ts"), "followAsks">>;
 
 const browserLoad: Loading = () => import("./asks.ts");
 
-
 /** Whether any look `held` holds says it waits. */
 function oneWaits(held: Held): boolean {
   return held.all().some((record) => {
