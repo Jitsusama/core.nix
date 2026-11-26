@@ -66,14 +66,25 @@ pub(super) fn handed() -> Option<PathBuf> {
     std::env::var_os(HANDED_OVER).map(PathBuf::from)
 }
 
+/// What a ride sets, to the search it was in as `Splitting::said` says
+/// it, for the build it hands over to to go on with.
+const HANDED_SEARCH: &str = "MERGE_NET_HANDED_SEARCH";
+
+/// The search a ride handed this one over with, in its words, when one
+/// did.
+pub(super) fn handed_search() -> Option<String> {
+    std::env::var(HANDED_SEARCH).ok()
+}
+
 /// Go on riding as the build at `newer`, in this process and so this
-/// unit: the riders and the right of way are on disk, but the search a
-/// split was in starts afresh. Only says why, when it couldn't.
-pub(super) fn hand_over(newer: &Path) -> String {
+/// unit: the riders and the right of way are on disk, and the `search` a
+/// split was in goes in its environment. Only says why, when it couldn't.
+pub(super) fn hand_over(newer: &Path, search: &str) -> String {
     use std::os::unix::process::CommandExt;
     let why = Command::new(newer)
         .arg("ride")
         .env(HANDED_OVER, newer)
+        .env(HANDED_SEARCH, search)
         .exec();
     format!("the train couldn't go on as {}: {why}", newer.display())
 }

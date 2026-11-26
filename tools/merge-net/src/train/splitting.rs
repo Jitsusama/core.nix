@@ -120,4 +120,74 @@ impl Splitting {
         self.turned = !twice;
         twice
     }
+
+    /// The search as the words a ride hands over to the build it goes on
+    /// as, which [`Splitting::read`] reads back. At 18:56 on 25 November a
+    /// hand-over mid-search started the search afresh, so the next run took
+    /// all five riders again, the red one among them, and was red again.
+    pub(super) fn said(&self) -> String {
+        let since = self
+            .untaken_since
+            .map_or_else(|| "-".to_owned(), |since| since.to_string());
+        format!(
+            "{} {} {} {since}",
+            self.suspects, self.fell_alone, self.turned
+        )
+    }
+
+    /// The search a ride handed over as `words`, or none when they can't
+    /// be read whole, as from a build that handed over nothing, so the
+    /// search starts afresh as it did before.
+    pub(super) fn read(words: &str) -> Option<Self> {
+        let mut words = words.split_whitespace();
+        let suspects = words.next()?.parse().ok()?;
+        let fell_alone = words.next()?.parse().ok()?;
+        let turned = words.next()?.parse().ok()?;
+        let untaken_since = match words.next()? {
+            "-" => None,
+            since => Some(since.parse().ok()?),
+        };
+        words.next().is_none().then_some(Self {
+            suspects,
+            fell_alone,
+            turned,
+            untaken_since,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_search_handed_over_is_read_back_as_it_was() {
+        let mut searching = Splitting::default();
+        searching.red(5);
+        searching.untaken(1_795_650_000);
+        assert_eq!(
+            Splitting::read(&searching.said()),
+            Some(searching),
+            "a search mid-split didn't survive its hand-over"
+        );
+        let mut fell = Splitting::default();
+        fell.red(1);
+        fell.turned();
+        assert_eq!(
+            Splitting::read(&fell.said()),
+            Some(fell),
+            "a lone fall and a refusal didn't survive their hand-over"
+        );
+    }
+
+    #[test]
+    fn words_not_read_whole_start_the_search_afresh() {
+        for words in ["", "5 false", "five false false -", "5 false false - more"] {
+            assert_eq!(
+                Splitting::read(words),
+                None,
+                "{words:?} was read as a search"
+            );
+        }
+    }
 }

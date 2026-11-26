@@ -76,7 +76,7 @@ mod splitting;
 use gated::{Gated, gated, words_of};
 use hub::GitHub;
 pub use installed::install;
-use installed::{build, hand_over, handed, newer};
+use installed::{build, hand_over, handed, handed_search, newer};
 use landed::{Left, boarded_at, keep_landed, keep_left};
 use landing::{Landing, land};
 use pulls::aboard;
@@ -474,7 +474,11 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
     let slug = slug_of(url);
     let owner = slug.split('/').next().unwrap_or_default().to_owned();
     let git = |arguments: &[&str]| run_git(&checkout, arguments);
-    let mut splitting = Splitting::default();
+    // A ride handed over mid-search goes on with it, rather than taking
+    // every rider again, the red one among them.
+    let mut splitting = handed_search()
+        .and_then(|words| Splitting::read(&words))
+        .unwrap_or_default();
     loop {
         let waiting = riders(&root);
         if waiting.is_empty() {
@@ -492,7 +496,10 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                 "merge-net: another merge-net is installed, so the train goes on as {}",
                 newer.display()
             );
-            println!("merge-net: {}, so it goes on as it is", hand_over(&newer));
+            println!(
+                "merge-net: {}, so it goes on as it is",
+                hand_over(&newer, &splitting.said())
+            );
         }
         let mut mergings = aboard(&root, &git, &slug, &owner, &waiting);
         mergings.truncate(splitting.take());
