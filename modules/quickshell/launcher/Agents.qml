@@ -928,7 +928,7 @@ Provider {
             SessionRow.unsteered(provider.launcher, Words.of("agents:machine").said ?? {}, {
                 act, actName: SessionRow.actName(act, Words.name), why,
                 address: session.address, name: called === session.address ? "" : called,
-                called, held: Boolean(provider.launcher?.becoming?.[`agent:${session.address}`])
+                called, held: provider.launcher?.becoming?.[`agent:${session.address}`]?.act === act
             }, Theme.alert);
         }
 
@@ -1545,6 +1545,71 @@ Provider {
                 answer => Sessions.reopensUnwoken(session, answer));
     }
 
+    // Parks a session, its row reading as parking from this key's frame, or
+    // as parking after its turn while it works, until the shell holds it
+    // parked. The node's refusal takes the row back (SessionRow.takesBack).
+    // The harness says a Park it drops or refuses only in the session's own
+    // window and journal, so one that stands idle and unparked a while is
+    // said not parked here too, sending Joel to its window (parksWatched).
+    function parkNow(session) {
+        const key = `agent:${session.address}`;
+        const id = String(session.presence?.session ?? "");
+        // One in line for the machine is in a turn too, which it parks after.
+        const working = ["working", "inLine"].includes(stateOf(session));
+        const doing = word(working ? "parksAfterTurn" : "parking");
+        const now = sessionRows(everything()).find(row => row.key === key);
+        const items = SessionRow.sideDoing(now?.sideItems ?? [], doing);
+        provider.becomes(key, Object.assign({
+            side: items.map(item => item.said).join(" \u00b7 "),
+            sideItems: items
+        }, working ? {} : { hue: SessionRow.hue("parked", false) }),
+        provider.footName(session), "park", {
+            done: () => id !== ""
+                && Sessions.parked.some(one => String(one.presence?.session ?? "") === id),
+            within: SessionRow.PARK_WAITS_MS
+        });
+        parksPending = Object.assign({}, parksPending,
+            { [session.address]: { asked: Date.now(), idleAt: null } });
+        provider.actOn(session, "park");
+    }
+
+    // Parks pressed and not yet seen parked, by address, each { asked,
+    // idleAt } as SessionRow.parkStands keeps it, watched while the
+    // launcher holds its row as parking.
+    property var parksPending: ({})
+    Timer {
+        id: parkWatch
+        interval: 2000
+        repeat: true
+        running: Object.keys(provider.parksPending).length > 0
+        onTriggered: provider.parksWatched(Date.now())
+    }
+    function parksWatched(now) {
+        const kept = {};
+        for (const address of Object.keys(parksPending)) {
+            const key = `agent:${address}`;
+            if (provider.launcher?.becoming?.[key]?.act !== "park")
+                continue;
+            const session = provider.sessionAt(address);
+            const stands = session === null ? "gone"
+                : shellParked(address) ? "parked" : stateOf(session);
+            const stood = SessionRow.parkStands(parksPending[address], stands, now);
+            if (stood.verdict === "unparked")
+                provider.launcher.becameNot(key, word("unparked"));
+            else if (stood.verdict === "gone")
+                parkLetGo(key);
+            else if (stood.verdict === "waiting")
+                kept[address] = Object.assign({}, parksPending[address], { idleAt: stood.idleAt });
+        }
+        parksPending = kept;
+    }
+    // A row parking drawn as it stands again, its Park called off or its
+    // session gone, with nothing said, since nothing was refused.
+    function parkLetGo(key) {
+        provider.launcher.letGo([key]);
+        provider.launcher.refreshed(provider, "a park called off");
+    }
+
     // Does one of a session's acts as the daemon serves it: its row's ask
     // for it, sent back as it is with what the act says, which the daemon
     // does by steering the session through the node (modules/agents/src/
@@ -1553,6 +1618,11 @@ Provider {
     // `took`, where given, may take the answer as its own, saying true,
     // before it's said as the steer's.
     function actOn(session, id, fields, took) {
+        // Words said to it call off a Park waiting on its turn, as the
+        // harness calls it off, so its row reads as parking no longer.
+        const key = `agent:${session.address}`;
+        if (id === "talk" && provider.launcher?.becoming?.[key]?.act === "park")
+            parkLetGo(key);
         const acts = rowsKind?.held?.[`row:agents:${session.address}`]?.row?.acts ?? [];
         const ask = acts.find(one => one.key === `verb:agent:${id}`)?.ask
             ?? { ask: id, address: session.address };
@@ -1609,12 +1679,16 @@ Provider {
         // Pressed once it would wake what it meant to steer, as Park once the
         // session parked while its drawer stood open, it's kept back and said
         // so plainly, not sent (SessionRow.withheld).
-        const steered = what => () => {
+        // `send`, where given, sends it in its own way.
+        const steered = (what, send) => () => {
             const now = current();
             const row = rowsKind?.held?.[`row:agents:${now.address}`]?.row ?? null;
             const why = SessionRow.withheld(row, what, shellParked(now.address));
             if (why === "") {
-                provider.actOn(now, what);
+                if (send)
+                    send();
+                else
+                    provider.actOn(now, what);
                 return;
             }
             Report.say(`unsent ${String(now.address).toUpperCase()}: ${what}, ${why}`);
@@ -1684,12 +1758,11 @@ Provider {
             pause: () => act("pause", { run: steered("pause") }),
             resume: () => act("resume", { run: steered("resume") }),
             // Park frees what it holds until it's woken: the harness parks
-            // one idle at once and one at work once its turn settles. Only
-            // the node's refusal comes back to the foot, as Pause's does;
-            // the harness says a Park it waits on, drops or refuses in the
-            // session's own window and journal, and the row shows it
-            // parked once it is.
-            park: () => act("park", { run: steered("park") }),
+            // one idle at once and one at work once its turn settles. Its
+            // row reads as parking until it is, or is said not parked
+            // (parkNow), the launcher kept, as Wake keeps it.
+            park: () => act("park", { stays: true,
+                run: steered("park", () => provider.parkNow(current())) }),
             // Stop ends the turn under way, which nothing puts back, so it's
             // an ending: Return writes :interrupt and a second runs it, as d
             // does. It doesn't ask, as :interrupt is guarded, since the turn
