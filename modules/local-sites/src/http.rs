@@ -19,10 +19,9 @@
 //! which Nix or the home's builder made, run only the scripts Nix served
 //! beside them, never one written into the page or left among the
 //! documents. Each origin is kept to a process of its own, so neither can
-//! loosen `document.domain` to reach the other. No page may install a
-//! worker, which would stand between every later page and the server, and
-//! one a document installed before is swept out once by the first page of
-//! the sites' own that a browser is served.
+//! loosen `document.domain` to reach the other. No page keeps a worker, and
+//! what a document left from when the two shared an origin is swept
+//! (sweep.rs).
 
 use std::fs::{File, Metadata};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -31,17 +30,19 @@ use std::net::{Shutdown, SocketAddr, TcpStream};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use serde_json::json;
 use tungstenite::handshake::server::{ErrorResponse, Request, Response};
 
-use crate::answer::{self, Answers, Asked};
+use crate::answer::Answers;
 use crate::config::{Config, Feed};
 use crate::door::{Door, Side};
 use crate::files::{self, Found};
 use crate::page;
+use crate::sweep::{self, Asked};
 use crate::upstream::Upstreams;
+
+mod press;
 
 /// The most a request's head may hold.
 const HEAD: usize = 16 * 1024;
@@ -55,9 +56,9 @@ const JOURNALLED: usize = 256;
 /// How long a request may take to arrive whole.
 const PATIENCE: Duration = Duration::from_secs(10);
 
-/// How much an answered client may still send, and for how long, before
-/// its connection is let go of whatever is left.
-const LINGERING: (u64, Duration) = (16 * 1024, Duration::from_secs(1));
+/// How much an answered client may still send, and for how long in all,
+/// before its connection is let go of whatever is left.
+const LINGERING: (usize, Duration) = (16 * 1024, Duration::from_secs(1));
 
 /// The sandbox a session's file runs in under the sites' names: its
 /// scripts, its forms and the windows it opens, each in an origin of no
@@ -76,17 +77,6 @@ const DOCUMENTS: &str =
 /// plugin, no base moving its links, and no frame around it to press its
 /// buttons through.
 const OWN: &str = "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'";
-
-/// The cookie saying a browser's storage was swept of what a document could
-/// have left there, so it's swept once.
-const SWEPT: &str = "sites-swept=1";
-
-/// The sweep's cookie as it's set: for this name alone, every path, a
-/// year, read by no script. Lax rather than Strict, since a navigation from
-/// a sandboxed file carries no Strict cookie, and the sweep would then
-/// recur, wiping the theme and Code's room each time; the cookie only marks
-/// the sweep done, so another site sending it gains nothing.
-const SWEEPING: &str = "sites-swept=1; Path=/; Max-Age=31536000; SameSite=Lax; HttpOnly";
 
 /// What the answers a file is sent with are, by version, hashed into its
 /// tag, so a copy a browser holds from before the answers it was sent with
@@ -119,6 +109,8 @@ struct Head {
     worker: bool,
     /// Where the browser says the request came from, as `Sec-Fetch-Site` says.
     fetch_site: Option<String>,
+    /// What the browser says the request is for, as `Sec-Fetch-Dest` says.
+    fetch_dest: Option<String>,
     /// How long its body is, as `Content-Length` says, where it says.
     body_length: Option<usize>,
     /// What its body is, as `Content-Type` says.
@@ -171,12 +163,13 @@ pub fn answer(server: &Server, mut stream: TcpStream) {
         );
     };
     if head.worker {
+        // Refused, an old worker would keep standing; this one lets go.
         send(
             &mut stream,
-            403,
-            "Forbidden",
-            "text/plain",
-            b"no page installs a worker here\n",
+            200,
+            "OK",
+            "text/javascript; charset=utf-8",
+            sweep::LETTING_GO,
         );
     } else if head.upgrade {
         send(
@@ -198,7 +191,7 @@ pub fn answer(server: &Server, mut stream: TcpStream) {
         // Under the documents' name a document's own origin would be the
         // one asked, so answers are taken under the sites' names alone.
         if side == Side::Sites {
-            press(server, &mut stream, &head);
+            press::press(server, &mut stream, &head);
         } else {
             send(
                 &mut stream,
@@ -285,12 +278,16 @@ fn serve_file(server: &Server, stream: &mut TcpStream, head: &Head, side: Side) 
             "text/plain",
             b"that path is refused\n",
         ),
-        Found::Unready => send(
+        Found::Unready => write_answer(
             stream,
-            503,
-            "Service Unavailable",
-            "text/plain",
-            b"the home is still being written\n",
+            (503, "Service Unavailable"),
+            &Told {
+                kind: "text/plain",
+                body: b"the home isn't built yet; if it stays so, its builder says why: \
+                    journalctl --user -u local-sites-home\n",
+                sent: true,
+            },
+            &[("Retry-After", "2")],
         ),
     }
 }
@@ -336,6 +333,8 @@ fn placed(side: Side, made: files::Made, kind: &str) -> Placed {
 /// Sends `head`'s path on to the other origin from `side`, for a while,
 /// since a document's place may move back with the server.
 fn across(door: &Door, stream: &mut TcpStream, head: &Head, side: Side) {
+    // `answer` refused a path not from `/` before this, so the refusal here
+    // is the door's own, kept should another way in ever reach it.
     let Some(to) = door.across(side, &head.path) else {
         return send(
             stream,
@@ -372,154 +371,19 @@ fn told_for(head: &Head, made: files::Made, side: Side, kind: &str) -> Guarded {
         }
         (Side::Sites, files::Made::Built) => {
             headers.push(("Content-Security-Policy", OWN.to_owned()));
-            if kind.starts_with("text/html") && !swept(head) {
+            let asked = Asked {
+                cookies: head.cookies.as_deref(),
+                site: head.fetch_site.as_deref(),
+                dest: head.fetch_dest.as_deref(),
+            };
+            if kind.starts_with("text/html") && sweep::due(&asked) {
                 headers.push(("Clear-Site-Data", "\"storage\"".to_owned()));
-                headers.push(("Set-Cookie", SWEEPING.to_owned()));
+                headers.push(("Set-Cookie", sweep::SWEEPING.to_owned()));
                 whole = true;
             }
         }
     }
     Guarded { headers, whole }
-}
-
-/// Carries an answer pressed on a page of the sites' own (answer.rs), and
-/// journals it, carried or refused with the word saying why, and that it
-/// came by the sites; or, asked with GET, gives the person's own page the
-/// cookie its answers carry.
-fn press(server: &Server, stream: &mut TcpStream, head: &Head) {
-    let Some(answers) = &server.answers else {
-        return send(
-            stream,
-            404,
-            "Not Found",
-            "text/plain",
-            b"this server takes no answers\n",
-        );
-    };
-    if head.method == "GET" {
-        return given(answers, stream, head);
-    }
-    if head.method != "POST" {
-        return send(
-            stream,
-            405,
-            "Method Not Allowed",
-            "text/plain",
-            b"an answer is posted\n",
-        );
-    }
-    let Some(length) = head.body_length.filter(|length| *length <= answer::LONGEST) else {
-        return send(
-            stream,
-            413,
-            "Content Too Large",
-            "text/plain",
-            b"an answer is a look and a value\n",
-        );
-    };
-    let mut body = vec![0; length];
-    if stream.read_exact(&mut body).is_err() {
-        return;
-    }
-    let asked = Asked {
-        host: head.host.as_deref().unwrap_or(""),
-        origin: head.origin.as_deref(),
-        fetch_site: head.fetch_site.as_deref(),
-        cookies: head.cookies.as_deref(),
-        content_type: head.content_type.as_deref(),
-        ends: head.ends,
-        body: &body,
-    };
-    // Only so much of what was pressed is journalled, so a refused one
-    // can't fill the journal.
-    let pressed = String::from_utf8_lossy(&body[..body.len().min(JOURNALLED)]);
-    match answers.carry(&asked) {
-        Ok(told) => {
-            eprintln!("local-sites: carried an answer pressed on the sites: {pressed:?}");
-            send(
-                stream,
-                200,
-                "OK",
-                "application/json",
-                told.to_string().as_bytes(),
-            );
-        }
-        Err(refused) => {
-            eprintln!(
-                "local-sites: refused an answer pressed on the sites ({}): {pressed:?}: {}",
-                refused.word, refused.why
-            );
-            let said = json!({"refused": refused.word, "why": refused.why});
-            send(
-                stream,
-                refused.status,
-                reason_for(refused.status),
-                "application/json",
-                said.to_string().as_bytes(),
-            );
-        }
-    }
-}
-
-/// Gives the page asking the cookie its answers carry, where the person's
-/// own process asks from this origin, saying why not otherwise.
-fn given(answers: &Answers, stream: &mut TcpStream, head: &Head) {
-    let asking = Asked {
-        host: head.host.as_deref().unwrap_or(""),
-        origin: head.origin.as_deref(),
-        fetch_site: head.fetch_site.as_deref(),
-        cookies: None,
-        content_type: None,
-        ends: head.ends,
-        body: &[],
-    };
-    match answers.cookie_for(&asking) {
-        Ok(cookie) => write_answer(
-            stream,
-            (204, "No Content"),
-            &Told {
-                kind: "text/plain",
-                body: b"",
-                sent: true,
-            },
-            &[("Set-Cookie", &cookie)],
-        ),
-        Err(refused) => {
-            eprintln!(
-                "local-sites: gave no page the answers' cookie ({}): {}",
-                refused.word, refused.why
-            );
-            let said = json!({"refused": refused.word, "why": refused.why});
-            let reason = reason_for(refused.status);
-            let body = said.to_string();
-            send(
-                stream,
-                refused.status,
-                reason,
-                "application/json",
-                body.as_bytes(),
-            );
-        }
-    }
-}
-
-/// The reason phrase an answer's refusal is sent with, by its status.
-const fn reason_for(status: u16) -> &'static str {
-    match status {
-        400 => "Bad Request",
-        403 => "Forbidden",
-        404 => "Not Found",
-        409 => "Conflict",
-        415 => "Unsupported Media Type",
-        _ => "Bad Gateway",
-    }
-}
-
-/// Whether the browser asking has been swept already, by its cookie.
-fn swept(head: &Head) -> bool {
-    head.cookies
-        .as_deref()
-        .is_some_and(|cookies| cookies.split(';').any(|cookie| cookie.trim() == SWEPT))
 }
 
 /// Sends `file`, or says it hasn't changed where the browser holds its tag.
@@ -630,6 +494,7 @@ fn head(stream: &TcpStream) -> io::Result<Option<Head>> {
                     worker: header("service-worker").is_some(),
                     origin: header("origin").map(str::to_owned),
                     fetch_site: header("sec-fetch-site").map(str::to_owned),
+                    fetch_dest: header("sec-fetch-dest").map(str::to_owned),
                     body_length: header("content-length")
                         .and_then(|length| length.trim().parse().ok()),
                     content_type: header("content-type").map(str::to_owned),
@@ -700,9 +565,28 @@ fn write_answer(
     });
     // What it still sends is read and dropped, so a request refused before
     // its body was read isn't reset, and its answer lost, as it closes.
+    if stream.shutdown(Shutdown::Write).is_ok() {
+        linger(stream);
+    }
+}
+
+/// Reads and drops what a client still sends, as much and for as long in
+/// all as `LINGERING` lets, so one sending a byte at a time holds its
+/// thread no longer than one sending all at once.
+fn linger(stream: &mut TcpStream) {
     let (most, wait) = LINGERING;
-    if stream.shutdown(Shutdown::Write).is_ok() && stream.set_read_timeout(Some(wait)).is_ok() {
-        let _ = io::copy(&mut (&*stream).take(most), &mut io::sink());
+    let until = Instant::now() + wait;
+    let mut dropped = vec![0; most];
+    let mut read = 0;
+    while read < most {
+        let left = until.saturating_duration_since(Instant::now());
+        if left.is_zero() || stream.set_read_timeout(Some(left)).is_err() {
+            return;
+        }
+        match stream.read(&mut dropped[read..]) {
+            Ok(0) | Err(_) => return,
+            Ok(more) => read += more,
+        }
     }
 }
 

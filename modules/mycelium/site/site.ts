@@ -244,6 +244,10 @@ document.addEventListener("visibilitychange", () => {
 });
 sayHow();
 followTheAsks();
+// A reading that fails to draw says so on the standing line, broken
+// (view.js); the next drawn whole says how the map stands again, rather
+// than leaving a live map reading as broken until a feed's standing moves.
+document.addEventListener("mycelium:modelled", sayHow);
 // The map answers its keys in the drawing (view.js), so the kit is told of
 // the first one here: a touch screen shows the head's key line once typed on.
 watchForKeys();

@@ -1,8 +1,8 @@
 //! What the server is told by its module: where it listens, the names a
-//! browser reaches it by, the name it serves the documents under, the folder of documents sessions write, the
-//! folder the home's builder writes the home into, the
-//! folders Nix built that it serves at their own paths, and each feed a
-//! page may read, with the kinds and fields that feed may show. One JSON
+//! browser reaches it by, the name it serves the documents under, the
+//! folder of documents sessions write, the folder the home's builder writes
+//! the home into, the folders Nix built that it serves at their own paths,
+//! and each feed a page may read, with the kinds and fields that feed may show. One JSON
 //! file written by Nix, so nothing a page asks can widen it.
 
 use std::collections::BTreeMap;

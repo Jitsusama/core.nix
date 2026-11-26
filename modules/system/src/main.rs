@@ -211,13 +211,14 @@ fn sites() -> Option<PathBuf> {
     Some(data.join("jitsusama/sites"))
 }
 
-/// The folder of its own the sites' home is built into, under the runtime
-/// folder (modules/local-sites/home.nix's homeFolder), where it lists its
-/// rows; none where no runtime folder is set.
+/// The folder of its own the sites' home is built into, where it lists its
+/// rows, as the daemon's unit names it from local-sites' homeFolder; none
+/// where it names none, as on a machine whose home is built into the
+/// sites' folder.
 fn home() -> Option<PathBuf> {
-    std::env::var_os("XDG_RUNTIME_DIR")
-        .filter(|run| !run.is_empty())
-        .map(|run| PathBuf::from(run).join("local-sites/home"))
+    std::env::var_os("LOCAL_SITES_HOME")
+        .filter(|home| !home.is_empty())
+        .map(PathBuf::from)
 }
 
 /// When this machine's quest backup last backed up, as the backup writes it

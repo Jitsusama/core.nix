@@ -17,7 +17,7 @@ import { ACROSS_LEAST } from "./grid.ts";
 import { type Drawn, drawMap } from "./map.ts";
 import { type KINDS, type Network, networkOf, type Watched } from "./model.ts";
 import { type Mycelium, myceliumOf } from "./mycelium.ts";
-import { type Context, found, overview, sayStandsNow } from "./panel.ts";
+import { type Answering, type Context, found, overview, sayStandsNow } from "./panel.ts";
 import { type Shape, study } from "./shape.ts";
 import { el } from "./svg.ts";
 import { drawTree, heedTree, markOpened } from "./tree.ts";
@@ -48,8 +48,6 @@ const keys = element("#keys", HTMLDialogElement);
 const RING = { out: 4, round: 8 } as const;
 /** The worst standing first, the one the page says. */
 const WORST_FIRST = ["broken", "stale", "connecting", "live"];
-/** The lede while net has never answered and is no longer being reached. */
-const UNANSWERED = "Net hasn't answered, so no device is drawn.";
 const MAP_ITEM = ".n-item";
 const FOUND_ROW = "#found .row";
 
@@ -72,10 +70,11 @@ let opened: string | null = null;
 let fitted = false;
 let linked = false;
 let saidNothing = false;
+// Whether any of net's feeds was ever live, which the lede says counts after.
+let answered = false;
 
 const now = (): number => Date.now() / 1000;
 
-/** Says whether the map is live, and what couldn't be read. */
 /** How the worst of net's feeds stands, or undefined before any has said. */
 function worst(): Standing | undefined {
   return [...standings.values()].sort(
@@ -83,6 +82,12 @@ function worst(): Standing | undefined {
   )[0];
 }
 
+/** How net's feeds stand, for the lede. */
+function answering(): Answering {
+  return { answered, worst: worst()?.state };
+}
+
+/** Says whether the map is live, and what couldn't be read. */
 function sayWhen(): void {
   const stands = worst();
   const problems = [...(network?.unread ?? []), ...heard.values()];
@@ -173,11 +178,11 @@ function render(): void {
   network = networkOf(watched, told);
   sayWhen();
   if (network === undefined) {
-    sayUnanswered();
+    sayStandsNow(lede, answering(), undefined);
     return;
   }
   shape = study(network);
-  sayStandsNow(lede, context());
+  sayStandsNow(lede, answering(), context());
   const stacked = map.narrowerThan(ACROSS_LEAST);
   const flipped = drawn !== undefined && drawn.stacked !== stacked;
   drawn = drawMap(draw, network, shape, { now: now(), stacked });
@@ -194,17 +199,6 @@ function render(): void {
     showPanel();
   }
   landFirst();
-}
-
-/**
- * Says in the lede that net hasn't answered once its feeds stop reaching it,
- * rather than that it's still being reached; the standing line says why.
- */
-function sayUnanswered(): void {
-  const state = worst()?.state;
-  if ((state === "broken" || state === "stale") && lede.textContent !== UNANSWERED) {
-    lede.textContent = UNANSWERED;
-  }
 }
 
 /** The devices on the way from the opened one to the internet. */
@@ -493,9 +487,13 @@ function watch(kind: (typeof KINDS)[number]): Held {
         heard.delete(kind);
         drawSoon();
       },
+      // A feed that never answers moves nothing, so the lede follows its
+      // standing here as well as from each drawing.
       stands: (stands) => {
         standings.set(kind, stands);
+        answered ||= stands.state === "live";
         sayWhen();
+        sayStandsNow(lede, answering(), context());
       },
       problem: (what) => {
         heard.set(kind, `${kind}: ${what}`);
