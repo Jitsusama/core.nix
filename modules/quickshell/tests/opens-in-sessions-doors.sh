@@ -13,7 +13,8 @@
 # stand-in can be. What the script
 # tells the shell is held to what Sessions.qml's handler takes, so the two
 # can't drift apart while both stand-ins pass, and the words it reads as
-# kitten's wait running out are what the packaged kitten says then.
+# kitten's wait running out, or its socket not listening, are what the
+# packaged kitten says then.
 # usage: opens-in-sessions-doors.sh <sh> <opens-in-sessions.sh> <python3> <Sessions.qml> <kitten>
 set -euo pipefail
 
@@ -25,6 +26,9 @@ kitten=$5
 # kitten's words for its wait for an async command's answer running out
 # (its tools/cmd/at/main.go), which a launch is (kitty/rc/launch.py).
 timed_out="Timed out waiting for a response from kitty"
+# And for a socket nothing listens on, as a kitty crashed leaves until
+# systemd clears its folder (its tools/cmd/at/socket_io.go).
+unreached="Failed to connect to "
 real_sleep=$(type -P sleep)
 real_cut=$(type -P cut)
 real_timeout=$(type -P timeout)
@@ -42,6 +46,8 @@ failed=0
 # script's first start, which it never should. While kitten-warns is
 # there, it warns first; while kitten-times-out is there, kitten then says
 # its wait for the kitty's answer ran out, in its own words, after a wait;
+# while kitten-unreached is there, it says in its own words that nothing
+# listened on the socket, at once;
 # while kitten-repeats is there, it first repeats those words as the
 # kitty's; a launch that opens one says the new window's id, as the real
 # one does; and a launch it turns down says so in words of its own.
@@ -61,6 +67,8 @@ for program in kitten systemd-run qs; do
   if [ "$program" = kitten ]; then
     {
       printf '[ ! -f "%s/kitten-warns" ] || echo "kitten: a warning" >&2\n' "$work"
+      printf '[ ! -f "%s/kitten-unreached" ] || { %s; exit 1; }\n' "$work" \
+        "echo 'Error: ${unreached}unix:$work/kitty.sock with error: connection refused' >&2"
       printf '[ ! -f "%s/kitten-times-out" ] || { echo . >> "%s/waits"; %s; exit 1; }\n' \
         "$work" "$work" "echo '$timed_out' >&2"
       printf '[ ! -f "%s/kitten-repeats" ] || %s\n' "$work" \
@@ -459,8 +467,8 @@ old=""
 
 fresh
 "$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
-# A kitty that turns the launch down, or a socket it no longer listens on,
-# as after a crash; and a shell that doesn't hear the give-up, which is
+# A kitty that turns the launch down; and a shell that doesn't hear the
+# give-up, or loses its answer to it (ipc-replies-whole.patch), which is
 # said too, once it's asked again as a shell from before the script said
 # why would be. The shell is told when the script started, not when it
 # gave up, and that the kitty it asked refused.
@@ -540,6 +548,21 @@ sessions: the shell didn't hear that the sessions kitty didn't answer for pi-hos
 
 fresh
 "$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
+# A socket nothing listens on, as a kitty crashed leaves until systemd
+# clears its folder, had no kitty hear the ask, so the shell is told none
+# was there, and a kept viewer's kitty come back is asked for it.
+touch "$work/kitten-unreached"
+opens pi-hosted.s-28 pi
+expect "a socket nothing listens on is asked once, and the shell told no kitty was there" \
+  "kitten @ --to unix:$work/kitty.sock launch --response-timeout 60 --type=os-window \
+--os-window-class pi-hosted.s-28 --cwd /home/joel --env MYCELIUM_APP_ID=pi-hosted.s-28 pi
+qs ipc call sessions untakenFor pi-hosted.s-28 1700000000000 none" asked
+expect "the journal says nothing listened, in kitten's words and its own" \
+  "Error: ${unreached}unix:$work/kitty.sock with error: connection refused
+sessions: the sessions kitty wasn't listening for pi-hosted.s-28" said
+
+fresh
+"$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
 # What kitten says of a launch that opened its window reaches the journal
 # too, and the shell is told nothing.
 touch "$work/kitten-warns"
@@ -612,6 +635,25 @@ else
   esac
 fi
 kill "$silent" 2> /dev/null || true
+# And asking a socket nothing listens on, it ends failed at once, saying
+# so in the words the script looks for, as its last line.
+"$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' \
+  "$work/deaf.sock"
+kitten_status=0
+kitten_said=$(HOME=$work timeout 20 "$kitten" @ --to "unix:$work/deaf.sock" launch \
+  --type=os-window true 2>&1 > /dev/null) || kitten_status=$?
+if [ "$kitten_status" -eq 0 ] || [ "$kitten_status" -eq 124 ]; then
+  echo "FAIL the packaged kitten, with nothing listening, ended $kitten_status"
+  failed=1
+fi
+case $(printf '%s\n' "$kitten_said" | tail -n 1) in
+  *"$unreached"*) ;;
+  *)
+    echo "FAIL the packaged kitten, with nothing listening, didn't end saying: $unreached"
+    echo "  it said: $kitten_said"
+    failed=1
+    ;;
+esac
 
 fresh
 "$python" -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$work/kitty.sock"
