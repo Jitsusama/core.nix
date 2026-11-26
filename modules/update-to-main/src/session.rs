@@ -723,7 +723,9 @@ mod tests {
         // A hard link whose other name is gone has one name, so only its
         // owner, root's and not the account's, tells it apart. A test
         // can't make a file another account owns, so it names another
-        // owner instead.
+        // owner instead. Which owner `read_end` takes, its folder's, is
+        // held by every read of a job's file here, run by an account that
+        // isn't root.
         let folder = tempfile::tempdir().unwrap();
         let file = folder.path().join(ERR);
         fs::write(&file, "root's own\n").unwrap();
@@ -737,15 +739,41 @@ mod tests {
     fn a_status_left_empty_is_told_as_an_end_whose_number_was_lost() {
         let folder = tempfile::tempdir().unwrap();
         fs::write(folder.path().join(STATUS), "").unwrap();
-        // Long enough to look more than once, short enough that a wait
+        // A bound of four looks, so one whose clock starts again at each
+        // look never ends the wait, within a wait short enough that one
         // which forgets the bound fails as a job that didn't end.
-        let within = Duration::from_secs(5);
-        let told = wait(folder.path(), "fetching", within, Duration::ZERO).unwrap_err();
+        let (within, lands) = (Duration::from_secs(5), 4 * EVERY);
+        let since = Instant::now();
+        let told = wait(folder.path(), "fetching", within, lands).unwrap_err();
         assert_eq!(
             told.why,
             "fetching in the login session ended, but its status stayed empty, as a write \
              on a full disk leaves it",
             "an empty status that stayed empty was waited on for the hour"
+        );
+        assert!(
+            since.elapsed() >= lands,
+            "an empty status was told lost before it had stayed empty for its bound"
+        );
+    }
+
+    #[test]
+    fn an_empty_status_that_lands_within_its_bound_is_read_as_its_number() {
+        // The status of a job caught between its write's opening and its
+        // bytes, seen empty for a few looks and then landing.
+        let folder = tempfile::tempdir().unwrap();
+        let status = folder.path().join(STATUS);
+        fs::write(&status, "").unwrap();
+        let landing = std::thread::spawn(move || {
+            std::thread::sleep(2 * EVERY);
+            fs::write(status, "0\n").unwrap();
+        });
+        let ended = wait(folder.path(), "fetching", Duration::from_secs(5), 8 * EVERY);
+        landing.join().unwrap();
+        assert_eq!(
+            ended.map_err(|told| told.why),
+            Ok(0),
+            "a status that landed within its bound wasn't read as the job's end"
         );
     }
 
