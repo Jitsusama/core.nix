@@ -72,7 +72,7 @@ let
   # builds it from the last record that read (builtFrom's --kept), or from
   # the declared rows alone where none was kept, until a session mends it,
   # since the last build went with the reboot.
-  homeFolder = cfg.homeFolder;
+  inherit (cfg) homeFolder;
   # Loopback, under the names a browser sends there by itself.
   served = pkgs.writeText "local-sites.json" (
     builtins.toJSON {

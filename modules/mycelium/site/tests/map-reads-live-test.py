@@ -86,10 +86,10 @@ CELLS = 8
 # its first key so a touch screen with a keyboard shows its key line, about
 # three more; the head and its link are seven elements more in the markup
 # than the map's header was, and the budget rose by three, the rest within
-# its room. One file more is the kit's early.js, the script the page once
-# wrote into itself, which the sites' policy now runs only from a file, its
-# bytes moved out of the markup rather than added.
-BUDGET = Budget(files=36, kilobytes=684, elements=623)
+# its room. One file and a kilobyte more are the kit's early.js, the script
+# the page once wrote into itself, which the sites' policy now runs only from
+# a file: 701 bytes stripped, against about 180 the markup no longer holds.
+BUDGET = Budget(files=36, kilobytes=685, elements=623)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
