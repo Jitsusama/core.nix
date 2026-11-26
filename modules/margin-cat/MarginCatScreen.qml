@@ -1572,6 +1572,9 @@ PanelWindow {
             // Whether the puppy's drawn, visiting or fading where a key
             // cut its visit short, which `walk` stops saying once it sits.
             puppy: puppyShown,
+            // How many of its cells are lit, so a check sees it drawn in the
+            // theme's cells, not only placed.
+            puppyLit: window.puppyDrawn.join("").split("#").length - 1,
             walk: going === null || stepped === null ? null : {
                 t: Math.round(walker.elapsedTime * 10000) / 10,
                 // When it ends on the same clock, so a check can tell where

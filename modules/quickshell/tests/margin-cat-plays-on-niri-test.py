@@ -484,6 +484,8 @@ def test_away_a_puppy_visits_and_the_cat_hops_where_it_sits(shell: Shell) -> Non
     assert set(beats) >= PUPPY_SEEN, f"the visit's beats came as {beats}"
     seen = [at["walk"]["puppy"] for at in frames if at["walk"]["puppy"]]
     assert seen, f"the puppy was never shown: {frames}"
+    lit = max(at.get("puppyLit", 0) for at in frames)
+    assert lit > 0, f"the puppy was placed but drawn in no cell: {frames}"
     size = frames[0]["size"]
     came = came_behind(frames, size, "puppy")
     assert came is None, f"the puppy came from nowhere: {came}"
