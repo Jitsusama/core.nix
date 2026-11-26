@@ -409,7 +409,8 @@ fn a_link_a_job_puts_at_the_copies_folder_redirects_no_clearing_of_its_copy() {
     // A job that moves the copies' folder aside and puts at its name a
     // link to a folder holding a copy at its own number, with its run's
     // file and the lists and archive beside it, then ends, or is stopped,
-    // or leaves a link the far line can't clear.
+    // or leaves a link the far line can't clear, or ends where the
+    // handover's folder for copies can't be made, so nothing comes back.
     let decoy = ["1", "1.back", "1.back.lost", "1.names", "1.run", "1.tar"];
     let swapping = format!(
         "s=$(cd ../.. && pwd)/.s && mv \"$s\" \"$HOME/aside\" &&
@@ -418,10 +419,12 @@ fn a_link_a_job_puts_at_the_copies_folder_redirects_no_clearing_of_its_copy() {
         decoy[1..].join(" ")
     );
     let (rm, pinned) = refusing("rm", "*\"/.s \"*", "exit 1");
-    let cases: [(&str, &[(&str, &str)]); 3] = [
+    let (mkdir, unmade) = refusing("mkdir", "*\"/1/back \"*", "exit 1");
+    let cases: [(&str, &[(&str, &str)]); 4] = [
         ("ended", &[]),
         ("stopped", &[]),
         ("ended past a link it can't clear", &[(rm, pinned.as_str())]),
+        ("ended bringing nothing back", &[(mkdir, unmade.as_str())]),
     ];
     for (how, programs) in cases {
         let stop = if how == "stopped" {
@@ -448,7 +451,11 @@ fn a_link_a_job_puts_at_the_copies_folder_redirects_no_clearing_of_its_copy() {
             left_in(&home.join("decoy"))
         );
         let linked = std::fs::symlink_metadata(work(&home)).is_ok_and(|at| at.is_symlink());
-        let stays = !programs.is_empty();
+        let stays = programs.first().is_some_and(|(name, _)| *name == "rm");
+        assert!(
+            err.contains("so nothing is brought back") == (how == "ended bringing nothing back"),
+            "a far line {how} handed back, or didn't, unlike its case ({code:?}): {err}"
+        );
         assert!(
             linked == stays
                 && err.contains("so its copy stays") == stays

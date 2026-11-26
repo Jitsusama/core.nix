@@ -232,6 +232,46 @@ fn a_list_that_couldn_t_be_written_whole_ends_cut() {
     }
 }
 
+#[test]
+fn a_link_at_the_copies_folder_after_the_finds_cuts_the_list_and_sorts_nothing_through_it() {
+    let mut kind = kind("");
+    kind.brings_back = vec!["out".into()];
+    // A find of the files that, as a job of the quest may meanwhile,
+    // moves the copies' folder aside and puts a link at its name to an
+    // empty folder, where the sorted list would be written through it.
+    let finding = refusing(
+        "find",
+        "*\" -type f \"*",
+        "find \"$@\"; found=$?; s=$(cd .. && pwd) && mv \"$s\" \"$HOME/aside\" &&
+         mkdir \"$HOME/decoy\" && ln -s \"$HOME/decoy\" \"$s\"; exit $found",
+    );
+    let (code, err, home) = far_line(
+        Left::Whole,
+        &[("x", "x")],
+        "mkdir out && printf a > out/a",
+        &kind,
+        None,
+        &[(finding.0, finding.1.as_str())],
+    );
+    assert!(
+        code == Some(0) && err.contains("a link at its copies' folder was cleared"),
+        "the far line didn't end as its job did, or kept the link ({code:?}): {err}"
+    );
+    assert!(
+        std::fs::read_dir(home.join("decoy"))
+            .unwrap()
+            .next()
+            .is_none(),
+        "the bring-back sorted its list through the link at the copies' folder: {err}"
+    );
+    let landed = bring_back(&handover(&home), &home.join("near"), &kind.brings_back, 1);
+    assert!(
+        matches!(&landed, Err(Missed::Lost(why)) if why.contains("couldn't write down all")),
+        "a list whose sort was passed over wasn't said cut: {landed:?}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 #[cfg(target_os = "linux")]
 #[test]
 fn a_list_on_a_full_disk_is_never_said_whole() {
