@@ -136,6 +136,16 @@ class Host:
             timeout=COMING_BACK,
         )
 
+    def until_said_holding_both(self) -> None:
+        """Wait until the host has told the journal, this boot, that it holds both."""
+        # The host writes its ready line just after telling systemd it is ready, so the unit
+        # can be active a moment before the journal holds the line.
+        self.machine.wait_until_succeeds(
+            f"journalctl --no-pager -b _UID=1000 _SYSTEMD_USER_UNIT={UNIT}"
+            f" | grep -qE {shlex.quote(HOLDING_BOTH)}",
+            timeout=COMING_BACK,
+        )
+
     def record(self, name: str) -> bytes:
         """Give a conversation's record, its session file, as it is now."""
         return base64.b64decode(self.run(f"base64 -w0 {shlex.quote(self.files[name])}"))
@@ -244,8 +254,7 @@ def test_a_rebooted_machine_starts_the_host_and_resumes_both(rebooted: Host) -> 
     """A reboot: the host starts with the account's manager, ready and holding both."""
     host = rebooted
     assert host.show("ActiveState") == "active"
-    said = host.said()
-    assert re.search(HOLDING_BOTH, said), said
+    host.until_said_holding_both()
     assert set(host.states()) == set(host.ids.values()), host.states()
     roster = host.run(f"cat {ROSTER}")
     for name, session in host.ids.items():
