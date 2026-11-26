@@ -53,8 +53,9 @@ const SERVER_FAILING: u16 = 500;
 
 /// HTTP's word for a caller that has asked too often, and for a server
 /// that can't take a request now, each passing and each taken to have
-/// done nothing: a proxy may say the second of a call it passed on, but
-/// a phone told twice costs Joel less than one never told.
+/// done nothing: a proxy may say the second of a call it passed on, so
+/// Joel's phone may be told each round for ten minutes, but that costs
+/// him less than an alert never told.
 const TOO_MANY: u16 = 429;
 const UNAVAILABLE: u16 = 503;
 
@@ -202,8 +203,10 @@ impl Gateway {
         let params = json!({ "name": tool, "arguments": arguments });
         let mut refused = false;
         let mut forgotten = false;
-        self.put = None;
         loop {
+            // A refused or forgotten call did nothing, so each pass starts
+            // with the tool unasked.
+            self.put = None;
             // Nothing fails opening a session after the tool was asked, so a
             // gateway unreached or failing its opening asked nothing. A
             // failing that names a sign-in refused is still said as one, so

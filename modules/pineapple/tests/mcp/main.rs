@@ -1,6 +1,7 @@
 //! A tool gateway's tools called over HTTP, against a fake gateway on a
 //! port of this machine's own: what it is asked, in what order, with which
-//! session and sign-in, and what the caller is told.
+//! session and sign-in, and what the caller is told. What Joel's phone is
+//! told through the tool that sends to him alone is in phone.rs.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;

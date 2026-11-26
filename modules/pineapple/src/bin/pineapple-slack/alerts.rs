@@ -86,27 +86,42 @@ fn untold(state: &Path) -> Vec<Value> {
 impl Phone {
     /// Says each live alert let go, as [`give_up`] does, naming Joel's own
     /// IM where it's found; in shadow, none, as none is tried.
-    pub fn give_up(&self, state: &Path, began: u64) {
+    pub fn give_up(&self, state: &Path, from: u64) {
         if !self.shadow {
-            give_up(state, self.own.as_ref().map(OwnIm::id), began);
+            give_up(state, self.own.as_ref().map(OwnIm::id), from);
         }
     }
 }
 
 /// Says each live alert let go, as [`give_up`] does, for a reader telling
 /// Joel's phone through a gateway.
-pub fn give_up_through(state: &Path, began: u64) {
-    give_up(state, Some(TO_SELF), began);
+pub fn give_up_through(state: &Path, from: u64) {
+    give_up(state, Some(TO_SELF), from);
+}
+
+/// The oldest an alert may be and still be said let go, taken once as a
+/// reader starts: twenty minutes back, or, where Joel's phone was last
+/// told earlier, ten minutes before that, so an alert written while no
+/// reader ran is said too, while one from before alerts were ever let go
+/// with a word is left as it was.
+pub fn let_go_from(state: &Path) -> u64 {
+    let fresh = millis().saturating_sub(2 * LOOK_BACK * MILLIS);
+    lines(&state.join("phoned.jsonl"))
+        .iter()
+        .filter_map(|line| line["at"].as_u64())
+        .max()
+        .map_or(fresh, |last| {
+            fresh.min(last.saturating_sub(LOOK_BACK * MILLIS))
+        })
 }
 
 /// Says each live alert that went ten minutes untold is let go, as it
 /// won't be tried again, and keeps a line of it in phoned.jsonl so it's
 /// said once. It's asked each round before any is told, whether or not
 /// Slack or the gateway answers, so one aging out in an outage is said
-/// too; only those already twenty minutes old when the reader `began`
-/// go unsaid, so a reader starting afresh says nothing of older ones.
-/// One whose send may have gone once is said so.
-fn give_up(state: &Path, im: Option<&str>, began: u64) {
+/// too; only those written before `from`, as [`let_go_from`] gives it,
+/// go unsaid. One whose send may have gone once is said so.
+fn give_up(state: &Path, im: Option<&str>, from: u64) {
     let phoned = state.join("phoned.jsonl");
     let kept = lines(&phoned);
     let told = done(&kept);
@@ -117,7 +132,6 @@ fn give_up(state: &Path, im: Option<&str>, began: u64) {
         .collect();
     let now = millis();
     let since = now.saturating_sub(LOOK_BACK * MILLIS);
-    let from = began.saturating_sub(2 * LOOK_BACK * MILLIS);
     for line in lines(&state.join("would-tell.jsonl")) {
         let at = line["at"].as_u64().unwrap_or(0);
         let named = told_as(&line);

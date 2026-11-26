@@ -199,8 +199,9 @@ const WORDS_NOT_TAKEN: &str = "(the words are at the link)";
 /// are said as `(at)here` and so on; any failing of the tool is met by
 /// sending it once more with the words left to the link, so the title and
 /// where still reach his phone. Only that second failing is judged, as it
-/// holds nothing anyone in Slack wrote: a rate spent there did nothing,
-/// so the alert is tried again whole the next round.
+/// holds nothing anyone in Slack wrote: a rate spent there, or Slack
+/// refusing the gateway's sign-in, did nothing, so the alert is tried
+/// again whole the next round.
 ///
 /// The tool's failing promises nothing of whether Slack took the message,
 /// so a second failing is counted as may have gone: two such rounds and
@@ -234,7 +235,7 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> 
         Called::Unreachable(why) | Called::Unreadable(why) | Called::Failed(why) if !put => {
             Missed::NotSent(why)
         }
-        Called::Failed(why) if spent(&why) => Missed::NotSent(why),
+        Called::Failed(why) if spent(&why) || refuses_the_sign_in(&why) => Missed::NotSent(why),
         Called::Unreachable(why) | Called::Unreadable(why) | Called::Failed(why) => {
             Missed::Unsure(why)
         }
@@ -255,6 +256,13 @@ fn spent(why: &str) -> bool {
         .any(|word| word == "ratelimited" || word == "rate_limited")
         || why.contains("rate limit")
         || why.contains("too many requests")
+}
+
+/// Whether a tool's failing says Slack refused the gateway's sign-in, so
+/// nothing was posted, as the reader's ears tell it.
+fn refuses_the_sign_in(why: &str) -> bool {
+    why.split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+        .any(crate::deaf::refuses_the_sign_in)
 }
 
 /// The words that mention everyone said so they don't, as the gateway

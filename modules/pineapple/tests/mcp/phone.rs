@@ -32,6 +32,16 @@ fn an_alert_is_unsure_only_once_its_tool_was_asked_and_its_words_never_hold_it_b
             _ => status(202),
         }
     }
+    /// A send whose session the gateway forgot, then whose opening again
+    /// meets a proxy's sign-in page, so the tool was never asked.
+    fn forgotten_then_page(one: &Seen, calls: usize) -> Reply {
+        match one.method.as_str() {
+            "initialize" if calls == 0 => opened("s1"),
+            "initialize" => page_at_opening(one, calls),
+            "tools/call" => status(404),
+            _ => status(202),
+        }
+    }
     /// The send answered as `answer` says of how many came before it.
     fn sending(one: &Seen, calls: usize, answer: fn(usize) -> Reply) -> Reply {
         match one.method.as_str() {
@@ -41,7 +51,7 @@ fn an_alert_is_unsure_only_once_its_tool_was_asked_and_its_words_never_hold_it_b
         }
     }
     type Answer = fn(&Seen, usize) -> Reply;
-    let cases: [(&str, Answer, &str, usize); 8] = [
+    let cases: [(&str, Answer, &str, usize); 10] = [
         (
             "lost",
             |one, n| sending(one, n, |_| status(502)),
@@ -62,6 +72,13 @@ fn an_alert_is_unsure_only_once_its_tool_was_asked_and_its_words_never_hold_it_b
         ),
         ("refused-opening", refused_opening, "unsent", 0),
         ("page-opening", page_at_opening, "unsent", 0),
+        ("forgotten-then-page", forgotten_then_page, "unsent", 1),
+        (
+            "refused",
+            |one, n| sending(one, n, |_| tool("Slack said: invalid_auth", true)),
+            "unsent",
+            2,
+        ),
         (
             "quoted",
             |one, n| sending(one, n, |n| tool("refused: we hit the rate limit", n == 0)),

@@ -11,7 +11,7 @@
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
@@ -427,6 +427,14 @@ fn aged(home: &Path, ages: &[(&str, u64)]) {
     std::fs::write(&waiting, each.join("\n") + "\n").expect("the alerts made old");
 }
 
+/// The time `minutes` ago, in milliseconds.
+fn minutes_ago(minutes: u64) -> u64 {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("a time after 1970");
+    u64::try_from(now.as_millis()).expect("a time in range") - minutes * 60 * 1000
+}
+
 /// The keys of what phoned.jsonl in `home` keeps as let go.
 fn let_go(home: &Path) -> Vec<Value> {
     phoned(home)
@@ -442,7 +450,13 @@ fn an_alert_untold_for_its_ten_minutes_is_said_let_go_once() {
     let home = home();
     an_alert_waits(&home);
     aged(&home, &[("untold", 15), ("older", 25), ("unsure", 12)]);
-    let once = json!({"key": "unsure", "saying": "stopped", "sent": "unsure", "shadow": false});
+    let once = json!({
+        "at": minutes_ago(12),
+        "key": "unsure",
+        "saying": "stopped",
+        "sent": "unsure",
+        "shadow": false,
+    });
     std::fs::write(
         home.join("state/pineapple/phoned.jsonl"),
         format!("{once}\n"),
@@ -496,6 +510,20 @@ fn a_reader_over_a_gateway_live_with_no_sign_in_writes_joels_row() {
     let (origin, _) = stand_in();
     let (url, called) = gateway();
     let home = home();
+    an_alert_waits(&home);
+    aged(&home, &[("untold", 15), ("while-down", 40)]);
+    let told = json!({
+        "at": minutes_ago(60),
+        "key": "told",
+        "saying": "stopped",
+        "sent": "pineapple: an earlier stop",
+        "shadow": false,
+    });
+    std::fs::write(
+        home.join("state/pineapple/phoned.jsonl"),
+        format!("{told}\n"),
+    )
+    .expect("Joel's phone last told an hour ago");
     let program = sign_in(&home, true);
     let program = program.to_str().expect("a path in UTF-8");
     let mut reader = reading(
@@ -528,6 +556,13 @@ fn a_reader_over_a_gateway_live_with_no_sign_in_writes_joels_row() {
     assert!(
         tools(&called).is_empty(),
         "no tool is called without a sign-in"
+    );
+    assert_eq!(
+        let_go(&home),
+        [json!("untold"), json!("while-down")],
+        "with no sign-in an alert past its ten minutes is still said let go, and one \
+         written while no reader ran, since Joel's phone was last told: {}",
+        journal(&home)
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
