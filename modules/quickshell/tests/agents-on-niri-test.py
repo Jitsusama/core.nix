@@ -4880,8 +4880,13 @@ def stepped_to(shell: Shell, name: str) -> None:
 
 
 def footed(shown: Json, said: str) -> bool:
-    """Whether the launcher's foot says this, its hard spaces read as spaces."""
-    return said in shown["footer"].replace("\xa0", " ")
+    """Whether the launcher's foot says this, in its words or its keys, hard spaces as spaces.
+
+    A Talk says a refusal in the foot's words, and a For You choice among the foot's
+    keys, where the row's Return said what it does.
+    """
+    hints = cast("list[str]", shown.get("hints") or [])
+    return any(said in one.replace("\xa0", " ") for one in [shown["footer"], *hints])
 
 
 def test_a_choice_in_for_you_is_joels_alone_and_his_talk_there_takes_no_second(
