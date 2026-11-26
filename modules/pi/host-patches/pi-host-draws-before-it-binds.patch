@@ -14,20 +14,21 @@ on the screen is cleared, so the notices startup made before the bind
 stay. Where the bind did more than add (a compaction, a move in the
 tree), so the entries drawn are no longer the conversation's first, the
 chat is built again from the conversation as it now is, which drops
-those notices rather than show a conversation the agent no longer holds; the resources pi lists once its extensions bind still land above
-the conversation, in their own container. Tool and message renderers are
-registered as extensions load, before the bind, so the early draw has
-them, though one that reads state its session_start loads draws those
-messages without it. It hears the agent only once the bind ends, as
-before, so nothing reaches an extension before its hooks
-are live. A plain pi starts as before.
+those notices and any error the bind showed, rather than show a
+conversation the agent no longer holds. The resources pi lists once its
+extensions bind still land above the conversation, in their own
+container. Tool and message renderers are registered as extensions load,
+before the bind, so the early draw has them, though one that reads state
+its session_start loads draws those messages without it. It hears the
+agent only once the bind ends, as before, so nothing reaches an
+extension before its hooks are live. A plain pi starts as before.
 
 Apply only to the host's private pi build; ordinary interactive pi stays
 unchanged.
 
 --- a/packages/coding-agent/src/modes/interactive/interactive-mode.ts
 +++ b/packages/coding-agent/src/modes/interactive/interactive-mode.ts
-@@ -1185,12 +1185,22 @@ export class InteractiveMode {
+@@ -1185,12 +1185,23 @@ export class InteractiveMode {
  		this.setupEditorSubmitHandler();
  		this.ui.requestRender();
  
@@ -46,9 +47,10 @@ unchanged.
 +		// A hosted screen drew them already, so it draws only what session_start added while it bound,
 +		// or, where the bind did more than add, the whole conversation again as it now is.
 +		const bound = hosted ? this.sessionManager.buildContextEntries() : [];
++		const kept = drawn.every((id, at) => bound[at]?.id === id);
 +		if (!hosted) this.renderInitialMessages();
-+		else if (drawn.every((id, at) => bound[at]?.id === id)) this.renderSessionEntries(bound.slice(drawn.length));
-+		else this.rebuildChatFromMessages();
++		else if (!kept) this.rebuildChatFromMessages();
++		else if (bound.length > drawn.length) this.renderSessionEntries(bound.slice(drawn.length));
  
  		// Set up theme file watcher
  		this.themeChangeUnsubscribe = onThemeChange(() => {

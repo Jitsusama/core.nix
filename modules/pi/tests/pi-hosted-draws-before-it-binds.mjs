@@ -171,8 +171,9 @@ it("a hosted screen draws its conversation again when the bind did more than add
   const { mode, bound, binding, entries } = startingScreen(true);
   const started = starting(mode);
   await binding;
-  // A session_start that compacts: what was drawn is no longer the start.
-  entries.splice(0, entries.length, entry("a compaction's summary"));
+  // A session_start that compacts: what was drawn is no longer the start,
+  // though the conversation is now longer than what was drawn.
+  entries.splice(0, entries.length, entry("a compaction's summary"), entry("kept"), entry("next"));
   bound();
   await started;
   assert.equal(mode.renderSessionEntries.mock.callCount(), 0, "it drew a slice of another start");

@@ -3527,8 +3527,9 @@
   '';
   pi-hosted-draws-before-it-binds = ''
     pi built with the host's patches, applied exactly, draws a hosted screen's conversation
-    before its extensions' session start settles, and only once, hearing the agent only once
-    they are bound, while plain pi still binds before it draws
+    before its extensions' session start settles, then only what the bind added, or all of it
+    again where the bind did more than add, hearing the agent only once they are bound, while
+    plain pi still binds before it draws
   '';
   pi-hosted-screen-stays-in-its-session = ''
     pi built with the host's patches, applied exactly, ends only a hosted screen when it quits
