@@ -96,17 +96,36 @@ fn text<'a>(value: &'a Value, field: &str) -> &'a str {
 /// saying by, while the whole of it is at the row's link.
 const GIST: usize = 280;
 
-/// What was said, as a row, its notice and Joel's phone show it: on one
-/// line, and cut after [`GIST`] characters, so a long comment heard costs
-/// the launcher and his notices no more than a short one. A control
-/// character parts words as a space does, since a NUL can't be passed to
-/// the program that shows his notice, and none of them is shown.
-fn gist(said: &str) -> String {
-    let line = said
-        .split(|c: char| c.is_whitespace() || c.is_control())
+/// Whether a character parts the words shown of what was said, as a
+/// space does: whitespace; a control character, since a NUL can't be
+/// passed to the program that shows Joel's notice; or a mark turning the
+/// text's direction, which would show its words in another order than
+/// they were said.
+fn parts(c: char) -> bool {
+    c.is_whitespace()
+        || c.is_control()
+        || matches!(
+            c,
+            '\u{61c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}'
+        )
+        || matches!(c, '\u{2066}'..='\u{2069}')
+}
+
+/// Words taken from what was said, such as a row's title naming what a
+/// stop reaches, on one line with no character [`parts`] names.
+fn shown(said: &str) -> String {
+    said.split(parts)
         .filter(|word| !word.is_empty())
         .collect::<Vec<_>>()
-        .join(" ");
+        .join(" ")
+}
+
+/// What was said, as a row, its notice and Joel's phone show it: on one
+/// line as [`shown`] makes it, and cut after [`GIST`] characters, so a
+/// long comment heard costs the launcher and his notices no more than a
+/// short one.
+fn gist(said: &str) -> String {
+    let line = shown(said);
     match line.char_indices().nth(GIST) {
         Some((cut, _)) => format!("{} ...", line[..cut].trim_end()),
         None => line,
@@ -197,7 +216,7 @@ fn stop_row(stop: &Standing, kept: &Kept, words: &Words) -> Value {
         "key": key,
         "kind": KIND,
         "what": "stop",
-        "title": title,
+        "title": shown(&title),
         "since": heard_at,
         "stop": stop.id,
         "saying": stop.id,
@@ -294,7 +313,7 @@ fn alert_row(key: &str, latest: &Value, count: usize, words: &Words) -> Value {
         "key": key,
         "kind": KIND,
         "what": what,
-        "title": title,
+        "title": shown(&title),
         "since": latest["heard_at"].as_u64().unwrap_or(0),
         "saying": text(latest, "key"),
         "link": text(latest, "link"),
@@ -363,6 +382,11 @@ mod tests {
             gist("pineapple\u{0}override \u{1b}[2J\u{7f}now"),
             "pineapple override [2J now",
             "control characters part words and are never shown"
+        );
+        assert_eq!(
+            gist("pineapple \u{202e}edirrevo\u{202c} \u{2067}now\u{2069}"),
+            "pineapple edirrevo now",
+            "a mark turning the text's direction parts words too, so it's shown as said"
         );
         // Its 280th byte falls inside a letter, so a cut by bytes fails.
         assert_eq!(

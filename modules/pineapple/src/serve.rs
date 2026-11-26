@@ -501,8 +501,8 @@ fn notice(notify: &Path, row: &Value) -> Knock {
     let title = row["title"].as_str().unwrap_or_default();
     let body = format!(
         "{}\n{}",
-        row["words"].as_str().unwrap_or_default(),
-        row["link"].as_str().unwrap_or_default()
+        unmarked(row["words"].as_str().unwrap_or_default()),
+        unmarked(row["link"].as_str().unwrap_or_default())
     );
     let sent = Command::new(notify)
         .args([
@@ -530,6 +530,15 @@ fn notice(notify: &Path, row: &Value) -> Knock {
             Knock::Missed
         }
     }
+}
+
+/// Text a notice's body shows as it was said: the notices server reads a
+/// body as markup, so a comment's own tags or entities would otherwise be
+/// drawn as links and styles, or read as other characters.
+fn unmarked(said: &str) -> String {
+    said.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 /// The notices server's name on the bus now, which changes whenever it
