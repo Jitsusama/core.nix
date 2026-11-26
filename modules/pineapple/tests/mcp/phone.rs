@@ -42,14 +42,13 @@ fn an_alert_is_unsure_only_once_its_tool_was_asked_and_its_words_never_hold_it_b
             _ => status(202),
         }
     }
-    /// A send the gateway refuses as a tool it doesn't know, before it
-    /// runs anything.
-    fn unknown_tool(one: &Seen, _: usize) -> Reply {
+    /// A send the gateway answers with JSON-RPC's error `CODE`.
+    fn rpc<const CODE: i64>(one: &Seen, _: usize) -> Reply {
         match one.method.as_str() {
             "initialize" => opened("s1"),
             "tools/call" => json_reply(&json!({
                 "jsonrpc": "2.0", "id": one.id,
-                "error": { "code": -32_601, "message": "Unknown tool" },
+                "error": { "code": CODE, "message": "refused" },
             })),
             _ => status(202),
         }
@@ -67,7 +66,7 @@ fn an_alert_is_unsure_only_once_its_tool_was_asked_and_its_words_never_hold_it_b
         }
     }
     type Answer = fn(&Seen, usize) -> Reply;
-    let cases: [(&str, Answer, &str, usize); 13] = [
+    let cases: [(&str, Answer, &str, usize); 18] = [
         (
             "lost",
             |one, n| sending(one, n, |_| status(502)),
@@ -89,7 +88,14 @@ fn an_alert_is_unsure_only_once_its_tool_was_asked_and_its_words_never_hold_it_b
         ("refused-opening", refused_opening, "unsent", 0),
         ("page-opening", page_at_opening, "unsent", 0),
         ("forgotten-then-page", forgotten_then_page, "unsent", 1),
-        ("unknown-tool", unknown_tool, "unsent", 1),
+        // Refused before it ran, each is sent again without the words,
+        // then left unsent.
+        ("unparsed", rpc::<{ -32_700 }>, "unsent", 2),
+        ("invalid", rpc::<{ -32_600 }>, "unsent", 2),
+        ("unknown-method", rpc::<{ -32_601 }>, "unsent", 2),
+        // A server may say either of what a tool gave back once it ran.
+        ("arguments", rpc::<{ -32_602 }>, "unsure", 2),
+        ("internal", rpc::<{ -32_603 }>, "unsure", 2),
         (
             "enable-lost",
             |one, n| sending(one, n, |n| if n == 0 { turned_off() } else { status(502) }),
@@ -100,7 +106,7 @@ fn an_alert_is_unsure_only_once_its_tool_was_asked_and_its_words_never_hold_it_b
             "still-off",
             |one, n| {
                 sending(one, n, |n| {
-                    if n == 1 {
+                    if n % 3 == 1 {
                         tool("on", false)
                     } else {
                         turned_off()
@@ -108,7 +114,21 @@ fn an_alert_is_unsure_only_once_its_tool_was_asked_and_its_words_never_hold_it_b
                 })
             },
             "unsent",
-            3,
+            6,
+        ),
+        // A refusal quoting words that say the tool is off holds back
+        // only the words.
+        (
+            "quoting-off",
+            |one, n| {
+                sending(one, n, |n| match n {
+                    1 => tool("on", false),
+                    3 => tool("sent", false),
+                    _ => turned_off(),
+                })
+            },
+            "sent plain",
+            4,
         ),
         (
             "refused",

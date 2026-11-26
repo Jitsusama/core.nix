@@ -196,12 +196,13 @@ const WORDS_NOT_TAKEN: &str = "(the words are at the link)";
 
 /// Sends one alert to Joel from himself through `gateway`. It refuses a
 /// mention, so `@here`, `@channel` and `@everyone` in what others wrote
-/// are said as `(at)here` and so on; any failing of the tool is met by
-/// sending it once more with the words left to the link, so the title and
-/// where still reach his phone. Only that second failing is judged, as it
-/// holds nothing anyone in Slack wrote: a rate spent there, or Slack
-/// refusing the gateway's sign-in, did nothing, so the alert is tried
-/// again whole the next round.
+/// are said as `(at)here` and so on; any failing of the tool, or a
+/// refusal of it before it ran, is met by sending it once more with the
+/// words left to the link, so the title and where still reach his phone.
+/// Only that second answer is judged, as it holds nothing anyone in Slack
+/// wrote: a rate spent there, Slack refusing the gateway's sign-in, or a
+/// refusal before it ran did nothing, so the alert is tried again whole
+/// the next round.
 ///
 /// The tool's failing promises nothing of whether Slack took the message,
 /// so a second failing is counted as may have gone: two such rounds and
@@ -221,7 +222,9 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> 
         (said, called)
     };
     let (said, sent) = match ask(gateway, alert) {
-        (_, Err(Called::Failed(_))) if gateway.put_to(TO_SELF) && !alert.words.is_empty() => {
+        (_, Err(Called::Failed(_) | Called::Declined(_)))
+            if gateway.put_to(TO_SELF) && !alert.words.is_empty() =>
+        {
             let plain = Alert {
                 words: WORDS_NOT_TAKEN,
                 ..alert
@@ -239,7 +242,7 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> 
         Called::Unreachable(why) | Called::Unreadable(why) | Called::Failed(why) => {
             Missed::Unsure(why)
         }
-        Called::NotReached(why) => Missed::NotSent(why),
+        Called::NotReached(why) | Called::Declined(why) => Missed::NotSent(why),
         Called::Refused => Missed::NotSent("the gateway refused Joel's sign-in".to_owned()),
         Called::NoSignIn(_) => Missed::NotSent("no sign-in to the gateway was given".to_owned()),
     })

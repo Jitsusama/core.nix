@@ -258,9 +258,10 @@ impl Through {
                 {
                     Round::Deaf(Deafness::Refused)
                 }
-                Called::NotReached(_) | Called::Unreachable(_) | Called::Failed(_) => {
-                    Round::Unasked
-                }
+                Called::NotReached(_)
+                | Called::Declined(_)
+                | Called::Unreachable(_)
+                | Called::Failed(_) => Round::Unasked,
             };
             eprintln!("<4>the gateway's {tool} said nothing: {called:?}");
             round

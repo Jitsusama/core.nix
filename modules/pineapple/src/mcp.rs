@@ -96,6 +96,10 @@ pub enum Called {
     /// No connection to the gateway could be made, so nothing it was
     /// asked was done.
     NotReached(String),
+    /// The gateway refused the call before running anything of it, as a
+    /// tool still off once turned on, or a request or method it couldn't
+    /// take, so nothing was done.
+    Declined(String),
     /// The gateway couldn't be reached once asked, or its answer couldn't
     /// be read to its end, so what it was asked may have been done.
     Unreachable(String),
@@ -188,7 +192,7 @@ impl Gateway {
                 // Still off, the gateway ran nothing of it.
                 match self.once(tool, arguments) {
                     Err(Called::Failed(why)) if why.contains(&format!("{tool}{NOT_AVAILABLE}")) => {
-                        Err(Called::NotReached(why))
+                        Err(Called::Declined(why))
                     }
                     other => other,
                 }
@@ -419,14 +423,12 @@ fn said(answer: Answer) -> Result<String, Called> {
     };
     if let Some(error) = body.get("error") {
         let why = error["message"].as_str().unwrap_or("no reason");
-        // JSON-RPC's words for a request it couldn't read, or a method,
-        // tool or arguments it doesn't know, each refused before anything
-        // ran.
-        if matches!(
-            error["code"].as_i64(),
-            Some(-32_700 | -32_600 | -32_601 | -32_602)
-        ) {
-            return Err(Called::NotReached(format!(
+        // JSON-RPC's words for a request it couldn't read or a method it
+        // doesn't know, each refused before anything ran. Arguments it
+        // couldn't take are a failing like any other, as a server may
+        // say so of what a tool gave back once it ran.
+        if matches!(error["code"].as_i64(), Some(-32_700 | -32_600 | -32_601)) {
+            return Err(Called::Declined(format!(
                 "the gateway refused the call: {why}"
             )));
         }

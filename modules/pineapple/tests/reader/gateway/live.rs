@@ -24,6 +24,8 @@ use super::{
 /// Where For You's row of what waits goes, under a case's home, as the
 /// unit names it.
 const WAITING: &str = "state/mission/waiting/pineapple.json";
+/// Where the alert waiting links to.
+const LINK: &str = "https://example.slack.com/archives/C1/p1";
 
 /// The reader over the gateway at `url`, live, in `home`, telling For You
 /// where its unit would.
@@ -405,7 +407,8 @@ fn a_reader_over_a_gateway_beside_the_keyrings_ends_at_once_saying_why() {
 }
 
 /// Ages the alert waiting in `home` into one for each of `ages`, keyed
-/// and in minutes, so each is that old as the reader starts.
+/// and in minutes, so each is that old as the reader starts, and each
+/// links to its own message, the original's with `-` and its key.
 fn aged(home: &Path, ages: &[(&str, u64)]) {
     let waiting = home.join("state/pineapple/would-tell.jsonl");
     let alert: Value = serde_json::from_str(
@@ -421,6 +424,7 @@ fn aged(home: &Path, ages: &[(&str, u64)]) {
             let mut one = alert.clone();
             one["key"] = json!(key);
             one["at"] = json!(at - minutes * 60 * 1000);
+            one["link"] = json!(format!("{LINK}-{key}"));
             one.to_string()
         })
         .collect();
@@ -487,9 +491,13 @@ fn an_alert_untold_for_its_ten_minutes_is_said_let_go_once() {
     );
     let journal = journal(&home);
     assert!(
-        journal.contains("Joel's phone alert is let go, untold after ten minutes")
-            && journal.contains("its one send that may have gone unanswered")
-            && journal.contains("each send that may have gone unanswered"),
+        journal.contains(&format!(
+            "Joel's phone alert is let go, untold after ten minutes: {LINK}-untold"
+        )) && journal.contains(&format!(
+            "after ten minutes, its one send that may have gone unanswered: {LINK}-unsure"
+        )) && journal.contains(&format!(
+            "after ten minutes, each send that may have gone unanswered: {LINK}-twice"
+        )),
         "and the journal says so, and which may have gone: {journal}"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
