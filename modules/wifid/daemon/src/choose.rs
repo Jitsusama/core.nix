@@ -5573,7 +5573,8 @@ pub(crate) mod tests {
         // Just past the hour a keep-off holds a failing link, halfway, and
         // just short of its end.
         let minute = Duration::from_secs(60);
-        let held = [HOUR + minute, HOUR * 4, HOUR * 7 + minute * 59].map(&chosen_after);
+        let short_of_its_end = (HOUR * 8).saturating_sub(Duration::from_secs(1));
+        let held = [HOUR + minute, HOUR * 4, short_of_its_end].map(&chosen_after);
         let ended = chosen_after(HOUR * 8);
 
         // Held, it stays: a look each minute would send the slow radio

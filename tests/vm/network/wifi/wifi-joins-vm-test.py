@@ -305,9 +305,11 @@ def test_and_hears_an_account_say_a_call_is_on_naming_who_said_it(
                 timeout=timedelta(seconds=10),
             )
         except Exception as missed:
+            # Every run of wifid's is read, with the pid it runs as now, so a restart
+            # since the ask shows as one rather than as wifid having said nothing.
             said = machine.succeed(
-                "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
-                " | grep -F 'says a call is' || true"
+                "systemctl show -p MainPID wifid;"
+                " journalctl -o cat -u wifid | grep -E 'says a call is|Started' || true"
             )
             message = f"no line names {path} saying the call is {stands}; wifid said:\n{said}"
             raise AssertionError(message) from missed

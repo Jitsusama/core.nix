@@ -16,6 +16,10 @@
 //! wrong with it and never by what it said (2026-11-14).
 
 use std::fmt;
+use std::io;
+use std::mem;
+use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
+use std::path::Path;
 
 use serde_json::Value;
 use tokio::time::{Duration, Instant};
@@ -75,30 +79,115 @@ pub fn asked(line: &str, said: &Value) -> Result<bool, &'static str> {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Peer {
     pid: Option<i32>,
-    /// The account the kernel says connected, which no cgroup nested too
-    /// deep to read can hide.
+    /// The effective uid the process connected with, as the kernel took
+    /// it then: a set-uid program's owner, not who ran it. No cgroup nested
+    /// too deep to read can hide it.
     uid: Option<u32>,
-    /// The cgroup's path, as `cgroup_of` says it, or none when it couldn't
-    /// be read. Only `cgroup_of` makes one, so nothing unescaped reaches
-    /// the journal through it.
-    cgroup: Option<String>,
+    /// Where it runs, or why that went unsaid.
+    cgroup: Cgroup,
+}
+
+/// Where an asker runs, or why it couldn't be said. Only `cgroup_of`
+/// makes a path, so nothing unescaped reaches the journal through one.
+#[derive(Clone, Debug, Default, PartialEq)]
+enum Cgroup {
+    /// The cgroup's path from the root, as `cgroup_of` says it.
+    Path(String),
+    /// The process had gone by the time its path was read, so the pid it
+    /// connected with may since be another's, and no path is said for it.
+    Gone,
+    /// Read, but with no unified line, as a host with no unified hierarchy
+    /// gives.
+    Unnamed,
+    /// Not read, with the kernel's errno for why when it gave one: a path
+    /// past `PATH_MAX`, which a process may nest on purpose to hide, is
+    /// `ENAMETOOLONG`, told apart from a process merely gone.
+    Unread(Option<i32>),
+    /// No pid to read it by.
+    #[default]
+    Unasked,
 }
 
 impl Peer {
-    /// The peer at a pid, with the cgroup it's in, read as bytes so a path
-    /// that isn't UTF-8 is still said. The kernel took the pid and uid as
-    /// the connection was made, but the path is read by that pid as wifid
-    /// answers, so a process that connected and exited before then could
-    /// have its pid taken by another, and the path name that one's cgroup:
-    /// the slice holds only while the pid isn't reused. The uid can't move
-    /// that way. A pid of 0 is the kernel saying the peer is outside
-    /// wifid's pid namespace, which it can't name, so it's said as none.
-    pub fn at(pid: Option<i32>, uid: Option<u32>) -> Peer {
+    /// The peer on a connection, as the kernel took its pid and uid when
+    /// it connected, with the cgroup it's in. The path is read by that pid
+    /// as wifid answers, which may be up to a minute on while connections
+    /// queue through a restart, so the pid could by then be another's. The
+    /// kernel's pidfd for the peer is taken first and asked after the
+    /// read: a process still holding its pid then is the one that
+    /// connected, as a live process keeps its pid, and one that has gone
+    /// is said as gone rather than named by whatever took its number. A
+    /// pid of 0 is the kernel saying the peer is outside wifid's pid
+    /// namespace, which it can't name, so it's said as none.
+    pub fn on(socket: BorrowedFd<'_>, pid: Option<i32>, uid: Option<u32>) -> Peer {
         let pid = pid.filter(|&pid| pid > 0);
-        let cgroup = pid
-            .and_then(|pid| std::fs::read(format!("/proc/{pid}/cgroup")).ok())
-            .and_then(|cgroup| cgroup_of(&cgroup));
+        let Some(number) = pid else {
+            let cgroup = Cgroup::Unasked;
+            return Peer { pid, uid, cgroup };
+        };
+        let held = pidfd_of(socket);
+        let read = std::fs::read(format!("/proc/{number}/cgroup"));
+        let cgroup = match held {
+            Ok(held) if !holds_its_pid(&held) => Cgroup::Gone,
+            Ok(_) => judged(read, |path| Path::new("/sys/fs/cgroup").join(path).exists()),
+            Err(error) if error.raw_os_error() == Some(libc::ESRCH) => Cgroup::Gone,
+            // Without its pidfd, nothing says the path read is the asker's.
+            Err(error) => Cgroup::Unread(error.raw_os_error()),
+        };
         Peer { pid, uid, cgroup }
+    }
+}
+
+/// The kernel's pidfd for the process on the other end of a socket, as it
+/// was when that process connected.
+fn pidfd_of(socket: BorrowedFd<'_>) -> io::Result<OwnedFd> {
+    let mut fd: libc::c_int = -1;
+    let mut length =
+        libc::socklen_t::try_from(mem::size_of::<libc::c_int>()).map_err(io::Error::other)?;
+    // SAFETY: the socket is borrowed for the call, and the option writes
+    // an int into `fd`, whose size `length` holds.
+    let got = unsafe {
+        libc::getsockopt(
+            socket.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_PEERPIDFD,
+            (&raw mut fd).cast(),
+            &raw mut length,
+        )
+    };
+    if got < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: the kernel made the descriptor for this call, and nothing
+    // else holds it.
+    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+}
+
+/// Whether the process a pidfd names still holds its pid: running, or
+/// exited and not yet reaped. Signal 0 sends nothing, and a process wifid
+/// may not signal, having no capability to, is there all the same.
+fn holds_its_pid(held: &OwnedFd) -> bool {
+    // SAFETY: it takes a descriptor held for the call, signal 0, no
+    // signal's details and no flags.
+    let sent = unsafe {
+        libc::syscall(
+            libc::SYS_pidfd_send_signal,
+            held.as_raw_fd(),
+            0,
+            std::ptr::null::<libc::siginfo_t>(),
+            0,
+        )
+    };
+    sent == 0 || io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+}
+
+/// Where a process runs, from what reading its cgroup file gave, `named`
+/// saying whether a cgroup of a path exists.
+fn judged(read: io::Result<Vec<u8>>, named: impl Fn(&str) -> bool) -> Cgroup {
+    match read {
+        Ok(cgroup) => cgroup_of(&cgroup, named).map_or(Cgroup::Unnamed, Cgroup::Path),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Cgroup::Gone,
+        Err(error) => Cgroup::Unread(error.raw_os_error()),
     }
 }
 
@@ -116,16 +205,18 @@ impl fmt::Display for Peer {
         if let Some(uid) = self.uid {
             write!(out, ", uid {uid}")?;
         }
+        // Each way a path goes unsaid is said apart, so a process that
+        // went away can be told from one that made itself unreadable, and
+        // its uid still says whose it is.
         match &self.cgroup {
             // The path from the root, as a process names its own unit
             // under its user's manager: a unit called wifid-calls.service
             // there still reads as under user.slice, not system.slice.
-            Some(cgroup) => write!(out, " ({cgroup})"),
-            // A process may have gone, or nest its cgroup too deep for
-            // the kernel to say, so a line it asks for says the path went
-            // unread rather than passing as one that has none, and its
-            // uid still says whose it is.
-            None => write!(out, " (its cgroup unread)"),
+            Cgroup::Path(cgroup) => write!(out, " ({cgroup})"),
+            Cgroup::Gone => write!(out, " (gone before its cgroup was read)"),
+            Cgroup::Unnamed => write!(out, " (in no unified cgroup)"),
+            Cgroup::Unread(Some(errno)) => write!(out, " (its cgroup unread, errno {errno})"),
+            Cgroup::Unread(None) | Cgroup::Unasked => write!(out, " (its cgroup unread)"),
         }
     }
 }
@@ -144,15 +235,17 @@ impl fmt::Display for Peer {
 /// The kernel ends the path with ` (deleted)` once a process's cgroup is
 /// removed, as for a zombie whose unit has stopped, so that's said as the
 /// cgroup it was, since removed. A live cgroup may be named to end so too,
-/// and is said the same way, but can't leave its slice that way.
-fn cgroup_of(cgroup: &[u8]) -> Option<String> {
+/// so a path `named`, one whose cgroup exists by that whole name, keeps
+/// it as the name's, escaped as the rest. A name removed between the read
+/// and that look is said as removed, which it then is.
+fn cgroup_of(cgroup: &[u8], named: impl Fn(&str) -> bool) -> Option<String> {
     let cgroup = String::from_utf8_lossy(cgroup);
     let path = cgroup
         .split('\n')
         .find_map(|line| line.strip_prefix("0::/"))?;
     let (path, removed) = match path.strip_suffix(" (deleted)") {
-        Some(path) => (path, ", since removed"),
-        None => (path, ""),
+        Some(stripped) if !named(path) => (stripped, ", since removed"),
+        _ => (path, ""),
     };
     let allowed = |said: char| said.is_ascii_alphanumeric() || ":-_.\\@/".contains(said);
     let said: String = path
@@ -200,6 +293,12 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    /// A cgroup file as `cgroup_of` reads it where no cgroup is named to
+    /// end in ` (deleted)`.
+    fn cgroup_of(cgroup: &[u8]) -> Option<String> {
+        super::cgroup_of(cgroup, |_| false)
+    }
 
     fn read(said: &Value) -> Result<bool, &'static str> {
         asked(&said.to_string(), said)
@@ -339,6 +438,23 @@ mod tests {
             Some(most),
             "a path one past the most wasn't cut"
         );
+        // Two-byte characters from an odd byte on, so one straddles the
+        // cut's first edge as read: the path is escaped whole before it's
+        // cut, so the cut falls between characters.
+        let wide = format!("a{}/{}{unit}", "é".repeat(80), "é/".repeat(300));
+        let said = cgroup_of(format!("0::/{wide}\n").as_bytes()).expect("a path");
+        assert!(
+            said.is_ascii() && said.len() == most,
+            "a path of wide characters wasn't escaped whole and then cut: {said}"
+        );
+        assert!(
+            said.starts_with(&format!("a{}", "?".repeat(SLICE_MOST - 1))),
+            "a wide character before the cut wasn't said as one ?: {said}"
+        );
+        assert!(
+            said.ends_with(&format!("/{unit}")),
+            "a path of wide characters lost its unit's name: {said}"
+        );
     }
 
     #[test]
@@ -359,6 +475,11 @@ mod tests {
             )),
             "a unit named to close its own bracket wrote a second asker into the line"
         );
+        assert_eq!(
+            cgroup_of(format!("0::/{user}/a\u{7}b.slice/x.service\n").as_bytes()),
+            Some(format!("{user}/a?b.slice/x.service")),
+            "a control byte in a slice before the unit reached the journal raw"
+        );
     }
 
     #[test]
@@ -366,21 +487,31 @@ mod tests {
         let named = Peer {
             pid: Some(42),
             uid: Some(1000),
-            cgroup: Some("system.slice/wifid-calls.service".into()),
+            cgroup: Cgroup::Path("system.slice/wifid-calls.service".into()),
         };
         assert_eq!(
             named.to_string(),
             "pid 42, uid 1000 (system.slice/wifid-calls.service)"
         );
-        assert_eq!(
-            Peer {
-                cgroup: None,
-                ..named.clone()
-            }
-            .to_string(),
-            "pid 42, uid 1000 (its cgroup unread)",
-            "a process whose cgroup went unread passed as one in none"
-        );
+        for (cgroup, said) in [
+            (Cgroup::Gone, "gone before its cgroup was read"),
+            (Cgroup::Unnamed, "in no unified cgroup"),
+            (
+                Cgroup::Unread(Some(libc::ENAMETOOLONG)),
+                "its cgroup unread, errno 36",
+            ),
+            (Cgroup::Unread(None), "its cgroup unread"),
+        ] {
+            assert_eq!(
+                Peer {
+                    cgroup,
+                    ..named.clone()
+                }
+                .to_string(),
+                format!("pid 42, uid 1000 ({said})"),
+                "a process whose cgroup went unsaid passed as one in none, or as unsaid another way"
+            );
+        }
         assert_eq!(
             Peer {
                 uid: None,
@@ -393,7 +524,7 @@ mod tests {
         assert_eq!(
             Peer {
                 pid: None,
-                cgroup: None,
+                cgroup: Cgroup::Unasked,
                 ..named
             }
             .to_string(),
@@ -408,26 +539,90 @@ mod tests {
 
     #[test]
     fn a_peer_is_read_from_the_kernel_and_says_when_it_couldnt_be() {
-        // No pid reaches past pid_max, 2^22 at most, so none is there.
-        let gone = Peer::at(Some(i32::MAX), Some(1000));
-        let here = Peer::at(
-            Some(i32::try_from(std::process::id()).expect("a pid fits")),
-            Some(1000),
-        );
+        use std::os::fd::AsFd;
 
+        // A pair's other end is this test's own process, alive.
+        let (socket, _other) = std::os::unix::net::UnixStream::pair().expect("a pair");
+        let own = i32::try_from(std::process::id()).expect("a pid fits");
+        let here = Peer::on(socket.as_fd(), Some(own), Some(1000));
+        // No pid reaches past pid_max, 2^22 at most, so none is there.
+        let gone = Peer::on(socket.as_fd(), Some(i32::MAX), Some(1000));
+
+        assert!(
+            matches!(here.cgroup, Cgroup::Path(_)),
+            "this test's own cgroup went unread: {here}"
+        );
         assert_eq!(
             gone.to_string(),
-            format!("pid {}, uid 1000 (its cgroup unread)", i32::MAX),
+            format!(
+                "pid {}, uid 1000 (gone before its cgroup was read)",
+                i32::MAX
+            ),
             "a pid that isn't there named a cgroup"
         );
         assert_eq!(
-            Peer::at(Some(0), Some(1000)).to_string(),
+            Peer::on(socket.as_fd(), Some(0), Some(1000)).to_string(),
             "a process of uid 1000 the kernel gave no pid",
             "a peer outside wifid's pid namespace was read as pid 0, the kernel's own"
         );
+    }
+
+    #[test]
+    fn a_process_holds_its_pid_until_it_is_reaped() {
+        let mut child = std::process::Command::new("sleep")
+            .arg("60")
+            .spawn()
+            .expect("sleep starts");
+        let pid = libc::pid_t::try_from(child.id()).expect("a pid fits");
+        // SAFETY: it takes only numbers, and the descriptor it gives is
+        // taken straight into an OwnedFd.
+        let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
+        let fd = i32::try_from(fd).expect("a descriptor fits");
+        assert!(fd >= 0, "no pidfd: {}", io::Error::last_os_error());
+        // SAFETY: the kernel made it for this call, and nothing else holds
+        // it.
+        let held = unsafe { OwnedFd::from_raw_fd(fd) };
+
+        assert!(holds_its_pid(&held), "a running process let its pid go");
+        child.kill().expect("sleep is killed");
         assert!(
-            here.cgroup.is_some(),
-            "this test's own cgroup went unread: {here}"
+            holds_its_pid(&held),
+            "a process killed but not yet reaped let its pid go"
+        );
+        child.wait().expect("sleep is reaped");
+        assert!(
+            !holds_its_pid(&held),
+            "a reaped process still held its pid, so another's path could be said as its"
+        );
+    }
+
+    #[test]
+    fn a_cgroup_unread_says_why() {
+        assert_eq!(
+            judged(Err(io::ErrorKind::NotFound.into()), |_| false),
+            Cgroup::Gone,
+            "a process gone read as one unreadable"
+        );
+        assert_eq!(
+            judged(
+                Err(io::Error::from_raw_os_error(libc::ENAMETOOLONG)),
+                |_| false
+            ),
+            Cgroup::Unread(Some(libc::ENAMETOOLONG)),
+            "a path nested past PATH_MAX read as a process gone"
+        );
+        assert_eq!(
+            judged(Ok(b"1:name=systemd:/a\n".to_vec()), |_| false),
+            Cgroup::Unnamed,
+            "a host with no unified line read as a process gone"
+        );
+        assert_eq!(
+            super::cgroup_of(b"0::/system.slice/x.service (deleted)\n", |path| {
+                path == "system.slice/x.service (deleted)"
+            })
+            .as_deref(),
+            Some("system.slice/x.service??deleted?"),
+            "a live cgroup named to end as a removed one's does was said as removed"
         );
     }
 }
