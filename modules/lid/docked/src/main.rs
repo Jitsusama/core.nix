@@ -170,20 +170,27 @@ mod tests {
 
     #[test]
     fn knows_a_monitors_connector() {
-        assert!(external("card0-DP-5"));
-        assert!(external("card1-HDMI-A-1"));
-        assert!(external("card0-DVI-D-1"));
+        for name in ["card0-DP-5", "card1-HDMI-A-1", "card0-DVI-D-1"] {
+            assert!(external(name), "{name} should be a monitor's connector");
+        }
     }
 
     #[test]
     fn knows_what_isnt_a_monitors_connector() {
-        assert!(!external("card0-eDP-1"));
-        assert!(!external("card0-LVDS-1"));
-        assert!(!external("card0-DSI-1"));
-        assert!(!external("card0-Virtual-1"));
-        assert!(!external("card0"));
-        assert!(!external("renderD128"));
-        assert!(!external("version"));
+        for name in [
+            "card0-eDP-1",
+            "card0-LVDS-1",
+            "card0-DSI-1",
+            "card0-Virtual-1",
+            "card0",
+            "renderD128",
+            "version",
+        ] {
+            assert!(
+                !external(name),
+                "{name} should not be a monitor's connector"
+            );
+        }
     }
 
     struct Drm(PathBuf);
@@ -265,7 +272,10 @@ mod tests {
         let drm = Drm::new("none");
         drm.connector("card0-DP-1", None);
         look_again(&drm.0);
-        assert!(!drm.0.join("card0-DP-1").join("status").exists());
+        assert!(
+            !drm.0.join("card0-DP-1").join("status").exists(),
+            "looking again should not make a status file where there was none"
+        );
     }
 
     #[test]

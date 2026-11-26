@@ -28,7 +28,6 @@
   "modules/collector/src/pressure.rs" = 4;
   "modules/collector/src/when.rs" = 3;
   "modules/collector/tests/collector.rs" = 1;
-  "modules/console/font/src/main.rs" = 10;
   "modules/desk-facts/facts.rs" = 17;
   "modules/device-check/src/main.rs" = 13;
   "modules/dictation/src/bin/call-transcripts/meeting.rs" = 1;
@@ -96,7 +95,6 @@
   "modules/disk-guard/tests/guard/trees.rs" = 5;
   "modules/disk-guard/tests/guard/variants.rs" = 1;
   "modules/disk-guard/tests/guard/vouch.rs" = 10;
-  "modules/disk-loss-panic/disk-loss-panic.rs" = 9;
   "modules/eero/src/api.rs" = 8;
   "modules/eero/src/cloud.rs" = 2;
   "modules/eero/src/probe.rs" = 13;
@@ -160,13 +158,11 @@
   "modules/ir-camera/src/v4l2.rs" = 6;
   "modules/key-counts/src/tally.rs" = 5;
   "modules/lag-watch/src/kernel.rs" = 2;
-  "modules/lid/docked/src/main.rs" = 11;
   "modules/load-proof/src/frames.rs" = 2;
   "modules/load-proof/src/run.rs" = 4;
   "modules/load-proof/src/save.rs" = 1;
   "modules/load-proof/src/sound.rs" = 1;
   "modules/machine/tests/daemon.rs" = 1;
-  "modules/mic-mute-light/mic-mute-light.rs" = 13;
   "modules/network-revive/src/config.rs" = 1;
   "modules/nix-daemon/vm-first/src/main.rs" = 14;
   "modules/nix-offload/offload/src/decide.rs" = 12;
