@@ -8,7 +8,7 @@
   "modules/backlight/src/monitor/tests.rs" = 1;
   "modules/bluetooth-disk-prompt/seal-test.sh" = 1;
   "modules/collector/tests/collector.rs" = 1;
-  "modules/desk-facts/facts.rs" = 2;
+  "modules/desk-facts/facts.rs" = 1;
   "modules/device-check/tests/devices-that-stop-working-are-named.sh" = 1;
   "modules/device-check/tests/kernel-trouble-is-named.sh" = 1;
   "modules/disk-guard/tests/disk-guard-asks-github-what-merged.sh" = 1;

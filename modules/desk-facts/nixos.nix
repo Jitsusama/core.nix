@@ -53,16 +53,18 @@ in
     unitConfig = {
       # A person's, so not a system account's lingering manager's.
       ConditionUser = "!@system";
-      # A fault that comes back each start stops the unit after five tries
-      # in a minute, rather than restarting it every five seconds for good;
-      # a folder it can't watch yet doesn't fail it.
-      StartLimitIntervalSec = 60;
-      StartLimitBurst = 5;
+      # A fault that comes back each start is tried again ever more slowly,
+      # up to five minutes apart, rather than every five seconds for good
+      # or never again; a folder it can't watch yet, or an inotify it can't
+      # start yet, doesn't fail it.
+      StartLimitIntervalSec = 0;
     };
     serviceConfig = {
       ExecStart = "${facts}/bin/desk-facts %t/desk ${loopbacks}";
       Restart = "on-failure";
       RestartSec = 5;
+      RestartSteps = 6;
+      RestartMaxDelaySec = 300;
       NoNewPrivileges = true;
       # The kernel's uevents come over netlink, and only into the machine's
       # own network namespace, so it keeps that one and may open nothing

@@ -145,6 +145,7 @@ mod keyboards;
 mod own_sound;
 mod sound;
 mod usb;
+mod watches;
 mod writing;
 
 fn main() -> ExitCode {
@@ -254,12 +255,17 @@ Capture:
 
     /// An inotify event for a name, padded as the kernel pads it.
     pub(crate) fn event(mask: u32, name: &str) -> Vec<u8> {
+        event_on(1, mask, name)
+    }
+
+    /// An inotify event on a watch, by its number, for a name.
+    pub(crate) fn event_on(wd: i32, mask: u32, name: &str) -> Vec<u8> {
         let mut padded = name.as_bytes().to_vec();
         if !name.is_empty() {
             padded.resize((name.len() / 16 + 1) * 16, 0);
         }
         let mut event = Vec::new();
-        event.extend_from_slice(&1i32.to_ne_bytes());
+        event.extend_from_slice(&wd.to_ne_bytes());
         event.extend_from_slice(&mask.to_ne_bytes());
         event.extend_from_slice(&0u32.to_ne_bytes());
         event.extend_from_slice(&u32::try_from(padded.len()).unwrap().to_ne_bytes());
