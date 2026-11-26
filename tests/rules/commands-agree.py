@@ -83,7 +83,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from rust_code import own_code
+from rust_code import RefusedError, own_code
 
 POINTS = ("kit", "exits", "inks", "helps", "fits", "subcommands", "tables")
 
@@ -720,11 +720,17 @@ def judged(
     agree = 0
     names = {command.name for command in found}
     for command in found:
-        breaks = broken(command, runs)
-        waits = set(waiting.get(command.name, []))
         where = (command.manifest if command.is_script else command.manifest.parent).relative_to(
             tree
         )
+        # A crate whose tests can't be told from its code fails alone, since
+        # no point can be judged from code the reader might have misread.
+        try:
+            breaks = broken(command, runs)
+        except RefusedError as refused:
+            out.append(f"{command.name} ({where}) can't be read apart from its tests: {refused}.")
+            continue
+        waits = set(waiting.get(command.name, []))
         for point in sorted(set(breaks) - waits, key=POINTS.index):
             seen = "".join(f"; {words}" for words in breaks[point])
             # A point broken with nothing seen, as kit is, isn't the wrapper's.
