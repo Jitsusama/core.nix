@@ -5,13 +5,14 @@
 //! can't be cleared keeping the tree as the line clears the copy, one a
 //! killed run left above it going before anything is read, and links at
 //! the copies' folder or the copy, put while it's made, leaving it
-//! untaken.
+//! untaken, or put as the list of what's brought back is sorted, cutting
+//! the list.
 
 use super::crossing::refusing;
 use super::handing::pinning;
 use super::unpacking::{FIRST, archive_of, reading};
 use super::{Left, far_line, handover, kind, work};
-use crate::far::{HANDOVER, TREE};
+use crate::far::{HANDOVER, Missed, TREE, bring_back};
 
 #[test]
 fn a_link_put_at_the_job_s_tree_or_above_it_is_answered_before_an_archive_is_taken_through_it() {
@@ -120,12 +121,17 @@ PATH=${{PATH#*:}} exec uname "$@""#
         );
         let _ = std::fs::remove_dir_all(&home);
     }
-    // With nothing at the handover, nothing is said of a link there.
+    // With nothing at the handover, a run that goes through the wait, the
+    // job and the bring-back says nothing of a link there.
     let archive = archive_of("a", "inside");
     let list = format!("{}\t0.tar\nend\n", archive.len());
     let (code, err, home) = reading(&list, &[("0.tar", &archive)], &[]);
     assert!(
-        !err.contains("a link at the job's handover") && !err.contains("so the wait may run out"),
+        code == Some(0)
+            && work(&home).join("ran").exists()
+            && !err.contains("a link at the job's handover")
+            && !err.contains("so the wait may run out")
+            && !err.contains("handover wasn't cleared"),
         "a far line with no link at its handover said one ({code:?}): {err}"
     );
     let _ = std::fs::remove_dir_all(&home);
@@ -323,8 +329,9 @@ fn a_link_put_at_the_copies_folder_or_the_copy_while_it_is_made_leaves_the_job_u
     // archive's rename beside it meets the link, once its header was read,
     // so the list of its names meets it, or as the archive's names are
     // read, where the far line may clear the link and where it may not;
-    // or moving the copy aside, with a link at its name, once tar unpacked
-    // into it, once its folders were opened, so the odd files' find meets
+    // or moving the copy aside, with a link at its name, once tar listed
+    // the archive's names, so the check before unpacking says it was
+    // moved, once tar unpacked into it, once its folders were opened, so the odd files' find meets
     // the link and refuses it, or once the odd files' find ran, before the
     // copy's check, which says it was moved; or moving the copies' folder
     // aside then, where the link can't be cleared. Each is this
@@ -334,7 +341,7 @@ fn a_link_put_at_the_copies_folder_or_the_copy_while_it_is_made_leaves_the_job_u
     let folder = r#"mv "$s" "$HOME/aside" && ln -s "$HOME/aside" "$s""#;
     let copy = r#"mv "$s/1" "$HOME/moved" && ln -s "$HOME/moved" "$s/1""#;
     let (rm, pinned) = refusing("rm", "*\"/.s \"*", "exit 1");
-    let cases: [Swap; 8] = [
+    let cases: [Swap; 9] = [
         (
             "mkdir",
             "*\"/.s/1 \"*",
@@ -370,6 +377,15 @@ fn a_link_put_at_the_copies_folder_or_the_copy_while_it_is_made_leaves_the_job_u
             &["aside/1.run", "aside/1.tar", "aside/1.names"],
             &["aside/1/a"],
             true,
+        ),
+        (
+            "tar",
+            "*\" -tf \"*",
+            true,
+            copy,
+            &["moved"],
+            &["moved/a"],
+            false,
         ),
         ("tar", "*\" -xf \"*", true, copy, &["moved/a"], &[], false),
         // Only the copy step's own find opens with the copy: `cleared`'s
@@ -444,6 +460,62 @@ exit $r"#,
                 && !work(&home).join("ran").exists(),
             "with a link put at {case}, the job ran, or what lay past the link was unpacked into \
              or cleared: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+}
+
+#[test]
+fn a_link_at_the_copies_folder_after_the_finds_cuts_the_list_and_sorts_nothing_through_it() {
+    let mut kind = kind("");
+    kind.brings_back = vec!["out".into()];
+    // A find of the files that, as a job of the quest may meanwhile,
+    // moves the copies' folder aside and puts a link at its name to an
+    // empty folder, where the sorted list would be written through it:
+    // one the far line may clear, and one an rm that can't clear it pins,
+    // where the check before the sort stops the list itself.
+    let finding = refusing(
+        "find",
+        "*\" -type f \"*",
+        "find \"$@\"; found=$?; s=$(cd .. && pwd) && mv \"$s\" \"$HOME/aside\" &&
+         mkdir \"$HOME/decoy\" && ln -s \"$HOME/decoy\" \"$s\"; exit $found",
+    );
+    let pinning = refusing("rm", "*\"/.s \"*", "exit 1");
+    for pinned in [false, true] {
+        let mut stand_ins = vec![(finding.0, finding.1.as_str())];
+        if pinned {
+            stand_ins.push((pinning.0, pinning.1.as_str()));
+        }
+        let (code, err, home) = far_line(
+            Left::Whole,
+            &[("x", "x")],
+            "mkdir out && printf a > out/a",
+            &kind,
+            None,
+            &stand_ins,
+        );
+        let said = if pinned {
+            "so its copy stays"
+        } else {
+            "a link at its copies' folder was cleared"
+        };
+        assert!(
+            code == Some(0) && err.contains(said),
+            "the far line didn't end as its job did, or say {said:?} (pinned: {pinned}, \
+             {code:?}): {err}"
+        );
+        assert!(
+            std::fs::read_dir(home.join("decoy"))
+                .unwrap()
+                .next()
+                .is_none(),
+            "the bring-back sorted its list through the link at the copies' folder \
+             (pinned: {pinned}): {err}"
+        );
+        let landed = bring_back(&handover(&home), &home.join("near"), &kind.brings_back, 1);
+        assert!(
+            matches!(&landed, Err(Missed::Lost(why)) if why.contains("couldn't write down all")),
+            "a list whose sort was passed over wasn't said cut (pinned: {pinned}): {landed:?}"
         );
         let _ = std::fs::remove_dir_all(&home);
     }

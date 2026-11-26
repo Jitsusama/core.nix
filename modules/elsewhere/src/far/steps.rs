@@ -521,10 +521,12 @@ fi
 /// lists it's made from, are made new where nothing is, as the run's file
 /// is, so none is written through a link the job left at its name.
 pub(super) fn bringing(kind: &Kind) -> String {
+    // With nothing to bring back, the near side reads no list, so a link
+    // `freed` couldn't clear only keeps the end from going through it.
     if kind.brings_back.is_empty() {
         return format!(
-            "{}if [ -z \"$handed\" ]; then {UNENDED}\nelse rm -f \"$job/{BROUGHT}\" && \
-             (set -C && echo {END} > \"$job/{BROUGHT}\"); fi\n",
+            "{}[ -z \"$handed\" ] || {{ rm -f \"$job/{BROUGHT}\" && \
+             (set -C && echo {END} > \"$job/{BROUGHT}\"); }}\n",
             freed()
         );
     }
