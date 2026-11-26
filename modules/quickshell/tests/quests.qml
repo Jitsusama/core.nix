@@ -849,8 +849,13 @@ ShellRoot {
             theQuests.served.drawn = true;
             theLauncher.open = false;
             theQuests.served.drawn = Qt.binding(() => theLauncher.open);
-            expect("a close with a batch waiting makes none", theQuests.tally.rows === root.counted,
-                rowsSince());
+            // The close runs what waits on a frame, so the batch has run by now: one still
+            // waiting would run in a later case, and this would prove nothing of makeAhead's
+            // guard on the launcher's open.
+            expect("a close with a batch waiting runs it and makes none",
+                theLauncher.framed.length === 0 && !theQuests.served.aheadWaiting
+                && theQuests.tally.rows === root.counted,
+                `${theLauncher.framed.length} waiting, ${rowsSince()}`);
             theLauncher.framesHeld = false;
             root.counted = theQuests.tally.rows;
             root.told = [];

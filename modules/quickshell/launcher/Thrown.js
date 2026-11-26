@@ -17,7 +17,9 @@ const frameLine = /^[^\s@]*@[^\s@]+:\d+(:\d+)?$/;
 function shown(error) {
     try {
         const real = error instanceof Error;
-        const kind = real && errorKind.test(`${error.name}`) ? error.name : "Error";
+        // Read once, so the name tested is the name said.
+        const name = real ? `${error.name}` : "";
+        const kind = errorKind.test(name) ? name : "Error";
         const first = real ? `${error.stack ?? ""}`.split("\n")[0] : "";
         const where = frameLine.test(first) ? ` at ${first}` : "";
         return `${kind}: ${real ? "" : `${typeof error} `}thrown${where}`;
