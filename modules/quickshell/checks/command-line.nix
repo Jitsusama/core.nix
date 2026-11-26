@@ -135,9 +135,13 @@
 
   # A modal Prompt.qml says a key acted exactly where its own handlers did
   # something with it, keys sent through Qt as the launcher's line takes them
-  # (modules/quickshell/tests/prompt-keys.qml), in Qt's test runner. The
+  # (modules/quickshell/tests/prompt-keys.qml), and the command line names the
+  # key that let it go, which the launcher times as acting
+  # (modules/quickshell/tests/command-line-keys.qml), in Qt's test runner. The
   # account's Theme.qml is made a plain singleton, as Quickshell's isn't
-  # there, and Lights.qml a stand-in with caps lock off.
+  # there, Lights.qml a stand-in with caps lock off, and Quickshell a module
+  # outside the linted folder holding only a clipboard; the lint reads
+  # Quickshell's own types.
   the-launchers-line-says-which-keys-acted =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -147,10 +151,23 @@
         import QtQuick
         QtObject { property bool caps: false }
       '';
+      clipboard = pkgs.writeText "Quickshell.qml" ''
+        pragma Singleton
+        import QtQuick
+        QtObject { property string clipboardText: "pasted\nnot this" }
+      '';
+      quickshell = pkgs.runCommandLocal "a-clipboard-quickshell" { } ''
+        mkdir -p $out/Quickshell
+        printf '%s\n' 'module Quickshell' 'singleton Quickshell 1.0 Quickshell.qml' \
+          > $out/Quickshell/qmldir
+        cp ${clipboard} $out/Quickshell/Quickshell.qml
+      '';
     in
     pkgs.runCommandLocal "the-launchers-line-says-which-keys-acted" { } ''
       cp ${../tests/prompt-keys.qml} prompt-keys.qml
+      cp ${../tests/command-line-keys.qml} command-line-keys.qml
       ${copied [
+        "CommandLine.qml"
         "Prompt.qml"
         "TextMeasure.qml"
       ]}
@@ -158,11 +175,13 @@
       grep -q '^QtObject {$' Theme.qml || { echo "Theme.qml is no Singleton" >&2; exit 1; }
       cp ${lights} Lights.qml
       printf '%s\n' 'singleton Theme Theme.qml' 'singleton Lights Lights.qml' \
-        'Prompt Prompt.qml' 'TextMeasure TextMeasure.qml' > qmldir
+        'CommandLine CommandLine.qml' 'Prompt Prompt.qml' 'TextMeasure TextMeasure.qml' > qmldir
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qmltestrunner -input prompt-keys.qml
+      QML_IMPORT_PATH=${quickshell}:${qt}/lib/qt-6/qml timeout 60 \
+        ${qt}/bin/qmltestrunner -input command-line-keys.qml
       touch $out
     '';
 

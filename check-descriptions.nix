@@ -5514,7 +5514,9 @@
     something: a letter typed, a caret's edit, Escape at rest, h, a modifier alone and a
     register's keys acting on nothing, Tab alone asking where it goes, the drawer and gv acting
     only where there's one out or something to take back, the operator again swallowed, and an
-    ask's answer, the operator again among them, acting where the ask takes it
+    ask's answer, the operator again among them, acting where the ask takes it; and the command
+    line names the key that let it go, Escape, Ctrl+C, or Backspace and Ctrl+H on an empty
+    line, while Return, editing, choosing and a register's keys let nothing go
   '';
   the-launchers-rows-keep-their-words-apart = ''
     a launcher row and field keep their words apart and inside them, however long, ending what
