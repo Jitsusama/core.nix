@@ -159,8 +159,13 @@ COLLECTED_AFTER = timedelta(seconds=1)
 # How long after a start every source here has first answered: what warming once waited out by
 # beginning at 6 s. The restart case passed waiting 5 s past home kept (2026-11-12), but on a
 # gate's loaded builder Networks, Traffic and Displays answered later still, so past it the
-# case waits until no source has said a change for QUIET, for at most SETTLED.
+# case waits until no source has said a change for QUIET, for at most SETTLED. Still alone
+# isn't enough: a source that hasn't answered yet says nothing either, so a quiet can fall
+# before its first answer, and the chord's fill then caught up 4, 3 and 4 of their rows
+# (2026-11-26). So the quiet counts only once each of LATE has said a change since the start:
+# the eero stand-in answers Networks and Traffic here, and niri Displays.
 ANSWERED = timedelta(seconds=6)
+LATE = ("networks", "traffic", "displays")
 QUIET = timedelta(seconds=2)
 SETTLED = timedelta(seconds=30)
 
@@ -1447,19 +1452,27 @@ def answered_since(shell: Shell, restarted: float) -> None:
     Home and the chords' places are kept a second and a half after a start, before Networks
     and Displays first answer here, so the next opening's fill makes their rows again, as it
     catches up any source changed since it was kept: 6 here, which aren't what this counts.
-    It waits out ANSWERED, then until the changes each source has said hold still for QUIET.
+    It waits out ANSWERED, then until each of LATE has said a change and the changes each source
+    has said hold still for QUIET.
     """
     time.sleep(max(0.0, restarted + ANSWERED.total_seconds() - time.monotonic()))
     deadline = time.monotonic() + SETTLED.total_seconds()
     said = json.loads(shell.as_account(shell.ipc("changed")))
     still = time.monotonic()
-    while time.monotonic() - still < QUIET.total_seconds():
+    while time.monotonic() - still < QUIET.total_seconds() or unanswered(said):
         if time.monotonic() > deadline:
+            if unanswered(said):
+                pytest.fail(f"{unanswered(said)} unanswered {SETTLED} after a restart: {said}")
             pytest.fail(f"sources still changing {SETTLED} after a restart: {said}")
         time.sleep(launcher_on_niri.POLL)
         now = json.loads(shell.as_account(shell.ipc("changed")))
         if now != said:
             said, still = now, time.monotonic()
+
+
+def unanswered(said: dict[str, int]) -> list[str]:
+    """Give each of LATE that hasn't said a change in `said`, a source's changes by its name."""
+    return [name for name in LATE if said.get(name, 0) == 0]
 
 
 def made_by_others(shell: Shell, place: str) -> dict[str, int]:
