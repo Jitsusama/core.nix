@@ -17,7 +17,8 @@ how wide a line is drawn at each zoom, `motion.test.ts` how the map's motion is
 timed, `layout.test.ts` where everything stands and that it stays there,
 `canvas.test.ts` what the ground layer says and which line a pointer touches,
 `shape.test.ts` when a reading draws the whole map again, and `sprout.test.ts`
-the link new work hands the Launcher, judging addresses by `addresses.txt`, and
+the link new work hands the Launcher, judging addresses by `addresses.txt` and
+machines' names by `machines.txt`, and
 `acts.test.ts` what a cell's drawer offers, Go to It first, and its question
 said whole; all twenty-two run as the site builds (`mycelium-site-holds`). `map-reads-live-test.py`
 proves the built page reads live through the sites' server in Chromium, from
@@ -76,3 +77,19 @@ three, and the next switch restarts the notices daemon, which is safe since
 the bus holds notices meanwhile. A bad line fails all three, so those
 machines' switches fail until it is reverted. The notes kept in this README
 spare the two Rust packages a rebuild, though not the map site.
+
+## The Machine Cases
+
+A machine's name, as a link may carry one, is up to 64 ASCII letters,
+digits, dots, hyphens and underscores, a letter or a digit first, so `qs`
+never takes it for a flag. `machines.txt` holds what is one and what isn't,
+written and read as the address cases are. `cloud` is one, though the map
+and the Launcher read it as any of the cloud's machines.
+
+Two copies of the rule read it in their tests: the map's `isMachine`
+(`../sprout.ts`) and mycelium-link's `named`
+(`modules/quickshell/mycelium-link/src/main.rs`), which takes in
+`cases_in` from `addresses.rs`. Others don't read it yet: the sites' kit
+(`modules/local-sites/kit/cell.ts`), the map's `NETWORK_NAME` (`../view.js`)
+and the Launcher's reading of a link's `on:`. Editing it rebuilds the map
+site and mycelium-link, and a bad line fails both.

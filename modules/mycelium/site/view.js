@@ -75,7 +75,7 @@ import { grownOf, oneCopyEach } from "./lineage.js";
 import { drawnWidth } from "./lines.js";
 import { durationOf, easedInOut, goneAndBack } from "./motion.js";
 import { shapeOf as shapeOfReading } from "./shape.js";
-import { CLOUD, FULL_WORDS, handedWords, isAddress, isMachine, keptOnStands, LONGEST_WORDS, NO_WORDS, onWords, sproutLink } from "./sprout.js";
+import { CLOUD, FULL_WORDS, handedWords, isAddress, isMachine, keptOnStands, LONGEST_WORDS, onWords, sproutLink, unsprouted } from "./sprout.js";
 import { EVERY_TREE_STEP, hasKids as hangsAny, kidsOf, openedTo, rootsOf, rowsOf, rowWords, upOf, walked, worstFirst } from "./outline.js";
 import {
   allCells,
@@ -3809,12 +3809,14 @@ import {
     const from = sproutFrom !== null && sproutFromBox.checked ? sproutFrom : null;
     const on = sproutOn !== null && sproutOnBox.checked ? sproutOn : null;
     const link = sproutLink(sproutInput.value, from, on);
-    // No words is said where they go, in the field's own bubble, and once
-    // to a screen reader, until a word is typed.
+    // No words, or a machine no link can name, is said where the words go,
+    // in the field's own bubble, and once to a screen reader, until a word
+    // is typed.
     if (!link) {
-      sproutInput.setCustomValidity(NO_WORDS);
+      const why = unsprouted(sproutInput.value, on);
+      sproutInput.setCustomValidity(why);
       sproutInput.reportValidity();
-      where.textContent = NO_WORDS;
+      where.textContent = why;
       return;
     }
     sproutGo.href = link;

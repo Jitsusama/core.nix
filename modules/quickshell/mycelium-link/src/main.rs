@@ -502,6 +502,17 @@ mod tests {
         judged_by_every_case(addressed);
     }
 
+    // The cases the map's machine rule is held to too, read as the address
+    // cases are.
+    #[test]
+    fn a_machine_is_judged_by_the_shared_cases() {
+        let cases = cases_in(include_str!("../../../mycelium/site/tests/machines.txt"));
+        assert!(cases.len() > 20, "the shared machine cases are read");
+        for (is, text) in cases {
+            assert_eq!(named(&text), is, "{text:?}");
+        }
+    }
+
     #[test]
     fn a_cell_link_names_its_address_and_nothing_after_it() {
         for link in [

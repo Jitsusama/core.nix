@@ -12,9 +12,12 @@ import {
   isMachine,
   keptOnStands,
   LONGEST_WORDS,
+  NO_MACHINE,
+  NO_WORDS,
   onWords,
   sproutLink,
   sproutWords,
+  unsprouted,
 } from "../sprout.ts";
 
 it("reads the typed words as one line", () => {
@@ -140,6 +143,13 @@ it("says the machine it starts on, and hands nothing for a misshaped one", () =>
   assert.equal(onWords(CLOUD), "On the cloud", "the cloud should be said as a place");
 });
 
+it("says why no link was given: no words, or a machine no link can name", () => {
+  assert.equal(unsprouted("  ", null), NO_WORDS, "no words should be said as no words");
+  assert.equal(unsprouted("", "os prey"), NO_WORDS, "with no words, those come first");
+  assert.equal(unsprouted("tidy", "os prey"), NO_MACHINE, "words on a bad machine name it");
+  assert.equal(sproutLink("tidy", null, "os prey"), null, "and that machine gives no link");
+});
+
 it("keeps words for a machine only while the map still has it", () => {
   const names = ["kestrel", "osprey"];
   assert.equal(keptOnStands("osprey", names), true, "a machine on the map should stand");
@@ -230,6 +240,14 @@ it("judges each shared address case", () => {
   assert.ok(cases.length > 20, "the shared cases should be read");
   for (const [is, text] of cases) {
     assert.equal(isAddress(text), is, `${JSON.stringify(text)} should ${is ? "" : "not "}be one`);
+  }
+});
+
+it("judges each shared machine case, as mycelium-link does", () => {
+  const cases = casesIn(readFileSync(new URL("machines.txt", import.meta.url), "utf8"));
+  assert.ok(cases.length > 20, "the shared cases should be read");
+  for (const [is, text] of cases) {
+    assert.equal(isMachine(text), is, `${JSON.stringify(text)} should ${is ? "" : "not "}be one`);
   }
 });
 

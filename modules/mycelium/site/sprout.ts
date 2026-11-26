@@ -113,3 +113,13 @@ export const FULL_WORDS = `The line holds ${LONGEST_WORDS} letters; any past tha
 
 /** What the map says when asked to start work with no words. */
 export const NO_WORDS = "Say what the new work is first; the Launcher needs its words.";
+
+/** What the map says when the machine it would start work on has no name a link carries. */
+export const NO_MACHINE = "That machine's name can't go in a link; untick it to send the words.";
+
+/**
+ * Why `sproutLink` gave no link for `typed` on `on`: no words, or, with
+ * words there to see, a machine whose name no link carries.
+ */
+export const unsprouted = (typed: string, on: string | null): string =>
+  on && !isMachine(on) && sproutWords(typed) !== "" ? NO_MACHINE : NO_WORDS;
