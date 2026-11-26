@@ -227,6 +227,47 @@ fn a_pain_for_a_fallback_never_sent_to_waits_with_its_tries() {
 }
 
 #[test]
+fn a_pain_too_old_for_its_owner_waits_with_its_tries_for_a_keeper_never_sent_to() {
+    let place = Place::new("refused-keeper");
+    fs::write(
+        place.root.join("state/routes.json"),
+        r#"{"from":"EAR001","fallback":"ORCH01","ledgers":"VOID01","never":["VOID01"]}"#,
+    )
+    .expect("routes");
+    place.log(
+        "src",
+        "s-live",
+        Path::new("/home/j/src"),
+        &[user(
+            "old",
+            "2026-11-16T15:00:00.000Z",
+            "status update please",
+        )],
+    );
+    for _ in 0..5 {
+        let hour = hear(&place.ears(), CELLS, &mut |to, _| {
+            assert_ne!(to, "VOID01", "a keeper never sent to was sent to");
+            true
+        })
+        .expect("a run");
+        assert_eq!(
+            hour.troubles,
+            ["routes.json's keeper VOID01 is one never to send to, so what goes to it waits"],
+            "the refused keeper wasn't the one thing said of the run: {hour:?}"
+        );
+    }
+    let heard = place.heard();
+    let old = heard
+        .iter()
+        .find(|h| h.words.contains("status update please"))
+        .expect("the old pain heard");
+    assert!(
+        old.routed_at.is_none() && old.tries == 0,
+        "the old pain for a keeper never sent to was taken as sent, or spent tries: {old:?}"
+    );
+}
+
+#[test]
 fn a_held_send_spends_no_try() {
     let place = Place::new("held");
     place.routes();
