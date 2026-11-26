@@ -5,7 +5,10 @@
 // focus back on the one it was on, or the one now in its place within the
 // same region (the looks, or the machines), and a machine moving never
 // moves what Joel is reading. A region left with no row takes focus
-// itself, so what it says now is read, rather than a row far below.
+// itself, so what it says now is read, rather than a row far below. A
+// link under a row in its list item, such as a look's act, is the row's:
+// the keys step on from it as from the row, and a redraw puts focus back
+// on it.
 
 /** The cursor over the rows `selector` finds. */
 interface Cursor {
@@ -35,6 +38,16 @@ function cursorOver(selector: string, sections: ParentNode): Cursor {
   const rows = (): HTMLAnchorElement[] => [
     ...document.querySelectorAll<HTMLAnchorElement>(selector),
   ];
+  // Where `at` stands among `all`: the row it is, or the row of the list
+  // item it sits in; -1 for neither.
+  const placeOf = (all: readonly HTMLAnchorElement[], at: Element | null): number => {
+    const row = all.findIndex((each) => each === at);
+    if (row >= 0 || at === null) {
+      return row;
+    }
+    const item = at.closest("li");
+    return all.findIndex((each) => item !== null && each.parentElement === item);
+  };
   const land = (row: HTMLAnchorElement | undefined): void => {
     if (row === undefined) {
       return;
@@ -50,7 +63,11 @@ function cursorOver(selector: string, sections: ParentNode): Cursor {
     land,
     move: (by) => {
       const all = rows();
-      const at = all.findIndex((row) => row === document.activeElement);
+      const found = placeOf(all, document.activeElement);
+      // An act stands after the row it sits under, so a step back from it
+      // lands on that row rather than the one before.
+      const onAct = found >= 0 && all[found] !== document.activeElement;
+      const at = onAct && by < 0 ? found + 1 : found;
       if (by === Number.POSITIVE_INFINITY) {
         land(all.at(-1));
       } else if (by === Number.NEGATIVE_INFINITY || at < 0) {
@@ -65,31 +82,40 @@ function cursorOver(selector: string, sections: ParentNode): Cursor {
     },
     next: (within) => {
       const all = [...within.querySelectorAll<HTMLAnchorElement>("a[data-row]")];
-      const at = all.findIndex((row) => row === document.activeElement);
+      const at = placeOf(all, document.activeElement);
       land(all[(at + 1) % all.length]);
       return all.length > 0;
     },
     keep: (target) => {
-      if (target instanceof HTMLAnchorElement && target.dataset["row"] !== undefined) {
-        key = target.dataset["row"];
+      const all = rows();
+      const row = target instanceof Element ? all[placeOf(all, target)] : undefined;
+      if (row?.dataset["row"] !== undefined) {
+        key = row.dataset["row"];
       }
     },
     across: (redraw) => {
       const active = document.activeElement;
-      const region =
-        active instanceof HTMLAnchorElement && rows().includes(active)
-          ? active.closest<HTMLElement>("[data-rows]")
-          : null;
+      const before = rows();
+      const owner = before[placeOf(before, active)];
+      const region = owner?.closest<HTMLElement>("[data-rows]") ?? null;
+      // The link under the row focus was on, kept by its address, since a
+      // redraw replaces it too.
+      const under = active instanceof HTMLAnchorElement && active !== owner ? active.href : null;
       const inRegion = (): HTMLAnchorElement[] =>
         region === null ? [] : [...region.querySelectorAll<HTMLAnchorElement>("a[data-row]")];
-      const focused = inRegion().findIndex((row) => row === active);
+      const focused = inRegion().findIndex((row) => row === owner);
       redraw();
       if (region === null) {
         return;
       }
-      const same = rows().find((row) => row.dataset["row"] === key);
+      // The row by its key, or where its words changed, the row now in its
+      // place; either way the act under it keeps focus if it is still there.
       const now = inRegion();
-      (same ?? now[Math.min(focused, now.length - 1)] ?? region).focus({ preventScroll: true });
+      const kept = rows().find((each) => each.dataset["row"] === key);
+      const standing = kept ?? now[Math.min(focused, now.length - 1)];
+      const links = standing?.parentElement?.querySelectorAll<HTMLAnchorElement>("a") ?? [];
+      const again = [...links].find((link) => link !== standing && link.href === under);
+      (again ?? standing ?? region).focus({ preventScroll: true });
     },
   };
 }

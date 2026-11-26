@@ -69,6 +69,7 @@ mod speed;
 mod start;
 mod stats;
 mod tracking;
+mod unasked;
 mod units;
 mod unrun;
 mod watch;
@@ -694,8 +695,15 @@ fn clock(at: i64) -> String {
         .unwrap_or_default()
 }
 
+/// Runs `program` with `args`, giving what it printed; git never asks
+/// anyone for a password, as [`unasked::git`] runs it.
 fn command(program: &str, args: &[&str]) -> io::Result<String> {
-    let out = Command::new(program).args(args).output()?;
+    let mut run = if program == "git" {
+        unasked::git()
+    } else {
+        Command::new(program)
+    };
+    let out = run.args(args).output()?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     } else {

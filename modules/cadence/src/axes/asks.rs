@@ -16,6 +16,7 @@ use serde_json::Value;
 use super::{Bar, Reading, shown};
 use crate::DAY;
 use crate::tracking::{self, Tracking};
+use crate::whole::text_lines;
 
 /// How far back the asks are read: a week, as the card reads its merges.
 const WEEK: i64 = 7 * DAY;
@@ -29,10 +30,15 @@ struct Ask {
     landed: Option<i64>,
 }
 
-/// The record as written, or nothing before it's started.
+/// The record as written, its lines that are text, so one torn byte
+/// leaves out its own line rather than all of his asks; or nothing before
+/// it's started. The week's readings judge no ask closed, so a line left
+/// out costs them only that ask.
 #[must_use]
 pub fn gather(state_home: &Path) -> String {
-    fs::read_to_string(state_home.join("mission/asks.jsonl")).unwrap_or_default()
+    fs::read(state_home.join("mission/asks.jsonl"))
+        .map(|bytes| text_lines(&bytes).0)
+        .unwrap_or_default()
 }
 
 /// Each line of his own that says when he asked; one that doesn't is no
@@ -241,5 +247,26 @@ mod tests {
         let text = [kind(""), kind("derived"), kind("owner-tracked")].join("\n");
         let owners: Vec<String> = asks(&text).into_iter().map(|ask| ask.owner).collect();
         assert_eq!(owners, [""], "his alone, of the three");
+    }
+
+    #[test]
+    fn a_torn_byte_leaves_out_its_line_and_no_other_of_the_week() {
+        let home = tempfile::tempdir().expect("a scratch home");
+        fs::create_dir_all(home.path().join("mission")).expect("the mission folder");
+        let first = line("2026-11-13T12:00:00-05:00", "A", None, None);
+        let last = line("2026-11-13T14:00:00-05:00", "B", None, None);
+        let mut bytes = format!("{first}\n").into_bytes();
+        bytes.extend_from_slice(b"{\"at\":\"2026-11-13T13:00:00-05:00\",\"owner\":\"\xff\"}\n");
+        bytes.extend_from_slice(format!("{last}\n").as_bytes());
+        fs::write(home.path().join("mission/asks.jsonl"), bytes).expect("the asks list");
+        let owners: Vec<String> = asks(&gather(home.path()))
+            .into_iter()
+            .map(|ask| ask.owner)
+            .collect();
+        assert_eq!(
+            owners,
+            ["A", "B"],
+            "a torn byte left out more than its own line, or kept it"
+        );
     }
 }

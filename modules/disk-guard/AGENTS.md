@@ -265,7 +265,15 @@ or launchd, and [`home.nix`][2] the account's.
   each once, taken, kept or failed, and how long the survey that offered
   them took, which its own seconds leave out, or null when none did. Each
   pass a survey served carries its seconds, so passes at one time and the
-  same seconds shared one walk. Judged reads beside the line's end: a pass
+  same seconds shared one walk. It says too what it read from disk
+  (`read`) and what its survey did (`survey_read`), from Linux's count for
+  the thread each ran on, or null on a Mac; what a pass hands a thread of
+  its own, a command, a Nix delete or an ask of the system daemon, isn't
+  counted. The two walks no pass takes, measuring what holds the disks
+  and marking the builds, each journal a `walk` line saying which, its
+  seconds and what it read. On 25 November the account's guard read
+  15.4 GB of the disk in 24 minutes, and no line said which walk it was.
+  Judged reads beside the line's end: a pass
   that ended `exhausted` having judged none had nothing due, and one that
   judged some and freed nothing kept or failed all it judged, which its
   action lines tell apart. A reach that ended `reached` having judged none
@@ -577,6 +585,10 @@ or launchd, and [`home.nix`][2] the account's.
   file there without Apple's entitlement, so no older build is dated or
   offered; nothing freezes a writer yet; there's no scope for a linking run;
   and Time Machine's local snapshots are thinned once nearly full.
+  macOS keeps no stall averages, so room is the kernel's own word on
+  memory: a listing that can wait needs 35% free, as `memory_pressure`
+  prints it, at the normal level; dedupe waits out a warning; critical
+  is overloaded. The disk's stalls go unjudged there.
 
 ## Where Things Live
 
@@ -590,6 +602,7 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/store_roots.rs`      | the links a tool keeps its builds by, found through Nix  |
 | `src/surveyed.rs`         | the last pass's survey, kept for `disk-guard plan` to read |
 | `src/holders.rs`          | what holds each disk, and whose it is                    |
+| `src/disk_reads.rs`       | what a walk read from disk, by its thread's count        |
 | `src/disks.rs`            | how hard each disk is written, and how worn              |
 | `src/keeps.rs`            | the folders Joel keeps, and why                          |
 | `src/ledger.rs`           | what held each disk over two days, and what grew         |
@@ -598,10 +611,11 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/footprint.rs`        | what files take on a compressed disk, read as root       |
 | `src/activity.rs`, `locks.rs` | whether something is in use                          |
 | `src/host.rs`, `linux.rs`, `macos.rs` | the machine the guard runs on, through `crate::sys` |
-| `src/procargs.rs`, `pmset.rs` | what macOS says, parsed where Linux's tests reach it |
+| `src/procargs.rs`, `pmset.rs`, `memorystatus.rs` | what macOS says, parsed for Linux's tests |
 | `src/daemon.rs`, `serve.rs` | a daemon's step and its loop                           |
 | `src/socket.rs`, `vouch.rs` | what the two daemons say to each other                 |
 | `src/garbage.rs`, `generations.rs`, `dedupe.rs` | Nix's garbage, generations and linking |
+| `src/garbage/`            | running Nix's commands, its refused nix.conf lines left out |
 | `src/replaced.rs`, `opens.rs`, `unwatched.rs` | older builds, and the watch that dates them, or a Mac's lack of one |
 | `src/writers.rs`, `freeze.rs`, `freezer.rs` | who writes most, and freezing them through systemd |
 | `src/desktop.rs`, `notifier.rs` | notices and power saving over D-Bus, or on a Mac |

@@ -40,6 +40,7 @@ import "Keeping.js" as Keeping
 import "PlaceRow.js" as PlaceRow
 import "Presented.js" as Presented
 import "SessionRow.js" as SessionRow
+import "TalkAnswers.js" as TalkAnswers
 import "../pieces/Holding.js" as Holding
 
 Provider {
@@ -2211,6 +2212,11 @@ Provider {
         const known = Sessions.wantKnown(address);
         const said = Words.of("on:waiting").said ?? {};
         const session = () => provider.wantsNow[address] ?? madeFrom;
+        // What it asks in full, read as its drawer is drawn, where the want says more than
+        // its short line (wants.rs's `whole`), so its drawer says the question as it was put,
+        // paragraphs and list lines kept (Joel's bar of 2026-11-24, that any surface he's in
+        // answers a question in full); "" where it says no more.
+        const whole = () => TalkAnswers.whole(provider.source("agents")?.wantOf(address) ?? null);
         // Said answered only once the node has put it in the session's
         // inbox, since one it couldn't put never reached the session.
         const answer = (fields, label) => {
@@ -2241,7 +2247,7 @@ Provider {
             sure: true,
             drawer: () => ({
                 title: one.label,
-                body: one.description || asked,
+                body: one.description || whole() || asked,
                 facts: [fact("answers", madeFrom.title)].concat(one.recommended
                     ? [fact("recommended", said.recommended ?? "")] : [])
             }),
@@ -2279,13 +2285,22 @@ Provider {
             forYou: { kind: "agent", source: "sessions" },
             side: count === 1 ? said.answerOne ?? ""
                 : filledIn(said.answer ?? "", { count: String(count) }),
-            drawer: () => ({
-                title: madeFrom.title,
-                facts: [fact("asked", asked)].concat(answers.choices.map(one => ({
-                    label: Words.name(`on:waiting:${one.recommended ? "recommended" : "choice"}`),
-                    value: one.description ? `${one.label} \u00b7 ${one.description}` : one.label
-                })), [fact("session", madeFrom.title)])
-            }),
+            // Its question whole as its body where the want says more than its short line,
+            // which it then doesn't say again as a fact.
+            drawer: () => {
+                const put = whole();
+                return {
+                    title: madeFrom.title,
+                    body: put,
+                    facts: (put === "" ? [fact("asked", asked)] : []).concat(
+                        answers.choices.map(one => ({
+                            label: Words.name(
+                                `on:waiting:${one.recommended ? "recommended" : "choice"}`),
+                            value: one.description ? `${one.label} \u00b7 ${one.description}`
+                                : one.label
+                        })), [fact("session", madeFrom.title)])
+                };
+            },
             // Its Return is stepping in, not Agents' own act on the session.
             returns: null,
             verb: "more",
@@ -2563,7 +2578,10 @@ Provider {
     // Each asking is a pass of the to-dos', sessions' and kinds' keeping,
     // so what's no longer there is let go; a look is let go once its file
     // is, since History's looks are kept beside them.
+    // Each part is lapped for the step that asks (Launcher's stepLap), so
+    // a slow step into For You says which part made it slow.
     function waitingRows() {
+        const lap = name => provider.launcher?.stepLap?.(name);
         const now = Date.now();
         const bands = bandsAt(now);
         const keeps = [itemsKept, wantsKept, kindsKept, cellsKept];
@@ -2572,17 +2590,25 @@ Provider {
             delete itemsNow[identity];
         for (const address of Object.keys(wantsNow))
             delete wantsNow[address];
+        lap("banding");
         const asked = kindRow("agent", bandRows(bands.agent, now));
-        const rows = latelyRows(now).filter(latelyComingIn).concat(
-            cellRows(bands.now, now, asked, bands.agent[0]?.weight ?? 0),
-            kindRow("look", bandRows(bands.look, now)),
-            kindRow("try", bandRows(bands.try, now)), kindRow("read", bandRows(bands.read, now)),
+        lap("agents asking");
+        const lately = latelyRows(now).filter(latelyComingIn);
+        lap("lately");
+        const cells = cellRows(bands.now, now, asked, bands.agent[0]?.weight ?? 0);
+        lap("cells");
+        const lookRows = kindRow("look", bandRows(bands.look, now));
+        const tryRows = kindRow("try", bandRows(bands.try, now));
+        const readRows = kindRow("read", bandRows(bands.read, now));
+        lap("kinds");
+        const rows = lately.concat(cells, lookRows, tryRows, readRows,
             laterRow === null ? [] : [laterRow], historyRow === null ? [] : [historyRow]);
         keeps.forEach(keeping => keptOnly(keeping));
         for (const file of Object.keys(looksKept.rows)) {
             if (!(file in lookTexts))
                 delete looksKept.rows[file];
         }
+        lap("letting go");
         return rows;
     }
 

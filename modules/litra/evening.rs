@@ -8,6 +8,14 @@ use std::path::Path;
 
 use crate::light::{DIMMEST, State, WARMEST};
 
+/// Where the evening's light comes from: rhythm's profile, which says when
+/// Joel winds down tonight, and the file each light's own setting is kept
+/// in.
+pub(crate) struct Evening<'a> {
+    pub(crate) profile: &'a Path,
+    pub(crate) kept: &'a Path,
+}
+
 /// The share of its own brightness, in percent, a light keeps on a call
 /// after Joel's wind-down.
 const EVENING_SHARE: u32 = 70;

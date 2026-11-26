@@ -144,7 +144,7 @@ pub fn act(context: &Context, help: &Help) -> Result<(), Failure> {
         ["import"] => import(context, &config(&path)?),
         ["run"] => {
             let config = config(&path)?;
-            drop(held(&config)?);
+            running(&config)?;
             crate::daemon::run(&config).map_err(broke)
         }
         ["serve"] => crate::daemon::serve(&config(&path)?).map_err(broke),
@@ -184,6 +184,21 @@ fn wrote(written: std::io::Result<()>) -> Result<(), Failure> {
     written.map_err(|error| {
         Failure::new(Exit::Failed, "the answer couldn't be written").because(error.to_string())
     })
+}
+
+/// Nothing while no other watch answers on the socket. One that does is
+/// the running watch, and a second is told so at once; a reader holding
+/// the lock as it moves the history answers nothing there, so the watch
+/// waits for it instead, as `daemon::run` does.
+fn running(config: &Config) -> Result<(), Failure> {
+    if std::os::unix::net::UnixStream::connect(config.socket()).is_ok() {
+        return Err(
+            Failure::new(Exit::TryAgain, "another spend-watch is running")
+                .because(format!("{} answers", config.socket().display()))
+                .try_this("systemctl --user status spend-watch"),
+        );
+    }
+    Ok(())
 }
 
 /// The history's lock, taken while no other spend-watch holds it.

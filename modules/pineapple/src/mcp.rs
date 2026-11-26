@@ -51,12 +51,31 @@ const NOT_FOUND: u16 = 404;
 const FAILING: u16 = 400;
 const SERVER_FAILING: u16 = 500;
 
-/// HTTP's word for a caller that has asked too often, which passes.
+/// HTTP's word for a caller that has asked too often, and for a server
+/// that can't take a request now, each passing and each sure to have
+/// done nothing.
 const TOO_MANY: u16 = 429;
+const UNAVAILABLE: u16 = 503;
 
 /// HTTP's redirects, which are never followed, since one would carry the
 /// sign-in wherever it pointed.
 const REDIRECTS: std::ops::Range<u16> = 300..400;
+
+/// Whether `error` came before any connection was made, so nothing was
+/// asked: no host by that name, or none of its addresses taking one, as
+/// ureq's own connector says each. A host or network unreachable isn't
+/// one, since Linux may say either of a connection already made.
+#[must_use]
+pub fn never_connected(error: &ureq::Error) -> bool {
+    match error {
+        ureq::Error::HostNotFound | ureq::Error::ConnectionFailed => true,
+        ureq::Error::Io(error) => matches!(
+            error.kind(),
+            std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::AddrNotAvailable
+        ),
+        _ => false,
+    }
+}
 
 /// Whether `status` refuses the sign-in given: a 401 or 403, or a
 /// redirect, which is a gateway sending its caller off to sign in again.
@@ -72,8 +91,11 @@ pub enum Called {
     NoSignIn(SignIn),
     /// The gateway refused the sign-in given, twice.
     Refused,
-    /// The gateway couldn't be reached, or its answer couldn't be read
-    /// to its end.
+    /// No connection to the gateway could be made, so nothing it was
+    /// asked was done.
+    NotReached(String),
+    /// The gateway couldn't be reached once asked, or its answer couldn't
+    /// be read to its end, so what it was asked may have been done.
     Unreachable(String),
     /// The gateway answered what isn't JSON-RPC, a cause that lasts.
     Unreadable(String),
@@ -168,7 +190,12 @@ impl Gateway {
         let mut refused = false;
         let mut forgotten = false;
         loop {
-            let answer = if self.open()? {
+            // Nothing fails opening a session after the tool was asked.
+            let opened = self.open().map_err(|called| match called {
+                Called::Unreachable(why) => Called::NotReached(why),
+                called => called,
+            })?;
+            let answer = if opened {
                 match self.post("tools/call", Some(&params)) {
                     Ok(answer) => answer,
                     Err(unreached) => {
@@ -278,9 +305,14 @@ impl Gateway {
         if let Some(session) = &self.session {
             post = post.header(SESSION, session);
         }
-        let mut answer = post
-            .send_json(&request)
-            .map_err(|error| Called::Unreachable(format!("couldn't reach the gateway: {error}")))?;
+        let mut answer = post.send_json(&request).map_err(|error| {
+            let why = format!("couldn't reach the gateway: {error}");
+            if never_connected(&error) {
+                Called::NotReached(why)
+            } else {
+                Called::Unreachable(why)
+            }
+        })?;
         let status = answer.status().as_u16();
         let session = answer
             .headers()
@@ -293,11 +325,14 @@ impl Gateway {
                 Called::Unreachable(format!("couldn't read the gateway's answer: {error}"))
             })?;
             // A gateway that's down or busy passes, whatever its page holds,
-            // as a spent rate does in deaf.rs.
-            if status >= SERVER_FAILING || status == TOO_MANY {
-                return Err(Called::Unreachable(format!(
-                    "the gateway answered {status}"
-                )));
+            // as a spent rate does in deaf.rs; one saying it took nothing
+            // did nothing.
+            let why = format!("the gateway answered {status}");
+            if status == TOO_MANY || status == UNAVAILABLE {
+                return Err(Called::NotReached(why));
+            }
+            if status >= SERVER_FAILING {
+                return Err(Called::Unreachable(why));
             }
             Some(answered(&text, self.asked).ok_or_else(|| {
                 Called::Unreadable(format!("the gateway answered {status}, not JSON-RPC"))
@@ -339,8 +374,10 @@ fn answered(text: &str, asked: u64) -> Option<Value> {
 
 /// What an answer said: its text, or why it failed.
 fn said(answer: Answer) -> Result<String, Called> {
+    // Only a refusal or a session not found goes unread, and neither
+    // did what was asked.
     let Some(body) = answer.body else {
-        return Err(Called::Unreachable(format!(
+        return Err(Called::NotReached(format!(
             "the gateway answered {} with nothing",
             answer.status
         )));

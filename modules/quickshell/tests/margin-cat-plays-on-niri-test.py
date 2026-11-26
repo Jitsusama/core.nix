@@ -9,9 +9,10 @@ real columns reach it: a single pose held a moment while the keys come, which mo
 and draws a frame each way, plays in place once they stop, and once they've been gone a while
 a hop that rises and lands where it sat, a wander a few cells along the margin, a key
 ending it at once, the cat walking back, and a ball of yarn batted off and a pounce on
-nothing, each shown whole and each walking it back after. How a hop, the yarn and a pounce
-move is held in Qt's engine too (modules/margin-cat/tests/margin-cat-games.qml). Each case
-asks the shell for the play it watches, so none waits on chance.
+nothing, each shown whole and each walking it back after, and the puppy's visit, the cat
+hopping where it sits. How a hop, the yarn, a pounce and the puppy move is held in Qt's
+engine too (modules/margin-cat/tests/margin-cat-games.qml and margin-cat-puppy.qml). Each
+case asks the shell for the play it watches, so none waits on chance.
 """
 
 from __future__ import annotations
@@ -71,6 +72,12 @@ YARN = [
 ]
 POUNCE = ["notices", "eyes", "crouches", "wiggles", "leaps", "lands", "looks"]
 YARN_SEEN, POUNCE_SEEN = {"waits", "watches", "sends"}, {"eyes", "leaps", "looks"}
+# The puppy's visit (modules/margin-cat/MarginCatPuppy.js), on the cat's beats, and how long
+# it may take: it trots in and off at the cat's walking pace, at most 80 cells a second,
+# which over a nested column of a cell a pixel is up to about 10 s each way.
+PUPPY = ["waits", "notices", "eyes", "crouches", "hops", "lands", "looks", "watches"]
+PUPPY_SEEN = {"waits", "eyes", "hops", "watches"}
+VISITS = timedelta(seconds=45)
 HOPPING = {"pouncing", "leaping", "tucked", "falling"}
 PLAYS = timedelta(seconds=20)
 POLL = 0.05
@@ -184,7 +191,7 @@ def home(at: Json | None, sat: Json, seat: Json) -> bool:
     )
 
 
-def plays_out(shell: Shell, kind: str) -> tuple[list[Json], Json, Json]:
+def plays_out(shell: Shell, kind: str, lasts: timedelta = PLAYS) -> tuple[list[Json], Json, Json]:
     """Sit over a column, ask for a play, leave the keys, and give it once it's done.
 
     It gives each place said while it played, how niri showed it, and where it sat before;
@@ -209,7 +216,7 @@ def plays_out(shell: Shell, kind: str) -> tuple[list[Json], Json, Json]:
         told = f"what the cat did since the ask:\n{story(said)}"
         raise AssertionError(told) from failed
     began = shell.mark()
-    shell.reported(PLAYED, lambda said: said.split(" ", 1)[1].startswith("{"), began, PLAYS)
+    shell.reported(PLAYED, lambda said: said.split(" ", 1)[1].startswith("{"), began, lasts)
     said, _ = shell.said_since(since)
     steps = [line[len(SITS) :] if line.startswith(SITS) else None for line in said]
     start = next(at for at, step in enumerate(steps) if step is not None and asked(step))
@@ -384,8 +391,10 @@ def behind_its_edge(yarn: Json, size: float) -> bool:
     return bool(yarn["x"] < yarn["within"]["left"] or yarn["x"] + size > yarn["within"]["right"])
 
 
-def came_behind(frames: list[Json], size: float) -> Json | None:
+def came_behind(frames: list[Json], size: float, key: str = "yarn") -> Json | None:
     """Give where the yarn was as it came, or None where it came from behind its edge.
+
+    The puppy (`key` "puppy") is read the same way, since it too comes on the cat's clock.
 
     The yarn rolls on the cat's clock, so a frame drawn late finds it a few pixels on: a loaded
     builder's 50 ms frame showed it first 5 px out from its edge, though it rolled from behind
@@ -396,9 +405,9 @@ def came_behind(frames: list[Json], size: float) -> Json | None:
     start, so one that started in open space stays there. Its going needs no such roll, since
     a play reports no frame after the yarn's last.
     """
-    shown = [at for at, frame in enumerate(frames) if frame["walk"]["yarn"]]
+    shown = [at for at, frame in enumerate(frames) if frame["walk"][key]]
     edge = shown[0]
-    yarn: Json = frames[edge]["walk"]["yarn"]
+    yarn: Json = frames[edge]["walk"][key]
     if behind_its_edge(yarn, size):
         return None
     after = edge + 1
@@ -408,9 +417,30 @@ def came_behind(frames: list[Json], size: float) -> Json | None:
     now, later = frames[edge]["walk"]["t"], frames[after]["walk"]["t"]
     if later == now:
         return yarn
-    pace = (frames[after]["walk"]["yarn"]["x"] - yarn["x"]) / (later - now)
+    pace = (frames[after]["walk"][key]["x"] - yarn["x"]) / (later - now)
     there = {**yarn, "x": yarn["x"] + pace * (then - now)}
     return None if behind_its_edge(there, size) else yarn
+
+
+def went_behind(frames: list[Json], size: float) -> Json | None:
+    """Give where the puppy was as it went, or None where it went behind its edge.
+
+    It trots off to the play's end, behind its edge only for its last few cells, which a
+    loaded builder can leave undrawn: so where its last frame isn't behind the edge, it trots
+    it on at its last two frames' pace to the play's end (`walk`'s `ends`), and only a puppy
+    that wasn't behind the edge then went in open space.
+    """
+    shown = [frame["walk"] for frame in frames if frame["walk"]["puppy"]]
+    last = shown[-1]
+    puppy: Json = last["puppy"]
+    if behind_its_edge(puppy, size):
+        return None
+    before = shown[-2] if len(shown) > 1 else last
+    if last["t"] == before["t"]:
+        return puppy
+    pace = (puppy["x"] - before["puppy"]["x"]) / (last["t"] - before["t"])
+    there = {**puppy, "x": puppy["x"] + pace * (last["ends"] - last["t"])}
+    return None if behind_its_edge(there, size) else puppy
 
 
 def test_away_it_bats_a_ball_of_yarn_off_and_walks_back(shell: Shell) -> None:
@@ -441,3 +471,71 @@ def test_away_it_pounces_on_nothing_and_walks_back(shell: Shell) -> None:
     assert min(at["y"] for at in frames) < seat["y"], f"it never left the ground: {frames}"
     assert not any(at["walk"]["yarn"] for at in frames), f"a pounce brought yarn: {frames}"
     assert shown["unseen"] == 0, f"niri never showed {shown['unseen']} of its frames: {shown}"
+
+
+def test_away_a_puppy_visits_and_the_cat_hops_where_it_sits(shell: Shell) -> None:
+    """Away, the puppy trots in from behind its room's edge, and off again; the cat hops.
+
+    Its beats come in order, the puppy never appearing or going in open space, the cat never
+    leaving its seat but to hop a cell up and land, and niri shows every frame of it.
+    """
+    frames, shown, seat = plays_out(shell, "puppy", VISITS)
+    beats = beats_of(frames)
+    assert in_order(beats, PUPPY), f"the visit's beats came as {beats}"
+    assert set(beats) >= PUPPY_SEEN, f"the visit's beats came as {beats}"
+    seen = [at["walk"]["puppy"] for at in frames if at["walk"]["puppy"]]
+    assert seen, f"the puppy was never shown: {frames}"
+    lit = max(at.get("puppyLit", 0) for at in frames)
+    assert lit > 0, f"the puppy was placed but drawn in no cell: {frames}"
+    size = frames[0]["size"]
+    came = came_behind(frames, size, "puppy")
+    assert came is None, f"the puppy came from nowhere: {came}"
+    went = went_behind(frames, size)
+    assert went is None, f"the puppy went in open space: {went}"
+    assert all(abs(at["x"] - seat["x"]) <= 1 for at in frames), f"the cat moved off: {frames}"
+    aloft = [at for at in frames if at["y"] < seat["y"]]
+    assert len(aloft) > 1, f"its hop was in the air for {len(aloft)} frames: {frames}"
+    assert not any(at["walk"]["yarn"] for at in frames), f"a visit brought yarn: {frames}"
+    assert shown["unseen"] == 0, f"niri never showed {shown['unseen']} of its frames: {shown}"
+
+
+def test_a_key_ends_the_puppys_visit(shell: Shell) -> None:
+    """The puppy visits only while he's away, so a key mid-visit ends it: it goes, the cat sits.
+
+    A visit lasts up to about 25 s, and played on it would have the cat hopping as he types and
+    asking niri for every tile (#6573's council, 2026-11-25).
+    """
+    sat, seat = sitting_over(shell, "a column a visit is cut short over")
+    ask(shell, "puppy")
+    shell.send_key("F24")
+    since = shell.mark()
+
+    def visiting(said: str) -> bool:
+        return (playing(placed(said)) or {}).get("play") == "puppy"
+
+    def in_sight(said: str) -> bool:
+        step = playing(placed(said)) or {}
+        return step.get("play") == "puppy" and step.get("beat") in PUPPY[1:-1]
+
+    # Pressed once the puppy stands by the cat in plain sight, so it ends a visit he can see,
+    # not one still behind the room's edge, where the puppy is drawn nowhere either way.
+    shell.reported(SITS, in_sight, since, VISITS)
+    since = shell.mark()
+    keyed = time.monotonic()
+    shell.send_key("F24")
+    shell.reported(SITS, lambda said: not visiting(said), since)
+    ended = time.monotonic() - keyed
+    assert ended <= BACK, f"a key took {ended:.2f} s to end the visit"
+    # `walk` says no puppy once the cat sits, so only the report's own `puppy` shows it gone.
+    shell.reported(
+        SITS,
+        lambda said: (
+            (at := placed(said)) is not None
+            and not walking(at)
+            and at.get("window") == sat["id"]
+            and abs(at["x"] - seat["x"]) <= 1
+            and not at.get("puppy")
+        ),
+        since,
+        HOME,
+    )
