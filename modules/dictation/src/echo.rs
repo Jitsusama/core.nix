@@ -169,21 +169,24 @@ fn echoes_of(mine: &[Word], theirs: &[Word]) -> Vec<Option<usize>> {
 
 /// For each of Joel's `mine`, the loudest of `theirs` said within a
 /// moment of it, if that's `DROWNED` louder and they go on speaking past
-/// it: his words heard inside their speech far below it are its echo,
-/// while a word of his just after their line ends may be his answer.
+/// it, or his word before it was cut so: his words heard inside their
+/// speech far below it are its echo, and so is the echo of their last
+/// words, which follows them, while a word of his that opens as their
+/// line ends may be his answer.
 fn drowned(mine: &[Word], theirs: &[Word]) -> Vec<Option<usize>> {
-    mine.iter()
-        .map(|word| {
-            let from = theirs.partition_point(|said| said.at + LAG < word.at);
-            let to = theirs.partition_point(|said| said.at <= word.at + LEAD);
-            let on = theirs[to..]
-                .first()
-                .is_some_and(|said| said.at <= word.at + LAG)
-                || theirs[from..to].iter().any(|said| said.at > word.at);
-            let loudest = (from..to).max_by(|&a, &b| theirs[a].level.total_cmp(&theirs[b].level));
-            loudest.filter(|&j| on && theirs[j].level >= word.level + DROWNED)
-        })
-        .collect()
+    let mut drowned: Vec<Option<usize>> = Vec::with_capacity(mine.len());
+    for word in mine {
+        let from = theirs.partition_point(|said| said.at + LAG < word.at);
+        let to = theirs.partition_point(|said| said.at <= word.at + LEAD);
+        let on = theirs[to..]
+            .first()
+            .is_some_and(|said| said.at <= word.at + LAG);
+        let echoing = drowned.last().is_some_and(Option::is_some);
+        let loudest = (from..to).max_by(|&a, &b| theirs[a].level.total_cmp(&theirs[b].level));
+        drowned
+            .push(loudest.filter(|&j| (on || echoing) && theirs[j].level >= word.level + DROWNED));
+    }
+    drowned
 }
 
 /// Some of Joel's words cut from a line of his as the others' echo: the
