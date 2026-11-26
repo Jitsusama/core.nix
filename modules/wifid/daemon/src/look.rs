@@ -169,7 +169,10 @@ impl Looks {
     /// another point than asked before is heeded afresh, as is a warning
     /// heeded `at_once`, needing no look: one whose whole network drops
     /// the card, or naming a point it hears now. A newer warning naming a
-    /// channel the card's look didn't cover has it look again.
+    /// channel the card's look didn't cover has it look again. An ask
+    /// warning nothing keeps the warning looked for, lapsed or not, so a
+    /// lapse still lets the card go: heeded in its place, it would leave
+    /// the card held to the point that drops it.
     pub fn asked_again(
         &mut self,
         card: &str,
@@ -185,12 +188,12 @@ impl Looks {
             self.0.remove(card);
             return Again::Fresh;
         }
+        if !request.warns_any() && waiting.request.warns_any() {
+            return Again::Kept;
+        }
         if waiting.lapsed(now) {
             self.0.remove(card);
             return Again::Lapsed;
-        }
-        if !request.warns_any() && waiting.request.warns_any() {
-            return Again::Kept;
         }
         if at_once && request.warns_any() {
             self.0.remove(card);
@@ -553,6 +556,21 @@ mod tests {
             "a look never said to end swallowed the point's next warning",
         );
         assert!(!looks.waits("wlan2"), "and the look is past");
+        let plain = Request {
+            warns: false,
+            ..request.clone()
+        };
+        let mut kept = waiting(&request, Looked::Done);
+        assert_eq!(
+            kept.asked_again("wlan2", &plain, Some(ON), false, lapsed),
+            Again::Kept,
+            "an ask warning nothing, come as the look lapsed, took the warning's place",
+        );
+        assert_eq!(
+            kept.lapsed(lapsed, on_its_point()),
+            vec![("wlan2".to_owned(), Ended::Lapsed)],
+            "and the lapse no longer let the card go",
+        );
         assert!(
             Again::Lapsed.heeds().is_some_and(Looked::over),
             "a warning after a look lapsed had the card look again, for another 15 s"

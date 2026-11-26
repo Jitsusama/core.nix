@@ -489,15 +489,21 @@ impl State {
     /// point that carried better and drops it again.
     pub fn around_to_choose(&self, card: &str, now: Instant) -> Vec<Heard> {
         let mut around = self.around(card);
-        if let Some((point, until)) = self.warned_off.get(card)
-            && now < *until
-            && self
-                .point_of(card)
-                .is_none_or(|on| !on.eq_ignore_ascii_case(point))
-        {
+        if let Some(point) = self.warned_from(card, now) {
             around.retain(|heard| !heard.bssid.eq_ignore_ascii_case(point));
         }
         around
+    }
+
+    /// The access point a card keeps off at `now` as it warned it drops
+    /// the card, until `warned_off` says, unless the card is on it again.
+    /// A point merely unheard isn't kept off: a move there looks for it.
+    pub fn warned_from(&self, card: &str, now: Instant) -> Option<&str> {
+        let (point, until) = self.warned_off.get(card)?;
+        let away = self
+            .point_of(card)
+            .is_none_or(|on| !on.eq_ignore_ascii_case(point));
+        (now < *until && away).then_some(point.as_str())
     }
 
     /// Keeps the access point that warned a card it drops it from the
@@ -1389,6 +1395,16 @@ mod tests {
             "the point that warned, however written, is left out"
         );
         assert_eq!(
+            state.warned_from("wlan2", now),
+            Some(&*other.bssid.to_uppercase()),
+            "the point left out wasn't said to be kept off"
+        );
+        assert_eq!(
+            state.warned_from("wlan2", now + Duration::from_secs(600)),
+            None,
+            "a point was kept off past its warning's time"
+        );
+        assert_eq!(
             signals(state.around_to_choose("wlan2", now + Duration::from_secs(600))),
             [-52, -60],
             "and heard again once the warning's time is up"
@@ -1398,6 +1414,11 @@ mod tests {
             signals(state.around_to_choose("wlan2", now)),
             [-52, -60],
             "a card back on the point that warned it hears it, and the earlier point again"
+        );
+        assert_eq!(
+            state.warned_from("wlan2", now),
+            None,
+            "a card back on the point that warned it was kept off it"
         );
     }
 
