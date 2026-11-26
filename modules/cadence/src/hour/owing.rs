@@ -1098,6 +1098,46 @@ mod tests {
         );
     }
 
+    /// The list's own date told late is judged by its own measure, never by
+    /// Joel's, whose key starts its own: read first and holding no line, his
+    /// doesn't close it.
+    #[test]
+    fn a_derived_date_told_late_closes_by_its_own_measure_not_joel_s() {
+        let derived_key = format!("{}-derived", told_late::KEY);
+        let his = measure(told_late::KEY, Class::Slip, 0.0, Some(0.0));
+        let mut ours = measure(&derived_key, Class::Slip, 1.0, Some(0.0));
+        ours.behind = vec!["a mend, moved 6 min before its date · J7XHQN".to_owned()];
+        let mut ledger = Vec::new();
+        file(
+            &mut ledger,
+            &[his.clone(), ours.clone()],
+            "2026-11-25",
+            1000,
+        );
+        let filed = format!("hour:{derived_key}:J7XHQN:a mend, moved 6 min before its date");
+        assert!(
+            ledger.iter().any(|e| e.key == filed && e.open),
+            "the list's own move wasn't filed to its owner: {:?}",
+            ledger.iter().map(|e| &e.key).collect::<Vec<_>>()
+        );
+        file(
+            &mut ledger,
+            &[his.clone(), ours.clone()],
+            "2026-11-25",
+            4600,
+        );
+        assert!(
+            ledger.iter().all(|e| e.open),
+            "Joel's measure, holding no line, closed the list's own move"
+        );
+        ours.behind.clear();
+        file(&mut ledger, &[his, ours], "2026-11-25", 8200);
+        assert!(
+            ledger.iter().all(|e| !e.open),
+            "the list's own move stayed open once its line was gone"
+        );
+    }
+
     #[test]
     fn each_miss_of_joels_goes_to_its_own_owner_and_closes_once_its_check_is_named() {
         let mut misses = measure("misses", Class::Miss, 2.0, Some(0.0));
