@@ -145,12 +145,13 @@ for ((at = 0; at < ${#expression[@]}; at++)); do
   arg=${expression[at]}
   next=${expression[at + 1]-}
   case ${arg} in
-    # As c_depth does: a digit after up to two signs makes it -depth n.
-    -depth)
+    # As c_depth, which -d shares, does: a digit after up to two signs
+    # makes it a test of depth, which walks as ever.
+    -d | -depth)
       word=${next#[-+]}
       [[ ${word#[-+]} == [0-9]* ]] || depth=true
       ;;
-    -d | -delete) depth=true ;;
+    -delete) depth=true ;;
     # A depth below 0 tests everything, and a -maxdepth of -1 is find's own
     # no limit, so either is none here.
     -mindepth)
@@ -177,8 +178,10 @@ for ((at = 0; at < ${#expression[@]}; at++)); do
       at=$((at + 1))
       while [ "${at}" -lt "${#expression[@]}" ]; do
         word=${expression[at]}
-        [ "${word}" = ';' ] && break
-        [ "${word}" = + ] && [ "${expression[at - 1]}" = '{}' ] && break
+        # c_exec ends a command at any word that starts with ; and at one
+        # starting with + after {}, so what follows is read as primaries.
+        [[ ${word} == ';'* ]] && break
+        [[ ${word} == +* ]] && [ "${expression[at - 1]}" = '{}' ] && break
         at=$((at + 1))
       done
       ;;

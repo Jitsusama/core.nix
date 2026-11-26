@@ -250,13 +250,40 @@ named "${home}"
 # before its digits as well, which GNU's find refuses, so what this one
 # says is left out of what's read. ' -1' and '+-1' are -1, find's own no
 # limit, and zeros before a digit count for nothing however many there are.
-for given in '+3' ' 3' '+ +3' ' -1' '+-1' '0000000000000000000003'; do
+# A number past a long long, 2^64 + 1, is held at its most, and kept in
+# an int, as -1, where wrapping round would make it 1. Kept in an int,
+# 2^32 + 1 is 1, and zeros past a long long's digits are 0, each of which
+# opens no guarded folder, so runs with nothing said.
+for given in '+3' ' 3' '+ +3' ' -1' '+-1' '0000000000000000000003' '18446744073709551617'; do
   search "${home}" -maxdepth 1 -maxdepth "${given}" -name needle >/dev/null
   if ! grep -qxF "${note}" "${said}"; then
     echo "${who} with -maxdepth 1 then '${given}' ran as -maxdepth 1: $(<"${said}")" >&2
     exit 1
   fi
 done
+for given in '4294967297' '0000000000000000000000'; do
+  search "${home}" -maxdepth 3 -maxdepth "${given}" -name needle >/dev/null
+  if grep -qxF "${note}" "${said}"; then
+    echo "${who} with -maxdepth 3 then '${given}' was pruned: $(<"${said}")" >&2
+    exit 1
+  fi
+done
+# -d is -depth, so a number after either makes a test of depth, which
+# walks as ever and is pruned; and -exec's command ends at a word that
+# starts with ;, so a -mindepth after it is read, as find reads it.
+for given in '-d 2' '-depth 2'; do
+  # shellcheck disable=SC2086 # Each is split into its words, as typed.
+  search "${home}" ${given} -name needle >/dev/null
+  if ! grep -qxF "${note}" "${said}"; then
+    echo "${who} with ${given} wasn't pruned: $(<"${said}")" >&2
+    exit 1
+  fi
+done
+search "${home}" -exec true ';x' -mindepth 3 >/dev/null
+if grep -qxF -e "${note}" -e "${unlisted}" "${said}"; then
+  echo "${who} with -exec ending at ';x' lost the -mindepth after it: $(<"${said}")" >&2
+  exit 1
+fi
 # An action of its own that opens nothing lists each guarded folder it
 # matches once, as it prints, with nothing added: NUL-ended, as -print0 asks.
 found=$(wrapped "${home}" . -type d -print0 2>"${said}" | tr '\n\0' '!\n')
