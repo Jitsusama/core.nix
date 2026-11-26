@@ -18,6 +18,10 @@ const AGAIN_MS = 60 * MINUTE * SECOND;
 // so giving them again is meant. Past it, he's told again first.
 const MEANT_MS = 2 * MINUTE * SECOND;
 
+// How soon after he was told a Return counts as meant, a second: one held,
+// or pressed twice, lands sooner, and would start the work twice.
+const HEARD_MS = SECOND;
+
 // How many starts are kept to say again, more than an hour's work holds.
 const MOST_MADE = 12;
 
@@ -30,14 +34,14 @@ function same(words, said) {
 // start `given` ({ key, words }, its act and his words) at `now` and ended
 // `how` (Sprouting.ended) among them, in place of any made before with the
 // same words. One counts where it started, or where nothing answered,
-// since that one may still have started; a refused one began nothing.
-// Those an hour old go.
+// since that one may still have started; a refused one began nothing, so
+// the start made before it stays. Those an hour old go.
 function made(list, given, how, now) {
-    const kept = (Array.isArray(list) ? list : []).filter(one => now - one.at < AGAIN_MS
-        && !(one.key === given.key && same(one.words, given.words)));
+    const recent = (Array.isArray(list) ? list : []).filter(one => now - one.at < AGAIN_MS);
     if (how?.started !== true && how?.unanswered !== true) {
-        return kept;
+        return recent;
     }
+    const kept = recent.filter(one => !(one.key === given.key && same(one.words, given.words)));
     const start = { key: given.key, words: String(given.words), at: now,
         answered: how.started === true, toldAt: 0 };
     return kept.concat([start]).slice(-MOST_MADE);
@@ -45,15 +49,16 @@ function made(list, given, how, now) {
 
 // The start among `list` that `said` given to the act `key` at `now` makes
 // again, to be told rather than started: the same act, the same words,
-// within AGAIN_MS, unless he was told of it within MEANT_MS. Otherwise
-// null, and it may start.
+// within AGAIN_MS, unless he was told of it between HEARD_MS and MEANT_MS
+// ago. Otherwise null, and it may start.
 function again(list, key, said, now) {
+    const meant = one => one.toldAt > 0 && now - one.toldAt >= HEARD_MS
+        && now - one.toldAt < MEANT_MS;
     return (Array.isArray(list) ? list : []).find(one => one.key === key
-        && same(one.words, said) && now - one.at < AGAIN_MS
-        && !(one.toldAt > 0 && now - one.toldAt < MEANT_MS)) ?? null;
+        && same(one.words, said) && now - one.at < AGAIN_MS && !meant(one)) ?? null;
 }
 
-// `list` with `told` marked told at `now`, so a Return just after starts it.
+// `list` with `toldOne` marked told at `now`, so a Return just after starts it.
 function told(list, toldOne, now) {
     return list.map(one => (one === toldOne ? Object.assign({}, one, { toldAt: now }) : one));
 }

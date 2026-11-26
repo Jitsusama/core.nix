@@ -1929,8 +1929,8 @@ Provider {
         sproutGiven = { words: String(said), letters: launcher.lettersAt };
         sproutCarried = "";
         const sprout = sprouts;
-        // Marked again once the Return that gave the words has emptied the field, which moves
-        // lettersAt as a letter would (Launcher.qml's give), so only a key after it counts.
+        // Marked again once the Return that gave the words is through (Launcher.qml's
+        // give), so only a key after it counts.
         Qt.callLater(() => {
             if (sprouts === sprout)
                 sproutGiven = { words: sproutGiven.words, letters: launcher.lettersAt };
