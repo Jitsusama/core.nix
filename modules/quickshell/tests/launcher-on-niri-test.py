@@ -2645,12 +2645,6 @@ DRAWER_SWAPPED = re.compile(r"from its frame's start \((\d+) to its swap and (\d
 DRAWERS_SAID = re.compile(r"launcher: \d+ drawers? in \S+ presented a median \d+ ms from the key")
 
 
-# The first drawer line after Foot's drawer follows, which says how it came.
-FOOT_CAME = re.compile(
-    r"drawer follows program:foot[\s\S]*?(launcher: drawer for \"[^\n]* presented [^\n]*)"
-)
-
-
 def came_in_its_keys_frame(line: str) -> bool:
     """Say whether a drawer's line says it came in its key's frame, before the screen it names."""
     return line.rsplit("; on ", 1)[0].endswith("in the key's frame")
@@ -5047,30 +5041,28 @@ def test_a_drawer_resting_for_the_letters_names_the_row_selected(
     makes in 4 to 14 ms here, either side of the line by the builder's load, so home's programs
     are taught each way in turn.
     """
-    marks: list[int] = []
 
     def footed(since: int) -> None:
-        marks.append(since)
         shell.reported("drawer follows program:foot", lambda _: True, since)
 
     with taught(shell, {"home program": CHEAP if cheap else DEAR}):
         said = typed_from_home(shell, "foot", footed)
-        # How Foot's drawer came (in its key's frame, the frame after its letter or after
-        # resting) is said only in the shell's log, in the first drawer line after it follows.
-        log = said_once(shell, marks[0], FOOT_CAME)
-        came = one.group(1) if (one := FOOT_CAME.search(log)) else ""
     follow = said.index("drawer follows program:foot")
+    judged = said[follow:] if cheap else said[:follow]
+    shown = [json.loads(one[len("showing ") :]) for one in judged if one.startswith("showing ")]
+    # How Foot's drawers came (in its key's frame, the frame after its letter or after
+    # resting), as the showings after it follows time them.
+    timed = [one["drawer"].get("timed") or {} for one in shown]
+    came = [one.get("came", "") for one in timed if one.get("key") == "program:foot"]
     # Taught dear, it's never judged cheap after its letter. Taught cheap, it's said cheap only
     # while letters still come, which a loaded builder's spacing can end first, joining its
     # key's frame unsaid, so it's judged by never resting for them (#6737's council, 2026-11-26).
     judged_cheap = f"{CHEAP_AFTER_LETTER}program:foot" in said[:follow]
-    rested = "after resting" in came
+    rested = [how for how in came if how.startswith("after resting")]
     assert (bool(came) and not rested) if cheap else not judged_cheap, (
         f"Foot's drawer, taught {'cheap' if cheap else 'dear'}, was judged otherwise: "
         f"{drawer_trace(said)}; came {came!r}"
     )
-    judged = said[follow:] if cheap else said[:follow]
-    shown = [json.loads(one[len("showing ") :]) for one in judged if one.startswith("showing ")]
     on_foot = [one for one in shown if one["drawer"]["out"] and selecting("Foot", one)]
     assert on_foot, f"the drawer was never out beside Foot: {drawer_trace(said)}"
     assert on_foot[0 if cheap else -1]["drawer"]["title"] == "Foot", (
