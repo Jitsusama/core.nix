@@ -305,8 +305,8 @@
       "glyph": "elsewhere",
       "also": "cloud remote machine vm",
       "tells": {
-        "holding": "New work on a machine that costs money: one already up with room, or one made for it. The node picks which.",
-        "costs": "New work on a machine that costs money: one already up with room, or one made for it, from {hourly} {currency} an hour. The node picks which."
+        "holding": "New work on a machine paid for by the hour: one already up with room, or one made for it. The node picks which.",
+        "costs": "New work on a machine paid for by the hour: one already up with room, or one made for it, from {hourly} {currency} an hour. The node picks which."
       }
     },
     {
