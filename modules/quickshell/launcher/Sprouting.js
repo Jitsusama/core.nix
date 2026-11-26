@@ -206,14 +206,15 @@ const TOLD_AGAIN_MS = 30000;
 
 // Of the starts the agents daemon keeps ended and untold (`kept`, each
 // `{ token, ended }`), by how this shell stands on each (`known`, a
-// token's "asking", "ended" or "told") and when it first saw each it
-// never heard the end of (`seen`, by token): those to tell, as a shell
-// started since or a start a restart cut off has it, once seen
-// SETTLE_MS before `now` and asked (`at`) ASKER_ANSWERS_MS before it;
-// those still `waiting` that out; those
+// token's "asking", "ended", "watching", its session awaited, or "told")
+// and when it first saw each it never heard the end of (`seen`, by
+// token): those to tell, as a shell started since or a start a restart
+// cut off has it, once seen SETTLE_MS before `now` and asked (`at`)
+// ASKER_ANSWERS_MS before it; those still `waiting` that out; those
 // `answered`, still asked here, whose answer the daemon dropped as it
 // went, so its record is the answer; and every token to say told, all
-// but those still asked or waited on.
+// but those still asked, watched (so a shell handed over to watches for
+// it again) or waited on.
 function untold(kept, known, seen, now) {
     // Own keys alone, so a prototype's name is never known; Qt's engine has no Object.hasOwn.
     const own = (of, named) => Object.keys(of).includes(named);
@@ -223,8 +224,9 @@ function untold(kept, known, seen, now) {
     const unheard = kept.filter(one => !own(known, one.token));
     const tell = unheard.filter(waitedOut);
     const waiting = unheard.filter(one => !waitedOut(one)).map(one => one.token);
-    const said = kept.filter(one => (own(known, one.token) ? known[one.token] !== "asking"
-        : waitedOut(one))).map(one => one.token);
+    const said = kept.filter(one => (own(known, one.token)
+        ? !["asking", "watching"].includes(known[one.token]) : waitedOut(one)))
+        .map(one => one.token);
     const answered = kept.filter(one => own(known, one.token) && known[one.token] === "asking");
     return { tell, told: said, waiting, answered };
 }
@@ -310,29 +312,6 @@ function waitsOn(launcher, key, keys, letters) {
     const on = row => row?.key === key;
     return launcher?.open === true && launcher.keysTaken === keys &&
         launcher.lettersAt === letters && (on(launcher.asking) || on(launcher.selected));
-}
-
-// How `openings` ({key, held, machine, since, late}) stand at `now`, by
-// `found` giving each one's session or null: `up` are up, however late;
-// `late` waited `patience` unmarked, and wait on in `waiting` marked `late`,
-// so each is said late once; `gone` waited `watch`; `waiting` wait on.
-function settled(openings, found, now, { patience, watch }) {
-    const stood = { late: [], up: [], gone: [], waiting: [] };
-    for (const one of openings) {
-        const session = found(one);
-        const waited = now - one.since;
-        if (session) {
-            stood.up.push(Object.assign({}, one, { session }));
-        } else if (waited >= watch) {
-            stood.gone.push(one);
-        } else if (waited >= patience && one.late !== true) {
-            stood.late.push(one);
-            stood.waiting.push(Object.assign({}, one, { late: true }));
-        } else {
-            stood.waiting.push(one);
-        }
-    }
-    return stood;
 }
 
 // What opens a placement refusal, and a machine's reason in one that waiting
