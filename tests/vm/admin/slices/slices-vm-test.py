@@ -325,7 +325,9 @@ def test_work_in_jobs_is_slowed_never_ended_past_a_ceiling_that_follows_room(
             f"pkill -xf '{jobs.sleep} 1009' || true; pkill -f '/var/tmp/fille[r]' || true"
         )
         machine.succeed("rm -f /var/tmp/filler")
-        machine.succeed("systemctl -M alice@ --user start jobs-sorter.service")
+        # A restart, not a start, since a failure before the stop leaves the sorter running
+        # with the ceiling lifted, and only its stop puts the declared one back.
+        machine.succeed("systemctl -M alice@ --user restart jobs-sorter.service")
 
 
 def test_timed_work_is_inside_idle_jobs(jobs: Account) -> None:

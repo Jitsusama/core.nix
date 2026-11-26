@@ -142,12 +142,13 @@ pub fn high(text: &str) -> Option<u64> {
 
 /// Where the ceiling stands: as last set, or unknown before the first set
 /// and after a failed one; since when everything spared has been quiet;
-/// and when a set last failed.
+/// and when a set last failed; and whether any set has landed.
 #[derive(Default)]
 pub struct Ceiling {
     set: Option<u64>,
     quiet_from: Option<Instant>,
     failed: Option<Instant>,
+    landed: bool,
 }
 
 /// The ceiling the slice declares, `percent` of `total`.
@@ -163,10 +164,11 @@ impl Ceiling {
         // What memory.high reads is where the ceiling stands, whoever set
         // it; within a MiB of the last set, it's that set. A sorter just
         // started takes it only as the declared ceiling, so one left by an
-        // earlier sorter, or declared before a change, is set afresh.
+        // earlier sorter, or declared before a change, is set afresh, and
+        // so is one read after its first set failed, which never stood.
         match (self.set, look.high) {
             (Some(set), Some(high)) if !near(set, high) => self.set = Some(high),
-            (None, Some(high)) if self.failed.is_some() || near(high, least) => {
+            (None, Some(high)) if (self.failed.is_some() && self.landed) || near(high, least) => {
                 self.set = Some(high);
             }
             _ => {}
@@ -240,6 +242,7 @@ impl Ceiling {
     pub fn set(&mut self, high: u64) {
         self.set = Some(high);
         self.failed = None;
+        self.landed = true;
     }
 
     /// Setting it failed `now`; it may have landed late, so it's unknown
@@ -264,14 +267,16 @@ pub fn waited(pressure: &str) -> Option<f64> {
 
 /// What busctl is given to set `slice`'s memory ceiling to `high` bytes,
 /// as a runtime property, refused rather than asking for a password and
-/// given up after 5 s, since the sorter's loop would wait on either.
+/// given up after [`FALL_AGAIN`], since the sorter's loop would wait on
+/// either, and a fall that failed is tried again after as long.
 pub fn high_call(slice: &str, high: u64) -> Vec<String> {
     let high = high.to_string();
+    let timeout = format!("--timeout={}", FALL_AGAIN.as_secs());
     [
         "--user",
         "--quiet",
         "--allow-interactive-authorization=no",
-        "--timeout=5",
+        &timeout,
         "call",
         "org.freedesktop.systemd1",
         "/org/freedesktop/systemd1",
@@ -560,6 +565,50 @@ mod tests {
     }
 
     #[test]
+    fn a_first_set_that_failed_is_tried_again_whatever_memory_high_reads() {
+        let now = Instant::now();
+        let mut ceiling = Ceiling::default();
+        assert!(ceiling.wanted(&roomy(base()), base(), now).is_some());
+        ceiling.failed(now);
+        // As an earlier sorter's stop that didn't finish could leave it.
+        let left = Look {
+            high: Some(least(TOTAL, 38)),
+            ..roomy(base())
+        };
+        assert_eq!(
+            ceiling.wanted(&left, base(), now + AGAIN),
+            Some((base(), Why::Again)),
+            "a ceiling read after the first set failed was kept as standing"
+        );
+    }
+
+    #[test]
+    fn a_failed_set_back_inside_its_bounds_waits_before_it_is_tried_again() {
+        let now = Instant::now();
+        let top = least(TOTAL, TOP) / MIB * MIB;
+        let mut ceiling = standing(base(), now);
+        let cleared = Look {
+            high: high("max\n"),
+            ..roomy(base())
+        };
+        let tried = now + Duration::from_secs(1);
+        assert_eq!(
+            ceiling.wanted(&cleared, base(), tried),
+            Some((top, Why::Elsewhere))
+        );
+        ceiling.failed(tried);
+        assert_eq!(
+            ceiling.wanted(&cleared, base(), tried + AGAIN / 2),
+            None,
+            "a set back inside its bounds that failed was tried again before AGAIN"
+        );
+        assert_eq!(
+            ceiling.wanted(&cleared, base(), tried + AGAIN),
+            Some((top, Why::Elsewhere))
+        );
+    }
+
+    #[test]
     fn a_failed_fall_is_tried_again_soon_from_where_it_stands() {
         let now = Instant::now();
         let high = base() + 2 * FALL;
@@ -677,7 +726,17 @@ mod tests {
     #[test]
     fn a_ceiling_is_set_on_the_account_manager_until_the_next_boot() {
         let call = high_call("jobs.slice", 17_000_000_000);
-        assert_eq!(call[0], "--user");
+        assert_eq!(
+            call[..5],
+            [
+                "--user",
+                "--quiet",
+                "--allow-interactive-authorization=no",
+                "--timeout=5",
+                "call"
+            ],
+            "a set could ask for a password, or wait past FALL_AGAIN"
+        );
         assert_eq!(
             call[10..],
             ["jobs.slice", "true", "1", "MemoryHigh", "t", "17000000000"]

@@ -3611,15 +3611,21 @@ fn brake_for_calls(doorway: &mut Doorway, account: &Path) {
                     eprintln!("Found {slice} let go mid-call, and braked it again.");
                 }
             }
+            // A failure is counted from when busctl gave up, as the ceiling's
+            // is, so a set that timed out waits its whole time.
             Ok(output) => {
-                doorway.brake.failed(place, calling, now);
+                doorway
+                    .brake
+                    .failed(place, calling, std::time::Instant::now());
                 eprintln!(
                     "Couldn't set {slice}'s quota for a call: {}",
                     String::from_utf8_lossy(&output.stderr).trim()
                 );
             }
             Err(error) => {
-                doorway.brake.failed(place, calling, now);
+                doorway
+                    .brake
+                    .failed(place, calling, std::time::Instant::now());
                 eprintln!("Couldn't run busctl to set {slice}'s quota for a call: {error}");
             }
         }
@@ -3682,7 +3688,7 @@ fn follow_room(doorway: &mut Doorway, account: &Path, settings: &Settings) {
         total: room.total,
         available: room.available,
         current: room.current,
-        waiting: !room.waited.is_empty() || !room.unread.is_empty(),
+        waiting: room.waiting(),
         calling: here || there,
         high: room.high,
     };
@@ -3741,6 +3747,14 @@ struct Room {
     unread: Vec<String>,
 }
 
+impl Room {
+    /// Whether a spared slice waited, or may have: one whose wait couldn't
+    /// be read counts, so the ceiling never rises on what it can't see.
+    fn waiting(&self) -> bool {
+        !self.waited.is_empty() || !self.unread.is_empty()
+    }
+}
+
 /// What a look at `slice` and the `spare` slices under the account's
 /// cgroup `account` finds, `meminfo` being /proc/meminfo, or what of the
 /// slice's or the machine's memory couldn't be read. A spared slice with
@@ -3767,11 +3781,15 @@ fn room(account: &Path, slice: &str, spare: &[String], meminfo: &str) -> Result<
         unread: Vec::new(),
     };
     for spared in spare {
+        // The cgroup is looked for only once its wait can't be read, so one
+        // that goes between the two is taken as gone rather than unread.
         let cgroup = account.join(spared);
-        if fs::metadata(&cgroup).is_err_and(|error| error.kind() == io::ErrorKind::NotFound) {
+        let pressure = fs::read_to_string(cgroup.join("memory.pressure"));
+        if pressure.is_err()
+            && fs::metadata(&cgroup).is_err_and(|error| error.kind() == io::ErrorKind::NotFound)
+        {
             continue;
         }
-        let pressure = fs::read_to_string(cgroup.join("memory.pressure"));
         match pressure.ok().as_deref().and_then(ceiling::waited) {
             Some(waited) if waited < ceiling::WAITING => {}
             Some(_) => room.waited.push(spared.clone()),
@@ -3967,6 +3985,22 @@ mod tests {
                 unread: vec!["agents.slice".to_owned()],
             }),
             "a spared slice's wait was misread, or an empty slice counted as waiting"
+        );
+        let unread_alone = Room {
+            waited: Vec::new(),
+            ..looked.unwrap()
+        };
+        assert!(
+            unread_alone.waiting(),
+            "a spared slice whose wait couldn't be read didn't hold the ceiling down"
+        );
+        assert!(
+            !Room {
+                unread: Vec::new(),
+                ..unread_alone
+            }
+            .waiting(),
+            "a room with nothing waiting held the ceiling down"
         );
     }
 

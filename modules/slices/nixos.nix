@@ -1136,9 +1136,9 @@ in
         # mid-call brakes again on its first look. It puts back jobs'
         # declared ceiling too, since one it lifted would stay up with
         # nothing to bring it down; an empty one would clear it. By hand,
-        # `systemctl --user set-property --runtime jobs.slice MemoryHigh=`
-        # with each of these shares in turn does the same. Each is given 5 s, as the
-        # sorter's own sets are, so a stalled bus can't hold its stop. The
+        # `systemctl --user set-property --runtime jobs.slice` with
+        # MemoryHigh=44%, then 38%, 32% and 26%, does the same. Each is
+        # given 5 s, as the sorter's own sets are, so a stalled bus can't hold its stop. The
         # ceiling comes down from the sorter's top, 50% (TOP in
         # jobs-sorter/src/ceiling.rs), a fall of about a sixteenth a write,
         # as the sorter brings it down: the manager that writes memory.high
