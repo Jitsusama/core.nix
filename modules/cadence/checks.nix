@@ -111,11 +111,13 @@ onLinux {
   # switch back; each timer starts the new unit next, so a changed unit
   # reaches the next run, not one under way. With no switch to end one,
   # each is a oneshot, whose start timeout bounds the whole run, and has
-  # one that ends a hang: none, zero or infinity, in any spelling, ends
-  # nothing. The four known runs must each be among those found. Stand-in
-  # units, each wrong one way, must each be refused, so a check that
-  # stopped refusing fails too. It reads the units as declared; that
-  # sd-switch keeps an old run it is told to rests on sd-switch.
+  # one that ends a hang: none, zero, infinity or a span systemd can't
+  # read, which it drops, ends nothing. The four known runs must each be
+  # among those found. Stand-in units, each wrong one way, must each be
+  # refused, so a check that stopped refusing fails too, and stand-ins
+  # right in each way allowed must each pass, so one that refused too
+  # much fails as well. It reads the units as declared; that sd-switch
+  # keeps an old run it is told to rests on sd-switch.
   cadence-outlasts-a-switch =
     let
       known = [
@@ -124,21 +126,55 @@ onLinux {
         "cadence-review"
         "cadence-hour"
       ];
-      # A timeout ends a hang when it is a whole number or a span with a
-      # digit other than zero, and isn't infinity.
+      # A timeout ends a hang when it is a whole number above zero, or a
+      # span spelled as systemd reads one, numbers each with a unit it
+      # knows or none, holding a digit other than zero.
+      units = lib.concatStringsSep "|" [
+        "usec"
+        "us"
+        "msec"
+        "ms"
+        "seconds"
+        "second"
+        "sec"
+        "s"
+        "minutes"
+        "minute"
+        "min"
+        "m"
+        "hours"
+        "hour"
+        "hr"
+        "h"
+        "days"
+        "day"
+        "d"
+        "weeks"
+        "week"
+        "w"
+        "months"
+        "month"
+        "M"
+        "years"
+        "year"
+        "y"
+      ];
+      span = "( *[0-9]+(\\.[0-9]+)? *(${units})?)+ *";
       ends =
         value:
         (builtins.isInt value && value > 0)
         || (
           builtins.isString value
+          && builtins.match span value != null
           && builtins.match ".*[1-9].*" value != null
-          && !lib.hasInfix "infinity" value
         );
       problemsOf =
         user:
         let
           startedBy = name: t: lib.removeSuffix ".service" (t.Timer.Unit or "${name}.service");
-          installed = lib.filterAttrs (_: t: (t.Install.WantedBy or [ ]) != [ ]) user.timers;
+          installed = lib.filterAttrs (
+            _: t: (t.Install.WantedBy or [ ]) ++ (t.Install.RequiredBy or [ ]) != [ ]
+          ) user.timers;
           started = lib.filter (name: name == "cadence" || lib.hasPrefix "cadence-" name) (
             lib.unique (lib.mapAttrsToList startedBy installed)
           );
@@ -185,6 +221,57 @@ onLinux {
             };
           };
           says = "cadence-day has no timeout";
+        };
+        "a timeout systemd can't read" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence-day = run "10 minuets";
+            };
+          };
+          says = "cadence-day has no timeout";
+        };
+        "a zero timeout as a number" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence = run 0;
+            };
+          };
+          says = "cadence has no timeout";
+        };
+        "a run with no timeout" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence-hour = {
+                Unit.X-SwitchMethod = "keep-old";
+                Service.Type = "oneshot";
+              };
+            };
+          };
+          says = "cadence-hour has no timeout";
+        };
+        "a run with no type, so systemd's default" = {
+          user = {
+            inherit timers;
+            services = services // {
+              cadence-review = {
+                Unit.X-SwitchMethod = "keep-old";
+                Service.TimeoutStartSec = "1h";
+              };
+            };
+          };
+          says = "cadence-review isn't a oneshot";
+        };
+        "a timer not installed" = {
+          user = {
+            inherit services;
+            timers = timers // {
+              cadence-review = { };
+            };
+          };
+          says = "no installed timer starts cadence-review";
         };
         "a zero timeout spelled 0min" = {
           user = {
@@ -242,12 +329,49 @@ onLinux {
           says = "cadence-extra has no timeout";
         };
       };
+      # Each stand-in right in a way the check allows, which it must pass.
+      accepted = {
+        "units as they should be" = { inherit timers services; };
+        "a timeout given as TimeoutSec alone" = {
+          inherit timers;
+          services = services // {
+            cadence-day = {
+              Unit.X-SwitchMethod = "keep-old";
+              Service = {
+                Type = "oneshot";
+                TimeoutSec = "30min";
+              };
+            };
+          };
+        };
+        "a timeout as a number or in parts" = {
+          inherit timers;
+          services = services // {
+            cadence = run 600;
+            cadence-hour = run "1h 30min";
+          };
+        };
+        "a timer installed as required" = {
+          inherit services;
+          timers = timers // {
+            cadence-review.Install.RequiredBy = [ "timers.target" ];
+          };
+        };
+        "a cadence unit no timer starts" = {
+          inherit timers;
+          services = services // {
+            cadence-spec = { };
+          };
+        };
+      };
       unrefused = lib.attrNames (
         lib.filterAttrs (_: case: !lib.any (lib.hasInfix case.says) (problemsOf case.user)) refused
       );
+      overrefused = lib.attrNames (lib.filterAttrs (_: user: problemsOf user != [ ]) accepted);
       problems =
         problemsOf exampleLaptop.config.home-manager.users.joel.systemd.user
-        ++ map (name: "the check no longer refuses ${name}") unrefused;
+        ++ map (name: "the check no longer refuses ${name}") unrefused
+        ++ map (name: "the check refuses ${name}, which it should pass") overrefused;
     in
     holds "cadence-outlasts-a-switch" (lib.concatStringsSep "; " problems) (problems == [ ]);
   # cadence's budget measures match spend-watch's findings by keys copied
