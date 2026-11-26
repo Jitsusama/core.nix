@@ -1,11 +1,16 @@
-# Tuple's Linux alpha, newer than nixpkgs' v2026_09_16.1: v2026_11_25.0,
-# whose command is the one Tuple's docs describe (tuple call, contacts,
-# state, webcam). v2026_11_19.0 was the first to share a webcam from
-# Linux; this one's new words, read from the build itself, say when
-# Tuple can't take a camera's colour space. The log lines and stream keys
-# tuple-call reads, the contacts' keys and status words tuple-people
-# reads, and the window titles niri's rules match are in this build as
-# they were in v2026_11_19.0, by a comparison of the two builds' strings.
+# Tuple's Linux alpha, newer than nixpkgs' v2026_09_16.1: v2026_11_25.0.
+# tuple-completes-in-zsh fails unless Tab offers its call, contacts,
+# state and webcam commands, among them call join, leave, mute, unmute
+# and start, and webcam start. Nothing checks the other commands run
+# against it: share, call accept and state follow from tuple-call,
+# contacts follow from tuple-people, and contacts favorite from the shell.
+# New strings say a camera's or a video's colour space isn't handled, one
+# adding that it's converted as BT.601 limited; nobody has yet seen Tuple
+# say them. The log lines and stream keys tuple-call reads, the contacts'
+# keys and status words tuple-people reads, and the window titles niri's
+# rules match are still among this build's strings. That shows they're
+# there, not that Tuple says or answers them as before. No check reads
+# them, so each bump looks for them by hand among the new build's strings.
 # Screen sharing through the portal was last seen working here on
 # v2026_10_21.0. Webcam sharing is yet to be seen here: the build reads
 # cameras through PipeWire, where the IR camera is hidden, and until the
