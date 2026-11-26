@@ -124,9 +124,10 @@ onLinux {
       mkdir -p launcher share/applications
       cp ${entry} share/applications/reader.desktop
       cp ${home.xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      ${programStep}
-      cp ${./ReaderProgram.qml} launcher/ReaderProgram.qml
-      cp ${./Reader.js} launcher/Reader.js
+      ${programStep {
+        "launcher/ReaderProgram.qml" = ./ReaderProgram.qml;
+        "launcher/Reader.js" = ./Reader.js;
+      }}
       cp ${./tests/reader-program.qml} shell.qml
       cp ${../../tests/lib/Expect.js} Expect.js
       cp ${../../tests/lib/Frames.js} Frames.js
