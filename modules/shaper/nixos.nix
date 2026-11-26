@@ -206,8 +206,8 @@ in
             links that need one. A link's line holds it on every access
             point of that router it joins, so declare it for the slowest.
             Where two links reach the router at once, the one following
-            the other is held for a call only where its line is its
-            leader's, since only the leader's download is measured.
+            the other isn't measured, so it's held under its own line
+            for the whole of a call, whether its download fills it or not.
           '';
         };
         options.most = lib.mkOption {
