@@ -2070,7 +2070,11 @@ impl Relay {
     fn retire_every(&self) -> Vec<Named> {
         let mut retired = Vec::new();
         for (at, slot) in self.slots.iter().enumerate() {
-            let open = slot.open.lock().unwrap_or_else(PoisonError::into_inner).take();
+            let open = slot
+                .open
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .take();
             if let Some(kept) = open {
                 retired.push(Named {
                     at,
