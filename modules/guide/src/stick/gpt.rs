@@ -303,8 +303,12 @@ mod tests {
         assert_eq!(vault.name, "vault");
         assert_eq!(vault.first, 4096);
         assert_eq!((vault.last + 1) % ALIGNMENT, 0);
-        assert!(vault.last <= table.last_usable(sectors));
-        assert!(vault.last + ALIGNMENT > table.last_usable(sectors));
+        let usable = table.last_usable(sectors);
+        assert!(
+            vault.last <= usable && vault.last + ALIGNMENT > usable,
+            "the vault ends at {}, not in the last aligned mebibyte before {usable}",
+            vault.last
+        );
     }
 
     #[test]
@@ -319,10 +323,13 @@ mod tests {
     #[test]
     fn a_stick_too_small_is_refused_before_anything_is_written() {
         let mut table = image();
-        assert!(matches!(
-            table.add_vault("vault", [7; 16], 4096 + 2048, 2048),
-            Err(Fault::Blocked { .. })
-        ));
+        assert!(
+            matches!(
+                table.add_vault("vault", [7; 16], 4096 + 2048, 2048),
+                Err(Fault::Blocked { .. })
+            ),
+            "a stick too small for a vault wasn't refused"
+        );
     }
 
     #[test]
@@ -340,9 +347,12 @@ mod tests {
     fn a_damaged_table_is_refused() {
         let mut disk = disk(&image(), 8192);
         disk[2 * SECTOR_LENGTH] ^= 1;
-        assert!(matches!(
-            Table::read(&disk),
-            Err(Fault::Unreadable { why, .. }) if why == "its entries' checksum is wrong"
-        ));
+        assert!(
+            matches!(
+                Table::read(&disk),
+                Err(Fault::Unreadable { why, .. }) if why == "its entries' checksum is wrong"
+            ),
+            "a table whose entries were damaged wasn't refused for its checksum"
+        );
     }
 }

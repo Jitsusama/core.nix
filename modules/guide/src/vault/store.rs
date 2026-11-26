@@ -295,7 +295,10 @@ mod tests {
         }
         fat.replace("index-new.age", "index.age").unwrap();
         assert_eq!(read(&mut fat, "index.age"), b"new");
-        assert!(!fat.has("index-new.age").unwrap());
+        assert!(
+            !fat.has("index-new.age").unwrap(),
+            "the new index was still there under its own name once it replaced the old"
+        );
         // With nothing to replace, it's only named.
         let mut file = fat.create("index-new.age").unwrap();
         file.write_all(b"newer")

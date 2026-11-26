@@ -367,8 +367,14 @@ mod tests {
         let end = signed.len();
         // The entry says it runs past the table's end.
         signed[end - 16..end - 12].copy_from_slice(&40u32.to_le_bytes());
+        let parsed = Program::parse(signed);
         assert!(
-            matches!(Program::parse(signed), Err(Fault::Unreadable { why, .. }) if why == "its signatures don't fill their table")
+            matches!(
+                parsed,
+                Err(Fault::Unreadable { ref why, .. })
+                    if why == "its signatures don't fill their table"
+            ),
+            "a table its entries don't fill wasn't refused for it: {parsed:?}"
         );
     }
 
@@ -376,8 +382,14 @@ mod tests {
     fn a_signature_anywhere_but_the_end_is_refused() {
         let mut signed = Program::parse(program(0x400, 0)).unwrap().signed(&[1; 8]);
         signed.extend([0; 8]);
+        let parsed = Program::parse(signed);
         assert!(
-            matches!(Program::parse(signed), Err(Fault::Unreadable { why, .. }) if why == "its signature isn't at its end")
+            matches!(
+                parsed,
+                Err(Fault::Unreadable { ref why, .. })
+                    if why == "its signature isn't at its end"
+            ),
+            "a signature before the end wasn't refused for it: {parsed:?}"
         );
     }
 
@@ -388,8 +400,14 @@ mod tests {
         bytes[table..table + 4].copy_from_slice(&4u32.to_le_bytes());
         let length = u32::try_from(bytes.len()).unwrap() - 4;
         bytes[table + 4..table + 8].copy_from_slice(&length.to_le_bytes());
+        let parsed = Program::parse(bytes.clone());
         assert!(
-            matches!(Program::parse(bytes.clone()), Err(Fault::Unreadable { why, .. }) if why == "its signature isn't at its end")
+            matches!(
+                parsed,
+                Err(Fault::Unreadable { ref why, .. })
+                    if why == "its signature isn't at its end"
+            ),
+            "a signature inside the headers wasn't refused for lying before the end: {parsed:?}"
         );
         assert_eq!(signature(&bytes), None);
     }
@@ -409,16 +427,24 @@ mod tests {
         let mut bytes = program(0x400, 0x10);
         let start = 0x98 + 240 + 20;
         bytes[start..start + 4].copy_from_slice(&0x210u32.to_le_bytes());
+        let parsed = Program::parse(bytes);
         assert!(
-            matches!(Program::parse(bytes), Err(Fault::Unreadable { why, .. }) if why.contains("end to end"))
+            matches!(parsed, Err(Fault::Unreadable { ref why, .. }) if why.contains("end to end")),
+            "sections not end to end weren't refused for it: {parsed:?}"
         );
     }
 
     #[test]
     fn what_isnt_a_64_bit_program_is_refused() {
-        assert!(Program::parse(b"#!/bin/sh\n".to_vec()).is_err());
+        assert!(
+            Program::parse(b"#!/bin/sh\n".to_vec()).is_err(),
+            "a script was read as a program"
+        );
         let mut bytes = program(0x400, 0);
         bytes[0x98..0x9a].copy_from_slice(&0x10bu16.to_le_bytes());
-        assert!(Program::parse(bytes).is_err());
+        assert!(
+            Program::parse(bytes).is_err(),
+            "a 32-bit program was read as a 64-bit one"
+        );
     }
 }

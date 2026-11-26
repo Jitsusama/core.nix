@@ -327,7 +327,10 @@ mod tests {
     fn a_link_round_in_a_loop_is_refused() {
         let mut stand_in = crate::stand_in::StandIn::new();
         stand_in.pointer("/mnt/a", "b").pointer("/mnt/b", "/a");
-        assert!(stand_in.resolve_inside("/mnt", "/mnt/a/file").is_err());
+        assert!(
+            stand_in.resolve_inside("/mnt", "/mnt/a/file").is_err(),
+            "links round in a loop resolved"
+        );
     }
 
     #[test]

@@ -259,22 +259,20 @@ mod tests {
             replayed(&log),
             parse_pcr("52219BA496217DB3160C4570246D1A104E8A8D5FC5C5D576D91B10C81AA35CCE").unwrap()
         );
-        assert!(through_firmware(
-            &policy,
-            &log,
-            holding(PCR0, replayed(&log))
-        ));
+        assert!(
+            through_firmware(&policy, &log, holding(PCR0, replayed(&log))),
+            "a boot through the firmware's menu wasn't a detour"
+        );
     }
 
     #[test]
     fn an_ordinary_boot_is_no_detour() {
         let policy = Policy::parse(POLICY.as_bytes()).unwrap();
         let log = through_menu().into_iter().skip(1).collect::<Vec<_>>();
-        assert!(!through_firmware(
-            &policy,
-            &log,
-            holding(PCR0, replayed(&log))
-        ));
+        assert!(
+            !through_firmware(&policy, &log, holding(PCR0, replayed(&log))),
+            "an ordinary boot was a detour"
+        );
     }
 
     #[test]
@@ -282,11 +280,10 @@ mod tests {
         let policy = Policy::parse(POLICY.as_bytes()).unwrap();
         let log = through_menu();
         let other = "B4597C7162476A8C53AA825E9C7EEC9BECEFAD902C82ECA12086ADAB07872E34";
-        assert!(!through_firmware(
-            &policy,
-            &log,
-            holding(other, replayed(&log))
-        ));
+        assert!(
+            !through_firmware(&policy, &log, holding(other, replayed(&log))),
+            "a boot on new firmware was a detour"
+        );
     }
 
     #[test]
@@ -297,11 +294,10 @@ mod tests {
             "efi-boot-services-application",
             MENU,
         )]));
-        assert!(!through_firmware(
-            &policy,
-            &log,
-            holding(PCR0, replayed(&log))
-        ));
+        assert!(
+            !through_firmware(&policy, &log, holding(PCR0, replayed(&log))),
+            "the menu's program, started by the boot loader, was a detour"
+        );
     }
 
     #[test]
@@ -310,6 +306,9 @@ mod tests {
         let log = through_menu();
         // Neither what the log replays to nor what the policy allows.
         let other = replayed(&log[2..]);
-        assert!(!through_firmware(&policy, &log, holding(PCR0, other)));
+        assert!(
+            !through_firmware(&policy, &log, holding(PCR0, other)),
+            "a log the TPM disagrees with said a detour"
+        );
     }
 }

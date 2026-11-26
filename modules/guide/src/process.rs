@@ -181,7 +181,11 @@ mod tests {
         let mut program = Command::new("sleep").arg("30").spawn().unwrap();
         let started = Instant::now();
         end(&[program.id()], GRACE);
-        assert!(started.elapsed() < Duration::from_secs(2));
+        let took = started.elapsed();
+        assert!(
+            took < Duration::from_secs(2),
+            "a program asked to end took {took:?} to end"
+        );
         assert_eq!(program.wait().unwrap().signal(), Some(libc::SIGTERM));
     }
 
@@ -199,7 +203,11 @@ mod tests {
         }
         let started = Instant::now();
         end(&[program.id()], Duration::from_millis(300));
-        assert!(started.elapsed() >= Duration::from_millis(300));
+        let took = started.elapsed();
+        assert!(
+            took >= Duration::from_millis(300),
+            "a program that wouldn't end was killed after {took:?}, before its time was up"
+        );
         assert_eq!(program.wait().unwrap().signal(), Some(libc::SIGKILL));
     }
 
@@ -211,6 +219,10 @@ mod tests {
         program.kill().unwrap();
         program.wait().unwrap();
         assert!(running.contains(&program.id()), "{running:?}");
-        assert!(!running_now(None).contains(&program.id()));
+        let after = running_now(None);
+        assert!(
+            !after.contains(&program.id()),
+            "a program ended was still running: {after:?}"
+        );
     }
 }

@@ -736,7 +736,10 @@ mod tests {
     #[test]
     fn only_a_real_hash_is_a_password() {
         let shadow = "root:!:1::::::\nalice:$y$j9T$abc$def:1::::::\nbob:!$y$j9T$abc:1::::::\ncarol::1::::::\n";
-        assert!(has_password(shadow, "alice"));
+        assert!(
+            has_password(shadow, "alice"),
+            "a real hash wasn't taken for a password"
+        );
         for locked in ["root", "bob", "carol", "dave"] {
             assert!(!has_password(shadow, locked), "{locked}");
         }
