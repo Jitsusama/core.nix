@@ -77,7 +77,8 @@ let
       "# }"##;
           const BRACE: char = '}';
           const BYTE: u8 = b'}';
-          const BYTES: &[u8] = br#"}"#;
+          // A raw string read without its prefix would close at `""`.
+          const BYTES: &[u8] = br#"" }"#;
           // }
           /* /* */ } */
           fn l<'a>(x: &'a ()) -> char { let _: &'a () = x; '{' }
