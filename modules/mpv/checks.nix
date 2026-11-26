@@ -68,9 +68,10 @@ onLinux {
       mkdir -p launcher share/applications
       cp ${entry} share/applications/mpv.desktop
       cp ${home.xdg.configFile."quickshell/Theme.qml".source} Theme.qml
-      ${programStep}
-      cp ${./MpvProgram.qml} launcher/MpvProgram.qml
-      cp ${./Mpv.js} launcher/Mpv.js
+      ${programStep {
+        "launcher/MpvProgram.qml" = ./MpvProgram.qml;
+        "launcher/Mpv.js" = ./Mpv.js;
+      }}
       cp ${./tests/mpv-program.qml} shell.qml
       cp ${../../tests/lib/HeardWindows.js} HeardWindows.js
       cp ${niri} Niri.qml

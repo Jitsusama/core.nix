@@ -66,10 +66,22 @@ expect() {
 }
 
 expect 'tuple ca' call capture
-expect 'tuple call ' join leave mute unmute start
+# Among these, every command core runs against it, and the flags
+# tuple-call and tuple-people pass as they follow it: --format before the
+# command, as they pass it, and --raw after state follow.
+expect 'tuple --' --format
+expect 'tuple call ' accept join leave mute unmute start
 expect 'tuple call l' leave list
 expect 'tuple cont' contacts
+expect 'tuple contacts ' favorite follow unfavorite
+# Tuple calls these two deprecated, so one failing may mean a build only
+# hides it from Tab, or that it's gone. Never try one by hand to tell:
+# new opens a call in Joel's room and share shares his screen.
+expect 'tuple ne' new
+expect 'tuple sh' share
 expect 'tuple st' start state stop
+expect 'tuple state ' follow
+expect 'tuple state follow --' --raw
 # Only v2026_11_19.0 on has webcam, so an older build installed fails here.
 expect 'tuple w' webcam whoami
 expect 'tuple webcam ' list start stop

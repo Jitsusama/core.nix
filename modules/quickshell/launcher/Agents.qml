@@ -1897,6 +1897,11 @@ Provider {
         const where = String(on ?? "") === "" ? {} : Cloud.onOf(Cloud.linked(on));
         const elsewhere = where === null ? "" : where.needs !== undefined ? "cloud"
             : where.on ?? "";
+        // Its Return asks the cloud, so the offers are asked now too rather
+        // than only by the opening after it, which may be up to half a
+        // minute behind (Cloud.refused says so until they come).
+        if (elsewhere === "cloud")
+            provider.askOffers();
         const suffix = elsewhere === "" ? "" : elsewhere === "cloud" ? said.inTheCloud ?? ""
             : String(said.onMachine ?? "").replace("{machine}", () => elsewhere);
         const link = Words.name("verb:agents:start-new-work:link");
@@ -2038,12 +2043,24 @@ Provider {
                 + `asked at ${StartSaid.clock(again)}`);
             return;
         }
+        // A Return to the cloud with none offered asks again first
+        // (Cloud.asksNow), in case what held them passed, and is then
+        // said as what is known: the why the last ask came back with, or,
+        // with nothing heard yet, that they haven't come (Cloud.offeredNow).
+        // A daemon missing answers at once, so its why is said this Return
+        // (Cloud.returning).
+        const offersKept = () => ({ asking: provider.cloudAsking, at: provider.cloudOffersAt,
+            offers: provider.cloudOffers, unoffered: provider.cloudUnoffered });
+        const offered = Cloud.onOf(elsewhere)?.needs === undefined
+            ? Cloud.offeredNow(provider.cloudOffersAt, provider.cloudOffers,
+                provider.cloudUnoffered)
+            : Cloud.returning(offersKept, () => provider.askOffers(true), Date.now());
         const ask = elsewhere === "" ? Sprouting.ask(said, folder)
-            : Cloud.ask(said, folder, elsewhere, provider.cloudOffers);
+            : Cloud.ask(said, folder, elsewhere, offered);
         if (ask === null) {
             const why = elsewhere === "" || Sprouting.ask(said, "") === null
                 ? Sprouting.refused(said, elsewhere === "" ? folder : "", words)
-                : Cloud.refused(folder, elsewhere, provider.cloudOffers, words);
+                : Cloud.refused(folder, elsewhere, offered, words);
             sproutSays(key, why);
             sproutReaches({ started: false, why: why });
             return;
@@ -2396,26 +2413,43 @@ Provider {
     property real cloudOffersAt: 0
     property string cloudUnoffered: ""
     property bool cloudAsking: false
-    function askOffers() {
-        const daemon = rowsKind ?? null;
-        if (daemon === null || provider.cloudAsking
-                || !Cloud.stale(provider.cloudOffersAt, Date.now()))
+    // `pressed` where a start's Return asks (Cloud.asksNow).
+    function askOffers(pressed) {
+        const kept = {
+            asking: provider.cloudAsking,
+            at: provider.cloudOffersAt,
+            offers: provider.cloudOffers
+        };
+        if (!Cloud.asksNow(kept, Date.now(), pressed === true))
             return;
+        // With no daemon to ask, no answer comes, so it is heard as none
+        // (Cloud.heard's NO_ANSWER), never left as not heard yet for good.
+        const daemon = rowsKind ?? null;
+        if (daemon === null) {
+            provider.offersCame(null);
+            return;
+        }
         provider.cloudAsking = true;
         daemon.ask({ ask: "offers" }, answer => {
             provider.cloudAsking = false;
-            const heard = Cloud.heard(provider.cloudUnoffered, answer);
-            if (heard.offers !== null) {
-                provider.cloudOffersAt = Date.now();
-                if (Wheres.differs(provider.cloudOffers, heard.offers)) {
-                    provider.cloudOffers = heard.offers;
-                    provider.changed();
-                }
-            }
-            provider.cloudUnoffered = heard.unoffered;
-            if (heard.journal !== null)
-                console.info(`launcher: the cloud offers nothing known: ${heard.journal}`);
+            provider.offersCame(answer);
         });
+    }
+    // What an offers `answer` changes (Cloud.answered), kept and journalled.
+    function offersCame(answer) {
+        const kept = Cloud.answered({
+            offers: provider.cloudOffers,
+            at: provider.cloudOffersAt,
+            unoffered: provider.cloudUnoffered
+        }, answer, Date.now());
+        provider.cloudOffersAt = kept.at;
+        provider.cloudUnoffered = kept.unoffered;
+        if (kept.changed) {
+            provider.cloudOffers = kept.offers;
+            provider.changed();
+        }
+        if (kept.journal !== null)
+            console.info(`launcher: the cloud offers nothing known: ${kept.journal}`);
     }
     // Start New Work's In rows (Wheres.wheres): his quests' folders, then the
     // node's places, a big repository's zones among them.
