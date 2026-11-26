@@ -1078,8 +1078,11 @@ PanelWindow {
             return;
         }
         if (place === null || column === null || going !== null || resting.running
-            || wanted !== sat || holding || carry !== null)
+            || wanted !== sat || holding || carry !== null) {
+            if (to === "play")
+                turnedDown(window.scene.playing?.kind ?? "", strollsNot());
             return;
+        }
         if (to === "play") {
             play(window.scene.playing);
             return;
@@ -1112,6 +1115,33 @@ PanelWindow {
         strolled = spot;
     }
 
+    // Why a stroll is turned down, the first that holds of stroll()'s
+    // guard, by the name a turned-down report gives it.
+    function strollsNot(): string {
+        if (place === null)
+            return "not on this screen";
+        if (column === null)
+            return "no column";
+        if (going !== null)
+            return `going ${going.kind || "walking"}`;
+        if (resting.running)
+            return "resting";
+        if (wanted !== sat)
+            return "keys elsewhere";
+        if (holding)
+            return "held";
+        return "riding";
+    }
+
+    // A play the scene handed it, turned down, said only for the one a
+    // test asked for by name (MarginCat.qml's `asked`), so the case that
+    // waited on it names the refusal that held: the puppy a case asked
+    // for never came in 45 s, with nothing saying why (2026-11-26).
+    function turnedDown(kind: string, why: string): void {
+        if (Options.reports && kind !== "" && window.scene.asked === kind)
+            Report.say(`turned cat ${named} ${JSON.stringify({ kind, why })}`);
+    }
+
     // A play that moves it (MarginCatGames.js), or the puppy's visit
     // (MarginCatPuppy.js), `asked` by the scene, its kind and how long it
     // thinks, from where it sits: run on the walker as a walk is, its seat
@@ -1121,8 +1151,10 @@ PanelWindow {
             return;
         const playing = asked.kind === "puppy" ? Puppy.visit(playsFrom(asked.pause))
             : Games.play(asked.kind, playsFrom(asked.pause));
-        if (playing === null)
+        if (playing === null) {
+            turnedDown(asked.kind, "no room");
             return;
+        }
         window.scene.strollTaken = true;
         handsBack = true;
         plays(playing, false);

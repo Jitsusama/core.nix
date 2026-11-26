@@ -56,6 +56,8 @@ BACK, HOME = 1.0, timedelta(seconds=15)
 # show, since a loaded nested frame can skip the shortest, the drawings of a hop, and how
 # long a play may take: about 6 s, and some for a loaded builder.
 PLAYED = "played cat "
+# A play a case asked for, turned down by a cat, with why (MarginCatScreen.qml's turnedDown).
+TURNED = "turned cat "
 HOP = ["crouches", "hops", "lands"]
 YARN = [
     "waits",
@@ -107,7 +109,7 @@ def story(said: list[str]) -> str:
     told: list[str] = []
     was: dict[str, object] | None = None
     for line in said:
-        if line.startswith(PLAYED):
+        if line.startswith((PLAYED, TURNED)):
             told.append(line)
             was = None
         if not line.startswith(SITS):
@@ -506,6 +508,7 @@ def test_a_key_ends_the_puppys_visit(shell: Shell) -> None:
     asking niri for every tile (#6573's council, 2026-11-25).
     """
     sat, seat = sitting_over(shell, "a column a visit is cut short over")
+    asking = shell.mark()
     ask(shell, "puppy")
     shell.send_key("F24")
     since = shell.mark()
@@ -519,7 +522,14 @@ def test_a_key_ends_the_puppys_visit(shell: Shell) -> None:
 
     # Pressed once the puppy stands by the cat in plain sight, so it ends a visit he can see,
     # not one still behind the room's edge, where the puppy is drawn nowhere either way.
-    shell.reported(SITS, in_sight, since, VISITS)
+    try:
+        shell.reported(SITS, in_sight, since, VISITS)
+    except AssertionError as failed:
+        # A visit that never came in 45 s said nothing of why (2026-11-26), so the story since
+        # the ask names each time a cat turned it down, and what held it.
+        said, _ = shell.said_since(asking)
+        told = f"what the cat did since the ask:\n{story(said)}"
+        raise AssertionError(told) from failed
     since = shell.mark()
     keyed = time.monotonic()
     shell.send_key("F24")
