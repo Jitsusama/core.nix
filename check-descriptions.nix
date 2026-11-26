@@ -6793,7 +6793,9 @@
     process quits; a missing one passes; one that can't be copied is left whole with no half
     copy, its unit failing and its writer starting all the same; a second run leaves a
     subvolume as it is; and a copy marked for its late writes, or a split, keeps its folder and
-    fails each run, though a mark with nothing written since its copy began is cleared
+    fails each run, though a mark with nothing written since its copy began is cleared; and a
+    waiter that found nothing three times running starts the move no more, its count cleared
+    once a start lands the move
   '';
   vm-joel-comes-first = ''
     on an eighth of the laptop's memory, with agents' sessions, their work and shared work each under

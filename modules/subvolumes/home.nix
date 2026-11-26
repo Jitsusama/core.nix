@@ -54,6 +54,9 @@ let
       named = "${lib.getExe ownSubvolumes} ${writers}";
       waiter = "${unitOf folder}-after-quit.service";
       move = "${named}--waiter ${waiter} ${toString settings.seconds}";
+      # The waiter is named to itself, as the move names it, so both keep
+      # its counts under one name.
+      waits = "${named}--waiter ${waiter} --after-quit ${unitOf folder}.service";
     in
     [
       {
@@ -84,7 +87,7 @@ let
         name = lib.removeSuffix ".service" waiter;
         value = {
           Unit.Description = "Moves ~/${folder} into a subvolume once nothing holds it";
-          Service.ExecStart = "${named}--after-quit ${unitOf folder}.service %h/${folder}";
+          Service.ExecStart = "${waits} %h/${folder}";
         };
       }
     ];

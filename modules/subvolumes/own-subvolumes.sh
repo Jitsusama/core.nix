@@ -486,7 +486,8 @@ own() {
         if [ -n "$marked" ]; then
           echo "✕ $folder was in use as it moved, so it's back, and what was written" \
             "in the copy meanwhile ($late) is at $new; once what's wanted is out of" \
-            "it, removing it and $new.keep lets the folder move" >&2
+            "it, removing it and $new.keep lets the folder move as the account's manager" \
+            "next starts" >&2
         else
           echo "✕ $folder was in use as it moved, so it's back, and what was written" \
             "in the copy meanwhile ($late) is at $new, which couldn't be marked, so" \
@@ -527,7 +528,8 @@ own() {
 # go, as its folder's move would find it, so Chrome's many processes are
 # waited for one at a time, though they mostly quit together.
 after_quit() {
-  local folder=$1 real inode why pid held state last='' waited='' base='' idle=0
+  local folder=$1 real inode why pid held state last='' waited='' base idle=0
+  local started=$SECONDS
   while :; do
     if [ ! -d "$folder" ] || [ -L "$folder" ]; then
       echo "$folder isn't a folder here, so there's nothing to wait for"
@@ -589,14 +591,13 @@ after_quit() {
   done
   # A holder the move saw and this never finds, as a program that opens
   # a file now and then, would have the two start each other without end,
-  # so starts of the move with nothing waited for are counted, and after
-  # three in a row, the move waits for the manager. The count is kept
-  # under this unit's name, as home.nix gives it, so a move that lands
-  # clears it with the copies it counts, and a wait here clears it too.
-  if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
-    base="$XDG_RUNTIME_DIR/own-subvolumes/${move%.service}-after-quit.service"
-  fi
-  if [ -n "$waited" ] && [ -n "$base" ]; then
+  # as would a stream of programs each holding it a moment, so a start of
+  # the move is counted unless this waited a minute, as for Chrome or
+  # Slack in use, and after three in a row, the move waits for the
+  # manager. The count is kept under this unit's name, given with
+  # --waiter, so a move that lands clears it with the copies it counts.
+  base=$(counted)
+  if [ -n "$waited" ] && [ $((SECONDS - started)) -ge 60 ] && [ -n "$base" ]; then
     rm -f -- "$base.idle"
   elif [ -n "$base" ]; then
     if [ -f "$base.idle" ]; then
@@ -608,7 +609,8 @@ after_quit() {
     esac
     if [ "$idle" -ge 3 ]; then
       echo "nothing holds $folder as this looks, though its move found something" \
-        "$idle times in a row, so it waits for the account's manager next start"
+        "$idle times in a row with nothing held a minute, so it waits for the account's" \
+        "manager next start"
       return 0
     fi
     mkdir -p -- "${base%/*}" && echo $((idle + 1)) > "$base.idle"

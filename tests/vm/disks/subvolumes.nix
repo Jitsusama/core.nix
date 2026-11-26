@@ -7,7 +7,8 @@
 # quits; and one that can't be copied is left whole, its unit failing,
 # with the writer it comes before started all the same; and a copy kept
 # for what was written in it as it moved keeps the folder until it's dealt
-# with, while a mark that kept nothing is cleared. Each turns on
+# with, while a mark that kept nothing is cleared; and a waiter that found
+# nothing three times running starts the move no more. Each turns on
 # Btrfs's own answers, a subvolume's root, a reflink across subvolumes and
 # an account removing one it emptied, so only a machine with Btrfs shows
 # them. The test is subvolumes-vm-test.py, which
