@@ -158,8 +158,8 @@ edge along the floor.
 - Held by `margin-cat-tiles.qml`: "a layout sent again mid-scroll keeps the scroll's begin"
 - Held by `margin-cat-tiles.qml`: "a new scroll beside an old one's word left on another window
   is dated by the new"
-- Held by `margin-cat-one-screen.qml`: "to the floor, off the right under it"
-- Held by `margin-cat-one-screen.qml`: "to the floor, a pixel on the left, it comes straight down"
+- Held by `margin-cat-one-screen.qml`: "off the right under it"
+- Held by `margin-cat-one-screen.qml`: "a pixel on the left, it comes straight down"
 - Owed since 2026-11-25: on nested niri, a walk caught by a scroll off the edge rides its
   window, and a floor came to from off the edge.
 - Owed since 2026-11-26: a Qt case that no play, stroll or pet starts during a ride; the
