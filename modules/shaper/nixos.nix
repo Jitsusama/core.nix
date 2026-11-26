@@ -194,14 +194,20 @@ in
           );
           default = { };
           example = {
-            wlan0.down = 20000;
+            wlp0s20f3.down = 20000;
           };
           description = ''
             The network's links that reach its line slower than the line
-            carries, by interface name, each with its own `down`: Wi-Fi
-            through an access point whose own queue holds a call behind
-            a download, while a cable to the same router needs no hold.
-            A link not named takes the network's `down`.
+            carries, by interface name as `ip link` says it, each with its
+            own `down`: Wi-Fi through an access point whose own queue
+            holds a call behind a download. A link not named takes the
+            network's `down`, so to leave a cable to the same router
+            unheld, leave the network's `down` null and name only the
+            links that need one. A link's line holds it on every access
+            point of that router it joins, so declare it for the slowest.
+            Where two links reach the router at once, the one following
+            the other is held for a call only where its line is its
+            leader's, since only the leader's download is measured.
           '';
         };
         options.most = lib.mkOption {

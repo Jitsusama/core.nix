@@ -373,6 +373,13 @@ struct Shaped {
     download: Download,
     /// Whether its download is held under the line for a call.
     room: room::Room,
+    /// The line its download is held under for a call, its own or its
+    /// network's, as the last step read it (src/networks.rs).
+    line: Option<u64>,
+    /// What the controller held its download to at the last step, apart
+    /// from a call's hold, and whether it left the download unlimited:
+    /// what a follower takes (`followed`).
+    asked_down: (u64, bool),
     /// The bytes the upload's CAKE had sent at its last good read, and at
     /// the last good read before the controller was last told, each with
     /// when it was read: what crossed the line, apart from the home
@@ -732,6 +739,8 @@ fn start(
         told_at: None,
         download: Download::Turned,
         room: room::Room::default(),
+        line: None,
+        asked_down: (down, true),
         sent_read: None,
         sent_told: None,
         lanes,
@@ -1827,31 +1836,53 @@ fn watch_real_time(shaped: &mut BTreeMap<String, Shaped>, t: f64) {
 
 /// Holds each follower to its leader's rates, so the two together stay
 /// under the one connection; its own pings still say its round trips. Its
-/// download goes straight in as its leader's does, since nothing limits
-/// the one connection's. Whether a limit holds its upload is judged
-/// against the lower of its leader's ceiling and its own, so its CAKE is
-/// never told a rate its own link can't carry.
+/// download is held as the controller holds its leader's, and for a call
+/// as its leader's is only where the two take one line (`followed`).
+/// Whether a limit holds its upload is judged against the lower of its
+/// leader's ceiling and its own, so its CAKE is never told a rate its own
+/// link can't carry.
 fn hold_followers(shaped: &mut BTreeMap<String, Shaped>) {
-    let rates: BTreeMap<String, (u64, u64, bool, u64)> = shaped
+    let rates: BTreeMap<String, (u64, (u64, bool), Leader, u64)> = shaped
         .iter()
         .map(|(n, s)| {
             let held = (
                 s.up.rate,
-                s.down.rate,
-                s.download.straight(),
+                s.asked_down,
+                (s.line, s.room.held()),
                 s.up.bounds.max,
             );
             (n.clone(), held)
         })
         .collect();
     for s in shaped.values_mut() {
-        if let Some(&(up, down, straight, most)) = s.follows.as_ref().and_then(|l| rates.get(l)) {
+        let leader = s.follows.as_ref().and_then(|l| rates.get(l));
+        if let Some(&(up, asked, leader, most)) = leader {
+            let (down, straight) = followed(asked, leader, s.line);
             s.up.rate = up;
             s.down.rate = down;
             apply(s, most.min(s.up.bounds.max));
             go_straight(s, straight);
         }
     }
+}
+
+/// A leader's line and the rate a call holds its download to, if one does.
+type Leader = (Option<u64>, Option<u64>);
+
+/// What a follower's download is held to, and whether it goes straight
+/// in: as the controller holds its leader's, `asked`, the rate and whether
+/// it leaves the download unlimited, and under its leader's call hold
+/// only where its own line, `own`, is its leader's. A follower's own
+/// download isn't heard, so its line holds it only through its leader's:
+/// a cable following Wi-Fi isn't held at Wi-Fi's own line, and Wi-Fi
+/// following a cable takes no hold of its own (a link's own line round
+/// 1's F1, F6 and F13).
+fn followed((down, unheld): (u64, bool), (line, room): Leader, own: Option<u64>) -> (u64, bool) {
+    let room = room.filter(|_| own == line);
+    (
+        lower(Some(down), room).unwrap_or(down),
+        unheld && room.is_none(),
+    )
 }
 
 /// One step of the controller, `live`, over every uplink that leads its
@@ -1906,6 +1937,7 @@ fn step_links(
         if s.agents_share >= 1.0 {
             s.let_agents_go();
         }
+        s.line = networks::line_of(lines, &s.network, name);
         if s.follows.is_some() {
             // A follower takes its leader's rates, so a hold it had as
             // leader ends rather than coming back unchecked once it leads
@@ -1919,9 +1951,6 @@ fn step_links(
             ceilings.get(&s.network).copied().map(rate::whole),
             house.get(&s.network).map(|&(_, most)| most),
         );
-        // A link's own line, where its network names one for it, over
-        // the network's (src/networks.rs).
-        let declared = lines.get(&s.network).and_then(|line| line.of(name));
         let (room, said) = s.room.step(
             name,
             &s.network,
@@ -1931,7 +1960,7 @@ fn step_links(
                 (name, &s.network),
                 held && rates.down.is_some(),
             ),
-            declared,
+            s.line,
         );
         if let Some(said) = said {
             eprintln!("{said}");
@@ -2187,6 +2216,7 @@ fn hold(s: &mut Shaped, rates: replay::Rates, why: &why::Judged, room: Option<u6
     };
     let spell = spell(&s.uplink.name, (s.told, s.ceiling), rates, most, why);
     s.up.rate = spell.held.up;
+    s.asked_down = (spell.held.down, rates.down.is_none());
     let (down, state, straight) = under_room(rates, spell.held.down, room);
     (s.down.rate, s.state) = (down, state);
     if let Some(line) = &spell.said {
@@ -2570,6 +2600,49 @@ fn sweep(kept: &BTreeSet<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // On 25 November an unpaced download through a 2.4 GHz access point
+    // raised a call's pings from 12.5 to 556 ms at p95, in the access
+    // point's queue, while the cable to the same router met its bars that
+    // day with no line declared. Both reach one router, so one follows the
+    // other, and a follower must not take a call's hold made for a line
+    // that isn't its own (a link's own line round 1's F1, F6 and F13).
+    #[test]
+    fn a_follower_takes_its_leader_s_call_hold_only_on_the_same_line() {
+        let lines = networks::Lines::from([(
+            "home".to_string(),
+            networks::Line {
+                network: None,
+                links: BTreeMap::from([("wlp0s20f3".to_string(), 20_000)]),
+            },
+        )]);
+        let wifi = networks::line_of(&lines, "home", "wlp0s20f3");
+        let cable = networks::line_of(&lines, "home", "enp0s20f0u2u2");
+        let mut room = room::Room::default();
+        let (held, _) = room.step("wlp0s20f3", "home", true, (Some(19_000.0), false), wifi);
+        assert_eq!(held, Some(18_000), "Wi-Fi held under its own line");
+        let unlimited = (50_000, true);
+        assert_eq!(
+            followed(unlimited, (wifi, held), cable),
+            (50_000, true),
+            "a cable following Wi-Fi isn't held at Wi-Fi's line"
+        );
+        assert_eq!(
+            followed(unlimited, (wifi, held), wifi),
+            (18_000, false),
+            "a follower on its leader's line is held with it"
+        );
+        assert_eq!(
+            followed((30_000, false), (wifi, held), cable),
+            (30_000, false),
+            "the controller's hold of the one connection is still taken"
+        );
+        assert_eq!(
+            followed(unlimited, (cable, None), wifi),
+            (50_000, true),
+            "Wi-Fi following an unheld cable takes no hold of its own"
+        );
+    }
 
     // A call's room lies under whatever the controller asks, never over
     // it, and turns the download through the IFB, while the link's state

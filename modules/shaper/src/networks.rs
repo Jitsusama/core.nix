@@ -56,15 +56,15 @@ enum Addresses {
 /// `jitsusama.shaper.networks` sets one.
 pub type Houses = BTreeMap<String, House>;
 
-/// A network's declared download lines, in kbit/s: the one any of its
-/// links takes, and each link's own, by the link's name, where the network
-/// names one. A link reaching the line slower than the line carries, as
-/// Wi-Fi through an access point whose own queue holds a call behind a
-/// download, is held under its own, and the network's other links keep
-/// the network's.
+/// A network's declared download lines, in kbit/s: the network's own,
+/// which a link naming none takes, and each link's own, by the link's
+/// name, where the network names one. A link reaching the line slower
+/// than the line carries, as Wi-Fi through an access point whose own
+/// queue holds a call behind a download, is held under its own, and the
+/// network's other links keep the network's.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Line {
-    pub any: Option<u64>,
+    pub network: Option<u64>,
     pub links: BTreeMap<String, u64>,
 }
 
@@ -72,13 +72,19 @@ impl Line {
     /// The line link `name` takes: its own, or the network's where it has
     /// none.
     pub fn of(&self, name: &str) -> Option<u64> {
-        self.links.get(name).copied().or(self.any)
+        self.links.get(name).copied().or(self.network)
     }
 }
 
 /// Each network's declared download lines, by its router's hardware
 /// address, where `jitsusama.shaper.networks` sets any.
 pub type Lines = BTreeMap<String, Line>;
+
+/// The line link `name` takes on `network`, its own or the network's, or
+/// none where neither is declared.
+pub fn line_of(lines: &Lines, network: &str, name: &str) -> Option<u64> {
+    lines.get(network).and_then(|line| line.of(name))
+}
 
 #[derive(Deserialize)]
 struct Network {
@@ -136,10 +142,10 @@ pub fn lines(path: &Path) -> Lines {
         .into_iter()
         .filter_map(|(router, network)| {
             let line = Line {
-                any: network.down.and_then(declared),
+                network: network.down.and_then(declared),
                 links: links_lines(network.links),
             };
-            (line.any.is_some() || !line.links.is_empty()).then_some((router, line))
+            (line.network.is_some() || !line.links.is_empty()).then_some((router, line))
         })
         .collect()
 }
@@ -477,7 +483,7 @@ mod tests {
         fs::write(
             &file,
             concat!(
-                r#"{"00:00:5E:00:53:01": {"up": null, "down": 90000}, "#,
+                r#"{"00:00:5E:00:53:01": {"up": null, "down": 90000, "links": {}}, "#,
                 r#""00:00:5e:00:53:02": {"up": 9000, "down": null}, "#,
                 r#""00:00:5e:00:53:03": {"up": 9000, "down": 6000}, "#,
                 r#""00:00:5e:00:53:04": {"up": 9000, "down": 90}, "#,
@@ -485,15 +491,15 @@ mod tests {
             ),
         )
         .expect("the lines");
-        let any = |down| Line {
-            any: Some(down),
+        let network = |down| Line {
+            network: Some(down),
             links: BTreeMap::new(),
         };
         assert_eq!(
             lines(&file),
             Lines::from([
-                ("00:00:5e:00:53:01".to_string(), any(90_000)),
-                ("00:00:5e:00:53:03".to_string(), any(6_000)),
+                ("00:00:5e:00:53:01".to_string(), network(90_000)),
+                ("00:00:5e:00:53:03".to_string(), network(6_000)),
             ]),
             "as nixos.nix writes them, null where none is set, the least kept, one in Mb/s \
              or past the most left out"
@@ -523,44 +529,49 @@ mod tests {
                 r#"{"00:00:5e:00:53:01": {"up": 12000, "down": null, "links": "#,
                 r#"{"wlan0": {"down": 20000}, "eth1": {"down": null}}}, "#,
                 r#""00:00:5e:00:53:02": {"up": 9000, "down": 90000, "links": "#,
-                r#"{"wlan0": {"down": 20000}, "eth2": {"down": 90}, "eth3": "fast"}}, "#,
+                r#"{"wlan0": {"down": 20000}, "eth1": {"down": null}, "eth2": {"down": 90}, "#,
+                r#""eth3": "fast"}}, "#,
                 r#""00:00:5e:00:53:03": {"up": 9000, "down": null, "links": {}}}"#,
             ),
         )
         .expect("the lines");
         let lines = lines(&file);
-        let wifi_only = &lines["00:00:5e:00:53:01"];
+        let wifi_only = |name| line_of(&lines, "00:00:5e:00:53:01", name);
+        assert_eq!(wifi_only("wlan0"), Some(20_000), "the link naming its own");
         assert_eq!(
-            wifi_only.of("wlan0"),
-            Some(20_000),
-            "the link naming its own"
-        );
-        assert_eq!(
-            wifi_only.of("eth1"),
+            wifi_only("eth1"),
             None,
             "a link whose own is null, on a network declaring none, is held by none"
         );
+        assert_eq!(wifi_only("eth0"), None, "a link the network doesn't name");
+        let both = |name| line_of(&lines, "00:00:5e:00:53:02", name);
+        assert_eq!(both("wlan0"), Some(20_000), "its own over the network's");
         assert_eq!(
-            wifi_only.of("eth0"),
-            None,
-            "a link the network doesn't name"
+            both("eth1"),
+            Some(90_000),
+            "a link whose own is null, as nixos.nix writes one left at its default, \
+             takes the network's"
         );
-        let both = &lines["00:00:5e:00:53:02"];
-        assert_eq!(both.of("wlan0"), Some(20_000), "its own over the network's");
         assert_eq!(
-            both.of("eth2"),
+            both("eth2"),
             Some(90_000),
             "one in Mb/s is left out, so the link takes the network's"
         );
         assert_eq!(
-            both.of("eth3"),
+            both("eth3"),
             Some(90_000),
             "one written wrongly loses only itself"
         );
-        assert_eq!(both.of("eth0"), Some(90_000), "the network's");
-        assert!(
-            !lines.contains_key("00:00:5e:00:53:03"),
+        assert_eq!(both("eth0"), Some(90_000), "the network's");
+        assert_eq!(
+            line_of(&lines, "00:00:5e:00:53:03", "wlan0"),
+            None,
             "a network declaring no line, for itself or a link, has none"
+        );
+        assert_eq!(
+            line_of(&lines, "00:00:5e:00:53:09", "wlan0"),
+            None,
+            "a network not declared, though a link of its name is elsewhere"
         );
         assert_eq!(
             anchors(&file).len(),
