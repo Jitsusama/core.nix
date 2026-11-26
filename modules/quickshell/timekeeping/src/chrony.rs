@@ -488,7 +488,10 @@ mod tests {
         let keeping = read(&mut chrony, &mut names)
             .await
             .unwrap_or_else(|error| panic!("{error:?}"));
-        assert!(keeping.synchronised);
+        assert!(
+            keeping.synchronised,
+            "a clock chronyd keeps was said unsynchronised"
+        );
         let servers: Vec<(&str, Standing)> = keeping
             .servers
             .iter()
@@ -504,8 +507,16 @@ mod tests {
         // The clock names its reference by the server it's kept by.
         assert_eq!(keeping.clock.reference, "time.harbour.test");
         assert_eq!(keeping.clock.last_sync, Some(1_790_000_000_000.0));
-        assert!((keeping.clock.frequency - 6.267).abs() < 1e-5);
-        assert!((keeping.servers[0].poll - 64.0).abs() < f64::EPSILON);
+        let frequency = keeping.clock.frequency;
+        assert!(
+            (frequency - 6.267).abs() < 1e-5,
+            "the frequency read as {frequency}"
+        );
+        let poll = keeping.servers[0].poll;
+        assert!(
+            (poll - 64.0).abs() < f64::EPSILON,
+            "the poll read as {poll}"
+        );
         // What chronyd refuses is left out, and the rest still comes.
         assert_eq!(keeping.hardware_clock, None);
         assert_eq!(keeping.servers[0].samples, None);

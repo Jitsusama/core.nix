@@ -381,8 +381,15 @@ mod tests {
             panic!("no reading");
         };
         let keeping = reply.into_parameters();
-        assert!(keeping.is_some_and(|keeping| keeping.servers.len() == 2));
-        assert!(replies.next().await.is_none());
+        assert_eq!(
+            keeping.map(|keeping| keeping.servers.len()),
+            Some(2),
+            "the reading's servers"
+        );
+        assert!(
+            replies.next().await.is_none(),
+            "asked once, it answered again"
+        );
     }
 
     #[tokio::test]
@@ -392,9 +399,16 @@ mod tests {
         };
         let mut replies = timekeeping.watch(true).await;
         let started = Instant::now();
-        assert!(matches!(replies.next().await, Some(Ok(_))));
-        assert!(matches!(replies.next().await, Some(Ok(_))));
-        assert!(started.elapsed() >= EVERY);
+        assert!(
+            matches!(replies.next().await, Some(Ok(_))),
+            "watched, it gave no first reading"
+        );
+        assert!(
+            matches!(replies.next().await, Some(Ok(_))),
+            "watched, it gave no second reading"
+        );
+        let elapsed = started.elapsed();
+        assert!(elapsed >= EVERY, "it answered again after only {elapsed:?}");
     }
 
     #[tokio::test]
@@ -405,11 +419,14 @@ mod tests {
             .unwrap_or_else(|error| panic!("{error}"));
         let timekeeping = Timekeeping { chrony: gone };
         let mut replies = timekeeping.watch(true).await;
-        assert!(matches!(
-            replies.next().await,
-            Some(Err(Unkept::NotAnswering { .. }))
-        ));
-        assert!(replies.next().await.is_none());
+        assert!(
+            matches!(replies.next().await, Some(Err(Unkept::NotAnswering { .. }))),
+            "with chronyd gone, it didn't say chronyd isn't answering"
+        );
+        assert!(
+            replies.next().await.is_none(),
+            "with chronyd gone, it kept answering"
+        );
     }
 
     /// Everything said on a connection until its first reply ends, or
