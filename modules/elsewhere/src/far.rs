@@ -342,13 +342,14 @@ if [ "$why" -ne 0 ]; then
   say {untaken}
   exit {UNTAKEN}
 fi
-cd {folder} && placed || {{
+cd {folder} || {{
   placed && printf "elsewhere: the job's folder holds nothing that travels\n" >&2; why=$?
   [ "$why" -eq 0 ] || moved
   {freed}  [ "$why" -ne 0 ] || {{ say {refused}; exit {REFUSES}; }}
   say {untaken}
   exit {UNTAKEN}
 }}
+placed || {{ moved; {freed}  say {untaken}; exit {UNTAKEN}; }}
 say {started}
 (
   {{ {setup}

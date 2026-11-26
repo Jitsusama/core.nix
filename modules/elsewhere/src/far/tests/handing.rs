@@ -193,12 +193,15 @@ fn a_link_pinned_at_the_handover_as_it_brings_back_gets_nothing_more_written_thr
     assert!(
         code == Some(0)
             && err.contains("a link at the job's handover couldn't be cleared, so its tree stays")
+            && err.contains(
+                "so the list of what it brings back isn't ended and nothing is brought back"
+            )
             && listed.contains("\tout/a\n")
             && !listed.contains("end")
             && !listed.contains("cut")
             && !work(&home).join("1").exists(),
-        "the far line didn't say the link stays, ended the list it began, or kept its \
-         copy ({code:?}): {listed:?} {err}"
+        "the far line didn't say the link stays and its list is left unended, or kept \
+         its copy ({code:?}): {listed:?} {err}"
     );
     let _ = std::fs::remove_dir_all(&home);
 }

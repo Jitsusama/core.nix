@@ -276,7 +276,9 @@ exec head \"$@\""
     let rm = format!("case \"$*\" in *' {r}') exit 1 ;; esac\nPATH=${{PATH#*:}}\nexec rm \"$@\"");
     let said = sweep_with(&runs.join("9"), &[("head", &head), ("rm", &rm)]);
     assert_eq!(
-        said, "elsewhere: a link at its copies' folder couldn't be cleared, so the sweep stops\n",
+        said,
+        "elsewhere: a link at its copies' folder couldn't be cleared, so the sweep stops, and \
+         this run is untaken if it still stands once its files cross\n",
         "the sweep didn't say why it stopped, once and alone"
     );
     assert_eq!(
