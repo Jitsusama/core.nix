@@ -321,9 +321,7 @@ impl Request {
             }
             let _ = write!(said, ", for {} ms", self.valid_ms);
         }
-        if !self.warns_any() {
-            said.push_str(", warning nothing");
-        } else {
+        if self.warns_any() {
             if self.leaves_network {
                 said.push_str(", warning its whole network drops the card");
             } else {
@@ -334,6 +332,8 @@ impl Request {
             } else {
                 let _ = write!(said, " in {} ms", self.in_ms);
             }
+        } else {
+            said.push_str(", warning nothing");
         }
         // Any station can send an unprotected ask as the point, so the
         // journal says which ones came so, warning or not.
