@@ -30,6 +30,10 @@ use std::fs;
 /// stop until a person acts.
 pub const NEEDS_HOLD: &str = "switching would change";
 
+/// Why the machine boots what it booted before while a boot check runs,
+/// kept first so a daemon cut off before the check ends still says it.
+const UNCHECKED: &str = "the boot check didn't end, so the machine boots what it booted before";
+
 /// Runs one update, telling `tell` each step as it starts, and gives its
 /// ending. `following` says whether only the follower asked for it, which
 /// may turn false as it runs, once a person asks too.
@@ -63,36 +67,52 @@ pub fn update_at(
     still_boots(config, ending)
 }
 
-/// `ending` with why the machine still boots the system it booted before:
-/// a switch keeps its own why, or ends the one kept when it says none, and
-/// an ask that switched nothing says the one kept. Without it the machine
-/// read as booting what it ran from the next ask on, though nothing had
-/// moved its boot default. A failure or refusal goes back to, or stays on,
-/// what it ran, which leaves the why kept for the next unchanged ask.
+/// `ending`, when it switched nothing, with why the machine boots the
+/// system it booted before, while the system that why was kept beside still
+/// runs. Without it the machine read as booting what it ran from the next
+/// ask on, though nothing had moved its boot default; and a system switched
+/// to by hand, or rolled back to, is another the why doesn't speak of.
 fn still_boots(config: &Config, ending: Line) -> Line {
-    match ending {
-        Line::Done { ref boots, .. } => {
-            // A why that can't be kept leaves the next unchanged ask to say
-            // none, as every ask did before one was kept.
-            let _ = match boots {
-                Some(why) => fs::write(config.boots_file(), why),
-                None => fs::remove_file(config.boots_file()),
-            };
-            ending
-        }
-        Line::Unchanged {
-            commit,
-            followed,
-            boots: None,
-        } => Line::Unchanged {
-            commit,
-            followed,
-            boots: fs::read_to_string(config.boots_file())
-                .ok()
-                .filter(|why| !why.is_empty()),
-        },
-        ending => ending,
+    let Line::Unchanged {
+        commit,
+        followed,
+        boots: None,
+    } = ending
+    else {
+        return ending;
+    };
+    let kept = fs::read_to_string(config.boots_file()).unwrap_or_default();
+    let boots = kept.split_once('\n').and_then(|(system, why)| {
+        (system::runs(config, std::path::Path::new(system)) && !why.is_empty())
+            .then(|| why.to_owned())
+    });
+    Line::Unchanged {
+        commit,
+        followed,
+        boots,
     }
+}
+
+/// Keeps `why` the machine boots what it booted before, beside `system`, the
+/// one it runs instead, for the asks after this one that switch nothing.
+/// One that can't be kept leaves those asks to say none, as every ask did
+/// before a why was kept, so it is said on standard error and no further.
+fn keep_boots(config: &Config, system: &std::path::Path, why: &str) {
+    let file = config.boots_file();
+    let new = file.with_extension("new");
+    if let Err(e) = fs::write(&new, format!("{}\n{why}", system.display()))
+        .and_then(|()| fs::rename(&new, &file))
+    {
+        eprintln!("{}: {e}", file.display());
+    }
+}
+
+/// Ends the why kept by `keep_boots`, once the boot default has moved: a
+/// boot check that passed, a switch that needed none, or a going back,
+/// which switches to the system it goes back to.
+fn booted_as_run(config: &Config) {
+    // Nothing kept is nothing to end.
+    let _ = fs::remove_file(config.boots_file());
 }
 
 /// Marks the machine behind main from the first build of a main it
@@ -533,17 +553,26 @@ fn switch_from(
             }
             // A failed boot check leaves the system running, since it's
             // whole, but booting what it booted before, which no restart
-            // changes.
+            // changes. A daemon cut off before its check ends leaves that
+            // said too, since the boot default moves only once one passes.
             let mut boots = None;
-            if switched.unbooted
-                && let Err(failure) = system::boot_once_checked(config, built, &head)
-            {
-                switched.restart = None;
-                boots = Some(format!(
-                    "{}, so the machine boots what it booted before: {}",
-                    failure.why,
-                    failure.lines.join("; ")
-                ));
+            if switched.unbooted {
+                keep_boots(config, built.system, UNCHECKED);
+                match system::boot_once_checked(config, built, &head) {
+                    Ok(()) => booted_as_run(config),
+                    Err(failure) => {
+                        switched.restart = None;
+                        let why = format!(
+                            "{}, so the machine boots what it booted before: {}",
+                            failure.why,
+                            failure.lines.join("; ")
+                        );
+                        keep_boots(config, built.system, &why);
+                        boots = Some(why);
+                    }
+                }
+            } else {
+                booted_as_run(config);
             }
             Line::Done {
                 commit: head,
@@ -583,6 +612,7 @@ fn going_back(
     match system::go_back(config, &previous) {
         Ok(()) => {
             end_switch(config);
+            booted_as_run(config);
             failure
                 .why
                 .push_str("; the machine went back to what it ran");
