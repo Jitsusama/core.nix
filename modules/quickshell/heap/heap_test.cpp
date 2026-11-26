@@ -560,6 +560,9 @@ bool ceilingFollowsWhatsKept() {
     const double slotMb = static_cast<double>(QV4::Chunk::SlotSize) / mb;
     const double cap =
         static_cast<double>(manager->slotsHeldWhenRoomLeft) * slotMb + 2 * SMALL_ROOM_MB;
+    // Where standing() says the rooms alone cap the chunks, which a
+    // closing's line puts beside where the collector starts.
+    const double roomsAt = heap.standing().value(QStringLiteral("roomsCapAt")).toDouble();
     QStringList values;
     for (int each = 0; each < BURST_VALUES; each++)
         values << QStringLiteral("v%1: i").arg(each);
@@ -590,7 +593,8 @@ bool ceilingFollowsWhatsKept() {
     engine.collectGarbage();
     const double moved = 2 * static_cast<double>(beyond) * slotMb;
     const bool holds = made && fromTheSweep && grown >= upTo && std::abs(same - cap) < SAME_MB &&
-                       std::abs(less - cap) < SAME_MB && std::abs(more - cap - moved) < SAME_MB;
+                       std::abs(less - cap) < SAME_MB && std::abs(more - cap - moved) < SAME_MB &&
+                       std::abs(roomsAt - cap) < SAME_MB;
     if (!holds)
         std::fprintf(stderr,
                      "FAIL the ceiling is twice the room past what was held at the ask, and "
@@ -598,11 +602,11 @@ bool ceilingFollowsWhatsKept() {
                      "%.2f MB at the ask, %.2f kept by the last sweep of %.2f in use, grown "
                      "to %.2f; "
                      "collecting at %.2f, %.2f and %.2f MB for sweeps keeping as much, half "
-                     "and %.2f MB more, against %.2f, %.2f and %.2f; made %s, from the sweep "
-                     "%s\n",
+                     "and %.2f MB more, against %.2f, %.2f and %.2f; the rooms alone at %.2f; "
+                     "made %s, from the sweep %s\n",
                      asked.chunks, sweptAskedMb, usedAtAsk, grown, same, less, more, moved / 2, cap,
-                     cap,
-                     cap + moved, made ? "yes" : "no", fromTheSweep ? "yes" : "no");
+                     cap, cap + moved, roomsAt, made ? "yes" : "no",
+                     fromTheSweep ? "yes" : "no");
     return holds;
 }
 

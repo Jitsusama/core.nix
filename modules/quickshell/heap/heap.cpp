@@ -357,9 +357,17 @@ QVariantMap Heap::standing() const {
     const QV4::MemoryManager *manager = engine->handle()->memoryManager;
     const std::size_t chunkSlots =
         manager->blockAllocator.totalSlots() + manager->icAllocator.totalSlots();
+    // Twice the room past what the chunks held at the ask, where the
+    // ceiling sits until the sweeps keep more than the last one did, so a
+    // line saying it beside `collectsAt` says which set where the collector
+    // starts; none while no room is left.
+    const std::size_t room = manager->roomAfterSweep / QV4::Chunk::SlotSize;
+    const std::size_t roomsCap = manager->slotsHeldWhenRoomLeft + 2 * room;
     return {
         {QStringLiteral("chunks"), megabytes(chunkSlots * QV4::Chunk::SlotSize)},
         {QStringLiteral("collectsAt"), megabytes(manager->heldBeforeCollecting())},
+        {QStringLiteral("roomsCapAt"),
+         room == 0 ? -1.0 : megabytes(roomsCap * QV4::Chunk::SlotSize)},
         {QStringLiteral("outside"), megabytes(manager->unmanagedHeapSize)},
         {QStringLiteral("collectsOutsideAt"), megabytes(manager->unmanagedHeapSizeGCLimit)},
         {QStringLiteral("collecting"), manager->gcStateMachine->inProgress()},
