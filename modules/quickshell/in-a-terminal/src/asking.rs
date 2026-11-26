@@ -274,31 +274,34 @@ mod tests {
 
     #[test]
     fn a_step_missed_among_rows_read_is_said_at_once() {
-        let began = Instant::now();
-        let answer = settled(&stand_in::qs("missed"), &[], false).expect("the stand-in answers");
+        // A step no other test names, so only this test's asks are counted.
+        let step = "Missed Among Rows Read".to_string();
+        let answer = settled(&stand_in::qs("missed"), std::slice::from_ref(&step), false)
+            .expect("the stand-in answers");
         assert!(
             matches!(answer, Answer::Missing { reading: false, .. }),
             "a step missed among rows read wasn't said missing among rows read"
         );
-        assert!(
-            began.elapsed() < ASK_AGAIN + LEEWAY,
-            "it waited {:?}",
-            began.elapsed()
+        assert_eq!(
+            stand_in::times_asked("missed", &step),
+            1,
+            "a step missed among rows read was asked again"
         );
     }
 
     #[test]
     fn a_place_read_is_said_from_its_first_answer() {
-        let began = Instant::now();
-        let answer = settled(&stand_in::qs("read"), &[], false).expect("the stand-in answers");
+        let step = "Read From Its First Answer".to_string();
+        let answer = settled(&stand_in::qs("read"), std::slice::from_ref(&step), false)
+            .expect("the stand-in answers");
         assert!(
             matches!(&answer, Answer::Shown(shown) if !still_reading(shown)),
             "a place read wasn't shown as read"
         );
-        assert!(
-            began.elapsed() < ASK_AGAIN + LEEWAY,
-            "it waited {:?}",
-            began.elapsed()
+        assert_eq!(
+            stand_in::times_asked("read", &step),
+            1,
+            "a place read was asked again"
         );
     }
 
@@ -392,7 +395,9 @@ mod tests {
 }
 
 /// Stand-ins for qs, each a script giving one answer whatever it's asked,
-/// so what the program does with an answer is tested without a shell.
+/// so what the program does with an answer is tested without a shell. Each
+/// writes what it was asked beside itself, so a test can count its asks
+/// rather than time them, which a loaded machine makes slow.
 #[cfg(test)]
 pub mod stand_in {
     use std::os::unix::fs::PermissionsExt;
@@ -440,6 +445,15 @@ pub mod stand_in {
         written().join(name).to_string_lossy().into_owned()
     }
 
+    /// How many times the stand-in `name` was asked a path naming `step`.
+    pub fn times_asked(name: &str, step: &str) -> usize {
+        fs::read_to_string(written().join(format!("{name}.asked")))
+            .unwrap_or_default()
+            .lines()
+            .filter(|asked| asked.contains(step))
+            .count()
+    }
+
     /// Where the stand-ins are, every one written and closed before the
     /// first runs: a script still open for writing in one test while
     /// another starts a process can't be run (ETXTBSY).
@@ -451,7 +465,8 @@ pub mod stand_in {
             let shell = shell();
             for (name, answer) in ANSWERS {
                 let script = folder.join(name);
-                fs::write(&script, format!("#!{shell}\necho '{answer}'\n"))
+                let heard = r#"echo "$*" >> "$0.asked""#;
+                fs::write(&script, format!("#!{shell}\n{heard}\necho '{answer}'\n"))
                     .expect("a stand-in written");
                 fs::set_permissions(&script, fs::Permissions::from_mode(0o755))
                     .expect("a stand-in made runnable");
