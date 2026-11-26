@@ -19,7 +19,7 @@
 //!   own since it moves every reading, so a watch of a repository isn't
 //!   told it moved each minute.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use daemon_serve::asks::Domain;
@@ -100,28 +100,63 @@ pub fn records(record: &Record) -> Vec<Value> {
 
 /// What works in each repository of `record`, from `used`, each folder's;
 /// its processor time only where `measured`, two readings having been
-/// taken, and none otherwise rather than nothing.
-pub fn using(record: &Record, used: &BTreeMap<PathBuf, Use>, measured: bool) -> Vec<Value> {
+/// taken, and none otherwise rather than nothing. A folder the reading
+/// didn't place processes in, being newer than it, is said unread, since
+/// what works there wasn't looked for, and its repository as the rest of
+/// it was read, so a busy repository's row never blanks for each tree
+/// made in it; one with no folder the reading looked in is unread whole.
+/// A folder's share is none where `used` tells none, as for one the
+/// reading before didn't look in, and so is its repository's then.
+pub fn using(
+    record: &Record,
+    used: &BTreeMap<PathBuf, Use>,
+    measured: bool,
+    placed: &BTreeSet<PathBuf>,
+) -> Vec<Value> {
     let cpu = |share: Option<f64>| measured.then(|| share.unwrap_or(0.0));
     let mut said = Vec::new();
     for repository in &record.repositories {
-        let paths = repository.checkouts.iter().flat_map(|checkout| {
-            std::iter::once(&checkout.path).chain(checkout.trees.iter().map(|tree| &tree.path))
-        });
+        let paths = || {
+            repository.checkouts.iter().flat_map(|checkout| {
+                std::iter::once(&checkout.path).chain(checkout.trees.iter().map(|tree| &tree.path))
+            })
+        };
+        let looked = |path: &&String| placed.contains(Path::new(path.as_str()));
+        if !paths().any(|path| looked(&path)) {
+            said.push(unread_one(repository));
+            continue;
+        }
         let mut whole = Use::default();
+        // A folder's share goes unsaid where this reading or the one
+        // before didn't look in it, and so does its repository's, which
+        // would be of only some of what works there.
+        let mut untold = false;
         let mut folders = Vec::new();
-        for path in paths {
+        for path in paths() {
+            if !looked(&path) {
+                untold = true;
+                folders.push(json!({
+                    "path": path,
+                    "processes": null,
+                    "memory": null,
+                    "cpu": null,
+                }));
+                continue;
+            }
             let Some(one) = used.get(Path::new(path)) else {
                 continue;
             };
             whole.processes += one.processes;
             whole.memory += one.memory;
-            whole.cpu = Some(whole.cpu.unwrap_or(0.0) + one.cpu.unwrap_or(0.0));
+            match one.cpu {
+                Some(share) => whole.cpu = Some(whole.cpu.unwrap_or(0.0) + share),
+                None => untold = true,
+            }
             folders.push(json!({
                 "path": path,
                 "processes": one.processes,
                 "memory": one.memory,
-                "cpu": cpu(one.cpu),
+                "cpu": measured.then_some(one.cpu).flatten(),
             }));
         }
         said.push(json!({
@@ -130,7 +165,7 @@ pub fn using(record: &Record, used: &BTreeMap<PathBuf, Use>, measured: bool) -> 
             "repository": repository.key,
             "processes": whole.processes,
             "memory": whole.memory,
-            "cpu": cpu(whole.cpu),
+            "cpu": if untold { None } else { cpu(whole.cpu) },
             "folders": folders,
         }));
     }
@@ -141,18 +176,20 @@ pub fn using(record: &Record, used: &BTreeMap<PathBuf, Use>, measured: bool) -> 
 /// null, where the reading of `/proc` has stopped answering: said as
 /// nothing working, it would read as a measurement of none.
 pub fn unread(record: &Record) -> Vec<Value> {
-    let each = record.repositories.iter().map(|repository| {
-        json!({
-            "key": format!("using:{}", repository.key),
-            "kind": "using",
-            "repository": repository.key,
-            "processes": null,
-            "memory": null,
-            "cpu": null,
-            "folders": [],
-        })
-    });
-    each.collect()
+    record.repositories.iter().map(unread_one).collect()
+}
+
+/// `repository` with what works in it unread, its figures null.
+fn unread_one(repository: &Repository) -> Value {
+    json!({
+        "key": format!("using:{}", repository.key),
+        "kind": "using",
+        "repository": repository.key,
+        "processes": null,
+        "memory": null,
+        "cpu": null,
+        "folders": [],
+    })
 }
 
 /// How the sources stand, as health says them: git always read, since a

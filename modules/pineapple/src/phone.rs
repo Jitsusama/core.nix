@@ -47,7 +47,9 @@ pub struct Alert<'a> {
 }
 
 /// How many characters of the words said are shown, so a long message
-/// doesn't flood Joel's phone; the link has the rest.
+/// doesn't flood Joel's phone; the link has the rest. A row's words are
+/// already its gist, cut shorter in tell.rs, so this guards only words
+/// that came some other way, such as a line written before rows were cut.
 const WORDS_SHOWN: usize = 300;
 
 /// How every alert begins, so the reader knows its own when a search
