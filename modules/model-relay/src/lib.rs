@@ -55,9 +55,10 @@
 //! answer begins. After the machine sleeps, the connections it held are
 //! retired and opened afresh, since the network they ran on may be gone
 //! and pings would take their time to say so, and the kernel probes each
-//! one still carrying an answer at once, so one whose network has gone
-//! fails in seconds, for pi to ask again, and one that survived carries
-//! on. A ping is what finds a lost connection, and an unanswered one
+//! one still carrying an answer, so one whose network has gone fails in
+//! about ten seconds, for pi to ask again, and one that survived carries
+//! on. One with data unacknowledged isn't probed and waits on its ping.
+//! A ping is what finds a lost connection, and an unanswered one
 //! fails every request on it, so below
 //! h2 each layer holds little ahead of one: a body goes in short frames,
 //! through few records and a kernel holding little unsent, and on a slow
@@ -940,73 +941,107 @@ impl Sender for SendRequest<Sent> {
 }
 
 /// How soon after the machine wakes the kernel first probes a connection
-/// still carrying an answer. A stream whose network went while the machine
-/// slept hears nothing more, and hyper's ping, timed on a clock that
-/// stopped while it slept, would wait until `PING_EVERY` had passed awake.
+/// the sleep retired, once it has heard nothing on it for this long. A
+/// stream whose network went while the machine slept hears nothing more,
+/// and hyper's ping, timed on a clock that stopped while it slept, would
+/// wait until `PING_EVERY` had passed awake, then `PING_ANSWERED_WITHIN`.
 const PROBED_AFTER_A_SLEEP: Duration = Duration::from_secs(1);
 /// How often the kernel probes such a connection again while unanswered.
-const PROBED_EVERY_AFTER_A_SLEEP: Duration = Duration::from_secs(1);
+const PROBED_EVERY_AFTER_A_SLEEP: Duration = Duration::from_secs(2);
 /// How many probes go unanswered before the kernel ends the connection,
-/// so a lost one fails its answers within about four seconds, for pi to
-/// ask again, where it took twenty on 25 November.
-const PROBES_AFTER_A_SLEEP: u32 = 3;
-/// How long what the relay sends on a connection that slept may go
-/// unacknowledged before the kernel ends it. A probe waits behind data in
-/// flight, which the kernel would otherwise resend for minutes. Long
-/// enough that a congested uplink's slow acknowledgements don't end a
-/// healthy answer: on a connection already retired, the relay sends only
-/// short frames.
-const UNACKNOWLEDGED_AFTER_A_SLEEP_FOR: Duration = Duration::from_secs(10);
+/// about ten seconds after the first, for pi to ask again. Long enough for
+/// a network and its tunnel to come back, as one did within five seconds
+/// of waking on 25 November, so an answer that survived isn't cut. The
+/// kernel counts the probes alone, since no user timeout is set: tcp(7)
+/// says one would override this count, from the last segment heard before
+/// the sleep.
+const PROBES_AFTER_A_SLEEP: u32 = 5;
+/// How long after a sleep the kernel is asked to stop probing, past the
+/// end of a connection no probe was answered on, so one that survived is
+/// left to its pings again and a later lapse doesn't end it in seconds.
+const PROBED_FOR_AFTER_A_SLEEP: Duration = Duration::from_secs(15);
 
-/// The TCP connections to the origin a relay has opened, held weakly so
-/// each still closes once hyper lets it go, to be probed once the machine
-/// has slept.
+/// The TCP connections to the origin a relay has opened, each by its name,
+/// held weakly so it still closes once hyper lets it go, to be probed once
+/// the machine has slept; and how many times it has slept, so probing a
+/// sleep ago stops only when it's the last.
 #[derive(Default)]
-struct Probes(Held<Vec<Weak<TcpStream>>>);
+struct Probes {
+    opened: Held<Vec<(Named, Weak<TcpStream>)>>,
+    sleeps: Arc<AtomicU64>,
+}
+
+/// The connections probed after one sleep, to stop probing once it has
+/// done its work.
+struct Probing {
+    open: Vec<Weak<TcpStream>>,
+    sleep: u64,
+    sleeps: Arc<AtomicU64>,
+}
 
 impl Probes {
-    /// Keeps `tcp` to be probed, forgetting those closed since.
-    fn keep(&self, tcp: &Arc<TcpStream>) {
-        let mut kept = self.0.lock().unwrap_or_else(PoisonError::into_inner);
-        kept.retain(|tcp| tcp.strong_count() > 0);
-        kept.push(Arc::downgrade(tcp));
+    /// Keeps `tcp`, `named`, to be probed, forgetting those closed since.
+    fn keep(&self, named: Named, tcp: &Arc<TcpStream>) {
+        let mut opened = self.opened.lock().unwrap_or_else(PoisonError::into_inner);
+        opened.retain(|(_, tcp)| tcp.strong_count() > 0);
+        opened.push((named, Arc::downgrade(tcp)));
     }
 
-    /// Has the kernel probe each connection still open within
-    /// `PROBED_AFTER_A_SLEEP`, so one whose network went while the machine
-    /// slept fails in seconds and one that survived carries on. Says how
-    /// many it probed.
+    /// Has the kernel probe each of `retired` still open, once it has gone
+    /// `PROBED_AFTER_A_SLEEP` unheard, so one whose network went while the
+    /// machine slept fails in seconds and one that survived carries on.
     ///
-    /// Every one open then was just retired, so it carries no request's
-    /// body any more, only what answers still stream on it: a probe it
-    /// doesn't answer, or what it sends going unacknowledged for
-    /// `UNACKNOWLEDGED_AFTER_A_SLEEP_FOR`, means its network has gone.
-    fn probe(&self) -> usize {
+    /// The kernel probes only while all that was sent has been
+    /// acknowledged, so one with data in flight, as an upload has, lasts
+    /// until its ping fails, as it did before. One opened since, or still
+    /// opening as the machine slept, isn't probed: it takes requests on.
+    fn probe(&self, retired: &[Named]) -> Probing {
         let soon = socket2::TcpKeepalive::new()
             .with_time(PROBED_AFTER_A_SLEEP)
             .with_interval(PROBED_EVERY_AFTER_A_SLEEP)
             .with_retries(PROBES_AFTER_A_SLEEP);
-        let open: Vec<Arc<TcpStream>> = self
-            .0
+        let still: Vec<Arc<TcpStream>> = self
+            .opened
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .iter()
-            .filter_map(Weak::upgrade)
+            .filter(|(named, _)| retired.contains(named))
+            .filter_map(|(_, tcp)| tcp.upgrade())
             .collect();
-        let within = Some(UNACKNOWLEDGED_AFTER_A_SLEEP_FOR);
-        let mut probed = 0;
-        for tcp in &open {
-            let socket = socket2::SockRef::from(&**tcp);
-            let probing = socket
-                .set_tcp_keepalive(&soon)
-                .and_then(|()| socket.set_tcp_user_timeout(within));
-            match probing {
-                Ok(()) => probed += 1,
-                // It then lasts until its ping fails, as it did before.
+        let mut open = Vec::new();
+        for tcp in &still {
+            match socket2::SockRef::from(&**tcp).set_tcp_keepalive(&soon) {
+                Ok(()) => open.push(Arc::downgrade(tcp)),
+                // It then lasts until its ping fails, as it would have.
                 Err(why) => eprintln!("model-relay: a connection couldn't be probed: {why}"),
             }
         }
-        probed
+        Probing {
+            open,
+            sleep: self.sleeps.fetch_add(1, Ordering::SeqCst) + 1,
+            sleeps: Arc::clone(&self.sleeps),
+        }
+    }
+}
+
+impl Probing {
+    /// How many connections are probed.
+    fn len(&self) -> usize {
+        self.open.len()
+    }
+
+    /// Has the kernel stop probing those still open, as a connection opened
+    /// does, unless the machine has slept again since and they're probed
+    /// for that.
+    fn stop(&self) {
+        if self.sleeps.load(Ordering::SeqCst) != self.sleep {
+            return;
+        }
+        for tcp in self.open.iter().filter_map(Weak::upgrade) {
+            if let Err(why) = socket2::SockRef::from(&*tcp).set_keepalive(false) {
+                eprintln!("model-relay: a connection's probes couldn't be stopped: {why}");
+            }
+        }
     }
 }
 
@@ -1051,6 +1086,27 @@ impl tokio::io::AsyncWrite for Probed {
                 written => return Poll::Ready(written),
             }
         }
+    }
+
+    // TLS writes its records as several buffers at once, which would
+    // otherwise go one write, and with no delay one segment, each.
+    fn poll_write_vectored(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        bufs: &[io::IoSlice<'_>],
+    ) -> Poll<io::Result<usize>> {
+        loop {
+            std::task::ready!(self.0.poll_write_ready(cx))?;
+            match self.0.try_write_vectored(bufs) {
+                // Readiness was stale, and trying cleared it.
+                Err(why) if why.kind() == io::ErrorKind::WouldBlock => {}
+                written => return Poll::Ready(written),
+            }
+        }
+    }
+
+    fn is_write_vectored(&self) -> bool {
+        true
     }
 
     fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<io::Result<()>> {
@@ -1210,7 +1266,7 @@ pub struct Relay {
 
 /// Which connection one opened is, as it's said: by its slot and its
 /// number there.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 struct Named {
     at: usize,
     number: u64,
@@ -1984,7 +2040,8 @@ impl Relay {
     /// sleeps: the network they ran on may be gone, and their pings would
     /// take up to `PING_EVERY` and `PING_ANSWERED_WITHIN` to say so. An
     /// answer already streaming on one carries on, while the kernel probes
-    /// its connection, so it fails in seconds if that network has gone.
+    /// its connection for `PROBED_FOR_AFTER_A_SLEEP`, so it fails in about
+    /// ten seconds if that network has gone.
     fn retire_after_a_sleep(&self) {
         let now = (Instant::now(), SystemTime::now());
         let then = std::mem::replace(
@@ -1994,20 +2051,34 @@ impl Relay {
         if !slept(then, now) {
             return;
         }
-        self.retire_every();
-        let probed = self.probes.probe();
+        let retired = self.retire_every();
+        let probing = self.probes.probe(&retired);
         eprintln!(
-            "model-relay: the machine slept, so its connections are opened afresh, and the \
-             {probed} still open are probed"
+            "model-relay: the machine slept, so its connections are opened afresh, and the {} \
+             still open are probed",
+            probing.len()
         );
+        tokio::spawn(async move {
+            tokio::time::sleep(PROBED_FOR_AFTER_A_SLEEP).await;
+            probing.stop();
+        });
     }
 
     /// Retires every connection, so each is opened afresh when next asked
-    /// for. An answer already streaming on one carries on.
-    fn retire_every(&self) {
-        for slot in &self.slots {
-            *slot.open.lock().unwrap_or_else(PoisonError::into_inner) = None;
+    /// for, and says which were open. An answer already streaming on one
+    /// carries on.
+    fn retire_every(&self) -> Vec<Named> {
+        let mut retired = Vec::new();
+        for (at, slot) in self.slots.iter().enumerate() {
+            let open = slot.open.lock().unwrap_or_else(PoisonError::into_inner).take();
+            if let Some(kept) = open {
+                retired.push(Named {
+                    at,
+                    number: kept.number,
+                });
+            }
         }
+        retired
     }
 
     /// Opens connection `at` without anybody waiting on it, unless it's
@@ -2095,7 +2166,7 @@ impl Relay {
                 .await
                 .map(Arc::new)
                 .map_err(on_the_way)?;
-            self.probes.keep(&tcp);
+            self.probes.keep(named, &tcp);
             let tcp = Probed(tcp);
             let name = ServerName::try_from(self.origin.host.clone())
                 .map_err(|why| (io::Error::other(why), Unreachable::Unfit))?;
@@ -2408,7 +2479,9 @@ async fn reach_any(addresses: &[SocketAddr], within: Duration) -> io::Result<Tcp
 /// clock and the wall's: the wall ran more than `SLEPT_AT_LEAST` ahead.
 /// This takes `Instant` to stand still in a suspend, as Linux's monotonic
 /// clock does; a wall clock set back is no sleep. One stepped forward
-/// reads as one, which costs only connections opened afresh.
+/// reads as one, which costs connections opened afresh, and a few probes
+/// on those still carrying an answer, which a healthy one replies to at
+/// once.
 fn slept(then: (Instant, SystemTime), now: (Instant, SystemTime)) -> bool {
     let on_the_wall = now.1.duration_since(then.1).unwrap_or_default();
     on_the_wall > now.0.duration_since(then.0) + SLEPT_AT_LEAST
@@ -2528,7 +2601,6 @@ async fn stopped(stops: &mut mpsc::Receiver<()>) {
     }
 }
 
-/// Says the counts every `COUNTS_EVERY`, when any has moved since.
 /// How often a relay reads the clocks for a sleep while nothing asks it
 /// anything, so an answer streaming as the machine slept is probed soon
 /// after it wakes, not at the next request.
@@ -2546,6 +2618,7 @@ async fn notice_sleeps(relay: Weak<Relay>) {
     }
 }
 
+/// Says the counts every `COUNTS_EVERY`, when any has moved since.
 async fn say_counts(counts: Arc<Counts>) {
     loop {
         tokio::time::sleep(COUNTS_EVERY).await;
@@ -2581,8 +2654,8 @@ mod tests {
 
     use super::{
         BODY_WITHIN, Counts, HELD_AHEAD_AT_MOST, InPieces, Named, Origin, PROBED_AFTER_A_SLEEP,
-        Probes, Retiring, SAID_AT_MOST, SLEPT_AT_LEAST, Sender, Slot,
-        UNACKNOWLEDGED_AFTER_A_SLEEP_FOR, Unnamed, Unreachable, Unread, fails_the_path, goes_again,
+        PROBED_EVERY_AFTER_A_SLEEP, PROBES_AFTER_A_SLEEP, Probed, Probes, Retiring, SAID_AT_MOST,
+        SLEPT_AT_LEAST, Sender, Slot, Unnamed, Unreachable, Unread, fails_the_path, goes_again,
         goes_direct, goes_once_more, reach, reach_any, read_whole, slept, unmade, with_causes,
     };
 
@@ -3144,7 +3217,62 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn a_connection_still_open_after_a_sleep_is_probed_within_seconds() {
+    async fn a_connection_retired_by_a_sleep_is_probed_then_left_to_its_pings() {
+        let origin = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let at = origin.local_addr().expect("its address");
+        let retired = tokio::net::TcpStream::connect(at)
+            .await
+            .map(Arc::new)
+            .expect("a connection");
+        let opened = tokio::net::TcpStream::connect(at)
+            .await
+            .map(Arc::new)
+            .expect("a connection");
+        let _far = (origin.accept().await, origin.accept().await);
+        let kept = Probes::default();
+        let named = |number| Named { at: 0, number };
+        kept.keep(named(0), &retired);
+        kept.keep(named(1), &opened);
+
+        let probing = kept.probe(&[named(0)]);
+
+        let socket = socket2::SockRef::from(&*retired);
+        let asked = (
+            socket.keepalive().ok(),
+            socket.tcp_keepalive_time().ok(),
+            socket.tcp_keepalive_interval().ok(),
+            socket.tcp_keepalive_retries().ok(),
+            socket.tcp_user_timeout().ok(),
+        );
+        assert_eq!(probing.len(), 1, "the connection retired wasn't probed");
+        assert_eq!(
+            asked,
+            (
+                Some(true),
+                Some(PROBED_AFTER_A_SLEEP),
+                Some(PROBED_EVERY_AFTER_A_SLEEP),
+                Some(PROBES_AFTER_A_SLEEP),
+                Some(None)
+            ),
+            "the kernel wasn't asked to probe it as the relay means to, by count alone"
+        );
+        assert_eq!(
+            socket2::SockRef::from(&*opened).keepalive().ok(),
+            Some(false),
+            "a connection opened since the sleep, taking requests, was probed"
+        );
+        probing.stop();
+        assert_eq!(
+            socket.keepalive().ok(),
+            Some(false),
+            "the kernel went on probing once the sleep's probes were done"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_sleep_soon_after_another_keeps_its_probes_past_the_first_ones_end() {
         let origin = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("a port");
@@ -3154,35 +3282,22 @@ mod tests {
             .expect("a connection");
         let _far = origin.accept().await.expect("the far end");
         let kept = Probes::default();
-        kept.keep(&tcp);
+        let named = Named { at: 0, number: 0 };
+        kept.keep(named, &tcp);
 
-        let probed = kept.probe();
+        let first = kept.probe(&[named]);
+        let _second = kept.probe(&[named]);
+        first.stop();
 
-        let socket = socket2::SockRef::from(&*tcp);
-        assert_eq!(probed, 1, "the connection still open wasn't probed");
         assert_eq!(
-            socket.keepalive().ok(),
+            socket2::SockRef::from(&*tcp).keepalive().ok(),
             Some(true),
-            "the kernel wasn't asked to probe the connection"
-        );
-        assert!(
-            socket
-                .tcp_keepalive_time()
-                .is_ok_and(|after| after <= PROBED_AFTER_A_SLEEP),
-            "the first probe would wait longer than {PROBED_AFTER_A_SLEEP:?}: {:?}",
-            socket.tcp_keepalive_time()
-        );
-        assert!(
-            socket
-                .tcp_user_timeout()
-                .is_ok_and(|within| within.is_some_and(|w| w <= UNACKNOWLEDGED_AFTER_A_SLEEP_FOR)),
-            "data in flight could hold off the probe for minutes: {:?}",
-            socket.tcp_user_timeout()
+            "the first sleep's probes ending stopped the second's"
         );
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn a_connection_let_go_is_neither_probed_nor_held_open() {
+    async fn a_connection_let_go_once_probed_is_held_open_no_longer() {
         use tokio::io::AsyncReadExt as _;
 
         let origin = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -3191,22 +3306,30 @@ mod tests {
         let tcp = tokio::net::TcpStream::connect(origin.local_addr().expect("its address"))
             .await
             .map(Arc::new)
+            .map(Probed)
             .expect("a connection");
         let (mut far, _) = origin.accept().await.expect("the far end");
         let kept = Probes::default();
-        kept.keep(&tcp);
+        let named = Named { at: 0, number: 0 };
+        kept.keep(named, &tcp.0);
+        let probing = kept.probe(&[named]);
 
         drop(tcp);
-        let probed = kept.probe();
         let mut byte = [0; 1];
         // A close reaches the far end at once over loopback; the bound only
         // keeps a socket held open from hanging the test.
         let read = tokio::time::timeout(Duration::from_secs(5), far.read(&mut byte)).await;
+        probing.stop();
 
-        assert_eq!(probed, 0, "a connection let go was probed");
+        assert_eq!(probing.len(), 1, "the connection wasn't probed");
         assert!(
             matches!(read, Ok(Ok(0))),
             "the probes held a connection let go open: {read:?}"
+        );
+        assert_eq!(
+            kept.probe(&[named]).len(),
+            0,
+            "a connection let go was probed"
         );
     }
 
