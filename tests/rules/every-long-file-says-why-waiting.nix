@@ -9,7 +9,6 @@
   "modules/disk-guard/src/survey.rs"
   "modules/disk-guard/tests/guard/collecting.rs"
   "modules/disk-guard/tests/guard/daemon.rs"
-  "modules/hibernate/unlock/src/main.rs"
   "modules/machine/src/main.rs"
   "modules/nix-daemon/vm-first/src/main.rs"
   "modules/nix-offload/offload/src/machines.rs"
