@@ -187,8 +187,6 @@
   "modules/passwords/src/lib.rs" = 17;
   "modules/passwords/tests/daemon.rs" = 3;
   "modules/passwords/tests/keys.rs" = 3;
-  "modules/people/src/lib.rs" = 12;
-  "modules/people/tests/daemon.rs" = 3;
   "modules/pi-packages/src/inuse/macos.rs" = 4;
   "modules/pi-packages/tests/inuse.rs" = 3;
   "modules/plymouth/waits/src/main.rs" = 7;
