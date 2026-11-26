@@ -618,7 +618,16 @@ else
   lose > "$job/{BROUGHT}"
 fi
 ) || wrote=$?
-# Freed before the list ends, the job's copy and its tree with them, as
+{ended}"#,
+        ended = ended(),
+    )
+}
+
+/// The end of `bringing`'s list of what's brought back, once the list's
+/// lines were written, or `wrote` says they couldn't all be.
+fn ended() -> String {
+    format!(
+        r#"# Freed before the list ends, the job's copy and its tree with them, as
 # on a disk that filled, these are the room its end needs. Where a link
 # at the handover couldn't be cleared, as `freed` says, nothing more is
 # written through it, and the near side waits out a list with no end.
