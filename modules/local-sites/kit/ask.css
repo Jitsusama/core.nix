@@ -50,6 +50,12 @@
   list-style: none;
 }
 
+/* A press hides the answers where they stand, which the grid above would
+   otherwise keep showing. */
+.ask-answers[hidden] {
+  display: none;
+}
+
 .ask-answers li {
   display: flex;
   flex-wrap: wrap;

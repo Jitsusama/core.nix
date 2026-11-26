@@ -24,7 +24,17 @@ interface Made<Item> extends Drawn {
   className: string;
   append(...nodes: Item[]): void;
   addEventListener(type: "click", listener: () => void): void;
+  focus?(): void;
 }
+
+/** The parts of a drawn row a press changes where they stand. */
+interface Parts<Item> {
+  readonly told: Item;
+  readonly answers: Item | null;
+}
+
+/** Each drawn row's parts, by the row, kept until the row goes. */
+const PARTS = new WeakMap<object, Parts<unknown>>();
 
 /** How a page makes an element: the document's createElement. */
 type Make<Item> = (tag: string) => Item;
@@ -157,13 +167,18 @@ function drawAsk<Item extends Made<Item>>(
   if (question !== "") {
     article.append(said(make, "p", question, "ask-question"));
   }
-  if (view.offering) {
-    article.append(answers(make, ask, view));
+  const offered = view.offering ? answers(make, ask, view) : null;
+  if (offered !== null) {
+    article.append(offered);
   }
-  // Always there, so what a press comes to is heard when it's written.
+  // Always there, and changed where it stands, so what a press comes to is
+  // heard when it's written; a line drawn with its words already in it
+  // isn't. It takes focus from the answer pressed, which goes with them.
   const told = said(make, "p", view.told, "ask-told");
   told.setAttribute("aria-live", "polite");
+  told.setAttribute("tabindex", "-1");
   article.append(told);
+  PARTS.set(article, { told, answers: offered });
   const act = make("p");
   act.className = "ask-act";
   act.append(ask.act === null ? said(make, "span", ask.target) : linked(make, ask.act, ask.opens));
@@ -207,6 +222,8 @@ function followAsks<Item extends Made<Item>>(asking: Asking<Item>): Following {
   let address = asking.address ?? null;
   const clock = reaching.clock ?? browserClock;
   const pressed = new Map<string, string>();
+  // Each row as drawn now, so a press changes its parts where they stand.
+  const shown = new Map<string, Item>();
   let state: State = "connecting";
   let unwait: (() => void) | null = null;
   let held: Held | null = null;
@@ -224,16 +241,30 @@ function followAsks<Item extends Made<Item>>(asking: Asking<Item>): Following {
       draw();
     });
   };
+  // What a press comes to, said in its row's told line where it stands,
+  // its answers gone; a row not drawn now says it at its next drawing.
+  const tell = (key: string, words: string): void => {
+    pressed.set(key, words);
+    const drawn = shown.get(key);
+    const parts = drawn === undefined ? undefined : (PARTS.get(drawn) as Parts<Item> | undefined);
+    if (parts === undefined) {
+      draw([key]);
+      return;
+    }
+    const pressing = parts.answers !== null && parts.answers.getAttribute("hidden") === null;
+    parts.answers?.setAttribute("hidden", "");
+    parts.told.textContent = words;
+    if (pressing) {
+      parts.told.focus?.();
+    }
+  };
   const press = (row: Waiting, choice: Choice): void => {
     if (pressed.has(row.key)) {
       return;
     }
-    pressed.set(row.key, "Sending your answer.");
-    draw([row.key]);
-    carry(row.look, choice, clock.now(), reaching.send).then((told) => {
-      pressed.set(row.key, told.words);
-      draw([row.key]);
-    });
+    tell(row.key, "Sending your answer.");
+    const sent = carry(row.look, choice, clock.now(), reaching.send);
+    sent.then((told) => tell(row.key, told.words));
   };
   const viewOf = (row: Waiting): View => {
     const told = pressed.get(row.key);
@@ -252,10 +283,20 @@ function followAsks<Item extends Made<Item>>(asking: Asking<Item>): Following {
     }
     const now = clock.now();
     const rows = waiting(held, now, address);
+    const showing = new Set(rows.map((row) => row.key));
+    for (const key of shown.keys()) {
+      if (!showing.has(key)) {
+        shown.delete(key);
+      }
+    }
     keyed(asking.holder, {
       rows,
       key: (row) => row.key,
-      draw: (row) => drawAsk(asking.make, row, viewOf(row), now),
+      draw: (row) => {
+        const article = drawAsk(asking.make, row, viewOf(row), now);
+        shown.set(row.key, article);
+        return article;
+      },
       ...(moved === undefined ? {} : { moved }),
     });
     asking.counted?.(rows.length);

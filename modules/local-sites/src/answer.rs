@@ -103,6 +103,8 @@ struct Claims {
 
 /// The words the node refuses a steer with when no session goes by its
 /// address now, the one refusal the next session is told in its place for.
+/// The node's protocol names these words (mycelium's PROTOCOL.md, under a
+/// steer: "as `no session goes by SAK9FZ now`"), so they're its to keep.
 const GONE: &str = "no session goes by ";
 
 /// What a request to answer says of itself.
