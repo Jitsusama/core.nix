@@ -1902,7 +1902,7 @@ QtObject {
             standing = read.standing;
         }
         return KeyActs.acts(read, Object.assign({ alone: false, registering: false,
-            answering: false, answerTaken: true, operated: false, commands: false,
+            answering: false, answerTaken: true, repeated: false, operated: false, commands: false,
             drawerHere: false, intoHere: () => true, upHere: true, reselectHere: true, mode,
             text: "slack" }, line));
     }
@@ -1960,12 +1960,14 @@ QtObject {
             ["Return naming a register after Ctrl+R", ["Return"], "insert",
                 { registering: true }],
             // Where two guards disagree, the one first in acts' order
-            // wins: what's swallowed before what an ask takes, and what an
-            // ask leaves before a colon opening the command line.
-            ["the operator again, though the ask would take it", ["d"], "normal",
-                { operated: true, answering: true }],
+            // wins, as Prompt.qml's modalKey hands the key on: what an ask
+            // leaves before a colon opening the command line.
             ["a key the ask leaves, though it opens the command line", [":"], "normal",
-                { answering: true, answerTaken: false, commands: true }]
+                { answering: true, answerTaken: false, commands: true }],
+            // A held key's repeats never answer an ask (modalKey), so one
+            // held from before the ask was ready does nothing as it repeats.
+            ["a held key's repeat, which the ask never takes", ["n"], "normal",
+                { answering: true, repeated: true }]
         ];
         for (const [what, keys, mode, line] of idle)
             holds(`${what} acts on nothing`, acting(keys, mode, line), false);
@@ -2002,6 +2004,10 @@ QtObject {
             // nowhere to go.
             ["q the ask takes, though q only says how to close", ["q"], "normal",
                 { answering: true }],
+            // The ask answers before visual's operator is let go, as
+            // modalKey does, so the operator again is the ask's answer.
+            ["the operator again, which the ask takes as its answer", ["d"], "normal",
+                { operated: true, answering: true }],
             ["a colon opening the line from Tab with nowhere to go", ["Tab"], "normal",
                 { commands: true, intoHere: () => false }]
         ];
