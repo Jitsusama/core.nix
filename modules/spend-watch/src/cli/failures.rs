@@ -21,11 +21,17 @@ pub(super) fn broke(why: String) -> Failure {
     Failure::new(Exit::Failed, "spend-watch couldn't carry on").because(why)
 }
 
-/// The watch stopped. A lock still held when its wait ran out is for a
-/// restart to try again, as it was before the watch waited.
+/// The watch stopped. A lock still held when its wait ran out, or a
+/// history still busy then, is for a restart to try again, as it was
+/// before the watch waited and as a reader's busy history is.
 pub(super) fn stopped(why: String) -> Failure {
     if why.starts_with("another spend-watch holds") {
         return Failure::new(Exit::TryAgain, "another spend-watch holds the history")
+            .because(why)
+            .try_this("systemctl --user status spend-watch");
+    }
+    if crate::daemon::busy(&why) {
+        return Failure::new(Exit::TryAgain, "the history stayed busy")
             .because(why)
             .try_this("systemctl --user status spend-watch");
     }

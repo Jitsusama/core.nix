@@ -523,19 +523,17 @@ impl History {
     /// that's tried without waiting: every pi session's reader opens the
     /// history, and one waiting the database's ten seconds on a writer
     /// would hold up its answer, or the watch's start, for an index the
-    /// next open makes. One that can't be made is said and gone on from,
+    /// next open makes. One that can't be made is gone on from unsaid,
     /// since without it the history still reads the same, only slower to
-    /// forget a log.
+    /// forget a log, and a reader asked for JSON keeps its stderr for the
+    /// error alone.
     fn index_sessions(&self) -> Result<(), String> {
         self.db.busy_timeout(Duration::ZERO).map_err(sql)?;
-        let made = self
+        // Left for the next open, which makes it once no writer holds it.
+        let _ = self
             .db
             .execute_batch("CREATE INDEX IF NOT EXISTS files_session ON files (session);");
-        self.db.busy_timeout(WAIT).map_err(sql)?;
-        if let Err(error) = made {
-            eprintln!("the history's sessions can't be indexed yet, so it's read without: {error}");
-        }
-        Ok(())
+        self.db.busy_timeout(WAIT).map_err(sql)
     }
 
     /// The shape of the history at `path`, when a newer spend-watch keeps
@@ -1062,7 +1060,16 @@ mod tests {
             began.elapsed() < Duration::from_secs(5),
             "a reader waited on the writer to make the index"
         );
-        drop(opened);
+        let waits: u64 = opened
+            .unwrap()
+            .db
+            .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            Duration::from_millis(waits),
+            WAIT,
+            "the open didn't put back its wait on a writer after trying the index"
+        );
         writer.execute_batch("COMMIT;").unwrap();
         let indexed: bool = History::open(&path)
             .unwrap()

@@ -275,6 +275,11 @@ fn a_held_lock_past_the_wait_and_a_busy_history_are_to_try_again() {
         "a watch whose wait ran out on a held lock was told it failed"
     );
     assert_eq!(
+        stopped("database is locked".to_owned()).exit,
+        Exit::TryAgain,
+        "a watch whose wait ran out on a busy history was told it failed"
+    );
+    assert_eq!(
         unread("database is locked".to_owned()).exit,
         Exit::TryAgain,
         "a reader that met a busy history was told it can't be read"
