@@ -6289,6 +6289,11 @@
     Tab in zsh offers tuple's commands and subcommands, through Tuple's own completion and the real
     tuple, among them every command core runs against it and the flags its followers pass
   '';
+  tuple-ends-its-flags = ''
+    The real tuple takes a name that starts with a dash after "--" as a name, never a flag, for each
+    command the launcher runs on a contact: call start, call join, and contacts favorite and
+    unfavorite
+  '';
   tuple-keeps-its-logs = ''
     Tuple's service keeps the daemon's last three logs, newest first, before it starts, and an empty
     log pushes none out
