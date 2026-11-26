@@ -5005,13 +5005,13 @@
     in the folder the harness names or goes to its session, offers the machines the node places on,
     each saying how it stands as Machines does, makes a quest's row told while it's open elsewhere
     ahead of the step back, after a frame, and one told while already there once its sources have
-    woken, a turn's worth a frame, one at least, felt as Quests' ahead, one that throws once made
-    let go for its step back, not left made, and the rest made still, making no row on the
-    step back, though none as an opening fills
-    in at home, holds another place's step or wakes its sources, under a viewer's command line,
-    shut with a step held, or as a close runs a batch waiting on its frame, and sees one made
-    since, remaking only the quests a change names and none a list written again leaves the
-    same, and breaking each title into the pieces A to Z reads once, again only when it changes
+    woken, making no row on the step back, a turn's worth a frame, one at least, felt as Quests'
+    ahead, one that throws once made let go, not left made, and made whole at its step back, and
+    the rest made still, though none as an opening fills in at home, holds another place's step
+    or wakes its sources, under a viewer's command line, shut with a step held, owing a row told
+    then, or as a close runs a batch waiting on its frame, and sees one made since, remaking only
+    the quests a change names and none a list written again leaves the same, and breaking each
+    title into the pieces A to Z reads once, again only when it changes
   '';
   the-launcher-finds-the-queue = ''
     the launcher's queue names each job in words, running first, says its time against its last

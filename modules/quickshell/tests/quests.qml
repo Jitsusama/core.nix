@@ -816,31 +816,34 @@ ShellRoot {
             // Its step back makes it whole.
             served.rowAt(throwing);
             expect("made whole once wanted", throwing in served.made, "not made");
-            // Both told again, they wait on the next frame as the launcher
-            // shuts.
+            // The laptop's told again, it waits on the next frame as the
+            // launcher shuts; the prompt's stays made, to be told shut.
             root.counted = theQuests.tally.rows;
             root.told = [];
             root.waiting = "a batch waiting";
+            root.toldFor = "row:quests:QEST-20261001-LAPTOP";
             root.toldWaits = root.batchWaiting;
-            tell("session", { changed: [{ key: "session:WCJQSG", standing: "parked",
-                presence: { addresses: ["WCJQSG"], owns: ["mesh", "QEST-20261003-PROMPT"] } },
-            laptopSession("running")] });
+            tell("session", { changed: [laptopSession("running")] });
         } catch (error) {
             served.make = making;
             fail(error.message);
         }
     }
 
-    // Shut with a batch of two waiting on its frame, the close runs it in
-    // its own turn, which makes neither, though the rows' drawn hasn't
-    // followed the close yet, as the order Qt tells the two in leaves
-    // open, so both stay owed; told while shut with that place's step
-    // still held, as a kept place leaves it, none is made, until the
+    // Shut with a batch waiting on its frame, the close runs it in its own
+    // turn, which makes none, though the rows' drawn hasn't followed the
+    // close yet, as the order Qt tells the two in leaves open, so the row
+    // stays owed; a row made, told while shut with that place's step still
+    // held, as a kept place leaves it, is owed, not made, until the
     // launcher opens there again.
     function batchWaiting() {
+        const prompt = "row:quests:QEST-20261003-PROMPT";
         try {
-            expect("a batch of two waits on the frame", theLauncher.framed.length > 0
-                && Object.keys(theQuests.served.owedAhead).length === 2,
+            expect("a batch waits on the frame, the prompt's row made and not owed",
+                theLauncher.framed.length > 0
+                && JSON.stringify(Object.keys(theQuests.served.owedAhead))
+                    === JSON.stringify(["row:quests:QEST-20261001-LAPTOP"])
+                && prompt in theQuests.served.made,
                 `${theLauncher.framed.length} waiting, `
                 + `${Object.keys(theQuests.served.owedAhead).join(", ")} owed`);
             theQuests.served.drawn = true;
@@ -851,11 +854,13 @@ ShellRoot {
             theLauncher.framesHeld = false;
             root.counted = theQuests.tally.rows;
             root.told = [];
-            root.toldFor = "row:quests:QEST-20261001-LAPTOP";
+            root.toldFor = prompt;
             root.toldWaits = root.toldShut;
-            // The laptop's session ends, so its quest is held by none
-            // again for the cases after.
-            tell("session", { changed: [laptopSession("ended")] });
+            // The prompt's session parks, told shut, and the laptop's
+            // ends, so its quest is held by none again for the cases after.
+            tell("session", { changed: [{ key: "session:WCJQSG", standing: "parked",
+                presence: { addresses: ["WCJQSG"], owns: ["mesh", "QEST-20261003-PROMPT"] } },
+            laptopSession("ended")] });
         } catch (error) {
             fail(error.message);
         }
@@ -865,7 +870,11 @@ ShellRoot {
         try {
             expect("no row made shut, though a step stays held", theQuests.tally.rows === root.counted,
                 `${theQuests.tally.rows - root.counted} rows`);
-            root.toldFor = "row:quests:QEST-20261003-PROMPT";
+            const served = theQuests.served;
+            const prompt = "row:quests:QEST-20261003-PROMPT";
+            expect("the row made, told shut, owed and not made",
+                prompt in served.owedAhead && !(prompt in served.made),
+                JSON.stringify({ owed: prompt in served.owedAhead, made: prompt in served.made }));
             // The stand-in itself, which the cases' frames are drawn by:
             // shut, an opening that ends unopened runs what waited on a
             // frame then, as Launcher.qml's unopened does, so a case
