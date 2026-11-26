@@ -339,10 +339,11 @@ QtObject {
             // cwd is what says where it works.
             { address: "TREE", folder: "modules", changed: 20,
                 presence: { questInfo: { id: "TIDE" }, cwd: "/home/ada/trees/tidepool/modules/" } },
-            // A session owning a quest is at work on it, whichever it has
-            // loaded, as the agents daemon reads it (cells.rs `quest_of`).
+            // A session owning a quest is at work on it, and on the one it
+            // has loaded too, as Looks.js's onQuest reads it; what it owns
+            // is a quest's id, so a word that's none counts for nothing.
             { address: "OWNER", folder: "shoal", changed: 5,
-                presence: { owns: ["KELP"], questInfo: { id: "SHOAL" },
+                presence: { owns: ["QEST-KELP", "WRACK", 7], questInfo: { id: "SHOAL" },
                     cwd: "/home/ada/src/shoal" } }
         ];
         const owns = holder => Holders.owners(working, holder).map(one => one.address)
@@ -355,8 +356,17 @@ QtObject {
                 { path: "/home/ada/.cache/scratch/TIDE", owner: { kind: "quest", name: "TIDE" } },
                 "TREE"],
             ["a quest a session owns while it has another loaded",
-                { path: "/home/ada/.cache/scratch/KELP", owner: { kind: "quest", name: "KELP" } },
+                { path: "/home/ada/.cache/scratch/QEST-KELP",
+                    owner: { kind: "quest", name: "QEST-KELP" } },
                 "OWNER"],
+            ["and the one it has loaded",
+                { path: "/home/ada/.cache/scratch/SHOAL", owner: { kind: "quest", name: "SHOAL" } },
+                "OWNER"],
+            ["but no word it owns that's no quest's id",
+                { path: "/home/ada/.cache/scratch/WRACK", owner: { kind: "quest", name: "WRACK" } },
+                ""],
+            ["nor a quest of no name",
+                { path: "/home/ada/.cache/scratch", owner: { kind: "quest", name: "" } }, ""],
             ["a tree a session works inside",
                 { path: "/home/ada/trees/tidepool", owner: { kind: "worktree", name: "tidepool" } },
                 "TREE"],
