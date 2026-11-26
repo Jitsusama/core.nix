@@ -1728,6 +1728,42 @@ ShellRoot {
         Sessions.forgetAsk(disownedNamed);
         kittyPidFile.setText("4242\n");
         Sessions.readKittyPid();
+        // A start told startedDisowned, as the walk's viewer came refused,
+        // is told it was asked for again as started once the refusal ends
+        // and it's asked again of a kitty come since, its own focus kept.
+        const disownedStarted = "pi-hosted.s-kept-disowned-started";
+        Sessions.keepPlaces({ "s-kept-disowned-started": keptOne("s-kept-disowned-started") });
+        const disownedStartedFrom = Niri.spawns.length;
+        Sessions.viewKept();
+        const disownedStartedStray = { id: 122, pid: 880, opened: disownedStarted };
+        const listedBeforeDisownedStarted = Niri.windows;
+        Niri.windows = Object.assign({}, listedBeforeDisownedStarted,
+            { "122": disownedStartedStray });
+        Sessions.windowHeard(disownedStartedStray);
+        const goingBeforeDisownedStarted = Sessions.goingTo;
+        root.unhostedWhy = "";
+        Sessions.viewStarted("harbour-attended", "s-kept-disowned-started", disownedStarted,
+            "Reef", "/tmp", { address: "STARTEDDISOWNED" });
+        const disownedStartedGoing = Sessions.goingTo;
+        const disownedStartedTold = root.unhostedWhy;
+        kittyPidFile.setText("7575\n");
+        Sessions.readKittyPid();
+        untell();
+        Sessions.untaken(disownedStarted, String(Sessions.refusedAt[disownedStarted]));
+        expect("a start told disowned, asked again of a kitty come since, is told so as started",
+            disownedStartedTold === "startedDisowned"
+            && spawnsOf(disownedStarted, disownedStartedFrom) === 2
+            && heard() === "STARTEDDISOWNED startedAskedAgain x1"
+            && disownedStartedGoing?.app === disownedStarted
+            && Sessions.goingTo === disownedStartedGoing
+            && Sessions.pressedFor[disownedStarted]?.startedInHost === true,
+            `${disownedStartedTold} ${spawnsOf(disownedStarted, disownedStartedFrom)} `
+                + `${heard()} ${JSON.stringify(Sessions.goingTo)}`);
+        Niri.windows = listedBeforeDisownedStarted;
+        Sessions.goingTo = goingBeforeDisownedStarted;
+        Sessions.forgetAsk(disownedStarted);
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
         // A start held back as the walk's viewer comes, asked again of a
         // kitty come since, is told so as started, its own focus kept.
         const heldNamed = "pi-hosted.s-kept-started";
