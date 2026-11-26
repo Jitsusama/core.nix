@@ -268,9 +268,7 @@ fn a_held_lock_past_the_wait_and_a_busy_history_are_to_try_again() {
     let dir = tempfile::tempdir().expect("a folder");
     let state = dir.path().join("state");
     let _held = crate::daemon::lock(&state).expect("the lock is free");
-    let refused = crate::daemon::lock(&state)
-        .err()
-        .expect("a second taking of the lock is refused");
+    let refused = crate::daemon::lock(&state).expect_err("a second taking of the lock is refused");
     assert_eq!(
         stopped(refused).exit,
         Exit::TryAgain,
