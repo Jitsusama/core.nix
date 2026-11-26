@@ -11,7 +11,36 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use serde_json::{Value, json};
 
 use super::cut::{a_gap, nothing, result, stop, tags, tags_answer, told_and_read_on};
-use super::{JOEL, Until, each, hearing, hearing_in, poisoned, said};
+use super::{FAILS, JOEL, Until, each, hearing, hearing_in, poisoned, said};
+
+#[test]
+fn a_tag_search_failing_every_round_beside_the_phrases_is_told_as_unread() {
+    let came = hearing(
+        |tool, asked, now| {
+            if tool != "slack_search_public_and_private" {
+                said(tool, now)
+            } else if asked["query"] == "pineapple" {
+                nothing()
+            } else {
+                format!("{FAILS}Slack said: ratelimited")
+            }
+        },
+        // Only until the row is told.
+        &Until {
+            judging: 0,
+            asks: 0,
+            read_at: None,
+        },
+    );
+    assert!(
+        came.why
+            .contains("search of Slack for your tag can't be read")
+            && !came.why.contains("gateway"),
+        "a tag search the gateway's tool fails every round, beside a phrase search it \
+         answers, is told as the tag's, not as the gateway unreached: {}",
+        came.why
+    );
+}
 
 #[test]
 fn a_search_cut_each_time_it_is_asked_again_is_asked_four_times_then_told() {

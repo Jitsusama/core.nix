@@ -2,7 +2,7 @@
 //! can't hear Slack, and what it asks of him, since the gateway's sign-in
 //! isn't Slack's.
 
-use pineapple::deaf::{Change, Deaf, Deafness, Round, UNREACHED, waits, waits_on_gateway};
+use pineapple::deaf::{Change, Deaf, Deafness, Round, Search, UNREACHED, waits, waits_on_gateway};
 
 const AT: u64 = 1_795_000_000_000;
 
@@ -66,7 +66,7 @@ fn a_round_read_in_part_ends_a_run_unasked_so_an_answering_gateway_isnt_told() {
     let round = |n: u32| AT + u64::from(n) * 30_000;
     for n in 1..=3 * UNREACHED {
         let heard = if n % UNREACHED == 0 {
-            Round::Partly
+            Round::Partly(None)
         } else {
             Round::Unasked
         };
@@ -90,6 +90,70 @@ fn a_round_read_in_part_ends_a_run_unasked_so_an_answering_gateway_isnt_told() {
         Change::Tell(waits_on_gateway(Deafness::Unreached, at, at)),
         "a whole run unasked after it is told as before"
     );
+}
+
+#[test]
+fn a_search_left_unasked_round_after_round_beside_one_answered_is_told_unread() {
+    let round = |n: u32| AT + u64::from(n) * 30_000;
+    let tag = Round::Partly(Some(Search::Tag));
+    let mut deaf = Deaf::through_gateway();
+    for n in 1..=UNREACHED + 1 {
+        assert_eq!(
+            deaf.heard(tag, round(n)),
+            Change::Keep,
+            "round {n} with the tag's search unasked isn't told yet"
+        );
+    }
+    let at = round(UNREACHED + 2);
+    assert_eq!(
+        deaf.heard(tag, at),
+        Change::Tell(waits_on_gateway(Deafness::Unread(Search::Tag), at, at)),
+        "a search unasked past its rounds beside one answered is told as unread"
+    );
+    assert_eq!(
+        deaf.heard(tag, round(UNREACHED + 3)),
+        Change::Keep,
+        "told once, not each round"
+    );
+    assert_eq!(
+        deaf.heard(Round::Heard, round(UNREACHED + 4)),
+        Change::Untell,
+        "heard again, the row is taken away"
+    );
+    for n in 1..=3 * UNREACHED {
+        let left = if n % UNREACHED == 0 {
+            Search::Phrase
+        } else {
+            Search::Tag
+        };
+        assert_eq!(
+            deaf.heard(Round::Partly(Some(left)), round(n)),
+            Change::Keep,
+            "round {n}: the other search unasked starts the run afresh"
+        );
+    }
+    let mut both = Deaf::through_gateway();
+    let phrase = Round::Deaf(Deafness::Unread(Search::Phrase));
+    let _ = both.heard(phrase, AT);
+    let _ = both.heard(phrase, round(1));
+    for n in 2..=UNREACHED + 2 {
+        assert_eq!(both.heard(tag, round(n)), Change::Keep, "round {n}");
+    }
+    let at = round(UNREACHED + 3);
+    assert_eq!(
+        both.heard(tag, at),
+        Change::Tell(waits_on_gateway(Deafness::Unreadable, at, at)),
+        "beside a row saying the phrase's search can't be read, it's told as both"
+    );
+    let mut keyring = Deaf::new();
+    let _ = keyring.heard(Round::Heard, AT);
+    for n in 1..=3 * UNREACHED {
+        assert_eq!(
+            keyring.heard(tag, round(n)),
+            Change::Keep,
+            "the keyring reader counts a round read in part neither way, round {n}"
+        );
+    }
 }
 
 #[test]
