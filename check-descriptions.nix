@@ -3598,7 +3598,8 @@
   '';
   pi-conversations-run-apart = ''
     each realm-kind pi host gets the template pi-conversation-KEY@.service its conversations'
-    own processes start from, run by the host's program with --child for the host's key, its
+    own processes start from, run by the host's program, the harness's .mjs entry or else a
+    former harness's .ts, as node itself, with --child for the host's key, its
     socket in the slot systemd names under the host's runtime folder, with the host's proof,
     node, frame flag and SSH agent, and the host's environment and the browser its account
     names in place of Chromium where the machine names one, each of those two with its % as
@@ -3633,8 +3634,9 @@
   '';
   pi-hosts-start-with-the-session = ''
     each realm a machine names gets an attended and a background pi host, started with the
-    account's session where the harness is installed, run by the host's pi and its own node, its
-    inspector shut to SIGUSR1 and opened or undone by none of its options, started plainly or
+    account's session where the harness is installed, run by the host's pi and its own node, as
+    node itself on the harness's .mjs entry, or on a former harness's .ts where there's no .mjs,
+    and skipped where there's neither, its inspector shut to SIGUSR1 and opened or undone by none of its options, started plainly or
     through env, with just the eight variables that load code into it, as
     pi-hosts-refuse-code-loading-variables names them, and the TPM agent's cleared, ready once it
     says so, in agents.slice with its realm's environment as written, a % and a quote in it
@@ -5578,7 +5580,8 @@
     a cache folder that is a link named with two slashes or a dot, or is named by a relative
     path or through .., each through the one check both folders pass, naming the folder, and
     otherwise becomes the
-    realm's node in its own place with its words, its output in its log, every environment value
+    realm's node in its own place with its words, on the harness's .mjs entry or, where there's
+    none, a former harness's .ts, its output in its log, every environment value
     whole, the realm's LANG and no LC_ALL to outrank it, the account's home realm, TMPDIR the
     account's temporary folder, AGENTS_RUNTIME_DIR its cache folder, and no XDG_RUNTIME_DIR
     even when launchd gives one, since disk-guard reads it for its own, the probes
@@ -7080,6 +7083,8 @@
   '';
   vm-a-wedged-pi-starts-again = ''
     a realm's background pi host, its unit as the module renders it on a stand-in node, is
+    run as node itself on the harness's .mjs entry or, where there's none, a former harness's
+    .ts, and skipped where there's neither, is
     killed by the watchdog and started again once its loop stops pinging, its abort's core refused
     by systemd-coredump under a hard core limit of 0, and killed 10 s on when it ignores that
     abort, and one that
