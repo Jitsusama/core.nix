@@ -150,11 +150,13 @@ const INTERJECTIONS: [&str; 9] = [
 ];
 
 /// A sentence of lowered text: whether it exclaims, its words, and for
-/// each word whether a comma or the sentence's end follows it.
+/// each word whether a comma or the sentence's end follows it and whether
+/// its clause warns of what might come.
 struct Sentence<'a> {
     exclaims: bool,
     words: Vec<&'a str>,
     closes: Vec<bool>,
+    warned: Vec<bool>,
 }
 
 /// Whether the swear at `at` in a sentence closes a list rather than
@@ -202,25 +204,27 @@ fn sentences(low: &str) -> Vec<Sentence<'_>> {
     pieces(low)
         .into_iter()
         .map(|piece| {
-            let (mut words, mut closes) = (Vec::new(), Vec::new());
+            let (mut words, mut closes, mut warned) = (Vec::new(), Vec::new(), Vec::new());
             for clause in piece.split(',') {
                 let each = words_of(clause);
                 closes.extend((0..each.len()).map(|n| n + 1 == each.len()));
+                warned.extend(std::iter::repeat_n(warns(&each), each.len()));
                 words.extend(each);
             }
             Sentence {
                 exclaims: piece.contains(EXCLAIMS),
                 words,
                 closes,
+                warned,
             }
         })
         .collect()
 }
 
-/// Whether lowered text swears: a swear not before a word of praise, the
-/// next sentence's first word for one ending its own, nor one closing a
-/// list in a sentence that doesn't exclaim, since "it broke and shit!"
-/// is said in anger.
+/// Whether lowered text swears: a swear not in a clause warning of what
+/// might come, not before a word of praise, the next sentence's first
+/// word for one ending its own, nor one closing a list in a sentence that
+/// doesn't exclaim, since "it broke and shit!" is said in anger.
 fn swore(low: &str) -> bool {
     let said = sentences(low);
     said.iter().enumerate().any(|(n, sentence)| {
@@ -230,6 +234,7 @@ fn swore(low: &str) -> bool {
                 .get(at + 1)
                 .or_else(|| said[n + 1..].iter().find_map(|later| later.words.first()));
             (SWEARS.iter().any(|s| w.starts_with(s)) || *w == "ass")
+                && !sentence.warned[at]
                 && !next.is_some_and(|next| PRAISE.contains(next))
                 && (sentence.exclaims || !filler(sentence, at))
         })
@@ -259,12 +264,6 @@ fn warns(words: &[&str]) -> bool {
 fn swears(low: &str) -> bool {
     let each = words_of(low);
     if !swore(low) {
-        return false;
-    }
-    let at_what_came = low
-        .split_inclusive(|c: char| ENDS.contains(&c) || c == ',')
-        .any(|clause| swore(clause) && !warns(&words_of(clause)));
-    if !at_what_came {
         return false;
     }
     let sentences: Vec<(bool, &str, Vec<&str>)> = low
