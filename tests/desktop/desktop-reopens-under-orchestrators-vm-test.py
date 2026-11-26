@@ -1014,6 +1014,65 @@ def test_a_link_refused_for_want_of_a_repository_steps_back_to_the_folders(
         desktop.as_account("rm -rf ~/src/github.com/harbour")
 
 
+def test_new_work_in_a_zone_by_its_name_begins_at_its_checkouts_top(desktop: Desktop) -> None:
+    """Start New Work lists a big repository's zone by its name, and starts in one not out.
+
+    Joel, 2026-11-24 12:23, wanting to start in a zone of a big repository: "the list of things
+    to start in was shit as well". The launcher asks the realm's node for its places as Start New
+    Work is stepped into, through the agents daemon, and lists each zone a checkout's manifest
+    names. One not checked out has no folder yet, so it starts by its name, and the node begins
+    it at its checkout's top, telling pi to work in a tree of its own that has the zone.
+    """
+    machine = desktop.machine
+    checkout = "/home/jitsusama/src/github.com/harbour/basin"
+    zone = "//system/beacon"
+    row = f"In {zone}"
+    opened = "$XDG_RUNTIME_DIR/pi-opened"
+    first = "$XDG_RUNTIME_DIR/pi-first-text"
+    manifest = shlex.quote(json.dumps({zone: {}}))
+    # A checkout is a folder holding .git (mycelium's places.rs), its zones its manifest's keys.
+    desktop.as_account(
+        f"rm -f {opened} {first} && mkdir -p {checkout}/.git {checkout}/.meta"
+        f" && printf '%s' {manifest} > {checkout}/.meta/manifest.json"
+        " && touch $XDG_RUNTIME_DIR/pi-stays"
+    )
+    before = {window["id"] for window in desktop.windows()}
+    try:
+        desktop.as_account("qs ipc call launcher toggle")
+        desktop.launcher_ready()
+        desktop.type_in("new work", selecting="Start New Work")
+        machine.send_key("ret")
+        # The node's places come a moment after Start New Work is stepped into.
+        desktop.launcher_until(lambda shown: row in shown["rows"])
+        desktop.down_to(row)
+        desktop.step_in("ret")
+        desktop.launcher_until(lambda shown: shown["mode"] == "insert")
+        machine.send_chars("tidy the beacon's rows")
+        machine.send_key("ret")
+        machine.wait_until_succeeds(
+            desktop.in_session(f"grep -qx '{checkout} ' {opened}"),
+            timeout=dt.timedelta(seconds=120),
+        )
+        # The stand-in writes the first words before pi-opened, so they're there by now.
+        told = desktop.as_account(f"cat {first} 2>/dev/null; true")
+        assert "tidy the beacon's rows" in told, f"pi wasn't told his words: {told!r}"
+        assert f"asked to begin in {zone}, which isn't checked out in {checkout}" in told, (
+            f"pi wasn't told where it begins: {told!r}"
+        )
+        assert "a tree of your own" in told, f"pi wasn't told to work apart: {told!r}"
+    finally:
+        desktop.launcher_left_closed()
+        for window in desktop.windows():
+            if window["id"] not in before:
+                desktop.close(window)
+        # A pattern its own shell's words don't match, so pkill ends only the stand-in.
+        desktop.as_account(
+            f"rm -f $XDG_RUNTIME_DIR/pi-stays {opened} {first} $XDG_RUNTIME_DIR/pi-owner-sprouted"
+            f" {PI_PRESENCE}/sprout.json; pkill -f 'sleep 60[0-5]'; true"
+        )
+        desktop.as_account("rm -rf ~/src/github.com/harbour")
+
+
 def test_a_start_the_shell_restarted_under_is_told_by_the_shell_started_again(
     desktop: Desktop,
 ) -> None:

@@ -182,6 +182,15 @@ or launchd, and [`home.nix`][2] the account's.
   measures whatever is writing, so it neither counts nor teaches. A pass
   that falls short rests before the next, doubling from a minute to fifteen
   while filling, five when nearly full and one when critically full. One
+  on a filling disk that finds nothing left to clear, after one before it
+  that found nothing too and whose rest ended at most fifteen minutes
+  before, rests it an hour, since each pass reads the metadata of all it
+  judges: one 17 minutes after such a pass read 15 GB of it on 25
+  November. The first rests a minute, as expiring generations or a build
+  ending leaves garbage only the next pass can take, and one that couldn't
+  ask the system daemon never counts, having lacked only its word. Its status
+  says it has cleared all it may for that hour. A worse band ends any
+  rest, and a restart forgets it. One
   that kept things only for want of the system guard's word ends its rest
   as soon as the system guard answers again, once in a row. A survey counts the
   blocks its candidates share once, for the first it measures, as trees
@@ -439,7 +448,15 @@ or launchd, and [`home.nix`][2] the account's.
   are the trend over about two hours, told once it's watched ten minutes
   and while the disk is filling now too, since builds writing and freeing
   gigabytes every few minutes swing the two-minute rate passes plan by
-  either way by tens of gigabytes an hour. A disk whose last pass, in its
+  either way by tens of gigabytes an hour. The disk Nix's store is on
+  also carries `nix_floor`, the `min-free` Nix keeps there by collecting
+  its own garbage, read from `nix config show` hourly, and `floor_at`,
+  when it reaches that floor. While it's above the floor its sentence
+  tells `floor_at` rather than when it fills, since Nix collects before
+  it does. `Fill::ahead` in `src/decide.rs` works both moments out, and
+  `band_in` leaves out a band that starts under the floor. A beat drops
+  either moment once it has passed, a restarted guard's first beats on
+  the status the last one left included. A disk whose last pass, in its
   band or a worse one, found nothing more to clear is `exhausted`, and its
   sentence says so rather than that the guard is clearing. A pass is
   `passing` from its start, the survey before it included, with its
@@ -532,11 +549,14 @@ or launchd, and [`home.nix`][2] the account's.
   a failure. Only a mark's presence counts, never what it says. A nearly
   full disk is answered as ever, as is a clear Joel asked for, and what is
   already running goes on, a dedupe included. The log says when a hold
-  begins and ends. The system's guard and the account's each read their
-  own config, so a machine names its marks in both: core knows no program
-  that leaves one. A mark's path must be plain and absolute, since one the
-  guard can't find would never hold it, and a mistyped one is refused
-  when the config is read.
+  begins and ends. While it stands, a filling disk's status says its
+  clearing waits, never that it is clearing, unless it has cleared all it
+  may or Joel asked for a clear there; the launcher's row says so too.
+  The system's guard and the account's each read their own config, so a
+  machine names its marks in both: core knows no program that leaves one.
+  A mark's path must be plain and absolute, since one the guard can't
+  find would never hold it, and a mistyped one is refused when the config
+  is read.
 - **Notices.** The account's guard shows one desktop notice, and only once
   a disk is nearly full: a filling disk is the launcher's to show. The
   exception is the guard itself failing: a pass on a filling disk whose
@@ -582,6 +602,7 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/daemon.rs`, `serve.rs` | a daemon's step and its loop                           |
 | `src/socket.rs`, `vouch.rs` | what the two daemons say to each other                 |
 | `src/garbage.rs`, `generations.rs`, `dedupe.rs` | Nix's garbage, generations and linking |
+| `src/garbage/`            | running Nix's commands, its refused nix.conf lines left out |
 | `src/replaced.rs`, `opens.rs`, `unwatched.rs` | older builds, and the watch that dates them, or a Mac's lack of one |
 | `src/writers.rs`, `freeze.rs`, `freezer.rs` | who writes most, and freezing them through systemd |
 | `src/desktop.rs`, `notifier.rs` | notices and power saving over D-Bus, or on a Mac |

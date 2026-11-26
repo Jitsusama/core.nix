@@ -926,9 +926,12 @@ def test_za_shows_a_sessions_fold_above_its_more_line_its_prose_giving_way(shell
     assert fade["from"] < fade["to"], f"its fade covers nothing: {opened}"
     # Its words are laid by how wide Qt draws them, so its lines break where
     # Qt's do and its fade ends on the ink: the face's metrics measured a
-    # line of the serif 236 pixels wide where Qt drew it 229.
+    # line of the serif 236 pixels wide where Qt drew it 229. They're laid to the line that
+    # fades and no further, since nothing reads the rest, and each word laid is measured.
     widths = cast("list[int]", opened["laidWidths"])
-    assert len(widths) == opened["bodyLines"], f"its words laid in lines Qt's aren't: {opened}"
+    assert len(widths) == fade["line"] + 1 < opened["bodyLines"], (
+        f"its words laid past the line that fades, or short of it: {opened}"
+    )
     assert abs(widths[fade["line"]] - fade["to"]) <= 1, (
         f"its words laid by a measure wider than Qt draws them: {opened}"
     )

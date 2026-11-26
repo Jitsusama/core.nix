@@ -226,6 +226,9 @@
           script "disk-guard-merged-on-github" ../../modules/disk-guard/merged-on-github.sh
             { };
         disk-order = script "disk-order" ../../modules/slices/disk-order.sh { };
+        du = script "du" ../../modules/du/du.sh {
+          words = "/usr/bin/du ${../../modules/ripgrep/ignore} /System/Volumes/Data /Users/someone";
+        };
         efficient-cores = script "efficient-cores" ../../modules/slices/efficient-cores.sh { };
         ergodox = script "ergodox" ../../modules/ergodox/ergodox.sh { };
         find = script "find" ../../modules/find/find.sh {
@@ -262,6 +265,7 @@
             { };
         niri-off-cpu-begun = script "niri-off-cpu-begun" ../../modules/niri-off-cpu/off-cpu-begun.sh { };
         option-rom-check = script "option-rom-check" ../../modules/lanzaboote/option-rom-check.sh { };
+        own-subvolumes = script "own-subvolumes" ../../modules/subvolumes/own-subvolumes.sh { };
         pi-agent-proxy-os-login =
           script "pi-agent-proxy-os-login" ../../modules/pi/agent-proxy/os-login.sh
             { };
@@ -325,6 +329,7 @@
         cadence-spec = pkgs.callPackage ../../modules/cadence/spec/package.nix { };
         call-transcripts = dictation;
         call-under-load = pkgs.callPackage ../../modules/call-under-load/package.nix { };
+        camera-guard = pkgs.callPackage ../../modules/camera-guard/package.nix { };
         changed-checks = pkgs.callPackage ../../tools/changed-checks/package.nix { };
         chrome-pack-extension = pkgs.callPackage ../../modules/chrome/pack-extension/package.nix { };
         chrome-open-tabs = pkgs.callPackage ../../modules/chrome/open-tabs/host/package.nix { };

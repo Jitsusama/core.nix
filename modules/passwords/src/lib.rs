@@ -35,6 +35,7 @@ use serde_json::{Map, Value, json};
 pub mod audit;
 pub mod cli;
 pub mod rows;
+pub mod typing;
 
 use audit::Health;
 
@@ -154,7 +155,18 @@ pub enum Ask {
         key: String,
         detail: Option<String>,
     },
-    /// The one-time code an entry gives now, and how long it lasts.
+    /// One detail's value typed into the window the launcher opened over,
+    /// niri's `window` by its id, once the launcher has let go of the keys
+    /// and only while that window still has them (typing.rs says which
+    /// windows are refused). Without a detail, the password.
+    Type {
+        id: Value,
+        key: String,
+        detail: Option<String>,
+        window: u64,
+    },
+    /// The one-time code an entry gives now, which is refused, as a
+    /// reveal is, since the code would be a secret on the pipe.
     Code {
         id: Value,
         key: String,
@@ -223,6 +235,27 @@ fn kind_of(said: &Value, asks_place: bool) -> String {
             }
         }
         said => said.and_then(Value::as_str).unwrap_or(KIND).to_owned(),
+    }
+}
+
+/// A type asked: an entry's key, the detail to type, its password when
+/// none's named, and niri's id for the window it's to be typed into.
+fn type_in(id: Value, said: &Value) -> Ask {
+    let text = |name: &str| said.get(name).and_then(Value::as_str).map(str::to_owned);
+    match (
+        text("key").filter(|key| named(key).is_some()),
+        said.get("window").and_then(Value::as_u64),
+    ) {
+        (Some(key), Some(window)) => Ask::Type {
+            id,
+            key,
+            detail: text("detail"),
+            window,
+        },
+        _ => Ask::Unknown {
+            id,
+            ask: "type without an entry's key and a window".to_owned(),
+        },
     }
 }
 
@@ -309,6 +342,7 @@ pub fn ask(line: &str) -> Ask {
             limit: count("limit").unwrap_or(SEARCHED),
         },
         "reveal" | "copy" | "code" => entry_act(id, asked, text("key"), text("detail")),
+        "type" => type_in(id, &said),
         "let-in" => Ask::LetIn {
             id,
             manager: text("manager").unwrap_or_default(),
@@ -449,6 +483,10 @@ impl Entry {
 
     pub fn id(&self) -> &str {
         self.0.get("id").and_then(Value::as_str).unwrap_or("")
+    }
+
+    pub fn title(&self) -> &str {
+        self.0.get("title").and_then(Value::as_str).unwrap_or("")
     }
 
     /// Whether it holds every detail, rather than the summary a list gives.

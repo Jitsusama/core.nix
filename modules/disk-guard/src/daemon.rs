@@ -77,6 +77,14 @@ struct Rest {
     /// twice in a row, so a daemon whose word keeps failing costs a survey
     /// a rest, not one a step.
     unvouched: bool,
+    /// Whether the pass ended with nothing left it may clear, the system
+    /// daemon having answered, so a second such pass in a row on a filling
+    /// disk empties it.
+    exhausted: bool,
+    /// Whether a second pass in a row found nothing left to clear on a
+    /// filling disk, so the disk rests the hour and the status says it has
+    /// cleared all it may, whatever passes run on other disks meanwhile.
+    emptied: bool,
 }
 
 /// How long a filesystem rests after a pass that fell short, at first and
@@ -85,6 +93,14 @@ struct Rest {
 /// the band, the sooner it looks again, since what's in use there may
 /// stop being so any moment and the disk can't wait long.
 const FIRST_REST: f64 = 60.0;
+/// How long a filling disk rests once a second pass in a row finds
+/// nothing more it may clear there. Each pass reads the metadata of
+/// everything it judges, and on 25 November one 17 minutes after a pass
+/// that freed 0 B read 15 GB of it in 24 minutes. The first such pass
+/// rests only a minute, since one that expired generations or a build that
+/// ended leaves garbage only the next can take. A filling disk has a tenth
+/// of its room or more, and a worse band ends the rest at once.
+const EMPTY_REST: f64 = 3600.0;
 fn longest_rest(band: Band) -> f64 {
     match band {
         Band::CriticallyFull => 60.0,
@@ -190,8 +206,19 @@ const GARBAGE: &str = "garbage";
 /// How often Nix's own `min-free` is read again, since a person changes
 /// their `nix.conf` seldom and asking costs a process.
 const MIN_FREE_EVERY: f64 = 3600.0;
-/// How soon a `min-free` that couldn't be read is asked again.
+/// How soon a `min-free` that couldn't be read is asked again, the first
+/// time, and every time while no read has answered; each failure after
+/// doubles it, up to `MIN_FREE_EVERY`, while a floor read before is kept.
 const MIN_FREE_AGAIN: f64 = 300.0;
+
+/// How soon `min-free` is asked again after `failures` reads in a row
+/// failed: five minutes, then ten, twenty and forty, then hourly. Each
+/// read can hold the guard's step for its 30 s timeout, so a Nix that
+/// stays slow is asked less and less rather than every five minutes.
+fn min_free_again(failures: u32) -> f64 {
+    let doublings = failures.saturating_sub(1).min(4);
+    (MIN_FREE_AGAIN * f64::from(1_u32 << doublings)).min(MIN_FREE_EVERY)
+}
 /// What linking the store's identical files is journaled and run as.
 const DEDUPE: &str = "dedupe";
 /// How long after a failed run linking the store's files the next waits.
@@ -502,8 +529,9 @@ pub struct Guard {
     /// Whether what hears the opens still does: its thread ends on an
     /// error reading them, after which nothing is heard.
     listening: Arc<AtomicBool>,
-    /// Nix's own `min-free`, and when it was read.
-    min_free: Option<(f64, Option<u64>)>,
+    /// Nix's own `min-free`, when it was read, and how many reads of it in
+    /// a row have failed since.
+    min_free: Option<(f64, Option<u64>, u32)>,
     /// The account's home, which sentences write as `~`, for a guard run
     /// in one; the system's guard has none.
     home: Option<PathBuf>,
@@ -672,6 +700,16 @@ pub struct FilesystemStatus {
     /// Whether the last pass here, in this band or a worse one, found
     /// nothing more it may clear.
     pub exhausted: bool,
+    /// Whether a writers' hold keeps passes off this disk, as it does
+    /// above nearly full, so it isn't told as clearing.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub waiting: bool,
+    /// Whether a writers' hold stands over this disk with no clear Joel
+    /// asked for at work on it, from which each measure works out
+    /// `waiting` again, since a heartbeat's measure can move the band
+    /// either way.
+    #[serde(skip)]
+    pub held: bool,
 }
 
 impl FilesystemStatus {
@@ -696,6 +734,7 @@ impl FilesystemStatus {
         if band > self.band {
             self.exhausted = false;
         }
+        self.waiting = held_off(self.held, band);
         self.band = band;
         self.free = space.free;
         self.total = space.total;
@@ -705,6 +744,11 @@ impl FilesystemStatus {
         // "full in 0 s" by every reader of the status, the bar's included.
         if self.full_at.is_some_and(|at| at <= now) {
             self.full_at = None;
+        }
+        // So does a time to Nix's floor, which the broker passes on as a
+        // moment still to come.
+        if self.floor_at.is_some_and(|at| at <= now) {
+            self.floor_at = None;
         }
         self.says = crate::words::filesystem(&self.told(now), home);
     }
@@ -736,6 +780,7 @@ impl FilesystemStatus {
             full_in: next,
             nix_floor: self.nix_floor.filter(|_| to_floor),
             cleared_all: self.exhausted,
+            waiting: self.waiting,
         }
     }
 }
@@ -1424,7 +1469,7 @@ impl Guard {
             // turn; the system's own upkeep goes on.
             let driven =
                 matches!(decision, Decision::Reach(_)) && spoken_for(self.hearing.as_ref(), device);
-            let waits = writers_held && watched.band < Band::NearlyFull;
+            let waits = held_off(writers_held, watched.band);
             if decision != Decision::Rest && !resting && !driven && !waits {
                 due.push((device, decision, thresholds));
             }
@@ -1715,7 +1760,7 @@ impl Guard {
         // Answered as the deletes' rest is, so the user daemon's pass waits
         // with the store's garbage rather than counting a failure and taking
         // dearer files.
-        if self.writers_held && band < Band::NearlyFull {
+        if held_off(self.writers_held, band) {
             return Ok(End::Waiting);
         }
         let device = pool(path).map_err(|error| format!("{}: {error}", path.display()))?;
@@ -1944,7 +1989,9 @@ impl Guard {
         let Some(watched) = self.watched.get(&device) else {
             return;
         };
-        if watched.band < Band::NearlyFull && (self.deletes_resting(now) || self.writers_held) {
+        if (watched.band < Band::NearlyFull && self.deletes_resting(now))
+            || held_off(self.writers_held, watched.band)
+        {
             // Looked at again once the rest is over.
             self.collect = true;
             return;
@@ -2050,7 +2097,7 @@ impl Guard {
             .get(&device)
             .map_or(Band::Healthy, |watched| watched.band);
         let pressed = band > Band::Healthy;
-        if overloaded && !pressed || self.writers_held && band < Band::NearlyFull {
+        if overloaded && !pressed || held_off(self.writers_held, band) {
             return;
         }
         let age = |at: Option<f64>| at.map_or(f64::INFINITY, |at| now - at);
@@ -2316,22 +2363,52 @@ impl Guard {
     }
 
     /// Reads Nix's own `min-free` once an hour. A read that fails keeps
-    /// the last one that didn't and is asked again in five minutes, since
-    /// the floor decides what a person is told: one slow `nix config show`
-    /// on a loaded Mac would otherwise tell its disk fills for an hour.
+    /// the last one that didn't and is asked again sooner, since the
+    /// floor decides what a person is told: one slow `nix config show` on
+    /// a loaded Mac would otherwise tell its disk fills for an hour. With
+    /// a floor kept it backs off from five minutes on (`min_free_again`);
+    /// with none, as after a switch restarts the guard under load, it's
+    /// asked every five minutes until one answers. A run of failures is
+    /// logged where it starts and where it ends, so the journal says
+    /// whether the guard tells from an old floor, or none.
     fn read_min_free(&mut self, now: f64) {
         if self
             .min_free
-            .is_some_and(|(at, _)| (0.0..MIN_FREE_EVERY).contains(&(now - at)))
+            .is_some_and(|(at, _, _)| (0.0..MIN_FREE_EVERY).contains(&(now - at)))
         {
             return;
         }
+        let (kept, failures) = self
+            .min_free
+            .map_or((None, 0), |(_, kept, failures)| (kept, failures));
         self.min_free = Some(match garbage::min_free(&self.config.nix.bin) {
-            Some(read) => (now, Some(read)),
-            None => (
-                now - MIN_FREE_EVERY + MIN_FREE_AGAIN,
-                self.min_free.and_then(|(_, kept)| kept),
-            ),
+            Ok(read) => {
+                if failures > 0 {
+                    say!("disk-guard: read Nix's min-free again after {failures} failed");
+                }
+                (now, Some(read), 0)
+            }
+            Err(why) => {
+                if failures == 0 {
+                    match kept {
+                        Some(floor) => say!(
+                            "disk-guard: reading Nix's min-free: {why}; keeping the last read, \
+                             {floor} bytes"
+                        ),
+                        None => say!(
+                            "disk-guard: reading Nix's min-free: {why}; telling without Nix's \
+                             floor until it answers"
+                        ),
+                    }
+                }
+                let failures = failures.saturating_add(1);
+                let again = if kept.is_some() {
+                    min_free_again(failures)
+                } else {
+                    MIN_FREE_AGAIN
+                };
+                (now - MIN_FREE_EVERY + again, kept, failures)
+            }
         });
     }
 
@@ -2346,7 +2423,8 @@ impl Guard {
     /// Nix's own `min-free`, under which Nix soon collects by itself. A
     /// `min-free` of nothing is Nix never collecting by itself.
     fn near_min_free(&self) -> bool {
-        let Some((_, Some(min_free))) = self.min_free.filter(|&(_, min)| min > Some(0)) else {
+        let Some((_, Some(min_free), _)) = self.min_free.filter(|&(_, min, _)| min > Some(0))
+        else {
             return false;
         };
         crate::sys::space(&self.config.nix.store)
@@ -2616,21 +2694,46 @@ impl Guard {
                 continue;
             };
             let unheard = scan.went_unheard();
+            // From when the pass ended, on the step's clock: one ran 24
+            // minutes on 25 November, and a rest counted from its start was
+            // over before it ended.
+            let ended = tick.monotonic + self.stepped.elapsed().as_secs_f64();
             if let Some(watched) = self.watched.get_mut(&device) {
                 let unvouched = unheard && !watched.rest.is_some_and(|rest| rest.unvouched);
                 // A pass that gave way to a disk shorter of room, to a
                 // stop or to its own length fell short of nothing; its disk
                 // is due again.
                 let fell_short = !matches!(end, End::Reached | End::Stopped | End::Unfinished);
+                // One that couldn't ask the system daemon found nothing
+                // left only for want of its word, which comes back in a
+                // minute or two.
+                let exhausted = matches!(end, End::Exhausted) && !unheard;
+                // Filling only: a healthy disk's rest goes at its next
+                // measure, so an hour promised there would never hold. In
+                // a row only when its rest ended within the longest rest
+                // before this pass: one after hours of holding off judges
+                // what those hours built.
+                let emptied = exhausted
+                    && watched.rest.is_some_and(|rest| {
+                        rest.exhausted && tick.monotonic - rest.until <= longest_rest(band)
+                    })
+                    && band <= Band::Filling
+                    && watched.band == Band::Filling;
                 watched.rest = fell_short.then(|| {
-                    let seconds = watched.rest.map_or(FIRST_REST, |rest| {
-                        (rest.seconds * 2.0).min(longest_rest(band))
-                    });
+                    let seconds = if emptied {
+                        EMPTY_REST
+                    } else {
+                        watched.rest.map_or(FIRST_REST, |rest| {
+                            (rest.seconds * 2.0).min(longest_rest(band))
+                        })
+                    };
                     Rest {
-                        until: tick.monotonic + seconds,
+                        until: ended + seconds,
                         seconds,
                         band,
                         unvouched,
+                        exhausted,
+                        emptied,
                     }
                 });
             }
@@ -3218,6 +3321,15 @@ impl Guard {
         Ok((surveyed, previews))
     }
 
+    /// Whether no pass is at work on the disk at `path` now. Under a
+    /// writers' hold the only one that can be on a filling disk is a
+    /// clear Joel asked for, or one begun nearly full.
+    fn unpassed(&self, path: &Path) -> bool {
+        self.passing
+            .as_ref()
+            .is_none_or(|passing| passing.path != path)
+    }
+
     pub fn status(&self, now: f64) -> Status {
         let bands = &self.config.bands;
         let home = self.home.as_deref();
@@ -3258,15 +3370,19 @@ impl Guard {
                     says: String::new(),
                     exhausted: self.last.as_ref().is_some_and(|last| {
                         last.path == watched.path
-                            && self
-                                .passing
-                                .as_ref()
-                                .is_none_or(|passing| passing.path != watched.path)
+                            && self.unpassed(&watched.path)
                             && last.end == "exhausted"
                             && watched.band != Band::Healthy
                             && last.band >= watched.band
-                    }),
+                    }) || (watched.band == Band::Filling
+                        && self.unpassed(&watched.path)
+                        && watched.rest.is_some_and(|rest| rest.emptied)),
+                    // A clear Joel asked for runs under a hold, and is
+                    // told as the clear it is.
+                    held: self.writers_held && self.unpassed(&watched.path),
+                    waiting: false,
                 };
+                status.waiting = held_off(status.held, status.band);
                 status.says = crate::words::filesystem(&status.told(now), home);
                 Some(status)
             })
@@ -3653,6 +3769,21 @@ fn restamp(path: &Path, now: f64) -> io::Result<()> {
             // A guard only starting has no pass at work, whatever the one
             // before was doing as it left.
             left.remove("passing");
+            // Nor is a moment the last guard told still to come once it
+            // has passed, which the broker would pass on as if it were.
+            if let Some(serde_json::Value::Array(filesystems)) = left.get_mut("filesystems") {
+                for filesystem in filesystems
+                    .iter_mut()
+                    .filter_map(serde_json::Value::as_object_mut)
+                {
+                    for moment in ["full_at", "floor_at"] {
+                        let at = filesystem.get(moment).and_then(serde_json::Value::as_f64);
+                        if at.is_some_and(|at| at <= now) {
+                            filesystem.insert(moment.to_owned(), serde_json::Value::Null);
+                        }
+                    }
+                }
+            }
             state::save(path, &left)
         }
         _ => Ok(()),
@@ -3839,6 +3970,14 @@ fn replaced_taken(here: &[Offer], actions: &[(PathBuf, Outcome)]) -> BTreeMap<Pa
     taken
 }
 
+/// Whether a writers' hold, when `held`, keeps passes off a disk in
+/// `band`: every band short of nearly full waits for the hold to end.
+/// Passes and the status both ask this, so what the status says is what
+/// the passes do.
+pub(crate) fn held_off(held: bool, band: Band) -> bool {
+    held && band < Band::NearlyFull
+}
+
 /// Whether a delete failed for garbage that came alive since the listing.
 fn stale(outcome: &Outcome) -> bool {
     matches!(outcome, Outcome::Failed(why) if garbage::stale(why))
@@ -3923,7 +4062,17 @@ impl Reclaimer for Pretending {
 // so this test doesn't cover it.
 #[cfg(test)]
 mod tests {
-    use super::{Band, Decision, Goal, Why, aim};
+    use super::{Band, Decision, Goal, Why, aim, min_free_again};
+
+    #[test]
+    fn a_failing_min_free_read_waits_twice_as_long_each_time_up_to_an_hour() {
+        let waits: Vec<f64> = (1..=7).map(min_free_again).collect();
+        assert_eq!(
+            waits,
+            [300.0, 600.0, 1200.0, 2400.0, 3600.0, 3600.0, 3600.0],
+            "failures in a row waited other than 5, 10, 20 and 40 minutes, then hourly"
+        );
+    }
 
     #[test]
     fn each_decision_aims_its_pass_with_its_why_and_the_survey_it_was_given() {

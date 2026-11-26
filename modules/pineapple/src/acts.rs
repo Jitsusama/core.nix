@@ -66,7 +66,8 @@ impl Refused {
 pub fn press(state: &Path, said: &Value, now: u64, words: &Words) -> Result<Value, Refused> {
     let verb = said["ask"].as_str().unwrap_or_default();
     let key = said["key"].as_str().unwrap_or_default();
-    let rows = tell::rows(&tell::kept(state), now, words);
+    let kept = tell::kept(state);
+    let rows = tell::rows(&kept, now, words);
     let row = rows
         .iter()
         .find(|row| row["key"] == key && row["shadow"] == false)
@@ -96,7 +97,8 @@ pub fn press(state: &Path, said: &Value, now: u64, words: &Words) -> Result<Valu
         }
         "stop" => {
             let id = row["saying"].as_str().unwrap_or_default();
-            record::keep(&stops, id, &stopped(row, now)).map_err(failed)?;
+            let said = said_whole(&kept, id, row);
+            record::keep(&stops, id, &stopped(row, &said, now)).map_err(failed)?;
             json!({"stopped": id})
         }
         "approve" => json!({"resumed": approve(&stops, row, now).map_err(failed)?}),
@@ -110,15 +112,26 @@ pub fn press(state: &Path, said: &Value, now: u64, words: &Words) -> Result<Valu
     Ok(done)
 }
 
-/// A stop of Joel's making from an alert's row: its saying, reaching what
-/// a stop said there would have.
-fn stopped(row: &Value, now: u64) -> Value {
+/// What the alert's saying `id` said, whole, as the reader heard it: its
+/// newest decision line's text, since the row shows only its gist; the
+/// row's words where no line names it.
+fn said_whole(kept: &tell::Kept, id: &str, row: &Value) -> Value {
+    kept.decisions
+        .iter()
+        .rev()
+        .find(|line| line["key"] == id)
+        .map_or_else(|| row["words"].clone(), |line| line["text"].clone())
+}
+
+/// A stop of Joel's making from an alert's row: its saying, said as
+/// `words`, reaching what a stop said there would have.
+fn stopped(row: &Value, words: &Value, now: u64) -> Value {
     json!({
         "id": row["saying"],
         "shadow": false,
         "said_by": row["said_by"],
         "where": row["link"],
-        "words": row["words"],
+        "words": words,
         "said_at": row["said_at"],
         "heard_at": now,
         "by_joel": false,
@@ -270,10 +283,11 @@ mod tests {
     #[test]
     fn stop_on_a_waved_joke_makes_a_stop_reaching_what_it_would_have() {
         let dir = state("joke");
+        let said = format!("pineapple override jk\n\n{}", "and more ".repeat(50));
         decision(
             &dir,
             &json!({"key": "slack:C1:2.0", "thread": "slack:C1:1.0", "verdict": "waved:joke",
-                "heard_at": 10, "by_joel": false, "shadow": false, "text": "pineapple override jk",
+                "heard_at": 10, "by_joel": false, "shadow": false, "text": said,
                 "link": "https://example.slack.com/archives/C1/p2", "author": "U0OTHER001",
                 "reaches": [], "would_reach": ["pr:example/shop#12"], "would_fall_back": false}),
         );
@@ -290,6 +304,10 @@ mod tests {
         assert_eq!(
             made[0].record["shadow"], false,
             "and live, since its alert was"
+        );
+        assert_eq!(
+            made[0].record["words"], said,
+            "keeping the whole saying, not the gist its row shows"
         );
         let rows = tell::rows(&tell::kept(&dir), 30, &words);
         let keys: Vec<&str> = rows.iter().filter_map(|row| row["key"].as_str()).collect();

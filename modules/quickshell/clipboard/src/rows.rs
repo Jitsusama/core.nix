@@ -81,7 +81,7 @@ impl Words {
     }
 
     /// A count in figures, grouped with the marks the words were given: every
-    /// count `counted` says, and an emoji group's side.
+    /// count above none `counted` says, and an emoji group's side.
     pub fn figure(&self, count: usize) -> String {
         #[expect(
             clippy::cast_precision_loss,

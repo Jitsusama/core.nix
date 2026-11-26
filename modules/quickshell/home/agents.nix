@@ -31,7 +31,8 @@
   "launcher/Holders.js"
   "launcher/TalkTo.js"
   "launcher/CarryBack.js"
+  "launcher/Openings.js"
   "launcher/Sprouting.js"
+  "launcher/Wheres.js"
   "launcher/StartsStopped.js"
-  "launcher/TalkAnswers.js"
 ]

@@ -298,25 +298,41 @@ fn asides(chooser: &mut Chooser, on: &Joined, measured: &Measured, signal: i16) 
 /// Why a card keeps off an access point it was moved to: it's somewhere
 /// else since, whether the move failed or something moved it on, and the
 /// chooser can't tell which. A keep-off longer than the hour a miss holds
-/// was there before it, and runs on.
+/// was there before it, and runs on, but holds against a failing link for
+/// that hour alone (`choose::keep_off_unreached`), which the line says.
 fn kept_off(on: &Joined, unreached: &str, lasts: Duration) -> String {
+    let firmly = if lasts > choose::SPURNED {
+        format!(
+            ", or for {} should {} fail a whole span",
+            how_long(choose::SPURNED),
+            on.point
+        )
+    } else {
+        String::new()
+    };
     format!(
         "{} keeps off {unreached} for {}, as it's on {} rather than there since it was \
-         moved",
+         moved{firmly}",
         on.card,
         how_long(lasts),
         on.point
     )
 }
 
-/// A keep-off's length as the journal says it: in hours from two, as
-/// each past the first is a whole number of them, else in minutes.
+/// A keep-off's length as the journal says it: in minutes under two
+/// hours, and in hours from there, with the minutes past them, as one set
+/// at a back is a whole number of hours and what's left of it when a
+/// move misses its point is not.
 fn how_long(lasts: Duration) -> String {
     let minutes = lasts.as_secs() / 60;
-    if minutes >= 120 && minutes.is_multiple_of(60) {
-        format!("{} hours", minutes / 60)
-    } else {
-        format!("{minutes} minutes")
+    if minutes < 120 {
+        return format!("{minutes} minutes");
+    }
+    let (hours, past) = (minutes / 60, minutes % 60);
+    match past {
+        0 => format!("{hours} hours"),
+        1 => format!("{hours} hours and 1 minute"),
+        _ => format!("{hours} hours and {past} minutes"),
     }
 }
 
@@ -1054,12 +1070,20 @@ mod tests {
     }
 
     #[test]
-    fn a_keep_off_is_said_in_minutes_under_two_hours_and_whole_hours_from_there() {
-        let said = [3600, 5400, 7200, 43_200].map(|secs| how_long(Duration::from_secs(secs)));
+    fn a_keep_off_is_said_in_minutes_under_two_hours_and_hours_from_there() {
+        let said = [3600, 5400, 7200, 7260, 25_080, 43_200]
+            .map(|secs| how_long(Duration::from_secs(secs)));
 
         assert_eq!(
             said,
-            ["60 minutes", "90 minutes", "2 hours", "12 hours"],
+            [
+                "60 minutes",
+                "90 minutes",
+                "2 hours",
+                "2 hours and 1 minute",
+                "6 hours and 58 minutes",
+                "12 hours"
+            ],
             "a keep-off's length is misread"
         );
     }
@@ -1157,7 +1181,11 @@ mod tests {
     #[test]
     fn a_card_keeping_off_a_point_it_was_moved_to_says_where_it_is() {
         let why = kept_off(&joined(HALL), DESK, choose::SPURNED);
-        let longer = kept_off(&joined(HALL), DESK, choose::SPURNED * 6);
+        // What's left of an eight-hour keep-off when a move made a span
+        // after its first hour misses, as the chooser gives it
+        // (`a_failing_link_missing_a_point_through_its_keep_off_...`).
+        let left = (choose::SPURNED * 7).saturating_sub(measure::SPAN);
+        let longer = kept_off(&joined(HALL), DESK, left);
 
         assert!(
             why.ends_with(&format!(
@@ -1167,8 +1195,12 @@ mod tests {
             "a point kept off says how long and where the card is: {why}"
         );
         assert!(
-            longer.contains(&format!("keeps off {DESK} for 6 hours,")),
-            "a miss through a longer keep-off didn't say what runs on: {longer}"
+            longer.ends_with(&format!(
+                "keeps off {DESK} for 6 hours and 58 minutes, as it's on {HALL} rather than \
+                 there since it was moved, or for 60 minutes should {HALL} fail a whole span"
+            )),
+            "a miss through a longer keep-off didn't say what runs on, and what may \
+             leave for it after an hour: {longer}"
         );
     }
 

@@ -45,9 +45,6 @@ SEEING_ENDS = timedelta(seconds=4)
 # How long a place's members take to say their first answers once it's stepped into, each of
 # which makes the step again: a change told after it is said only by the row it moves.
 SETTLED = timedelta(seconds=3)
-# How long no key is said presented before every key pressed counts as shown: a key's frame
-# comes within a few, and its record a moment after.
-PRESENTED_STILL = timedelta(milliseconds=500)
 # How long before its line a chord is said to have run, well past any opening's own time here.
 CHORD_AGO = timedelta(seconds=2)
 # How long the shell is held stopped just after a chord, well past any opening's own time here.
@@ -392,8 +389,7 @@ def test_a_drawers_nerdy_bits_open_on_za_and_stay_as_left(shell: Shell) -> None:
     shell.answer("time")
     shell.launcher_until(
         lambda shown: (
-            shown["drawer"]["nerd"] == ["Unix Time", "Julian Day"]
-            and shown["drawer"]["folded"] is False
+            shown["drawer"]["nerd"] == ["Unix Time", "TAI"] and shown["drawer"]["folded"] is False
         )
     )
     shell.normal()
@@ -1476,6 +1472,46 @@ def test_notices_answered_late_come_in_with_the_selection_on_its_row(shell: Shel
     now = shell.showing()["selected"]["name"]
     shell.close_launcher()
     assert now == selected, f"the notices came in and the selection went from {selected} to {now}"
+
+
+# How long a case holds the notices daemon after the launcher closed, in seconds, so a late
+# answer to a key typed before the closing says at least this long after it.
+HELD_PAST_CLOSING = 1.5
+# A notices' answer come after its key was listed without it, with how late (Presented.js's
+# answeredLateSaid).
+NOTICES_LATE = re.compile(r"launcher: notices answered .+? (\d+) ms after its key")
+
+
+def test_a_closing_ends_the_keys_its_answers_came_late_for(shell: Shell) -> None:
+    """A key listed without the notices' answer is let go when the launcher closes.
+
+    Its answer, come after the closing, is no key's being late: nobody waits on it. Kept, the
+    mark is said late by the first unheld notices' answer: here the stopped daemon's, as it
+    resumes with the launcher shut, since it answers the words still wanted. The reopening
+    types them again, so its opening is read too. A notice brought in with the launcher open,
+    which would say a kept mark however many hours on, isn't driven: no case here brings one
+    in open, and waiting for its row timed out (2026-11-25).
+    """
+    with shell.told("shows card Windows of the past"):
+        shell.as_account("notify-send --expire-time=1000 'Windows of the past' 'a late notice'")
+    shell.notices_gone()
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    since = shell.mark()
+    with launcher_on_niri.notices_stopped():
+        shell.type_in("windows", selecting="windows")
+        shell.reported("listed without answers", lambda rest: rest == "", since)
+        closed = shell.mark()
+        shell.close_launcher()
+        time.sleep(HELD_PAST_CLOSING)
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.type_in("windows", selecting="windows")
+    shell.close_launcher()
+    logged = launcher_on_niri.logged_since(shell, closed)
+    lates = [int(late) for late in NOTICES_LATE.findall(logged)]
+    held = [late for late in lates if late >= HELD_PAST_CLOSING * 1000]
+    assert not held, f"the notices came late for a key typed before the closing: {held} ms"
 
 
 def test_for_yous_filter_steps_into_a_kind_and_minus_comes_back_out(shell: Shell) -> None:
@@ -5848,12 +5884,12 @@ def test_a_step_in_from_typed_words_is_timed_once_as_the_step(shell: Shell) -> N
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     shell.type_in("programs", selecting="Programs")
-    before = len(keys_presented_settled(shell))
+    before = len(launcher_on_niri.keys_presented_settled(shell))
     shell.step_in()
-    presented = keys_presented_settled(shell)[before:]
+    presented = launcher_on_niri.keys_presented_settled(shell)[before:]
     # A letter typed after the step is timed as a key again.
     shell.type_in("f")
-    after = keys_presented_settled(shell)[before + len(presented) :]
+    after = launcher_on_niri.keys_presented_settled(shell)[before + len(presented) :]
     shell.close_launcher()
     steps = [one.get("step") for one in presented]
     assert steps == ["\u2192 Programs"], f"Return into Programs wasn't timed once: {presented}"
@@ -5870,10 +5906,10 @@ def test_a_step_in_through_the_place_holding_it_is_timed_once_as_the_step(shell:
     shell.launcher_ready()
     shell.type_in("power")
     shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Power")
-    before = len(keys_presented_settled(shell))
+    before = len(launcher_on_niri.keys_presented_settled(shell))
     shell.step_in()
     shell.launcher_until(lambda shown: shown["path"][-2:] == ["Machine", "Power"])
-    presented = keys_presented_settled(shell)[before:]
+    presented = launcher_on_niri.keys_presented_settled(shell)[before:]
     shell.close_launcher()
     steps = [one.get("step") for one in presented]
     assert steps == ["\u2192 Power"], f"Return into Power wasn't timed once: {presented}"
@@ -5888,10 +5924,10 @@ def test_a_step_in_by_a_word_and_a_space_is_timed_once_as_the_step(shell: Shell)
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
     shell.type_in("network")
-    before = len(keys_presented_settled(shell))
+    before = len(launcher_on_niri.keys_presented_settled(shell))
     shell.send_chars(" ")
     shell.launcher_until(lambda shown: shown["path"][-1:] == ["Network"])
-    presented = keys_presented_settled(shell)[before:]
+    presented = launcher_on_niri.keys_presented_settled(shell)[before:]
     shell.close_launcher()
     steps = [one.get("step") for one in presented]
     assert steps == ["\u2192 Network"], f"the space into Network wasn't timed once: {presented}"
@@ -5905,10 +5941,10 @@ def test_a_word_and_a_space_typed_at_once_time_only_the_last_key_as_the_step(she
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
-    before = len(keys_presented_settled(shell))
+    before = len(launcher_on_niri.keys_presented_settled(shell))
     typed_at_once(shell, "'network '")
     shell.launcher_until(lambda shown: shown["path"][-1:] == ["Network"])
-    presented = keys_presented_settled(shell)[before:]
+    presented = launcher_on_niri.keys_presented_settled(shell)[before:]
     shell.close_launcher()
     steps = [one.get("step") for one in presented]
     assert steps.count("\u2192 Network") == 1, f"the step was timed other than once: {presented}"
@@ -5925,11 +5961,11 @@ def test_a_walk_through_a_place_is_timed_once_as_where_it_ends(shell: Shell) -> 
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
-    before = len(keys_presented_settled(shell))
+    before = len(launcher_on_niri.keys_presented_settled(shell))
     asked = shlex.quote(json.dumps({"steps": ["machine", "power"], "words": "", "sure": False}))
     shell.as_account(f"qs -p {shell.folder} ipc call -- launcher doing {asked}")
     shell.launcher_until(lambda shown: shown["path"] == ["Machine", "Power"])
-    presented = keys_presented_settled(shell)[before:]
+    presented = launcher_on_niri.keys_presented_settled(shell)[before:]
     shell.close_launcher()
     steps = [one.get("step") for one in presented]
     assert steps == ["\u2192 Power"], f"the walk to Power wasn't timed once as it: {presented}"
@@ -5942,24 +5978,10 @@ def minus_presented(shell: Shell, out: Callable[[Json], object]) -> list[Json]:
     rows, and waits on past the first since, so a second timing a frame later is seen.
     """
     shell.normal()
-    before = len(keys_presented_settled(shell))
+    before = len(launcher_on_niri.keys_presented_settled(shell))
     shell.send_chars("-")
     shell.launcher_until(out)
-    return keys_presented_settled(shell)[before:]
-
-
-def keys_presented_settled(shell: Shell) -> list[Json]:
-    """Give the keys the launcher said presented, once no more have come for PRESENTED_STILL."""
-    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
-    presented = json.loads(shell.as_account(shell.ipc("keysPresented")))
-    still = time.monotonic()
-    while time.monotonic() - still < PRESENTED_STILL.total_seconds():
-        assert time.monotonic() < deadline, f"keys kept being presented: {presented}"
-        time.sleep(launcher_on_niri.POLL)
-        now = json.loads(shell.as_account(shell.ipc("keysPresented")))
-        if len(now) != len(presented):
-            presented, still = now, time.monotonic()
-    return cast("list[Json]", presented)
+    return launcher_on_niri.keys_presented_settled(shell)[before:]
 
 
 def moved_presented(shell: Shell, written: float, deadline: float) -> list[Json]:

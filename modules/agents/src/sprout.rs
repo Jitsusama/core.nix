@@ -100,7 +100,7 @@ pub fn answer(said: &Value, asker: Result<(), String>, node: Option<&Path>) -> V
 /// one, `{"Refused": {"code", "why"}}` (mycelium's PROTOCOL.md), alone or
 /// under `Ok`; none where it gave no words, and no code where it gave
 /// none that's a plain word of letters and underscores.
-fn refusal_of(reply: &Value) -> Option<(Option<&str>, &str)> {
+pub(crate) fn refusal_of(reply: &Value) -> Option<(Option<&str>, &str)> {
     let refusal = reply
         .get("Refused")
         .or_else(|| reply["Ok"].get("Refused"))?;

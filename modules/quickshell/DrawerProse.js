@@ -31,7 +31,10 @@ const WORDS = /\S+/g;
 function lines(prose, wide, most, width) {
     const text = String(prose.text ?? "");
     const letters = prose.styled === true ? lettersOf(text) : { plain: text, ends: null };
-    const laidOut = laid(letters.plain, wide, width);
+    // A line past the most says whether it runs past; none further is laid,
+    // since each word laid is measured in Qt, and a notice of 34 kB laid
+    // whole held its drawer 3.2 s (2026-11-25).
+    const laidOut = laid(letters.plain, wide, width, most + 1);
     if (laidOut.length <= most) {
         return { said: text, cut: false };
     }
@@ -56,17 +59,24 @@ function lastEnd(plain, line, wide, width) {
     return end;
 }
 
+// The most an entity takes, its & and ; with them, as the longest named
+// one here and a numbered one do.
+const ENTITY_MOST = 12;
+
 // One letter of a styled text from `at`: what it draws, a tag nothing or a
-// <br> a line's end, and how much of the text it takes.
+// <br> a line's end, and how much of the text it takes. Only a tag's or an
+// entity's own letters are read past `at`, never the rest of the text, so
+// a long one is read through once rather than once a letter.
 function letterAt(text, at) {
-    const rest = text.slice(at);
-    const tag = TAG.exec(rest);
+    const first = text[at];
+    const closes = first === "<" ? text.indexOf(">", at) : -1;
+    const tag = closes < 0 ? null : TAG.exec(text.slice(at, closes + 1));
     if (tag) {
         return { drawn: tag[1].toLowerCase() === "br" ? "\n" : "", taken: tag[0].length };
     }
-    const entity = ENTITY.exec(rest);
+    const entity = first === "&" ? ENTITY.exec(text.slice(at, at + ENTITY_MOST)) : null;
     if (!entity) {
-        return { drawn: text[at], taken: 1 };
+        return { drawn: first, taken: 1 };
     }
     const named = entity[1];
     const drawn = named.startsWith("#") ? String.fromCharCode(Number(named.slice(1)))
@@ -76,23 +86,24 @@ function letterAt(text, at) {
 
 // A styled text's letters as drawn, and where in the text each ends.
 function lettersOf(text) {
-    let plain = "";
+    const plain = [];
     const ends = [];
     for (let at = 0; at < text.length;) {
         const letter = letterAt(text, at);
         at += letter.taken;
         for (const drawn of letter.drawn) {
-            plain += drawn;
+            plain.push(drawn);
             ends.push(at);
         }
     }
-    return { plain, ends };
+    return { plain: plain.join(""), ends };
 }
 
 // The lines plain text wraps in, each where it starts and ends and where
 // the spaces between its words begin, a paragraph's end ending its line
-// and an empty paragraph a line of its own.
-function laid(plain, wide, width) {
+// and an empty paragraph a line of its own: `most` of them at most, those
+// before the rest, and every one where it's not given.
+function laid(plain, wide, width, most = Infinity) {
     const laidOut = [];
     let from = 0;
     for (const paragraph of plain.split("\n")) {
@@ -108,10 +119,16 @@ function laid(plain, wide, width) {
                 if (line) {
                     laidOut.push(line);
                 }
+                if (laidOut.length >= most) {
+                    return laidOut;
+                }
                 line = { start, end, spaces: [] };
             }
         }
         laidOut.push(line ?? { start: from, end: from, spaces: [] });
+        if (laidOut.length >= most) {
+            return laidOut;
+        }
         from += paragraph.length + 1;
     }
     return laidOut;

@@ -39,6 +39,14 @@
 // and not yet taken still counts as resident, to mincore and to the
 // shell's weight, so lent() says what the kernel holds lent.
 //
+// What's held is said resident too, since once free pages are lent what's
+// held no longer says what the shell pays for: a page the kernel took
+// stays held, and stops being counted free, so a shell 1.4 hours on held
+// 252 MB with 65 live and 85 in free pages, and the other 102 could be
+// either taken pages, which cost nothing, or the free slots of pages
+// still holding an item, which do (2026-11-25). mincore says which of
+// every chunk's pages and every large item's are in memory.
+//
 // Room is left because Qt starts a collection whenever its free lists miss
 // while what's held is over twice what the last full sweep left in use, and
 // after the closing's collection it always is: three times, in Joel's shell
@@ -132,6 +140,7 @@
 #include <cstdint>
 #include <cstring>
 #include <dlfcn.h>
+#include <optional>
 #include <utility>
 #include <private/qqmldata_p.h>
 #include <private/qqmlvmemetaobject_p.h>
@@ -166,18 +175,23 @@ double megabytes(std::size_t bytes) { return static_cast<double>(bytes) / BYTES_
 // header, given to `each` as its start, its length and how many of its
 // bytes are resident, as mincore says. A chunk's first page holds its
 // bitmaps, and a run's header is its first slot, so a page counts when
-// every slot in it, and the one just before it, is free.
-template <typename Each> void eachFreeSpan(const QV4::BlockAllocator &allocator, Each each) {
+// every slot in it, and the one just before it, is free. Says whether the
+// kernel said which pages are resident for every chunk; one it won't is
+// passed over.
+template <typename Each> bool eachFreeSpan(const QV4::BlockAllocator &allocator, Each each) {
     using QV4::Chunk;
     const auto page = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
     const std::size_t words = page / Chunk::SlotSize / Chunk::Bits;
     if (words == 0 || Chunk::ChunkSize % page != 0)
-        return;
+        return true;
     const std::size_t pages = Chunk::ChunkSize / page;
     std::vector<unsigned char> resident(pages);
+    bool answered = true;
     for (Chunk *chunk : allocator.chunks) {
-        if (mincore(chunk, Chunk::ChunkSize, resident.data()) != 0)
+        if (mincore(chunk, Chunk::ChunkSize, resident.data()) != 0) {
+            answered = false;
             continue;
+        }
         const auto used = [chunk](std::size_t word) {
             return chunk->objectBitmap[word] | chunk->extendsBitmap[word];
         };
@@ -202,14 +216,71 @@ template <typename Each> void eachFreeSpan(const QV4::BlockAllocator &allocator,
             }
         }
     }
+    return answered;
 }
 
-// The resident bytes in an allocator's free pages.
-std::size_t freePages(const QV4::BlockAllocator &allocator) {
+// The resident bytes in an allocator's free pages, or nothing when the
+// kernel won't say which pages of one of its chunks are resident.
+std::optional<std::size_t> freePages(const QV4::BlockAllocator &allocator) {
     std::size_t bytes = 0;
-    eachFreeSpan(allocator, [&bytes](char *, std::size_t, std::size_t resident) {
-        bytes += resident;
-    });
+    const bool answered =
+        eachFreeSpan(allocator, [&bytes](char *, std::size_t, std::size_t resident) {
+            bytes += resident;
+        });
+    return answered ? std::optional<std::size_t>(bytes) : std::nullopt;
+}
+
+// The resident bytes in `length` bytes from `start`, as mincore says, or
+// nothing when it won't say, which is warned of once a process, so a
+// refusal never reads as pages the kernel took.
+std::optional<std::size_t> residentAt(void *start, std::size_t length) {
+    static bool warned = false;
+    const auto page = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
+    std::vector<unsigned char> resident((length + page - 1) / page);
+    if (resident.empty())
+        return 0;
+    if (mincore(start, length, resident.data()) != 0) {
+        if (!warned) {
+            warned = true;
+            qWarning("heap: the kernel wouldn't say which of the heap's pages are resident: %s",
+                     std::strerror(errno));
+        }
+        return std::nullopt;
+    }
+    const auto pages = std::count_if(resident.begin(), resident.end(),
+                                     [](unsigned char each) { return (each & 1) != 0; });
+    return page * static_cast<std::size_t>(pages);
+}
+
+// The bytes a large item's chunk spans. One with a segment of its own spans
+// its `size`, already its header and item to a page; the chunk allocator
+// makes the others its header and item to a page, and a whole chunk at the
+// least, but keeps only the item's size (Qt's requiredChunkSize, qv4mm.cpp).
+std::size_t spanOf(const QV4::HugeItemAllocator::HugeChunk &huge) {
+    if (huge.segment != nullptr)
+        return huge.size;
+    const auto page = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
+    const std::size_t span = (huge.size + QV4::Chunk::HeaderSize + page - 1) & ~(page - 1);
+    return std::max<std::size_t>(span, QV4::Chunk::ChunkSize);
+}
+
+// The resident bytes in every chunk and large item the heap holds, or
+// nothing when the kernel won't say for any of them.
+std::optional<std::size_t> residentHeld(const QV4::MemoryManager &manager) {
+    std::size_t bytes = 0;
+    for (const QV4::BlockAllocator *allocator : {&manager.blockAllocator, &manager.icAllocator})
+        for (QV4::Chunk *chunk : allocator->chunks) {
+            const std::optional<std::size_t> resident = residentAt(chunk, QV4::Chunk::ChunkSize);
+            if (!resident)
+                return std::nullopt;
+            bytes += *resident;
+        }
+    for (const auto &huge : manager.hugeItemAllocator.chunks) {
+        const std::optional<std::size_t> resident = residentAt(huge.chunk, spanOf(huge));
+        if (!resident)
+            return std::nullopt;
+        bytes += *resident;
+    }
     return bytes;
 }
 
@@ -261,15 +332,20 @@ QVariantMap Heap::weigh() const {
     // Not `slots`, which is Qt's keyword macro.
     const std::size_t chunkSlots =
         manager->blockAllocator.totalSlots() + manager->icAllocator.totalSlots();
+    const std::optional<std::size_t> resident = residentHeld(*manager);
+    const std::optional<std::size_t> freeObjects = freePages(manager->blockAllocator);
+    const std::optional<std::size_t> freeShapes = freePages(manager->icAllocator);
     return {
         {QStringLiteral("live"), megabytes(manager->getRegularItemsMem() + large)},
         {QStringLiteral("held"), megabytes(manager->getAllocatedMem())},
+        {QStringLiteral("resident"), resident ? megabytes(*resident) : -1.0},
         {QStringLiteral("chunks"), megabytes(chunkSlots * QV4::Chunk::SlotSize)},
         {QStringLiteral("collectsAt"), megabytes(manager->heldBeforeCollecting())},
         {QStringLiteral("collectsOutsideAt"), megabytes(manager->unmanagedHeapSizeGCLimit)},
         {QStringLiteral("outside"), megabytes(manager->unmanagedHeapSize)},
-        {QStringLiteral("free"),
-         megabytes(freePages(manager->blockAllocator) + freePages(manager->icAllocator))},
+        // A chunk the kernel won't say the pages of makes free unknown, rather
+        // than nothing, as it does resident.
+        {QStringLiteral("free"), freeObjects && freeShapes ? megabytes(*freeObjects + *freeShapes) : -1.0},
     };
 }
 

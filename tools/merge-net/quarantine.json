@@ -16,7 +16,7 @@
     "at": 1794631096,
     "commit": "580dc8dbd5803c7bea2650e02ecb099ec1408af3",
     "due": "2026-12-01",
-    "due_why": "Its owner, the call shaper's, read on 23 Nov where the calls' datagrams went in the net's runs that lost past the bar, and the fix that answers what was the builder's (#6406, declaring the rig's line at its slowest busy hour) lands by 25 Nov 18:00 EST. With the shaper stopped on 20 Nov (00ddeee71091), the client's own receive buffers overflowed, 376 datagrams, iperf3 starved on the builder: the calls' sockets now have room for seconds of datagrams, and the bar counts only what was lost before the client's socket. Shaped in that run, the shaper's IFB dropped them, media's 12 all in its video tin and the page call's beside the app's downloads in best effort; and on 20 Nov (f0197badd1be) the router's down queue dropped 441 of the media call while nothing limited the download. Those two, both in shaped subtests, are the shaper's to prevent, so they still count against the bar, and a run that loses so again shows the shaper's own drops by tin, and what went missing between the router's count and the client's input hook, which the router's queue, the wire, the shaper's IFB or the client's own receive path took, the IFB's share named by its drops. The router's are the download hold's to prevent (jitsusama/shaper-holds-the-download-for-a-call): while a call is on and the download carries nine tenths of its declared 75 Mbit/s, under the router's 90, or the controller cuts it, the shaper holds it there, so it queues in the IFB's CAKE, where the call goes first, and that fix moved the due from 2026-11-27. A handshake reply lost coming down failed a call on 22 Nov (519b71b08ac0) with a stale errno, and is now made again as any lost handshake is, but only while the shaper's IFB dropped nothing meanwhile in the video and voice tins a call comes down in, so one lost while the shaper's own call tins dropped still fails. Every machine on a call's path now counts its datagrams each way, printed on a pass too, and a count under what iperf3 read fails, so a counter that misses the call can't read as nothing lost. test_a_call_loses_little bars a hundredth of a call lost coming down before the client's socket, and test_a_call_goes_ahead_of_its_own_uploads a hundredth of it dropped by the shaper's video tin going up. Its due is when it comes off, three days after the fix lands, since twenty runs after the fix take about two and a quarter at the net's pace of about nine a day. That leaves room for about seven runs more, so a red run past the seventh run after the fix, which starts the count again, moves the due, and its owner sends the new one before this one passes. It comes off once twenty net runs in a row after the fix exit 0, counted by exit code, since a failure only here is recorded as passed: at 4 in 26, three pass by luck about three times in five, and twenty about once in thirty. Before: the net excused 7 failures from 14 to 18 Nov, and about 5 in 20 runs failed after its failure trace was added, each a call losing 69 to 3,106 datagrams down, once with the shaper stopped, or the shaper not holding within 60 s, which #5897's asking a dark network again soon answered: none of the 15 net runs since it failed so. test_a_call_goes_ahead_of_its_own_uploads joined it on 20 Nov for sharing that holding wait and the call's bars, not for a failure of its own, and while it is listed a failure in it alone is said and blocks nothing, before a merge or after, so until it comes off nothing catches a change that stops telling Joel's CAKE its rate: the unit tests cover only the rate chosen and the command's form",
+    "due_why": "Its owner, the call shaper's, read on 23 Nov where the calls' datagrams went in the net's runs that lost past the bar, and the fix that answers what was the builder's (#6406, declaring the rig's line at its slowest busy hour) landed on 24 Nov as b92e4d47. At its head test_a_call_loses_little passed 9 of 10 fresh runs on the builder that failed it, its one failure the router's queue dropping 530 of the download to the IFB's 5 while the room held, a cause not yet named; test_a_call_goes_ahead_of_its_own_uploads failed 3 of 9 there, its classes at 6035 under a 6000 trial, a cut to 4770 under it, and 56 video drops. In 10 runs at 82420a60 it failed 2, cuts to 4645 and 5368, and test_a_call_loses_little 1, a fill that timed out. Both cuts came in seconds whose trace reads no ceiling, and the trial's ceiling held only 82 and 61 s after them, so it took late, for a reason not yet named, and the controller cut on its own. #6456 has the subtest wait until the shaper's newest second holds the trial's ceiling, failing with the trace if it never does, and prints each second's ask, ceiling, room and reason, so the next such failure says whether the trial took and why the controller cut. With the shaper stopped on 20 Nov (00ddeee71091), the client's own receive buffers overflowed, 376 datagrams, iperf3 starved on the builder: the calls' sockets now have room for seconds of datagrams, and the bar counts only what was lost before the client's socket. Shaped in that run, the shaper's IFB dropped them, media's 12 all in its video tin and the page call's beside the app's downloads in best effort; and on 20 Nov (f0197badd1be) the router's down queue dropped 441 of the media call while nothing limited the download. Those two, both in shaped subtests, are the shaper's to prevent, so they still count against the bar, and a run that loses so again shows the shaper's own drops by tin, and what went missing between the router's count and the client's input hook, which the router's queue, the wire, the shaper's IFB or the client's own receive path took, the IFB's share named by its drops. The router's are the download hold's to prevent (jitsusama/shaper-holds-the-download-for-a-call): while a call is on and the download carries nine tenths of its declared 75 Mbit/s, under the router's 90, or the controller cuts it, the shaper holds it there, so it queues in the IFB's CAKE, where the call goes first, and that fix moved the due from 2026-11-27. A handshake reply lost coming down failed a call on 22 Nov (519b71b08ac0) with a stale errno, and is now made again as any lost handshake is, but only while the shaper's IFB dropped nothing meanwhile in the video and voice tins a call comes down in, so one lost while the shaper's own call tins dropped still fails. Every machine on a call's path now counts its datagrams each way, printed on a pass too, and a count under what iperf3 read fails, so a counter that misses the call can't read as nothing lost. test_a_call_loses_little bars a hundredth of a call lost coming down before the client's socket, and test_a_call_goes_ahead_of_its_own_uploads a hundredth of it dropped by the shaper's video tin going up. Its due holds only if the fix for what those traces name lands by 28 Nov, since twenty net runs in a row after that fix start its count and take about two days and a quarter at the net's pace of about nine a day; at 3 failures in 10, twenty pass in a row by luck under once in a thousand, so it can't come off without that fix. If that fix isn't in by 28 Nov 18:00, or a red run past the seventh after it starts the count again, its owner sends a new due before this one passes. It comes off once twenty net runs in a row after that fix exit 0, counted by exit code, since a failure only here is recorded as passed. Before: the net excused 7 failures from 14 to 18 Nov, and about 5 in 20 runs failed after its failure trace was added, each a call losing 69 to 3,106 datagrams down, once with the shaper stopped, or the shaper not holding within 60 s, which #5897's asking a dark network again soon answered: none of the 15 net runs since it failed so. test_a_call_goes_ahead_of_its_own_uploads joined it on 20 Nov for sharing that holding wait and the call's bars, not for a failure of its own, though it has failed on its own since, as above, and while it is listed a failure in it alone is said and blocks nothing, before a merge or after, so until it comes off nothing catches a change that stops telling Joel's CAKE its rate: the unit tests cover only the rate chosen and the command's form",
     "owner_pr": 4228,
     "owner_session": "6EAC3DA6",
     "reason": "failed, then passed, at 580dc8dbd580",
@@ -68,12 +68,13 @@
   {
     "at": 1795335524,
     "commit": "a60435126103b2901210023deae7a9bda4bfe616",
-    "due": "2026-11-24",
+    "due": "2026-11-27",
+    "due_why": "Its owner, ISXEG8, who owns the fence's strength, took it on 24 Nov from the orchestrator. The subtest it names is an X11 window of Joel's taking the focus, and past it the secret copy's phase, split on 24 Nov from test_a_fenced_command_reads_no_secret_copy_through_x11, which isn't listed and fails the net's run as any subtest does. That one asserts in every run the line saying the fence's walls held, which are tried before any window takes the focus; where the satellite's two steps held, it asserts the script ended clean, and where one didn't, it takes only that step's own failure as the ending, 'niri focused no X11 window' or, past the focus, 'Joel's own X11 client didn't read his copy', so a run stopped at either fails the listed subtest alone and any other failure fails the unlisted one too. The precondition failed 6 of the net's 62 runs from 20 to 23 Nov, at a60435126103, 40c0beb33200 twice, ad1d4fc0cfb4, b5acf904044f and 3bdb3ff3d5ab, each with the script's 'niri focused no X11 window' and never a line of the fence's: xlogo opened and niri focused no window for a minute, and the satellite's log met xlogo's window only as the test killed it, saying it couldn't get the pid of a window whose program had gone. Of the 45 net logs still kept at 09:30 on 24 Nov, the 4 failures among them say that and never 'No last focused toplevel', the 37 other runs that reached the satellite say 'No last focused toplevel' and never the pid line, and 4 cut short have no satellite lines. Reading xwayland-satellite, xcb queues the events it reads while a request waits for a reply, and the main loop then polls the socket over them, so the window's CreateNotify waited for the next event; upstream fixed that in 779151fdfc, which modules/niri/drain-buffered-events.patch backports. It comes off once twenty net runs in a row after that patch merges pass this subtest, about a day and a half at the net's 62 runs in four days. The count only shows nothing else broke: at 6 in 62, twenty pass by luck about one time in eight, and the evidence for the fix is upstream's diagnosis, which the logs above fit. Any failure of this subtest resets the count, its log kept or not; a run red only elsewhere neither counts nor resets it. Its owner reads the net's logs of this test each day while the entry stands, and each failing run's log the day it fails. On any reset its owner moves the due and says why. One whose satellite log says it couldn't get the window's pid failed the same way, so the patch didn't fix the cause, and its owner finds it. Any other failure of it, a crash of the satellite or the test's own error among them, is its owner's to fix forward that day, or to revert the patch through the gate when the patch caused it. Taking the entry off alone reverts nothing. While it stands, a run stopped at either of the satellite's steps still proves every wall of the fence's, since refusing a connection owes nothing to what the clipboard holds, but with no secret copy on it, so in those runs alone nothing that blocks a merge catches Joel's own X11 client no longer reading his copies through the satellite",
     "owner_pr": 6062,
-    "owner_session": "orchestrator",
+    "owner_session": "ISXEG8",
     "reason": "failed, then passed, at a60435126103",
     "subtests": [
-      "test_a_fenced_command_reads_no_secret_copy_through_x11"
+      "test_an_x11_window_of_joels_takes_the_focus"
     ],
     "test": "vm-desktop-keeps-copies"
   },
@@ -86,15 +87,6 @@
     "owner_session": "XY9H5C",
     "reason": "failed on loaded builders while each start lasted a fixed 600 ms; #6132 fixes it forward",
     "test": "still-windows-draw-nothing-as-animations-start-on-niri"
-  },
-  {
-    "at": 1795370179,
-    "commit": "f7ac6f58a5082a2265c27068330e16230cdb9f9b",
-    "due": "2026-11-24",
-    "owner_pr": 6065,
-    "owner_session": "orchestrator",
-    "reason": "failed, then passed, at f7ac6f58a508",
-    "test": "the-margin-cat-sits-above-its-column"
   },
   {
     "at": 1795371090,
@@ -182,5 +174,30 @@
       "test_emoji_finds_a_whole_word_typed_in_it"
     ],
     "test": "the-launcher-answers-whats-typed-on-niri"
+  },
+  {
+    "at": 1795652869,
+    "commit": "2a131056d2eb61e7cafeabece51f02f507d66a08",
+    "due": "2026-11-28",
+    "owner_pr": 6609,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at 2a131056d2eb",
+    "subtests": [
+      "test_a_held_chord_opens_the_launcher_once_and_a_held_return_does_its_row_once",
+      "test_a_screen_coming_back_leaves_the_launcher_open_on_the_other",
+      "test_a_sleep_with_the_launcher_open_and_it_works_after",
+      "test_after_the_wake_the_launchers_foot_still_tells_the_time",
+      "test_both_screens_go_with_the_launcher_open_and_come_back",
+      "test_polkits_prompt_comes_up_after_both_screens_go_and_come_back",
+      "test_polkits_prompt_comes_up_on_the_screen_left_once_the_first_goes",
+      "test_quickshell_warned_of_nothing_as_the_screens_came_and_went",
+      "test_super_s_line_comes_up_again_after_both_screens_go_and_come_back",
+      "test_the_first_screen_comes_back_and_the_launcher_works_on_both",
+      "test_the_first_screen_goes_with_the_launcher_open_on_it",
+      "test_the_launcher_opens_finds_and_runs_a_row_on_each_screen",
+      "test_the_second_screen_comes_back_and_the_launcher_works_on_both",
+      "test_the_second_screen_goes_with_the_launcher_open_on_it"
+    ],
+    "test": "vm-screens-keep-the-launcher"
   }
 ]
