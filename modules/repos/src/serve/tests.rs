@@ -347,16 +347,20 @@ fn a_walk_that_cannot_read_proc_says_what_works_unread_not_idle() {
 }
 
 #[test]
-fn a_first_reading_that_never_answers_is_said_late_once() {
+fn a_first_reading_that_never_answers_is_said_late_once_and_its_answer_once() {
     // The restart above leaves the page unread, and the journal must say
     // why, as it does for a reading that stops, but as none that ever
-    // answered. The first read waits out SAMPLED, past the pace's
+    // answered. The first take waits out SAMPLED, past the pace's
     // STALE, so it's already late; what holds the reading up is named
-    // only where one is, which a stand-in reading never is.
+    // only where one is, which a stand-in reading never is, so the line
+    // is the late one whole. It's heard where the daemon says it, as
+    // `take` tells it, and the thread says nothing while its first walk
+    // is held.
     let (free, freed) = mpsc::channel::<()>();
     let freed = std::sync::Mutex::new(freed);
+    let (tell, told) = mpsc::channel();
     let folders = vec![PathBuf::from("/home/someone/trees/fix")];
-    let mut working = Working::start(
+    let mut working = Working::start_saying(
         BRISK,
         BRISK * STALE,
         folders.clone(),
@@ -364,22 +368,51 @@ fn a_first_reading_that_never_answers_is_said_late_once() {
             let _ = freed.lock().map(|freed| freed.recv_timeout(SAMPLED * 4));
             Sample::default()
         },
+        move |said| {
+            let _ = tell.send(said);
+        },
     );
-    let said = working.read(folders.clone()).unwrap_or_default();
+    working.take(folders.clone());
     assert!(working.unread(), "a reading not yet answered was said");
+    working.take(folders.clone());
+    let said: Vec<String> = told.try_iter().collect();
+    let unread = " s, so what works in each repository is said unread until it answers";
+    let seconds = said
+        .first()
+        .and_then(|said| said.strip_prefix("no reading of /proc has answered in "))
+        .and_then(|said| said.strip_suffix(unread))
+        .and_then(|seconds| seconds.parse::<u64>().ok());
+    // It waited out SAMPLED, and at most a late wake more.
     assert!(
-        !said.contains("held up")
-            && said.starts_with("no reading of /proc has answered in ")
-            && said
-                .ends_with(" s, so what works in each repository is said unread until it answers"),
-        "the journal didn't say no reading answered: {said:?}"
+        said.len() == 1
+            && seconds.is_some_and(
+                |seconds| (SAMPLED.as_secs()..=(SAMPLED + LATE).as_secs()).contains(&seconds)
+            ),
+        "the journal wasn't told once that no reading answered: {said:?}"
     );
-    assert_eq!(
-        working.read(folders),
-        None,
-        "the journal said a late reading twice"
-    );
+
+    // Freed, the held walk lands already old, and the next answers: said
+    // once, and not as answering again, as none had.
     drop(free);
+    let answers = |said: &String| said.starts_with("the reading of /proc answers");
+    let mut heard = Vec::new();
+    let until = Instant::now() + LATE;
+    while !heard.iter().any(answers) && Instant::now() < until {
+        std::thread::sleep(BRISK);
+        working.take(folders.clone());
+        heard.extend(told.try_iter());
+    }
+    for _ in 0..5 {
+        std::thread::sleep(BRISK);
+        working.take(folders.clone());
+    }
+    heard.extend(told.try_iter());
+    let answered: Vec<&String> = heard.iter().filter(|said| answers(*said)).collect();
+    assert_eq!(
+        answered,
+        ["the reading of /proc answers at last"],
+        "the journal wasn't told once that the first reading answered: {heard:?}"
+    );
 }
 
 #[test]
@@ -486,6 +519,10 @@ fn a_reading_stuck_in_proc_never_holds_up_the_loop() {
         slowest = slowest.max(began.elapsed());
         std::thread::sleep(Duration::from_millis(10));
     }
+    // Taken again while it's still stuck, it says nothing more, so a
+    // stale line said twice is caught here whatever the freed loop below
+    // races to.
+    said.extend(working.read(folders.clone()));
     assert!(
         slowest < SAMPLED / 2,
         "a stuck reading held up the loop {slowest:?}"
@@ -518,13 +555,19 @@ fn a_reading_stuck_in_proc_never_holds_up_the_loop() {
         !working.measured,
         "a reading held up measured a share of time that wasn't its own"
     );
+    // The late line whole, so none names what held it up, and its age
+    // from `old` to a late wake past it.
     let late = " s old with none newer, so what works in each repository is said unread until it \
                 answers";
+    let seconds = said
+        .first()
+        .and_then(|said| said.strip_prefix("the reading of /proc is "))
+        .and_then(|said| said.strip_suffix(late))
+        .and_then(|seconds| seconds.parse::<u64>().ok());
     assert!(
         said.len() == 2
-            && said[0].starts_with("the reading of /proc is ")
-            && said[0].ends_with(late)
-            && !said[0].contains("held up")
+            && seconds
+                .is_some_and(|seconds| (old.as_secs()..=(old + LATE).as_secs()).contains(&seconds))
             && said[1] == "the reading of /proc answers again",
         "the journal wasn't told once as the reading stuck and once as it answered: {said:?}"
     );
@@ -651,13 +694,14 @@ fn the_reading_thread_says_a_lost_share_once_and_its_return_once() {
     // walks and the reading after them lose the share, and every reading
     // after measures it, so it's said once lost and once measured again.
     let (tell, told) = mpsc::channel();
-    let calls = std::sync::atomic::AtomicU64::new(0);
+    let calls = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let counted = std::sync::Arc::clone(&calls);
     let working = Working::start_saying(
         BRISK,
         ROOMY,
         Vec::new(),
         move |_: &[PathBuf]| {
-            let call = calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let call = counted.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             Sample {
                 at: 100 + call * 100,
                 awake: (!matches!(call, 2 | 3)).then_some(100 + call * 100),
@@ -673,10 +717,21 @@ fn the_reading_thread_says_a_lost_share_once_and_its_return_once() {
     while said.len() < 2 && Instant::now() < until {
         said.extend(told.recv_timeout(BRISK).ok());
     }
-    // Ten more paces with nothing more said.
-    std::thread::sleep(BRISK * 10);
+    // Seven more readings judged with nothing more said, counted rather
+    // than timed, so a starved builder can't pass it having read none:
+    // the thirteenth walk starts only once the twelfth is judged.
+    let until = Instant::now() + BRISK * 20 + LATE;
+    let read = || calls.load(std::sync::atomic::Ordering::Relaxed);
+    while read() < 13 && Instant::now() < until {
+        std::thread::sleep(BRISK);
+    }
     said.extend(told.try_iter());
+    let judged = read();
     drop(working);
+    assert!(
+        judged >= 13,
+        "only {judged} walks began, too few to hear that nothing more was said"
+    );
     assert_eq!(
         said,
         [
@@ -687,10 +742,12 @@ fn the_reading_thread_says_a_lost_share_once_and_its_return_once() {
 }
 
 #[test]
-fn the_journal_says_a_lost_share_once_and_its_return_once() {
-    // Over a run of readings, the step holds what each measured, so a
-    // loss lasting three readings, two slow walks and the reading after
-    // them, is said once, and its end once.
+fn the_journal_says_each_loss_and_each_return_once() {
+    // The thread case above hears one loss and its end; over a longer
+    // run the step holds what each reading measured, so a second loss
+    // after a return is said again, and its end again, which a journal
+    // that said a loss once ever would miss. A slow walk loses the share
+    // for itself and the reading after it.
     let one = Process {
         pid: 1,
         parent: 0,
@@ -709,27 +766,23 @@ fn the_journal_says_a_lost_share_once_and_its_return_once() {
         read(Some(100)),
         read(Some(200)),
         read(None),
-        read(None),
         read(Some(300)),
         read(Some(400)),
+        read(None),
+        read(Some(500)),
+        read(Some(600)),
     ];
+    let lost = || {
+        Some("the share of a core goes unmeasured, as this walk of /proc took over 2 s".to_owned())
+    };
+    let again = || Some("the share of a core is measured again".to_owned());
     let mut journal = Journal::default();
     let said: Vec<Option<String>> = (0..run.len())
         .map(|at| journal.step(at.checked_sub(1).map(|before| &run[before]), &run[at]))
         .collect();
     assert_eq!(
         said,
-        [
-            None,
-            None,
-            Some(
-                "the share of a core goes unmeasured, as this walk of /proc took over 2 s"
-                    .to_owned()
-            ),
-            None,
-            None,
-            Some("the share of a core is measured again".to_owned()),
-        ],
+        [None, None, lost(), None, again(), lost(), None, again()]
     );
 }
 

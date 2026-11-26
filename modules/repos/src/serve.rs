@@ -135,9 +135,7 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
     })?;
     serve::accept(Arc::clone(&shared), listener);
     eprintln!("{}", ready(started.elapsed()));
-    if let Some(said) = working.read(folders_of(&record)) {
-        eprintln!("repos: {said}");
-    }
+    working.take(folders_of(&record));
     shared.change(working.said(&record), feed::sources(&record));
     // Once views are answered, so writing the homes never holds up the
     // first.
@@ -170,9 +168,7 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
         };
         // Every reading of the disk, whole or not, holds every folder, so
         // each hands them on and takes what /proc has read since.
-        if let Some(said) = working.read(folders_of(&record)) {
-            eprintln!("repos: {said}");
-        }
+        working.take(folders_of(&record));
         shared.change(working.said(&record), feed::sources(&record));
         keep(homes.as_mut(), &record);
     }
@@ -248,6 +244,12 @@ struct Working {
     /// Whether the last reading has grown `STALE` paces old with none
     /// newer, so what it read goes unsaid.
     stale: bool,
+    /// Whether a reading has been taken fresh, so the first to answer
+    /// after a late start isn't said as answering again.
+    answered: bool,
+    /// Where what the journal is told goes, from the loop and the thread
+    /// alike.
+    say: Arc<dyn Fn(String) + Send + Sync>,
     used: BTreeMap<PathBuf, Use>,
     measured: bool,
     placed: BTreeSet<PathBuf>,
@@ -278,15 +280,18 @@ impl Working {
     }
 
     /// Starts as [`Working::start`] does, saying to `say` what the
-    /// journal would be told of the share of a core as each reading
-    /// judges it, so a case can hear what the thread says.
+    /// journal would be told, of the share of a core as each reading
+    /// judges it and of the reading's age as [`Working::take`] finds it,
+    /// so a case can hear what the daemon says.
     fn start_saying(
         pace: Duration,
         old: Duration,
         folders: Vec<PathBuf>,
         mut sample: impl FnMut(&[PathBuf]) -> Sample + Send + 'static,
-        mut say: impl FnMut(String) + Send + 'static,
+        say: impl Fn(String) + Send + Sync + 'static,
     ) -> Self {
+        let say: Arc<dyn Fn(String) + Send + Sync> = Arc::new(say);
+        let saying = Arc::clone(&say);
         let held = Arc::new((
             Mutex::new(Held {
                 folders,
@@ -309,7 +314,7 @@ impl Working {
                 let now = sample(&folders);
                 let measured = using::measured(last.as_ref(), &now);
                 if let Some(why) = journal.step(last.as_ref(), &now) {
-                    say(why);
+                    saying(why);
                 }
                 let mut used = using::using(last.as_ref(), &now);
                 for (folder, one) in &mut used {
@@ -345,6 +350,8 @@ impl Working {
             waited: false,
             at: None,
             stale: false,
+            answered: false,
+            say,
             used: BTreeMap::new(),
             measured: false,
             placed: BTreeSet::new(),
@@ -359,7 +366,7 @@ impl Working {
     /// that waited in the slot past that is never said as now. Where none
     /// has answered by then, the journal says so, as a restart reaching a
     /// process still holding its memory map would leave it: what it says,
-    /// once as the reading grows stale and once as it answers again, is
+    /// once as the reading grows stale and once as it answers, is
     /// returned.
     #[must_use = "its line is the only word that /proc is held up"]
     fn read(&mut self, folders: Vec<PathBuf>) -> Option<String> {
@@ -384,8 +391,17 @@ impl Working {
         let age = self.at.unwrap_or(self.since).elapsed();
         if age < self.old {
             let was = self.stale;
+            let again = self.answered;
             self.stale = false;
-            return was.then(|| "the reading of /proc answers again".to_owned());
+            self.answered = true;
+            return was.then(|| {
+                if again {
+                    "the reading of /proc answers again"
+                } else {
+                    "the reading of /proc answers at last"
+                }
+                .to_owned()
+            });
         }
         let was = self.stale;
         self.stale = true;
@@ -410,6 +426,15 @@ impl Working {
         Some(format!(
             "{late}{held}, so what works in each repository is said unread until it answers"
         ))
+    }
+
+    /// Takes the newest reading as [`Working::read`] does, saying what it
+    /// returns where the thread says its own lines, as the daemon's loop
+    /// does after each reading of the disk.
+    fn take(&mut self, folders: Vec<PathBuf>) {
+        if let Some(said) = self.read(folders) {
+            (self.say)(said);
+        }
     }
 
     /// Whether what works in each repository can't be said: no reading has
