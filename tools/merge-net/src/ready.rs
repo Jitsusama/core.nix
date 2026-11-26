@@ -53,14 +53,11 @@ pub enum Before {
     /// The same change passed at this commit, and main has since moved
     /// none of its files, so the rebase changed nothing it was checked on.
     Clean(String),
-    /// The same change passed at this commit, but main has since moved
-    /// these of its files, so changed-checks runs again at the head.
+    /// The same change passed at this commit, the newest that did, but
+    /// main has since moved these of its files, so changed-checks runs
+    /// again at the head or the train checks it merged, however many
+    /// earlier commits passed.
     Shares(String, Vec<String>),
-    /// The same change passed whole at two commits, the newest first, and
-    /// main has since moved these of its files: it has been checked twice,
-    /// so a clean rebase needs no third run unless main renamed or deleted
-    /// a path it names, which [`names_gone`] says.
-    Twice(String, String, Vec<String>),
     /// No commit of the same change passed.
     Unchecked,
 }
@@ -78,18 +75,18 @@ pub enum Before {
 /// derivations: on 9 November #2504 merged with words.json's checks rerun
 /// at its head after main moved two other of its files, which no check
 /// that ran read. Nix builds only what the rebase moved, and takes the
-/// rest from the builders. But main moves faster than a run: on 9
-/// November #2571 ran six times and #2576, #2603 and #2600 four or five
-/// each, every run passing, so a change that passed at two commits is
-/// `Twice` and the net tests it after it merges.
+/// rest from the builders. Passing at more commits speaks no louder: no
+/// run saw what main moved since, and at 11:07 on 26 November #6727,
+/// passed at two commits, merged as it stood after main moved a file it
+/// shared, so formatting went red on main. A change main outruns boards
+/// the train, whose candidate run checks the merged tree.
 pub fn checked_before(
     candidates: &[String],
     record: &dyn Fn(&str) -> String,
     on_main: &dyn Fn(&str) -> bool,
     same: &dyn Fn(&str) -> Option<Vec<String>>,
 ) -> Before {
-    let mut first_shared: Option<(String, Vec<String>)> = None;
-    let mut passes = 0;
+    let mut newest_shared: Option<(String, Vec<String>)> = None;
     for candidate in candidates {
         if !built_there(&record(candidate), on_main) {
             continue;
@@ -100,16 +97,9 @@ pub fn checked_before(
         if shared.is_empty() {
             return Before::Clean(candidate.clone());
         }
-        passes += 1;
-        match &first_shared {
-            None => first_shared = Some((candidate.clone(), shared)),
-            Some((newest, shared)) if passes == 2 => {
-                return Before::Twice(newest.clone(), candidate.clone(), shared.clone());
-            }
-            Some(_) => {}
-        }
+        newest_shared.get_or_insert((candidate.clone(), shared));
     }
-    first_shared.map_or(Before::Unchecked, |(newest, shared)| {
+    newest_shared.map_or(Before::Unchecked, |(newest, shared)| {
         Before::Shares(newest, shared)
     })
 }
@@ -183,9 +173,9 @@ pub fn shared(branch: &Side, main: &Side) -> Vec<String> {
 }
 
 /// The files either side changed that name a path the other renamed or
-/// deleted, which no number of earlier runs speaks for, since the run
-/// that reads the old path never saw it gone.
-pub fn names_gone(branch: &Side, main: &Side) -> Vec<String> {
+/// deleted, which no earlier run speaks for, since the run that reads the
+/// old path never saw it gone.
+fn names_gone(branch: &Side, main: &Side) -> Vec<String> {
     let mut naming: Vec<String> = Vec::new();
     for (side, other) in [(main, branch), (branch, main)] {
         for file in side.changed {
@@ -566,7 +556,7 @@ mod tests {
     }
 
     #[test]
-    fn the_same_change_passed_at_two_commits_needs_no_third_run() {
+    fn the_same_change_passed_at_two_commits_still_shares_what_main_moved() {
         let passed = "{\"dir\":null,\"printed\":\"\",\"run\":[\"--system\",\"x86_64-linux\"]}\n";
         let files = vec!["a.rs".to_owned(), "b.md".to_owned()];
         let candidates = vec!["rebased".to_owned(), "old".to_owned(), "other".to_owned()];
@@ -584,12 +574,8 @@ mod tests {
                 &files,
                 moved(at)
             )),
-            Before::Twice(
-                "rebased".to_owned(),
-                "old".to_owned(),
-                vec!["b.md".to_owned()]
-            ),
-            "passed whole at two commits of the same change, so a third rebase needs no run"
+            Before::Shares("rebased".to_owned(), vec!["b.md".to_owned()]),
+            "passed at two commits of the same change, it merged as it stood over main's move"
         );
         // Passed once, and another change passed: one run still asks.
         let once = |commit: &str| match commit {
@@ -602,6 +588,39 @@ mod tests {
                 moved(at)
             )),
             Before::Shares("rebased".to_owned(), vec!["b.md".to_owned()])
+        );
+    }
+
+    #[test]
+    fn mains_commit_pushing_a_shared_file_past_a_checks_limit_is_refused() {
+        // #6727's case, 26 November: the change passed at two commits, then
+        // main moved a file it shared, and the two merged past what the
+        // formatting check allows, so it went red on main at 11:07.
+        const LIMIT: usize = 500;
+        let file = "modules/quickshell/launcher/Presented.js";
+        let holds = |lines: usize| lines <= LIMIT;
+        let (base, own, mains) = (490, 497, 496);
+        let merged = own + mains - base;
+        assert!(
+            holds(own) && holds(mains) && !holds(merged),
+            "the stand-in's check didn't pass on each side alone and fail merged"
+        );
+        let passed = "{\"dir\":null,\"printed\":\"\",\"run\":[\"--system\",\"x86_64-linux\"]}\n";
+        let files = owned(&[file, "modules/quickshell/Launcher.qml"]);
+        let candidates = owned(&["rebased", "old"]);
+        let record = |_: &str| passed.to_owned();
+        let moved = |_: &str| Some(owned(&[file, "docs/glossary.md"]));
+        let before = checked_before(&candidates, &record, &on_main, &|at: &str| {
+            sharing(&files, moved(at))
+        });
+        assert!(
+            !matches!(before, Before::Clean(_)),
+            "ready let a head merge as it stands over main's move past a check's limit"
+        );
+        assert_eq!(
+            before,
+            Before::Shares("rebased".to_owned(), owned(&[file])),
+            "the file main pushed past the limit wasn't named for a run at the head"
         );
     }
 
