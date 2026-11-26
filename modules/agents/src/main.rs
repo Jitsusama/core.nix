@@ -466,9 +466,9 @@ const SHELLS_ALONE: [&str; 21] = [
 
 /// Every one of [`SHELLS_ALONE`] but which are kept, which asks nothing of
 /// who asked: each asks the shell's systemd who the shell is. An answer
-/// waits on the node up to acts.rs's PATIENCE besides, so queued behind
-/// the shell's other acts it could come back after the Talk lets a
-/// second go (TalkAnswers.js's SENT_STANDS_MS).
+/// waits on the node up to acts.rs's `PATIENCE` besides, so queued
+/// behind the shell's other acts it could come back after the Talk lets
+/// a second go (TalkAnswers.js's `SENT_STANDS_MS`).
 const SLOW: [&str; 20] = [
     sprout::ASK,
     places::ASK,
