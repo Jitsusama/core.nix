@@ -7467,10 +7467,15 @@ Scope {
         const foot = selected === null ? list.fillAt(root.current)
             : selected.y + selected.height - root.rowTall;
         const onRow = root.current < 0 || Math.abs(list.pickY - foot) < 0.5;
+        // How many rows the frame lists, so a check sees what a key's own first frame drew,
+        // where what's showing is made once a turn, at its end, and a list drawn for one frame
+        // can go unsaid.
+        const listed = list.count;
         for (const key of keysDrawing.waiting) {
             key.begun = begun;
             key.frame = frame;
             key.onRow = onRow;
+            key.listed = listed;
             keysAwaited += 1;
             presentedAwait(key.pressed, (at, answered) =>
                 keyPresented(key.pressed, at, key, answered));
@@ -13245,8 +13250,13 @@ Scope {
         // finds it however fast it was; typed words are never said here.
         // Its clock's line says whether niri timed its press and how many
         // frames after its own niri answered (Presented.keyClockOf).
+        // `waited` when its search waited on answers (Awaited.heldFor), so a
+        // check tells a key listed by its own frame from one listed as they
+        // came, and null where its search recorded no parts to say.
+        const waited = key.parts ? typeof key.parts.waited === "number" : null;
         const one = Object.assign({ from, at, heard: key.heard, begun: key.begun,
-            onRow: key.onRow }, Presented.keyClockOf(key, answered), {
+            onRow: key.onRow, listed: key.listed ?? null, waited },
+            Presented.keyClockOf(key, answered), {
             synchronized: times.synchronized ?? null, swapped: times.swapped ?? null,
             screen: root.screenHere?.name ?? "",
             refresh: root.refreshOf(answered),

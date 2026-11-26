@@ -262,7 +262,9 @@
   a-shut-launcher-makes-no-document-rows = ''
     the launcher's Documents make no row while it's shut, as the clock's minute passes or the
     google daemon tells a row, then hold every document once it opens, made once in the daemon's
-    order, and keep them, making none, once it's shut again
+    order, and keep them, making none, once it's shut again; and a search, or what's typed inside
+    a row, lost as the daemon goes while drawn is asked again once it says hello, still timed from
+    its key, lost again left for the next key
   '';
   a-sign-in-notice-is-taken-back-even-late = ''
     a network wanting a sign-in is told of once, its notice staying while it wants one and taken
@@ -1253,6 +1255,12 @@
     one mycelium doesn't run far runs here saying why, or under --there ends saying why; a
     program its kind doesn't allow is refused before anything runs, and a command asked wrongly
     says what it takes
+  '';
+  emoji-keeps-a-lost-search-only-open = ''
+    with nothing at the clipboard history's socket, Emoji's rows are drawn only while the launcher
+    is open: shut, a search and one typed inside a group that went unanswered are let go; open,
+    each is kept, and asked again at the history's hello, the answer to what was typed in the
+    group not taken as its key's own a while after the key, so Emoji's rows stay where they are
   '';
   ergodox-on-every-workstation = ''
     every workstation can flash the ErgoDox, a Mac as much as Linux
