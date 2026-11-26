@@ -217,9 +217,9 @@ ShellRoot {
     function ran() {
         return JSON.stringify(Niri.spawned);
     }
-    // QML takes no rest parameter on a method, so the words come as its
-    // arguments.
-    function told() {
+    // Named apart from the stand-ins' own told, which a case's lookup would
+    // find first.
+    function argv() {
         return JSON.stringify(Array.from(arguments));
     }
 
@@ -501,15 +501,15 @@ ShellRoot {
                 expect("Return steps in, never calling", launcher.entered === open[0]
                     && Niri.spawned.length === 0, Niri.spawned.join(" "));
                 expect("calling one who's available",
-                    reach(open[0]) === told("tuple", "call", "start", "--", "ada@example.com"),
+                    reach(open[0]) === argv("tuple", "call", "start", "--", "ada@example.com"),
                     ran());
                 expect("one in a call is joined", live(open[1])[0].name === "Join Their Call",
                     live(open[1])[0].name);
                 expect("joining one in a call",
-                    reach(open[1]) === told("tuple", "call", "join", "--", "ben@example.com"),
+                    reach(open[1]) === argv("tuple", "call", "join", "--", "ben@example.com"),
                     ran());
                 expect("calling one who's offline",
-                    reach(open[3]) === told("tuple", "call", "start", "--", "cal@example.com"),
+                    reach(open[3]) === argv("tuple", "call", "start", "--", "cal@example.com"),
                     ran());
 
                 // Past Write in Slack's place, held while Slack is asked
@@ -615,7 +615,7 @@ ShellRoot {
             const hal = found("hal");
             expect("found", names(hal) === "Hal", names(hal));
             expect("called by their id",
-                reach(hal[0]) === told("tuple", "call", "start", "--", "108"), ran());
+                reach(hal[0]) === argv("tuple", "call", "start", "--", "108"), ran());
             expect("and nothing of theirs to copy",
                 names(hal[0].verbs()) === "Call Them, Favourite", names(hal[0].verbs()));
         }),
@@ -625,7 +625,7 @@ ShellRoot {
                 && making.side === "no" && making.verb === "star", `${making.side} ${making.verb}`);
             making.run();
             expect("telling Tuple of a favourite",
-                ran() === told("tuple", "contacts", "favorite", "--", "eli@example.com"),
+                ran() === argv("tuple", "contacts", "favorite", "--", "eli@example.com"),
                 ran());
             expect("the switch says so at once", making.side === "yes", making.side);
             expect("a new favourite at home at once",
@@ -636,7 +636,7 @@ ShellRoot {
 
             home("Dee Ellery").verbs().find(row => row.name === "Favourite").run();
             expect("telling Tuple of one no longer a favourite",
-                ran() === told("tuple", "contacts", "unfavorite", "--", "dee@example.com"),
+                ran() === argv("tuple", "contacts", "unfavorite", "--", "dee@example.com"),
                 ran());
             expect("one no longer a favourite, with nothing else between them, isn't listed",
                 names(people.all) === "Ada Brook, Ben Carrow, Eli Fenwick, Cal Dunmore",
