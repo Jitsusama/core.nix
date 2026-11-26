@@ -84,15 +84,40 @@ function differs(before, now) {
         || now.some((one, at) => OFFERED.some(field => before[at][field] !== one[field]));
 }
 
+// What the offers `kept`, `{ offers, at, unoffered }` as Agents.qml keeps
+// them, become once `answer` comes `now` (heard): `{ offers, at, unoffered,
+// changed, journal }`, `changed` where the offers differ, so Start New
+// Work draws its rows again, and `at` moving only when offers came.
+function answered(kept, answer, now) {
+    const heardNow = heard(kept.unoffered, answer);
+    const came = heardNow.offers !== null;
+    return {
+        offers: came ? heardNow.offers : kept.offers,
+        at: came ? now : kept.at,
+        unoffered: heardNow.unoffered,
+        changed: came && differs(kept.offers, heardNow.offers),
+        journal: heardNow.journal
+    };
+}
+
+// Whether the offers `kept`, `{ asking, at, offers }`, are asked for `now`:
+// never while an ask is out, else once they're stale, and, for a start
+// Returned (`pressed`), whenever none are offered, so a Return refused
+// for want of them always asks again.
+function asksNow(kept, now, pressed) {
+    return !kept.asking && (stale(kept.at, now) || pressed && !offering(kept.offers));
+}
+
 // What a start in the cloud is given as offered: the `offers` heard at
-// `at`, else, none heard yet, null while an ask is out (`asking`) or none
-// has come back, or `unoffered`, the why the last ask came back with, so a
-// node that can't say is never told as one still to answer (refused).
-function offeredNow(at, offers, asking, unoffered) {
-    if (at > 0) {
+// `at` where some are offered, or none were, the node answering; else
+// `unoffered`, the why the last ask came back with, even while another is
+// out, so Joel is never told of a wait the last ask already ended; else,
+// nothing heard yet, null (refused).
+function offeredNow(at, offers, unoffered) {
+    if (at > 0 && (offering(offers) || unoffered === "")) {
         return offers;
     }
-    return asking || unoffered === "" ? null : unoffered;
+    return unoffered === "" ? null : unoffered;
 }
 
 // Whether what the cloud offers, as last heard at `at`, is to be asked
@@ -169,7 +194,8 @@ function ask(text, place, on, offered) {
 // New Work's `words`, the place unnamed, the cloud not heard yet (null
 // offered, as a link's act Returned before the first offers came), the
 // why its last ask came back with no offers (a why offered, offeredNow),
-// the cloud not taken, else where it starts misnamed.
+// none offered by a node that takes the cloud, else where it starts
+// misnamed.
 function refused(place, on, offered, words) {
     if (!named(place)) {
         return words?.unnamed ?? "";
@@ -184,7 +210,7 @@ function refused(place, on, offered, words) {
         // A function, so a `$` in the node's words is said as written.
         return String(words?.unoffered ?? "").replace("{why}", () => offered);
     }
-    return offering(offered) ? words?.unmachined ?? "" : words?.untaken ?? "";
+    return offering(offered) ? words?.unmachined ?? "" : words?.unprovided ?? "";
 }
 
 // Where a link's `on` says its work starts, as Launcher.qml's newWorkOn

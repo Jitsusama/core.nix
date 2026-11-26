@@ -2043,14 +2043,15 @@ Provider {
                 + `asked at ${StartSaid.clock(again)}`);
             return;
         }
-        // With no offers heard, said as not heard yet while an ask is out,
-        // else as the why the last ask came back with (Cloud.offeredNow),
-        // promising nothing of a Return, since a node missing stays so;
-        // a Return asks again all the same, in case what held it passed.
+        // A Return to the cloud with none offered asks again first
+        // (Cloud.asksNow), in case what held them passed, and is then
+        // said as what is known: the why the last ask came back with, or,
+        // with nothing heard yet, that they haven't come (Cloud.offeredNow).
+        // A daemon missing answers at once, so its why is said this Return.
+        if (Cloud.onOf(elsewhere)?.needs !== undefined)
+            provider.askOffers(true);
         const offered = Cloud.offeredNow(provider.cloudOffersAt, provider.cloudOffers,
-            provider.cloudAsking, provider.cloudUnoffered);
-        if (Cloud.onOf(elsewhere)?.needs !== undefined && !Array.isArray(offered))
-            provider.askOffers();
+            provider.cloudUnoffered);
         const ask = elsewhere === "" ? Sprouting.ask(said, folder)
             : Cloud.ask(said, folder, elsewhere, offered);
         if (ask === null) {
@@ -2409,31 +2410,43 @@ Provider {
     property real cloudOffersAt: 0
     property string cloudUnoffered: ""
     property bool cloudAsking: false
-    function askOffers() {
-        const daemon = rowsKind ?? null;
-        if (provider.cloudAsking || !Cloud.stale(provider.cloudOffersAt, Date.now()))
+    // `pressed` where a start's Return asks (Cloud.asksNow).
+    function askOffers(pressed) {
+        const kept = {
+            asking: provider.cloudAsking,
+            at: provider.cloudOffersAt,
+            offers: provider.cloudOffers
+        };
+        if (!Cloud.asksNow(kept, Date.now(), pressed === true))
             return;
         // With no daemon to ask, no answer comes, so it is heard as none
         // (Cloud.heard's NO_ANSWER), never left as not heard yet for good.
+        const daemon = rowsKind ?? null;
         if (daemon === null) {
-            provider.cloudUnoffered = Cloud.heard(provider.cloudUnoffered, null).unoffered;
+            provider.offersCame(null);
             return;
         }
         provider.cloudAsking = true;
         daemon.ask({ ask: "offers" }, answer => {
             provider.cloudAsking = false;
-            const heard = Cloud.heard(provider.cloudUnoffered, answer);
-            if (heard.offers !== null) {
-                provider.cloudOffersAt = Date.now();
-                if (Cloud.differs(provider.cloudOffers, heard.offers)) {
-                    provider.cloudOffers = heard.offers;
-                    provider.changed();
-                }
-            }
-            provider.cloudUnoffered = heard.unoffered;
-            if (heard.journal !== null)
-                console.info(`launcher: the cloud offers nothing known: ${heard.journal}`);
+            provider.offersCame(answer);
         });
+    }
+    // What an offers `answer` changes (Cloud.answered), kept and journalled.
+    function offersCame(answer) {
+        const kept = Cloud.answered({
+            offers: provider.cloudOffers,
+            at: provider.cloudOffersAt,
+            unoffered: provider.cloudUnoffered
+        }, answer, Date.now());
+        provider.cloudOffersAt = kept.at;
+        provider.cloudUnoffered = kept.unoffered;
+        if (kept.changed) {
+            provider.cloudOffers = kept.offers;
+            provider.changed();
+        }
+        if (kept.journal !== null)
+            console.info(`launcher: the cloud offers nothing known: ${kept.journal}`);
     }
     // Start New Work's In rows (Wheres.wheres): his quests' folders, then the
     // node's places, a big repository's zones among them.
