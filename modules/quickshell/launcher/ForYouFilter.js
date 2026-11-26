@@ -12,8 +12,9 @@
 .import "Order.js" as Order
 
 // The kinds a filter names, in the order For You's bands are designed in:
-// `agent` is what agents ask, so :filter agent holds what Agents
-// does, and :filter do none of it.
+// `agent` is what For You's Agents holds, every row a session raised
+// whatever its own kind (Now.qml's filterable), so :filter agent holds
+// what Agents does, and :filter do none of it.
 const KINDS = ["do", "agent", "look", "try"];
 // For You's own sources that give it one kind alone, so they're no source
 // to filter by: their kind already reaches them, and typed, each answers as

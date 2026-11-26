@@ -1085,10 +1085,10 @@ def test_a_session_wanting_joel_waits_on_him_as_the_session(desktop: Desktop) ->
 
 
 def answered_in_place(desktop: Desktop, since: str) -> None:
-    """Answer a session's question from For You: in its row, inside Agents, Return on
-    the recommended answer.
+    """Answer a session's question from For You, inside Agents, by its recommended answer.
 
-    The answer reaches the session's inbox as the harness takes one, by the want's id.
+    It's answered in its row, Return on the recommended answer. The answer reaches the
+    session's inbox as the harness takes one, by the want's id.
     """
     machine = desktop.machine
     desktop.as_account(f"mkdir -p {INBOX} && find {INBOX} -name '*.json' -delete")
@@ -1108,8 +1108,7 @@ def answered_in_place(desktop: Desktop, since: str) -> None:
     machine.send_key("ret")
     desktop.launcher_until(
         lambda shown: (
-            shown["held"] == ["now", "For You"]
-            and (shown["selected"] or {}).get("name") == AGENTS
+            shown["held"] == ["now", "For You"] and (shown["selected"] or {}).get("name") == AGENTS
         )
     )
     machine.send_key("ret")

@@ -66,6 +66,23 @@ function laidOut(groups, rowsOf, headingOf, gather) {
     return rowsIn(loose.slice(0, at)).concat([gather(inside, weight)], rowsIn(loose.slice(at)));
 }
 
+// What leads For You's rows of what needs Joel now as laidOut lays out
+// `groups` (byCell's), read without making a row, so home's Now row can
+// name what Return, Return reaches: `{ item, gathered }`, his own heaviest
+// where it weighs no less than any cell's, else the first cell's first, the
+// heaviest Agents holds, `gathered` true; null with nothing. An item whose
+// row goes as it's made is counted here, as one seldom does.
+function leading(groups) {
+    const cells = (groups ?? []).filter(group => group.cell !== null && group.items.length > 0);
+    const own = (groups ?? []).find(group => group.cell === null)?.items[0] ?? null;
+    const weight = cells.reduce((most, group) => group.items.reduce((also, item) =>
+        Math.max(also, item.weight ?? 0), most), 0);
+    if (cells.length === 0 || own !== null && (own.weight ?? 0) >= weight) {
+        return own === null ? null : { item: own, gathered: false };
+    }
+    return { item: cells[0].items[0], gathered: true };
+}
+
 // A cell's heading as Agents' own row says the cell: its name and how it
 // stands as the agents daemon words them (`served`, Agents' row for it, or
 // null), never words made here (Y2YBTS, 2026-11-18); its title alone, or

@@ -123,13 +123,12 @@ const OWN_ROWS = ["look", "try", "read"];
 // The kinds never lifted however long they've waited, as they ask nothing of Joel: a look
 // only to see (VKCF3Z, 2026-11-12).
 const NEVER_LIFTED = ["read"];
-// The kinds gathered in a row of their own in :filter's flat order, once
-// two or more ask, standing where the heaviest weighs: what agents ask,
-// which stood loose among the to-dos (Joel, 2026-11-18 10:18: "they are all
-// loose amongst other things properly categorized, it is confusing"). For
-// You itself gathers every cell's rows into Agents however few, even one
-// ask (ForYouCells.js's laidOut; Joel, 2026-11-25 21:52: "it also makes no
-// sense for the agents to be top level").
+// The kinds gathered in a row of their own in :filter's flat order, once two
+// or more ask, where the heaviest weighs: what agents ask, which stood loose
+// among the to-dos (Joel, 2026-11-18 10:18: "it is confusing"). For You
+// gathers every cell's rows into Agents however few (ForYouCells.js's
+// laidOut; Joel, 2026-11-25: "it also makes no sense for the agents to be
+// top level").
 const GATHERED = ["agent"];
 const GATHERED_FROM = 2;
 
@@ -148,16 +147,14 @@ function bandBy(kind, thing, now, due) {
         || OWN_ROWS.includes(kind) && !pressingBy(thing, now, due) ? kind : "now";
 }
 
-// For You's items in their bands, { now, agent, look, try, read }, and
-// `agentAt`, where in `now` Agents stands in :filter's flat order,
-// and `all`, what needs Joel now with what agents ask among it, as For
-// You lays it out by whose it is (ForYouCells.js's laidOut), each item
-// { kind, thing } with what else its caller keeps, given its `weight`. Each band is heaviest first, those alike the oldest first,
-// then in the order they came (VKCF3Z, 2026-11-09). Each item's times are
-// read once and the bands sorted on numbers: a sort that read them in its
-// comparator parsed each ISO time over again for every pair it weighed,
-// and held the shell's thread for seconds of each opening on the laptop
-// (2026-11-10).
+// For You's items, { kind, thing } with what else its caller keeps, given
+// a `weight`, in bands { now, agent, look, try, read }; `agentAt` is where
+// Agents stands in `now` in :filter's flat order, and `all` what needs
+// Joel now with what agents ask, which For You lays out by whose it is
+// (ForYouCells.js's laidOut). Each band is heaviest first, those alike the
+// oldest first, then in the order they came (VKCF3Z, 2026-11-09). Times
+// are read once and sorted as numbers: parsing each ISO time for every
+// pair held the shell's thread for seconds on the laptop (2026-11-10).
 function banded(items, now) {
     const bands = { now: [], agent: [], look: [], try: [], read: [] };
     const list = items ?? [];

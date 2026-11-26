@@ -2348,6 +2348,8 @@ Provider {
             }
         })).concat(WaitingOnYou.now.map(each => ({
             kind: "do",
+            // Home's Now row names it by its title where it leads.
+            toDo: each,
             thing: provider.itemThing(each),
             cell: () => WaitingOnYou.session(each),
             make: now => provider.item(each, now)
@@ -2486,10 +2488,14 @@ Provider {
     // its own it blocks on, as a session whose want is an action asks it
     // (ForYou.js's blocked).
     function cellRows(band, now) {
-        const asks = one => one.kind === "agent" || one.kind === "do" && one.thing.blocks > 0;
-        return Cells.laidOut(Cells.byCell(band, one => one.cell(), asks),
+        return Cells.laidOut(cellsOf(band),
             items => bandRows(items, now), cellHeading,
             inside => keptAlike(kindsKept, "agent", inside, () => madeKindRow("agent", inside)));
+    }
+
+    function cellsOf(band) {
+        const asks = one => one.kind === "agent" || one.kind === "do" && one.thing.blocks > 0;
+        return Cells.byCell(band, one => one.cell(), asks);
     }
 
     // A cell's heading, its name and how it stands as the agents daemon
@@ -2615,18 +2621,27 @@ Provider {
         return rows;
     }
 
-    // Every row For You's :filter narrows, each one by one, as its bands
-    // order them: a filter steps past the rows that hold a kind, so
+    // Every row For You's :filter narrows, each one by one, as For You
+    // orders them: a filter steps past the rows that hold a kind, so
     // :filter look holds what To Look At does, and any lifted (VKCF3Z,
-    // 2026-11-09).
+    // 2026-11-09). Agents is opened where it stands, its headings left
+    // out as a filter draws none, and each row it holds is told as an
+    // agent's whatever its own kind, so :filter agent holds what Agents
+    // does and no other kind's filter any of it (round 5, F26).
     function filterable() {
         const now = Date.now();
         const bands = bandsAt(now);
+        const opened = row => row.key !== "on:waitingOnYou:kind:agent" ? [row]
+            : Array.from(row.targets()).filter(one => one.heading !== true).map(agentsOwn);
         return latelyRows(now).filter(latelyComingIn).concat(
-            bandRows(bands.now.slice(0, bands.agentAt), now),
-            bandRows(bands.agent, now), bandRows(bands.now.slice(bands.agentAt), now),
-            bandRows(bands.look, now),
-            bandRows(bands.try, now), bandRows(bands.read, now));
+            cellRows(bands.all, now).reduce((rows, row) => rows.concat(opened(row)), []),
+            bandRows(bands.look, now), bandRows(bands.try, now), bandRows(bands.read, now));
+    }
+    // A row inside Agents as :filter tells it, an agent's from where it
+    // came, kept while the row is.
+    function agentsOwn(row) {
+        return keptAlike(itemsKept, `agent:${row.key}`, [row], () => Object.assign({}, row,
+            { forYou: { kind: "agent", source: row.forYou?.source ?? "sessions" } }));
     }
 
     // Whether one of Lately's rows stands in For You: only while its own
@@ -3362,14 +3377,17 @@ Provider {
         const held = leading === null ? [] : latelyCriticalHeld[leading] ?? [];
         const critical = leading === null ? ""
             : String(held[0]?.summary ?? "") || Words.name(`for-you:source:${leading}`);
-        const asked = sessions.length > 0 && critical === "";
-        const lead = sessions.length === 0 && critical === ""
-            ? WaitingOnYou.now[0] ?? null : null;
-        // A look or a landing lifted into what needs him now, where no
-        // session or to-do leads, says its own row's name.
-        const lifted = sessions.length > 0 || lead ? null : forYouBands.now[0] ?? null;
-        const title = critical !== "" ? critical : asked ? first : lead ? lead.title
-            : lifted?.make(Date.now())?.name ?? "";
+        // Else what leads what needs him now as For You lays it out
+        // (ForYouCells.js's leading): a session's ask, his to-do, or a look
+        // or a landing lifted, by its own row's name. Agents leading, it's
+        // the heaviest Agents holds, which Return, Return steps in to, a
+        // to-do of a session asking nothing among them (round 5, F43).
+        const led = critical === "" ? Cells.leading(cellsOf(forYouBands.all)) : null;
+        const asker = led?.item.kind === "agent" ? led.item.cell() : null;
+        const lead = led?.item.toDo ?? null;
+        const title = critical !== "" ? critical
+            : asker ? `${asker.title} ${Sessions.wanted(asker.presence?.wants?.kind)}`
+            : lead ? lead.title : led?.item.make(Date.now())?.name ?? "";
         if (title === "") {
             return [];
         }

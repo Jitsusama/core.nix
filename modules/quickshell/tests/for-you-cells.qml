@@ -53,6 +53,22 @@ QtObject {
             Cells.byCell([{ name: "one" }], () => ({ title: "x" }))
                 .map(group => group.cell), [null]);
         expect("nothing, no groups", Cells.byCell(undefined, () => cellA), []);
+        // What leads For You's rows of what needs him, read without making
+        // any, as laidOut lays them out, so home's row can name what
+        // Return, Return reaches: his own where it weighs no less than any
+        // cell's, else Agents, by the first cell's first (round 5, F43).
+        const ownItem = { name: "own", weight: 5 };
+        const askedItem = { name: "asked", weight: 5 };
+        const lighterItem = { name: "lighter", weight: 3 };
+        expect("his own leads where it weighs as much as a cell's",
+            Cells.leading([{ cell: null, items: [ownItem] }, { cell: cellA, items: [askedItem] }]),
+            { item: ownItem, gathered: false });
+        expect("a cell's heavier, Agents leads, by the first cell's first",
+            Cells.leading([{ cell: null, items: [lighterItem] },
+                { cell: cellA, items: [askedItem] }]), { item: askedItem, gathered: true });
+        expect("no cell, his own", Cells.leading([{ cell: null, items: [ownItem] }]),
+            { item: ownItem, gathered: false });
+        expect("nothing, nothing leads", Cells.leading([]), null);
         // What a cell asks leads it, whatever a look it left weighs, since
         // the ask is what holds the session up; the cells stay where their
         // heaviest put them.

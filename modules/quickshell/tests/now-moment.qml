@@ -909,6 +909,17 @@ ShellRoot {
                 JSON.stringify(row.forYou ?? null));
             expect("and home's row names it", now.homeSays() === "Session K is done",
                 now.homeSays());
+            // Gathered into Agents though its session asks nothing, it's
+            // what :filter agent holds, as Agents does, and :filter do none
+            // of it (round 5 on #6777, F26).
+            const filteredAs = kind => Array.from(now.filterable())
+                .filter(one => one.forYou?.kind === kind).map(one => one.key);
+            const agentsHolds = inside().filter(one => one.heading !== true).map(one => one.key);
+            expect("a session's notice inside Agents is what :filter agent holds, alone",
+                JSON.stringify(filteredAs("agent")) === JSON.stringify(agentsHolds)
+                    && agentsHolds.includes("notice:40")
+                    && !filteredAs("do").includes("notice:40"),
+                JSON.stringify([agentsHolds, filteredAs("agent"), filteredAs("do")]));
             // Its session's want put off, as Sessions says it, the notice is
             // its want's to say, so it stands nowhere and counts nothing.
             Sessions.putOff = { KELP01: true };
