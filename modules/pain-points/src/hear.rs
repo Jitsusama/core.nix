@@ -249,17 +249,9 @@ pub fn listen(
     // reads whole; but each is said, so a quiet line isn't read as nothing
     // to send. Those held as the run ran out of time, or as the mycelium
     // couldn't be started, are among the hour's troubles, in hour.json
-    // too, so cadence's card says why; the journal names the error. A
-    // node that couldn't be asked for its hubs is said too, as pains then
-    // go to the fallback that hubs would have spared.
-    let hubless = ears.hubless.as_ref().map_or(String::new(), |why| {
-        format!(
-            "; the mycelium named no hubs ({why}), so pains no cell of their own takes \
-             go to the fallback"
-        )
-    });
+    // too, so cadence's card says why; the journal names the error.
     Ok((
-        [said(&hour), waits(&node), hubless].concat(),
+        [said(&hour), waits(&node)].concat(),
         !hour.troubles.is_empty(),
     ))
 }
@@ -472,6 +464,14 @@ pub fn hear_putting(
         hour.cellless_since
             .is_some_and(|since| ears.at - since >= CELLLESS_AT_MOST_MS),
     );
+    // A node that couldn't be asked for its hubs sends pains back to the
+    // fallback the hubs would have spared, so it's said on the card too.
+    if let Some(why) = ears.hubless.as_ref().filter(|_| routes.sends()) {
+        hour.troubles.push(format!(
+            "the mycelium named no hubs, so pains no cell of their own takes go to the \
+             fallback: {why}"
+        ));
+    }
     hour.troubles.extend(ledgered);
     hour.troubles.extend(unkept);
     crate::write_whole(

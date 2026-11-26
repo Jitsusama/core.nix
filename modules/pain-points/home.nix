@@ -80,11 +80,14 @@ in
       # What it keeps holds his own words, so only his account reads it.
       StateDirectoryMode = "0700";
       ProtectHome = "read-only";
-      # The misses ledger's folder, where it writes each pain it sent; one
-      # not made yet leaves the unit starting, its write a trouble said.
+      # The misses ledger's folder, where it writes each pain it sent, and
+      # the harness's needs folder, where it keeps each pain it put to a
+      # hub; one not made yet leaves the unit starting, its write a
+      # trouble said.
       ReadWritePaths = [
         "%S/pain-points"
         "-%S/mission"
+        "-%S/pi/agentic-harness.pi/mesh-workflow/needs"
       ];
       # The mycelium's socket is a file under the runtime folder, which a
       # network namespace of its own leaves reachable while keeping it off

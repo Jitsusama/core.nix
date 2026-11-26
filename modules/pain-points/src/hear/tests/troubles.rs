@@ -128,6 +128,29 @@ fn a_mycelium_that_names_no_sessions_for_a_quarter_hour_is_a_trouble() {
 }
 
 #[test]
+fn a_node_that_named_no_hubs_is_a_trouble_by_its_error() {
+    let place = Place::new("hubless-node");
+    place.routes();
+    let ears = Ears {
+        hubless: Some("connection refused".into()),
+        ..place.ears()
+    };
+    let hour = hear(&ears, "", &mut |_, _| false).expect("a run");
+    assert!(
+        hour.troubles
+            .iter()
+            .any(|t| t.contains("named no hubs") && t.contains("connection refused")),
+        "pains going back to the fallback weren't said on the card: {hour:?}"
+    );
+    fs::remove_file(place.root.join("state/routes.json")).expect("routes gone");
+    let hour = hear(&ears, "", &mut |_, _| false).expect("a run");
+    assert!(
+        hour.troubles.iter().all(|t| !t.contains("named no hubs")),
+        "a listener nobody set up has no such trouble: {hour:?}"
+    );
+}
+
+#[test]
 fn an_earlier_run_dated_ahead_of_this_one_holds_no_outage_back() {
     let place = Place::new("future-hour");
     place.routes();
