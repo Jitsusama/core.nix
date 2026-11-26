@@ -2475,21 +2475,21 @@ Provider {
         return band.map(one => one.make(now)).filter(row => row !== null);
     }
 
-    // What needs Joel now, under a heading for each cell behind it, the
-    // cells by their heaviest row and each one's rows by weight but for
-    // what it asks, which leads it as what holds it up, with what
-    // no session is behind under one heading of his own (ForYouCells.js's
-    // byCell; Joel, 2026-11-16: "one 'what needs me' view grouped by
-    // cell"). No heading while all of it is his own, and a group whose rows
-    // all went as they were made says nothing. `asked`, Agents Asking's row
-    // or none, stands first while headings show, else by `weight`, its
-    // heaviest, among the loose rows (ForYouCells.js's laidOut). What a
-    // cell asks is its want's row, or a to-do of its own it blocks on, as a
-    // session whose want is an action asks it (ForYou.js's blocked).
-    function cellRows(band, now, asked, weight) {
+    // What needs Joel now: his own rows loose, and what the sessions raised
+    // gathered into Agents Asking, standing among his own by its heaviest,
+    // inside it a heading for each cell behind it and its rows, the cells by
+    // their heaviest row and each one's rows by weight but for what it asks,
+    // which leads it as what holds it up (ForYouCells.js's byCell and
+    // laidOut; Joel, 2026-11-16: "one 'what needs me' view grouped by
+    // cell", and 2026-11-25 21:52: "it also makes no sense for the agents
+    // to be top level"). What a cell asks is its want's row, or a to-do of
+    // its own it blocks on, as a session whose want is an action asks it
+    // (ForYou.js's blocked).
+    function cellRows(band, now) {
         const asks = one => one.kind === "agent" || one.kind === "do" && one.thing.blocks > 0;
         return Cells.laidOut(Cells.byCell(band, one => one.cell(), asks),
-            items => bandRows(items, now), cellHeading, { rows: asked, weight });
+            items => bandRows(items, now), cellHeading,
+            inside => keptAlike(kindsKept, "agent", inside, () => madeKindRow("agent", inside)));
     }
 
     // A cell's heading, its name and how it stands as the agents daemon
@@ -2518,7 +2518,7 @@ Provider {
     // otherwise. It moves as a session turns, working to listening and
     // back, which remakes For You while it's held, as a heading must to say
     // it true; shut, it's only these words made again.
-    readonly property string cellsTold: Cells.byCell(forYouBands.now, one => one.cell())
+    readonly property string cellsTold: Cells.byCell(forYouBands.all, one => one.cell())
         .map(group => cellSaid(group.cell)).join("\n")
 
     // A kind's own row, To Look At, To Try or To Read, holding what of that kind
@@ -2532,10 +2532,10 @@ Provider {
     // that holds more draws one, its name in text, so what needs him now
     // leads by its order (VKCF3Z, 2026-11-09).
     // Kept while it holds the same rows, each kept as it is (kindsKept).
-    // Agents Asking is such a row too, gathering what agents ask of Joel,
-    // though each needs him now, so it stands among what does where its
-    // heaviest weighs, its mark in the hue of what it holds rather than
-    // muted (Joel, 2026-11-18 10:18: "they are all loose amongst other
+    // Agents Asking is such a row too, gathering what the sessions raised
+    // for Joel under each one's heading (cellRows), though each needs him
+    // now, so it stands among what does where its heaviest weighs, its mark
+    // in the hue of what it holds rather than muted (Joel, 2026-11-18 10:18: "they are all loose amongst other
     // things properly categorized").
     function kindRow(kind, rows) {
         if (rows.length === 0)
@@ -2546,19 +2546,22 @@ Provider {
 
     function madeKindRow(kind, rows) {
         const id = `for-you:kind:${kind}`;
+        // Agents Asking holds each cell's heading over its rows, which says
+        // whose they are but is none of them to count or weigh.
+        const things = rows.filter(one => one.heading !== true);
         const row = member({
             key: `on:waitingOnYou:kind:${kind}`,
             verb: "more",
             stays: true,
             name: Words.name(id),
             glyph: Words.glyph(id),
-            hue: kind === "agent" ? rows[0].hue ?? "" : "muted",
-            side: String(rows.length),
+            hue: kind === "agent" ? things[0]?.hue ?? "" : "muted",
+            side: String(things.length),
             nested: true,
             thing: true,
             drawer: () => ({
                 title: Words.name(id),
-                facts: [provider.fact("heaviest", rows[0].name)]
+                facts: [provider.fact("heaviest", things[0]?.name ?? "")]
             }),
             verbs: () => rows,
             targets: () => rows,
@@ -2591,11 +2594,11 @@ Provider {
         for (const address of Object.keys(wantsNow))
             delete wantsNow[address];
         lap("banding");
-        const asked = kindRow("agent", bandRows(bands.agent, now));
-        lap("agents asking");
         const lately = latelyRows(now).filter(latelyComingIn);
         lap("lately");
-        const cells = cellRows(bands.now, now, asked, bands.agent[0]?.weight ?? 0);
+        // What needs him now, Agents Asking among it with each cell's rows
+        // inside, so the agents' rows are made as part of it (cellRows).
+        const cells = cellRows(bands.all, now);
         lap("cells");
         const lookRows = kindRow("look", bandRows(bands.look, now));
         const tryRows = kindRow("try", bandRows(bands.try, now));

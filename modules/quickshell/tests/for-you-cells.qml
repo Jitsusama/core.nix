@@ -6,8 +6,10 @@
 // is one of What Needs Me's rules (42P0R4 and Y2YBTS, 2026-11-18): a cell's
 // rows under it, the cells by their heaviest, what a cell asks leading it;
 // each heading in Agents' words for its cell; a session's own notices found
-// by the cell they name and standing under it; and Agents Asking above
-// every heading while any shows.
+// by the cell they name and standing under it; and every cell's heading
+// and rows inside Agents Asking, never at For You's top (Joel, 2026-11-25).
+// The case "no session's heading or row stands at For You's top, only Agents
+// Asking among his own" is the one that says so.
 import QtQuick
 import "ForYou.js" as ForYou
 import "ForYouCells.js" as Cells
@@ -60,24 +62,31 @@ QtObject {
         expect("what a cell asks leads it, the rest in the order they came",
             led.map(group => group.items.map(item => item.name)), [["ask", "look"], ["own"]]);
 
-        // The groups laid out, each one's rows under its heading, a group
-        // whose rows all went as they were made left out, and no heading
-        // while only Joel's own are left: decided before the rows were made,
-        // his own heading stood alone once a cell's rows had all gone.
+        // The groups laid out: Joel's own loose, and the cells' gathered into
+        // one row, ASKED here, holding each one's heading over its rows. A
+        // group whose rows all went as they were made is left out, and with
+        // no cell's left nothing is gathered, so no heading stands alone.
         const rowsOf = items => items.filter(item => item.name !== "gone")
             .map(item => item.name);
         const headingOf = cell => `# ${cell?.address ?? "yours"}`;
-        const laid = groups => Cells.laidOut(groups, rowsOf, headingOf);
-        expect("each cell's heading over its rows, Joel's own too",
-            laid(grouped), ["# AAAAAA", "one", "four", "# yours", "two", "five", "# BBBBBB",
-                "three"]);
-        expect("a lone cell is still named", laid(Cells.byCell([{ name: "one" }], () => cellA)),
-            ["# AAAAAA", "one"]);
-        expect("only Joel's own, no heading over them",
+        const gather = (inside, weight) => ({ asked: inside, weight });
+        const laid = groups => Cells.laidOut(groups, rowsOf, headingOf, gather);
+        expect("Joel's own loose, each cell's heading over its rows inside the one gathered",
+            laid(grouped), [{ asked: ["# AAAAAA", "one", "four", "# BBBBBB", "three"],
+                weight: 9 }, "two", "five"]);
+        expect("a lone cell is still gathered and named",
+            laid(Cells.byCell([{ name: "one" }], () => cellA)),
+            [{ asked: ["# AAAAAA", "one"], weight: 0 }]);
+        expect("only Joel's own, nothing gathered, no heading over them",
             laid(Cells.byCell([{ name: "two" }, { name: "five" }], () => null)), ["two", "five"]);
-        expect("a cell whose rows all went says nothing, and leaves Joel's own unheaded",
+        expect("a cell whose rows all went gathers nothing, and leaves Joel's own unheaded",
             laid(Cells.byCell([{ name: "gone" }, { name: "two" }],
                 item => item.name === "gone" ? cellA : null)), ["two"]);
+        const top = laid(grouped).map(one => typeof one === "string" ? one : "ASKED");
+        expect("no session's heading or row stands at For You's top, only Agents Asking"
+            + " among his own", [top.filter(one => one.startsWith("#")),
+            top.filter(one => ["one", "three", "four"].includes(one)), top],
+        [[], [], ["ASKED", "two", "five"]]);
         expect("nothing laid out, nothing", laid([]), []);
 
         // A heading says its cell as Agents' row for it does, its name and
@@ -198,42 +207,40 @@ QtObject {
             [noticed.now.length, noticed.now[0]?.weight],
             [1, ForYou.weigh({ since: now - hour }, now).weight]);
 
-        // Agents Asking stands first, above every heading, while any shows,
-        // since a heading claims what's under it; with none, before the first
-        // loose row that weighs less, as agentAt places it (Y2YBTS,
-        // 2026-11-18 15:49).
-        const asking = weight => ({ rows: ["ASKED"], weight });
-        expect("headings shown, it stands first, though lighter than all",
-            Cells.laidOut(grouped, rowsOf, headingOf, asking(0.5)), ["ASKED", "# AAAAAA", "one",
-                "four", "# yours", "two", "five", "# BBBBBB", "three"]);
-        const weighs = [{ name: "two", weight: 9 }, { name: "five", weight: 2 }];
-        const ownOnly = Cells.byCell(weighs, () => null);
-        expect("no heading, before the first lighter row",
-            Cells.laidOut(ownOnly, rowsOf, headingOf, asking(5)), ["two", "ASKED", "five"]);
-        expect("no heading, heaviest of all, first",
-            Cells.laidOut(ownOnly, rowsOf, headingOf, asking(10)), ["ASKED", "two", "five"]);
-        expect("no heading, lightest, last",
-            Cells.laidOut(ownOnly, rowsOf, headingOf, asking(1)), ["two", "five", "ASKED"]);
-        expect("a cell whose rows all went leaves no heading, so it goes by weight",
-            Cells.laidOut(Cells.byCell([{ name: "gone", weight: 9 }, weighs[1]],
-                item => item.name === "gone" ? cellA : null), rowsOf, headingOf, asking(1)),
-            ["five", "ASKED"]);
-        expect("nothing else, it alone", Cells.laidOut([], rowsOf, headingOf, asking(3)),
-            ["ASKED"]);
-        // With no heading it stands where banded's agentAt puts it, a row
-        // weighing the same before it, so For You and its :filter, which
-        // reads agentAt, list in one order.
+        // Agents Asking stands among Joel's own before the first that weighs
+        // less than the heaviest it holds, as agentAt places it (Y2YBTS,
+        // 2026-11-18 15:49), however its cells' asks lead their rows.
+        const own = [{ name: "two", weight: 9 }, { name: "five", weight: 2 }];
+        const asking = (weight, also) => Cells.laidOut(Cells.byCell(own.concat([
+            { name: "look", weight, cell: cellA }, { name: "ask", weight: 0, cell: cellA,
+                asks: true }], also ?? []), item => item.cell ?? null, item => item.asks === true),
+        rowsOf, headingOf, inside => `ASKED ${inside.join(" ")}`);
+        expect("before the first lighter row, its ask leading its cell", asking(5),
+            ["two", "ASKED # AAAAAA ask look", "five"]);
+        expect("heaviest of all, first", asking(10), ["ASKED # AAAAAA ask look", "two", "five"]);
+        expect("lightest, last", asking(1), ["two", "five", "ASKED # AAAAAA ask look"]);
+        expect("a second cell inside it, after the first, by its heaviest",
+            asking(5, [{ name: "three", weight: 4, cell: cellB }]),
+            ["two", "ASKED # AAAAAA ask look # BBBBBB three", "five"]);
+        expect("nothing of his own, it alone",
+            Cells.laidOut(Cells.byCell([{ name: "one", weight: 3 }], () => cellA), rowsOf,
+                headingOf, inside => `ASKED ${inside.join(" ")}`), ["ASKED # AAAAAA one"]);
+        // It stands where banded's agentAt puts it, a row weighing the same
+        // before it, so For You and its :filter, which reads agentAt, list
+        // in one order; `all` holds what agents ask among the rest.
         const ask = name => ({ kind: "agent", thing: { kind: "todo", blocks: 1,
-            since: now - hour }, name });
+            since: now - hour }, name, cell: cellA });
         const tied = ForYou.banded([ask("a"), ask("b"), { kind: "do", thing: { kind: "todo",
             blocks: 1, since: now - hour }, name: "tie" }, { kind: "do",
             thing: { kind: "todo" }, name: "light" }], now);
         const tiedNames = tied.now.map(one => one.name);
         expect("a tie stands before it, where agentAt puts it",
-            [Cells.laidOut(Cells.byCell(tied.now, () => null), rowsOf, headingOf,
-                { rows: ["ASKED"], weight: tied.agent[0].weight }),
+            [Cells.laidOut(Cells.byCell(tied.all, one => one.cell ?? null), rowsOf, headingOf,
+                () => "ASKED"),
                 tiedNames.slice(0, tied.agentAt).concat(["ASKED"], tiedNames.slice(tied.agentAt))],
             [["tie", "ASKED", "light"], ["tie", "ASKED", "light"]]);
+        expect("a lone ask is among all of them too",
+            ForYou.banded([ask("a")], now).all.map(one => one.name), ["a"]);
 
         if (failures.length > 0) {
             for (const failure of failures)

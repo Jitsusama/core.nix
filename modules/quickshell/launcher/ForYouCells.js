@@ -32,36 +32,38 @@ function byCell(items, cellOf, leads) {
         .concat(group.items.filter(item => !first(item))) }));
 }
 
-// The groups' rows, `rowsOf(items)` each, under each one's heading,
-// `headingOf(cell)`, a group whose rows all went as they were made left
-// out. Each is headed while a cell's rows are among those left; Joel's own
-// alone need no heading to say whose they are. Decided once the rows are
-// made, since decided before, his own heading stood alone once a cell's
-// rows had all gone.
-//
-// `asked`, `{ rows, weight }`, is Agents Asking's row (or none) and its
-// heaviest's weight. While a heading shows it stands first, above them
-// all, since a heading claims what's under it and one between the groups
-// would read as the cell's above it; with none, among the loose rows
-// before the first that weighs less, as ForYou.js's agentAt places it
-// (Y2YBTS, 2026-11-18 15:49). A lone ask is never gathered, so it stays
-// under its own cell's heading as itself.
-function laidOut(groups, rowsOf, headingOf, asked) {
-    const gathered = asked?.rows ?? [];
+// For You's rows of what needs Joel now: his own, `rowsOf([item])` each,
+// loose and heaviest first, and what the sessions raised gathered into one
+// row, `gather(inside, weight)`, standing among his own before the first
+// that weighs less than its heaviest. Inside it each cell's heading,
+// `headingOf(cell)`, then its rows, so no session's heading or ask stands
+// at For You's top, where they read as his own work and crowded it (Joel,
+// 2026-11-25 21:52: "it also makes no sense for the agents to be top
+// level"). A group whose rows all went as they were made is left out, and
+// with no cell's rows left nothing is gathered, decided once the rows are
+// made, so a heading never stands alone.
+function laidOut(groups, rowsOf, headingOf, gather) {
     const made = groups.map(group => ({ cell: group.cell,
         items: group.items.map(item => ({ item, rows: rowsOf([item]) })) }))
         .map(group => Object.assign(group, { items: group.items.filter(one =>
             one.rows.length > 0) }))
         .filter(group => group.items.length > 0);
     const rowsIn = items => items.reduce((rows, one) => rows.concat(one.rows), []);
-    if (made.some(group => group.cell !== null)) {
-        return made.reduce((rows, group) =>
-            rows.concat([headingOf(group.cell)], rowsIn(group.items)), gathered);
+    const cells = made.filter(group => group.cell !== null);
+    const loose = made.filter(group => group.cell === null)
+        .reduce((items, group) => items.concat(group.items), []);
+    if (cells.length === 0) {
+        return rowsIn(loose);
     }
-    const loose = made.reduce((items, group) => items.concat(group.items), []);
-    const lighter = loose.findIndex(one => (one.item.weight ?? 0) < (asked?.weight ?? 0));
+    // A cell's ask leads its rows whatever it weighs (byCell), so the
+    // heaviest is read from them all.
+    const weight = cells.reduce((most, group) => group.items.reduce((also, one) =>
+        Math.max(also, one.item.weight ?? 0), most), 0);
+    const inside = cells.reduce((rows, group) =>
+        rows.concat([headingOf(group.cell)], rowsIn(group.items)), []);
+    const lighter = loose.findIndex(one => (one.item.weight ?? 0) < weight);
     const at = lighter < 0 ? loose.length : lighter;
-    return rowsIn(loose.slice(0, at)).concat(gathered, rowsIn(loose.slice(at)));
+    return rowsIn(loose.slice(0, at)).concat([gather(inside, weight)], rowsIn(loose.slice(at)));
 }
 
 // A cell's heading as Agents' own row says the cell: its name and how it

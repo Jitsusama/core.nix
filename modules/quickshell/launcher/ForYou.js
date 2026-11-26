@@ -147,9 +147,9 @@ function bandBy(kind, thing, now, due) {
 }
 
 // For You's items in their bands, { now, agent, look, try, read }, and
-// `agentAt`, where in `now` Agents Asking stands in :filter's flat order
-// (For You's too while no heading shows, as first with one: ForYouCells.js's
-// laidOut), each item { kind, thing } with what else its caller keeps, given its
+// `agentAt`, where in `now` Agents Asking stands in :filter's flat order,
+// and `all`, what needs Joel now with what agents ask among it, as For
+// You lays it out by whose it is (ForYouCells.js's laidOut), each item { kind, thing } with what else its caller keeps, given its
 // `weight`. Each band is heaviest first, those alike the oldest first,
 // then in the order they came (VKCF3Z, 2026-11-09). Each item's times are
 // read once and the bands sorted on numbers: a sort that read them in its
@@ -171,6 +171,7 @@ function banded(items, now) {
     const lead = inOrder(gathers ? bands.now : bands.now.concat(bands.agent));
     const lighter = lead.findIndex(item => item.weight < (asked[0]?.weight ?? 0));
     return { now: lead, agent: asked, agentAt: lighter < 0 ? lead.length : lighter,
+        all: gathers ? inOrder(bands.now.concat(bands.agent)) : lead,
         look: inOrder(bands.look), try: inOrder(bands.try), read: inOrder(bands.read) };
 }
 
