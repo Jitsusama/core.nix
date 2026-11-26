@@ -554,11 +554,16 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                 continue;
             }
         }
-        let hub = GitHub { slug: slug.clone() };
+        // Said before the first merge, so an outside merge can wait it out:
+        // one between the train's merges left main untested on 25 November,
+        // reverting all three of a run's. Each line until the one saying it
+        // ends is the landing's, and a train stopped between leaves it
+        // unended, so an outside merge waits on.
+        println!("merge-net: the train lands {} on main", short(&candidate));
         let landing = land(
             &checkout,
             &git,
-            &hub,
+            &GitHub { slug: slug.clone() },
             &base,
             &candidate,
             &mergings,
@@ -568,6 +573,7 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         // would send back to run again.
         right_of_way::run_ends(&root);
         after_landing(&root, landing, &done.merged, began, &mut splitting);
+        println!("merge-net: the landing of {} ends", short(&candidate));
     }
 }
 
