@@ -49,7 +49,9 @@ const NO_ANSWER = "the agents daemon isn't answering";
 // last went unoffered being `unoffered`: `{ offers, unoffered, journal }`,
 // `offers` the shapes offered, each `{ shape, hourly, currency }` with its
 // cost only where both are words, or null to keep the last; `journal` why
-// to journal, said once as each new why comes, or null.
+// to journal, said once as each new why comes, or null. A node that can't
+// take the cloud's need (offers.rs's `untaken`) offers none, so what it
+// offered before goes; any other error keeps the last.
 function heard(unoffered, answer) {
     if (Array.isArray(answer?.offers)) {
         const offers = answer.offers.slice(0, MOST_OFFERS)
@@ -61,7 +63,14 @@ function heard(unoffered, answer) {
     }
     const why = answer === null || answer === undefined ? NO_ANSWER
         : String(answer?.error?.message ?? "").trim() || NO_WHY;
-    return { offers: null, unoffered: why, journal: why === unoffered ? null : why };
+    const offers = answer?.error?.code === "untaken" ? [] : null;
+    return { offers, unoffered: why, journal: why === unoffered ? null : why };
+}
+
+// Whether the cloud, as last `offered` (heard's offers), offers anything to
+// start work on: a node offering nothing can't take a sprout's need.
+function offering(offered) {
+    return Array.isArray(offered) && offered.length > 0;
 }
 
 // Whether what the cloud offers, as last heard at `at`, is to be asked
@@ -119,11 +128,13 @@ function plain(name) {
 
 // The ask that sprouts `text` elsewhere, `on` saying where (onOf): the
 // cloud, or a machine by its name, at the place named `place` where one is
-// given; or null where nothing is said, the place isn't a name, or `on`
-// names nowhere (refused says which of those last two).
-function ask(text, place, on) {
+// given; or null where nothing is said, the place isn't a name, `on` names
+// nowhere, or it names the cloud while nothing is `offered` (offering),
+// refused saying which of those last three.
+function ask(text, place, on, offered) {
     const where = onOf(on);
-    if (!named(place) || where === null || Object.keys(where).length === 0) {
+    if (!named(place) || where === null || Object.keys(where).length === 0
+        || (where.needs !== undefined && !offering(offered))) {
         return null;
     }
     const sprout = Sprouting.ask(text, "");
@@ -131,11 +142,16 @@ function ask(text, place, on) {
     return sprout === null ? null : Object.assign(sprout, where, at !== "" ? { folder: at } : {});
 }
 
-// Why the ask for work elsewhere at `place` was refused when its words
-// weren't: by Start New Work's `words`, the place unnamed, else where it
-// starts misnamed.
-function refused(place, words) {
-    return named(place) ? words?.unmachined ?? "" : words?.unnamed ?? "";
+// Why the ask for work elsewhere at `place`, `on` saying where with the
+// cloud as last `offered`, was refused when its words weren't: by Start
+// New Work's `words`, the place unnamed, the cloud not taken, else where
+// it starts misnamed.
+function refused(place, on, offered, words) {
+    if (!named(place)) {
+        return words?.unnamed ?? "";
+    }
+    return onOf(on)?.needs !== undefined && !offering(offered) ? words?.untaken ?? ""
+        : words?.unmachined ?? "";
 }
 
 // Where a link's `on` says its work starts, as Launcher.qml's newWorkOn
@@ -143,8 +159,8 @@ function refused(place, words) {
 // where nothing does.
 function linked(on) {
     const said = String(on ?? "");
-    const named = said.startsWith("on:") ? said.slice("on:".length) : "";
-    return named.trim() === "" ? "-" : named;
+    const machine = said.startsWith("on:") ? said.slice("on:".length) : "";
+    return machine.trim() === "" ? "-" : machine;
 }
 
 // What `on`, a link's (linked) or an act's, asks of where its work

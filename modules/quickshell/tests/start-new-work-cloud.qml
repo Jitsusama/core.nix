@@ -11,7 +11,8 @@ QtObject {
     Component.onCompleted: Expect.run(cases)
 
     function cases() {
-        const words = { unnamed: "unnamed", unmachined: "unmachined" };
+        const words = { unnamed: "unnamed", unmachined: "unmachined", untaken: "untaken" };
+        const offered = [{ shape: "standard" }];
 
         // Joel, 2026-11-25: "we need full integation, from pi, from cli, from laucnher,
         // from website. i should not have to think to use this."
@@ -30,6 +31,9 @@ QtObject {
             [{ offers: null, unoffered: "no node", journal: "no node" },
                 { offers: null, unoffered: "no node", journal: null },
                 "the agents daemon isn't answering"]);
+        Expect.same("a node that can't take the cloud's need takes back what it offered",
+            Cloud.heard("", { error: { code: "untaken", message: "can't yet" } }),
+            { offers: [], unoffered: "can't yet", journal: "can't yet" });
         Expect.same("asked again only when never heard or ten minutes old",
             [Cloud.stale(0, 1000), Cloud.stale(1000, 1000 + 599999),
                 Cloud.stale(1000, 1000 + 600000)], [true, false, true]);
@@ -63,9 +67,9 @@ QtObject {
                 start: "/home/j/notes" }], []), []);
 
         Expect.same("work for the cloud needs the cloud, at a place by its name",
-            [Cloud.ask(" fix it ", "core.nix", "cloud"),
-                Cloud.ask("fix it", "//system/pond", "cloud"),
-                Cloud.ask("https://github.com/o/r/issues/7", "", "cloud")],
+            [Cloud.ask(" fix it ", "core.nix", "cloud", offered),
+                Cloud.ask("fix it", "//system/pond", "cloud", offered),
+                Cloud.ask("https://github.com/o/r/issues/7", "", "cloud", offered)],
             [{ ask: "sprout", text: "fix it", needs: ["cloud"], folder: "core.nix" },
                 { ask: "sprout", text: "fix it", needs: ["cloud"], folder: "//system/pond" },
                 { ask: "sprout", text: "https://github.com/o/r/issues/7", needs: ["cloud"] }]);
@@ -73,29 +77,39 @@ QtObject {
             Cloud.ask("https://github.com/o/r/issues/7", "", "skiff"),
             { ask: "sprout", text: "https://github.com/o/r/issues/7", on: "skiff" });
         Expect.same("nothing is asked of a place or a machine it couldn't say",
-            [Cloud.ask("fix it", "/home/j/src/core.nix", "cloud"),
-                Cloud.ask("fix it", "src/core.nix", "cloud"),
+            [Cloud.ask("fix it", "/home/j/src/core.nix", "cloud", offered),
+                Cloud.ask("fix it", "src/core.nix", "cloud", offered),
                 Cloud.ask("fix it", "", "-"), Cloud.ask("fix it", "", "sk iff"),
-                Cloud.ask("fix it", "", ""), Cloud.ask("  ", "core.nix", "cloud")],
+                Cloud.ask("fix it", "", ""), Cloud.ask("  ", "core.nix", "cloud", offered)],
             [null, null, null, null, null, null]);
         Expect.same("and says which",
-            [Cloud.refused("/home/j/src/core.nix", words), Cloud.refused("", words)],
+            [Cloud.refused("/home/j/src/core.nix", "cloud", offered, words),
+                Cloud.refused("", "-", offered, words)],
             ["unnamed", "unmachined"]);
+        // An old node would drop the need and start the work here, a link's start included.
+        Expect.same("nothing is asked of the cloud while it offers nothing, and it says so",
+            [Cloud.ask("fix it", "core.nix", "cloud", []),
+                Cloud.ask("https://github.com/o/r/issues/7", "", Cloud.linked("on:cloud"), null),
+                Cloud.refused("core.nix", "cloud", [], words)],
+            [null, null, "untaken"]);
+        Expect.same("a machine by its name needs no offer",
+            Cloud.ask("https://github.com/o/r/issues/7", "", "skiff", []),
+            { ask: "sprout", text: "https://github.com/o/r/issues/7", on: "skiff" });
         Expect.same("a link's on: the node's choice, the cloud, a machine, or nowhere",
             [Cloud.onOf(""), Cloud.onOf(" cloud "), Cloud.onOf("skiff"), Cloud.onOf("--all")],
             [{}, { needs: ["cloud"] }, { on: "skiff" }, null]);
         Expect.same("dots alone name no machine or place",
-            [Cloud.onOf(".."), Cloud.ask("fix it", "..", "cloud"),
-                Cloud.ask("fix it", ".", "cloud")],
+            [Cloud.onOf(".."), Cloud.ask("fix it", "..", "cloud", offered),
+                Cloud.ask("fix it", ".", "cloud", offered)],
             [null, null, null]);
         // mycelium-link gives its `on` as it gives words and from, its name before it
         // (Launcher.qml's newWorkOn).
         Expect.same("a link's on is read past its name, and nowhere without it",
-            [Cloud.linked("on:cloud"), Cloud.linked("on:skiff"), Cloud.linked("cloud"),
+            [Cloud.linked("on:cloud"), Cloud.linked("on:skiff"), Cloud.linked("cloud", offered),
                 Cloud.linked("on:"), Cloud.linked("")],
             ["cloud", "skiff", "-", "-", "-"]);
         Expect.same("so a link's cloud start needs the cloud",
-            Cloud.ask("https://github.com/o/r/issues/7", "", Cloud.linked("on:cloud")),
+            Cloud.ask("https://github.com/o/r/issues/7", "", Cloud.linked("on:cloud"), offered),
             { ask: "sprout", text: "https://github.com/o/r/issues/7", needs: ["cloud"] });
     }
 }

@@ -40,6 +40,9 @@ const MOST_SAID: usize = 80;
 /// offer from another is still one. A node that doesn't say it takes the
 /// cloud as a sprout's need offers none, whatever its providers could
 /// make: one from before it would drop the need and start the work here.
+/// It says so as `untaken` rather than `unoffered`, since that's an answer
+/// the launcher acts on, dropping what it heard before, where a node it
+/// couldn't reach leaves the last offers standing.
 pub fn answer(asker: impl FnOnce() -> Result<(), String>, node: Option<&Path>) -> Value {
     let Some(node) = node else {
         return unoffered("this machine runs no node to ask what the cloud offers");
@@ -50,7 +53,7 @@ pub fn answer(asker: impl FnOnce() -> Result<(), String>, node: Option<&Path>) -
     match sprout::asked(node, &json!("Offers"), PATIENCE) {
         Ok(reply) => match (&reply["Ok"]["Offers"]["offers"], &reply["Err"]) {
             (Value::Array(_), _) if !takes_the_cloud(&reply["Ok"]["Offers"]["needs"]) => {
-                unoffered(UNNEEDED)
+                json!({"error": {"code": "untaken", "message": UNNEEDED}})
             }
             (Value::Array(offers), _) => json!({"offers": offers
                 .iter()
@@ -191,7 +194,7 @@ mod tests {
             let (said, _) = told(name, &format!("{offered}{needs}}}}}}}"));
             assert_eq!(
                 said,
-                json!({"error": {"code": "unoffered", "message": UNNEEDED}}),
+                json!({"error": {"code": "untaken", "message": UNNEEDED}}),
                 "{name}: a node that would drop the need starts nothing in the cloud"
             );
         }

@@ -1894,7 +1894,8 @@ Provider {
             : String(said.onMachine ?? "").replace("{machine}", () => elsewhere);
         const link = Words.name("verb:agents:start-new-work:link");
         // A misshaped `on` still fills the field, so Joel sees what the page
-        // offered, but its Return is refused (Cloud.ask refuses "-").
+        // offered, but its Return is refused (Cloud.ask refuses "-"), as is the cloud's
+        // while it offers nothing this node can take.
         const act = newWorkAct("link", "", suffix === "" ? link : `${link}, ${suffix}`,
             undefined, where === null ? "-" : elsewhere);
         // Fresh words, so how the last start ended is no longer theirs to show,
@@ -1969,11 +1970,11 @@ Provider {
             return;
         }
         const ask = elsewhere === "" ? Sprouting.ask(said, folder)
-            : Cloud.ask(said, folder, elsewhere);
+            : Cloud.ask(said, folder, elsewhere, provider.cloudOffers);
         if (ask === null) {
             const why = elsewhere === "" || Sprouting.ask(said, "") === null
                 ? Sprouting.refused(said, elsewhere === "" ? folder : "", words)
-                : Cloud.refused(folder, words);
+                : Cloud.refused(folder, elsewhere, provider.cloudOffers, words);
             sproutSays(key, why);
             sproutReaches({ started: false, why: why });
             return;

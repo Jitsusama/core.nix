@@ -4465,10 +4465,11 @@
   '';
   start-new-work-goes-to-the-cloud = ''
     Cloud.js, behind Start New Work's In the Cloud, reads the offers the agents daemon passes on,
-    its price the cheapest in one currency; lists only the places another machine knows by name,
-    a zone's path or a checkout's last step, each once; reads a link's on: past its name; and
-    asks a sprout that needs the cloud, or names a machine by one plain word, refusing a place or
-    a machine it couldn't say
+    dropping them where the node can't take the cloud's need, its price the cheapest in one
+    currency; lists only the places another machine knows by name, a zone's path or a checkout's
+    last step, each once; reads a link's on: past its name; and asks a sprout that needs the
+    cloud, or names a machine by one plain word, refusing a place or a machine it couldn't say
+    and the cloud while it offers nothing
   '';
   starts-stopped-lifts-only-on-joels-return = ''
     Starts Stopped's Return steps in among its acts wherever the launcher drops its drawer's step,
