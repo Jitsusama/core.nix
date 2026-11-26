@@ -422,7 +422,8 @@ export const toldApart = (networks: readonly Named[]): ReadonlyMap<string, strin
  * name clipped alike to another's, its tell cut off, is the network's own
  * name clipped shorter with its id after it, so none read alike there
  * either. A label kept whole that reads like another's id-hinted one, as a
- * title written to does, takes its own id in turn, until none read alike.
+ * title written to does, takes its own id in turn; hinted labels still
+ * alike, as two long ids clipped alike are, are numbered in order.
  */
 export const labelsApart = (
   networks: readonly Named[],
@@ -447,7 +448,37 @@ export const labelsApart = (
       hinted.add(n.key);
     }
   }
+  numberAlike(networks, labels, clip, room);
   return labels;
+};
+
+/**
+ * Each label in `labels` still reading like another's clipped short enough
+ * to end on its place among those alike, so within each set none read
+ * alike; one pass per network bounds the rare number that reads like
+ * another label in turn.
+ */
+const numberAlike = (
+  networks: readonly Named[],
+  labels: Map<string, string>,
+  clip: (text: string, room: number) => string,
+  room: number,
+): void => {
+  for (let pass = 0; pass < networks.length; pass++) {
+    const seen = timesEach(labels.values());
+    const alike = networks.filter((n) => (seen.get(labels.get(n.key) ?? "") ?? 0) > 1);
+    if (alike.length === 0) {
+      return;
+    }
+    const counted = new Map<string, number>();
+    for (const n of alike) {
+      const was = labels.get(n.key) ?? "";
+      const place = (counted.get(was) ?? 0) + 1;
+      counted.set(was, place);
+      const mark = ` ${place}`;
+      labels.set(n.key, `${clip(was, room - mark.length)}${mark}`);
+    }
+  }
 };
 
 // The fewest characters of its name a label keeps beside its id, so a

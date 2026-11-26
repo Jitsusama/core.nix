@@ -941,6 +941,10 @@ WIDTHS = """[document.getElementById("world").ownerSVGElement.getBoundingClientR
   document.getElementById("panel").offsetWidth]"""
 
 
+# How far the window narrows under a view moved by hand.
+NARROWED_PX = 80
+
+
 def fitted_about(view: tuple[float, float, float], wide: float) -> float:
     """Say which point of the map a view `wide` pixels across fits in its middle (viewOf)."""
     tx, _, k = view
@@ -976,6 +980,24 @@ def test_a_fit_takes_the_whole_width_until_the_drawer_opens(mycelium_opened: Ope
     assert settled(page, "the map never stood still once Now shut") == pytest.approx(
         shut, abs=0.05
     ), "shutting the drawer didn't fit the map across the whole width again"
+    # Moved by hand, the view keeps its middle through a resize by the map's own change in
+    # width, the drawer open or not: measured by the room the drawer leaves, it would jump
+    # half a drawer the first resize after the drawer opened.
+    page.keyboard.press("Shift+ArrowLeft")
+    settled(page, "the map never stood still once moved")
+    page.keyboard.press(".")
+    expect(page.locator("#now-control"), ". didn't open Now again").to_have_attribute(
+        "aria-expanded", "true"
+    )
+    held = settled(page, "the moved map never stood still once Now opened")
+    width, height = SIZES[-1]
+    page.set_viewport_size({"width": width - NARROWED_PX, "height": height})
+    resized = settled(page, "the moved map never stood still once the window narrowed")
+    narrowed, _ = page.evaluate(WIDTHS)
+    assert resized[0] - held[0] == pytest.approx((narrowed - whole) / 2, abs=1), (
+        f"the map narrowed from {whole} to {narrowed} px with the drawer open, and the view "
+        f"moved from {held} to {resized}, not by half that"
+    )
 
 
 # Node.json's cells that need the reader, as Now lists them: the one asking

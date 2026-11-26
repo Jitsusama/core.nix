@@ -67,6 +67,20 @@ it("an id too long to leave its name room is the label alone, clipped to the roo
   assert.equal(labels.get(long), "(SKIFF-OF-THE-NORTH-SHORE-AND-THE-BAY)");
 });
 
+it("two ids too long for the room that clip alike are numbered apart", () => {
+  const name = "Rig the Skiff for the Season";
+  const shore = "orchestration.skiff-of-the-north-shore-and-the-whole-bay";
+  const bay = "orchestration.skiff-of-the-north-shore-and-the-whole-cove";
+  const labels = labelledApart([
+    { key: shore, name, carries: "Mend the north gauges" },
+    { key: bay, name, carries: "Mend the south gauges" },
+  ]);
+  assert.deepEqual(
+    [labels.get(shore), labels.get(bay)],
+    ["(SKIFF-OF-THE-NORTH-SHORE-AND-THE-W... 1", "(SKIFF-OF-THE-NORTH-SHORE-AND-THE-W... 2"],
+  );
+});
+
 it("a title written as another's id-hinted label takes its own id in turn", () => {
   const name = "Rig the Skiff for the Season";
   const labels = labelledApart([
