@@ -63,7 +63,7 @@ in
         && onLinux.user.signingKey == "/home/someone/.local/share/signing/joel-signing.pub"
         && linux.systemd.user.services ? signing-key
         &&
-          linux.systemd.user.sockets.agent-signing.Unit.ConditionPathExists
+          (linux.systemd.user.sockets.agent-signing.Unit.ConditionPathExists or null)
           == "/home/someone/.ssh/agent-signing.tpm"
         && lib.hasSuffix "/bin/se-sign" onMac.gpg.ssh.program
         && onMac.user.signingKey == "/Users/someone/.ssh/joel-signing"
