@@ -380,11 +380,25 @@ mod tests {
             "a leader turned follower isn't said to be let go while held"
         );
         let (held, said) = room.follow(wifi, HOME, true, None);
+        // Each transition is checked for its own line, not just for one
+        // (a link's own line round 5's F2, F3 and F6).
         assert_eq!(held, None, "a follower with no line");
-        assert!(said.is_some(), "is said to be let go");
+        assert_eq!(
+            said.as_deref(),
+            Some("wlan0: the download is no longer held for a call"),
+            "a follower whose line goes is said to be let go"
+        );
         let (held, said) = room.follow(wifi, HOME, true, Some(20_000));
-        assert_eq!(held, Some(18_000), "a line declared again is held under");
-        assert!(said.is_some(), "the hold taken again is said");
+        let said = said.expect("the journal says the hold was taken again");
+        assert_eq!(
+            held,
+            Some(18_000),
+            "a line declared again holds it under that line again: {said}"
+        );
+        assert!(
+            said.contains("following eth1's, isn't measured") && said.contains("held to 18000"),
+            "the hold taken again is said as one beginning: {said}"
+        );
         let (held, said) = room.follow(wifi, HOME, false, Some(20_000));
         assert_eq!(held, None, "the call's end lets it go");
         assert_eq!(
