@@ -208,9 +208,9 @@ pub fn folder(config: &Config, hosted: &Hosted, commit: &str) -> Option<String> 
         .or_else(|| read::found(config, commit).map(|found| found.folder))
 }
 
-/// Whether `newer` descends from `older`: by root's copy when it holds
-/// `newer`, and otherwise by the host's word when the folder was read from
-/// it with `older` the commit last switched to.
+/// Whether `newer` descends from `older`: by root's copy when it shows
+/// so, by the host's word when the folder was read from it with `older`
+/// the commit last switched to, and otherwise by asking the host.
 pub fn descends(config: &Config, older: &str, newer: &str) -> Result<bool, Failure> {
     // A commit descends from itself, as git's merge-base says: main where it
     // was, with a followed input moved on, is that.
@@ -218,13 +218,28 @@ pub fn descends(config: &Config, older: &str, newer: &str) -> Result<bool, Failu
         return Ok(true);
     }
     let main = Repo::main(config);
-    if git::has(&main, newer) {
-        return git::descends(&main, older, newer);
+    if git::has(&main, newer) && git::descends(&main, older, newer)? {
+        return Ok(true);
     }
-    match read::found(config, newer) {
-        Some(found) if found.from.as_deref() == Some(older) => Ok(found.descends),
-        _ => Ok(false),
+    if let Some(found) = read::found(config, newer)
+        && found.from.as_deref() == Some(older)
+    {
+        return Ok(found.descends);
     }
+    // The account's checkout holds only part of main's history: a commit
+    // last switched to by a read from the host may never have reached it.
+    // On 26 November one such refused every update, saying a main that
+    // descended from it didn't. So a copy that can't show it asks the host
+    // before refusing, and only a host that says no, or none to ask, does.
+    let Some(hosted) = &config.hosted else {
+        return Ok(false);
+    };
+    let Some(api) = &hosted.api else {
+        return Ok(false);
+    };
+    let account = run::account(&hosted.user)?;
+    let token = token(hosted, &account)?;
+    read::descends(config, api, &token, older, newer)
 }
 
 /// Whether main at `head` holds `commit`: by root's copy when it has
