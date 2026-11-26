@@ -74,7 +74,12 @@ fn a_quiet_build_whose_pieces_work_runs_on_but_not_for_ever() {
     };
     let work = std::sync::atomic::AtomicU64::new(0);
     let working = |_| Some(work.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1);
-    assert!(quiet("sleep 1.6; echo done", &working).is_ok());
+    let worked = quiet("sleep 1.6; echo done", &working);
+    assert!(
+        worked.is_ok(),
+        "a quiet build whose pieces work was stopped: {:?}",
+        worked.err().map(|f| f.why)
+    );
     // Its pieces stopped working, so it's stopped at the next look.
     let started = Instant::now();
     let failed = quiet("sleep 30", &|_| Some(7)).unwrap_err();
@@ -171,9 +176,10 @@ fn a_copy_back_may_stay_quiet_longer_but_not_for_ever() {
         "it waited for the end"
     );
     assert!(failed.why.contains("said nothing"), "{}", failed.why);
-    assert!(!is_copy_back(
-        "copying path '/nix/store/a-x' to 'ssh-ng://builder'..."
-    ));
+    assert!(
+        !is_copy_back("copying path '/nix/store/a-x' to 'ssh-ng://builder'..."),
+        "a copy up to a builder was read as one coming back"
+    );
 }
 
 #[test]
@@ -189,8 +195,17 @@ fn a_piece_building_may_stay_quiet_longer_but_waiting_for_one_may_not() {
         )
     };
     // A compile that says nothing for a while still works.
-    assert!(after("building '/nix/store/a-x.drv' on 'ssh-ng://builder'...").is_ok());
-    assert!(after("building '/nix/store/a-x.drv'...").is_ok());
+    for first in [
+        "building '/nix/store/a-x.drv' on 'ssh-ng://builder'...",
+        "building '/nix/store/a-x.drv'...",
+    ] {
+        let built = after(first);
+        assert!(
+            built.is_ok(),
+            "a quiet piece after {first:?} was stopped: {:?}",
+            built.err().map(|f| f.why)
+        );
+    }
     // Before any piece builds, a quiet build is one waiting on a
     // builder that doesn't answer.
     let failed = after("these 2 derivations will be built:").unwrap_err();
@@ -199,11 +214,16 @@ fn a_piece_building_may_stay_quiet_longer_but_waiting_for_one_may_not() {
 
 #[test]
 fn a_build_log_line_is_told_from_nix_s_own() {
-    assert!(is_log("linux-7.3.1> CC kernel/fork.o"));
-    assert!(!is_log(
-        "building '/nix/store/a-b.drv' on 'ssh-ng://builder'..."
-    ));
-    assert!(!is_log("error: builder failed > 1"));
+    for (line, logged) in [
+        ("linux-7.3.1> CC kernel/fork.o", true),
+        (
+            "building '/nix/store/a-b.drv' on 'ssh-ng://builder'...",
+            false,
+        ),
+        ("error: builder failed > 1", false),
+    ] {
+        assert_eq!(is_log(line), logged, "{line:?}");
+    }
 }
 
 #[test]
@@ -254,7 +274,10 @@ fn a_tail_starts_at_the_piece_that_failed_not_those_waiting_on_it() {
         kept.first().map(String::as_str),
         Some("error: Cannot build '/nix/store/guard.drv'.")
     );
-    assert!(kept.iter().any(|l| l.contains("a_guard_holds ... FAILED")));
+    assert!(
+        kept.iter().any(|l| l.contains("a_guard_holds ... FAILED")),
+        "the failed test's line was left out: {kept:?}"
+    );
     assert_eq!(kept.len(), TAIL);
 }
 
@@ -265,7 +288,10 @@ fn a_tail_starts_at_an_older_nix_builder_failing() {
                 error: 1 dependencies of derivation '/nix/store/system.drv' failed to build\n";
     let kept = tail(said);
     assert_eq!(kept.len(), 4);
-    assert!(kept[0].starts_with("error: builder for '/nix/store/guard.drv'"));
+    assert!(
+        kept[0].starts_with("error: builder for '/nix/store/guard.drv'"),
+        "the tail didn't start at the builder failing: {kept:?}"
+    );
 }
 
 #[test]
