@@ -10783,7 +10783,15 @@ Scope {
     // asked first, so the opening is asked here and timed as theirs are:
     // Joel's file chooser said no opening line, its keys 100 ms each
     // (2026-11-13, 03:45).
-    function into(name) {
+    //
+    // Given `way`, rows to step through once it's in, as the file chooser's
+    // folders on the way to where it opens, they're walked inside the ask,
+    // each passed through but the last (walkInto), so only that one is
+    // searched and drawn. Opened and then stepped in after the ask, its
+    // place and every folder on the way were each searched and listed for
+    // a frame showing only the last: 43 of a 108 ms opening went on the
+    // place alone (2026-11-25, 23:04).
+    function into(name, way) {
         // Put in a place from outside, as a chord does while the launcher
         // is open, it's no landing a leave guessed (walkTo).
         guessed = Held.unguessed();
@@ -10795,7 +10803,13 @@ Scope {
             askedToOpen();
         if (!open && !opening)
             openChord = name;
-        intoWhole(name);
+        if ((way ?? []).length > 0) {
+            const begun = stepBegun();
+            intoWhole(name, true);
+            walkInto(way, begun);
+        } else {
+            intoWhole(name);
+        }
         keepPlace(name);
         if (asked)
             askDone();
@@ -11026,15 +11040,7 @@ Scope {
         if (leading !== null && leading.settings.name !== name) {
             const begun = stepBegun();
             intoWhole(leading.settings.name, rows.length > 0);
-            for (const [depth, row] of rows.entries()) {
-                const stood = { typed: "", above: 0,
-                    at: Math.max(0, offered.findIndex(one => steadyId(one) === steadyId(row))) };
-                if (!enter(row, { passing: depth < rows.length - 1, stood: stood, begun })) {
-                    walkStopped(begun, true);
-                    break;
-                }
-            }
-            openedHere();
+            walkInto(rows, begun);
             return;
         }
         const source = collections.find(s => s.settings.name === name) ?? null;
@@ -11070,6 +11076,23 @@ Scope {
         if (lead)
             enter(lead);
         feltSpan("searching", searched);
+        openedHere();
+    }
+
+    // Steps from the place just opened through `rows`, each passed through
+    // but the last, as a walk is (walkTo), standing each where it's among
+    // what the step before offers, so - climbs back onto it; a step that
+    // can't be taken stops there, listing what's held. Where it ends is
+    // where it opened.
+    function walkInto(rows, begun) {
+        for (const [depth, row] of rows.entries()) {
+            const stood = { typed: "", above: 0,
+                at: Math.max(0, offered.findIndex(one => steadyId(one) === steadyId(row))) };
+            if (!enter(row, { passing: depth < rows.length - 1, stood: stood, begun })) {
+                walkStopped(begun, true);
+                break;
+            }
+        }
         openedHere();
     }
 
