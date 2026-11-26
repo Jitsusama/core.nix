@@ -615,7 +615,8 @@ mod tests {
 
     #[test]
     fn a_why_at_its_room_stands_whole_and_one_past_it_is_cut_to_it() {
-        let whole = "a".repeat(WHY_AT_MOST);
+        // Two bytes a character, so a room counted in bytes fails it.
+        let whole = "é".repeat(WHY_AT_MOST);
         assert_eq!(
             why_of(&json!({"step": "refused", "why": whole})),
             json!(whole),
@@ -623,13 +624,10 @@ mod tests {
         );
         // With no space to go back to, the cut falls inside the one word
         // rather than leave nothing of it.
-        let past = why_of(&json!({"step": "refused", "why": "a".repeat(WHY_AT_MOST + 1)}));
-        let past = past.as_str().unwrap_or_default();
         assert_eq!(
-            past,
-            format!("{}\u{2026}", "a".repeat(WHY_AT_MOST - 1)),
+            why_of(&json!({"step": "refused", "why": "é".repeat(WHY_AT_MOST + 1)})),
+            json!(format!("{}\u{2026}", "é".repeat(WHY_AT_MOST - 1))),
             "a why one past its room isn't cut to it"
         );
-        assert_eq!(past.chars().count(), WHY_AT_MOST);
     }
 }

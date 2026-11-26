@@ -13,19 +13,18 @@ use terminal_kit::layout::one_line;
 
 /// `line` as plain words: a terminal's escape sequences gone whole, as a
 /// coloured or linked complaint writes them; every other control character
-/// and each line or paragraph separator one space, however many stand
-/// together or beside a space, so the words either side of a tab or a
-/// return stay apart by one; and
-/// the format characters that turn, hide or break text gone, so a row reads
-/// as it's written.
+/// and each line or paragraph separator one space, with every space
+/// beside it and however many stand together, so the words either side of
+/// a tab or a return stay apart by one; and the format characters that
+/// turn, hide or break text gone, as is any character the line's own form
+/// leaves out, so a row reads as it's written.
 pub fn words(line: &str) -> String {
     let mut kept = String::new();
     let mut chars = line.chars().peekable();
+    // Whether a control has parted the words since the last character that
+    // draws, so a space after it is the same parting.
     let mut parted = false;
     while let Some(each) = chars.next() {
-        if !each.is_control() && each != ' ' {
-            parted = false;
-        }
         match each {
             '\u{1b}' => escape(&mut chars),
             // The one-character forms of a control sequence and a string,
@@ -39,15 +38,19 @@ pub fn words(line: &str) -> String {
             }
             each if each.is_control() || matches!(each, '\u{2028}' | '\u{2029}') => {
                 parted = true;
-                if !kept.is_empty() && !kept.ends_with(' ') {
+                kept.truncate(kept.trim_end_matches(' ').len());
+                if !kept.is_empty() {
                     kept.push(' ');
                 }
             }
-            // A space after one a control left is the same parting, so the
-            // words either side of "a\t b" stand one space apart.
-            ' ' if parted && kept.ends_with(' ') => {}
-            each if hides(each) => {}
-            each => kept.push(each),
+            // Gone here rather than by the line's own form after, so none
+            // stands between a control and a space to keep both.
+            each if hides(each) || unseen(each) => {}
+            ' ' if parted => {}
+            each => {
+                parted = false;
+                kept.push(each);
+            }
         }
     }
     one_line(&kept).trim().to_owned()
@@ -96,6 +99,13 @@ fn string(chars: &mut Peekable<Chars>) -> bool {
         }
     }
     false
+}
+
+/// Whether the line's own form (the terminal kit's `one_line`) leaves
+/// `each` out, as it does the characters that draw nothing, such as a
+/// Hangul filler standing alone.
+fn unseen(each: char) -> bool {
+    one_line(each.encode_utf8(&mut [0; 4])).is_empty()
 }
 
 /// Whether `each` is a format character that turns, hides or breaks text:
@@ -158,12 +168,19 @@ mod tests {
                 "a line separator parts words as a tab does",
             ),
             ("a;\t\tb", "a; b", "controls together leave one space"),
-            ("a\t b", "a b", "a space after a control leaves one"),
-            ("a \tb", "a b", "so does one before"),
+            ("a\t  b", "a b", "spaces after a control leave one"),
+            ("a  \tb", "a b", "so do spaces before one"),
             (
-                "a  b",
-                "a  b",
-                "spaces no control parts are the owner's own",
+                "a\t\u{1b}[31m b",
+                "a b",
+                "so does a space a colour stands before",
+            ),
+            ("a\t\u{3164} b", "a b", "or a character the line drops"),
+            ("a \u{3164}\tb", "a b", "whichever side it stands"),
+            (
+                "a\tb  c",
+                "a b  c",
+                "spaces no control parts are the owner's own, after a word ends a parting",
             ),
             (
                 "\u{1b}(Bplain",
