@@ -99,6 +99,15 @@ def waited(machine: BaseMachine, folder: str) -> str:
     return as_account(machine, f"journalctl --user -u {waiter(folder)} -o cat")
 
 
+def again(folder: str) -> str:
+    """Give a command that runs a folder's move once more, however often it ran just now.
+
+    systemd refuses a sixth start within ten seconds, and a subtest staging case after case
+    starts the move that often, so its count is cleared first.
+    """
+    return f"systemctl --user reset-failed {unit(folder)}; systemctl --user restart {unit(folder)}"
+
+
 def nothing_beside(machine: BaseMachine, name: str) -> None:
     """Find no kept folder, half copy, mark or split beside `name`.
 
@@ -249,7 +258,7 @@ def test_a_marked_copy_beside_a_subvolume_goes_only_once_nothing_reached_it(
     The mark bears the time its copy began, so a file changed after it is a write the subvolume
     may lack, and each run fails until Joel has dealt with it.
     """
-    restart = f"systemctl --user restart {unit('moved')}"
+    restart = again("moved")
     as_account(moved, "touch moved.subvolume-new.keep")
     as_account(moved, restart)
     moved.fail(f"test -e {HOME}/moved.subvolume-new.keep")
@@ -279,7 +288,7 @@ def test_a_folder_with_late_writes_set_aside_stays_until_they_are_dealt_with(
     moved: BaseMachine,
 ) -> None:
     """A marked copy or a split beside a folder keeps it, and says so though something holds it."""
-    restart = f"systemctl --user restart {unit('missing')}"
+    restart = again("missing")
     as_account(moved, "mkdir missing && echo here > missing/file")
     as_account(moved, "mkdir missing.subvolume-new && touch missing.subvolume-new.keep")
     as_account(
