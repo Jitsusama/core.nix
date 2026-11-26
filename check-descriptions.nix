@@ -1174,7 +1174,10 @@
     not built with localSite from a path in the tree, or naming no page but the shared kit,
     failing for the reason each of its rules, run over localSite itself,
     is seen to; Home is the page the home is
-    built from; and the gate passes sites.md's own head and names each way a page strays from it
+    built from; the gate passes sites.md's own head and names each way a page strays from it;
+    and the check localSite runs over a site's pages passes one whose scripts are files or data,
+    reads no page below its top, and names by line a script written in, a handler attribute or
+    a javascript: address however it's cased or spaced
   '';
   each-machine-signs-with-its-hardware = ''
     a Linux workstation signs through its TPM, one with no TPM with Joel's key on his YubiKey and

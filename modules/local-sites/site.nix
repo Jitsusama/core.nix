@@ -131,6 +131,9 @@ in
             looks.light.${tint}
           ]
         }
+        # The sites run only a page's own script files, so a page holding
+        # one written in, a handler or a javascript: address fails here.
+        ${lib.getExe pkgs.python3} ${./own-scripts.py} "$out"
       '';
 
   /**

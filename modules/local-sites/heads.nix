@@ -208,6 +208,9 @@ pkgs.runCommandLocal "heads-are-the-kits"
   {
     env = {
       WEB_SKILL = "${../theme/web/skill}";
+      # The check localSite's build runs over each page, its own test here
+      # beside the head's.
+      OWN_SCRIPTS = "${./own-scripts.py}";
       PYTHONPATH = "${./tests}";
       PYTHONDONTWRITEBYTECODE = "1";
     };
@@ -216,7 +219,7 @@ pkgs.runCommandLocal "heads-are-the-kits"
     ${lib.concatMapStrings (fault: "echo ${lib.escapeShellArg fault} >&2\n") faults}
     ${lib.optionalString (faults != [ ]) "exit 1"}
     ${plainPython}/bin/python -m pytest -p no:cacheprovider --import-mode=importlib \
-      --basetemp="$TMPDIR/pytest" ${./tests}/heads-test.py
+      --basetemp="$TMPDIR/pytest" ${./tests}/heads-test.py ${./tests}/own-scripts-test.py
     ${plainPython}/bin/python ${./tests/heads.py} \
       ${lib.escapeShellArg "--waiting=${lib.concatStringsSep "," waitingForTheHead}"} ${
         lib.escapeShellArgs (lib.mapAttrsToList (name: page: "${name}=${page}") pages)
