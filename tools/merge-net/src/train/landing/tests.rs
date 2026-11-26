@@ -834,6 +834,42 @@ fn a_read_failing_while_a_merge_is_waited_out_is_asked_past() {
 }
 
 #[test]
+fn a_merge_read_unmerged_last_after_failed_reads_is_refused() {
+    // The wait's last read decides: reads failing early in it don't make
+    // the merge unknown once a later one reads it unmerged.
+    let landed = landed_by("github-fails-then-unmerged", |place, origin| Fake {
+        merges_late: Cell::new(Some((2, usize::MAX))),
+        read_fails: Cell::new(Some((MERGE_TRIES + 1, 3))),
+        ..Fake::of(place, origin)
+    });
+    assert!(
+        matches!(
+            &landed.landing,
+            Landing::Partly { kept, refused, .. }
+                if *kept == [landed.one.clone()] && *refused == landed.two
+        ),
+        "a merge read unmerged after failed reads didn't leave the train: {:?}",
+        landed.landing
+    );
+}
+
+#[test]
+fn a_read_failing_on_a_merge_in_doubt_before_the_wait_is_waited_out() {
+    // The read after the first try fails all three times it is asked, so
+    // the train used to stop at once on a merge GitHub went on to finish.
+    let landed = landed_by("github-early-read-fails", |place, origin| Fake {
+        merges_late: Cell::new(Some((2, MERGE_TRIES + 3))),
+        read_fails: Cell::new(Some((1, 3))),
+        ..Fake::of(place, origin)
+    });
+    assert_eq!(
+        landed.landing,
+        Landing::Landed(landed.main.clone()),
+        "a failed read on a merge in doubt stopped the train before waiting it out"
+    );
+}
+
+#[test]
 fn a_merge_github_cant_say_after_waiting_stops_the_train() {
     let landed = landed_by("github-never-says", |place, origin| Fake {
         merges_late: Cell::new(Some((2, usize::MAX))),

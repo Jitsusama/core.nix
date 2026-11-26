@@ -4,7 +4,7 @@
 
 use std::path::Path;
 use std::process::Command;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use super::hub::Hub;
 use super::{Merging, RECUTS, cut};
@@ -125,6 +125,12 @@ const SETTLE_PAUSE: Duration = if cfg!(test) {
     Duration::from_secs(15)
 };
 
+/// How long those asks may take in all, however slowly GitHub answers
+/// each: twenty reads that each time out three times would otherwise hold
+/// the train for about two hours. Six minutes leaves room for the five
+/// of pauses and the reads between.
+const SETTLE_FOR: Duration = Duration::from_secs(6 * 60);
+
 /// What `gh` adds to an answer in which GitHub refused the merge, as
 /// `gh: Pull Request is still a draft (HTTP 405)`; any other failure,
 /// a server error, a timeout or a lost link, states no refusal.
@@ -163,6 +169,9 @@ fn merge(hub: &dyn Hub, merging: &Merging) -> Merge {
             }
             Ok(None) if tried == MERGE_TRIES => return Merge::Refused(why),
             Ok(None) => {}
+            // A merge already in doubt is waited out past a failed read
+            // too, rather than stopping the whole train at once.
+            Err(_) if unstated => return settled(hub, merging.number, why),
             Err(error) => {
                 return Merge::Unknown(format!("{why}, and GitHub couldn't say after: {error}"));
             }
@@ -175,25 +184,54 @@ fn merge(hub: &dyn Hub, merging: &Merging) -> Merge {
 
 /// How a merge in doubt, GitHub's last answer to it `why`, went: made once
 /// GitHub reads pull request `number` merged, refused when its last read
-/// of `SETTLE_ASKS` still says unmerged, and unknown when that last read
-/// failed. A read failing between is asked past, as one failed read says
-/// nothing, and an unknown merge stops the whole train.
+/// of `SETTLE_ASKS`, or the last within `SETTLE_FOR`, still says
+/// unmerged, and unknown when that last read failed. A read failing
+/// between is asked past, as one failed read says nothing, and an unknown
+/// merge stops the whole train.
 fn settled(hub: &dyn Hub, number: u64, why: String) -> Merge {
     println!(
-        "merge-net: GitHub's answers to #{number}'s merge stated no refusal, the last \
-         {why}, so the train asks for up to five minutes whether it landed"
+        "merge-net: an answer to #{number}'s merge stated no refusal, so the train asks \
+         for up to five minutes whether it landed; its last answer: {}",
+        one_line(&why)
     );
+    let until = Instant::now() + SETTLE_FOR;
     let mut read = Ok(None);
     for _ in 0..SETTLE_ASKS {
         std::thread::sleep(SETTLE_PAUSE);
         read = merged(hub, number);
         if let Ok(Some(made)) = read {
+            println!(
+                "merge-net: GitHub reads #{number} merged, as {}",
+                short(&made)
+            );
             return Merge::Made(made);
+        }
+        if Instant::now() >= until {
+            break;
         }
     }
     match read {
-        Err(error) => Merge::Unknown(format!("{why}, and GitHub couldn't say after: {error}")),
-        Ok(_) => Merge::Refused(why),
+        Err(error) => {
+            println!(
+                "merge-net: GitHub still couldn't say whether #{number} merged: {}",
+                one_line(&error)
+            );
+            Merge::Unknown(format!("{why}, and GitHub couldn't say after: {error}"))
+        }
+        Ok(_) => {
+            println!("merge-net: GitHub still reads #{number} unmerged, so it leaves the train");
+            Merge::Refused(why)
+        }
+    }
+}
+
+/// `text` as one line of at most 300 characters, for train.log: gh's
+/// errors can run long and over several lines.
+fn one_line(text: &str) -> String {
+    let joined = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    match joined.char_indices().nth(300) {
+        Some((at, _)) => format!("{} ...", &joined[..at]),
+        None => joined,
     }
 }
 
