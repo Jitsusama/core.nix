@@ -86,12 +86,13 @@ CELLS = 8
 # map's own head rules, and the kit's keys.js, which marks the page keyed at
 # its first key so a touch screen with a keyboard shows its key line, about
 # three more; the head and its link are seven elements more in the markup
-# than the map's header was, and the budget rose by three, the rest within
-# its room, and one more for the labels kept apart, 0.4 KB of it. One file
-# and a kilobyte more are the kit's early.js, the script the page once wrote
-# into itself, which the sites' policy now runs only from a file: 701 bytes
-# stripped, and 32 more in the markup, whose tag for it and the note on why
-# it runs first are longer than the script they replace.
+# than the map's header was, and its elements rose by three, the rest within
+# their room; five kilobytes in all, and one more for the labels kept apart,
+# 0.4 KB of it. One file and a kilobyte more are the kit's early.js, the
+# script the page once wrote into itself, which the sites' policy now runs
+# only from a file: 701 bytes stripped, and 32 more in the markup, whose tag
+# for it and the note on why it runs first are longer than the script they
+# replace.
 BUDGET = Budget(files=36, kilobytes=686, elements=623)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
