@@ -302,6 +302,10 @@ fn gather(
         orchestrator,
     ));
     all.push(measures::holds::read(state_home, &asks, now));
+    // Only the hour that files keeps what it read of the mesh; a look by
+    // hand names no orchestrator, and keeps nothing.
+    let keeps = orchestrator.is_some();
+    all.push(measures::causes::read(state_home, folder, now, keeps));
     all.extend(parted::dates_at_risk(state_home, &core, &asks, now));
     all.extend(found);
     let per_merge = rounds_per_merge(state_home, &core, &core_log, &harness_log, now);

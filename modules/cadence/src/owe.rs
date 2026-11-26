@@ -107,6 +107,34 @@ pub fn owe(ledger: &mut Vec<Entry>, owed: Owed, date: &str, now: i64) {
         entry.last_to = now;
         return;
     }
+    // A drag that closed and is due again is the same drag come back, so
+    // its line reopens, counted, as a fix of cadence's own that didn't
+    // hold does, rather than a second line that reads as new. It takes
+    // today as its first day, as a new line would, so an ask made once a
+    // day still reads as made today.
+    if owed.kind == "drag"
+        && let Some(entry) = ledger
+            .iter_mut()
+            .rev()
+            .find(|e| e.key == owed.key && e.kind.as_deref() == Some("drag"))
+    {
+        entry.open = true;
+        entry.reopened += 1;
+        entry.late = false;
+        entry.told = Some(date.to_owned());
+        date.clone_into(&mut entry.first);
+        entry.axis = owed.axis;
+        entry.owner = Some(owed.owner);
+        entry.due = owed.due;
+        entry.words = owed.says;
+        date.clone_into(&mut entry.last);
+        entry.last_to = now;
+        entry.hub = None;
+        entry.put_to.clear();
+        entry.back = None;
+        entry.fixed = None;
+        return;
+    }
     ledger.push(Entry {
         key: owed.key,
         owner: Some(owed.owner),
