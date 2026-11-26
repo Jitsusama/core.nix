@@ -6388,7 +6388,9 @@
     it can be, its trouble said once as it begins and once as it clears, even when the loopback's
     nobody met it and its camera's watch clears it, and so is the node a camera's watch couldn't
     say beside it, its trouble said once too; and a loopback's file is said ready only once it and
-    its node are written
+    its node are written; and as a loopback's camera goes, a node file it couldn't remove is tried
+    again until it can be, only once its nobody is written, and a loopback with no camera is said
+    ready only once its node file is gone or can't be there
   '';
   usb-camera-holders-forget-a-killed-run = ''
     each USB camera watch's unit, the relayed one's too, forgets what says its node in the folder it
