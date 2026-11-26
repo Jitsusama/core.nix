@@ -1321,6 +1321,7 @@ QtObject {
                 [[0, 4], [0, 8], [1, 3], [2, 0], [4, 0], [4, 3]]],
             ["never past them", "here   ", []],
             ["nor from them into the next paragraph", "here  next", []],
+            ["nor into anything laid after them", "here  n", []],
             ["on a text of only spaces, at its line's start", "   ", [[2, 0]]],
             ["across a wrap into the spaces its last line ends with", "ps here ", [[3, 3]]]
         ];
