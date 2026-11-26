@@ -738,10 +738,13 @@ mod tests {
             "it's offered Resume, and neither a Pause nor a Park the harness refuses under \
              its hold"
         );
+        let listening = made(&asking("listening"), Place::default(), &given());
         assert_eq!(
-            made(&asking("listening"), Place::default(), &given())
-                .acts
-                .join(" "),
+            listening.state, "needs",
+            "one listening that wants him needs him"
+        );
+        assert_eq!(
+            listening.acts.join(" "),
             "switch talk pause park close",
             "one listening that wants him can still be paused or parked"
         );

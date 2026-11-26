@@ -281,9 +281,10 @@ by = "KP0L6A"
 due = "2026-11-26 18:00"
 why = "a cell's drawer offers no park"
 
+# Read by its wiring, not its words alone, so it fails if the act goes.
 [act.launcher.has]
-file = "modules/quickshell/launcher/words/agents.json"
-holds = ['"id": "verb:agent:park"', '"id": "verb:agent:wake"']
+file = "modules/quickshell/launcher/Agents.qml"
+holds = ['park: () => act("park"', 'wake: () => act("wake"']
 
 [[act]]
 name = "looks"

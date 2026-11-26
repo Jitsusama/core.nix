@@ -118,7 +118,15 @@ QtObject {
                 [{ key: "verb:agents:landed:try" }, ...served(["talk"])], "verb:agent:talk", [],
                 "talk", "talk"],
             ["nothing served, the shell's own, Return on its first", undefined, undefined,
-                ["switch", "talk", "pause"], "switch talk pause", "switch"]
+                ["switch", "talk", "pause"], "switch talk pause", "switch"],
+            // A daemon newer than the shell, as through a switch, serves acts
+            // the shell can't make: they're left out, Return's too.
+            ["an act the shell doesn't make is left out", served(["talk", "hush", "pause"]),
+                "verb:agent:talk", [], "talk pause", "talk"],
+            ["a Return the shell doesn't make marks its first", served(["talk", "pause"]),
+                "verb:agent:hush", [], "talk pause", "talk"],
+            ["only acts it can't make served, the shell's own", served(["hush"]),
+                "verb:agent:hush", ["talk"], "talk", "talk"]
         ];
         for (const [what, acts, returns, fallback, want, mark] of offers) {
             const { ids, marked } = SessionRow.offered(acts, returns, fallback);

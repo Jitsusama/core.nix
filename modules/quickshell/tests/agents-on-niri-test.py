@@ -963,6 +963,10 @@ def test_za_on_a_live_session_keeps_its_fold_in_sight_its_prose_all_given_way(
     parks = [act for act in opened["acts"] if act.split(" ")[-1] == "Park"]
     assert parks, f"its acts don't offer Park: {opened}"
     assert len(cast("list[int]", opened["actsLaid"])) > 1, f"its acts stand one line: {opened}"
+    # It has prose, none of it kept: its words stand no line, so none fades.
+    assert opened["bodyLines"] > 0, f"it has no prose to give way: {opened}"
+    assert opened["lines"]["words"] is None, f"its prose keeps a line over the fold: {opened}"
+    assert opened.get("wordsFade") is None, f"its prose fades a line it keeps: {opened}"
     fold_stands_in_sight(opened)
 
 
