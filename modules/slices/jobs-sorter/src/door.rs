@@ -265,8 +265,8 @@ pub struct Door {
     held: Vec<Held>,
     /// Each scope let in, with when.
     admitted: HashMap<PathBuf, Instant>,
-    /// Each scope let in capped past what a start is counted to grow by,
-    /// with its cap, which it's counted to grow to instead.
+    /// Each scope let in capped, at a rush's share or at a start's growth
+    /// as the rest come one each [`SPACED`], with its cap, which it's counted to grow to instead.
     capped: HashMap<PathBuf, u64>,
     /// Each scope whose cap was lifted, with when and what it held then:
     /// it's counted to grow by a start's growth past that while it ramps
@@ -629,7 +629,7 @@ impl Door {
         self.lifted.retain(|scope, _| admitted.contains_key(scope));
     }
 
-    /// Lifts the cap of the start a rush let in longest before `now`, once
+    /// Lifts the cap of the capped start let in longest before `now`, once
     /// [`RAMP`] has passed, with no call on, nothing stalling and `room`
     /// for a start and its growth, and gives the room it took. One whose
     /// lift `act` couldn't make keeps its cap, to try again.
@@ -668,8 +668,9 @@ impl Door {
     }
 
     /// What the starts let in within [`RAMP`] of `now` are yet to grow to,
-    /// each counted to grow by `grows`, less what its scope holds by
-    /// `memory`.
+    /// each counted to its cap, or by `grows` when it has none, and each
+    /// scope lifted within [`RAMP`] counted to grow by `grows` past what it
+    /// held at its lift; each less what its scope holds by `memory`.
     fn growing(&self, memory: &HashMap<&Path, u64>, grows: u64, now: Instant) -> u64 {
         let admitted: u64 = self
             .admitted
@@ -2032,6 +2033,62 @@ mod tests {
             GROWS,
             "the lifted scope isn't counted to grow by a start's growth"
         );
+    }
+
+    // The look that lifts a cap spends a start's room on it, so a start
+    // that comes on the same look finds only what's left: ranked, not let
+    // in plainly on room the lift already took.
+    #[test]
+    fn a_lift_spends_its_looks_room() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let (mut work, longest) = rushed(&mut door, at);
+        work.push(coming(300, 1003, "nix build .#y", "/c/work-new-1.scope"));
+        let mut lifts = 0;
+        let came = door.look(&work, free(ROOM + GROWS), longest + RAMP, 1003, |_, act| {
+            lifts += usize::from(act == Act::Rank { high: u64::MAX });
+            true
+        });
+        assert_eq!(lifts, 1, "no cap was lifted");
+        assert!(
+            came.iter().any(|done| matches!(done, Done::Ranked(300, _))),
+            "the start came in on room the lift took: {came:?}"
+        );
+    }
+
+    // A lifted scope counts from what it held at its lift, so one that
+    // held 5 GiB and holds 6 now is yet to grow by 3, and it stops
+    // counting once it has ramped again.
+    #[test]
+    fn a_lifted_scope_counts_from_what_it_held() {
+        let mut door = Door::default();
+        let at = Instant::now();
+        let (work, longest) = rushed(&mut door, at);
+        let holding = |work: &[Coming<'static>], memory: u64| -> Vec<Coming<'static>> {
+            work.iter()
+                .map(|it| Coming {
+                    memory,
+                    ..it.clone()
+                })
+                .collect()
+        };
+        let lifting = holding(&work, GROWS + GROWS / 4);
+        let ramped = longest + RAMP;
+        door.look(&lifting, free(ROOM + GROWS), ramped, 1003, |_, _| true);
+        assert_eq!(door.lifted.len(), 1, "no cap was lifted");
+        let grown = holding(&work, GROWS + GROWS / 2);
+        let memory: HashMap<&Path, u64> = grown
+            .iter()
+            .map(|it| (it.scope.as_path(), it.memory))
+            .collect();
+        let later = ramped + Duration::from_secs(1);
+        assert_eq!(
+            door.growing(&memory, GROWS, later),
+            GROWS * 3 / 4,
+            "the lifted scope wasn't counted from what it held"
+        );
+        door.look(&grown, free(0), ramped + RAMP, 1004, |_, _| true);
+        assert!(door.lifted.is_empty(), "a lift outlived its ramp");
     }
 
     // A scope's cap goes with it, so a later scope at the same path isn't
