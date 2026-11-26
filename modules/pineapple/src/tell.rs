@@ -98,9 +98,15 @@ const GIST: usize = 280;
 
 /// What was said, as a row, its notice and Joel's phone show it: on one
 /// line, and cut after [`GIST`] characters, so a long comment heard costs
-/// the launcher and his notices no more than a short one.
+/// the launcher and his notices no more than a short one. A control
+/// character parts words as a space does, since a NUL can't be passed to
+/// the program that shows his notice, and none of them is shown.
 fn gist(said: &str) -> String {
-    let line = said.split_whitespace().collect::<Vec<_>>().join(" ");
+    let line = said
+        .split(|c: char| c.is_whitespace() || c.is_control())
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
     match line.char_indices().nth(GIST) {
         Some((cut, _)) => format!("{} ...", line[..cut].trim_end()),
         None => line,
@@ -352,6 +358,11 @@ mod tests {
             gist("pineapple override\n\n  on this one\n"),
             "pineapple override on this one",
             "its lines are joined into one"
+        );
+        assert_eq!(
+            gist("pineapple\u{0}override \u{1b}[2J\u{7f}now"),
+            "pineapple override [2J now",
+            "control characters part words and are never shown"
         );
         // Its 280th byte falls inside a letter, so a cut by bytes fails.
         assert_eq!(
