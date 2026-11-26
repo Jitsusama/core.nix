@@ -18,7 +18,7 @@ const FAIR_BARS = 3;
 const FULL = 100;
 
 /** How a sentence ends. */
-const ENDED = /[.?!]$/u;
+const ENDED = /[.?!\u2026]$/u;
 
 /** How each system a node names is said. */
 const SYSTEMS: { readonly [system: string]: string } = {
@@ -333,19 +333,34 @@ function power(charge: number, onBattery: boolean | undefined): string {
   return onBattery === false ? `${charged} and plugged in` : charged;
 }
 
-/** A machine's last update, as a sentence, when its node says one. */
+/**
+ * A machine's last update, as a sentence, when its node says one, with why
+ * when it didn't all go ahead: beside a refusal, a failure or a done update
+ * whose system isn't the one it boots, as the system command says it
+ * (said.rs `updated`), so a why beside a step a newer node knows, which an
+ * earlier attempt may have left, is never said as this one's. A why may end
+ * in its own mark, so the sentence ends once.
+ */
 function updated(figures: Figures, when: (at: string) => string): string | undefined {
   if (figures.updatedAt === undefined) {
     return undefined;
   }
   const at = when(figures.updatedAt);
+  const why = figures.updateWhy;
   switch (figures.updateStep) {
     case "done":
-      return `Updated ${at}.`;
+      return why === undefined ? `Updated ${at}.` : stopped(`Updated ${at}, but ${why}`);
     case "unchanged":
       return `Unchanged at its update ${at}.`;
+    // A node too old to say its step, or one whose step couldn't be read,
+    // which the daemon leaves out: either way, not known to have gone ahead.
     case undefined:
-      return `Last updated ${at}.`;
+      return `Its last update was ${at}.`;
+    case "refused":
+    case "failed":
+      return why === undefined
+        ? `Its update ${at} says ${figures.updateStep}.`
+        : stopped(`Its update ${at} says ${figures.updateStep}: ${why}`);
     default:
       return `Its update ${at} says ${figures.updateStep}.`;
   }

@@ -253,6 +253,21 @@ QtObject {
             Stepped.steppedMaking(87, split)
                 === " (its parts 60, its acts 20, the rest 5, ordering 2)",
             Stepped.steppedMaking(87, split));
+        // Where its acts' maker lapped them, the acts say their laps after
+        // them, most first and by name where as many, those under a
+        // millisecond unsaid.
+        const lapped = Object.assign({}, split, { laps: { cells: 4.6, lately: 0.4,
+            "agents asking": 11.2, banding: 3.1, kinds: 2.5 } });
+        expect("a step's acts say the laps they went on",
+            Stepped.steppedMaking(87, lapped) === " (its parts 60, its acts 20 (agents asking"
+                + " 11, cells 5, banding 3, kinds 3), the rest 5, ordering 2)",
+            Stepped.steppedMaking(87, lapped));
+        expect("acts with no laps a millisecond say none",
+            Stepped.steppedMaking(87, Object.assign({}, split, { laps: { lately: 0.4 } }))
+                === " (its parts 60, its acts 20, the rest 5, ordering 2)"
+                && Stepped.steppedMaking(87, Object.assign({}, split, { laps: {} }))
+                    === " (its parts 60, its acts 20, the rest 5, ordering 2)",
+            Stepped.steppedMaking(87, Object.assign({}, split, { laps: { lately: 0.4 } })));
         expect("a step that made nothing, or untold, says no split",
             Stepped.steppedMaking(0, split) === "" && Stepped.steppedMaking(40, null) === "",
             Stepped.steppedMaking(40, null));

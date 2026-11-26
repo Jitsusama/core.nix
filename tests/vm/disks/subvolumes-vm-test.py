@@ -2,13 +2,15 @@
 
 subvolumes.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py),
 and its opening comment says what the test proves. The account's folders are made once a run, one
-held open by a process of its own, one it only maps, one whose writer runs and one with a file it
-can't read, then each folder's move runs as a login or a switch runs it, so any test runs alone
+held open by a process of its own, one it only maps, one whose writer runs, one with a file it
+can't read, one held by a process that quits later and one a racer opens as it's copied, then each
+folder's move runs as a login or a switch runs it, so any test runs alone
 with `-k`. The tests need no value from Nix.
 """
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 import pytest
@@ -42,6 +44,12 @@ def moved(machine: BaseMachine) -> BaseMachine:
     machine.wait_for_unit("multi-user.target")
     machine.succeed("loginctl enable-linger joel")
     machine.wait_for_unit("user@1000.service")
+    # The moves the manager starts find no folder yet, and a target is reached only after what
+    # it wants, so none of them can still be running as the folders are made.
+    as_account(
+        machine,
+        "timeout 60 sh -c 'until systemctl --user is-active -q default.target; do sleep 0.2; done'",
+    )
     as_account(
         machine,
         "mkdir -p moved/deep held mapped unreadable busy && echo kept > moved/deep/file"
@@ -68,16 +76,48 @@ def moved(machine: BaseMachine) -> BaseMachine:
     as_account(machine, "systemctl --user restart " + " ".join(unit(f) for f in FREE))
     # The folder that can't be copied fails its unit, and says so.
     as_account(machine, f"systemctl --user restart {unit('unreadable')}", succeed=False)
+    # A process holds this one, as Chrome holds its folder at a switch, and quits later.
+    as_account(machine, "mkdir quitting && echo held > quitting/file")
+    as_account(
+        machine,
+        f"systemd-run --user --unit quitter bash -c 'exec 3< {HOME}/quitting/file; sleep infinity'",
+    )
+    holds = "test -e /proc/$(systemctl --user show -P MainPID quitter)/fd/3"
+    as_account(machine, f"timeout 30 sh -c 'until {holds}; do sleep 0.2; done'")
+    # Enough files that the racer, started as the copy begins, opens one long before it ends.
+    as_account(machine, "mkdir raced && for i in $(seq 8000); do echo $i > raced/f$i; done")
+    as_account(machine, f"systemctl --user restart {unit('quitting')} {unit('raced')}")
     return machine
 
 
+def waiter(folder: str) -> str:
+    """Give the unit that waits out a folder's holder, as home.nix names it."""
+    return f"own-subvolume-{folder}-after-quit.service"
+
+
+def waited(machine: BaseMachine, folder: str) -> str:
+    """Give what a folder's waiter said in the journal."""
+    return as_account(machine, f"journalctl --user -u {waiter(folder)} -o cat")
+
+
+def again(folder: str) -> str:
+    """Give a command that runs a folder's move once more, however often it ran just now.
+
+    systemd refuses a sixth start within ten seconds, and a subtest staging case after case
+    starts the move that often, so its count is cleared first.
+    """
+    return f"systemctl --user reset-failed {unit(folder)}; systemctl --user restart {unit(folder)}"
+
+
 def nothing_beside(machine: BaseMachine, name: str) -> None:
-    """Find neither a kept folder nor a half copy beside `name`.
+    """Find no kept folder, half copy, mark or split beside `name`.
 
     Each is looked for alone, since ls fails when any one of several is missing.
     """
     machine.fail(f"ls -d {HOME}/{name}.before-subvolume-*")
     machine.fail(f"test -e {HOME}/{name}.subvolume-new")
+    machine.fail(f"test -e {HOME}/{name}.subvolume-new.keep")
+    machine.fail(f"ls -d {HOME}/{name}.split-*")
 
 
 def test_each_move_comes_with_the_manager_before_its_writers(moved: BaseMachine) -> None:
@@ -122,6 +162,10 @@ def test_a_folder_whose_writer_runs_stays_though_nothing_is_open(moved: BaseMach
     assert inode(moved, f"{HOME}/busy") != "256"
     assert "busy.service is running, so" in said(moved, "busy")
     nothing_beside(moved, "busy")
+    # Nothing holds it, so nothing would say when to move it, and no waiter ever started.
+    started = as_account(moved, f"systemctl --user show -P InvocationID {waiter('busy')}")
+    started = started.strip()
+    assert started == "", f"a waiter started for a writer alone, as {started}"
 
 
 def test_a_folder_missing_is_left_and_its_unit_passes(moved: BaseMachine) -> None:
@@ -143,11 +187,86 @@ def test_a_folder_that_cant_be_copied_is_left_whole_and_its_writer_starts(
     assert as_account(moved, "systemctl --user is-active writer.service").strip() == "active"
 
 
+def test_a_folder_a_program_opens_as_it_is_copied_stays_whole(moved: BaseMachine) -> None:
+    """A program that starts as its folder is copied keeps the folder, whole, where it was."""
+    assert inode(moved, f"{HOME}/raced") != "256", "the folder moved under the racer"
+    assert as_account(moved, "systemctl --user is-active racer").strip() == "active"
+    told = said(moved, "raced")
+    # Seen by the look before the exchange or the one after it, by the file it wrote or the
+    # one it holds; either way the waiter is started for the file it holds.
+    seen = ", as it was copied" in told or ", as it moved" in told
+    assert seen, f"the move didn't say the racer reached it as it moved: {told}"
+    assert "raced/f1 open" in told, f"the move didn't say the racer held it: {told}"
+    assert "until that quits" in told, f"the move started no waiter for the racer: {told}"
+    assert moved.succeed(f"ls {HOME}/raced | wc -l").strip() == "8000"
+    moved.succeed(f"grep -qx opened {HOME}/raced/f2")
+    nothing_beside(moved, "raced")
+
+
+def test_a_folder_moves_once_the_process_holding_it_quits(moved: BaseMachine) -> None:
+    """A folder left for a process holding it moves by itself, whole, once that one quits."""
+    # The racer starts once, but its trigger would go on firing at each copy.
+    as_account(moved, "systemctl --user stop racer.path")
+    for folder, holder in (("quitting", "quitter"), ("raced", "racer")):
+        assert inode(moved, f"{HOME}/{folder}") != "256", f"{folder} moved under {holder}"
+        as_account(moved, f"systemctl --user stop {holder}")
+        moves = f"test $(stat -c %i {HOME}/{folder}) = 256"
+        as_account(moved, f"timeout 60 sh -c 'until {moves}; do sleep 0.5; done'")
+        told = waited(moved, folder)
+        assert "so this waits for it to quit" in told, f"{folder}'s waiter said: {told}"
+    assert moved.succeed(f"cat {HOME}/quitting/file").strip() == "held"
+    assert moved.succeed(f"ls {HOME}/raced | wc -l").strip() == "8000"
+    # What the racer wrote as the first move copied went with the folder.
+    moved.succeed(f"grep -qx opened {HOME}/raced/f2")
+
+
+def test_a_waiter_that_held_nothing_a_minute_three_times_running_starts_the_move_no_more(
+    moved: BaseMachine,
+) -> None:
+    """A waiter that held nothing a minute, after three such starts of the move, leaves it be.
+
+    A split beside the folder fails each move it starts, as a holder the waiter never finds
+    would leave each, so the count rises. Its count is the move's to clear, so once a start
+    lands the move, the count goes with it. It runs before the second run, and the move it
+    lands is the busy folder's once its writer stops, so the second run finds a subvolume there.
+    """
+    count = f"/run/user/1000/own-subvolumes/{waiter('busy')}.idle"
+    as_account(moved, "systemctl --user stop busy.service")
+    as_account(moved, "mkdir busy.split-1")
+    for _ in range(3):
+        as_account(moved, f"systemctl --user start --wait {waiter('busy')}")
+    assert moved.succeed(f"cat {count}").strip() == "3", "each start with nothing held counts"
+    show = f"systemctl --user show -P InvocationID {unit('busy')}"
+    # A start a waiter asks for is queued before it exits, so once no job is left for the move
+    # and it isn't running, any move a waiter started has shown as an invocation of its own.
+    busy = f"systemctl --user show -P ActiveState {unit('busy')}"
+    queued = f"systemctl --user list-jobs --no-legend | grep -qF {unit('busy')}"
+    settled = f"timeout 30 sh -c 'while {queued} || [ $({busy}) = activating ]; do sleep 0.2; done'"
+    as_account(moved, settled)
+    before = as_account(moved, show)
+    as_account(moved, f"systemctl --user start --wait {waiter('busy')}")
+    told = waited(moved, "busy")
+    assert "3 times in a row with nothing held a minute" in told, f"the waiter said: {told}"
+    as_account(moved, settled)
+    assert as_account(moved, show) == before, "the bound starts no move"
+    as_account(moved, "rmdir busy.split-1")
+    moved.succeed(f"echo 2 > {count}")
+    # Five starts of each in a few seconds is systemd's limit, so the next would be refused. A
+    # waiter that ended well may be unloaded already, which reset-failed counts as a failure.
+    as_account(moved, f"systemctl --user reset-failed {unit('busy')} {waiter('busy')}; true")
+    as_account(moved, f"systemctl --user start --wait {waiter('busy')}")
+    moved.wait_until_succeeds(f"! test -e {count}", timeout=timedelta(minutes=1))
+    assert inode(moved, f"{HOME}/busy") == "256"
+
+
 def test_a_second_run_leaves_a_subvolume_as_it_is(moved: BaseMachine) -> None:
     """A subvolume's root isn't copied again, and folders freed since move at the next run."""
     before = moved.succeed(f"ls -d {HOME}/moved.before-subvolume-*")
     as_account(moved, "chmod 600 unreadable/file")
+    # The held folders' waiters would start the same moves as their holders stop.
+    as_account(moved, f"systemctl --user stop {waiter('held')} {waiter('mapped')}")
     as_account(moved, "systemctl --user stop holder mapper writer busy")
+    # The bound's subtest moved busy once its writer stopped, so this run leaves it as it is.
     freed = ("moved", "held", "mapped", "unreadable", "busy")
     as_account(moved, "systemctl --user restart " + " ".join(unit(f) for f in freed))
     assert moved.succeed(f"ls -d {HOME}/moved.before-subvolume-*") == before
@@ -170,3 +289,79 @@ def test_a_run_stopped_after_its_exchange_keeps_the_folder_as_it_was(moved: Base
     kept = moved.succeed(f"grep -l older {HOME}/moved.before-subvolume-*/file").split()
     assert len(kept) == 1, f"the folder left by the stopped run is kept once, not {kept}"
     assert inode(moved, f"{HOME}/moved") == "256"
+
+
+def test_a_marked_copy_beside_a_subvolume_goes_only_once_nothing_reached_it(
+    moved: BaseMachine,
+) -> None:
+    """A mark alone is cleared, and the folder as it was goes aside only if unchanged since it.
+
+    The mark bears the time its copy began, so a file changed after it is a write the subvolume
+    may lack, and each run fails until Joel has dealt with it.
+    """
+    restart = again("moved")
+    as_account(moved, "touch moved.subvolume-new.keep")
+    as_account(moved, restart)
+    moved.fail(f"test -e {HOME}/moved.subvolume-new.keep")
+    # Stopped as it looked, with nothing written since the copy began.
+    as_account(moved, "mkdir moved.subvolume-new && echo calm > moved.subvolume-new/file")
+    as_account(moved, "touch moved.subvolume-new.keep")
+    # Held, it may still be written in, so it stays until its holder quits.
+    as_account(
+        moved,
+        "systemd-run --user --unit lingerer"
+        f" bash -c 'exec 3< {HOME}/moved.subvolume-new/file; sleep infinity'",
+    )
+    holds = "test -e /proc/$(systemctl --user show -P MainPID lingerer)/fd/3"
+    as_account(moved, f"timeout 30 sh -c 'until {holds}; do sleep 0.2; done'")
+    as_account(moved, restart, succeed=False)
+    moved.succeed(f"test -e {HOME}/moved.subvolume-new.keep")
+    told = said(moved, "moved")
+    assert "is held (/proc/" in told, f"the held run said: {told}"
+    as_account(moved, "systemctl --user stop lingerer")
+    as_account(moved, restart)
+    moved.fail(f"test -e {HOME}/moved.subvolume-new")
+    moved.fail(f"test -e {HOME}/moved.subvolume-new.keep")
+    moved.succeed(f"grep -l calm {HOME}/moved.before-subvolume-*/file")
+    assert "held nothing more" in said(moved, "moved")
+    # Written in after the copy began, which each run then says until it's dealt with.
+    as_account(moved, "mkdir moved.subvolume-new")
+    as_account(moved, "touch -d '1 minute ago' moved.subvolume-new.keep")
+    as_account(moved, "echo late > moved.subvolume-new/file")
+    for _ in range(2):
+        as_account(moved, restart, succeed=False)
+        moved.succeed(f"grep -qx late {HOME}/moved.subvolume-new/file")
+        moved.succeed(f"test -e {HOME}/moved.subvolume-new.keep")
+    told = said(moved, "moved")
+    # The held run said it was held, so only these runs say what changed.
+    assert "changed as it moved" in told, f"the run didn't say what changed: {told}"
+    as_account(moved, "rm -r moved.subvolume-new moved.subvolume-new.keep")
+    as_account(moved, restart)
+
+
+def test_a_folder_with_late_writes_set_aside_stays_until_they_are_dealt_with(
+    moved: BaseMachine,
+) -> None:
+    """A marked copy or a split beside a folder keeps it, and says so though something holds it."""
+    restart = again("missing")
+    as_account(moved, "mkdir missing && echo here > missing/file")
+    as_account(moved, "mkdir missing.subvolume-new && touch missing.subvolume-new.keep")
+    as_account(
+        moved,
+        f"systemd-run --user --unit keeper bash -c 'exec 3< {HOME}/missing/file; sleep infinity'",
+    )
+    holds = "test -e /proc/$(systemctl --user show -P MainPID keeper)/fd/3"
+    as_account(moved, f"timeout 30 sh -c 'until {holds}; do sleep 0.2; done'")
+    as_account(moved, restart, succeed=False)
+    told = said(moved, "missing")
+    assert "a copy with writes in it is kept" in told, f"the held run said: {told}"
+    as_account(moved, "rm -r missing.subvolume-new missing.subvolume-new.keep")
+    as_account(moved, "mkdir missing.split-1")
+    as_account(moved, restart, succeed=False)
+    assert inode(moved, f"{HOME}/missing") != "256", "the folder moved past its split"
+    told = said(moved, "missing")
+    assert "missing.split-1, so it stays" in told, f"the held run said: {told}"
+    as_account(moved, "systemctl --user stop keeper")
+    as_account(moved, "rmdir missing.split-1")
+    as_account(moved, restart)
+    assert inode(moved, f"{HOME}/missing") == "256"
