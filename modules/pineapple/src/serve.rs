@@ -759,12 +759,25 @@ mod tests {
         assert_eq!(written(), first, "and written down only the once");
         let kept = fs::read_to_string(state.join("told.json")).unwrap_or_default();
         assert!(kept.contains("slack:C1:1.0@"), "and kept as told: {kept}");
+        fs::remove_dir_all(&state).expect("the state folder goes");
+    }
+
+    #[test]
+    fn a_live_notice_with_no_notify_send_to_knock_is_told_at_once() {
+        let state =
+            std::env::temp_dir().join(format!("pineapple-unknockable-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&state);
+        fs::create_dir_all(&state).expect("a state folder");
         let quiet = Knocking {
             notify: None,
             busctl: None,
-            again: knocking.again,
+            again: Duration::from_secs(10),
         };
-        let other = [row("slack:C3:1.0", false)];
+        let (mut told, mut unknocked) = (BTreeMap::new(), BTreeMap::new());
+        let other = [
+            json!({"key": "slack:C3:1.0", "saying": "pineapple override",
+            "shadow": false, "title": "Someone stopped agents", "words": "w", "link": "l"}),
+        ];
         tell_new(
             &state,
             &other,
@@ -772,7 +785,7 @@ mod tests {
             &quiet,
             &mut told,
             &mut unknocked,
-            start,
+            Instant::now(),
         );
         assert!(
             told.contains_key("slack:C3:1.0@pineapple override") && unknocked.is_empty(),
