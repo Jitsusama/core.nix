@@ -378,6 +378,12 @@ AFTER_KESTREL = """() => {
   const at = rows.findIndex((row) => row.matches('a.look') && row.textContent.includes('firmware'));
   return rows[Math.min(at + 1, rows.length - 1)]?.dataset.row ?? null;
 }"""
+# The key of the look a lands on after kestrel's firmware look, the list's first after its last.
+NEXT_LOOK = """() => {
+  const looks = [...document.querySelectorAll('#looks a[data-row]')];
+  const at = looks.findIndex((row) => row.textContent.includes('firmware'));
+  return looks[(at + 1) % looks.length]?.dataset.row ?? null;
+}"""
 
 
 @pytest.mark.parametrize("size", SIZES, ids=[f"{width}px" for width, _ in SIZES])
@@ -458,6 +464,13 @@ def test_a_machines_look_says_why_it_matters_and_opens_it_in_the_launcher(
         page.keyboard.press("j")
         held = page.evaluate("document.activeElement?.dataset?.row ?? null")
         assert held == after, f"j from the act went to {held}, not {after}"
+        # a steps to the next look from the act as from its look, never back onto its own.
+        launch.focus()
+        following = page.evaluate(NEXT_LOOK)
+        assert following is not None, "no look was listed to step to"
+        page.keyboard.press("a")
+        landed = page.evaluate("document.activeElement?.dataset?.row ?? null")
+        assert landed == following, f"a from the act went to {landed}, not {following}"
     finally:
         opened.close()
 
