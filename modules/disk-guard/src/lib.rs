@@ -40,6 +40,7 @@ pub mod desktop;
 #[path = "notifier.rs"]
 pub mod desktop;
 pub mod discover;
+pub mod disk_reads;
 pub mod disks;
 pub mod finished;
 pub mod footprint;

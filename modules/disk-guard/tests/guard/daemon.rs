@@ -589,6 +589,61 @@ fn a_producer_runs_again_once_what_it_watches_changes() {
         .unwrap();
     assert_eq!(pass["why"], "producers", "{journal:?}");
     assert!(pass["surveyed"].as_f64() > Some(0.0), "{journal:?}");
+    if cfg!(target_os = "linux") {
+        assert!(
+            pass["read"].is_u64() && pass["survey_read"].is_u64(),
+            "a pass didn't say what it and its survey read from disk: {pass}"
+        );
+    }
+}
+
+/// The walks outside passes, each journaled with what it read from disk.
+fn walks(home: &Home, step: &str) -> Vec<serde_json::Value> {
+    home.journal()
+        .into_iter()
+        .filter(|line| line["event"] == "walk" && line["step"] == step)
+        .collect()
+}
+
+#[test]
+fn a_measure_of_what_holds_the_disks_journals_what_it_read() {
+    // On 25 November a guard read 9.2 GB in the eleven minutes after its
+    // start, and nothing said whether that was its survey or this.
+    let home = Home::new();
+    home.cold_scratch("build");
+    let mut guard = home.guard(home.config("100%", "100%"));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let mut at = 0.0;
+    let mut walls = Vec::new();
+    while walks(&home, "holders").is_empty() && std::time::Instant::now() < deadline {
+        let tick = tick_at(at);
+        walls.push(tick.wall);
+        guard.step(&tick, &CALM).unwrap();
+        at += 5.0;
+        // Its thread is joined at the next step that finds it done.
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let walked = walks(&home, "holders");
+    assert_eq!(
+        walked.len(),
+        1,
+        "the measure wasn't journaled once: {walked:?}"
+    );
+    assert!(walked[0]["seconds"].as_f64() >= Some(0.0), "{walked:?}");
+    // Stamped when it began, so it sorts beside what it ran with, not
+    // at the later step that found it done.
+    assert!(walls.len() > 1, "no later step joined the measure");
+    assert_eq!(
+        walked[0]["at"].as_f64(),
+        walls.first().copied(),
+        "the measure wasn't stamped when it began: {walked:?}"
+    );
+    if cfg!(target_os = "linux") {
+        assert!(
+            walked[0]["read"].is_u64(),
+            "it didn't say what it read: {walked:?}"
+        );
+    }
 }
 
 /// Senses a disk and memory stalling half the time, as a machine building
@@ -3213,4 +3268,27 @@ fn a_deps_made_anew_is_marked_again_within_the_hour() {
         std::thread::sleep(std::time::Duration::from_millis(100));
     };
     assert!(kept.opened.contains_key(&rlib), "{kept:?}");
+}
+
+#[test]
+fn marking_the_builds_journals_what_its_walk_read() {
+    let Ok(watch) = disk_guard::opens::Watch::new() else {
+        eprintln!("no fanotify here, so nothing to check");
+        return;
+    };
+    let home = Home::new();
+    let (config, _deps) = home.replaced_build("0%");
+    let mut guard = home.guard(config);
+    guard.listen(std::sync::Arc::new(watch));
+    guard.step(&tick(), &CALM).unwrap();
+    let walked = walks(&home, "marks");
+    assert_eq!(
+        walked.len(),
+        1,
+        "the marking walk wasn't journaled once: {walked:?}"
+    );
+    assert!(
+        walked[0]["read"].is_u64(),
+        "it didn't say what it read: {walked:?}"
+    );
 }
