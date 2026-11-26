@@ -8,12 +8,11 @@
 // the links this page writes: any page can write one, so mycelium-link and
 // the launcher hold their own bounds on what a link may carry.
 
+import { isNamed } from "../../local-sites/kit/cell.ts";
+
 // A cell's address, as mycelium-link lets one through: 1 to 12 capitals
 // and digits.
 const ADDRESS = /^[A-Z0-9]{1,12}$/u;
-// A machine's name, as mycelium-link lets one through: up to 64 letters,
-// digits, dots, hyphens and underscores, a letter or a digit first.
-const MACHINE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 // Any run of spaces, tabs or line breaks, which a line of words reads as
 // one: Unicode's White_Space, as Rust's `char::is_whitespace` splits
 // plain.rs's words, so U+0085 parts words and U+FEFF is left out below.
@@ -36,8 +35,11 @@ export const isAddress = (from: string | null): from is string =>
 /** What names any of the cloud's machines, as the Launcher reads it. */
 export const CLOUD = "cloud";
 
-/** Whether `on` is a machine's name as mycelium-link lets one through. */
-export const isMachine = (on: string | null): on is string => on !== null && MACHINE.test(on);
+/**
+ * Whether `on` is a machine's name as mycelium-link lets one through: the
+ * kit's one rule for a name a link carries, held to `tests/machines.txt`.
+ */
+export const isMachine = (on: string | null): on is string => on !== null && isNamed(on);
 
 // The machine new work starts on, said as a place.
 const placeWords = (on: string): string => (on === CLOUD ? "the cloud" : on);

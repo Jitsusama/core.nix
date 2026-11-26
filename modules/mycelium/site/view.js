@@ -22,7 +22,7 @@
 // holds stand in waits.ts, which this imports as the modules they're built to.
 // A cell's link, and the cell a link or a hash names, are the kit's cell.ts,
 // the one way every site names a cell.
-import { addressIn, cellLink } from "../../local-sites/kit/cell.js";
+import { addressIn, cellLink, isNamed } from "../../local-sites/kit/cell.js";
 import { asksOrFinds, cellDoing as cellDoingAt, fedWords, groupDoing as groupDoingAt, sensesDoing, talkLineWords } from "./doing.js";
 import {
   contextWords,
@@ -3337,11 +3337,11 @@ import {
   // mycelium-link lets through, so a name it would refuse is never offered
   // as a link that does nothing. A cell's is the kit's cellLink, saying the machine it
   // runs on (its host, never the basin it is drawn from) as a notice's
-  // link does; a network's or a machine's name takes more letters.
-  const NETWORK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+  // link does; a network's or a machine's name takes more letters, by the
+  // kit's one rule for a name a link carries.
   const linkOf = (kind, name, machine) => {
     if (kind === "cell") return cellLink(name || "", machine);
-    return NETWORK_NAME.test(name || "") ? `mycelium:${kind}/${name}` : null;
+    return isNamed(name || "") ? `mycelium:${kind}/${name}` : null;
   };
   const launcherLink = (kind, name, words, machine) => {
     const href = linkOf(kind, name, machine);

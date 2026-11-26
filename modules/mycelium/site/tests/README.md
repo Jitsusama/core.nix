@@ -86,10 +86,12 @@ never takes it for a flag. `machines.txt` holds what is one and what isn't,
 written and read as the address cases are. `cloud` is one, though the map
 and the Launcher read it as any of the cloud's machines.
 
-Two copies of the rule read it in their tests: the map's `isMachine`
-(`../sprout.ts`) and mycelium-link's `named`
+The same rule names a network, and a cell link's `@machine`. Two copies
+read it in their tests: the sites' kit's `isNamed`
+(`modules/local-sites/kit/cell.ts`), which the map's `isMachine`
+(`../sprout.ts`), its network and machine links (`../view.js`) and cell
+links all use, tested here through `isMachine`; and mycelium-link's `named`
 (`modules/quickshell/mycelium-link/src/main.rs`), which takes in
-`cases_in` from `addresses.rs`. Others don't read it yet: the sites' kit
-(`modules/local-sites/kit/cell.ts`), the map's `NETWORK_NAME` (`../view.js`)
-and the Launcher's reading of a link's `on:`. Editing it rebuilds the map
-site and mycelium-link, and a bad line fails both.
+`cases_in` from `addresses.rs`. The Launcher's reading of a link's `on:`
+doesn't read it yet. Editing it rebuilds the map site and mycelium-link,
+and a bad line fails both.
