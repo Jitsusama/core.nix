@@ -13,7 +13,8 @@ the check held at each change are one rule, and its
 `comments-name-what-exists.sh` first sees that measure refuse a planted tree
 both ways, for a comment naming what isn't there and a waiting line nothing
 matches, each named.
-`checks.nix` runs all fourteen on core itself.
+`checks.nix` runs all fourteen on core itself, and the check of the Rust
+reader `commands-agree` uses, below.
 Many entries because each rule keeps its three files side by side, where a
 reader opening one finds the others, rather than in a folder of its own.
 `every-script-finds-what-it-imports` first sees itself fail a planted tree
@@ -30,7 +31,11 @@ fail on all three and on a config that isn't TOML, which
 alone, so it's given a graphical machine's account too, and runs on Linux.
 `commands-agree` runs each command on the terminal kit for its help, so it's
 given those commands built, and runs on Linux, where the first builds. It
-reads the scripts Nix wrappers build as well as the crates' programs.
+reads the scripts Nix wrappers build as well as the crates' programs. It
+reads a crate's own code, without its tests, through `rust_code.py`, which
+tells what only tests read as rustc finds modules, not by their names; the
+reader is held to a planted crate by `rust-tests-are-read-as-declared.nix`,
+which runs on a Mac too.
 Every rule but `every-ruff-exception-hides-a-finding` is also given to other
 repositories built on core, through `core.lib` in `flake.nix`, each but
 `every-script-finds-what-it-imports` with a waiting list of their own; that

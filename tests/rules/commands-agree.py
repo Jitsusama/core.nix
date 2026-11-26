@@ -83,6 +83,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from rust_code import own_code
+
 POINTS = ("kit", "exits", "inks", "helps", "fits", "subcommands", "tables")
 
 # The points a script is held to: the kit is a Rust crate, so it keeps the
@@ -177,9 +179,6 @@ PADS_NAMED = 3
 
 # Crates that draw colour their own way, around the kit's decision.
 COLOUR_CRATES = ("anstyle", "ansi_term", "colored", "console", "owo-colors", "termcolor", "yansi")
-
-# Where a Rust file's unit tests start: a test module with a body, never `mod tests;`.
-TESTS = re.compile(r"(?m)^#\[cfg\(test\)\]\n(?:(?:#\[.*\]|///.*)\n)*(?:pub\S* )?mod \w+ \{")
 
 # The two wrappers that make a script a command, and what they're told.
 APPLICATION = re.compile(r"\bwriteShellApplication\s*\{")
@@ -312,12 +311,7 @@ def dependencies(manifest: Path) -> set[str]:
 
 def source(manifest: Path) -> str:
     """Give a crate's own code, without its tests, which may spell what they expect."""
-    src = manifest.parent / "src"
-    return "\n".join(
-        TESTS.split(path.read_text(), maxsplit=1)[0]
-        for path in sorted(src.rglob("*.rs"))
-        if path.stem.split("_")[-1] != "tests" and "tests" not in path.relative_to(src).parts
-    )
+    return own_code(manifest.parent / "src")
 
 
 def ran(program: str, *args: str) -> subprocess.CompletedProcess[str] | None:
