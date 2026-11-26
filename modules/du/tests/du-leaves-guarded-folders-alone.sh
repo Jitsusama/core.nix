@@ -425,23 +425,32 @@ gives "a count of a link through 32 links" "" -shH src/chain/l1
 count "${home}" -shH src/chain/l0 src
 gives "a count of a link through 33 links" "${unjudged} src/chain/l0" -shH src
 # A link to / counts above every guarded folder, so leaves each out by
-# name; one into a folder that isn't there is du's to say; one through a
-# folder that can't be entered is said apart.
+# name; one into a folder that isn't there, or through a file, is du's to
+# say; one through or below a folder that can't be entered is said apart.
 ln -s / "${home}/src/root"
 count "${home}" -shH src/root
 leaves_all "a count of a link to /" -shH src/root
 ln -s "${home}/gone/file" "${home}/src/lost"
 count "${home}" -shH src/lost
 gives "a count of a link into a folder that isn't there" "" -shH src/lost
-mkdir "${home}/src/shut"
-: >"${home}/src/shut/file"
+: >"${home}/src/flat"
+ln -s flat/file "${home}/src/past"
+count "${home}" -shH src/past
+gives "a count of a link through a file" "" -shH src/past
+mkdir -p "${home}/src/shut/in"
+: >"${home}/src/shut/in/file"
 ln -s shut/file "${home}/src/through"
+ln -s shut/in/file "${home}/src/below"
 chmod 000 "${home}/src/shut"
 count "${home}" -shH src/through src
 gives "a count of a link through a folder that can't be entered" "${unjudged} src/through" \
   -shH src
+count "${home}" -shH src/below src
+gives "a count of a link below a folder that can't be entered" "${unjudged} src/below" \
+  -shH src
 chmod 755 "${home}/src/shut"
-rm -r "${home}/src/shut" "${home}/src/root" "${home}/src/lost" "${home}/src/through"
+rm -r "${home}/src/shut" "${home}/src/root" "${home}/src/lost" "${home}/src/through" \
+  "${home}/src/below" "${home}/src/flat" "${home}/src/past"
 rm -r "${home}/src/chain" "${home}/far"
 rm "${home}/src/note" "${home}/src/gate"$'\n' "${home}/src/newline" "${home}/src/shelf" \
   "${home}/src/slash" "${home}/src/up" "${home}/src/file" "${home}/Documents/hop" \

@@ -266,6 +266,28 @@ leave() {
   leaving[${name}]=yes
   names+=("${name}")
 }
+# Sets gone when folder $1 isn't there for du to go into, so du says so:
+# a file stands where it would be, or the nearest step of its path that is
+# there is a file, a link to nothing, or a folder that may be searched. A
+# folder in the way that can't be searched keeps what's below it unknown.
+missing() {
+  local at=$1
+  gone=""
+  if [ -d "${at}" ]; then
+    return 0
+  fi
+  while [ ! -e "${at}" ] && [ ! -L "${at}" ]; do
+    if [[ ${at} != */* ]]; then
+      at=.
+      break
+    fi
+    at=${at%/*}
+    at=${at:-/}
+  done
+  if [ ! -d "${at}" ] || [ -x "${at}" ]; then
+    gone=yes
+  fi
+}
 # Sets real to start `path`'s real path, by its folder's with its name,
 # clearing judged when that folder can't be entered; with no folder there,
 # real is left empty, for du to say.
@@ -274,7 +296,10 @@ by_folder() {
   [[ ${path} != */* ]] || folder=${path%/*}
   real "${folder:-/}"
   [ -z "${real}" ] || real=${real%/}/${path##*/}
-  [ -n "${real}" ] || [ ! -e "${folder:-/}" ] || judged=""
+  if [ -z "${real}" ]; then
+    missing "${folder:-/}"
+    [ -n "${gone}" ] || judged=""
+  fi
 }
 # Sets real to the real path of link $1, which du follows, by the links it
 # leads through: each is read as written, from the real folder holding it,
