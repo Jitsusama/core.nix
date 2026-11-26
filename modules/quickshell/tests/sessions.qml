@@ -1591,6 +1591,67 @@ ShellRoot {
         Sessions.forgetAsk(elsewhereNamed);
         kittyPidFile.setText("4242\n");
         Sessions.readKittyPid();
+        // A press asked again whose viewer then comes is told it came, so a
+        // launcher shut meanwhile doesn't open on asked again about a viewer
+        // already up (tellOnOpen); a start's as started. One come past the
+        // script's answer is left untold, as one come after a stray is.
+        const cameNamed = "pi-hosted.s-kept-came";
+        Sessions.keepPlaces({ "s-kept-came": keptOne("s-kept-came") });
+        Sessions.viewKept();
+        const goingBeforeCame = Sessions.goingTo;
+        Sessions.goTo({ address: "CAME", presence: { hosted: true, session: "s-kept-came" },
+            attach: keptOne("s-kept-came").waiting, here: true });
+        kittyPidFile.setText("7070\n");
+        Sessions.readKittyPid();
+        Sessions.untaken(cameNamed, String(Sessions.attaching[cameNamed]));
+        untell();
+        Niri.acted = null;
+        Sessions.windowHeard({ id: 116, pid: 7070, opened: cameNamed });
+        expect("a press asked again whose viewer comes is told it came, the viewer focused",
+            heard() === "CAME cameAgain x1" && focused(116) && !(cameNamed in Sessions.pressedFor),
+            `${heard()} ${JSON.stringify(Niri.acted)}`);
+        Sessions.goingTo = goingBeforeCame;
+        Sessions.forgetAsk(cameNamed);
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        const cameHeld = "pi-hosted.s-kept-came-started";
+        Sessions.keepPlaces({ "s-kept-came-started": keptOne("s-kept-came-started") });
+        Sessions.viewKept();
+        const goingBeforeCameHeld = Sessions.goingTo;
+        Sessions.viewStarted("harbour-attended", "s-kept-came-started", cameHeld, "Reef", "/tmp",
+            { address: "CAMEHELD" });
+        kittyPidFile.setText("7171\n");
+        Sessions.readKittyPid();
+        Sessions.untaken(cameHeld, String(Sessions.attaching[cameHeld]));
+        untell();
+        Sessions.windowHeard({ id: 117, pid: 7171, opened: cameHeld });
+        expect("a start asked again whose viewer comes is told it came as started",
+            heard() === "CAMEHELD startedCameAgain x1", heard());
+        Sessions.goingTo = goingBeforeCameHeld;
+        Sessions.forgetAsk(cameHeld);
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        const cameLate = "pi-hosted.s-kept-came-late";
+        Sessions.keepPlaces({ "s-kept-came-late": keptOne("s-kept-came-late") });
+        Sessions.viewKept();
+        const goingBeforeCameLate = Sessions.goingTo;
+        Sessions.goTo({ address: "CAMELATE",
+            presence: { hosted: true, session: "s-kept-came-late" },
+            attach: keptOne("s-kept-came-late").waiting, here: true });
+        kittyPidFile.setText("7272\n");
+        Sessions.readKittyPid();
+        Sessions.untaken(cameLate, String(Sessions.attaching[cameLate]));
+        if ("askedAgainAt" in Sessions)
+            Sessions.askedAgainAt = Object.assign({}, Sessions.askedAgainAt,
+                { [cameLate]: Date.now() - Sessions.answerPatience - 1000 });
+        untell();
+        Sessions.windowHeard({ id: 118, pid: 7272, opened: cameLate });
+        expect("a press asked again whose viewer comes past the script's answer is left untold",
+            heard() === "  x0", heard());
+        Sessions.goingTo = goingBeforeCameLate;
+        Sessions.forgetAsk(cameLate);
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
         // A press told disowned, as the walk's viewer came refused, is told
         // it was asked for again, as a held-back press is, once the refusal
         // ends with no kitty taking the ask and it's asked again of a kitty
@@ -1740,6 +1801,27 @@ ShellRoot {
             `${refusedKeptAsk} ${refusedKeptAt} ${refusedKeptBack} ${heard()}`);
         Niri.windows = listedBeforeRefusedKept;
         Sessions.forgetAsk(refusedKept);
+        // Its kitty come since, a walk's viewer come refused is asked again
+        // as the refusal ends, and with no press told disowned, nobody is
+        // told (refusedUntaken).
+        const refusedAgain = "pi-hosted.s-kept-refused-again";
+        Sessions.keepPlaces({ "s-kept-refused-again": keptOne("s-kept-refused-again") });
+        const refusedAgainFrom = Niri.spawns.length;
+        Sessions.viewKept();
+        const refusedAgainStray = { id: 119, pid: 880, opened: refusedAgain };
+        Niri.windows = Object.assign({}, listedBeforeRefusedKept, { "119": refusedAgainStray });
+        Sessions.windowHeard(refusedAgainStray);
+        kittyPidFile.setText("7373\n");
+        Sessions.readKittyPid();
+        untell();
+        Sessions.untaken(refusedAgain, String(Sessions.refusedAt[refusedAgain]));
+        expect("a walk's viewer come refused, asked again of a kitty come since, tells nobody",
+            spawnsOf(refusedAgain, refusedAgainFrom) === 2 && heard() === "  x0",
+            `${spawnsOf(refusedAgain, refusedAgainFrom)} ${heard()}`);
+        Niri.windows = listedBeforeRefusedKept;
+        Sessions.forgetAsk(refusedAgain);
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
         Sessions.keepPlaces(keptBeforeUntaken);
         // A stray come for an ask while its press waits is said disowned at
         // once, as a pid read wrong is likelier. A press again meanwhile is
