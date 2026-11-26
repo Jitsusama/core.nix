@@ -8,6 +8,7 @@ import "MarginCat.js" as MarginCat
 import "MarginCatDrawings.js" as Drawings
 import "MarginCatGames.js" as Games
 import "MarginCatPuppy.js" as Puppy
+import "Seated.js" as Seated
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -34,15 +35,6 @@ QtObject {
         Qt.exit(failures.length === 0 ? 0 : 1);
     }
 
-    // A cat 8 cells of 1 across, sitting at 100, 20 on a window across the
-    // whole of a screen 1,000 by 600 with no marks lit, thinking 200 ms.
-    function sat(more) {
-        return Object.assign({
-            seat: { x: 100, y: 20 }, column: { left: 0, top: 30, width: 1000 }, across: 1000,
-            height: 600, marks: 0, gap: 12, cell: 1, wide: 8, tall: 8, pause: 200
-        }, more ?? {});
-    }
-
     // Each millisecond of a visit, the cat and the puppy as the screen
     // would draw them.
     function frames(played) {
@@ -52,14 +44,14 @@ QtObject {
 
     // The visit's beats, the cat's answers and where the puppy is in each.
     function visits(expect) {
-        const played = Puppy.visit(sat());
+        const played = Puppy.visit(Seated.sat());
         const beat = name => played.beats.find(each => each.name === name);
         const puppyAt = t => Puppy.frame(played, t);
         const catAt = t => Games.frame(played, t);
         expect("the visit's beats, in order", played.beats.map(each => each.name),
             ["waits", "notices", "eyes", "crouches", "hops", "lands", "looks", "watches"]);
         expect("a puppy play, with no yarn", [played.kind, played.yarn], ["puppy", null]);
-        const left = Puppy.visit(sat({ seat: { x: 500, y: 20 },
+        const left = Puppy.visit(Seated.sat({ seat: { x: 500, y: 20 },
             column: { left: 0, top: 30, width: 528 } }));
         expect("it comes from the side with more room", [played.way, left.way], [1, -1]);
         expect("from just behind its column's edge, drawn only within it, facing the cat",
@@ -95,23 +87,23 @@ QtObject {
         expect("the cat never leaves its seat",
             frames(played).every(frame => frame.cat.x === 100), true);
         expect("the theme's slowdown stretches all of it",
-            Puppy.visit(sat({ slowdown: 2 })).ends, played.ends * 2);
+            Puppy.visit(Seated.sat({ slowdown: 2 })).ends, played.ends * 2);
         expect("with no room for it beside the cat, no visit",
-            Puppy.visit(sat({ column: { left: 95, top: 30, width: 16 } })), null);
-        expect("nor without a seat", Puppy.visit(sat({ seat: null })), null);
+            Puppy.visit(Seated.sat({ column: { left: 95, top: 30, width: 16 } })), null);
+        expect("nor without a seat", Puppy.visit(Seated.sat({ seat: null })), null);
     }
 
     // Its trot: in whole cells, at the pace the cat walks a way that long,
     // a drawing for every two or three cells, in the cat's order, and none
     // shown for less than two frames at 60 Hz.
     function trots(expect) {
-        const played = Puppy.visit(sat());
+        const played = Puppy.visit(Seated.sat());
         const both = frames(played);
         const all = both.map(frame => frame.puppy);
         const waits = played.beats[0];
         expect("its trot in at the cat's hurry, 891 cells at 80 a second",
             waits.ends - waits.begins, 11137.5);
-        const near = Puppy.visit(sat({ column: { left: 92, top: 30, width: 48 } }));
+        const near = Puppy.visit(Seated.sat({ column: { left: 92, top: 30, width: 48 } }));
         expect("a short way at an amble, never quicker than the cat's",
             near.beats[0].ends - near.beats[0].begins, 31 / 40 * 1000);
         expect("in whole cells",
@@ -156,11 +148,11 @@ QtObject {
     // Each pose it takes is one of the theme's drawings, which the screen
     // turns the way it faces (MarginCat.yarnDrawn, as the yarn's).
     function drawings(expect) {
-        const posed = new Set(frames(Puppy.visit(sat())).map(frame => frame.puppy?.pose));
+        const posed = new Set(frames(Puppy.visit(Seated.sat())).map(frame => frame.puppy?.pose));
         posed.delete(undefined);
         expect("every pose it takes is drawn",
             Array.from(posed).filter(pose => (Drawings.poses[pose] ?? []).length === 0), []);
-        const going = frames(Puppy.visit(sat())).map(frame => frame.puppy)
+        const going = frames(Puppy.visit(Seated.sat())).map(frame => frame.puppy)
             .find(puppy => puppy?.facing === 1 && puppy.pose === "puppyWalkingA");
         expect("and turned the way it faces, off as it trots back",
             MarginCat.yarnDrawn(MarginCat.yarnLooks(going), Drawings.poses),

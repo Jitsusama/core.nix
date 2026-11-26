@@ -40,6 +40,7 @@ onLinux {
           ./MarginCatStacked.js
           ./MarginCatTiles.js
           ./MarginCatWays.js
+          ./tests/Seated.js
           ./tests/margin-cat.qml
           ./tests/margin-cat-floats.qml
           ./tests/margin-cat-games.qml
@@ -86,7 +87,7 @@ onLinux {
       '';
     in
     pkgs.runCommandLocal "the-margin-cat-sits-above-its-column" { } ''
-      cp ${sources}/*.js ${sources}/tests/*.qml .
+      cp ${sources}/*.js ${sources}/tests/*.js ${sources}/tests/*.qml .
       cp ${drawings} MarginCatDrawings.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}

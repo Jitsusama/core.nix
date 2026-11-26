@@ -13,6 +13,7 @@ import "MarginCat.js" as MarginCat
 import "MarginCatDrawings.js" as Drawings
 import "MarginCatGames.js" as Games
 import "MarginCatPlays.js" as Plays
+import "Seated.js" as Seated
 
 QtObject {
     // A test that throws ends as a failure, rather than leaving qml running.
@@ -45,15 +46,6 @@ QtObject {
         Qt.exit(failures.length === 0 ? 0 : 1);
     }
 
-    // A cat 8 cells of 1 across, sitting at 100, 20 on a window across the
-    // whole of a screen 1,000 by 600 with no marks lit, thinking 200 ms.
-    function sat(more) {
-        return Object.assign({
-            seat: { x: 100, y: 20 }, column: { left: 0, top: 30, width: 1000 }, across: 1000,
-            height: 600, marks: 0, gap: 12, cell: 1, wide: 8, tall: 8, pause: 200
-        }, more ?? {});
-    }
-
     // Each millisecond of a play, as the screen would draw it.
     function frames(played) {
         return Array.from({ length: Math.ceil(played.ends) }, (_, t) => Games.frame(played, t));
@@ -79,23 +71,24 @@ QtObject {
     // Where it may play from its seat: within its window's column and the
     // screen, and off the margin's marks, half a gap clear of them.
     function rooms(expect) {
-        expect("its room runs to its column's ends", Games.room(sat()), { left: 100, right: 892 });
+        expect("its room runs to its column's ends", Games.room(Seated.sat()),
+            { left: 100, right: 892 });
         expect("and no further than its window",
-            Games.room(sat({ column: { left: 50, top: 30, width: 200 } })),
+            Games.room(Seated.sat({ column: { left: 50, top: 30, width: 200 } })),
             { left: 50, right: 142 });
         // Three marks of 12 centred on 500 span 482 to 518; half a gap
         // either side, 476 to 524.
         expect("and stops half a gap short of the marks on their side",
-            [Games.room(sat({ marks: 3 })),
-                Games.room(sat({ marks: 3, seat: { x: 600, y: 20 } }))],
+            [Games.room(Seated.sat({ marks: 3 })),
+                Games.room(Seated.sat({ marks: 3, seat: { x: 600, y: 20 } }))],
             [{ left: 100, right: 368 }, { left: 76, right: 392 }]);
-        expect("nowhere without a seat", Games.room(sat({ seat: null })), null);
+        expect("nowhere without a seat", Games.room(Seated.sat({ seat: null })), null);
     }
 
     // The yarn rolls up to it, it bats it on, crouches, wiggles, leaps on
     // it, holds it and sends it off the way it came.
     function yarn(expect) {
-        const played = Games.play("yarn", sat());
+        const played = Games.play("yarn", Seated.sat());
         const all = frames(played);
         const at = t => Games.frame(played, t);
         const beat = name => played.beats.find(each => each.name === name);
@@ -103,7 +96,7 @@ QtObject {
         expect("the yarn's beats, in order", played.beats.map(each => each.name),
             ["waits", "notices", "eyes", "bats", "watches", "crouches", "wiggles", "wiggles",
                 "wiggles", "wiggles", "leaps", "lands", "pins", "sends"]);
-        const left = Games.play("yarn", sat({ seat: { x: 500, y: 20 },
+        const left = Games.play("yarn", Seated.sat({ seat: { x: 500, y: 20 },
             column: { left: 0, top: 30, width: 528 } }));
         expect("it plays toward the more room", [played.way, left.way], [1, -1]);
         expect("the yarn comes from just behind its column's edge, drawn only within it",
@@ -113,7 +106,7 @@ QtObject {
             [-9, { left: 0, right: 528 }]);
         const rolling = during(played, "waits");
         expect("and comes to rest two cells short of its paws", last("waits").yarn.x, 110);
-        const near = Games.play("yarn", sat({ column: { left: 92, top: 30, width: 48 } }));
+        const near = Games.play("yarn", Seated.sat({ column: { left: 92, top: 30, width: 48 } }));
         expect("from far, it comes faster, at most a fifth of a cell a millisecond",
             [beat("waits").ends - beat("waits").begins, near.beats[0].ends], [8910, 1200]);
         expect("it turns as it rolls, toward the cat",
@@ -163,9 +156,9 @@ QtObject {
             [shortest(all, frame => frame.pose) >= 33,
                 shortest(all, frame => frame.yarn.pose) >= 33], [true, true]);
         expect("the theme's slowdown stretches all of it",
-            Games.play("yarn", sat({ slowdown: 2 })).ends, played.ends * 2);
+            Games.play("yarn", Seated.sat({ slowdown: 2 })).ends, played.ends * 2);
         expect("with no room for the yarn, there's no play",
-            Games.play("yarn", sat({ column: { left: 95, top: 30, width: 16 } })), null);
+            Games.play("yarn", Seated.sat({ column: { left: 95, top: 30, width: 16 } })), null);
     }
 
     // The yarn, its costliest play, comes at most once in 15 minutes,
@@ -288,7 +281,7 @@ QtObject {
         }, []).join(",");
         const afresh = yarn => MarginCat.turned(Drawings.pixels[yarn.pose] ?? [], yarn.facing);
         const once = yarn => MarginCat.yarnDrawn(MarginCat.yarnLooks(yarn), Drawings.pixels);
-        const rolled = [Games.play("yarn", sat()), Games.play("yarn", sat({
+        const rolled = [Games.play("yarn", Seated.sat()), Games.play("yarn", Seated.sat({
             seat: { x: 500, y: 20 }, column: { left: 0, top: 30, width: 528 } }))]
             .reduce((all, played) => all.concat(frames(played)), [])
             .filter(frame => frame.yarn !== null).map(frame => frame.yarn);
@@ -310,7 +303,7 @@ QtObject {
     // A pounce at nothing it's sure of: it eyes it, crouches, wiggles,
     // leaps seven cells, lands and looks about.
     function pounce(expect) {
-        const played = Games.play("pounce", sat());
+        const played = Games.play("pounce", Seated.sat());
         const all = frames(played);
         expect("a pounce's beats, in order", played.beats.map(each => each.name),
             ["notices", "eyes", "crouches", "wiggles", "wiggles", "wiggles", "wiggles", "leaps",
@@ -322,7 +315,7 @@ QtObject {
             [all.every(frame => Number.isInteger(frame.x) && Number.isInteger(frame.y)),
                 shortest(all, frame => frame.pose) >= 33], [true, true]);
         expect("with no room for its leap, there's no pounce",
-            Games.play("pounce", sat({ column: { left: 95, top: 30, width: 16 } })), null);
+            Games.play("pounce", Seated.sat({ column: { left: 95, top: 30, width: 16 } })), null);
     }
 
     // Its yarn by a click (VKCF3Z 73c59942; Joel, 2026-11-12: "i want to be
@@ -330,7 +323,7 @@ QtObject {
     // the cat rolls it in, and one on the yarn rolls it away from the
     // click, the cat walking after it and batting it on, then sitting.
     function clicks(expect) {
-        const fetched = Games.fetch(sat());
+        const fetched = Games.fetch(Seated.sat());
         const at = (played, t) => Games.frame(played, t);
         expect("a click on the cat rolls its yarn in, noticed and eyed",
             fetched.beats.map(each => each.name), ["waits", "notices", "eyes"]);
@@ -341,9 +334,9 @@ QtObject {
             [{ x: 110, y: 20, pose: "yarn", facing: -1, within: { left: 0, right: 1000 } },
                 { x: 100, y: 20 }, null]);
         expect("with no room to lie, no yarn",
-            Games.fetch(sat({ column: { left: 95, top: 30, width: 16 } })), null);
+            Games.fetch(Seated.sat({ column: { left: 95, top: 30, width: 16 } })), null);
         const lying = { x: 110, facing: -1 };
-        const chased = chance => Games.chase(sat(), lying, -1, chance);
+        const chased = chance => Games.chase(Seated.sat(), lying, -1, chance);
         const rested = played => at(played, played.ends + 5000).yarn.x;
         const followed = played => played.beats.find(each => each.name === "follows");
         const rolledTo = played => at(played, followed(played).ends - 1e-6).yarn.x;
@@ -362,18 +355,18 @@ QtObject {
         expect("two cells short of it, and the bat sends it three more",
             [played.to, rested(played), at(played, played.ends).done],
             [{ x: 104, y: 20 }, 117, true]);
-        const short = Games.chase(sat({ column: { left: 0, top: 30, width: 125 } }), lying, -1,
-            1);
+        const short = Games.chase(Seated.sat({ column: { left: 0, top: 30, width: 125 } }), lying,
+            -1, 1);
         expect("a cell short of its column's end, and with no room for a bat, it eyes it",
             [rolledTo(short), rested(short), short.beats.map(each => each.name)],
             [116, 116, ["follows", "goes", "eyes"]]);
-        const back = Games.chase(sat(), { x: 130, facing: 1 }, 1, 0);
+        const back = Games.chase(Seated.sat(), { x: 130, facing: 1 }, 1, 0);
         expect("clicked on its far side, it rolls back toward the cat, and is batted away",
             [rolledTo(back), back.to, rested(back)], [126, { x: 116, y: 20 }, 129]);
         expect("never nearer the cat than two cells",
-            rolledTo(Games.chase(sat(), { x: 113, facing: 1 }, 1, 1)), 110);
+            rolledTo(Games.chase(Seated.sat(), { x: 113, facing: 1 }, 1, 1)), 110);
         expect("nor at all where it can't roll a cell",
-            Games.chase(sat(), { x: 110, facing: 1 }, 1, 1), null);
+            Games.chase(Seated.sat(), { x: 110, facing: 1 }, 1, 1), null);
         const all = [fetched, played, short, back].reduce((them, one) =>
             them.concat(frames(one)), []);
         expect("the cat never on the yarn", all.every(frame => frame.yarn === null
@@ -394,7 +387,7 @@ QtObject {
         const top = { left: 0, right: 400, top: 100, bottom: 300, rows: [{ top: 100, bottom: 300 }] };
         const lower = { left: 0, right: 400, top: 100, bottom: 500,
             rows: [{ top: 100, bottom: 300, id: 1 }, { top: 320, bottom: 500, id: 2 }] };
-        const from = (x, y) => sat({ seat: { x, y }, air: 1 });
+        const from = (x, y) => Seated.sat({ seat: { x, y }, air: 1 });
         const gap = Games.drop(from(100, 20), [top], []);
         const falling = during(gap, "falls");
         expect("let go over a window, it falls onto its top, lands and flicks an ear",
@@ -438,7 +431,7 @@ QtObject {
     // A hop a cell straight up from a crouch, landing crouched where it sat
     // (VKCF3Z, 5e211585), as a leap's arc and drawings.
     function hop(expect) {
-        const played = Games.play("hop", sat());
+        const played = Games.play("hop", Seated.sat());
         const hopping = during(played, "hops");
         expect("a hop's beats, in order", played.beats.map(each => each.name),
             ["crouches", "hops", "lands"]);
@@ -451,7 +444,7 @@ QtObject {
             [Games.frame(played, 0).pose, Games.frame(played, played.ends - 1).pose],
             ["pouncing", "pouncing"]);
         expect("and drawn level with no room above it, rather than off the screen",
-            Math.min(...frames(Games.play("hop", sat({ seat: { x: 100, y: 0 } })))
+            Math.min(...frames(Games.play("hop", Seated.sat({ seat: { x: 100, y: 0 } })))
                 .map(frame => frame.y)), 0);
     }
 }
