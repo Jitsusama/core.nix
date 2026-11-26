@@ -82,8 +82,8 @@
   // icon, just before the head or further up, or a banner further up can't
   // stand in for a mark the head lacks.
   const head = page.querySelector("header");
-  const before = head?.previousElementSibling;
-  const beside = before?.matches('a[href^="#"]') === true ? null : before;
+  const previous = head?.previousElementSibling;
+  const beside = previous?.matches('a[href^="#"]') === true ? null : previous;
   const masthead = head === null ? [] : [head, beside].filter(Boolean);
   const marks = [];
   for (const part of masthead) {

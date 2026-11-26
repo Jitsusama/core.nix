@@ -8,20 +8,16 @@ took for the mark, and the theme switch's icons, which are no mark. Each
 case runs the gate whole, as a live page's test does (live_page.py's
 PAGE_CHECKS), and reads only whether it names the mark as missing, since
 the small pages here lack much else it asks for. The gate's path comes
-from WEB_SKILL, as the check running this sets it, and its browser from
-probe_browser.py, loaded as a plugin.
+from WEB_SKILL, as the check running this sets it, and its browser and
+tab from probe_browser.py, loaded as a plugin.
 """
 
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import pytest
-
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
-    from playwright.sync_api import Browser, Page
+    from playwright.sync_api import Page
 
 GATE = (Path(os.environ["WEB_SKILL"]) / "gate.js").read_text()
 ORIGIN = "http://gate.test/"
@@ -32,14 +28,6 @@ SKIP = f'<a class="skip" href="#main">{MARK}Skip to the page</a>'
 SWITCH = f'<div role="radiogroup" aria-label="Theme">{MARK}</div>'
 HEAD = '<header class="page-head"><h1>A page</h1></header>'
 MAIN = '<main id="main"><p>Its words.</p></main>'
-
-
-@pytest.fixture
-def tab(browser: Browser) -> Iterator[Page]:
-    """Open a fresh tab at a desk's width."""
-    opened = browser.new_page(viewport={"width": 1024, "height": 640})
-    yield opened
-    opened.close()
 
 
 def unmarked(tab: Page, body: str) -> bool:
@@ -59,30 +47,32 @@ def unmarked(tab: Page, body: str) -> bool:
 def test_a_mark_in_the_head_is_found(tab: Page) -> None:
     """A mark drawn inside the first <header> is the page's mark."""
     marked = HEAD.replace("<h1>", f"{MARK}<h1>")
-    assert not unmarked(tab, f"{SKIP}{marked}{MAIN}")
+    assert not unmarked(tab, f"{SKIP}{marked}{MAIN}"), "a mark in the head was missed"
 
 
 def test_a_mark_just_before_the_head_is_found(tab: Page) -> None:
     """A mark just before the head, as the live sites draw it, is the page's mark."""
-    assert not unmarked(tab, f'{SKIP}<a class="crest" href="/">{MARK}</a>{HEAD}{MAIN}')
+    crest = f'<a class="crest" href="/">{MARK}</a>'
+    assert not unmarked(tab, f"{SKIP}{crest}{HEAD}{MAIN}"), "a crest before the head was missed"
 
 
 def test_a_skip_links_icon_just_before_the_head_is_no_mark(tab: Page) -> None:
     """A skip link's icon just before a head with no mark of its own is no mark."""
-    assert unmarked(tab, f"{SKIP}{HEAD}{MAIN}")
+    assert unmarked(tab, f"{SKIP}{HEAD}{MAIN}"), "a skip link's icon was taken for the mark"
 
 
 def test_a_skip_links_icon_further_up_is_no_mark(tab: Page) -> None:
     """A skip link's icon above a banner, above the head, is no mark either."""
-    assert unmarked(tab, f'{SKIP}<div class="banner">Read only</div>{HEAD}{MAIN}')
+    banner = '<div class="banner">Read only</div>'
+    assert unmarked(tab, f"{SKIP}{banner}{HEAD}{MAIN}"), "a skip link's icon above was the mark"
 
 
 def test_the_switchs_icons_are_no_mark(tab: Page) -> None:
     """The theme switch in the head draws icons, which are none of them the mark."""
     switched = HEAD.replace("</header>", f"{SWITCH}</header>")
-    assert unmarked(tab, f"{switched}{MAIN}")
+    assert unmarked(tab, f"{switched}{MAIN}"), "the theme switch's icons were taken for the mark"
 
 
 def test_a_page_with_no_head_is_unmarked(tab: Page) -> None:
     """A page with no <header> has no masthead to hold a mark."""
-    assert unmarked(tab, f"{SKIP}{MARK}{MAIN}")
+    assert unmarked(tab, f"{SKIP}{MARK}{MAIN}"), "a page with no head was taken as marked"
