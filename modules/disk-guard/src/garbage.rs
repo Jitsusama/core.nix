@@ -100,9 +100,14 @@ impl Listing {
 
     /// When it ended and how long it took, in wall seconds, if it says, so
     /// a guard started since rests after it as the one that listed would
-    /// have.
+    /// have. Its length counts at most what a listing may run, as the
+    /// guard that heard it counts it now: one saved before that could hold
+    /// the hours of a pass it was heard after, and rest the next a day.
     pub fn ended(&self) -> Option<(f64, f64)> {
-        self.took.map(|took| (self.listed_at + took, took))
+        self.took.map(|took| {
+            let took = took.clamp(0.0, LIST_TIMEOUT.as_secs_f64());
+            (self.listed_at + took, took)
+        })
     }
 }
 
@@ -171,17 +176,30 @@ pub const NEAR_MIN_FREE_EVERY: Duration = Duration::from_mins(5);
 
 /// The `min-free` Nix is set to on this machine, in bytes: what a
 /// person's own `nix.conf` says, which the guard reads rather than
-/// repeats. None where Nix can't say, which leaves the guard to its bands.
-pub fn min_free(nix: &Path) -> Option<u64> {
+/// repeats. Why not where Nix can't say, which leaves the guard to its
+/// bands.
+pub fn min_free(nix: &Path) -> Result<u64, String> {
     let argv: Vec<&OsStr> = std::iter::once(nix.as_os_str())
         .chain(NIX_COMMAND.iter().map(OsStr::new))
         .chain(["config", "show", "min-free"].map(OsStr::new))
         .collect();
-    ran(&argv, Duration::from_secs(30), true)
-        .ok()?
-        .trim()
-        .parse()
-        .ok()
+    // Only the length of what Nix said is told, on either stream: the
+    // guard's log is often readable by any account, and a Nix printing
+    // more than the one value, or quoting a nix.conf line it refuses,
+    // could print its access tokens.
+    let (succeeded, said) = output(&argv, Duration::from_secs(30), true, &[])?;
+    if !succeeded {
+        return Err(format!(
+            "nix config show min-free failed, saying {} bytes on its error stream",
+            said.trim().len()
+        ));
+    }
+    said.trim().parse().map_err(|error| {
+        format!(
+            "nix config show min-free said {} bytes that aren't a number: {error}",
+            said.trim().len()
+        )
+    })
 }
 
 /// What the `nix` command needs to be told before any of the commands the

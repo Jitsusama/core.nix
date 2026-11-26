@@ -128,6 +128,7 @@ impl Realm {
             "machines": [machine],
             "scratch": ".elsewhere-runs",
             "mycelium": self.root.join("bin/mycelium"),
+            "ledgers": self.root.join("ledgers"),
             "kinds": {"check": {
                 "description": "a stand-in check",
                 "programs": ["sh"],
@@ -309,6 +310,27 @@ fn a_job_placed_far_runs_there_by_mycelium_and_brings_back_its_output() {
     assert!(
         emptied(&far) && emptied(&realm.handover()),
         "the far copy or the handover was left behind"
+    );
+}
+
+#[test]
+fn a_job_s_quest_held_far_already_asks_to_go_there() {
+    let realm = Realm::new(true);
+    fs::create_dir_all(realm.root.join("ledgers")).unwrap();
+    fs::write(
+        realm.root.join("ledgers").join(format!("{QUEST}.json")),
+        r#"{"files": {"a": {}}, "theirs": {"far": {"a": {}}, "stranger": {"a": {}}}}"#,
+    )
+    .unwrap();
+    let output = realm.run(&["where", "check"]);
+    assert!(output.status.success(), "where failed: {:?}", said(&output));
+    let output = realm.run_in(&["where", "check"], None);
+    assert!(output.status.success(), "where failed: {:?}", said(&output));
+    assert_eq!(
+        realm.asked(),
+        "place --need reach=home --prefer machine=far --lasts 5m\n\
+         place --need reach=home --lasts 5m\n",
+        "a quest held far wasn't preferred there alone, or one with no quest was"
     );
 }
 

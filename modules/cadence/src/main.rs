@@ -675,6 +675,8 @@ fn message(to: &str, intent: &str, text: String) -> Message {
         text,
         pid,
         re: None,
+        supersedes: None,
+        ends_hold: false,
     }
 }
 

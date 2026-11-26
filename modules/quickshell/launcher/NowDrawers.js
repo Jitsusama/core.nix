@@ -43,7 +43,7 @@ function cityOf(zone) {
 // UTC−5"); `offset` ("UTC−5"); `utc`, the time there; `clock`, which of
 // `said`'s words say how the clock is kept ("kept", "unkept", "none", or
 // "" while it's asked); `clockSide`, the Clock row's own side; `unix`
-// and `julian`, the moment's raw figures, its nerdy bits; and `names`,
+// and `tai`, the moment as the two clocks count it, its nerdy bits; and `names`,
 // each fact's label and the title.
 function time(at) {
     const said = at.said;
@@ -63,7 +63,7 @@ function time(at) {
         ]),
         nerd: [
             { label: at.names.unix, value: at.unix },
-            { label: at.names.julian, value: at.julian }
+            { label: at.names.tai, value: at.tai }
         ]
     };
 }

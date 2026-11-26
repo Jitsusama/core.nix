@@ -175,7 +175,8 @@ in
   # its arrow and its row's letters, as each of keyTimed's callers in
   # Launcher.qml says its key is, a key listed without an answer and the
   # answer late count its letters, and a program's lagging drawer says its
-  # row's kind, not its id (modules/quickshell/tests/lagging-keys-on-niri-test.py).
+  # desktop entry's id where that's shaped as an app's, and program otherwise
+  # (modules/quickshell/tests/lagging-keys-on-niri-test.py).
   the-launcher-says-a-lagging-keys-kind-on-niri = launcherOnNiri {
     name = "the-launcher-says-a-lagging-keys-kind-on-niri";
     tests = ../tests/lagging-keys-on-niri-test.py;

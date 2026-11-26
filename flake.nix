@@ -207,6 +207,7 @@
         ergodox = moduleFrom ./modules/ergodox/home.nix { inherit qmk lufa printf; };
         fd = ./modules/fd/home.nix;
         file-link-keys = ./modules/file-link-keys/home.nix;
+        find = ./modules/find/home.nix;
         firmware-notice = ./modules/firmware-notice/home.nix;
         fontconfig = ./modules/fontconfig/home.nix;
         fzf = ./modules/fzf/home.nix;
@@ -296,6 +297,7 @@
           inherit (self.homeModules) quickshell;
         };
         ssh-tpm-agent = ./modules/ssh-tpm-agent/home.nix;
+        subvolumes = ./modules/subvolumes/home.nix;
         sudo = ./modules/sudo/home.nix;
         swayidle = ./modules/swayidle/home.nix;
         swayimg = moduleFrom ./modules/swayimg/home.nix { inherit (self.homeModules) niri quickshell; };
@@ -368,6 +370,7 @@
         btrfs = ./modules/btrfs/nixos.nix;
         call-transcripts = ./modules/call-transcripts/nixos.nix;
         camera = ./modules/camera/nixos.nix;
+        camera-guard = ./modules/camera-guard/nixos.nix;
         cargo = ./modules/cargo/nixos.nix;
         chrome = ./modules/chrome/nixos.nix;
         chrony = ./modules/chrony/nixos.nix;
@@ -419,7 +422,7 @@
         mpv = ./modules/mpv/nixos.nix;
         mx-brio = ./modules/mx-brio/nixos.nix;
         mx-brio-seat = ./modules/mx-brio-seat/nixos.nix;
-        mycelium = moduleFrom ./modules/mycelium/system.nix { inherit mycelium; };
+        mycelium = moduleFrom ./modules/mycelium/nixos.nix { inherit mycelium; };
         name-service = ./modules/name-service/nixos.nix;
         sd-switch = ./modules/sd-switch/nixos.nix;
         net = ./modules/net/nixos.nix;

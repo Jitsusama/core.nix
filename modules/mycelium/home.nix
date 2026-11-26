@@ -10,8 +10,7 @@
 #   jitsusama.mycelium.links = [ "other-machine" ];
 #
 # A machine SSH can't reach, such as one a provider lent, is dialled through
-# that provider's program instead, as `PROGRAM:PLACE`, the program by its
-# store path:
+# that provider's program instead, as `PROGRAM:PLACE`, the program by its store path:
 #
 #   jitsusama.mycelium.vias = [ "${cistern-link}/bin/cistern-link:sandbox-1" ];
 #
@@ -151,9 +150,17 @@ let
     "--lend"
     "${pkgs.writeText "mycelium-lend.json" (
       builtins.toJSON {
-        inherit (cfg.lend) vms;
+        vms = map (lib.filterAttrs (_: value: value != null)) cfg.lend.vms;
+        # A price's unset cache fields are left out too, as serde reads
+        # each Option the file leaves out as none.
         budgets = lib.mapAttrs (
-          _: budget: lib.filterAttrs (_: value: value != null) budget
+          _: budget:
+          lib.filterAttrs (_: value: value != null) (
+            budget
+            // lib.optionalAttrs (budget.prices != null) {
+              prices = lib.mapAttrs (_: lib.filterAttrs (_: value: value != null)) budget.prices;
+            }
+          )
         ) cfg.lend.budgets;
       }
     )}"
@@ -168,31 +175,7 @@ let
   ];
   sources = import ./sources.nix;
   name = lib.types.strMatching "[a-z0-9-]+";
-  # A machine a provider's program reaches, as `PROGRAM:PLACE`: the program
-  # by its absolute path, since a Mac's agent runs the node with PATH
-  # /usr/bin:/bin and Linux's PATH isn't one to count on, and the place it
-  # names. Neither takes whitespace, `%` or `$`, which systemd expands even
-  # inside quotes, and the place doesn't start with `-`, so the program
-  # can't read it as a flag.
-  via = lib.types.strMatching "/[^:[:space:]%$]+:[^-:[:space:]%$][^[:space:]%$]*";
-  viasDescription = ''
-    The machines of the realm this machine dials and keeps linked through a
-    provider's program, as `PROGRAM:PLACE` with the program by its absolute
-    path, for a machine SSH can't reach, such as one a provider lent.
-    mycelium's PROTOCOL.md says what the program is asked.
-  '';
-  viasExample = lib.literalExpression ''[ "''${cistern-link}/bin/cistern-link:sandbox-1" ]'';
-  # A provider's program by its absolute path, for the reason a via's is;
-  # it takes no words of its own, since the node adds what it asks.
-  provider = lib.types.strMatching "/[^:[:space:]%$]+";
-  providersDescription = ''
-    The programs of providers that may make this realm's machines, each by
-    its absolute path. The node asks each what it offers, and makes a
-    machine from an offer only for a start no machine of the realm takes,
-    and from one that costs money only where the start allows it.
-    mycelium's PROTOCOL.md says what the program is asked.
-  '';
-  providersExample = lib.literalExpression ''[ "''${cistern-cell}/bin/cistern-cell" ]'';
+  reaches = import ./reaches.nix { inherit lib; };
   lend = import ./lend.nix { inherit lib; };
   further = lib.types.submodule (
     { name, ... }:
@@ -203,18 +186,7 @@ let
           default = [ ];
           description = "The machines of this realm this machine dials, as `links` names them.";
         };
-        vias = lib.mkOption {
-          type = lib.types.listOf via;
-          default = [ ];
-          example = viasExample;
-          description = viasDescription;
-        };
-        providers = lib.mkOption {
-          type = lib.types.listOf provider;
-          default = [ ];
-          example = providersExample;
-          description = providersDescription;
-        };
+        inherit (reaches) vias providers;
         kit = lib.mkOption {
           type = lib.types.listOf lib.types.package;
           description = kitDescription;
@@ -313,6 +285,7 @@ let
   builders = import ./builders.nix;
   # What the home realm's node may do to ease the machine (eases.nix).
   eases = import ./eases.nix { inherit config lib mycelium; };
+  agentsSocket = import ./agents-socket.nix { inherit config lib isLinux; };
   # The home realm's node alone eases the machine, since a further realm's
   # sessions aren't its to move, and alone lends, since the machines it
   # lends to are the ones it made.
@@ -320,6 +293,7 @@ let
     nodeIn cfg.realm cfg.links cfg.vias cfg.providers [ ]
     ++ eases.args
     ++ lendArgs
+    ++ agentsSocket.args
     ++ lib.optionals isLinux builders
     ++ ownAgent cfg.signsInWith
     ++ kitArgs cfg.realm cfg.kit;
@@ -445,7 +419,10 @@ let
   ];
 in
 {
-  imports = [ ../signing/home.nix ];
+  imports = [
+    ../signing/home.nix
+    ./state-subvolume.nix
+  ];
 
   options.jitsusama.mycelium = {
     realm = lib.mkOption {
@@ -498,18 +475,7 @@ in
         nothing.
       '';
     };
-    vias = lib.mkOption {
-      type = lib.types.listOf via;
-      default = [ ];
-      example = viasExample;
-      description = viasDescription;
-    };
-    providers = lib.mkOption {
-      type = lib.types.listOf provider;
-      default = [ ];
-      example = providersExample;
-      description = providersDescription;
-    };
+    inherit (reaches) vias providers;
     flows = lib.mkOption {
       type = lib.types.listOf flow;
       default = [ ];
@@ -558,13 +524,17 @@ in
       default = null;
       example = lib.literalExpression ''
         {
-          vms = [ { prefix = "agents-"; budget = "models"; requests_a_day = 500; } ];
+          vms = [
+            { prefix = "agents-"; budget = "models"; requests_a_day = 500; usd_a_day = 25; }
+          ];
           budgets.models = {
             upstream = "model-relay/agents.sock";
             host = "models.example";
             paths = [ "/v1/messages" ];
             auth_header = "authorization";
             key = [ "''${models-key}/bin/models-key" ];
+            prices.a-model = { input = 3; output = 15; most_output = 64000; };
+            spend_watch = "models";
           };
         }
       '';
@@ -605,6 +575,9 @@ in
         joins, for whatever starts one, such as the launcher. Each realm's
         node tells only its own. It is declared with the rest, so a machine
         declaring nothing says none, and whatever starts a session picks.
+        Held fenced or strict, on Linux or on a Mac declaring
+        `declares.piFencesItself`, it starts outside the fence's launcher,
+        so it must fence its own commands, as pi does.
       '';
     };
     # Internal, so no machine widens it; only a test sets it otherwise. An
@@ -628,15 +601,43 @@ in
         fence here, the first a program in the Nix store, as each fenced
         and strict fence the machine declares says them: pi's own fence,
         strict, on Linux and on a Mac, whose strict reads the home folder
-        but what it hides, where Linux's reads only what it lists.
-        Null says none, so every agent's run is refused.
+        but what it hides, where Linux's reads only what it lists. A held
+        fenced or strict start goes after them too, except, on Linux and on a
+        Mac declaring `declares.piFencesItself`, the realm's agent program,
+        as `agents` names it or else pi, told its fence, fenced as it
+        fences itself. Null refuses every agent's run and each held start
+        that would go after them; the agent program held alone still starts.
       '';
     };
   }
-  // eases.options;
+  // eases.options
+  // agentsSocket.options;
 
   config = lib.mkMerge [
     { inherit (eases) warnings; }
+    { inherit (agentsSocket) assertions; }
+    # Warned of rather than refused, so a machine lending models before
+    # its lend caps their spend still evaluates; mycelium refuses each such
+    # model lend 403, so nothing is spent uncapped either way.
+    (lib.mkIf (cfg.lend != null) {
+      warnings =
+        let
+          models = lib.filterAttrs (_: budget: budget.kind == "models") cfg.lend.budgets;
+          lendsModels = vm: lib.any (budget: models ? ${budget}) ([ vm.budget ] ++ vm.also);
+          missing =
+            budget:
+            lib.optional (budget.prices == null || budget.prices == { }) "prices"
+            ++ lib.optional (budget.spend_watch == null) "spend_watch";
+        in
+        lib.mapAttrsToList (
+          name: budget:
+          "jitsusama.mycelium.lend.budgets.${name} names no ${lib.concatStringsSep " and no " (missing budget)}, so mycelium refuses every model lent through it."
+        ) (lib.filterAttrs (_: budget: missing budget != [ ]) models)
+        ++ map (
+          vm:
+          "jitsusama.mycelium.lend.vms' ${vm.prefix} names no usd_a_day, so mycelium lends its machines no model."
+        ) (lib.filter (vm: lendsModels vm && vm.usd_a_day == null) cfg.lend.vms);
+    })
     {
       assertions = [
         {
@@ -726,13 +727,13 @@ in
       };
     })
     (lib.mkIf (cfg.declares != null) {
-      # Only a Mac's pi lays its own fence round each command; mycelium
-      # starts a fenced or strict session bare where this is said, so on
-      # Linux it would run with no fence at all.
+      # Only a Mac's pi lays a sandbox profile round each command it runs,
+      # and only a Mac's node acts on the word, so it is refused where it
+      # can't be true.
       assertions = [
         {
           assertion = cfg.declares.piFencesItself -> isDarwin;
-          message = "jitsusama.mycelium.declares.piFencesItself is set on Linux, where pi lays no fence of its own round its commands, so mycelium would start fenced and strict sessions there unfenced.";
+          message = "jitsusama.mycelium.declares.piFencesItself is set on Linux; it says pi fences each command it runs with a sandbox profile, which only a Mac's pi does; set it only on a Mac.";
         }
       ];
       # Where the account's commands read it: XDG_CONFIG_HOME's, or

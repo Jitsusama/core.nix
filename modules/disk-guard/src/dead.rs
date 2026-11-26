@@ -23,9 +23,7 @@ pub fn dead(nix: &Path, store: &Path, idle: bool) -> Result<Vec<String>, String>
         unlocked_dead(nix, store, derivers, idle)
     } else {
         // Said, since builds then wait on the lock for as long as it lists.
-        eprintln!(
-            "disk-guard: listing under Nix's lock, since keep-outputs is on or Nix couldn't say"
-        );
+        say!("disk-guard: listing under Nix's lock, since keep-outputs is on or Nix couldn't say");
         locked_dead(nix, idle)
     }
 }

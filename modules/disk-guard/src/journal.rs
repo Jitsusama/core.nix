@@ -203,7 +203,7 @@ impl<R: Reclaimer> Reclaimer for Journaled<'_, R> {
                 root: root.clone(),
             });
             if let Err(error) = begun {
-                eprintln!(
+                say!(
                     "disk-guard: journalling {}: {error}",
                     candidate.path.display()
                 );
@@ -219,7 +219,7 @@ impl<R: Reclaimer> Reclaimer for Journaled<'_, R> {
             outcome: outcome.clone(),
         });
         if let Err(error) = done {
-            eprintln!(
+            say!(
                 "disk-guard: journalling {}: {error}",
                 candidate.path.display()
             );

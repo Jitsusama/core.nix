@@ -5,6 +5,13 @@ use jiff::tz::TimeZone;
 
 const NOW: i64 = 1_795_600_000;
 
+/// The dates at risk of the kind `which` in an empty asks list.
+fn at_risk(which: Tracking) -> Measure {
+    let none = |_: u32| -> measures::at_risk::Shared { Ok(Vec::new()) };
+    let no_branch = |_: &str| -> measures::at_risk::Shared { Ok(Vec::new()) };
+    measures::at_risk::at_risk("", NOW, which, &none, &no_branch)
+}
+
 /// A measure the hour would show under `key`, held to `target`.
 fn held(key: &str, target: Option<f64>) -> Measure {
     Measure {
@@ -34,6 +41,8 @@ fn every_measure_the_hour_shows_has_a_line_that_holds_it_to_its_target() {
         measures::slips("", NOW, Tracking::Derived),
         measures::parked("", Tracking::His),
         measures::parked("", Tracking::Derived),
+        measures::told_late("", NOW, Tracking::His),
+        measures::told_late("", NOW, Tracking::Derived),
         measures::to_first_slice("", NOW, Tracking::His),
         measures::to_first_slice("", NOW, Tracking::Derived),
         measures::undated("", "2026-11-24", "OWNER"),
@@ -45,6 +54,10 @@ fn every_measure_the_hour_shows_has_a_line_that_holds_it_to_its_target() {
         measures::unresolved::unresolved(None, None, NOW, "OWNER"),
         measures::carried(&[], &[], "here"),
         measures::mapped(None, "", "OWNER"),
+        measures::cited::unread(""),
+        measures::holds::holds(&[], "", NOW),
+        at_risk(Tracking::His),
+        at_risk(Tracking::Derived),
     ];
     shown.extend(measures::apps::apps(None, NOW));
     let said = serde_json::json!({"none": "no pain", "none_at_ms": NOW * 1000});

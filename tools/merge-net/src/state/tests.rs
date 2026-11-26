@@ -241,6 +241,73 @@ fn an_excused_failure_is_kept_apart_from_a_pass() {
     );
 }
 
+// The journal is read a line at a time, so a line that isn't UTF-8 ends
+// the read there unless it's read lossily; read whole, it hid every run.
+#[test]
+fn a_line_that_is_not_utf8_hides_no_run_after_it() {
+    let state = state("not-utf8");
+    let log = state.log("aaaa", "vm-a", 1);
+    state
+        .record("aaaa", "vm-a", Ran::Failed, Some(1), &log, 30)
+        .unwrap();
+    fs::OpenOptions::new()
+        .append(true)
+        .open(state.root.join("results.jsonl"))
+        .unwrap()
+        .write_all(b"{\"commit\":\"aaaa\",\"check\":\"vm-a\",\"passed\":false,\"log\":\"\xff\"}\n")
+        .unwrap();
+    state
+        .record("aaaa", "vm-a", Ran::Passed, Some(0), &log, 600)
+        .unwrap();
+    assert_eq!(
+        state.runs("aaaa", "vm-a"),
+        vec![Ran::Failed, Ran::Failed, Ran::Passed],
+        "the run on the line that isn't UTF-8, or the pass after it, was lost"
+    );
+    assert_eq!(
+        state.lasted().get("vm-a"),
+        Some(&600),
+        "how long vm-a takes was lost past the line that isn't UTF-8"
+    );
+}
+
+// A line is passed over unparsed unless it names the commit, but naming it
+// is no run of it: only the line whose own commit it is counts, for its
+// runs and for its excused failures alike.
+#[test]
+fn a_line_naming_the_commit_elsewhere_is_no_run_of_it() {
+    let state = state("named-elsewhere");
+    let elsewhere = state.log("aaaa", "vm-a", 1);
+    state
+        .record("bbbb", "vm-a", Ran::Passed, Some(1), &elsewhere, 600)
+        .unwrap();
+    assert!(
+        elsewhere.to_string_lossy().contains("aaaa"),
+        "the case needs bbbb's line to name aaaa in its log: {}",
+        elsewhere.display()
+    );
+    assert_eq!(
+        state.runs("aaaa", "vm-a"),
+        vec![],
+        "bbbb's run counted as aaaa's, since its log names aaaa"
+    );
+    assert_eq!(
+        state.runs("bbbb", "vm-a"),
+        vec![Ran::Passed],
+        "bbbb's own run was lost"
+    );
+    assert_eq!(
+        state.excused_logs("aaaa", "vm-a"),
+        Vec::<PathBuf>::new(),
+        "bbbb's excused failure counted as aaaa's, since its log names aaaa"
+    );
+    assert_eq!(
+        state.excused_logs("bbbb", "vm-a"),
+        vec![elsewhere],
+        "bbbb's own excused failure was lost"
+    );
+}
+
 #[test]
 fn a_run_is_kept_by_its_commit_and_check() {
     let state = state("runs");
@@ -260,6 +327,133 @@ fn a_run_is_kept_by_its_commit_and_check() {
         .unwrap();
     assert_eq!(state.runs("cccc", "vm-a"), vec![Ran::Stalled]);
     assert_eq!(state.runs("aaaa", "vm-b"), vec![]);
+}
+
+// Only a commit in the journal's own bytes is looked for in a line. An
+// empty one can't be looked for, and one JSON writes escaped is in the
+// journal in other bytes, so for both every line is parsed.
+#[test]
+fn a_commit_not_written_as_its_bytes_is_still_found() {
+    let state = state("escaped");
+    let log = state.log("aaaa", "vm-a", 1);
+    state
+        .record("a\"b", "vm-a", Ran::Passed, Some(0), &log, 0)
+        .unwrap();
+    assert_eq!(
+        state.runs("a\"b", "vm-a"),
+        vec![Ran::Passed],
+        "a commit JSON writes escaped was passed over by its bytes"
+    );
+    state
+        .record("", "vm-a", Ran::Passed, Some(0), &log, 0)
+        .unwrap();
+    assert_eq!(
+        state.runs("", "vm-a"),
+        vec![Ran::Passed],
+        "an empty commit's run was passed over, so not every line was parsed"
+    );
+    assert_eq!(
+        state.excused_logs("", "vm-a"),
+        Vec::<PathBuf>::new(),
+        "an empty commit found an excused failure"
+    );
+}
+
+// The bytes looked for are a commit's own only when JSON writes it as
+// them; for any other, every line is a candidate.
+#[test]
+fn only_a_commit_written_as_its_bytes_is_looked_for_by_them() {
+    use super::journal::sought;
+    assert_eq!(
+        sought("ab12"),
+        Some(b"ab12".to_vec()),
+        "a hex commit wasn't looked for by its bytes"
+    );
+    for written_otherwise in ["", "a\"b", "a\\b", "a\nb", "a\u{1}b"] {
+        assert_eq!(
+            sought(written_otherwise),
+            None,
+            "{written_otherwise:?} was looked for by bytes the journal doesn't hold"
+        );
+    }
+}
+
+// The prefilter passes over a line that doesn't hold the commit's bytes,
+// which is what keeps a query from parsing the whole journal.
+#[test]
+fn a_line_without_the_commits_bytes_is_passed_over() {
+    use super::journal::names;
+    let line = br#"{"commit":"bbbb","check":"vm-a"}"#;
+    assert!(
+        !names(line, Some(b"aaaa")),
+        "a line of another commit was taken"
+    );
+    assert!(
+        names(line, Some(b"bbbb")),
+        "the commit's own line was passed over"
+    );
+    assert!(
+        names(line, None),
+        "a line was passed over when any could be of it"
+    );
+}
+
+// A journal whose every read fails, as a folder's does, ends its lines at
+// once, counts as failed and is said once in net.log, however often it's
+// asked of; once a read reaches the end of a journal, the same fault
+// coming back is said again.
+#[test]
+fn a_journal_that_cant_be_read_ends_and_is_said() {
+    let state = state("unreadable");
+    fs::create_dir(state.root.join("results.jsonl")).expect("the folder in its place");
+    let mut lines = super::journal::Lines::open(&state.root, |_: &[u8]| true);
+    assert_eq!(
+        lines.next(),
+        None,
+        "a line came of a journal that can't be read"
+    );
+    assert!(
+        lines.ended(),
+        "a journal whose read failed would be read again on the next call"
+    );
+    assert!(
+        lines.failed(),
+        "a journal that can't be read didn't count as failed"
+    );
+    assert_eq!(
+        state.runs("aaaa", "vm-a"),
+        vec![],
+        "runs came of a journal that can't be read"
+    );
+    assert!(
+        state.lasted().is_empty(),
+        "times came of a journal that can't be read"
+    );
+    let log = fs::read_to_string(state.root.join("logs/net.log")).expect("the log");
+    assert_eq!(
+        log.matches("stopped part way").count(),
+        1,
+        "a fault that lasted wasn't said once in net.log: {log:?}"
+    );
+    fs::remove_dir(state.root.join("results.jsonl")).expect("the folder gone");
+    fs::write(state.root.join("results.jsonl"), "").expect("a journal again");
+    assert_eq!(
+        state.runs("aaaa", "vm-a"),
+        vec![],
+        "runs came of an empty journal"
+    );
+    fs::remove_file(state.root.join("results.jsonl")).expect("the journal gone");
+    fs::create_dir(state.root.join("results.jsonl")).expect("the folder back");
+    assert!(
+        state.lasted().is_empty(),
+        "times came of a journal that can't be read"
+    );
+    let log = fs::read_to_string(state.root.join("logs/net.log")).expect("the log");
+    assert_eq!(
+        log.matches("stopped part way").count(),
+        2,
+        "a fault that came back after a whole read wasn't said again: {log:?}"
+    );
 }
 
 #[test]

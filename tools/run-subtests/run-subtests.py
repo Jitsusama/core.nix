@@ -122,10 +122,17 @@ def selecting(words: Sequence[str]) -> str:
     """Give the pytest options that pick the tests whose names hold any of the words.
 
     A test's name is its function's, so a word's spaces are read as underscores.
+    A word starting with a dash is refused, since pytest would take it for an
+    option of its own rather than -k's expression; a dash inside one is kept.
     """
     keywords = ["_".join(word.split()) for word in words]
     for word, keyword in zip(words, keywords, strict=True):
-        if not KEYWORD.fullmatch(word) or not keyword or keyword.lower() in OPERATORS:
+        if (
+            not KEYWORD.fullmatch(word)
+            or not keyword
+            or keyword.lower() in OPERATORS
+            or keyword.startswith("-")
+        ):
             message = f"{word!r} can't be matched against a test's name"
             raise ValueError(message)
     return "-k " + shlex.quote(" or ".join(keywords))

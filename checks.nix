@@ -595,6 +595,7 @@ gather {
     ./modules/call-under-load/checks.nix
     ./modules/calls/checks.nix
     ./modules/camera/checks.nix
+    ./modules/camera-guard/checks.nix
     ./modules/cargo/checks.nix
     ./modules/chrome/checks.nix
     ./modules/claude/checks.nix
@@ -617,6 +618,7 @@ gather {
     ./modules/elsewhere/checks.nix
     ./modules/ergodox/checks.nix
     ./modules/file-link-keys/checks.nix
+    ./modules/find/checks.nix
     ./modules/firmware-errors/checks.nix
     ./modules/firmware-notice/checks.nix
     ./modules/firmware-settings/checks.nix

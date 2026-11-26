@@ -88,15 +88,6 @@
     "test": "still-windows-draw-nothing-as-animations-start-on-niri"
   },
   {
-    "at": 1795370179,
-    "commit": "f7ac6f58a5082a2265c27068330e16230cdb9f9b",
-    "due": "2026-11-24",
-    "owner_pr": 6065,
-    "owner_session": "orchestrator",
-    "reason": "failed, then passed, at f7ac6f58a508",
-    "test": "the-margin-cat-sits-above-its-column"
-  },
-  {
     "at": 1795371090,
     "commit": "0e420d94fa7838778caa94587407fceeacb91fec",
     "due": "2026-11-24",
@@ -182,5 +173,30 @@
       "test_emoji_finds_a_whole_word_typed_in_it"
     ],
     "test": "the-launcher-answers-whats-typed-on-niri"
+  },
+  {
+    "at": 1795652869,
+    "commit": "2a131056d2eb61e7cafeabece51f02f507d66a08",
+    "due": "2026-11-28",
+    "owner_pr": 6609,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at 2a131056d2eb",
+    "subtests": [
+      "test_a_held_chord_opens_the_launcher_once_and_a_held_return_does_its_row_once",
+      "test_a_screen_coming_back_leaves_the_launcher_open_on_the_other",
+      "test_a_sleep_with_the_launcher_open_and_it_works_after",
+      "test_after_the_wake_the_launchers_foot_still_tells_the_time",
+      "test_both_screens_go_with_the_launcher_open_and_come_back",
+      "test_polkits_prompt_comes_up_after_both_screens_go_and_come_back",
+      "test_polkits_prompt_comes_up_on_the_screen_left_once_the_first_goes",
+      "test_quickshell_warned_of_nothing_as_the_screens_came_and_went",
+      "test_super_s_line_comes_up_again_after_both_screens_go_and_come_back",
+      "test_the_first_screen_comes_back_and_the_launcher_works_on_both",
+      "test_the_first_screen_goes_with_the_launcher_open_on_it",
+      "test_the_launcher_opens_finds_and_runs_a_row_on_each_screen",
+      "test_the_second_screen_comes_back_and_the_launcher_works_on_both",
+      "test_the_second_screen_goes_with_the_launcher_open_on_it"
+    ],
+    "test": "vm-screens-keep-the-launcher"
   }
 ]

@@ -232,16 +232,19 @@ function shows(record, pattern) {
 }
 
 // The acts inside it, by name, in the one order the design gives them
-// (VKCF3Z's ruling on the Passwords place): Copy the Password, Copy the
-// One-Time Code, Copy the Username, Open the Website, Show in its
-// manager, then Copy the Link, each only where it has what the act needs.
-// Copying the password leads, though Copy is last everywhere else, since
-// it's what an entry is for rather than a copy of what the row says
-// (docs/design.md, One word each). The link is the entry's own in its
-// manager, the one Show opens, so it goes only where Show does; the
-// website's address is Open the Website's.
-function acts(record, link) {
+// (VKCF3Z's ruling on the Passwords place): Type the Password, Copy the
+// Password, Copy the One-Time Code, Copy the Username, Open the Website,
+// Show in its manager, then Copy the Link, each only where it has what
+// the act needs. Typing the password leads, and copying it follows,
+// though Copy is last everywhere else, since each is what an entry is for
+// rather than a copy of what the row says (docs/design.md, One word
+// each). Typing goes only where there's a window under the launcher to
+// type into, `typing`, as Paste does in Copies. The link is the entry's
+// own in its manager, the one Show opens, so it goes only where Show
+// does; the website's address is Open the Website's.
+function acts(record, link, typing) {
     const has = {
+        type: passworded(record) && typing === true,
         password: passworded(record),
         code: code(record) !== null,
         username: username(record) !== "",
@@ -249,7 +252,8 @@ function acts(record, link) {
         show: (link ?? "") !== "",
         link: (link ?? "") !== ""
     };
-    return ["password", "code", "username", "website", "show", "link"].filter(act => has[act]);
+    return ["type", "password", "code", "username", "website", "show", "link"]
+        .filter(act => has[act]);
 }
 
 // When something was, as the launcher says it wherever it does: how long
@@ -456,6 +460,16 @@ function told(copy, now, said) {
     }
     const seconds = Math.ceil((copy.clears - now) / SECOND);
     return fill(said.copied, Object.assign(values, { seconds }));
+}
+
+// What the foot says of a type: while it's asked, and once refused, why;
+// nothing once typed, since the password is in the window then.
+function typeTold(typed, said) {
+    if (!typed || typed.done === true) {
+        return "";
+    }
+    const values = { title: typed.title, detail: typed.detail, why: typed.why ?? "" };
+    return fill(values.why !== "" ? said.untyped : said.typing, values);
 }
 
 // Whether a copy is still for its row and the foot to say: while it's

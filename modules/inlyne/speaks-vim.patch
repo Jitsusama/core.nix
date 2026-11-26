@@ -6,7 +6,8 @@ The build now names the settings' keys, and a test presses Vim's keys
 through them: q and Escape alone do nothing, and :q and Return, ZZ and
 Space w close it, with a Shift key's own press between a sequence's
 keys, as a keyboard sends it, and : as Wayland names Shift+;. Space ?
-and F1 open the keys page, and every Ctrl chord is pressed too.
+and F1 open the keys page, and the Ctrl chords for a screen, the pages
+followed and the size are pressed too.
 
 diff -ru a/src/keybindings/tests.rs b/src/keybindings/tests.rs
 --- a/src/keybindings/tests.rs
