@@ -515,6 +515,12 @@ QtObject {
             again(told, inA, "fix the bar", began + 2 * minute), null);
         Expect.same("told long ago, he's told again first",
             again(told, inA, "fix the bar", began + 4 * minute), "fix the bar");
+        // A Return held, or pressed twice, lands under a second after the one told.
+        Expect.same("a Return straight after he was told is told again",
+            again(told, inA, "fix the bar", began + minute + 300), "fix the bar");
+        Expect.same("a retry refused leaves the start made before it",
+            StartSaid.made(told, barInA, { started: false, why: "no", refusal: "" },
+                began + 2 * minute).map(one => one.words), ["fix the bar"]);
         Expect.same("started once more, it's known as the new start alone",
             StartSaid.made(told, barInA, up, began + 2 * minute).length, 1);
         Expect.same("an hour's starts go", StartSaid.made(bar, { key: inB, words: "fix it" }, up,
