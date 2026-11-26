@@ -50,11 +50,17 @@ pub fn falling(kept: &[(i64, usize)], red: usize, now: i64) -> Measure {
     let (target, behind) = match (then, since) {
         (Some(&(at, was)), _) => (
             Some(count(was.saturating_sub(1))),
-            vec![format!("a week back, at {}: {was}; this hour: {red}", when(at))],
+            vec![format!(
+                "a week back, at {}: {was}; this hour: {red}",
+                when(at)
+            )],
         ),
         (None, Some(since)) => (
             None,
-            vec![format!("unjudged until a week is kept; kept since {}", when(since))],
+            vec![format!(
+                "unjudged until a week is kept; kept since {}",
+                when(since)
+            )],
         ),
         (None, None) => (None, vec!["unjudged until a week is kept".to_owned()]),
     };
@@ -120,9 +126,17 @@ mod tests {
             "as many red lines as a week back read as falling: {same:?}"
         );
         let fewer = falling(&week, 4, NOW);
-        assert_eq!(fewer.past(), None, "fewer red lines than a week back read as not falling");
+        assert_eq!(
+            fewer.past(),
+            None,
+            "fewer red lines than a week back read as not falling"
+        );
         let none = falling(&[(NOW - WEEK, 0)], 0, NOW);
-        assert_eq!(none.past(), None, "no red lines a week back and none now read as past");
+        assert_eq!(
+            none.past(),
+            None,
+            "no red lines a week back and none now read as past"
+        );
     }
 
     #[test]
@@ -133,13 +147,20 @@ mod tests {
             "a measure with no week kept was judged: {young:?}"
         );
         let far = falling(&[(NOW - WEEK - 3 * 3600, 3)], 7, NOW);
-        assert!(far.target.is_none(), "an hour three hours off a week back stood for it");
+        assert!(
+            far.target.is_none(),
+            "an hour three hours off a week back stood for it"
+        );
     }
 
     #[test]
     fn it_counts_every_measure_past_but_itself_and_keeps_a_week_of_hours() {
         let measures = [past("a"), past("b"), past(KEY)];
-        assert_eq!(red(&measures), 2, "the measure counted itself, or missed one past");
+        assert_eq!(
+            red(&measures),
+            2,
+            "the measure counted itself, or missed one past"
+        );
         let old = [(NOW - KEPT_FOR - 1, 1), (NOW - DAY, 2), (NOW + 60, 3)];
         assert_eq!(
             kept(&old, 4, NOW),
