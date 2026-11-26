@@ -38,24 +38,45 @@ let
     ]
   ) timed;
   services = config.systemd.user.services;
-  # A legacy key said yes, as systemd and sd-switch read a boolean.
+  # A legacy key as sd-switch reads it (its ini.rs to_bool): written as
+  # home-manager writes the value, then lowered, so a Nix true, an int 1
+  # and "Yes" all read as yes. An absent key reads as neither.
+  spelled =
+    value: lib.toLower (if lib.isBool value then lib.boolToString value else toString value);
   yes =
     value:
-    lib.elem value [
-      true
-      "yes"
-      "true"
-      "on"
+    lib.elem (spelled value) [
       "1"
+      "yes"
+      "y"
+      "true"
+      "t"
+      "on"
+    ];
+  no =
+    value:
+    lib.elem (spelled value) [
+      "0"
+      "no"
+      "n"
+      "false"
+      "f"
+      "off"
     ];
   # The switch method a timed oneshot takes unless it says its own: what
-  # a legacy key of its own says, else keep-old, which X-RestartIfChanged
-  # = false already means.
+  # its legacy keys say, in sd-switch's order (reload, then a restart
+  # refused, then a stop refused), else keep-old. A legacy key that says
+  # only what sd-switch does anyway, X-RestartIfChanged = true, still reads
+  # as restart, since core's default would otherwise overrule it.
   method =
     unit:
-    if yes (unit.X-ReloadIfChanged or false) then
+    if yes (unit.X-ReloadIfChanged or null) then
       "reload"
-    else if yes (unit.X-RestartIfChanged or false) then
+    else if no (unit.X-RestartIfChanged or null) then
+      "keep-old"
+    else if no (unit.X-StopIfChanged or null) then
+      "restart"
+    else if yes (unit.X-RestartIfChanged or null) then
       "restart"
     else
       "keep-old";

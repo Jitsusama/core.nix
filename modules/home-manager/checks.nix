@@ -16,14 +16,21 @@ let
     .config.home-manager.users.joel;
   service = home: name: home.systemd.user.services.${name} or { };
   method = home: name: (service home name).Unit.X-SwitchMethod or null;
-  # The bound core's drop-in gives a service, or null when it writes none.
+  # The bound core's drop-in gives a service, null when it writes none,
+  # and "none" when it writes one saying no TimeoutStartSec, so a drop-in
+  # bounding a run some other way never passes for no drop-in.
   bound =
     home: name:
     let
       dropIn = home.xdg.configFile."systemd/user/${name}.service.d/timed-run.conf" or null;
       found = builtins.match ".*TimeoutStartSec=([^\n]*).*" dropIn.text;
     in
-    if dropIn == null || found == null then null else lib.head found;
+    if dropIn == null then
+      null
+    else if found == null then
+      "none"
+    else
+      lib.head found;
   true' = "/run/current-system/sw/bin/true";
   daily.Timer.OnCalendar = "daily";
   oneshot = extra: {
@@ -41,6 +48,9 @@ let
   # - exec-probe is timed but not a oneshot;
   # - own-probe says its own switch method and bound, which must win;
   # - restart-probe and reload-probe say a legacy key, one as a string;
+  # - both-probe says both, reload in capitals, and reload wins;
+  # - kept-probe says X-RestartIfChanged = "no", stop-probe
+  #   X-StopIfChanged = false, and one-probe X-ReloadIfChanged = 1;
   # - timeout-probe bounds itself by TimeoutSec alone;
   # - unit-probe's timer names the service it runs, unit-probe-run;
   # - probe@one runs an instance of the template probe@;
@@ -54,6 +64,10 @@ let
         "own-probe"
         "restart-probe"
         "reload-probe"
+        "both-probe"
+        "kept-probe"
+        "stop-probe"
+        "one-probe"
         "timeout-probe"
         "probe@one"
         "stray-probe"
@@ -75,6 +89,15 @@ let
       };
       restart-probe = oneshot { Unit.X-RestartIfChanged = true; };
       reload-probe = oneshot { Unit.X-ReloadIfChanged = "yes"; };
+      both-probe = oneshot {
+        Unit = {
+          X-ReloadIfChanged = "Y";
+          X-RestartIfChanged = true;
+        };
+      };
+      kept-probe = oneshot { Unit.X-RestartIfChanged = "no"; };
+      stop-probe = oneshot { Unit.X-StopIfChanged = false; };
+      one-probe = oneshot { Unit.X-ReloadIfChanged = 1; };
       timeout-probe = oneshot { Service.TimeoutSec = "10min"; };
       unit-probe-run = oneshot { };
       "probe@" = oneshot { };
@@ -106,6 +129,10 @@ let
       && (service home "own-probe").Service.TimeoutStartSec == "5h";
     "a legacy restart key is read as restart" = method home "restart-probe" == "restart";
     "a legacy reload key, said as a string, is read as reload" = method home "reload-probe" == "reload";
+    "a legacy reload key wins over a restart key, in any case" = method home "both-probe" == "reload";
+    "a legacy restart key saying no is read as keep-old" = method home "kept-probe" == "keep-old";
+    "a legacy stop key saying no is read as restart" = method home "stop-probe" == "restart";
+    "a legacy key said as the number 1 is read as yes" = method home "one-probe" == "reload";
     "a TimeoutSec alone bounds the start too" = bound home "timeout-probe" == null;
     "a timer's Timer.Unit is the service it keeps" =
       method home "unit-probe-run" == "keep-old" && !(home.systemd.user.services ? unit-probe);
