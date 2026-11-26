@@ -169,8 +169,9 @@ function unpromised(openings) {
 // its Return, or for one kept a key of its own and its asking, its start's
 // token, and `late` for one said late already), answered `now`: keys -1,
 // so it never takes the keys, and Joel is told when it's up or lost. One
-// kept has waited since its asking, so a shell handed over to watches out
-// its quarter hour, not a fresh one. Null for one refused or with no hold
+// kept has waited since its asking, counted as one pass as settled counts
+// any gap, so a shell handed over to doesn't watch a fresh quarter hour,
+// nor say one lost that a suspend or a clock step aged. Null for one refused or with no hold
 // to find, which Sprouting.reach tells, and for one `openings` already
 // watch.
 function watching(openings, how, act, now) {
@@ -179,7 +180,7 @@ function watching(openings, how, act, now) {
         return null;
     }
     const waited = act.kept === true && Number.isFinite(act.asked)
-        ? Math.max(now - act.asked, 0) : 0;
+        ? Math.min(Math.max(now - act.asked, 0), PASS_COUNTS_MS) : 0;
     const one = { key: act.key, held: how.held, machine: how.machine, since: now,
         asked: act.asked, keys: -1, token: act.token ?? "", waited, at: now };
     return act.late === true ? Object.assign(one, { late: true }) : one;

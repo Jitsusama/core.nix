@@ -553,17 +553,21 @@ QtObject {
                     keys: -1, token: "t-2", waited: 0, at: 900 });
             Expect.same("one with no token is watched with none",
                 Openings.watching([], heldHow, { key: "a" }, 900).token, "");
-            // One kept, handed over by a switch, has waited since its asking, and
-            // one past its minute was said late by its asker, so it isn't again.
+            // One kept, handed over by a switch, has waited since its asking, counted as
+            // one pass, and one past its minute was said late by its asker, so it isn't
+            // again.
             const handed = Openings.watching([], heldHow,
-                { key: "start:t", asked: 900 - 120000, kept: true, late: true }, 900);
+                { key: "start:t", asked: 900 - 20000, kept: true, late: true }, 900);
             Expect.same("one handed over waits out what's left of its quarter hour, said late",
                 [handed.waited, handed.late, Openings.settled([handed], () => null, 905,
-                    { patience: 60000, watch: 900000 }).late.length], [120000, true, 0]);
-            Expect.same("one handed over gone past its quarter hour is lost at its pass",
-                Openings.settled([Openings.watching([], heldHow,
-                    { key: "start:t", asked: 0, kept: true }, 900000)], () => null, 900005,
-                    { patience: 60000, watch: 900000 }).gone.length, 1);
+                    { patience: 60000, watch: 900000 }).late.length], [20000, true, 0]);
+            // A suspend or a clock step between its asking and the handover counts as a
+            // pass, as settled counts one, so a start still coming up isn't said lost.
+            const aged = Openings.watching([], heldHow,
+                { key: "start:t", asked: 0, kept: true }, 1200000);
+            Expect.same("one handed over after a long sleep counts it as one pass, not lost",
+                [aged.waited, Openings.settled([aged], () => null, 1200005,
+                    { patience: 60000, watch: 900000 }).gone.length], [30000, 0]);
             // A pass settles its up and gone starts, whose records the daemon keeps
             // until told, and leaves those still watched kept.
             Expect.same("a pass's settled tokens are its up and gone ones', none empty",
