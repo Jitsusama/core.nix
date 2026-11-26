@@ -333,17 +333,28 @@ fn standalone(page: &str, start: usize) -> bool {
         .is_none_or(|before| !(before.is_ascii_alphanumeric() || before == '_'))
 }
 
+/// How long the reader's report may go unwritten before net stops taking
+/// it for the switch now, in seconds. The reader writes it each round, a
+/// minute apart and up to a couple of minutes when every page is tried
+/// again; an older report means it stopped writing, as it does through a
+/// full disk, or stopped.
+const UNREPORTED: u64 = 5 * 60;
+
 /// The switch as its reader reported it, or why it isn't there.
 pub fn read(report: Result<Report, String>, now: u64) -> (Source, Option<Device>) {
     let what = "the switch's status pages, read by its own reader".to_owned();
     let report = report.and_then(|report| {
-        if report.schema == SCHEMA {
-            Ok(report)
-        } else {
+        if report.schema != SCHEMA {
             Err(format!(
                 "its reader's report is {}, not {SCHEMA}",
                 report.schema
             ))
+        } else if now.saturating_sub(report.read_at) > UNREPORTED {
+            Err("its reader's report stopped being written; \
+                 see systemctl status net-switch"
+                .into())
+        } else {
+            Ok(report)
         }
     });
     match report {
@@ -626,6 +637,32 @@ mod tests {
         );
         assert_eq!(device.ports[1].link, Some(LinkState::Down));
         assert!(device.detail.get(NAME).is_some(), "the status stays whole");
+    }
+
+    #[test]
+    fn a_report_long_unwritten_says_the_reader_stopped() {
+        let status = parse(&contract()).expect("the contract reads");
+        let (fresh, _) = read(Ok(answering(status.clone())), 1_794_700_000 + UNREPORTED);
+        assert_eq!(
+            fresh.state,
+            SourceState::Answering,
+            "a report as old as a slow round allows wasn't taken as now"
+        );
+        let (stale, device) = read(Ok(answering(status)), 1_794_700_001 + UNREPORTED);
+        assert_eq!(
+            stale.state,
+            SourceState::Unreachable,
+            "a report its reader stopped writing was taken as now"
+        );
+        assert!(
+            stale
+                .reason
+                .as_deref()
+                .is_some_and(|why| why.contains("net-switch")),
+            "the stale report's reason doesn't point at its reader: {:?}",
+            stale.reason
+        );
+        assert!(device.is_none(), "a stale report still gave a switch");
     }
 
     #[test]

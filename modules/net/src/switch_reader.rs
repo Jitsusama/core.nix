@@ -18,6 +18,7 @@ use std::time::Duration;
 use ureq::Agent;
 
 use crate::model::SourceState;
+use crate::record::Record;
 use crate::sources::switch::{self, Pages, Report};
 use crate::time;
 
@@ -57,7 +58,11 @@ pub fn run(address: &str) -> Result<(), String> {
         },
         PathBuf::from,
     );
-    let report = folder.join("report.json");
+    let mut report = Record::named(
+        folder.join("report.json"),
+        "the switch's report",
+        "reading the switch on",
+    );
     let agent = agent();
     let mut told = None;
     loop {
@@ -71,8 +76,11 @@ pub fn run(address: &str) -> Result<(), String> {
             told = Some(now);
         }
         let written = serde_json::to_string_pretty(&said).map_err(|error| error.to_string())?;
-        write(&report, &(written + "\n"))
-            .map_err(|error| format!("can't write the report: {error}"))?;
+        // A report that can't be written goes stale, which net's daemon
+        // reads by its age; stopping here would mend nothing.
+        if let Some(said) = report.keep(&(written + "\n")) {
+            eprintln!("{said}");
+        }
         thread::sleep(EVERY);
     }
 }
@@ -293,13 +301,6 @@ fn again<T>(mut ask: impl FnMut() -> Result<T, &'static str>) -> Result<T, &'sta
 /// each twice the one before.
 fn pauses() -> impl Iterator<Item = Duration> {
     (0..).take(TRIES - 1).map(|nth: u32| PAUSE * 2_u32.pow(nth))
-}
-
-/// Writes a file whole, so net's daemon never reads half of one.
-fn write(file: &Path, contents: &str) -> io::Result<()> {
-    let fresh = file.with_extension("json.new");
-    fs::write(&fresh, contents)?;
-    fs::rename(fresh, file)
 }
 
 #[cfg(test)]

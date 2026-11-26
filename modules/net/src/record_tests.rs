@@ -1,4 +1,5 @@
 use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 
 use super::Record;
@@ -75,6 +76,65 @@ fn a_record_kept_after_a_failure_says_so() {
         record.keep("{}\n"),
         None,
         "a kept record was spoken of after the spell"
+    );
+    let _ = fs::remove_dir_all(&folder);
+}
+
+#[test]
+fn a_folder_cleared_away_is_made_again() {
+    let folder = folder("cleared");
+    let file = folder.join("net").join("network.json");
+    let mut record = Record::at(file.clone());
+    assert_eq!(record.keep("{}\n"), None, "the first record was spoken of");
+    fs::remove_dir_all(folder.join("net")).expect("the folder cleared");
+    assert_eq!(
+        record.keep("{}\n"),
+        None,
+        "a record whose folder was cleared away couldn't be kept"
+    );
+    assert!(file.exists(), "the record wasn't written again");
+    let _ = fs::remove_dir_all(&folder);
+}
+
+#[test]
+fn a_failure_that_changes_cause_is_said_again_and_the_last_record_stays_whole() {
+    let folder = folder("changed");
+    let file = folder.join("network.json");
+    let mut record = Record::at(file.clone());
+    assert_eq!(
+        record.keep("last\n"),
+        None,
+        "the first record was spoken of"
+    );
+    // A folder that can't be written to refuses the partial file itself,
+    // as a full disk refuses it before a byte is written.
+    fs::set_permissions(&folder, fs::Permissions::from_mode(0o500)).expect("the folder shut");
+    if fs::write(folder.join("probe"), "").is_ok() {
+        // Run as root, which no folder's mode refuses: nothing to show.
+        let _ = fs::remove_file(folder.join("probe"));
+        fs::set_permissions(&folder, fs::Permissions::from_mode(0o700)).expect("the folder open");
+        let _ = fs::remove_dir_all(&folder);
+        return;
+    }
+    let refused = record.keep("next\n");
+    assert!(
+        refused
+            .as_deref()
+            .is_some_and(|said| said.contains("can't write the record")),
+        "a refused write wasn't said: {refused:?}"
+    );
+    assert_eq!(
+        fs::read_to_string(&file).expect("the last record"),
+        "last\n",
+        "a refused write cost the last record"
+    );
+    fs::set_permissions(&folder, fs::Permissions::from_mode(0o700)).expect("the folder open");
+    fs::remove_file(&file).expect("the record taken away");
+    fs::create_dir_all(file.join("in-the-way")).expect("a folder in the record's place");
+    let changed = record.keep("next\n");
+    assert!(
+        changed.is_some(),
+        "a failure of another cause went unsaid in the same spell"
     );
     let _ = fs::remove_dir_all(&folder);
 }

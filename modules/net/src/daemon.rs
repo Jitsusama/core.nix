@@ -98,6 +98,11 @@ pub fn run() -> Result<(), String> {
     // Each source as the last minute that named it said it.
     let mut kept = last_sources(&record);
     let mut record = Record::at(record);
+    let mut figures = Record::named(
+        day,
+        "the minute's figures",
+        "the record goes on without them",
+    );
     loop {
         let heard = read_eero(&eero);
         let receivers = heard
@@ -134,13 +139,14 @@ pub fn run() -> Result<(), String> {
             televisions,
         };
         let mut network = collect::carried(said, time::now(), &mut kept);
-        let earlier = history::read(&day, network.collected_at);
+        let earlier = history::read(figures.file(), network.collected_at);
         history::recall(&mut network, &earlier);
         room::work_out(&mut network);
         // A day that can't be kept costs what net says of the day, never
         // the record itself.
-        if let Err(error) = history::keep(&day, &Moment::of(&network)) {
-            eprintln!("can't keep the minute's figures: {error}");
+        let kept = history::keep(figures.file(), &Moment::of(&network));
+        if let Some(said) = figures.heard(&kept) {
+            eprintln!("{said}");
         }
         let written = serde_json::to_string_pretty(&network).map_err(|error| error.to_string())?;
         if let Some(said) = record.keep(&(written + "\n")) {
