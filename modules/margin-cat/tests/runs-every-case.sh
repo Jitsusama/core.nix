@@ -49,8 +49,9 @@ if ! (ulimit -St "$limit" && ulimit -Ht "$hard") 2>"$why"; then
   if [[ $held =~ ^[0-9]+$ ]] && [ "$held" -gt 10 ]; then
     fits="CASE_LIMIT must be at most $((held - 10))"
   fi
+  reason=$(sed -n '1{s/^.*: ulimit: //;p}' "$why")
   echo "the builder holds each case to $held s of its own time, short of the $hard s" \
-    "each needs, so $fits; ulimit said: $(sed -n '1{s/^.*: ulimit: //;p}' "$why")" >&2
+    "each needs, so $fits; ulimit said: $reason" >&2
   echo "left every case unrun" >&2
   exit 1
 fi

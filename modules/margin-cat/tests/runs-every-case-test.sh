@@ -158,7 +158,9 @@ else
   hold="the builder holds each case to 5 s of its own time, short of the 16 s each needs,"
   grep -qF -- "$hold so no CASE_LIMIT fits; ulimit said: " <<<"$said" ||
     failing "it never said the builder's hold once, with its figure and what fits"
-  [ "$(grep -c 'the builder holds' <<<"$said")" = 1 ] || failing "it said the hold more than once"
+  # grep counts none by failing, which the count already says.
+  told=$(grep -c 'the builder holds' <<<"$said" || true)
+  [ "$told" = 1 ] || failing "it said the hold $told times, not once"
   holds "left every case unrun"
   never "a-marks.qml"
   [ ! -e "$here/capped/a-marks.qml.ran" ] || failing "a-marks.qml ran"
