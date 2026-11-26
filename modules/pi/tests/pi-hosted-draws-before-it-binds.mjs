@@ -37,6 +37,10 @@ afterEach(() => {
 
 /** A conversation's entry, as the session's context lists it. */
 const entry = (id) => ({ id, type: "message" });
+// What the patch reads of pi that no prototype shows: a field set as the
+// screen is made, and the editor its draw fills the history through.
+const PENDING_TOOLS = /\bpendingTools = new Map\b/u;
+const FILLS_HISTORY = /\bthis\.editor\.addToHistory\b/u;
 
 // A screen whose startup runs for real, with its extensions' bind held
 // until `bound` is called, as a session_start on a stalled disk holds it;
@@ -102,7 +106,11 @@ function startingScreen(hosted, entries = [entry("said"), entry("answered")]) {
     editor: { getText: () => "", setText: mock.fn(), addToHistory: mock.fn() },
     runtimeHost: {
       session: {
-        sessionManager: { isPersisted: () => false, buildContextEntries: () => [...entries] },
+        sessionManager: {
+          isPersisted: () => false,
+          buildContextEntries: () => [...entries],
+          getSessionFile: () => "/talk.jsonl",
+        },
         settingsManager: { getFullscreenScrollbar: () => "auto" },
       },
     },
@@ -296,7 +304,8 @@ it("a hosted screen whose early draw throws draws after the bind, as startup doe
   mode.renderInitialMessages.mock.mockImplementationOnce(() => {
     mode.chatContainer.children.push({ drawn: true });
     mode.editor.addToHistory("said");
-    throw new Error("no state yet");
+    // Over two lines and quoted, as a journal line must not be.
+    throw new Error('no state\n"yet"');
   });
   const said = mock.method(process.stderr, "write", () => true);
   const started = starting(mode);
@@ -315,22 +324,36 @@ it("a hosted screen whose early draw throws draws after the bind, as startup doe
   assert.equal(mode.renderSessionEntries.mock.callCount(), 0);
   assert.equal(mode.rebuildChatFromMessages.mock.callCount(), 0);
   assert.equal(mode.subscribeToAgent.mock.callCount(), 1, "startup failed for a renderer");
-  assert.deepEqual(
-    said.mock.calls.map((call) => call.arguments[0]),
-    ['pi-host: the early draw threw, so it draws after the bind: "Error: no state yet"\n'],
-    "it didn't say once why the window waited for the bind",
-  );
+  const lines = said.mock.calls.map((call) => call.arguments[0]);
+  assert.equal(lines.length, 1, "it didn't say once why the window waited for the bind");
+  const [line] = lines;
+  const prefix = 'pi-host: "/talk.jsonl": the early draw threw, so it draws after the bind: ';
+  assert.ok(line.startsWith(prefix), `it didn't name the conversation: ${line}`);
+  assert.equal(line.indexOf("\n"), line.length - 1, "its line broke in the journal");
+  const why = JSON.parse(line.slice(prefix.length));
+  assert.ok(why.startsWith('Error: no state\n"yet"\n    at '), `it gave no stack: ${why}`);
   mode.themeChangeUnsubscribe?.();
 });
 
 it("a hosted screen whose early frame throws draws after the bind", async () => {
   const { mode, bound, binding, steps } = startingScreen(true);
+  const notice = { notice: true };
+  mode.chatContainer.children.push(notice);
+  const history = mode.editor.addToHistory;
+  mode.renderInitialMessages.mock.mockImplementationOnce(() => {
+    steps.push("drawn");
+    mode.chatContainer.children.push({ drawn: true });
+    mode.editor.addToHistory("said");
+  });
   mode.ui.renderNow.mock.mockImplementationOnce(() => {
     throw new Error("a renderer wants its state");
   });
   const said = mock.method(process.stderr, "write", () => true);
   const started = starting(mode);
   await binding;
+  // The whole draw goes, and none of its prompts reach the history.
+  assert.deepEqual(mode.chatContainer.children, [notice], "the drawn frame was left on screen");
+  assert.equal(history.mock.callCount(), 0, "the frame's prompts reached the history");
   bound();
   await started;
   assert.deepEqual(steps, ["drawn", "bind", "drawn", "sent"], "it was not drawn after the bind");
@@ -361,8 +384,10 @@ it("a hosted early draw that throws with no stderr still draws after the bind", 
 });
 
 it("the screen stands in for these parts of pi, which pi has", async () => {
-  // The screen above stands in for these, and the patch calls them; were
-  // pi to rename one, the stub would test a part startup no longer calls.
+  // The patch calls these, or startup calls them around it, and the
+  // screen above stands in for them; were pi to rename one, the stub
+  // would test a part startup no longer calls. The stub's other stand-ins
+  // keep startup off the terminal and the network, which this doesn't read.
   for (const part of [
     "bindCurrentSessionExtensions",
     "rebindCurrentSession",
@@ -374,9 +399,12 @@ it("the screen stands in for these parts of pi, which pi has", async () => {
     assert.equal(typeof InteractiveMode.prototype[part], "function", `pi's screen has no ${part}`);
   }
   const { SessionManager } = await import(join(agentPackage, "dist/core/session-manager.js"));
-  assert.equal(typeof SessionManager.prototype.buildContextEntries, "function");
-  // A field, set as the screen is made, so read from its source.
-  assert.match(readFileSync(source, "utf8"), /\bpendingTools = new Map\(\)/u, "no pendingTools");
+  for (const part of ["buildContextEntries", "getSessionFile"]) {
+    assert.equal(typeof SessionManager.prototype[part], "function", `pi's session has no ${part}`);
+  }
+  const text = readFileSync(source, "utf8");
+  assert.match(text, PENDING_TOOLS, "no pendingTools");
+  assert.match(text, FILLS_HISTORY, "the draw fills the history elsewhere");
 });
 
 it("a plain pi still draws its conversation after its extensions bind", async () => {

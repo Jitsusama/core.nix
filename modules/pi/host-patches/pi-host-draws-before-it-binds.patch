@@ -38,7 +38,7 @@ unchanged.
 
 --- a/packages/coding-agent/src/modes/interactive/interactive-mode.ts
 +++ b/packages/coding-agent/src/modes/interactive/interactive-mode.ts
-@@ -1185,12 +1185,63 @@ export class InteractiveMode {
+@@ -1185,12 +1185,65 @@ export class InteractiveMode {
  		this.setupEditorSubmitHandler();
  		this.ui.requestRender();
  
@@ -68,9 +68,12 @@ unchanged.
 +				prompts.length = 0;
 +				drawn = undefined;
 +				// Said on stderr, which a host's journal keeps, so a window blank through its bind says
-+				// why, quoted so it stays one line; a write that throws is lost, never the later draw.
++				// which and why: one host draws many conversations, and the stack names the renderer.
++				// Quoted so it stays one line; a write that throws is lost, never the later draw.
 +				try {
-+					process.stderr.write(`pi-host: the early draw threw, so it draws after the bind: ${JSON.stringify(String(error))}\n`);
++					const where = JSON.stringify(this.sessionManager.getSessionFile?.() ?? "an unsaved conversation");
++					const why = JSON.stringify(error instanceof Error && error.stack ? error.stack : String(error));
++					process.stderr.write(`pi-host: ${where}: the early draw threw, so it draws after the bind: ${why}\n`);
 +				} catch {
 +					// Nothing to say it on, or nothing to say: the draw after the bind still comes.
 +				}
