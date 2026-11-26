@@ -9596,8 +9596,7 @@ Scope {
         if (!open || selected === null) {
             drawerFollowDue = false;
             drawerRow = selected;
-        } else if (!prompt.keyHeld && (Pacing.lettersComing(lettersAt, KeyTimes.now())
-            || prompt.text !== lettersText)) {
+        } else if (!prompt.keyHeld && Pacing.lettersComing(lettersAt, KeyTimes.now())) {
             // While letters still come, a drawer of a dear kind, or one
             // not yet made, waits until they rest rather than holding the
             // next one; the key's own frame goes on without it
@@ -9666,12 +9665,6 @@ Scope {
     // An arrow sets it back to 0.
     property real lettersAt: 0
     property real lettersPressed: 0
-    // The field's text as the last letter was counted. A letter's own row
-    // can be selected by its text before the field says it came, and the
-    // first after a rest then found no letters coming and joined a cheap
-    // drawer to the letter's own frame (#6737, 2026-11-26), so a text
-    // newer than this is a letter's too.
-    property string lettersText: ""
     // How long the drawer following now rested for the letters, said
     // apart from its making in its line (Pacing.drawerCame).
     property real drawerRested: 0
@@ -9687,7 +9680,6 @@ Scope {
         Report.say(`letter typed ${Math.round(typed - lettersAt)} ms after the one before, `
             + `resting ${Pacing.lettersRest()}`);
         lettersAt = typed;
-        lettersText = prompt.text;
         const pressed = KeyTimes.pressed();
         lettersPressed = pressed > 0 ? pressed : lettersAt;
         if (lettersResting.running)
@@ -14280,10 +14272,8 @@ Scope {
                         onTextChanged: {
                             // Put back to home while closed, nothing is
                             // searched or timed (keepHome).
-                            if (root.keeping) {
-                                root.lettersText = text;
+                            if (root.keeping)
                                 return;
-                            }
                             // From what the field read before this key, a
                             // key held for answers included (Awaited.js).
                             trials.retyped(Awaited.before({ due: root.keysDue,
