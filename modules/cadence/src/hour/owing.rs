@@ -17,7 +17,7 @@ use super::lines::figure;
 use super::measures::queues::{self, QUEUE};
 use super::measures::{
     BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, UNTESTED, apps, causes, drag,
-    held_for_good, held_unseen, rounds, told_late,
+    held_for_good, held_unseen, relay, rounds, told_late,
 };
 
 /// How long a queue's ask has before it goes late: long enough for the
@@ -177,6 +177,9 @@ fn filed(m: &Measure) -> Vec<Filed> {
     if m.key == UNTESTED {
         return untested_asked(m, &says);
     }
+    if m.key.starts_with(relay::PREFIX) {
+        return vec![relay_asked(m, says)];
+    }
     let owners = by_owner(m);
     if !owners.is_empty() {
         return owners
@@ -212,6 +215,26 @@ fn filed(m: &Measure) -> Vec<Filed> {
         ),
         says,
     }]
+}
+
+/// The ask to the relay's keeper about one of its counts past its
+/// ceiling, with its commonest causes, so the cause comes back tested.
+fn relay_asked(m: &Measure, says: String) -> Filed {
+    let causes = if m.behind.is_empty() {
+        String::new()
+    } else {
+        format!(" Most of them: {}.", m.behind.join("; "))
+    };
+    Filed {
+        key: format!("hour:{}", m.key),
+        owner: m.owner.clone(),
+        text: format!(
+            "cadence hour: the model relay is past its ceiling, {says}.{causes} Please reply \
+             with its tested cause, its fix and when it lands. It closes by itself once its \
+             figure is back in."
+        ),
+        says,
+    }
 }
 
 /// The ask about a merge's rounds past five that caught nothing. Its
@@ -529,9 +552,12 @@ pub fn file(
     }
     // Never the lead, which passes them over, so filed whatever leads; a
     // measure filed twice is owed once, as the ledger holds it open. A
-    // miss with no test that runs is asked of its owner the same way.
+    // miss with no test that runs is asked of its owner the same way, and
+    // so is each of the model relay's counts past its ceiling, since every
+    // session's turns wait on the relay whatever else drags.
     dragging.extend(measures.iter().filter(|m| {
-        let beside = [FINDINGS, UNTESTED].contains(&m.key.as_str());
+        let beside =
+            [FINDINGS, UNTESTED].contains(&m.key.as_str()) || m.key.starts_with(relay::PREFIX);
         let apart = m.key.starts_with(rounds::FRUITLESS)
             || m.key.starts_with(told_late::KEY)
             || m.key == causes::KEY;
@@ -934,6 +960,39 @@ mod tests {
         assert!(
             ledger.iter().all(|e| !e.open),
             "back in closes every owner's"
+        );
+    }
+
+    #[test]
+    fn each_relay_count_past_its_ceiling_is_asked_of_its_keeper_whatever_leads() {
+        let lead = measure("misses", Class::Miss, 1.0, Some(0.0));
+        let mut past = measure(relay::ANSWERED_502, Class::Functional, 704.0, Some(50.0));
+        past.owner = "OXUW1Y".to_owned();
+        past.behind = vec!["700 on http2 error: keep-alive timed out".to_owned()];
+        let within = measure(relay::RESETS, Class::Functional, 12.0, Some(400.0));
+        let mut ledger = Vec::new();
+        let hour = [lead, past.clone(), within];
+        let told = file(&mut ledger, &hour, "2026-11-26", 1000);
+        let asked: Vec<&(String, String)> = told.iter().filter(|(to, _)| to == "OXUW1Y").collect();
+        assert_eq!(asked.len(), 1, "only the count past its ceiling: {told:?}");
+        assert!(
+            asked[0].1.contains("tested cause") && asked[0].1.contains("keep-alive timed out"),
+            "the ask names neither its causes nor what it wants: {}",
+            asked[0].1
+        );
+        assert!(
+            file(&mut ledger, &hour, "2026-11-26", 4600)
+                .iter()
+                .all(|(to, _)| to != "OXUW1Y"),
+            "an open ask was told again"
+        );
+        past.now = 10.0;
+        file(&mut ledger, &[past], "2026-11-26", 8200);
+        assert!(
+            !ledger
+                .iter()
+                .any(|e| e.open && e.key.starts_with("hour:relay:")),
+            "a count back in left its ask open"
         );
     }
 

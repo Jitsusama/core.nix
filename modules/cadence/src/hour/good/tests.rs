@@ -60,6 +60,10 @@ fn every_measure_the_hour_shows_has_a_line_that_holds_it_to_its_target() {
         at_risk(Tracking::Derived),
     ];
     shown.extend(measures::apps::apps(None, NOW));
+    // Each of the relay's four judged, the share with a connection closed.
+    shown.extend(measures::relay::relay(Some(
+        "model-relay: connection 1.4 carried 9 asked, 0 of them cancelled and 0 cut",
+    )));
     let said = serde_json::json!({"none": "no pain", "none_at_ms": NOW * 1000});
     shown.extend(measures::said_none(&said.to_string(), NOW));
     // Those read from a machine's records, under the keys and targets the

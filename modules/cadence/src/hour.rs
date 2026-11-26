@@ -314,8 +314,7 @@ fn gather(
     )));
     let apps = fs::read_to_string(state_home.join(measures::apps::FILE)).ok();
     all.extend(measures::apps::apps(apps.as_deref(), now));
-    let wifid = measures::wifi::read(now);
-    all.push(measures::wifi::video(wifid.as_deref(), &TimeZone::system()));
+    all.extend(journals(now));
     // The balance service names a day's file by the date here, so read yesterday's too.
     let day = |at| text(&state_home.join(format!("mycelium/balance/{}.jsonl", today(at))));
     let minutes = [day(now - DAY), day(now)].join("\n");
@@ -345,6 +344,15 @@ fn gather(
     ));
     ledger::unless_whole(&mut all, asks_unread.as_deref());
     Ok(all)
+}
+
+/// The measures read from the journal: how wifid's minutes held a call's
+/// video, and how the model relay carried the sessions' requests.
+fn journals(now: i64) -> Vec<Measure> {
+    let wifid = measures::wifi::read(now);
+    let mut read = vec![measures::wifi::video(wifid.as_deref(), &TimeZone::system())];
+    read.extend(measures::relay::hour(now));
+    read
 }
 
 /// The council rounds each change merged to core's and the harness's

@@ -28,6 +28,7 @@ mod pains;
 pub mod parked;
 mod promised;
 pub mod queues;
+pub mod relay;
 mod reports;
 pub mod rounds;
 #[cfg(test)]
