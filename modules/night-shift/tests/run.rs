@@ -458,7 +458,9 @@ fn the_machine_stalling_past_its_backstop_stops_the_job() {
     let said = said(&output);
     assert!(output.status.success(), "{said}");
     assert!(
-        said.contains("stopping: memory full avg10 is 26.00%, past 25%"),
+        said.contains(
+            "stopping: memory full avg10 is 26.00%, 26.00% beyond the job's own, past 25%"
+        ),
         "{said}"
     );
     assert!(said.contains("stopped; a later try goes on"), "{said}");
@@ -479,6 +481,38 @@ fn a_job_stalling_only_itself_runs_on() {
     assert!(said.contains("finished"), "{said}");
     let samples = fs::read_to_string(machine.state("test-job.samples")).unwrap();
     assert!(samples.contains("own 60.00"), "{samples}");
+}
+
+#[test]
+fn the_machines_backstop_is_held_to_what_it_waits_beyond_the_jobs_own() {
+    let own = format!("cgroups/{MANAGER}/background.slice/job.service/memory.pressure");
+    // Beyond the job's own 20%, the machine's 40% is 20, under the bar of
+    // 25, while its 50% is 30, past it.
+    for (machine_at, stopped) in [(40.0, false), (50.0, true)] {
+        let machine = Machine::new();
+        // Long enough for a sample or two at the machine's figure.
+        let job = format!(
+            "{}; {}; sleep 1",
+            raise(&machine, &own, 20.0),
+            raise(&machine, "proc/pressure/memory", machine_at)
+        );
+        let output = machine.run("--stop app.slice=1 --stop-machine 25", &job);
+        let said = said(&output);
+        assert!(output.status.success(), "at {machine_at}: {said}");
+        let beyond = machine_at - 20.0;
+        assert_eq!(
+            said.contains(&format!(
+                "stopping: memory full avg10 is {machine_at:.2}%, {beyond:.2}% beyond the job's own, past 25%"
+            )),
+            stopped,
+            "at {machine_at}, with the job's own at 20: {said}"
+        );
+        assert_eq!(
+            said.contains("finished"),
+            !stopped,
+            "at {machine_at}, it should finish only where it wasn't stopped: {said}"
+        );
+    }
 }
 
 #[test]
@@ -515,7 +549,7 @@ fn the_disk_stalling_past_its_io_bar_stops_the_job() {
     let said = said(&output);
     assert!(output.status.success(), "{said}");
     assert!(
-        said.contains("stopping: io full avg60 is 6.00%, past 5%"),
+        said.contains("stopping: io full avg60 is 6.00%, 6.00% beyond the job's own, past 5%"),
         "{said}"
     );
     assert!(said.contains("stopped; a later try goes on"), "{said}");
@@ -525,6 +559,33 @@ fn the_disk_stalling_past_its_io_bar_stops_the_job() {
     );
     let samples = fs::read_to_string(machine.state("test-job.samples")).unwrap();
     assert!(samples.contains(" io 6.00 "), "{samples}");
+    assert!(samples.contains(" own io 0.00"), "{samples}");
+}
+
+#[test]
+fn a_job_waiting_on_the_disk_itself_runs_on_past_its_io_bar() {
+    let machine = Machine::new();
+    machine.set("proc/pressure/io", 0.0, 1.0);
+    let own = machine.path(&format!(
+        "cgroups/{MANAGER}/background.slice/job.service/io.pressure"
+    ));
+    let io = machine.path("proc/pressure/io");
+    // The machine's minute at 8%, 6 of it the job's own: 2 beyond it, under
+    // the bar of 5. The sleep gives it a sample or two at that figure.
+    let job = format!(
+        "printf '{}' > '{}'; printf '{}' > '{}'; sleep 1",
+        line(0.0, 6.0).replace('\n', "\\n"),
+        own.display(),
+        line(0.0, 8.0).replace('\n', "\\n"),
+        io.display()
+    );
+    let output = machine.run("--stop-io 5", &job);
+    let said = said(&output);
+    assert!(output.status.success(), "{said}");
+    assert!(said.contains("finished"), "{said}");
+    let samples = fs::read_to_string(machine.state("test-job.samples")).unwrap();
+    assert!(samples.contains(" io 8.00 "), "{samples}");
+    assert!(samples.contains(" own io 6.00"), "{samples}");
 }
 
 #[test]

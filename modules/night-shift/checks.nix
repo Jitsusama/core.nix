@@ -183,6 +183,7 @@ onLinux {
       unmarked = withJob false eases;
       wrong = withJob true { stopsWhileAway."agents-only.slice" = 10; };
       tighter = withJob true { stopMachineWhileAway = 12; };
+      unpassable = withJob true { stopMachineWhileAway = 100; };
       words = toString declared.systemd.user.services.night-shift-eased.Service.ExecStart;
       says = text: pkgs.lib.hasInfix text words;
       # night-shift's own, apart from what the rest of the account asserts.
@@ -190,7 +191,7 @@ onLinux {
         user: builtins.filter (rule: pkgs.lib.hasPrefix "night-shift job " rule.message) user.assertions;
     in
     holds "night-shift-eases-its-bars-only-while-joel-is-away"
-      "A job easing its bars while Joel is away escapes the specifiers in its mark's or minutes' paths, asks about calls beyond this machine or none at all, drops an eased bar or the wait before one, eases a slice it has no stop for, eases a bar to under its own, or eases in an account where nothing keeps swayidle-away's mark."
+      "A job easing its bars while Joel is away escapes the specifiers in its mark's or minutes' paths, asks about calls beyond this machine or none at all, drops an eased bar or the wait before one, eases a slice it has no stop for, eases a bar to under its own or to one never passed, or eases in an account where nothing keeps swayidle-away's mark."
       (
         says "--stop app.slice=1 "
         && says "--away-mark %t/someone-at-the-machine "
@@ -202,6 +203,9 @@ onLinux {
         && says " -- true"
         && pkgs.lib.any (rule: !rule.assertion) (ours wrong)
         && pkgs.lib.any (rule: !rule.assertion && pkgs.lib.hasInfix "tighten" rule.message) (ours tighter)
+        && pkgs.lib.any (rule: !rule.assertion && pkgs.lib.hasInfix "never passed" rule.message) (
+          ours unpassable
+        )
         && pkgs.lib.any (rule: !rule.assertion && pkgs.lib.hasInfix "swayidle-away" rule.message) (
           ours unmarked
         )

@@ -16,7 +16,10 @@
 //! 10% twice within 30 seconds while the apps' and the desktop's slices
 //! stalled not at all. The machine's bar is a backstop, and every sample,
 //! with the job's own cgroup's, goes to `<state>/night-shift/NAME.samples`,
-//! so a stop says whose stall it was.
+//! so a stop says whose stall it was. The backstop is held to what the
+//! machine waits beyond the job's own cgroup: the machine's figure less
+//! the job's, so a job stalling only itself, at its own limit, isn't
+//! stopped for it, while one stalling beside others still is.
 //!
 //! With `--stop-io PCT`, the disk counts too: the job starts only while
 //! the machine's full io pressure over the last minute is under PCT, and
@@ -24,7 +27,10 @@
 //! repository's packs read 86 GB in 24 minutes, holding that figure at
 //! 21.9%, and nothing watched it. The minute's figure is read, not ten
 //! seconds', so a burst of written pages flushing doesn't stop a job
-//! alone.
+//! alone. As with memory's backstop, a running job is held to the
+//! machine's figure less its own cgroup's, since the disk's waits a job
+//! makes and only it waits on are what its `--reads-at-most` already
+//! bounds.
 //!
 //! A stopped job is sent TERM in its own process group first, so git and
 //! the like give back their locks, and is killed once `--grace` passes.
@@ -215,7 +221,6 @@ fn run(job: &Job) -> Result<(), Failure> {
             }
         }
     }
-    let own = own.map(|dir| dir.join("memory.pressure"));
     // From here a stop is the watcher's to carry out, so a job paused
     // meanwhile goes on to hear it. The job's own program starts with the
     // signals as they were, since exec sets caught ones back.
@@ -450,7 +455,7 @@ const BACK: &str = "Joel is back, so its own bars hold again";
 /// Samples the pressures until the job ends, giving its status, or until
 /// one passes its bar or the job has run its most, giving None once it
 /// has said which. Meanwhile it shares the turn, pausing the job for a
-/// job Joel waits on.
+/// job Joel waits on. `own` is the cgroup whose pressures are the job's.
 fn watch(
     job: &Job,
     child: &mut Child,
@@ -522,27 +527,40 @@ fn watch(
             was_away = away;
             say(job, if away { EASED } else { BACK });
         }
-        let own_now = own.and_then(pressure::read).unwrap_or_default();
+        let own_now = Own::of(own);
         let machine = pressure::read(&pressures.machine()).unwrap_or_default();
         let mut line = format!(
             "{}s machine {:.2}",
             began.elapsed().as_secs(),
             machine.avg10
         );
-        let past = first_past(job, pressures, machine.avg10, watched, away, &mut line);
+        let past = first_past(
+            job,
+            pressures,
+            machine.avg10,
+            &own_now,
+            watched,
+            (away, sharing.is_paused()),
+            &mut line,
+        );
         let paused = if sharing.is_paused() { " paused" } else { "" };
         let away_mark = if away { " away" } else { "" };
+        let own_io = if job.stop_io.is_some() {
+            format!(" own io {:.2}", own_now.io)
+        } else {
+            String::new()
+        };
         let _ = writeln!(
             samples,
-            "{line} own {:.2}{paused}{away_mark}",
-            own_now.avg10
+            "{line} own {:.2}{own_io}{paused}{away_mark}",
+            own_now.memory
         );
         if let Some(why) = past {
             say(
                 job,
                 &format!(
                     "stopping: {why} (its own memory full avg10 {:.2}%)",
-                    own_now.avg10
+                    own_now.memory
                 ),
             );
             return None;
@@ -551,16 +569,47 @@ fn watch(
     }
 }
 
+/// The job's own cgroup's pressures: memory's full avg10 and io's full
+/// avg60, the figures its machine's bars read, each 0 where unread.
+#[derive(Default)]
+struct Own {
+    memory: f64,
+    io: f64,
+}
+
+impl Own {
+    /// Read from the cgroup at `dir`, if there is one.
+    fn of(dir: Option<&Path>) -> Self {
+        let read = |file: &str| dir.and_then(|dir| pressure::read(&dir.join(file)));
+        Own {
+            memory: read("memory.pressure").unwrap_or_default().avg10,
+            io: read("io.pressure").unwrap_or_default().avg60,
+        }
+    }
+}
+
+/// How much of the machine's `figure` lies beyond the job's `own`: the
+/// machine's waits less the job's, never under nothing. A share of time
+/// all tasks waited, the machine's, can't be split by cgroup exactly, so
+/// this reads the job's waits as among the machine's, which they are.
+fn beyond_own(figure: f64, own: f64) -> f64 {
+    (figure - own).max(0.0)
+}
+
 /// Which bar a sample passes first, if any: a watched slice's, then the
 /// machine's memory backstop, each as eased while Joel is `away`, then
-/// its io bar, which nothing eases. Each figure read goes on the sample's
-/// `line`.
+/// its io bar, which nothing eases and which a job paused, doing no io,
+/// doesn't answer for. The backstop and the io bar are held to what the
+/// machine waits beyond the job's `own` waits. `(away, paused)` says
+/// whether Joel is away and whether the job is paused. Each figure read
+/// goes on the sample's `line`.
 fn first_past(
     job: &Job,
     pressures: &Places,
     machine: f64,
+    own: &Own,
     watched: &[(String, PathBuf, f64)],
-    away: bool,
+    (away, paused): (bool, bool),
     line: &mut String,
 ) -> Option<String> {
     let mut past = None;
@@ -576,16 +625,21 @@ fn first_past(
         }
     }
     let machine_bar = job.away.machine_bar(job.stop_machine, away);
-    if past.is_none() && machine > machine_bar {
+    let beyond = beyond_own(machine, own.memory);
+    if past.is_none() && beyond > machine_bar {
         past = Some(format!(
-            "memory full avg10 is {machine:.2}%, past {machine_bar}%"
+            "memory full avg10 is {machine:.2}%, {beyond:.2}% beyond the job's own, past {machine_bar}%"
         ));
     }
     if let Some(bar) = job.stop_io {
         let io = pressure::read(&pressures.machine_io()).unwrap_or_default();
         let _ = write!(line, " io {:.2}", io.avg60);
-        if past.is_none() && io.avg60 > bar {
-            past = Some(format!("io full avg60 is {:.2}%, past {bar}%", io.avg60));
+        let beyond = beyond_own(io.avg60, own.io);
+        if past.is_none() && !paused && beyond > bar {
+            past = Some(format!(
+                "io full avg60 is {:.2}%, {beyond:.2}% beyond the job's own, past {bar}%",
+                io.avg60
+            ));
         }
     }
     past
