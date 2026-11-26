@@ -133,16 +133,20 @@ let
   # within it, and the account ten times the system's other slices. Without
   # io.cost they do nothing, so a machine that names no disk keeps targets.
   #
-  # Name a disk only once io.cost has been shown to beat the targets on it,
-  # with the same synced write beside the same writers. On the XPS 14's,
-  # which has no DRAM of its own, it didn't. Beside two buffered writers in
-  # jobs, an app's worst synced save in four runs took 55 to 170 ms under the
-  # targets, and 76 to 492 ms under every io.cost setting tried: its
-  # automatic one, a 5 or 10 ms latency goal, and a goal held to the model.
-  # io.cost let the writers run at two to two and a half times the model's
-  # write rate. The disk's cache taking them quickly, with a sync then
-  # waiting behind them, is the suspected cause, not yet measured. So that
-  # disk keeps its targets.
+  # Name a disk with a model measured on it, never the kernel's guess: in
+  # VM runs a model three times faster than the disk was the worst of
+  # every control tried, and io.cost at the disk's true rates gave the
+  # quickest first reads and synced saves. On 24 October, on the XPS 14's
+  # disk, which has no DRAM of its own, io.cost lost to the targets then
+  # set on Joel's own slices: beside two buffered writers in jobs, an
+  # app's worst synced save in four runs took 55 to 170 ms under them, and
+  # 76 to 492 ms under every io.cost setting tried, its automatic one, a 5
+  # or 10 ms latency goal, and a goal held to the model. io.cost let the
+  # writers run at two to two and a half times the model's write rate.
+  # Those targets are gone since, for the reason above, so on such a disk
+  # the choice is now io.cost against no order inside the account. A qos
+  # max of 100 is meant to hold io.cost to the model; whether it does on a
+  # disk like that one is measured on the machine that names it.
   disks = config.jitsusama.slices.disks;
   latency = lib.optionalAttrs (disks == { }) { IODeviceLatencyTargetSec = "/home 1ms"; };
   settings = attrs: lib.concatStringsSep " " (lib.mapAttrsToList (k: v: "${k}=${toString v}") attrs);
