@@ -78,12 +78,6 @@ it("the lede is left as it is while net is still being reached", () => {
 
 // A page opened or reloaded while net is down is given the records the
 // server still holds, and the map draws them.
-// A feed coming back says it's live before its records arrive.
-it("the lede keeps its words over an empty net though a feed is live", () => {
-  assert.equal(ledeOf({ answered: true, worst: "live" }, empty), null);
-  assert.equal(ledeOf({ answered: true, worst: "broken" }, empty), null);
-});
-
 it("the lede counts the devices the map draws from held records though no feed was live", () => {
   for (const worst of ["broken", "stale", "connecting", undefined]) {
     assert.equal(ledeOf({ answered: false, worst }, contextOf()), standsNow(contextOf()), worst);
@@ -94,4 +88,12 @@ it("the lede counts what stands once a feed was live, and keeps its words once n
   assert.equal(ledeOf({ answered: true, worst: "live" }, contextOf()), standsNow(contextOf()));
   assert.equal(ledeOf({ answered: true, worst: "broken" }, contextOf()), standsNow(contextOf()));
   assert.equal(ledeOf({ answered: true, worst: "broken" }, undefined), null);
+});
+
+// A live feed's records may not have come yet, and a whole answer may be
+// empty once net goes: neither is an all-clear.
+it("the lede never counts an empty net, though a feed was live", () => {
+  for (const worst of ["live", "connecting", "stale", "broken"]) {
+    assert.equal(ledeOf({ answered: true, worst }, empty), null, worst);
+  }
 });
