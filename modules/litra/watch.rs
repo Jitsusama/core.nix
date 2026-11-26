@@ -7,11 +7,13 @@ use std::io::{self, ErrorKind, Read, Write};
 use std::os::fd::{AsRawFd, FromRawFd};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::found::{About, about, lights};
 use crate::json::json;
-use crate::light::{BRIGHTNESS_IS, Heard, Light, POWER_IS, State, TEMPERATURE_IS, find_out, hear};
+use crate::light::{
+    BRIGHTNESS_IS, Heard, Light, POWER_IS, State, TEMPERATURE_IS, find_out, hear, next_retry, until,
+};
 use crate::{
     IN_ATTRIB, IN_CLOEXEC, IN_CREATE, IN_DELETE, POLLIN, PollFd, inotify_add_watch, inotify_init1,
     poll,
@@ -58,6 +60,38 @@ impl Watched {
     }
 }
 
+/// Looks over the lights present: one gone is let go of, and one come is
+/// found out. Answers when to look again, should one come not answer, a
+/// wait on from the `retry` that was due.
+fn look_over(
+    watched: &mut Vec<Watched>,
+    retry: Option<(Instant, Duration)>,
+) -> Option<(Instant, Duration)> {
+    let present = lights(Path::new("/sys"), Path::new("/dev"));
+    watched.retain(|light| present.contains(&light.node));
+    let mut unfound = false;
+    for node in present {
+        if watched.iter().any(|light| light.node == node) {
+            continue;
+        }
+        // One udev hasn't opened yet is tried again when it does.
+        let Ok(mut light) = Light::open(&node) else {
+            continue;
+        };
+        let mut state = State::default();
+        let asking = vec![TEMPERATURE_IS, BRIGHTNESS_IS, POWER_IS];
+        if find_out(&mut light, &mut state, asking).is_ok() {
+            watched.push(Watched::new(node, light, state));
+        } else {
+            unfound = true;
+        }
+    }
+    unfound.then(|| {
+        let wait = next_retry(retry.map(|(_, wait)| wait));
+        (Instant::now() + wait, wait)
+    })
+}
+
 pub(crate) fn watch() -> ExitCode {
     let mut devices = match devices() {
         Ok(devices) => devices,
@@ -69,26 +103,14 @@ pub(crate) fn watch() -> ExitCode {
     let mut watched: Vec<Watched> = Vec::new();
     let mut said: Option<String> = None;
     let mut look = true;
+    // When the lights are looked at again for one not found out, and how
+    // long was waited for the last such look.
+    let mut retry: Option<(Instant, Duration)> = None;
     let mut out = io::stdout().lock();
     let mut buffer = [0u8; 4096];
     loop {
         if look {
-            let present = lights(Path::new("/sys"), Path::new("/dev"));
-            watched.retain(|light| present.contains(&light.node));
-            for node in present {
-                if watched.iter().any(|light| light.node == node) {
-                    continue;
-                }
-                // One udev hasn't opened yet is tried again when it does.
-                let Ok(mut light) = Light::open(&node) else {
-                    continue;
-                };
-                let mut state = State::default();
-                let asking = vec![TEMPERATURE_IS, BRIGHTNESS_IS, POWER_IS];
-                if find_out(&mut light, &mut state, asking).is_ok() {
-                    watched.push(Watched::new(node, light, state));
-                }
-            }
+            retry = look_over(&mut watched, retry);
             look = false;
         }
 
@@ -115,8 +137,13 @@ pub(crate) fn watch() -> ExitCode {
             events: POLLIN,
             revents: 0,
         }));
+        let timeout = until(retry.map(|(at, _)| at));
         // SAFETY: valid pollfds for the length given.
-        if unsafe { poll(waiting.as_mut_ptr(), waiting.len() as u64, -1) } < 0 {
+        let woke = unsafe { poll(waiting.as_mut_ptr(), waiting.len() as u64, timeout) };
+        if retry.is_some_and(|(at, _)| Instant::now() >= at) {
+            look = true;
+        }
+        if woke <= 0 {
             continue;
         }
         if waiting[0].revents & POLLIN != 0 {

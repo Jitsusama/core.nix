@@ -187,6 +187,7 @@ mod tests {
     use super::*;
 
     use std::fs;
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -222,12 +223,12 @@ mod tests {
     }
 
     /// A folder of `name` under `parent`, numbered by `made`, past any in
-    /// the way.
+    /// the way, which only its own user can read or plant in.
     fn made_in(parent: &Path, name: &str, made: &AtomicUsize) -> Scratch {
         loop {
             let number = made.fetch_add(1, Ordering::Relaxed);
             let root = parent.join(format!("litra-{name}-{}-{number}", std::process::id()));
-            match fs::create_dir(&root) {
+            match fs::DirBuilder::new().mode(0o700).create(&root) {
                 Ok(()) => return Scratch(root),
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
                 Err(error) => panic!("can't make {}: {error}", root.display()),
@@ -257,5 +258,19 @@ mod tests {
             left.join("mark").exists() && fs::read_dir(&*first).expect("made").next().is_none(),
             "the folder in the way was taken over, or the new one wasn't empty"
         );
+        let permitted = fs::metadata(&*first).expect("made").permissions().mode() & 0o777;
+        assert_eq!(
+            permitted, 0o700,
+            "the new folder was left open to other users"
+        );
+    }
+
+    #[test]
+    // Named by the folder under the missing one, so a setup failing to make
+    // its own folder can't pass for it.
+    #[should_panic(expected = "missing/litra-under-")]
+    fn a_folder_that_cant_be_made_fails_the_test_rather_than_being_passed_over() {
+        let parent = root("unmade");
+        made_in(&parent.join("missing"), "under", &AtomicUsize::new(0));
     }
 }
