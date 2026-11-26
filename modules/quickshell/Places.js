@@ -218,7 +218,7 @@ function wayBack(one, screen, screens, claimed) {
 function othersAt(left, outputs, lefts, screens) {
     const others = byName();
     for (const name of outputs.concat(lefts)) {
-        if (name !== left && !Object.keys(others).includes(name)) {
+        if (name !== left && !(name in others)) {
             others[name] = screens?.[name] ?? "";
         }
     }
