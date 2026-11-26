@@ -175,22 +175,24 @@ fn clock(at: i64, offset_s: i64) -> String {
     format!("{:02}:{:02}", minutes / 60, minutes % 60)
 }
 
+/// What a session's log named, as a send can carry it: a control
+/// character, which no send's arguments can hold and which would fail the
+/// whole finding with every other pain in it, said as a space.
+fn flat(named: &str) -> String {
+    named.replace(char::is_control, " ")
+}
+
 /// Where a pain was heard, as a link into the mycelium where it can be.
 fn place(pain: &Heard, cells: &BTreeMap<String, Cell>) -> String {
+    let (session, entry) = (flat(&pain.session), flat(&pain.entry));
     match cells.get(&pain.session) {
-        _ if pain.void => format!(
-            "in the void (mycelium:session/{}#{})",
-            pain.session, pain.entry
-        ),
-        Some(cell) if cell.live => format!("mycelium:cell/{}#{}", cell.address, pain.entry),
+        _ if pain.void => format!("in the void (mycelium:session/{session}#{entry})"),
+        Some(cell) if cell.live => format!("mycelium:cell/{}#{entry}", cell.address),
         Some(cell) => format!(
-            "mycelium:cell/{}#{}, a session that has ended",
-            cell.address, pain.entry
+            "mycelium:cell/{}#{entry}, a session that has ended",
+            cell.address
         ),
-        None => format!(
-            "mycelium:session/{}#{}, a session the mycelium doesn't know",
-            pain.session, pain.entry
-        ),
+        None => format!("mycelium:session/{session}#{entry}, a session the mycelium doesn't know"),
     }
 }
 
@@ -256,10 +258,13 @@ pub fn finding(pains: &[&Heard], cells: &BTreeMap<String, Cell>, offset_s: i64) 
             ));
         }
         if !pain.tools.is_empty() {
-            parts.push(format!(" Before it: {}", pain.tools.join(", ")));
+            parts.push(format!(" Before it: {}", flat(&pain.tools.join(", "))));
             if !pain.failed.is_empty() {
-                let failed: Vec<String> =
-                    pain.failed.iter().map(|t| format!("{t} failed")).collect();
+                let failed: Vec<String> = pain
+                    .failed
+                    .iter()
+                    .map(|t| format!("{} failed", flat(t)))
+                    .collect();
                 parts.push(format!(" ({})", failed.join(", ")));
             }
             parts.push(".".into());
@@ -285,7 +290,7 @@ fn line(n: usize, pain: &Heard, to: &str, cells: &BTreeMap<String, Cell>, offset
         pain.kinds.join(", "),
         // A stall is the listener's own account, not his words to quote.
         if super::stalled::is(pain) {
-            pain.words.clone()
+            flat(&pain.words)
         } else {
             quoted(&pain.words)
         }
@@ -507,6 +512,25 @@ mod tests {
         assert!(
             said.find("e1").unwrap_or(usize::MAX) < said.find("e2").unwrap_or(0),
             "the most hit first: {said}"
+        );
+    }
+
+    #[test]
+    fn what_a_log_named_reaches_a_send_with_no_control_character() {
+        let cells = cells(SESSIONS);
+        let mut named = pain("s-gone\0", "e\n1", "why", 1);
+        named.tools = vec!["ba\0sh".into(), "edit\n2. push".into()];
+        named.failed = vec!["ed\u{1b}it".into()];
+        let said = finding(&[&named], &cells, 0);
+        assert!(
+            said.lines().count() == 2 && !said.contains(['\0', '\u{1b}']),
+            "a name from the log carried a control character into the send: {said:?}"
+        );
+        assert!(
+            said.contains("mycelium:session/s-gone #e 1")
+                && said.contains("ba sh, edit 2. push")
+                && said.contains("ed it failed"),
+            "each name was kept, said with spaces: {said:?}"
         );
     }
 
