@@ -14,8 +14,9 @@ use terminal_kit::layout::one_line;
 /// `line` as plain words: a terminal's escape sequences gone whole, as a
 /// coloured or linked complaint writes them; every other control character
 /// and each line or paragraph separator one space, with every space
-/// beside it and however many stand together, so the words either side of
-/// a tab or a return stay apart by one; and the format characters that
+/// beside it (a no-break or an ideographic one too) and however many stand
+/// together, so the words either side of a tab or a return stay apart by
+/// one; and the format characters that
 /// turn, hide or break text gone, as is any character the line's own form
 /// leaves out, so a row reads as it's written.
 pub fn words(line: &str) -> String {
@@ -38,7 +39,7 @@ pub fn words(line: &str) -> String {
             }
             each if each.is_control() || matches!(each, '\u{2028}' | '\u{2029}') => {
                 parted = true;
-                kept.truncate(kept.trim_end_matches(' ').len());
+                kept.truncate(kept.trim_end_matches(char::is_whitespace).len());
                 if !kept.is_empty() {
                     kept.push(' ');
                 }
@@ -46,13 +47,16 @@ pub fn words(line: &str) -> String {
             // Gone here rather than by the line's own form after, so none
             // stands between a control and a space to keep both.
             each if hides(each) || unseen(each) => {}
-            ' ' if parted => {}
+            each if parted && each.is_whitespace() => {}
             each => {
                 parted = false;
                 kept.push(each);
             }
         }
     }
+    // Nothing the loop keeps is a character the line's own form changes,
+    // but the kit's form is the guarantee, so a rule the kit learns later
+    // holds here before this loop learns it too.
     one_line(&kept).trim().to_owned()
 }
 
@@ -168,15 +172,33 @@ mod tests {
                 "a line separator parts words as a tab does",
             ),
             ("a;\t\tb", "a; b", "controls together leave one space"),
-            ("a\t  b", "a b", "spaces after a control leave one"),
-            ("a  \tb", "a b", "so do spaces before one"),
+            ("a\t  b", "a b", "spaces after a control fold into its one"),
+            ("a  \tb", "a b", "spaces before a control fold into its one"),
+            (
+                "a\t\u{a0}\u{3000}b",
+                "a b",
+                "a no-break or an ideographic space after a control folds into its one",
+            ),
+            (
+                "a\u{3000}\u{a0}\tb",
+                "a b",
+                "a no-break or an ideographic space before a control folds into its one",
+            ),
             (
                 "a\t\u{1b}[31m b",
                 "a b",
-                "so does a space a colour stands before",
+                "a space after a colour after a control folds into its one",
             ),
-            ("a\t\u{3164} b", "a b", "or a character the line drops"),
-            ("a \u{3164}\tb", "a b", "whichever side it stands"),
+            (
+                "a\t\u{3164} b",
+                "a b",
+                "a space after a character the line drops folds into a control's one",
+            ),
+            (
+                "a \u{3164}\tb",
+                "a b",
+                "a space before a character the line drops folds into a control's one",
+            ),
             (
                 "a\tb  c",
                 "a b  c",
@@ -186,6 +208,11 @@ mod tests {
                 "\u{1b}(Bplain",
                 "plain",
                 "a character set chosen goes whole, through its intermediate",
+            ),
+            (
+                "\u{1b}(0plain",
+                "plain",
+                "a character set whose final is a digit goes whole too",
             ),
             ("\u{1b}cafter", "after", "a reset takes its one character"),
             (
