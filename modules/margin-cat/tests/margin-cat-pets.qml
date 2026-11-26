@@ -56,17 +56,22 @@ QtObject {
     // first frame synced after it sat, never one a walk began, and never
     // by asking for frame after frame (2026-11-24, #6382's rounds).
     function rests(expect) {
-        // It sat at 1000 ms with 40 frames begun.
+        // It sat at 1000 ms with 40 frames begun. A frame's times are its
+        // sync's, above the 0 timesOf gives one rendered without a sync,
+        // except in the case that holds that 0 and the three fed {}, a
+        // frame whose times were overwritten or never kept.
         const rest = (frame, synchronizing, asked) =>
             MarginCat.restFrom(frame, { synchronizing, asked }, 40, 1000);
         expect("a frame synced as it sat or after begins it, ask or none",
             [rest(41, 1000, true), rest(42, 1016.5, false)], ["begins", "begins"]);
         expect("one that took the ask but synced before it sat asks again, the 40th too",
-            [rest(41, 999.9, true), rest(40, 0, true)], ["asks", "asks"]);
+            [rest(41, 999.9, true), rest(40, 998, true)], ["asks", "asks"]);
         expect("a walk's frame synced before it sat is only heard, the 40th too",
-            [rest(40, 990, false), rest(39, 0, false)], ["waits", "waits"]);
+            [rest(40, 990, false), rest(39, 980, false)], ["waits", "waits"]);
         expect("one begun before the 40th that took an earlier sitting's ask is only heard",
-            [rest(39, 990, true), rest(39, 0, true)], ["waits", "waits"]);
+            [rest(39, 990, true), rest(38, 970, true)], ["waits", "waits"]);
+        expect("a frame rendered without a sync never begins it, as one synced before it sat",
+            [rest(41, 0, true), rest(41, 0, false)], ["asks", "waits"]);
         expect("a walk's frame begun before the 40th, its times overwritten, is only heard",
             MarginCat.restFrom(39, {}, 40, 1000), "waits");
         expect("from the 40th on, one nothing was kept of begins it rather than asking on",
