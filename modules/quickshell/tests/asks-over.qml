@@ -288,10 +288,11 @@ ShellRoot {
             entryTold, reopened, reopenedThenEscaped, reopenedThenMoved, reopenedAndShown, left,
             moved, changed, stepping, stepped, steppedBack, movedBack, drawn, outside, refused,
             returnedInto, returnedIntoShown, steeredOut, walkedInto, walkedIntoShown,
-            walkedThenEscaped, walkedThenMoved, walkedThenMovedShown, toldInPlace, typing,
-            typedAfter, typedThenEscaped, movedAgain, typedBeforeItsFrame, typedThenShown,
-            movedOnceMore, typedWithReturn, typedWithReturnShown, movedAlone, movedAloneShown,
-            movedWithReturn, movedWithReturnShown, movedThenOpened, movedThenOpenedShown,
+            walkedThenEscaped, walkedThenMoved, walkedThenMovedShown, toldInPlace,
+            escapedInPlace, movedInPlace, typing, typedAfter, typedThenEscaped, movedAgain,
+            typedBeforeItsFrame, typedThenShown, movedOnceMore, typedWithReturn,
+            typedWithReturnShown, movedAlone, movedAloneShown, movedThenReturned,
+            movedThenReturnedAlone, movedThenReturnedShown, movedWithReturn, movedWithReturnShown, movedThenOpened, movedThenOpenedShown,
             overRowsThenTold, toldOverRows, toldOverRowsShown, landed, landedThenMoved,
             landedThenShown, commanded, commandedThenRun, commandedThenMoved,
             commandedThenShown, timedBeforeSharing, timedMove, sharing, sharedYes,
@@ -547,6 +548,15 @@ ShellRoot {
         stage.selected = row();
         stage.present(600);
         same("a line an ask from outside selects is no move of his", shownNow(), undefined);
+    }
+
+    // His Escape since that ask, so the move after it arms, and the letter after that is
+    // what keeps the line untimed, never a move that couldn't arm.
+    function escapedInPlace() {
+        stage.toRows();
+    }
+
+    function movedInPlace() {
         stage.press("k", true);
     }
 
@@ -606,6 +616,23 @@ ShellRoot {
         stage.present(600);
         same("a move read alone after his Escape times the line", since(shownNow(), 600),
             true);
+    }
+
+    // A move read alone, then a Return on a later turn, which leaves the time the move
+    // started: the other half of the case below, which differs only in the turn the
+    // Return is read in.
+    function movedThenReturned() {
+        stage.press("j", true);
+    }
+
+    function movedThenReturnedAlone() {
+        stage.present(600);
+        stage.press("Return", false);
+    }
+
+    function movedThenReturnedShown() {
+        same("a Return read after the move it follows keeps the line's time",
+            since(shownNow(), 600), true);
     }
 
     // A move and a Return taken in one turn, as a busy shell takes them,

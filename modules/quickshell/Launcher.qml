@@ -10156,25 +10156,31 @@ Scope {
             // then reads no keys, so a wait on it fails rather than passes.
             asksUnread: root.sourcesNamed.asks?.overPasswords
                 ? root.sourcesNamed.asks.taken.length : null,
-            // Whether a frame has drawn the armed ask's line since it was
-            // armed, so its time runs (secret-asks/Asks.qml's noteSelected):
-            // a yes before that frame is refused as unread, which a test
-            // waits out rather than racing. Null where asksUnread is.
+            // Whether a frame has drawn the armed ask's line, as it's
+            // selected now, since it was armed, so its time runs
+            // (secret-asks/Asks.qml's noteSelected): a yes before that frame
+            // is refused as unread, which a test waits out rather than
+            // racing. A frame of the line before the ask was served anew
+            // doesn't count, since a yes counts only a frame of the digest
+            // it answers (Shown.js's stamped). Null where asksUnread is.
             asksNoted: root.sourcesNamed.asks?.overPasswords
                 ? root.sourcesNamed.asks.armed !== ""
-                    && root.sourcesNamed.asks.seen[root.sourcesNamed.asks.armed] !== undefined
+                    && root.sourcesNamed.asks.seen[root.sourcesNamed.asks.armed]?.digest
+                        === row?.digest
                 : null,
             // Whether a move of his has armed an ask's line at all, set as
             // Asks reads the key and owing nothing to a frame, so a test can
             // say nothing was armed however late the screen draws. Null
-            // where asksUnread is. The three are read over the launcher's
-            // ungated ipc, by any process of his, and that's accepted: they
-            // say only when his own move timed a line, and an ask from
-            // outside forgets that arming (Asks.qml's forget) while a yes
-            // is timed only by a frame of the very row it answers
-            // (Shown.js's stamped), so knowing the moment releases nothing.
-            // It's one bit the showing didn't say before: its own armed is
-            // the launcher's first Return, not this.
+            // where asksUnread is. These four, taken, asksUnread, asksNoted
+            // and asksArmed, are new to the showing, and are read over the
+            // launcher's ungated ipc by any process of his. That's accepted:
+            // taken says no more than keysPresented already does, and the
+            // three asks fields say only when his own move timed a line and
+            // when a frame drew it. An ask from outside forgets that arming
+            // (Asks.qml's forget), and a yes is timed only by a frame of the
+            // very row it answers (Shown.js's stamped), so knowing the
+            // moment releases nothing. The showing's own armed is the
+            // launcher's first Return, not asksArmed.
             asksArmed: root.sourcesNamed.asks?.overPasswords
                 ? root.sourcesNamed.asks.armed !== "" : null,
             // Super+S's talk line (TalkLine.qml).

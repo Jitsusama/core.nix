@@ -135,11 +135,13 @@ def answered(desktop: Desktop, ask: str, since: str) -> dict[str, object]:
     path = f"{ASKS}/{ask}.answer.json"
     # The driver's wait is paced to the host already (vm_helpers.pace_the_driver), so a release
     # slow on a busy builder isn't read as a yes that was lost. A yes the shell refused is never
-    # answered, so its refusal (Launcher.qml's becameNot) ends the wait too, rather than the
-    # whole paced wait passing first.
+    # answered, so its refusal (Launcher.qml's takenBack, "not become <key>: <why>") ends the
+    # wait too, rather than the whole paced wait passing first. Only a refusal with its why
+    # ends it: the bare "not become <key>" says the answer is late, not refused, and a slow
+    # release must still be waited out.
     refused = (
         f"journalctl --user -u quickshell --no-pager -o cat --after-cursor={shlex.quote(since)}"
-        f" | grep -qE {shlex.quote(f'not become ask:{re.escape(ask)}(: |$)')}"
+        f" | grep -qF {shlex.quote(f'not become ask:{ask}: ')}"
     )
     try:
         desktop.machine.wait_until_succeeds(
@@ -147,6 +149,13 @@ def answered(desktop: Desktop, ask: str, since: str) -> dict[str, object]:
         )
         desktop.as_account(f"test -e {path}")
     except AssertionError as unanswered:
+        # The wait ended early on a refusal, or ran out: said apart, so a refusal in about a
+        # second isn't read as a release too slow for the wait.
+        how = (
+            "was refused by the shell"
+            if desktop.machine.execute(desktop.in_session(refused))[0] == 0
+            else f"wasn't answered within {RELEASING.total_seconds():.0f} s, paced to the host"
+        )
         # A diagnosis never raises, so a shell too hung to answer leaves this failure standing
         # rather than a timeout of its own. The launcher's showings, each a whole state naming
         # the ask, would bury the refusal, so they're left out; its other reports stay, since
@@ -159,10 +168,7 @@ def answered(desktop: Desktop, ask: str, since: str) -> dict[str, object]:
             "printf '%s\\n' \"$said\" | grep -avF 'report[showing '"
             f" | grep -aE {shlex.quote(f'ask:{ask}|Error|WARN|warn')} || true"
         )
-        message = (
-            f"the ask wasn't answered within {RELEASING.total_seconds():.0f} s, paced to the host;"
-            f" the shell said of it: {said.strip() or 'nothing'}"
-        )
+        message = f"the ask {how}; the shell said of it: {said.strip() or 'nothing'}"
         raise AssertionError(message) from unanswered
     answer: dict[str, object] = json.loads(desktop.as_account(f"cat {path}"))
     return answer
