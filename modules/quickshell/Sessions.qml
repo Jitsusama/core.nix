@@ -1671,7 +1671,8 @@ Singleton {
         const inUse = Niri.workspace()?.output ?? null;
         // Only Reopen Them All tells each to carry on, which marks its walk.
         const walk = told === root.carryOn;
-        const places = Places.placed(placeable, root.screensThere(), inUse,
+        const connectedNow = root.screensThere();
+        const places = Places.placed(placeable, connectedNow, inUse,
             here.map(one => momentOf(one.id)).map(moment => Array.isArray(moment) ? moment : []));
         // Its windows go back by the screen in use as its own sessions are
         // placed, and to the twin connectors they're given, not as a
@@ -1679,7 +1680,13 @@ Singleton {
         // took where the sessions' say nothing.
         if (puttingBack !== null && walk && !("inUse" in puttingBack)) {
             puttingBack.inUse = inUse;
-            puttingBack.given = Reopening.givenBy(placeable, places, puttingBack.given);
+            puttingBack.given = Reopening.givenBy(placeable, places, puttingBack.given,
+                connectedNow);
+            // So split twins can be read from the journal: with no screen
+            // said, no session tells its windows which twin is its own.
+            if (Object.keys(connectedNow).length === 0)
+                console.info("sessions: no screen said as Reopen Them All placed its "
+                    + "sessions, so they give their windows no connector");
         }
         const queue = Reopening.leadersFirst(here.map((one, at) => ({ one, at: places[at],
             kept: placeable[at], unplaced: keptPlaces[at]?.unplaced === true, gone, told,
@@ -2492,9 +2499,11 @@ Singleton {
         const there = root.screensThere();
         const inUse = Reopening.inUseFor(going.inUse, Niri.workspace()?.output ?? null, there);
         // Each window put back gives its twins' connectors, after its
-        // sessions', so twin monitors on new connectors take one each.
+        // sessions', so twin monitors on new connectors take one each:
+        // only one connected now showing its screen (givenOn), not last
+        // boot's, kept while no screen is said.
         const kept = Places.whereKept(at, going.kept, there, { given: going.given, inUse });
-        going.given.push({ at, output: kept.output });
+        going.given.push({ at, output: Reopening.givenOn(at.screen, kept, there) });
         const output = found.output ?? kept.output ?? inUse;
         const where = found.make ? Object.assign({}, found, { output }) : found;
         const workspace = Niri.workspace(window.workspace_id);
