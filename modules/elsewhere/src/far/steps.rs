@@ -522,6 +522,19 @@ fi
     )
 }
 
+/// The paths `kind` brings back, quoted for the shell, each once, so a
+/// path a kind names twice is never lost twice.
+fn each_once(kind: &Kind) -> String {
+    let mut paths = Vec::new();
+    for path in &kind.brings_back {
+        let path = quoted(path.trim_matches('/'));
+        if !paths.contains(&path) {
+            paths.push(path);
+        }
+    }
+    paths.join(" ")
+}
+
 /// The far line's step leaving what `kind` brings back in the handover.
 /// What comes back crosses under its number, since a kind may bring back
 /// what lies under a folder a share keeps home. A hidden file is left, as
@@ -543,15 +556,7 @@ pub(super) fn bringing(kind: &Kind) -> String {
             freed()
         );
     }
-    // Each once, so a path a kind names twice is never lost twice.
-    let mut paths = Vec::new();
-    for path in &kind.brings_back {
-        let path = quoted(path.trim_matches('/'));
-        if !paths.contains(&path) {
-            paths.push(path);
-        }
-    }
-    let paths = paths.join(" ");
+    let paths = each_once(kind);
     format!(
         // A subshell of its own, which every write that fails ends, since
         // a shell that isn't interactive may itself exit when a redirection
