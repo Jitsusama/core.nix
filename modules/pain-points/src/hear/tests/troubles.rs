@@ -226,6 +226,42 @@ fn an_earlier_run_dated_ahead_of_this_one_holds_no_outage_back() {
 }
 
 #[test]
+fn the_journal_says_each_held_send_by_why_and_an_unstarted_mycelium_once() {
+    use std::io::ErrorKind;
+    use std::time::{Duration, Instant};
+    let mut node = Node::new(
+        "mycelium".into(),
+        None,
+        Instant::now(),
+        Duration::from_secs(1),
+    );
+    node.held = 2;
+    node.fromless = 3;
+    node.silent = Some(Silence::Unstarted(ErrorKind::NotFound));
+    let mid_run = crate::hear::waits(&node, false);
+    let unstarted = format!(
+        "; the mycelium couldn't be started: {}",
+        ErrorKind::NotFound
+    );
+    for said in [
+        "; 2 sends wait for the next run, as the mycelium stopped answering",
+        "; 3 sends wait for the next run, as routes.json named no one to send as when it began",
+        unstarted.as_str(),
+    ] {
+        assert!(
+            mid_run.contains(said),
+            "the journal didn't say {said:?} of the run's held sends: {mid_run:?}"
+        );
+    }
+    let at_its_start = crate::hear::waits(&node, true);
+    assert!(
+        !at_its_start.contains("couldn't be started") && at_its_start.contains("3 sends wait"),
+        "a mycelium unstarted as the run began, a trouble already, was said twice: \
+         {at_its_start:?}"
+    );
+}
+
+#[test]
 fn routes_that_cant_be_read_or_name_no_sender_are_troubles() {
     for (name, routes) in [
         ("routes-dir", None),
