@@ -263,7 +263,8 @@
         "actPlaced": "once one of those can take it, say it again",
         "actNode": "once the node is running again, say it again",
         "busy": "still starting the last one; once that's done, say it again, or follow a page's link again",
-        "again": "started at {at} with these words; Go To in Agents opens it, or change them to start more",
+        "again": "started at {at} with these words; Go To in Agents opens it, or Return again starts it once more",
+        "againUnanswered": "asked at {at} with these words, and nothing answered, so it may have started; look in Agents, or Return again asks once more",
         "outside": "new work starts only from your own Return in the launcher",
         "offered": "a page offered this work; read it to its end, then Return starts it",
         "offeredFrom": "a page offered this work, saying it's from {cell}; read it to its end, then Return starts it"

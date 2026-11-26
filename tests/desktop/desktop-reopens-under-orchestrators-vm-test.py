@@ -1149,11 +1149,17 @@ def test_new_work_is_pictured_from_its_folder_to_its_window(  # noqa: PLR0915
         if desktop.showing()["typed"] != NEW_WORK_SAID:
             machine.send_chars(NEW_WORK_SAID)
             desktop.launcher_until(lambda shown: shown["typed"] == NEW_WORK_SAID)
+        # The stand-in writes pi-opened afresh each start, so it goes first and any start
+        # from here makes it again.
+        desktop.as_account(f"rm -f {opened}")
         machine.send_key("ret")
         desktop.launcher_until(lambda shown: shown["start"]["says"].startswith("started at "))
         desktop.shoot("new-work-8-same")
-        starts = desktop.as_account(f"grep -cx '{folder} ' {opened}").strip()
-        assert starts == "1", f"the same words started the work again: {starts} starts"
+        # Room for a second start, asked at this Return, to reach the stand-in pi, which
+        # writes pi-opened the moment it runs; nothing to wait for comes if none was asked.
+        machine.sleep(10)
+        again = desktop.as_account(f"cat {opened} 2>/dev/null; true").strip()
+        assert again == "", f"the same words started the work again: {again!r}"
     finally:
         desktop.launcher_left_closed()
         for window in desktop.windows():
