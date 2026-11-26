@@ -646,12 +646,18 @@ impl Odb {
         });
     }
 
-    /// The stamps that move once `oid` may read otherwise: the packs every
-    /// store watches, and the folder each store's loose copy of it would
-    /// lie in, which git renames a new object into.
-    pub fn stamps_of(&self, oid: &Oid) -> Stamps {
+    /// The stamps of the packs every store watches, which move once one is
+    /// added or taken away.
+    pub fn pack_stamps(&self) -> Stamps {
+        self.stamps.clone()
+    }
+
+    /// The stamps that move once `oid` may be written loose: the folder each
+    /// store's loose copy of it would lie in, which git renames a new
+    /// object into. With `pack_stamps`, they move once it may be found.
+    pub fn folders_of(&self, oid: &Oid) -> Stamps {
         let hex = oid.hex();
-        let mut stamps = self.stamps.clone();
+        let mut stamps = Stamps::new();
         for store in &self.stores {
             let folder = store.dir.join(&hex[..2]);
             let stamp = Stamp::of(&folder);

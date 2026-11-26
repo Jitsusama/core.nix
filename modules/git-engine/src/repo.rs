@@ -184,6 +184,64 @@ fn expand_home(path: &str, home: Option<&Path>) -> PathBuf {
 
 /// Maps a ref through a remote's fetch refspecs, as git finds a branch's
 /// upstream: `refs/heads/main` through `refs/heads/*:refs/remotes/origin/*`.
+/// The tags of a files repository, packed and loose, by name, filling
+/// `peeled` with what each packed annotated tag peels to and `stamps` with
+/// what they were read from.
+fn tag_files(
+    shared: &Path,
+    stamps: &mut Stamps,
+    peeled: &mut HashMap<String, Oid>,
+) -> Vec<(String, Oid)> {
+    let mut found = std::collections::BTreeMap::new();
+    let packed = shared.join("packed-refs");
+    stamps.push((packed.clone(), Stamp::of(&packed)));
+    if let Ok(text) = std::fs::read_to_string(&packed) {
+        let mut last: Option<String> = None;
+        for line in text.lines() {
+            // A `^` line gives the commit the tag above it peels to.
+            if let Some(hex) = line.strip_prefix('^')
+                && let Some(oid) = Oid::from_hex(hex.as_bytes())
+                && let Some(tag) = last.take()
+            {
+                peeled.insert(tag, oid);
+            } else if let Some((hex, name)) = line.split_once(' ')
+                && let Some(tag) = name.strip_prefix("refs/tags/")
+                && let Some(oid) = Oid::from_hex(hex.as_bytes())
+            {
+                found.insert(tag.to_string(), oid);
+                last = Some(tag.to_string());
+            } else {
+                last = None;
+            }
+        }
+    }
+    let mut stack = vec![shared.join("refs/tags")];
+    while let Some(dir) = stack.pop() {
+        // A tag is written beside the others and renamed into place, so its
+        // folder's stamp moves with every tag made or moved.
+        stamps.push((dir.clone(), Stamp::of(&dir)));
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                stack.push(path);
+            } else if let Ok(rel) = path.strip_prefix(shared.join("refs/tags"))
+                && let Ok(text) = std::fs::read(&path)
+                && let Some(oid) = Oid::from_hex(text.trim_ascii())
+            {
+                // A loose tag is newer than its packed line, and so is what
+                // it peels to.
+                let name = rel.to_string_lossy().into_owned();
+                peeled.remove(&name);
+                found.insert(name, oid);
+            }
+        }
+    }
+    found.into_iter().collect()
+}
+
 fn map_refspec(refspec: &str, name: &str) -> Option<String> {
     let refspec = refspec.strip_prefix('+').unwrap_or(refspec);
     let (src, dst) = refspec.split_once(':')?;
@@ -429,58 +487,12 @@ impl Repo {
             stamps.clone_from(&shared.stamps);
         }
         if let Refs::Files { shared, .. } = &self.refs {
-            let mut found = std::collections::BTreeMap::new();
-            let packed = shared.join("packed-refs");
-            stamps.push((packed.clone(), Stamp::of(&packed)));
-            if let Ok(text) = std::fs::read_to_string(&packed) {
-                let mut last: Option<String> = None;
-                for line in text.lines() {
-                    // A `^` line gives the commit the tag above it peels to.
-                    if let Some(hex) = line.strip_prefix('^')
-                        && let Some(oid) = Oid::from_hex(hex.as_bytes())
-                        && let Some(tag) = last.take()
-                    {
-                        peeled.insert(tag, oid);
-                    } else if let Some((hex, name)) = line.split_once(' ')
-                        && let Some(tag) = name.strip_prefix("refs/tags/")
-                        && let Some(oid) = Oid::from_hex(hex.as_bytes())
-                    {
-                        found.insert(tag.to_string(), oid);
-                        last = Some(tag.to_string());
-                    } else {
-                        last = None;
-                    }
-                }
-            }
-            let mut stack = vec![shared.join("refs/tags")];
-            while let Some(dir) = stack.pop() {
-                // A tag is written beside the others and renamed into place,
-                // so its folder's stamp moves with every tag made or moved.
-                stamps.push((dir.clone(), Stamp::of(&dir)));
-                let Ok(entries) = std::fs::read_dir(&dir) else {
-                    continue;
-                };
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if entry.file_type().is_ok_and(|t| t.is_dir()) {
-                        stack.push(path);
-                    } else if let Ok(rel) = path.strip_prefix(shared.join("refs/tags"))
-                        && let Ok(text) = std::fs::read(&path)
-                        && let Some(oid) = Oid::from_hex(text.trim_ascii())
-                    {
-                        // A loose tag is newer than its packed line, and
-                        // so is what it peels to.
-                        let name = rel.to_string_lossy().into_owned();
-                        peeled.remove(&name);
-                        found.insert(name, oid);
-                    }
-                }
-            }
-            names = found.into_iter().collect();
+            names = tag_files(shared, &mut stamps, &mut peeled);
         }
         names.sort();
         let mut tags = Vec::with_capacity(names.len());
         let mut whole = true;
+        let mut missing = false;
         for (name, mut oid) in names {
             if let Some(target) = peeled.get(&name) {
                 tags.push((name, *target));
@@ -490,18 +502,19 @@ impl Repo {
             for _ in 0..8 {
                 let object = match self.odb.read(&oid) {
                     Ok(Some(object)) => object,
-                    // Refused memory, its copies are marked until there's
-                    // room, so asking again each answer costs their marks'
-                    // lookup, not an inflate, and peels it once there is.
-                    Err(error) if error.kind() == io::ErrorKind::OutOfMemory => {
-                        whole = false;
+                    // Missing, it stays unpeeled until a store it could
+                    // come from moves, rather than looked for every answer.
+                    Ok(None) => {
+                        stamps.extend(self.odb.folders_of(&oid));
+                        missing = true;
                         break;
                     }
-                    // Missing, or not read, it stays unpeeled until a store
-                    // it could come from moves, rather than read again on
-                    // every answer.
-                    Ok(None) | Err(_) => {
-                        stamps.extend(self.odb.stamps_of(&oid));
+                    // Not read, it's asked again next answer, as the store
+                    // marks it: a packed copy marked bad answers from its
+                    // mark, and an I/O error, a base's fault or a loose
+                    // copy is read afresh, which may find it written since.
+                    Err(_) => {
+                        whole = false;
                         break;
                     }
                 };
@@ -516,6 +529,9 @@ impl Repo {
                 oid = target;
             }
             tags.push((name, oid));
+        }
+        if missing {
+            stamps.extend(self.odb.pack_stamps());
         }
         (whole.then_some(stamps), tags)
     }

@@ -571,29 +571,40 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    #[test]
-    fn a_tag_whose_object_wouldnt_read_settles_till_its_object_is_written() {
-        let dir = repository("unpeeled");
-        let (commit, tag) = ([9; 20], [10; 20]);
+    /// A repository whose HEAD is `commit` and whose one tag, v1, names the
+    /// annotated tag `tag`, with the folder its loose copy would lie in, and
+    /// that tag's object as git would write it loose, zlib and all.
+    fn tagged(name: &str, commit: [u8; 20], tag: [u8; 20]) -> (PathBuf, PathBuf, Vec<u8>) {
+        let dir = repository(name);
+        let hex = |oid: [u8; 20]| hash::Oid(oid).hex();
         std::fs::write(
             dir.join(".git/refs/heads/main"),
-            format!("{}\n", hash::Oid(commit).hex()),
+            format!("{}\n", hex(commit)),
         )
         .unwrap();
         std::fs::create_dir_all(dir.join(".git/refs/tags")).unwrap();
-        std::fs::write(
-            dir.join(".git/refs/tags/v1"),
-            format!("{}\n", hash::Oid(tag).hex()),
-        )
-        .unwrap();
-        // The annotated tag's object, loose and first not zlib at all; then
-        // rewritten in place, which moves no stamp, so the tags settled on
-        // the first answer aren't read again; then written as git writes
-        // one, renamed into its folder, which moves the folder's stamp.
-        let hex = hash::Oid(tag).hex();
-        let loose = dir.join(".git/objects").join(&hex[..2]);
+        std::fs::write(dir.join(".git/refs/tags/v1"), format!("{}\n", hex(tag))).unwrap();
+        let loose = dir.join(".git/objects").join(&hex(tag)[..2]);
         std::fs::create_dir_all(&loose).unwrap();
-        std::fs::write(loose.join(&hex[2..]), b"not zlib").unwrap();
+        let object = format!("object {}\ntype commit\ntag v1\n\nv1\n", hex(commit));
+        let raw = [
+            format!("tag {}\0", object.len()).as_bytes(),
+            object.as_bytes(),
+        ]
+        .concat();
+        let zlib = miniz_oxide::deflate::compress_to_vec_zlib(&raw, 1);
+        (dir, loose, zlib)
+    }
+
+    #[test]
+    fn a_tag_whose_object_wouldnt_read_is_read_again_next_answer() {
+        let (commit, tag) = ([9; 20], [10; 20]);
+        let (dir, loose, zlib) = tagged("unpeeled", commit, tag);
+        // The annotated tag's object, loose and first not zlib at all; then
+        // rewritten in place, which moves no stamp, so only a tag not
+        // settled on the first answer is peeled on the next.
+        let file = loose.join(&hash::Oid(tag).hex()[2..]);
+        std::fs::write(&file, b"not zlib").unwrap();
         crate::stamp::tests::ahead(3);
         let mut engine = Engine::default();
         let mut tag_said = || {
@@ -602,25 +613,49 @@ mod tests {
                 .map(|answer| answer.tag)
         };
         let unread = tag_said();
-        let object = format!(
-            "object {}\ntype commit\ntag v1\n\nv1\n",
-            hash::Oid(commit).hex()
-        );
-        let raw = [
-            format!("tag {}\0", object.len()).as_bytes(),
-            object.as_bytes(),
-        ]
-        .concat();
-        let zlib = miniz_oxide::deflate::compress_to_vec_zlib(&raw, 1);
-        std::fs::write(loose.join(&hex[2..]), &zlib).unwrap();
-        let settled = tag_said();
-        std::fs::write(loose.join("written"), &zlib).unwrap();
-        std::fs::rename(loose.join("written"), loose.join(&hex[2..])).unwrap();
+        std::fs::write(&file, &zlib).unwrap();
         assert_eq!(
-            (unread, settled, tag_said()),
+            (unread, tag_said()),
+            (Some(String::new()), Some("v1".into())),
+            "a tag whose object wouldn't read was named, or settled unpeeled though \
+             the store keeps no mark of a loose copy"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_tag_whose_object_is_missing_settles_till_its_object_is_written() {
+        let (commit, tag) = ([11; 20], [12; 20]);
+        let (dir, loose, zlib) = tagged("missing", commit, tag);
+        crate::stamp::tests::ahead(3);
+        let mut engine = Engine::default();
+        let mut tag_said = || {
+            engine
+                .ask(&dir, &options(&[]), false)
+                .map(|answer| answer.tag)
+        };
+        let missing = tag_said();
+        // v1 rewritten in place to name the commit itself, which moves no
+        // stamp the tags are kept by, so tags settled aren't read again.
+        std::fs::write(
+            dir.join(".git/refs/tags/v1"),
+            format!("{}\n", hash::Oid(commit).hex()),
+        )
+        .unwrap();
+        let settled = tag_said();
+        // The object written as git writes one, renamed into its folder,
+        // which moves the folder's stamp.
+        std::fs::write(loose.join("written"), &zlib).unwrap();
+        std::fs::rename(
+            loose.join("written"),
+            loose.join(&hash::Oid(tag).hex()[2..]),
+        )
+        .unwrap();
+        assert_eq!(
+            (missing, settled, tag_said()),
             (Some(String::new()), Some(String::new()), Some("v1".into())),
-            "a tag whose object wouldn't read was named, was read again with nothing \
-             moved, or stayed unpeeled once its object was written"
+            "a tag whose object is missing was named, was read again with nothing \
+             moved, or stayed unread once its object was written"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
