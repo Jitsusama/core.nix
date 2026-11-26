@@ -98,6 +98,9 @@ pub struct Ears {
     pub at: i64,
     /// His offset from UTC, in seconds, to say his own times.
     pub offset_s: i64,
+    /// Why the mycelium named no sessions, when it couldn't be started to
+    /// ask: its error, said at once rather than read as a node silent.
+    pub unnamed: Option<String>,
 }
 
 /// How far into a run its asks of git may go, half a minute after its
@@ -199,6 +202,19 @@ pub fn listen(
     let mission = take("--ledgers").map_or_else(|| state.join("mission"), PathBuf::from);
     let mycelium = take("--mycelium").map_or_else(|| "mycelium".into(), PathBuf::from);
     let date = take("--date").map_or_else(|| "date".into(), PathBuf::from);
+    // A node that never answers would hold every later run behind this
+    // one, so an ask that hangs is stopped, and the run's sends after it
+    // wait for the next run, their tries kept; one that never names its
+    // sessions leaves the run with no cells, said as a trouble, at once
+    // when the mycelium couldn't be started.
+    let from = Routes::read(&own).from;
+    let mut node = Node::new(mycelium, from, begun + SENDS_END, SEND_AT_MOST);
+    let cells = node.sessions();
+    let unnamed = if let Some(Silence::Unstarted(kind)) = node.silent {
+        Some(kind.to_string())
+    } else {
+        None
+    };
     let ears = Ears {
         sessions: take("--sessions").map_or_else(|| home.join(".pi/agent/sessions"), PathBuf::from),
         state: own,
@@ -222,14 +238,8 @@ pub fn listen(
             .as_deref()
             .and_then(crate::offset_of)
             .unwrap_or(0),
+        unnamed,
     };
-    // A node that never answers would hold every later run behind this
-    // one, so an ask that hangs is stopped, and the run's sends after it
-    // wait for the next run, their tries kept; one that never names its
-    // sessions leaves the run with no cells, said as a trouble.
-    let from = Routes::read(&ears.state).from;
-    let mut node = Node::new(mycelium, from, begun + SENDS_END, SEND_AT_MOST);
-    let cells = node.sessions();
     let hour = hear_putting(&ears, &cells, &mut |to, text, put| node.send(to, text, put))?;
     drop(lock);
     // Sends held by a node that stopped answering are no trouble of their
@@ -240,13 +250,15 @@ pub fn listen(
     // couldn't be started, are among the hour's troubles, in hour.json
     // too, so cadence's card says why; the journal names the error.
     Ok((
-        [said(&hour), waits(&node)].concat(),
+        [said(&hour), waits(&node, ears.unnamed.is_some())].concat(),
         !hour.troubles.is_empty(),
     ))
 }
 
-/// What the journal says of the sends `node` held, each by why.
-fn waits(node: &Node) -> String {
+/// What the journal says of the sends `node` held, each by why; a
+/// mycelium that couldn't be started is said here only when it was found
+/// so mid-run, since one `unnamed` as the run began is among its troubles.
+fn waits(node: &Node, unnamed: bool) -> String {
     use std::fmt::Write;
     let mut said = String::new();
     let (held, fromless) = (node.held, node.fromless);
@@ -256,7 +268,7 @@ fn waits(node: &Node) -> String {
             "; {held} sends wait for the next run, as the mycelium stopped answering"
         );
     }
-    if let Some(Silence::Unstarted(kind)) = node.silent {
+    if let Some(Silence::Unstarted(kind)) = node.silent.filter(|_| !unnamed) {
         let _ = write!(said, "; the mycelium couldn't be started: {kind}");
     }
     if fromless > 0 {
@@ -438,7 +450,10 @@ pub fn hear_putting(
     let mut hour = hour_of(&kept, ears.at);
     hour.unclosed = stood.unclosed;
     let (waiting, given_up) = unsent(&kept, ears.at);
-    hour.cellless_since = cellless_since(&ears.state, ears.at, cells.is_empty() && waiting);
+    // A node silent is counted only when nothing says why it named no
+    // sessions; one that couldn't be started is said below by its error.
+    let silent = cells.is_empty() && waiting && ears.unnamed.is_none();
+    hour.cellless_since = cellless_since(&ears.state, ears.at, silent);
     hour.troubles = troubles(
         &ears.state,
         &routes,
@@ -446,6 +461,16 @@ pub fn hear_putting(
         hour.cellless_since
             .is_some_and(|since| ears.at - since >= CELLLESS_AT_MOST_MS),
     );
+    // A mycelium that couldn't be started names no sessions for a reason
+    // known now, so it's a trouble at once, by its error, rather than a
+    // node silent a quarter hour, and whether or not pains wait, as a
+    // listener that can't reach a cell is broken either way; one nobody
+    // set up to send is no listener.
+    if let Some(why) = ears.unnamed.as_ref().filter(|_| routes.sends()) {
+        hour.troubles.push(format!(
+            "the mycelium couldn't be started to name its sessions, so none were routed: {why}"
+        ));
+    }
     hour.troubles.extend(ledgered);
     crate::write_whole(
         &ears.state.join("hour.json"),
