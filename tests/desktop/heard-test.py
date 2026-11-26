@@ -382,7 +382,7 @@ def test_a_state_passing_at_first_read_hears_nothing() -> None:
 ANSWERED = "the launcher's showing call answered"
 
 
-# What threw, as the launcher says it (launcher/Held.js's thrown): its kind and where.
+# What threw, as the launcher says it (launcher/Thrown.js's shown): its kind and where.
 THREW = "TypeError: thrown at showing@file:///Launcher.qml:10021"
 
 

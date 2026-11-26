@@ -333,6 +333,7 @@ in
     pkgs.runCommandLocal "the-launcher-remakes-what-it-holds" { } ''
       cp ${../tests/held.qml} held.qml
       cp ${../launcher/Held.js} Held.js
+      cp ${../launcher/Thrown.js} Thrown.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}

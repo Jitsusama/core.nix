@@ -6223,7 +6223,7 @@ Scope {
             } catch (error) {
                 threw = true;
                 console.warn(`launcher: refreshing ${source.settings.name} failed: `
-                    + Held.thrown(error));
+                    + Thrown.shown(error));
             }
             // Asked first, so its name isn't built for every source with
             // nothing listening, as the one fixed name below needn't be.

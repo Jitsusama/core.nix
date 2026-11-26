@@ -776,26 +776,27 @@ QtObject {
         check(failures, "which the next frame shows",
             names(Pacing.frameSwapped(Pacing.frameBegun(swapped.acts)).shown), "wifi");
         // What waited on the frame runs each in turn, one that throws said
-        // in a line, its place with it, and the rest run still, as Quests'
+        // in a line, its kind and place but never its message, which could
+        // carry what a source served, and the rest run still, as Quests'
         // rows made ahead, queued after it, clear their wait only as they run.
         const ran = [];
         const said = [];
         Thrown.runEach([() => ran.push("first"), () => {
-            throw new Error("a row broke\nits second line");
+            throw new TypeError("joel's secret\nits second line");
         }, () => ran.push("last")], line => said.push(line));
         check(failures, "one that throws stops none after it", ran.join(" "), "first last");
-        check(failures, "and is said once, in one line, where it was thrown",
-            [said.length, /^a row broke at .*pacing\.qml:\d+/.test(said[0] ?? ""),
-                said[0]?.includes("\n")].join(), "1,true,false");
-        // A value thrown that can't be said as text, with no prototype to
-        // say it by, is said as one that can't be, its saying throwing none.
+        check(failures, "and is said once, in one line, by its kind and where it was thrown",
+            [said.length, /^TypeError: thrown at \S*pacing\.qml:\d+(:\d+)?$/.test(said[0] ?? ""),
+                said[0]?.includes("secret")].join(), "1,true,false");
+        // A value thrown with no prototype to say it by is said by its type,
+        // its saying throwing none.
         const unsaid = [];
         Thrown.runEach([() => {
             throw Object.create(null);
         }, () => ran.push("after")], line => unsaid.push(line));
-        check(failures, "one thrown that can't be said is said so, the rest run still",
+        check(failures, "one thrown with no prototype is said by its type, the rest run still",
             [unsaid.join(), ran[ran.length - 1]].join(" / "),
-            "a value that can't be said as text / after");
+            "Error: object thrown / after");
     }
 
     // A daemon's changes are timed from the first line the draw shows,
