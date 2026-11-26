@@ -4338,6 +4338,9 @@ def test_carried_lists_each_carry_newest_first_and_carries_an_arrived_one_back_i
 # poll of Carried serving it, but a loaded builder can be slower than any one watch.
 FOR_YOU_STILL = 3
 FOR_YOU_MADE = 30
+# The row For You gathers what agents ask into once two ask (words/on.json's
+# for-you:kind:agent).
+ASKING = "Agents Asking"
 
 
 def for_you_made(shell: Shell) -> list[str]:
@@ -4832,6 +4835,24 @@ def asking_left_or_right(shell: Shell, address: str, title: str) -> tuple[str, P
     return since, inbox, set(inbox.glob("*.json"))
 
 
+def to_asker(shell: Shell, title: str) -> list[str]:
+    """Step into For You where what `title` asks shows, and give the steps a walk takes there.
+
+    For You gathers what agents ask into Agents Asking once two ask (ForYou.js), and other
+    cases leave askers of their own, so the row is For You's or one step into Agents Asking.
+    """
+    in_for_you(shell)
+    shell.launcher_until(lambda shown: title in shown["rows"] or ASKING in shown["rows"])
+    rows = for_you_made(shell)
+    if title in rows:
+        return ["Now", "For You"]
+    assert ASKING in rows, rows
+    shell.down_to(ASKING)
+    shell.step_in()
+    shell.launcher_until(lambda shown: title in shown["rows"])
+    return ["Now", "For You", ASKING]
+
+
 def footed(shown: Json, said: str) -> bool:
     """Whether the launcher's foot says this, its hard spaces read as spaces."""
     return said in shown["footer"].replace("\xa0", " ")
@@ -4850,16 +4871,14 @@ def test_a_choice_in_for_you_is_joels_alone_and_his_talk_there_takes_no_second(
     since, inbox, steered = asking_left_or_right(shell, "FORYOU", "Choosing Quest")
     try:
         # In For You before it's walked to, as Agents shows it a moment before For You does.
-        in_for_you(shell)
-        shell.launcher_until(lambda shown: "Choosing Quest" in shown["rows"])
+        there = to_asker(shell, "Choosing Quest")
         shell.close_launcher()
-        walked = {"steps": ["Now", "For You", "Choosing Quest", "Right"], "sure": True}
+        walked = {"steps": [*there, "Choosing Quest", "Right"], "sure": True}
         did = json.loads(shell.as_account(shell.ipc("doing", shlex.quote(json.dumps(walked)))))
         why = "what Choosing Quest asks is answered only from your own Return in the launcher"
         assert did.get("refused") == why, did
         assert set(inbox.glob("*.json")) == steered, sorted(inbox.glob("*.json"))
-        in_for_you(shell)
-        shell.launcher_until(lambda shown: "Choosing Quest" in shown["rows"])
+        to_asker(shell, "Choosing Quest")
         shell.down_to("Choosing Quest")
         shell.step_in()
         shell.launcher_until(lambda shown: {"Left", "Right"} <= set(shown["rows"]))
@@ -4910,7 +4929,8 @@ def test_a_folders_talk_to_its_session_asking_joel_shows_what_it_asks_and_answer
 
     The disk guard's Talk to Its Session would send words to an inbox the session leaves unread
     while it asks, so on one asking what Joel can answer here it opens the Talk that shows the
-    question and answers it (Agents.qml's topTalk), as a link's Talk does.
+    question and answers it (Machine.qml's holderParts), as a top row's Talk does (Agents.qml's
+    topTalk).
     """
     folder = STATE / "toprow"
     folder.mkdir(parents=True, exist_ok=True)
