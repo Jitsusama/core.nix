@@ -443,8 +443,14 @@ fn resource(said: &str) -> &str {
 fn sessions_said(sessions: &Value, away: bool) -> String {
     let of = |key: &str| sessions.get(key).and_then(Value::as_u64).unwrap_or(0);
     let (busy, idle, far) = (of("busy"), of("idle"), of("unreachable"));
+    // A machine out of reach holds every cell on it, the parked among them,
+    // as the machines page's away row counts them: the node counts each
+    // cell in one of these alone (its health's `counted`).
     if away {
-        return match busy + idle + far {
+        let held = [busy, idle, far, of("parked")]
+            .into_iter()
+            .fold(0, u64::saturating_add);
+        return match held {
             0 => "holds no cell".to_owned(),
             held => format!("holds {}", count(held, "cell", "cells")),
         };
@@ -708,7 +714,7 @@ mod tests {
     }
 
     #[test]
-    fn a_machine_out_of_reach_runs_the_cells_it_still_holds() {
+    fn a_reached_machine_runs_the_cells_its_health_counts_out_of_reach() {
         let mut said = said_health();
         said["sessions"]["laptop"] = json!({"busy": 0, "idle": 0, "ended": 0, "unreachable": 12});
         let part = machines(&Ok(realm(&[laptop(&[], "healthy")])), &Ok(said), None, None);
@@ -732,12 +738,13 @@ mod tests {
     #[test]
     fn a_machine_itself_out_of_reach_holds_its_cells_said_once() {
         let mut said = said_health();
-        said["sessions"]["spare"] = json!({"busy": 1, "idle": 0, "ended": 4, "unreachable": 11});
+        said["sessions"]["spare"] =
+            json!({"busy": 1, "idle": 0, "parked": 2, "ended": 4, "unreachable": 11});
         let away = json!({"name": "spare", "state": "unreachable"});
         let part = machines(&Ok(realm(&[away])), &Ok(said), None, None);
         assert_eq!(
-            part.things[0].says, "is out of reach, holds 12 cells",
-            "an unreached machine said out of reach twice, or its ended as held"
+            part.things[0].says, "is out of reach, holds 14 cells",
+            "an unreached machine said out of reach twice, its ended as held or its parked as not"
         );
     }
 

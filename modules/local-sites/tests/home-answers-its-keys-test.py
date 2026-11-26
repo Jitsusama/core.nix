@@ -74,11 +74,14 @@ LIGHT = "@media (prefers-color-scheme: light)"
 DARK_STROKE = re.compile(r"dark\) \{ g \{ stroke: ([^;]+); \}")
 LIGHT_STROKE = re.compile(r"^    g \{ stroke: ([^;]+); \}", re.MULTILINE)
 # A laptop's short screens, on which the first site must stand whole in the
-# first screen, and one tall enough for the crest at its 13rem, as home.css
-# draws it from 60rem tall.
+# first screen; one tall enough for the crest at its 13rem, as home.css draws
+# it from about 70rem tall; and one between, past the 60rem the threshold
+# tightens under, whose crest still follows its height: 30svh less 8rem.
 LAPTOPS = [(1280, 800), (1024, 768)]
 TALL = (1280, 1200)
 FULL_CREST_PX = 208
+BETWEEN = (1280, 1000)
+BETWEEN_CREST_PX = 172
 # A phone, narrow and short, whose crest goes by its width alone, at 9rem: a
 # short screen's shrinking is the wide one's, so the crest doesn't fall to its
 # least on a phone or change size as its address bar slides.
@@ -242,13 +245,13 @@ def test_a_laptops_first_screen_shows_a_site_whole(
 
 @pytest.mark.parametrize(
     ("size", "crest_px"),
-    [(TALL, FULL_CREST_PX), (PHONE, PHONE_CREST_PX)],
-    ids=["tall", "phone"],
+    [(TALL, FULL_CREST_PX), (BETWEEN, BETWEEN_CREST_PX), (PHONE, PHONE_CREST_PX)],
+    ids=["tall", "between", "phone"],
 )
-def test_a_screen_not_wide_and_short_keeps_its_crest(
+def test_a_screens_crest_follows_its_height_when_wide_and_its_width_on_a_phone(
     browser: Browser, home: str, size: tuple[int, int], crest_px: int
 ) -> None:
-    """A tall screen draws its crest at its full size, and a phone at its width's."""
+    """A tall screen draws its crest whole, a shorter one smaller, and a phone at its width's."""
     opened = Opened(browser, home, size, "dark")
     try:
         crest = opened.page.locator(".crest").bounding_box()
@@ -256,5 +259,30 @@ def test_a_screen_not_wide_and_short_keeps_its_crest(
         # Within a pixel, since the browser lays boxes out in 1/64 px steps.
         drawn = crest["width"]
         assert abs(drawn - crest_px) < 1, f"a {size} screen drew the crest {drawn} px"
+    finally:
+        opened.close()
+
+
+# What the threshold's own gaps measure: the crest's below it and the
+# contents' above them, which a short wide screen takes to nothing.
+GAPS = """() => [".crest", ".contents"].map((part) => {
+    const style = getComputedStyle(document.querySelector(part));
+    return part === ".crest" ? style.marginBlockEnd : style.marginBlockStart;
+})"""
+
+
+@pytest.mark.parametrize(
+    ("size", "tightened"),
+    [(LAPTOPS[0], True), (BETWEEN, False)],
+    ids=["laptop", "between"],
+)
+def test_only_a_screen_under_60rem_tall_tightens_the_threshold(
+    browser: Browser, home: str, size: tuple[int, int], tightened: bool
+) -> None:
+    """The threshold's gaps go only on a wide screen shorter than 60rem."""
+    opened = Opened(browser, home, size, "dark")
+    try:
+        gaps = opened.page.evaluate(GAPS)
+        assert (gaps == ["0px", "0px"]) == tightened, f"a {size} screen's gaps were {gaps}"
     finally:
         opened.close()

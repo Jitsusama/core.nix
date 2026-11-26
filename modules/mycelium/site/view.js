@@ -342,6 +342,9 @@ import {
   };
   // What a group of cells is counted as: receptors when it holds only them.
   const kindWord = (cells) => (cells.length && cells.every((s) => s.kind === "receptor") ? "receptor" : "cell");
+  // How many cells there are, as every page counts them: the sessions that
+  // haven't ended, parked ones too, the receptors at the edge counted apart.
+  const cellsCounted = (marks) => marks.filter((s) => s.kind === "session").length;
   // The group a cell is walked in: its network, or the receptors' edge.
   const netOf = (s) => s?.hub || (s?.loose?.edge ? s.loose : null);
 
@@ -3194,7 +3197,7 @@ import {
       `<h2 id="panel-title">Now</h2>` +
       needsLines(m.cells) +
       heldUp(m.cells) +
-      `<p class="carries">${esc(`Your whole network: ${plural(m.cells.length - sensing, "cell")} in ${plural(tops.length, "orchestration")}${sensing ? `, ${plural(sensing, "receptor")} at its edge` : ""}, on ${used.size} of ${plural(everyMachine().length, "machine")}.`)}</p>` +
+      `<p class="carries">${esc(`Your whole network: ${plural(cellsCounted(m.cells), "cell")} in ${plural(tops.length, "orchestration")}${sensing ? `, ${plural(sensing, "receptor")} at its edge` : ""}, on ${used.size} of ${plural(everyMachine().length, "machine")}.`)}</p>` +
       glance(
         esc("Every cell you run, the networks they work in and the machines they run on."),
         esc(groupDoing(m.cells)),
@@ -4904,12 +4907,13 @@ import {
   };
   const drawStatus = () => {
     if (!current) return;
-    // Cells alone are the sessions that haven't ended, parked ones too, as
-    // the node counts them; the receptors at the edge are counted apart, in
-    // Now, so this sentence and every other page say the same number.
-    const cells = current.cells.filter((s) => s.kind === "session");
-    const n = countsOf(cells);
-    const all = cells.length;
+    // Cells are counted as Now counts them, so this sentence and every
+    // other page say the same number. What
+    // moves, sticks or asks is read over every mark, receptors too, so one
+    // reading mail keeps the sentence from saying all is quiet; how many are
+    // at work is a share of the same marks.
+    const all = cellsCounted(current.cells);
+    const n = countsOf(current.cells);
     const stuck = n.stuck ? `, ${NUMBER.format(n.stuck)} stuck` : "";
     const asks = n.asks === 1 ? "one needs you" : n.asks ? `${NUMBER.format(n.asks)} need you` : "";
     const clauses = [["cells", plural(all, "cell")]];
@@ -4931,7 +4935,7 @@ import {
       asksWords.innerHTML = asked;
       if (had) (sentenceLine.querySelector(`[data-count="${had}"]`) || view).focus({ preventScroll: true });
     }
-    const said = `${atWork(n.moving, all)}${stuck}${asks ? `; ${asks}` : ""}`;
+    const said = `${atWork(n.moving, current.cells.length)}${stuck}${asks ? `; ${asks}` : ""}`;
     if (said === statusShown) return;
     statusShown = said;
     statusSaid.textContent = said;

@@ -76,7 +76,7 @@ fn cells_now(ties: &Value) -> Said {
     // A machine the node can't reach has its cells counted out of reach,
     // not busy or idle: they are still its cells, and running, since only
     // the parked aren't, so they are said among them.
-    let said = match (busy + idle, far) {
+    let said = match (busy.saturating_add(idle), far) {
         (0, 0) => "none running".to_owned(),
         (0, far) => format!("{} out of reach", grouped(far)),
         (reached, 0) => format!(
@@ -87,7 +87,7 @@ fn cells_now(ties: &Value) -> Said {
         ),
         (reached, far) => format!(
             "{} running: {} busy, {} idle and {} out of reach",
-            grouped(reached + far),
+            grouped(reached.saturating_add(far)),
             none_or(busy),
             none_or(idle),
             grouped(far)

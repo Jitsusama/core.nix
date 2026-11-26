@@ -6,7 +6,8 @@ realm under test names, node.json, through the node feed exactly as home.nix
 declares it for a machine in a realm (NODE_KINDS). It must say it's live with
 the realm drawn, its networks and the lines joining them and their cells
 in one window that opens a cell clicked, follow a change within its pace,
-two cells sharing a title moving among them, say broken when the node
+two cells sharing a title moving among them, count a receptor reading as
+moving but never as a cell, say broken when the node
 stops while keeping the realm drawn, and live again when it's back, say
 broken when a reading fails to draw and live again once the next draws, say
 stale when the server goes, draw a record's words as words and never as markup,
@@ -599,6 +600,17 @@ def test_a_cell_that_moves_is_drawn_moving(mycelium_opened: Opened, mycelium_nod
     the_map_counts(page, COUNTED, "the map miscounted the realm")
     mycelium_node.tell("cell", changed=[{"key": "cell:TERN03", "standing": "moving"}])
     the_map_counts(page, COUNTED_MOVED, "the moved cell wasn't drawn moving")
+
+
+def test_a_receptor_reading_moves_the_sentence_and_not_its_count(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
+    """A receptor taking mail in is something moving, though it's no cell to count."""
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    the_map_counts(page, COUNTED, "the map miscounted the realm")
+    mycelium_node.tell("cell", changed=[{"key": "cell:calls@kestrel", "state": "reading"}])
+    the_map_counts(page, COUNTED_MOVED, "a receptor reading was said quiet, or counted a cell")
 
 
 # The two cells node.json names "Mend the Sails": the first moving, the
