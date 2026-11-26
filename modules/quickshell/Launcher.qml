@@ -5138,16 +5138,11 @@ Scope {
     // Return on the line: exactly what's typed, as Commands.ran read it.
     // From the drawer, :q closes its window, the keys back on the rows, as
     // his Neovim's :q closes a split, and :{n} stays in it.
-    function commandRan(read, from = "Return") {
+    function commandRan(read, from) {
         // A Return doubled with the one that wrote an ending row's line is
         // that one press, so it runs nothing; only a fresh Return does.
         if (commanding?.typed && Date.now() - linedAt < Options.keyTiming.wait)
             return;
-        // The command line's own Return, which the prompt never reads, runs
-        // what's typed, so it's timed as acting; @: comes with no key of
-        // its own (`from`), since the prompt timed it as commandAgain.
-        if (from !== "")
-            keyActs(from);
         const opened = commanding;
         commandEarlier = Commands.remembered(commandEarlier, read.typed ?? "");
         // What went wrong is said where the line was, over a viewer too,
@@ -5159,13 +5154,18 @@ Scope {
         else
             commandLeft(read.error ? "said" : "normal");
         if (drawn && read.error === undefined && read.go === undefined
-            && read.entry.kind === "quit")
+            && read.entry.kind === "quit") {
+            commandTimed(from, false);
             return;
+        }
+        // A line that only says what went wrong acts on nothing, as h and
+        // E21 do, so its Return isn't timed.
         if (read.error !== undefined) {
             commandSay(read.error, true);
             return;
         }
         if (read.go !== undefined && opened.go) {
+            commandTimed(from, true);
             opened.go(read.go);
             return;
         }
@@ -5176,11 +5176,21 @@ Scope {
             return;
         }
         if (read.go !== undefined) {
+            commandTimed(from, true);
             const last = matches.length - 1;
             arrowed(read.go === "$" ? last : Headings.nth(headingsAt, read.go, last), ":");
             return;
         }
         const entry = read.entry;
+        // Bound before it's timed, since an act with no rows it can take
+        // only says so; the kinds the switch runs take none.
+        const unbound = ["quit", "help", "set", "setlocal", "history"].includes(entry.kind);
+        const bound = unbound ? null : commandBound(read, opened);
+        if (!unbound && bound.error !== undefined) {
+            commandSay(bound.error, true);
+            return;
+        }
+        commandTimed(from, false);
         switch (entry.kind) {
         case "quit":
             open = false;
@@ -5196,11 +5206,6 @@ Scope {
             return;
         case "history":
             commandLine({ earlier: true });
-            return;
-        }
-        const bound = commandBound(read, opened);
-        if (bound.error !== undefined) {
-            commandSay(bound.error, true);
             return;
         }
         if (entry.kind === "surface") {
@@ -5311,6 +5316,15 @@ Scope {
         }
         commandLine(null);
         commandRan(Object.assign(Commands.ran(last, commanding.menu), { typed: last }), "");
+    }
+
+    // Times the command line's own Return, which the prompt never reads,
+    // once what it ran is known to act: as a move where it only goes to a
+    // row, as Down does. @: comes with no key of its own (`from`), since the
+    // prompt timed it as commandAgain.
+    function commandTimed(from, moved) {
+        if (from !== "")
+            keyActs(from, moved);
     }
 
     // The things a line acts on: those bound as : was pressed, or where a
@@ -6020,16 +6034,16 @@ Scope {
     // with it (doKeyed, the prompt's onRested), which times it before it
     // does, so the rows that act changes count as Joel's. A key the
     // prompt's modes never read (`outside`, by its name), as a secret's
-    // and the command line's, is none of the prompt's counted keys, and
-    // never only a move.
-    function keyActs(outside = "") {
+    // keys and the command line's Return, is none of the prompt's counted
+    // keys, and only a move where its caller says so (`moved`).
+    function keyActs(outside = "", moved = false) {
         const heard = KeyTimes.now();
         keyHeardAt = heard;
         keyHeardName = outside === "" ? prompt.keyTaken : outside;
         keyCollectedAt = Heap.collected();
         keyHeardKeys = outside === "" ? prompt.keysTaken : -1;
-        keyHeardMoved = outside === "" && Held.movedSaid(false, prompt.keysTaken,
-            prompt.keysTaken, prompt.keyMoved);
+        keyHeardMoved = outside === "" ? Held.movedSaid(false, prompt.keysTaken,
+            prompt.keysTaken, prompt.keyMoved) : moved;
         // Its work is done once its handler has returned.
         Qt.callLater(() => {
             if (root.keyHeardAt === heard)
@@ -6562,23 +6576,22 @@ Scope {
         // screen heard within keyedWithin of the work of the key the clock
         // is timed from, that key not a move (Pacing.keyed). A key that
         // acted on nothing leaves the clock at the key before, as the
-        // prompt reads it (KeyActs.acts): a modifier alone, a letter or
-        // Shift+Left typed into the find, a caret move or an edit on it, a
-        // count or a sequence begun, a key that only says a word. So such
-        // an act stays his across one, and only a key that acted ends it.
-        // A change
-        // heard past keyedWithin or after a move, or an answer heard so,
-        // joins the act, and an act whose source was already waiting on
-        // a refresh is recorded joined, either way no longer his alone
-        // (Held.changeDoes). A
-        // change heard within keyedWithin of an acting key is his
-        // whoever made it, a share's too: the leave off its row goes
-        // unheld. An answer heard so records nothing and leaves his acts
-        // as they stood, so its leave goes unheld only where his key's act
-        // of that source is on record. An answer records an act only
-        // through a hold it agrees to (heldAgreed), whose refresh is heard
-        // as a change is; past keyedWithin, a daemon's, as Release It's
-        // may be, holds one Return should it land off its row.
+        // prompt reads it; KeyActs.acts keeps the whole list, among them a
+        // modifier alone, a letter typed into the find, a caret move or an
+        // edit, a count or a sequence begun, and a key that only says a
+        // word. So such an act stays his across one, and only a key that
+        // acted ends it. A change heard past keyedWithin or after a move,
+        // or an answer heard so, joins the act, and an act whose source
+        // was already waiting on a refresh is recorded joined, either way
+        // no longer his alone (Held.changeDoes). A change heard within
+        // keyedWithin of an acting key is his whoever made it, a share's
+        // too: the leave off its row goes unheld. An answer heard so
+        // records nothing and leaves his acts as they stood, so its leave
+        // goes unheld only where his key's act of that source is on record.
+        // An answer records an act only through a hold it agrees to
+        // (heldAgreed), whose refresh is heard as a change is; past
+        // keyedWithin, a daemon's, as Release It's may be, holds one Return
+        // should it land off its row.
         const act = Held.actOf(keyedActs, source, keyHeardAt);
         const byKey = Held.keyed(keyedActs, source, keyHeardAt);
         try {
@@ -14649,7 +14662,7 @@ Scope {
                             typedAt: card.inset + root.columns.text
                             menu: root.commanding?.menu ?? []
                             argued: (entry, arg) => root.commandArguments(entry, arg)
-                            onRan: read => root.commandRan(read)
+                            onRan: read => root.commandRan(read, "Return")
                             // Let go from the drawer, the keys go back onto
                             // its page however it was let go, choosing
                             // nothing, as Vim's visual ends at its : line.
