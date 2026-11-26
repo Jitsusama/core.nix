@@ -2711,9 +2711,9 @@ mod tests {
     use super::{
         BODY_WITHIN, Clocks, Counts, HELD_AHEAD_AT_MOST, InPieces, Named, Origin,
         PROBED_AFTER_A_SLEEP, PROBED_EVERY_AFTER_A_SLEEP, PROBED_FOR_AFTER_A_SLEEP,
-        PROBES_AFTER_A_SLEEP, Probed, Probes, Relay, Retiring, Roots, SAID_AT_MOST, SLEPT_AT_LEAST,
-        Sender, Slot, Unnamed, Unreachable, Unread, fails_the_path, goes_again, goes_direct,
-        goes_once_more, reach, reach_any, read_whole, slept, unmade, with_causes,
+        PROBES_AFTER_A_SLEEP, Probed, Probes, Probing, Relay, Retiring, Roots, SAID_AT_MOST,
+        SLEPT_AT_LEAST, Sender, Slot, Unnamed, Unreachable, Unread, fails_the_path, goes_again,
+        goes_direct, goes_once_more, reach, reach_any, read_whole, slept, unmade, with_causes,
     };
 
     /// How the origin ends a request it hasn't answered.
@@ -3375,6 +3375,35 @@ mod tests {
             second_ended,
             (1, Some(false)),
             "the second sleep's probes went on past their own end"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_probe_that_failed_is_stopped_but_not_counted_as_probed() {
+        let origin = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let tcp = tokio::net::TcpStream::connect(origin.local_addr().expect("its address"))
+            .await
+            .map(Arc::new)
+            .expect("a connection");
+        let _far = origin.accept().await.expect("the far end");
+        let watching = Probes::default();
+        watching.keep(Named { at: 0, number: 0 }, &tcp, || ());
+        // A sleep whose probe of the connection failed marks it but doesn't
+        // name it, so one is made that way from a probe that went well.
+        let probing = watching.probe(|| ());
+        let failed = Probing {
+            named: Vec::new(),
+            sleep: probing.sleep,
+        };
+
+        let stopped = watching.stop(&failed);
+
+        assert_eq!(
+            (stopped, socket2::SockRef::from(&*tcp).keepalive().ok()),
+            (0, Some(false)),
+            "a connection whose probe failed wasn't stopped, or was counted as probed"
         );
     }
 
