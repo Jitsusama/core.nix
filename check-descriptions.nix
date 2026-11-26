@@ -4464,10 +4464,11 @@
     folder alone, else the start it was made with
   '';
   start-new-work-goes-to-the-cloud = ''
-    Start New Work offers In the Cloud only once the node's providers say they could make a
-    machine, its price the cheapest in one currency; lists only the places another machine knows
-    by name, a zone's path or a checkout's last step, each once; and asks a sprout that needs the
-    cloud, or names a machine by one plain word, refusing a place or a machine it couldn't say
+    Cloud.js, behind Start New Work's In the Cloud, reads the offers the agents daemon passes on,
+    its price the cheapest in one currency; lists only the places another machine knows by name,
+    a zone's path or a checkout's last step, each once; reads a link's on: past its name; and
+    asks a sprout that needs the cloud, or names a machine by one plain word, refusing a place or
+    a machine it couldn't say
   '';
   starts-stopped-lifts-only-on-joels-return = ''
     Starts Stopped's Return steps in among its acts wherever the launcher drops its drawer's step,
