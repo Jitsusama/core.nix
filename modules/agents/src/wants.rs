@@ -14,6 +14,10 @@
 //! want itself (KRINS0 item 4, ending #3853's stopgap). Joel may put one
 //! off for an hour (`PutOff`), and it says so and rings for none of it, so
 //! the shell leaves it out of what needs him until then.
+//!
+//! Long because a want's record, its putting off, its ring and the
+//! answer steered to it are each read from the same session's presence,
+//! and their cases share its stand-in sessions.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -707,14 +711,19 @@ mod tests {
         );
     }
 
-    #[test]
-    fn an_answer_is_steered_to_the_want_its_session_asks() {
-        let wants = served(&[asking(
+    /// SKIFF, running, asking a question since 05:00 that offers `high`.
+    fn skiff_asks() -> Vec<Value> {
+        served(&[asking(
             "SKIFF",
             "running",
             &json!({"kind": "question", "since": "2026-11-13T05:00:00Z",
                 "ask": {"choices": [{"value": "high"}]}}),
-        )]);
+        )])
+    }
+
+    #[test]
+    fn an_answer_is_steered_to_the_want_its_session_asks() {
+        let wants = skiff_asks();
         assert_eq!(
             answer_of(
                 &json!({"ask": "answer", "address": "skiff", "value": "high",
@@ -763,6 +772,16 @@ mod tests {
             Some(Err("an answer needs a value or Joel's own words".to_owned())),
             "an answer with no words is refused"
         );
+        assert_eq!(
+            answer_of(&json!({"ask": "talk"}), &wants, 0),
+            None,
+            "another ask is none of this"
+        );
+    }
+
+    #[test]
+    fn an_answer_naming_no_want_answers_what_its_session_asks_now() {
+        let wants = skiff_asks();
         assert_eq!(
             answer_of(
                 &json!({"ask": "answer", "address": "SKIFF", "value": "high"}),
@@ -814,11 +833,6 @@ mod tests {
             ),
             Some(Err("SKIFF asks something else now".to_owned())),
             "one naming a want it no longer asks is refused"
-        );
-        assert_eq!(
-            answer_of(&json!({"ask": "talk"}), &wants, 0),
-            None,
-            "another ask is none of this"
         );
     }
 }
