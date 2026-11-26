@@ -1166,6 +1166,17 @@ def test_a_park_pressed_reads_parking_and_one_never_parked_says_so(shell: Shell)
     shell.launcher_until(lambda shown: "Park" in shown["rows"])
     shell.down_to("Park")
     since = shell.mark()
+    # From the find a first Return on an act that changes how it stands only lands on it, as
+    # Resume's does above; a Return this soon after is taken for the same one doubled.
+    shell.send_key("ret")
+    shell.launcher_until(
+        lambda shown: (
+            shown["mode"] == "normal"
+            and (shown["selected"] or {}).get("name") == "Park"
+            and not shown["landedFresh"]
+        )
+    )
+    assert set(inbox.glob("*.json")) == steered, "the first Return parked the session"
     shell.send_key("ret")
     shell.reported("becoming agent:LISTEN", lambda rest: rest == "", since)
     deadline = time.monotonic() + 10
