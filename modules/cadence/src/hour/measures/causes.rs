@@ -54,14 +54,39 @@ const VERSION: u32 = 1;
 
 /// Other names a class goes by, each written plain, and the one it is
 /// counted under, until the harness's shared list of classes names them.
-const ALIASES: &[(&str, &str)] = &[(
-    "a fix with no test that fails when it is undone",
-    "test passes with the fix undone",
-)];
+const ALIASES: &[(&str, &str)] = &[
+    (
+        "a fix with no test that fails when it is undone",
+        TEST_PASSES_UNDONE,
+    ),
+    (
+        "a test passes with the fix undone, or can't fail",
+        TEST_PASSES_UNDONE,
+    ),
+    ("a test can't fail", TEST_PASSES_UNDONE),
+    ("test passes with the fix undone", TEST_PASSES_UNDONE),
+];
 
-/// Who owns fixing each class, by its counted name. A class none owns
-/// goes to the loop's keeper, who names one here.
-const OWNERS: &[(&str, &str)] = &[];
+const TEST_PASSES_UNDONE: &str = "a test passes with the fix undone";
+
+/// Who owns fixing each class, by its counted name and the repository its
+/// change is in, or any repository where that is empty, as the keeper
+/// named them on 26 November. A class whose owner differs by repository is
+/// split by it, so each half goes to its own; one none owns goes to the
+/// keeper, who names one here.
+const OWNERS: &[(&str, &str, &str)] = &[
+    ("a result waited on isn't sent to the waiter", "", "80ECO2"),
+    (TEST_PASSES_UNDONE, "core.nix", "80ECO2"),
+    (TEST_PASSES_UNDONE, "agentic-harness.pi", "85PKB2"),
+    ("a pinned copy lags the tree", "", "16V6F4"),
+    (
+        "mac behaviour checked only with gnu or linux tools",
+        "",
+        "1OGSE7",
+    ),
+    ("a timing check fails under load", "", "A210E4CA"),
+    ("main moves under a passed gate or run", "", "80ECO2"),
+];
 
 /// Short names a repository goes by, and the name it is counted under.
 const REPOS: &[(&str, &str)] = &[("core", "core.nix"), ("harness", "agentic-harness.pi")];
@@ -137,7 +162,9 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
 
 /// The classes in `cases` found on `AT_LEAST` changes or more in the week
 /// before `now`, most changes first, each with its owner after ` · `, so
-/// each is filed with its own.
+/// each is filed with its own. A class whose owner differs by repository
+/// has a line for each repository it was found in, named after the class,
+/// since the class recurs though one half of it may not.
 #[must_use]
 pub fn recurring(cases: &[Case], now: i64) -> Measure {
     let mut changes: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
@@ -154,21 +181,13 @@ pub fn recurring(cases: &[Case], now: i64) -> Measure {
     over.sort_by(|(a, on_a), (b, on_b)| on_b.len().cmp(&on_a.len()).then(a.cmp(b)));
     let behind: Vec<String> = over
         .iter()
-        .map(|(class, on)| {
-            let on: Vec<&str> = on.iter().copied().collect();
-            format!(
-                "{class}: on {} changes in a week, {} · {}",
-                on.len(),
-                on.join(", "),
-                owner_of(class)
-            )
-        })
+        .flat_map(|(class, on)| lines_of(class, on))
         .collect();
     Measure {
         key: KEY.to_owned(),
         class: Class::Functional,
         says: format!("classes of cause found on {AT_LEAST} or more changes in the last week"),
-        now: count(behind.len()),
+        now: count(over.len()),
         target: Some(0.0),
         owner: KEEPER.to_owned(),
         behind,
@@ -182,12 +201,51 @@ pub fn class_of(line: &str) -> &str {
     line.split_once(':').map_or(line, |(class, _)| class)
 }
 
-/// Who owns fixing `class`, or the keeper where none does.
-fn owner_of(class: &str) -> &'static str {
-    OWNERS
+/// The lines one class over its bar gives, found on the changes `on`: one
+/// naming them all, or, where its owner differs by repository, one for
+/// each repository, naming that one's changes and its owner.
+fn lines_of(class: &str, on: &BTreeSet<&str>) -> Vec<String> {
+    let split = OWNERS
         .iter()
-        .find(|(named, _)| *named == class)
-        .map_or(KEEPER, |&(_, owner)| owner)
+        .any(|&(named, repo, _)| named == class && !repo.is_empty());
+    if !split {
+        let all: Vec<&str> = on.iter().copied().collect();
+        return vec![format!(
+            "{class}: on {} changes in a week, {} · {}",
+            all.len(),
+            all.join(", "),
+            owner_of(class, "")
+        )];
+    }
+    let mut by_repo: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for &change in on {
+        let repo = change.split_once('#').map_or(change, |(repo, _)| repo);
+        by_repo.entry(repo).or_default().push(change);
+    }
+    by_repo
+        .into_iter()
+        .map(|(repo, changes)| {
+            format!(
+                "{class} in {repo}: on {} of its {} changes in a week, {} · {}",
+                changes.len(),
+                on.len(),
+                changes.join(", "),
+                owner_of(class, repo)
+            )
+        })
+        .collect()
+}
+
+/// Who owns fixing `class` in `repo`: its owner there, else its owner in
+/// any repository, else the keeper.
+fn owner_of(class: &str, repo: &str) -> &'static str {
+    let owned_in = |within: &str| {
+        OWNERS
+            .iter()
+            .find(|&&(named, named_repo, _)| named == class && named_repo == within)
+            .map(|&(_, _, owner)| owner)
+    };
+    owned_in(repo).or_else(|| owned_in("")).unwrap_or(KEEPER)
 }
 
 /// The cases the cells' cause lines in `sent` say, those sent to the

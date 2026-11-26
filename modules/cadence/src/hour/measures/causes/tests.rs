@@ -49,8 +49,8 @@ fn each_cause_line_sent_to_the_keeper_is_a_case_for_each_change_it_names() {
     assert_eq!(
         read,
         [
-            ("test passes with the fix undone", "core.nix#6310"),
-            ("test passes with the fix undone", "core.nix#6311"),
+            (TEST_PASSES_UNDONE, "core.nix#6310"),
+            (TEST_PASSES_UNDONE, "core.nix#6311"),
             ("docs claim more than the code", "agentic-harness.pi#2123"),
         ],
         "a cause line wasn't read as a case per change, or a line that isn't one was"
@@ -69,7 +69,7 @@ fn each_cause_line_sent_to_the_keeper_is_a_case_for_each_change_it_names() {
 fn a_class_by_another_name_is_counted_as_one() {
     assert_eq!(
         folded("  A fix with no test that fails  when it is undone. "),
-        "test passes with the fix undone",
+        TEST_PASSES_UNDONE,
         "an alias wasn't folded to the name it counts under"
     );
     assert_eq!(
@@ -112,6 +112,48 @@ fn a_class_on_three_changes_in_a_week_is_over_and_names_its_owner() {
         class_of(&m.behind[0]),
         "stale docs",
         "its line didn't give back the class it is keyed by"
+    );
+}
+
+#[test]
+fn a_class_owned_apart_by_repository_goes_to_each_repositorys_owner() {
+    let cases = [
+        case(TEST_PASSES_UNDONE, "core.nix#1", 100),
+        case(TEST_PASSES_UNDONE, "core.nix#2", 100),
+        case(TEST_PASSES_UNDONE, "agentic-harness.pi#3", 100),
+        case(TEST_PASSES_UNDONE, "mycelium#4", 100),
+        case("a pinned copy lags the tree", "core.nix#5", 100),
+        case("a pinned copy lags the tree", "core.nix#6", 100),
+        case("a pinned copy lags the tree", "mycelium#7", 100),
+    ];
+    let m = recurring(&cases, NOW);
+    assert_eq!(
+        m.now, 2.0,
+        "a class split by repository counted more than once"
+    );
+    let owners: Vec<(&str, &str)> = m
+        .behind
+        .iter()
+        .filter_map(|line| line.rsplit_once(" · "))
+        .map(|(line, owner)| (class_of(line), owner))
+        .collect();
+    assert_eq!(
+        owners,
+        [
+            (
+                "a test passes with the fix undone in agentic-harness.pi",
+                "85PKB2"
+            ),
+            ("a test passes with the fix undone in core.nix", "80ECO2"),
+            ("a test passes with the fix undone in mycelium", "1JQPPC"),
+            ("a pinned copy lags the tree", "16V6F4"),
+        ],
+        "a class wasn't split by repository to each owner, or one owned whole was split"
+    );
+    assert!(
+        m.behind[1].contains("on 2 of its 4 changes in a week, core.nix#1, core.nix#2 ·"),
+        "a repository's half didn't name its own changes: {}",
+        m.behind[1]
     );
 }
 
