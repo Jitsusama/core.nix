@@ -27,6 +27,13 @@ fn hour(folder: &Path, args: &[&str]) -> Output {
         .expect("cadence runs")
 }
 
+/// How many asks the kept hour `kept` says it saw at most, read as JSON,
+/// so neither its fields' order nor its layout decides it.
+fn asks_most(kept: &str) -> Option<u64> {
+    let kept: serde_json::Value = serde_json::from_str(kept).ok()?;
+    kept["asks"]["most"].as_u64()
+}
+
 fn account() -> tempfile::TempDir {
     let account = tempfile::tempdir().expect("a stand-in account");
     let mission = account.path().join("state/mission");
@@ -281,8 +288,9 @@ fn what_an_hour_saw_of_the_asks_guards_the_next() {
     assert!(ran.status.success(), "cadence failed: {said}");
     let kept =
         fs::read_to_string(account.path().join("state/cadence/hour.json")).expect("the hour kept");
-    assert!(
-        kept.contains(r#""asks":{"most":4"#),
+    assert_eq!(
+        asks_most(&kept),
+        Some(4),
         "the hour didn't keep what it saw of the asks: {kept}"
     );
 
@@ -323,8 +331,9 @@ fn an_hour_after_one_that_wont_read_still_keeps_what_it_saw_of_the_asks() {
         "an hour starting from nothing read the asks against nothing: {card}"
     );
     let kept = fs::read_to_string(kept.join("hour.json")).expect("the hour kept");
-    assert!(
-        kept.contains(r#""asks":{"most":4"#),
+    assert_eq!(
+        asks_most(&kept),
+        Some(4),
         "an hour after one that wouldn't read kept nothing of the asks: {kept}"
     );
 }

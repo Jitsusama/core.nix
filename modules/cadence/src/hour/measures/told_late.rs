@@ -196,7 +196,7 @@ fn given_at(line: &Value, moved: i64) -> Option<&str> {
 /// wrote. The park standing is the last entry naming `ruling`, since an
 /// ask let go and parked again keeps its first park's entry too. Unsaid
 /// when no entry names it; unread when the last that does opens on no
-/// minute, or `given` has no offset to read it in.
+/// minute, or `given` has no local offset to read it in, as one in "Z".
 fn parked_since(line: &Value, ruling: &str, given: Option<&str>) -> Park {
     let said = format!("parked: {ruling}");
     let Some(note) = line["note"].as_str() else {
@@ -217,11 +217,10 @@ fn parked_since(line: &Value, ruling: &str, given: Option<&str>) -> Park {
     minute.map_or(Park::Unread, |minute| Park::At(minute.as_second()))
 }
 
-/// The offset a time written as `given` ends with, "Z" or "-05:00".
+/// The local offset a time written as `given` ends with, as "-05:00".
+/// None for one written in "Z", which says nothing of the clock the
+/// keeper's note is written in, so a minute read in it could be hours off.
 fn offset_of(given: &str) -> Option<Offset> {
-    if given.ends_with('Z') {
-        return Some(Offset::UTC);
-    }
     let tail = given.get(given.len().checked_sub(6)?..)?;
     let (sign, clock) = tail.split_at_checked(1)?;
     let (hours, minutes) = clock.split_once(':')?;
