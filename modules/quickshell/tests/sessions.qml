@@ -316,7 +316,7 @@ ShellRoot {
         };
         const before = Niri.spawns.length;
         const wentHosted = Sessions.goTo(hosted);
-        expect("a hosted one viewed is said opened", wentHosted, true);
+        expect("a hosted one viewed is said opened", wentHosted === true, String(wentHosted));
         const viewed = Niri.spawned.join(" ");
         const hostedAsk = asked(viewed);
         // Titled before its words run, as pi's would be with no name or folder said.
@@ -327,9 +327,9 @@ ShellRoot {
                 + "mycelium --realm harbour attach --host harbour-attended --session s-hosted",
             viewed);
         const wentAgain = Sessions.goTo(hosted);
-        expect("viewed only once while its window comes, and asked again it says so",
+        expect("viewed only once while its window comes, and asked again it says so, opened",
             Niri.spawns.length === before + 1 && root.unhosted === "HOSTED"
-            && root.unhostedWhy === "opening" && wentAgain === false,
+            && root.unhostedWhy === "opening" && wentAgain === true,
             `${root.unhosted} ${root.unhostedWhy} ${wentAgain} `
                 + Niri.spawns.slice(before).join("\n"));
         const record = { opened: "", kitty: null, presence: hosted.presence };
