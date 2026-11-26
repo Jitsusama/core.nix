@@ -129,7 +129,10 @@ mod tests {
     #[test]
     fn a_meaning_is_made_a_unit_long() {
         let made = unit(&[3.0, 4.0]);
-        assert!((made[0] - 0.6).abs() < 1e-6 && (made[1] - 0.8).abs() < 1e-6);
+        assert!(
+            (made[0] - 0.6).abs() < 1e-6 && (made[1] - 0.8).abs() < 1e-6,
+            "three and four weren't made 0.6 and 0.8: {made:?}"
+        );
         assert_eq!(unit(&[0.0, 0.0]), vec![0.0, 0.0]);
     }
 
@@ -137,8 +140,20 @@ mod tests {
     fn nearness_is_the_cosine_of_two_units() {
         let a = unit(&[1.0, 0.0]);
         let b = unit(&[1.0, 1.0]);
-        assert!((near(&a, &a) - 1.0).abs() < 1e-6);
-        assert!((near(&a, &b) - std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-6);
-        assert!(near(&a, &unit(&[0.0, 1.0])).abs() < 1e-6);
+        let itself = near(&a, &a);
+        assert!(
+            (itself - 1.0).abs() < 1e-6,
+            "a meaning wasn't one near itself: {itself}"
+        );
+        let between = near(&a, &b);
+        assert!(
+            (between - std::f32::consts::FRAC_1_SQRT_2).abs() < 1e-6,
+            "meanings an eighth of a turn apart weren't one over root two near: {between}"
+        );
+        let across = near(&a, &unit(&[0.0, 1.0]));
+        assert!(
+            across.abs() < 1e-6,
+            "meanings a quarter turn apart weren't nothing near: {across}"
+        );
     }
 }

@@ -184,7 +184,11 @@ mod tests {
         .concat();
         let read = decode(&likely, 4, &characters());
         assert_eq!(read.text, "aab");
-        assert!((read.sure - (0.8 + 0.6 + 0.9) / 3.0).abs() < 1e-6);
+        assert!(
+            (read.sure - (0.8 + 0.6 + 0.9) / 3.0).abs() < 1e-6,
+            "how sure the line was isn't the mean of its characters': {}",
+            read.sure
+        );
     }
 
     #[test]
