@@ -394,7 +394,9 @@ PAGE = (
 
 
 def copy_a_password(desktop: Desktop) -> float:
-    """Copy the console's password from Passwords by its Return, and give when, monotonic.
+    """Copy the console's password from Passwords by its Return, and give when it pasted.
+
+    When is monotonic, once the copy first pastes, a moment after it began.
 
     The first step in asks 1Password, through op, and leads with it locked until it's
     answered, so the place is opened again once it has, to stand as Joel finds it then.
@@ -410,14 +412,13 @@ def copy_a_password(desktop: Desktop) -> float:
     desktop.as_account("qs ipc call launcher collection passwords")
     desktop.launcher_ready()
     desktop.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == ENTRY)
-    copied = time.monotonic()
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: not shown["open"])
     machine.wait_until_succeeds(
         desktop.in_session(f"wl-paste --no-newline | grep -qx {STAND_IN}"),
         timeout=timedelta(seconds=10),
     )
-    return copied
+    return time.monotonic()
 
 
 def focused(desktop: Desktop, title: str) -> None:
@@ -496,9 +497,12 @@ def test_a_password_copied_pastes_is_never_kept_or_fenced_and_clears(desktop: De
         """Say whether the clipboard no longer holds the password."""
         return desktop.as_account("wl-paste --no-newline 2>/dev/null || true") != STAND_IN
 
+    # Timed from the paste first seen, after the copy began, so a clear come early can't pass
+    # for one held, and bounded above too, as retry's wait grows on a busy host.
     retry(cleared, timeout=CLEARS + timedelta(seconds=15))
     held = timedelta(seconds=time.monotonic() - copied)
     assert held >= CLEARS - timedelta(seconds=5), f"the copy went after only {held}"
+    assert held <= CLEARS + timedelta(seconds=15), f"the copy was held {held}"
 
     # A fenced command can't read it while it's held (modules/passwords/tests); this area
     # alone has the script.

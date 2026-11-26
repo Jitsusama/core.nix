@@ -14,7 +14,8 @@ the cat then running the real one so a copier that leans on it still holds its c
 2. Nothing at all is made under TMPDIR while it's copied and pasted.
 3. Nothing on PATH runs, neither cat nor xdg-mime.
 4. The copier can't be read through /proc by the account's other processes.
-5. The copier's memory holding the secret is locked, so it never reaches swap.
+5. The copier's memory holding the secret is locked, so it never reaches swap: as much of it
+   locked as the secret is long, so a first page locked alone doesn't pass for it.
 6. A standard input it can't read is refused for that reason, making nothing under TMPDIR and
    running nothing.
 7. A standard input past the copier's cap is refused for being past it, rather than held in
@@ -164,7 +165,8 @@ class Cases:
             self.check("nothing is made under TMPDIR", self.anything_made())
             self.check("nothing on PATH runs", self.anything_ran())
             self.check("it can't be read through /proc", ended(copier) or readable(copier.pid))
-            self.check("its secret is locked in memory", ended(copier) or unlocked(copier.pid))
+            locked = ended(copier) or unlocked(copier.pid, len(held))
+            self.check("its secret is locked in memory", locked)
         finally:
             copier.kill()
             copier.wait()
@@ -181,7 +183,8 @@ class Cases:
             self.check("a 64 KiB secret pastes whole", None if pasted else "it never pasted")
             self.check("a 64 KiB secret makes nothing under TMPDIR", self.anything_made())
             self.check("a 64 KiB secret runs nothing", self.anything_ran())
-            self.check("a grown secret is locked", ended(copier) or unlocked(copier.pid))
+            locked = ended(copier) or unlocked(copier.pid, len(held))
+            self.check("a grown secret is locked", locked)
         finally:
             copier.kill()
             copier.wait()
@@ -200,11 +203,9 @@ class Cases:
         reading, writing = os.pipe()
         copier = self.copier_started(reading)
         os.close(reading)
-        with contextlib.suppress(BrokenPipeError):
-            os.write(writing, b"x" * TOO_LONG)
-        os.close(writing)
+        stalled = fed(writing, b"x" * TOO_LONG)
         ended, said, told = ended_within(copier)
-        failed = refusal(ended, said, PAST_THE_CAP)
+        failed = stalled or refusal(ended, said, PAST_THE_CAP)
         self.check("a stdin past the cap is refused", failed or self.anything_made())
         self.check("a stdin past the cap is never said held", said_held(told))
 
@@ -241,10 +242,31 @@ def locks_enough() -> str | None:
 
 
 def given(writing: int, held: str) -> None:
-    """Give the copier its secret, leaving one that has already ended to fail the checks after."""
-    with contextlib.suppress(BrokenPipeError):
-        os.write(writing, held.encode())
-    os.close(writing)
+    """Give the copier its secret, leaving one that ended or stalled to fail the checks after."""
+    fed(writing, held.encode())
+
+
+def fed(writing: int, data: bytes) -> str | None:
+    """Write `data` to the copier and close it, saying so if it stopped reading in time.
+
+    A copier that stops reading short of the end but holds its standard input open would
+    leave a plain write waiting for it forever; one that ends, closing it, has read its last.
+    """
+    os.set_blocking(writing, False)
+    left = memoryview(data)
+    until = time.monotonic() + PATIENCE
+    try:
+        while left:
+            waiting = until - time.monotonic()
+            if waiting <= 0 or not select.select([], [writing], [], waiting)[1]:
+                return f"it stopped reading with {len(left)} bytes left"
+            with contextlib.suppress(BlockingIOError):
+                left = left[os.write(writing, left) :]
+    except BrokenPipeError:
+        return None
+    finally:
+        os.close(writing)
+    return None
 
 
 def said_next(copier: subprocess.Popen[bytes]) -> str:
@@ -274,11 +296,12 @@ def readable(pid: int) -> str | None:
     return None
 
 
-def unlocked(pid: int) -> str | None:
-    """Say a process holds no locked memory, if it holds none."""
+def unlocked(pid: int, length: int) -> str | None:
+    """Say a process holds less locked memory than a secret `length` bytes long, if it does."""
     for line in Path(f"/proc/{pid}/status").read_text().splitlines():
         if line.startswith("VmLck:"):
-            return None if int(line.split()[1]) > 0 else "VmLck is 0 kB"
+            locked = int(line.split()[1]) * 1024
+            return None if locked >= length else f"VmLck is {locked} bytes, under {length}"
     return "its status names no VmLck"
 
 

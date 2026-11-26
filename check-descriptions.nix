@@ -3244,7 +3244,8 @@
     held list or get without asking a manager, gives a secret only to the ask for it, never to a
     watch, or to the clipboard marked sensitive and cleared when its time is up, writes it to the
     copier only once the copier says it's ready and answers it copied only once the copier says it
-    holds it, answering a refused copy with the copier's reason, refuses a copy
+    holds it, answering a refused copy with the copier's reason, ends the copy it holds as it
+    ends itself, killed or not, refuses a copy
     before reading any secret while no copier is named, types a password only into the niri
     window it was asked for once the launcher has let go of the keys and while that window still
     has them, refusing a second while one is under way, never into one an agent's process is
