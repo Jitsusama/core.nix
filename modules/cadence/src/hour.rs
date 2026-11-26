@@ -40,7 +40,7 @@ use terminal_kit::Failure;
 use crate::findings;
 use crate::mesh::{Mesh, Presence, Rosters, running};
 use crate::tracking::Tracking;
-use crate::{DAY, axes, clock, command, failed, folders, message, now_ms, write_whole, wrongly};
+use crate::{DAY, axes, clock, command, failed, folders, message, now_ms, wrongly};
 use card::{Kept, compose};
 use measures::{Class, Measure};
 use moved::{HARNESS, moved};
@@ -192,7 +192,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     // and "fixed" lines again next hour rather than never: an owner told
     // twice is cheaper than one never told.
     findings::keep(&ledger_at, &ledger)?;
-    write_whole(&kept_at, &serde_json::to_string(&next)?)?;
+    kept.keep(&kept_at, &next)?;
     Ok(())
 }
 
