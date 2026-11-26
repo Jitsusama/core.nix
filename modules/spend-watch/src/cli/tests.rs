@@ -232,19 +232,28 @@ fn an_import_beside_a_running_daemon_is_to_try_again() {
 
 // A watch run beside one answering on the socket is told at once that
 // one is running, rather than waiting ten minutes to take over from it.
+// The watch runs on a thread of its own so one that waits fails this
+// test in seconds rather than hanging the suite; the thread is left to
+// the process's end then, since nothing can stop a watch from outside.
 #[test]
 fn a_watch_beside_a_running_one_is_to_try_again_at_once() {
     let dir = tempfile::tempdir().expect("a folder");
     let _listening = std::os::unix::net::UnixListener::bind(dir.path().join("socket"))
         .expect("the socket is bound");
-    let began = std::time::Instant::now();
-    let started = ran(dir.path(), &["run"]);
+    let (said, heard) = std::sync::mpsc::channel();
+    let path = dir.path().to_owned();
+    std::thread::spawn(move || {
+        // The test has stopped listening only when it already failed.
+        let _ = said.send(ran(&path, &["run"]));
+    });
+    let started = heard
+        .recv_timeout(AT_ONCE)
+        .expect("a second watch waited beside a running one");
     assert_eq!(started.exit, Exit::TryAgain, "{}", started.stderr);
-    assert!(
-        began.elapsed() < std::time::Duration::from_secs(5),
-        "a second watch waited beside a running one"
-    );
 }
+
+/// How long a refusal said at once may take, even on a busy builder.
+const AT_ONCE: std::time::Duration = std::time::Duration::from_secs(5);
 
 // A watch whose wait for a held lock ran out, and a reader that met a
 // busy history, are each to try again rather than told they failed.

@@ -430,6 +430,15 @@ fn on_disk<T>(db: &Connection, step: impl FnOnce() -> Result<T, String>) -> Resu
     stepped.and_then(|done| restored.map(|()| done))
 }
 
+/// Why a history a newer spend-watch keeps, at `shape`, isn't opened.
+fn kept_by_newer(path: &Path, shape: i64) -> String {
+    format!(
+        "{} is kept by a newer spend-watch, at shape {shape} where this one reads up to \
+         {SCHEMA}, so it's left as it is",
+        path.display()
+    )
+}
+
 impl History {
     /// Opens the history, setting aside one that doesn't read so it's
     /// built again from the sources. One a newer spend-watch keeps is left
@@ -440,11 +449,7 @@ impl History {
             std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
         }
         if let Some(shape) = History::newer(path) {
-            return Err(format!(
-                "{} is kept by a newer spend-watch, at shape {shape} where this one \
-                 reads up to {SCHEMA}, so it's left as it is",
-                path.display()
-            ));
+            return Err(kept_by_newer(path, shape));
         }
         let existing = path.exists();
         let history = History::connect(path)?;
@@ -465,6 +470,12 @@ impl History {
             return Err(error.to_string());
         }
         let schema: Option<i64> = read.ok().flatten().and_then(|value| value.parse().ok());
+        // The look before the connection takes any error for no answer, so
+        // a history busy then passes it unread; a newer shape read here is
+        // as much the newer spend-watch's, and is left as it is all the same.
+        if let Some(shape) = schema.filter(|shape| *shape > SCHEMA) {
+            return Err(kept_by_newer(path, shape));
+        }
         if schema == Some(SCHEMA) {
             history.index_sessions()?;
             return Ok(history);
