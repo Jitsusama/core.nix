@@ -1910,10 +1910,10 @@ Provider {
         if (again !== null) {
             sproutsMade = StartSaid.told(sproutsMade, again, Date.now());
             const told = again.answered ? words.again : words.againUnanswered;
-            sproutSays(key, String(told ?? "").replace("{at}", StartSaid.at(again)),
+            sproutSays(key, String(told ?? "").replace("{at}", StartSaid.clock(again)),
                 again.answered ? "done" : "pending");
             console.info("launcher: new work wasn't started again: the same words were "
-                + `asked at ${StartSaid.at(again)}`);
+                + `asked at ${StartSaid.clock(again)}`);
             return;
         }
         const ask = Sprouting.ask(said, folder);
