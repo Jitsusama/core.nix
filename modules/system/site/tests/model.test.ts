@@ -143,11 +143,13 @@ it("a machine's looks are read with their whys, and none from a record listing n
       { side: "code failing" },
     ],
   };
-  const looksOf = (record: Record<string, unknown>) => {
+  const ospreyAs = (record: Record<string, unknown>) => {
     const others = records.filter((each) => each.key !== "machine:osprey");
     const { summary, part, machine } = told([...others, record]);
-    return systemOf(summary, part, machine)?.parts[0]?.things.map((thing) => thing.looks);
+    return systemOf(summary, part, machine);
   };
+  const looksOf = (record: Record<string, unknown>) =>
+    ospreyAs(record)?.parts[0]?.things.map((thing) => thing.looks);
   const reach = { side: "out of reach", matters: osprey.looks[0]?.matters };
   const looks = [reach, { side: "code failing", matters: "" }];
   assert.deepEqual(looksOf(osprey), [undefined, looks], "a look without a why is kept with none");
@@ -155,7 +157,13 @@ it("a machine's looks are read with their whys, and none from a record listing n
     const half = looksOf({ ...osprey, looks: [...osprey.looks, unread] });
     const why = `${JSON.stringify(unread)} leaves it to the side`;
     assert.deepEqual(half, [undefined, undefined], why);
+    assert.deepEqual(
+      ospreyAs({ ...osprey, looks: [...osprey.looks, unread] })?.unread,
+      ["machine:osprey's looks, so its side says them without their whys"],
+      `${JSON.stringify(unread)} is said as not read`,
+    );
   }
+  assert.deepEqual(ospreyAs(osprey)?.unread, [], "a list read whole is said as read");
 });
 
 /** What `markup` reads as, its tags gone and its spaces run together. */

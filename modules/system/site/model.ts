@@ -175,12 +175,16 @@ function thingOf(held: Held, key: string, unread: string[]): Thing | undefined {
     unread.push(`${key} has no name`);
     return undefined;
   }
+  const looks = looksOf(record);
+  if (looks === undefined && Array.isArray(record["looks"])) {
+    unread.push(`${key}'s looks, so its side says them without their whys`);
+  }
   return {
     name,
     health: healthOf(text(record, "health")),
     says: text(record, "says") ?? "",
     side: texts(record, "side") ?? [],
-    looks: looksOf(record),
+    looks,
     address: text(record, "address"),
     ties: tiesOf(record["ties"]),
   };

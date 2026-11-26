@@ -11,8 +11,8 @@ import type { Part, System, Thing } from "../model.ts";
 import { tiesOf } from "../ties.ts";
 
 const deeper = { command: "net", site: "network/", launcher: "Network" };
-/** An act drawn as a row of the cursor's, which it must never be. */
-const ACT_AS_ROW = /<a class="launch"[^>]*data-row/u;
+/** An act drawn as a row of the cursor's, which it must never be, its attributes in any order. */
+const ACT_AS_ROW = /<a\b(?=[^>]*class="launch")[^>]*data-row/u;
 
 function machine(name: string, health: Thing["health"], side: string[] = []): Thing {
   return { name, health, says: "", side, looks: undefined, address: undefined, ties: tiesOf({}) };
@@ -322,6 +322,12 @@ it("says why each machine's look matters, with its one act, the machine's launch
     ["On battery at 9%"],
     "an empty list beside a side that names a look leaves the side to say it",
   );
+  const cleared = { ...judged("kestrel", "good", [why("on battery at 9%")]), side: [] };
+  assert.deepEqual(
+    looksOf(system([cleared]), 8).looks.map((look) => look.words),
+    [],
+    "a list beside a side that names none leaves the side to say none",
+  );
 });
 
 it("gives the one look for a machine out of reach its why and act, and several neither", () => {
@@ -346,6 +352,16 @@ it("gives the one look for a machine out of reach its why and act, and several n
     [many?.words, many?.matters, many?.act],
     ["Out of reach: osprey and tern", "", undefined],
     "the daemon's why speaks of one machine, and no launcher row is theirs together",
+  );
+  const full = { side: "nearly full disk", matters: "Builds there fail once it fills." };
+  const both = judged("osprey", "bad", [...(away("osprey").looks ?? []), full], false);
+  assert.deepEqual(
+    looksOf(system([both]), 8).looks.map((look) => [look.words, look.matters]),
+    [
+      ["Out of reach", "What runs there can't be read from here."],
+      ["Nearly full disk", full.matters],
+    ],
+    "the look the machine's out of reach one stands for leaves the next its own why",
   );
 });
 
