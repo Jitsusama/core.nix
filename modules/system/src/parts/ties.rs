@@ -193,15 +193,27 @@ fn listed<'a>(said: &'a Value, key: &str) -> &'a [Value] {
 }
 
 /// A machine's own figures, as the node says them, its bytes in whole
-/// gigabytes and its processor's share in tenths; what it didn't say is
-/// said as unknown.
+/// gigabytes and its processor's share in tenths, and its names plain, as
+/// they reach a terminal; what it didn't say, or a name with nothing plain
+/// left in it, is said as unknown.
 fn figures(said: &Value) -> Value {
     let at = |pointer: &str| said.pointer(pointer).cloned().unwrap_or(Value::Null);
+    let named = |pointer: &str| match said.pointer(pointer) {
+        Some(Value::String(name)) => {
+            let name = crate::plain::words(name);
+            if name.is_empty() {
+                Value::Null
+            } else {
+                Value::from(name)
+            }
+        }
+        other => other.cloned().unwrap_or(Value::Null),
+    };
     let bytes = |pointer: &str| coarse(said.pointer(pointer), GIGABYTE);
     json!({
-        "model": at("/model_name"),
-        "system": at("/system"),
-        "os": at("/os"),
+        "model": named("/model_name"),
+        "system": named("/system"),
+        "os": named("/os"),
         "disk": bytes("/disk"),
         "disk_free": bytes("/disk_free"),
         "cores": at("/cpu/cores"),
@@ -211,9 +223,26 @@ fn figures(said: &Value) -> Value {
         "charge": at("/power/charge"),
         "on_battery": at("/power/on_battery"),
         "updated_at": at("/updated/at"),
-        "update_step": at("/updated/step"),
+        "update_step": step(said.pointer("/updated/step")),
+        "update_why": super::why::update_why(said.get("updated").unwrap_or(&Value::Null)),
     })
 }
+
+/// The step a machine's last update reached, when it reads as one: a short
+/// word of lowercase letters, since it reaches a terminal as it is.
+fn step(said: Option<&Value>) -> Value {
+    said.and_then(Value::as_str)
+        .filter(|step| {
+            (1..=STEP_AT_MOST).contains(&step.len())
+                && step
+                    .chars()
+                    .all(|each| each.is_ascii_lowercase() || each == '-')
+        })
+        .map_or(Value::Null, Value::from)
+}
+
+/// The longest a step's name may be.
+const STEP_AT_MOST: usize = 32;
 
 #[cfg(test)]
 mod tests {
@@ -324,6 +353,34 @@ mod tests {
     }
 
     #[test]
+    fn an_update_step_is_carried_only_when_it_reads_as_one() {
+        let step_of = |step: Value| {
+            let mut machine = laptop();
+            machine["updated"] = json!({"step": step});
+            super::ties(&machine, None, None, None)["figures"]["update_step"].clone()
+        };
+        assert_eq!(
+            step_of(json!("refused")),
+            json!("refused"),
+            "a step is carried"
+        );
+        for (step, what) in [
+            (
+                json!("\u{1b}[2Jdone"),
+                "a step that would act on a terminal",
+            ),
+            (json!("Done"), "a step not in update-to-main's form"),
+            (
+                json!("x".repeat(STEP_AT_MOST + 1)),
+                "a step too long to be one",
+            ),
+            (json!(4), "a step that isn't words"),
+        ] {
+            assert_eq!(step_of(step), Value::Null, "{what} is not carried");
+        }
+    }
+
+    #[test]
     fn a_machine_carries_its_own_figures() {
         let ties = ties(&laptop(), None, None, None);
         assert_eq!(
@@ -334,7 +391,34 @@ mod tests {
                    "cores": 16, "cpu_busy": 0.9,
                    "memory": 67_000_000_000_u64, "memory_available": 30_000_000_000_u64,
                    "charge": 79, "on_battery": false,
-                   "updated_at": "2026-11-17T22:45:18Z", "update_step": "done"})
+                   "updated_at": "2026-11-17T22:45:18Z", "update_step": "done",
+                   "update_why": null})
+        );
+        let mut odd = laptop();
+        odd["model_name"] = json!("\u{1b}[2JExample\u{202e} 14");
+        odd["os"] = json!("NixOS\t26.11");
+        let odd = super::ties(&odd, None, None, None);
+        assert_eq!(
+            (&odd["figures"]["model"], &odd["figures"]["os"]),
+            (&json!("Example 14"), &json!("NixOS 26.11")),
+            "a machine's names reach a terminal plain"
+        );
+        let mut blank = laptop();
+        blank["model_name"] = json!("\u{1b}[2J");
+        blank["os"] = json!("\u{202e}");
+        let blank = super::ties(&blank, None, None, None);
+        assert_eq!(
+            (&blank["figures"]["model"], &blank["figures"]["os"]),
+            (&Value::Null, &Value::Null),
+            "a name with nothing plain in it is said as unknown, not as nothing"
+        );
+        let mut mac = laptop();
+        mac["updated"] = json!({"at": "2026-11-17T23:00:00Z", "step": "refused",
+                                "why": "the Mac is over its room; it waits."});
+        assert_eq!(
+            super::ties(&mac, None, None, None)["figures"]["update_why"],
+            json!("the Mac is over its room, it waits"),
+            "an update put off carries why, as one clause of the machine's line"
         );
         let bare = super::ties(
             &json!({"name": "spare", "state": "unreachable"}),

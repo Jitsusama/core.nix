@@ -804,8 +804,8 @@ def test_a_reload_holds_no_room_for_a_season_only_z_opened(code_page: Page) -> N
 
 def test_a_resize_before_the_feeds_arrive_lets_the_room_go(code_page: Page) -> None:
     says_it_stands(code_page, "live")
-    # The list is empty until its rows draw, and an empty list keeps no room, so the reload
-    # waits for a row as the others do; live can be said before the paced list has drawn.
+    # The page keeps room only for a list it drew, and live can come before the rows do on a
+    # busy builder, so the reload is left until there's a list whose room it keeps.
     expect(row(code_page, "github:owl/core"), "Code drew no row for core").to_be_visible()
     # Every feed answered by a socket that never speaks, so nothing draws and the room stays
     # held for its while, as on a slow start; the server answers from what it holds otherwise.

@@ -660,6 +660,23 @@ class Shell:
 
 # How long the rows weighed must hold still before a count of them is read.
 WEIGHED_STILL = 1.0
+# How long no key is said presented before every key pressed counts as shown: a key's frame
+# comes within a few, and its record a moment after.
+PRESENTED_STILL = timedelta(milliseconds=500)
+
+
+def keys_presented_settled(shell: Shell) -> list[Json]:
+    """Give the keys the launcher said presented, once no more have come for PRESENTED_STILL."""
+    deadline = time.monotonic() + WAITING.total_seconds()
+    presented = json.loads(shell.as_account(shell.ipc("keysPresented")))
+    still = time.monotonic()
+    while time.monotonic() - still < PRESENTED_STILL.total_seconds():
+        assert time.monotonic() < deadline, f"keys kept being presented: {presented}"
+        time.sleep(POLL)
+        now = json.loads(shell.as_account(shell.ipc("keysPresented")))
+        if len(now) != len(presented):
+            presented, still = now, time.monotonic()
+    return cast("list[Json]", presented)
 
 
 def weighed_held_still(shell: Shell, timeout: float = 10.0) -> int:

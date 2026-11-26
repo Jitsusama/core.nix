@@ -29,6 +29,9 @@ QtObject {
             crosses(expect, way);
         down(expect);
         up(expect);
+        along(expect);
+        straddled(expect);
+        scrolled(expect);
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
@@ -334,5 +337,135 @@ QtObject {
                 comes?.to.x, comes?.to.y, far.beats[fars.indexOf("springs") + 1]?.name,
                 Paths.frame(far, far.ends).beat],
             [[], 392, 776, "grabs", "sits"]);
+    }
+
+    // Off the screen's side, where the window it sat on took it as niri
+    // scrolled the strip, it comes back in at that edge, head first, and
+    // walks the tops to its seat (Joel, 2026-11-14 17:24: "focusing to a
+    // window off the left or right edge"). niri lays the strip's columns
+    // on past each edge, the gap between them its own, and the windows
+    // there stand lower than the cat was drawn, so it comes in on theirs.
+    function along(expect) {
+        const strip = world().was.concat([
+            { left: -600, top: 40, width: 600, height: 744, column: -1, id: 5 },
+            { left: 1248, top: 40, width: 600, height: 744, column: 2, id: 6 }
+        ]);
+        const at = world({ cols: Paths.columns(strip, 0), pause: 300 });
+        const walks = ["walkingA", "walkingB", "walkingC", "walkingD"];
+        const seen = one => one.x + 8 > 0 && one.x < 1248;
+        for (const [from, to, side] of [[2000, 312, "off the right"],
+            [-900, 900, "off the left"]]) {
+            const walk = Stacked.walkAlong({ x: from, y: 7 }, { x: to, y: 7 }, at);
+            const all = frames(walk, 1000 / 120);
+            const comes = all.find(seen);
+            const shows = one => from > 0 ? 1248 - one.x : one.x + 8;
+            expect(`${side}, it comes in at the edge on the top there, head first`,
+                [seen(all[0]), comes?.beat, comes?.y, shows(comes) <= 3],
+                [false, "peeks", 31, true]);
+            const peeking = all.filter(one => ["peeks", "peers", "looks"].includes(one.beat));
+            expect(`${side}, no more of it than its head over the edge till it has looked`,
+                [Math.max(...peeking.map(shows)), peeking.filter(one => shows(one) > 3).length],
+                [3, 0]);
+            const looking = peeking.filter(one => one.beat !== "peeks");
+            expect(`${side}, its head over the edge, it looks about for 400 ms`,
+                [looking.length > 0 && looking[looking.length - 1].t - looking[0].t >= 390,
+                    [...new Set(looking.map(one => one.pose))]],
+                [true, ["nothingHere", "earFlick"]]);
+            expect(`${side}, its head comes over the edge with its paws moving`,
+                peeking.filter(one => one.beat === "peeks" && !walks.includes(one.pose))
+                    .map(one => [Math.round(one.t), one.pose]), []);
+            const on = all.findIndex(one => one.beat === "looks");
+            const looked = walk.beats.findIndex(beat => beat.name === "looks");
+            const leap = walk.beats[looked + 2];
+            expect(`${side}, then it leaps the gap at the edge onto the window inside it`,
+                [walk.beats.slice(looked + 1, looked + 4).map(beat => beat.name),
+                    leap?.to.x, leap?.to.y],
+                [["crouches", "leaps", "lands"], from > 0 ? 1224 : 16, 7]);
+            expect(`${side}, then it comes on facing in, never thinking again or going back out`,
+                [walk.beats.some(beat => beat.name === "thinks"),
+                    all.slice(on).filter(one => !seen(one)).length,
+                    [...new Set(all.slice(0, on).map(one => one.facing))]],
+                [false, 0, [from > 0 ? -1 : 1]]);
+            const seated = Paths.frame(walk, walk.ends);
+            expect(`${side}, and walks the tops to its seat`, [seated.x, seated.y, seated.beat],
+                [to, 7, "sits"]);
+        }
+        const partly = Stacked.walkAlong({ x: 1244, y: 7 }, { x: 312, y: 7 }, at);
+        expect("partly over the edge, it walks on from where it's drawn, peeking at nothing",
+            [Paths.frame(partly, 0).x, partly.beats.some(beat => beat.name === "peeks")],
+            [1244, false]);
+        expect("on the screen, it walks as any walk does",
+            JSON.stringify(Stacked.walkAlong({ x: 100, y: 7 }, { x: 900, y: 7 }, at)),
+            JSON.stringify(Paths.walk({ x: 100, y: 7 }, { x: 900, y: 7 }, at)));
+    }
+
+    // Off the right edge on a window partly on the screen, it walks that
+    // window's top in to its gap and leaps only the gap, never the window's
+    // whole top from the edge.
+    function straddled(expect) {
+        const strip = [
+            { left: 16, top: 16, width: 600, height: 768, column: 0, id: 1 },
+            { left: 632, top: 16, width: 400, height: 768, column: 1, id: 2 },
+            { left: 1048, top: 16, width: 600, height: 768, column: 2, id: 3 }
+        ];
+        const at = world({ cols: Paths.columns(strip, 0), pause: 300 });
+        const walk = Stacked.walkAlong({ x: 2000, y: 7 }, { x: 312, y: 7 }, at);
+        const looked = walk.beats.findIndex(beat => beat.name === "looks");
+        const leapt = walk.beats.findIndex((beat, i) => i > looked && beat.name === "leaps");
+        expect("on a window partly on the screen, it walks to its gap, then leaps only the gap",
+            [walk.beats[looked + 1]?.name, walk.beats[leapt]?.from.x, walk.beats[leapt]?.to.x],
+            ["goes", 1048, 1024]);
+        const seated = Paths.frame(walk, walk.ends);
+        expect("and walks the tops on to its seat", [seated.x, seated.y, seated.beat],
+            [312, 7, "sits"]);
+        // The edge in the gap between the window inside it and one past it,
+        // drawn in the air below that window's top.
+        const gapped = [strip[0], strip[1], { left: 1264, top: 40, width: 600, height: 744,
+            column: 2, id: 3 }];
+        const across = Stacked.walkAlong({ x: 2000, y: 100 }, { x: 312, y: 7 },
+            world({ cols: Paths.columns(gapped, 0), pause: 300 }));
+        const peeked = across.beats.find(beat => beat.name === "peeks");
+        expect("the edge in a gap, it peeks from the top of the window past it, never the air",
+            [peeked?.to.y, across.beats.slice(across.beats.indexOf(peeked) + 3,
+                across.beats.indexOf(peeked) + 6).map(beat => beat.name)],
+            [31, ["crouches", "leaps", "lands"]]);
+        // No window past the edge at all, it peeks in at its own height.
+        const bare = Stacked.walkAlong({ x: 2000, y: 7 }, { x: 312, y: 7 },
+            world({ cols: Paths.columns(strip.slice(0, 2), 0), pause: 300 }));
+        const alone = Paths.frame(bare, bare.ends);
+        expect("with no window past the edge, it peeks in at its own height, then goes to its seat",
+            [bare.beats.find(beat => beat.name === "peeks")?.to.y, alone.x, alone.y, alone.beat],
+            [7, 312, 7, "sits"]);
+    }
+
+    // How niri's scroll carries it as it waits for the keys to rest: by
+    // as far as its window moved, drawn on niri's spring from where it was.
+    function scrolled(expect) {
+        const was = world().was;
+        const now = was.map(tile => Object.assign({}, tile, { left: tile.left - 1240 }));
+        expect("its window scrolled, it's carried as far",
+            [MarginCat.carries(was, now, 2), MarginCat.carries(was, was, 2),
+                MarginCat.carries(was, now, 7)], [{ x: -1240, y: 0 }, null, null]);
+        const spring = world().spring;
+        const ends = MarginCat.slides(spring);
+        const lags = [0, ends / 4, ends / 2, ends].map(t =>
+            MarginCat.lags({ x: 1240, y: 0 }, t, spring).x);
+        expect("drawn where it was as niri sets off, nearer as it slides, there as it stops",
+            [lags[0], lags[1] < 1240 && lags[1] > lags[2], Math.abs(lags[3]) < 1240 * 0.01],
+            [1240, true, true]);
+        // Set off 20 ms before it's heard, and turned back 10 ms before it's
+        // heard 120 ms on, so 110 ms into the first ride.
+        const first = Stacked.rides(null, { x: 100, y: 7 }, { x: -1140, y: 7 },
+            { at: 1000 - 20, spring });
+        expect("set off at rest, from where it sat, as far into the scroll as niri says",
+            [first.from, first.at, first.ends], [{ x: 1240, y: 0 }, 980, ends]);
+        const turned = Stacked.rides(first, { x: -1140, y: 7 }, { x: 100, y: 7 },
+            { at: 1100 - 10, spring });
+        expect("turned back mid-way, from where it was drawn as niri turned it, not now",
+            [turned.from.x, turned.at], [-1240 + MarginCat.lags(first.from, 110, spring).x, 1090]);
+        const after = Stacked.rides(first, { x: -1140, y: 7 }, { x: 100, y: 7 },
+            { at: 9000, spring });
+        expect("set off again once the first has settled, from its place",
+            [Math.abs(after.from.x + 1240) < 1240 * 0.01, after.from.y], [true, 0]);
     }
 }

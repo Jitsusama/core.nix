@@ -89,6 +89,40 @@ def walking(at: Json) -> bool:
     return bool(at.get("walk"))
 
 
+def story(said: list[str]) -> str:
+    """Give what the cat did over the reports, once each time it changed, to say why a wait failed.
+
+    A failed wait's tail holds only the last second of reports, and the yarn's wait for its
+    play to begin has failed twice that way (2026-11-23 and 2026-11-24) with nothing to say
+    what came between the ask and the strolling the tail shows. It runs only on a failed wait,
+    and a fault of its own still fails the check, with the wait's failure as its cause.
+    """
+    told: list[str] = []
+    was: dict[str, object] | None = None
+    for line in said:
+        if line.startswith(PLAYED):
+            told.append(line)
+            was = None
+        if not line.startswith(SITS):
+            continue
+        at = placed(line[len(SITS) :]) or {}
+        walk = at.get("walk") or {}
+        move = at.get("move") or {}
+        keys = ("window", "strolling", "pose", "stilled", "held", "departing", "asleep")
+        now: dict[str, object] = {key: at.get(key) for key in keys} | {
+            "restBegun": at.get("restBegun"),
+            "beats": walk.get("beats"),
+            "play": walk.get("play"),
+            "to": walk.get("to"),
+            "move": move.get("beats"),
+            "way": move.get("way"),
+        }
+        if now != was:
+            told.append(f"x {at.get('x')}: {json.dumps(now)}")
+            was = now
+    return "\n".join(told)
+
+
 def reports(shell: Shell, since: int) -> tuple[list[Json], int]:
     """Give each place the cat has said it's at since the mark, and the mark they end at."""
     said, since = shell.said_since(since)
@@ -159,6 +193,7 @@ def plays_out(shell: Shell, kind: str) -> tuple[list[Json], Json, Json]:
     only that play's steps (2026-11-15: a hop's beats were read as a pounce's).
     """
     sat, seat = sitting_over(shell, f"a column played beside, {kind}")
+    asking = shell.mark()
     ask(shell, kind)
     shell.send_key("F24")
     since = shell.mark()
@@ -166,7 +201,13 @@ def plays_out(shell: Shell, kind: str) -> tuple[list[Json], Json, Json]:
     def asked(said: str) -> bool:
         return (playing(placed(said)) or {}).get("play") == kind
 
-    shell.reported(SITS, asked, since, STROLLS)
+    try:
+        shell.reported(SITS, asked, since, STROLLS)
+    except AssertionError as failed:
+        said, _ = shell.said_since(asking)
+        # The wait's own failure, its log tail with it, is printed once as this one's cause.
+        told = f"what the cat did since the ask:\n{story(said)}"
+        raise AssertionError(told) from failed
     began = shell.mark()
     shell.reported(PLAYED, lambda said: said.split(" ", 1)[1].startswith("{"), began, PLAYS)
     said, _ = shell.said_since(since)

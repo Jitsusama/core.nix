@@ -295,6 +295,7 @@ pub fn script(
     let sweeping = sweeping();
     let handing = handing();
     let bringing = bringing(kind);
+    let freed = freed();
     let setup = kind.setup.trim();
     format!(
         r#"job={job}
@@ -324,29 +325,30 @@ say() {{ printf '\n%s\n' "$1"; }}
 if {{ [ ! -L "$runs" ] || rm -f "$runs"; }} && mkdir -p "$runs" &&
   {{ [ ! -L "$work{RUN}" ] || rm -f "$work{RUN}"; }} &&
   (set -C && printf '%s %s\n' "$$" "$here" > "$work{RUN}") && mine=1 &&
-  cleared "$work" && mkdir -p "$work"; then copied; why=$?; else why=2; fi
-# What was taken as an archive may be a folder the job named as one.
-[ -z "$mine" ] || {{ rm -f "$work.names"; cleared "$work.tar"; }}
-# The tree goes, with the copy, only where no link stood at the job's
-# handover or above it as `unlinked` looked, so nothing past one found
-# then is cleared; the copy goes either way.
+  copies && cleared "$work" && mkdir "$work"; then copied; why=$?; else why=2; fi
+# What was taken as an archive may be a folder the job named as one. A
+# link standing at the copies' folder or at the copy as it's checked, or
+# a copy gone with one cleared, leaves it untaken, as this machine's, as
+# does a refusal that may have read through one; one put after is the
+# cd's to catch, where it fails.
+[ -z "$mine" ] || if copies; then rm -f "$work.names"; cleared "$work.tar"
+  [ "$why" -eq 2 ] || placed ||
+    {{ printf "elsewhere: the job's copy was moved or linked from its place\n" >&2; why=2; }}
+else why=2; fi
+# The tree and the copy go as `freed` says.
 if [ "$why" -ne 0 ]; then
   [ -z "$mine" ] || {{
-    cd "$HOME" && if unlinked; then cleared "$job/{TREE}" "$work"; else
-      printf "elsewhere: a link at the job's handover couldn't be cleared, so its tree stays\n" >&2
-      cleared "$work"; fi && rm -f "$work{RUN}"
-  }}
+    {freed}  }}
   [ "$why" -eq 1 ] && {{ say {refused}; exit {REFUSES}; }}
   say {untaken}
   exit {UNTAKEN}
 fi
 cd {folder} || {{
-  printf "elsewhere: the job's folder holds nothing that travels\n" >&2
-  cd "$HOME" && if unlinked; then cleared "$job/{TREE}" "$work"; else
-    printf "elsewhere: a link at the job's handover couldn't be cleared, so its tree stays\n" >&2
-    cleared "$work"; fi && rm -f "$work{RUN}"
-  say {refused}
-  exit {REFUSES}
+  placed && printf "elsewhere: the job's folder holds nothing that travels\n" >&2; why=$?
+  [ "$why" -eq 0 ] || printf "elsewhere: the job's copy was moved or linked from its place\n" >&2
+  {freed}  [ "$why" -ne 0 ] || {{ say {refused}; exit {REFUSES}; }}
+  say {untaken}
+  exit {UNTAKEN}
 }}
 say {started}
 (
@@ -788,7 +790,9 @@ mod steps;
 #[cfg(test)]
 use names::within_tree;
 use names::{Folders, tracked};
-use steps::{CLEARING, RUN, bringing, copying, crossing, handing, stopping, sweeping, waiting};
+use steps::{
+    CLEARING, RUN, bringing, copying, crossing, freed, handing, stopping, sweeping, waiting,
+};
 
 pub use heard::{Heard, REFUSES, UNTAKEN, relay};
 
