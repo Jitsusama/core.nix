@@ -1529,6 +1529,12 @@ def test_a_place_its_chord_opened_is_drawn_as_it_stood(shell: Shell) -> None:
     opening = filled_after(shell, timed)
     assert opening.get("into") == "on", f"the opening didn't say its chord: {opening}"
     working_spent(opening)
+    # Its rows, its card and its hold are lapped apart from the ask, since an opening into a
+    # place asked 13 to 18 ms where home asked 1 to 3 (Joel's journal, 2026-11-24).
+    laps = {"asking", "kept rows", "kept card", "letting go"}
+    assert laps <= set(cast("dict[str, float]", opening.get("parts", {}))), (
+        f"the kept opening's laps went unsaid: {opening.get('parts')}"
+    )
     took = [line for line in said_of_chords(shell, since).splitlines() if "opening took" in line]
     assert took, "the opening said nothing of its time"
     assert "; its thread ran " in took[-1], f"the opening's line didn't say its thread: {took[-1]}"

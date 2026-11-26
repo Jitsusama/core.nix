@@ -10832,7 +10832,10 @@ Scope {
         // Making its rows and giving them to the card are lapped apart from
         // the ask, since an opening into a place worked 13 to 18 ms asking
         // where home worked 1 to 3 (Joel's journal, 2026-11-24), and the
-        // fix depends on which of the two held it.
+        // fix depends on which of the two held it. Their names are their
+        // own, as a key's line says "listing" and "placing" of other work.
+        // Falling back to opening whole, it says the whole opening's laps
+        // instead, and this one is let go with the rest.
         openLap("asking");
         const listed = how === "source" ? keptListing(source)
             : how === "asItStands" ? source.asItStands(() => keptListing(source))
@@ -10842,7 +10845,7 @@ Scope {
         // The kept steps are only the way into the place, never its rows,
         // so they're drawn under a share too.
         const steps = asNow ? [placeStep(source)] : kept.held;
-        openLap("listing");
+        openLap("kept rows");
         keeping = true;
         try {
             held = steps;
@@ -10863,12 +10866,12 @@ Scope {
         } finally {
             keeping = false;
         }
-        openLap("placing");
+        openLap("kept card");
         unhold(`${name} opened from what was kept`);
         openChord = name;
         openInto = name;
         // Lapped too, so "asking" holds only the ask's own work.
-        openLap("unholding");
+        openLap("letting go");
         beginOpening();
         return true;
     }
@@ -11514,10 +11517,10 @@ Scope {
     // opening since a start says which of it ran slow: it worked 15 to 29
     // ms where later ones worked 4, said only as "showing" (5FWIUS's
     // finding, 2026-11-19). "asking" is all from the ask to the opening's
-    // start, but for a kept place's "listing", its rows made, "placing",
-    // the card given them, and "unholding", the hold let go and the
-    // opening named (intoKept). "showing" is now only what `opening`
-    // turning moves.
+    // start, but for a kept place's "kept rows", its rows and steps made,
+    // "kept card", what giving the card them sets off at once, and
+    // "letting go", the hold let go and the opening named (intoKept).
+    // "showing" is now only what `opening` turning moves.
     property var openLaps: ({ at: -1, parts: {} })
     function openLap(name) {
         if (openAsked < 0 || openLaps.at < 0)
