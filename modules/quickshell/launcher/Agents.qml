@@ -2086,7 +2086,7 @@ Provider {
                 return;
             }
             const how = Sprouting.ended(answer, sproutWords());
-            sproutTokens[token] = "ended";
+            sproutTokens[token] = Openings.heardState(taken, sproutTokens[token]);
             delete sproutUnanswered[token];
             if (taken === "sprouted")
                 sprouted(how);
@@ -2198,7 +2198,12 @@ Provider {
         still.forEach(one => {
             const how = Sprouting.ended(one.ended, sproutWords());
             sproutReaches(how);
-            watchFor(how, { key: `start:${one.token}`, token: one.token });
+            // Waited since its asking, and said late past its minute, by the asker
+            // if not here, so a switch neither says so again nor starts its watch anew.
+            const asked = Number.isFinite(one.at) ? one.at : undefined;
+            watchFor(how, { key: `start:${one.token}`, token: one.token, asked, kept: true,
+                late: asked !== undefined
+                    && Date.now() - asked >= openingPatience.patience });
         });
         if (still.length > 0)
             openSprouted();
@@ -2525,11 +2530,23 @@ Provider {
     function openSprouted() {
         const stood = Openings.settled(openings, one => sessionOf(one), Date.now(),
             openingPatience);
+        const late = stood.late.map(one => ({ one, text: said(one, "unopened") }));
+        // Kept on every pass, one that settles nothing too, as each counts its
+        // wait from what the last pass kept (Openings.settled).
+        openings = Openings.toldOf(stood.waiting, stood.late, late.map(each => each.text));
         if (stood.late.length + stood.up.length + stood.gone.length === 0)
             return;
+        // The up and gone are out of `openings` now, so their records are said told
+        // however telling them ends, never left watched for the shell's life.
+        try {
+            tellPass(stood, late);
+        } finally {
+            sproutWatched(Openings.settledTokens(stood));
+        }
+    }
+    // Tells Joel what a pass of openSprouted settled, `late` its late ones' words.
+    function tellPass(stood, late) {
         const launcher = provider.launcher ?? null;
-        const late = stood.late.map(one => ({ one, text: said(one, "unopened") }));
-        openings = Openings.toldOf(stood.waiting, stood.late, late.map(each => each.text));
         stood.late.forEach(one => sproutJournal(
             `new work held ${one.held} on ${one.machine} is still coming up`));
         stood.gone.forEach(one => {
@@ -2551,7 +2568,7 @@ Provider {
             } catch (error) {
                 sproutJournal(`new work held ${one.held} is up, but opening it threw: ${error}`);
                 text = Openings.filled(sproutWords(), Openings.upWord(one),
-                    { machine: one.machine, title: "" });
+                    { machine: one.machine, title: footName(one.session) });
             }
             if (text !== "")
                 told.push({ one, text });
@@ -2562,8 +2579,6 @@ Provider {
             sproutTell(where.foot);
         if (where.notice.length > 0)
             sproutNoticed(where.notice);
-        // Told Joel first, so a record is kept until he is.
-        sproutWatched(Openings.settledTokens(stood));
     }
     function sessionOf(one) {
         return Sprouting.sproutedOf(Sessions.running, one.held, one.machine);

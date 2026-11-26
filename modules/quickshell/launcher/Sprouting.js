@@ -204,12 +204,19 @@ const ASKER_ANSWERS_MS = PATIENCE_MS + 10000 + SETTLE_MS;
 // dropped with the daemon is said again as its watch answers anyway.
 const TOLD_AGAIN_MS = 30000;
 
+// How long a start this shell never asked stands seen before it's told: the
+// asker, up beside a new shell for up to 70 s while a switch hands over
+// (TOLD_AGAIN_MS's), keeps a record untold while it watches its session,
+// so only once it's surely gone, and the daemon still keeps the record
+// (stillKept), is the start this shell's to tell and watch.
+const HANDED_OVER_MS = 70000 + SETTLE_MS;
+
 // Of the starts the agents daemon keeps ended and untold (`kept`, each
 // `{ token, ended }`), by how this shell stands on each (`known`, a
 // token's "asking", "ended", "watching", its session awaited, or "told")
 // and when it first saw each it never heard the end of (`seen`, by
 // token): those to tell, as a shell started since or a start a restart
-// cut off has it, once seen SETTLE_MS before `now` and asked (`at`)
+// cut off has it, once seen HANDED_OVER_MS before `now` and asked (`at`)
 // ASKER_ANSWERS_MS before it; those still `waiting` that out; those
 // `answered`, still asked here, whose answer the daemon dropped as it
 // went, so its record is the answer; and every token to say told, all
@@ -219,7 +226,7 @@ function untold(kept, known, seen, now) {
     // Own keys alone, so a prototype's name is never known; Qt's engine has no Object.hasOwn.
     const own = (of, named) => Object.keys(of).includes(named);
     const askerHad = one => !Number.isFinite(one.at) || now - one.at >= ASKER_ANSWERS_MS;
-    const waitedOut = one => own(seen, one.token) && now - seen[one.token] >= SETTLE_MS
+    const waitedOut = one => own(seen, one.token) && now - seen[one.token] >= HANDED_OVER_MS
         && askerHad(one);
     const unheard = kept.filter(one => !own(known, one.token));
     const tell = unheard.filter(waitedOut);

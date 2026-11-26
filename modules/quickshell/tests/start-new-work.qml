@@ -273,6 +273,21 @@ QtObject {
             const longer = Object.assign({}, counted, { waited: minutes - 5000 });
             Expect.same("and to its patience", Openings.settled([longer], () => null,
                 now + 5000, times).late.length, 1);
+            // As Agents.qml's openSprouted keeps each pass's waiting, a pass that
+            // settles nothing too: kept, the 5 s passes reach the minute; the
+            // opening as made, kept, never does.
+            let kept = [counted];
+            let lateAt = -1;
+            for (let pass = 1; pass <= 24 && lateAt < 0; pass += 1) {
+                const stood = Openings.settled(kept, () => null, now + pass * 5000, times);
+                kept = Openings.toldOf(stood.waiting, stood.late, stood.late.map(() => ""));
+                if (stood.late.length > 0)
+                    lateAt = pass * 5000;
+            }
+            Expect.same("passes kept, settling nothing, are late at the minute", lateAt,
+                minutes);
+            Expect.same("the opening as made, kept, is never late", Openings.settled(
+                [counted], () => null, now + 2 * minutes, times).late.length, 0);
         }
         {
             const toldOne = [{ key: "t", held: "h0", since: now - 3 * minutes, late: true,
@@ -533,6 +548,17 @@ QtObject {
                     keys: -1, token: "t-2", waited: 0, at: 900 });
             Expect.same("one with no token is watched with none",
                 Openings.watching([], heldHow, { key: "a" }, 900).token, "");
+            // One kept, handed over by a switch, has waited since its asking, and
+            // one past its minute was said late by its asker, so it isn't again.
+            const handed = Openings.watching([], heldHow,
+                { key: "start:t", asked: 900 - 120000, kept: true, late: true }, 900);
+            Expect.same("one handed over waits out what's left of its quarter hour, said late",
+                [handed.waited, handed.late, Openings.settled([handed], () => null, 905,
+                    { patience: 60000, watch: 900000 }).late.length], [120000, true, 0]);
+            Expect.same("one handed over gone past its quarter hour is lost at its pass",
+                Openings.settled([Openings.watching([], heldHow,
+                    { key: "start:t", asked: 0, kept: true }, 900000)], () => null, 900005,
+                    { patience: 60000, watch: 900000 }).gone.length, 1);
             // A pass settles its up and gone starts, whose records the daemon keeps
             // until told, and leaves those still watched kept.
             Expect.same("a pass's settled tokens are its up and gone ones', none empty",
@@ -627,6 +653,14 @@ QtObject {
                 "late");
             Expect.same("one heard after its record was told by that record",
                 heard(true, "told", false, false), "recorded");
+            Expect.same("one heard after its record started a watch is still watched",
+                Openings.heardState(heard(true, "watching", false, false), "watching"),
+                "watching");
+            Expect.same("one heard after its record was told stays told",
+                Openings.heardState("recorded", "told"), "told");
+            Expect.same("one heard on its act, or late, ends",
+                [Openings.heardState("sprouted", "asking"),
+                    Openings.heardState("late", "ended")], ["ended", "ended"]);
         }
         // What a late end says: one unanswered again says nothing, as the patience
         // already said nothing answered.
@@ -688,7 +722,7 @@ QtObject {
             { token: "a-4", ended: { error: { code: "unsprouted", message: "no" } } }
         ];
         const known = { "a-2": "ended", "a-3": "asking", "a-4": "told" };
-        const settled = { "a-1": now - Sprouting.SETTLE_MS };
+        const settled = { "a-1": now - Sprouting.HANDED_OVER_MS };
         const untold = Sprouting.untold(kept, known, settled, now);
         Expect.same("one never heard is told", untold.tell.map(one => one.token), ["a-1"]);
         Expect.same("each heard or told is said told, and one still asked isn't",
@@ -722,26 +756,36 @@ QtObject {
         Expect.same("one just seen isn't told yet", fresh.tell, []);
         Expect.same("nor said told, as it isn't", fresh.told, ["a-2", "a-4"]);
         Expect.same("it waits", fresh.waiting, ["a-1"]);
-        const early = Sprouting.untold(kept, known, { "a-1": now - Sprouting.SETTLE_MS + 1 },
-            now);
-        Expect.same("one seen less than the moment ago still waits", early.waiting, ["a-1"]);
+        const early = Sprouting.untold(kept, known,
+            { "a-1": now - Sprouting.HANDED_OVER_MS + 1 }, now);
+        Expect.same("one seen less than a handover ago still waits", early.waiting, ["a-1"]);
+        // Asked long ago, its asker may still be up beside this shell, watching its
+        // session with its record kept untold, so it isn't this shell's to tell yet.
+        const watchedByAsker = [{ token: "w-1", at: now - 10 * 60000, ended: {} }];
+        Expect.same("one seen a moment ago, asked long ago, waits out the handover",
+            Sprouting.untold(watchedByAsker, {}, { "w-1": now - Sprouting.SETTLE_MS }, now)
+                .waiting, ["w-1"]);
+        Expect.same("a handover outlasts the old shell's 70 s beside the new",
+            Sprouting.HANDED_OVER_MS > 70000, true);
         // Its asker may hear it later than this shell does, as each comes back to a daemon
         // started again in its own time, but tells it within its patience of the asking,
         // so one asked more recently than that waits, however long it's been seen.
         const recent = [{ token: "b-1", at: now - Sprouting.ASKER_ANSWERS_MS + 1, ended: {} }];
-        const lately = Sprouting.untold(recent, {}, { "b-1": now - Sprouting.SETTLE_MS }, now);
+        const lately = Sprouting.untold(recent, {}, { "b-1": now - Sprouting.HANDED_OVER_MS },
+            now);
         Expect.same("one asked within its asker's patience waits", lately.waiting, ["b-1"]);
         Expect.same("and isn't told", lately.tell, []);
         const asked = [{ token: "b-1", at: now - Sprouting.ASKER_ANSWERS_MS, ended: {} }];
         Expect.same("one asked longer ago than that is told", Sprouting.untold(asked, {},
-            { "b-1": now - Sprouting.SETTLE_MS }, now).tell.map(one => one.token), ["b-1"]);
+            { "b-1": now - Sprouting.HANDED_OVER_MS }, now).tell.map(one => one.token),
+            ["b-1"]);
         Expect.same("the asker's patience outlasts the daemon's",
             Sprouting.PATIENCE_MS > 50000 && Sprouting.ASKER_ANSWERS_MS > Sprouting.PATIENCE_MS,
             true);
         // A token the daemon took is letters, digits and dashes, as an object's own
         // inherited names are too, so only a token this shell holds counts as known.
         const named = Sprouting.untold([{ token: "constructor", ended: {} }], {},
-            { constructor: now - Sprouting.SETTLE_MS }, now);
+            { constructor: now - Sprouting.HANDED_OVER_MS }, now);
         Expect.same("an inherited name isn't known", named.tell.map(one => one.token),
             ["constructor"]);
         Expect.same("none kept, none told", Sprouting.untold([], {}, {}, now),

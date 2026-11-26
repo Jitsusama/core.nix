@@ -152,17 +152,23 @@ function unpromised(openings) {
 
 // The opening watching a start `how` no act waits on (one kept, or answered
 // late), from `act`, `{ key, asked, token }` (the act it was asked from and
-// its Return, or for one kept a key of its own and none, and its start's
-// token), answered `now`: keys -1, so it never takes the keys, and Joel is
-// told when it's up or lost. Null for one refused or with no hold to find,
-// which Sprouting.reach tells, and for one `openings` already watch.
+// its Return, or for one kept a key of its own and its asking, its start's
+// token, and `late` for one said late already), answered `now`: keys -1,
+// so it never takes the keys, and Joel is told when it's up or lost. One
+// kept has waited since its asking, so a shell handed over to watches out
+// its quarter hour, not a fresh one. Null for one refused or with no hold
+// to find, which Sprouting.reach tells, and for one `openings` already
+// watch.
 function watching(openings, how, act, now) {
     if (how.started !== true || how.held === ""
         || openings.some(one => one.held === how.held && one.machine === how.machine)) {
         return null;
     }
-    return { key: act.key, held: how.held, machine: how.machine, since: now, asked: act.asked,
-        keys: -1, token: act.token ?? "", waited: 0, at: now };
+    const waited = act.kept === true && Number.isFinite(act.asked)
+        ? Math.max(now - act.asked, 0) : 0;
+    const one = { key: act.key, held: how.held, machine: how.machine, since: now,
+        asked: act.asked, keys: -1, token: act.token ?? "", waited, at: now };
+    return act.late === true ? Object.assign(one, { late: true }) : one;
 }
 
 // The tokens of the starts a pass settled (settled's `stood`),
@@ -235,6 +241,13 @@ function heardAs(answered, { state, late, current }) {
     if (current)
         return "sprouted";
     return late ? "late" : "recorded";
+}
+
+// How a token stood at `state` stands once its answer is taken as `taken`
+// (heardAs's): ended, but for one its record ended first, which stands as
+// that left it, so one still watched stays kept untold (sproutTold).
+function heardState(taken, state) {
+    return taken === "recorded" ? state : "ended";
 }
 
 // What a start the patience ended says once it ends after all (`how`):
