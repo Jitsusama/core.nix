@@ -2,7 +2,10 @@
 //! config files it reads, and in what order, from where the environment
 //! says.
 
-use super::{Location, SYSTEM_ATTRIBUTES, SYSTEM_CONFIG, config_files, load_config};
+use super::{
+    Location, SYSTEM_ATTRIBUTES, SYSTEM_CONFIG, config_files, load_config, system_attributes,
+    xdg_folder,
+};
 use std::ffi::{OsStr, OsString};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
@@ -44,6 +47,29 @@ fn an_empty_xdg_folder_is_taken_as_unset() {
         files(&[("GIT_CONFIG_NOSYSTEM", "1"), ("XDG_CONFIG_HOME", "")]),
         ["/h/.config/git/config", "/h/.gitconfig", "/r/config"].map(PathBuf::from),
         "an empty XDG_CONFIG_HOME named a file relative to where the engine runs"
+    );
+    // The ignore and attributes files are read from the same folder.
+    assert_eq!(
+        xdg_folder(Some("".into()), Some(Path::new("/h"))),
+        Some(PathBuf::from("/h/.config")),
+        "an empty XDG_CONFIG_HOME named the ignore and attributes files relative to \
+         where the engine runs"
+    );
+}
+
+#[test]
+fn the_system_attributes_are_read_unless_turned_off() {
+    let read = |vars: &[(&str, &str)]| {
+        system_attributes(|name| {
+            vars.iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| (*value).into())
+        })
+    };
+    assert_eq!(
+        (read(&[]), read(&[("GIT_ATTR_NOSYSTEM", "1")])),
+        (Some(PathBuf::from(SYSTEM_ATTRIBUTES)), None),
+        "the system attributes were read from elsewhere, or where they're turned off"
     );
 }
 
@@ -144,9 +170,15 @@ fn config_files_are_read_system_first_then_global_then_the_repositorys() {
 
 #[test]
 fn the_system_files_are_where_the_git_built_beside_reads_them() {
-    // Only a build beside a git, as the package's, names its files, and
-    // only there is the git asked the same; elsewhere they're /etc's.
-    if option_env!("GIT_ENGINE_CONFIG_SYSTEM").is_none() {
+    // A Nix build is the package's, beside a git, which must have named
+    // the files; elsewhere, built by cargo alone, they're /etc's.
+    let packaged = std::env::var_os("NIX_BUILD_TOP").is_some();
+    assert_eq!(
+        option_env!("GIT_ENGINE_CONFIG_SYSTEM").is_some(),
+        packaged,
+        "the package's build named no system files, or a build outside it did"
+    );
+    if !packaged {
         assert_eq!(
             (SYSTEM_CONFIG, SYSTEM_ATTRIBUTES),
             ("/etc/gitconfig", "/etc/gitattributes"),
@@ -154,22 +186,29 @@ fn the_system_files_are_where_the_git_built_beside_reads_them() {
         );
         return;
     }
-    let said = |name: &str| {
+    // The git beside is asked as the build asked it, with neither file
+    // moved nor turned off.
+    let said = |name: &str, nosystem: &str| {
         let git = std::process::Command::new("git")
             .args(["var", name])
             .env_remove(name)
+            .env_remove(nosystem)
             .output()
             .expect("the git built beside is there to ask");
-        PathBuf::from(String::from_utf8_lossy(&git.stdout).trim_end())
+        assert!(git.status.success(), "git var {name} failed: {git:?}");
+        let path = String::from_utf8_lossy(&git.stdout).trim_end().to_owned();
+        assert!(
+            path.starts_with('/'),
+            "git var {name} said no path: {path:?}"
+        );
+        PathBuf::from(path)
     };
     assert_eq!(
-        files(&[])[0],
-        said("GIT_CONFIG_SYSTEM"),
-        "the system config wasn't read where git reads it"
-    );
-    assert_eq!(
-        PathBuf::from(SYSTEM_ATTRIBUTES),
-        said("GIT_ATTR_SYSTEM"),
-        "the system attributes weren't read where git reads them"
+        (files(&[])[0].clone(), system_attributes(|_| None)),
+        (
+            said("GIT_CONFIG_SYSTEM", "GIT_CONFIG_NOSYSTEM"),
+            Some(said("GIT_ATTR_SYSTEM", "GIT_ATTR_NOSYSTEM"))
+        ),
+        "the system config or attributes weren't read where git reads them"
     );
 }

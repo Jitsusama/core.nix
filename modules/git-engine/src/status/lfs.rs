@@ -13,7 +13,9 @@ const VERSION: &str = "version https://git-lfs.github.com/spec/v1";
 /// Whether `command` runs git-lfs's `verb`, by any path to it, itself or
 /// as `git lfs`, given no more than the file's name: a driver running
 /// anything else, or git-lfs's output through another program, might
-/// write something other than its pointer.
+/// write something other than its pointer. A `filter-process` may be
+/// given `--skip`, as `git lfs install --skip-smudge` writes it, which
+/// leaves what it cleans alone.
 pub(super) fn is_git_lfs(command: &str, verb: &str) -> bool {
     let is = |word: Option<&str>, program: &str| {
         word.is_some_and(|word| word.rsplit('/').next() == Some(program))
@@ -22,7 +24,11 @@ pub(super) fn is_git_lfs(command: &str, verb: &str) -> bool {
     let first = words.next();
     (is(first, "git-lfs") || is(first, "git") && words.next() == Some("lfs"))
         && words.next() == Some(verb)
-        && matches!(words.collect::<Vec<_>>()[..], [] | ["%f"] | ["--", "%f"])
+        && match (verb, &words.collect::<Vec<_>>()[..]) {
+            ("filter-process", ["--skip", rest @ ..]) | (_, rest) => {
+                matches!(rest, [] | ["%f"] | ["--", "%f"])
+            }
+        }
 }
 
 /// The pointer git-lfs writes for these contents.

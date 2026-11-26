@@ -2,10 +2,10 @@
 //! quoted subsections, quoted values with escapes and continued lines, and
 //! the includes, unconditional or on the repository's folder or branch,
 //! then what a parent git passed on as `-c` or `GIT_CONFIG_COUNT`.
-//! The system file is read where git's environment names it, or else at
-//! `/etc/gitconfig`: asking git where it was built to look would start a
-//! program, which the engine never does, so a git built to look elsewhere
-//! has its system file left unread.
+//! The system file is read where git's environment names it, or else
+//! where the git built beside the engine reads it, as that git said when
+//! the engine was built, since asking it as the engine runs would start a
+//! program, which the engine never does.
 
 use crate::stamp::{Stamp, Stamps};
 use crate::wildmatch;

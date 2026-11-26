@@ -332,6 +332,9 @@ mod tests {
              [filter \"cleaned\"]\n clean = /usr/bin/git lfs clean -- %f\n\
              [filter \"lfsx\"]\n process = git lfsx filter-process\n\
              [filter \"either\"]\n clean = git-lfs clean -- %f\n process = crypt\n\
+             [filter \"skipping\"]\n process = git-lfs filter-process --skip\n\
+             [filter \"skipclean\"]\n clean = git-lfs clean --skip -- %f\n\
+             [filter \"skipafter\"]\n process = git-lfs filter-process --skip x\n\
              [filters]\n x = y\n",
         );
         let runs = |name: &str| (name.to_owned(), Driver::Runs);
@@ -356,13 +359,16 @@ mod tests {
                 lfs("cleaned"),
                 runs("lfsx"),
                 runs("either"),
+                lfs("skipping"),
+                runs("skipclean"),
+                runs("skipafter"),
             ]),
             "took a filter only smudging, with an empty or emptied command, an empty \
              process over a clean one, or another section's keys; missed one with a dot \
              or a capital in its name; misjudged a required one; took for git-lfs's \
              a command other than its process or clean, one whose process runs \
-             another, or one piping it on; or missed git-lfs run through git, bare \
-             or given the file's name"
+             another, or one piping it on; or missed git-lfs run through git, bare, \
+             given the file's name or its process told to skip smudging"
         );
     }
 
