@@ -251,8 +251,9 @@ named "${home}"
 # says is left out of what's read. ' -1' and '+-1' are -1, find's own no
 # limit, and zeros before a digit count for nothing however many there are.
 # A number past a long long, 2^64 + 1, or at 19 digits by one or in its
-# first ten, is held at its most, and kept in an int, as -1, rather than
-# wrapped round to another depth.
+# first ten, is held at its most, and kept in an int, as -1, so it reaches
+# the guarded folders as no limit does, where one wrapped round to 0 or 1
+# wouldn't. One wrapped round to 2 or more would reach them too, and pass.
 for given in '+3' ' 3' '+ +3' ' -1' '+-1' '0000000000000000000003' '18446744073709551617' \
   '9223372036854775808' '9300000000000000000'; do
   search "${home}" -maxdepth 1 -maxdepth "${given}" -name needle >/dev/null
@@ -407,7 +408,7 @@ done
 # Kept in an int, 2^32 + 1 is 1, zeros past a long long's digits are 0, and
 # one below a long long is held at its least, whose low 32 bits are 0, each
 # of which opens no guarded folder. That one is typed after a +, since find
-# refuses a depth that starts with a -.
+# refuses a -maxdepth or -mindepth that starts with a -.
 for args in depth-primary depth-option deep delete semi-led plus-led int-wraps zeros \
   low-held; do
   case ${args} in
