@@ -480,9 +480,10 @@ fn the_file_goes_when_it_is_stopped() {
 
 #[test]
 fn a_file_it_couldnt_write_is_written_once_it_can_be() {
-    // /dev/urandom stands in for the camera's node, so the test holding it
-    // is named; the other tests' watches hold /dev/zero and /dev/full.
-    let watch = Watch::on("unwritten", Some(Path::new("/dev/urandom")));
+    // /dev/random stands in for the camera's node, which nothing else holds
+    // (programs keep /dev/urandom open), so its holders change only when
+    // the test's do; the other tests' watches hold /dev/zero and /dev/full.
+    let watch = Watch::on("unwritten", Some(Path::new("/dev/random")));
     watch.until_there(true, "no file while the camera's there");
     let folder = watch.file.parent().unwrap().to_owned();
     fs::set_permissions(&folder, Permissions::from_mode(0o555)).unwrap();
