@@ -439,8 +439,8 @@ if less; record a new one after moving to a new series.
   slices won on 24 October: an app's worst synced save beside heavy writes
   took 55 to 170 ms under them, and 76 to 492 ms under every `io.cost`
   setting tried. Those targets are gone since, so the choice there is now
-  `io.cost` against no order inside the account, with a qos max of 100 to
-  hold it to the measured model.
+  `io.cost` against no order inside the account, on a measured model with
+  a qos of 10 ms at the 95th percentile both ways, from 50 to 150% of it.
 - **Building in every module a boot loads.** See
   [Built In or a Module](#built-in-or-a-module): only the ones the boot waits
   for earn it.

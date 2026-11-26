@@ -144,9 +144,11 @@ let
   # or 10 ms latency goal, and a goal held to the model. io.cost let the
   # writers run at two to two and a half times the model's write rate.
   # Those targets are gone since, for the reason above, so on such a disk
-  # the choice is now io.cost against no order inside the account. A qos
-  # max of 100 is meant to hold io.cost to the model; whether it does on a
-  # disk like that one is measured on the machine that names it.
+  # the choice is now io.cost against no order inside the account. The VM
+  # runs measured a qos of 10 ms at the 95th percentile both ways, ranging
+  # from 50 to 150% of the model; a max of 100 alone was never measured,
+  # and would hold every read to the model. Whether it holds on a disk
+  # like that one is measured on the machine that names it.
   disks = config.jitsusama.slices.disks;
   latency = lib.optionalAttrs (disks == { }) { IODeviceLatencyTargetSec = "/home 1ms"; };
   settings = attrs: lib.concatStringsSep " " (lib.mapAttrsToList (k: v: "${k}=${toString v}") attrs);
