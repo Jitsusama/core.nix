@@ -11,13 +11,14 @@ use pineapple::progress::Owed;
 
 /// How many failed asks a pull request or issue is owed before it's let
 /// go. With each wait doubling up to [`LONGEST`] rounds, that's 224 rounds
-/// that tried it, about four hours: never time asleep, rounds that
+/// that tried it, about two hours at a round each half minute, four on a
+/// site searched by author, a round a minute: never time asleep, rounds that
 /// couldn't start, asks a spent limit kept back, or asks made early
 /// because it changed, so a busy thread is let go no sooner.
 const TRIES: u32 = 12;
 
 /// How many doublings an owed thread's wait between asks grows by, so the
-/// longest is 31 rounds, about half an hour.
+/// longest is 31 rounds, about a quarter hour, half an hour by author.
 const LONGEST: u32 = 5;
 
 /// A pull request or issue a round reads, with when what's judged there is
@@ -81,7 +82,7 @@ fn merged(threads: &mut [Listed], thread: &Thread, from: u64, read_from: u64) ->
 /// of one that's there when an organization's sign-in lapses, and one
 /// truly gone is let go after its tries, its span named. One gone that
 /// wasn't owed goes, as it did before anything was owed: what notified
-/// Joel loses a round's minute, but a search hit loses from its reach on,
+/// Joel loses a round's span, but a search hit loses from its reach on,
 /// as the search gives it again only once it changes, and while a sign-in
 /// lapses each new one there goes so, under a warning each.
 pub(super) fn kept(

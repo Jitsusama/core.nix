@@ -1,12 +1,13 @@
 //! The safe word's reader for GitHub.
 //!
 //! `pineapple-github run`, as its service runs it, asks GitHub every
-//! minute, with Joel's own sign-in (gh's, printed by the program
+//! half minute, with Joel's own sign-in (gh's, printed by the program
 //! `SIGN_IN_KEYRING` names, only read), which pull requests and issues he
 //! takes part in changed, and, since GitHub never notifies him of his own
-//! words, which of those name the word, as a search finds them (own.rs). It
-//! reads what was said on each since it last asked, or on one the search
-//! found from an hour before the search reaches: its opening, comments,
+//! words, where he said the word, as the newest comments where he was last
+//! active list it (watch.rs) and a search finds it (own.rs). It reads
+//! what was said on each since it last asked, or on one the search found
+//! from an hour before the search reaches: its opening, comments,
 //! review comments and reviews. Whatever holds "pineapple" or tags him
 //! is judged with the pull request it was said on as its place
 //! (src/github.rs, then judging.rs), and the decision goes in
@@ -35,8 +36,8 @@
 //! a long list. What his limit refuses, or a thread that fails, is owed
 //! and read again, less often while it fails, what was read judged
 //! meanwhile, so nothing it couldn't read is skipped, but for a search of
-//! what's older than one GitHub cut short (src/bin/pineapple-github/own.rs)
-//! and one failing for hours, named loudly (src/bin/pineapple-github/owed.rs).
+//! what's older than one GitHub cut short (own.rs) and one failing for
+//! hours, named loudly (owed.rs).
 //!
 //! Unless `run` is given `--live`, it is in shadow: every stop's record
 //! says so, and nothing acting on records takes a shadow one for a stop.
@@ -73,14 +74,20 @@ mod judging;
 mod owed;
 mod own;
 mod said;
+mod watch;
 
 use judging::judge;
+use owed::Listed;
 use own::Searched;
 use said::said_on;
+use watch::Watched;
 
-/// How often GitHub is asked, unless a test says otherwise: with the
-/// enforcer's few seconds after, a stop lands well inside five minutes.
-const EVERY: Duration = Duration::from_secs(60);
+/// How often GitHub is asked, unless a test says otherwise: a stop Joel
+/// writes himself is heard within a minute, and with the enforcer's few
+/// seconds after, anyone's lands well inside five. A site searched by
+/// author is asked every minute, the pace [`SEARCHED`] is set for.
+const EVERY: Duration = Duration::from_secs(30);
+const EVERY_SEARCHED: Duration = Duration::from_secs(60);
 
 /// How far back a first start looks, in seconds.
 const LOOK_BACK: u64 = 10 * 60;
@@ -179,7 +186,10 @@ fn help() -> Help {
                 "--repo OWNER/NAME",
                 "a repository searched by author, given once for each, at most 20",
             )
-            .option("--every MS", "how often it asks, a minute unless given"),
+            .option(
+                "--every MS",
+                "how often it asks, half a minute unless given, a minute by author",
+            ),
     )
 }
 
@@ -231,6 +241,7 @@ fn run_options(rest: &[String]) -> Result<Run, Failure> {
         shadow: true,
     };
     let mut args = rest.iter();
+    let mut paced = false;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--verbose" | "-v" => {}
@@ -271,6 +282,7 @@ fn run_options(rest: &[String]) -> Result<Run, Failure> {
                 })?);
             }
             "--every" => {
+                paced = true;
                 how.every = args
                     .next()
                     .and_then(|given| given.parse().ok())
@@ -293,6 +305,9 @@ fn run_options(rest: &[String]) -> Result<Run, Failure> {
                 return Err(flags::unknown("option", other, &known));
             }
         }
+    }
+    if how.authored_by.is_some() && !paced {
+        how.every = EVERY_SEARCHED;
     }
     if how.authored_by.is_some() && (how.login.is_none() || how.repos.is_empty()) {
         return Err(
@@ -390,6 +405,7 @@ fn run(how: &Run) -> Result<(), Failure> {
         owed: Vec::new(),
     });
     let mut own = Searched::new(judged.since, judged.own, first, INDEX_LAG);
+    let mut watched = Watched::default();
     let agent: Agent = Agent::config_builder()
         .timeout_global(Some(PATIENCE))
         .http_status_as_error(false)
@@ -405,7 +421,8 @@ fn run(how: &Run) -> Result<(), Failure> {
                     token: &token,
                     agent: &agent,
                 };
-                round(&github, how, &state, &mut judged, &mut own);
+                let reading = (&mut own, &mut watched);
+                round(&github, how, &state, &mut judged, reading);
             }
             SignIn::Missing => eprintln!("<4>no {name} sign-in yet, so nothing is read"),
             // A locked keyring prompts each time it's asked (RAN_OVER_REST).
@@ -588,12 +605,31 @@ fn searched(github: &GitHub<'_>, query: &str) -> Result<Value, Unread> {
     Ok(answer)
 }
 
+/// What the search `found`, then where Joel `spoke` lately that it didn't
+/// find, read from its `reach`: his words are listed there long before
+/// they're searched, and only what's fresh is read, so they're read first
+/// with the search's, and owed like them.
+fn with_spoken(mut found: Vec<Listed>, spoke: Option<Vec<Thread>>, reach: u64) -> Vec<Listed> {
+    for thread in spoke.into_iter().flatten() {
+        if !found.iter().any(|(known, _, _)| *known == thread) {
+            found.push((thread, reach, reach));
+        }
+    }
+    found
+}
+
 /// One round: what changed since the last, judged oldest first, and how
 /// far it has read moved on, Joel's own search only once what it found
 /// lets it (own.rs). What it couldn't read is owed, read again from where
 /// it was to be (owed.rs); at a spent limit, or after [`FAILS`] failures,
 /// it reads no more, and owes what's left.
-fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own: &mut Searched) {
+fn round(
+    github: &GitHub<'_>,
+    how: &Run,
+    state: &Path,
+    judged: &mut Judged,
+    (own, watched): (&mut Searched, &mut Watched),
+) {
     let began = seconds();
     let Some(login) = who(github, how) else {
         return;
@@ -620,8 +656,10 @@ fn round(github: &GitHub<'_>, how: &Run, state: &Path, judged: &mut Judged, own:
     let reach = own.reach();
     let found = hits.iter().flat_map(|hits| hits.threads.iter());
     let found = found.map(|thread| (thread.clone(), reach, own.read_from()));
+    let spoken = mine.then(|| watched.listed(github, (&how.site, &login), reach, &judged.keys));
+    let found = with_spoken(found.collect(), spoken, reach);
     let notified = notified.into_iter().map(|thread| (thread, from, from));
-    let threads = owed::list(found.collect(), notified.collect(), &judged.owed);
+    let threads = owed::list(found, notified.collect(), &judged.owed);
     // Where logins are addresses, what Joel says is by his address.
     let joel = Joel {
         slack_ids: Vec::new(),

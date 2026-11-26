@@ -90,7 +90,9 @@ pub enum Kind {
 }
 
 impl Kind {
-    fn name(self) -> &'static str {
+    /// Its name in the key of what was said (`Said`).
+    #[must_use]
+    pub fn name(self) -> &'static str {
         match self {
             Self::Opening => "opening",
             Self::Comment => "comment",

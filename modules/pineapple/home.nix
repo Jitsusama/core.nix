@@ -317,7 +317,7 @@ in
         Install.WantedBy = [ "default.target" ];
       };
 
-      # The same reader for GitHub (src/bin/pineapple-github/): every minute,
+      # The same reader for GitHub (src/bin/pineapple-github/): every half minute,
       # the pull requests and issues Joel takes part in that changed, and
       # what was said on them, only asked. Its stops go where the
       # Slack reader's do, so the launcher, the harness and his phone take
