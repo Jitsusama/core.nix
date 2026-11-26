@@ -289,10 +289,8 @@ mod tests {
         key.verify(&message, &Signature::try_from(signature).unwrap())
             .unwrap();
         message.push(0);
-        assert!(
-            key.verify(&message, &Signature::try_from(signature).unwrap())
-                .is_err()
-        );
+        key.verify(&message, &Signature::try_from(signature).unwrap())
+            .expect_err("the signature held for a message a byte past what was signed");
 
         let mut archive = zip::ZipArchive::new(Cursor::new(zipped)).unwrap();
         let names: Vec<_> = (0..archive.len())

@@ -16,14 +16,10 @@
   "modules/backlight/src/switch.rs" = 4;
   "modules/backlight/src/uevent.rs" = 3;
   "modules/backlight/src/warmth.rs" = 2;
-  "modules/bluetooth-links/src/main.rs" = 1;
-  "modules/bluetooth-links/src/reply.rs" = 1;
   "modules/cadence/src/mesh.rs" = 7;
   "modules/cadence/src/records.rs" = 5;
   "modules/cadence/src/revive.rs" = 1;
   "modules/calls/src/lib.rs" = 5;
-  "modules/chrome/open-tabs/host/src/main.rs" = 1;
-  "modules/chrome/pack-extension/src/main.rs" = 1;
   "modules/collector/src/otlp.rs" = 2;
   "modules/collector/src/pressure.rs" = 4;
   "modules/collector/src/when.rs" = 3;
@@ -101,10 +97,8 @@
   "modules/eero/src/cloud.rs" = 2;
   "modules/eero/src/probe.rs" = 13;
   "modules/eero/src/schedule.rs" = 5;
-  "modules/eero/src/views/golden.rs" = 1;
   "modules/eero/src/waiting.rs" = 1;
   "modules/eero/src/watch.rs" = 2;
-  "modules/ergodox/ergodox-watch.rs" = 1;
   "modules/firmware-notice/src/main.rs" = 6;
   "modules/git-engine/src/fsmonitor.rs" = 19;
   "modules/git-engine/src/main.rs" = 1;
@@ -167,7 +161,6 @@
   "modules/load-proof/src/sound.rs" = 1;
   "modules/machine/tests/daemon.rs" = 1;
   "modules/mic-mute-light/mic-mute-light.rs" = 13;
-  "modules/network-revive/src/config.rs" = 1;
   "modules/nix-daemon/vm-first/src/main.rs" = 14;
   "modules/nix-offload/offload/src/decide.rs" = 12;
   "modules/nix-offload/offload/src/held.rs" = 3;
@@ -180,9 +173,6 @@
   "modules/nix-offload/offload/src/sleep.rs" = 8;
   "modules/nix-offload/offload/src/there.rs" = 12;
   "modules/nix-offload/offload/tests/there.rs" = 11;
-  "modules/onepassword/manager/src/lib.rs" = 1;
-  "modules/open-with/src/bin/file-preview.rs" = 4;
-  "modules/open-with/src/open.rs" = 1;
   "modules/passwords/src/audit.rs" = 2;
   "modules/passwords/src/lib.rs" = 17;
   "modules/passwords/tests/daemon.rs" = 3;
@@ -247,7 +237,6 @@
   "modules/spotify/spotify-recent/src/recent.rs" = 13;
   "modules/spotify/spotify-recent/src/token.rs" = 9;
   "modules/spotify/spotify-recent/tests/stand_in.rs" = 5;
-  "modules/systemd/shutdown-status/src/main.rs" = 1;
   "modules/tuple/call/src/log.rs" = 3;
   "modules/tuple/call/src/stream.rs" = 2;
   "modules/tuple/call/tests/daemon.rs" = 1;
