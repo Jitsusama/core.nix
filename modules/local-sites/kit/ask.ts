@@ -250,6 +250,18 @@ function onTheWeb(target: string): string | null {
 
 /** The most words an act runs to, as LookForm.js's ACT_WORDS. */
 const ACT_WORDS = 4;
+/**
+ * The most characters a choice opening with a one-word act runs to and is
+ * still taken to draw whole, as LookForm.js's WHOLE_CHOICE.
+ */
+const WHOLE_CHOICE = 24;
+/** A digit, which goes on a word as a letter does, as LookForm.js's DIGIT. */
+const DIGIT = /[0-9]/u;
+/**
+ * Where a verb's one line stops showing what follows, as LookForm.js's
+ * CUTS: a line break, or two spaces or more.
+ */
+const CUTS = /[\n\r\v\f\u0085\u2028\u2029]|\s{2,}/u;
 
 /**
  * What a name may hide in to pass for another, as LookForm.js reads it:
@@ -284,19 +296,67 @@ function readAs(name: string): string {
 }
 
 /**
+ * The words of a name before a line break or a run of spaces, as
+ * LookForm.js's headOf: all a verb drawn on one line shows once the rest
+ * is cut short.
+ */
+function headOf(name: string): string {
+  return (
+    name
+      .replace(UNDRAWN, "")
+      .replace(UNSEEN, "")
+      .replace(UNMARKED, "")
+      .replace(FILLERS, " ")
+      .trim()
+      .split(CUTS)[0] ?? ""
+  );
+}
+
+/**
+ * Whether `read` opens with the words `each` and then a break between
+ * words, as LookForm.js's opensWith: "clear it, now" opens with "clear
+ * it", where "clearance" doesn't open with "clear".
+ */
+function opensWith(read: string, each: string): boolean {
+  if (!read.startsWith(each) || read.length === each.length) {
+    return false;
+  }
+  const next = read.charAt(each.length);
+  return next.toLowerCase() === next.toUpperCase() && !DIGIT.test(next);
+}
+
+/**
  * Whether `name` reads as one of `taken`, as LookForm.js's poses: one
- * holding a turn poses as any, since it can draw as either.
+ * holding a turn poses as any, since it can draw as either; one reading as
+ * one once cut at a line break or a run of spaces poses; and one opening
+ * with a taken name's words poses, but with a one-word name only once it's
+ * long enough to be cut short to it, past four words or 24 characters.
  */
 function poses(name: string, taken: readonly string[]): boolean {
   const read = readAs(name);
-  return taken.length > 0 && (TURNS.test(name) || taken.some((each) => readAs(each) === read));
+  const head = readAs(headOf(name));
+  const cut = read.split(" ").length > ACT_WORDS || read.length > WHOLE_CHOICE;
+  return (
+    taken.length > 0 &&
+    (TURNS.test(name) ||
+      taken
+        .map(readAs)
+        .some(
+          (each) =>
+            each !== "" &&
+            (each === read ||
+              each === head ||
+              (opensWith(read, each) && (each.includes(" ") || cut))),
+        ))
+  );
 }
 
 /**
  * The second form's act in its own words, as LookForm.js's actOf takes it
  * with the launcher's act names: never past four words, holding a turn,
- * or read as one of the launcher's acts or of `choices`, the look's offers
- * before any posing is dropped, as LookForm.js reads them; else "".
+ * or posing as one of the launcher's acts, or as one of `choices` or one
+ * of them as it, the look's offers before any posing is dropped, as
+ * LookForm.js reads them; else "".
  */
 function actOf(act: string, choices: readonly Choice[]): string {
   const read = readAs(act);
@@ -304,7 +364,7 @@ function actOf(act: string, choices: readonly Choice[]): string {
     read.split(" ").length > ACT_WORDS ||
     TURNS.test(act) ||
     poses(act, LAUNCHER_ACTS) ||
-    choices.some((one) => readAs(one.label) === read)
+    choices.some((one) => poses(act, [one.label]) || poses(one.label, [act]))
     ? ""
     : act;
 }
