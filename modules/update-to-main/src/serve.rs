@@ -656,10 +656,9 @@ mod tests {
     #[test]
     fn an_ask_cut_off_at_the_most_it_may_send_is_told_from_a_whole_one() {
         let commit = "a".repeat(40);
-        let four: String = ["core", "core/mycelium", "core/mycelium/kit", "core/nixpkgs"]
-            .iter()
+        let four = ["core", "core/mycelium", "core/mycelium/kit", "core/nixpkgs"]
             .map(|input| format!(" {input} {commit}"))
-            .collect();
+            .concat();
         let whole = format!("update at{four}\n");
         assert!(
             !cut_off(&whole),
