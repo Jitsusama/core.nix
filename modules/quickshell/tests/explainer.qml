@@ -66,7 +66,10 @@ ShellRoot {
             asking: "asking",
             answered: "explained just now",
             unknown: "not running anywhere",
-            failed: "couldn't be explained"
+            failed: "couldn't be explained",
+            pending: "\u2026",
+            hues: { reading: "voice", asking: "voice", answered: "voice", unknown: "alert",
+                failed: "alert" }
         })
         onChanged: root.told += 1
     }

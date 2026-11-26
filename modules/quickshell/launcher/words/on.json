@@ -771,7 +771,15 @@
         "asking": "asking",
         "answered": "explained just now",
         "unknown": "not running anywhere the node knows",
-        "failed": "couldn't be explained just now"
+        "failed": "couldn't be explained just now",
+        "pending": "\u2026",
+        "hues": {
+          "reading": "voice",
+          "asking": "voice",
+          "answered": "voice",
+          "unknown": "alert",
+          "failed": "alert"
+        }
       }
     },
     {

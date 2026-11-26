@@ -51,7 +51,10 @@ QtObject {
         asking: "asking",
         answered: "explained just now",
         unknown: "not running anywhere",
-        failed: "couldn't be explained"
+        failed: "couldn't be explained",
+        pending: "\u2026",
+        hues: { reading: "voice", asking: "voice", answered: "voice", unknown: "alert",
+            failed: "alert" }
     })
 
     function cases() {
@@ -77,6 +80,11 @@ QtObject {
         Expect.same("and where what to press is asked", asking.includes("{acts}"), true);
         Expect.same("which has words of its own", String(words.acts ?? "").trim() !== "",
             true);
+        Expect.same("it says what shows while its pi has said nothing",
+            String(words.pending ?? "") !== "", true);
+        Expect.same("and a hue for every stage it shows",
+            ["reading", "asking", "answered", "unknown", "failed"]
+                .every(stage => String(words.hues?.[stage] ?? "") !== ""), true);
         Expect.same("which, put in, ask the answer to end with what answers it",
             Explaining.message(Object.assign({}, cell, { asks: "Which tide?" }), asking,
                 ["Go To"], words.acts)
@@ -266,6 +274,17 @@ QtObject {
             Explaining.shown(asking, ask("failed"), said, now)?.hue, "alert");
         Expect.same("an answer stopped as the launcher closed is the act again",
             Explaining.shown(asking, ask("stopped", "It tid"), said, now), null);
+        // Its pending word and hues are its words', not Explaining's own.
+        const own = Object.assign({}, said, { pending: "thinking",
+            hues: { reading: "quiet", answered: "good" } });
+        Expect.same("what shows while its pi thinks is its words'",
+            Explaining.shown(asking, ask("asking"), own, now)?.name, "thinking");
+        Expect.same("a stage's hue is its words'",
+            [Explaining.shown({ stage: "reading", at: at }, null, own, now)?.hue,
+                Explaining.shown(asking, ask("answered", whole), own, now)?.hue],
+            ["quiet", "good"]);
+        Expect.same("a stage its words give no hue is an alert",
+            Explaining.shown(asking, ask("asking"), own, now)?.hue, "alert");
         Expect.same("an answer to another question is the act again", Explaining.shown(asking,
             { posed: "Other", said: whole, stage: "answered" }, said, now), null);
         Expect.same("an answer ten minutes old is the act again, so it's never stale",
