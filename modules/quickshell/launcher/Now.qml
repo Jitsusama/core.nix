@@ -1230,8 +1230,9 @@ Provider {
     // the journal says so. The journal names what the look led by, so a
     // report reads why. One held that can't be gone to, as one on another
     // machine no holder keeps, opens the launcher to say why the same way
-    // (toldHere). Whether it went: a parked one whose wake is refused says
-    // why on the foot, and still counts, since the wake was asked.
+    // (toldHere). Whether it went: a parked one whose wake is refused later
+    // says why on the foot, and still counts, since the wake was asked; one
+    // refused at once, by a node out of reach, didn't go (Sessions.wakeToGo).
     function goToCell(one) {
         const cell = lookCell(one);
         if (cell === null) {

@@ -2663,8 +2663,12 @@ Singleton {
     // "unowned", unjoined, unopened), which its caller says where Joel is, since one asked from
     // a link with the launcher shut was otherwise told to nobody (KP0L6A,
     // 2026-11-24 [00902e94]). A window raised, opened or still coming went.
-    function goTo(session) {
-        root.goneTo = { address: String(session.address ?? ""), at: Date.now() };
+    // `pressed`, where given, is the press wakeToGo stamped before its wake,
+    // kept so one press is one stamp: stamped again here, a wake's refusal
+    // opening the launcher read as another press's and opened it twice
+    // (#6519's tenth round).
+    function goTo(session, pressed) {
+        root.goneTo = pressed ?? { address: String(session.address ?? ""), at: Date.now() };
         readKittyPid();
         if (session.presence?.hosted)
             raisedOwn(viewerOf(session.presence));
@@ -3592,6 +3596,8 @@ Singleton {
         }
         const why = String(answer?.error?.message ?? "");
         Report.say(`unsteered ${upper}: ${why}`);
+        if (act === "wake")
+            root.wakesRefused += 1;
         unsteered(running.find(one => String(one.address).toUpperCase() === upper)
             ?? parkedAs(upper) ?? { address: upper }, why, String(act ?? ""));
         return false;
@@ -4231,19 +4237,29 @@ Singleton {
         // This press is stamped before the wake, which a node out of reach
         // refuses at once (PiSource's steer), so that refusal is told as
         // this press's, never judged by the press before it (#6519's fifth
-        // round); goTo stamps it again as it goes.
+        // round); goTo keeps that stamp rather than making another.
+        const pressed = woke ? { address: String(session.address ?? ""), at: Date.now() }
+            : undefined;
+        const refusedBefore = root.wakesRefused;
         if (woke) {
-            root.goneTo = { address: String(session.address ?? ""), at: Date.now() };
+            root.goneTo = pressed;
             wake(resting);
         }
+        // One refused at once, by a node out of reach, was said as it was refused, so
+        // it didn't go (#6519's tenth round); one refused later still counts, since
+        // the wake was asked and its why comes to the foot.
+        const refusedAtOnce = root.wakesRefused !== refusedBefore;
         // A session woken here reopens by its wake, so what goTo can't open meanwhile is
         // nothing refused, and isn't said as a press that did nothing (waking).
         root.waking = woke && resting.here !== false ? String(session.address ?? "") : "";
-        const went = goTo(session);
-        const wakes = root.waking !== "";
+        const went = goTo(session, pressed);
+        const wakes = root.waking !== "" && !refusedAtOnce;
         root.waking = "";
         return went || wakes;
     }
+    // How many wakes the node has refused, counted as each is told
+    // (steered), so wakeToGo knows one refused before its wake() returned.
+    property int wakesRefused: 0
     // The session a Go To is waking, while goTo runs for it, so its refusals go unsaid.
     property string waking: ""
     // The session Go To was last asked for, and when, so a refusal can tell one Joel just
