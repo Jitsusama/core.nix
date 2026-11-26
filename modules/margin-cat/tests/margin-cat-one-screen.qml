@@ -35,6 +35,7 @@ QtObject {
         movedOff(expect);
         backOnIt(expect);
         standsIt(expect);
+        floorsIt(expect);
         for (const failure of failures)
             console.warn(failure);
         Qt.exit(failures.length === 0 ? 0 : 1);
@@ -553,5 +554,26 @@ QtObject {
             expect(`caught mid-walk, ${name}`, Stacked.standsOnTop(at, tile, size), want);
         expect("caught mid-walk, with no tile for it, it doesn't stand",
             Stacked.standsOnTop(standing, undefined, size), false);
+    }
+
+    // Its windows gone, it comes to the floor: from off the screen's side,
+    // at that edge from the floor past it, whether it rode its old window
+    // off the top or the bottom, never to a seat out of sight.
+    function floorsIt(expect) {
+        const at = { height: 800, tall: 8, wide: 8, across: 1248 };
+        const cases = [
+            ["on the screen, it comes straight down", { x: 312, y: 7 },
+                { off: 0, from: { x: 312, y: 7 }, to: { x: 312, y: 792 } }],
+            ["off the right over the screen", { x: 4436, y: -30 },
+                { off: 1, from: { x: 1248, y: 792 }, to: { x: 1240, y: 792 } }],
+            ["off the right under it", { x: 4436, y: 887 },
+                { off: 1, from: { x: 1248, y: 792 }, to: { x: 1240, y: 792 } }],
+            ["off the left", { x: -3000, y: 7 },
+                { off: -1, from: { x: -8, y: 792 }, to: { x: 0, y: 792 } }],
+            ["a pixel on the left, it comes straight down", { x: -7, y: 7 },
+                { off: 0, from: { x: -7, y: 7 }, to: { x: -7, y: 792 } }]
+        ];
+        for (const [name, place, want] of cases)
+            expect(`to the floor, ${name}`, Stacked.floorsFrom(place, at), want);
     }
 }

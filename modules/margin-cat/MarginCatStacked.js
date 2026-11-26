@@ -66,6 +66,20 @@ function risesFrom(place, at) {
     return { x: place.x, y: Math.min(place.y, at.height + DROPS_FROM * at.tall) };
 }
 
+// Where it comes to the floor from `place` with no window left under it:
+// carried off the screen's side, from the floor past that edge, head first,
+// to sit just inside it, never on a seat out of sight; otherwise straight
+// down where it is. `off` says which side it was off, 0 for none.
+function floorsFrom(place, at) {
+    const y = at.height - at.tall;
+    const off = place.x + at.wide <= 0 ? -1 : place.x >= at.across ? 1 : 0;
+    if (off === 0) {
+        return { off, from: place, to: { x: place.x, y } };
+    }
+    const edge = off < 0 ? { from: -at.wide, to: 0 } : { from: at.across, to: at.across - at.wide };
+    return { off, from: { x: edge.from, y }, to: { x: edge.to, y } };
+}
+
 // It comes onto the screen head first at `x`, from under it if it's going
 // `up`, else head down from the gap over it, hanging by a side on its
 // `side`: its ears and then its eyes come over the edge, its paws moving,

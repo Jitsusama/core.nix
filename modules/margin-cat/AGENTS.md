@@ -156,10 +156,17 @@ edge along the floor.
 - Held by `margin-cat-tiles.qml`: "a scroll's word left on a window as another's layout comes
   keeps its begin"
 - Held by `margin-cat-tiles.qml`: "a layout sent again mid-scroll keeps the scroll's begin"
+- Held by `margin-cat-tiles.qml`: "a new scroll beside an old one's word left on another window
+  is dated by the new"
+- Held by `margin-cat-one-screen.qml`: "to the floor, off the right under it"
+- Held by `margin-cat-one-screen.qml`: "to the floor, a pixel on the left, it comes straight down"
 - Owed since 2026-11-25: on nested niri, a walk caught by a scroll off the edge rides its
   window, and a floor came to from off the edge.
-- Owed since 2026-11-25: a scroll first heard as the tiles watch goes live is dated from
-  when the daemon answered, not when niri sent it, so its ride may start late; unmeasured.
+- Owed since 2026-11-26: a Qt case that no play, stroll or pet starts during a ride; the
+  view's `still`, `play()` and `stroll()` each check `carry`, which nothing pins.
+- Owed since 2026-11-25: a word cached before the tiles watch goes live is dated as begun
+  its `ago` before the shell heard it, not before niri sent it, so an old scroll may read as
+  just begun and start a ride for one spring; unmeasured.
 
 ### Climb, Path and Leap About the Windows
 

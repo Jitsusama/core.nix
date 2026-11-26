@@ -127,6 +127,11 @@ QtObject {
         const again = Object.assign({}, resized, { 1: moving(windows[1], "ViewMove", 5) });
         expect("a new scroll on any window is dated by its own begin, the latest",
             Tiles.hears(later, Tiles.told(again, 7, "ViewMove"), 3000).at, 2995);
+        // The old scroll's word still left on one window, the new one's on
+        // the other: the new begin is the scroll's, never the earliest.
+        const mixed = Object.assign({}, viewing, { 2: moving(windows[2], "ViewMove", 5) });
+        expect("a new scroll beside an old one's word left on another window is dated by the new",
+            Tiles.hears(first, Tiles.told(mixed, 7, "ViewMove"), 3000).at, 2995);
         expect("a scroll runs for its spring's length after it began, and none runs untold",
             [Tiles.runs(first, 1199, 230), Tiles.runs(first, 1200, 230),
                 Tiles.runs(Tiles.hears(first, [], 1000), 1000, 230),

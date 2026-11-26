@@ -587,14 +587,17 @@ def test_a_column_off_the_screen_is_walked_to_along_the_strip(shell: Shell) -> N
     assert 0 < behind[0] <= 1, f"drawn {behind[0]:.2f} of the scroll behind its place"
     walked = steps(shell, since)
     assert walked, "the cat took no step to the column off the edge"
-    # Carried off one edge with its window, it comes back in at that edge, never the other.
+    # Carried off one edge with its window, it comes back in at that edge, never the other, nor
+    # from where its window went.
+    assert left >= across or left + width <= 0, f"niri left its window on the screen at {left}"
+    first_x, size = walked[0]["x"], walked[0]["size"]
     if left >= across:
-        assert walked[0]["x"] > across / 2, (
-            f"carried off the right edge, it came back in at {walked[0]['x']} of {across}"
+        assert across / 2 < first_x <= across + size, (
+            f"carried off the right edge, it came back in at {first_x} of {across}"
         )
-    elif left + width <= 0:
-        assert walked[0]["x"] < across / 2, (
-            f"carried off the left edge, it came back in at {walked[0]['x']} of {across}"
+    else:
+        assert -size <= first_x < across / 2, (
+            f"carried off the left edge, it came back in at {first_x} of {across}"
         )
     jumps = [
         (before["x"], after["x"])

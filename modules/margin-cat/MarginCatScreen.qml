@@ -600,19 +600,22 @@ PanelWindow {
             return;
         resting.stop();
         endStroll();
-        // Carried off the screen's side with its window (carried), it's
-        // out of sight on the floor past that edge, and comes in head first
-        // to sit just inside it (Stacked.comesIn), never on a seat where it
-        // can't be seen.
-        const off = place.x + size <= 0 ? -1 : place.x >= modelData.width ? 1 : 0;
-        if (off !== 0) {
-            halt();
-            place = { x: off < 0 ? -size : modelData.width, y: floor };
-        }
-        walkTo(true, null, {
-            x: off < 0 ? 0 : off > 0 ? modelData.width - size : place.x,
-            y: floor
+        // A ride ends where it's drawn first, so the side it's off is
+        // where it's seen, not where its window went. Carried off the
+        // screen's side with its window (carried), it comes in from the
+        // floor past that edge (Stacked.floorsFrom).
+        unride();
+        const fell = Stacked.floorsFrom(place, {
+            height: modelData.height,
+            tall: size,
+            wide: size,
+            across: modelData.width
         });
+        if (fell.off !== 0) {
+            halt();
+            place = fell.from;
+        }
+        walkTo(true, null, fell.to);
     }
 
     // A walk on to the window `id`'s seat where niri has it now, riding
@@ -823,7 +826,11 @@ PanelWindow {
         // from just over the screen where it rode the old one off the
         // top, or springs up onto it from just under the screen where it
         // rode the old one off the bottom.
-        if (there === null && emptied && place !== null && place.y >= modelData.height) {
+        // Off the screen's side, it comes in along the floor at that edge
+        // whichever way it rode (floors), never up onto a floor out of sight.
+        const aside = place !== null && (place.x + size <= 0 || place.x >= modelData.width);
+        if (there === null && emptied && place !== null && place.y >= modelData.height
+            && !aside) {
             place = Stacked.risesFrom(place, { height: modelData.height, tall: size });
             goingTo = wanted;
             walks(Stacked.risesOnto(place, {
@@ -836,7 +843,8 @@ PanelWindow {
                 slowdown: Theme.motion.slowdown
             }));
         } else if (there === null && emptied && place !== null) {
-            place = Stacked.dropsFrom(place, { tall: size });
+            if (!aside)
+                place = Stacked.dropsFrom(place, { tall: size });
             floors();
         }
         else
