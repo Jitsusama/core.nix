@@ -50,6 +50,36 @@ fn forgotten_then_page(one: &Seen, calls: usize) -> Reply {
     }
 }
 
+/// A send whose sign-in the gateway refused, then whose opening again
+/// meets a proxy's sign-in page, so the tool was never asked.
+fn refused_then_page(one: &Seen, calls: usize) -> Reply {
+    match one.method.as_str() {
+        "initialize" if calls == 0 => opened("s1"),
+        "initialize" => page_at_opening(one, calls),
+        "tools/call" => status(401),
+        _ => status(202),
+    }
+}
+
+/// What Joel's phone is told when the gateway answers as `answer`, with
+/// how many sessions were opened and how many times the tool was asked.
+fn told_by(name: &str, answer: Answer) -> (Result<String, Missed>, usize, usize) {
+    let dir = scratch(name);
+    let (url, seen) = gateway(answer);
+    let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
+    let alert = Alert {
+        title: "Someone stopped your agents",
+        words: "stop",
+        link: "https://example.slack.com/archives/C1/p1",
+    };
+    let told = tell_self(&mut gateway, alert);
+    let methods = methods(&seen);
+    let count = |of: &str| methods.iter().filter(|method| *method == of).count();
+    let (openings, asks) = (count("initialize"), count("tools/call"));
+    let _ = fs::remove_dir_all(&dir);
+    (told, openings, asks)
+}
+
 /// A send the gateway answers with JSON-RPC's error `CODE`.
 fn rpc<const CODE: i64>(one: &Seen, _: usize) -> Reply {
     match one.method.as_str() {
@@ -206,25 +236,22 @@ fn answered_by_the_tool() -> [Case; 8] {
 
 #[test]
 fn a_send_forgotten_then_never_reopened_isnt_sent_again_without_its_words() {
-    let dir = scratch("tell-self-forgotten-unopened");
-    let (url, seen) = gateway(forgotten_then_page);
-    let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
-    let alert = Alert {
-        title: "Someone stopped your agents",
-        words: "stop",
-        link: "https://example.slack.com/archives/C1/p1",
-    };
-    let told = tell_self(&mut gateway, alert);
-    let openings = methods(&seen)
-        .iter()
-        .filter(|method| *method == "initialize")
-        .count();
+    let (told, openings, asks) = told_by("tell-self-forgotten-unopened", forgotten_then_page);
     assert!(
-        matches!(told, Err(Missed::NotSent(_))) && openings == 2,
+        matches!(told, Err(Missed::NotSent(_))) && openings == 2 && asks == 1,
         "a forgotten pass asked nothing, so nothing refused the words and no \
-         resend opens a third session: {told:?}, {openings} openings"
+         resend opens a third session: {told:?}, {openings} openings, {asks} asks"
     );
-    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_send_refused_then_never_reopened_isnt_sent_again_without_its_words() {
+    let (told, openings, asks) = told_by("tell-self-refused-unopened", refused_then_page);
+    assert!(
+        matches!(told, Err(Missed::NotSent(_))) && openings == 2 && asks == 1,
+        "a refused pass asked nothing, so nothing refused the words and no \
+         resend opens a third session: {told:?}, {openings} openings, {asks} asks"
+    );
 }
 
 #[test]
