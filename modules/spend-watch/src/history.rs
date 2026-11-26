@@ -430,6 +430,10 @@ fn on_disk<T>(db: &Connection, step: impl FnOnce() -> Result<T, String>) -> Resu
     stepped.and_then(|done| restored.map(|()| done))
 }
 
+/// How long a connection waits on another's write before it's told the
+/// history is busy.
+const WAIT: Duration = Duration::from_secs(10);
+
 /// Why a history a newer spend-watch keeps, at `shape`, isn't opened.
 fn kept_by_newer(path: &Path, shape: i64) -> String {
     format!(
@@ -513,28 +517,22 @@ impl History {
     /// since an older spend-watch reads the history the same with it, so
     /// it's made where it's missing rather than as a step.
     ///
-    /// It's asked for first, so a history that has it is opened without
-    /// a write: every pi session's reader opens it, and one waiting on a
-    /// writer would hold the watch's start behind it. One that can't be
-    /// made is said and gone on from, since without it the history still
-    /// reads the same, only slower to forget a log.
+    /// A history that has it opens without a write: SQLite makes nothing
+    /// for an index that's there, which was measured beside a writer
+    /// holding the history. One that's missing it needs a write, and
+    /// that's tried without waiting: every pi session's reader opens the
+    /// history, and one waiting the database's ten seconds on a writer
+    /// would hold up its answer, or the watch's start, for an index the
+    /// next open makes. One that can't be made is said and gone on from,
+    /// since without it the history still reads the same, only slower to
+    /// forget a log.
     fn index_sessions(&self) -> Result<(), String> {
-        let indexed: bool = self
+        self.db.busy_timeout(Duration::ZERO).map_err(sql)?;
+        let made = self
             .db
-            .query_row(
-                "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'index' \
-                 AND name = 'files_session')",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(sql)?;
-        if indexed {
-            return Ok(());
-        }
-        if let Err(error) = self
-            .db
-            .execute_batch("CREATE INDEX IF NOT EXISTS files_session ON files (session);")
-        {
+            .execute_batch("CREATE INDEX IF NOT EXISTS files_session ON files (session);");
+        self.db.busy_timeout(WAIT).map_err(sql)?;
+        if let Err(error) = made {
             eprintln!("the history's sessions can't be indexed yet, so it's read without: {error}");
         }
         Ok(())
@@ -556,7 +554,7 @@ impl History {
     fn shape(path: &Path) -> Option<i64> {
         let flags = rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY;
         let db = Connection::open_with_flags(path, flags).ok()?;
-        db.busy_timeout(Duration::from_secs(10)).ok()?;
+        db.busy_timeout(WAIT).ok()?;
         db.query_row("SELECT value FROM meta WHERE key = 'schema'", [], |row| {
             row.get::<_, String>(0)
         })
@@ -610,7 +608,7 @@ impl History {
 
     fn connect(path: &Path) -> Result<History, String> {
         let db = Connection::open(path).map_err(sql)?;
-        db.busy_timeout(Duration::from_secs(10)).map_err(sql)?;
+        db.busy_timeout(WAIT).map_err(sql)?;
         db.pragma_update(None, "journal_mode", "WAL").map_err(sql)?;
         db.pragma_update(None, "journal_size_limit", WAL_LIMIT)
             .map_err(sql)?;
@@ -1039,14 +1037,18 @@ mod tests {
         );
     }
 
-    // A history that has its index opens without writing, so a reader
-    // opening it beside a writer reads at once rather than waiting the
-    // database's ten seconds and failing, as one did at a switch.
+    // A history missing its index opens beside a writer at once, without
+    // it, rather than waiting the database's ten seconds to make it and
+    // failing, as a reader did at a switch; the next open makes it.
     #[test]
-    fn a_history_with_its_index_opens_beside_a_writer() {
+    fn a_history_without_its_index_opens_beside_a_writer_at_once() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("history.db");
-        drop(History::open(&path).unwrap());
+        History::open(&path)
+            .unwrap()
+            .db
+            .execute_batch("DROP INDEX files_session;")
+            .unwrap();
         let writer = Connection::open(&path).unwrap();
         writer.execute_batch("BEGIN IMMEDIATE;").unwrap();
         let began = std::time::Instant::now();
@@ -1058,7 +1060,22 @@ mod tests {
         );
         assert!(
             began.elapsed() < Duration::from_secs(5),
-            "a reader waited on the writer to open a history that has its index"
+            "a reader waited on the writer to make the index"
+        );
+        drop(opened);
+        writer.execute_batch("COMMIT;").unwrap();
+        let indexed: bool = History::open(&path)
+            .unwrap()
+            .db
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE name = 'files_session')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            indexed,
+            "the open after the writer let go didn't make the index"
         );
     }
 

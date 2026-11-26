@@ -949,10 +949,11 @@ fn waited(state: &Path, by: Instant) -> Result<std::fs::File, String> {
     }
 }
 
-/// The history at `path`, opened once no reader is writing it, trying
-/// again until `by`. Opening makes an index where it's missing, and a
-/// reader opening it at the same moment may be making it too, past the
-/// database's own ten-second wait.
+/// The history at `path`, opened once no other connection keeps it busy,
+/// trying again until `by`: a busy history isn't one that doesn't read,
+/// and another connection's write, such as a reader bringing an older
+/// shape up under the lock, can run past the database's own ten-second
+/// wait.
 fn opened_in_turn(path: &Path, by: Instant) -> Result<History, String> {
     loop {
         match opened(path) {

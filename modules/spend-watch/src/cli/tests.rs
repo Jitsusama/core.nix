@@ -246,9 +246,15 @@ fn a_watch_beside_a_running_one_is_to_try_again_at_once() {
         // The test has stopped listening only when it already failed.
         let _ = said.send(ran(&path, &["run"]));
     });
-    let started = heard
-        .recv_timeout(AT_ONCE)
-        .expect("a second watch waited beside a running one");
+    let started = match heard.recv_timeout(AT_ONCE) {
+        Ok(started) => started,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            panic!("a second watch waited beside a running one")
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            panic!("the second watch panicked rather than answer")
+        }
+    };
     assert_eq!(started.exit, Exit::TryAgain, "{}", started.stderr);
 }
 
@@ -259,8 +265,14 @@ const AT_ONCE: std::time::Duration = std::time::Duration::from_secs(5);
 // busy history, are each to try again rather than told they failed.
 #[test]
 fn a_held_lock_past_the_wait_and_a_busy_history_are_to_try_again() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let state = dir.path().join("state");
+    let _held = crate::daemon::lock(&state).expect("the lock is free");
+    let refused = crate::daemon::lock(&state)
+        .err()
+        .expect("a second taking of the lock is refused");
     assert_eq!(
-        stopped("another spend-watch holds /teal/lock".to_owned()).exit,
+        stopped(refused).exit,
         Exit::TryAgain,
         "a watch whose wait ran out on a held lock was told it failed"
     );
