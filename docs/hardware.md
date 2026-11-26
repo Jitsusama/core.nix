@@ -1106,10 +1106,11 @@ been traced to its cause, and is harmless, so nothing silences or patches it:
   registers. 7.3.6 reads the mailbox for where the firmware keeps its debug
   data and says so at info level, "mailbox for target access" and "mbox
   interrupt received at N ns; queuing mbox_work"; the firmware loads and
-  the controller works. On some boots, and on resuming from them,
-  that dump also logs "Controller device warning": a bit the controller's
-  own firmware sets in its boot stage register, which the driver reports and
-  does nothing with.
+  the controller works. On some boots, and on resuming from them, the
+  driver also logs "Controller device warning", from its test for an error
+  at each alive interrupt and on waking, and before 7.3.6 from that dump:
+  a bit the controller's own firmware sets in its boot stage register,
+  which the driver reports and does nothing with.
 - **bluetoothd's "Unable to register device interface" and "Unable to
   create object for found device"**, a pair now and then while something
   scans. BlueZ 5.87 looks a device up by its address and address type, but

@@ -16,7 +16,11 @@ if [ -z "$country" ]; then
   echo "cfg80211 no longer looks for the access point's country where this check reads."
   exit 1
 fi
-if [ -z "$named" ] || [ "$named" -gt "$country" ]; then
+if [ -z "$named" ]; then
+  echo "cfg80211 no longer records the network's name where this check reads."
+  exit 1
+fi
+if [ "$named" -gt "$country" ]; then
   echo "A network whose access point names no country is joined without its name," \
     "so networkd can't match its file."
   exit 1
