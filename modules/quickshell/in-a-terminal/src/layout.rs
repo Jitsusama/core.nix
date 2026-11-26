@@ -646,7 +646,10 @@ mod tests {
              Machine\nPower\n\n\
              On the charger.\n"
         );
-        assert!(!laid(place, 80).contains("On the charger."));
+        assert!(
+            !laid(place, 80).contains("On the charger."),
+            "laid without its drawers, the place still showed a drawer's body"
+        );
     }
 
     #[test]

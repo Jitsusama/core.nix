@@ -188,8 +188,14 @@ mod tests {
 
     #[test]
     fn a_region_of_another_size_is_refused() {
-        assert!(Region::from_bytes(&[0; 744]).is_none());
-        assert!(Region::from_bytes(&[0; layout::WORDS * 8]).is_some());
+        assert!(
+            Region::from_bytes(&[0; 744]).is_none(),
+            "a region of 744 bytes was read"
+        );
+        assert!(
+            Region::from_bytes(&[0; layout::WORDS * 8]).is_some(),
+            "a region of the layout's size was refused"
+        );
     }
 
     #[test]
@@ -204,7 +210,10 @@ mod tests {
     #[test]
     fn a_temperature_below_freezing_reads_below_zero() {
         let temperatures = region(&[(15, 0xf6)]).temperatures();
-        assert!(temperatures.contains(&(Sensor::Chipset, -10)));
+        assert!(
+            temperatures.contains(&(Sensor::Chipset, -10)),
+            "0xf6 on the chipset didn't read as -10 among {temperatures:?}"
+        );
     }
 
     #[test]
@@ -218,7 +227,11 @@ mod tests {
             held.npu,
             [] as [crate::reading::Held<crate::layout::Kind>; 0]
         );
-        assert!(held.clusters.iter().all(Vec::is_empty));
+        assert!(
+            held.clusters.iter().all(Vec::is_empty),
+            "nothing holding left a cluster held: {:?}",
+            held.clusters
+        );
         assert_eq!(held.clusters.len(), CLUSTERS);
     }
 
@@ -229,7 +242,11 @@ mod tests {
         let held = held_back(&before, &after, 1.0);
         assert_eq!(held.processor.len(), 1);
         assert_eq!(held.processor[0].by, Cause::Limit(Limit::Pl1));
-        assert!((held.processor[0].share - 0.8).abs() < 1e-9);
+        let share = held.processor[0].share;
+        assert!(
+            (share - 0.8).abs() < 1e-9,
+            "PL1 held {share} of the second, not 0.8"
+        );
         assert_eq!(held.clusters[0][0].by, Kind::Power);
     }
 
@@ -239,7 +256,11 @@ mod tests {
         let held = held_back(&region(&[]), &after, 1.0);
         assert_eq!(held.processor.len(), 1);
         assert_eq!(held.processor[0].by, Cause::Kind(Kind::Heat));
-        assert!(held.clusters[4].iter().any(|h| h.by == Kind::Heat));
+        assert!(
+            held.clusters[4].iter().any(|h| h.by == Kind::Heat),
+            "cluster 4 wasn't said held by heat: {:?}",
+            held.clusters[4]
+        );
         assert_eq!(
             held.clusters[3],
             [] as [crate::reading::Held<crate::layout::Kind>; 0]
@@ -259,7 +280,11 @@ mod tests {
         let after = region(&[(145, SECOND / 20), (147, SECOND / 20)]);
         let held = held_back(&region(&[]), &after, 1.0);
         assert_eq!(held.processor[0].by, Cause::Limit(Limit::RegulatorHot));
-        assert!((held.processor[0].share - 0.1).abs() < 1e-9);
+        let share = held.processor[0].share;
+        assert!(
+            (share - 0.1).abs() < 1e-9,
+            "the regulators held {share} of the second, not 0.1"
+        );
     }
 
     #[test]
@@ -300,6 +325,10 @@ mod tests {
         let after = region(&[(109, SECOND)]);
         let held = held_back(&region(&[]), &after, 2.0);
         assert_eq!(held.npu.len(), 1);
-        assert!((held.npu[0].share - 0.5).abs() < 1e-9);
+        let share = held.npu[0].share;
+        assert!(
+            (share - 0.5).abs() < 1e-9,
+            "the NPU's limit held a share of {share}, not 0.5"
+        );
     }
 }

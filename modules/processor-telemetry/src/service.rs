@@ -482,7 +482,8 @@ mod tests {
             reading
                 .clusters
                 .iter()
-                .all(|cluster| cluster.cpus.is_empty())
+                .all(|cluster| cluster.cpus.is_empty()),
+            "a cluster the topology doesn't match was given CPUs"
         );
     }
 
@@ -496,8 +497,14 @@ mod tests {
         };
         let mut replies = telemetry.watch(false).await;
         let first = replies.next().await;
-        assert!(matches!(first, Some(Ok(_))));
-        assert!(replies.next().await.is_none());
+        assert!(
+            matches!(first, Some(Ok(_))),
+            "asked once, it gave no reading"
+        );
+        assert!(
+            replies.next().await.is_none(),
+            "asked once, it answered again"
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -508,8 +515,14 @@ mod tests {
             clusters: Vec::new(),
         };
         let mut replies = telemetry.watch(true).await;
-        assert!(matches!(replies.next().await, Some(Err(Unread::NoRegion))));
-        assert!(replies.next().await.is_none());
+        assert!(
+            matches!(replies.next().await, Some(Err(Unread::NoRegion))),
+            "without the region, it didn't say so"
+        );
+        assert!(
+            replies.next().await.is_none(),
+            "without the region, it kept answering"
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -523,7 +536,10 @@ mod tests {
             clusters: Vec::new(),
         };
         let mut replies = telemetry.watch(true).await;
-        assert!(matches!(replies.next().await, Some(Ok(_))));
+        assert!(
+            matches!(replies.next().await, Some(Ok(_))),
+            "watched, it gave no first reading"
+        );
         fs::write(&file, region_bytes(SECOND / 2, 52)).unwrap_or_else(|error| panic!("{error}"));
         fs::write(&rests, resting_bytes(250)).unwrap_or_else(|error| panic!("{error}"));
         let Some(Ok(reply)) = replies.next().await else {
@@ -542,7 +558,11 @@ mod tests {
         let kept = reading
             .kept_from_resting
             .unwrap_or_else(|| panic!("nothing said of resting"));
-        assert!((kept.kept - 0.25).abs() < 1e-3);
+        assert!(
+            (kept.kept - 0.25).abs() < 1e-3,
+            "resting was said kept {}, not 0.25",
+            kept.kept
+        );
         assert_eq!(kept.by.first().map(|kept| kept.by), Some(Keeper::Display));
     }
 
@@ -559,6 +579,9 @@ mod tests {
             panic!("no reading");
         };
         let reading = reply.into_parameters();
-        assert!(reading.is_some_and(|reading| reading.kept_from_resting.is_none()));
+        assert!(
+            reading.is_some_and(|reading| reading.kept_from_resting.is_none()),
+            "without the resting region, the reading said nothing or said resting"
+        );
     }
 }

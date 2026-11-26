@@ -244,7 +244,10 @@ mod tests {
         let began = Instant::now();
         let answer = settled(&stand_in::qs("reading"), &[], false).expect("the stand-in answers");
         let took = began.elapsed();
-        assert!(matches!(&answer, Answer::Shown(shown) if still_reading(shown)));
+        assert!(
+            matches!(&answer, Answer::Shown(shown) if still_reading(shown)),
+            "a place still reading was answered as something else"
+        );
         assert!(took >= SETTLING, "it gave up after {took:?}");
         assert!(
             took < SETTLING + ASK_AGAIN + LEEWAY,
@@ -258,7 +261,10 @@ mod tests {
         let answer =
             settled(&stand_in::qs("missed-reading"), &[], false).expect("the stand-in answers");
         let took = began.elapsed();
-        assert!(matches!(answer, Answer::Missing { reading: true, .. }));
+        assert!(
+            matches!(answer, Answer::Missing { reading: true, .. }),
+            "a step missed among rows still reading wasn't said missing while reading"
+        );
         assert!(took >= SETTLING, "it gave up after {took:?}");
         assert!(
             took < SETTLING + ASK_AGAIN + LEEWAY,
@@ -270,7 +276,10 @@ mod tests {
     fn a_step_missed_among_rows_read_is_said_at_once() {
         let began = Instant::now();
         let answer = settled(&stand_in::qs("missed"), &[], false).expect("the stand-in answers");
-        assert!(matches!(answer, Answer::Missing { reading: false, .. }));
+        assert!(
+            matches!(answer, Answer::Missing { reading: false, .. }),
+            "a step missed among rows read wasn't said missing among rows read"
+        );
         assert!(
             began.elapsed() < ASK_AGAIN + LEEWAY,
             "it waited {:?}",
@@ -282,7 +291,10 @@ mod tests {
     fn a_place_read_is_said_from_its_first_answer() {
         let began = Instant::now();
         let answer = settled(&stand_in::qs("read"), &[], false).expect("the stand-in answers");
-        assert!(matches!(&answer, Answer::Shown(shown) if !still_reading(shown)));
+        assert!(
+            matches!(&answer, Answer::Shown(shown) if !still_reading(shown)),
+            "a place read wasn't shown as read"
+        );
         assert!(
             began.elapsed() < ASK_AGAIN + LEEWAY,
             "it waited {:?}",
@@ -294,11 +306,18 @@ mod tests {
     fn a_place_is_still_reading_only_where_the_shell_says_so() {
         let read = serde_json::json!({"reading": false,
             "rows": [{"name": "Disk", "side": null}]});
-        assert!(!still_reading(&read));
-        assert!(!still_reading(&serde_json::json!({"rows": []})));
-        assert!(still_reading(
-            &serde_json::json!({"reading": true, "rows": []})
-        ));
+        assert!(
+            !still_reading(&read),
+            "a place said read was taken as reading"
+        );
+        assert!(
+            !still_reading(&serde_json::json!({"rows": []})),
+            "a place saying nothing of reading was taken as reading"
+        );
+        assert!(
+            still_reading(&serde_json::json!({"reading": true, "rows": []})),
+            "a place said reading wasn't taken as reading"
+        );
     }
 
     #[test]
@@ -333,7 +352,10 @@ mod tests {
     #[test]
     fn a_place_is_shown() {
         let answer = answer_of(r#"{"in":["Machine"],"path":["category:computer"],"rows":[]}"#);
-        assert!(matches!(answer, Some(Answer::Shown(_))));
+        assert!(
+            matches!(answer, Some(Answer::Shown(_))),
+            "a place wasn't read as shown"
+        );
     }
 
     #[test]

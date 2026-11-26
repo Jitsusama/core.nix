@@ -223,7 +223,11 @@ mod tests {
     fn the_crystal_code_names_its_rate() {
         let mut words = vec![0; WORDS];
         words[0] = 2 << 32;
-        assert!((ticks_per_second(CRYSTAL.read(&words)) - 38.4e6).abs() < 1.0);
+        let rate = ticks_per_second(CRYSTAL.read(&words));
+        assert!(
+            (rate - 38.4e6).abs() < 1.0,
+            "crystal code 2 read as {rate} ticks a second, not 38.4 MHz"
+        );
     }
 
     #[test]
@@ -232,12 +236,16 @@ mod tests {
             .iter()
             .map(|(_, first)| first + CLUSTERS - 1)
             .max();
-        assert!(last.is_some_and(|last| last < WORDS));
+        assert!(
+            last.is_some_and(|last| last < WORDS),
+            "a cluster's counters run to word {last:?}, past the region's {WORDS}"
+        );
         assert!(
             PACKAGE_LIMITS
                 .iter()
                 .flat_map(|(_, words)| words.iter())
-                .all(|&w| w < WORDS)
+                .all(|&w| w < WORDS),
+            "a package limit's counter lies past the region's {WORDS} words"
         );
     }
 
