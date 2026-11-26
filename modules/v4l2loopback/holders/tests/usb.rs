@@ -166,7 +166,13 @@ impl Watch {
             }
             sleep(Duration::from_millis(50));
         }
-        panic!("{what}");
+        panic!("{what}: it complained {:?}", self.complaints());
+    }
+
+    /// What the watch has complained of, so a wait that fails says why the
+    /// watch thought it was wrong; nothing where its complaints go nowhere.
+    fn complaints(&self) -> String {
+        fs::read_to_string(self.root.join("complaints")).unwrap_or_default()
     }
 
     /// Waits up to five seconds for the camera's file to name someone, or
@@ -178,19 +184,18 @@ impl Watch {
             }
             sleep(Duration::from_millis(50));
         }
-        panic!("{what}");
+        panic!("{what}: it complained {:?}", self.complaints());
     }
 
     /// Waits up to five seconds for the watch to complain of something.
     fn until_complained(&self, about: &str, what: &str) {
         for _ in 0..100 {
-            let complaints = fs::read_to_string(self.root.join("complaints"));
-            if complaints.is_ok_and(|said| said.contains(about)) {
+            if self.complaints().contains(about) {
                 return;
             }
             sleep(Duration::from_millis(50));
         }
-        panic!("{what}");
+        panic!("{what}: it complained {:?}", self.complaints());
     }
 
     /// Stops the program as systemd does.

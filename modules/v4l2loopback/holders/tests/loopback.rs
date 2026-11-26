@@ -1,6 +1,7 @@
 //! The program itself watching a loopback that has no camera behind it, run
 //! as its unit runs it: the nobody it says is written once it can be, and
-//! only then is the run ready.
+//! only then is the run ready; and a trouble is the run's, not the step's,
+//! so it's said once whether the nobody or the watch of a camera met it.
 
 use std::fs::{self, File, Permissions};
 use std::os::unix::fs::PermissionsExt;
@@ -78,6 +79,17 @@ impl Drop for Watch {
     }
 }
 
+/// How often the watch complained of its file itself, not the device file
+/// beside it, whose complaints end the same way.
+fn complaints_of_its_file(watch: &Watch) -> usize {
+    let file = format!("{}: ", watch.file().display());
+    watch
+        .read("complaints")
+        .lines()
+        .filter(|line| line.starts_with(&file))
+        .count()
+}
+
 fn ready(log: &str) -> usize {
     log.lines()
         .filter(|line| line.starts_with("ready in "))
@@ -124,5 +136,43 @@ fn a_loopbacks_nobody_it_couldnt_write_is_written_once_it_can_be() {
         1,
         "the watch didn't say once that it's ready: {}",
         watch.read("log")
+    );
+}
+
+#[test]
+fn a_trouble_the_nobody_met_is_the_cameras_watch_to_clear() {
+    let watch = Watch::locked("handed");
+    watch.until(
+        |watch| complaints_of_its_file(watch) == 1,
+        "a nobody it couldn't write went unsaid",
+    );
+    // A camera nothing on the machine holds comes while the folder is still
+    // locked, so its watch meets the trouble the nobody did.
+    fs::write(watch.root.join("source"), "/dev/random").unwrap();
+    watch.until(
+        |watch| watch.read("complaints").contains(".devices/Stand-in"),
+        "the camera that came wasn't watched",
+    );
+    // Past the watch's next look, two seconds on, which writes again.
+    sleep(Duration::from_millis(2500));
+    assert_eq!(
+        complaints_of_its_file(&watch),
+        1,
+        "the camera's watch complained again of what the nobody had: {:?}",
+        watch.read("complaints")
+    );
+    fs::set_permissions(&watch.folder, Permissions::from_mode(0o755)).unwrap();
+    watch.until(
+        |watch| watch.read("complaints").contains("Stand-in: right again"),
+        "the camera's watch didn't say right again what the nobody met",
+    );
+    watch.until(
+        |watch| ready(&watch.read("log")) == 1,
+        "a camera's file written at last wasn't said ready",
+    );
+    assert_eq!(
+        fs::read_to_string(watch.file()).unwrap_or_default(),
+        "",
+        "a camera nothing holds was said held"
     );
 }

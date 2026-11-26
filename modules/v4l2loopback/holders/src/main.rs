@@ -50,7 +50,11 @@
 //! followed first.
 //!
 //! Between those it sleeps on inotify and a signal, so a camera nobody
-//! holds costs nothing. Once its file is first written, its log says
+//! holds costs nothing. A file it couldn't write, or a read of the holders
+//! that failed, is looked at again each second until it's right, whoever
+//! holds the camera; what went wrong is said once as it begins and once
+//! as it clears. The first time its file says who holds the camera as a
+//! read that worked found, or nobody where there's no camera, its log says
 //! `ready in N ms`, once a run (src/ready.rs says why). Its help, its
 //! failures and its exits take the terminal kit's shape (`help()`).
 //!
@@ -384,11 +388,29 @@ impl Trouble {
     }
 }
 
-/// Says the run is ready, the first time its file says who holds the
-/// camera as a read that worked found.
-fn written(ready: &mut Ready) {
-    if let Some(line) = ready.line() {
-        say(&line);
+/// What a run has said of its one file: whether it's ready, and the
+/// trouble it last complained of. It's one for the whole run, so a trouble
+/// a loopback's nobody met is cleared by the watch that next writes the
+/// file right, and the other way round.
+struct Run {
+    ready: Ready,
+    trouble: Trouble,
+}
+
+impl Run {
+    fn begun() -> Self {
+        Self {
+            ready: Ready::begun(),
+            trouble: Trouble::default(),
+        }
+    }
+
+    /// Says the run is ready, the first time its file says who holds the
+    /// camera as a read that worked found.
+    fn written(&mut self) {
+        if let Some(line) = self.ready.line() {
+            say(&line);
+        }
     }
 }
 
@@ -402,7 +424,7 @@ fn watch(
     units: &[String],
     sysfs: Option<&Path>,
     mut record: Option<&mut Record>,
-    ready: &mut Ready,
+    run: &mut Run,
 ) -> Ended {
     if let Err(error) = events.watch(node) {
         complain(format_args!("can't watch {}: {error}", node.display()));
@@ -416,7 +438,6 @@ fn watch(
     let every = Duration::from_secs(if sysfs.is_some() { 1 } else { 2 });
     // What the file holds, as last written.
     let mut said = None;
-    let mut trouble = Trouble::default();
     let mut pids = HashSet::new();
     loop {
         let mut troubles = Vec::new();
@@ -443,10 +464,10 @@ fn watch(
                     false
                 }
             };
-        trouble.now(output, &troubles);
+        run.trouble.now(output, &troubles);
         let settled = seen && right;
         if settled {
-            written(ready);
+            run.written();
         }
         // The record asks the camera itself, which a stalling camera can
         // keep waiting, so it comes after the file is right.
@@ -470,7 +491,7 @@ fn watch(
 
 /// Says who streams from a USB camera while it's there, in a file of its
 /// own that goes with it.
-fn usb(events: &mut Events, options: &Options, ready: &mut Ready) -> Result<(), Failure> {
+fn usb(events: &mut Events, options: &Options, run: &mut Run) -> Result<(), Failure> {
     let Ok(node) = fs::canonicalize(&options.source) else {
         return Ok(());
     };
@@ -502,7 +523,7 @@ fn usb(events: &mut Events, options: &Options, ready: &mut Ready) -> Result<(), 
         &options.units,
         Some(&options.sysfs),
         Some(&mut record),
-        ready,
+        run,
     );
     // A stream the watch ends during has its last seconds said too, since
     // a camera dropping off mid-call is what the record is for.
@@ -565,26 +586,30 @@ fn forget(options: &Options) {
     );
 }
 
-/// Says who holds a loopback, following the source to each node it names.
-fn loopback(events: &mut Events, options: &Options, ready: &mut Ready) {
-    let nobody = BTreeSet::new();
-    // Nobody said is the watch serving only where it's so: no camera, or
-    // its node gone. One it couldn't watch is still there, and nobody is
-    // a guess until the watch is tried again, so it isn't ready. Whether
-    // the file took it is answered, so one it didn't is written again.
-    let mut trouble = Trouble::default();
-    let mut say_nobody = |ready: Option<&mut Ready>| match write(&options.output, &nobody) {
+/// Writes that nobody holds a loopback, answering whether the file took it,
+/// so one it didn't is written again. Nobody said is the watch serving
+/// only where it's so, no camera or its node gone, which `so` says: one it
+/// couldn't watch is still there, and nobody is a guess until the watch
+/// is tried again, so it isn't ready.
+fn say_nobody(output: &Path, run: &mut Run, so: bool) -> bool {
+    match write(output, &BTreeSet::new()) {
         Ok(()) => {
-            trouble.now(&options.output, &[]);
-            ready.into_iter().for_each(written);
+            run.trouble.now(output, &[]);
+            if so {
+                run.written();
+            }
             true
         }
         Err(error) => {
-            let what = format!("{}: {error}", options.output.display());
-            trouble.now(&options.output, &[what]);
+            run.trouble
+                .now(output, &[format!("{}: {error}", output.display())]);
             false
         }
-    };
+    }
+}
+
+/// Says who holds a loopback, following the source to each node it names.
+fn loopback(events: &mut Events, options: &Options, run: &mut Run) {
     tidy(&options.output);
     if let Some(file) = device_file(&options.output) {
         tidy(&file);
@@ -602,7 +627,7 @@ fn loopback(events: &mut Events, options: &Options, ready: &mut Ready) {
                 told = false;
             }
             if !told {
-                told = say_nobody(Some(&mut *ready));
+                told = say_nobody(&options.output, run, true);
             }
             if let Woken::Stopped = events.sleep(Duration::from_secs(1)) {
                 return;
@@ -618,9 +643,9 @@ fn loopback(events: &mut Events, options: &Options, ready: &mut Ready) {
             &options.units,
             None,
             None,
-            ready,
+            run,
         );
-        say_nobody((!node.exists()).then_some(&mut *ready));
+        say_nobody(&options.output, run, !node.exists());
         if let Ended::Stopped = ended {
             say_device(&options.output, None);
             return;
@@ -635,7 +660,7 @@ fn loopback(events: &mut Events, options: &Options, ready: &mut Ready) {
 
 fn main() -> ExitCode {
     terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
-        let mut ready = Ready::begun();
+        let mut run = Run::begun();
         let options = options(context.args.iter().cloned())?;
         // Forgetting watches nothing, so a watch it can't have mustn't
         // leave what it's there to remove.
@@ -648,9 +673,9 @@ fn main() -> ExitCode {
                 .because(format!("inotify: {error}"))
         })?;
         if options.usb {
-            usb(&mut events, &options, &mut ready)
+            usb(&mut events, &options, &mut run)
         } else {
-            loopback(&mut events, &options, &mut ready);
+            loopback(&mut events, &options, &mut run);
             Ok(())
         }
     })
