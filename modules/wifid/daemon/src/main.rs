@@ -512,8 +512,9 @@ async fn take_signal(
     let joining = joining.map(|joining| joining.card.as_str());
     for (card, request, looked) in std::mem::take(&mut air.asked) {
         if let Some(look) = wifid.asked(&card, &request, joining, looked).await {
+            let begun = (look.looked, look.after);
             air.looks
-                .wait(&card, request, look.from, look.looked, look.after);
+                .wait(&card, request, look.from, begun, Instant::now());
         }
     }
 }
@@ -1055,9 +1056,23 @@ impl<'a> Air<'a> {
         // A point warns again until the card is gone, so one asked again
         // as it looks for the points named takes the newer ask as the look
         // ends, rather than stopping the look it's waiting on.
-        let from = self.state.borrow().point_of(&card);
-        match self.looks.asked_again(&card, &request, from.as_deref()) {
+        let (from, heard, link) = hearing(&self.state.borrow(), &card);
+        // One heeded without a look, as its whole network drops the card or
+        // it names a point the card hears, is heeded at once rather than
+        // once a look it doesn't need ends. Taken as held and not leaving,
+        // the most that would move the card, as `asked` heeds it in full.
+        let heeded = request.heed(from.as_deref(), &heard, true, false, false, link);
+        let at_once = !matches!(heeded, Heed::Look(_));
+        let now = Instant::now();
+        match self
+            .looks
+            .asked_again(&card, &request, from.as_deref(), at_once, now)
+        {
             Again::Fresh => self.asked.push((card, request, Looked::Not)),
+            Again::Lapsed => {
+                println!("<4>{card}'s look for the points asked never ended, so it heeds anew");
+                self.asked.push((card, request, Looked::Not));
+            }
             Again::Kept => {
                 println!("<6>{}", request.said(&card, from.as_deref()));
                 println!("<7>{card} keeps to the warning it looks for, as this one warns nothing");
@@ -1272,6 +1287,34 @@ impl<'a> Air<'a> {
         self.points.retain(|point, _| !point.starts_with(path));
         change(&self.state, |state| state.unheard_under(path));
     }
+}
+
+/// What a card hears of its network: the point it's on, each point it
+/// hears as its address, signal and security, and the security of the
+/// point it's on. One it doesn't hear is taken as open, the network least
+/// proven, so nothing unproven moves it.
+fn hearing(
+    state: &State,
+    card: &str,
+) -> (
+    Option<String>,
+    Vec<(String, i16, state::Security)>,
+    state::Security,
+) {
+    let heard: Vec<(String, i16, state::Security)> = state
+        .around(card)
+        .into_iter()
+        .map(|heard| (heard.bssid, heard.signal, heard.security))
+        .collect();
+    let from = state.point_of(card);
+    let link = heard
+        .iter()
+        .find(|(bssid, _, _)| {
+            from.as_deref()
+                .is_some_and(|from| from.eq_ignore_ascii_case(bssid))
+        })
+        .map_or(state::Security::Open, |&(_, _, security)| security);
+    (from, heard, link)
 }
 
 /// A look a card waits on for what a request names: the point that asked,
@@ -2109,7 +2152,7 @@ impl Wifid<'_> {
                 // Its asks and looks went with it: a look of the old one's
                 // would never be said to end, and keep the card's next
                 // warning waiting on it.
-                air.looks = Looks::default();
+                air.looks.clear();
                 air.asked.clear();
                 // Forgotten now, not as the next signal comes, which would
                 // take the holds the cards handed over below have since.
@@ -3509,36 +3552,22 @@ impl Wifid<'_> {
         joining: Option<&str>,
         looked: Looked,
     ) -> Option<Look> {
-        let (from, heard) = {
-            let state = self.state.borrow();
-            let heard: Vec<(String, i16, state::Security)> = state
-                .around(card)
-                .into_iter()
-                .map(|heard| (heard.bssid, heard.signal, heard.security))
-                .collect();
-            (state.point_of(card), heard)
-        };
-        // A point of the card's own it doesn't hear is taken as open, the
-        // network least proven, so nothing unproven moves it.
-        let link = heard
-            .iter()
-            .find(|(bssid, _, _)| {
-                from.as_deref()
-                    .is_some_and(|from| from.eq_ignore_ascii_case(bssid))
-            })
-            .map_or(state::Security::Open, |&(_, _, security)| security);
+        let (from, heard, link) = hearing(&self.state.borrow(), card);
         if looked == Looked::Not {
             println!("<6>{}", request.said(card, from.as_deref()));
         }
         let held = self.held.borrow().contains_key(card);
         let leaving = self.arrivals.borrow().leaves_a_drop(card);
         let followed = request.heed(from.as_deref(), &heard, held, leaving, looked.over(), link);
-        if followed.leaves()
+        if let Some(lasts) = request.keeps_off(&followed)
             && let Some(from) = from.as_deref()
         {
             self.arrivals.borrow_mut().wont_return(card, from);
-            let until = Instant::now() + request.keeps_off();
-            change(self.state, |state| state.warned_off(card, from, until));
+            let minutes = lasts.as_secs() / 60;
+            println!("<7>{card}'s chooser keeps off {from} for {minutes} minutes, as it warned");
+            change(self.state, |state| {
+                state.warned_off(card, from, Instant::now() + lasts)
+            });
         }
         match followed {
             Heed::Stay => println!("<7>{card} stays where it is, as the ask warns nothing"),

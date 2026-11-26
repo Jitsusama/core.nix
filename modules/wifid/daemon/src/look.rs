@@ -9,10 +9,29 @@
 //! order it sends them on its one connection, and the bus keeps that
 //! order. Whether it's still scanning can't tell them apart: it sets that
 //! only once the radio begins, a turn after it answers.
+//!
+//! A look asked but queued behind other radio work, not yet begun, as the
+//! card's own is asked, ends after the card's answer and is taken for its
+//! own: wpa_supplicant refuses a look only once one has begun (scan.c,
+//! `wpa_supplicant_trigger_scan`), and says no more of which look ended.
+//! The card is then moved only to a point it heard, or let go, never kept
+//! to a point that drops it.
+//!
+//! A look begun may never be said to end: wpa_supplicant drops one whose
+//! random address it can't set without a word (`wpas_trigger_scan_cb`).
+//! So a card waits on a look `LOOK_AT_MOST`, and a point's next warning
+//! after that is heeded afresh.
 
 use std::collections::HashMap;
 
+use tokio::time::{Duration, Instant};
+
 use crate::transition::Request;
+
+/// The longest a card waits on a look. One over every channel takes 5 to
+/// 6 s (`Heed::Look`), and a card waits on at most one of those under way
+/// and then its own over a few channels.
+const LOOK_AT_MOST: Duration = Duration::from_secs(15);
 
 /// How far a card has looked for the points a request names, so it looks
 /// once and is then moved or let go, rather than looking until it's
@@ -52,13 +71,18 @@ struct Waiting {
     from: Option<String>,
     looked: Looked,
     after: u32,
+    since: Instant,
 }
 
 /// What a newer ask does to a card's look.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Again {
-    /// The card waits on no look of that point's, so it's heeded as any.
+    /// The card waits on no look of that point's, or the newer ask is one
+    /// heeded without a look, so it's heeded as any.
     Fresh,
+    /// The card waited on a look `LOOK_AT_MOST` and was never said its
+    /// end, so the newer ask is heeded afresh.
+    Lapsed,
     /// The look waits on with the warning it had, as the newer ask warns
     /// nothing, and a point that warned still drops the card.
     Kept,
@@ -84,20 +108,21 @@ pub enum Ended {
 
 impl Looks {
     /// Has a card on `from` wait on its look for what `request` names,
-    /// begun by wpa_supplicant's answer numbered `after`.
+    /// begun by wpa_supplicant's answer numbered `after`, at `since`.
     pub fn wait(
         &mut self,
         card: &str,
         request: Request,
         from: Option<String>,
-        looked: Looked,
-        after: u32,
+        (looked, after): (Looked, u32),
+        since: Instant,
     ) {
         let waiting = Waiting {
             request,
             from,
             looked,
             after,
+            since,
         };
         self.0.insert(card.to_owned(), waiting);
     }
@@ -109,10 +134,19 @@ impl Looks {
         self.0.contains_key(card)
     }
 
-    /// Takes a newer ask of a card now on `from`. One from another point
-    /// than asked before is heeded afresh. A newer warning naming a
+    /// Takes a newer ask of a card now on `from`, at `now`. One from
+    /// another point than asked before is heeded afresh, as is a warning
+    /// heeded `at_once`, needing no look: one whose whole network drops
+    /// the card, or naming a point it hears now. A newer warning naming a
     /// channel the card's look didn't cover has it look again.
-    pub fn asked_again(&mut self, card: &str, request: &Request, from: Option<&str>) -> Again {
+    pub fn asked_again(
+        &mut self,
+        card: &str,
+        request: &Request,
+        from: Option<&str>,
+        at_once: bool,
+        now: Instant,
+    ) -> Again {
         let Some(waiting) = self.0.get_mut(card) else {
             return Again::Fresh;
         };
@@ -120,8 +154,16 @@ impl Looks {
             self.0.remove(card);
             return Again::Fresh;
         }
+        if now.saturating_duration_since(waiting.since) >= LOOK_AT_MOST {
+            self.0.remove(card);
+            return Again::Lapsed;
+        }
         if !request.warns_any() && waiting.request.warns_any() {
             return Again::Kept;
+        }
+        if at_once && request.warns_any() {
+            self.0.remove(card);
+            return Again::Fresh;
         }
         let looked_over = waiting.request.channels();
         if waiting.looked.over()
@@ -164,6 +206,14 @@ impl Looks {
     pub fn forget(&mut self, card: &str) {
         self.0.remove(card);
     }
+
+    /// Forgets every card's look, as wpa_supplicant changed hands: the old
+    /// one's looks are never said to end, and the new one numbers its
+    /// signals afresh, so a look kept would take each of its ends for one
+    /// said before the card's own.
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
 }
 
 /// Whether two points, maybe none, are one, however written.
@@ -202,11 +252,34 @@ mod tests {
     }
 
     /// A card on `ON` waiting on its look for the request, the look begun
-    /// by wpa_supplicant's answer numbered 10.
+    /// by wpa_supplicant's answer numbered 10, at `START`.
     fn waiting(request: &Request, looked: Looked) -> Looks {
         let mut looks = Looks::default();
-        looks.wait("wlan2", request.clone(), Some(ON.to_owned()), looked, 10);
+        let begun = (looked, 10);
+        looks.wait(
+            "wlan2",
+            request.clone(),
+            Some(ON.to_owned()),
+            begun,
+            start(),
+        );
         looks
+    }
+
+    /// When each case's look began.
+    fn start() -> Instant {
+        static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+        *START.get_or_init(Instant::now)
+    }
+
+    /// A second into a look.
+    fn soon() -> Instant {
+        start() + Duration::from_secs(1)
+    }
+
+    /// A newer ask of the card on `ON` a second into its look, needing it.
+    fn again(looks: &mut Looks, request: &Request) -> Again {
+        looks.asked_again("wlan2", request, Some(ON), false, soon())
     }
 
     #[test]
@@ -281,29 +354,29 @@ mod tests {
             ..first.clone()
         };
         let mut looks = waiting(&first, Looked::Done);
-        assert_eq!(looks.asked_again("wlan2", &plain, Some(ON)), Again::Kept);
+        assert_eq!(again(&mut looks, &plain), Again::Kept);
         assert_eq!(
             looks.ended("wlan2", 11, Some(ON), true),
             Ended::Heed(first.clone(), Looked::Done),
             "a plain ask between warnings doesn't keep a warned card on a point that drops it",
         );
 
-        let again = Request {
+        let sooner = Request {
             in_ms: 1024,
             ..first.clone()
         };
         let mut looks = waiting(&first, Looked::Done);
-        assert_eq!(looks.asked_again("wlan2", &again, Some(ON)), Again::Taken);
+        assert_eq!(again(&mut looks, &sooner), Again::Taken);
         assert_eq!(
             looks.ended("wlan2", 11, Some(ON), true),
-            Ended::Heed(again, Looked::Done),
+            Ended::Heed(sooner, Looked::Done),
             "a warning said again over the channels looked is heeded with that look",
         );
 
         let mut revised = warning(FAR);
         revised.candidates[0].frequency = Some(5180);
         let mut looks = waiting(&first, Looked::Done);
-        assert_eq!(looks.asked_again("wlan2", &revised, Some(ON)), Again::Taken);
+        assert_eq!(again(&mut looks, &revised), Again::Taken);
         assert_eq!(
             looks.ended("wlan2", 11, Some(ON), true),
             Ended::Heed(revised, Looked::Stopped),
@@ -316,17 +389,68 @@ mod tests {
         let request = warning(NEAR);
         let mut looks = waiting(&request, Looked::Done);
         assert_eq!(
-            looks.asked_again("wlan2", &request, Some(FAR)),
+            looks.asked_again("wlan2", &request, Some(FAR), false, soon()),
             Again::Fresh,
             "the point the card is on now asks for itself",
         );
         assert!(!looks.waits("wlan2"), "and the old point's look is past");
-        assert_eq!(looks.asked_again("wlan3", &request, Some(ON)), Again::Fresh);
+        assert_eq!(
+            looks.asked_again("wlan3", &request, Some(ON), false, soon()),
+            Again::Fresh
+        );
         let mut looks = waiting(&request, Looked::Done);
         looks.forget("wlan2");
         assert!(
             !looks.waits("wlan2"),
             "a card off its network looks for nothing"
         );
+    }
+
+    #[test]
+    fn a_warning_heeded_without_a_look_is_heeded_at_once_mid_look() {
+        let first = warning(NEAR);
+        let whole = Request {
+            leaves_network: true,
+            ..first.clone()
+        };
+        let mut looks = waiting(&first, Looked::Done);
+        assert_eq!(
+            looks.asked_again("wlan2", &whole, Some(ON), true, soon()),
+            Again::Fresh,
+            "a whole network dropping the card waited on a look it needs none of",
+        );
+        assert!(!looks.waits("wlan2"), "and the look is past");
+        let plain = Request {
+            warns: false,
+            ..first.clone()
+        };
+        let mut looks = waiting(&first, Looked::Done);
+        assert_eq!(
+            looks.asked_again("wlan2", &plain, Some(ON), true, soon()),
+            Again::Kept,
+            "a plain ask naming a point heard ended the look for a warning",
+        );
+    }
+
+    #[test]
+    fn a_look_never_said_to_end_lapses_and_a_new_hand_ends_every_look() {
+        let request = warning(NEAR);
+        let mut looks = waiting(&request, Looked::Done);
+        let lapsed = start() + LOOK_AT_MOST;
+        assert_eq!(
+            looks.asked_again("wlan2", &request, Some(ON), false, lapsed),
+            Again::Lapsed,
+            "a look never said to end swallowed the point's next warning",
+        );
+        assert!(!looks.waits("wlan2"), "and the look is past");
+
+        let mut looks = waiting(&request, Looked::Done);
+        looks.clear();
+        assert_eq!(
+            looks.ended("wlan2", 3, Some(ON), true),
+            Ended::Unwaited,
+            "a new wpa_supplicant's first ends were taken for ones before the card's look",
+        );
+        assert_eq!(again(&mut looks, &request), Again::Fresh);
     }
 }

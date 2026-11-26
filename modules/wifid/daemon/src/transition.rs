@@ -33,6 +33,15 @@
 //!   network's shared key can already read what a card joining in its
 //!   hearing sends, so a point of its own gains it little.
 //!
+//! Such a frame can still steer a card within its network, to the point
+//! it names, and keep its chooser off the point that warned it. That's
+//! followed all the same, as a link that doesn't protect its frames takes
+//! a forged drop as readily, which costs the card its link outright, and
+//! the home network is one: every warning its points send comes
+//! unprotected, so following none would follow nothing there. What such a
+//! frame can't do is say how long the point is kept off: that's only ever
+//! as long as a move settles (`Request::keeps_off`).
+//!
 //! A card looking for the points named waits in `look`. Long because its
 //! cases, over half of it, stay beside the private reading they prove, as
 //! every module in wifid keeps them.
@@ -243,12 +252,21 @@ impl Request {
         }
     }
 
-    /// How long a card that left the point asking keeps its chooser off it:
-    /// as long as its candidates hold, and at least as long as a move the
-    /// chooser makes itself holds the card still, so the next minute's
-    /// choice can't send the card back to a point that just shed it.
-    pub fn keeps_off(&self) -> Duration {
-        Duration::from_millis(self.valid_ms.into()).clamp(SETTLE, KEEPS_OFF_AT_MOST)
+    /// How long a card that heeded it this way keeps its chooser off the
+    /// point asking, if it left that point (`Heed::leaves`): as long as its
+    /// candidates hold, and at least as long as a move the chooser makes
+    /// itself holds the card still, so the next minute's choice can't send
+    /// the card back to a point that just shed it. An unprotected frame
+    /// could say any time, so it keeps the point off only as long as a move
+    /// settles, which is what a real point's candidates give anyway.
+    pub fn keeps_off(&self, heeded: &Heed) -> Option<Duration> {
+        if !heeded.leaves() {
+            return None;
+        }
+        if !self.protected {
+            return Some(SETTLE);
+        }
+        Some(Duration::from_millis(self.valid_ms.into()).clamp(SETTLE, KEEPS_OFF_AT_MOST))
     }
 
     /// Whether it warns of a drop, of its point or its whole network.
@@ -569,25 +587,61 @@ mod tests {
 
     #[test]
     fn a_warning_point_is_kept_off_as_long_as_its_candidates_hold_or_a_move_settles() {
+        let moved = Heed::Move(NEAR.to_owned());
         assert_eq!(
-            warning(Vec::new()).keeps_off(),
-            SETTLE,
+            warning(Vec::new()).keeps_off(&moved),
+            Some(SETTLE),
             "25.6 s of candidates is shorter than a move settles"
         );
         let long = Request {
             valid_ms: 3_600_000,
             ..warning(Vec::new())
         };
-        assert_eq!(long.keeps_off(), Duration::from_hours(1));
+        assert_eq!(long.keeps_off(&moved), Some(Duration::from_hours(1)));
         let absurd = Request {
             valid_ms: u32::MAX,
             ..warning(Vec::new())
         };
         assert_eq!(
-            absurd.keeps_off(),
-            KEEPS_OFF_AT_MOST,
+            absurd.keeps_off(&moved),
+            Some(KEEPS_OFF_AT_MOST),
             "a request holding past any real point's can't keep the point off for days"
         );
+        let forged = Request {
+            protected: false,
+            ..long
+        };
+        assert_eq!(
+            forged.keeps_off(&moved),
+            Some(SETTLE),
+            "an unprotected frame set how long its point was kept off"
+        );
+    }
+
+    #[test]
+    fn only_a_card_leaving_the_point_that_warned_it_keeps_off_that_point() {
+        let request = warning(Vec::new());
+        let leaving = [
+            Heed::Move(NEAR.to_owned()),
+            Heed::Look(vec![2437]),
+            Heed::LetGo,
+            Heed::NetworkDrops,
+        ];
+        for heeded in &leaving {
+            assert_eq!(
+                request.keeps_off(heeded),
+                Some(SETTLE),
+                "a card leaving as {heeded:?} could go back to the point that drops it"
+            );
+        }
+        let staying = [Heed::Stay, Heed::Unheld, Heed::Leaving, Heed::Unproven];
+        for heeded in &staying {
+            assert_eq!(
+                request.keeps_off(heeded),
+                None,
+                "a card heeding as {heeded:?} kept a point off"
+            );
+        }
     }
 
     #[test]
@@ -640,6 +694,15 @@ mod tests {
             unprotected.heed(Some(ON), &heard[..1], true, false, false, PASSWORD),
             Heed::Look(vec![2437]),
             "and one hearing only that looks for the real ones",
+        );
+        let protected = Request {
+            protected: true,
+            ..unprotected
+        };
+        assert_eq!(
+            protected.heed(Some(ON), &heard, true, false, false, PASSWORD),
+            Heed::Move(FAR.to_owned()),
+            "a protected frame still can't send the card to a point of other security",
         );
     }
 
