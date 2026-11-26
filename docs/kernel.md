@@ -164,10 +164,10 @@ the task's wait for a processor, the second field of its `schedstat`. On 26
 November a thread sleeping a second at a time booked 982 ms of wait on one
 sleep that took 1000 ms, after moving from processor 8 to 12. Slack's main
 threads, read every 20 ms, booked waits of 217 to 758 ms while every read
-saw them asleep. lag-watch, cadence and call-under-load all read that field,
-so their worst waits showed spikes that weren't there. The patch stops a
-delayed task being marked as queued; its wakeup still marks it. Neither 7.3.4
-nor mainline has it yet. It closes only the move: of 23 such sleeps counted
+saw them asleep. lag-watch and call-under-load both read that field, and
+cadence reads them, so their worst waits showed spikes that weren't there.
+The patch stops a delayed task being marked as queued; its wakeup still
+marks it. Neither 7.3.6 nor mainline has it yet. It closes only the move: of 23 such sleeps counted
 as waits over 20 minutes, 9 came with no move between reads, which some
 other path marks. The fair scheduler's own count, `wait_sum` in the
 thread's `sched` file, grew by at most 2 ms on every one of them. It

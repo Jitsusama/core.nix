@@ -36,6 +36,7 @@ fn snapshot(at: f64, groups: &[(&str, Group)], niri_wait: u64, niri_slices: u64)
             wait_ns: niri_wait,
             slices: niri_slices,
             fair_ns: None,
+            credited: None,
         },
     );
     s
@@ -321,6 +322,7 @@ fn ran(s: &mut Snapshot, label: &'static str, name: &str, wait_ns: u64, slices: 
             wait_ns,
             slices,
             fair_ns: None,
+            credited: None,
         },
     );
 }
@@ -413,6 +415,36 @@ fn an_app_s_drawing_waits_are_its_own_and_its_hidden_tabs_counted() {
 }
 
 #[test]
+fn a_window_counts_the_lesser_wait_and_carries_what_one_count_had_early() {
+    let mut then = snapshot(0.0, &[], 0, 0);
+    let mut now = snapshot(10.0, &[], 0, 0);
+    let mut next = snapshot(20.0, &[], 0, 0);
+    let drawing = |s: &mut Snapshot, wait_ns: u64, fair: u64, slices: u64| {
+        ran(s, "chrome-ui", "Compositor", wait_ns, slices);
+        s.threads.values_mut().for_each(|t| t.fair_ns = Some(fair));
+    };
+    // The schedstat books a 900 ms sleep and 2 ms of a wait still going at
+    // the read; the fair count has 1 ms of waits in all.
+    drawing(&mut then, 0, 0, 0);
+    drawing(&mut now, 902_000_000, 1_000_000, 10);
+    let w = between(&then, &now, quiet_niri(), 0, "gen");
+    assert!(
+        (w.waits["chrome-ui"].mean_us - 100.0).abs() < 1e-6,
+        "the schedstat's sleep passed as a wait: {:?}",
+        w.waits
+    );
+    credit(&then, &mut now);
+    // The fair count books the 2 ms when that wait ends, after the read.
+    drawing(&mut next, 905_000_000, 6_000_000, 20);
+    let w = between(&now, &next, quiet_niri(), 0, "gen");
+    assert!(
+        (w.waits["chrome-ui"].mean_us - 500.0).abs() < 1e-6,
+        "the wait the schedstat had at the read was lost: {:?}",
+        w.waits
+    );
+}
+
+#[test]
 fn a_tab_shown_in_a_window_is_counted_from_where_it_rested_hidden() {
     let mut then = snapshot(0.0, &[], 0, 0);
     let mut now = snapshot(10.0, &[], 0, 0);
@@ -474,6 +506,7 @@ fn sched(wait_ns: u64, slices: u64) -> Sched {
         wait_ns,
         slices,
         fair_ns: None,
+        credited: None,
     }
 }
 

@@ -108,6 +108,18 @@ pub fn book(
     }
 }
 
+/// Takes into each of `now`'s threads where its counts stand for the next
+/// window (`Sched::credit_since`), from where it was at `then`, or where it
+/// rested hidden, so a wait one count had by the read and the other only
+/// after it is counted in the next.
+pub fn credit(then: &Snapshot, now: &mut Snapshot) {
+    for (key, s) in &mut now.threads {
+        if let Some(old) = then.threads.get(key).or_else(|| then.resting.get(key)) {
+            s.credit_since(old);
+        }
+    }
+}
+
 /// A share of the window, in percent, each kind of stall.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Stalls {

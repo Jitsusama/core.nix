@@ -557,6 +557,7 @@ fn run() -> Result<(), Failure> {
             &system(),
         );
         w.carry(last.as_ref());
+        window::credit(&then, &mut now);
         keep(&w);
         last = Some(w);
         answers.clear();
@@ -573,6 +574,15 @@ fn run() -> Result<(), Failure> {
                 sched: read_of(&then),
                 asleep: sleeping,
             };
+            // A thread still watched keeps where its counts stood, so a
+            // wait carried from the window just ended is still counted.
+            // The ticks' reads were taken first, as they count each tick
+            // alone.
+            for (key, s) in &mut then.threads {
+                if let Some(was) = now.threads.get(key) {
+                    s.credited = was.credited;
+                }
+            }
         } else {
             then = now;
         }

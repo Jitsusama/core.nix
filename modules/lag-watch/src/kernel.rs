@@ -46,6 +46,11 @@ pub struct Sched {
     pub wait_ns: u64,
     pub slices: u64,
     pub fair_ns: Option<u64>,
+    /// Where each count, the schedstat's and the fair one, stood as taken
+    /// by the window that ended at this read (`credit_since`): what of it
+    /// was counted as waited, or let go as a sleep. None takes them where
+    /// they were read.
+    pub credited: Option<(u64, u64)>,
 }
 
 impl Sched {
@@ -57,12 +62,41 @@ impl Sched {
     /// put Chrome's drawing thread's at 310 ms against 125 ms over 30 s on
     /// 26 November. The lesser is the real wait, plus whatever both
     /// counted.
+    ///
+    /// The two credit a wait at different moments: the schedstat adds a
+    /// queued thread's wait so far when it moves between CPUs, the fair
+    /// count only when the wait ends, and the two are read from two files.
+    /// So a wait one has counted by a read and the other only after it is
+    /// carried from where `old` was credited, and is counted once both
+    /// have it. A count the other didn't match by the read after is let go.
+    /// A fair count that went back, as when schedstats was turned off and
+    /// on, leaves the schedstat's alone.
     pub fn waited_since(&self, old: &Sched) -> u64 {
         let counted = self.wait_ns.saturating_sub(old.wait_ns);
         match (self.fair_ns, old.fair_ns) {
-            (Some(now), Some(then)) => counted.min(now.saturating_sub(then)),
+            (Some(now), Some(then)) if now >= then => {
+                let (stat, fair) = old.credited.unwrap_or((old.wait_ns, then));
+                self.wait_ns
+                    .saturating_sub(stat)
+                    .min(now.saturating_sub(fair))
+            }
             _ => counted,
         }
+    }
+
+    /// Takes from `old` where each count stands for the window after this
+    /// read (`credited`): moved on by what `waited_since` counted, and
+    /// never behind `old`'s read, so a count left unmatched for a whole
+    /// window, a sleep it booked, is let go.
+    pub fn credit_since(&mut self, old: &Sched) {
+        self.credited = match (self.fair_ns, old.fair_ns) {
+            (Some(now), Some(then)) if now >= then => {
+                let (stat, fair) = old.credited.unwrap_or((old.wait_ns, then));
+                let waited = self.waited_since(old);
+                Some(((stat + waited).max(old.wait_ns), (fair + waited).max(then)))
+            }
+            _ => None,
+        };
     }
 }
 
@@ -106,6 +140,7 @@ pub fn sched(text: &str) -> Option<Sched> {
         wait_ns: n.next()??,
         slices: n.next()??,
         fair_ns: None,
+        credited: None,
     })
 }
 
@@ -465,7 +500,8 @@ pub mod tests {
                 run_ns: 1_621_278_039_012,
                 wait_ns: 163_383_489_014,
                 slices: 6_999_273,
-                fair_ns: None
+                fair_ns: None,
+                credited: None
             })
         );
         assert_eq!(sched(""), None);
@@ -521,7 +557,8 @@ pub mod tests {
                 run_ns: 5_000_000,
                 wait_ns: 999_000_000,
                 slices: 40,
-                fair_ns: Some(2_000_000)
+                fair_ns: Some(2_000_000),
+                credited: None
             }),
             "the fair count wasn't read beside the schedstat"
         );
@@ -558,6 +595,68 @@ pub mod tests {
             at(1_003_000_000, None).waited_since(&at(1_000_000_000, None)),
             3_000_000,
             "a thread with no fair count lost its wait"
+        );
+        assert_eq!(
+            at(1_003_000_000, Some(100)).waited_since(&then),
+            3_000_000,
+            "a fair count that went back wasn't left for the schedstat's"
+        );
+    }
+
+    /// Reads `reads` in turn, each crediting from the one before, and
+    /// gives what each window between them waited.
+    fn windows(reads: &[(u64, u64)]) -> Vec<u64> {
+        let mut old = Sched {
+            wait_ns: reads[0].0,
+            fair_ns: Some(reads[0].1),
+            ..Sched::default()
+        };
+        let mut waited = Vec::new();
+        for &(wait_ns, fair) in &reads[1..] {
+            let mut now = Sched {
+                wait_ns,
+                fair_ns: Some(fair),
+                ..Sched::default()
+            };
+            waited.push(now.waited_since(&old));
+            now.credit_since(&old);
+            old = now;
+        }
+        waited
+    }
+
+    #[test]
+    fn a_wait_the_two_count_either_side_of_a_read_is_counted_once_both_have() {
+        // A 500 ms wait that moved CPUs 200 ms in: the schedstat books
+        // those 200 ms at the move, before the read; the fair count books
+        // all 500 at the end, after it.
+        assert_eq!(
+            windows(&[(0, 0), (200, 0), (500, 500)]),
+            [0, 500],
+            "a wait split across a read was lost"
+        );
+        // A wait that ends between the two files' reads: the fair count
+        // has it at the read, the schedstat only at the next.
+        assert_eq!(
+            windows(&[(0, 0), (0, 300), (300, 300)]),
+            [0, 300],
+            "a wait ending between the files was lost"
+        );
+    }
+
+    #[test]
+    fn a_sleep_one_count_books_is_let_go_after_a_window() {
+        // The schedstat books a 4 s sleep; the fair count never matches it,
+        // so it's let go and later waits are counted as they come.
+        assert_eq!(
+            windows(&[(0, 0), (4_000, 10), (4_020, 30), (4_050, 60)]),
+            [10, 20, 30],
+            "a sleep one count booked passed as a wait"
+        );
+        assert_eq!(
+            windows(&[(0, 0), (10, 300), (30, 320), (60, 350)]),
+            [10, 20, 30],
+            "a sleep the fair count booked passed as a wait"
         );
     }
 
