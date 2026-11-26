@@ -93,6 +93,11 @@ search() {
     out=$( (cd "${at}" && "${real}" "${paths[@]}" ${expression[@]+"${expression[@]}"}) \
       2>"${said}") || true
   fi
+  # GNU find warns of a -maxdepth or -mindepth given after -path, as the
+  # wrapper's prunes put it; macOS's find doesn't, so the warning is dropped.
+  local kept
+  kept=$(grep -v 'warning: you have specified the global option' "${said}") || true
+  printf '%s' "${kept}" >"${said}"
   while IFS= read -r line; do
     case ${line} in
       .) line=${from} ;;
@@ -185,6 +190,73 @@ if [[ $(<"${said}") != "${unlisted}" ]] || grep -qxF "${home}/Desktop" <<<"${fou
   echo "${who} tested a guarded folder with -empty: ${found} $(<"${said}")" >&2
   exit 1
 fi
+# -execdir runs its command in each folder's parent on ./ and its name, and
+# Containers is a name only a guarded folder has.
+found=$(wrapped "${home}" . -type d -execdir ls -d '{}' + 2>"${said}")
+if [[ $(<"${said}") != "${unlisted}" ]] || grep -qxF ./Containers <<<"${found}" \
+  || ! grep -qxF ./Logs <<<"${found}"; then
+  echo "${who} gave a guarded folder to -execdir ls -d: ${found} $(<"${said}")" >&2
+  exit 1
+fi
+# A primary's operand is never read as a primary: -name's -empty is a
+# pattern, so the search says the usual note, not the one -empty gives.
+found=$(search "${home}" -name -empty)
+if [[ $(<"${said}") != "${note}" ]]; then
+  echo "${who} read -name's -empty as a primary: $(<"${said}")" >&2
+  exit 1
+fi
+# -print and -ls print each match once, the search adding no -print of its
+# own.
+for action in -print -ls; do
+  found=$(search "${home}" -name needle "${action}")
+  logs=$(grep -cF Library/Logs/needle <<<"${found}") || logs=0
+  if [[ $(<"${said}") != "${note}" ]] || [ "${logs}" != 1 ]; then
+    echo "${who} with ${action} didn't print each match once: ${found} $(<"${said}")" >&2
+    exit 1
+  fi
+done
+# find opens no folder at its -maxdepth, so one there is left as find leaves
+# it, listed and with no note, unless -empty would open it; one above it is
+# still pruned.
+found=$(search "${home}" -maxdepth 1 -type d)
+if [ -s "${said}" ] || ! grep -qxF "${home}/Desktop" <<<"${found}"; then
+  echo "${who} with -maxdepth 1 didn't run as given: ${found} $(<"${said}")" >&2
+  exit 1
+fi
+found=$(search "${home}" -maxdepth 1 -type d -empty)
+if [[ $(<"${said}") != "${unlisted}" ]]; then
+  echo "${who} with -maxdepth 1 tested a guarded folder with -empty: $(<"${said}")" >&2
+  exit 1
+fi
+found=$(search "${home}" -maxdepth 2 -name needle)
+if [[ $(<"${said}") != "${note}" ]] || grep -qxF "${home}/Library/Logs/needle" <<<"${found}"; then
+  echo "${who} with -maxdepth 2 opened a guarded folder or went past it: ${found}" \
+    "$(<"${said}")" >&2
+  exit 1
+fi
+# A -maxdepth counts from the start, so from above the home folder it
+# reaches the guarded folders deeper down, and still prunes them.
+rest=${home#"${work}"/}
+slashes=${rest//[^\/]/}
+named "${work}"
+found=$(search "${work}" -maxdepth $((${#slashes} + 3)) -name needle)
+if [[ $(<"${said}") != "${note}" ]] || ! grep -qxF "${home}/src/needle" <<<"${found}"; then
+  echo "${who} with -maxdepth $((${#slashes} + 3)) opened a guarded folder or lost a match:" \
+    "${found} $(<"${said}")" >&2
+  exit 1
+fi
+named "${home}"
+# A depth is read as macOS's find reads it, the last given, a + or blanks
+# before its digits as well, which GNU's find refuses, so what this one
+# says is left out of what's read. ' -1' and '+-1' are -1, find's own no
+# limit, and zeros before a digit count for nothing however many there are.
+for given in '+3' ' 3' '+ +3' ' -1' '+-1' '0000000000000000000003'; do
+  search "${home}" -maxdepth 1 -maxdepth "${given}" -name needle >/dev/null
+  if ! grep -qxF "${note}" "${said}"; then
+    echo "${who} with -maxdepth 1 then '${given}' ran as -maxdepth 1: $(<"${said}")" >&2
+    exit 1
+  fi
+done
 # An action of its own that opens nothing lists each guarded folder it
 # matches once, as it prints, with nothing added: NUL-ended, as -print0 asks.
 found=$(wrapped "${home}" . -type d -print0 2>"${said}" | tr '\n\0' '!\n')
@@ -208,7 +280,7 @@ fi
 # A search find can't prune, going depth first or testing nothing above its
 # -mindepth, runs as given, so it opens the guarded folders; one whose
 # -mindepth lies above them is still pruned.
-for given in -depth '-mindepth 3'; do
+for given in -depth '-depth -maxdepth 2' '-mindepth 3'; do
   # shellcheck disable=SC2086 # Each is split into its words, as typed.
   search "${home}" ${given} -name needle >/dev/null
   if ! grep -q 'ermission denied' "${said}" || grep -qF "${note}" "${said}"; then
@@ -216,9 +288,9 @@ for given in -depth '-mindepth 3'; do
     exit 1
   fi
 done
-search "${home}" -mindepth 1 -name needle >/dev/null
-if grep -q 'ermission denied' "${said}"; then
-  echo "${who} with -mindepth 1 opened a guarded folder: $(<"${said}")" >&2
+found=$(search "${home}" -mindepth 1 -name needle)
+if [[ $(<"${said}") != "${note}" ]] || ! grep -qxF "${home}/Library/Logs/needle" <<<"${found}"; then
+  echo "${who} with -mindepth 1 opened a guarded folder or lost a match: $(<"${said}")" >&2
   exit 1
 fi
 
@@ -305,11 +377,22 @@ for args in depth-test f-path dashes shallow option exec-d; do
     exit 1
   fi
 done
-for args in depth-primary depth-option deep; do
+# -ok and -okdir ask before each run, so they're seen only here: each is kept
+# off the guarded folders, which -prune ends with no listing after it.
+for action in -ok -okdir; do
+  given "${home}" -type d "${action}" ls '{}' ';'
+  after=$(grep -xF -A1 -- -prune <<<"${said}" | tail -n 1)
+  if [ "${after}" != -o ]; then
+    echo "a search with ${action} lists the guarded folders: ${said}" >&2
+    exit 1
+  fi
+done
+for args in depth-primary depth-option deep delete; do
   case ${args} in
     depth-primary) given "${home}" -name x -d ;;
     depth-option) given -d "${home}" -name x ;;
     deep) given "${home}" -mindepth 2 -name x ;;
+    delete) given "${home}" -name x -delete ;;
     *) ;;
   esac
   if [ "${said}" != "${typed}" ]; then

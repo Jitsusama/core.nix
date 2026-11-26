@@ -1386,8 +1386,9 @@ PanelWindow {
             leaning: window.leaning,
             swatting: window.swatting,
             held: window.holding,
-            // Whether its rest has begun, from which a pet may come.
-            resting: window.stillSince >= 0,
+            // Whether its rest has begun, from which a pet may come; not
+            // `resting`, the pause before it sets off on a walk.
+            restBegun: window.stillSince >= 0,
             // Whether it's held still under the launcher's card, which
             // what Joel's hand set off never is.
             stilled: window.stilled && !window.byHand,

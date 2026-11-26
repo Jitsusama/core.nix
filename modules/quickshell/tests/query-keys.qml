@@ -1791,6 +1791,33 @@ QtObject {
             holds(`a drawer's prose: ${what}`,
                 JSON.stringify(Prose.lines({ text: words, styled }, wide, 5, width)),
                 JSON.stringify(want));
+        // A long body, as a notice whose sender wrote 34 kB in it (2026-11-25, its drawer
+        // 3.2 s to its frame), is laid no further than a line past the fifth, plain or
+        // styled: nothing beyond it is measured, and it's cut as a short one is.
+        const longProse = Array.from({ length: 6000 }, () => "aa").join(" ");
+        for (const [styledness, longText, longWant] of [
+            ["plain", longProse, "aa aa aa aa aa aa aa aa aa\u2026"],
+            ["styled", `<b>${longProse}</b>`, "<b>aa aa aa aa aa aa aa aa aa\u2026</b>"]
+        ]) {
+            let proseMeasured = 0;
+            const proseMeasuring = text => {
+                proseMeasured++;
+                return width(text);
+            };
+            const longLaid = Prose.lines({ text: longText, styled: styledness === "styled" }, 50,
+                5, proseMeasuring);
+            holds(`a drawer's prose, long and ${styledness}: cut as a short one is`,
+                JSON.stringify(longLaid), JSON.stringify({ said: longWant, cut: true }));
+            holds(`a drawer's prose, long and ${styledness}: none past its sixth line measured`,
+                proseMeasured < 40, true);
+        }
+        // Laid to a line, as the drawer lays to the line that fades, they're the first
+        // lines of the whole lay, paragraphs and empty ones counted as it counts them.
+        const paragraphs = "aa bb cc dd\n\nee ff gg\nhh";
+        for (const most of [1, 2, 3, 4, 5, 9])
+            holds(`a drawer's prose, laid to ${most} lines: the whole lay's first`,
+                JSON.stringify(Prose.laid(paragraphs, 50, width, most)),
+                JSON.stringify(Prose.laid(paragraphs, 50, width).slice(0, most)));
         for (const [what, figure, lines, room, under, want] of places)
             holds(`a figure's place: ${what}`,
                 JSON.stringify(Figure.place(figure, lines, room, under)),

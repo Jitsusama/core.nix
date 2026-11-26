@@ -2049,15 +2049,23 @@ Floating {
     readonly property bool fadeDrawn: wordsFaded.item !== null
     // Its words as drawn, laid in lines as Qt wraps them, each its letters,
     // without the space a laid line ends on, and how wide Qt draws them,
-    // for the launcher to report. Laid by layLines, as proseLaid is.
+    // for the fade and the launcher to report. Laid by layLines, as
+    // proseLaid is: only while a line fades, and to it, since nothing else
+    // reads them and each word laid is measured, which for a notice of
+    // 34 kB opened whole would hold its drawer seconds (2026-11-25).
     property var proseLines: []
     readonly property var linesAsked: [bodySaid, shown?.styled === true, wordsBox.width,
-        bodyText.font]
+        bodyText.font, wordsKept < bodyLines ? wordsKept : 0]
     onLinesAskedChanged: layLines()
     function layLines() {
+        const most = linesAsked[4];
+        if (most === 0) {
+            proseLines = [];
+            return;
+        }
         const plain = shown?.styled === true ? Prose.lettersOf(bodySaid).plain : bodySaid;
         const width = drawnWidthOf(Measures.drawnFace(bodyText.font, "plain"));
-        proseLines = Prose.laid(plain, wordsBox.width, width).map(line => {
+        proseLines = Prose.laid(plain, wordsBox.width, width, most).map(line => {
             const letters = plain.slice(line.start, line.end).replace(/\s+$/, "");
             return { letters, width: width(letters) };
         });
