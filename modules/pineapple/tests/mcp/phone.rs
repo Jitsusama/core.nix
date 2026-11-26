@@ -42,6 +42,22 @@ fn an_alert_is_unsure_only_once_its_tool_was_asked_and_its_words_never_hold_it_b
             _ => status(202),
         }
     }
+    /// A send the gateway refuses as a tool it doesn't know, before it
+    /// runs anything.
+    fn unknown_tool(one: &Seen, _: usize) -> Reply {
+        match one.method.as_str() {
+            "initialize" => opened("s1"),
+            "tools/call" => json_reply(&json!({
+                "jsonrpc": "2.0", "id": one.id,
+                "error": { "code": -32_601, "message": "Unknown tool" },
+            })),
+            _ => status(202),
+        }
+    }
+    /// The gateway saying the send's tools are turned off.
+    fn turned_off() -> Reply {
+        tool("\"slack_send_message_to_self\" is not available", true)
+    }
     /// The send answered as `answer` says of how many came before it.
     fn sending(one: &Seen, calls: usize, answer: fn(usize) -> Reply) -> Reply {
         match one.method.as_str() {
@@ -51,7 +67,7 @@ fn an_alert_is_unsure_only_once_its_tool_was_asked_and_its_words_never_hold_it_b
         }
     }
     type Answer = fn(&Seen, usize) -> Reply;
-    let cases: [(&str, Answer, &str, usize); 10] = [
+    let cases: [(&str, Answer, &str, usize); 13] = [
         (
             "lost",
             |one, n| sending(one, n, |_| status(502)),
@@ -73,6 +89,27 @@ fn an_alert_is_unsure_only_once_its_tool_was_asked_and_its_words_never_hold_it_b
         ("refused-opening", refused_opening, "unsent", 0),
         ("page-opening", page_at_opening, "unsent", 0),
         ("forgotten-then-page", forgotten_then_page, "unsent", 1),
+        ("unknown-tool", unknown_tool, "unsent", 1),
+        (
+            "enable-lost",
+            |one, n| sending(one, n, |n| if n == 0 { turned_off() } else { status(502) }),
+            "unsent",
+            2,
+        ),
+        (
+            "still-off",
+            |one, n| {
+                sending(one, n, |n| {
+                    if n == 1 {
+                        tool("on", false)
+                    } else {
+                        turned_off()
+                    }
+                })
+            },
+            "unsent",
+            3,
+        ),
         (
             "refused",
             |one, n| sending(one, n, |_| tool("Slack said: invalid_auth", true)),

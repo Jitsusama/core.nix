@@ -449,19 +449,29 @@ fn an_alert_untold_for_its_ten_minutes_is_said_let_go_once() {
     let (url, called) = gateway();
     let home = home();
     an_alert_waits(&home);
-    aged(&home, &[("untold", 15), ("older", 25), ("unsure", 12)]);
-    let once = json!({
-        "at": minutes_ago(12),
-        "key": "unsure",
-        "saying": "stopped",
-        "sent": "unsure",
-        "shadow": false,
-    });
+    aged(
+        &home,
+        &[("untold", 15), ("older", 30), ("unsure", 12), ("twice", 13)],
+    );
+    let unsure = |key: &str| {
+        json!({
+            "at": minutes_ago(3),
+            "key": key,
+            "saying": "stopped",
+            "sent": "unsure",
+            "shadow": false,
+        })
+    };
     std::fs::write(
         home.join("state/pineapple/phoned.jsonl"),
-        format!("{once}\n"),
+        format!(
+            "{}\n{}\n{}\n",
+            unsure("unsure"),
+            unsure("twice"),
+            unsure("twice")
+        ),
     )
-    .expect("one send that may have gone");
+    .expect("sends that may have gone");
     live_for_rounds(&home, &url, &called, 12);
     assert!(
         sent_to_self(&called).is_empty(),
@@ -469,24 +479,28 @@ fn an_alert_untold_for_its_ten_minutes_is_said_let_go_once() {
     );
     assert_eq!(
         let_go(&home),
-        [json!("untold"), json!("unsure")],
-        "each past its ten minutes is kept as let go, once, however many rounds pass, but \
-         one twenty minutes old as the reader began isn't: {:?}",
+        [json!("untold"), json!("unsure"), json!("twice")],
+        "each past its ten minutes is kept as let go, once, however many rounds pass, even \
+         one left after two sends that may have gone, but one from twenty minutes before \
+         the phone was last told isn't: {:?}",
         phoned(&home)
     );
     let journal = journal(&home);
     assert!(
         journal.contains("Joel's phone alert is let go, untold after ten minutes")
-            && journal.contains("its one send that may have gone unanswered"),
+            && journal.contains("its one send that may have gone unanswered")
+            && journal.contains("each send that may have gone unanswered"),
         "and the journal says so, and which may have gone: {journal}"
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
 #[test]
-fn a_live_keyring_reader_says_an_alert_let_go_too() {
+fn a_live_keyring_reader_says_an_alert_let_go_too_while_signed_out() {
     let (origin, _) = stand_in();
     let home = home();
+    std::fs::remove_file(home.join("config/agentic-harness/slack/credentials.json"))
+        .expect("the sign-in taken away");
     an_alert_waits(&home);
     aged(&home, &[("untold", 15)]);
     let mut reader = crate::reader_with(&home, &origin, &["--live"]);
@@ -499,7 +513,7 @@ fn a_live_keyring_reader_says_an_alert_let_go_too() {
     assert_eq!(
         let_go(&home),
         [json!("untold")],
-        "a live keyring reader says an alert past its ten minutes let go too: {}",
+        "a live keyring reader signed out says an alert past its ten minutes let go too: {}",
         journal(&home)
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
@@ -511,7 +525,10 @@ fn a_reader_over_a_gateway_live_with_no_sign_in_writes_joels_row() {
     let (url, called) = gateway();
     let home = home();
     an_alert_waits(&home);
-    aged(&home, &[("untold", 15), ("while-down", 40)]);
+    aged(
+        &home,
+        &[("untold", 15), ("while-down", 40), ("just-before", 75)],
+    );
     let told = json!({
         "at": minutes_ago(60),
         "key": "told",
@@ -559,9 +576,10 @@ fn a_reader_over_a_gateway_live_with_no_sign_in_writes_joels_row() {
     );
     assert_eq!(
         let_go(&home),
-        [json!("untold"), json!("while-down")],
+        [json!("untold"), json!("while-down"), json!("just-before")],
         "with no sign-in an alert past its ten minutes is still said let go, and one \
-         written while no reader ran, since Joel's phone was last told: {}",
+         written while no reader ran, or untold for its ten minutes as his phone was last \
+         told: {}",
         journal(&home)
     );
     std::fs::remove_dir_all(&home).expect("the case's home goes");

@@ -4,7 +4,7 @@
 //! Slack's own API in the IM it finds for him alone, or by the reader over
 //! a tool gateway through its one tool that sends to Joel himself.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use pineapple::mcp::Gateway;
@@ -100,19 +100,20 @@ pub fn give_up_through(state: &Path, from: u64) {
 }
 
 /// The oldest an alert may be and still be said let go, taken once as a
-/// reader starts: twenty minutes back, or, where Joel's phone was last
-/// told earlier, ten minutes before that, so an alert written while no
-/// reader ran is said too, while one from before alerts were ever let go
-/// with a word is left as it was.
+/// reader starts: twenty minutes before Joel's phone was last told, so
+/// one written while no reader ran, or aging out in the last round before
+/// one stopped, is said too, while one from before alerts were ever let
+/// go with a word is left as it was. A reader that never told his phone
+/// takes twenty minutes back, and the earlier of the two is taken, so a
+/// clock set back can't move it ahead.
 pub fn let_go_from(state: &Path) -> u64 {
-    let fresh = millis().saturating_sub(2 * LOOK_BACK * MILLIS);
+    let back = 2 * LOOK_BACK * MILLIS;
+    let fresh = millis().saturating_sub(back);
     lines(&state.join("phoned.jsonl"))
         .iter()
         .filter_map(|line| line["at"].as_u64())
         .max()
-        .map_or(fresh, |last| {
-            fresh.min(last.saturating_sub(LOOK_BACK * MILLIS))
-        })
+        .map_or(fresh, |last| fresh.min(last.saturating_sub(back)))
 }
 
 /// Says each live alert that went ten minutes untold is let go, as it
@@ -120,16 +121,20 @@ pub fn let_go_from(state: &Path) -> u64 {
 /// said once. It's asked each round before any is told, whether or not
 /// Slack or the gateway answers, so one aging out in an outage is said
 /// too; only those written before `from`, as [`let_go_from`] gives it,
-/// go unsaid. One whose send may have gone once is said so.
+/// go unsaid. One whose sends may have gone is said so, those left after
+/// their last such send included.
 fn give_up(state: &Path, im: Option<&str>, from: u64) {
     let phoned = state.join("phoned.jsonl");
     let kept = lines(&phoned);
-    let told = done(&kept);
-    let unsure: HashSet<String> = kept
-        .iter()
-        .filter(|line| line["sent"] == UNSURE)
-        .map(told_as)
-        .collect();
+    let mut unsure: HashMap<String, usize> = HashMap::new();
+    let mut told = HashSet::new();
+    for line in &kept {
+        if line["sent"] == UNSURE {
+            *unsure.entry(told_as(line)).or_default() += 1;
+        } else {
+            told.insert(told_as(line));
+        }
+    }
     let now = millis();
     let since = now.saturating_sub(LOOK_BACK * MILLIS);
     for line in lines(&state.join("would-tell.jsonl")) {
@@ -139,10 +144,15 @@ fn give_up(state: &Path, im: Option<&str>, from: u64) {
             continue;
         }
         let link = line["link"].as_str().unwrap_or_default();
-        if unsure.contains(&named) {
+        if let Some(sends) = unsure.get(&named) {
+            let sends = if *sends == 1 {
+                "its one send"
+            } else {
+                "each send"
+            };
             eprintln!(
-                "<3>Joel's phone alert is let go after ten minutes, its one send that may \
-                 have gone unanswered: {link}"
+                "<3>Joel's phone alert is let go after ten minutes, {sends} that may have gone \
+                 unanswered: {link}"
             );
         } else {
             eprintln!("<3>Joel's phone alert is let go, untold after ten minutes: {link}");

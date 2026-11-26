@@ -185,7 +185,13 @@ impl Gateway {
                 let backend = tool.split('_').next().unwrap_or_default();
                 eprintln!("<5>the gateway turned its {backend} tools off, so they're turned on");
                 self.once(ENABLE, &json!({ "backend": backend }))?;
-                self.once(tool, arguments)
+                // Still off, the gateway ran nothing of it.
+                match self.once(tool, arguments) {
+                    Err(Called::Failed(why)) if why.contains(&format!("{tool}{NOT_AVAILABLE}")) => {
+                        Err(Called::NotReached(why))
+                    }
+                    other => other,
+                }
             }
             other => other,
         }
@@ -413,6 +419,17 @@ fn said(answer: Answer) -> Result<String, Called> {
     };
     if let Some(error) = body.get("error") {
         let why = error["message"].as_str().unwrap_or("no reason");
+        // JSON-RPC's words for a request it couldn't read, or a method,
+        // tool or arguments it doesn't know, each refused before anything
+        // ran.
+        if matches!(
+            error["code"].as_i64(),
+            Some(-32_700 | -32_600 | -32_601 | -32_602)
+        ) {
+            return Err(Called::NotReached(format!(
+                "the gateway refused the call: {why}"
+            )));
+        }
         return Err(Called::Failed(why.to_owned()));
     }
     let result = &body["result"];
