@@ -12,32 +12,35 @@ sorted in by the slots they use, the fullest last, so what's made next
 fills them, and the chunks using little are left to empty for a later
 sweep to free.
 
-The last bin is the one exception. A request there has no larger bin
-to look in and passes at most a few runs before taking a new chunk, and
-fullest first would put the shortest runs at its head, so that bin is
-turned round, the longest runs first, and a long request takes one that
-fits. The list the sort uses is kept from sweep to sweep, and the sort
-breaks ties by address, so a sweep allocates nothing once it's grown.
+That holds in the last bin too. A small request that no smaller bin
+can serve takes its head and bumps through the rest, so the head should
+be the fullest of the chunks with a long run. A request for a long run
+passes at most a few runs there and may take a new chunk, but it fills
+at least half of it. The list the sort uses is the allocator's, kept
+from sweep to sweep, so a sweep allocates nothing once it's grown, and
+ties go by address, so the order is the same each time.
 
 ---
 --- a/src/qml/memory/qv4mm.cpp
 +++ b/src/qml/memory/qv4mm.cpp
-@@ -553,10 +553,35 @@ void BlockAllocator::sweep()
+@@ -553,10 +553,25 @@ void BlockAllocator::sweep()
  
      usedSlotsAfterLastSweep = 0;
  
--    std::for_each(chunks.begin(), firstEmptyChunk, [this](Chunk *c) {
--        c->sortIntoBins(freeBins, NumBins);
--        usedSlotsAfterLastSweep += c->nUsedSlots();
 +    // Each chunk's runs go on the front of their bins, so the chunk sorted in last is the one
 +    // allocation fills first. Sorted in by what they use, the fullest last, what's made next
 +    // fills the chunks nearly full already, and the chunks using little are left to empty, for a
 +    // later sweep to free, rather than each keeping a few of what's made and none ever freed.
-+    // The list is kept from sweep to sweep, so a sweep allocates nothing once it has grown, and
-+    // ties go by address, so the sort needs no buffer either.
-+    static thread_local std::vector<std::pair<std::size_t, Chunk *>> byUse;
++    // That holds in every bin, the last too: a small request no smaller bin can serve takes the
++    // last bin's head and bumps through what's left of it, which should be the fullest chunk of
++    // those with a long run, not the emptiest. A request of a long run passes at most a few runs
++    // too short for it there, and may take a new chunk, which it fills at least half of. The
++    // list is the allocator's, kept from sweep to sweep, so a sweep allocates nothing once it
++    // has grown, and ties go by address, so the order is the same each time.
 +    byUse.clear();
-+    std::for_each(chunks.begin(), firstEmptyChunk, [](Chunk *c) {
+     std::for_each(chunks.begin(), firstEmptyChunk, [this](Chunk *c) {
+-        c->sortIntoBins(freeBins, NumBins);
+-        usedSlotsAfterLastSweep += c->nUsedSlots();
 +        byUse.emplace_back(c->nUsedSlots(), c);
      });
 +    std::sort(byUse.begin(), byUse.end());
@@ -45,19 +48,18 @@ breaks ties by address, so a sweep allocates nothing once it's grown.
 +        c->sortIntoBins(freeBins, NumBins);
 +        usedSlotsAfterLastSweep += used;
 +    }
-+
-+    // The last bin holds every run too long for the others, and a request there has no larger
-+    // bin to fall back to, so one passing its tries takes a new chunk. Fullest first, its head
-+    // would be the fullest chunks' runs, the shortest, so it's turned round: a long request
-+    // finds first the runs of the chunks using least, the longest, and what fits is taken.
-+    HeapItem *longestFirst = nullptr;
-+    for (HeapItem *m = freeBins[NumBins - 1]; m;) {
-+        HeapItem *next = m->freeData.next;
-+        m->freeData.next = longestFirst;
-+        longestFirst = m;
-+        m = next;
-+    }
-+    freeBins[NumBins - 1] = longestFirst;
  
      // only free the chunks at the end to avoid that the sweep() calls indirectly
      // access freed memory
+--- a/src/qml/memory/qv4mm_p.h
++++ b/src/qml/memory/qv4mm_p.h
+@@ -230,6 +230,9 @@ struct BlockAllocator {
+     ChunkAllocator *chunkAllocator;
+     ExecutionEngine *engine;
+     std::vector<Chunk *> chunks;
++    // The chunks a sweep keeps, by the slots each uses, kept between sweeps so sorting them
++    // allocates nothing once it has grown.
++    std::vector<std::pair<std::size_t, Chunk *>> byUse;
+     uint *allocationStats = nullptr;
+ };
+ 

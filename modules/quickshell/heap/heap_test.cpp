@@ -52,6 +52,7 @@
 #include <QQmlEngine>
 #include <QRegularExpression>
 #include <QTemporaryDir>
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -63,6 +64,7 @@
 #include <private/qv4mm_p.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <utility>
 
 namespace {
 
@@ -929,6 +931,95 @@ bool fillsTheFullestFirst() {
                      madeMB, quarterMB, swept.live, after.live, swept.held, after.held,
                      swept.free, after.free);
     return tried && intact && freed;
+}
+
+// How many stores of 1024 values, 260 slots each, about seven to a chunk,
+// are made in each of two runs of chunks, the first keeping three of every
+// eight and the second one, so most chunks of both keep one free run of
+// 1024 slots or more, in the last bin, beside chunks using more and less.
+constexpr int LONG_RUN_STORES = 800;
+
+// Whether a sweep leaves every bin's runs fullest chunk first, the last bin
+// among them, read straight after it, before anything is made to take one.
+// The last bin is where a small request no smaller bin serves goes, taking
+// its head and bumping through the rest, so with its runs the other way
+// round the emptiest chunks were filled first and none drained; no case
+// that weighs what's made reaches it. It holds only if the last bin has
+// runs of chunks using both more and less, so a layout that left none
+// there fails it rather than passing with nothing tried.
+bool sortsEachBinFullestFirst() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    heap.leaveRoom(ROOM_MB);
+    const QJSValue kept = engine.evaluate(
+        QStringLiteral("(() => { const kept = [new Array(%1), new Array(%2)]; let j = 0; let "
+                       "k = 0; for (let i = 0; i < %3; i++) { const each = new Array(1024); if "
+                       "(i % 8 < 3) kept[0][j++] = each; } for (let i = 0; i < %3; i++) { const "
+                       "each = new Array(1024); if (i % 8 === 0) kept[1][k++] = each; } return "
+                       "kept; })()")
+            .arg(LONG_RUN_STORES * 3 / 8)
+            .arg(LONG_RUN_STORES / 8)
+            .arg(LONG_RUN_STORES));
+    engine.collectGarbage();
+    const QV4::MemoryManager *manager = engine.handle()->memoryManager;
+    using Allocator = QV4::BlockAllocator;
+    bool ordered = true;
+    const char *outOfOrder = "";
+    std::size_t badBin = 0;
+    uint badBefore = 0;
+    uint badAfter = 0;
+    int longRuns = 0;
+    uint leastUsed = std::numeric_limits<uint>::max();
+    uint mostUsed = 0;
+    for (const auto &[name, allocator] :
+         {std::pair<const char *, const Allocator *>{"objects'", &manager->blockAllocator},
+          std::pair<const char *, const Allocator *>{"shapes'", &manager->icAllocator}})
+        for (std::size_t bin = 0; bin < Allocator::NumBins; ++bin) {
+            uint before = std::numeric_limits<uint>::max();
+            for (const QV4::HeapItem *m = allocator->freeBins[bin]; m; m = m->freeData.next) {
+                const uint used = m->chunk()->nUsedSlots();
+                if (used > before && ordered) {
+                    ordered = false;
+                    outOfOrder = name;
+                    badBin = bin;
+                    badBefore = before;
+                    badAfter = used;
+                }
+                before = used;
+                if (allocator == &manager->blockAllocator && bin == Allocator::NumBins - 1) {
+                    ++longRuns;
+                    leastUsed = std::min(leastUsed, used);
+                    mostUsed = std::max(mostUsed, used);
+                }
+            }
+        }
+    // Read only once the bins are walked, since what it makes would take
+    // runs from their heads and push what's left back on.
+    const QJSValue read =
+        engine
+            .evaluate(QStringLiteral("(kept) => kept[0].length === %1 && kept[1].length === %2 "
+                                     "&& kept.every((stores) => stores.every((each) => "
+                                     "each.length === 1024))")
+                          .arg(LONG_RUN_STORES * 3 / 8)
+                          .arg(LONG_RUN_STORES / 8))
+            .call({kept});
+    // A chunk keeping three of its seven or eight stores uses about 760
+    // slots, and one keeping one about 260.
+    const bool tried = !kept.isError() && longRuns >= LONG_RUN_STORES / 80 &&
+                       leastUsed < 400 && mostUsed > 600 && read.toBool();
+    if (!tried)
+        std::fprintf(stderr,
+                     "FAIL chunks using more and less were swept with long runs: the last bin "
+                     "held %d runs, of chunks using %u to %u slots%s\n",
+                     longRuns, longRuns > 0 ? leastUsed : 0, mostUsed,
+                     kept.isError() ? qPrintable(QStringLiteral(", ") + kept.toString()) : "");
+    else if (!ordered)
+        std::fprintf(stderr,
+                     "FAIL each bin's runs come fullest chunk first after a sweep: in bin %zu "
+                     "of the %s allocator a chunk using %u slots came after one using %u, and "
+                     "the last bin held %d runs, of chunks using %u to %u slots\n",
+                     badBin, outOfOrder, badAfter, badBefore, longRuns, leastUsed, mostUsed);
+    return tried && ordered;
 }
 
 bool expect(const char *what, bool holds, const Weight &before, const Weight &after) {
@@ -1916,6 +2007,7 @@ int main(int argc, char **argv) {
     const bool fits = takesRunsThatFit();
     const bool whole = leavesLargeRunsWhole();
     const bool fullest = fillsTheFullestFirst();
+    const bool inOrder = sortsEachBinFullestFirst();
     const bool census = namesWhatsKept();
     const bool covered = residentCoversWhatsLive();
     const bool placed = placesWhatMadeIt();
@@ -1930,7 +2022,7 @@ int main(int argc, char **argv) {
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
                    roomyOutside && lasting && lastingOutside && stillCollectsOutside &&
                    reckoned && ownLimits && follows && given && lent && fits && whole && fullest &&
-                   census &&
+                   inOrder && census &&
                    covered && placed && stands && underWay && holdsIt && waitsItOut && stray &&
                    alone && swept && chained
                ? 0
