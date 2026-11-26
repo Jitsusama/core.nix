@@ -1,6 +1,9 @@
 //! Lifts jobs' memory ceiling while nothing else waits on memory, and
 //! brings it back as soon as anything does.
 //!
+//! Long because its cases, more than half of it, stay beside the
+//! ceiling's private pieces as every module in this crate keeps them.
+//!
 //! jobs.slice is held to 26% of memory (modules/slices/nixos.nix), which
 //! cut how long apps waited on memory from 0.67% of the time to 0.024%.
 //! But the ceiling counts the page cache too, and at 09:00 on 25 November,
@@ -25,7 +28,9 @@
 //! running can't bring it down. Each look reads the ceiling back from the
 //! slice's `memory.high`, so one set elsewhere, or a set that failed but
 //! landed late, is followed from where it stands, and one cleared or put
-//! past [`TOP`] is put back.
+//! past [`TOP`] is put back. One set under the declared ceiling, by hand
+//! as much as by anything, is raised back to it at the first quiet look,
+//! since jobs never holds less than the slice declares.
 
 use std::time::{Duration, Instant};
 
@@ -604,6 +609,23 @@ mod tests {
         assert_eq!(
             ceiling.wanted(&waited, base(), now + AGAIN + FALL_AGAIN),
             Some((base(), Why::Waiting))
+        );
+        // Read as declared after the failure, the set landed after all, so
+        // while a slice waits there is nothing to set, not a retry.
+        let mut late = Ceiling::default();
+        assert!(
+            late.wanted(&roomy(base()), base(), now).is_some(),
+            "a ceiling never set didn't want setting"
+        );
+        late.failed(now);
+        let declared = Look {
+            high: Some(base()),
+            ..waiting(base())
+        };
+        assert_eq!(
+            late.wanted(&declared, base(), now + AGAIN),
+            None,
+            "a failed first set was tried again though memory.high read as declared"
         );
     }
 
