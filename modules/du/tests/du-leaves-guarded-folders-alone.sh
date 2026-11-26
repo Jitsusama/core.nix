@@ -8,9 +8,11 @@
 # file through a link or by the data volume's name, is left out of the count
 # and said, judged before it's opened, du not run when none is left, and
 # that a start after it that looks like an option reaches du as a path; that
-# a start that is a link is judged by its folder unless -H follows it; that
-# a link -H follows that reaches no folder or a folder that can't be entered
-# is left out and said apart; that a start named - is that folder and CDPATH moves none;
+# a start that is a link is judged by its folder unless -H or a / after it
+# follows it, and one followed by where its links lead, each read as written
+# from the folder really holding it and judged as typed, left out when one
+# leads into Documents, and left out and said apart past 32 links or through
+# a folder that can't be entered; that a start named - is that folder and CDPATH moves none;
 # that only a home's own guarded folders are left out by name; that du's own
 # nonzero end is kept; that -L, alone or among letters, is taken out, given
 # as -H and said unless -H or -P follows it; that the account's home is
@@ -374,6 +376,58 @@ count "${home}" -sh src/locked src
 gives "a count of a folder that can't be entered" "${unjudged} src/locked" -sh src
 chmod 755 "${home}/src/locked"
 rmdir "${home}/src/locked"
+
+# A / after a link follows it, as -H does, so one to a file in Documents
+# is left out. A target is read as written, a newline ending it too, and a
+# / ending it only follows it; its .. and its next link are read from the
+# folder really holding it, and where it ends by its real path, so a link
+# ending above Documents leaves it out by name. A link is told before a
+# folder, so one to a locked folder in Documents is left out rather than
+# said apart, as is one whose next link is in Documents. 32 links are
+# followed, as macOS does, and no more.
+: >"${home}/Documents/inside/file"
+ln -s "${home}/Documents/inside/file" "${home}/src/note"
+count "${home}" -sh src/note/
+runs_nothing "a count of a link to a file in Documents with a / after it" src/note/
+ln -s "${home}/Documents/inside/file" "${home}/src/gate"$'\n'
+ln -s gate$'\n' "${home}/src/newline"
+count "${home}" -shH src/newline
+runs_nothing "a count of a link whose target ends in a newline" src/newline
+chmod 000 "${home}/Documents/inside"
+ln -s "${home}/Documents/inside" "${home}/src/shelf"
+count "${home}" -shH src/shelf
+runs_nothing "a count of a link to a locked folder in Documents" src/shelf
+ln -s shelf/ "${home}/src/slash"
+count "${home}" -shH src/slash
+runs_nothing "a count of a link to a link with a / after it" src/slash
+mkdir -p "${home}/far/y/z"
+ln -s "${home}/far/y/z" "${home}/src/up"
+ln -s ../../../Documents/inside/file "${home}/far/y/z/back"
+count "${home}" -shH src/up/back
+runs_nothing "a count of a link whose .. is read from its real folder" src/up/back
+chmod 755 "${home}/Documents/inside"
+: >"${home}/src/file"
+ln -s "${home}/src/file" "${home}/Documents/hop"
+ln -s "${home}/Documents" "${home}/src/docs"
+ln -s docs/hop "${home}/src/via"
+count "${home}" -shH src/via
+runs_nothing "a count of a link whose next link is in Documents" src/via
+ln -s ../src/.. "${home}/src/above"
+count "${home}" -shH src/above
+leaves_all "a count of a link ending above Documents" -shH src/above
+mkdir "${home}/src/chain"
+ln -s ../file "${home}/src/chain/l32"
+for at in {31..0}; do
+  ln -s "l$((at + 1))" "${home}/src/chain/l${at}"
+done
+count "${home}" -shH src/chain/l1
+gives "a count of a link through 32 links" "" -shH src/chain/l1
+count "${home}" -shH src/chain/l0 src
+gives "a count of a link through 33 links" "${unjudged} src/chain/l0" -shH src
+rm -r "${home}/src/chain" "${home}/far"
+rm "${home}/src/note" "${home}/src/gate"$'\n' "${home}/src/newline" "${home}/src/shelf" \
+  "${home}/src/slash" "${home}/src/up" "${home}/src/file" "${home}/Documents/hop" \
+  "${home}/src/docs" "${home}/src/via" "${home}/src/above" "${home}/Documents/inside/file"
 
 # A start named - is a folder of that name, not the last one cd was in,
 # and CDPATH never sends a relative start elsewhere.

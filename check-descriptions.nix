@@ -1283,9 +1283,10 @@
     through a guarded folder, named, by a glob's list, in capitals, with ./, // or /., through
     .., by a link, a file through a link, by the data volume's name, or through a home named by
     one, is judged before it's opened, left out and said, du not run when none is left, and a
-    start after it like an option reaches du as a path; a link -H or -L follows to Documents
-    is left out, and one reaching no folder or a folder that can't be entered is left out
-    and said apart; a start named - is that folder and CDPATH
+    start after it like an option reaches du as a path; a link -H, -L or a / after it
+    follows is judged by where its links lead, each read as written from the folder really
+    holding it, left out when one leads into Documents and left out and said apart past 32
+    links or through a folder that can't be entered; a start named - is that folder and CDPATH
     moves none; only a home's own guarded folders are left out by name; -L is taken out and
     said unless -H or -P follows; du's own nonzero end is kept; a working folder gone still
     counts a whole path, and no home found is said; a count above none runs as given and ends
