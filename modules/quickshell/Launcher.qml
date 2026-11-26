@@ -5546,7 +5546,8 @@ Scope {
             // password's, is timed as where it ends, its last step's parts
             // saying what it passed.
             if (walked !== undefined && !passing && stepTimed())
-                keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true, thread);
+                keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true, thread,
+                    row.key);
             return true;
         }
         // A step in that Joel's key made is a look, so an opening that
@@ -5587,7 +5588,7 @@ Scope {
                 pushed: at.pushed, opened: at.pushed, ended: Date.now() });
             if (timed)
                 keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true,
-                    thread);
+                    thread, row.key);
             return went();
         }
         if (steppedAsLed(row))
@@ -5645,7 +5646,8 @@ Scope {
         searchParts = trials.stepped(searchParts, { walked, began: stepAt, made, pushed, opened,
             ended: Date.now(), making: spent });
         if (timed)
-            keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true, thread);
+            keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true, thread,
+                row.key);
         return went();
     }
 
@@ -5700,7 +5702,7 @@ Scope {
         }
         if (held.length > 0 && stepTimed())
             keyTimed(`\u2192 ${held[held.length - 1].row.name}`, begun.began, begun.heard,
-                begun.pressed, begun.collected, true, begun.thread);
+                begun.pressed, begun.collected, true, begun.thread, held[held.length - 1].row.key);
     }
 
     // Whether a step taken now is timed as its own: not while an opening
@@ -6840,7 +6842,7 @@ Scope {
         let stepped = null;
         try {
             stepped = stepBack(left, steps, timed, { began, heard, pressed, collected, thread,
-                name: leaving.name });
+                name: leaving.name, stepKey: leaving.key });
         } finally {
             steppingOut = outer;
             stepFits = { keys: footFitted.keys - fits.keys,
@@ -6851,7 +6853,8 @@ Scope {
             return;
         searchParts = trials.stepped(searchParts, { began, made: began, pushed: stepped.pushed,
             opened: stepped.pushed, ended: Date.now(), making: {}, holding: stepped.holding });
-        keyTimed(`\u2190 ${leaving.name}`, began, heard, pressed, collected, true, thread);
+        keyTimed(`\u2190 ${leaving.name}`, began, heard, pressed, collected, true, thread,
+            leaving.key);
     }
 
     // back's step itself, from leaving `left`, `steps` back, to its rows
@@ -6889,7 +6892,8 @@ Scope {
         // rather than the words alone and timed only from the field.
         stepOut = stepTimed && wordsBack
             ? { text: `\u2190 ${key.name}`, began: key.began, heard: key.heard,
-                pressed: key.pressed, collected: key.collected, thread: key.thread } : null;
+                pressed: key.pressed, collected: key.collected, thread: key.thread,
+                stepKey: key.stepKey } : null;
         backTo = left;
         list.steppedLast = null;
         list.steppedKept = null;
@@ -7142,6 +7146,7 @@ Scope {
             searchParts = trials.stepped(searchParts, { began, made: at.made,
                 pushed: at.pushed, opened: at.pushed, ended: Date.now() });
             steppedByKey = named.name;
+            steppedByKeyInto = `category:${named.id}`;
             return;
         }
         const whole = category !== null ? askedWhole(letters) : "";
@@ -7425,10 +7430,13 @@ Scope {
     // which its line says whole, since nobody wrote it.
     // `thread` is the shell thread's clocks as the key began (threadNow), so
     // its line says what of its searching the thread ran, waited for a CPU
-    // and slept (launcher/Thread.js).
-    function keyTimed(typed, began, heard, pressed, collected, stepped, thread) {
+    // and slept (launcher/Thread.js). `stepKey` is the key of the row a
+    // step took, which its line says where it's the launcher's own place
+    // or a program (Presented.timedShown).
+    function keyTimed(typed, began, heard, pressed, collected, stepped, thread, stepKey) {
         keysDrawing = Pacing.refreshedActs(keysDrawing, [{ text: typed, began, collected,
             step: stepped === true ? typed : "", own: stepped === "own",
+            stepKey: stepped === true ? String(stepKey ?? "") : "",
             searched: Date.now() - began, thread: Thread.spent(thread, threadNow()),
             parts: searchParts, begun: null,
             rendered: null, pressed: pressed > 0 ? pressed : heard, stamped: pressed > 0,
@@ -7556,7 +7564,8 @@ Scope {
                 keyFrame: newest.frame ?? 0,
                 keyHeard: newest.heard,
                 timesOf: frame => surface.FramePresentation.timesOf(frame)
-            }, frameSplit(newest, shown)), newest.step ?? "", newest.own === true);
+            }, frameSplit(newest, shown)), newest.step ?? "", newest.own === true,
+            newest.stepKey ?? "");
         // Every key the frame drew keeps it as its own, and the list holds
         // one time a key.
         for (const key of drawnKeys) {
@@ -8191,7 +8200,7 @@ Scope {
         // the field held before it (Awaited.before).
         keysDue = keysDue.concat([out ? { text, began: out.began, heard: out.heard,
             pressed: out.pressed, collected: out.collected, step: out.text,
-            thread: out.thread }
+            stepKey: out.stepKey ?? "", thread: out.thread }
             : { text, began, heard, pressed, collected: Heap.collected(), step: "",
                 thread: threadNow(), untimed: untimed === true }]);
         if (searchedThisTurn)
@@ -8238,9 +8247,12 @@ Scope {
         const listedAt = KeyTimes.now();
         const collected = Heap.collected();
         steppedByKey = "";
+        steppedByKeyInto = "";
         search(prompt.text);
         const into = steppedByKey;
+        const intoKey = steppedByKeyInto;
         steppedByKey = "";
+        steppedByKeyInto = "";
         // Its key's time holds the wait, said apart in the journal, with
         // what the time past its bound went on, and the frame's work not
         // yet noted (Awaited.frameOpen).
@@ -8263,9 +8275,10 @@ Scope {
         if (into !== "" && timed.length > 0)
             trials.wentIn(timed[timed.length - 1].pressed);
         timed.forEach((key, at) => {
-            const step = into !== "" && at === timed.length - 1 ? `\u2192 ${into}` : key.step;
+            const last = into !== "" && at === timed.length - 1;
+            const step = last ? `\u2192 ${into}` : key.step;
             keyTimed(step || key.text, key.began, key.heard, key.pressed, key.collected, !!step,
-                key.thread);
+                key.thread, last ? intoKey : key.stepKey);
         });
     }
     // The place a key's word and space stepped into as it was searched,
@@ -8273,6 +8286,9 @@ Scope {
     // the step emptied as another key, one step counted twice (a council,
     // 2026-11-17).
     property string steppedByKey: ""
+    // And its key, which the step's line says where it's the launcher's own
+    // (Presented.timedShown).
+    property string steppedByKeyInto: ""
 
     // How long a key's list waits for the sources whose search awaits a
     // daemon's answer (Provider's awaits), from when they're asked, so a

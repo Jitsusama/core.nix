@@ -349,10 +349,18 @@ function typedShown(typed, whole) {
 }
 
 // A slow key's line says what was typed as typedShown does, or for a step ("→ Programs") its
-// arrow, and the row it named counted where not `whole`, so a step still reads as one.
-function timedShown(typed, step, whole) {
-    return step && !whole ? `${step.slice(0, 1)} ${typedShown(step.slice(2), false)}`
-        : typedShown(typed, whole);
+// arrow and, where not `whole`, the row it took by `key` where keyShown says that whole, a
+// launcher's own place or a program by its id, so each program's page is timed apart (RTOIMQ,
+// 2026-11-26), and otherwise the row's name counted, so a step still reads as one.
+function timedShown(typed, step, whole, key) {
+    if (!step || whole) {
+        return typedShown(typed, whole);
+    }
+    const text = String(key ?? "");
+    const own = text.startsWith("program:")
+        || KeysSaid.keysOwn.some(kind => text.startsWith(kind));
+    const said = own && keyShown(text, false) === text ? text : typedShown(step.slice(2), false);
+    return `${step.slice(0, 1)} ${said}`;
 }
 
 // A key listed before every place it waited on answered, as the journal says it: its words as
