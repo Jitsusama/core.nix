@@ -335,6 +335,21 @@ fn a_page_unanswered_ten_rounds_in_a_row_is_a_gap_while_the_pages_before_it_are_
         "what the first page gave is judged once, its stop with it: {}",
         came.journal
     );
+    // The read on reaches back to the minute before the first round's
+    // newest, 300 seconds before the case began, as a gap told at once
+    // would: the wait moves no last read, and writes no row of its own.
+    let rows = came.missed["items"].as_array().cloned().unwrap_or_default();
+    let id = format!(
+        "pineapple-slack-missed-tag-{}-{}",
+        (began - 360) * 1000,
+        (began - 250) * 1000
+    );
+    assert!(
+        rows.len() == 1 && rows[0]["id"] == id.as_str() && rows[0]["whole"] == true,
+        "what it read on past after waiting is one row, whole, from a minute before the last \
+         read to the oldest the first page gave, {id}: {:?}",
+        came.missed
+    );
 }
 
 #[test]
