@@ -95,6 +95,8 @@ fn status_reads_the_ignore_file_from_home_where_xdg_is_empty() {
         return;
     }
     let home = std::env::temp_dir().join(format!("git-engine-xdg-{}", std::process::id()));
+    // A run killed before its end may have left a folder under this pid.
+    let _ = std::fs::remove_dir_all(&home);
     let workdir = home.join("work");
     let planted = [
         (workdir.join(".git/HEAD"), "ref: refs/heads/main\n"),
@@ -250,15 +252,29 @@ fn the_system_files_are_where_the_git_built_beside_reads_them() {
     // The package says it's the package apart from naming the files, so a
     // package that stopped naming them fails here rather than read /etc.
     let named = std::env::var("GIT_ENGINE_CONFIG_SYSTEM").ok();
+    let attributes = std::env::var("GIT_ENGINE_ATTR_SYSTEM").ok();
     assert!(
-        std::env::var_os("GIT_ENGINE_PACKAGED").is_none() || named.is_some(),
-        "the package's build named no system files for the engine to read"
+        std::env::var_os("GIT_ENGINE_PACKAGED").is_none()
+            || (named.is_some() && attributes.is_some()),
+        "the package's build didn't name both system files for the engine to read"
     );
     assert_eq!(
-        option_env!("GIT_ENGINE_CONFIG_SYSTEM"),
-        named.as_deref(),
+        (
+            option_env!("GIT_ENGINE_CONFIG_SYSTEM"),
+            option_env!("GIT_ENGINE_ATTR_SYSTEM")
+        ),
+        (named.as_deref(), attributes.as_deref()),
         "the tests weren't built with the system files the package's build named"
     );
+    // Where both are named, both are what the engine reads, though git on
+    // Linux would say /etc's either way.
+    if let (Some(config), Some(attributes)) = (&named, &attributes) {
+        assert_eq!(
+            (SYSTEM_CONFIG, SYSTEM_ATTRIBUTES),
+            (config.as_str(), attributes.as_str()),
+            "the engine reads system files other than those its build named"
+        );
+    }
     if named.is_none() {
         assert_eq!(
             (SYSTEM_CONFIG, SYSTEM_ATTRIBUTES),

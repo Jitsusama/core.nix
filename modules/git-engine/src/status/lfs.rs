@@ -15,20 +15,30 @@ const VERSION: &str = "version https://git-lfs.github.com/spec/v1";
 /// anything else, or git-lfs's output through another program, might
 /// write something other than its pointer. A `filter-process` may be
 /// given `--skip`, as `git lfs install --skip-smudge` writes it, which
-/// leaves what it cleans alone.
+/// leaves what it cleans alone, but never the file's name, since git
+/// expands `%f` only for a command run once a file. The program's path
+/// must be plain, since git runs the command through the shell, and a
+/// path holding its syntax could run something else first.
 pub(super) fn is_git_lfs(command: &str, verb: &str) -> bool {
     let is = |word: Option<&str>, program: &str| {
-        word.is_some_and(|word| word.rsplit('/').next() == Some(program))
+        word.is_some_and(|word| plain(word) && word.rsplit('/').next() == Some(program))
     };
     let mut words = command.split_ascii_whitespace();
     let first = words.next();
     (is(first, "git-lfs") || is(first, "git") && words.next() == Some("lfs"))
         && words.next() == Some(verb)
         && match (verb, &words.collect::<Vec<_>>()[..]) {
-            ("filter-process", ["--skip", rest @ ..]) | (_, rest) => {
-                matches!(rest, [] | ["%f"] | ["--", "%f"])
-            }
+            ("filter-process", [] | ["--skip"]) => true,
+            ("filter-process", _) => false,
+            (_, rest) => matches!(rest, [] | ["%f"] | ["--", "%f"]),
         }
+}
+
+/// Whether `path` means only itself to the shell: no quote, expansion,
+/// glob or other mark of its syntax, only what paths are plainly made of.
+fn plain(path: &str) -> bool {
+    path.bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || b"/._+-@,".contains(&byte))
 }
 
 /// The pointer git-lfs writes for these contents.
