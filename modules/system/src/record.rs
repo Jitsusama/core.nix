@@ -359,13 +359,20 @@ mod tests {
         machines.things = vec![studio, machine("laptop", Health::Good)];
         let system = system(vec![machines]);
         let records = system.records();
-        assert_eq!(records[2]["side"], json!(["code failing", "code wants a look"]));
+        assert_eq!(
+            records[2]["side"],
+            json!(["code failing", "code wants a look"])
+        );
         assert_eq!(records[3]["side"], json!([]), "a ready machine's is empty");
         let looks = json!([
             {"health": "bad", "side": "code failing", "matters": "Its own check fails."},
             {"health": "watch", "side": "code wants a look", "matters": "Its own check says so."},
         ]);
-        assert_eq!(records[2]["looks"], looks, "each look with its own health and why");
+        assert_eq!(
+            records[2]["looks"],
+            looks,
+            "each look with its own health and why"
+        );
         assert_eq!(records[3]["looks"], json!([]), "a ready machine has none");
         assert_eq!(
             system.json()["parts"][0]["things"][0]["side"],

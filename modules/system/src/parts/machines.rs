@@ -237,7 +237,7 @@ fn machine(
     let named: Vec<String> = looks.iter().map(|(said, _)| said.clone()).collect();
     // The side says the worst first; a sort that keeps ties in place keeps
     // the rest in the order they were found.
-    looks.sort_by(|(_, a), (_, b)| b.health.cmp(&a.health));
+    looks.sort_by_key(|(_, look)| std::cmp::Reverse(look.health));
     let looks: Vec<Look> = looks.into_iter().map(|(_, look)| look).collect();
     let side = side_of(looks.iter().map(|look| look.side.clone()).collect());
     if line.is_empty() {
