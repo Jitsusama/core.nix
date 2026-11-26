@@ -53,19 +53,26 @@ in
         command = [ (lib.getExe (pkgs.callPackage ../calls/package.nix { })) ];
         why = "a call is on";
       }
-      # A Mac over its load is refused the follower's ask, so it fetches and
-      # builds nothing, and the next ask under its load builds main's newest
-      # head rather than each merge; a person's own ask builds anyway. Only
-      # the ask: the build's own load would otherwise hold its switch. Two
-      # hours at most, so a check that can't tell for good doesn't refuse
-      # the update that mends it; a call still does. Said as load, not
-      # room, since "over its room" was read as a full disk.
+      # A Mac short of memory is refused the follower's ask, so it fetches
+      # and builds nothing, and the next ask with room builds main's newest
+      # head rather than each merge; a person's own ask builds anyway. Its
+      # memory, not its load, since a load counts what can't be moved, as a
+      # busy fseventsd, and held a Mac with room off its update for hours
+      # (mac-room.sh). Only the ask: the build's own use would otherwise
+      # hold its switch. Two hours at most, so a check that can't tell for
+      # good doesn't refuse the update that mends it; a call still does.
+      # Said as memory, not room, since "over its room" was read as a full
+      # disk.
       {
         command = [
-          (lib.getExe (pkgs.callPackage ../nix-offload/offload/package.nix { }))
-          "busy"
+          "${pkgs.bash}/bin/bash"
+          "${./mac-room.sh}"
+          "/usr/sbin/sysctl"
+          "/usr/bin/vm_stat"
+          "${cfg.system.state}/mac-room"
+          "35"
         ];
-        why = "the Mac is over its load";
+        why = "the Mac is short of memory";
         refusesTheAskAlone = true;
         refusesAtMost = 2 * 60 * 60;
       }

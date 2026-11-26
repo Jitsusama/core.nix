@@ -1,5 +1,5 @@
 //! What the machine is busy with, as its `refuse_while` commands say: a
-//! call, someone at the keys, a Mac over its load. Each command answers as
+//! call, someone at the keys, a Mac short of memory. Each command answers as
 //! `test` does, 0 busy and 1 not, and anything else, or no answer within
 //! 30 seconds, counts as busy, since it couldn't tell. An update asks at
 //! three moments, each reading only the commands meant for it: as an ask

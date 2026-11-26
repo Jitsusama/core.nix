@@ -202,8 +202,10 @@ follower asks again soon after such a refusal only when the heads it
 looked at aren't the ones the machine runs. With
 `refusesAtMost` it refuses that many seconds of asks at most, then lets
 one through, so a command that can never tell doesn't refuse the update
-that would mend it. A Mac refuses this way while `nix-offload busy` says
-it's over its load, for two hours at most.
+that would mend it. A Mac refuses this way while
+`modules/update-to-main/mac-room.sh` says it's short of memory, for two
+hours at most: it has room only from two readings a minute or more apart,
+both at 35% free or over, with nothing swapped out between. Its load isn't read, since a load counts work nothing can move.
 
 A repository whose host signs nothing is followed by what the host names
 instead. With `hosted` set, root asks the host for main over TLS with a
