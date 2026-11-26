@@ -740,6 +740,27 @@ mod tests {
         );
     }
 
+    // The ceiling main holds the queues exactly under stands from a stay's
+    // first line, before a second is stepped on and anything is heard of
+    // it, so it's read from the controller's tuning, not what it heard
+    // (exact ceiling round 2's F2, round 3's F1, F5, F9 and F14).
+    #[test]
+    fn the_ceiling_stands_before_anything_is_heard() {
+        let folder = std::env::temp_dir().join(format!("shaper-ceiling-{}", std::process::id()));
+        let started = SystemTime::UNIX_EPOCH + Duration::from_millis(NOV3);
+        let mut live = Live::new(&folder, started);
+        live.ceil(Ceilings::from([("home".to_string(), 9_500.0)]));
+        assert_eq!(live.ceiling(), None, "no stay, no network");
+        live.follow
+            .take(&parse(&pool(NOV3, Some("home"))).expect("a sample"));
+        assert!(live.heard().is_none(), "nothing heard yet");
+        assert_eq!(
+            live.ceiling(),
+            Some(9_500),
+            "home's ceiling, from the start"
+        );
+    }
+
     #[test]
     fn what_a_link_carried_counts_only_while_its_second_is_fresh_and_of_this_stay() {
         let mut follow = followed(&queued());
@@ -967,15 +988,6 @@ mod tests {
         let lines = flow_queued(NOV3);
         follow.take(&parse(&lines[0]).expect("a sample"));
         assert_eq!(up(&follow, NOV3), Some(9_500), "the stay's first line");
-        // What `Live::ceiling` reads: the ceiling stands before a second
-        // is stepped on, when nothing is heard yet (exact ceiling round
-        // 2's F2).
-        assert!(follow.heard().is_none(), "nothing heard yet");
-        assert_eq!(
-            follow.tuning().most_kbit,
-            Some(9_500.0),
-            "the ceiling before a second"
-        );
         assert_eq!(follow.controller.up.limit(), Some(9_500), "its start");
         for line in &lines[1..] {
             follow.take(&parse(line).expect("a sample"));
