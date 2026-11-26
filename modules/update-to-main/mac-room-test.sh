@@ -4,7 +4,8 @@
 # at the floor or over it, with nothing swapped out between; short from a
 # first reading, one too soon, too stale or from later than now, one under
 # the floor, any swap-out or a count started again; and can't tell, never
-# room, from a figure it can't read or a record it can't keep. sysctl and
+# room, from a figure it can't read, a record it can't keep, a floor that
+# isn't a number or an argument left out. sysctl and
 # vm_stat are stand-ins printing what the test sets, sysctl only for the
 # figure mac-room.sh must ask for. Time passing is the record set back.
 #
@@ -52,6 +53,17 @@ reading() {
 
 rm -rf "${record%/*}"
 look "a first reading" 60 100 0 "one reading of the Mac's room so far"
+# The reading the first look kept, set a minute back, is what the next
+# look pairs with: the follower's second ask a minute on.
+read -r read_at was seen <"${record}"
+echo "$((read_at - 60)) ${was} ${seen}" >"${record}"
+look "the next look pairs with the one it kept" 50 100 1 "60% then 50% free"
+reading 55 40 100
+look "readings 55 s apart" 40 100 1 "40% then 40% free"
+reading 598 40 100
+look "readings nearly 600 s apart" 40 100 1 "40% then 40% free"
+reading 53 40 100
+look "readings 53 s apart" 40 100 0 "under 55 s"
 reading 60 40 100
 look "two readings a minute apart with room" 40 100 1 "40% then 40% free"
 reading 60 35 100
@@ -65,9 +77,10 @@ look "a swap-out between" 40 103 0 "3 pages swapped out in"
 reading 60 40 100
 look "a swap-out count started again" 40 7 0 "the swap-out count started again"
 reading 10 40 100
-look "readings too close" 40 100 0 "s ago, under 55 s"
-read -r _ kept _ <"${record}"
-if [ "${kept}" != 40 ]; then
+read -r before _ <"${record}"
+look "readings too close" 50 100 0 "s ago, under 55 s"
+read -r after kept _ <"${record}"
+if [ "${after}" != "${before}" ] || [ "${kept}" != 40 ]; then
   echo "FAIL readings too close: the earlier reading wasn't kept" >&2
   failures=$((failures + 1))
 fi
@@ -90,5 +103,19 @@ reading 60 40 100
 chmod a-w "${record%/*}"
 look "a record it can't keep" 40 100 69 ""
 chmod u+w "${record%/*}"
+# Nor from a floor that isn't a whole number, or an argument left out.
+reading 60 40 100
+ended=0
+"${BASH}" "${room}" "${bin}/sysctl" "${bin}/vm_stat" "${record}" 3.5 2>"${PWD}/said" || ended=$?
+if [ "${ended}" != 69 ] || ! grep -qF "isn't a whole number" "${PWD}/said"; then
+  echo "FAIL a floor that isn't a whole number: ended ${ended}: $(<"${PWD}/said")" >&2
+  failures=$((failures + 1))
+fi
+ended=0
+"${BASH}" "${room}" "${bin}/sysctl" "${bin}/vm_stat" "${record}" 2>/dev/null || ended=$?
+if [ "${ended}" != 69 ]; then
+  echo "FAIL an argument left out: ended ${ended}, wanted 69" >&2
+  failures=$((failures + 1))
+fi
 
 [ "${failures}" -eq 0 ] || exit 1

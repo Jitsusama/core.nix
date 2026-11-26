@@ -3884,6 +3884,28 @@ fn a_check_refusing_the_ask_alone_holds_no_switch() {
     assert_eq!(why, "the machine is over its load");
 }
 
+/// A refusal carries what its check last said, as a Mac short of memory
+/// says which readings it judged, so its log shows why without a rerun.
+#[test]
+fn a_refusal_carries_what_its_check_said() {
+    let mut world = World::new();
+    over_its_load(&mut world, None);
+    world.config.refuse_while[0].command[2] = format!(
+        "echo 'mac-room: 30% then 20% free' >&2; test -e {}/call",
+        world.root.display()
+    );
+    fs::write(world.root.join("call"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    let Line::Refused { why, .. } = world.asked_by(&|| true).1 else {
+        panic!("an ask while over its load should be refused")
+    };
+    assert_eq!(
+        why,
+        "the machine is over its load, saying mac-room: 30% then 20% free"
+    );
+}
+
 /// A person's ask builds though the machine is over its load, since the
 /// build is theirs to choose, and may be the one that mends the check.
 #[test]

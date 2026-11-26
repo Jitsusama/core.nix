@@ -1,7 +1,8 @@
 //! What the machine is busy with, as its `refuse_while` commands say: a
 //! call, someone at the keys, a Mac short of memory. Each command answers as
 //! `test` does, 0 busy and 1 not, and anything else, or no answer within
-//! 30 seconds, counts as busy, since it couldn't tell. An update asks at
+//! 30 seconds, counts as busy, since it couldn't tell; either way the
+//! answer ends with the command's last word. An update asks at
 //! three moments, each reading only the commands meant for it: as an ask
 //! comes and before a switch (`now`), as the follower's ask comes, before
 //! anything is fetched (`at_the_ask`), and while a built switch the
@@ -196,7 +197,9 @@ fn is_busy(busy: &Busy) -> Option<String> {
         match child.try_wait() {
             Ok(Some(status)) => {
                 return match status.code() {
-                    Some(0) => Some(busy.why.clone()),
+                    // What it said is kept, as a Mac's readings are, so a
+                    // refusal says why without the check run again.
+                    Some(0) => Some(format!("{}{}", busy.why, saying(&said))),
                     Some(1) => None,
                     _ => unsure(format!(
                         "`{}` ended {status}{}",

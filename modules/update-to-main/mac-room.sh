@@ -19,20 +19,22 @@
 # usage: mac-room.sh <sysctl> <vm_stat> <record> <floor %>
 set -euo pipefail
 
+# A step that fails anywhere, as a record that can't be written or an
+# argument left out, ends as can't tell rather than with its own status,
+# since 1 would read as room. The verdict is set only once its words are
+# out, so a stream that can't take them can't tell either.
+verdict=""
+trap '[ -n "${verdict}" ] || exit 69' EXIT
+answer() {
+  echo "mac-room: $2" >&2
+  verdict=$1
+  exit "$1"
+}
+
 sysctl=$1
 vm_stat=$2
 record=$3
 floor=$4
-
-# A step that fails anywhere, as a record that can't be written, ends as
-# can't tell rather than with its own status, since 1 would read as room.
-verdict=""
-trap '[ -n "${verdict}" ] || exit 69' EXIT
-answer() {
-  verdict=$1
-  echo "mac-room: $2" >&2
-  exit "$1"
-}
 
 # Readings closer than this aren't a minute apart; older than the most,
 # the first is too stale to say the Mac stayed clear since.
@@ -41,8 +43,17 @@ most=600
 
 now=${EPOCHSECONDS}
 free=$("${sysctl}" -n kern.memorystatus_level 2>/dev/null) || free=""
-swapouts=$("${vm_stat}" 2>/dev/null | sed -n 's/^Swapouts: *\([0-9]*\)\.$/\1/p') || swapouts=""
+# Read by bash itself, since the daemon's PATH may hold any sed.
+stats=$("${vm_stat}" 2>/dev/null) || stats=""
+swapouts=""
+swapped='^Swapouts: *([0-9]+)\.$'
+while IFS= read -r line; do
+  [[ ! ${line} =~ ${swapped} ]] || swapouts=${BASH_REMATCH[1]}
+done <<<"${stats}"
 number='^[0-9]+$'
+# A floor that isn't a number would fail its test inside an if, which
+# falls through to room.
+[[ ${floor} =~ ${number} ]] || answer 69 "its floor, ${floor}, isn't a whole number"
 # What couldn't be read is named, never what it printed instead.
 unread=""
 [[ ${free} =~ ${number} ]] || unread="its share of memory free"
