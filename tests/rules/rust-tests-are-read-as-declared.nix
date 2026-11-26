@@ -4,8 +4,10 @@
 # each way a module comes to be read by tests alone, and real files whose
 # names or doc lines say tests, and holds the reader to the list of those
 # tests read, and to what it leaves of the crate's own code. Then it sees the
-# reader refuse crates it would otherwise misread, each for its own reason.
+# reader refuse crates it would otherwise misread, each for its own reason,
+# as rust-tests-are-read-as-declared.sh beside this holds it to.
 {
+  bash,
   lib,
   python3,
   runCommandLocal,
@@ -323,11 +325,8 @@ let
     lib.mapAttrsToList (name: refusal: ''
       mkdir -p refused/${name}/src
       cp ${writeText "refused" refusal.main} refused/${name}/src/main.rs
-      if ${lib.getExe python3} ${rule}/rust_code.py --own refused/${name}/src > /dev/null 2> said; then
-        echo "the reader took the ${name} crate" >&2
-        exit 1
-      fi
-      grep -qF ${lib.escapeShellArg refusal.says} said || { cat said >&2; exit 1; }
+      ${lib.getExe bash} ${./rust-tests-are-read-as-declared.sh} ${lib.getExe python3} \
+        ${rule}/rust_code.py refused/${name} ${lib.escapeShellArg refusal.says}
     '') refusals
   );
   planted = lib.concatStrings (
