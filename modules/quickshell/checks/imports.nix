@@ -70,6 +70,7 @@
     "Measures.js"
     "Reading.js"
   ];
+  "Reopening.js" = [ "Places.js" ];
   "ScreenPicture.qml" = [ "Wallpaper.js" ];
   "Sessions.qml" = [
     "PiSource.js"

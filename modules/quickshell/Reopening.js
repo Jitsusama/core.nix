@@ -1,4 +1,5 @@
 .pragma library
+.import "Places.js" as Places
 // In what order and how fast Reopen Them All may go (Sessions.qml): leaders
 // first, each once, when it may begin the next session, which of those
 // begun to tell to carry on, from the machine queue's own verdict, and
@@ -241,6 +242,24 @@ function givenBy(kept, places, before, screens) {
     const now = new Set(placed.map(one => one.output));
     return given.concat((before ?? [])
         .filter(was => !said.has(keptOn(was)) && !now.has(was.output)));
+}
+
+// Reopen Them All's sessions placed (Places.js's placed, of the places `kept`, with the screen
+// `inUse` and each one's `moments`) and the connectors they were given (givenBy, after `before`),
+// both from the one `screens` answer, so its windows can't be given connectors by other screens
+// than its sessions were placed by.
+function placedGiven(kept, screens, inUse, moments, before) {
+    const places = Places.placed(kept, screens, inUse, moments);
+    return { places, given: givenBy(kept, places, before, screens) };
+}
+
+// Where a window kept at `at` (of `moment`, the windows its boot kept) goes back by its kept
+// place, `kept` (Places.js's whereKept, past the twin connectors `given` so far, by the screen
+// `inUse`), and the entry it adds to `given`: givenOn's connector, not the one found, which is
+// last boot's while no screen is said, so its twin's windows aren't kept off a connector by it.
+function keptBack(at, moment, screens, given, inUse) {
+    const kept = Places.whereKept(at, moment, screens, { given, inUse });
+    return { kept, given: { at, output: givenOn(at.screen, kept, screens) } };
 }
 
 // Reopen Them All's queue with `more` joined at its end, but for each one

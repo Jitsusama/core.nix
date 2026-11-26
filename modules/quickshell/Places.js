@@ -37,8 +37,9 @@ function screensOf(outputs) {
 // without serials are, or by its connector when kept before screens were named so or, with
 // none alike, when it's `inUse`, not heard yet (""), which holds a gone one's places anyway.
 function connectorOf(at, screens, inUse) {
-    const alike = Object.keys(screens).filter(name => at.screen && screens[name] === at.screen);
-    const own = at.screen ? at.output === inUse && screens[inUse] === "" : at.output in screens;
+    const said = Object.keys(screens);
+    const alike = said.filter(name => at.screen && screens[name] === at.screen);
+    const own = at.screen ? at.output === inUse && screens[inUse] === "" : said.includes(at.output);
     return alike.includes(at.output) || (alike.length === 0 && own) ? at.output : alike[0];
 }
 

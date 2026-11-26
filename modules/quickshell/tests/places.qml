@@ -92,6 +92,10 @@ QtObject {
         expect("a place without a screen, by its connector",
             Places.placed(older, { "eDP-1": panel, "DP-4": monitor }, "DP-4")
                 .map(at => [at.output, at.workspace]), [["eDP-1", 2]]);
+        // Only a connector niri said is one: a prototype's name never is.
+        expect("a place kept on a prototype's name is gone, to the screen in use",
+            Places.placed([{ output: "constructor", workspace: 2, column: 1, tile: 1 }],
+                { "eDP-1": panel }, "eDP-1").map(at => at.output), ["eDP-1"]);
 
         // No screen known, as when niri didn't answer: left as it was kept,
         // rather than every place taken for a gone screen's.
@@ -193,8 +197,8 @@ QtObject {
         // that shows its screen: a twin's, one kept before screens were
         // named, never last boot's with no screen said, nor a twin's on one
         // not heard yet, nor a prototype's name, nor any with no screens.
-        const windowOn = (at, screens, inUse) => Reopening.givenOn(at.screen,
-            Places.whereKept(at, twins, screens, { given: [], inUse }), screens) ?? "none";
+        const windowOn = (at, screens, inUse) =>
+            Reopening.keptBack(at, twins, screens, [], inUse).given.output ?? "none";
         const unnamed = { output: "Virtual-3", workspace: 1, column: 1, tile: 1 };
         expect("a window put back gives only a connector showing its screen",
             [windowOn(twins[1], bothBack, "Virtual-3"), windowOn(unnamed, bothBack, "Virtual-3"),
@@ -202,6 +206,26 @@ QtObject {
                 Reopening.givenOn("", { output: "constructor" }, {}) ?? "none",
                 Reopening.givenOn(twin, { output: "Virtual-3" }) ?? "none"],
             ["Virtual-3", "Virtual-3", "none", "none", "none", "none"]);
+        // It goes back by where it's found, but gives only givenOn's: found
+        // on last boot's connector with no screen said, or on one not heard
+        // yet, it gives none, and found on its twin's given one, that.
+        const backAt = (screens, given, inUse) => {
+            const back = Reopening.keptBack(twins[1], twins, screens, given, inUse);
+            return [back.kept.output, back.given.at === twins[1], back.given.output ?? "none"];
+        };
+        expect("a window put back gives givenOn's connector, not the one it's found on",
+            [backAt({}, [], null), backAt({ "Virtual-2": "" }, [], "Virtual-2"),
+                backAt(bothBack, sessionsGiven, "Virtual-3")],
+            [["Virtual-2", true, "none"], ["Virtual-2", true, "none"],
+                ["Virtual-3", true, "Virtual-3"]]);
+        // The sessions are placed and given by the one screens answer, with
+        // what windows back before took where the sessions' say nothing.
+        const placing = Reopening.placedGiven(twinsLast, bothBack, "Virtual-3", [twins, twins], []);
+        expect("the sessions are placed and given by one screens answer",
+            [placing.places.map(at => at.output), placing.given.map(one => one.output ?? "none"),
+                Reopening.placedGiven([panelAt], panelThere, "Virtual-1", [[]], early).given
+                    .map(one => one.output)],
+            [["Virtual-3", "Virtual-4"], ["Virtual-3", "Virtual-4"], ["Virtual-1", "Virtual-3"]]);
         expect("one whose twin's sessions said nothing keeps what it took",
             Places.whereKept(twins[1], twins, bothBack,
                 { given: Reopening.givenBy([], [], early, {}), inUse: "eDP-1" }).output,
