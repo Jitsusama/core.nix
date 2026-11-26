@@ -3839,6 +3839,7 @@ fn refuse_during_calls(world: &mut World) {
         every_ask_waits: false,
         refuses_the_ask_alone: false,
         refuses_at_most: None,
+        says_why: false,
     }];
 }
 
@@ -3858,6 +3859,7 @@ fn over_its_load(world: &mut World, at_most: Option<u64>) {
         every_ask_waits: false,
         refuses_the_ask_alone: true,
         refuses_at_most: at_most,
+        says_why: false,
     }];
 }
 
@@ -3890,6 +3892,7 @@ fn a_check_refusing_the_ask_alone_holds_no_switch() {
 fn a_refusal_carries_what_its_check_said() {
     let mut world = World::new();
     over_its_load(&mut world, None);
+    world.config.refuse_while[0].says_why = true;
     world.config.refuse_while[0].command[2] = format!(
         "echo 'mac-room: 30% then 20% free' >&2; test -e {}/call",
         world.root.display()
@@ -3904,6 +3907,26 @@ fn a_refusal_carries_what_its_check_said() {
         why,
         "the machine is over its load, saying mac-room: 30% then 20% free"
     );
+}
+
+/// A check that doesn't say why it's busy keeps its words out of the
+/// refusal, as the call check's caution that a peer went unheard is no
+/// reason a call is on.
+#[test]
+fn a_refusal_leaves_out_what_a_check_said_beside() {
+    let mut world = World::new();
+    over_its_load(&mut world, None);
+    world.config.refuse_while[0].command[2] = format!(
+        "echo 'caution: a peer went unheard' >&2; test -e {}/call",
+        world.root.display()
+    );
+    fs::write(world.root.join("call"), "").unwrap();
+    let head = world.signed("one");
+    world.system(&head);
+    let Line::Refused { why, .. } = world.asked_by(&|| true).1 else {
+        panic!("an ask while over its load should be refused")
+    };
+    assert_eq!(why, "the machine is over its load");
 }
 
 /// A person's ask builds though the machine is over its load, since the
@@ -4254,6 +4277,7 @@ fn waits_on(world: &World, why: &str, counted: &str, times: usize, at_most: Opti
         every_ask_waits: false,
         refuses_the_ask_alone: false,
         refuses_at_most: None,
+        says_why: false,
     }
 }
 

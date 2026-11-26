@@ -106,8 +106,8 @@ in
   # naming no store path, so a switch never reloads it under its own ask.
   # Every Mac refuses an update during a call, and refuses the ask alone,
   # for two hours at most, while mac-room.sh says it's short of memory,
-  # with the floor 35% and its record in the daemon's state; and the
-  # follower's switch waits while someone is at the Mac, for 45 minutes at
+  # with the floor 35% and its record in the daemon's state, its refusal
+  # ending with the readings it judged; and the follower's switch waits while someone is at the Mac, for 45 minutes at
   # most. When the
   # Mac can't update, the follower tells its person.
   update-to-main-follows-on-a-mac =
@@ -123,13 +123,14 @@ in
         )
         && !(darwin.launchd.user.agents ? update-to-main-follows)
         && followed.jitsusama.update-to-main.followerTells != null
-        && lib.all (refusal: !refusal.followerWaits) (refusesOnAMac "a call is on")
+        && lib.all (refusal: !refusal.followerWaits && !refusal.saysWhy) (refusesOnAMac "a call is on")
         && refusesOnAMac "a call is on" != [ ]
         && lib.any (
           refusal:
           !refusal.followerWaits
           && refusal.refusesTheAskAlone
           && refusal.refusesAtMost == 2 * 60 * 60
+          && refusal.saysWhy
           && lib.hasSuffix "/bin/bash" (lib.head refusal.command)
           && lib.hasSuffix "mac-room.sh" (builtins.elemAt refusal.command 1)
           &&

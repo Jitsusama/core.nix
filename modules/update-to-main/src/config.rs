@@ -243,6 +243,12 @@ pub struct Busy {
     /// the ask it let through.
     #[serde(default)]
     pub refuses_at_most: Option<u64>,
+    /// Whether the last line it says on its error stream while busy says
+    /// why, as a Mac's readings do, so a refusal ends with it. Another's
+    /// is left out, since a call check's caution that a peer went unheard
+    /// is no reason a call is on.
+    #[serde(default)]
+    pub says_why: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]

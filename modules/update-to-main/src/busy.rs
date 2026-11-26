@@ -197,9 +197,11 @@ fn is_busy(busy: &Busy) -> Option<String> {
         match child.try_wait() {
             Ok(Some(status)) => {
                 return match status.code() {
-                    // What it said is kept, as a Mac's readings are, so a
-                    // refusal says why without the check run again.
-                    Some(0) => Some(format!("{}{}", busy.why, saying(&said))),
+                    // What a check that says why said is kept, as a Mac's
+                    // readings are, so a refusal says why without the check
+                    // run again; another's words are only beside it.
+                    Some(0) if busy.says_why => Some(format!("{}{}", busy.why, saying(&said))),
+                    Some(0) => Some(busy.why.clone()),
                     Some(1) => None,
                     _ => unsure(format!(
                         "`{}` ended {status}{}",
