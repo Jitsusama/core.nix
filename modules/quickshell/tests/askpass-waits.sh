@@ -101,11 +101,15 @@ check() {
     failed=1
   fi
 }
-# Asks for kind, and waits for the shell to have the ask.
+# Asks for kind, and waits for the shell to have the ask. The folder the
+# ask names is made, the one its case looks for after, only when it's an
+# askpass folder of the runtime directory and there as it's asked, so a
+# name that never existed can't read as one removed.
 start() {
   : > said
   : > has
   echo up > mode
+  made=
   SSH_ASKPASS_PROMPT=$1 ./askpass "Allow use of key?" > out 2> err &
   asking=$!
   for _ in $(seq 50); do
@@ -113,6 +117,10 @@ start() {
     sleep 0.1
   done
   reply=$(cat has)
+  local own=${reply#"$XDG_RUNTIME_DIR"/askpass.}
+  if [ "$own" != "$reply" ] && [ -n "$own" ] && [[ $own != */* ]] && [ -d "$reply" ]; then
+    made=$reply
+  fi
 }
 ended() {
   wait "$asking"
@@ -131,15 +139,17 @@ ended() {
   placed() { grep -qE ' (runs in|was started from) /' err || { cat err; false; }; }
   # The folder this case's askpass made and named in its ask, by that
   # name, so a folder moved elsewhere can't pass unseen, and a leak is
-  # blamed on the case that left it. No ask, so no name, fails too.
+  # blamed on the case that left it. A case whose ask named no folder it
+  # made fails too. Folders left by cases that never ask are the sweep's,
+  # at the end.
   folder_gone() {
-    if [ -z "$reply" ]; then
-      echo "no ask reached the shell, so it named no folder to look for"
+    if [ -z "$1" ]; then
+      echo "the ask named no askpass folder it had made (it named '$reply')"
       return 1
     fi
-    [ -e "$reply" ] || return 0
-    echo "left behind: $reply, holding:"
-    ls -A "$reply"
+    [ -e "$1" ] || return 0
+    echo "left behind: $1, holding:"
+    ls -A "$1"
     false
   }
   between() { [ "$1" -ge "$2" ] && [ "$1" -le "$3" ]; }
@@ -151,7 +161,7 @@ ended
 check "an answer is said" exited 0
 check "as it was typed" printed 2468
 check "and asked for once" asked 1
-check "and its folder goes" folder_gone
+check "and its folder goes" folder_gone "$made"
 
 start confirm
 : > has
@@ -160,6 +170,7 @@ check "a restarted shell is asked again" asked 2
 printf 'yes\n' > "$reply/answer"
 ended
 check "and its yes is taken" exited 0
+check "and its folder goes" folder_gone "$made"
 
 # Answered between one look and the next, it's never asked again.
 start confirm
@@ -170,6 +181,7 @@ mv "$reply/answer.part" "$reply/answer"
 ended
 check "an ask answered as it's looked at isn't asked again" asked 1
 check "and its answer is taken" exited 0
+check "and its folder goes" folder_gone "$made"
 
 start confirm
 echo down > mode
@@ -179,7 +191,7 @@ took=$((SECONDS - began))
 check "a shell that's gone is refused" exited 1
 check "saying it went away" complained "went away"
 check "after about 20 seconds (it took $took)" between "$took" 18 30
-check "and its folder goes" folder_gone
+check "and its folder goes" folder_gone "$made"
 
 start confirm
 echo down > mode
@@ -191,6 +203,7 @@ check "a shell back within that is asked again" asked 2
 printf 'yes\n' > "$reply/answer"
 ended
 check "and its answer taken" exited 0
+check "and its folder goes" folder_gone "$made"
 
 # Asked for its help, or given anything but one prompt, it puts nothing on
 # the screen.
@@ -231,6 +244,7 @@ asks() {
   ended
   check "$1 is asked for" exited 0
   check "and asked once" asked 1
+  check "and its folder goes" folder_gone "$made"
 }
 refuses() {
   : > said
@@ -377,4 +391,19 @@ sed 's|^\(SSH_ASKPASS_GATE\(_BUILT\)\{0,1\}\)=.*|\1=/nowhere|' askpass > ungated
 chmod +x ungated
 refuses "one asking while no gate can be read" ./ungated
 check "saying so" complained "gate (/nowhere) can't be judged by: it can't be read"
+
+# Whatever any case left, those that never ask among them: no askpass
+# folder is left in the runtime directory. A glob rather than compgen,
+# which the build's non-interactive bash may lack.
+shopt -s nullglob
+left=("$XDG_RUNTIME_DIR"/askpass.*)
+shopt -u nullglob
+# Run by check by its name, which shellcheck can't follow.
+# shellcheck disable=SC2329
+none_left() {
+  [ "${#left[@]}" -eq 0 ] && return 0
+  printf 'left behind: %s\n' "${left[@]}"
+  false
+}
+check "no case leaves an askpass folder behind" none_left
 exit "$failed"
