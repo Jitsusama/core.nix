@@ -329,6 +329,45 @@ fn a_writers_hold_stops_a_pass_until_the_disk_is_nearly_full() {
 }
 
 #[test]
+fn a_filling_disk_under_a_writers_hold_says_its_clearing_waits() {
+    let home = Home::new();
+    let mark = home.root.join("velocity-hold/disk-writers");
+    fs::create_dir_all(mark.parent().unwrap()).unwrap();
+    fs::write(&mark, "").unwrap();
+    home.cold_scratch("run-1");
+    let mut guard = home.guard(held_by(&home, &mark, "0%"));
+    guard.step(&tick_at(0.0), &CALM).unwrap();
+    let says = home.status()["says"].as_str().unwrap().to_owned();
+    assert!(
+        says.contains("waits") && !says.contains("is clearing"),
+        "a held guard said it was clearing: {says}"
+    );
+    assert_eq!(
+        home.status()["filesystems"][0]["says"].as_str(),
+        Some(says.as_str()),
+        "the disk's own sentence said otherwise"
+    );
+    assert_eq!(
+        home.status()["filesystems"][0]["waiting"],
+        true,
+        "the status's flag didn't say the disk waits"
+    );
+
+    fs::remove_file(&mark).unwrap();
+    guard.step(&tick_at(60.0), &CALM).unwrap();
+    let says = home.status()["says"].as_str().unwrap().to_owned();
+    assert!(
+        !says.contains("waits"),
+        "the guard still said it waited once the hold ended: {says}"
+    );
+    assert!(
+        home.status()["filesystems"][0].get("waiting").is_none(),
+        "a status with no hold carried the flag: {}",
+        home.status()["filesystems"][0]
+    );
+}
+
+#[test]
 fn a_directory_is_begun_in_the_journal_before_it_is_moved() {
     let home = Home::new();
     let cold = home.cold_scratch("run-1");
@@ -425,6 +464,9 @@ fn a_producer_that_ran_is_not_run_again_within_the_hour_even_by_the_next_guard()
     let home = Home::new();
     let marker = home.root.join("ran");
     let mut config = home.config("100%", "100%");
+    // Nearly full, so a pass that finds nothing rests a minute, not the
+    // hour a filling disk would, and the same guard is asked again.
+    config.bands.nearly_full = disk_guard::units::Size::Percent(100.0);
     config.sources.insert(
         "gc".to_owned(),
         Source::Producer {
@@ -450,8 +492,10 @@ fn a_producer_that_ran_is_not_run_again_within_the_hour_even_by_the_next_guard()
     let mut guard = home.guard(config.clone());
     guard.step(&tick_at(3600.0), &CALM).unwrap();
     assert_eq!((runs(), passes()), (1, 1));
-    // Past the rest that pass earned, and within the hour.
-    guard.step(&tick_at(3661.0), &CALM).unwrap();
+    // Past the rest that pass earned, and within the hour. Rests count
+    // from when a pass really ended, so each step after one leaves ten
+    // seconds for it to take on a loaded builder.
+    guard.step(&tick_at(3670.0), &CALM).unwrap();
     assert_eq!((runs(), passes()), (1, 2));
     drop(guard);
     let mut guard = home.guard(config);
@@ -678,6 +722,32 @@ fn a_pass_that_falls_short_rests_before_the_next_and_longer_each_time() {
     home.cold_scratch("run-1");
     // Kept every time, since process 300 can't be judged.
     home.hidden(300, 77);
+    // Nearly full, since a filling disk left with nothing rests an hour at
+    // once; no writers' hold is ever marked here.
+    let mut guard = home.guard(held_by(&home, &home.root.join("never-held"), "100%"));
+    let passes = || {
+        home.journal()
+            .iter()
+            .filter(|line| line["event"] == "pass")
+            .count()
+    };
+    let mut seen = Vec::new();
+    for at in [3600.0, 3605.0, 3655.0, 3670.0, 3700.0, 3785.0, 3800.0] {
+        guard.step(&tick_at(at), &CALM).unwrap();
+        seen.push(passes());
+    }
+    assert_eq!(seen, [1, 1, 1, 2, 2, 2, 3], "a minute's rest, then two");
+}
+
+#[test]
+fn a_filling_disk_whose_passes_twice_running_leave_nothing_to_clear_rests_an_hour() {
+    // On 25 November a reach pass freed 0 B and found nothing left, and
+    // the next came 17 minutes on and read 15 GB of the disk's metadata
+    // in 24 minutes, while evaluations and pushes needed it. The first
+    // such pass still rests only a minute: the machine's guard expiring
+    // generations leaves garbage only its next pass can take.
+    let home = Home::new();
+    fs::create_dir_all(home.root.join("scratch")).unwrap();
     let mut guard = home.guard(home.config("100%", "100%"));
     let passes = || {
         home.journal()
@@ -686,11 +756,117 @@ fn a_pass_that_falls_short_rests_before_the_next_and_longer_each_time() {
             .count()
     };
     let mut seen = Vec::new();
-    for at in [3600.0, 3605.0, 3655.0, 3661.0, 3700.0, 3775.0, 3782.0] {
+    for at in [3600.0, 3670.0, 4600.0, 7260.0, 7280.0] {
+        guard.step(&tick_at(at), &CALM).unwrap();
+        seen.push(passes());
+        assert_eq!(
+            home.status()["filesystems"][0]["exhausted"],
+            true,
+            "a resting disk didn't say it has cleared all it may at {at} s"
+        );
+    }
+    assert_eq!(
+        seen,
+        [1, 2, 2, 2, 3],
+        "a filling disk rested other than a minute, then an hour once left with nothing twice"
+    );
+}
+
+#[test]
+fn passes_kept_short_by_an_unheard_system_daemon_never_rest_a_filling_disk_an_hour() {
+    // What they kept wanted only the system daemon's word, which a restart
+    // of it gives back in a minute or two, so they found nothing left only
+    // in that they couldn't ask.
+    let home = Home::new();
+    home.cold_scratch("run-1");
+    home.hidden(300, 77);
+    let sockets = socket_dir();
+    let socket = sockets.path().join("system.socket");
+    let places = Places {
+        system: Some(socket.clone()),
+        ..home.places()
+    };
+    let mut guard = Guard::new(crate::unpaced(home.config("100%", "100%")), &places).unwrap();
+    let _heard = fake_system_vouching_nothing(&socket);
+    let passes = || {
+        home.journal()
+            .iter()
+            .filter(|line| line["event"] == "pass")
+            .count()
+    };
+    let mut seen = Vec::new();
+    for at in [3600.0, 3670.0, 3800.0] {
         guard.step(&tick_at(at), &CALM).unwrap();
         seen.push(passes());
     }
-    assert_eq!(seen, [1, 1, 1, 2, 2, 2, 3], "a minute's rest, then two");
+    assert_eq!(
+        seen,
+        [1, 2, 3],
+        "two unheard passes rested the disk longer than two minutes"
+    );
+}
+
+#[test]
+fn passes_that_find_nothing_far_apart_are_not_two_in_a_row() {
+    // A hold of hours between them lets builds leave garbage the second
+    // is the first to see, as after expiring generations.
+    let home = Home::new();
+    fs::create_dir_all(home.root.join("scratch")).unwrap();
+    let mut guard = home.guard(home.config("100%", "100%"));
+    let passes = || {
+        home.journal()
+            .iter()
+            .filter(|line| line["event"] == "pass")
+            .count()
+    };
+    let mut seen = Vec::new();
+    for at in [3600.0, 5000.0, 5130.0] {
+        guard.step(&tick_at(at), &CALM).unwrap();
+        seen.push(passes());
+    }
+    assert_eq!(
+        seen,
+        [1, 2, 3],
+        "passes 23 minutes apart counted as two in a row"
+    );
+}
+
+#[test]
+fn a_rest_counts_from_when_its_pass_ended() {
+    // On 25 November a pass ran 24 minutes, and a rest counted from its
+    // start had ended before it did, so the next came at once and never
+    // counted as in a row.
+    let home = Home::new();
+    home.trashed("old.txt", "2001-09-09T01:46:40");
+    home.trashed("older.txt", "2001-09-08T01:46:40");
+    let mut config = home.config("100%", "100%");
+    // Not through `guard`, which takes the rest away: a pass of four
+    // seconds at least, resting between its two deletes.
+    config.pacing = disk_guard::config::Pacing {
+        files: 1,
+        rest: disk_guard::units::Span(std::time::Duration::from_secs(4)),
+    };
+    let mut guard = Guard::new(config, &home.places()).unwrap();
+    let passes = || {
+        home.journal()
+            .iter()
+            .filter(|line| line["event"] == "pass")
+            .count()
+    };
+    let mut seen = Vec::new();
+    // A rest counted from the step's start ended at 3660 s; from the
+    // pass's end, at 3664 s at the earliest. The last step leaves the
+    // pass most of a minute and a half, for a commit's wait on a loaded
+    // builder.
+    for at in [3600.0, 3663.0, 3760.0] {
+        guard.step(&tick_at(at), &CALM).unwrap();
+        seen.push(passes());
+    }
+    assert_eq!(
+        seen,
+        [1, 1, 2],
+        "the minute's rest counted from before its pass's four seconds"
+    );
 }
 
 #[test]
@@ -876,7 +1052,7 @@ fn a_pass_that_falls_short_when_critically_full_rests_a_minute_at_most() {
             .count()
     };
     let mut seen = Vec::new();
-    for at in [3600.0, 3661.0, 3782.0, 3843.0, 3904.0] {
+    for at in [3600.0, 3670.0, 3790.0, 3860.0, 3930.0] {
         guard.step(&tick_at(at), &CALM).unwrap();
         seen.push(passes());
     }
@@ -1223,6 +1399,8 @@ fn a_status_whose_estimates_only_drift_is_no_news() {
     use disk_guard::daemon::{FilesystemStatus, Status, news};
     let now = 1_000_000.0;
     let disk = |forecast: Option<f64>, fill: f64, full_in: f64, says: &str| FilesystemStatus {
+        waiting: false,
+        held: false,
         path: PathBuf::from("/"),
         band: Band::Healthy,
         free: 500,
@@ -1469,6 +1647,8 @@ fn a_fresh_measure_moves_the_band_a_status_shows() {
         btrfs: None,
     };
     let mut status = FilesystemStatus {
+        waiting: false,
+        held: false,
         path: PathBuf::from("/"),
         band: Band::Filling,
         free: 200,
@@ -1521,6 +1701,20 @@ fn a_fresh_measure_moves_the_band_a_status_shows() {
         "{}",
         status.says
     );
+    // Under a writers' hold a beat's measure works out whether the disk
+    // waits from its band, whichever way the band moved.
+    status.held = true;
+    status.measured(&space(50), &bands, 1900.0, None);
+    assert!(!status.waiting, "a nearly full disk waited on a hold");
+    assert!(
+        status.says.contains("is clearing everything"),
+        "{}",
+        status.says
+    );
+    status.measured(&space(200), &bands, 1900.0, None);
+    assert_eq!(status.band, Band::Filling);
+    assert!(status.waiting, "a held disk back to filling didn't wait");
+    assert!(status.says.contains("waits to clear"), "{}", status.says);
 }
 
 /// Every reader of the status file takes `full_at` as a moment still to
@@ -1538,6 +1732,8 @@ fn a_fresh_measure_drops_a_forecast_whose_moment_has_passed() {
         target: Size::Percent(35.0),
     };
     let mut status = FilesystemStatus {
+        waiting: false,
+        held: false,
         path: PathBuf::from("/"),
         band: Band::Filling,
         free: 200,
@@ -1599,6 +1795,8 @@ fn a_fresh_measure_above_nixs_floor_says_when_it_reaches_it() {
         btrfs: None,
     };
     let mut status = FilesystemStatus {
+        waiting: false,
+        held: false,
         path: PathBuf::from("/"),
         band: Band::Healthy,
         free: 500,
@@ -1666,6 +1864,8 @@ fn a_fresh_measures_machine_sentence_says_what_its_own_does() {
         btrfs: None,
     };
     let mut status = FilesystemStatus {
+        waiting: false,
+        held: false,
         path: PathBuf::from("/"),
         band: Band::Healthy,
         free: 500,
@@ -1709,6 +1909,8 @@ fn a_status_tells_the_time_to_nixs_floor_and_otherwise_to_full() {
     use disk_guard::daemon::FilesystemStatus;
     use disk_guard::words::{filesystem, machine};
     let mut status = FilesystemStatus {
+        waiting: false,
+        held: false,
         path: PathBuf::from("/"),
         band: Band::Healthy,
         free: 500,

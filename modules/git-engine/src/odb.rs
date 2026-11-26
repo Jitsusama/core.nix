@@ -578,6 +578,37 @@ mod tests {
     }
 
     #[test]
+    fn a_multi_pack_index_refused_leaves_each_pack_found_through_its_own_index() {
+        use crate::pack_index::tests::{midx, moved, offsets, sorted, unique, version_2};
+        let objects = unique("objects");
+        let pack = objects.join("pack");
+        std::fs::create_dir_all(&pack).expect("the temp folder takes a folder");
+        let names = sorted();
+        // Its object names are said to run into its checksum.
+        let whole = midx(&["pack-a.idx"], 1, None);
+        let broken = moved(whole.clone(), 2, whole.len() as u64 - 21);
+        for (name, bytes) in [
+            ("multi-pack-index", broken),
+            ("pack-a.idx", version_2(&names)),
+            ("pack-a.pack", b"PACK".to_vec()),
+        ] {
+            std::fs::write(pack.join(name), bytes).expect("the temp folder takes a file");
+        }
+        let store = Store::open(&objects);
+        assert!(
+            store.midx.is_none(),
+            "a multi-pack-index past its end was used"
+        );
+        assert_eq!(
+            store
+                .locate(&Oid(names[0]))
+                .expect("the pack's own index reads"),
+            Some((0, offsets(&names)[0])),
+            "the pack's own index wasn't read in the refused index's place"
+        );
+    }
+
+    #[test]
     fn commits_read_their_parts() {
         let tree = Oid::of("tree", b"");
         let text = format!(

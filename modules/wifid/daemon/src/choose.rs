@@ -57,13 +57,21 @@ pub const SETTLE: Duration = Duration::from_secs(600);
 pub const TRIAL: Duration = Duration::from_secs(300);
 
 /// How long after a move a minute must be taken to hold none of the card's
-/// first minute on the point: that minute, and a minute's reach past it
-/// (`measure::MINUTE`), less the second a choice can be held back by, so a
-/// move made on the minute is judged at its third minute even when its own
-/// choice ran later than the one two minutes on. Measured from when the move
-/// is asked, so wherever in the minute it fell, at most that second of its
-/// first minute is judged, and the seconds the roam itself takes, which the
-/// chooser doesn't see.
+/// first minute on the point: two minutes' choices, less a second of slack,
+/// so a move made on the minute is judged at its third minute when its own
+/// choice ran up to a second later than the one two minutes on. A minute
+/// taken then reaches back `measure::MINUTE`, so at most half a second of
+/// the first minute is in it. A choice waits behind a measure, about 2 s
+/// where echoes go unanswered, as `measure::MINUTE` says, so choices drift
+/// against each other; a move whose own choice ran later than the one two
+/// minutes on by more than the slack, and by up to a minute, is judged a
+/// minute later, at its fourth minute, still inside `TRIAL`. The slack
+/// isn't wider because each second of it lets another second of the first
+/// minute on the point into a judged minute, the minute a trial is meant to
+/// judge none of.
+/// Measured from when the move is asked, so wherever in the minute it fell,
+/// the seconds the roam itself takes, which the chooser doesn't see, are in
+/// that first minute.
 const ARRIVED: Duration = Duration::from_secs(119);
 
 /// How many minutes past `ARRIVED` a trial is judged early by.
@@ -4222,6 +4230,41 @@ pub(crate) mod tests {
         );
         let third = start + Duration::from_millis(179_990);
         assert!(chooser.keeps_off(HALL, third), "and kept off");
+    }
+
+    #[test]
+    fn a_move_whose_choice_ran_more_than_a_second_late_is_judged_a_minute_later() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let start = Instant::now();
+        let near = [hall(-53, Some(20), None)];
+        let badly = carried(119, 0.5);
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &near, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+
+        // The move's own choice ran 1.5 s late against the minutes after it,
+        // past the second of slack, so the minute to 118.5 s may hold some of
+        // its first minute on the point and isn't judged.
+        let held = Measured {
+            moving: Some(15),
+            ..carried(754, 1.9)
+        };
+        let minutes = [58_500, 118_500, 178_500, 238_500].map(|millis| (millis, held.clone()));
+        let choices = by_minutes(&mut chooser, start, HALL, &minutes);
+
+        let judged = vec![
+            Choice::Stay,
+            Choice::Stay,
+            Choice::Stay,
+            Choice::Back(DESK.into()),
+        ];
+        assert_eq!(
+            choices, judged,
+            "judged at its fourth minute, by the two past its arrival"
+        );
+        assert!(
+            Duration::from_millis(238_500) < TRIAL,
+            "its fourth minute falls past its trial"
+        );
     }
 
     #[test]

@@ -13,14 +13,28 @@
 //! given again only by a miss after a landing, so neither a train that
 //! can't land nor one that lands under steady traffic holds main back for
 //! longer than that at a time.
+//!
+//! Apart from the right of way, a train running a candidate with riders
+//! aboard takes a change `ready` would merge alone too (`yields`), since
+//! that merge would move main beside its run. It does so only while the
+//! run is clear, searching no red and waiting on no builder, as
+//! `train/runs` says from when it began, and for `RIGHT_OF_WAY` of the
+//! run at most: a change boarding a red's search could fall for a red not
+//! its own, and a run that hangs lets changes merge alone again once that
+//! time is up. Each run begins its time afresh, so a train that keeps
+//! running clear holds main for as long as it keeps running; that's what
+//! keeps main still under it, since a miss happens only when main moves.
+//! Beside either, a change still merges alone when the train can't take
+//! it (`gives_way`), as before.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// How long the train holds the right of way it was given: longer than
-/// the 22 to 30 minutes its runs took on 16 November, short enough that
-/// one that never lands keeps changes from merging alone for less than
-/// an hour.
+/// How long the train holds the right of way it was given, and how long
+/// one clear run of it holds main: longer than the 22 to 30 minutes its
+/// runs took on 16 November, short enough that one that never lands, or
+/// a run that hangs, keeps changes from merging alone for less than an
+/// hour at a time.
 pub const RIGHT_OF_WAY: u64 = 45 * 60;
 
 /// How a run of the train ended, as the right of way reads it.
@@ -83,26 +97,70 @@ pub fn follow(root: &Path, ended: &Ended, now: u64) -> Option<String> {
     }
 }
 
+/// Why a change that would merge alone boards the train instead.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Yields {
+    /// The train has held the right of way since then.
+    Held(u64),
+    /// The train runs a clear candidate with this many riders aboard.
+    Runs(usize),
+}
+
+/// Whether a change that would merge alone boards the train instead, by
+/// the right of way the train holds since `held`, the clear run it began
+/// at `runs` and the `aboard` riders: while a train runs with riders, a
+/// change merged alone moves main beside its run, and once main moves
+/// files a rider reads the train runs again. On 25 November the right of
+/// way given at 05:19 ran out at 06:04 while the train still ran, so
+/// #6593 merged alone at 07:31 and the train, 18 riders aboard, ran again
+/// at 4b0fe54b742f. Velocity's ruling of that morning already had no
+/// change merge alone while a train ran; this makes `ready` hold to it.
+#[must_use]
+pub fn yields(held: Option<u64>, runs: Option<u64>, aboard: usize) -> Option<Yields> {
+    match (held, runs) {
+        (Some(since), _) => Some(Yields::Held(since)),
+        (None, Some(_)) if aboard > 0 => Some(Yields::Runs(aboard)),
+        (None, _) => None,
+    }
+}
+
+/// Why a change that would merge alone boards the train under `root`
+/// instead, at `now`, if it does, as its files say and whether its unit
+/// is `going`: a run marked by a train that was killed isn't running.
+#[must_use]
+pub fn why(root: &Path, now: u64, going: bool) -> Option<Yields> {
+    let runs = runs(root, now).filter(|_| going);
+    yields(holds(root, now), runs, super::riders(root).len())
+}
+
 /// What `ready` says of the change at `head`, which would merge alone,
-/// while the train holds the right of way: that it boards the train
-/// instead, so main stays where the train's run is cut; nothing while the
-/// train holds none, or can't take the change, or the change waits on a
-/// run of its own, as `ready` boards none then either.
+/// while the train holds the right of way or runs with riders aboard:
+/// that it boards the train instead, so main stays where the train's run
+/// is cut; nothing while the train neither holds the way nor runs, or
+/// can't take the change, or the change waits on a run of its own, as
+/// `ready` boards none then either.
 #[must_use]
 pub fn gives_way(head: &str) -> Option<String> {
     let root = crate::state::State::from_env().root;
     let now = crate::state::now();
-    let since = holds(&root, now)?;
+    let why = why(&root, now, super::going())?;
     if crate::turn::waits_to_run(head).is_some() {
         return None;
     }
     let branch = crate::git(&["symbolic-ref", "--quiet", "--short", "HEAD"]).ok()?;
     let boarded = super::offer(head, (!branch.is_empty()).then_some(branch)?.as_str())?;
+    let since = match why {
+        Yields::Held(since) => format!(
+            "has held the right of way for {} minutes, since main moved beside a run of it \
+             that passed",
+            now.saturating_sub(since) / 60
+        ),
+        Yields::Runs(1) => "runs with 1 rider aboard".to_owned(),
+        Yields::Runs(aboard) => format!("runs with {aboard} riders aboard"),
+    };
     Some(format!(
-        "the merge train has held the right of way for {} minutes, since main moved beside \
-         a run of it that passed, so {} rides it rather than merge alone and move main \
-         again: {boarded}",
-        now.saturating_sub(since) / 60,
+        "the merge train {since}, so {} rides it rather than merge alone and move main \
+         beside it: {boarded}",
         crate::state::short(head)
     ))
 }
@@ -123,6 +181,36 @@ pub fn give(root: &Path, now: u64) {
 /// Take the right of way back from the train under `root`.
 pub fn take_back(root: &Path) {
     let _ = fs::remove_file(file(root));
+}
+
+fn runs_file(root: &Path) -> PathBuf {
+    super::folder(root).join("runs")
+}
+
+/// Say that the train under `root` began a clear run at `began`, whole,
+/// since a `ready` reading a file half written would find no run and let
+/// its change merge alone beside it.
+pub fn run_begins(root: &Path, began: u64) {
+    let _ = crate::whole::write(&runs_file(root), &format!("{began}\n"));
+}
+
+/// Say that the train under `root` runs nothing clear.
+pub fn run_ends(root: &Path) {
+    let _ = fs::remove_file(runs_file(root));
+}
+
+/// Since when the train under `root` has run a clear candidate, at `now`,
+/// if it began less than `RIGHT_OF_WAY` ago: one said to begin after
+/// `now` isn't running, as for the right of way.
+#[must_use]
+pub fn runs(root: &Path, now: u64) -> Option<u64> {
+    let began: u64 = fs::read_to_string(runs_file(root))
+        .ok()?
+        .trim()
+        .parse()
+        .ok()?;
+    let running = now.checked_sub(began)?;
+    (running < RIGHT_OF_WAY).then_some(began)
 }
 
 /// Since when the train under `root` has held the right of way, at `now`,
@@ -264,6 +352,91 @@ mod tests {
         assert!(
             follow(&root, &Ended::Otherwise, 160).is_none(),
             "giving back one not held said it was given back"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    fn aboard(root: &Path, riders: usize) {
+        for rider in 0..riders {
+            let rider = super::super::Rider {
+                head: format!("{rider:040}"),
+                branch: format!("rider-{rider}"),
+                at: 100,
+            };
+            super::super::board(root, &rider).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_change_boards_a_clear_run_after_the_right_of_way_ran_out() {
+        // As on 25 November: the right of way began at 05:19 and ran out
+        // at 06:04, and the train began another clear run, 18 aboard.
+        let root = root("runs");
+        give(&root, 100);
+        let now = 100 + RIGHT_OF_WAY + 600;
+        run_begins(&root, now - 300);
+        aboard(&root, 18);
+        assert_eq!(
+            why(&root, now, true),
+            Some(Yields::Runs(18)),
+            "a change would merge alone beside a clear run with riders, once the right of way \
+             ran out"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_change_merges_alone_beside_a_run_that_isnt_clear_running_or_ridden() {
+        let root = root("alone");
+        aboard(&root, 3);
+        assert_eq!(
+            why(&root, 1000, true),
+            None,
+            "a change would board a red's search or an outage, which no clear run marks"
+        );
+        run_begins(&root, 1000);
+        assert_eq!(
+            why(&root, 1000, false),
+            None,
+            "a change would board a run a train that was killed marked"
+        );
+        assert_eq!(
+            why(&root, 1000 + RIGHT_OF_WAY, true),
+            None,
+            "a change would board a run that hung past its time"
+        );
+        run_ends(&root);
+        assert_eq!(
+            why(&root, 1000, true),
+            None,
+            "a change would board a run that ended"
+        );
+        let empty = self::root("empty");
+        run_begins(&empty, 1000);
+        assert_eq!(
+            why(&empty, 1000, true),
+            None,
+            "a change would board a run with no one aboard"
+        );
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&empty);
+    }
+
+    #[test]
+    fn the_right_of_way_is_said_as_why_even_with_no_run() {
+        let root = root("held");
+        give(&root, 100);
+        assert_eq!(
+            why(&root, 200, false),
+            Some(Yields::Held(100)),
+            "a change would merge alone while the train held the right of way"
+        );
+        run_begins(&root, 150);
+        aboard(&root, 2);
+        assert_eq!(
+            why(&root, 200, true),
+            Some(Yields::Held(100)),
+            "a clear run was said as why while the train held the right of way"
         );
         let _ = fs::remove_dir_all(&root);
     }

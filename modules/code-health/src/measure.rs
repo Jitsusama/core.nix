@@ -133,16 +133,20 @@ pub fn measure(paths: &[String], files: &[File], roots: &[String]) -> Health {
     let suppressions: Vec<String> = code
         .iter()
         .flat_map(|file| {
-            // Each line with the file past it, since an attribute can run on.
-            let mut from = 0;
+            let at = |number: usize| format!("{}:{number}", file.path);
+            // Rust is read whole, since what a line opens in decides it.
+            if extension(&file.path) == "rs" {
+                return attributes::lines_turning_a_lint_off(&file.text)
+                    .into_iter()
+                    .map(at)
+                    .collect::<Vec<_>>();
+            }
             file.text
-                .split_inclusive('\n')
+                .lines()
                 .enumerate()
-                .filter_map(move |(number, line)| {
-                    let rest = &file.text[from..];
-                    from += line.len();
-                    suppresses(&file.path, rest).then(|| format!("{}:{}", file.path, number + 1))
-                })
+                .filter(|(_, line)| suppresses(&file.path, line))
+                .map(|(number, _)| at(number + 1))
+                .collect()
         })
         .collect();
     let count = suppressions.len();
@@ -310,9 +314,8 @@ fn sentence(line: &str, words: &str) -> bool {
 
 /// Whether a line of a code file turns a linter off, by its language's
 /// own way of saying so, so a string naming one in other code isn't one.
-/// `rest` is the file from the line on.
-fn suppresses(path: &str, rest: &str) -> bool {
-    let line = rest.lines().next().unwrap_or_default();
+/// Rust's are read apart, by `attributes`.
+fn suppresses(path: &str, line: &str) -> bool {
     let extension = path.rsplit_once('.').map_or("", |(_, extension)| extension);
     // A mark is a comment's only where no quote before it is left open.
     let comment = |mark: &str, markers: &[&str]| {
@@ -326,7 +329,6 @@ fn suppresses(path: &str, rest: &str) -> bool {
         })
     };
     match extension {
-        "rs" => attributes::turns_a_rust_lint_off(rest),
         "py" => comment(
             "#",
             &["noqa", "type: ignore", "pyright: ignore", "pylint: disable"],
@@ -543,7 +545,8 @@ mod tests {
         // The character wider than a byte puts each later line's start in
         // bytes past its start in characters, so a cut counted in characters
         // lands in the wrong place. The attribute runs across lines, so a
-        // line read alone, or from the next, misses it.
+        // line read alone misses it, and one read from the next line's
+        // start counts it a line early.
         let files = [file(
             "x.rs",
             concat!(

@@ -440,10 +440,46 @@ fn every_message_kept_is_listed_by_its_short_form() {
     ] {
         fs::write(folder.join(name), "{}").expect("a file");
     }
-    let listed: Vec<String> = listed_ids(&folder).into_iter().collect();
+    let state = folder.join("stale");
+    let listed: Vec<String> = listed_ids(&folder, &state).into_iter().collect();
     assert_eq!(
         listed,
         ["bbbbbbbb", "cccccccc"],
         "its own and its days', and nothing else"
+    );
+}
+
+#[test]
+fn a_day_folder_is_listed_again_only_once_it_was_written_to() {
+    let root = std::env::temp_dir().join(format!("listed-kept-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let (folder, state) = (root.join("messages"), root.join("state"));
+    let day = folder.join("2026-11-16");
+    fs::create_dir_all(&day).expect("a day folder");
+    fs::create_dir_all(&state).expect("a state folder");
+    let message = day.join("20-A-1-bbbbbbbb.json");
+    fs::write(&message, "{}").expect("a message");
+    let written = |at: u64| {
+        fs::File::open(&day)
+            .and_then(|f| f.set_modified(UNIX_EPOCH + Duration::from_secs(at)))
+            .expect("a day's time");
+    };
+    let listed = || -> Vec<String> { listed_ids(&folder, &state).into_iter().collect() };
+    written(1_000);
+    assert_eq!(listed(), ["bbbbbbbb"], "a day listed the first time");
+    // Gone with its folder's time put back, so only what was kept names it.
+    fs::remove_file(&message).expect("a message gone");
+    written(1_000);
+    assert_eq!(
+        listed(),
+        ["bbbbbbbb"],
+        "a day unwritten since is read as kept"
+    );
+    written(1_001);
+    let relisted = listed();
+    fs::remove_dir_all(&root).expect("cleaned up");
+    assert!(
+        relisted.is_empty(),
+        "a day written since is listed again: {relisted:?}"
     );
 }

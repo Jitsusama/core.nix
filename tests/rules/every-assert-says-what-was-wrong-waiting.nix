@@ -161,7 +161,6 @@
   "modules/key-counts/src/tally.rs" = 5;
   "modules/lag-watch/src/kernel.rs" = 2;
   "modules/lid/docked/src/main.rs" = 11;
-  "modules/litra/litra.rs" = 11;
   "modules/load-proof/src/frames.rs" = 2;
   "modules/load-proof/src/run.rs" = 4;
   "modules/load-proof/src/save.rs" = 1;
@@ -310,7 +309,6 @@
   "tools/merge-net/src/rules/mod.rs" = 17;
   "tools/merge-net/src/watch.rs" = 24;
   "tools/merge-net/src/world.rs" = 11;
-  "tools/run-subtests/run-subtests-test.py" = 5;
   "tools/shell-preview/src/desktop.rs" = 3;
   "tools/shell-preview/src/layout.rs" = 3;
   "tools/shell-preview/tests/shell_preview.rs" = 1;

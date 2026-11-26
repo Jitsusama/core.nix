@@ -82,18 +82,21 @@ pub struct Call {
     pub freezes: Option<f64>,
     /// How long the far end was frozen, in seconds, over the call.
     pub frozen_s: Option<f64>,
-    /// When each freeze had ended, in whole seconds since the epoch: the
-    /// time of the far sample whose count of freezes rose, once for each
-    /// freeze it rose by, so a freeze can be laid beside lag-watch's
-    /// ten-second rows to say what the machine was doing. Cut down to the
-    /// second, as lag-watch's own row ends are, so it falls in the row of
-    /// the sample that counted it. The freeze had ended by the sample's own
-    /// time, which comes up to one sample gap after it, a second or more
-    /// under load, so the row before may be the one that held the frame;
-    /// the cut can put the time up to a second before that sample too. A
-    /// count that fell is taken as a stream restarted from 0, so its first
-    /// sample's freezes are timed too; a restart whose count comes back at
-    /// or above the old one can't be told from no restart, and loses them.
+    /// When each freeze had ended, in whole seconds since the epoch, so a
+    /// freeze can be laid beside lag-watch's ten-second rows to say what
+    /// the machine was doing. Each is the time of the far sample whose
+    /// count of freezes rose, once for each freeze it rose by, and is the
+    /// latest the freeze could have ended: the sample comes up to one
+    /// sample gap after it, a second or more under load, so the row before
+    /// may be the one that held the frame. Cut down to the second, as
+    /// lag-watch's own row ends are, a time can also sit up to a second
+    /// before its sample. A count that fell between two samples is taken
+    /// as a stream restarted from 0, and all it holds are timed. A restart
+    /// whose count comes back at or above the old one reads as no restart,
+    /// so only the rise past the old count is timed, and as many of its
+    /// freezes as the old count go untimed. Times are kept even when a
+    /// fall leaves `freezes` and `frozen_s` unread, so a restarted
+    /// stream's freezes may show only here.
     pub frozen_at: Vec<f64>,
     /// A click on the call's own tab to its next frame, in ms.
     pub clicks_p50: Option<f64>,
@@ -263,8 +266,10 @@ pub fn call(mine: &[Value], far: &[Value], clicks: &[f64]) -> Call {
     // Chrome counts a freeze once its next frame comes, so the sample
     // whose count rose is the one by which it had ended, and a count that
     // rose by two between samples ended two. A count that fell is taken as
-    // a stream restarted from 0, since the far end reads one inbound video
-    // stream, so all it holds are freezes since.
+    // a stream restarted from 0, so all it holds are freezes since: the
+    // page keeps one inbound video stream's figures a sample, though not
+    // always the same stream's, and a switch between two reads as a
+    // restart too.
     let frozen_at = frozen
         .windows(2)
         .flat_map(|pair| {

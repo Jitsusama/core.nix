@@ -2,12 +2,15 @@
 # with the call's page in share/ and on its path what a run starts:
 # Weston for the near end's display, a-call-is-on for Joel's calls,
 # journalctl for the launcher's openings and Chromium for the call, and
-# for the camera's check before a meeting v4l2-ctl and notify-send. Not
-# Google Chrome: a managed machine's Chrome enrols every fresh profile
-# with its owner's management, and Chromium reads none of Chrome's
-# policies. It takes its shape from
-# the terminal kit (../terminal-kit), so the source is cut from the folder
-# holding both, and built from this one.
+# for the camera's check before a meeting notify-send and v4l2-ctl, by a
+# link named camera-check. The kernel names a process by the path it was
+# started by, and the desktop names a camera's reader by that name, so a
+# camera lit before a meeting says the check lit it rather than a tool Joel
+# never ran. Not Google Chrome: a managed machine's Chrome enrols every
+# fresh profile with its owner's management, and Chromium reads none of
+# Chrome's policies. It takes its shape from the terminal kit
+# (../terminal-kit), so the source is cut from the folder holding both, and
+# built from this one.
 {
   lib,
   callPackage,
@@ -41,16 +44,19 @@ rustPlatform.buildRustPackage rec {
   nativeBuildInputs = [ makeWrapper ];
   postInstall = ''
     install -Dm644 page.html $out/share/call-under-load/page.html
-    wrapProgram $out/bin/call-under-load --prefix PATH : ${
-      lib.makeBinPath [
-        calls
-        chromium
-        libnotify
-        systemd
-        v4l-utils
-        weston
-      ]
-    }
+    mkdir -p $out/libexec/call-under-load
+    ln -s ${v4l-utils}/bin/v4l2-ctl $out/libexec/call-under-load/camera-check
+    wrapProgram $out/bin/call-under-load \
+      --prefix PATH : $out/libexec/call-under-load \
+      --prefix PATH : ${
+        lib.makeBinPath [
+          calls
+          chromium
+          libnotify
+          systemd
+          weston
+        ]
+      }
   '';
   meta = {
     description = "Measures Joel's calls and apps under the machine's load, each hour";
