@@ -710,9 +710,85 @@ pub fn pool(path: &Path) -> io::Result<u64> {
     if !is_btrfs(&rustix::fs::statfs(path)?) {
         return Ok(device);
     }
-    let id = btrfs_id(path)?;
+    // A writer's lease refuses the reopen, and a guard taking that as no
+    // disk would let the writer past every freeze by leasing again after
+    // each break; so its subvolume's pool is read where nothing can lease.
+    let id = match btrfs_id(path) {
+        Ok(id) => id,
+        Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+            return subvolume_pool(device).ok_or(error);
+        }
+        Err(error) => return Err(error),
+    };
+    let pool = pool_of(id);
+    if let Ok(mut pools) = POOLS.lock() {
+        pools.insert(device, pool);
+    }
+    Ok(pool)
+}
+
+/// A Btrfs pool's number from its id, with the top bit set.
+fn pool_of(id: [u8; 16]) -> u64 {
     let halves = [&id[..8], &id[8..]].map(|half| u64::from_le_bytes(half.try_into().unwrap()));
-    Ok((halves[0] ^ halves[1]) | 1 << 63)
+    (halves[0] ^ halves[1]) | 1 << 63
+}
+
+/// Each Btrfs subvolume's device number that `pool` has read, and its pool.
+static POOLS: std::sync::LazyLock<std::sync::Mutex<std::collections::BTreeMap<u64, u64>>> =
+    std::sync::LazyLock::new(std::sync::Mutex::default);
+
+/// The pool of the Btrfs subvolume `device`, as `pool` read it before, or
+/// else read at a folder it's mounted on, which no lease can hold: a
+/// subvolume the guard never read and nothing mounts has none.
+fn subvolume_pool(device: u64) -> Option<u64> {
+    if let Some(&known) = POOLS.lock().ok()?.get(&device) {
+        return Some(known);
+    }
+    let numbers = format!(
+        "{}:{}",
+        rustix::fs::major(device),
+        rustix::fs::minor(device)
+    );
+    let mountinfo = fs::read_to_string("/proc/self/mountinfo").ok()?;
+    let pool = mountinfo
+        .lines()
+        .map(|line| line.split(' ').collect::<Vec<_>>())
+        .filter(|fields| fields.get(2) == Some(&numbers.as_str()))
+        .filter_map(|fields| fields.get(4).map(|mount| PathBuf::from(unescaped(mount))))
+        .filter(|mount| {
+            fs::metadata(mount).is_ok_and(|found| found.is_dir() && found.dev() == device)
+        })
+        .find_map(|mount| btrfs_id(&mount).ok())
+        .map(pool_of)?;
+    if let Ok(mut pools) = POOLS.lock() {
+        pools.insert(device, pool);
+    }
+    Some(pool)
+}
+
+/// A mount point as mountinfo writes it, with its space, tab, newline and
+/// backslash spelled as three octal digits after a backslash, read back.
+fn unescaped(written: &str) -> OsString {
+    use std::os::unix::ffi::OsStringExt;
+    let bytes = written.as_bytes();
+    let mut read = Vec::with_capacity(bytes.len());
+    let mut at = 0;
+    while at < bytes.len() {
+        let octal = bytes
+            .get(at + 1..at + 4)
+            .and_then(|digits| u8::from_str_radix(std::str::from_utf8(digits).ok()?, 8).ok());
+        match (bytes[at], octal) {
+            (b'\\', Some(byte)) => {
+                read.push(byte);
+                at += 4;
+            }
+            (byte, _) => {
+                read.push(byte);
+                at += 1;
+            }
+        }
+    }
+    OsString::from_vec(read)
 }
 
 /// Whether `path`, a directory beneath `parent` with a device number of
@@ -796,8 +872,8 @@ fn btrfs_id(path: &Path) -> io::Result<[u8; 16]> {
     // what was found, so nothing swapped in between is opened: a pipe's open
     // would wait for a writer. A file a writer holds a lease on refuses the
     // open at once, rather than holding the guard while the lease breaks,
-    // though its holder is still asked to break it, and until it does the
-    // file reads as on no disk.
+    // though its holder is still asked to break it; `pool` then reads its
+    // subvolume's pool elsewhere.
     let none = rustix::fs::Mode::empty();
     let found = rustix::fs::open(path, OFlags::PATH | OFlags::CLOEXEC, none)?;
     let kind = rustix::fs::FileType::from_raw_mode(rustix::fs::fstat(&found)?.st_mode);

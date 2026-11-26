@@ -161,6 +161,45 @@ fn a_pipe_with_no_writer_s_pool_is_its_own_device_read_without_opening_it() {
     drop(held);
 }
 
+/// A file its writer holds a lease on refuses the guard's reopen, and the
+/// writer may lease it again after each break; so its pool is read as its
+/// subvolume's, without waiting the lease out, or a writer could keep its
+/// file off every disk and so out of every freeze.
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "needs TMPDIR on Btrfs, which the sandbox and the shell's tmpfs aren't: \
+            run with --ignored and TMPDIR on a Btrfs folder"]
+fn a_leased_file_s_pool_is_its_subvolume_s_read_without_waiting_out_the_lease() {
+    let dir = tempfile::tempdir().unwrap();
+    assert!(
+        on_btrfs(dir.path()),
+        "{} isn't on Btrfs",
+        dir.path().display()
+    );
+    let expected = pool(dir.path()).unwrap();
+    let file = dir.path().join("leased");
+    let held = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&file)
+        .unwrap();
+    // SAFETY: plain system calls; a broken lease signals SIGIO, whose
+    // default would end the test, so it's ignored.
+    let leased = unsafe {
+        libc::signal(libc::SIGIO, libc::SIG_IGN);
+        libc::fcntl(held.as_raw_fd(), libc::F_SETLEASE, libc::F_WRLCK)
+    };
+    assert_eq!(leased, 0, "no lease: {}", std::io::Error::last_os_error());
+    let (sent, heard) = std::sync::mpsc::channel();
+    std::thread::spawn(move || sent.send(pool(&file).ok()));
+    assert_eq!(
+        heard.recv_timeout(std::time::Duration::from_secs(5)).ok(),
+        Some(Some(expected)),
+        "a leased file's pool, read within five seconds, as its subvolume's"
+    );
+    drop(held);
+}
+
 #[test]
 fn the_volumes_of_one_apfs_container_share_its_pool() {
     let data = apfs_container("apfs", "/dev/disk3s5").unwrap();
