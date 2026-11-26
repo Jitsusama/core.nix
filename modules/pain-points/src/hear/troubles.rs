@@ -38,12 +38,13 @@ pub fn cellless_since(state: &Path, at: i64, cellless: bool) -> Option<i64> {
 }
 
 /// What kept a run from routing as it should: sends that failed this run,
-/// or wait as its time for sends ran out, pains given up on, and a node
-/// that has named no sessions for long.
+/// or wait as its time for sends ran out or the mycelium couldn't be
+/// started, pains given up on, and a node that has named no sessions for
+/// long.
 pub fn troubles(
     state: &Path,
     routes: &Routes,
-    (failed, out_of_time, given_up): (usize, usize, usize),
+    (failed, out_of_time, unstarted, given_up): (usize, usize, usize, usize),
     no_cells: bool,
 ) -> Vec<String> {
     let mut troubles: Vec<String> = Routes::trouble(state).into_iter().collect();
@@ -54,6 +55,11 @@ pub fn troubles(
     if out_of_time > 0 {
         troubles.push(format!(
             "{out_of_time} sends wait for the next run, as its time for sends ran out"
+        ));
+    }
+    if unstarted > 0 {
+        troubles.push(format!(
+            "{unstarted} sends wait for the next run, as the mycelium couldn't be started"
         ));
     }
     if given_up > 0 {

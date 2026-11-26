@@ -111,23 +111,91 @@ fn a_send_the_node_refused_fails_and_the_next_is_still_tried() {
 }
 
 #[test]
-fn a_mycelium_that_cant_start_or_send_as_no_one_holds_its_sends_untried() {
+fn a_mycelium_that_cant_start_holds_the_rest_of_the_run_untried() {
     let place = Place::new("unstarted-node");
-    let mut node = an_hour_s_node(place.root.join("no-mycelium"), Duration::from_secs(5));
+    let (mycelium, asked) = node_doing(&place, r#"echo '{"Ok":{"Sent":1}}'"#);
+    let missing = place.root.join("no-mycelium");
+    let mut node = an_hour_s_node(missing.clone(), Duration::from_secs(5));
     let first = node.send("ABC123", "a finding", Put::Asked);
-    assert_eq!(first, Sent::Held, "a send never started spent its try");
+    assert_eq!(
+        first,
+        Sent::Unstarted,
+        "a send never started wasn't said as such"
+    );
+    assert_eq!(
+        node.silent,
+        Some(Silence::Unstarted(std::io::ErrorKind::NotFound)),
+        "the node didn't keep why it couldn't start"
+    );
+    // Now it would start: the rest of the run still waits.
+    fs::rename(&mycelium, &missing).expect("the mycelium put in place");
     let second = node.send("GHI789", "another", Put::Asked);
-    assert_eq!(second, Sent::Held, "a send after it wasn't held");
-    assert_eq!(node.held, 2, "the held sends weren't counted as the node's");
+    assert_eq!(
+        second,
+        Sent::Unstarted,
+        "a send after one that couldn't start wasn't held as such"
+    );
+    assert!(
+        asks(&asked).is_empty(),
+        "the run asked the mycelium again once it couldn't start"
+    );
+    assert_eq!(
+        node.held, 0,
+        "sends that couldn't start were said as the mycelium stopped answering"
+    );
+}
+
+#[test]
+fn a_mycelium_that_cant_start_names_no_sessions_and_holds_the_run() {
+    let place = Place::new("unstarted-sessions");
+    let (mycelium, asked) = node_doing(&place, r#"echo '{"Ok":{"Sent":1}}'"#);
+    let missing = place.root.join("no-mycelium");
+    let mut node = an_hour_s_node(missing.clone(), Duration::from_secs(5));
+    assert_eq!(
+        node.sessions(),
+        "",
+        "a mycelium never started named sessions"
+    );
+    fs::rename(&mycelium, &missing).expect("the mycelium put in place");
+    let sent = node.send("ABC123", "a finding", Put::Asked);
+    assert_eq!(
+        sent,
+        Sent::Unstarted,
+        "a send after the sessions couldn't be asked was tried"
+    );
+    assert!(asks(&asked).is_empty(), "the run asked the mycelium again");
+}
+
+#[test]
+fn a_send_as_no_one_waits_untried_and_is_counted() {
+    let place = Place::new("no-one");
     let (mycelium, asked) = node_doing(&place, r#"echo '{"Ok":{"Sent":1}}'"#);
     let ends = Instant::now() + Duration::from_secs(3600);
     let mut no_one = Node::new(mycelium, None, ends, Duration::from_secs(5));
     let sent = no_one.send("ABC123", "a finding", Put::Asked);
     assert_eq!(sent, Sent::Held, "a send as no one spent its try");
+    assert_eq!(no_one.fromless, 1, "a send as no one went uncounted");
     assert!(
         asks(&asked).is_empty(),
         "the node was asked to send as no one"
     );
+}
+
+#[test]
+fn a_text_no_send_can_carry_fails_and_the_next_send_goes() {
+    let place = Place::new("nul-text");
+    let (mycelium, asked) = node_doing(&place, r#"echo '{"Ok":{"Sent":1}}'"#);
+    let mut node = an_hour_s_node(mycelium, Duration::from_secs(5));
+    let refused = node.send("ABC123", "a\0finding", Put::Asked);
+    assert_eq!(
+        refused,
+        Sent::Failed,
+        "a text no send can carry didn't spend its try"
+    );
+    assert_eq!(node.silent, None, "a text no send can carry held the run");
+    let took = node.send("GHI789", "a note", Put::Told);
+    assert_eq!(took, Sent::Went, "the send after it didn't go");
+    assert_eq!(asks(&asked).len(), 1, "the node wasn't asked the one send");
 }
 
 #[test]
@@ -140,24 +208,21 @@ fn a_pain_for_a_fallback_never_sent_to_waits_with_its_tries() {
     .expect("routes");
     a_day(&place);
     for _ in 0..5 {
-        let hour = hear(&place.ears(), CELLS, &mut |to, text| {
-            assert_ne!(to, "VOID01", "sent the void: {text}");
-            true
-        })
-        .expect("a run");
-        assert!(
-            !hour.troubles.iter().any(|t| t.contains("gave up")),
-            "pains for a fallback never sent to were given up on: {hour:?}"
+        let hour = hear(&place.ears(), CELLS, &mut |_, _| true).expect("a run");
+        assert_eq!(
+            hour.troubles,
+            ["routes.json's fallback VOID01 is one never to send to, so what goes to it waits"],
+            "the refused fallback wasn't the one thing said of the run: {hour:?}"
         );
     }
-    let waiting: Vec<Heard> = place
-        .heard()
-        .into_iter()
-        .filter(|h| h.routed_at.is_none())
-        .collect();
+    let heard = place.heard();
+    let void = heard
+        .iter()
+        .find(|h| h.words.contains("why is the launcher so slow"))
+        .expect("the void's pain heard");
     assert!(
-        !waiting.is_empty() && waiting.iter().all(|h| h.tries == 0),
-        "a pain for a fallback never sent to didn't wait, or spent tries: {waiting:?}"
+        void.routed_at.is_none() && void.tries == 0,
+        "the pain for a fallback never sent to was taken as sent, or spent tries: {void:?}"
     );
 }
 
@@ -217,8 +282,16 @@ fn sends_out_of_the_run_s_time_are_a_trouble_of_the_hour_and_keep_their_tries() 
 }
 
 #[test]
-fn a_pain_too_old_for_its_owner_keeps_its_tries_while_the_keeper_s_ask_is_out_of_time() {
-    let place = Place::new("old-out-of-time");
+fn a_pain_too_old_for_its_owner_keeps_its_tries_while_the_keeper_s_ask_is_untried() {
+    for untried in [Sent::OutOfTime, Sent::Held, Sent::Unstarted] {
+        an_old_pain_with_its_keeper(untried);
+    }
+}
+
+/// A pain too old for its owner, its keeper's ask answered `untried` five
+/// runs, keeps its tries and goes to the keeper with the next run's.
+fn an_old_pain_with_its_keeper(untried: Sent) {
+    let place = Place::new("old-untried");
     place.routes();
     place.log(
         "src",
@@ -230,13 +303,7 @@ fn a_pain_too_old_for_its_owner_keeps_its_tries_while_the_keeper_s_ask_is_out_of
         ],
     );
     for _ in 0..5 {
-        let keeper_out = |to: &str| {
-            if to == "ORCH01" {
-                Sent::OutOfTime
-            } else {
-                Sent::Went
-            }
-        };
+        let keeper_out = |to: &str| if to == "ORCH01" { untried } else { Sent::Went };
         hear_putting(&place.ears(), CELLS, &mut |to, _, _| keeper_out(to)).expect("a run");
     }
     let heard = place.heard();
@@ -246,8 +313,8 @@ fn a_pain_too_old_for_its_owner_keeps_its_tries_while_the_keeper_s_ask_is_out_of
         .expect("the old pain heard");
     assert!(
         old.routed_at.is_none() && old.tries == 0,
-        "the old pain was taken as routed, or spent tries, while its keeper's ask never went: \
-         {old:?}"
+        "the old pain was taken as routed, or spent tries, while its keeper's ask was \
+         {untried:?}: {old:?}"
     );
     let mut to_keeper = Vec::new();
     hear(&place.ears(), CELLS, &mut |to, text| {
@@ -261,20 +328,21 @@ fn a_pain_too_old_for_its_owner_keeps_its_tries_while_the_keeper_s_ask_is_out_of
         to_keeper
             .iter()
             .any(|text| text.contains("status update please")),
-        "five runs out of time spent the old pain's tries: {to_keeper:?}"
+        "five runs {untried:?} spent the old pain's tries: {to_keeper:?}"
     );
 }
 
 #[test]
 fn a_keeper_s_note_not_tried_goes_with_the_next_run_s() {
-    for untried in [Sent::Held, Sent::OutOfTime] {
+    for untried in [Sent::Held, Sent::OutOfTime, Sent::Unstarted] {
         a_keeper_s_note_answered(untried);
     }
 }
 
 /// The keeper's one note, answered `untried` by its first run, goes with
-/// the next and is said no more after; one out of time is the hour's
-/// trouble, and one held, as the node stopped answering, is not.
+/// the next and is said no more after; one out of time, or that the
+/// mycelium couldn't start, is the hour's trouble, and one held, as the
+/// node stopped answering, is not.
 fn a_keeper_s_note_answered(untried: Sent) {
     let place = Place::new("untried-note");
     place.routes();
@@ -295,10 +363,10 @@ fn a_keeper_s_note_answered(untried: Sent) {
         untried_sends, 1,
         "the keeper's one note wasn't {untried:?}: {hour:?}"
     );
-    let troubles: &[&str] = if untried == Sent::Held {
-        &[]
-    } else {
-        &["1 sends wait for the next run, as its time for sends ran out"]
+    let troubles: &[&str] = match untried {
+        Sent::OutOfTime => &["1 sends wait for the next run, as its time for sends ran out"],
+        Sent::Unstarted => &["1 sends wait for the next run, as the mycelium couldn't be started"],
+        _ => &[],
     };
     assert_eq!(
         hour.troubles, troubles,

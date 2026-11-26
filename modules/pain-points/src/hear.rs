@@ -41,7 +41,7 @@ pub mod troubles;
 use counted::hour_of;
 use heard::Heard;
 pub use node::Sent;
-use node::{Node, SEND_AT_MOST, SENDS_END, output_within};
+use node::{Node, SEND_AT_MOST, SENDS_END, Silence, output_within};
 use route::{Cell, Routes};
 use said::Carried;
 use serde::{Deserialize, Serialize};
@@ -233,16 +233,40 @@ pub fn listen(
     let hour = hear_putting(&ears, &cells, &mut |to, text, put| node.send(to, text, put))?;
     drop(lock);
     // Sends held by a node that stopped answering are no trouble of their
-    // own, as the ask that found it so failed, but they are said, so a
-    // quiet line isn't read as nothing to send. Those held as the run ran
-    // out of time are among the hour's troubles, in hour.json too, so runs
-    // always too slow to send fail and cadence's card says why.
-    let held = match node.held {
-        0 => String::new(),
-        held => format!("; {held} sends wait for the next run, as the mycelium stopped answering"),
-    };
-    let troubled = !hour.troubles.is_empty();
-    Ok(([said(&hour), held].concat(), troubled))
+    // own, as the ask that found it so failed, nor are those held for a
+    // routes.json read as it gained who to send as, which the next run
+    // reads whole; but each is said, so a quiet line isn't read as nothing
+    // to send. Those held as the run ran out of time, or as the mycelium
+    // couldn't be started, are among the hour's troubles, in hour.json
+    // too, so cadence's card says why; the journal names the error.
+    Ok((
+        [said(&hour), waits(&node)].concat(),
+        !hour.troubles.is_empty(),
+    ))
+}
+
+/// What the journal says of the sends `node` held, each by why.
+fn waits(node: &Node) -> String {
+    use std::fmt::Write;
+    let mut said = String::new();
+    let (held, fromless) = (node.held, node.fromless);
+    if held > 0 {
+        let _ = write!(
+            said,
+            "; {held} sends wait for the next run, as the mycelium stopped answering"
+        );
+    }
+    if let Some(Silence::Unstarted(kind)) = node.silent {
+        let _ = write!(said, "; the mycelium couldn't be started: {kind}");
+    }
+    if fromless > 0 {
+        let _ = write!(
+            said,
+            "; {fromless} sends wait for the next run, as routes.json named no one to send as \
+             when it began"
+        );
+    }
+    said
 }
 
 /// The hour in a line for the journal.
@@ -376,7 +400,7 @@ pub fn hear_putting(
     // was found: it waits, its tries kept, as the hour's troubles say of a
     // fallback or keeper that is one. Each send that failed, or waits as
     // the run's time for sends ran out, is counted for the hour.
-    let (mut failed, mut out_of_time) = (0, 0);
+    let (mut failed, mut out_of_time, mut unstarted) = (0, 0, 0);
     let mut guarded = |to: &str, text: &str, put: Put| {
         if routes.refuses(to) {
             return Sent::Held;
@@ -384,6 +408,7 @@ pub fn hear_putting(
         let answer = send(to, text, put);
         failed += usize::from(answer == Sent::Failed);
         out_of_time += usize::from(answer == Sent::OutOfTime);
+        unstarted += usize::from(answer == Sent::Unstarted);
         answer
     };
     let mut asked = |to: &str, text: &str| guarded(to, text, Put::Asked);
@@ -417,7 +442,7 @@ pub fn hear_putting(
     hour.troubles = troubles(
         &ears.state,
         &routes,
-        (failed, out_of_time, given_up),
+        (failed, out_of_time, unstarted, given_up),
         hour.cellless_since
             .is_some_and(|since| ears.at - since >= CELLLESS_AT_MOST_MS),
     );
@@ -628,7 +653,7 @@ fn route_waiting(
                 }
             }
             // Not tried, so its tries stand for the next run.
-            Sent::Held | Sent::OutOfTime => {}
+            Sent::Held | Sent::OutOfTime | Sent::Unstarted => {}
         }
         let _ = keep(heard_at, kept);
     }
@@ -711,7 +736,7 @@ fn note_for_keeper(
                 kept[n].routed_at = Some(ears.at);
             }
             Sent::Failed => kept[n].tries = kept[n].tries.max(SEND_TRIES) + 1,
-            Sent::Held | Sent::OutOfTime => {}
+            Sent::Held | Sent::OutOfTime | Sent::Unstarted => {}
         }
     }
     let _ = keep(heard_at, kept);
@@ -735,7 +760,7 @@ fn ledger_note_of(
 fn wait_for_note(kept: &mut [Heard], of: &[usize], sent: Sent, at: i64) {
     for &n in of {
         kept[n].unnoted_since = match sent {
-            Sent::Held | Sent::OutOfTime => kept[n].unnoted_since.or(Some(at)),
+            Sent::Held | Sent::OutOfTime | Sent::Unstarted => kept[n].unnoted_since.or(Some(at)),
             Sent::Went | Sent::Failed => None,
         };
     }
