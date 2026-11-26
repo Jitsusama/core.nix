@@ -3800,8 +3800,10 @@ import {
     sproutOpener = null;
     if (said && view.contains(document.activeElement)) where.textContent = "New work closed; nothing was handed on.";
   }
-  const toggleSprout = () =>
-    sproutLine.hidden ? openSprout(chosen?.kind === "cell" ? chosen.id : null, { on: drawerOn() }) : closeSprout();
+  // The s key and the control open it from what is open now: the cell, or
+  // the machine whose drawer is.
+  const openSproutOnOpen = () => openSprout(chosen?.kind === "cell" ? chosen.id : null, { on: drawerOn() });
+  const toggleSprout = () => (sproutLine.hidden ? openSproutOnOpen() : closeSprout());
   sproutLine.addEventListener("submit", (e) => {
     e.preventDefault();
     const from = sproutFrom !== null && sproutFromBox.checked ? sproutFrom : null;
@@ -5108,7 +5110,7 @@ import {
     keys: () => toggleKeys(),
     find: () => openFind(),
     "close-find": () => closeFind(),
-    sprout: () => openSprout(chosen?.kind === "cell" ? chosen.id : null),
+    sprout: openSproutOnOpen,
     "close-sprout": () => closeSprout(),
     "next-found": () => stepFound(1),
     "found-before": () => stepFound(-1),
@@ -5161,7 +5163,7 @@ import {
     e.preventDefault();
     view.focus();
   });
-  const taps = { "/": openFind, s: () => openSprout(chosen?.kind === "cell" ? chosen.id : null), ".": toggleNow, "?": toggleKeys };
+  const taps = { "/": openFind, s: openSproutOnOpen, ".": toggleNow, "?": toggleKeys };
   // A keycap in the key line does what its key does under a pointer, as
   // the Network's does. It isn't a control of its own: one showing only
   // "/" and named "Find a cell" is named apart from what shows, a voice
