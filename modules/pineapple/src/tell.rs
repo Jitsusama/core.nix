@@ -92,6 +92,21 @@ fn text<'a>(value: &'a Value, field: &str) -> &'a str {
     value[field].as_str().unwrap_or_default()
 }
 
+/// How many characters of what was said a row carries: enough to know the
+/// saying by, while the whole of it is at the row's link.
+const GIST: usize = 280;
+
+/// What was said, as a row, its notice and Joel's phone show it: on one
+/// line, and cut after [`GIST`] characters, so a long comment heard costs
+/// the launcher and his notices no more than a short one.
+fn gist(said: &str) -> String {
+    let line = said.split_whitespace().collect::<Vec<_>>().join(" ");
+    match line.char_indices().nth(GIST) {
+        Some((cut, _)) => format!("{} ...", line[..cut].trim_end()),
+        None => line,
+    }
+}
+
 fn strings(value: &Value, field: &str) -> Vec<String> {
     value[field]
         .as_array()
@@ -181,7 +196,7 @@ fn stop_row(stop: &Standing, kept: &Kept, words: &Words) -> Value {
         "stop": stop.id,
         "saying": stop.id,
         "link": text(record, "where"),
-        "words": text(record, "words"),
+        "words": gist(text(record, "words")),
         "said_by": text(record, "said_by"),
         "by_joel": by_joel,
         "reaches": reaches,
@@ -281,7 +296,7 @@ fn alert_row(key: &str, latest: &Value, count: usize, words: &Words) -> Value {
         "since": latest["heard_at"].as_u64().unwrap_or(0),
         "saying": text(latest, "key"),
         "link": text(latest, "link"),
-        "words": text(latest, "text"),
+        "words": gist(text(latest, "text")),
         "said_by": text(latest, "author"),
         "said_at": text(latest, "said_at"),
         "by_joel": false,
@@ -329,6 +344,36 @@ pub fn said_reach(reach: &str, words: &Words) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn what_was_said_is_shown_on_one_line_and_cut_when_long() {
+        assert_eq!(
+            gist("@joel pineapple override"),
+            "@joel pineapple override",
+            "a short saying is shown as said"
+        );
+        assert_eq!(
+            gist("pineapple override\n\n  on this one\n"),
+            "pineapple override on this one",
+            "its lines are joined into one"
+        );
+        // Its 280th byte falls inside a letter, so a cut by bytes fails.
+        assert_eq!(
+            gist(&format!("x{}", "\u{e9}".repeat(500))),
+            format!("x{} ...", "\u{e9}".repeat(279)),
+            "a long one is cut after 280 letters, on a letter's edge, saying it was"
+        );
+        assert_eq!(
+            gist(&format!("{} {}", "a".repeat(279), "b".repeat(9))),
+            format!("{} ...", "a".repeat(279)),
+            "a cut just after a space leaves no space before its mark"
+        );
+        assert_eq!(
+            gist(&"x".repeat(280)),
+            "x".repeat(280),
+            "one just as long is shown whole"
+        );
+    }
 
     fn words() -> Words {
         Words::of(&[
@@ -408,6 +453,32 @@ mod tests {
         assert_eq!(row["acts"][1]["costly"], false, "a widen acts at once");
         assert_eq!(row["parked"], 2, "two sessions parked, each once");
         assert_eq!(row["shadow"], false, "a live stop is served");
+    }
+
+    #[test]
+    fn a_long_saying_is_its_gist_in_a_stops_row_and_an_alerts() {
+        let said = format!("pineapple override\n{}", "and more ".repeat(50));
+        let mut stop = standing("slack:C1:1.0", &["pr:example/shop#12"], false);
+        stop.record["words"] = json!(said);
+        let mut joke = line("slack:C1:2.0", "slack:C2:0.5", "waved:joke", 20);
+        joke["text"] = json!(said);
+        let kept = Kept {
+            stops: vec![stop],
+            decisions: vec![joke],
+            ..Kept::default()
+        };
+        let rows = rows(&kept, 30, &words());
+        let shown: Vec<&Value> = rows.iter().map(|row| &row["words"]).collect();
+        let cut = json!(gist(&said));
+        assert!(
+            cut.as_str().is_some_and(|cut| cut.ends_with(" ...")),
+            "the saying is long enough to be cut"
+        );
+        assert_eq!(
+            shown,
+            [&cut, &cut],
+            "the stop's row and the alert's each show its gist, not the whole"
+        );
     }
 
     #[test]
