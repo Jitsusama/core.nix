@@ -830,7 +830,7 @@ in
   desktop = {
     glyph = nerd "f01c4";
     console = "d";
-    means = "the desktop: its windows, columns, workspaces and screens, and the place holding them";
+    means = "the desktop: its windows, columns, workspaces and screens, and the windows' place";
   };
   touchscreen = {
     glyph = nerd "f0d76";
@@ -1434,9 +1434,9 @@ in
       "..###.##"
     ];
   };
-  # The margin's puppy, a second animal beside the cat, which nothing draws
-  # yet: its poses come first, its own answers to the mouse after the cat
-  # peeks in (WCJQSG, d62dc771). Sitting faces him: a flat crown, its ears
+  # The margin's puppy, a second animal beside the cat, drawn as it visits
+  # the cat (modules/margin-cat/MarginCatPuppy.js); its own answers to the
+  # mouse come after the cat peeks in (WCJQSG, d62dc771). Sitting faces him: a flat crown, its ears
   # flaring off it and hanging down to the muzzle either side where the
   # cat's stand in points, and its tail up beside it. It's stockier than the cat,
   # so its poses are held to its own sitting. Its glyph is the dog glyph, its

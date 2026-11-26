@@ -7,6 +7,8 @@
 {
   account,
   copied,
+  copiedWith,
+  programStepWith,
   graphical,
   launcherOnNiri,
   lib,
@@ -338,6 +340,191 @@ in
       touch $out
     '';
 
+  # copied's walk and guard, by what it makes of tables given it, so nothing
+  # is built: it copies every file a root reaches, walked here apart from it;
+  # a row in another order copies the same; and a row left empty is refused,
+  # naming its file. Each case takes its file from imports.nix, so an edit to
+  # one file's imports moves a case rather than failing it. Today's rows are
+  # all sorted, so only this sees the order case break. A program's own file,
+  # placed in a folder of its own, is copied there and brings what copying the
+  # file it imports does, guarded as copying it is, its name quoted; one
+  # importing a file the shell's folder doesn't hold, a folder, a file above
+  # the shell's folder or one written from the root is refused, each on its
+  # own escaped line naming the file, the import as written and what to do
+  # instead, and the step stops. So is an own file given by anything but its
+  # plain place, alone or beside those (programStepWith).
+  a-check-copies-what-each-file-imports =
+    let
+      table = import ./imports.nix;
+      root = "launcher/ReadyRows.qml";
+      rowOf = file: table.${file} or [ ];
+      entries = map (key: {
+        inherit key;
+      });
+      reach =
+        file:
+        map (entry: entry.key) (
+          lib.genericClosure {
+            startSet = entries [ file ];
+            operator = entry: entries (rowOf entry.key);
+          }
+        );
+      reached = reach root;
+      several = lib.filter (file: lib.length (rowOf file) > 1) reached;
+      picked = lib.head several;
+      withTurned = table // {
+        ${picked} = lib.reverseList (rowOf picked);
+      };
+      withEmptied = table // {
+        ${picked} = [ ];
+      };
+      real = copiedWith table [ root ];
+      lines = lib.splitString "\n";
+      copyLines = script: lib.filter (lib.hasPrefix "cp ") (lines script);
+      at = pred: script: lib.lists.findFirstIndex pred null (lines script);
+      making =
+        folder: line:
+        lib.hasPrefix "mkdir -p " line && lib.elem (lib.escapeShellArg folder) (lib.splitString " " line);
+      uncopiedBy = script: lib.filter (file: !(lib.any (lib.hasSuffix " ${file}") (copyLines script)));
+      uncopied = uncopiedBy real reached;
+      leftOut = lib.concatStringsSep ", " uncopied;
+      # A program's own file in a folder nothing of the shell's is in, so only
+      # the step makes it, importing one as a file there names it.
+      ownFolder = "planted";
+      own = "${ownFolder}/Planted.js";
+      ownImporting = written: {
+        ${own} = builtins.toFile "Planted.js" ".import \"${written}\" as Planted\n";
+      };
+      planted = programStepWith table [ ] (ownImporting "../${picked}");
+      unplanted = uncopiedBy planted ([ own ] ++ reach picked);
+      madeAt = at (making ownFolder) planted;
+      ownCopiedAt = at (lib.hasSuffix " ${lib.escapeShellArg own}") planted;
+      # A program's own file whose folder and name the shell must take as
+      # they are.
+      spacedFolder = "Planted spaced";
+      spaced = "${spacedFolder}/Planted.js";
+      spacedStep = lines (programStepWith table [ ] { ${spaced} = builtins.toFile "Planted.js" ""; });
+      spacedUnquoted =
+        !(lib.elem "mkdir -p ${lib.escapeShellArg spacedFolder}" spacedStep)
+        || !(lib.any (lib.hasSuffix " ${lib.escapeShellArg spaced}") spacedStep);
+      ownUnmade = madeAt == null || ownCopiedAt != null && madeAt > ownCopiedAt;
+      ownHeld = builtins.pathExists (../. + "/${ownFolder}");
+      stray = "Planted-nowhere.js";
+      strayHeld = lib.any (file: builtins.pathExists (../. + "/${file}")) [
+        stray
+        quoted
+      ];
+      # Each import a program's file can't be given, as written in it, and
+      # why the step must say it can't: a missing file, one whose name the
+      # shell must take as it is written, a file above the shell's folder
+      # that is there (the flake's own), and a folder, named or as ".."
+      # alone, a file above the folder even when given as the program's own,
+      # and one written from the root, which read beside its file names the
+      # planted one. All are in one file, placed after the
+      # planted one, so each must be said, of the file that imports it. The
+      # program's own files given by anything but their plain place (above
+      # the folder, from the root, through . or ..), imported or not, must
+      # each be refused too, or they'd be copied elsewhere than said.
+      quoted = "it's-$(gone).js";
+      missing =
+        file: "not in modules/quickshell; fix the import, or add it to the program's own files as ${file}";
+      folder = "a folder; import a JavaScript file by name, or a type through qs with its file in programRoots (modules/quickshell/checks/helpers.nix)";
+      above = "above modules/quickshell, where a check can't be given a file; move it in";
+      unplain = "not its plain place in modules/quickshell; give it as that place, as launcher/Reader.js";
+      ownAbove = "../Planted-above.js";
+      outside = [
+        ownAbove
+        "../Planted-unimported.js"
+        "/Planted-rooted.js"
+        "./Planted-dotted.js"
+        "${ownFolder}/../Planted-climbed.js"
+      ];
+      strays = {
+        "../${stray}" = missing stray;
+        "../${quoted}" = missing quoted;
+        "../../../flake.nix" = above;
+        "../${ownAbove}" = above;
+        "../launcher" = folder;
+        ".." = folder;
+        "/${baseNameOf own}" =
+          "written from the root, where a check can't be given a file; write it from this file";
+      };
+      strayFile = "${ownFolder}/Strays.js";
+      # The strays alone, and beside the outside files, must each be said.
+      strayedWith =
+        given:
+        lines (
+          programStepWith table [ ] (
+            ownImporting "../${picked}"
+            // {
+              ${strayFile} = builtins.toFile "Strays.js" (
+                lib.concatMapStrings (written: ".import \"${written}\" as Stray\n") (lib.attrNames strays)
+              );
+            }
+            // given
+          )
+        );
+      strayedAlone = strayedWith { };
+      strayed = strayedWith outsideGiven;
+      bothSay = line: lib.elem line strayedAlone && lib.elem line strayed;
+      outsideGiven = lib.genAttrs outside (_file: builtins.toFile "Planted-outside.js" "");
+      # Given alone, with no import astray, they must still stop the step.
+      outsideAlone = programStepWith table [ ] (ownImporting "../${picked}" // outsideGiven);
+      outsideCopied = !(lib.elem "exit 1" (lines outsideAlone));
+      sayingOf =
+        written: "the program's file at ${strayFile} imports \"${written}\": ${strays.${written}}";
+      strayUnrefused = lib.filter (
+        written: !(bothSay "echo ${lib.escapeShellArg (sayingOf written)} >&2")
+      ) (lib.attrNames strays);
+      strayUnended = !(bothSay "exit 1");
+      outsideLine =
+        file: "echo ${lib.escapeShellArg "the program's own file given as \"${file}\": ${unplain}"} >&2";
+      outsideUnrefused = lib.filter (
+        file: !(lib.elem (outsideLine file) strayed && lib.elem (outsideLine file) (lines outsideAlone))
+      ) outside;
+      strayHeldSaid = "the shell's folder holds ${stray} or ${quoted}; give this check other names";
+      ownHeldSaid = "the shell's folder holds ${ownFolder}; give this check another folder";
+      plantedLeftOut = lib.concatStringsSep ", " unplanted;
+      unplantedSaid = "a program's file importing ${picked} left out ${plantedLeftOut}";
+      ownUnmadeSaid = "a program's file in ${ownFolder} was copied with no folder made first";
+      unrefusedSaid = "a program's file importing these wasn't refused as each should be: ";
+      refusal = "modules/quickshell/checks/imports.nix doesn't say";
+      refused = file: script: lib.hasInfix refusal script && lib.hasInfix file script;
+      sameTurned = copiedWith withTurned [ root ] == real;
+      emptiedRefused = refused picked (copiedWith withEmptied [ root ]);
+      plantedEmptiedRefused = refused picked (
+        programStepWith withEmptied [ ] (ownImporting "../${picked}")
+      );
+      plantedEmptiedSaid = "${picked}'s row, emptied, went unrefused from a program's file";
+      failures =
+        if refused "" real then
+          [ "imports.nix's rows don't match the files; the shell's checks name which" ]
+        else if several == [ ] then
+          [ "nothing ${root} reaches imports two files; give this check another root" ]
+        else
+          lib.optional (uncopied != [ ]) "copying ${root} left out ${leftOut}"
+          ++ lib.optional (!sameTurned) "${picked}'s row, reversed, copied otherwise"
+          ++ lib.optional (!emptiedRefused) "${picked}'s row, emptied, went unrefused"
+          ++ lib.optional (!plantedEmptiedRefused) plantedEmptiedSaid
+          ++ lib.optional (unplanted != [ ]) unplantedSaid
+          ++ lib.optional ownUnmade ownUnmadeSaid
+          ++ lib.optional ownHeld ownHeldSaid
+          ++ lib.optional strayHeld strayHeldSaid
+          ++ lib.optional (strayUnrefused != [ ]) (unrefusedSaid + lib.concatStringsSep ", " strayUnrefused)
+          ++ lib.optional strayUnended "a program's file importing those went on unstopped"
+          ++ lib.optional (outsideUnrefused != [ ]) (
+            "a program's own files given outside the shell's folder weren't refused: "
+            + lib.concatStringsSep ", " outsideUnrefused
+          )
+          ++ lib.optional outsideCopied "a program's own files given outside the shell's folder alone were copied"
+          ++ lib.optional spacedUnquoted "a program's own file at ${spaced} was made or copied unquoted";
+    in
+    pkgs.runCommandLocal "a-check-copies-what-each-file-imports" { } ''
+      ${lib.concatMapStrings (failure: "echo ${lib.escapeShellArg failure} >&2\n") failures}
+      ${lib.optionalString (failures != [ ]) "exit 1"}
+      touch $out
+    '';
+
   # Recent means one thing in every place it stands: the last nine things,
   # newest first, each once, never what's open, as
   # modules/quickshell/tests/recent.qml holds launcher/Recent.js to it in Qt's
@@ -614,8 +801,9 @@ in
   # flash, and an opening the collector stalled says where the heap stood
   # as it was asked, as modules/quickshell/tests/pacing.qml holds
   # launcher/ChangesPresented.js, launcher/Collector.js, launcher/Flash.js,
-  # launcher/Pacing.js, launcher/Presented.js, launcher/Spots.js,
-  # launcher/Thread.js and launcher/Wanted.js to it in Qt's own engine.
+  # launcher/Pacing.js, launcher/Presented.js with its launcher/KeysSaid.js,
+  # launcher/Spots.js, launcher/Thread.js and launcher/Wanted.js to it in
+  # Qt's own engine.
   the-launcher-paces-its-refreshes =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -627,6 +815,7 @@ in
       cp ${../launcher/ChangesPresented.js} ChangesPresented.js
       cp ${../launcher/Collector.js} Collector.js
       cp ${../launcher/Flash.js} Flash.js
+      cp ${../launcher/KeysSaid.js} KeysSaid.js
       cp ${../launcher/Makings.js} Makings.js
       cp ${../launcher/Order.js} Order.js
       cp ${../launcher/Pacing.js} Pacing.js

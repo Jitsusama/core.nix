@@ -21,19 +21,17 @@
         "windows:this",
         "windows",
         "tabs",
-        "displays",
         "clipboard",
         "selection",
         "timers",
         "capture",
         "dictation",
         "session:recording",
+        "media",
         "emoji",
         "session:quiet"
       ],
       "commands": [
-        "command:brightness",
-        "command:desk",
         "command:time",
         "command:timer",
         "command:weather",
@@ -61,14 +59,16 @@
         "energy",
         "session:awake",
         "bluetooth",
+        "displays",
         "sound",
-        "media",
         "cameras",
         "light",
         "firmware",
         "machines"
       ],
       "commands": [
+        "command:brightness",
+        "command:desk",
         "command:volume"
       ]
     },

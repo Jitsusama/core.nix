@@ -250,7 +250,12 @@ named "${home}"
 # before its digits as well, which GNU's find refuses, so what this one
 # says is left out of what's read. ' -1' and '+-1' are -1, find's own no
 # limit, and zeros before a digit count for nothing however many there are.
-for given in '+3' ' 3' '+ +3' ' -1' '+-1' '0000000000000000000003'; do
+# A number past a long long, 2^64 + 1, or at 19 digits by one or in its
+# first ten, is held at its most, and kept in an int, as -1, so it reaches
+# the guarded folders as no limit does, where one wrapped round to 0 or 1
+# wouldn't. One wrapped round to 2 or more would reach them too, and pass.
+for given in '+3' ' 3' '+ +3' ' -1' '+-1' '0000000000000000000003' '18446744073709551617' \
+  '9223372036854775808' '9300000000000000000'; do
   search "${home}" -maxdepth 1 -maxdepth "${given}" -name needle >/dev/null
   if ! grep -qxF "${note}" "${said}"; then
     echo "${who} with -maxdepth 1 then '${given}' ran as -maxdepth 1: $(<"${said}")" >&2
@@ -341,7 +346,10 @@ fi
 # a slashed start named as macOS doubles the slash, and as Linux doesn't;
 # / pruned by both the home folder's names; a depth test, -f, -- and
 # -mindepth 1 pruned; and depth first, as an option or a primary, or a
-# -mindepth past a guarded folder, given as typed.
+# -mindepth past a guarded folder, given as typed. -d is -depth, so a number
+# after it is a depth test too. A command ends at a word starting with ;, or
+# with + after {}, so a -mindepth after either is read; a ; or + inside a
+# word, or a + after anything else, goes on with the command.
 printf '#!%s\nprintf "%%s\\n" "$@"\n' "${BASH}" >"${stand}/find"
 chmod +x "${stand}/find"
 real=${stand}/find
@@ -361,9 +369,19 @@ if ! grep -qxF "/${home#/}/Desktop" <<<"${said//\\/}" \
   exit 1
 fi
 # Each pruned search keeps its options and start first, as typed.
-for args in depth-test f-path dashes shallow option exec-d; do
+for args in depth-test d-test d-plus depth-minus d-signs f-path dashes shallow option exec-d \
+  semi-inside plus-led-early plus-alone-early plus-inside; do
   case ${args} in
     depth-test) lead=("${home}") && given "${home}" -depth 2 -name x ;;
+    d-test) lead=("${home}") && given "${home}" -d 2 -name x ;;
+    # A signed depth is a test of a file's depth too, as find reads it.
+    d-plus) lead=("${home}") && given "${home}" -d +2 -name x ;;
+    depth-minus) lead=("${home}") && given "${home}" -depth -2 -name x ;;
+    d-signs) lead=("${home}") && given "${home}" -d +-2 -name x ;;
+    semi-inside) lead=("${home}") && given "${home}" -exec true 'x;' -mindepth 3 ';' ;;
+    plus-led-early) lead=("${home}") && given "${home}" -exec true +x -mindepth 3 ';' ;;
+    plus-alone-early) lead=("${home}") && given "${home}" -exec true + -mindepth 3 ';' ;;
+    plus-inside) lead=("${home}") && given "${home}" -exec true '{}' x+ -mindepth 3 ';' ;;
     f-path) lead=(-f "${home}") && given -f "${home}" -name x ;;
     dashes) lead=(-- "${home}") && given -- "${home}" -name x ;;
     shallow) lead=("${home}") && given "${home}" -mindepth 1 -name x ;;
@@ -387,9 +405,19 @@ for action in -ok -okdir; do
     exit 1
   fi
 done
-for args in depth-primary depth-option deep delete; do
+# Kept in an int, 2^32 + 1 is 1, zeros past a long long's digits are 0, and
+# one below a long long is held at its least, whose low 32 bits are 0, each
+# of which opens no guarded folder. That one is typed after a +, since find
+# refuses a -maxdepth or -mindepth that starts with a -.
+for args in depth-primary depth-option deep delete semi-led plus-led int-wraps zeros \
+  low-held; do
   case ${args} in
     depth-primary) given "${home}" -name x -d ;;
+    semi-led) given "${home}" -exec true ';x' -mindepth 3 ;;
+    plus-led) given "${home}" -exec true '{}' +x -mindepth 3 ;;
+    int-wraps) given "${home}" -maxdepth 3 -maxdepth 4294967297 -name x ;;
+    zeros) given "${home}" -maxdepth 3 -maxdepth 0000000000000000000000 -name x ;;
+    low-held) given "${home}" -maxdepth 3 -maxdepth +-9300000000000000000 -name x ;;
     depth-option) given -d "${home}" -name x ;;
     deep) given "${home}" -mindepth 2 -name x ;;
     delete) given "${home}" -name x -delete ;;

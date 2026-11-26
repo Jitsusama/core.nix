@@ -92,17 +92,27 @@ ShellRoot {
     property string told: ""
     property string asked: ""
     property string closed: ""
+    // When the read under way began, and when the one that gave what's
+    // told now did. Asks are read before what's told, so a refusal seen
+    // given was given before the told beside it was read.
+    property real readBegan: 0
+    property real toldAsOf: 0
+    // Whether a read has begun that its collector hasn't finished, which
+    // the process may say it no longer runs ahead of.
+    property bool collecting: false
 
     Process {
         id: reading
-        command: ["sh", "-c", "cat \"$0/told\"; echo ---; cat \"$0/asked\" 2>/dev/null; "
+        command: ["sh", "-c", "cat \"$0/asked\" 2>/dev/null; echo ---; cat \"$0/told\"; "
             + "echo ---; cat \"$0/closed\" 2>/dev/null", root.runtime]
         stdout: StdioCollector {
             onStreamFinished: {
-                const [told, asked, closed] = this.text.split("---\n");
-                root.told = told;
-                root.asked = asked ?? "";
+                const [asked, told, closed] = this.text.split("---\n");
+                root.asked = asked;
+                root.told = told ?? "";
                 root.closed = closed ?? "";
+                root.toldAsOf = root.readBegan;
+                root.collecting = false;
                 Qt.callLater(root.heard);
             }
         }
@@ -110,11 +120,18 @@ ShellRoot {
 
     Timer {
         // Reads again a while after each case asks, as notices are sent
-        // and Tuple is run.
+        // and Tuple is run. A tick while a read is still under way starts
+        // none, so it mustn't say when that read began.
         interval: 200
         repeat: true
         running: /^(told|asked|closed)/.test(root.waiting)
-        onTriggered: reading.running = true
+        onTriggered: {
+            if (!reading.running && !root.collecting) {
+                root.collecting = true;
+                root.readBegan = Date.now();
+                reading.running = true;
+            }
+        }
     }
 
     readonly property real started: Date.now() - 60 * 1000
@@ -282,7 +299,7 @@ ShellRoot {
     }
 
     // Tells Tuple's stand-in to answer the camera command asked the time
-    // given (people.nix says how).
+    // given (tests/stand-ins/tuple-stand-in.sh says how).
     function letTupleAnswer(command, time) {
         root.write(`${root.runtime}/go-${command}-${time}`, "");
     }
@@ -447,14 +464,33 @@ ShellRoot {
 
     function inHisRoom() {
         root.says(null);
-        root.step("Joel's call kept", () => Tuple.recent.length === 3, root.his);
+        root.step("Joel's call kept", () => Tuple.recent.length === 3, root.keptHis);
+    }
+
+    // The stale stop and picker are refused, and what's told is read a
+    // second after, so nothing told reads as their refusals ignored, not
+    // yet given or not yet heard. The shell shows nothing as it ignores
+    // one, so a second, five reads, stands for its milliseconds.
+    property real staleRefusedBy: 0
+    function keptHis() {
+        root.step("asked's stale stop and picker refused",
+            () => /^answered webcam stop 4$/m.test(root.asked)
+                && /^answered webcam start 3$/m.test(root.asked),
+            root.toldPastStale);
+    }
+
+    function toldPastStale() {
+        root.staleRefusedBy = root.toldAsOf;
+        root.step("told read a second past the stale refusals",
+            () => root.toldAsOf >= root.staleRefusedBy + 1000, root.his);
     }
 
     function his() {
         const kept = Tuple.recent[0];
         expect("kept as Joel's", kept.since === root.inRoom && kept.caller === "",
             JSON.stringify(Tuple.recent));
-        // Tuple refused the stale stop and picker long since.
+        // Tuple refused the stale stop and picker a second before, as the
+        // steps before saw.
         expect("a stop refused once the camera was said off told nothing",
             root.timesAsked("webcam stop") === 4
             && root.noticesSaying("may still be in the call") === 2, root.told);
