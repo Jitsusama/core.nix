@@ -56,7 +56,10 @@ fn a_claim_of_his_rule_with_nothing_behind_it_is_counted_and_its_sender_named() 
     ];
     let m = unsourced(&all, NOW);
     assert!((m.now - 2.0).abs() < 0.5, "two unbacked, got {}", m.now);
-    assert!(m.past().is_some(), "an unbacked claim isn't past its target of 0");
+    assert!(
+        m.past().is_some(),
+        "an unbacked claim isn't past its target of 0"
+    );
     assert_eq!(
         m.behind,
         [
@@ -82,7 +85,10 @@ fn a_quote_a_date_or_a_clock_beside_his_name_backs_a_claim() {
         "Joel ruled it.\n\"Never block the work\", he said.",
     ];
     for text in backed {
-        assert!(claims(text), "the case claims nothing, so tests nothing: {text}");
+        assert!(
+            claims(text),
+            "the case claims nothing, so tests nothing: {text}"
+        );
         assert_eq!(unbacked(text), None, "a backed claim was counted: {text}");
     }
 }
@@ -98,8 +104,29 @@ fn words_that_only_look_like_a_date_or_a_quote_back_nothing() {
         "Joel ruled it. The box fell. It came back. It was 22 Nov by then.",
     ];
     for text in unbacked_ones {
-        assert!(unbacked(text).is_some(), "an unbacked claim went uncounted: {text}");
+        assert!(
+            unbacked(text).is_some(),
+            "an unbacked claim went uncounted: {text}"
+        );
     }
+}
+
+/// Relays cite his words by the message that carried them, which backs
+/// a claim only when his quote or its date travels with the id.
+#[test]
+fn a_relayed_ruling_is_backed_by_the_words_it_carries_not_by_its_id_alone() {
+    let carried = "Per Joel, loops come first (WCJQSG 88ee4e51: Joel, 11:30 Thu 26 Nov, \
+                   verbatim: \"we need to make sure we have various self improvement loops \
+                   built in\").";
+    assert_eq!(
+        unbacked(carried),
+        None,
+        "a relay carrying his dated words was counted"
+    );
+    assert!(
+        unbacked("Per Joel, loops come first (WCJQSG 88ee4e51).").is_some(),
+        "a relay naming only the message id went uncounted"
+    );
 }
 
 #[test]
@@ -154,8 +181,15 @@ fn cadences_own_asks_and_answers_to_them_are_left_out() {
     );
     answer.re = Some(ask.id.clone());
     let m = unsourced(&[ask, answer], NOW);
-    assert_eq!(m.behind, Vec::<String>::new(), "cadence's ask or its answer was counted");
-    assert_eq!(m.owner, KEEPER, "with none unsourced, the keeper answers for it");
+    assert_eq!(
+        m.behind,
+        Vec::<String>::new(),
+        "cadence's ask or its answer was counted"
+    );
+    assert_eq!(
+        m.owner, KEEPER,
+        "with none unsourced, the keeper answers for it"
+    );
 }
 
 #[test]
@@ -174,7 +208,10 @@ fn a_claim_older_than_a_day_or_sent_twice_is_counted_once_or_not_at_all() {
 fn with_no_messages_folder_the_measure_is_left_unjudged() {
     let home = std::env::temp_dir().join(format!("ruled-{}", std::process::id()));
     let m = read(&home, NOW);
-    assert_eq!(m.target, None, "an unread mesh was judged as none unsourced");
+    assert_eq!(
+        m.target, None,
+        "an unread mesh was judged as none unsourced"
+    );
     let messages = home.join("pi/agentic-harness.pi/mesh-workflow/messages");
     fs::create_dir_all(&messages).expect("the messages folder couldn't be made");
     let m = read(&home, NOW);

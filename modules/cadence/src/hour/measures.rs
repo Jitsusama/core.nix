@@ -147,6 +147,18 @@ pub fn drag(measures: &[Measure]) -> Option<&Measure> {
         .map(|(m, _)| m)
 }
 
+/// The measures read from the mesh's messages of the last day under
+/// `state_home`: the holds no ask in `asks` dates, and the claims of Joel's
+/// rule with no word of his. Read together, so gathering them takes the
+/// hour's gather one line, and it stays within clippy's hundred.
+#[must_use]
+pub fn from_mesh(state_home: &std::path::Path, asks: &str, now: i64) -> [Measure; 2] {
+    [
+        holds::read(state_home, asks, now),
+        ruled::read(state_home, now),
+    ]
+}
+
 fn lines(text: &str) -> impl Iterator<Item = Value> + '_ {
     text.lines()
         .filter_map(|line| serde_json::from_str(line).ok())

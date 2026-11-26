@@ -385,13 +385,16 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
         .and_then(|rest| rest.rsplit_once(':'));
     if let Some((owner, id)) = claimed {
         let (opens, ends) = (format!("[{id}] "), format!(" · {owner}"));
-        return measures.iter().find(|m| m.key == ruled::KEY).is_some_and(|m| {
-            m.target.is_some()
-                && !m
-                    .behind
-                    .iter()
-                    .any(|line| line.starts_with(&opens) && line.ends_with(&ends))
-        });
+        return measures
+            .iter()
+            .find(|m| m.key == ruled::KEY)
+            .is_some_and(|m| {
+                m.target.is_some()
+                    && !m
+                        .behind
+                        .iter()
+                        .any(|line| line.starts_with(&opens) && line.ends_with(&ends))
+            });
     }
     // An unread file leaves only its one line, never a figure, so a drag
     // isn't closed while its figure can't be seen; a figure written with no
@@ -1162,8 +1165,10 @@ mod tests {
         assert!(drag(&both).is_none(), "a claim of his rule led the drag");
         let mut ledger = Vec::new();
         let told = file(&mut ledger, &both, "2026-11-26", 1000);
-        let asked: Vec<&(String, String)> =
-            told.iter().filter(|(_, text)| text.contains("Joel ruled")).collect();
+        let asked: Vec<&(String, String)> = told
+            .iter()
+            .filter(|(_, text)| text.contains("Joel ruled"))
+            .collect();
         let mut senders: Vec<&str> = asked.iter().map(|(to, _)| to.as_str()).collect();
         senders.sort_unstable();
         assert_eq!(senders, ["5UTLKM", "T6E7X6"], "a sender wasn't asked apart");
@@ -1189,7 +1194,11 @@ mod tests {
             keys.sort_unstable();
             keys
         };
-        assert_eq!(open(&ledger).len(), 2, "a claim closed while the mesh went unread");
+        assert_eq!(
+            open(&ledger).len(),
+            2,
+            "a claim closed while the mesh went unread"
+        );
         claims.behind.remove(0);
         file(&mut ledger, &[claims], "2026-11-26", 8200);
         assert_eq!(

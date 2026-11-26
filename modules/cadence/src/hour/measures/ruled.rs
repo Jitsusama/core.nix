@@ -146,8 +146,7 @@ pub fn unsourced(sent: &[Message], now: i64) -> Measure {
         .map(|m| short_id(&m.id))
         .collect();
     let answers_cadence = |m: &Message| {
-        m.re
-            .as_deref()
+        m.re.as_deref()
             .is_some_and(|re| cadence.contains(short_id(re)))
     };
     let mut seen = BTreeSet::new();
@@ -276,10 +275,7 @@ fn at_word(words: &str, phrase: &str) -> bool {
 /// year, month and day, or a weekday and a day.
 fn dated(text: &str) -> bool {
     let words = words(text);
-    let day = |word: &str| {
-        word.parse::<u8>()
-            .is_ok_and(|day| (1..=31).contains(&day))
-    };
+    let day = |word: &str| word.parse::<u8>().is_ok_and(|day| (1..=31).contains(&day));
     let month = |word: &str| named(&MONTHS, word);
     let weekday = |word: &str| named(&WEEKDAYS, word);
     let paired = words.windows(2).any(|pair| {
@@ -312,18 +308,29 @@ fn iso_date(word: &str) -> bool {
 fn clocked(text: &str) -> bool {
     let words: Vec<&str> = text.split_whitespace().collect();
     let joel = |word: &str| at_word(&word.to_lowercase(), "joel");
-    words.iter().enumerate().filter(|(_, w)| joel(w)).any(|(at, _)| {
-        let near = at.saturating_sub(BESIDE)..(at + BESIDE + 1).min(words.len());
-        words[near].iter().any(|word| clock(word))
-    })
+    words
+        .iter()
+        .enumerate()
+        .filter(|(_, w)| joel(w))
+        .any(|(at, _)| {
+            let near = at.saturating_sub(BESIDE)..(at + BESIDE + 1).min(words.len());
+            words[near].iter().any(|word| clock(word))
+        })
 }
 
 /// Whether `word` holds a clock time, an hour of one or two digits, a
 /// colon and two digits.
 fn clock(word: &str) -> bool {
     word.match_indices(':').any(|(at, _)| {
-        let before = word[..at].chars().rev().take_while(char::is_ascii_digit).count();
-        let after = word[at + 1..].chars().take_while(char::is_ascii_digit).count();
+        let before = word[..at]
+            .chars()
+            .rev()
+            .take_while(char::is_ascii_digit)
+            .count();
+        let after = word[at + 1..]
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .count();
         (1..=2).contains(&before) && after == 2
     })
 }

@@ -301,8 +301,7 @@ fn gather(
         &today(now),
         orchestrator,
     ));
-    all.push(measures::holds::read(state_home, &asks, now));
-    all.push(measures::ruled::read(state_home, now));
+    all.extend(measures::from_mesh(state_home, &asks, now));
     all.extend(parted::dates_at_risk(state_home, &core, &asks, now));
     all.extend(found);
     let per_merge = rounds_per_merge(state_home, &core, &core_log, &harness_log, now);
