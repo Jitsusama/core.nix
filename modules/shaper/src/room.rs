@@ -309,4 +309,38 @@ mod tests {
         assert_eq!(held, None, "a network with no line holds nothing");
         assert!(said.is_some(), "and the journal says so");
     }
+
+    #[test]
+    fn a_call_holds_the_wireless_link_under_its_own_line_and_not_the_cable() {
+        // On 25 November an unpaced download through a 2.4 GHz access
+        // point raised a call's pings from 12.5 to 556 ms at p95, in the
+        // access point's queue, while the cable to the same router met
+        // its bars that day with no line declared: one line for the
+        // network would hold the cable too.
+        let line = crate::networks::Line {
+            any: None,
+            links: std::collections::BTreeMap::from([("wlan0".to_string(), 20_000)]),
+        };
+        let (mut wireless, mut cable) = (Room::default(), Room::default());
+        let (held, _) = wireless.step("wlan0", HOME, true, carried(19_000.0), line.of("wlan0"));
+        assert_eq!(
+            held,
+            Some(18_000),
+            "the wireless link at nine tenths of its own"
+        );
+        let (held, said) = cable.step("eth1", HOME, true, carried(90_000.0), line.of("eth1"));
+        assert_eq!(
+            (held, said),
+            (None, None),
+            "the cable naming none is left alone"
+        );
+        let (held, said) = wireless.step("wlan0", HOME, false, carried(19_000.0), line.of("wlan0"));
+        assert_eq!(held, None, "the hold goes with the call");
+        assert!(said.is_some(), "and the journal says so");
+        assert_eq!(
+            Room::default().step("wlan0", HOME, false, carried(19_000.0), line.of("wlan0")),
+            (None, None),
+            "outside a call a full wireless link isn't held"
+        );
+    }
 }

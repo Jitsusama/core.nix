@@ -1919,7 +1919,9 @@ fn step_links(
             ceilings.get(&s.network).copied().map(rate::whole),
             house.get(&s.network).map(|&(_, most)| most),
         );
-        let declared = lines.get(&s.network).copied();
+        // A link's own line, where its network names one for it, over
+        // the network's (src/networks.rs).
+        let declared = lines.get(&s.network).and_then(|line| line.of(name));
         let (room, said) = s.room.step(
             name,
             &s.network,

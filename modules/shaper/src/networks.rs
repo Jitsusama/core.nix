@@ -2,7 +2,8 @@
 //! `jitsusama.shaper.networks` for `shaper run --networks`: the one-way
 //! controller guards the upload near it (src/oneway.rs), and under the
 //! network's ceiling where one is set, and a call is given room under the
-//! download's line where one is declared (src/room.rs).
+//! download's line where one is declared, for the network or for one of
+//! its links alone (src/room.rs).
 
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -55,9 +56,29 @@ enum Addresses {
 /// `jitsusama.shaper.networks` sets one.
 pub type Houses = BTreeMap<String, House>;
 
-/// Each network's declared download rate, its line, in kbit/s, by its
-/// router's hardware address, where `jitsusama.shaper.networks` sets one.
-pub type Lines = BTreeMap<String, u64>;
+/// A network's declared download lines, in kbit/s: the one any of its
+/// links takes, and each link's own, by the link's name, where the network
+/// names one. A link reaching the line slower than the line carries, as
+/// Wi-Fi through an access point whose own queue holds a call behind a
+/// download, is held under its own, and the network's other links keep
+/// the network's.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Line {
+    pub any: Option<u64>,
+    pub links: BTreeMap<String, u64>,
+}
+
+impl Line {
+    /// The line link `name` takes: its own, or the network's where it has
+    /// none.
+    pub fn of(&self, name: &str) -> Option<u64> {
+        self.links.get(name).copied().or(self.any)
+    }
+}
+
+/// Each network's declared download lines, by its router's hardware
+/// address, where `jitsusama.shaper.networks` sets any.
+pub type Lines = BTreeMap<String, Line>;
 
 #[derive(Deserialize)]
 struct Network {
@@ -65,6 +86,10 @@ struct Network {
     up: Option<f64>,
     #[serde(default)]
     down: Option<f64>,
+    /// Read as any value, then link by link, so one written wrongly loses
+    /// only itself, not the whole file's parse.
+    #[serde(default)]
+    links: Option<serde_json::Value>,
     #[serde(default)]
     most: Option<f64>,
     /// Read as any value, then as a house, so one of the wrong shape
@@ -103,14 +128,38 @@ pub fn anchors(path: &Path) -> Anchors {
 const DOWN_KBIT: std::ops::RangeInclusive<f64> = 6_000.0..=10_000_000.0;
 
 /// The lines written at `path`, of the networks that declare one within
-/// what nixos.nix takes, or none where there is no such file or it can't
-/// be read as one, which gives no call room on the download anywhere.
+/// what nixos.nix takes, for the network or one of its links, or none
+/// where there is no such file or it can't be read as one, which gives no
+/// call room on the download anywhere.
 pub fn lines(path: &Path) -> Lines {
     networks(path)
         .into_iter()
-        .filter_map(|(router, network)| Some((router, network.down?)))
-        .filter(|(_, down)| DOWN_KBIT.contains(down))
-        .map(|(router, down)| (router, crate::rate::whole(down)))
+        .filter_map(|(router, network)| {
+            let line = Line {
+                any: network.down.and_then(declared),
+                links: links_lines(network.links),
+            };
+            (line.any.is_some() || !line.links.is_empty()).then_some((router, line))
+        })
+        .collect()
+}
+
+/// A download's line as declared, in kbit/s, where it's within what
+/// nixos.nix takes.
+fn declared(down: f64) -> Option<u64> {
+    DOWN_KBIT.contains(&down).then(|| crate::rate::whole(down))
+}
+
+/// Each link's own download line, by its name, of a network's `links` as
+/// written, leaving out one written wrongly, null or outside what
+/// nixos.nix takes.
+fn links_lines(links: Option<serde_json::Value>) -> BTreeMap<String, u64> {
+    let Some(serde_json::Value::Object(links)) = links else {
+        return BTreeMap::new();
+    };
+    links
+        .into_iter()
+        .filter_map(|(name, link)| Some((name, declared(link.get("down")?.as_f64()?)?)))
         .collect()
 }
 
@@ -436,11 +485,15 @@ mod tests {
             ),
         )
         .expect("the lines");
+        let any = |down| Line {
+            any: Some(down),
+            links: BTreeMap::new(),
+        };
         assert_eq!(
             lines(&file),
             Lines::from([
-                ("00:00:5e:00:53:01".to_string(), 90_000),
-                ("00:00:5e:00:53:03".to_string(), 6_000),
+                ("00:00:5e:00:53:01".to_string(), any(90_000)),
+                ("00:00:5e:00:53:03".to_string(), any(6_000)),
             ]),
             "as nixos.nix writes them, null where none is set, the least kept, one in Mb/s \
              or past the most left out"
@@ -454,6 +507,65 @@ mod tests {
                 "00:00:5e:00:53:05"
             ],
             "a network declaring only its download anchors no upload"
+        );
+        let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_link_s_own_line_holds_it_alone_and_the_network_s_holds_the_rest() {
+        let folder = std::env::temp_dir().join(format!("shaper-links-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let file = folder.join("networks.json");
+        fs::write(
+            &file,
+            concat!(
+                r#"{"00:00:5e:00:53:01": {"up": 12000, "down": null, "links": "#,
+                r#"{"wlan0": {"down": 20000}, "eth1": {"down": null}}}, "#,
+                r#""00:00:5e:00:53:02": {"up": 9000, "down": 90000, "links": "#,
+                r#"{"wlan0": {"down": 20000}, "eth2": {"down": 90}, "eth3": "fast"}}, "#,
+                r#""00:00:5e:00:53:03": {"up": 9000, "down": null, "links": {}}}"#,
+            ),
+        )
+        .expect("the lines");
+        let lines = lines(&file);
+        let wifi_only = &lines["00:00:5e:00:53:01"];
+        assert_eq!(
+            wifi_only.of("wlan0"),
+            Some(20_000),
+            "the link naming its own"
+        );
+        assert_eq!(
+            wifi_only.of("eth1"),
+            None,
+            "a link whose own is null, on a network declaring none, is held by none"
+        );
+        assert_eq!(
+            wifi_only.of("eth0"),
+            None,
+            "a link the network doesn't name"
+        );
+        let both = &lines["00:00:5e:00:53:02"];
+        assert_eq!(both.of("wlan0"), Some(20_000), "its own over the network's");
+        assert_eq!(
+            both.of("eth2"),
+            Some(90_000),
+            "one in Mb/s is left out, so the link takes the network's"
+        );
+        assert_eq!(
+            both.of("eth3"),
+            Some(90_000),
+            "one written wrongly loses only itself"
+        );
+        assert_eq!(both.of("eth0"), Some(90_000), "the network's");
+        assert!(
+            !lines.contains_key("00:00:5e:00:53:03"),
+            "a network declaring no line, for itself or a link, has none"
+        );
+        assert_eq!(
+            anchors(&file).len(),
+            3,
+            "links written beside the anchors lose none of them"
         );
         let _ = fs::remove_dir_all(&folder);
     }
