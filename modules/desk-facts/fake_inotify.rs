@@ -19,6 +19,9 @@ const ALL_INOTIFY_BITS: u32 = 0xfff | 0xe000 | 0xf700_0000;
 /// A bit no inotify mask may hold, as a mask the kernel won't take.
 pub(crate) const NOT_INOTIFY: u32 = 0x1000;
 
+/// The descriptor a stand-in inotify says it reads from.
+pub(crate) const FAKE_FD: c_int = 9;
+
 /// What a stand-in inotify holds: the folders there, its watches, the
 /// events it has to say, and how it refuses.
 #[derive(Default)]
@@ -34,6 +37,9 @@ pub(crate) struct Held {
     /// A folder made just as its watch is first refused, as one made
     /// between that and the watch on the folder above.
     pub(crate) racing: Option<PathBuf>,
+    /// A folder refused with this once it's there, as one whose
+    /// permissions change after the start.
+    pub(crate) refusing: Option<(PathBuf, i32)>,
     /// Watches let go of that it had already dropped, each of which the
     /// kernel refuses: a wasted call, and a number it might have given
     /// to another watch by then.
@@ -126,6 +132,13 @@ impl Kernel for Fake {
             }
             return Err(io::Error::from_raw_os_error(2));
         }
+        if let Some((_, code)) = held
+            .refusing
+            .as_ref()
+            .filter(|(refused, _)| refused == path)
+        {
+            return Err(io::Error::from_raw_os_error(*code));
+        }
         if let Some(watch) = held
             .watches
             .iter_mut()
@@ -158,8 +171,9 @@ impl Kernel for Fake {
         }
     }
 
+    /// A number no test polls, so a slot pointed at it shows it was.
     fn fd(&self) -> c_int {
-        -1
+        FAKE_FD
     }
 
     fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {

@@ -141,8 +141,11 @@ impl<K: Kernel> Watches<K> {
     /// What the folders watched say, as inotify's events, leaving out those
     /// of the watches above folders not yet there; then tries again each
     /// folder not watched. Says too whether a folder came to be watched or
-    /// was removed since, so its kind is read again for what it holds.
-    pub(crate) fn read(&mut self) -> (Vec<u8>, bool) {
+    /// was removed since, so its kind is read again for what it holds. A
+    /// refusal waiting can't mend is an error, as it is at the start, so
+    /// the hearing ends and is started afresh rather than leave a folder
+    /// unheard.
+    pub(crate) fn read(&mut self) -> io::Result<(Vec<u8>, bool)> {
         let mut said = Vec::new();
         if let Some(kernel) = &mut self.kernel {
             let mut buffer = [0; 8192];
@@ -154,8 +157,10 @@ impl<K: Kernel> Watches<K> {
             }
         }
         let (events, removed) = self.own_events(&said);
-        let (watched, _) = self.try_again();
-        (events, removed || watched)
+        match self.try_again() {
+            (_, Some(fault)) => Err(fault),
+            (watched, None) => Ok((events, removed || watched)),
+        }
     }
 
     /// The events of the folders watched, and of none, as an overflow is,
@@ -371,6 +376,13 @@ mod tests {
     #[cfg(target_os = "linux")]
     use std::fs;
 
+    /// What the folders say, where nothing refuses one for good.
+    fn told<K: Kernel>(watches: &mut Watches<K>) -> (Vec<u8>, bool) {
+        watches
+            .read()
+            .expect("a folder was refused for good where none should be")
+    }
+
     #[test]
     fn only_a_missing_folder_or_no_room_waits() {
         let cases = [
@@ -397,11 +409,11 @@ mod tests {
         let fake = Fake::default();
         fake.make("/a");
         let mut watches = fake.watches(&[("/a/b", IN_CLOSE_WRITE)]).unwrap();
-        let waiting = (fake.watched(), watches.read(), watches.waits());
+        let waiting = (fake.watched(), told(&mut watches), watches.waits());
         fake.make("/a/b");
-        let made = (watches.read(), fake.watched(), watches.waits());
+        let made = (told(&mut watches), fake.watched(), watches.waits());
         // The watch above, let go of, says so; that isn't the folder's.
-        let after = watches.read();
+        let after = told(&mut watches);
         assert_eq!(
             (waiting, made, after),
             (
@@ -421,7 +433,7 @@ mod tests {
         let mut watches = fake.watches(&[("/a/b", IN_CLOSE_WRITE)]).unwrap();
         fake.make("/a/other");
         assert_eq!(
-            (watches.read(), watches.waits()),
+            (told(&mut watches), watches.waits()),
             ((vec![], false), false),
             "a folder made beside one waited for was heard as the one's own"
         );
@@ -435,9 +447,9 @@ mod tests {
             .watches(&[("/a/b", IN_CLOSE_WRITE), ("/a/c", IN_CLOSE_WRITE)])
             .unwrap();
         fake.make("/a/b");
-        let one = (watches.read().1, fake.watched());
+        let one = (told(&mut watches).1, fake.watched());
         fake.make("/a/c");
-        let both = (watches.read().1, fake.watched());
+        let both = (told(&mut watches).1, fake.watched());
         assert_eq!(
             (one, both),
             (
@@ -468,7 +480,7 @@ mod tests {
         let waiting = fake.watched();
         fake.make("/a/b");
         // Its being made is heard on the folder's own watch, so is its own.
-        let (events, heard) = watches.read();
+        let (events, heard) = told(&mut watches);
         assert_eq!(
             (
                 waiting,
@@ -493,9 +505,9 @@ mod tests {
         fake.make("/a");
         let mut watches = fake.watches(&[("/a/b/c", IN_CLOSE_WRITE)]).unwrap();
         fake.make("/a/b");
-        let between = (watches.read().1, fake.watched());
+        let between = (told(&mut watches).1, fake.watched());
         fake.make("/a/b/c");
-        let made = (watches.read().1, fake.watched());
+        let made = (told(&mut watches).1, fake.watched());
         assert_eq!(
             (between, made),
             (
@@ -526,9 +538,9 @@ mod tests {
         fake.make("/a/b");
         let mut watches = fake.watches(&[("/a/b", IN_CLOSE_WRITE)]).unwrap();
         fake.remove("/a/b");
-        let removed = (watches.read(), fake.watched());
+        let removed = (told(&mut watches), fake.watched());
         fake.make("/a/b");
-        let made = (watches.read().1, fake.watched());
+        let made = (told(&mut watches).1, fake.watched());
         assert_eq!(
             (removed, made),
             (
@@ -545,9 +557,9 @@ mod tests {
         fake.make("/a");
         fake.0.borrow_mut().room = Some(0);
         let mut watches = fake.watches(&[("/a", IN_CLOSE_WRITE)]).unwrap();
-        let full = (watches.read().1, watches.waits());
+        let full = (told(&mut watches).1, watches.waits());
         fake.0.borrow_mut().room = None;
-        let room = (watches.read().1, watches.waits(), fake.watched());
+        let room = (told(&mut watches).1, watches.waits(), fake.watched());
         assert_eq!(
             (full, room),
             (
@@ -564,9 +576,9 @@ mod tests {
         fake.make("/a");
         fake.0.borrow_mut().unopenable = Some(24);
         let mut watches = fake.watches(&[("/a", IN_CLOSE_WRITE)]).unwrap();
-        let unstarted = (watches.read().1, watches.waits(), fake.watched());
+        let unstarted = (told(&mut watches).1, watches.waits(), fake.watched());
         fake.0.borrow_mut().unopenable = None;
-        let started = (watches.read().1, watches.waits(), fake.watched());
+        let started = (told(&mut watches).1, watches.waits(), fake.watched());
         assert_eq!(
             (unstarted, started),
             (
@@ -596,6 +608,21 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_refusal_waiting_cant_mend_met_after_the_start_fails_the_read() {
+        let fake = Fake::default();
+        fake.make("/a");
+        let mut watches = fake.watches(&[("/a/b", IN_CLOSE_WRITE)]).unwrap();
+        fake.0.borrow_mut().refusing = Some(("/a/b".into(), 13));
+        fake.make("/a/b");
+        assert_eq!(
+            watches.read().err().map(|e| e.to_string()).as_deref(),
+            Some("can't watch /a/b: Permission denied (os error 13)"),
+            "a refusal waiting can't mend, met after the start, was let wait with the folder \
+             unheard, or said without its folder"
+        );
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn the_kernel_s_inotify_watches_a_folder_once_it_s_made() {
@@ -606,13 +633,13 @@ mod tests {
             "the kernel's refusal of a mask it doesn't take was let wait"
         );
         let mut watches = Watches::new(&[(later.clone(), IN_CLOSE_WRITE)]).unwrap();
-        let before = watches.read();
+        let before = told(&mut watches);
         fs::create_dir(&later).unwrap();
-        let made = watches.read();
+        let made = told(&mut watches);
         fs::write(later.join("file"), "x").unwrap();
-        let (written, _) = watches.read();
+        let (written, _) = told(&mut watches);
         fs::create_dir(sys.0.join("other")).unwrap();
-        let unheard = watches.read();
+        let unheard = told(&mut watches);
         assert_eq!(
             (
                 before,
@@ -638,7 +665,7 @@ mod tests {
             .unwrap();
         let full = (watches.waits(), fake.watched());
         fake.0.borrow_mut().room = None;
-        let room = (watches.read().1, watches.waits(), fake.watched());
+        let room = (told(&mut watches).1, watches.waits(), fake.watched());
         assert_eq!(
             (full, room),
             (
@@ -662,11 +689,16 @@ mod tests {
         let mut watches = fake.watches(&[("/a/b/c", IN_CLOSE_WRITE)]).unwrap();
         let first = fake.watched();
         fake.remove("/a/b");
-        let removed = (watches.read(), watches.waits(), fake.watched());
+        let removed = (told(&mut watches), watches.waits(), fake.watched());
         fake.make("/a/b");
-        let again = (watches.read().1, fake.watched());
+        let again = (told(&mut watches).1, fake.watched());
         assert_eq!(
-            (first, removed, again, fake.0.borrow().dropped_let_go.clone()),
+            (
+                first,
+                removed,
+                again,
+                fake.0.borrow().dropped_let_go.clone()
+            ),
             (
                 vec![("/a/b".into(), MADE)],
                 ((vec![], false), false, vec![("/a".into(), MADE)]),
@@ -691,9 +723,9 @@ mod tests {
         fake.remove("/a/b");
         fake.0.borrow_mut().events = event_on(-1, IN_Q_OVERFLOW, "");
         fake.make("/a/b");
-        let (events, _) = watches.read();
+        let (events, _) = told(&mut watches);
         fake.0.borrow_mut().events = event_on(3, IN_CLOSE_WRITE, "file");
-        let (heard, _) = watches.read();
+        let (heard, _) = told(&mut watches);
         assert_eq!(
             (
                 events,

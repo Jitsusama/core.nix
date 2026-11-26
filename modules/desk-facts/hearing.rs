@@ -348,23 +348,39 @@ impl<K: Kernel> Folders<K> {
     }
 
     /// The kinds the folders say changed. A folder watched since, or
-    /// removed, has its kind read again for what it holds now.
-    fn heard(&mut self) -> u8 {
+    /// removed, has its kind read again for what it holds now. A folder
+    /// refused in a way waiting can't mend is an error.
+    fn heard(&mut self) -> io::Result<u8> {
         let mut due = 0;
-        let (events, moved) = self.changes.read();
+        let (events, moved) = self.changes.read()?;
         if moved || names_one(&events, "pebble-lights") {
             due |= SOUND;
         }
-        let (events, moved) = self.held.read();
+        let (events, moved) = self.held.read()?;
         if moved || !events.is_empty() {
             due |= CAMERAS;
         }
-        let (events, moved) = self.said.read();
+        let (events, moved) = self.said.read()?;
         if moved || names_a_monitor(&events) {
             due |= DISPLAYS;
         }
-        due
+        Ok(due)
     }
+}
+
+/// Points poll's slots for the folders at their inotify, which changes as
+/// it starts, and gives how long poll waits: no longer than `RETRY` while a
+/// folder waits with nothing to wake it.
+fn asked<K: Kernel>(
+    folders: &Folders<K>,
+    settling: &Settling,
+    slots: &mut [PollFd],
+    now: Instant,
+) -> c_int {
+    for (slot, fd) in slots.iter_mut().zip(folders.fds()) {
+        slot.fd = fd;
+    }
+    waiting_for(settling.since, folders.wait(), now)
 }
 
 /// What's read again while it settles, and how far it has: sound, and
@@ -406,16 +422,23 @@ impl Settling {
 fn timed_out<K: Kernel>(
     folders: &mut Folders<K>,
     settling: &mut Settling,
-    retrying: bool,
     now: Instant,
-) -> u8 {
+) -> io::Result<u8> {
     let mut due = settling.step(now);
-    if retrying {
-        let heard = folders.heard();
+    if folders.wait() {
+        let heard = folders.heard()?;
         settling.begin(heard, now);
         due |= heard;
     }
-    due
+    Ok(due)
+}
+
+/// Ends the hearing with its facts removed, so nothing reads them stale.
+fn end(desk: &Desk, code: ExitCode) -> ExitCode {
+    for file in &desk.files {
+        let _ = fs::remove_file(file);
+    }
+    code
 }
 
 pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
@@ -475,36 +498,39 @@ pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
             .collect();
         due = 0;
         while due == 0 {
-            // An inotify started since is waited on from now.
-            for (slot, fd) in waiting[2..5].iter_mut().zip(folders.fds()) {
-                slot.fd = fd;
-            }
-            let retrying = folders.wait();
-            let wait = waiting_for(settling.since, retrying, Instant::now());
+            let wait = asked(&folders, &settling, &mut waiting[2..5], Instant::now());
             let count = waiting.len() as u64;
             // SAFETY: valid pollfds for the length given.
             let ready = unsafe { poll(waiting.as_mut_ptr(), count, wait) };
             if ready < 0 {
                 continue;
             }
-            if ready == 0 {
-                due |= timed_out(&mut folders, &mut settling, retrying, Instant::now());
-                continue;
-            }
-            if waiting[0].revents & POLLIN != 0 {
+            // A folder refused for good fails the unit, as at the start,
+            // so it's started afresh and seen failed meanwhile.
+            let heard = if ready == 0 {
+                timed_out(&mut folders, &mut settling, Instant::now())
+            } else if waiting[0].revents & POLLIN != 0 {
                 let _ = stop.read(&mut [0; 128]);
-                for file in &desk.files {
-                    let _ = fs::remove_file(file);
+                return end(&desk, ExitCode::SUCCESS);
+            } else {
+                due |= desk.heard_from_controls(&mut waiting[5..]);
+                // A card's devices, a display's EDID and a stream's
+                // parameters settle a moment after the first word of them.
+                std::thread::sleep(Duration::from_millis(150));
+                due |= heard(&mut kernel, &matters);
+                let said = folders.heard();
+                if let Ok(kinds) = said {
+                    settling.begin(due | kinds, Instant::now());
                 }
-                return ExitCode::SUCCESS;
+                said
+            };
+            match heard {
+                Ok(heard) => due |= heard,
+                Err(error) => {
+                    eprintln!("<3>can't hear the desk's devices: {error}");
+                    return end(&desk, ExitCode::FAILURE);
+                }
             }
-            due |= desk.heard_from_controls(&mut waiting[5..]);
-            // A card's devices, a display's EDID and a stream's parameters
-            // settle a moment after the first word of them.
-            std::thread::sleep(Duration::from_millis(150));
-            due |= heard(&mut kernel, &matters);
-            due |= folders.heard();
-            settling.begin(due, Instant::now());
         }
     }
 }
@@ -512,7 +538,7 @@ pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fake_inotify::Fake;
+    use crate::fake_inotify::{FAKE_FD, Fake};
     use crate::inotify::IN_Q_OVERFLOW;
     use crate::tests::*;
 
@@ -537,18 +563,48 @@ mod tests {
         fake.0.borrow_mut().room = Some(0);
         let mut folders = folders(&fake);
         let (now, mut settling) = (Instant::now(), Settling::default());
-        let retrying = folders.wait();
-        let full = timed_out(&mut folders, &mut settling, retrying, now);
+        let full = timed_out(&mut folders, &mut settling, now).expect("nothing refused for good");
         for made in ["/snd", "/holders", "/said"] {
             fake.make(made);
         }
         fake.0.borrow_mut().room = None;
-        let made = timed_out(&mut folders, &mut settling, true, now);
+        let made = timed_out(&mut folders, &mut settling, now).expect("nothing refused for good");
         assert_eq!(
-            (retrying, full, made, settling.since, folders.wait()),
-            (true, 0, SOUND | CAMERAS | DISPLAYS, Some((now, 0)), false),
+            (full, made, settling.since, folders.wait()),
+            (0, SOUND | CAMERAS | DISPLAYS, Some((now, 0)), false),
             "a folder nothing could wake wasn't tried again as poll's wait ran out, its \
              kind read and settled once it was watched"
+        );
+    }
+
+    #[test]
+    fn poll_waits_a_retry_for_inotify_to_start_then_on_it_and_for_settling() {
+        let fake = Fake::default();
+        fake.0.borrow_mut().unopenable = Some(24);
+        for made in ["/snd", "/holders", "/said"] {
+            fake.make(made);
+        }
+        let mut folders = folders(&fake);
+        let (now, mut settling) = (Instant::now(), Settling::default());
+        let mut slots = [-1; 3].map(PollFd::reading);
+        let fds = |slots: &[PollFd; 3]| slots.each_ref().map(|slot| slot.fd);
+        let unstarted = (asked(&folders, &settling, &mut slots, now), fds(&slots));
+        fake.0.borrow_mut().unopenable = None;
+        let due = timed_out(&mut folders, &mut settling, now).expect("nothing refused for good");
+        let settles = (asked(&folders, &settling, &mut slots, now), fds(&slots));
+        let settled = asked(&folders, &Settling::default(), &mut slots, now);
+        let retry = c_int::try_from(RETRY.as_millis()).expect("the retry fits poll's wait");
+        let first = c_int::try_from(SETTLING[0].as_millis()).expect("a settling read fits");
+        assert_eq!(
+            (unstarted, due, settles, settled),
+            (
+                (retry, [-1; 3]),
+                SOUND | CAMERAS | DISPLAYS,
+                (first, [FAKE_FD; 3]),
+                -1
+            ),
+            "poll didn't wait a retry while inotify wouldn't start, then on inotify once it \
+             did, till the first settling read, and then till something was heard"
         );
     }
 
@@ -560,12 +616,12 @@ mod tests {
         let (since, mut settling) = (Instant::now(), Settling::default());
         settling.begin(SOUND, since);
         let early = (
-            timed_out(&mut folders, &mut settling, true, since),
+            timed_out(&mut folders, &mut settling, since).expect("nothing refused for good"),
             settling.since,
         );
         let later = since + Duration::from_secs(1);
         let due = (
-            timed_out(&mut folders, &mut settling, true, later),
+            timed_out(&mut folders, &mut settling, later).expect("nothing refused for good"),
             settling.since,
         );
         assert_eq!(
