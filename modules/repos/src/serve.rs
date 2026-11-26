@@ -236,23 +236,45 @@ struct Working {
     /// When reading began, so a first reading that never answers is said
     /// in the journal as late as one that stopped.
     since: Instant,
-    /// Whether the first reading has been waited on.
-    waited: bool,
     /// When the reading said was read, once any has answered: until one
     /// has, nothing says what works, which isn't that nothing does.
     at: Option<Instant>,
-    /// Whether the last reading has grown `STALE` paces old with none
-    /// newer, so what it read goes unsaid.
-    stale: bool,
-    /// Whether a reading has been taken fresh, so the first to answer
-    /// after a late start isn't said as answering again.
-    answered: bool,
+    /// How the readings taken have stood.
+    standing: Standing,
     /// Where what the journal is told goes, from the loop and the thread
     /// alike.
     say: Arc<dyn Fn(String) + Send + Sync>,
     used: BTreeMap<PathBuf, Use>,
     measured: bool,
     placed: BTreeSet<PathBuf>,
+}
+
+/// How the readings of `/proc` the loop has taken stand: whether the first
+/// has been waited on, whether the last has grown `STALE` paces old with
+/// none newer, so what it read goes unsaid, and whether any was fresh, so
+/// the first to answer after a late start isn't said as answering again.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Standing {
+    /// None has been taken, so the first is waited on.
+    Unwaited,
+    /// The last taken was fresh.
+    Fresh,
+    /// The last taken is late, and none taken was ever fresh.
+    NeverFresh,
+    /// The last taken is late, though one taken before it was fresh.
+    Late,
+}
+
+impl Standing {
+    /// Whether the last reading taken is late.
+    fn late(self) -> bool {
+        matches!(self, Self::NeverFresh | Self::Late)
+    }
+
+    /// Whether any reading taken was fresh.
+    fn ever_fresh(self) -> bool {
+        matches!(self, Self::Fresh | Self::Late)
+    }
 }
 
 /// Takes `held` whatever thread last held it: each holds it only to copy
@@ -347,10 +369,8 @@ impl Working {
             held,
             old,
             since: Instant::now(),
-            waited: false,
             at: None,
-            stale: false,
-            answered: false,
+            standing: Standing::Unwaited,
             say,
             used: BTreeMap::new(),
             measured: false,
@@ -373,13 +393,12 @@ impl Working {
         let (lock, ready) = &*self.held;
         let mut held = holding(lock);
         held.folders = folders;
-        if held.newest.is_none() && !self.waited {
+        if held.newest.is_none() && self.standing == Standing::Unwaited {
             held = ready
                 .wait_timeout_while(held, SAMPLED, |held| held.newest.is_none())
                 .unwrap_or_else(PoisonError::into_inner)
                 .0;
         }
-        self.waited = true;
         let found = held.newest.take();
         drop(held);
         if let Some(found) = found {
@@ -389,11 +408,10 @@ impl Working {
             self.at = Some(found.at);
         }
         let age = self.at.unwrap_or(self.since).elapsed();
+        let was = self.standing.late();
         if age < self.old {
-            let was = self.stale;
-            let again = self.answered;
-            self.stale = false;
-            self.answered = true;
+            let again = self.standing.ever_fresh();
+            self.standing = Standing::Fresh;
             return was.then(|| {
                 if again {
                     "the reading of /proc answers again"
@@ -403,8 +421,11 @@ impl Working {
                 .to_owned()
             });
         }
-        let was = self.stale;
-        self.stale = true;
+        self.standing = if self.standing.ever_fresh() {
+            Standing::Late
+        } else {
+            Standing::NeverFresh
+        };
         self.used.clear();
         self.measured = false;
         if was {
@@ -440,7 +461,7 @@ impl Working {
     /// Whether what works in each repository can't be said: no reading has
     /// answered yet, or the last has grown `STALE` paces old.
     fn unread(&self) -> bool {
-        self.at.is_none() || self.stale
+        self.at.is_none() || self.standing.late()
     }
 
     /// Every record the feed says: the disk's, and what works in each

@@ -407,7 +407,7 @@ fn a_first_reading_that_never_answers_is_said_late_once_and_its_answer_once() {
         working.take(folders.clone());
     }
     heard.extend(told.try_iter());
-    let answered: Vec<&String> = heard.iter().filter(|said| answers(*said)).collect();
+    let answered: Vec<&String> = heard.iter().filter(|said| answers(said)).collect();
     assert_eq!(
         answered,
         ["the reading of /proc answers at last"],
