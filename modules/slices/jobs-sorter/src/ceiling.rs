@@ -29,9 +29,9 @@
 //! slice's `memory.high`, so one set elsewhere, or a set that failed but
 //! landed late, is followed from where it stands, and one cleared or put
 //! past [`TOP`] is put back. One set under the declared ceiling, by hand
-//! as much as by anything, stays while anything waits, since raising it
-//! would take from what waits, and is raised back to it once nothing
-//! does and no failed set's wait is running.
+//! as much as by anything, stays while a spared slice waits, a call is on
+//! or memory is short, since raising it would take from them, and is
+//! raised back to it once none is and no failed set's wait is running.
 
 use std::time::{Duration, Instant};
 
