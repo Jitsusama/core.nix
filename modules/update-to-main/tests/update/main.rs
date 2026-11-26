@@ -1674,7 +1674,8 @@ fn a_switch_needing_no_boot_check_ends_the_why_the_old_system_boots() {
     a_failed_boot_check(&mut world);
     let two = world.signed("two");
     let system = world.system(&two);
-    fs::write(system.join("initrd"), "one").unwrap();
+    // The booted system's own initrd, which is what needs no boot check.
+    std::os::unix::fs::symlink(world.config.booted.join("initrd"), system.join("initrd")).unwrap();
     let (_, switched) = world.update();
     assert!(
         matches!(switched, Line::Done { boots: None, .. }),
