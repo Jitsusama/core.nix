@@ -3,7 +3,6 @@
 use crate::band::{BtrfsSpace, Space};
 use crate::pace::Settling;
 use std::os::fd::AsRawFd;
-use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
@@ -697,26 +696,26 @@ fn mapped_path(line: &str) -> Option<PathBuf> {
 /// read without opening it: a pipe's open would wait for a writer, and a
 /// device's driver would be asked what only Btrfs answers. On Btrfs that
 /// device is a subvolume's, which is no watched disk's; elsewhere it is
-/// its disk's, as for any file there. A Btrfs file or folder's pool is
-/// read from its filesystem's id and its subvolume's, which Btrfs mixes
-/// in, without opening it to read, so no lease or mode can hide it. Read
-/// past any link to it, such as a process's open file, as the kernel follows that
+/// its disk's, as for any file there. On Linux 6.10 or later a Btrfs
+/// file or folder's pool is read from its filesystem's id and its
+/// subvolume's, which Btrfs mixes in, without opening it to read, so no
+/// lease or mode can hide it; before 6.10 Btrfs is asked through a
+/// reading open, which a lease or a mode can still refuse. Read past any
+/// link to it, such as a process's open file, as the kernel follows that
 /// link, rather than by the name the link says, which may be gone or name
 /// another mount namespace's file.
 pub fn pool(path: &Path) -> io::Result<u64> {
     use rustix::fs::{FileType, OFlags};
-    let found = fs::metadata(path)?;
-    let device = found.dev();
-    if !(found.is_dir() || found.is_file()) {
-        return Ok(device);
-    }
-    // Found without opening it for reading, and read through what was
-    // found, so nothing swapped in between is read: a reading open would
-    // break a writer's lease or meet a mode that refuses the guard, and
-    // either would leave a writer's file on no disk, out of every freeze.
+    // Found without opening it, which waits for nothing, and read only
+    // through what was found, so nothing swapped in between is read: a
+    // reading open would break a writer's lease or meet a mode that
+    // refuses the guard, and either would leave a writer's file on no
+    // disk, out of every freeze.
     let none = rustix::fs::Mode::empty();
     let held = rustix::fs::open(path, OFlags::PATH | OFlags::CLOEXEC, none)?;
-    let kind = FileType::from_raw_mode(rustix::fs::fstat(&held)?.st_mode);
+    let found = rustix::fs::fstat(&held)?;
+    let device = found.st_dev;
+    let kind = FileType::from_raw_mode(found.st_mode);
     if !matches!(kind, FileType::Directory | FileType::RegularFile) {
         return Ok(device);
     }
@@ -757,9 +756,12 @@ fn statfs_halves(fsid: u64, subvolume: u64) -> [u32; 2] {
     ]
 }
 
-/// A Btrfs pool's number from its folded id, with the top bit set.
+/// A Btrfs pool's number from its folded id, with the top bit set. It is
+/// the number the guard gave a pool when it read the id's two halves as
+/// little-endian words, each byte-swapped back from the big-endian fold,
+/// so a survey kept from before still names its disks.
 fn pool_of([low, high]: [u32; 2]) -> u64 {
-    (u64::from(low) | u64::from(high) << 32) | 1 << 63
+    (u64::from(low.swap_bytes()) | u64::from(high.swap_bytes()) << 32) | 1 << 63
 }
 
 /// Whether `path`, a directory beneath `parent` with a device number of
@@ -1001,4 +1003,81 @@ pub fn btrfs_allocation(sysfs: &Path) -> io::Result<BtrfsSpace> {
         metadata_free: total.saturating_sub(taken),
         global_reserve: number(&allocation.join("global_rsv_size"))?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{fsid_halves, pool_of, statfs_halves};
+
+    /// Two Btrfs ids with their bytes apart, so a word read in the wrong
+    /// order or from the wrong place gives another number.
+    const IDS: [[u8; 16]; 2] = [
+        [
+            0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x10, 0x32, 0x54, 0x76, 0x98, 0xba,
+            0xdc, 0xfe,
+        ],
+        [
+            0xde, 0xad, 0xbe, 0xef, 0, 1, 2, 3, 4, 5, 6, 7, 0xff, 0xee, 0xdd, 0xcc,
+        ],
+    ];
+
+    /// Subvolume ids, the top-level one, two made later and one whose
+    /// high half is set, which only the first half takes.
+    const SUBVOLUMES: [u64; 4] = [5, 256, 13_823, 0x1_0000_0102];
+
+    /// The `f_fsid` Btrfs's statfs gives a file in `subvolume`, packed
+    /// low half first, as fs/btrfs/super.c builds it: each big-endian word
+    /// of the id exclusive-ored with the one two on, then the subvolume's
+    /// high half mixed into the first and its low half into the second.
+    fn statfs_gives(id: [u8; 16], subvolume: u64) -> u64 {
+        let word = |at: usize| u32::from_be_bytes(id[at..at + 4].try_into().unwrap());
+        let half = |bits: u64| u32::try_from(bits & u64::from(u32::MAX)).unwrap();
+        let low = word(0) ^ word(8) ^ half(subvolume >> 32);
+        let high = word(4) ^ word(12) ^ half(subvolume);
+        u64::from(low) | u64::from(high) << 32
+    }
+
+    #[test]
+    fn every_subvolume_of_a_pool_reads_as_the_pool_the_ioctl_reads() {
+        for id in IDS {
+            let ioctl = pool_of(fsid_halves(id));
+            for subvolume in SUBVOLUMES {
+                let statx = pool_of(statfs_halves(statfs_gives(id, subvolume), subvolume));
+                assert_eq!(statx, ioctl, "subvolume {subvolume} of {id:x?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_pool_keeps_the_number_the_guard_gave_it_before() {
+        for id in IDS {
+            let halves =
+                [&id[..8], &id[8..]].map(|half| u64::from_le_bytes(half.try_into().unwrap()));
+            let before = (halves[0] ^ halves[1]) | 1 << 63;
+            assert_eq!(pool_of(fsid_halves(id)), before, "the pool of {id:x?}");
+        }
+    }
+
+    #[test]
+    #[ignore = "needs TMPDIR on Btrfs, which the sandbox and the shell's tmpfs aren't: \
+                run with --ignored and TMPDIR on a Btrfs folder"]
+    fn a_folder_s_pool_read_by_statx_is_the_one_btrfs_s_ioctl_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let ioctl = super::btrfs_id(dir.path()).map(|id| pool_of(fsid_halves(id)));
+        assert_eq!(
+            super::pool(dir.path()).ok(),
+            ioctl.ok(),
+            "{} by statx and by the ioctl",
+            dir.path().display()
+        );
+    }
+
+    #[test]
+    fn two_pools_read_apart() {
+        assert_ne!(
+            pool_of(fsid_halves(IDS[0])),
+            pool_of(fsid_halves(IDS[1])),
+            "two pools with different ids"
+        );
+    }
 }
