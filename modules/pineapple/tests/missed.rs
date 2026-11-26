@@ -343,6 +343,26 @@ fn rows_met_are_whole_by_what_they_span_not_the_order_theyre_met_in() {
         gap.len() == 1 && gap[0]["whole"] == false,
         "a minute read between any two makes it parts: {gap:?}"
     );
+    let nested = kept_after(
+        "nested",
+        &[tag(30 * MINUTE, 10 * MINUTE), tag(28 * MINUTE, 25 * MINUTE)],
+        tag(12 * MINUTE, 0),
+    );
+    assert!(
+        nested.len() == 1 && nested[0]["whole"] == true,
+        "one inside another leaves the furthest reached where it was, so what follows \
+         the outer one joins it: {nested:?}"
+    );
+    let starts = kept_after(
+        "starts",
+        &[tag(40 * MINUTE, 35 * MINUTE), tag(20 * MINUTE, 15 * MINUTE)],
+        tag(36 * MINUTE, 0),
+    );
+    assert!(
+        starts.len() == 1 && starts[0]["whole"] == true,
+        "spans are taken by where they start, not where they end, so a long one \
+         covers the short one ending before it: {starts:?}"
+    );
 }
 
 #[test]
@@ -370,14 +390,15 @@ fn a_row_meets_one_said_after_it_only_within_ten_minutes_and_unknowns_only_their
         &[missed(
             Search::Tag,
             None,
-            Some(AT - 20 * MINUTE),
-            AT - 20 * MINUTE,
+            Some(AT - 2 * MINUTE),
+            AT - 2 * MINUTE,
         )],
         missed(Search::Tag, None, Some(AT - MINUTE), AT),
     );
     assert_eq!(
         unknowns.len(),
         2,
-        "two whose starts can't be told, ending apart, stay their own: {unknowns:?}"
+        "two whose starts can't be told, ending even a minute apart, stay their own: \
+         {unknowns:?}"
     );
 }
