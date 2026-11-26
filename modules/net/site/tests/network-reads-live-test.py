@@ -339,6 +339,9 @@ LEAST_DESK_HEIGHT = 34 * 16
 # Measured: net.json's house drawn across is 552 units tall, 509 px at the smallest zoom, and a
 # desk holds 142 px around the room, so a window just past 34rem leaves 107 px below sight.
 BELOW_SIGHT_PX = 96
+# A small phone's window (an iPhone SE's): the stacked map's room on the tall phone shows the
+# first concern and the farthest device at once, which would let a jump back to it pass.
+SMALL_PHONE = (375, 667)
 
 
 def short_desk(page: Page) -> tuple[int, int]:
@@ -376,8 +379,7 @@ def test_the_keys_device_stays_in_view_as_the_map_draws_the_other_way(
     browser: Browser, network_served: Served
 ) -> None:
     root, _ = network_served
-    desk, phone = SIZES[-1], SIZES[0]
-    opened = Opened(browser, f"{root}network/", desk, "dark")
+    opened = Opened(browser, f"{root}network/", SIZES[-1], "dark")
     try:
         page = opened.page
         says_it_stands(page, "live")
@@ -394,7 +396,7 @@ def test_the_keys_device_stays_in_view_as_the_map_draws_the_other_way(
         page.set_viewport_size({"width": desk_short[0], "height": desk_short[1]})
         the_first_concern_leaves_it_out(page, keys_on, "a short desk")
         for where, size, across in [
-            ("a narrowed window", phone, "false"),
+            ("a narrowed window", SMALL_PHONE, "false"),
             ("a widened window", desk_short, "true"),
         ]:
             page.set_viewport_size({"width": size[0], "height": size[1]})
