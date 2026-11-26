@@ -298,7 +298,7 @@ def test_tokens_running_out_are_one_card_that_counts_down_and_rises_as_they_near
                 "now": now,
                 "title": title,
                 "value": "resets 14:00",
-                # As spend-watch words it (tokens.rs), so the shots
+                # As spend-watch words it (tokens/mod.rs), so the shots
                 # read as Joel's card will.
                 "context": "at $300 an hour · 92% used",
                 "quiet": {"title": title, "value": "resets 14:00", "context": ""},

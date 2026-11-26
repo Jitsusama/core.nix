@@ -136,7 +136,7 @@ feed speaks.
   the tokens warning. A share of a window is never turned into dollars,
   so the whole across budgets is billed dollars only: metered spend and
   each plan's price over the days it covers. `src/budgets.rs`
-  attributes, `src/standing.rs` says how each stands.
+  attributes, `src/standing/mod.rs` says how each stands.
 - **Waste.** Each cache write gets a cause: a compaction, a pause longer
   than the cache lives, a fresh session, a model change. Rebuilt context is
   the money a session spent having again what it had. Some is how an

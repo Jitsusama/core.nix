@@ -1,5 +1,5 @@
 //! What a budget's drawer and a window's say, served ready on their rows
-//! (collection.rs), from how each stands (standing.rs), so the launcher
+//! (collection.rs), from how each stands (standing/mod.rs), so the launcher
 //! only names each fact by its id and draws it. By the drawer's rules
 //! (VKCF3Z, 2026-11-07): no state in an eyebrow, nothing the row's side or
 //! the title already says, what moves most first and identifiers last;
