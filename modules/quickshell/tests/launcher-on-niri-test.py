@@ -3071,8 +3071,8 @@ def test_a_program_selected_in_programs_is_asked_its_acts_alone_once(shell: Shel
 
 
 # Eight makings of a kind well past the 13 ms a drawer joins its key's frame under, and eight
-# well within it. A median of eight moves only once five more are made, so a kind taught
-# either stays it for a case, however its own drawers are made there.
+# well within it. Four more makings leave DEAR's median at 20 or more, and take CHEAP's to the
+# line only if each takes 25 ms, where a program's makes in 4 to 14 ms, so either stays it.
 DEAR = [40] * 8
 CHEAP = [1] * 8
 
@@ -4936,7 +4936,7 @@ LETTER_TYPED = re.compile(r"letter typed (\d+) ms after the one before, resting 
 CHEAP_AFTER_LETTER = "letter's drawer is cheap: "
 
 
-def drawers_under_the_rest(said: list[str]) -> list[str]:
+def drawers_under_the_rest(said: list[str], *, before_the_first: bool = True) -> list[str]:
     """Give each dear drawer followed before a letter the shell heard quicker than its rest.
 
     wtype's letters are 50 ms apart, but a loaded builder spaced them 175 to 395 ms apart as
@@ -4944,9 +4944,10 @@ def drawers_under_the_rest(said: list[str]) -> list[str]:
     (Y2YBTS, 2026-11-14, ed99cdc6 and 5dc9f833; typing again three times still failed in four
     gates). So a drawer is judged by the gap before the letter after it: one followed before
     a letter under the rest didn't wait for the letters. Those before the first letter count
-    too, since home's drawer was out before it. One the shell judged cheap follows its letter
-    rather than resting, made long before the next (Pacing.drawerRestsForLetters), so it's
-    left out.
+    too, since home's drawer was out before it, unless `before_the_first` is false: a cheap
+    kind's drawer rightly joins the key's frame of a first letter, which no letters came before.
+    One the shell judged cheap follows its letter rather than resting, made long before the
+    next (Pacing.drawerRestsForLetters), so it's left out.
     """
     wrong: list[str] = []
     waiting: list[str] = []
@@ -4961,7 +4962,7 @@ def drawers_under_the_rest(said: list[str]) -> list[str]:
             cheap = None
         elif typed := LETTER_TYPED.fullmatch(one):
             # The first letter's gap is from whatever was typed before the mark.
-            if first or int(typed[1]) < int(typed[2]):
+            if (first and before_the_first) or int(typed[1]) < int(typed[2]):
                 wrong.extend(waiting)
             waiting = []
             first = False
@@ -5044,6 +5045,11 @@ def test_a_drawer_resting_for_the_letters_names_the_row_selected(
 
     def footed(since: int) -> None:
         shell.reported("drawer follows program:foot", lambda _: True, since)
+        if cheap:
+            # Its timing is kept a frame after it's made and said in a showing after that.
+            shell.launcher_until(
+                lambda shown: (shown["drawer"].get("timed") or {}).get("key") == "program:foot"
+            )
 
     with taught(shell, {"home program": CHEAP if cheap else DEAR}):
         said = typed_from_home(shell, "foot", footed)
@@ -5056,12 +5062,14 @@ def test_a_drawer_resting_for_the_letters_names_the_row_selected(
     came = [one.get("came", "") for one in timed if one.get("key") == "program:foot"]
     # Taught dear, it's never judged cheap after its letter. Taught cheap, it's said cheap only
     # while letters still come, which a loaded builder's spacing can end first, joining its
-    # key's frame unsaid, so it's judged by never resting for them (#6737's council, 2026-11-26).
+    # key's frame unsaid, so it's judged by never resting for them, and by joining only the
+    # frame of a letter heard at or past the rest (#6737's council, 2026-11-26).
     judged_cheap = f"{CHEAP_AFTER_LETTER}program:foot" in said[:follow]
     rested = [how for how in came if how.startswith("after resting")]
-    assert (bool(came) and not rested) if cheap else not judged_cheap, (
+    joined = drawers_under_the_rest(said, before_the_first=False)
+    assert (bool(came) and not rested and not joined) if cheap else not judged_cheap, (
         f"Foot's drawer, taught {'cheap' if cheap else 'dear'}, was judged otherwise: "
-        f"{drawer_trace(said)}; came {came!r}"
+        f"{drawer_trace(said)}; came {came!r}; joined under the rest {joined!r}"
     )
     on_foot = [one for one in shown if one["drawer"]["out"] and selecting("Foot", one)]
     assert on_foot, f"the drawer was never out beside Foot: {drawer_trace(said)}"
