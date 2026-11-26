@@ -1628,7 +1628,8 @@ QtObject {
     // never waits long on it (VKCF3Z, 2026-11-12, d4c660a6; Y2YBTS,
     // 2026-11-16, from Joel's For You drawers made in 4 to 7 ms; BXNMUC,
     // 2026-11-26, from his on, collection and notice drawers made in 7 to
-    // 8, which came within 50 ms of the key in 32% of the frames after).
+    // 8, among his drawers coming the frame after, 32% of which came
+    // within 50 ms of the key).
     function drawers(failures) {
         check(failures, "a kind not yet made comes the frame after",
             Pacing.drawerJoinsKey({}, "home", false), false);
@@ -1651,12 +1652,12 @@ QtObject {
             looks = Pacing.drawerMade(looks, forYou, making);
         check(failures, "one made in 4 to 7 ms, as For You's are, comes in the key's frame",
             Pacing.drawerJoinsKey(looks, forYou, false), true);
-        // The line falls at 13: a median just under comes in the key's
-        // frame, and one at 13 the frame after.
+        // The line falls at 13: a median under it, from on's 8 to 12.5,
+        // comes in the key's frame, and one at 13 the frame after.
         check(failures, "a median of 8 ms, as on's drawers were made in, comes in the key's frame",
             Pacing.drawerJoinsKey({ on: [7, 8, 9] }, "on", false), true);
         check(failures, "as does a median of 12.5 ms",
-            Pacing.drawerJoinsKey({ dear: [12, 13] }, "dear", false), true);
+            Pacing.drawerJoinsKey({ near: [12, 13] }, "near", false), true);
         check(failures, "and a median of 13 ms the frame after",
             Pacing.drawerJoinsKey({ dear: [13, 13, 13] }, "dear", false), false);
         // A place's rows are of many kinds: home's people and commands make
@@ -1770,6 +1771,8 @@ QtObject {
             Pacing.drawerRestsForLetters({ agent: [4, 3, 5] }, "agent"), false);
         check(failures, "as does one made in 8 ms, as on's drawers are, rather than resting",
             Pacing.drawerRestsForLetters({ on: [7, 8, 9] }, "on"), false);
+        check(failures, "as does one at a median of 12.5 ms, under the key's line",
+            Pacing.drawerRestsForLetters({ near: [12, 13] }, "near"), false);
         check(failures, "and one at the line a drawer joins its key's frame under rests",
             Pacing.drawerRestsForLetters({ agent: [13, 13, 13] }, "agent"), true);
         check(failures, "its line says it followed its letter",

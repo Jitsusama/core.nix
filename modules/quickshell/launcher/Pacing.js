@@ -166,20 +166,19 @@ function frameSwapped(acts) {
     return { shown: acts.framing, acts: { waiting: acts.waiting, framing: [] } };
 }
 
-// A drawer coming the frame after its key's waited one whole refresh for
-// its swap, niri's callback for the key's frame: 16 ms of every drawer's
-// median of 69 from the key, against Joel's 50 (2026-11-12), where its
-// making took a median of 2. So one whose kind made in under 13 ms of late
-// comes in the key's own frame, decided from the makings kept before it's
-// made, never by timing it there; a kind not yet made, or dearer, comes
-// the frame after, as does any while a key is held, so the highlight never
-// waits on it long (VKCF3Z, 2026-11-12, d4c660a6). The median bounds a
-// kind's usual cost, not every making: one dear row of a cheap kind still
-// holds its key's frame that once, and raises the median after. It was 3 ms until For
-// You's drawers, made in 4 to 7, came the frame after in 71 of Joel's 74 that day, each a
-// median of 72 ms from its key (Y2YBTS, 2026-11-16), then 8 until only 32% of his coming the
-// frame after met 50 ms, on's among them, made in 7 to 8 (BXNMUC, 2026-11-26); Slack's, made
-// in over 20, still come after. `makings`, each kind's last eight in ms, is never changed.
+// A drawer coming the frame after its key's waited one whole refresh for its swap, niri's
+// callback for the key's frame: 16 ms of every drawer's median of 69 from the key, against
+// Joel's 50 (2026-11-12), where its making took a median of 2. So one whose kind made in
+// under 13 ms of late comes in the key's own frame, decided from the makings kept before
+// it's made, never by timing it there; a kind not yet made, or dearer, comes the frame
+// after, as does any while a key is held, so the highlight never waits on it long (VKCF3Z,
+// 2026-11-12, d4c660a6). The median bounds a kind's usual cost, not every making: one dear
+// row of a cheap kind still holds its key's frame that once, and raises the median after.
+// It was 3 ms until For You's drawers, made in 4 to 7, came the frame after in 71 of Joel's
+// 74 that day, each a median of 72 ms from its key (Y2YBTS, 2026-11-16), then 8 until only
+// 32% of his coming the frame after met 50 ms, on's, collections' and notices' among them,
+// made in 7 to 8 (BXNMUC, 2026-11-26); Slack's, made in over 20, still come after.
+// `makings`, each kind's last eight in ms, is never changed.
 const drawerMakingsKept = 8;
 const drawerJoinsUnder = 13;
 

@@ -2851,7 +2851,8 @@ def test_a_cheap_drawer_comes_in_its_keys_own_frame(shell: Shell) -> None:
     Joel's median of 69 from the key, against his 50 (2026-11-12), while making one took a
     median of 2. So one whose kind made in under 13 ms of late comes in the key's own frame,
     and its line says so (VKCF3Z, 2026-11-12, d4c660a6; 8 rather than 3 from 2026-11-16, for
-    For You's, made in 4 to 7; 13 from 2026-11-26, for on's and notices', made in 7 to 8).
+    For You's, made in 4 to 7; 13 from 2026-11-26, for on's, collections' and notices', made
+    in 7 to 8).
     Home's first places make theirs in 0 to 2 ms here, so the walk is over home's.
     """
     shell.as_account(shell.ipc("toggle"))
@@ -3069,6 +3070,60 @@ def test_a_program_selected_in_programs_is_asked_its_acts_alone_once(shell: Shel
     assert asked <= 1, f"moving onto the next program asked rows' acts alone {asked} times"
 
 
+# Eight makings of a kind well past the 13 ms a drawer joins its key's frame under, and eight
+# well within it. A median of eight moves only once five more are made, so a kind taught
+# either stays it for a case, however its own drawers are made there.
+DEAR = [40] * 8
+CHEAP = [1] * 8
+
+
+def kept_makings_file(shell: Shell) -> Path:
+    """Give the file the shell keeps its drawers' makings in, making one drawer if none is."""
+    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+
+    def found() -> list[Path]:
+        return sorted(state.glob("quickshell/by-shell/*/launcher-drawers.json"))
+
+    if not found():
+        # Home's first row's drawer follows as it opens, and the launcher keeps its making as
+        # it shuts.
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        shell.launcher_until(lambda shown: bool(shown["drawer"]["out"]))
+        shell.close_launcher()
+        deadline = time.monotonic() + 5
+        while not found() and time.monotonic() < deadline:
+            time.sleep(0.05)
+    files = found()
+    assert len(files) == 1, f"the shell keeps its drawers' makings in {files}"
+    return files[0]
+
+
+@contextlib.contextmanager
+def taught(shell: Shell, makings: dict[str, list[int]]) -> Iterator[None]:
+    """Restart the shell having made each kind's drawers as `makings` says, and as it was after.
+
+    Whether a drawer joins its key's frame or rests for the letters is decided by its kind's
+    makings, and a program's make in 4 to 14 ms here, cheap under the line or past it by the
+    builder's load alone: at 13 a case about the dear way almost never saw it (#6737's
+    council, 2026-11-26). So a case about one way teaches the shell which, through the file
+    it reads as it starts. What it kept comes back after, so the cases after read their own.
+    """
+    path = kept_makings_file(shell)
+    before: list[str] = []
+
+    def teach() -> None:
+        before.append(path.read_text())
+        kept = cast("dict[str, Json]", json.loads(before[0] or "{}"))
+        path.write_text(json.dumps({**kept, **makings}))
+
+    shell.restart(teach)
+    try:
+        yield
+    finally:
+        shell.restart(lambda: path.write_text(before[0]))
+
+
 def test_a_key_is_timed_on_its_swap_before_the_drawer_it_brings(shell: Shell) -> None:
     """A key's frame is timed as it's swapped, before the drawer waiting on that frame is made.
 
@@ -3078,35 +3133,32 @@ def test_a_key_is_timed_on_its_swap_before_the_drawer_it_brings(shell: Shell) ->
     beside Slack's drawer made in 28, and onto mpv 39 beside 39 (2026-11-13, 20:05).
 
     A drawer whose kind made in under 13 ms of late is made in the key's own handler instead,
-    to come in the key's frame, so it's said first by design. A program's makes in 4 to 6 ms
-    here, so its drawer nearly always joins, and it was said first on five unrelated changes'
-    runs on 2026-11-14 and 15 even under the old 3. So the order asserted is the one the way
-    it came promises, and the key timed first is judged only where a builder made it dear.
+    to come in the key's frame, and a program's makes in 4 to 14 ms here. So Programs' kind is
+    taught dear first, as Slack's is on Joel's machine, and its drawer comes the frame after.
     """
-    shell.as_account(shell.ipc("toggle"))
-    shell.launcher_ready()
-    stepped_into_programs(shell)
-    shell.held_still()
-    since = shell.mark()
-    shell.send_key("down")
-    shell.reported("drawer follows ", lambda _: True, since)
-    shell.held_still()
-    said, _ = shell.said_since(since)
-    drawn = [
-        line
-        for line in said_once(shell, since, DRAWER_SAID).splitlines()
-        if DRAWER_SAID.search(line)
-    ]
-    shell.close_launcher()
+    with taught(shell, {"applications program": DEAR}):
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        stepped_into_programs(shell)
+        shell.held_still()
+        since = shell.mark()
+        shell.send_key("down")
+        shell.reported("drawer follows ", lambda _: True, since)
+        shell.held_still()
+        said, _ = shell.said_since(since)
+        drawn = [
+            line
+            for line in said_once(shell, since, DRAWER_SAID).splitlines()
+            if DRAWER_SAID.search(line)
+        ]
+        shell.close_launcher()
     assert drawn, "the drawer the key brought was never said presented"
+    assert not came_in_its_keys_frame(drawn[-1]), (
+        f"a program's drawer taught dear came in its key's frame, so the kind taught isn't "
+        f"Programs': {drawn[-1]}"
+    )
     order = [one for one in said if one.startswith(("drawer follows ", "key framed "))]
-    follows = next((one for one in order if one.startswith("drawer follows ")), "")
-    if came_in_its_keys_frame(drawn[-1]):
-        assert order[:2] == [follows, "key framed ↓"], (
-            f"a drawer in its key's frame wasn't made in the key's handler: {order}"
-        )
-    else:
-        assert order[:1] == ["key framed ↓"], f"the key was timed after its drawer: {order}"
+    assert order[:1] == ["key framed ↓"], f"the key was timed after its drawer: {order}"
 
 
 def drawer_moved(was: str, shown: Json) -> bool:
@@ -4933,7 +4985,8 @@ def test_letters_typed_quicker_than_the_rest_make_no_dear_drawer(shell: Shell) -
     Chrome's drawer, "calend" 272 ms behind Google Calendar's first (2026-11-13, 06:14).
     No drawer comes in its letter's own frame, however cheap, so typing onto a program shows
     it; each letter makes its row again, and its drawer was made again each time.
-    Only a dear kind, or one not yet made, rests: a cheap one follows its letter.
+    Only a dear kind, or one not yet made, rests: a cheap one follows its letter, so home's
+    programs are taught dear first, as Chrome's and Google Calendar's were.
     Only the drawers followed before the last letter are judged: once the letters rest, a
     loaded builder can list Foot's row again, and its drawer rightly follows the new row
     (75a49d9587e9, the net).
@@ -4944,7 +4997,11 @@ def test_letters_typed_quicker_than_the_rest_make_no_dear_drawer(shell: Shell) -
         shell.reported("drawer follows program:foot", lambda _: True, since)
         shell.held_still()
 
-    said = typed_from_home(shell, "foot", footed)
+    with taught(shell, {"home program": DEAR}):
+        said = typed_from_home(shell, "foot", footed)
+    assert f"{CHEAP_AFTER_LETTER}program:foot" not in said, (
+        f"Foot's drawer, taught dear, was judged cheap: {drawer_trace(said)}"
+    )
     last = max(at for at, report in enumerate(said) if report.startswith("letter typed "))
     between = drawers_under_the_rest(said)
     after = [report for report in said[last:] if report.startswith("drawer follows ")]
@@ -4955,7 +5012,10 @@ def test_letters_typed_quicker_than_the_rest_make_no_dear_drawer(shell: Shell) -
     )
 
 
-def test_a_drawer_resting_for_the_letters_names_the_row_selected(shell: Shell) -> None:
+@pytest.mark.parametrize("cheap", [False, True], ids=["dear", "cheap"])
+def test_a_drawer_resting_for_the_letters_names_the_row_selected(
+    shell: Shell, *, cheap: bool
+) -> None:
     """While letters rest, the drawer out names the row selected rather than the one before.
 
     The drawer waits for the letters before it's made, and kept the row before's facts beside
@@ -4964,15 +5024,22 @@ def test_a_drawer_resting_for_the_letters_names_the_row_selected(shell: Shell) -
     the selection from Now, whose drawer is out, to the program, whose drawer never comes in its
     letter's frame, and before that drawer follows the drawer out must say the program's name.
     One cheap enough to follow its letter rather than rest names it by being made, in the
-    frame after the letter's, so the first showing after it is judged instead.
+    frame after the letter's, so the first showing after it is judged instead. A program's
+    makes in 4 to 14 ms here, either side of the line by the builder's load, so home's programs
+    are taught each way in turn.
     """
 
     def footed(since: int) -> None:
         shell.reported("drawer follows program:foot", lambda _: True, since)
 
-    said = typed_from_home(shell, "foot", footed)
+    with taught(shell, {"home program": CHEAP if cheap else DEAR}):
+        said = typed_from_home(shell, "foot", footed)
     follow = said.index("drawer follows program:foot")
-    cheap = f"{CHEAP_AFTER_LETTER}program:foot" in said[:follow]
+    judged_cheap = f"{CHEAP_AFTER_LETTER}program:foot" in said[:follow]
+    assert judged_cheap == cheap, (
+        f"Foot's drawer, taught {'cheap' if cheap else 'dear'}, was judged otherwise: "
+        f"{drawer_trace(said)}"
+    )
     judged = said[follow:] if cheap else said[:follow]
     shown = [json.loads(one[len("showing ") :]) for one in judged if one.startswith("showing ")]
     on_foot = [one for one in shown if one["drawer"]["out"] and selecting("Foot", one)]
