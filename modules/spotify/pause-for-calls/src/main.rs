@@ -192,9 +192,18 @@ org.mpris.MediaPlayer2.chromium.instance3 3600 chrome jitsusama :1.90 app.scope 
 
     #[test]
     fn a_status_says_playing_or_paused() {
-        assert!(says("s \"Playing\"\n", "Playing"));
-        assert!(!says("s \"Paused\"\n", "Playing"));
-        assert!(says("s \"Paused\"\n", "Paused"));
+        assert!(
+            says("s \"Playing\"\n", "Playing"),
+            "busctl's Playing wasn't read as playing"
+        );
+        assert!(
+            !says("s \"Paused\"\n", "Playing"),
+            "busctl's Paused was read as playing"
+        );
+        assert!(
+            says("s \"Paused\"\n", "Paused"),
+            "busctl's Paused wasn't read as paused"
+        );
         assert!(!says("", "Paused"), "no answer is neither");
     }
 }

@@ -144,28 +144,44 @@ mod tests {
     use super::*;
 
     fn saved() -> SignIn {
-        serde_json::from_str(include_str!("../fixtures/token.json")).unwrap()
+        serde_json::from_str(include_str!("../fixtures/token.json"))
+            .expect("the fixture is a sign-in")
     }
 
     fn at(when: &str) -> Timestamp {
-        when.parse().unwrap()
+        when.parse().expect("a test's time is a timestamp")
     }
 
     #[test]
     fn a_token_runs_out_a_minute_early() {
         let token = saved();
-        assert!(!token.expired(at("2026-10-31T14:57:00Z")));
-        assert!(token.expired(at("2026-10-31T14:58:00Z")));
-        assert!(token.expired(at("2026-11-07T09:00:00Z")));
+        assert!(
+            !token.expired(at("2026-10-31T14:57:00Z")),
+            "a token ran out over a minute before its end"
+        );
+        assert!(
+            token.expired(at("2026-10-31T14:58:00Z")),
+            "a token a minute from its end didn't run out"
+        );
+        assert!(
+            token.expired(at("2026-11-07T09:00:00Z")),
+            "a token past its end didn't run out"
+        );
     }
 
     #[test]
     fn a_token_with_no_end_counts_as_run_out() {
         let mut token = saved();
         token.expires_at = None;
-        assert!(token.expired(at("2026-10-31T00:00:00Z")));
+        assert!(
+            token.expired(at("2026-10-31T00:00:00Z")),
+            "a token with no end didn't count as run out"
+        );
         token.expires_at = Some("soon".to_owned());
-        assert!(token.expired(at("2026-10-31T00:00:00Z")));
+        assert!(
+            token.expired(at("2026-10-31T00:00:00Z")),
+            "a token whose end isn't a time didn't count as run out"
+        );
     }
 
     #[test]
@@ -177,12 +193,15 @@ mod tests {
         });
         let token = saved()
             .refreshed(&answer, at("2026-11-07T09:00:00Z"))
-            .unwrap();
+            .expect("an answer with an access token refreshes");
         assert_eq!(token.access_token, "new-access");
         assert_eq!(token.refresh_token.as_deref(), Some("old-refresh"));
         assert_eq!(token.scope, saved().scope);
         assert_eq!(token.expires_at.as_deref(), Some("2026-11-07T10:00:00Z"));
-        assert!(!token.expired(at("2026-11-07T09:30:00Z")));
+        assert!(
+            !token.expired(at("2026-11-07T09:30:00Z")),
+            "a refreshed token ran out half an hour into its hour"
+        );
     }
 
     #[test]
@@ -195,7 +214,7 @@ mod tests {
         });
         let token = saved()
             .refreshed(&answer, at("2026-11-07T09:00:00Z"))
-            .unwrap();
+            .expect("an answer with an access token refreshes");
         assert_eq!(token.refresh_token.as_deref(), Some("new-refresh"));
         assert_eq!(token.scope, "user-read-recently-played");
         assert_eq!(token.expires_in, 1800);
@@ -210,36 +229,50 @@ mod tests {
     #[test]
     fn the_sign_in_is_written_back_in_its_own_shape() {
         let folder = std::env::temp_dir().join(format!("spotify-recent-{}", std::process::id()));
-        fs::create_dir_all(&folder).unwrap();
+        fs::create_dir_all(&folder).expect("the temp folder takes a folder");
         let path = folder.join("token.json");
         let given = include_str!("../fixtures/token.json").trim_end();
-        fs::write(&path, given).unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        fs::write(&path, given).expect("the temp folder takes a file");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644))
+            .expect("the test's own file takes a mode");
         let Read::Found(token) = read(&path) else {
             panic!("the fixture's sign-in wasn't read");
         };
-        write(&path, &token).unwrap();
-        let written = fs::read_to_string(&path).unwrap();
+        write(&path, &token).expect("the sign-in was written back");
+        let written = fs::read_to_string(&path).expect("the written sign-in reads");
         // The same fields in the same order, on one line, as rspotify
         // writes them, with whatever else the file held after them.
         assert_eq!(written, given);
         // Joel's alone, though the file it replaced wasn't.
         assert_eq!(
-            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            fs::metadata(&path)
+                .expect("the written sign-in is there")
+                .permissions()
+                .mode()
+                & 0o777,
             0o600
         );
-        assert!(!beside(&path, "writing").exists());
-        fs::remove_dir_all(&folder).unwrap();
+        assert!(
+            !beside(&path, "writing").exists(),
+            "the file the sign-in was written to first was left behind"
+        );
+        fs::remove_dir_all(&folder).expect("the temp folder gives its folder back");
     }
 
     #[test]
     fn a_missing_or_empty_sign_in_is_missing() {
         let folder = std::env::temp_dir().join(format!("spotify-none-{}", std::process::id()));
-        fs::create_dir_all(&folder).unwrap();
+        fs::create_dir_all(&folder).expect("the temp folder takes a folder");
         let path = folder.join("token.json");
-        assert!(matches!(read(&path), Read::Missing));
-        fs::write(&path, "{}").unwrap();
-        assert!(matches!(read(&path), Read::Missing));
-        fs::remove_dir_all(&folder).unwrap();
+        assert!(
+            matches!(read(&path), Read::Missing),
+            "a sign-in that isn't there wasn't missing"
+        );
+        fs::write(&path, "{}").expect("the temp folder takes a file");
+        assert!(
+            matches!(read(&path), Read::Missing),
+            "an empty sign-in wasn't missing"
+        );
+        fs::remove_dir_all(&folder).expect("the temp folder gives its folder back");
     }
 }

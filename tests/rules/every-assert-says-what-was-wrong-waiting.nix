@@ -243,10 +243,6 @@
   "modules/spend-watch/src/status.rs" = 3;
   "modules/spend-watch/src/tokens.rs" = 6;
   "modules/spend-watch/src/waste.rs" = 1;
-  "modules/spotify/pause-for-calls/src/main.rs" = 3;
-  "modules/spotify/spotify-recent/src/recent.rs" = 13;
-  "modules/spotify/spotify-recent/src/token.rs" = 9;
-  "modules/spotify/spotify-recent/tests/stand_in.rs" = 5;
   "modules/systemd/shutdown-status/src/main.rs" = 1;
   "modules/tuple/call/src/log.rs" = 3;
   "modules/tuple/call/src/stream.rs" = 2;
