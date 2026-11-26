@@ -217,7 +217,10 @@ feed speaks.
   than ending, since each restart met the same move and left the budgets
   unwatched for its length; one started beside a watch that answers on
   the socket is told at once to try again. A history busy as it opens is
-  an error, never one that doesn't read. One that doesn't read is
+  an error a reader is told to try again on, exit 75, never one that
+  doesn't read. A missing sessions index is made without waiting on a
+  writer, and left to the next open while one holds the history; any
+  other failure to make it fails the open. One that doesn't read is
   set aside under a name nothing holds
   yet and built again, and each feed is told what's kept of its bill, none
   of it then, so it tells the bill again. One a newer spend-watch keeps,
