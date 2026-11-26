@@ -658,6 +658,11 @@ fi
 const UNENDED: &str = "printf \"elsewhere: its handover wasn't cleared, so the list of what \
 it brings back isn't ended and nothing is brought back\\n\" >&2";
 
+/// What the far line says where a list that couldn't be written whole
+/// couldn't be cut either, so the near side waits it out.
+const UNCUT: &str = "printf \"elsewhere: couldn't cut the list of what it brings back, so \
+nothing is brought back\\n\" >&2";
+
 /// The end of `bringing`'s list of what's brought back, once the list's
 /// lines were written, or `wrote` says they couldn't all be.
 fn ended() -> String {
@@ -675,18 +680,25 @@ fn ended() -> String {
   {UNENDED}
 elif [ $wrote -ne 0 ]; then
   printf "elsewhere: couldn't write down all it brings back\n" >&2
-elif ! echo {END} >> "$job/{BROUGHT}"; then
+elif ! {{ echo {END} >> "$job/{BROUGHT}"; }} 2>/dev/null; then
   printf "elsewhere: couldn't end the list of what it brings back\n" >&2
   wrote=1
 fi
 # Cut on a line of its own, so a line the full disk cut in half can't
 # hide it, and never through a link that couldn't be cleared at its name
 # or at the handover. Where one cleared there took the job's folder with
-# it, the folder is made again, so the near side still reads the cut.
-if [ $wrote -ne 0 ] && [ -n "$handed" ] && [ ! -L "$job/{BROUGHT}" ]; then
-  [ -d "$job" ] || mkdir -p "$job" 2>/dev/null
-  {{ printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"; }} 2>/dev/null ||
-    printf "elsewhere: couldn't cut the list of what it brings back\n" >&2
+# it, the folder is made again, so the near side still reads the cut:
+# only the levels `unlinked` clears, each where no folder of its own
+# stands, and none of them a link as the cut is written, so a link put
+# back meanwhile is never made or written through, and a quest's scratch
+# that went is never made again.
+if [ $wrote -ne 0 ] && [ -n "$handed" ]; then
+  for at in "${{job%/*/*}}" "${{job%/*}}" "$job"; do
+    [ -d "$at" ] && [ ! -L "$at" ] || mkdir "$at" 2>/dev/null || break
+  done
+  {{ [ ! -L "${{job%/*/*}}" ] && [ ! -L "${{job%/*}}" ] && [ ! -L "$job" ] &&
+    [ ! -L "$job/{BROUGHT}" ] && printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"; }} 2>/dev/null ||
+    {UNCUT}
 fi
 "#,
         freed = freed(),
