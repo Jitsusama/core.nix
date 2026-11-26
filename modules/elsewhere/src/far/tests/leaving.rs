@@ -1,6 +1,6 @@
 //! The near side leaving a job's files in the handover: which tracked
 //! names it takes, its archives, the list of them, and the bytes it says
-//! they take.
+//! they take; and the cache the far line finds that handover in.
 
 use super::{kind, scratch};
 use crate::far::{
@@ -246,4 +246,30 @@ fn what_is_left_over_several_archives_is_said_to_take_them_all() {
         "the archives weren't each listed at the size it was written at"
     );
     let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn the_far_line_takes_a_cache_that_isn_t_absolute_as_none() {
+    let line = format!("{}\nprintf %s \"$cache\"", crate::far::steps::CACHE);
+    // The gate names dash, the strictest sh a far machine may have.
+    let sh = std::env::var("ELSEWHERE_FAR_SH").unwrap_or_else(|_| "sh".to_owned());
+    for (cache, found) in [
+        (Some("rel/cache"), "/h/.cache"),
+        (Some(""), "/h/.cache"),
+        (None, "/h/.cache"),
+        (Some("/c"), "/c"),
+    ] {
+        let mut far = std::process::Command::new(&sh);
+        far.args(["-c", &line]).env("HOME", "/h");
+        match cache {
+            Some(cache) => far.env("XDG_CACHE_HOME", cache),
+            None => far.env_remove("XDG_CACHE_HOME"),
+        };
+        let said = far.output().unwrap().stdout;
+        assert_eq!(
+            String::from_utf8_lossy(&said),
+            found,
+            "a cache of {cache:?} wasn't found where the near side finds it"
+        );
+    }
 }
