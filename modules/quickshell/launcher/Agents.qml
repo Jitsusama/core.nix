@@ -1959,7 +1959,9 @@ Provider {
         // seconds since, rather than saying it's busy over it: a start in
         // the cloud can take minutes, and Joel must still see it took
         // (2026-11-25 14:33: "no clue if i did it once, twice, thrice").
-        if (sprouting === key) {
+        // Other words on the same row, as another page's link, are new
+        // work, told it's busy so they aren't lost under this receipt.
+        if (sprouting === key && String(said) === sproutGiven.words) {
             console.info("launcher: new work's Return was heard again while it starts");
             return;
         }
@@ -2212,16 +2214,16 @@ Provider {
         const launcher = provider.launcher ?? null;
         if (!Sprouting.stepsBack(launcher, key, sproutGiven.letters, startWheres().length))
             return false;
-        sproutCarried = sproutGiven.words;
         // A link's From a Link (newWorkFor) opens over Agents' rows, not Start New Work's, so
         // stepping out of it steps into Start New Work too.
         // In the Cloud's acts step back to its own rows, so the words then
         // start in the cloud as he meant, not here. A link's act asked to
         // run elsewhere has no rows of its own there, so it stays where it
-        // is, its refusal told, rather than handing his words to a local row.
+        // is, its refusal told, and carries no words to a local row.
         const under = launcher.held[launcher.held.length - 2]?.row?.key ?? "";
         if (provider.sproutOn !== "" && under !== "agents:start-new-work:cloud")
             return false;
+        sproutCarried = sproutGiven.words;
         launcher.back();
         if (under !== "agents:start-new-work" && under !== "agents:start-new-work:cloud")
             launcher.enter(startNewWorkMade());
