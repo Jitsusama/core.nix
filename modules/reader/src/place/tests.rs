@@ -2,7 +2,7 @@ use super::{
     Block, Landed, Mark, Opens, Place, Said, Taking, as_read, at, heading_of, heights_known,
     heights_wanted, keep_window_in, kept_at, landed_again, letter, line_in, listed_in, mark,
     mark_at, moved, on_lines, opening, pt_of, read_in, set_again, still_waiting, take_kept,
-    through, window_in, write_in,
+    taken_as_his, through, window_in, write_in,
 };
 use std::collections::HashMap;
 
@@ -547,8 +547,8 @@ fn a_kept_mark_goes_on_a_line_of_its_block_and_is_kept_as_read_until_he_moves_it
 
 #[test]
 fn kept_marks_are_taken_as_read_and_one_kept_without_a_height_takes_its_blocks() {
-    // Each was measured on a page 400 points wide, but f, kept before a
-    // mark said how wide, never learns a height.
+    // Each was measured on a page 400 points wide, and f, kept before a
+    // mark said how wide, is taken as measured on the page it lands on.
     let kept = |letter, block, into_pt, block_pt| Mark {
         letter,
         block,
@@ -600,10 +600,14 @@ fn kept_marks_are_taken_as_read_and_one_kept_without_a_height_takes_its_blocks()
             ('a', Some(80.0)),
             ('b', Some(80.0)),
             ('c', None),
-            ('f', None)
+            ('f', Some(80.0))
         ],
-        "b takes its block's height here; c's block's isn't known on the first screen, \
-         and f can't say it was measured at this width"
+        "b and f take their block's height here; c's block's isn't known on the first screen"
+    );
+    assert_eq!(
+        landed.last().and_then(|one| one.kept.width_pt),
+        Some(400.0),
+        "f is kept as measured at the width it landed at"
     );
     // The whole page, at another width, says nothing of c's block, so
     // none is walked for it.
@@ -636,18 +640,17 @@ fn kept_marks_are_taken_as_read_and_one_kept_without_a_height_takes_its_blocks()
             ('a', Some(80.0)),
             ('b', Some(80.0)),
             ('c', Some(60.0)),
-            ('f', None)
+            ('f', Some(80.0))
         ],
-        "c takes its block's height once the whole page has it; a and b keep theirs, \
-         and f still can't say its width"
+        "c takes its block's height once the whole page has it; a, b and f keep theirs"
     );
     // Set again at another width, blocks 1 and 2 twice as tall: b and c
     // scale with them.
     let after = [(0, 36.0), (1, 120.0), (2, 280.0), (3, 400.0)];
     assert_eq!(
         landed_again(&mut landed, &marks, &after),
-        vec![('a', 200.0), ('b', 160.0), ('c', 300.0), ('f', 150.0)],
-        "b and c land as far through their blocks as a does; f, as far in as it was kept"
+        vec![('a', 200.0), ('b', 160.0), ('c', 300.0), ('f', 180.0)],
+        "b, c and f land as far through their blocks as a does"
     );
 }
 
@@ -721,6 +724,41 @@ fn a_page_set_again_lands_kept_marks_from_what_was_kept_unless_edited() {
         marks,
         HashMap::from([('a', 1200.0), ('z', 2300.0)]),
         "and a goes as moved, as z does, not from what was kept"
+    );
+}
+
+#[test]
+fn a_mark_taken_on_a_page_an_edit_set_lands_once_and_never_again_by_its_kept_block() {
+    // a waited for block 3, which the page set after an edit has. Taken
+    // there, as App::saved takes it, it's his: a resize moves it as every
+    // mark of his moves, not again from block 3 as kept, which the edit
+    // may have renumbered. Unedited, it stays the kept one.
+    let kept = Mark {
+        letter: 'a',
+        block: 3,
+        into_pt: 10.0,
+        block_pt: Some(40.0),
+        width_pt: Some(400.0),
+        said: Said::default(),
+    };
+    let whole = Taking {
+        whole: true,
+        width_pt: 400.0,
+    };
+    let set = [(0, 36.0), (1, 120.0), (2, 200.0), (3, 260.0), (4, 300.0)];
+    let resized = [(0, 36.0), (1, 120.0), (2, 200.0), (3, 400.0), (4, 440.0)];
+    let after = |edited: bool| {
+        let (mut waiting, mut marks, mut landed) = (vec![kept.clone()], HashMap::new(), Vec::new());
+        take_kept(&mut waiting, &mut marks, &mut landed, &set, whole);
+        taken_as_his(&mut landed, edited);
+        set_again(&mut landed, &mut marks, &resized, false, |pt| pt + 1000.0);
+        marks.get(&'a').copied()
+    };
+    assert_eq!(after(true), Some(1270.0), "edited, a moves as his");
+    assert_eq!(
+        after(false),
+        Some(410.0),
+        "unedited, a lands again from block 3"
     );
 }
 

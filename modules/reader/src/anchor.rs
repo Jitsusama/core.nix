@@ -117,6 +117,28 @@ impl Moving<'_> {
     /// edit, nowhere; after an edit there with its words gone, no further
     /// than the page goes.
     pub fn moved(&self, pt: f64) -> f64 {
+        self.moved_as(pt, |line, now| {
+            place::moved_into(self.before, self.after, line, self.ends, now)
+        })
+    }
+
+    /// Where a view's top goes, as `moved` moves a point, but kept as far
+    /// through its block as it was rather than on the line nearest it: a
+    /// view scrolled to the page's top, over its first line, lands there
+    /// again, and one partway down a line stays partway down it.
+    pub fn moved_view(&self, pt: f64) -> f64 {
+        self.moved_as(pt, |line, now| {
+            place::moved_by_block(self.before, self.after, line, now)
+        })
+    }
+
+    /// Where a point goes as `moved` says, landed by its block with `land`,
+    /// given its line and how its block is numbered now.
+    fn moved_as(
+        &self,
+        pt: f64,
+        land: impl FnOnce((f64, f64), &dyn Fn(usize) -> usize) -> Option<f64>,
+    ) -> f64 {
         let words = if self.edited {
             matched(self.was, self.now, pt, self.most_pt, true)
         } else {
@@ -130,7 +152,7 @@ impl Moving<'_> {
                     return None;
                 }
                 let line = moves::line_topped(self.was, pt);
-                place::moved_into(self.before, self.after, line, self.ends, |block| {
+                land(line, &|block| {
                     if self.edited {
                         self.block_now(self.before, block).unwrap_or(block)
                     } else {
@@ -335,9 +357,11 @@ mod tests {
     }
 
     #[test]
-    fn an_edit_moves_a_mark_with_its_words_though_the_width_changed_too() {
+    fn an_edit_moves_a_mark_with_its_words_before_its_block_at_another_width() {
         // A paragraph saved in above "two" renumbers its block: by its
-        // block, a mark on it would land on "one".
+        // block, a mark on it would land on "one". Set at another width
+        // too, a line still says "two", so its words are taken and its
+        // block never read; one no line says goes by its block, below.
         let old = [line(20.0, "one"), line(40.0, "two")];
         let new = [line(20.0, "new"), line(40.0, "one"), line(60.0, "two")];
         let before = [(0, 0.0), (1, 25.0)];
