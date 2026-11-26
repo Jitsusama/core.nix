@@ -71,7 +71,7 @@
 // collections 16 s apart, each inside a key, 115 ms of its 175 and 193
 // (2026-11-19). A miss never starts the collector later than twice the room
 // past what the chunks held at the first ask since a collection ended, and
-// twice what the sweeps kept beyond what they kept then, nor sooner than Qt
+// twice what the sweeps kept beyond what was in use then, nor sooner than Qt
 // itself would, so a heap whose sweeps keep a few items in each chunk it
 // grew into doesn't grow by the room at every one, and one kept past the
 // two rooms isn't collected at every miss: two of Joel's openings, their

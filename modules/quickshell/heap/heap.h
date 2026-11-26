@@ -64,7 +64,7 @@ public:
     // more outside it, and as much again after every collection that ends
     // later, though a miss starts it no later than twice the room beyond
     // what its chunks held at the first ask since a collection ended, and
-    // twice what its sweeps kept beyond what they kept then, whatever room
+    // twice what its sweeps kept beyond what was in use then, whatever room
     // it asked for, and never sooner than Qt would: up to
     // 1024, and none for 0 or what isn't a number, in the heap from the
     // next collection on and outside it as Qt lowers its limit. Asked after the
