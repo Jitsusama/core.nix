@@ -81,6 +81,11 @@ const QUIETER: f32 = 12.0;
 /// echo.
 const ALONE: usize = 5;
 
+/// How many of Joel's words heard alone, those nearest in time to a
+/// word of his, his voice is taken from to judge it: his level moves
+/// with his microphone, which he may change partway through a call.
+const NEAR: usize = 9;
+
 /// Whether `line` is Joel's microphone hearing one of the others' lines,
 /// and so left out of the transcript; the meetings check says which of
 /// Joel's lines it leaves out (score.rs).
@@ -188,28 +193,47 @@ fn around(word: &Word, theirs: &[Word]) -> std::ops::Range<usize> {
     from..to.max(from)
 }
 
-/// The level of Joel's voice in his microphone: the middle level of his
-/// `mine` heard while none of `theirs` is, if `ALONE` of them are.
-fn voice<'a>(mine: impl IntoIterator<Item = &'a Word>, theirs: &[Word]) -> Option<f32> {
-    let mut levels: Vec<f32> = mine
+/// When each of Joel's `mine` heard while none of `theirs` is was heard,
+/// and its level, in the order heard.
+fn alone<'a>(mine: impl IntoIterator<Item = &'a Word>, theirs: &[Word]) -> Vec<(usize, f32)> {
+    let mut alone: Vec<(usize, f32)> = mine
         .into_iter()
         .filter(|word| around(word, theirs).is_empty())
-        .map(|word| word.level)
+        .map(|word| (word.at, word.level))
         .collect();
-    if levels.len() < ALONE {
+    alone.sort_by_key(|&(at, _)| at);
+    alone
+}
+
+/// The level of Joel's voice in his microphone at `at`: the middle level
+/// of the `NEAR` of his words heard `alone` nearest it, if `ALONE` are.
+fn voice(alone: &[(usize, f32)], at: usize) -> Option<f32> {
+    if alone.len() < ALONE {
         return None;
     }
+    let mut from = alone.partition_point(|&(heard, _)| heard < at);
+    let mut to = from;
+    while to - from < NEAR.min(alone.len()) {
+        let before = from.checked_sub(1).map(|i| at - alone[i].0);
+        let after = alone.get(to).map(|&(heard, _)| heard - at);
+        match before {
+            Some(before) if after.is_none_or(|after| before <= after) => from -= 1,
+            _ => to += 1,
+        }
+    }
+    let mut levels: Vec<f32> = alone[from..to].iter().map(|&(_, level)| level).collect();
     levels.sort_by(f32::total_cmp);
     Some(levels[levels.len() / 2])
 }
 
 /// For each of Joel's `mine`, the loudest of `theirs` said within a
-/// moment of it, if that's `DROWNED` louder, his `voice`, once known, is
-/// `QUIETER` louder, and they go on speaking past it, or his word just before it
-/// was cut so: his words heard inside their speech far below it are its
-/// echo, and so is the echo of their last words, which follows them,
-/// while a word of his that opens as their line ends may be his answer.
-fn drowned(mine: &[Word], theirs: &[Word], voice: Option<f32>) -> Vec<Option<usize>> {
+/// moment of it, if that's `DROWNED` louder, his `voice` around it, from
+/// his words heard `alone`, once known, is `QUIETER` louder, and they go
+/// on speaking past it, or his word just before it was cut so: his words
+/// heard inside their speech far below it are its echo, and so is the
+/// echo of their last words, which follows them, while a word of his that
+/// opens as their line ends may be his answer.
+fn drowned(mine: &[Word], theirs: &[Word], alone: &[(usize, f32)]) -> Vec<Option<usize>> {
     let mut drowned: Vec<Option<usize>> = Vec::with_capacity(mine.len());
     for (i, word) in mine.iter().enumerate() {
         let near = around(word, theirs);
@@ -217,7 +241,7 @@ fn drowned(mine: &[Word], theirs: &[Word], voice: Option<f32>) -> Vec<Option<usi
             .first()
             .is_some_and(|said| said.at <= word.at + LAG);
         let echoing = i > 0 && drowned[i - 1].is_some() && mine[i - 1].at + LAG >= word.at;
-        let quiet = voice.is_none_or(|voice| word.level + QUIETER <= voice);
+        let quiet = voice(alone, word.at).is_none_or(|his| word.level + QUIETER <= his);
         let loudest = near.max_by(|&a, &b| theirs[a].level.total_cmp(&theirs[b].level));
         let below = |j: &usize| theirs[*j].level >= word.level + DROWNED;
         drowned.push(loudest.filter(|j| (on || echoing) && quiet && below(j)));
@@ -259,7 +283,7 @@ pub fn cut_echoes<S: BuildHasher>(
         .cloned()
         .collect();
     theirs.sort_by_key(|word| word.at);
-    let his = voice(
+    let his = alone(
         lines
             .iter()
             .enumerate()
@@ -276,7 +300,7 @@ pub fn cut_echoes<S: BuildHasher>(
         };
         let echoes: Vec<Option<(usize, Option<f32>)>> = echoes_of(mine, &theirs)
             .into_iter()
-            .zip(drowned(mine, &theirs, his))
+            .zip(drowned(mine, &theirs, &his))
             .zip(mine)
             .map(|((by_spelling, by_level), word)| {
                 let below = |j: usize| (j, Some(theirs[j].level - word.level));
