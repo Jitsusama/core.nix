@@ -334,11 +334,11 @@ fn gather(
     let minutes = [day(now - DAY), day(now)].join("\n");
     all.extend(measures::balanced(&minutes, now, NET_RULES));
     let hearer = state_home.join("pain-points");
-    let pains = fs::read_to_string(hearer.join("hour.json")).ok();
+    let (pains, read_at) = measures::summary(&hearer);
     let routes = fs::read_to_string(hearer.join("routes.json")).ok();
     let keeper = measures::keeper(routes.as_deref());
     let owner = keeper.as_deref().unwrap_or(measures::ASKS);
-    all.push(measures::pains(pains.as_deref(), now, owner));
+    all.push(measures::pains(pains.as_deref(), read_at, owner));
     let outcomes = tail(
         &state_home.join("pi/agentic-harness.pi/priority-workflow/outcomes.jsonl"),
         RECORD_READ,

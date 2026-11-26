@@ -52,7 +52,7 @@ pub use misses::{
     forget_unfixed, held, held_for_good, held_unseen, hosts_started, ledger, said, said_none,
     untested,
 };
-pub use pains::{keeper, pains};
+pub use pains::{keeper, pains, summary};
 pub use parked::parked;
 pub use reports::{REPORTS_SINCE, Report, report, unasked};
 pub use slips::slips;

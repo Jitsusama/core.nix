@@ -3,6 +3,9 @@
 //! point he has, and the card measured only what our own ledgers held, so a
 //! pain he said aloud and nobody took up never reached it.
 
+use std::fs;
+use std::path::Path;
+
 use serde_json::Value;
 
 use super::{Class, Measure, count};
@@ -42,6 +45,17 @@ fn times(hits: u64) -> String {
         1 => "once".to_owned(),
         n => format!("{n} times"),
     }
+}
+
+/// The hearer's summary, its `hour.json` under `hearer` when it can be
+/// read, with the clock in seconds as it was read, to judge its age by:
+/// the hour can run for many minutes before it reads it, and a summary
+/// written since the hour began would read as dated ahead of the hour's
+/// own clock, as one did by 15 minutes at 03:10 on 26 November.
+#[must_use]
+pub fn summary(hearer: &Path) -> (Option<String>, i64) {
+    let text = fs::read_to_string(hearer.join("hour.json")).ok();
+    (text, crate::now_ms() / 1000)
 }
 
 /// The keeper of Joel's ledgers, from the hearer's `routes.json`, who
@@ -252,6 +266,26 @@ mod tests {
         assert!(
             stale.target.is_none(),
             "a summary past 15 min was judged: {stale:?}"
+        );
+    }
+
+    #[test]
+    fn a_summary_written_after_the_hour_began_is_judged_by_the_clock_it_was_read_at() {
+        let hearer = tempfile::tempdir().expect("a hearer's folder");
+        let begun = crate::now_ms() / 1000 - 15 * 60;
+        let written = crate::now_ms() / 1000;
+        fs::write(hearer.path().join("hour.json"), summary(written, ""))
+            .expect("a summary written");
+        let (text, read_at) = super::summary(hearer.path());
+        let m = pains(text.as_deref(), read_at, "WCJQSG");
+        assert!(
+            read_at >= written && m.target.is_some(),
+            "a summary written a quarter hour into the hour read as dated ahead: {m:?}"
+        );
+        let by_the_start = pains(text.as_deref(), begun, "WCJQSG");
+        assert!(
+            by_the_start.says.contains("dated 15 min ahead"),
+            "the hour's start no longer stands in for the stale clock: {by_the_start:?}"
         );
     }
 
