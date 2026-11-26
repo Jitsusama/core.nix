@@ -189,11 +189,16 @@ pub fn min_free(nix: &Path) -> Result<u64, String> {
     // Only the length of what Nix said is told, on either stream: the
     // guard's log is often readable by any account, and a Nix printing
     // more than the one value, or quoting a nix.conf line it refuses,
-    // could print its access tokens.
+    // could print its access tokens. Where its other commands' last words
+    // are told with a quoted line left out, this one's aren't, since a read
+    // of the config may print a setting in no quoted form at all; the way
+    // to see why is named instead.
     // Not idle, unlike the guard's collections: it's one quick read, and on
     // a Mac the background band throttles it most while the machine is
     // busiest, which is when a read past its thirty seconds keeps the guard
-    // from its floor. That lifts the system guard's read; an account's
+    // from its floor. That lifts the system guard's read, and on Linux an
+    // account's too, from idle to its unit's slice, background.slice,
+    // which still yields to the account's own work. On a Mac an account's
     // guard runs wholly in the background band, as its launchd agent's
     // ProcessType puts it so the account's own work comes first, and so
     // does this read.
@@ -204,7 +209,8 @@ pub fn min_free(nix: &Path) -> Result<u64, String> {
             |code| format!("exited {code}"),
         );
         return Err(format!(
-            "nix config show min-free {ended}, saying {} bytes on its error stream",
+            "nix config show min-free {ended}, saying {} bytes on its error stream; run it \
+             as the guard's account to see why",
             said.trim().len()
         ));
     }

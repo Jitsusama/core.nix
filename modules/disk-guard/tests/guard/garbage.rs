@@ -173,7 +173,10 @@ fn a_refused_nix_conf_line_is_told_by_its_length_alone() {
         ),
     ] {
         let dir = tempfile::tempdir().unwrap();
-        script(&dir.path().join("nix-store"), &format!("{said}\nexit 1\n"));
+        script(
+            &dir.path().join("nix-store"),
+            &format!("[ \"$*\" = '{LISTING}' ] || exit 9\n{said}\nexit 1\n"),
+        );
         let failed = list(&dir.path().join("nix"), Path::new(STORE), false).unwrap_err();
         assert!(
             !failed.contains("SECRET") && failed.ends_with(told),
@@ -193,10 +196,11 @@ fn a_min_free_read_runs_at_the_guard_s_own_priority() {
     // The 41st field of a process's stat, its policy, past a name with no
     // blanks in it: the stand-in's, and this test's own.
     const POLICY: &str = "set -- $stat\nshift 40\necho \"$1\"\n";
+    let asked = "--extra-experimental-features nix-command config show min-free";
     let dir = tempfile::tempdir().unwrap();
     script(
         &dir.path().join("nix"),
-        &format!("read -r stat < /proc/$$/stat\n{POLICY}"),
+        &format!("[ \"$*\" = '{asked}' ] || exit 9\nread -r stat < /proc/$$/stat\n{POLICY}"),
     );
     let stat = fs::read_to_string("/proc/self/stat").unwrap();
     let own: u64 = stat
