@@ -302,21 +302,31 @@ pub fn judged(
             passing.push(name.as_str());
         }
     }
-    let tests = change.tests.join(", ");
-    for name in &passing {
+    say_verdict(&passing, &moved, &change.tests);
+    Ok(passing.is_empty())
+}
+
+/// Say which of the checks built over the base, `moved`, passed there,
+/// and so refuse the change's `tests`, or that none did.
+fn say_verdict(passing: &[&str], moved: &[String], tests: &[String]) {
+    let tests = tests.join(", ");
+    for name in passing {
         eprintln!(
             "changed-checks: {name} passes with the change's tests laid over the base's code \
              ({tests}), so they'd pass without the change. Make a test fail without it, or say \
-             why it pins what was already right with a \"{TRAILER}: none, <why>\" trailer"
+             why it pins what was already right with a trailer on a commit of the change:"
         );
     }
-    if passing.is_empty() && !moved.is_empty() {
+    // The trailer goes on a line of its own, so it's copied whole into a
+    // commit message rather than retyped from inside a sentence.
+    if !passing.is_empty() {
+        eprintln!("\n    {TRAILER}: none, <why the tests pin what was already right>\n");
+    } else if !moved.is_empty() {
         eprintln!(
             "changed-checks: {} fails with the change's tests laid over the base, as it should",
             moved.join(", ")
         );
     }
-    Ok(passing.is_empty())
 }
 
 /// Say each test file the change moved, which isn't laid over the base,

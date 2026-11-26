@@ -59,6 +59,11 @@ fn a_new_test_that_passes_on_the_base_is_refused_naming_the_check_and_its_tests(
         "{said}"
     );
     assert!(
+        said.lines()
+            .any(|line| line.trim().starts_with("Red-first: none, <why")),
+        "the trailer to paste isn't on a line of its own: {said}"
+    );
+    assert!(
         stand_in.built().contains(&over_the_base(&stand_in)),
         "a wasn't built over the base: {}",
         stand_in.built()
