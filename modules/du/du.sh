@@ -394,7 +394,7 @@ fi
 if [ ${#unjudged[@]} -gt 0 ]; then
   listed "${unjudged[@]}"
   echo "note: du left out ${#unjudged[@]} start(s) it couldn't judge, a folder it" \
-    "can't enter or a link whose end it can't read, uncounted: ${all}" >&2
+    "can't enter or find or a link whose end it can't read, uncounted: ${all}" >&2
   short=yes
 fi
 if [ ${#kept[@]} -eq 0 ]; then

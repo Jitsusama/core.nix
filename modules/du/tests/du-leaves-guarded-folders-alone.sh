@@ -343,8 +343,8 @@ if (cd "${home}/src/locked" 2>/dev/null); then
 fi
 chmod 755 "${home}/src/locked"
 ln -s "${home}/Documents/inside/file" "${home}/src/note"
-unjudged="note: du left out 1 start(s) it couldn't judge, a folder it can't enter or a"
-unjudged+=" link whose end it can't read, uncounted:"
+unjudged="note: du left out 1 start(s) it couldn't judge, a folder it can't enter or find"
+unjudged+=" or a link whose end it can't read, uncounted:"
 count "${home}" -sh src/note src
 gives "a count of a link to a file in Documents" "" -sh src/note src
 count "${home}" -shH src/note
@@ -451,6 +451,11 @@ gives "a count of a link through a link below a folder that can't be entered" \
 count "${home}" -sh src/shut/in/file src
 gives "a count of a start typed below a folder that can't be entered" \
   "${unjudged} src/shut/in/file" -sh src
+# One alone missing from a folder that is goes to du, which says so itself.
+count "${home}" -sh src/nothing src
+gives "a count of a start missing from a folder that is" "" -sh src/nothing src
+count "${home}" -sh gone/file src
+gives "a count of a start typed below a folder that isn't there" "${unjudged} gone/file" -sh src
 count "${home}" -shH src/through src
 gives "a count of a link through a folder that can't be entered" "${unjudged} src/through" \
   -shH src

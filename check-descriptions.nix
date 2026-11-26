@@ -1302,7 +1302,8 @@
     follows is judged by where its links lead, each read as written from the folder really
     holding it, left out when one leads into Documents and left out and said apart past 32
     links or through a folder that can't be entered or isn't there, as is a start typed below
-    one; a start named - is that folder and CDPATH
+    one, while one alone missing from a folder that is reaches du; a start named - is that
+    folder and CDPATH
     moves none; only a home's own guarded folders are left out by name; -L is taken out and
     said unless -H or -P follows; du's own nonzero end is kept; a working folder gone still
     counts a whole path, and no home found is said; a count above none runs as given and ends
