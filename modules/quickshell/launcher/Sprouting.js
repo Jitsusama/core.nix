@@ -81,10 +81,10 @@ const BLANK = [
     [0xe0002, 0xe001f], [0xe0080, 0xe0fff]
 ];
 
-// Whether `code` is a format character or draws a blank.
+// Whether `code` is a format character or draws a blank. A run is read by index, since
+// Qt's engine makes an iterator and its results for each pair taken apart (Wheres.js).
 function unseen(code) {
-    return [FORMATTING, BLANK].some(runs =>
-        runs.some(([first, last]) => code >= first && code <= last));
+    return [FORMATTING, BLANK].some(runs => runs.some(run => code >= run[0] && code <= run[1]));
 }
 
 // The first code point past the 16 bits one UTF-16 half holds.

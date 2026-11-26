@@ -94,6 +94,8 @@ function slowest(each, parts) {
 // 253 ms step under load, with nothing saying where, 2026-11-14). `split`
 // holds the acts', the parts' and the ordering's ms; the rest is what's
 // left of the making. Nothing for a step that made nothing, or untold.
+// Where the acts' maker lapped its own work (`split.laps`), the acts say
+// those laps after them (actsLaps).
 function steppedMaking(making, split) {
     if (!split || !(making > 0)) {
         return "";
@@ -104,5 +106,19 @@ function steppedMaking(making, split) {
     const told = each.reduce((sum, [, ms]) => sum + ms, 0);
     each.push(["the rest", Math.max(0, Math.round(making) - told)]);
     each.sort((one, other) => other[1] - one[1]);
-    return ` (${each.map(([name, ms]) => `${name} ${ms}`).join(", ")})`;
+    const laps = actsLaps(split.laps);
+    return ` (${each.map(([name, ms]) => `${name} ${ms}${name === "its acts" ? laps : ""}`)
+        .join(", ")})`;
+}
+
+// What a step's acts went on, in parentheses, most first and by name where
+// as many, each a millisecond or more: For You's acts took a median 12 ms
+// of making 2 to 16 rows, and up to 62, with nothing saying which of its
+// bands made them slow (Joel's journal from 2026-11-23). Nothing where
+// none was lapped, or none took a millisecond.
+function actsLaps(laps) {
+    const each = Object.entries(laps ?? {}).map(([name, ms]) => [name, Math.round(ms)])
+        .filter(([, ms]) => ms >= 1)
+        .sort((one, other) => other[1] - one[1] || (one[0] < other[0] ? -1 : 1));
+    return each.length > 0 ? ` (${each.map(([name, ms]) => `${name} ${ms}`).join(", ")})` : "";
 }

@@ -262,7 +262,9 @@
   a-shut-launcher-makes-no-document-rows = ''
     the launcher's Documents make no row while it's shut, as the clock's minute passes or the
     google daemon tells a row, then hold every document once it opens, made once in the daemon's
-    order, and keep them, making none, once it's shut again
+    order, and keep them, making none, once it's shut again; and a search, or what's typed inside
+    a row, lost as the daemon goes while drawn is asked again once it says hello, still timed from
+    its key, lost again left for the next key
   '';
   a-sign-in-notice-is-taken-back-even-late = ''
     a network wanting a sign-in is told of once, its notice staying while it wants one and taken
@@ -1254,6 +1256,12 @@
     program its kind doesn't allow is refused before anything runs, and a command asked wrongly
     says what it takes
   '';
+  emoji-keeps-a-lost-search-only-open = ''
+    with nothing at the clipboard history's socket, Emoji's rows are drawn only while the launcher
+    is open: shut, a search and one typed inside a group that went unanswered are let go; open,
+    each is kept, and asked again at the history's hello, the answer to what was typed in the
+    group not taken as its key's own a while after the key, so Emoji's rows stay where they are
+  '';
   ergodox-on-every-workstation = ''
     every workstation can flash the ErgoDox, a Mac as much as Linux
   '';
@@ -1290,9 +1298,11 @@
     through a guarded folder, named, by a glob's list, in capitals, with ./, // or /., through
     .., by a link, a file through a link, by the data volume's name, or through a home named by
     one, is judged before it's opened, left out and said, du not run when none is left, and a
-    start after it like an option reaches du as a path; a link -H or -L follows to Documents
-    is left out, and one reaching no folder or a folder that can't be entered is left out
-    and said apart; a start named - is that folder and CDPATH
+    start after it like an option reaches du as a path; a link -H, -L or a / after it
+    follows is judged by where its links lead, each read as written from the folder really
+    holding it, left out when one leads into Documents and left out and said apart past 32
+    links or through a folder that can't be entered or isn't there, as is a start typed below
+    one; a start named - is that folder and CDPATH
     moves none; only a home's own guarded folders are left out by name; -L is taken out and
     said unless -H or -P follows; du's own nonzero end is kept; a working folder gone still
     counts a whole path, and no home found is said; a count above none runs as given and ends
@@ -2102,9 +2112,10 @@
     the Mac's Nix reads its builders from the room job's file, which a job every 15 seconds,
     given the set floor and hold in order, keeps clear of the builder below the floor, as at 34%
     free, on a page swapped out, on a swap-out count that started again, with the room or its
-    own record unread or that record from later than now, or when a step fails, and gives the
-    line back only after the hold, at 35% and 600 s exactly but not 595 s, saying each change
-    once, opening with its UTC time
+    own record unread or that record from later than now, or when a step fails, each starting
+    the hold, a shortage a failed write couldn't record among them, and saying why and where its
+    log says when; it gives the line back only after the hold, at 35% and 600 s but not 595 s,
+    saying each change once in one line opening with its UTC time, and a failure once
   '';
   linux-builder-gives-up-on-a-guest-that-stops-answering = ''
     the Mac's ssh to the Linux VM waits five minutes for a guest to greet it and, once in, gives
@@ -4386,7 +4397,9 @@
     going, broken while the daemon is away and live once it's back, stale once the server goes, the
     web-design skill's page checks passing at a phone's width and a desk's in both looks, a look
     for a machine with a spot machine's long name leaving its words at least two fifths of the
-    list at both widths and none past the window, a good part read from its owner's kept answer
+    list at both widths and none past the window, a machine's look saying the daemon's why under
+    its words with its one act opening that machine's launcher row on a thumb-sized target at both
+    widths, a good part read from its owner's kept answer
     never listed as worth a look and its note said where it belongs, a first visit within its
     budget of files, bytes and elements, both visits reaching only the sites' server and the second
     answered unchanged, and nothing logged
@@ -4463,7 +4476,8 @@
     folder that is one included, and the rest by their folder, as is a zone two checkouts share;
     and a place the node says isn't checked out started by name all the same; and Wheres.startAt
     gives a row picked before the places land the start it says once they have, found by its own
-    folder alone, else the start it was made with
+    folder alone, else the start it was made with; and a node's 2000 places, as long as Joel's,
+    are read and weighed in under 50 ms of the shell's thread
   '';
   start-new-work-goes-to-the-cloud = ''
     Cloud.js, behind Start New Work's In the Cloud, reads the offers the agents daemon passes on,
@@ -6888,9 +6902,14 @@
     on a machine whose /home is Btrfs, each of an account's folders named by its modules is
     moved by a unit of its own as the account's manager starts, before the units that write in
     it: a free one becomes a subvolume's root with its files, hard links and links, the folder as
-    it was kept beside it; one a process of the account's holds open stays and says so; a missing
-    one passes; one that can't be copied is left whole with no half copy, its unit failing and
-    its writer starting all the same; and a second run leaves a subvolume as it is
+    it was kept beside it; one a process of the account's holds open stays and says so; one a
+    program opens as it's copied stays whole; each a process held moves by itself once that
+    process quits; a missing one passes; one that can't be copied is left whole with no half
+    copy, its unit failing and its writer starting all the same; a second run leaves a
+    subvolume as it is; and a copy marked for its late writes, or a split, keeps its folder and
+    fails each run, though a mark with nothing written since its copy began is cleared; and a
+    waiter that held nothing a minute three times running starts the move no more, its count cleared
+    once a start lands the move
   '';
   vm-joel-comes-first = ''
     on an eighth of the laptop's memory, with agents' sessions, their work and shared work each under

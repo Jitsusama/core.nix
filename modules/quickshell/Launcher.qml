@@ -5504,10 +5504,20 @@ Scope {
     // step, a sound output's use, and an answer's levels its copy. Null
     // where it holds nothing. `spent`, where given, is told how long its
     // acts, its parts and their ordering took, so a step's line says which
-    // of its making to cut (Stepped.steppedMaking).
+    // of its making to cut (Stepped.steppedMaking), and the laps its acts'
+    // maker closed (stepLap).
     function inside(row, things, spent) {
         const began = KeyTimes.now();
-        const own = stepRows(row, things);
+        const outer = stepLaps;
+        stepLaps = { at: began, parts: {} };
+        let own = null;
+        let laps = {};
+        try {
+            own = stepRows(row, things);
+        } finally {
+            laps = stepLaps.parts;
+            stepLaps = outer;
+        }
         const acted = KeyTimes.now();
         const parts = things ? partsIn(row) : [];
         const parted = KeyTimes.now();
@@ -5516,7 +5526,7 @@ Scope {
             ? Catalogue.quietFirst(into, one => root.commandNamed(one)) : into;
         if (spent)
             Object.assign(spent, { acts: acted - began, parts: parted - acted,
-                ordering: KeyTimes.now() - parted });
+                ordering: KeyTimes.now() - parted, laps });
         return ordered;
     }
 
@@ -7471,10 +7481,15 @@ Scope {
         const foot = selected === null ? list.fillAt(root.current)
             : selected.y + selected.height - root.rowTall;
         const onRow = root.current < 0 || Math.abs(list.pickY - foot) < 0.5;
+        // How many rows the frame lists, so a check sees what a key's own first frame drew,
+        // where what's showing is made once a turn, at its end, and a list drawn for one frame
+        // can go unsaid.
+        const listed = list.count;
         for (const key of keysDrawing.waiting) {
             key.begun = begun;
             key.frame = frame;
             key.onRow = onRow;
+            key.listed = listed;
             keysAwaited += 1;
             presentedAwait(key.pressed, (at, answered) =>
                 keyPresented(key.pressed, at, key, answered));
@@ -10873,6 +10888,14 @@ Scope {
             console.info(`launcher: ${name} opened afresh, as ${sharedWhy()}`);
             return false;
         }
+        // Making its rows and giving them to the card are lapped apart from
+        // the ask, since an opening into a place worked 13 to 18 ms asking
+        // where home worked 1 to 3 (Joel's journal, 2026-11-24), and the
+        // fix depends on which of the two held it. Their names are their
+        // own, as a key's line says "listing" and "placing" of other work.
+        // Falling back to opening whole, it says the whole opening's laps
+        // instead, and this one is let go with the rest.
+        openLap("asking");
         const listed = how === "source" ? keptListing(source)
             : how === "asItStands" ? source.asItStands(() => keptListing(source))
             : how === "led" ? ledListing(name) : how === "kept" ? kept.matches : null;
@@ -10881,6 +10904,7 @@ Scope {
         // The kept steps are only the way into the place, never its rows,
         // so they're drawn under a share too.
         const steps = asNow ? [placeStep(source)] : kept.held;
+        openLap("kept rows");
         keeping = true;
         try {
             held = steps;
@@ -10901,9 +10925,12 @@ Scope {
         } finally {
             keeping = false;
         }
+        openLap("kept card");
         unhold(`${name} opened from what was kept`);
         openChord = name;
         openInto = name;
+        // Lapped too, so "asking" holds only the ask's own work.
+        openLap("letting go");
         beginOpening();
         return true;
     }
@@ -11549,9 +11576,23 @@ Scope {
     // opening since a start says which of it ran slow: it worked 15 to 29
     // ms where later ones worked 4, said only as "showing" (5FWIUS's
     // finding, 2026-11-19). "asking" is all from the ask to the opening's
-    // start, a kept place's listing among it; "showing" is now only what
-    // `opening` turning moves.
+    // start, but for a kept place's "kept rows", its rows and steps made,
+    // "kept card", what giving the card them sets off at once, and
+    // "letting go", the hold let go and the opening named (intoKept).
+    // "showing" is now only what `opening` turning moves.
     property var openLaps: ({ at: -1, parts: {} })
+    // A step's acts in laps, as an opening's are, closed by the provider
+    // whose verbs make them: For You's took a median 12 ms of making 2 to
+    // 16 rows, with nothing saying which of its bands it went on (Joel's
+    // journal from 2026-11-23). Only while inside() makes a step's acts.
+    property var stepLaps: ({ at: -1, parts: {} })
+    function stepLap(name) {
+        if (stepLaps.at < 0)
+            return;
+        const now = KeyTimes.now();
+        stepLaps.parts[name] = (stepLaps.parts[name] ?? 0) + now - stepLaps.at;
+        stepLaps.at = now;
+    }
     function openLap(name) {
         if (openAsked < 0 || openLaps.at < 0)
             return;
@@ -13252,8 +13293,13 @@ Scope {
         // finds it however fast it was; typed words are never said here.
         // Its clock's line says whether niri timed its press and how many
         // frames after its own niri answered (Presented.keyClockOf).
+        // `waited` when its search waited on answers (Awaited.heldFor), so a
+        // check tells a key listed by its own frame from one listed as they
+        // came, and null where its search recorded no parts to say.
+        const waited = key.parts ? typeof key.parts.waited === "number" : null;
         const one = Object.assign({ from, at, heard: key.heard, begun: key.begun,
-            onRow: key.onRow }, Presented.keyClockOf(key, answered), {
+            onRow: key.onRow, listed: key.listed ?? null, waited },
+            Presented.keyClockOf(key, answered), {
             synchronized: times.synchronized ?? null, swapped: times.swapped ?? null,
             screen: root.screenHere?.name ?? "",
             refresh: root.refreshOf(answered),

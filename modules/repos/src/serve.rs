@@ -15,12 +15,15 @@
 //! watched: a checkout cloned under a root, and when a tree was last
 //! written, which moves with its index.
 //!
-//! Each pace reads what works in each checkout and tree too (using.rs),
-//! from `/proc`, and says it as each repository's `using:` record, so the
-//! Code page shows the processor and memory beside the space. It's read
-//! only at the pace, as a share of time wants two readings a while apart,
+//! What works in each checkout and tree is read too (using.rs), from
+//! `/proc`, and said as each repository's `using:` record, so the Code
+//! page shows the processor and memory beside the space. It's read once a
+//! pace on a clock of its own, as a share of time wants two readings a
+//! pace apart: a whole reading of a busy disk took over three minutes on
+//! 25 Nov, longer than two readings may be apart and still measure one,
 //! and a reading of every process at each commit would cost the disk's
-//! busiest minutes most.
+//! busiest minutes most. Each whole reading hands it the folders found
+//! and takes what it read last.
 //!
 //! Each reading writes Code's homes too, where `REPOS_HOMES` names a file
 //! for them, whenever they changed (homes.rs): so they move with the disk,
@@ -30,7 +33,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use daemon_serve::serve::{self, Shared};
@@ -116,8 +119,12 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
     let mut homes = homes_named();
     let mut began = Instant::now();
     let mut record = timed(&took, || disk.read_whole(&mut heard, &mut folders, &kept));
-    let mut working =
-        Working::start(|folders: &[PathBuf]| using::sample(Path::new("/proc"), folders));
+    let mut working = Working::start(
+        PACE,
+        PACE * STALE,
+        folders_of(&record),
+        |folders: &[PathBuf]| using::sample(Path::new("/proc"), folders),
+    );
     // What works in each is said unread until /proc answers, which may
     // take its second or never, so the daemon is ready on the disk alone.
     shared.change(working.said(&record), feed::sources(&record));
@@ -155,22 +162,27 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
             Ok(_) | Err(RecvTimeoutError::Timeout) => {
                 began = Instant::now();
                 whole = began;
-                let record = timed(&took, || disk.read_whole(&mut heard, &mut folders, &kept));
-                working.read(folders_of(&record));
-                record
+                timed(&took, || disk.read_whole(&mut heard, &mut folders, &kept))
             }
             Err(RecvTimeoutError::Disconnected) => return Err(deaf("inotify stopped")),
         };
+        // Every reading of the disk, whole or not, holds every folder, so
+        // each hands them on and takes what /proc has read since.
+        working.read(folders_of(&record));
         shared.change(working.said(&record), feed::sources(&record));
         keep(homes.as_mut(), &record);
     }
 }
 
-/// How long the loop waits at the pace for what works in each tree.
+/// How long the loop waits for the first reading of what works in each
+/// tree, so the daemon's first answers say it where `/proc` is quick.
 const SAMPLED: Duration = Duration::from_secs(1);
 
-/// How many paces may pass with no reading before what was last read
-/// goes unsaid.
+/// How many of its paces old the reading of `/proc` may grow, with none
+/// newer, before what it read goes unsaid. Counted on its own clock
+/// rather than in readings of the disk, though judged as each of those
+/// ends, at least each `PACE`, so it's said late by a pace, or by one
+/// reading of a disk slower than that, at most.
 const STALE: u32 = 3;
 
 /// Every checkout's and tree's folder `record` holds.
@@ -186,105 +198,210 @@ fn folders_of(record: &Record) -> Vec<PathBuf> {
         .collect()
 }
 
-/// What one reading found in each folder, and whether it measured a share.
-type Measured = (BTreeMap<PathBuf, Use>, bool);
+/// One reading of what works in each folder.
+struct Sampled {
+    used: BTreeMap<PathBuf, Use>,
+    /// Whether it measured a share of processor time.
+    measured: bool,
+    /// The folders it placed processes in, so one it didn't know of yet
+    /// is said unread rather than idle.
+    placed: BTreeSet<PathBuf>,
+    /// When it was read, so its age is judged on its own clock.
+    at: Instant,
+}
 
-/// What worked in each checkout and tree at the last pace. It's read on a
-/// thread of its own, since a read of a process's memory waits while the
-/// process holds its memory map, which may be never, and the loop answers
-/// every view.
+/// What the loop and the thread reading `/proc` share.
+#[derive(Default)]
+struct Held {
+    /// The folders the next reading places processes in, as the last
+    /// reading of the disk found them.
+    folders: Vec<PathBuf>,
+    /// The newest reading not yet taken. Each replaces the one before, as
+    /// each list of folders does, so a loop or a reading held up for hours
+    /// leaves no pile of either behind.
+    newest: Option<Sampled>,
+}
+
+/// What worked in each checkout and tree at the last reading. It's read on
+/// a thread of its own, at its own pace, since a read of a process's
+/// memory waits while the process holds its memory map, which may be
+/// never, the loop answers every view, and a whole reading of the disk
+/// may take longer than two readings of `/proc` may be apart.
 struct Working {
-    ask: mpsc::Sender<Vec<PathBuf>>,
-    told: Receiver<Measured>,
-    /// Whether a reading was asked for and hasn't answered.
-    asked: bool,
-    /// Paces in a row with no reading taken.
-    missed: u32,
-    /// Whether any reading has answered since the daemon started: until
-    /// one has, nothing says what works, which isn't that nothing does.
-    answered: bool,
+    /// What's shared with the thread, and the signal of a new reading.
+    held: Arc<(Mutex<Held>, Condvar)>,
+    /// How old a reading may grow, with none newer, before what it read
+    /// goes unsaid: `STALE` paces.
+    old: Duration,
+    /// When reading began, so a first reading that never answers is said
+    /// in the journal as late as one that stopped.
+    since: Instant,
+    /// Whether the first reading has been waited on.
+    waited: bool,
+    /// When the reading said was read, once any has answered: until one
+    /// has, nothing says what works, which isn't that nothing does.
+    at: Option<Instant>,
+    /// Whether the last reading has grown `STALE` paces old with none
+    /// newer, so what it read goes unsaid.
+    stale: bool,
     used: BTreeMap<PathBuf, Use>,
     measured: bool,
+    placed: BTreeSet<PathBuf>,
+}
+
+/// Takes `held` whatever thread last held it: each holds it only to copy
+/// or put a value, so a holder that panicked left no half-written state.
+fn holding<T>(held: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    held.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 impl Working {
-    fn start(mut sample: impl FnMut(&[PathBuf]) -> Sample + Send + 'static) -> Self {
-        let (ask, asked) = mpsc::channel::<Vec<PathBuf>>();
-        let (tell, told) = mpsc::channel();
+    /// Starts reading what works in each of `folders` every `pace`, and at
+    /// least half a pace apart however long each takes, since each walk
+    /// reads every placed process's memory; what a reading read goes
+    /// unsaid once it's `old`. Once it's dropped, the thread ends at its
+    /// next wake, or at the end of the reading it's in, should that wake
+    /// come while one is held up.
+    fn start(
+        pace: Duration,
+        old: Duration,
+        folders: Vec<PathBuf>,
+        mut sample: impl FnMut(&[PathBuf]) -> Sample + Send + 'static,
+    ) -> Self {
+        let held = Arc::new((
+            Mutex::new(Held {
+                folders,
+                newest: None,
+            }),
+            Condvar::new(),
+        ));
+        let shared = Arc::clone(&held);
         std::thread::spawn(move || {
             let mut last: Option<Sample> = None;
-            for folders in asked {
+            // None until two readings have said whether a share is
+            // measured, so the first says why it isn't.
+            let mut measuring: Option<bool> = None;
+            // The folders the reading before looked in: a process in one
+            // it didn't had no time to measure its share from.
+            let mut looked: BTreeSet<PathBuf> = BTreeSet::new();
+            // Only the loop and this thread hold it, so it alone means
+            // the loop has gone.
+            while Arc::strong_count(&shared) > 1 {
+                let began = Instant::now();
+                let folders = holding(&shared.0).folders.clone();
                 let now = sample(&folders);
-                let found = (
-                    using::using(last.as_ref(), &now),
-                    using::measured(last.as_ref(), &now),
-                );
-                last = Some(now);
-                if tell.send(found).is_err() {
-                    return;
+                let measured = using::measured(last.as_ref(), &now);
+                if let Some(why) = measures(last.as_ref(), &now, measuring) {
+                    eprintln!("repos: {why}");
                 }
+                if last.is_some() {
+                    measuring = Some(measured);
+                }
+                let mut used = using::using(last.as_ref(), &now);
+                for (folder, one) in &mut used {
+                    if !looked.contains(folder) {
+                        one.cpu = None;
+                    }
+                }
+                // A walk that couldn't read /proc looked nowhere, so what
+                // works is said unread rather than as nothing working.
+                looked = if now.at == 0 {
+                    BTreeSet::new()
+                } else {
+                    folders.into_iter().collect()
+                };
+                // Its age counts from when its walk began, so one held up
+                // for minutes is as old as the first process it read.
+                let reading = Sampled {
+                    used,
+                    measured,
+                    placed: looked.clone(),
+                    at: began,
+                };
+                last = Some(now);
+                holding(&shared.0).newest = Some(reading);
+                shared.1.notify_all();
+                std::thread::sleep(pace.saturating_sub(began.elapsed()).max(pace / 2));
             }
         });
         Self {
-            ask,
-            told,
-            asked: false,
-            missed: 0,
-            answered: false,
+            held,
+            old,
+            since: Instant::now(),
+            waited: false,
+            at: None,
+            stale: false,
             used: BTreeMap::new(),
             measured: false,
+            placed: BTreeSet::new(),
         }
     }
 
-    /// Reads what works in each of `folders`, waiting `SAMPLED` at most,
-    /// and only while no earlier reading is still out: one stuck holds up
-    /// the loop once. Its processor time is measured once time has passed
-    /// since the last, and what was read goes unsaid once `STALE` paces
-    /// pass without a reading.
+    /// Takes the newest reading of what works in each folder, and hands
+    /// the next ones `folders`. Only the first is waited on, `SAMPLED` at
+    /// most, so one stuck holds up the loop once. Its processor time is
+    /// measured over the pace before it, and what was read goes unsaid once
+    /// it's `old` with none newer, judged as it's taken too, so a reading
+    /// that waited in the slot past that is never said as now. Where none
+    /// has answered by then, the journal says so, as a restart reaching a
+    /// process still holding its memory map would leave it.
     fn read(&mut self, folders: Vec<PathBuf>) {
-        let mut found = self.told.try_iter().last();
-        if found.is_some() {
-            self.asked = false;
+        let (lock, ready) = &*self.held;
+        let mut held = holding(lock);
+        held.folders = folders;
+        if held.newest.is_none() && !self.waited {
+            held = ready
+                .wait_timeout_while(held, SAMPLED, |held| held.newest.is_none())
+                .unwrap_or_else(PoisonError::into_inner)
+                .0;
         }
-        if !self.asked && self.ask.send(folders).is_ok() {
-            self.asked = true;
-            if let Ok(now) = self.told.recv_timeout(SAMPLED) {
-                found = Some(now);
-                self.asked = false;
-            }
+        self.waited = true;
+        let found = held.newest.take();
+        drop(held);
+        if let Some(found) = found {
+            self.used = found.used;
+            self.measured = found.measured;
+            self.placed = found.placed;
+            self.at = Some(found.at);
         }
-        if let Some((used, measured)) = found {
-            if self.missed >= STALE {
+        let age = self.at.unwrap_or(self.since).elapsed();
+        if age < self.old {
+            if self.stale {
                 eprintln!("repos: the reading of /proc answers again");
             }
-            self.used = used;
-            self.measured = measured;
-            self.missed = 0;
-            self.answered = true;
-        } else {
-            self.missed += 1;
-            if self.missed >= STALE {
-                self.used.clear();
-                self.measured = false;
-            }
-            if self.missed == STALE {
-                // A restart reads the same process again, and waits on it
-                // again, so the line names it rather than offering one.
-                let held = using::reading().map_or(String::new(), |pid| {
-                    format!(", held up reading the memory of process {pid}")
-                });
-                eprintln!(
-                    "repos: the reading of /proc has missed {STALE} paces in a row{held}, so \
-                     what works in each repository is said unread until it answers"
-                );
-            }
+            self.stale = false;
+            return;
         }
+        let was = self.stale;
+        self.stale = true;
+        self.used.clear();
+        self.measured = false;
+        if was {
+            return;
+        }
+        // A restart reads the same process again, and waits on it again,
+        // so the line names it rather than offering one.
+        let held = using::reading().map_or(String::new(), |pid| {
+            format!(", held up reading the memory of process {pid}")
+        });
+        let late = if self.at.is_some() {
+            format!(
+                "the reading of /proc is {} s old with none newer",
+                age.as_secs()
+            )
+        } else {
+            format!("no reading of /proc has answered in {} s", age.as_secs())
+        };
+        eprintln!(
+            "repos: {late}{held}, so what works in each repository is said unread until it \
+             answers"
+        );
     }
 
     /// Whether what works in each repository can't be said: no reading has
-    /// answered yet, or none has for `STALE` paces.
+    /// answered yet, or the last has grown `STALE` paces old.
     fn unread(&self) -> bool {
-        !self.answered || self.missed >= STALE
+        self.at.is_none() || self.stale
     }
 
     /// Every record the feed says: the disk's, and what works in each
@@ -294,10 +411,44 @@ impl Working {
         if self.unread() {
             said.extend(feed::unread(record));
         } else {
-            said.extend(feed::using(record, &self.used, self.measured));
+            said.extend(feed::using(record, &self.used, self.measured, &self.placed));
         }
         said
     }
+}
+
+/// Why a share of processor time is, or is no longer, measured by `now`
+/// after `before`, where `was` says whether the readings before measured
+/// one, for the journal: a share said as null tells no one why. Nothing
+/// where nothing changed worth saying: no pair yet, a share measured from
+/// the start, or measured or not as the readings before were, so a loss
+/// is said once, and again only once it's ended.
+fn measures(before: Option<&Sample>, now: &Sample, was: Option<bool>) -> Option<String> {
+    let measured = using::measured(before, now);
+    if before.is_none() || was == Some(measured) {
+        return None;
+    }
+    if measured {
+        return (was == Some(false)).then(|| "the share of a core is measured again".to_owned());
+    }
+    let seconds = |ticks: u64| ticks / using::TICKS;
+    let why = match (before.map(|before| before.awake), now.awake) {
+        _ if now.at == 0 => "/proc couldn't be read".to_owned(),
+        (_, None) => format!("this walk of /proc took over {} s", seconds(using::EVEN)),
+        (None | Some(None), _) => format!(
+            "the walk of /proc before this one wasn't read whole within {} s",
+            seconds(using::EVEN)
+        ),
+        (Some(Some(before)), Some(now)) if now <= before => {
+            "no waking time passed since the reading before".to_owned()
+        }
+        (Some(Some(_)), Some(_)) => format!(
+            "more than {} s of waking time passed since the reading before, the most a share \
+             is measured over",
+            seconds(using::LONGEST)
+        ),
+    };
+    Some(format!("the share of a core goes unmeasured, as {why}"))
 }
 
 /// Code's homes, at the file `REPOS_HOMES` names, where it names one.

@@ -39,6 +39,7 @@
   "NoiseCancelling.qml" = [ "launcher/ByEar.js" ];
   "NoticeLine.qml" = [ "NoticeLine.js" ];
   "NoticeRow.qml" = [ "Columns.js" ];
+  "Pasting.qml" = [ "Pasting.js" ];
   "PiSource.qml" = [ "PiSource.js" ];
   "PixelMark.qml" = [
     "MarkSize.js"
@@ -159,6 +160,11 @@
     "launcher/Presented.js"
     "launcher/Seen.js"
   ];
+  "launcher/Emoji.qml" = [
+    "launcher/EmojiDrawer.js"
+    "launcher/EmojiSearch.js"
+    "launcher/ReadyRows.js"
+  ];
   "launcher/EmojiSearch.js" = [ "Fuzzy.js" ];
   "launcher/Explainer.qml" = [ "launcher/Explaining.js" ];
   "launcher/Explaining.js" = [ "launcher/OnSelection.js" ];
@@ -237,6 +243,7 @@
     "launcher/Presented.js"
     "launcher/SessionRow.js"
     "launcher/Showing.js"
+    "launcher/TalkAnswers.js"
     "pieces/Holding.js"
   ];
   "launcher/NowGroups.js" = [ "launcher/Order.js" ];

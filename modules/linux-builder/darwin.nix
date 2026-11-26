@@ -15,6 +15,10 @@
 # Those name a file of builders that holds the builder's line only while the
 # Mac has room, as a job every 15 seconds judges it (room.sh), so a Mac
 # short of memory isn't sent more builds for a VM that keeps what it takes.
+# It gates only the Mac's own Nix: a machine that jumps through the Mac to
+# the VM with a key in `authorizedKeys` reads its own builders, and is sent
+# on whatever the Mac's room, so a Mac that's short of memory is safe only
+# while no such machine builds there.
 #
 # It offers `big-parallel` and `benchmark`, never `kvm`: Rosetta runs no
 # x86_64 VM, so a VM test is never sent there to crawl. Nor `uid-range` and
@@ -383,7 +387,7 @@ in
         type = lib.types.ints.unsigned;
         default = 600;
         description = ''
-          The seconds the Mac must stay above the floor, swapping nothing out,
+          The seconds the Mac must stay at the floor or above, swapping nothing out,
           before the builder is offered again.
         '';
       };
