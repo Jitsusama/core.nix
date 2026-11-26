@@ -593,7 +593,8 @@ mod tests {
     fn joel_talking_over_them_through_a_quiet_microphone_is_his_own() {
         // Each side's level is its own recorder's, so a quiet microphone
         // or a loud call app puts all of his voice far below theirs: his
-        // words over them are as loud as his words alone, and so his.
+        // words over them are as loud as his words alone, and so his. His
+        // two lines have none of theirs between, so they're written as one.
         let theirs = at_level(timed("We could meet next week if that suits", 0), -20.0);
         let over = "Hang on, wait.";
         let alone = "Fine by me, I'll book the room for us.";
@@ -603,7 +604,7 @@ mod tests {
         ];
         assert_eq!(
             cut_from(&[theirs], &mine),
-            [over, alone],
+            [format!("{over} {alone}")],
             "Joel talking over them through a quiet microphone was cut as their echo"
         );
     }
