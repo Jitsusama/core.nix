@@ -16,6 +16,11 @@
     a card's status line, as the launcher's is, gives its middle hints way first
     as room runs short, the keys list's and Return's staying
   '';
+  a-check-copies-what-each-file-imports = ''
+    the shell's checks copy every file a root reaches through imports.nix, a row listing its
+    imports in another order copies the same files, and a row left empty is refused, naming
+    its file and imports.nix by its path, each case taking its file from imports.nix as it is
+  '';
   a-claimed-chord-is-refused = ''
     a chord two layers claim, or one claims twice, is refused
   '';
@@ -262,7 +267,9 @@
   a-shut-launcher-makes-no-document-rows = ''
     the launcher's Documents make no row while it's shut, as the clock's minute passes or the
     google daemon tells a row, then hold every document once it opens, made once in the daemon's
-    order, and keep them, making none, once it's shut again
+    order, and keep them, making none, once it's shut again; and a search, or what's typed inside
+    a row, lost as the daemon goes while drawn is asked again once it says hello, still timed from
+    its key, lost again left for the next key
   '';
   a-sign-in-notice-is-taken-back-even-late = ''
     a network wanting a sign-in is told of once, its notice staying while it wants one and taken
@@ -785,15 +792,22 @@
     Chrome already filled, its old files gone and the rest left alone; a second run changes
     nothing, a boot's empty runtime folder is filled again, a lock left by a Chrome that's gone
     doesn't stop it, a Chrome still quitting is waited for, as is one whose maps can't be read,
-    one still quitting after half a minute is given up on, the run starting over if that Chrome
-    quits during the run's last look, and with Chrome running, or started again as the old one
-    quits, no cache is touched, so none is swapped under it, while BrowserMetrics, which Chrome
-    deletes itself as it runs, moves once nothing of Chrome's here maps or holds open a file in
-    it, a mapped or open file keeping it on the disk and a deleted one or a neighbour folder's
-    not, a Chrome on another host keeping it there and a quitting one waited for, and what a
-    session left in memory goes unless it's mapped; the unit starts with the account's manager,
-    before the graphical session, and again on each change in the profile's folder, as when
-    Chrome quits and drops its lock, with no start limit for Chrome's writes to reach
+    one still quitting after half a minute, a histogram mapped, is given up on for every folder
+    within that half minute, the run starting over if that Chrome quits during the run's last
+    look, as it does when only a BrowserMetrics made again on the disk was kept, the caches
+    already in memory, and ending within a minute, keeping it all, if it quits after, or all
+    but BrowserMetrics, saying so, if it maps only a cache; with Chrome running, or started
+    again as the old one quits, no cache is touched, so none is swapped under it, and a run
+    ends without a last look's line, as it does when only a running Chrome's BrowserMetrics
+    brought that look, the caches in memory, while BrowserMetrics, which
+    Chrome deletes itself as it runs, moves once nothing of Chrome's here maps or holds open a
+    file in it, a mapped or open file keeping it on the disk and a deleted one or a neighbour
+    folder's not, a Chrome on another host keeping it there and a quitting one waited for,
+    and, named after caches a held profile keeps, it moves all the same, and what a session left in
+    memory goes unless it's mapped, even while another host's Chrome keeps the folder on the
+    disk; the unit starts with the account's manager, before the graphical session, and again
+    on each change in the profile's folder, as when Chrome quits and drops its lock, with no
+    start limit for Chrome's writes to reach
   '';
   chrome-open-tabs-passes-clippy = ''
     clippy finds nothing in the host that tells the launcher Chrome's open tabs, or its tests
@@ -1106,8 +1120,10 @@
     on a stand-in sysfs, writeback-goal refuses a wrong call with 64 before it looks for the
     disk, fails on a name that reaches no throttle, gives back a disk that's gone quietly, and
     gives back what the throttle had before its first goal, or the kernel's default where none
-    was recorded; disk-order stands the throttle down beside io.cost and gives the kernel's
-    default back as it hands the disk back
+    was recorded, recording a throttle that can't be read as off, failing a goal the throttle
+    won't take with only the record that call made gone, and failing a giving back it won't
+    take with the record kept; disk-order stands the throttle down beside io.cost and gives
+    the kernel's default back as it hands the disk back
   '';
   disks-are-scrubbed = ''
     the disk's Btrfs is scrubbed monthly, from its root
@@ -1247,6 +1263,12 @@
     program its kind doesn't allow is refused before anything runs, and a command asked wrongly
     says what it takes
   '';
+  emoji-keeps-a-lost-search-only-open = ''
+    with nothing at the clipboard history's socket, Emoji's rows are drawn only while the launcher
+    is open: shut, a search and one typed inside a group that went unanswered are let go; open,
+    each is kept, and asked again at the history's hello, the answer to what was typed in the
+    group not taken as its key's own a while after the key, so Emoji's rows stay where they are
+  '';
   ergodox-on-every-workstation = ''
     every workstation can flash the ErgoDox, a Mac as much as Linux
   '';
@@ -1283,10 +1305,13 @@
     through a guarded folder, named, by a glob's list, in capitals, with ./, // or /., through
     .., by a link, a file through a link, by the data volume's name, or through a home named by
     one, is judged before it's opened, left out and said, du not run when none is left, and a
-    start after it like an option reaches du as a path; a link -H or -L follows to Documents
-    is left out, and one reaching no folder or a folder that can't be entered is left out
-    and said apart; a start named - is that folder and CDPATH
-    moves none; only a home's own guarded folders are left out by name; -L is taken out and
+    start after it like an option reaches du as a path; a link -H, -L or a / after it
+    follows is judged by where its links lead, each read as written from the folder really
+    holding it, left out when one leads into Documents and left out and said apart past 32
+    links or through a folder that can't be entered or isn't there, as is a start typed below
+    one, while a start alone missing from a folder that is there, a / after it or not, reaches
+    du; a start named - is that folder and CDPATH moves none; only a home's own guarded folders
+    are left out by name; -L is taken out and
     said unless -H or -P follows; du's own nonzero end is kept; a working folder gone still
     counts a whole path, and no home found is said; a count above none runs as given and ends
     0, and --help runs no du
@@ -2093,11 +2118,14 @@
   '';
   linux-builder-is-offered-only-with-room = ''
     the Mac's Nix reads its builders from the room job's file, which a job every 15 seconds,
-    given the set floor and hold in order, keeps clear of the builder below the floor, as at 34%
-    free, on a page swapped out, on a swap-out count that started again, with the room or its
-    own record unread or that record from later than now, or when a step fails, and gives the
-    line back only after the hold, at 35% and 600 s exactly but not 595 s, saying each change
-    once, opening with its UTC time
+    given the set floor, hold and log in order, a log newsyslog moves aside, keeps clear of the
+    builder below the floor, as at 34% free, on a page swapped out, on a swap-out count that
+    started again, with the room or its
+    own record unread or that record from later than now, or when a step fails, each starting
+    the hold, a shortage a failed write couldn't record among them, and saying why and naming
+    the log that says when; it gives the line back only after the hold, at 35% and 600 s but not
+    595 s, saying each change once in one line opening with its UTC time, a failure once, and
+    that it no longer fails at the look after
   '';
   linux-builder-gives-up-on-a-guest-that-stops-answering = ''
     the Mac's ssh to the Linux VM waits five minutes for a guest to greet it and, once in, gives
@@ -2187,8 +2215,8 @@
     never from the IPv6 list, on that link alone and as a host of its own; a moved address,
     another link or none ends it and its answer, waited for; with no link, or a scutil that
     fails, it waits, saying which once, and a scutil that fails while it answers changes
-    nothing; it says the name offered, not answering; and an answer that ends by itself ends
-    it, saying so
+    nothing; it says the name offered, not answering, before dns-sd says anything; and an
+    answer that ends by itself ends it, saying so
   '';
   local-name-is-kept-by-a-job = ''
     a Mac with a local name runs two root jobs, each labelled as nix-darwin labels it, under
@@ -2400,10 +2428,11 @@
     relay and off a file or a link that isn't a socket, and logs nothing of a header or a body, a
     failure included; and its own cases hold a ping from behind an upload, with little held
     unsent in its sockets and short frames, retire a connection by its number alone, sparing one
-    opened since, and at most once a minute for a reset, have the kernel probe a connection a
-    sleep retired by count alone and stop once done, but not one opened since nor one let go,
-    nor hold that one open, nor stop a later sleep's probes, and say an error with its causes,
-    cut to a line
+    opened since, and at most once a minute for a reset, have the kernel probe by count alone
+    each connection still open as a relay finds the machine slept, however it was retired, and
+    stop once done, one marked but not named too, uncounted, but not one let go, nor hold that
+    one open, nor stop a later sleep's probes though ending their own, and say an error with its
+    causes, cut to a line
   '';
   model-relay-passes-clippy = ''
     clippy finds nothing in model-relay or its tests
@@ -2644,6 +2673,16 @@
     curl, fd, jq, mycelium, rg and websocat, its curl speaking wss:// over OpenSSL 3, so a tool
     one system lacks fails on that system's checks before a machine of it switches
   '';
+  mycelium-declares-what-work-needs = ''
+    a machine declaring what work begun in some of its folders, or naming some words, needs has
+    it written where mycelium reads it, in mycelium's words: a cloud need alone and every other
+    as its kind keyed to its value, as `mycelium sprout --need` takes them; nothing is written
+    where nothing is said. A need mycelium can't read or no machine could say, a rule naming no
+    need or no folder and no word, a folder that would match nothing or everything (from ~ or $,
+    with an empty, . or .. part, or space at an end) and an empty word are refused. The need
+    kinds are the locked mycelium's, read by a scan that fails on what it can't read, and once
+    the lock reads these rules, their field names are its own
+  '';
   mycelium-declares-what-a-machine-says = ''
     a machine declaring what mycelium's node can't measure (its reach, a probe saying whether a
     call is on there through a-call-is-on alone, what a held session outlives, whether work
@@ -2776,7 +2815,8 @@
     drawn until every kind of net's records is told, concerns worst first by net's rank rather
     than the order a watch hears them, a record it can't read named rather than drawn, the
     floors laid out top first with each device on its own eero, and a device's command naming it
-    by a word that finds it alone and pastes as it reads, quoted as the terminal kit quotes
+    by a word that finds it alone and pastes as it reads, quoted as the terminal kit quotes, and
+    the opposite arrow retracing the step just walked only while the map is drawn the same way
   '';
   network-site-reads-live = ''
     the network page, served by the local sites' server beside a stand-in net and node, reads live
@@ -2788,8 +2828,11 @@
     each zoom button 44 px inside its set, a bigger house with two switches, a third eero and a
     full floor drawn the same way at a phone's width and a laptop's, the map drawn across on a
     desk, stacked once the window narrows to a phone's and across again once it widens back,
-    stacked in a window whose room falls short of across only once its floors' names count, a
-    first visit within its budget and a second answered unchanged, the web-design skill's page
+    the device the keys are on scrolled into view as the map narrows to a phone's and widens to a
+    short desk's, each too big for its room to show it beside the worst concern, stacked in a
+    window whose room falls
+    short of across only once its floors' names count, a first visit within its budget and a
+    second answered unchanged, the web-design skill's page
     checks passing at a phone's width and a desk's in both looks, and nothing logged but what a
     test causes
   '';
@@ -4386,7 +4429,9 @@
     going, broken while the daemon is away and live once it's back, stale once the server goes, the
     web-design skill's page checks passing at a phone's width and a desk's in both looks, a look
     for a machine with a spot machine's long name leaving its words at least two fifths of the
-    list at both widths and none past the window, a good part read from its owner's kept answer
+    list at both widths and none past the window, a machine's look saying the daemon's why under
+    its words with its one act opening that machine's launcher row on a thumb-sized target at both
+    widths, a good part read from its owner's kept answer
     never listed as worth a look and its note said where it belongs, a first visit within its
     budget of files, bytes and elements, both visits reaching only the sites' server and the second
     answered unchanged, and nothing logged
@@ -4451,7 +4496,11 @@
     any spelling and repeats left out; it says why when it asks nothing, hears both streams before
     saying it started on the node's machine, else the node's or sprout's why; and the words a
     mycelium: link offers are read again as one plain line of at most 1000 characters, its session
-    kept only where one here has that address, named by its quest, the foot saying a page offered it
+    kept only where one here has that address, named by its quest, the foot saying a page offered
+    it; a slow start is said still coming up a minute after its answer, then told by name when
+    it's up or lost within a quarter hour, in the foot only while Joel still waits on its act; and
+    the same words given the same act within the hour say the time they started rather than
+    starting again, and a start's wait is counted to the second
   '';
   start-new-work-finds-places = ''
     Start New Work lists the open quests' folders, then the places the realm's node names, each
@@ -4459,7 +4508,16 @@
     folder that is one included, and the rest by their folder, as is a zone two checkouts share;
     and a place the node says isn't checked out started by name all the same; and Wheres.startAt
     gives a row picked before the places land the start it says once they have, found by its own
-    folder alone, else the start it was made with
+    folder alone, else the start it was made with; and a node's 2000 places, as long as Joel's,
+    are read and weighed in under 50 ms of the shell's thread
+  '';
+  start-new-work-goes-to-the-cloud = ''
+    Cloud.js, behind Start New Work's In the Cloud, reads the offers the agents daemon passes on,
+    dropping them where the node can't take the cloud's need, its price the cheapest in one
+    currency; lists only the places another machine knows by name, a zone's path or a checkout's
+    last step, each once; reads a link's on: past its name; and asks a sprout that needs the
+    cloud, or names a machine by one plain word, refusing a place or a machine it couldn't say
+    and the cloud while it offers nothing
   '';
   starts-stopped-lifts-only-on-joels-return = ''
     Starts Stopped's Return steps in among its acts wherever the launcher drops its drawer's step,
@@ -4818,7 +4876,7 @@
   the-sessions-kitty-is-asked-only-its-own-way = ''
     a session's window is asked of the sessions kitty over its socket, or of the unit's own kitty
     from before it listened, waiting up to 20 s for one starting again, and nothing opens with
-    neither
+    neither; and the packaged kitten says an unanswered launch in the words the script reads
   '';
   the-sessions-kitty-says-its-pid = ''
     the kitty every session's window is drawn by writes its pid beside its socket, which names
@@ -5863,8 +5921,9 @@
     kinds names both in every watch, a field asked deep is mended with only what moved inside it
     while one not asked is replaced whole, a kind with none is known to hold none once answered, a
     whole answer after a gap lets go what went in it, one whole only of some keys lets go only those
-    that went, and a handler of a told change reads when its line was heard while one of a watch's
-    whole answer, or one it put off, reads none
+    that went, a handler of a told change reads when its line was heard while one of a watch's
+    whole answer, or one it put off, reads none, and a connection the shell lets go with an ask in
+    flight is said let go, as information rather than a warning
   '';
   the-desktop-reads-the-spend-watch = ''
     the AI spend piece draws what the watch wrote, and the tokens piece is there only while the
@@ -6306,7 +6365,12 @@
     so, and one that timed out, or a list that stalled there, kept unasked, one asked again each
     minute in turn and all at the next stream; all asked by the kernel's own call numbers and
     fields; a stop's rate left out for a moment's stretch, and a count unread at a line not
-    carried into the next; and a camera that goes as its unit is stopped said to have gone
+    carried into the next; and a camera that goes as its unit is stopped said to have gone; and a
+    file the watch couldn't write, a camera's streaming or idle or a loopback's, is written once
+    it can be, its trouble said once as it begins and once as it clears, even when the loopback's
+    nobody met it and its camera's watch clears it, and so is the node a camera's watch couldn't
+    say beside it, its trouble said once too; and a loopback's file is said ready only once it and
+    its node are written
   '';
   usb-camera-holders-forget-a-killed-run = ''
     each USB camera watch's unit, the relayed one's too, forgets what says its node in the folder it
@@ -6375,12 +6439,13 @@
     io.weight follows its CPU weight;
     app.slice holds a hard 13% of memory and a soft 20%, session.slice a hard and a soft 4.5 GiB,
     agents.slice a soft 10% and a hard 2 GiB, every slice above them a hard 24% and a soft 38%,
-    and jobs is slowed past 26%; timed work sits at 10000 inside idle jobs, and work in jobs can move
-    itself there; a unit work in jobs starts with systemd-run, naming no slice, lands in
-    jobs-work.slice; a scope it starts through systemd's own systemd-run goes back to the scope of
-    the work that started it, and one with a memory ceiling stays; each command written into
-    jobs.service gets a scope of its own in jobs-work.slice, at weight 100, with its own swap, and
-    the holder stays;
+    and jobs is slowed past 26%, a ceiling the sorter raises while jobs fills it and nothing it
+    spares waits on memory, and that its unit, not its fall, puts back as it stops; timed work
+    sits at 10000 inside idle jobs, and work in jobs can move itself there; a unit work in jobs
+    starts with systemd-run, naming no slice, lands in jobs-work.slice; a scope it starts through
+    systemd's own systemd-run goes back to the scope of the work that started it, and one with a
+    memory ceiling stays; each command written into jobs.service gets a scope of its own in
+    jobs-work.slice, at weight 100, with its own swap, and the holder stays;
     one naming a quest pi's sessions weigh goes in that quest's slice under jobs-work.slice at its
     weight for CPU and disk, which follows the file as it changes, and one naming none or an
     unlisted quest stays; two quests' work on one CPU shares it four to one by weight, and one
@@ -6876,9 +6941,14 @@
     on a machine whose /home is Btrfs, each of an account's folders named by its modules is
     moved by a unit of its own as the account's manager starts, before the units that write in
     it: a free one becomes a subvolume's root with its files, hard links and links, the folder as
-    it was kept beside it; one a process of the account's holds open stays and says so; a missing
-    one passes; one that can't be copied is left whole with no half copy, its unit failing and
-    its writer starting all the same; and a second run leaves a subvolume as it is
+    it was kept beside it; one a process of the account's holds open stays and says so; one a
+    program opens as it's copied stays whole; each a process held moves by itself once that
+    process quits; a missing one passes; one that can't be copied is left whole with no half
+    copy, its unit failing and its writer starting all the same; a second run leaves a
+    subvolume as it is; and a copy marked for its late writes, or a split, keeps its folder and
+    fails each run, though a mark with nothing written since its copy began is cleared; and a
+    waiter that held nothing a minute three times running starts the move no more, its count cleared
+    once a start lands the move
   '';
   vm-joel-comes-first = ''
     on an eighth of the laptop's memory, with agents' sessions, their work and shared work each under

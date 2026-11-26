@@ -61,6 +61,38 @@ fn a_gateway_unreached_past_its_rounds_is_told_as_deaf_and_heard_again_untold() 
 }
 
 #[test]
+fn a_round_read_in_part_ends_a_run_unasked_so_an_answering_gateway_isnt_told() {
+    let mut deaf = Deaf::through_gateway();
+    let round = |n: u32| AT + u64::from(n) * 30_000;
+    for n in 1..=3 * UNREACHED {
+        let heard = if n % UNREACHED == 0 {
+            Round::Partly
+        } else {
+            Round::Unasked
+        };
+        assert_eq!(
+            deaf.heard(heard, round(n)),
+            Change::Keep,
+            "round {n}: a gateway that answers a search every tenth round is reached"
+        );
+    }
+    let after = 3 * UNREACHED;
+    for n in after + 1..=after + UNREACHED + 1 {
+        assert_eq!(
+            deaf.heard(Round::Unasked, round(n)),
+            Change::Keep,
+            "round {n}: the run unasked counts again from the round read in part"
+        );
+    }
+    let at = round(after + UNREACHED + 2);
+    assert_eq!(
+        deaf.heard(Round::Unasked, at),
+        Change::Tell(waits_on_gateway(Deafness::Unreached, at, at)),
+        "a whole run unasked after it is told as before"
+    );
+}
+
+#[test]
 fn a_reader_through_a_gateway_never_sends_joel_to_sign_in_to_slack() {
     let mut deaf = Deaf::through_gateway();
     let refused = Round::Deaf(Deafness::Refused);

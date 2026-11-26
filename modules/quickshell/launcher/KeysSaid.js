@@ -13,8 +13,8 @@ const keysOwn = ["place:", "category:", "collection:"];
 const ownLength = 64;
 // What follows an own kind as the launcher writes it, an id its Nix config names, as `emoji`
 // or `Asks`: a daemon's row keyed so may hold a name, a line break or a walk's forged steps
-// there, which no id holds, so such a key is said by its kind alone. A one-word name has an
-// id's shape, so a daemon's row keyed so is still said to 64 letters.
+// there, which no id holds, so such a key is said by its kind alone. A served row is never
+// keyed so (Presented.js's keyMade), so this test is a fail-safe for a key made elsewhere.
 const ownId = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 
 // A kind's word, as the launcher and its daemons write one, at most 32 letters, and the keys

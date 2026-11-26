@@ -13,8 +13,10 @@ devices read again, when it's back, say stale when the server goes and keep
 what it drew, draw every device and wire within a phone's width with its zoom
 buttons a finger's reach, stack a bigger house with switches and a full floor
 within a phone's width and a laptop's, draw the other way as a window narrows
-to a phone's and widens back, stack in a window just too narrow for the map
-across once its floors' names are counted, keep to its budget,
+to a phone's and widens back, scroll the device the keys are on into view as
+the map narrows to a phone's and widens to a short desk's, stack in a window
+just too narrow for the map across once its floors' names are counted, keep to
+its budget,
 and pass the web-design skill's page checks at a phone's width and a desk's in
 both looks.
 Anything the page logs fails it, but for the browser's own lines once the test
@@ -112,7 +114,8 @@ def every_device_drawn(page: Page) -> None:
 
 def opened_on(page: Page, key: str) -> Locator:
     expect(device(page, key), f"the tree drew no {key} to open").to_have_count(1, timeout=PACE_MS)
-    device(page, key).locator(".ti").click()
+    # An eero's item holds its devices' items, each with a row of its own after the eero's.
+    device(page, key).locator(".ti").first.click()
     return page.locator("#panel-body")
 
 
@@ -276,6 +279,132 @@ def test_narrowing_a_desk_to_a_phone_draws_the_map_the_other_way(
         page.set_viewport_size({"width": desk[0], "height": desk[1]})
         across = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === true"
         page.wait_for_function(across, arg=KESTREL, timeout=PACE_MS)
+    finally:
+        opened.close()
+
+
+# The device net.json's worst concern is about, which the first fit brings into view.
+FIRST_CONCERN = min(
+    json.loads((HERE / "net.json").read_text())["kinds"]["concern"], key=lambda c: c["rank"]
+)["device"]
+# The device drawn farthest from `from`, centre to centre, so a view showing one can leave the
+# other out.
+FARTHEST = """(from) => {
+  const boxes = [...document.querySelectorAll("#map-draw [data-level=device]")];
+  const centre = (box) => {
+    const at = box.getBoundingClientRect();
+    return [at.left + at.width / 2, at.top + at.height / 2];
+  };
+  const origin = boxes.find((box) => box.dataset.id === from);
+  if (origin === undefined) return null;
+  const [x, y] = centre(origin);
+  const far = (box) => Math.hypot(centre(box)[0] - x, centre(box)[1] - y);
+  boxes.sort((a, b) => far(b) - far(a));
+  return boxes[0] === origin ? null : boxes[0].dataset.id;
+}"""
+# The view scrolled from its corner just far enough to show `id`, as a jump to it would.
+TO_SHOW = """(id) => {
+  document.querySelector("#map-view").scrollTo(0, 0);
+  document.querySelector(`#map-draw [data-level=device][data-id="${CSS.escape(id)}"]`)
+    .scrollIntoView({ block: "nearest", inline: "nearest" });
+}"""
+# How far the device `id` (or, given none, the one the keys are on) stands outside the map's
+# room, inside its border and scrollbars as PAST_THE_ROOM measures it, and whether the map
+# overflows the room.
+PAST = """(id) => {
+  const view = document.querySelector("#map-view");
+  const which = id === null ? "[data-here]" : `[data-level=device][data-id="${CSS.escape(id)}"]`;
+  const here = document.querySelector(`#map-draw ${which}`);
+  if (view === null || here === null) return null;
+  const frame = view.getBoundingClientRect();
+  const left = frame.left + view.clientLeft;
+  const top = frame.top + view.clientTop;
+  const box = here.getBoundingClientRect();
+  return {
+    past: Math.max(top - box.top, box.bottom - top - view.clientHeight, left - box.left,
+      box.right - left - view.clientWidth),
+    overflows: view.scrollHeight > view.clientHeight || view.scrollWidth > view.clientWidth,
+  };
+}"""
+# The map's room and the drawing's height at zoom 1, as drawn across on the opening desk.
+ROOM_AND_DRAWN = """() => {
+  const view = document.querySelector("#map-view");
+  const box = document.querySelector("#map-draw").viewBox.baseVal;
+  return { room: view.clientHeight, drawn: box.height };
+}"""
+# The height site.css's desk and phone layouts meet at (34rem), which a desk's window must pass:
+# at it both match, and the map's room is a block the page scrolls past. And how much of the
+# drawing across, at the smallest zoom, a widened window leaves below its room's first sight.
+LEAST_DESK_HEIGHT = 34 * 16
+# Measured: net.json's house drawn across is 552 units tall, 509 px at the smallest zoom, and a
+# desk holds 142 px around the room, so a window just past 34rem leaves 107 px below sight.
+BELOW_SIGHT_PX = 96
+# A small phone's window (an iPhone SE's): the stacked map's room on the tall phone shows the
+# first concern and the farthest device at once, which would let a jump back to it pass.
+SMALL_PHONE = (375, 667)
+
+
+def short_desk(page: Page) -> tuple[int, int]:
+    """Read a desk window whose map's room leaves the drawing across past its first sight."""
+    width, height = SIZES[-1]
+    measured = page.evaluate(ROOM_AND_DRAWN)
+    around = height - measured["room"]
+    short = around + int(measured["drawn"] * SMALLEST_ZOOM) - BELOW_SIGHT_PX
+    assert short > LEAST_DESK_HEIGHT, (
+        f"a room short enough to leave the map {BELOW_SIGHT_PX} px past its sight needs a "
+        f"{short} px window, which the page lays out as a phone's: {measured}"
+    )
+    return width, short
+
+
+def the_keys_device_stands_in_view(page: Page, where: str) -> None:
+    here = page.evaluate(PAST, None)
+    assert here is not None, f"{where}'s map marks no device the keys are on"
+    assert here["overflows"], f"{where}'s map fits whole, so its view proves nothing"
+    assert here["past"] <= 1, f"the keys' device stands {here['past']} px out of {where}'s map"
+
+
+def the_first_concern_leaves_it_out(page: Page, keys_on: str, where: str) -> None:
+    """Show the first concern, as a jump back to it would, and check `keys_on` is then out."""
+    page.evaluate(TO_SHOW, FIRST_CONCERN)
+    past = page.evaluate(PAST, keys_on)
+    assert past is not None, f"{where}'s map drew no {keys_on}"
+    assert past["past"] > 1, (
+        f"with {FIRST_CONCERN} in view, {keys_on} stands in {where}'s map too, so a jump back "
+        "to the first concern would pass"
+    )
+
+
+def test_the_keys_device_stays_in_view_as_the_map_draws_the_other_way(
+    browser: Browser, network_served: Served
+) -> None:
+    root, _ = network_served
+    opened = Opened(browser, f"{root}network/", SIZES[-1], "dark")
+    try:
+        page = opened.page
+        says_it_stands(page, "live")
+        every_device_drawn(page)
+        desk_short = short_desk(page)
+        keys_on = page.evaluate(FARTHEST, FIRST_CONCERN)
+        assert keys_on is not None, f"the map drew no device but {FIRST_CONCERN}"
+        opened_on(page, keys_on)
+        expect(placed(page, keys_on), "opening a device put no keys on it").to_have_attribute(
+            "data-here", ""
+        )
+        # The short desk draws across still, and overflows, so the view can show the first
+        # concern without the keys' device, where each flip then starts.
+        page.set_viewport_size({"width": desk_short[0], "height": desk_short[1]})
+        the_first_concern_leaves_it_out(page, keys_on, "a short desk")
+        for where, size, across in [
+            ("a narrowed window", SMALL_PHONE, "false"),
+            ("a widened window", desk_short, "true"),
+        ]:
+            page.set_viewport_size({"width": size[0], "height": size[1]})
+            drawn = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === {across}"
+            page.wait_for_function(drawn, arg=KESTREL, timeout=PACE_MS)
+            the_keys_device_stands_in_view(page, where)
+            # A flip that jumped back to the first concern shows this, which loses the device.
+            the_first_concern_leaves_it_out(page, keys_on, where)
     finally:
         opened.close()
 

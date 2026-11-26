@@ -131,6 +131,33 @@ it("a part's side and what it holds are read apart", () => {
   );
 });
 
+it("a machine's looks are read with their whys, and none from a record listing none", () => {
+  const osprey = {
+    key: "machine:osprey",
+    kind: "machine",
+    name: "osprey",
+    health: "bad",
+    says: "is out of reach",
+    looks: [
+      { side: "out of reach", matters: "What runs there can't be read from here." },
+      { side: "code failing" },
+    ],
+  };
+  const looksOf = (record: Record<string, unknown>) => {
+    const others = records.filter((each) => each.key !== "machine:osprey");
+    const { summary, part, machine } = told([...others, record]);
+    return systemOf(summary, part, machine)?.parts[0]?.things.map((thing) => thing.looks);
+  };
+  const reach = { side: "out of reach", matters: osprey.looks[0]?.matters };
+  const looks = [reach, { side: "code failing", matters: "" }];
+  assert.deepEqual(looksOf(osprey), [undefined, looks], "a look without a why is kept with none");
+  for (const unread of [{ matters: "A why with no look." }, { side: "" }, "a bare string"]) {
+    const half = looksOf({ ...osprey, looks: [...osprey.looks, unread] });
+    const why = `${JSON.stringify(unread)} leaves it to the side`;
+    assert.deepEqual(half, [undefined, undefined], why);
+  }
+});
+
 /** What `markup` reads as, its tags gone and its spaces run together. */
 function read(markup: string): string {
   return markup

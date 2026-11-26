@@ -218,8 +218,9 @@ in
       # pineapple-gateway beside the live reader's state, its row of what
       # waits included, so a gateway it can't hear never reaches Joel while
       # the reader he trusts goes on. Given --live, as only the live unit
-      # below is, the same program keeps to the live reader's state instead. The environment is left alone, for the sign-in
-      # program it runs.
+      # below is, the same program keeps to the live reader's state
+      # instead. The environment is left alone, for the sign-in program it
+      # runs.
       systemd.user.services.pineapple-slack-gateway = {
         Unit = {
           Description = "Reads Slack through a tool gateway for the safe word, in shadow";

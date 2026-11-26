@@ -235,9 +235,14 @@ QtObject {
         expect("told by niri when the window began to grow, it goes as far into it as niri says",
             Paths.frame(toldOf, 0).y, 257 + 142 * MarginCat.slid(42, spring));
         expect("how far in: niri's word, heard late and drawn a frame after, and a frame more",
-            [MarginCat.behindResize(1000 / 120, 0.1), MarginCat.behindResize(1000 / 60, 10),
-                MarginCat.behindResize(1000 / 120, null), MarginCat.behindResize(1000 / 60)],
+            [MarginCat.behindTold(1000 / 120, "resize", 0.1),
+                MarginCat.behindTold(1000 / 60, "resize", 10),
+                MarginCat.behindTold(1000 / 120, "resize", null),
+                MarginCat.behindTold(1000 / 60, "resize")],
             [42, 68, 63, 72]);
+        expect("how far into a scroll: niri's word, heard late and drawn a frame after",
+            [MarginCat.behindTold(1000 / 120, "slide", 10),
+                MarginCat.behindTold(1000 / 60, "slide", null)], [43, 42]);
         // Heard to close late, niri's row below already moved up into its
         // place under the cat as the shell last saw the column: it falls
         // ahead of the window over it all the same, never riding the row
