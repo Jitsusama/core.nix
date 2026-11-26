@@ -484,6 +484,34 @@ mod tests {
         assert_eq!(Config::program_in(&path), None, "a program of none");
     }
 
+    // system.nix writes says as "why" or "beside"; a word this enum
+    // reads otherwise would refuse every config the module writes.
+    #[test]
+    fn a_busy_command_says_what_the_module_writes() {
+        let read = |says: &str| {
+            serde_json::from_str::<Busy>(&format!(r#"{{"command": ["x"], "why": "y"{says}}}"#))
+        };
+        assert_eq!(
+            read(r#", "says": "why""#).expect("why reads").says,
+            Says::Why,
+            "why is why"
+        );
+        assert_eq!(
+            read(r#", "says": "beside""#).expect("beside reads").says,
+            Says::Beside,
+            "beside is beside"
+        );
+        assert_eq!(
+            read("").expect("none reads").says,
+            Says::Beside,
+            "none is beside"
+        );
+        assert!(
+            read(r#", "says": "Why""#).is_err(),
+            "a word it doesn't know is refused"
+        );
+    }
+
     #[test]
     fn a_config_that_is_not_there_names_no_program() {
         let dir = tempfile::tempdir().expect("a folder");
