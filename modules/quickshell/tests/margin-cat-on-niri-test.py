@@ -61,6 +61,9 @@ STRETCHES = (0.3, 1.0)
 # (modules/margin-cat/MarginCatScreen.qml), and the longest the shell may take to sync and
 # render one of its frames, a quarter of a frame at 60, so its own work never costs one.
 RESTS = 2.0
+# How long before the keys rest a case that must beat them sends its keys back by, for the
+# shell to hear them on a loaded builder.
+SPARE = 0.5
 # The shortest of a walk's beats, its crouch, in ms: a frame of the nested niri's longer than
 # it may hide it.
 SHORTEST_BEAT = 110
@@ -552,8 +555,10 @@ def test_a_column_off_the_screen_is_walked_to_along_the_strip(shell: Shell) -> N
             return False
         middle = at["x"] + at["size"] / 2
         stands = at["y"] + at["size"] + at["air"]
-        # Past the edge with its window, over that window, wherever niri has its top.
-        on = left <= middle <= left + width
+        # Past the edge with its window, over that window, wherever niri has its top, and
+        # drawn there, its ride done: its place is set as the ride sets off, so a ride whose
+        # lag never cleared would pass on its place alone.
+        on = left <= middle <= left + width and abs(at["x"] - at["drawn"]["x"]) < FLUSH
         return bool(on and (left >= across or abs(stands - top) < FLUSH))
 
     try:
@@ -582,6 +587,15 @@ def test_a_column_off_the_screen_is_walked_to_along_the_strip(shell: Shell) -> N
     assert 0 < behind[0] <= 1, f"drawn {behind[0]:.2f} of the scroll behind its place"
     walked = steps(shell, since)
     assert walked, "the cat took no step to the column off the edge"
+    # Carried off one edge with its window, it comes back in at that edge, never the other.
+    if left >= across:
+        assert walked[0]["x"] > across / 2, (
+            f"carried off the right edge, it came back in at {walked[0]['x']} of {across}"
+        )
+    elif left + width <= 0:
+        assert walked[0]["x"] < across / 2, (
+            f"carried off the left edge, it came back in at {walked[0]['x']} of {across}"
+        )
     jumps = [
         (before["x"], after["x"])
         for before, after in itertools.pairwise(walked)
@@ -612,9 +626,12 @@ def test_keys_back_on_its_column_ride_it_back_with_its_window(shell: Shell) -> N
     sat_at = laid_out(shell, third)["tile_pos_in_workspace_view"][0]
     wake(shell)
     since = shell.mark()
-    shell.as_account(f"niri msg action focus-window --id {first['id']}")
+    # The shell's rest begins when it hears the keys go, after this clock is read before them.
     focused = time.monotonic()
-    away = laid_out(shell, third)
+    shell.as_account(f"niri msg action focus-window --id {first['id']}")
+    # niri says where its scroll will bring the window as it sets off, so one read is enough,
+    # and none of the keys' rest goes on waiting for it to stand still.
+    away = layout_now(shell, third)
     gone, width = away["tile_pos_in_workspace_view"][0], away["tile_size"][0]
     across = json.loads(shell.as_account("niri msg --json focused-output"))["logical"]["width"]
     assert gone != sat_at, f"niri left its window at {sat_at}: the case's own"
@@ -641,19 +658,25 @@ def test_keys_back_on_its_column_ride_it_back_with_its_window(shell: Shell) -> N
             still.append(at)
         return bool(still)
 
-    heard(shell, settled, since, timedelta(seconds=RESTS))
+    # The keys must come back before they rest on the other column, or the cat walks there:
+    # the wait for its ride's end has only what's left of the rest, short of a spare.
+    left = RESTS - SPARE - (time.monotonic() - focused)
+    assert left > 0, f"the case spent {RESTS - SPARE - left:.1f} s of the rest: the case's own"
+    heard(shell, settled, since, timedelta(seconds=left))
     held = still[0]["x"]
     back = shell.mark()
-    shell.as_account(f"niri msg action focus-window --id {third['id']}")
-    # The keys must come back before they rest on the other column, or the cat walks there.
     took = time.monotonic() - focused
-    assert took < RESTS, f"the keys came back {took:.1f} s on, after they rested: the case's own"
+    assert took < RESTS - SPARE, f"the keys came back {took:.1f} s on, too near their rest"
+    shell.as_account(f"niri msg action focus-window --id {third['id']}")
     sits_over(shell, third, back)
     said, _ = shell.said_since(back)
     rode = [
         at
         for at in (placed(report[len(SITS) :]) for report in said if report.startswith(SITS))
-        if at is not None and not at.get("walk") and abs(at["drawn"]["x"] - at["x"]) >= 1
+        if at is not None
+        and not at.get("walk")
+        and at.get("window") == third["id"]
+        and abs(at["drawn"]["x"] - at["x"]) >= 1
     ]
     assert rode, "niri scrolled its window back and the cat was put on its seat at once"
     # Drawn short of its seat by what's left of the scroll back, as its window is, from where
@@ -1791,6 +1814,12 @@ def test_a_click_beside_the_cat_reaches_the_window(shell: Shell) -> None:
         # Closed even on a failure, so the cases after start with no float over the columns.
         for window in (floated, beside):
             shell.close(window)
+
+
+def layout_now(shell: Shell, window: Json) -> Json:
+    """Give where niri lays this window out now, its target as it slides there."""
+    layout: Json = next(one for one in shell.windows() if one["id"] == window["id"])["layout"]
+    return layout
 
 
 def laid_out(shell: Shell, window: Json) -> Json:
