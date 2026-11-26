@@ -2054,18 +2054,20 @@ def test_the_map_answers_its_keys_at_ten_thousand(
                 "Opened", timeout=PACE_MS
             ),
         )
-        # Return again opens that cell; j then walks to its neighbour and Return opens that one,
-        # which reads apart from the first only if j went somewhere.
+        # Return again opens that cell; j then walks to its neighbour and Return opens that one.
+        # The twin's cells all read alike, so the address tells the two apart: j went somewhere
+        # only if the cell opened isn't the first. Saying it again is a mutation of its own, so
+        # the answer is the first words to say Opened after the keys.
         opened_network = words_of(where)
         page.keyboard.press("Enter")
         expect(where, "Return opened no cell").not_to_have_text(opened_network, timeout=PACE_MS)
-        opened_first = words_of(where)
+        opened_first = page.evaluate("() => location.hash")
         step = answered_in(
             page,
             "j Enter",
-            {"selector": "#where", "has": "Opened", "unlike": opened_first},
-            lambda: expect(where, "j and Return opened no other cell").to_have_text(
-                re.compile(rf"^(?!{re.escape(opened_first)}$).*Opened"), timeout=PACE_MS
+            {"selector": "#where", "has": "Opened"},
+            lambda: page.wait_for_function(
+                "(was) => location.hash !== was", arg=opened_first, timeout=PACE_MS
             ),
         )
         title = page.locator("#panel-title")
