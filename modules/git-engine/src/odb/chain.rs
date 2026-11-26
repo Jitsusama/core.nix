@@ -6,7 +6,8 @@
 //! hold overflowed the 8 MiB a process's first thread has.
 
 use super::{
-    CHAIN_LIMIT, Kind, Mark, Object, Odb, Place, apply_delta, delta_base_size, inflate_at, invalid,
+    CHAIN_LIMIT, Kind, Mark, Object, Odb, Place, Stored, apply_delta, delta_base_size, inflate_at,
+    invalid,
 };
 use crate::hash::Oid;
 use std::collections::{HashMap, HashSet};
@@ -123,11 +124,12 @@ impl Odb {
     /// a mark lasts is `Lasts`'s to say. A copy whose chain comes round to
     /// an object already being found, or runs past `CHAIN_LIMIT`, may be
     /// sound under another copy of a base on the way, so it's only passed
-    /// over, for this find alone, and the next copy read; a base spent with a copy passed over passes over the
-    /// copy that named it in turn. Each copy is passed over at most once a
-    /// find, so a find ends after reading each copy at most once, and a
-    /// base spent ends each copy naming it after as it ended the first, so
-    /// its copies are looked up once a find, however many copies name it.
+    /// over, for this find alone, and the next copy read; a base spent with
+    /// a copy passed over passes over the copy that named it in turn. Each
+    /// copy is passed over at most once a find, so a find ends after
+    /// reading each copy at most once, and a base spent ends each copy
+    /// naming it after as it ended the first, so its copies are looked up
+    /// once a find, however many copies name it.
     pub(super) fn find(&mut self, oid: &Oid) -> io::Result<Option<Object>> {
         let mut searches = vec![Search::new(*oid, 0)];
         let mut searching = HashSet::from([*oid]);
@@ -316,7 +318,7 @@ impl Odb {
                     let kind = Kind::from_pack(code).ok_or_else(|| invalid("pack entry kind"))?;
                     let object = Object {
                         kind,
-                        data: inflate_at(file, offset + at as u64, size)?,
+                        data: inflate_at(file, offset + at as u64, size, Stored::Packed)?,
                     };
                     if search.depth() > 0 {
                         self.keep_base((store, pack, offset), &object);
@@ -345,7 +347,8 @@ impl Odb {
         let mut over_named = named;
         while let Some(hop) = search.deltas.pop() {
             let (store, pack, _) = hop.place;
-            let delta = inflate_at(&self.stores[store].packs[pack].data, hop.data, hop.size)
+            let file = &self.stores[store].packs[pack].data;
+            let delta = inflate_at(file, hop.data, hop.size, Stored::Packed)
                 .map_err(|error| (error, true))?;
             let base_blamed =
                 over_named && delta_base_size(&delta).is_some_and(|size| size != object.data.len());

@@ -244,31 +244,6 @@ impl Store {
             Some((at, offset))
         })
     }
-
-    fn loose(&self, oid: &Oid) -> io::Result<Option<Object>> {
-        let hex = oid.hex();
-        let path = self.dir.join(&hex[..2]).join(&hex[2..]);
-        let raw = match std::fs::read(path) {
-            Ok(raw) => raw,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(e),
-        };
-        let data = miniz_oxide::inflate::decompress_to_vec_zlib(&raw)
-            .map_err(|_| invalid("loose object"))?;
-        let nul = data
-            .iter()
-            .position(|&b| b == 0)
-            .ok_or_else(|| invalid("loose header"))?;
-        let space = data[..nul]
-            .iter()
-            .position(|&b| b == b' ')
-            .ok_or_else(|| invalid("loose header"))?;
-        let kind = Kind::from_name(&data[..space]).ok_or_else(|| invalid("loose kind"))?;
-        Ok(Some(Object {
-            kind,
-            data: data[nul + 1..].to_vec(),
-        }))
-    }
 }
 
 #[cfg(test)]
@@ -279,6 +254,13 @@ thread_local! {
     /// memory would refuse it, which the tests set since nothing here asks
     /// for more than they can give.
     static STARVED: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+}
+
+/// Holds this thread's objects and deltas to `cap` bytes, or frees them,
+/// for tests beyond the store's own.
+#[cfg(test)]
+pub(crate) fn starve(cap: Option<usize>) {
+    STARVED.with(|starved| starved.set(cap));
 }
 
 /// The memory an object or delta was refused: what was growing, the bytes
@@ -324,7 +306,32 @@ fn room_for(held: usize, total: usize) -> bool {
     reserve(&mut probe, held, "room").is_ok() && reserve(&mut probe, total, "room").is_ok()
 }
 
-/// Inflates the zlib stream at `offset`, which inflates to `size` bytes.
+/// Where an object inflated is stored, which its refusals name.
+#[derive(Clone, Copy)]
+enum Stored {
+    Packed,
+    Loose,
+}
+
+impl Stored {
+    fn name(self) -> &'static str {
+        match self {
+            Stored::Packed => "pack object",
+            Stored::Loose => "loose object",
+        }
+    }
+
+    /// What its memory refused is said to have been growing.
+    fn growing(self) -> &'static str {
+        match self {
+            Stored::Packed => "a pack object",
+            Stored::Loose => "a loose object",
+        }
+    }
+}
+
+/// Inflates the zlib stream at `offset`, which inflates to `size` bytes,
+/// its refusals naming where the object is `stored`.
 ///
 /// What it inflates to is grown as the stream fills it rather than made
 /// at the size its header says, so a size no stream fills, however large,
@@ -334,25 +341,24 @@ fn room_for(held: usize, total: usize) -> bool {
 /// `unpack_compressed_entry` does, it makes room for one byte past the
 /// size, and takes the object only where its stream ends there, so a
 /// stream giving more, or ending wrongly, is refused.
-fn inflate_at(file: &File, mut offset: u64, size: usize) -> io::Result<Vec<u8>> {
+fn inflate_at(file: &File, mut offset: u64, size: usize, stored: Stored) -> io::Result<Vec<u8>> {
+    let wrong = |part: &str| invalid(&format!("{}'s {part}", stored.name()));
     let mut state = InflateState::new_boxed(DataFormat::Zlib);
-    let room = size
-        .checked_add(1)
-        .ok_or_else(|| invalid("pack object's size"))?;
+    let room = size.checked_add(1).ok_or_else(|| wrong("size"))?;
     let mut out = Vec::new();
     let mut filled = 0;
     let mut chunk = vec![0; size.saturating_add(64).clamp(256, 1 << 16)];
     loop {
         let got = file.read_at(&mut chunk, offset)?;
         if got == 0 {
-            return Err(invalid("pack ends inside an object"));
+            return Err(wrong("stream ends early"));
         }
         let mut input = &chunk[..got];
         // Read on past the chunk's end too, while the stream still holds
         // what it inflated past the room made for it.
         loop {
             if filled == out.len() {
-                grow_toward(&mut out, room)?;
+                grow_toward(&mut out, room, stored.growing())?;
             }
             let result = inflate(&mut state, input, &mut out[filled..], MZFlush::None);
             filled += result.bytes_written;
@@ -363,10 +369,10 @@ fn inflate_at(file: &File, mut offset: u64, size: usize) -> io::Result<Vec<u8>> 
                     out.truncate(size);
                     return Ok(out);
                 }
-                Ok(MZStatus::StreamEnd) => return Err(invalid("pack object's size")),
-                _ if filled > size => return Err(invalid("pack object's size")),
+                Ok(MZStatus::StreamEnd) => return Err(wrong("size")),
+                _ if filled > size => return Err(wrong("size")),
                 Ok(_) | Err(MZError::Buf) => {}
-                Err(_) => return Err(invalid("pack object's stream")),
+                Err(_) => return Err(wrong("stream")),
             }
             if result.bytes_consumed == 0 && result.bytes_written == 0 {
                 break;
@@ -377,11 +383,11 @@ fn inflate_at(file: &File, mut offset: u64, size: usize) -> io::Result<Vec<u8>> 
 
 /// Makes more room at the end of `out`, which is to hold `size` bytes:
 /// twice what it holds, or 64 KiB more while it holds less, never past
-/// `size`, and refused should the memory not be there.
-fn grow_toward(out: &mut Vec<u8>, size: usize) -> io::Result<()> {
+/// `size`, and refused as `what` should the memory not be there.
+fn grow_toward(out: &mut Vec<u8>, size: usize, what: &'static str) -> io::Result<()> {
     let len = out.len();
     let to = size.min(len.saturating_mul(2).max(len.saturating_add(1 << 16)));
-    reserve(out, to - len, "a pack object")?;
+    reserve(out, to - len, what)?;
     out.resize(to, 0);
     Ok(())
 }
@@ -730,6 +736,7 @@ impl Odb {
 }
 
 mod chain;
+mod loose;
 mod parse;
 
 pub use parse::{TreeEntry, parse_commit, tree_entries};

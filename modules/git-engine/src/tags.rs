@@ -17,10 +17,8 @@ pub(crate) struct Tags {
     /// it stopped.
     named: Vec<(String, Oid)>,
     /// Where in `named` a tag isn't peeled yet, peeled as an answer is made;
-    /// one whose object wouldn't read is peeled again each answer, alone,
-    /// as the store marks what it holds: a packed copy marked bad answers
-    /// from its mark, and an I/O error, a base's fault or a loose copy is
-    /// read afresh, which may find it written since.
+    /// one whose object wouldn't read for a while, as for memory or an I/O
+    /// error, is peeled again each answer, alone, which may find it read.
     unpeeled: Vec<usize>,
 }
 
@@ -30,7 +28,10 @@ enum Peeled {
     To(Oid),
     /// To a tag object no store holds.
     Missing(Oid),
-    /// To a tag object that wouldn't read.
+    /// To a tag object whose bytes are wrong: they stay so till its file
+    /// is written again, as one missing stays missing.
+    Corrupt(Oid),
+    /// To a tag object that wouldn't read this time.
     Unread(Oid),
 }
 
@@ -68,16 +69,16 @@ impl Tags {
             .unwrap_or_default()
     }
 
-    /// Peels each tag not yet peeled: one whose object is missing settles
-    /// with the stamps of where it would come from, rather than be looked
-    /// for every answer, and one whose object wouldn't read is left for the
-    /// next.
+    /// Peels each tag not yet peeled: one whose object is missing or wrong
+    /// settles with the stamps of where it would come from, rather than be
+    /// read again every answer, and one whose object wouldn't read this time
+    /// is left for the next.
     fn peel(&mut self, odb: &mut Odb) {
         let mut missing = false;
         for at in std::mem::take(&mut self.unpeeled) {
             self.named[at].1 = match peel(odb, self.named[at].1) {
                 Peeled::To(oid) => oid,
-                Peeled::Missing(oid) => {
+                Peeled::Missing(oid) | Peeled::Corrupt(oid) => {
                     // Tags in one fan-out folder share its stamp.
                     self.keep(odb.folders_of(&oid));
                     missing = true;
@@ -112,6 +113,9 @@ fn peel(odb: &mut Odb, mut oid: Oid) -> Peeled {
         let object = match odb.read(&oid) {
             Ok(Some(object)) => object,
             Ok(None) => return Peeled::Missing(oid),
+            Err(error) if error.kind() == std::io::ErrorKind::InvalidData => {
+                return Peeled::Corrupt(oid);
+            }
             Err(_) => return Peeled::Unread(oid),
         };
         if object.kind != Kind::Tag {
@@ -140,7 +144,7 @@ pub(crate) fn files(
     stamps.push((packed.clone(), Stamp::of(&packed)));
     // Read as bytes, since a ref's name may be any, and one line not UTF-8
     // mustn't cost every packed tag.
-    if let Ok(bytes) = std::fs::read(&packed) {
+    if let Ok(Some(bytes)) = crate::regular_file::read(&packed) {
         let text = String::from_utf8_lossy(&bytes);
         let mut last: Option<String> = None;
         for line in text.lines() {
@@ -174,7 +178,7 @@ pub(crate) fn files(
             if entry.file_type().is_ok_and(|t| t.is_dir()) {
                 stack.push(path);
             } else if let Ok(rel) = path.strip_prefix(shared.join("refs/tags"))
-                && let Ok(text) = std::fs::read(&path)
+                && let Ok(Some(text)) = crate::regular_file::read(&path)
                 && let Some(oid) = Oid::from_hex(text.trim_ascii())
             {
                 // A loose tag is newer than its packed line, and so is what
@@ -251,34 +255,56 @@ mod tests {
     }
 
     #[test]
-    fn a_tag_whose_object_is_missing_is_peeled_once_and_no_stamp_kept_twice() {
-        let objects = std::env::temp_dir().join(format!("git-engine-tags-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&objects);
+    fn a_tag_whose_object_is_missing_or_wrong_is_peeled_once_and_no_stamp_kept_twice() {
+        let objects = crate::pack_index::tests::unique("tags-wrong");
         std::fs::create_dir_all(objects.join("pack")).expect("the objects folder is made");
-        let (gone, unread) = (Oid([1; 20]), Oid([2; 20]));
-        // v2's object is there but isn't zlib, so it's left unread till
-        // it's taken away, and then missing too.
-        let loose = objects.join(&unread.hex()[..2]);
+        let (gone, wrong) = (Oid([1; 20]), Oid([2; 20]));
+        // v2's object is there but isn't zlib, which it stays till its
+        // folder takes another file.
+        let loose = objects.join(&wrong.hex()[..2]);
         std::fs::create_dir_all(&loose).expect("v2's folder is made");
-        let file = loose.join(&unread.hex()[2..]);
-        std::fs::write(&file, b"not zlib").expect("v2's object is written");
-        let named = vec![("v1".to_string(), gone), ("v2".to_string(), unread)];
+        std::fs::write(loose.join(&wrong.hex()[2..]), b"not zlib").expect("v2 is written");
+        let named = vec![("v1".to_string(), gone), ("v2".to_string(), wrong)];
         let mut tags = Tags::new(Vec::new(), named, &HashMap::new());
-        let mut odb = Odb::open(&objects);
-        tags.naming(Oid([3; 20]), &mut odb);
-        let first = tags.unpeeled.clone();
-        std::fs::remove_file(&file).expect("v2's object is taken away");
-        tags.naming(Oid([3; 20]), &mut odb);
-        let mut paths: Vec<_> = tags.stamps.iter().map(|(path, _)| path).collect();
+        tags.naming(Oid([3; 20]), &mut Odb::open(&objects));
+        let mut paths: Vec<_> = tags.stamps.iter().map(|(path, _)| path.clone()).collect();
         let kept = paths.len();
         paths.sort();
         paths.dedup();
+        std::fs::remove_dir_all(&objects).expect("the temp folder gives its folder back");
         assert_eq!(
-            (first, tags.unpeeled.len(), kept),
-            (vec![1], 0, paths.len()),
-            "a missing tag was left to peel again, an unread one wasn't, or a stamp \
-             was kept twice"
+            (tags.unpeeled.len(), kept, paths.contains(&loose)),
+            (0, paths.len(), true),
+            "a missing or wrong tag was left to peel again, a stamp was kept twice, or \
+             the wrong one's folder wasn't kept"
         );
-        let _ = std::fs::remove_dir_all(&objects);
+    }
+
+    #[test]
+    fn a_tag_whose_object_wouldn_t_read_this_time_is_peeled_again_the_next() {
+        let objects = crate::pack_index::tests::unique("tags-starved");
+        let (tag, commit) = (Oid([4; 20]), Oid([5; 20]));
+        let loose = objects.join(&tag.hex()[..2]);
+        std::fs::create_dir_all(&loose).expect("v1's folder is made");
+        let raw = format!("object {}\ntype commit\n", commit.hex());
+        let object = format!("tag {}\0{raw}", raw.len());
+        std::fs::write(
+            loose.join(&tag.hex()[2..]),
+            miniz_oxide::deflate::compress_to_vec_zlib(object.as_bytes(), 1),
+        )
+        .expect("v1's object is written");
+        let mut tags = Tags::new(Vec::new(), vec![("v1".to_string(), tag)], &HashMap::new());
+        let mut odb = Odb::open(&objects);
+        crate::odb::starve(Some(16));
+        let starved = tags.naming(commit, &mut odb);
+        crate::odb::starve(None);
+        let fed = tags.naming(commit, &mut odb);
+        std::fs::remove_dir_all(&objects).expect("the temp folder gives its folder back");
+        assert_eq!(
+            (starved.as_str(), fed.as_str(), tags.unpeeled.len()),
+            ("", "v1", 0),
+            "a tag whose object had no memory to read was settled unpeeled, or peeled \
+             through nothing"
+        );
     }
 }

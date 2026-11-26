@@ -29,6 +29,7 @@ mod pack_index;
 mod pattern;
 mod refs;
 mod reftable;
+mod regular_file;
 mod repo;
 mod stamp;
 mod status;
@@ -598,12 +599,12 @@ mod tests {
     }
 
     #[test]
-    fn a_tag_whose_object_wouldnt_read_is_read_again_next_answer() {
+    fn a_tag_whose_object_is_wrong_settles_till_a_new_copy_is_renamed_in() {
         let (commit, tag) = ([9; 20], [10; 20]);
         let (dir, loose, zlib) = tagged("unpeeled", commit, tag);
-        // The annotated tag's object, loose and first not zlib at all; then
-        // rewritten in place, which moves no stamp, so only a tag not
-        // settled on the first answer is peeled on the next.
+        // The annotated tag's object, loose and not zlib at all. git won't
+        // write over a copy it has, so a sound one comes only by a rename,
+        // which moves its folder's stamp; a write in place moves none.
         let file = loose.join(&hash::Oid(tag).hex()[2..]);
         std::fs::write(&file, b"not zlib").unwrap();
         crate::stamp::tests::ahead(3);
@@ -613,13 +614,17 @@ mod tests {
                 .ask(&dir, &options(&[]), false)
                 .map(|answer| answer.tag)
         };
-        let unread = tag_said();
+        let wrong = tag_said();
         std::fs::write(&file, &zlib).unwrap();
+        let in_place = tag_said();
+        let written = loose.join("tmp_obj");
+        std::fs::write(&written, &zlib).unwrap();
+        std::fs::rename(&written, &file).unwrap();
         assert_eq!(
-            (unread, tag_said()),
-            (Some(String::new()), Some("v1".into())),
-            "a tag whose object wouldn't read was named, or settled unpeeled though \
-             the store keeps no mark of a loose copy"
+            (wrong, in_place, tag_said()),
+            (Some(String::new()), Some(String::new()), Some("v1".into())),
+            "a tag whose object was wrong was named, read again every answer, or \
+             still settled once a sound copy was renamed over it"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
