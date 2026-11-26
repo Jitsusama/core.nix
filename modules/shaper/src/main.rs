@@ -337,6 +337,10 @@ struct Shaped {
     /// Whether the spell told is held by a ceiling alone, a trial's, the
     /// network's or its house's, with nothing the controller judged holding it.
     ceiling: bool,
+    /// The ceiling the upload was held under at the last step, in kbit/s,
+    /// a trial's, the network's or its house's, where one held it: what
+    /// its queues hold is never left over it (`due`).
+    under: Option<u64>,
     /// Whether a call's or a screen share's traffic crosses the link, and
     /// whether it did at the last look.
     real_time: realtime::RealTime,
@@ -719,6 +723,7 @@ fn start(
         follows: None,
         told: false,
         ceiling: false,
+        under: None,
         real_time: realtime::RealTime::default(),
         holding: None,
         queued_reads: (0, 0),
@@ -1832,7 +1837,7 @@ fn watch_real_time(shaped: &mut BTreeMap<String, Shaped>, t: f64) {
 /// against the lower of its leader's ceiling and its own, so its CAKE is
 /// never told a rate its own link can't carry.
 fn hold_followers(shaped: &mut BTreeMap<String, Shaped>) {
-    let rates: BTreeMap<String, (u64, u64, bool, u64)> = shaped
+    let rates: BTreeMap<String, (u64, u64, bool, u64, Option<u64>)> = shaped
         .iter()
         .map(|(n, s)| {
             let held = (
@@ -1840,14 +1845,19 @@ fn hold_followers(shaped: &mut BTreeMap<String, Shaped>) {
                 s.down.rate,
                 s.download.straight(),
                 s.up.bounds.max,
+                s.under,
             );
             (n.clone(), held)
         })
         .collect();
     for s in shaped.values_mut() {
-        if let Some(&(up, down, straight, most)) = s.follows.as_ref().and_then(|l| rates.get(l)) {
+        let leader = s.follows.as_ref().and_then(|l| rates.get(l));
+        if let Some(&(up, down, straight, most, under)) = leader {
             s.up.rate = up;
             s.down.rate = down;
+            // A follower takes its leader's ceiling, so the two together
+            // are held under it exactly too.
+            s.under = under;
             apply(s, most.min(s.up.bounds.max));
             go_straight(s, straight);
         }
@@ -1885,6 +1895,10 @@ fn step_links(
         None => (None, replay::Rates::default()),
     };
     let why = live.why(now);
+    let heard_ceiling = live
+        .heard()
+        .and_then(|(_, heard)| heard.ceiling)
+        .map(rate::whole);
     let share = live.vpn_share(now);
     let agents = live.agents_share(now);
     // What the link the recorder follows carried down its last second,
@@ -1936,6 +1950,14 @@ fn step_links(
         }
         let rates = led(rates, held, most);
         let why = if held { &why } else { &why::Judged::Nothing };
+        // The ceiling the upload is held under: the network's or its
+        // house's, and on the link the controller holds, a trial's too,
+        // as the controller heard it.
+        s.under = if held {
+            lower(most, heard_ceiling)
+        } else {
+            most
+        };
         hold(s, rates, why, room);
     }
 }
@@ -2195,6 +2217,18 @@ fn hold(s: &mut Shaped, rates: replay::Rates, why: &why::Judged, room: Option<u6
     go_straight(s, straight);
 }
 
+/// Whether a link's upload `rate` is put on its queues afresh, against
+/// what they hold, `applied`: when it moved by more than 1%, so a rate
+/// that wavers doesn't change the queues each second, or when what they
+/// hold is over the ceiling the upload is held `under`, so a ceiling
+/// holds exactly rather than up to 1% over. On 23 November the call test
+/// read 6035 kbit/s held under a trial's 6000: the queues kept a rate
+/// 0.58% over it, a move under 1% being left alone.
+fn due(rate: u64, applied: u64, under: Option<u64>) -> bool {
+    let moved = rate.abs_diff(applied) * 100 > applied;
+    moved || under.is_some_and(|most| applied > most && rate != applied)
+}
+
 /// What a link's download is held to, the link's state, and whether what
 /// it receives goes straight in, given the controller's `rates`, the rate
 /// its spell holds the download to, `down`, and a call's `room`. The room
@@ -2323,14 +2357,15 @@ fn go_straight(s: &mut Shaped, straight: bool) {
     }
 }
 
-/// Puts a link's rates on its queues when they moved by more than 1%, and
+/// Puts a link's rates on its queues when they moved by more than 1%, or
+/// its upload's when its queues hold more than its ceiling (`due`), and
 /// tells Joel's CAKE a rate while the upload's is under `most`, the
 /// ceiling that holds it: its own, or for a follower the lower of its
 /// leader's and its own.
 fn apply(s: &mut Shaped, most: u64) {
     let moved = |a: u64, b: u64| a.abs_diff(b) * 100 > b;
     let (up, down) = (s.up.rate, s.down.rate);
-    if moved(up, s.applied.0) {
+    if due(up, s.applied.0, s.under) {
         // The lanes move with the rate at once, so the classes never
         // promise more than it.
         let split = s.lanes.at(float(up));
@@ -2568,6 +2603,32 @@ fn sweep(kept: &BTreeSet<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_ceiling_is_held_exactly_and_a_wavering_rate_left_alone() {
+        assert!(
+            due(6_000, 6_035, Some(6_000)),
+            "the queues 0.58% over a trial's ceiling are put under it"
+        );
+        assert!(
+            !due(6_000, 6_035, None),
+            "a move under 1% with no ceiling leaves the queues alone"
+        );
+        assert!(
+            !due(5_990, 5_995, Some(6_000)),
+            "under the ceiling, a move under 1% leaves them alone"
+        );
+        assert!(
+            !due(6_000, 6_000, Some(6_000)),
+            "the queues at the ceiling already"
+        );
+        assert!(
+            !due(6_035, 6_035, Some(6_000)),
+            "a rate the queues hold already isn't put again each second"
+        );
+        assert!(due(7_000, 6_000, Some(9_000)), "a move past 1%");
+        assert!(due(5_000, 6_000, None), "a move past 1% down");
+    }
 
     // A call's room lies under whatever the controller asks, never over
     // it, and turns the download through the IFB, while the link's state
