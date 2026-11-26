@@ -475,6 +475,12 @@ PanelWindow {
             return;
         rideTo({ x: place.x + by.x, y: place.y + by.y });
     }
+    // Whether its place is `to` already, within half a pixel, as a cut
+    // puppy visit asks of its seat.
+    function placedAt(to: var): bool {
+        return place !== null && Math.abs(place.x - to.x) < 0.5
+            && Math.abs(place.y - to.y) < 0.5;
+    }
     // Whether niri's scroll of its workspace still runs: begun less than
     // its spring's length ago, since niri never says one ended, so an old
     // scroll's word, still on its windows, isn't taken for a new one
