@@ -14,6 +14,10 @@
 //! them, so each change is logged with the process and cgroup that said it,
 //! and anything but exactly that shape is refused, logged by what was
 //! wrong with it and never by what it said (2026-11-14).
+//!
+//! Long because its cases, over half of it, stay beside the private
+//! readings of the kernel's word on an asker they prove, as every module
+//! in wifid keeps them.
 
 use std::ffi::OsStr;
 use std::fmt;
