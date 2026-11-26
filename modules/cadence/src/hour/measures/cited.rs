@@ -562,25 +562,28 @@ fn noted_uncited(
 /// you", each with the lines indented past it that carry it on, its own
 /// points among them, until a line that is neither; or why it can't be
 /// read, when a note is written with no such line, so a note in another
-/// shape is never read as putting nothing to Joel.
+/// shape is never read as putting nothing to Joel. Words on that line
+/// after its last colon lead into the list, as a line of their own would.
 fn for_you(note: &str) -> Result<Vec<String>, String> {
     let mut lines = note.lines();
     let opens = |line: &str| {
-        plain(line)
-            .to_lowercase()
-            .strip_prefix("for you")
-            .is_some_and(|rest| !rest.starts_with(char::is_alphanumeric))
+        let line = plain(line).to_lowercase();
+        let rest = line.strip_prefix("for you")?;
+        (!rest.starts_with(char::is_alphanumeric)).then(|| {
+            rest.rsplit_once(':')
+                .is_none_or(|(_, after)| after.trim_matches(['*', '_', ' ']).is_empty())
+        })
     };
-    if lines.by_ref().find(|line| opens(line)).is_none() {
+    let Some(bare) = lines.by_ref().find_map(opens) else {
         return if note.trim().is_empty() {
             Ok(Vec::new())
         } else {
             Err("the morning note has no line opening \"For you\"".to_owned())
         };
-    }
+    };
     let mut items: Vec<String> = Vec::new();
     let mut first: Option<usize> = None;
-    let mut led = false;
+    let mut led = !bare;
     for line in lines {
         if line.trim().is_empty() {
             continue;
@@ -597,6 +600,15 @@ fn for_you(note: &str) -> Result<Vec<String>, String> {
             // One line of words leading into the list, as "Two calls
             // today:"; a second is the next part's, as "Overnight:".
             led = true;
+        } else if first.is_none() && !led && bold(line) {
+            // A line in bold may lead into the list, as "**Two calls
+            // today:**", or open the next part, as "**Overnight:**";
+            // the two read alike, so neither is read as nothing for him.
+            return Err(
+                "the morning note's \"For you\" opens on a bold line that can't be told \
+                 from the next part"
+                    .to_owned(),
+            );
         } else {
             break;
         }
@@ -611,7 +623,13 @@ fn for_you(note: &str) -> Result<Vec<String>, String> {
 /// in bold, as "**For you:**" does.
 fn heading(line: &str) -> bool {
     let line = line.trim_start();
-    line.starts_with('#') || line.starts_with("**") || line.starts_with("__")
+    line.starts_with('#') || bold(line)
+}
+
+/// Whether `line` opens in bold.
+fn bold(line: &str) -> bool {
+    let line = line.trim_start();
+    line.starts_with("**") || line.starts_with("__")
 }
 
 /// The owner and message the last comment in an item names, as
