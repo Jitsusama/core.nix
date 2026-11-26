@@ -350,6 +350,22 @@ def looking(machine: BaseMachine, *, now: bool) -> None:
     )
 
 
+def forgets_all_but_its_point(machine: BaseMachine) -> None:
+    """Have the card forget every point but the one it's on, in the kernel and wpa_supplicant.
+
+    The kernel keeps what it heard for 30 s, and wpa_supplicant takes all of it back with any
+    look's results, a stopped one's too, so its own flush alone would let the first come back
+    (2026-11-26). A look over one channel it doesn't name, flushing first, empties the kernel's.
+    """
+    looking(machine, now=False)
+    machine.wait_until_succeeds(
+        "iw dev wlan2 scan flush freq 2412 > /dev/null", timeout=timedelta(seconds=30)
+    )
+    looking(machine, now=False)
+    machine.succeed("wpa_cli -i wlan2 bss_flush 0 | grep -qx OK")
+    assert FIRST not in machine.succeed("wpa_cli -i wlan2 scan_results"), "still heard"
+
+
 def reached_in_time(machine: BaseMachine, since: str, *said: str) -> None:
     """Check wifid said each line in order and the card reached the first before its drop."""
     reached = f"^wlan2 reached {FIRST} [0-9]+ ms after it was asked"
@@ -443,11 +459,8 @@ def test_a_warned_card_that_hears_none_of_the_points_named_looks_on_their_channe
     since = wifid.journal_now()
     try:
         ask = warning(machine, wifid)
-        # Forgets every point but the one the card is on, and says so to wifid ahead of the
-        # warning, on the same bus, once the look that found the second has ended.
-        looking(machine, now=False)
-        machine.succeed("wpa_cli -i wlan2 bss_flush 0 | grep -qx OK")
-        assert FIRST not in machine.succeed("wpa_cli -i wlan2 scan_results"), "still heard"
+        # Says what it forgets to wifid ahead of the warning, on the same bus.
+        forgets_all_but_its_point(machine)
         since = wifid.journal_now()
         machine.succeed(f"{ask} | grep -qx OK")
         reached_in_time(
@@ -511,9 +524,7 @@ def test_a_warned_card_hearing_none_named_stops_a_look_under_way_to_look_for_the
     since = wifid.journal_now()
     try:
         ask = warning(machine, wifid)
-        looking(machine, now=False)
-        machine.succeed("wpa_cli -i wlan2 bss_flush 0 | grep -qx OK")
-        assert FIRST not in machine.succeed("wpa_cli -i wlan2 scan_results"), "still heard"
+        forgets_all_but_its_point(machine)
         since = wifid.journal_now()
         machine.succeed(f"wpa_cli -i wlan2 scan freq={UNDER_WAY} | grep -qx OK")
         looking(machine, now=True)
