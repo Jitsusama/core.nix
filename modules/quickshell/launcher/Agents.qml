@@ -852,14 +852,23 @@ Provider {
     // (SessionRow.refusalTold). Not Provider's refused, which takes back a
     // row by its key.
     function refusedGoing(session, why) {
-        const told = SessionRow.refusalTold(session.address, { waking: Sessions.waking,
-            goneTo: Sessions.goneTo, opened: provider.refusalOpened }, Date.now());
+        const told = provider.refusalTold(session);
         if (told === "unsaid")
             return;
         const name = provider.footName(session);
         const said = provider.elsewhere(why, session);
         provider.refusedWhy = `${name}: ${said}`;
         provider.launcher?.tellOnOpen([[name, said, Theme.alert]]);
+        provider.openedForPress(told);
+    }
+    // How a refusal of `session` is told (SessionRow.refusalTold).
+    function refusalTold(session) {
+        return SessionRow.refusalTold(session.address, { waking: Sessions.waking,
+            goneTo: Sessions.goneTo, opened: provider.refusalOpened }, Date.now());
+    }
+    // Opens the launcher on what the foot was just told, where `told` says a
+    // Go To Joel pressed moments ago asked for it, once for that press.
+    function openedForPress(told) {
         if (told === "opens" && provider.launcher?.toldHere?.())
             provider.refusalOpened = Sessions.goneTo.at;
     }
@@ -929,6 +938,12 @@ Provider {
                 address: session.address, name: called === session.address ? "" : called,
                 called, held: Boolean(provider.launcher?.becoming?.[`agent:${session.address}`])
             }, Theme.alert);
+            // A Wake a Go To asked for is refused only once goTo has gone
+            // back, so Sessions' waking no longer holds it: the press that
+            // woke it is answered as any Go To's refusal is, rather than
+            // reading done with the launcher shut (#6519's third review).
+            if (act === "wake")
+                provider.openedForPress(provider.refusalTold(session));
         }
 
         // A parked session Wake would reopen with no fence it can say,
@@ -945,6 +960,7 @@ Provider {
             }
             provider.launcher?.tellOnOpen([[provider.footName(session),
                 provider.elsewhere("unfenced", session), Theme.alert]]);
+            provider.openedForPress(provider.refusalTold(session));
         }
     }
 

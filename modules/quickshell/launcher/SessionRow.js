@@ -317,9 +317,12 @@ function unsteered(launcher, said, refused, alert) {
     launcher?.tellOnOpen?.([[name, words, alert]]);
 }
 
-// How long after a Go To its refusal still answers that press: a session
-// elsewhere is refused once its node answers, in a few seconds.
-const PRESS_TELLS_MS = 15000;
+// How long after a Go To its refusal still answers that press: as long as
+// the slowest refusal of it can take to come, a viewer no kitty took, which
+// opens-in-sessions.sh tells after up to 20 s for a kitty starting again,
+// kitten's 60 s and its own 5 s (Sessions' answerPatience). A press opens
+// the launcher once (`opened`), and a later Go To is a press of its own.
+const PRESS_TELLS_MS = 90000;
 
 // How Agents' refusedGoing tells a Go To that couldn't go, by `going`,
 // Sessions' waking and goneTo: "unsaid" for one a Go To is waking, which

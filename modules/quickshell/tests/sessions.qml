@@ -352,8 +352,12 @@ ShellRoot {
         expect("Go To raises its viewer", raised === '{"FocusWindow":{"id":40}}', raised);
         // No words to view it by is said as that, even while a viewer
         // asked for moments ago comes, as a row's Reopen says it.
-        Sessions.goTo(Object.assign({}, hosted, { address: "WORDLESS", attach: null }));
-        expect("one with no words is said, never opened", root.unhosted === "WORDLESS"
+        // Each that tells why it couldn't go answers false, so its caller
+        // says it where Joel is (Agents' goToFor); one that went, true.
+        const wordlessWent = Sessions.goTo(Object.assign({}, hosted, { address: "WORDLESS",
+            attach: null }));
+        expect("one with no words is said, never opened", wordlessWent === false
+            && root.unhosted === "WORDLESS"
             && root.unhostedWhy === "hosted" && Niri.spawns.length === before + 1,
             `${root.unhosted} ${root.unhostedWhy} ${Niri.spawned.join(" ")}`);
         // One whose id no app id could carry has no viewer to raise, even
@@ -361,18 +365,20 @@ ShellRoot {
         const windows = Niri.windows;
         Niri.windows = Object.assign({}, windows, { "99": { id: 99, pid: 990, opened: "" } });
         Niri.acted = null;
-        Sessions.goTo(Object.assign({}, hosted, { address: "UNNAMED",
+        const unnamedWent = Sessions.goTo(Object.assign({}, hosted, { address: "UNNAMED",
             presence: Object.assign({}, hosted.presence, { session: "s unnamed" }) }));
         Niri.windows = windows;
         expect("one whose viewer can't be named raises no window, but is said",
-            Niri.acted === null && root.unhosted === "UNNAMED" && root.unhostedWhy === "unnamed"
+            unnamedWent === false && Niri.acted === null && root.unhosted === "UNNAMED"
+            && root.unhostedWhy === "unnamed"
             && Niri.spawns.length === before + 1,
             `${JSON.stringify(Niri.acted)} ${root.unhosted} ${root.unhostedWhy}`);
         // pi run here in another terminal: no window, kitty or holder.
-        Sessions.goTo({ address: "ELSETERM", window: null, kitty: null, held: null,
-            here: true, presence: { session: "s-elsewhere-term" } });
+        const elseWent = Sessions.goTo({ address: "ELSETERM", window: null, kitty: null,
+            held: null, here: true, presence: { session: "s-elsewhere-term" } });
         expect("one in a terminal it can't reach is said, never a press that does nothing",
-            root.unreached === "ELSETERM" && Niri.spawns.length === before + 1,
+            elseWent === false && root.unreached === "ELSETERM"
+            && Niri.spawns.length === before + 1,
             `${root.unreached} ${Niri.spawned.join(" ")}`);
         // Each Go To says whom it was asked for, and when, so its refusal can open the
         // launcher to answer that press alone (Agents' refusedGoing).
@@ -1240,8 +1246,8 @@ ShellRoot {
         Niri.windows = Object.assign({}, unforged, { "88": forged });
         Niri.acted = null;
         const goneFrom = Niri.spawns.length;
-        Sessions.goTo({ address: "FORGED", presence: hosting, attach: view, window: forged,
-            here: true });
+        const forgedWent = Sessions.goTo({ address: "FORGED", presence: hosting, attach: view,
+            window: forged, here: true });
         const goneFor = Niri.spawns.slice(goneFrom);
         expect("nor is it a running session's window, nor raised by Go To",
             window === null && !focused(88), `${JSON.stringify(window)} `
@@ -1250,14 +1256,16 @@ ShellRoot {
         // said, so a pid read wrong, with every viewer refused, is seen at
         // the press.
         expect("Go To opens its own, saying another program's window holds its name",
-            goneFor.length === 1 && asked(goneFor[0])?.classed === named
+            forgedWent === true && goneFor.length === 1 && asked(goneFor[0])?.classed === named
             && root.unhosted === "FORGED" && root.unhostedWhy === "unowned",
             `${root.unhosted} ${root.unhostedWhy} ${goneFor.join(" | ")}`);
-        // Pressed again while that one comes, it's held back, said opening.
-        Sessions.goTo({ address: "FORGED", presence: hosting, attach: view, window: forged,
-            here: true });
+        // Pressed again while that one comes, it's held back, said opening,
+        // which went, since its window is coming.
+        const heldWent = Sessions.goTo({ address: "FORGED", presence: hosting, attach: view,
+            window: forged, here: true });
         expect("while its own comes, Go To says it's opening, opening no other",
-            Niri.spawns.length === goneFrom + 1 && root.unhostedWhy === "opening",
+            heldWent === true && Niri.spawns.length === goneFrom + 1
+            && root.unhostedWhy === "opening",
             `${root.unhostedWhy} ${Niri.spawns.slice(goneFrom).join(" | ")}`);
         // The window that comes for it is refused too, as a pid read wrong
         // refuses its own: Go To asks for none again, now or once its
@@ -1278,10 +1286,11 @@ ShellRoot {
         expect("nor is its viewer still taken as coming", !Sessions.viewerComing(named),
             JSON.stringify(Sessions.attaching[named] ?? null));
         root.unhostedWhy = "";
-        Sessions.goTo({ address: "FORGED", presence: hosting, attach: view, window: forged,
-            here: true });
+        const disownedWent = Sessions.goTo({ address: "FORGED", presence: hosting,
+            attach: view, window: forged, here: true });
         expect("one whose own came refused is asked for no more, said so",
-            Niri.spawns.length === goneFrom + 1 && root.unhostedWhy === "disowned",
+            disownedWent === false && Niri.spawns.length === goneFrom + 1
+            && root.unhostedWhy === "disowned",
             `${root.unhostedWhy} ${Niri.spawns.slice(goneFrom).join(" | ")}`);
         // Nor by a wake, which keeps where it slept for the press that can
         // open it once that window closes.
