@@ -814,7 +814,7 @@ fn a_mute_done_once_another_connecting_call_began_leaves_it_alone() {
 
 #[test]
 fn a_command_held_past_its_hold_lets_its_act_be_asked_afresh() {
-    let running = Running::waiting("held", &["--answers-within", "1", "--held-for", "3"]);
+    let running = Running::waiting("held", &["--answers-within", "1", "--held-for", "4"]);
     running.streams(STATE);
     let mut watching = running.client();
     watching.watch();
@@ -831,6 +831,9 @@ fn a_command_held_past_its_hold_lets_its_act_be_asked_afresh() {
         said["error"]["code"], "unanswered",
         "a stop Tuple hadn't answered wasn't told so: {said}"
     );
+    // When the last stop the hold refused was sent, which the hold had
+    // lasted to: the one run afresh took its own second to answer.
+    let mut refused = first.elapsed();
     let again = asking.ask(&json!({"id": "again", "ask": "camera", "on": false}));
     assert_eq!(
         again["error"]["message"], "Tuple hasn't answered the last time it was asked",
@@ -838,11 +841,13 @@ fn a_command_held_past_its_hold_lets_its_act_be_asked_afresh() {
     );
     // Asked until one is run afresh, as the first stop's hold ends by the
     // daemon's clock, which began a moment after this test's.
-    let afresh = loop {
+    let (afresh, ran) = loop {
+        let sent = first.elapsed();
         let said = asking.ask(&json!({"id": "afresh", "ask": "camera", "on": false}));
         if said["error"]["message"] != "Tuple hasn't answered the last time it was asked" {
-            break said;
+            break (said, sent);
         }
+        refused = sent;
         assert!(
             first.elapsed() < Duration::from_secs(10),
             "the first stop's hold never ended: {said}"
@@ -851,20 +856,34 @@ fn a_command_held_past_its_hold_lets_its_act_be_asked_afresh() {
         // once within the hold, so the loop doesn't spin.
         std::thread::sleep(Duration::from_millis(100));
     };
+    // Asks a tenth of a second apart, so a four-second hold refuses one
+    // sent past three and runs one sent before five, nearly a second to
+    // spare on each side for a builder that stalls the test, while a hold
+    // of three seconds or five fails.
     assert!(
-        first.elapsed() >= Duration::from_secs(3),
-        "the first stop's hold ended early, after {:?}",
-        first.elapsed()
+        refused >= Duration::from_secs(3),
+        "the first stop's hold ended early, the last stop it refused sent after {refused:?}"
+    );
+    assert!(
+        ran < Duration::from_secs(5),
+        "the first stop's hold ended late, the first stop run afresh sent after {ran:?}"
     );
     assert_eq!(
         afresh["error"]["message"], "Tuple hasn't answered in 1 second",
         "a stop asked past the last one's hold wasn't run afresh: {afresh}"
     );
-    let stops = running.read("bin/asked");
-    assert_eq!(
-        stops.iter().filter(|line| *line == "webcam stop").count(),
-        2,
-        "a stop asked past the last one's hold didn't run Tuple again: {stops:?}"
+    // The second stand-in says it was asked as it starts, a moment after
+    // the daemon runs it.
+    until(
+        "a stop asked past the last one's hold didn't run Tuple again",
+        || {
+            running
+                .read("bin/asked")
+                .iter()
+                .filter(|line| *line == "webcam stop")
+                .count()
+                == 2
+        },
     );
     std::fs::remove_file(&stall).unwrap();
     until("both stops weren't journaled once done", || {

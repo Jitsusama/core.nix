@@ -194,6 +194,11 @@ Item {
         if (!drawerHere && QueryKeys.paged(mode))
             mode = "normal";
     }
+    // Whether Tab in normal goes into the selected row, and - up from
+    // where the rows stand (Launcher.qml's goesIn and canGoUp), so a key
+    // that only says it can't is read as acting on nothing (KeyActs.acts).
+    property bool intoHere: true
+    property bool upHere: true
     // The mode typing goes back to: the find, or insert on words.
     readonly property string typingMode: words ? "insert" : "find"
     // Words handed over or left go back to the find, never to an insert
@@ -218,6 +223,10 @@ Item {
     // key as its answer, Return doing it and any other letting it go
     // (Confirm.answer), so none reaches the line while it stands.
     property bool confirming: false
+    // Whether the ask standing takes a key as its answer, by its name,
+    // as it answers it (Launcher.qml's answerAsk, by Confirm.answer): one
+    // pressed before the ask is ready is let go doing nothing.
+    property var answerTaken: key => true
     signal answered(string key)
     // How soon after visual's operator the same key again is taken with
     // it (Operators.takenWith), as his Neovim's timeoutlen
@@ -406,7 +415,8 @@ Item {
             prompt.accepted();
     }
 
-    signal cancelled
+    // Escape, or a secret's Ctrl+C, on a line with no modes, by its name.
+    signal cancelled(string key)
     // Escape at rest in normal, which closes nothing but lets go what
     // the launcher shows over the rows, as the key list (Launcher.qml).
     signal rested
@@ -621,7 +631,7 @@ Item {
             : key === "Ctrl+w" ? Typing.wordStart(input.text, at)
             : key === "Ctrl+h" ? Math.max(0, at - 1) : -1;
         if (key === "Ctrl+c") {
-            prompt.cancelled();
+            prompt.cancelled("Ctrl+c");
             event.accepted = true;
         } else if (from >= 0) {
             input.remove(from, at);
@@ -678,6 +688,8 @@ Item {
             awaitsRegister = false;
             return false;
         }
+        if (!takesRegister(event, key))
+            return false;
         if (registersLetter(event)) {
             awaitsRegister = false;
             event.accepted = true;
@@ -693,8 +705,12 @@ Item {
         return false;
     }
 
-    // The register's letter after Ctrl+R, and Ctrl+R itself, which
-    // registerKey takes where the line takes registers.
+    // Whether registerKey takes the key, as Ctrl+R or the letter after it,
+    // so what the key does is read from the same test that takes it.
+    function takesRegister(event: KeyEvent, key: string): bool {
+        return registers && mode === "insert"
+            && (registersLetter(event) || opensRegister(event, key));
+    }
     function registersLetter(event: KeyEvent): bool {
         return awaitsRegister && event.text !== "";
     }
@@ -716,12 +732,15 @@ Item {
         const operated = Operators.takenWith(after, key, Date.now(), wait);
         keyActed = KeyActs.acts(read, {
             alone: keyAlone,
-            registering: registers && mode === "insert"
-                && (registersLetter(event) || opensRegister(event, key)),
+            registering: takesRegister(event, key),
             answering: confirming,
+            answerTaken: confirming && answerTaken(key),
             operated,
             commands: QueryKeys.opensCommands(key, mode, input.text),
             drawerHere,
+            intoHere,
+            upHere,
+            reselectHere: KeyActs.reselectHere(mode, reselectable, lastChosen),
             mode,
             text: input.text
         });
@@ -794,7 +813,8 @@ Item {
         const at = input.cursorPosition;
         // gv on the rows with no selection before it does nothing, as
         // Vim's; with one, the rows take it back before visual begins round
-        // the cursor. The drawer's gv goes back to the mode it chose in.
+        // the cursor. The drawer's gv goes back to the mode it chose in,
+        // and with nothing chosen does nothing (Drawer.qml's reselect).
         const onRows = !QueryKeys.paged(mode);
         if (read.act === "reselect" && onRows) {
             if (!reselectable)
@@ -1580,7 +1600,7 @@ Item {
         Keys.onTabPressed: event => prompt.dropped(event) ? undefined
             : prompt.modal ? prompt.tabled(event) : prompt.completed()
         Keys.onEscapePressed: event => prompt.dropped(event) ? undefined
-            : prompt.modal ? prompt.tabled(event) : prompt.cancelled()
+            : prompt.modal ? prompt.tabled(event) : prompt.cancelled("Escape")
         onCursorPositionChanged: prompt.rest()
         Keys.onReleased: event => {
             if (!event.isAutoRepeat && prompt.keyHeld) {

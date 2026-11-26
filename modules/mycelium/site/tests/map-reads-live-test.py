@@ -85,15 +85,16 @@ CELLS = 8
 # included, a little more with the drawer's acts and its whole question, and
 # 677.4 KB once a network's label keeps what tells it apart, and 678.2 KB
 # once a cloud machine says it's kept, a little more once a long lease counts
-# days, under the 679 KB allowed then; new work's line and its hidden
-# controls draw about 20 elements of the 611. Two files more are the kit's
+# days, and about 0.4 KB more once every label is kept apart and in its room,
+# under the 680 KB allowed then; new work's line and its hidden controls draw
+# about 20 elements of the 611. Two files more are the kit's
 # head.css, the head every live page shares, two of the kilobytes less the
 # map's own head rules, and the kit's keys.js, which marks the page keyed at
 # its first key so a touch screen with a keyboard shows its key line, about
 # three more; the head and its link are seven elements more in the markup
 # than the map's header was, and the budget rose by three, the rest within
-# its room.
-BUDGET = Budget(files=35, kilobytes=684, elements=623)
+# its room, and one more for the labels kept apart, 0.4 KB of it.
+BUDGET = Budget(files=35, kilobytes=685, elements=623)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -955,6 +956,78 @@ def test_the_view_and_now_answer_their_keys(mycelium_opened: Opened) -> None:
     page.keyboard.press("-")
     expect(page, "- didn't climb to the cell's network").to_have_url(
         re.compile(r"/mycelium/#net=orchestration\.tern01$"),
+    )
+
+
+# The map's width and the drawer's, in pixels: a fit is made for the map's width less the
+# drawer's while the drawer is open, and for the whole of it while shut.
+WIDTHS = """[document.getElementById("world").ownerSVGElement.getBoundingClientRect().width,
+  document.getElementById("panel").offsetWidth]"""
+
+
+# How far the window narrows under a view moved by hand.
+NARROWED_PX = 80
+# How far Shift and an arrow pan the view (view.js's PAN).
+PANNED_PX = 80
+
+
+def fitted_about(view: tuple[float, float, float], wide: float) -> float:
+    """Say which point of the map a view `wide` pixels across fits in its middle (viewOf)."""
+    tx, _, k = view
+    return (wide / 2 - tx) / k
+
+
+def test_a_fit_takes_the_whole_width_until_the_drawer_opens(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.locator("#map-view").focus()
+    page.keyboard.press("0")
+    shut = settled(page, "0 didn't fit the whole map")
+    whole, drawer = page.evaluate(WIDTHS)
+    middle = fitted_about(shut, whole)
+    # Opening Now opens the drawer, and a view following the whole map fits it again clear of
+    # it, about the same middle; a gutter kept while shut would put that middle a half a
+    # drawer off, and a glide stopped part way would leave it somewhere between.
+    page.keyboard.press(".")
+    expect(page.locator("#now-control"), ". didn't open Now").to_have_attribute(
+        "aria-expanded", "true"
+    )
+    opened = settled(page, "the map never stood still once Now opened")
+    clear = max(whole - drawer, whole / 2)
+    assert fitted_about(opened, clear) == pytest.approx(middle, abs=1), (
+        f"shut, the map was fitted about {middle} across {whole} px, and open about "
+        f"{fitted_about(opened, clear)} across the {clear} px the drawer leaves"
+    )
+    assert opened[2] <= shut[2], f"the map grew from {shut} as the drawer took room: {opened}"
+    page.keyboard.press(".")
+    expect(page.locator("#now-control"), ". didn't close Now").to_have_attribute(
+        "aria-expanded", "false"
+    )
+    assert settled(page, "the map never stood still once Now shut") == pytest.approx(
+        shut, abs=0.05
+    ), "shutting the drawer didn't fit the map across the whole width again"
+    # Moved by hand, the view keeps its middle through a resize by the map's own change in
+    # width, the drawer open or not: measured by the room the drawer leaves, it would jump
+    # half a drawer the first resize after the drawer opened.
+    # Unmoved, the view would follow the whole map and fit it afresh, which can shift it the same
+    # way, so the pan is checked to have landed.
+    page.keyboard.press("Shift+ArrowLeft")
+    moved = settled(page, "the map never stood still once moved")
+    assert moved == pytest.approx((shut[0] + PANNED_PX, shut[1], shut[2]), abs=0.05), (
+        f"Shift+Left didn't pan the map {PANNED_PX} px from {shut}: {moved}"
+    )
+    page.keyboard.press(".")
+    expect(page.locator("#now-control"), ". didn't open Now again").to_have_attribute(
+        "aria-expanded", "true"
+    )
+    held = settled(page, "the moved map never stood still once Now opened")
+    width, height = SIZES[-1]
+    page.set_viewport_size({"width": width - NARROWED_PX, "height": height})
+    resized = settled(page, "the moved map never stood still once the window narrowed")
+    narrowed, _ = page.evaluate(WIDTHS)
+    assert resized[0] - held[0] == pytest.approx((narrowed - whole) / 2, abs=1), (
+        f"the map narrowed from {whole} to {narrowed} px with the drawer open, and the view "
+        f"moved from {held} to {resized}, not by half that"
     )
 
 
