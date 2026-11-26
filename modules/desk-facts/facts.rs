@@ -84,7 +84,8 @@ fn word(bytes: &[u8], at: usize) -> u32 {
 
 /// Asks a device a question by its ioctl, V4L2's, UVC's or ALSA's control
 /// device's, saying whether it answered. A buffer of another size than the
-/// request's number says is refused unasked.
+/// request's number says is refused unasked, and said in the journal, since
+/// it's the program's mistake rather than the device's.
 ///
 /// # Safety
 ///
@@ -92,7 +93,7 @@ fn word(bytes: &[u8], at: usize) -> u32 {
 /// UVC's control query do, the buffer must hold one to memory that lasts
 /// the call and is as long as the struct says.
 unsafe fn ask(node: &File, request: u64, buffer: &mut [u8]) -> bool {
-    if asks_for(request) != buffer.len() {
+    if !fits(request, buffer.len()) {
         return false;
     }
     // SAFETY: the buffer is as long as the request says, and the caller
@@ -104,6 +105,16 @@ unsafe fn ask(node: &File, request: u64, buffer: &mut [u8]) -> bool {
 /// 14 bits above its type and number.
 fn asks_for(request: u64) -> usize {
     (request >> 16 & 0x3FFF) as usize
+}
+
+/// Whether a buffer is as long as a request's number says, saying in the
+/// journal when it isn't.
+fn fits(request: u64, length: usize) -> bool {
+    let asked = asks_for(request);
+    if asked != length {
+        eprintln!("<3>ioctl {request:#x} asks for {asked} bytes, but was given {length}");
+    }
+    asked == length
 }
 
 /// A device's facts, in the order they're shown.
@@ -287,5 +298,17 @@ Capture:
         assert_eq!(asks_for(0xC4C8_5512), 1224, "ALSA's element value");
         assert_eq!(asks_for(0xC0D0_5604), 208, "V4L2's format");
         assert_eq!(asks_for(0xC004_5516), 4, "ALSA's subscribe");
+        // The top two of the 14 bits, which no request asked uses.
+        assert_eq!(asks_for(0xE000_7800), 0x2000, "the 14th bit");
+        assert_eq!(asks_for(0xD000_7800), 0x1000, "the 13th bit");
+    }
+
+    #[test]
+    fn a_buffer_is_asked_with_only_at_the_size_its_request_says() {
+        assert_eq!(
+            [208, 207, 209, 0].map(|length| fits(0xC0D0_5604, length)),
+            [true, false, false, false],
+            "V4L2's format was let ask with a buffer of the wrong size"
+        );
     }
 }

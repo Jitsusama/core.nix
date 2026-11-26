@@ -14,7 +14,7 @@ use crate::bluetooth::bluetooth;
 use crate::cameras::{Loopback, cameras};
 use crate::displays::{displays, names_a_monitor};
 use crate::inotify::{
-    IN_CLOSE_NOWRITE, IN_CLOSE_WRITE, IN_CREATE, IN_DELETE, IN_MOVED_TO, IN_OPEN, names, watches,
+    IN_CLOSE_NOWRITE, IN_CLOSE_WRITE, IN_CREATE, IN_DELETE, IN_MOVED_TO, IN_OPEN, Watches, names,
 };
 use crate::keyboards::keyboards;
 use crate::own_sound::{a_jack_changed, control, open_control};
@@ -316,6 +316,32 @@ fn rewrite(due: u8, desk: &mut Desk) {
     }
 }
 
+/// The kinds the folders watched say changed: sound's, cameras' holders and
+/// the monitors' facts. A folder that couldn't be watched yet may be made by
+/// now, heard of by its uevent or its being made, so its kind is read again
+/// once it's watched, for what it came holding.
+fn heard_from_folders(changes: &mut Watches, held: &mut Watches, said: &mut Watches) -> u8 {
+    let mut due = heard(&mut changes.file, &|events| {
+        if names_one(events, "pebble-lights") {
+            SOUND
+        } else {
+            0
+        }
+    });
+    due |= heard(&mut held.file, &|events| {
+        if events.is_empty() { 0 } else { CAMERAS }
+    });
+    due |= heard(&mut said.file, &|events| {
+        if names_a_monitor(events) { DISPLAYS } else { 0 }
+    });
+    for (watches, kind) in [(changes, SOUND), (held, CAMERAS), (said, DISPLAYS)] {
+        if watches.watch_waiting() {
+            due |= kind;
+        }
+    }
+    due
+}
+
 pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
     let lighting = folder
         .parent()
@@ -340,9 +366,9 @@ pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
     let (mut stop, mut kernel, mut changes, mut held, mut said) = match (
         stopping(),
         uevents(),
-        watches(&sounds),
-        watches(&holders),
-        watches(&monitors),
+        Watches::new(&sounds),
+        Watches::new(&holders),
+        Watches::new(&monitors),
     ) {
         (Ok(stop), Ok(kernel), Ok(changes), Ok(held), Ok(said)) => {
             (stop, kernel, changes, held, said)
@@ -367,9 +393,9 @@ pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
         let mut waiting: Vec<PollFd> = [
             stop.as_raw_fd(),
             kernel.as_raw_fd(),
-            changes.as_raw_fd(),
-            held.as_raw_fd(),
-            said.as_raw_fd(),
+            changes.file.as_raw_fd(),
+            held.file.as_raw_fd(),
+            said.file.as_raw_fd(),
         ]
         .into_iter()
         .chain(desk.controls.iter().map(|(_, file)| file.as_raw_fd()))
@@ -404,19 +430,7 @@ pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
             // settle a moment after the first word of them.
             std::thread::sleep(Duration::from_millis(150));
             due |= heard(&mut kernel, &matters);
-            due |= heard(&mut changes, &|events| {
-                if names_one(events, "pebble-lights") {
-                    SOUND
-                } else {
-                    0
-                }
-            });
-            due |= heard(&mut held, &|events| {
-                if events.is_empty() { 0 } else { CAMERAS }
-            });
-            due |= heard(&mut said, &|events| {
-                if names_a_monitor(events) { DISPLAYS } else { 0 }
-            });
+            due |= heard_from_folders(&mut changes, &mut held, &mut said);
             if due & (SOUND | CAMERAS) != 0 {
                 settling = Some((Instant::now(), 0));
                 unsettled |= due & (SOUND | CAMERAS);

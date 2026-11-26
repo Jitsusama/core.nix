@@ -50,8 +50,15 @@ in
   systemd.user.services.desk-facts = {
     description = "Facts about the desk's displays and sound cards, for the launcher";
     wantedBy = [ "default.target" ];
-    # A person's, so not a system account's lingering manager's.
-    unitConfig.ConditionUser = "!@system";
+    unitConfig = {
+      # A person's, so not a system account's lingering manager's.
+      ConditionUser = "!@system";
+      # A fault that comes back each start stops the unit after five tries
+      # in a minute, rather than restarting it every five seconds for good;
+      # a folder it can't watch yet doesn't fail it.
+      StartLimitIntervalSec = 60;
+      StartLimitBurst = 5;
+    };
     serviceConfig = {
       ExecStart = "${facts}/bin/desk-facts %t/desk ${loopbacks}";
       Restart = "on-failure";
