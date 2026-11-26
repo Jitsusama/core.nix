@@ -3983,6 +3983,68 @@ def test_a_marks_click_draws_now_from_what_was_kept_on_its_row(shell: Shell) -> 
         warp_forgotten(said)
 
 
+def test_for_yous_tray_says_what_waits_over_a_call_filling_the_screen(shell: Shell) -> None:
+    """For You's tray, lit while something waits on Joel, stays drawn over a window in fullscreen.
+
+    Joel, 2026-11-20 15:55, on a call: "no clue how to see from that view that a thing is
+    waiting". A notice is held while he shares his screen (do-not-disturb-holds-while-sharing),
+    so the margin's tray is the sign, as Y2YBTS ruled (2026-11-26). The margin is an overlay,
+    which niri draws over a window filling the screen, where it puts a top layer under it; so
+    the tray must stay an overlay on that screen, lit and strong, never muted, the window full.
+    """
+    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
+    looks = state / "pi/agentic-harness.pi/looks"
+    looks.mkdir(parents=True, exist_ok=True)
+    look = looks / "waits-over-a-call.json"
+    told = {"v": 1, "id": "waits-over-a-call", "title": "Waits Over a Call",
+            "target": "/etc/hostname", "kind": "file", "state": "waiting",
+            "at": now("-u", "+%FT%TZ")}  # fmt: skip
+    lit = shell.mark()
+    launcher_on_niri.laid_whole(look, json.dumps(told))
+    call: Json | None = None
+    try:
+        names = looks_listed(shell, "Waits Over a Call")
+        assert "Waits Over a Call" in names, f"the look was never heard: {names}"
+        shell.close_launcher()
+
+        def tray(rest: str) -> bool:
+            return any(
+                one["mark"] == "forYou" and one["tone"] == "strong" for one in json.loads(rest)
+            )
+
+        shell.reported("sets margin ", tray, lit)
+        call = shell.opened("a call filling the screen")
+        output = json.loads(shell.as_account("niri msg --json focused-output"))
+        full = [output["logical"]["width"], output["logical"]["height"]]
+        went = shell.mark()
+        shell.as_account(f"niri msg action focus-window --id {call['id']}")
+        shell.as_account("niri msg action fullscreen-window")
+        deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+        sized = tile_of(shell, call)
+        while sized != full:
+            assert time.monotonic() < deadline, f"the call never filled the screen: {sized}"
+            time.sleep(launcher_on_niri.POLL)
+            sized = tile_of(shell, call)
+        layers = json.loads(shell.as_account("niri msg --json layers"))
+        margins = [one for one in layers if one["namespace"] == "margin"]
+        here = [one for one in margins if one["output"] == output["name"]]
+        assert [one["layer"] for one in here] == ["Overlay"], f"the margin over the call: {margins}"
+        said, _ = shell.said_since(went)
+        held = [report for report in said if report.startswith("holds margin")]
+        assert all("forYou" in report.split() for report in held), f"the tray let go: {held}"
+    finally:
+        if call is not None:
+            shell.close(call)
+        look.unlink()
+
+
+def tile_of(shell: Shell, window: Json) -> list[int]:
+    """Give the size niri lays this window's tile at, in whole pixels, or none once it's gone."""
+    shown = [one for one in shell.windows() if one["id"] == window["id"]]
+    tile = (shown[0].get("layout") or {}).get("tile_size") if shown else None
+    return [round(side) for side in tile] if tile else []
+
+
 def now_kept_while_a_look_waits(shell: Shell) -> Path:
     """Keep Now, by its chord, while a look waits, then clear the look shut; give its file."""
     state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state")
