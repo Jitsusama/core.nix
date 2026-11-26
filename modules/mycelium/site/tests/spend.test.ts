@@ -112,6 +112,11 @@ it("says what a part of a sum spent, over how many cells", () => {
     "$120, 1 cell",
     "a part past a hundred dollars should say whole dollars, and one cell as one",
   );
+  assert.equal(
+    partWords([spending("A", 1.5), { ...spending("calls", 0), kind: "receptor" }]),
+    "$1.50, 1 cell",
+    "a part should leave a receptor out of its cells, as every page counts them",
+  );
 });
 
 it("says what one cell spent, and its turns where its session says them", () => {

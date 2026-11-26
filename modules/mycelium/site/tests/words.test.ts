@@ -14,6 +14,7 @@ import {
   builds,
   type Cell,
   cellsOn,
+  cellsSaid,
   cellWords,
   countsOf,
   countsWords,
@@ -249,6 +250,18 @@ it("says whether a machine is ready, how many of a basin's are off, and its cell
     cellsOn(now, "kestrel"),
     "and a new list for the next reading",
   );
+});
+
+it("counts a machine's cells as every page does, its receptors named apart", () => {
+  const calls = cell("calls@kestrel", { kind: "receptor" });
+  const now = reading(
+    [],
+    [cell("A", { kind: "session" }), cell("B"), calls],
+    [{ name: "kestrel", state: "ready" }],
+  );
+  assert.equal(machineWords(now, "kestrel"), "ready, 2 cells and 1 receptor", "a receptor counted");
+  assert.equal(cellsSaid([calls]), "0 cells and 1 receptor", "a machine running only a receptor");
+  assert.equal(cellsSaid([]), "0 cells", "and one running nothing");
 });
 
 it("labels each thing by its name and then the words its row shows", () => {

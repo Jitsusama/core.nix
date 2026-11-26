@@ -85,6 +85,7 @@ import {
   builderTone,
   builderWords,
   builds,
+  cellsSaid,
   countsOf,
   described,
   money,
@@ -2429,7 +2430,7 @@ import {
     if (c.kind === "machine") {
       const cells = cellsOn(c.id);
       const { v, words } = groupHealth(cells);
-      return [c.id, `A machine running ${plural(cells.length, "cell")}.`, v, words];
+      return [c.id, `A machine running ${cellsSaid(cells)}.`, v, words];
     }
     if (c.kind === "builder") {
       const b = m.builders.find((y) => y.name === c.id);
@@ -3308,9 +3309,9 @@ import {
       `<h2 id="panel-title" class="mono">${esc(name)}</h2>` +
       `<p class="carries">${esc(`${says} runs from it to each network with cells here, heavier where more of them run.`)}</p>` +
       glance(
-        esc(`Runs ${plural(cells.length, "cell")}, feeding ${feeds.length ? plural(feeds.length, "network") : "no network"}${lone ? `, with ${NUMBER.format(lone)} working alone` : ""}.`),
+        esc(`Runs ${cellsSaid(cells)}, feeding ${feeds.length ? plural(feeds.length, "network") : "no network"}${lone ? `, with ${NUMBER.format(lone)} working alone` : ""}.`),
         esc(groupDoing(cells)),
-        `<ul class="rows health">${health}${healthRow(`Its ${plural(cells.length, "cell")}`, cells)}</ul>`,
+        `<ul class="rows health">${health}${healthRow(`Its ${cellsSaid(cells)}`, cells)}</ul>`,
       ) +
       faultLine(cells) +
       // Its row in the Launcher's Machines is where Joel starts work on it.
@@ -4910,17 +4911,21 @@ import {
   const drawStatus = () => {
     if (!current) return;
     // Cells are counted as Now counts them, so this sentence and every
-    // other page say the same number. What
-    // moves, sticks or asks is read over every mark, receptors too, so one
-    // reading mail keeps the sentence from saying all is quiet; how many are
-    // at work is a share of the same marks.
-    const all = cellsCounted(current.cells);
-    const n = countsOf(current.cells);
+    // other page say the same number, and what moves or sticks is read over
+    // the same cells, so a count after them is one of them. A receptor
+    // reading mail is said apart, so the sentence never says all is quiet
+    // while one works, nor counts it among the cells that move. What asks
+    // is read over every mark.
+    const cells = current.cells.filter((s) => s.kind === "session");
+    const all = cells.length;
+    const n = { ...countsOf(cells), asks: countsOf(current.cells).asks };
+    const reading = countsOf(current.cells.filter((s) => s.kind === "receptor")).moving;
     const stuck = n.stuck ? `, ${NUMBER.format(n.stuck)} stuck` : "";
     const asks = n.asks === 1 ? "one needs you" : n.asks ? `${NUMBER.format(n.asks)} need you` : "";
     const clauses = [["cells", plural(all, "cell")]];
     if (n.moving) clauses.push(["", `${NUMBER.format(n.moving)} moving`]);
     if (n.stuck) clauses.push(["", `${NUMBER.format(n.stuck)} stuck`]);
+    if (reading) clauses.push(["", `${plural(reading, "receptor")} reading`]);
     if (clauses.length === 1 && !asks) clauses.push(["", "all quiet"]);
     // A clause is kept whole on its line, so a count never parts from what
     // it counts, and the last clause of the sentence takes its turn.
@@ -4937,7 +4942,8 @@ import {
       asksWords.innerHTML = asked;
       if (had) (sentenceLine.querySelector(`[data-count="${had}"]`) || view).focus({ preventScroll: true });
     }
-    const said = `${atWork(n.moving, current.cells.length)}${stuck}${asks ? `; ${asks}` : ""}`;
+    const working = n.moving || !reading ? atWork(n.moving, all) : `${plural(reading, "receptor")} reading`;
+    const said = `${working}${stuck}${asks ? `; ${asks}` : ""}`;
     if (said === statusShown) return;
     statusShown = said;
     statusSaid.textContent = said;
