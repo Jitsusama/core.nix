@@ -112,6 +112,8 @@ def first_place(shell: Shell) -> Json:
 
     Only such a key is said whole, so the walk's line can be held to exactly what it says;
     every other key's line, a source's said by its kind alone, is pinned in tests/pacing.qml.
+    Such a key is the same filtered or not, so a walk to it proves the line follows the reports
+    switch, not that the launcher's two walk lines go through keyShown at all.
     """
     listed = cast("list[Json]", json.loads(shell.as_account(shell.ipc("list"))))
     places = [
@@ -122,7 +124,10 @@ def first_place(shell: Shell) -> Json:
         and held_whole(str(one["id"]))
         and str(one["words"]) not in str(one["id"])
     ]
-    assert places, f"no place to walk to among {[one['words'] for one in listed]}"
+    tops = [
+        (one["id"], one["words"]) for one in listed if one["kind"] == "place" and one["in"] == ""
+    ]
+    assert places, f"no top place keyed by an own kind and an id its name isn't in: {tops}"
     return places[0]
 
 
