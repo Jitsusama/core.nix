@@ -270,7 +270,22 @@ impl Working {
         pace: Duration,
         old: Duration,
         folders: Vec<PathBuf>,
+        sample: impl FnMut(&[PathBuf]) -> Sample + Send + 'static,
+    ) -> Self {
+        Self::start_saying(pace, old, folders, sample, |said| {
+            eprintln!("repos: {said}");
+        })
+    }
+
+    /// Starts as [`Working::start`] does, saying to `say` what the
+    /// journal would be told of the share of a core as each reading
+    /// judges it, so a case can hear what the thread says.
+    fn start_saying(
+        pace: Duration,
+        old: Duration,
+        folders: Vec<PathBuf>,
         mut sample: impl FnMut(&[PathBuf]) -> Sample + Send + 'static,
+        mut say: impl FnMut(String) + Send + 'static,
     ) -> Self {
         let held = Arc::new((
             Mutex::new(Held {
@@ -294,7 +309,7 @@ impl Working {
                 let now = sample(&folders);
                 let measured = using::measured(last.as_ref(), &now);
                 if let Some(why) = journal.step(last.as_ref(), &now) {
-                    eprintln!("repos: {why}");
+                    say(why);
                 }
                 let mut used = using::using(last.as_ref(), &now);
                 for (folder, one) in &mut used {
@@ -346,6 +361,7 @@ impl Working {
     /// process still holding its memory map would leave it: what it says,
     /// once as the reading grows stale and once as it answers again, is
     /// returned.
+    #[must_use = "its line is the only word that /proc is held up"]
     fn read(&mut self, folders: Vec<PathBuf>) -> Option<String> {
         let (lock, ready) = &*self.held;
         let mut held = holding(lock);
