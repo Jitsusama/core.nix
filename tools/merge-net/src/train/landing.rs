@@ -129,7 +129,7 @@ const SETTLE_PAUSE: Duration = if cfg!(test) {
 /// each: twenty reads that each time out three times would otherwise hold
 /// the train for about two hours. Six minutes leaves room for the five
 /// of pauses and the reads between.
-const SETTLE_FOR: Duration = Duration::from_secs(6 * 60);
+const SETTLE_FOR: Duration = Duration::from_mins(6);
 
 /// What `gh` adds to an answer in which GitHub refused the merge, as
 /// `gh: Pull Request is still a draft (HTTP 405)`; any other failure,
@@ -210,18 +210,15 @@ fn settled(hub: &dyn Hub, number: u64, why: String) -> Merge {
             break;
         }
     }
-    match read {
-        Err(error) => {
-            println!(
-                "merge-net: GitHub still couldn't say whether #{number} merged: {}",
-                one_line(&error)
-            );
-            Merge::Unknown(format!("{why}, and GitHub couldn't say after: {error}"))
-        }
-        Ok(_) => {
-            println!("merge-net: GitHub still reads #{number} unmerged, so it leaves the train");
-            Merge::Refused(why)
-        }
+    if let Err(error) = read {
+        println!(
+            "merge-net: GitHub still couldn't say whether #{number} merged: {}",
+            one_line(&error)
+        );
+        Merge::Unknown(format!("{why}, and GitHub couldn't say after: {error}"))
+    } else {
+        println!("merge-net: GitHub still reads #{number} unmerged, so it leaves the train");
+        Merge::Refused(why)
     }
 }
 
