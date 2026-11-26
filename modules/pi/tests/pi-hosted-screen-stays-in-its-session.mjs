@@ -31,8 +31,8 @@ const { onThemeChange, setThemeInstance } = await loadModule(themeSource);
 afterEach(() => mock.restoreAll());
 // A conversation empty when first drawn, and one entry longer once a session_start ran.
 const grows = () => {
-  const asked = [];
-  return () => (asked.push(true) === 1 ? [] : [{ id: "added" }]);
+  let asked = 0;
+  return () => (++asked === 1 ? [] : [{ id: "added" }]);
 };
 
 function screen() {
@@ -49,6 +49,7 @@ function screen() {
     getCrashExtensionHint: () => undefined,
     recordCrash: () => false,
     pendingUserInputs: [],
+    pendingTools: new Map(),
     runtimeHost: {
       dispose: mock.fn(),
       session: {
@@ -190,9 +191,10 @@ for (const quitAt of ["colors", "tools", "extensions", "providers"]) {
     }
     assert.deepEqual(exits, [{ code: 0, error: undefined }]);
     assert.equal(mode.ui.start.mock.callCount(), 1);
-    // No theme listener outlives it in the host's one theme: its stop has run, so one held here leaks.
+    // No theme listener outlives it in the host's one theme: its stop has run,
+    // so one held here leaks.
     assert.equal(mode.themeChangeUnsubscribe, undefined, "a theme listener was left behind");
-    // Drawn and sent once before the bind (pi-host-draws-before-it-binds.patch); the tail only by a later quit.
+    // Drawn and sent once before the bind (its own patch); the tail only by a later quit.
     const drawn = quitAt === "extensions" || quitAt === "providers" ? 1 : 0;
     assert.equal(mode.renderInitialMessages.mock.callCount(), drawn);
     const past = quitAt === "providers" ? 1 : 0;

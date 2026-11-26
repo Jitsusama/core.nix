@@ -9,28 +9,35 @@ conversation it was or what had been said.
 
 A hosted screen now draws the conversation's messages first and sends
 that frame at once, since a session_start holding the thread would hold
-a frame only requested. It then binds, and after the bind draws only
-the entries the extensions' session_start added meanwhile, where
-startup would have drawn them all. Nothing already
-on the screen is cleared, so the notices startup made before the bind
-stay. Where the bind did more than add (a compaction, a move in the
-tree), so the entries drawn are no longer the conversation's first, the
-chat is built again from the conversation as it now is, which drops
-those notices and any error the bind showed, rather than show a
-conversation the agent no longer holds. The resources pi lists once its
-extensions bind still land above the conversation, in their own
+a frame only requested. That helps a viewer already attached; one who
+joins while a session_start holds the thread is drawn once it lets go,
+as before. It then binds, and after the bind draws only the entries the
+extensions' session_start added meanwhile, where startup would have
+drawn them all. Nothing already on the screen is cleared, so the
+notices startup made before the bind stay. Where the bind did more than
+add (a compaction, a move in the tree, a shorter branch), so the entries
+drawn are no longer the conversation's first, the chat is built again
+from the conversation as it now is, which drops those notices and any
+error the bind showed, rather than show a conversation the agent no
+longer holds. It is built again too where the early draw left a tool
+call waiting on its result and the bind added entries, since pi matches
+a result to its call only within one draw. The resources pi lists once
+its extensions bind still land above the conversation, in their own
 container. Tool and message renderers are registered as extensions load,
-before the bind, so the early draw has them, though one that reads state
-its session_start loads draws those messages without it. It hears the
-agent only once the bind ends, as before, so nothing reaches an
-extension before its hooks are live. A plain pi starts as before.
+before the bind, so the early draw has them; one that reads state its
+session_start loads draws those messages without it, and they stay so
+drawn until the chat is next built. One that throws for want of that
+state leaves the early draw cleared and the conversation drawn after the
+bind, as startup draws it. It hears the agent only once the bind ends,
+as before, so nothing reaches an extension before its hooks are live. A
+plain pi starts as before.
 
 Apply only to the host's private pi build; ordinary interactive pi stays
 unchanged.
 
 --- a/packages/coding-agent/src/modes/interactive/interactive-mode.ts
 +++ b/packages/coding-agent/src/modes/interactive/interactive-mode.ts
-@@ -1185,12 +1185,28 @@ export class InteractiveMode {
+@@ -1185,12 +1185,44 @@ export class InteractiveMode {
  		this.setupEditorSubmitHandler();
  		this.ui.requestRender();
  
@@ -38,14 +45,22 @@ unchanged.
 +		// Initialize extensions first so resources are shown before messages. A hosted screen draws its
 +		// messages before extensions bind, so a slow session_start leaves it readable; the resources
 +		// still land above them, in their own container.
-+		const hosted = Boolean(this.options.hosted);
-+		const drawn = hosted ? this.sessionManager.buildContextEntries().map((entry) => entry.id) : [];
-+		if (hosted) {
-+			this.renderInitialMessages();
-+			// Sent now rather than requested: a session_start that holds the thread, reading a stalled
-+			// disk, would hold a requested frame with it.
-+			this.ui.renderNow();
++		let drawn: string[] | undefined;
++		if (this.options.hosted) {
++			try {
++				drawn = this.sessionManager.buildContextEntries().map((entry) => entry.id);
++				this.renderInitialMessages();
++				// Sent now rather than requested: a session_start that holds the thread, reading a stalled
++				// disk, would hold a requested frame with it.
++				this.ui.renderNow();
++			} catch {
++				// A renderer wanting what its session_start loads: drawn after the bind, as startup draws.
++				this.chatContainer.clear();
++				drawn = undefined;
++			}
 +		}
++		// pi matches a tool's result to its call only within one draw.
++		const settled = this.pendingTools.size === 0;
  		await this.rebindCurrentSession();
  		if (this.hostedStartupEnded()) return;
  
@@ -53,11 +68,19 @@ unchanged.
 -		this.renderInitialMessages();
 +		// A hosted screen drew them already, so it draws only what session_start added while it bound,
 +		// or, where the bind did more than add, the whole conversation again as it now is.
-+		const bound = hosted ? this.sessionManager.buildContextEntries() : [];
-+		const kept = drawn.every((id, at) => bound[at]?.id === id);
-+		if (!hosted) this.renderInitialMessages();
-+		else if (!kept) this.rebuildChatFromMessages();
-+		else if (bound.length > drawn.length) this.renderSessionEntries(bound.slice(drawn.length));
++		if (drawn === undefined) {
++			this.renderInitialMessages();
++		} else {
++			const bound = this.sessionManager.buildContextEntries();
++			const early = drawn;
++			const kept = early.every((id, at) => bound[at]?.id === id);
++			const added = kept ? bound.slice(early.length) : [];
++			if (!kept || (added.length > 0 && !settled)) {
++				this.rebuildChatFromMessages();
++			} else if (added.length > 0) {
++				this.renderSessionEntries(added, { updateFooter: true, populateHistory: true });
++			}
++		}
  
  		// Set up theme file watcher
  		this.themeChangeUnsubscribe = onThemeChange(() => {

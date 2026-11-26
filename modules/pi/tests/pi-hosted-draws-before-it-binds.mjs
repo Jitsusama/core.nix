@@ -40,8 +40,10 @@ const entry = (id) => ({ id, type: "message" });
 // A screen whose startup runs for real, with its extensions' bind held
 // until `bound` is called, as a session_start on a stalled disk holds it;
 // `binding` settles once startup has reached the bind. `entries` are the
-// conversation's, which a session_start may add to while it binds.
+// conversation's, which a session_start may add to while it binds; `steps`
+// lists, in order, each draw, each frame sent and the bind.
 function startingScreen(hosted, entries = [entry("said"), entry("answered")]) {
+  const steps = [];
   let bound;
   const held = new Promise((resolve) => {
     bound = resolve;
@@ -79,6 +81,7 @@ function startingScreen(hosted, entries = [entry("said"), entry("answered")]) {
     setupEditorSubmitHandler: mock.fn(),
     applyRuntimeSettings: mock.fn(),
     bindCurrentSessionExtensions: mock.fn(() => {
+      steps.push("bind");
       reached();
       return held;
     }),
@@ -86,7 +89,7 @@ function startingScreen(hosted, entries = [entry("said"), entry("answered")]) {
     updateAvailableProviderCount: () => Promise.resolve(),
     updateEditorBorderColor: mock.fn(),
     updateTerminalTitle: mock.fn(),
-    renderInitialMessages: mock.fn(),
+    renderInitialMessages: mock.fn(() => steps.push("drawn")),
     renderSessionEntries: mock.fn(),
     rebuildChatFromMessages: mock.fn(),
     footerDataProvider: { onBranchChange: mock.fn() },
@@ -106,7 +109,7 @@ function startingScreen(hosted, entries = [entry("said"), entry("answered")]) {
       start: mock.fn(),
       stop: mock.fn(),
       setFocus: mock.fn(),
-      renderNow: mock.fn(),
+      renderNow: mock.fn(() => steps.push("sent")),
       requestRender: mock.fn(),
       invalidate: mock.fn(),
       terminal: { drainInput: mock.fn(), write: mock.fn() },
@@ -125,7 +128,7 @@ function startingScreen(hosted, entries = [entry("said"), entry("answered")]) {
   ]) {
     mode[part] = container();
   }
-  return { mode, bound, binding, entries };
+  return { mode, bound, binding, entries, steps };
 }
 
 /** Starts the screen with fd and rg on no path, offline, so it downloads nothing. */
@@ -136,17 +139,17 @@ function starting(mode) {
 }
 
 it("a hosted screen draws its conversation while its extensions still bind", async () => {
-  const { mode, bound, binding, entries } = startingScreen(true);
+  const { mode, bound, binding, entries, steps } = startingScreen(true);
   const started = starting(mode);
   // Once the bind has begun, and while it is held, the window shows the
-  // conversation; it hears the agent only once its extensions are live.
+  // conversation, drawn and sent before the bind began; it hears the agent
+  // only once its extensions are live.
   await binding;
-  assert.equal(
-    mode.renderInitialMessages.mock.callCount(),
-    1,
-    "the window was blank while its extensions bound",
+  assert.deepEqual(
+    steps,
+    ["drawn", "sent", "bind"],
+    "the window was blank, or its frame unsent, while its extensions bound",
   );
-  assert.equal(mode.ui.renderNow.mock.callCount(), 1, "the frame waited on the bind");
   assert.equal(mode.subscribeToAgent.mock.callCount(), 0, "it heard the agent before it bound");
   // An extension's session_start adds to the conversation while it binds.
   const note = entry("a session_start's note");
@@ -160,7 +163,13 @@ it("a hosted screen draws its conversation while its extensions still bind", asy
     [[note]],
     "what session_start added was never drawn, or the rest was drawn twice",
   );
+  assert.deepEqual(mode.renderSessionEntries.mock.calls[0].arguments[1], {
+    updateFooter: true,
+    populateHistory: true,
+  });
   assert.equal(mode.rebuildChatFromMessages.mock.callCount(), 0, "it drew it all again");
+  // The patch's own lines clear nothing that holds what was drawn; the
+  // renderers that would are mocks here.
   for (const part of ["chatContainer", "loadedResourcesContainer"]) {
     assert.equal(mode[part].clear.mock.callCount(), 0, `startup cleared the ${part}`);
   }
@@ -168,21 +177,89 @@ it("a hosted screen draws its conversation while its extensions still bind", asy
   mode.themeChangeUnsubscribe?.();
 });
 
-it("a hosted screen draws its conversation again when the bind did more than add to it", async () => {
-  const { mode, bound, binding, entries } = startingScreen(true);
+it("a hosted screen draws nothing more when the bind left its conversation as it was", async () => {
+  const { mode, bound, binding } = startingScreen(true);
   const started = starting(mode);
   await binding;
-  // A session_start that compacts: what was drawn is no longer the start,
-  // though the conversation is now longer than what was drawn.
-  entries.splice(0, entries.length, entry("a compaction's summary"), entry("kept"), entry("next"));
   bound();
   await started;
-  assert.equal(mode.renderSessionEntries.mock.callCount(), 0, "it drew a slice of another start");
-  assert.equal(
-    mode.rebuildChatFromMessages.mock.callCount(),
-    1,
-    "the window kept a conversation the agent no longer holds",
+  assert.equal(mode.renderInitialMessages.mock.callCount(), 1);
+  assert.equal(mode.renderSessionEntries.mock.callCount(), 0, "it drew an empty tail");
+  assert.equal(mode.rebuildChatFromMessages.mock.callCount(), 0, "it drew it all again");
+  mode.themeChangeUnsubscribe?.();
+});
+
+// Each way a bind can do more than add: a compaction, which leaves the
+// conversation longer than what was drawn though its start is another, and
+// a shorter branch, which leaves nothing past what was drawn.
+for (const [did, change] of [
+  [
+    "compacted",
+    (entries) =>
+      entries.splice(
+        0,
+        entries.length,
+        entry("a compaction's summary"),
+        entry("kept"),
+        entry("next"),
+      ),
+  ],
+  ["moved to a shorter branch", (entries) => entries.splice(1)],
+]) {
+  it(`a hosted screen draws its conversation again when the bind ${did}`, async () => {
+    const { mode, bound, binding, entries } = startingScreen(true);
+    const started = starting(mode);
+    await binding;
+    change(entries);
+    bound();
+    await started;
+    assert.equal(mode.renderInitialMessages.mock.callCount(), 1);
+    assert.equal(mode.renderSessionEntries.mock.callCount(), 0, "it drew a slice of another start");
+    assert.equal(
+      mode.rebuildChatFromMessages.mock.callCount(),
+      1,
+      "the window kept a conversation the agent no longer holds",
+    );
+    mode.themeChangeUnsubscribe?.();
+  });
+}
+
+it("a hosted screen draws it all again when a drawn tool call awaits its result", async () => {
+  const { mode, bound, binding, entries } = startingScreen(true);
+  // The early draw leaves a tool call waiting on its result, as pi's own
+  // draw keeps it among its pending tools.
+  mode.renderInitialMessages.mock.mockImplementation(() =>
+    mode.pendingTools.set("call", { waiting: true }),
   );
+  const started = starting(mode);
+  await binding;
+  entries.push(entry("the tool's result"));
+  bound();
+  await started;
+  assert.equal(
+    mode.renderSessionEntries.mock.callCount(),
+    0,
+    "a result was drawn apart from its call",
+  );
+  assert.equal(mode.rebuildChatFromMessages.mock.callCount(), 1);
+  mode.themeChangeUnsubscribe?.();
+});
+
+it("a hosted screen whose early draw throws draws after the bind, as startup does", async () => {
+  const { mode, bound, binding, steps } = startingScreen(true);
+  // A renderer wanting state its session_start loads throws the first time.
+  mode.renderInitialMessages.mock.mockImplementationOnce(() => {
+    throw new Error("no state yet");
+  });
+  const started = starting(mode);
+  await binding;
+  assert.equal(mode.chatContainer.clear.mock.callCount(), 1, "half a draw was left on screen");
+  bound();
+  await started;
+  assert.deepEqual(steps, ["bind", "drawn"], "it was not drawn after the bind");
+  assert.equal(mode.renderSessionEntries.mock.callCount(), 0);
+  assert.equal(mode.rebuildChatFromMessages.mock.callCount(), 0);
+  assert.equal(mode.subscribeToAgent.mock.callCount(), 1, "startup failed for a renderer");
   mode.themeChangeUnsubscribe?.();
 });
 
