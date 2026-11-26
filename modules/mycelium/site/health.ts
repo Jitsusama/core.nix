@@ -26,6 +26,8 @@ const PRESSURE_WATCH = 85;
 const CHARGE_TEND = 20;
 // A sandbox this near its end is worth a look.
 const LEASE_WATCH_MS = 30 * 60_000;
+// A lease this far out is no provider's: the machine is the person's to keep.
+const KEPT_MS = 100 * 365 * 86_400_000;
 const PERCENT = 100;
 const GIB = 2 ** 30;
 const THOUSAND = 1000;
@@ -159,10 +161,23 @@ export const machineForm = (x: MachineFacts): "basin" | "lent" | "shut" => {
 export const gib = (bytes: number | null | undefined): string =>
   bytes === null || bytes === undefined ? "" : `${(bytes / GIB).toFixed(0)} GiB`;
 
+/**
+ * Whether a lease ending at `end` is one the person keeps rather than one
+ * that runs out: a cloud machine made for him to keep declares its end in
+ * the year 9999, so it is never said as so many thousand days left. A
+ * century is far past any lease a provider lends, so a real one, however
+ * long, still counts down.
+ */
+const kept = (end: string, at: string): boolean => Date.parse(end) - Date.parse(at) >= KEPT_MS;
+
+/** How long a lease has left, or that it is kept. */
+const leaseWords = (end: string, at: string): string =>
+  kept(end, at) ? "kept until you let it go" : leftWords(end, at);
+
 /** What a lent machine is, and how long it has left; nothing for bare metal. */
 export const sandboxWords = (x: MachineFacts, at: string): string => {
   const end = leavesAt(x);
-  return end === null ? "" : `a cloud sandbox, ${leftWords(end, at)}`;
+  return end === null ? "" : `a cloud machine, ${leaseWords(end, at)}`;
 };
 
 /** A machine's pressure, only where each share of it is a number. */
@@ -247,7 +262,7 @@ export const machineHealth = (
     x.available === null || x.available === undefined ? "" : `${gib(x.available)} memory free`,
     disk,
     charge === null || charge === undefined ? "" : `on battery, ${charge}%`,
-    end === null ? "" : leftWords(end, at),
+    end === null ? "" : leaseWords(end, at),
   ].filter(Boolean);
   return { v: machineVerdict(x, at), words: bits.join("; ") || "nothing said" };
 };
