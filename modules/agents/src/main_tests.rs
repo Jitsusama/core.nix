@@ -31,6 +31,7 @@ fn the_daemons_socket_takes_no_sprout_from_anyone_but_the_shell() {
         keeping,
         told,
         (stood, Said::default()),
+        asker::speaks_as_joel,
     );
     let socket = folder.join("agents.sock");
     let listener = serve::listen(&socket).expect("the daemon's socket");
@@ -109,6 +110,7 @@ fn the_daemons_socket_lets_no_one_but_the_shell_lift_the_stop() {
         keeping,
         told,
         (stood, words.starts),
+        asker::speaks_as_joel,
     );
     let socket = folder.join("agents.sock");
     let listener = serve::listen(&socket).expect("the daemon's socket");
@@ -171,6 +173,7 @@ fn the_daemons_socket_takes_no_answer_from_anyone_but_the_shell() {
         keeping,
         told,
         (stood, Said::default()),
+        asker::speaks_as_joel,
     );
     let socket = folder.join("agents.sock");
     let listener = serve::listen(&socket).expect("the daemon's socket");
@@ -268,6 +271,159 @@ fn only_the_shells_answer_reaches_the_node() {
     );
 }
 
+/// Each of [`AS_JOEL`] asked once on the daemon's own socket, served as
+/// `serve` serves it, `judge` telling who asks and `node` the node's
+/// socket, if any; answered in the order asked, by `own` itself where
+/// let through, so one let through with a node would ask it.
+fn asked_as_joel(
+    judge: asker::Judge,
+    folder: &std::path::Path,
+    node: Option<PathBuf>,
+) -> Vec<Value> {
+    let (told, _heard) = mpsc::channel();
+    let (wants, _) = asking();
+    let own = own(
+        told.clone(),
+        node.clone(),
+        Routes::default(),
+        (Landings::default(), wants.clone()),
+        folder.join(FEEDBACK),
+    );
+    let shared = Shared::new(DOMAIN, own);
+    let stood = Arc::new(starts_stopped::Told::new(told.clone()));
+    let keeping = Keeping::read(&folder.join(starts::FILE), clock::now_ms());
+    for_the_shell_alone(
+        &shared,
+        (node, wants),
+        keeping,
+        told,
+        (stood, Said::default()),
+        judge,
+    );
+    let socket = folder.join("agents.sock");
+    let listener = serve::listen(&socket).expect("the daemon's socket");
+    serve::accept(shared, listener);
+    let mut asking = UnixStream::connect(&socket).expect("the daemon takes a connection");
+    // Each with what any of them names, so none is refused for lacking it.
+    for (id, ask) in AS_JOEL.iter().enumerate() {
+        let said = json!({"id": id, "ask": ask, "address": "asker", "text": "push it",
+            "words": "push it", "landing": "landed:agents:asker",
+            "known": "question@2026-11-25T09:00:00.000Z"});
+        writeln!(asking, "{said}").expect("Joel's ask is asked");
+    }
+    let mut reading = BufReader::new(&asking);
+    let mut answers: Vec<Value> = AS_JOEL
+        .iter()
+        .map(|_| {
+            let mut line = String::new();
+            reading.read_line(&mut line).expect("an answer");
+            serde_json::from_str(&line).expect("one line of JSON")
+        })
+        .collect();
+    // Feedback waits on the node on a thread of its own, so it may come
+    // after one asked after it.
+    answers.sort_by_key(|answer| answer["id"].as_u64());
+    answers
+}
+
+fn an_agent(_: &UnixStream) -> Result<(), asker::NotJoels> {
+    Err(asker::NotJoels::Agent("mycelium-pi-f3d9.scope".to_owned()))
+}
+
+fn untold(_: &UnixStream) -> Result<(), asker::NotJoels> {
+    Err(asker::NotJoels::Untold(
+        "process 50's cgroup can't be read".to_owned(),
+    ))
+}
+
+/// Everything Joel says or does to a session, asked on the daemon's own
+/// socket by an agent, or by one nothing can be told of, is refused
+/// before `own` would answer it, saying why, so the node, which would
+/// take it as his, is never asked (ISXEG8, 25 November).
+#[test]
+fn the_daemons_socket_says_nothing_as_joel_for_an_agent() {
+    let folder = std::env::temp_dir().join(format!("agents-as-joel-{}", std::process::id()));
+    for (judge, why) in [
+        (
+            an_agent as asker::Judge,
+            "this asks from mycelium-pi-f3d9.scope, an agent's, and an agent can't give words \
+             to a session as Joel's",
+        ),
+        (
+            untold,
+            "the agents daemon takes words to a session as Joel's only once it can tell no \
+             agent asked: process 50's cgroup can't be read",
+        ),
+    ] {
+        let _ = std::fs::remove_dir_all(&folder);
+        std::fs::create_dir_all(&folder).expect("a folder for the sockets");
+        let at_node = folder.join("node.sock");
+        let node = UnixListener::bind(&at_node).expect("a node's socket");
+        node.set_nonblocking(true).expect("the node never waits");
+        let answers = asked_as_joel(judge, &folder, Some(at_node));
+        for (ask, answer) in AS_JOEL.iter().zip(&answers) {
+            let said = answer["error"]["message"].as_str().unwrap_or_default();
+            assert!(
+                answer["error"]["code"] == "refused" && said.contains(" as Joel's"),
+                "{ask} refused, saying why: {answer}"
+            );
+        }
+        assert_eq!(
+            answers[0]["error"]["message"], why,
+            "a talk is named as Joel reads it"
+        );
+        assert!(
+            node.accept()
+                .is_err_and(|error| error.kind() == ErrorKind::WouldBlock),
+            "the node was never asked: {why}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&folder);
+}
+
+/// What Joel says or does, asked by one no agent is told to be, is let
+/// through to `own`, which answers it as ever: here, with no node to
+/// steer, that it can't, and with no session on the quest, that none
+/// heard the tell.
+#[test]
+fn joels_own_reach_own() {
+    let folder = std::env::temp_dir().join(format!("agents-joels-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).expect("a folder for the sockets");
+    let answers = asked_as_joel(|_| Ok(()), &folder, None);
+    let _ = std::fs::remove_dir_all(&folder);
+    for (ask, answer) in AS_JOEL.iter().zip(&answers) {
+        let said = answer["error"]["message"].as_str().unwrap_or_default();
+        assert!(
+            !said.contains(" as Joel's"),
+            "{ask} was let through: {answer}"
+        );
+        let code = match *ask {
+            "tell" => Some("unheard"),
+            "feedback" | "not-now" => None,
+            _ => Some("unsteered"),
+        };
+        if let Some(code) = code {
+            assert_eq!(
+                answer["error"]["code"], code,
+                "{ask}, as own answers it: {answer}"
+            );
+        }
+    }
+}
+
+/// Every act a steer names by its own name speaks as Joel, so a new one
+/// can't reach the node from anyone but the shell by being left off.
+#[test]
+fn every_act_steered_by_name_is_joels() {
+    for act in acts::STEERED.iter().chain(["talk"].iter()) {
+        assert!(AS_JOEL.contains(act), "{act} isn't held to the shell");
+    }
+    for ask in AS_JOEL {
+        assert!(PEERED.contains(&ask), "{ask} is never checked");
+    }
+}
+
 /// Places on the daemon's own socket, from a connection that isn't
 /// the shell's (this test's), asks the node nothing, so no agent reads
 /// the folders the node lists for Joel.
@@ -289,6 +445,7 @@ fn the_daemons_socket_lists_no_places_for_anyone_but_the_shell() {
         keeping,
         told,
         (stood, Said::default()),
+        asker::speaks_as_joel,
     );
     let socket = folder.join("agents.sock");
     let listener = serve::listen(&socket).expect("the daemon's socket");
