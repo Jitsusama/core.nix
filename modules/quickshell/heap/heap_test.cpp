@@ -461,8 +461,9 @@ ReadBack readBack(QJSEngine &engine, const QJSValue &few) {
 
 // Whether giving a thinned heap's free pages back takes them, says so, and
 // leaves what's kept, and what's made after, as it was made; and whether
-// what's held is counted resident before it and not after, so a count that
-// ignored which pages are in memory fails.
+// what's held resident covered what was free before and falls by more than
+// half of what was given, so a count that ignored which pages are in memory
+// fails.
 bool givesBack() {
     QJSEngine engine;
     Heap heap(&engine);
@@ -607,12 +608,12 @@ Lending lentOnce() {
 // lending the kernel took from is tried once more, and if it takes again,
 // what it holds lent and what stays resident are left unjudged, with a
 // note. What it said, marked and left once taken, and what reads back, are
-// judged on both tries, through asLent().
+// judged through asLent() on a first try taken from and on the try judged.
 bool lendsBack() {
     const Lending first = lentOnce();
     const Lending lending = first.calm ? first : lentOnce();
     const bool firstAsLent = first.calm || first.asLent();
-    const bool said = lending.saidAsCounted();
+    const bool asLent = lending.asLent();
     const bool held = !lending.calm || (lending.lentBefore >= 0 &&
                                         lending.lentAfter - lending.lentBefore > lending.free / 2);
     const bool kept = !lending.calm || lending.freeLent > lending.free / 2;
@@ -621,8 +622,6 @@ bool lendsBack() {
     // early has already lowered it, so only a calm lending is judged.
     const bool fell =
         !lending.calm || lending.residentLent - lending.residentTaken > lending.lent / 2;
-    const bool marked = lending.markedAsLent();
-    const bool taken = lending.goneOnceTaken();
     const ReadBack &read = lending.read;
     if (!lending.counted)
         std::fprintf(stderr,
@@ -635,30 +634,32 @@ bool lendsBack() {
     if (!lending.calm)
         std::fprintf(stderr,
                      "note: the kernel took lent pages twice while lending was read, so what "
-                     "it held lent (%.1f, then %.1f MB) and what stayed resident (%.1f MB) "
-                     "go unjudged; it marked %.1f MB lent, or -1 if it doesn't say\n",
-                     lending.lentBefore, lending.lentAfter, lending.freeLent, lending.marked);
+                     "it held lent (%.1f, then %.1f MB), what stayed resident (%.1f MB) and "
+                     "how far what's held resident fell once taken (%.1f to %.1f MB) go "
+                     "unjudged; it marked %.1f MB lent, or -1 if it doesn't say\n",
+                     lending.lentBefore, lending.lentAfter, lending.freeLent,
+                     lending.residentLent, lending.residentTaken, lending.marked);
     if (!firstAsLent)
         std::fprintf(stderr,
                      "FAIL the first lending, taken from early, said %.1f MB of %.1f free, "
-                     "marked %.1f MB lent, %.1f MB free once taken (%s); the few summed %.0f "
-                     "of %.0f, and what was made after %.0f of %.0f\n",
+                     "marked %.1f MB lent (-1 if uncounted), %.1f MB free once taken (%s); the "
+                     "few summed %.0f of %.0f, and what was made after %.0f of %.0f\n",
                      first.lent, first.free, first.marked, first.freeTaken,
                      first.took ? "taken" : "the kernel refused", first.read.kept,
                      first.read.keptMade, first.read.after, first.read.afterMade);
-    if (!said || !held || !kept || !fell || !marked || !taken || !read.asMade())
+    if (!asLent || !held || !kept || !fell)
         std::fprintf(stderr,
                      "FAIL lending %.1f MB of free pages back says so, keeps them resident "
                      "until the kernel takes them, and leaves what's kept: said %.1f MB; the "
-                     "kernel held %.1f, then %.1f MB lent, and marked %.1f MB; %.1f MB free once "
-                     "lent, and %.1f once taken (%s); %.1f MB held resident once lent, and "
-                     "%.1f once taken; the few summed %.0f of %.0f, and what was made after "
-                     "%.0f of %.0f\n",
+                     "kernel held %.1f, then %.1f MB lent, and marked %.1f MB (-1 if uncounted); "
+                     "%.1f MB free once lent, and %.1f once taken (%s); %.1f MB held "
+                     "resident once lent, and %.1f once taken; the few summed %.0f of %.0f, "
+                     "and what was made after %.0f of %.0f\n",
                      lending.free, lending.lent, lending.lentBefore, lending.lentAfter,
                      lending.marked, lending.freeLent, lending.freeTaken,
                      lending.took ? "taken" : "the kernel refused", lending.residentLent,
                      lending.residentTaken, read.kept, read.keptMade, read.after, read.afterMade);
-    return firstAsLent && said && held && kept && fell && marked && taken && read.asMade();
+    return firstAsLent && asLent && held && kept && fell;
 }
 
 // How many runs too small for what's made after are freed, each a store
@@ -843,8 +844,8 @@ bool expect(const char *what, bool holds, const Weight &before, const Weight &af
 constexpr int SHAPED = 50000;
 constexpr int KEYED = 20000;
 
-// How many numbers the one huge array kept holds, so its store, about 2.4
-// MB, is a huge item of its own outside the heap's chunks.
+// How many numbers the one huge array kept holds, so its store, past 2 MB,
+// is a huge item with a segment of its own outside the heap's chunks.
 constexpr int HUGE_LENGTH = 300000;
 
 // Whether the census counts what weigh() calls live, to a rounding, the
@@ -890,6 +891,95 @@ bool namesWhatsKept() {
                      hidden ? "hidden" : "not hidden",
                      census.value(QStringLiteral("ms")).toDouble(), qPrintable(line));
     return !kept.isError() && named && hidden && whole && timed;
+}
+
+// How many objects of a shape of their own are kept, each needing an
+// internal class from the shapes' own allocator; and how many large items
+// of LARGE_VALUES numbers, whose stores stay under 2 MB as an array's grows
+// by doubling, so the chunk allocator makes them, beside one of
+// HUGE_LENGTH, with a segment of its own. On 25 November 150000 numbers
+// grew past 2 MB, and every large item had a segment of its own.
+constexpr int OWN_SHAPES = 50000;
+constexpr int LARGE_ITEMS = 6;
+constexpr int LARGE_VALUES = 100000;
+
+double megabytesOf(std::size_t bytes) { return static_cast<double>(bytes) / (1024.0 * 1024.0); }
+
+// The MB of this process's pages the kernel has swapped out, zswap's pool
+// included, since each is left a swap entry wherever it's kept, or -1 when
+// it doesn't say.
+double swappedOut() {
+    QFile status(QStringLiteral("/proc/self/status"));
+    if (!status.open(QIODevice::ReadOnly))
+        return -1;
+    const QRegularExpressionMatch match =
+        QRegularExpression(QStringLiteral("^VmSwap:\\s+(\\d+) kB$"),
+                           QRegularExpression::MultilineOption)
+            .match(QString::fromLatin1(status.readAll()));
+    return match.hasMatch() ? match.captured(1).toDouble() / 1024.0 : -1;
+}
+
+// Whether what's held resident covers what's live, and passes what's held
+// by no more than its headers, once a heap keeps items in every allocator
+// it has: objects in its chunks, their shapes' internal classes in the
+// shapes' own, and large items of both kinds, which it checks it made.
+// Each item live was written, so its pages are in memory, and a count that
+// left out an allocator falls short of it; one that read a chunk twice
+// passes what's held, and one past a large item's own may, where the pages
+// after it are resident. What's held counts a chunk less its header, and a
+// large item the chunk allocator made at its size, short of its header, the
+// page it ends in and the rest of a whole chunk, so those are let over. A
+// read a page or less past a large item's chunk isn't caught, and nor is
+// one stopping short of its end, since the item's own bytes, which live
+// counts, come first. A page of this process the kernel swapped out is no
+// longer resident, so what's live is judged less what it has swapped.
+bool residentCoversWhatsLive() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    const QJSValue kept = engine.evaluate(
+        QStringLiteral("(() => { const kept = []; for (let i = 0; i < %1; i++) kept.push({ "
+                       "['own' + i]: i }); for (let i = 0; i < %2; i++) kept.push(new "
+                       "Array(%3).fill(i)); kept.push(new Array(%4).fill(0.5)); return kept; "
+                       "})()")
+            .arg(OWN_SHAPES)
+            .arg(LARGE_ITEMS)
+            .arg(LARGE_VALUES)
+            .arg(HUGE_LENGTH));
+    const Weight weight = weighed(engine, heap);
+    const double swapped = std::max(swappedOut(), 0.0);
+    const QV4::MemoryManager *manager = engine.handle()->memoryManager;
+    const double shapes = megabytesOf(manager->icAllocator.usedMem());
+    const double large = megabytesOf(manager->getLargeItemsMem());
+    const auto page = static_cast<std::size_t>(sysconf(_SC_PAGESIZE));
+    // Only the stores of LARGE_VALUES numbers, not `kept`'s own, which the
+    // chunk allocator makes too.
+    int chunked = 0;
+    int segmented = 0;
+    std::size_t over = (manager->blockAllocator.chunks.size() +
+                        manager->icAllocator.chunks.size()) *
+                       QV4::Chunk::HeaderSize;
+    for (const auto &huge : manager->hugeItemAllocator.chunks) {
+        if (huge.segment != nullptr) {
+            ++segmented;
+            continue;
+        }
+        if (huge.size >= static_cast<std::size_t>(LARGE_VALUES) * sizeof(QV4::Value))
+            ++chunked;
+        over += QV4::Chunk::HeaderSize + page +
+                (huge.size < QV4::Chunk::ChunkSize ? QV4::Chunk::ChunkSize - huge.size : 0);
+    }
+    const bool made = shapes > 1 && chunked >= LARGE_ITEMS && segmented >= 1;
+    const bool covers = weight.resident >= 0 && weight.resident + swapped >= weight.live;
+    const bool bounded = weight.resident <= weight.held + megabytesOf(over);
+    if (kept.isError() || !made || !covers || !bounded)
+        std::fprintf(stderr,
+                     "FAIL what's held resident covers the %.1f MB live, less %.1f MB swapped, "
+                     "%.1f MB of it shapes and %.1f MB large items, %d made by the chunk "
+                     "allocator and %d with a segment, and passes the %.1f MB held by at most "
+                     "%.2f MB: %.1f MB resident\n",
+                     weight.live, swapped, shapes, large, chunked, segmented, weight.held,
+                     megabytesOf(over), weight.resident);
+    return !kept.isError() && made && covers && bounded;
 }
 
 // How many closures the place test keeps, each from a call of its own.
@@ -1723,6 +1813,7 @@ int main(int argc, char **argv) {
     const bool fits = takesRunsThatFit();
     const bool whole = leavesLargeRunsWhole();
     const bool census = namesWhatsKept();
+    const bool covered = residentCoversWhatsLive();
     const bool placed = placesWhatMadeIt();
     const bool stands = standsAsWeighed();
     const bool underWay = saysOneUnderWay();
@@ -1735,8 +1826,8 @@ int main(int argc, char **argv) {
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
                    roomyOutside && lasting && lastingOutside && stillCollectsOutside &&
                    reckoned && ownLimits && follows && given && lent && fits && whole && census &&
-                   placed && stands && underWay && holdsIt && waitsItOut && stray && alone &&
-                   swept && chained
+                   covered && placed && stands && underWay && holdsIt && waitsItOut && stray &&
+                   alone && swept && chained
                ? 0
                : 1;
 }
