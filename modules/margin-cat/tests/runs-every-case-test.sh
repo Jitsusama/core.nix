@@ -2,11 +2,11 @@
 # Holds what runs-every-case.sh says of each way a case can end, over
 # stand-in cases a stand-in qml plays out, under a limit of a second of the
 # processor's: a pass, a failure, a case past its own time and one killed
-# from outside, under a guard of a minute by the clock, so a loaded builder
+# from outside with a pass after it, under a guard of a minute by the clock, so a loaded builder
 # slowing the spinning case never makes it a hang; then, under a guard of
 # three seconds, a hang that stops the run and one that ignores the guard's
 # signal until its kill, each with a case left unrun after it; and limits
-# that aren't whole seconds, refused.
+# and guards that aren't whole seconds, refused.
 # usage: runs-every-case-test.sh <runs-every-case.sh>
 set -euo pipefail
 
@@ -28,8 +28,8 @@ case $how in
   hang) exec sleep 60 ;;
   deaf)
     trap '' TERM
-    # A deaf hang waits as a hang does, and ignores the guard's signal, so only its kill ends it.
-    exec sleep 60
+    # A deaf hang ignores the guard's signal and outlasts its kill, so only the kill ends it.
+    exec sleep 120
     ;;
 esac
 EOF
@@ -74,13 +74,15 @@ took() {
     failing "$1.qml never said its time as $2 of its own and $3 by the clock"
 }
 
-runs ends 1 60 a-passes:pass b-fails:fail c-spins:spin d-dies:die
+runs ends 1 60 a-passes:pass b-fails:fail c-spins:spin d-dies:die e-after:pass
 ends 1
 holds "b-fails.qml failed, exit code 2"
 holds "c-spins.qml ran past its 1 s of its own time"
 holds "d-dies.qml was killed: out of memory, or past its hard 11 s"
-holds "3 of 4 cases failed:"
+holds "3 of 5 cases failed:"
 never "a-passes.qml failed"
+never "e-after.qml failed"
+never "left unrun"
 took a-passes 0 "[0-9]+"
 took b-fails 0 "[0-9]+"
 # The spinning case's own second is all the processor's, however slow the
@@ -89,11 +91,13 @@ took c-spins "1|2" "[0-9]+"
 # The killed one says its time too, though bash writes its job notice above
 # its timing.
 took d-dies 0 "[0-9]+"
+# A kill from outside is no hang, so the run goes on past it.
+took e-after 0 "[0-9]+"
 
 runs hangs 1 3 e-hangs:hang f-follows:pass
 ends 1
 holds "e-hangs.qml ran past the clock's 3 s, waiting on something"
-holds "left unrun after it: f-follows.qml"
+holds "left unrun after e-hangs.qml: f-follows.qml"
 holds "1 of 2 cases failed:"
 holds "  f-follows.qml left unrun"
 never "f-follows.qml took"
@@ -104,13 +108,20 @@ took e-hangs 0 "[3-9]|[1-9][0-9]+"
 runs deaf 1 3 g-ignores:deaf h-follows:pass
 ends 1
 holds "g-ignores.qml ran past the clock's 3 s, waiting on something"
-holds "left unrun after it: h-follows.qml"
+holds "left unrun after g-ignores.qml: h-follows.qml"
 never "g-ignores.qml was killed"
-took g-ignores 0 "1[3-9]|[2-9][0-9]"
+# Its stand-in would end by itself at 120 s, so a run reaching that has
+# lost the guard's kill.
+took g-ignores 0 "1[3-9]|[2-5][0-9]"
 
 runs refused soon 60 a-passes:pass
 ends 2
 holds "CASE_LIMIT and CASE_GUARD must be whole seconds, not 'soon' and '60'"
+never "a-passes.qml took"
+
+runs refused-guard 1 0 a-passes:pass
+ends 2
+holds "CASE_LIMIT and CASE_GUARD must be whole seconds, not '1' and '0'"
 never "a-passes.qml took"
 
 [ "$fails" = 0 ]

@@ -87,8 +87,9 @@ onLinux {
     '';
 
   # What the cat's case runner says of each way a case ends, past its own
-  # time, killed, hung or failed, over stand-ins in a few seconds, as
-  # tests/runs-every-case-test.sh holds it.
+  # time, killed, hung or failed, over stand-ins in about 20 s by the clock,
+  # most of it a hang's wait for its guard, as tests/runs-every-case-test.sh
+  # holds it.
   the-cat-runner-names-how-each-case-ended =
     pkgs.runCommandLocal "the-cat-runner-names-how-each-case-ended" { }
       ''

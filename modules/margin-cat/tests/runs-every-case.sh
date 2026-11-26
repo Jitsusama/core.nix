@@ -45,8 +45,12 @@ trap 'rm -f "$used"' EXIT
 # collector is still handed one.
 run() {
   ulimit -c 0
-  ulimit -St "$limit"
-  ulimit -Ht "$hard"
+  # A limit the builder refuses fails the case, rather than letting it run
+  # with none.
+  if ! { ulimit -St "$limit" && ulimit -Ht "$hard"; }; then
+    echo "$1: the processor's limits couldn't be set" >&2
+    return 1
+  fi
   timeout -k 10 "$guard" "$qml" "$1"
 }
 # Whether the guard ended a case, given its exit code and its seconds by the
@@ -112,7 +116,7 @@ for case in "${cases[@]}"; do
   echo "$case took $own s of its $limit, $seconds s by the clock" >&2
 done
 if [ "${#unrun[@]}" != 0 ]; then
-  echo "left unrun after it: ${unrun[*]}" >&2
+  echo "left unrun after $stopped: ${unrun[*]}" >&2
 fi
 if [ "${#failed[@]}" != 0 ]; then
   printf '%s of %s cases failed:\n' "${#failed[@]}" "${#cases[@]}" >&2
