@@ -238,10 +238,8 @@
   "modules/spend-watch/src/picture.rs" = 1;
   "modules/spend-watch/src/random.rs" = 3;
   "modules/spend-watch/src/series.rs" = 9;
-  "modules/spend-watch/src/standing.rs" = 6;
   "modules/spend-watch/src/stats.rs" = 7;
   "modules/spend-watch/src/status.rs" = 3;
-  "modules/spend-watch/src/tokens.rs" = 6;
   "modules/spend-watch/src/waste.rs" = 1;
   "modules/spotify/pause-for-calls/src/main.rs" = 3;
   "modules/spotify/spotify-recent/src/recent.rs" = 13;

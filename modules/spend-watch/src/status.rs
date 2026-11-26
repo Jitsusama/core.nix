@@ -77,7 +77,7 @@ pub struct Status {
     pub quiet: Said,
     pub actions: Vec<ShellAction>,
     /// When the tokens run out, while that's near; the shell raises it as
-    /// its own notice and row (tokens.rs).
+    /// its own notice and row (tokens/mod.rs).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tokens: Option<crate::tokens::Tokens>,
 }

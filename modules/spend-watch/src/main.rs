@@ -1,5 +1,5 @@
 //! The spend-watch command: the daemon, its reports and its errands
-//! (src/cli.rs lists them).
+//! (src/cli/mod.rs lists them).
 
 use std::process::ExitCode;
 
