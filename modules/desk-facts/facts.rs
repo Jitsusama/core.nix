@@ -138,6 +138,8 @@ mod bluetooth;
 mod cable;
 mod cameras;
 mod displays;
+#[cfg(test)]
+mod fake_inotify;
 mod hearing;
 mod inotify;
 mod input;

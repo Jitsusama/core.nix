@@ -54,17 +54,19 @@ in
       # A person's, so not a system account's lingering manager's.
       ConditionUser = "!@system";
       # A fault that comes back each start is tried again ever more slowly,
-      # up to five minutes apart, rather than every five seconds for good
-      # or never again; a folder it can't watch yet, or an inotify it can't
-      # start yet, doesn't fail it.
+      # up to thirty seconds apart, rather than every second for good or
+      # never again; a folder it can't watch yet, or an inotify it can't
+      # start yet, doesn't fail it. The cap is short since systemd counts
+      # restarts across a long healthy run, so a lone fault after weeks
+      # would otherwise leave the launcher's facts stale for minutes.
       StartLimitIntervalSec = 0;
     };
     serviceConfig = {
       ExecStart = "${facts}/bin/desk-facts %t/desk ${loopbacks}";
       Restart = "on-failure";
-      RestartSec = 5;
-      RestartSteps = 6;
-      RestartMaxDelaySec = 300;
+      RestartSec = 2;
+      RestartSteps = 4;
+      RestartMaxDelaySec = 30;
       NoNewPrivileges = true;
       # The kernel's uevents come over netlink, and only into the machine's
       # own network namespace, so it keeps that one and may open nothing

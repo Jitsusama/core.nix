@@ -6,7 +6,9 @@ use std::ffi::c_int;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use crate::inotify::{IN_CREATE, IN_IGNORED, IN_MASK_ADD, IN_MOVED_TO, Inotify, Kernel};
+use crate::inotify::{
+    IN_CREATE, IN_IGNORED, IN_MASK_ADD, IN_MOVED_TO, IN_Q_OVERFLOW, Inotify, Kernel,
+};
 
 /// What a watch on the folder above one missing asks: its being made.
 const MADE: u32 = IN_CREATE | IN_MOVED_TO;
@@ -70,8 +72,8 @@ fn say(said: &mut Option<String>, refusal: String, mendable: bool) {
 ///
 /// A folder that's missing is watched for from the nearest folder above it
 /// that's there, and one removed once watched is waited for again the same
-/// way. Each is tried again whenever any is heard from, and, while any
-/// waits or inotify itself wouldn't start, every few seconds (hearing's
+/// way. Each is tried again whenever any is heard from, and, while one
+/// waits with nothing above it watched, every few seconds (hearing's
 /// `RETRY`), since nothing tells of room come free. The watches above are
 /// heard only as wakeups, never as the folders' own events.
 pub(crate) struct Watches<K: Kernel = Inotify> {
@@ -126,12 +128,14 @@ impl<K: Kernel> Watches<K> {
         self.kernel.as_ref().map_or(-1, Kernel::fd)
     }
 
-    /// Whether a folder isn't watched yet, or inotify wouldn't start.
+    /// Whether a folder waits with nothing to wake it once it can be
+    /// watched: refused for want of room, with nothing above it watched, or
+    /// with inotify not started. One missing below a watch above is woken
+    /// by that watch.
     pub(crate) fn waits(&self) -> bool {
-        // Till inotify starts, every folder waits.
         self.folders
             .iter()
-            .any(|folder| matches!(folder.state, State::Waiting(_)))
+            .any(|folder| folder.state == State::Waiting(None))
     }
 
     /// What the folders watched say, as inotify's events, leaving out those
@@ -156,9 +160,10 @@ impl<K: Kernel> Watches<K> {
 
     /// The events of the folders watched, and of none, as an overflow is,
     /// with any cut short kept whole; and whether a folder watched was
-    /// removed, which waits for it again.
+    /// removed, which waits for it again. An overflow may have lost a
+    /// folder's removal, so each folder is watched afresh after one.
     fn own_events(&mut self, said: &[u8]) -> (Vec<u8>, bool) {
-        let (mut own, mut removed) = (Vec::new(), false);
+        let (mut own, mut removed, mut overflowed) = (Vec::new(), false, false);
         let mut rest = said;
         while !rest.is_empty() {
             let length = rest.get(12..16).map_or(usize::MAX, |bytes| {
@@ -181,10 +186,31 @@ impl<K: Kernel> Watches<K> {
                     removed = true;
                 }
                 Some(_) => own.extend_from_slice(event),
-                None if wd == -1 => own.extend_from_slice(event),
+                None if wd == -1 => {
+                    overflowed |= mask & IN_Q_OVERFLOW != 0;
+                    own.extend_from_slice(event);
+                }
+                // The folder a watch above was on is gone, so each folder
+                // waiting on it looks again for the nearest that's there;
+                // the kernel dropped that watch, so it isn't let go of
+                // again, by a number the kernel may since have given out.
+                None if mask & IN_IGNORED != 0 => {
+                    self.above.retain(|each| *each != wd);
+                    for folder in &mut self.folders {
+                        if folder.state == State::Waiting(Some(wd)) {
+                            folder.state = State::Waiting(None);
+                        }
+                    }
+                }
                 None => {}
             }
             rest = after;
+        }
+        if overflowed {
+            // A watch still there is given its own number back.
+            for folder in &mut self.folders {
+                folder.state = State::Waiting(None);
+            }
         }
         (own, removed)
     }
@@ -247,12 +273,23 @@ impl<K: Kernel> Watches<K> {
         self.above.sort_unstable();
         self.above.dedup();
         for wd in &self.above {
-            let own = self
+            if waited_on.contains(wd) {
+                continue;
+            }
+            match self
                 .folders
-                .iter()
-                .any(|folder| folder.state == State::Watched(*wd));
-            if !own && !waited_on.contains(wd) {
-                kernel.remove(*wd);
+                .iter_mut()
+                .find(|folder| folder.state == State::Watched(*wd))
+            {
+                // A folder's own watch, added to for one below it, is set
+                // back to the folder's own mask, since what was added
+                // can't be taken away alone.
+                Some(folder) => {
+                    if let Ok(again) = kernel.add(&folder.path, folder.mask) {
+                        folder.state = State::Watched(again);
+                    }
+                }
+                None => kernel.remove(*wd),
             }
         }
         self.above = waited_on;
@@ -296,7 +333,9 @@ fn watch(kernel: &mut impl Kernel, folder: &mut Folder, held: &mut Vec<c_int>) -
     if later(&error).is_none() {
         return Err(refused(error));
     }
-    folder.state = State::Waiting(above);
+    // Only a folder still missing is woken by the watch above it.
+    let missing = later(&error) == Some(Later::Missing);
+    folder.state = State::Waiting(above.filter(|_| missing));
     let refusal = format!("can't watch {} yet: {error}", path.display());
     say(&mut folder.said, refusal, true);
     Ok(false)
@@ -327,149 +366,10 @@ mod tests {
     use crate::inotify::{IN_CLOSE_WRITE, IN_DELETE, IN_Q_OVERFLOW, names};
     use crate::tests::*;
 
-    use std::cell::RefCell;
-    use std::rc::Rc;
+    use crate::fake_inotify::{Fake, NOT_INOTIFY};
 
     #[cfg(target_os = "linux")]
     use std::fs;
-
-    /// What a stand-in inotify holds: the folders there, its watches, the
-    /// events it has to say, and how it refuses.
-    #[derive(Default)]
-    struct Held {
-        made: Vec<PathBuf>,
-        watches: Vec<(c_int, PathBuf, u32)>,
-        last: c_int,
-        events: Vec<u8>,
-        /// No room for another watch.
-        full: bool,
-        /// What starting inotify is refused with.
-        unopenable: Option<i32>,
-        /// A folder made just as its watch is first refused, as one made
-        /// between that and the watch on the folder above.
-        racing: Option<PathBuf>,
-    }
-
-    /// A stand-in inotify over folders kept in memory, so how folders are
-    /// waited for is tried on any machine.
-    #[derive(Clone, Default)]
-    struct Fake(Rc<RefCell<Held>>);
-
-    impl Fake {
-        fn make(&self, path: &str) {
-            let path = PathBuf::from(path);
-            let mut held = self.0.borrow_mut();
-            let name = path.file_name().unwrap().to_string_lossy().into_owned();
-            let heard: Vec<u8> = held
-                .watches
-                .iter()
-                .filter(|(_, watched, mask)| {
-                    Some(watched.as_path()) == path.parent() && mask & IN_CREATE != 0
-                })
-                .flat_map(|(wd, ..)| event_on(*wd, IN_CREATE, &name))
-                .collect();
-            held.events.extend(heard);
-            held.made.push(path);
-        }
-
-        fn remove(&self, path: &str) {
-            let mut held = self.0.borrow_mut();
-            held.made.retain(|made| made != Path::new(path));
-            if let Some(at) = held
-                .watches
-                .iter()
-                .position(|(_, watched, _)| watched == Path::new(path))
-            {
-                let (wd, ..) = held.watches.remove(at);
-                held.events.extend(event_on(wd, IN_IGNORED, ""));
-            }
-        }
-
-        /// The folders watched and what each watch asks, sorted.
-        fn watched(&self) -> Vec<(String, u32)> {
-            let mut watched: Vec<(String, u32)> = self
-                .0
-                .borrow()
-                .watches
-                .iter()
-                .map(|(_, path, mask)| (path.display().to_string(), *mask))
-                .collect();
-            watched.sort();
-            watched
-        }
-
-        fn watches(&self, folders: &[(&str, u32)]) -> io::Result<Watches<Fake>> {
-            let folders: Vec<(PathBuf, u32)> = folders
-                .iter()
-                .map(|(path, mask)| (PathBuf::from(path), *mask))
-                .collect();
-            let fake = self.clone();
-            let open = move || match fake.0.borrow().unopenable {
-                Some(code) => Err(io::Error::from_raw_os_error(code)),
-                None => Ok(fake.clone()),
-            };
-            Watches::with(&folders, Box::new(open))
-        }
-    }
-
-    impl Kernel for Fake {
-        fn add(&mut self, path: &Path, mask: u32) -> io::Result<c_int> {
-            let mut held = self.0.borrow_mut();
-            if mask & !IN_MASK_ADD == 0 {
-                return Err(io::Error::from_raw_os_error(22));
-            }
-            if !held.made.iter().any(|made| made == path) {
-                if held.racing.as_deref() == Some(path) {
-                    held.racing = None;
-                    held.made.push(path.to_owned());
-                }
-                return Err(io::Error::from_raw_os_error(2));
-            }
-            if let Some(watch) = held
-                .watches
-                .iter_mut()
-                .find(|(_, watched, _)| watched == path)
-            {
-                // As the kernel does: added to only when asked to be.
-                if mask & IN_MASK_ADD == 0 {
-                    watch.2 = 0;
-                }
-                watch.2 |= mask & !IN_MASK_ADD;
-                return Ok(watch.0);
-            }
-            if held.full {
-                return Err(io::Error::from_raw_os_error(28));
-            }
-            held.last += 1;
-            let wd = held.last;
-            held.watches
-                .push((wd, path.to_owned(), mask & !IN_MASK_ADD));
-            Ok(wd)
-        }
-
-        fn remove(&mut self, wd: c_int) {
-            let mut held = self.0.borrow_mut();
-            if let Some(at) = held.watches.iter().position(|(each, ..)| *each == wd) {
-                held.watches.remove(at);
-                held.events.extend(event_on(wd, IN_IGNORED, ""));
-            }
-        }
-
-        fn fd(&self) -> c_int {
-            -1
-        }
-
-        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
-            let mut held = self.0.borrow_mut();
-            if held.events.is_empty() {
-                return Err(io::ErrorKind::WouldBlock.into());
-            }
-            let length = held.events.len().min(buffer.len());
-            buffer[..length].copy_from_slice(&held.events[..length]);
-            held.events.drain(..length);
-            Ok(length)
-        }
-    }
 
     #[test]
     fn only_a_missing_folder_or_no_room_waits() {
@@ -505,12 +405,12 @@ mod tests {
         assert_eq!(
             (waiting, made, after),
             (
-                (vec![("/a".into(), MADE)], (vec![], false), true),
+                (vec![("/a".into(), MADE)], (vec![], false), false),
                 ((vec![], true), vec![("/a/b".into(), IN_CLOSE_WRITE)], false),
                 (vec![], false),
             ),
-            "a folder made later wasn't watched for from above, then watched with its own \
-             mask, the watch above let go of and unheard"
+            "a folder made later wasn't watched for from above, without waking the loop, \
+             then watched with its own mask, the watch above let go of and unheard"
         );
     }
 
@@ -522,7 +422,7 @@ mod tests {
         fake.make("/a/other");
         assert_eq!(
             (watches.read(), watches.waits()),
-            ((vec![], false), true),
+            ((vec![], false), false),
             "a folder made beside one waited for was heard as the one's own"
         );
     }
@@ -580,9 +480,10 @@ mod tests {
                 vec![("/a".into(), own | MADE)],
                 true,
                 true,
-                vec![("/a".into(), own | MADE), ("/a/b".into(), IN_CLOSE_WRITE)],
+                vec![("/a".into(), own), ("/a/b".into(), IN_CLOSE_WRITE)],
             ),
-            "watching for a folder from one watched took the one's own mask or watch"
+            "watching for a folder from one watched took the one's own watch, or left it \
+             asking for what's made"
         );
     }
 
@@ -642,10 +543,10 @@ mod tests {
     fn no_room_is_tried_again_till_there_is() {
         let fake = Fake::default();
         fake.make("/a");
-        fake.0.borrow_mut().full = true;
+        fake.0.borrow_mut().room = Some(0);
         let mut watches = fake.watches(&[("/a", IN_CLOSE_WRITE)]).unwrap();
         let full = (watches.read().1, watches.waits());
-        fake.0.borrow_mut().full = false;
+        fake.0.borrow_mut().room = None;
         let room = (watches.read().1, watches.waits(), fake.watched());
         assert_eq!(
             (full, room),
@@ -682,7 +583,7 @@ mod tests {
         let fake = Fake::default();
         fake.make("/a");
         let refused = |watches: io::Result<Watches<Fake>>| watches.err().map(|e| e.to_string());
-        let mask = refused(fake.watches(&[("/a", IN_CLOSE_WRITE), ("/a", 0)]));
+        let mask = refused(fake.watches(&[("/a", IN_CLOSE_WRITE), ("/a", NOT_INOTIFY)]));
         fake.0.borrow_mut().unopenable = Some(22);
         let unstarted = refused(fake.watches(&[("/a", IN_CLOSE_WRITE)]));
         assert_eq!(
@@ -701,8 +602,8 @@ mod tests {
         let sys = Sys::new("watch-later");
         let later = sys.0.join("later");
         assert!(
-            Watches::new(&[(sys.0.clone(), 0)]).is_err(),
-            "the kernel's refusal of a mask of nothing was let wait"
+            Watches::new(&[(sys.0.clone(), NOT_INOTIFY)]).is_err(),
+            "the kernel's refusal of a mask it doesn't take was let wait"
         );
         let mut watches = Watches::new(&[(later.clone(), IN_CLOSE_WRITE)]).unwrap();
         let before = watches.read();
@@ -722,6 +623,92 @@ mod tests {
             ((vec![], false), (vec![], true), true, (vec![], false)),
             "a folder made later wasn't heard made, watched, then heard from, with the folder \
              above let go of"
+        );
+    }
+
+    #[test]
+    fn a_folder_made_as_its_watch_above_is_but_refused_for_room_waits_with_nothing_above() {
+        let fake = Fake::default();
+        fake.make("/a");
+        fake.0.borrow_mut().racing = Some("/a/b".into());
+        fake.0.borrow_mut().room = Some(1);
+        let own = IN_MOVED_TO;
+        let mut watches = fake
+            .watches(&[("/a", own), ("/a/b", IN_CLOSE_WRITE)])
+            .unwrap();
+        let full = (watches.waits(), fake.watched());
+        fake.0.borrow_mut().room = None;
+        let room = (watches.read().1, watches.waits(), fake.watched());
+        assert_eq!(
+            (full, room),
+            (
+                (true, vec![("/a".into(), own)]),
+                (
+                    true,
+                    false,
+                    vec![("/a".into(), own), ("/a/b".into(), IN_CLOSE_WRITE)]
+                ),
+            ),
+            "a folder there but refused for want of room was left to the watch above, \
+             which can't wake it, or that watch kept asking for what's made"
+        );
+    }
+
+    #[test]
+    fn a_folder_above_one_waiting_removed_is_looked_past_for_the_next_one_up() {
+        let fake = Fake::default();
+        fake.make("/a");
+        fake.make("/a/b");
+        let mut watches = fake.watches(&[("/a/b/c", IN_CLOSE_WRITE)]).unwrap();
+        let first = fake.watched();
+        fake.remove("/a/b");
+        let removed = (watches.read(), watches.waits(), fake.watched());
+        fake.make("/a/b");
+        let again = (watches.read().1, fake.watched());
+        assert_eq!(
+            (first, removed, again, fake.0.borrow().dropped_let_go.clone()),
+            (
+                vec![("/a/b".into(), MADE)],
+                ((vec![], false), false, vec![("/a".into(), MADE)]),
+                (false, vec![("/a/b".into(), MADE)]),
+                vec![],
+            ),
+            "a folder waiting on a watch above that was removed wasn't watched for from \
+             the next folder up, and from the one made again, or the removed watch was \
+             let go of after the kernel dropped it"
+        );
+    }
+
+    #[test]
+    fn an_overflow_watches_each_folder_afresh_for_a_removal_it_lost() {
+        let fake = Fake::default();
+        fake.make("/a");
+        fake.make("/a/b");
+        let mut watches = fake
+            .watches(&[("/a", IN_CLOSE_WRITE), ("/a/b", IN_CLOSE_WRITE)])
+            .unwrap();
+        // /a/b removed and made again, its removal lost in an overflow.
+        fake.remove("/a/b");
+        fake.0.borrow_mut().events = event_on(-1, IN_Q_OVERFLOW, "");
+        fake.make("/a/b");
+        let (events, _) = watches.read();
+        fake.0.borrow_mut().events = event_on(3, IN_CLOSE_WRITE, "file");
+        let (heard, _) = watches.read();
+        assert_eq!(
+            (
+                events,
+                fake.watched(),
+                names(&heard, |name| name == b"file")
+            ),
+            (
+                event_on(-1, IN_Q_OVERFLOW, ""),
+                vec![
+                    ("/a".into(), IN_CLOSE_WRITE),
+                    ("/a/b".into(), IN_CLOSE_WRITE)
+                ],
+                true,
+            ),
+            "a folder whose removal an overflow lost stayed on its dead watch"
         );
     }
 

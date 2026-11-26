@@ -14,7 +14,8 @@ use crate::bluetooth::bluetooth;
 use crate::cameras::{Loopback, cameras};
 use crate::displays::{displays, names_a_monitor};
 use crate::inotify::{
-    IN_CLOSE_NOWRITE, IN_CLOSE_WRITE, IN_CREATE, IN_DELETE, IN_MOVED_TO, IN_OPEN, names,
+    IN_CLOSE_NOWRITE, IN_CLOSE_WRITE, IN_CREATE, IN_DELETE, IN_MOVED_TO, IN_OPEN, Inotify, Kernel,
+    names,
 };
 use crate::keyboards::keyboards;
 use crate::own_sound::{a_jack_changed, control, open_control};
@@ -326,22 +327,93 @@ fn rewrite(due: u8, desk: &mut Desk) {
     }
 }
 
-/// The kinds the folders watched say changed: sound's, cameras' holders and
-/// the monitors' facts. A folder watched since, or removed, has its kind
-/// read again for what it holds now.
-fn heard_from_folders(changes: &mut Watches, held: &mut Watches, said: &mut Watches) -> u8 {
-    let mut due = 0;
-    let (events, moved) = changes.read();
-    if moved || names_one(&events, "pebble-lights") {
-        due |= SOUND;
+/// The folders facts come from, watched: sound's, cameras' holders and the
+/// monitors' facts.
+struct Folders<K: Kernel = Inotify> {
+    changes: Watches<K>,
+    held: Watches<K>,
+    said: Watches<K>,
+}
+
+impl<K: Kernel> Folders<K> {
+    /// The descriptors poll waits on, which change as inotify starts.
+    fn fds(&self) -> [c_int; 3] {
+        [self.changes.fd(), self.held.fd(), self.said.fd()]
     }
-    let (events, moved) = held.read();
-    if moved || !events.is_empty() {
-        due |= CAMERAS;
+
+    /// Whether a folder waits with nothing to wake it, so poll wakes to try
+    /// it again.
+    fn wait(&self) -> bool {
+        self.changes.waits() || self.held.waits() || self.said.waits()
     }
-    let (events, moved) = said.read();
-    if moved || names_a_monitor(&events) {
-        due |= DISPLAYS;
+
+    /// The kinds the folders say changed. A folder watched since, or
+    /// removed, has its kind read again for what it holds now.
+    fn heard(&mut self) -> u8 {
+        let mut due = 0;
+        let (events, moved) = self.changes.read();
+        if moved || names_one(&events, "pebble-lights") {
+            due |= SOUND;
+        }
+        let (events, moved) = self.held.read();
+        if moved || !events.is_empty() {
+            due |= CAMERAS;
+        }
+        let (events, moved) = self.said.read();
+        if moved || names_a_monitor(&events) {
+            due |= DISPLAYS;
+        }
+        due
+    }
+}
+
+/// What's read again while it settles, and how far it has: sound, and
+/// cameras, whose sensor powers up a moment after a program takes the
+/// loopback.
+#[derive(Default)]
+struct Settling {
+    /// When it began, and how many of `SETTLING`'s reads are done.
+    since: Option<(Instant, usize)>,
+    kinds: u8,
+}
+
+impl Settling {
+    /// Settles anew the kinds among `due` that settle.
+    fn begin(&mut self, due: u8, now: Instant) {
+        if due & (SOUND | CAMERAS) != 0 {
+            self.since = Some((now, 0));
+            self.kinds |= due & (SOUND | CAMERAS);
+        }
+    }
+
+    /// The kinds read again now, if their next read is due.
+    fn step(&mut self, now: Instant) -> u8 {
+        if waiting_for(self.since, false, now) != 0 {
+            return 0;
+        }
+        self.since = settled_once(self.since);
+        let due = self.kinds;
+        if self.since.is_none() {
+            self.kinds = 0;
+        }
+        due
+    }
+}
+
+/// What's due once poll's wait runs out: settling's next read if it's due,
+/// and, while a folder waits with nothing to wake it, what the folders say
+/// once each is tried again, which settles as anything heard does.
+fn timed_out<K: Kernel>(
+    folders: &mut Folders<K>,
+    settling: &mut Settling,
+    retrying: bool,
+    now: Instant,
+) -> u8 {
+    let mut due = settling.step(now);
+    if retrying {
+        let heard = folders.heard();
+        settling.begin(heard, now);
+        due |= heard;
     }
     due
 }
@@ -367,7 +439,7 @@ pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
         return ExitCode::FAILURE;
     }
     let monitors = vec![(folder.to_owned(), IN_MOVED_TO | IN_DELETE)];
-    let (mut stop, mut kernel, mut changes, mut held, mut said) = match (
+    let (mut stop, mut kernel, changes, held, said) = match (
         stopping(),
         uevents(),
         Watches::new(&sounds),
@@ -386,29 +458,29 @@ pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    let mut folders = Folders {
+        changes,
+        held,
+        said,
+    };
     let mut desk = Desk::new(folder, lighting, loopbacks);
     let mut due = DISPLAYS | SOUND | CAMERAS | BLUETOOTH | KEYBOARDS;
-    let mut settling = None;
-    // What's read again while it settles: sound, and cameras, whose sensor
-    // powers up a moment after a program takes the loopback.
-    let mut unsettled = 0;
+    let mut settling = Settling::default();
     loop {
         rewrite(due, &mut desk);
-        let mut waiting: Vec<PollFd> = [
-            stop.as_raw_fd(),
-            kernel.as_raw_fd(),
-            changes.fd(),
-            held.fd(),
-            said.fd(),
-        ]
-        .into_iter()
-        .chain(desk.controls.iter().map(|(_, file)| file.as_raw_fd()))
-        .map(PollFd::reading)
-        .collect();
+        let mut waiting: Vec<PollFd> = [stop.as_raw_fd(), kernel.as_raw_fd(), -1, -1, -1]
+            .into_iter()
+            .chain(desk.controls.iter().map(|(_, file)| file.as_raw_fd()))
+            .map(PollFd::reading)
+            .collect();
         due = 0;
         while due == 0 {
-            let retrying = changes.waits() || held.waits() || said.waits();
-            let wait = waiting_for(settling, retrying, Instant::now());
+            // An inotify started since is waited on from now.
+            for (slot, fd) in waiting[2..5].iter_mut().zip(folders.fds()) {
+                slot.fd = fd;
+            }
+            let retrying = folders.wait();
+            let wait = waiting_for(settling.since, retrying, Instant::now());
             let count = waiting.len() as u64;
             // SAFETY: valid pollfds for the length given.
             let ready = unsafe { poll(waiting.as_mut_ptr(), count, wait) };
@@ -416,17 +488,7 @@ pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
                 continue;
             }
             if ready == 0 {
-                // Woken for settling, or to try again what can't be watched.
-                if waiting_for(settling, false, Instant::now()) == 0 {
-                    settling = settled_once(settling);
-                    due |= unsettled;
-                    if settling.is_none() {
-                        unsettled = 0;
-                    }
-                }
-                if retrying {
-                    due |= heard_from_folders(&mut changes, &mut held, &mut said);
-                }
+                due |= timed_out(&mut folders, &mut settling, retrying, Instant::now());
                 continue;
             }
             if waiting[0].revents & POLLIN != 0 {
@@ -441,11 +503,8 @@ pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
             // settle a moment after the first word of them.
             std::thread::sleep(Duration::from_millis(150));
             due |= heard(&mut kernel, &matters);
-            due |= heard_from_folders(&mut changes, &mut held, &mut said);
-            if due & (SOUND | CAMERAS) != 0 {
-                settling = Some((Instant::now(), 0));
-                unsettled |= due & (SOUND | CAMERAS);
-            }
+            due |= folders.heard();
+            settling.begin(due, Instant::now());
         }
     }
 }
@@ -453,8 +512,86 @@ pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fake_inotify::Fake;
     use crate::inotify::IN_Q_OVERFLOW;
     use crate::tests::*;
+
+    /// The folders as run watches them, through `fake`: /snd for sound,
+    /// /holders for cameras and /said for the monitors.
+    fn folders(fake: &Fake) -> Folders<Fake> {
+        let watch = |path| {
+            fake.watches(&[(path, IN_CLOSE_WRITE)])
+                .expect("a folder missing is waited for")
+        };
+        Folders {
+            changes: watch("/snd"),
+            held: watch("/holders"),
+            said: watch("/said"),
+        }
+    }
+
+    #[test]
+    fn a_folder_nothing_wakes_is_tried_when_poll_times_out_and_settles_once_watched() {
+        let fake = Fake::default();
+        // No room to watch them, or anything above them.
+        fake.0.borrow_mut().room = Some(0);
+        let mut folders = folders(&fake);
+        let (now, mut settling) = (Instant::now(), Settling::default());
+        let retrying = folders.wait();
+        let full = timed_out(&mut folders, &mut settling, retrying, now);
+        for made in ["/snd", "/holders", "/said"] {
+            fake.make(made);
+        }
+        fake.0.borrow_mut().room = None;
+        let made = timed_out(&mut folders, &mut settling, true, now);
+        assert_eq!(
+            (retrying, full, made, settling.since, folders.wait()),
+            (true, 0, SOUND | CAMERAS | DISPLAYS, Some((now, 0)), false),
+            "a folder nothing could wake wasn't tried again as poll's wait ran out, its \
+             kind read and settled once it was watched"
+        );
+    }
+
+    #[test]
+    fn a_retry_reads_nothing_settling_before_its_time() {
+        let fake = Fake::default();
+        fake.0.borrow_mut().room = Some(0);
+        let mut folders = folders(&fake);
+        let (since, mut settling) = (Instant::now(), Settling::default());
+        settling.begin(SOUND, since);
+        let early = (
+            timed_out(&mut folders, &mut settling, true, since),
+            settling.since,
+        );
+        let later = since + Duration::from_secs(1);
+        let due = (
+            timed_out(&mut folders, &mut settling, true, later),
+            settling.since,
+        );
+        assert_eq!(
+            (early, due),
+            ((0, Some((since, 0))), (SOUND, Some((since, 1)))),
+            "a wait run out for a retry read what's settling before its time, or not once it was"
+        );
+    }
+
+    #[test]
+    fn a_kind_done_settling_isnt_read_again_with_the_next_to_settle() {
+        let (since, mut settling) = (Instant::now(), Settling::default());
+        settling.begin(SOUND, since);
+        let sound: Vec<u8> = SETTLING
+            .iter()
+            .map(|after| settling.step(since + *after))
+            .collect();
+        let later = since + Duration::from_secs(10);
+        settling.begin(CAMERAS, later);
+        let cameras = settling.step(later + SETTLING[0]);
+        assert_eq!(
+            (sound, settling.since.is_none(), cameras),
+            (vec![SOUND; SETTLING.len()], false, CAMERAS),
+            "sound, done settling, was read again with the cameras that settle after it"
+        );
+    }
 
     /// A uevent as the kernel sends it: fields split by NULs.
     fn uevent(fields: &[&str]) -> Vec<u8> {
