@@ -540,6 +540,31 @@ mod tests {
         }
     }
 
+    /// The chains the gate is held to, as the agent's own test judges them
+    /// (TestMachineGate): each a verdict, then the peer's cgroup and each
+    /// parent's, the first a rule names deciding.
+    #[test]
+    fn every_chain_the_gate_is_held_to_is_judged_here_as_the_gate_judges_it() {
+        let places = gate();
+        let cases = include_str!("../../ssh-tpm-agent/gate-cases.txt");
+        let mut judged = 0;
+        for line in cases.lines() {
+            let mut fields = line.split_whitespace();
+            let Some(verdict) = fields.next().filter(|first| !first.starts_with('#')) else {
+                continue;
+            };
+            let chain: Vec<&str> = fields.collect();
+            assert!(
+                matches!(verdict, "refuse" | "serve") && !chain.is_empty(),
+                "{line:?} is neither refuse nor serve with a place"
+            );
+            let refused = chain.iter().find_map(|place| places.name(place)) == Some(true);
+            assert_eq!(refused, verdict == "refuse", "{line} was judged otherwise");
+            judged += 1;
+        }
+        assert!(judged > 0, "no chain was judged");
+    }
+
     #[test]
     fn the_gates_allow_and_watch_are_read_as_the_gate_reads_them() {
         let places =
