@@ -55,6 +55,8 @@ fn every_measure_the_hour_shows_has_a_line_that_holds_it_to_its_target() {
         measures::carried(&[], &[], "here"),
         measures::mapped(None, "", "OWNER"),
         measures::cited::unread(""),
+        super::super::falling::falling(&[], 0, NOW),
+        super::super::falling::falling(&[(NOW - 7 * 86_400, 3)], 0, NOW),
         measures::holds::holds(&[], "", NOW),
         at_risk(Tracking::His),
         at_risk(Tracking::Derived),

@@ -20,6 +20,7 @@
 //! hour, its ledger and its sends in order, and its tests sit beside it.
 
 mod card;
+mod falling;
 mod good;
 mod ledger;
 mod lines;
@@ -158,6 +159,10 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     }
     // Every measure read, each is held to its line on the definition of
     // good, and one with none, or another target, is counted.
+    // The loop itself, judged by its red lines falling against a week back,
+    // and held to its line on the page as every other measure is.
+    let red = falling::red(&measures);
+    measures.push(falling::falling(&kept.red, red, now));
     measures.push(good::undefined(&measures));
     // Once every measure is read, a miss whose check names one stays open
     // until it judges, so Joel isn't told it's fixed before it is; one
@@ -172,6 +177,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         &format!("{} tomorrow", clock(now + DAY)),
     );
     stuck::daily(&mut card, &mut next, &measures, now, &TimeZone::system());
+    next.red = falling::kept(&kept.red, red, now);
     print!("{card}");
     // A look by hand lacks the timer's checkouts, so it can read a closed
     // miss as open: only the run sending the card keeps the hour and owes.

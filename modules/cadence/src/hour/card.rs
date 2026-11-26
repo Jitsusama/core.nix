@@ -49,6 +49,10 @@ pub struct Kept {
     /// read as unread rather than as none of his asks.
     #[serde(default)]
     pub asks: Seen,
+    /// How many measures were past their targets each hour of the last
+    /// week, as when and how many, so the loop is judged by them falling.
+    #[serde(default)]
+    pub red: Vec<(i64, usize)>,
     /// Why what the last hour kept couldn't be read, so this hour says the
     /// asks list unread rather than read against nothing seen of it. Never
     /// kept: the hour after reads what this one saw.
@@ -217,6 +221,7 @@ pub fn compose(
         out: kept.out.clone(),
         out_told: kept.out_told.clone(),
         asks: kept.asks,
+        red: kept.red.clone(),
         unread: None,
     };
     (card, next)

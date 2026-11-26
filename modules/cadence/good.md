@@ -344,6 +344,15 @@ holding a space, as one broken across two lines does, is counted too.
 - Joel, 14 Nov: "delivering insane quality, both functionally, and by maintaining clean zones"
 - Over costs him: code that gets harder to change, so every later fix is slower to land.
 
+## Red Lines Falling
+
+- Measures: `red-lines-falling`
+- Target: set where it's read: fewer measures past their targets than at the hour nearest a
+  week back, or none where none were; unjudged until a week of hours is kept.
+- Joel, 26 Nov 11:30: "we need to make sure we have various self improvement loops built in"
+- Over costs him: a loop that only counts shows the same red lines every hour for a week, and
+  nothing he asked to get better does.
+
 ## Measures Undefined
 
 - Measures: `measures-undefined`
