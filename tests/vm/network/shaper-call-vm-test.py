@@ -706,9 +706,11 @@ class Tuned:
     a change tc refused, would pass a wait on the trace alone (trial traced round 2's F1, F4, F9
     and F14). The failure says what was read and for how long, not a cause (F6 and F12): the
     client's clock beside the newest traced second, since a trace stamped ahead of the clock
-    stops writing, and the trial file's own time, since the shaper drops a trial written ahead
-    of the clock (F5, F8 and F15). Met, it says how long the ceiling took, so a passing run
-    measures it too (F13).
+    stops writing, and the trial file's own time, since the shaper drops a trial's ceiling
+    written ahead of the clock or older than ten minutes (F5, F8 and F15; trial waits round
+    1's F11). Met, it says how long the ceiling took and where the classes stood, so a passing
+    run measures it too, and one whose classes a cut before already held low says so (F13;
+    trial waits round 1's F16).
     """
 
     rig: Rig
@@ -723,7 +725,10 @@ class Tuned:
         now = ceiling == HELD_KBIT and held <= HELD_KBIT
         waited = time.monotonic() - self.written
         if now:
-            print(f"the trial's ceiling held the upload {waited:.0f} s after it was written")
+            print(
+                f"the trial's ceiling held the upload {waited:.0f} s after it was written,"
+                f" its classes at {held}"
+            )
         clock = self.rig.client.succeed("date +%s").strip()
         stamped = self.rig.client.succeed(f"stat -c %Y {TRIAL}").strip()
         return met(
@@ -1039,8 +1044,10 @@ def test_a_call_goes_ahead_of_its_own_uploads(rig: Rig) -> None:
     """
     try:
         rig.client.succeed(f"echo '{{\"most_kbit\": {HELD_KBIT}}}' > {TRIAL}")
-        # Taken before the loads, the ceiling must hold the classes as well as the controller,
-        # since `apply`'s hundredth leaves classes a little over it unmoved.
+        # Taken before the loads, the ceiling must hold the classes as well as the controller.
+        # A shaper that leaves classes within `apply`'s hundredth over a ceiling never moves
+        # them under it, so the wait fails on it with what it read, rather than the loads
+        # (trial waits round 1's F6).
         retry(Tuned(rig, time.monotonic()), timeout=COMING_UP)
         before = {what: rig.counts("eth1", what) for what in ("drops", "sent_packets")}
         since = int(rig.client.succeed("date +%s"))
@@ -1077,12 +1084,15 @@ def test_a_call_goes_ahead_of_its_own_uploads(rig: Rig) -> None:
     # On 24 November the classes read 6035 kbit/s under the 6000 trial, with no trace to say
     # whether its ceiling took late, lapsed, or met classes within a hundredth over it, which
     # `apply` leaves unmoved. The wait for it in both the trace and the classes rules out the
-    # first and last, so a failure here is the classes rising past it under the loads, and
-    # takes the trace, each second's ceiling in it.
+    # first and last. While the ceiling holds, the controller's rate is held under it, so a
+    # failure here is the ceiling lapsing under the loads, the shaper dropping it for a file
+    # stamped ahead of the client's clock or older than ten minutes, or a rate tc took over
+    # it, and takes the trace, each second's ceiling in it (trial waits round 1's F2, F8 and
+    # F14).
     # Each assertion below judges the shaper, so each failure takes the trace (a message is
     # made only then).
     assert held <= HELD_KBIT, (
-        f"the upload's classes rose to {held} kbit/s under the trial\n{rig.trace()}"
+        f"the upload's classes rose past the trial's ceiling to {held} kbit/s\n{rig.trace()}"
     )
     # Held much under it at any moment, the call would outgrow the half that CAKE serves video
     # first, so the least it asked through the loads and the call is what's judged.
