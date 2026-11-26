@@ -387,11 +387,15 @@ QtObject {
             "it touches the launcher\n\nMerge it, or say what to change.");
         expect("an older look's words, its why alone", read.waiting[1].words,
             "it touches the launcher");
-        const blankAsk = (ask, id) => Looks.looks([{ file: `${id}.json`, text: lookOf({ id: id,
-            ask: ask }) }], {}, now).waiting[0].words;
+        const wordsOf = (fields, id) => Looks.looks([{ file: `${id}.json`,
+            text: lookOf(Object.assign({ id: id }, fields)) }], {}, now).waiting[0].words;
         expect("a look's words, its ask padded or only spaces, trimmed",
-            [blankAsk(" Merge it? ", "P"), blankAsk("   ", "W")],
+            [wordsOf({ ask: " Merge it? " }, "P"), wordsOf({ ask: "   " }, "W")],
             ["it touches the launcher\n\nMerge it?", "it touches the launcher"]);
+        expect("a look's words, its why only spaces, or both, trimmed",
+            [wordsOf({ why: "   ", ask: "Merge it?" }, "Y"),
+                wordsOf({ why: " ", ask: " " }, "B")],
+            ["Merge it?", ""]);
 
         // A look's choices are offered on its row, each answered by a steer to
         // the session that left it, or its quest's once that's ended, and shown
