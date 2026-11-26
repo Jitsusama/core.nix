@@ -50,11 +50,13 @@
 //! followed first.
 //!
 //! Between those it sleeps on inotify and a signal, so a camera nobody
-//! holds costs nothing. A file it couldn't write, or a read of the holders
-//! that failed, is looked at again each second until it's right, whoever
-//! holds the camera; what went wrong is said once as it begins and once
-//! as it clears. The first time its file says who holds the camera as a
-//! read that worked found, or nobody where there's no camera, its log says
+//! holds costs nothing. A file it couldn't write, its own or the one in
+//! `.devices/`, or a read of the holders that failed, is looked at again
+//! until it's right, whoever holds the camera: each second, or every two
+//! while a loopback's camera is watched. What went wrong is said once as
+//! it begins and once as it clears, for each file. The first time its
+//! files say who holds the camera as a read that worked found, and which
+//! node it is, or nobody where there's no camera, its log says
 //! `ready in N ms`, once a run (src/ready.rs says why). Its help, its
 //! failures and its exits take the terminal kit's shape (`help()`).
 //!
@@ -204,10 +206,10 @@ fn device_file(output: &Path) -> Option<PathBuf> {
 
 /// Says which node the output's camera is, as its real path, or with none,
 /// removes what said it, so a reader never finds the camera by a node it
-/// no longer is.
-fn say_device(output: &Path, node: Option<&Path>) {
+/// no longer is; answering what went wrong, for its caller to say.
+fn say_device(output: &Path, node: Option<&Path>) -> Result<(), String> {
     let Some(file) = device_file(output) else {
-        return;
+        return Ok(());
     };
     let said = match node {
         Some(node) => {
@@ -223,9 +225,7 @@ fn say_device(output: &Path, node: Option<&Path>) {
             _ => Ok(()),
         },
     };
-    if let Err(error) = said {
-        complain(format_args!("{}: {error}", file.display()));
-    }
+    said.map_err(|error| format!("{}: {error}", file.display()))
 }
 
 /// Removes each file in the folder but this run's own that says this node,
@@ -388,13 +388,16 @@ impl Trouble {
     }
 }
 
-/// What a run has said of its one file: whether it's ready, and the
-/// trouble it last complained of. It's one for the whole run, so a trouble
-/// a loopback's nobody met is cleared by the watch that next writes the
-/// file right, and the other way round.
+/// What a run has said of its files: whether it's ready, the trouble it
+/// last complained of in each, and the node `.devices/` is still owed.
+/// It's one for the whole run, so a trouble a loopback's nobody met is
+/// cleared by the watch that next writes the file right, and the other way
+/// round.
 struct Run {
     ready: Ready,
     trouble: Trouble,
+    owed: Option<PathBuf>,
+    device: Trouble,
 }
 
 impl Run {
@@ -402,6 +405,41 @@ impl Run {
         Self {
             ready: Ready::begun(),
             trouble: Trouble::default(),
+            owed: None,
+            device: Trouble::default(),
+        }
+    }
+
+    /// Owes `.devices/` the node, said on the watch's next look and each
+    /// after until it's written.
+    fn owe(&mut self, node: &Path) {
+        self.owed = Some(node.to_owned());
+    }
+
+    /// Says the node owed, answering whether `.devices/` says it now.
+    fn name(&mut self, output: &Path) -> bool {
+        let (Some(node), Some(file)) = (self.owed.take(), device_file(output)) else {
+            return true;
+        };
+        match say_device(output, Some(&node)) {
+            Ok(()) => {
+                self.device.now(&file, &[]);
+                true
+            }
+            Err(trouble) => {
+                self.device.now(&file, &[trouble]);
+                self.owed = Some(node);
+                false
+            }
+        }
+    }
+
+    /// Removes what says the node, as the camera goes or the run ends, so
+    /// nothing owed is said after.
+    fn unname(&mut self, output: &Path) {
+        self.owed = None;
+        if let Err(trouble) = say_device(output, None) {
+            complain(format_args!("{trouble}"));
         }
     }
 
@@ -465,7 +503,8 @@ fn watch(
                 }
             };
         run.trouble.now(output, &troubles);
-        let settled = seen && right;
+        let found = run.name(output);
+        let settled = seen && right && found;
         if settled {
             run.written();
         }
@@ -477,9 +516,9 @@ fn watch(
                 say(&line);
             }
         }
-        // A file that couldn't be written, or a read that failed, is tried
-        // again on the next look, which comes on a timer even while nobody
-        // holds the camera.
+        // A file that couldn't be written, either of them, or a read that
+        // failed, is tried again on the next look, which comes on a timer
+        // even while nobody holds the camera.
         said = right.then_some(shown);
         match events.wait((anyone || !settled).then_some(every)) {
             Woken::Timeout | Woken::Changed => {}
@@ -514,7 +553,7 @@ fn usb(events: &mut Events, options: &Options, run: &mut Run) -> Result<(), Fail
             forget_node(folder, Some(&file), &said_as(&node));
         }
     }
-    say_device(&output, Some(&node));
+    run.owe(&node);
     let mut record = Record::new(&options.sysfs, &options.debugfs);
     let ended = watch(
         events,
@@ -540,7 +579,7 @@ fn usb(events: &mut Events, options: &Options, run: &mut Run) -> Result<(), Fail
         )
         .because(format!("{}: {error}", output.display()))),
         _ => {
-            say_device(&output, None);
+            run.unname(&output);
             // A watch that ended with the camera still there, as one that
             // couldn't be made does, fails, so the unit starts it again
             // rather than leaving the camera unwatched.
@@ -622,7 +661,7 @@ fn loopback(events: &mut Events, options: &Options, run: &mut Run) {
         let Some(node) = camera::node_of(&options.sysfs, &options.source, options.card.as_deref())
         else {
             if !gone {
-                say_device(&options.output, None);
+                run.unname(&options.output);
                 gone = true;
                 told = false;
             }
@@ -635,7 +674,7 @@ fn loopback(events: &mut Events, options: &Options, run: &mut Run) {
             continue;
         };
         gone = false;
-        say_device(&options.output, Some(&node));
+        run.owe(&node);
         let ended = watch(
             events,
             &node,
@@ -647,12 +686,12 @@ fn loopback(events: &mut Events, options: &Options, run: &mut Run) {
         );
         say_nobody(&options.output, run, !node.exists());
         if let Ended::Stopped = ended {
-            say_device(&options.output, None);
+            run.unname(&options.output);
             return;
         }
         // So a node it can't watch is tried again, not spun on.
         if let Woken::Stopped = events.sleep(Duration::from_millis(500)) {
-            say_device(&options.output, None);
+            run.unname(&options.output);
             return;
         }
     }
@@ -767,7 +806,7 @@ mod tests {
         // Only a USB camera's run forgets another's file saying its node.
         let another = root.join(".devices/Another");
         fs::write(&another, format!("{}\n", real.display())).unwrap();
-        say_device(&output, Some(&link));
+        say_device(&output, Some(&link)).unwrap();
         assert!(
             another.exists(),
             "another camera's file, said by a loopback"
@@ -790,7 +829,7 @@ mod tests {
             0o755
         );
         assert_eq!(fs::read_dir(root.join(".devices")).unwrap().count(), 1);
-        say_device(&output, None);
+        say_device(&output, None).unwrap();
         assert!(!file.exists(), "the camera gone, its node is said no more");
     }
 
