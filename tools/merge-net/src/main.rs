@@ -28,7 +28,7 @@
 //!
 //! `merge-net ready COMMIT`, asked before a branch's head merges, exits 0
 //! only when the head sits on origin's main as it is now and changed-checks
-//! built what it named there (`ready.rs`), and otherwise says what to run.
+//! built what it named there (`ready/`), and otherwise says what to run.
 //! It waits, too, for a gate that started before the head's own and shares
 //! its files, so changes merge in the order their gates started (`turn.rs`),
 //! a change run again after a merge left its pass stale keeping the place
