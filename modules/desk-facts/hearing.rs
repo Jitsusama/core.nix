@@ -150,16 +150,15 @@ const SETTLING: [Duration; 4] = [
 /// least, since nothing tells of room come free for a watch or inotify.
 const RETRY: Duration = Duration::from_secs(10);
 
-/// How long poll waits: until the next read while sound settles, no longer
-/// than `RETRY` while a folder waits to be watched, and otherwise until
+/// How long poll waits: until the next read while sound settles, no later
+/// than `retry` while a folder waits to be watched, and otherwise until
 /// something is heard.
-fn waiting_for(settling: Option<(Instant, usize)>, retrying: bool, now: Instant) -> c_int {
-    let settles = settling
-        .and_then(|(since, step)| SETTLING.get(step).map(|after| since + *after))
-        .map(|at| at.saturating_duration_since(now));
-    [settles, retrying.then_some(RETRY)]
+fn waiting_for(settling: Option<(Instant, usize)>, retry: Option<Instant>, now: Instant) -> c_int {
+    let settles = settling.and_then(|(since, step)| SETTLING.get(step).map(|after| since + *after));
+    [settles, retry]
         .into_iter()
         .flatten()
+        .map(|at| at.saturating_duration_since(now))
         .min()
         .map_or(-1, |left| {
             c_int::try_from(left.as_millis()).unwrap_or(c_int::MAX)
@@ -366,7 +365,8 @@ impl<K: Kernel> Folders<K> {
     }
 
     /// The kinds of the folders that wait with nothing to wake them, which
-    /// are read each time poll's wait runs out, so a folder refused for a
+    /// are read each time poll's wait runs out, and on a wake once `RETRY`
+    /// has passed since the last try (`woken`), so a folder refused for a
     /// while, or for good, leaves its kind's facts no staler than `RETRY`.
     fn unheard(&self) -> u8 {
         [
@@ -401,18 +401,21 @@ impl<K: Kernel> Folders<K> {
 }
 
 /// Points poll's slots for the folders at their inotify, which changes as
-/// it starts, and gives how long poll waits: no longer than `RETRY` while a
-/// folder waits with nothing to wake it.
+/// it starts, and gives how long poll waits: no later than `RETRY` past
+/// `retried`, when the folders were last tried, while a folder waits with
+/// nothing to wake it.
 fn asked<K: Kernel>(
     folders: &Folders<K>,
     settling: &Settling,
     slots: &mut [PollFd],
+    retried: Instant,
     now: Instant,
 ) -> c_int {
     for (slot, fd) in slots.iter_mut().zip(folders.fds()) {
         slot.fd = fd;
     }
-    waiting_for(settling.since, folders.wait(), now)
+    let retry = folders.wait().then_some(retried + RETRY);
+    waiting_for(settling.since, retry, now)
 }
 
 /// What's read again while it settles, and how far it has: sound, and
@@ -436,7 +439,7 @@ impl Settling {
 
     /// The kinds read again now, if their next read is due.
     fn step(&mut self, now: Instant) -> u8 {
-        if waiting_for(self.since, false, now) != 0 {
+        if waiting_for(self.since, None, now) != 0 {
             return 0;
         }
         self.since = settled_once(self.since);
@@ -464,6 +467,26 @@ fn timed_out<K: Kernel>(
         due |= heard | folders.unheard();
     }
     Ok(due)
+}
+
+/// What's due as poll returns: what `timed_out` gives where poll's wait
+/// `ran_out`, or where a folder waits and `RETRY` has passed since
+/// `retried`, when they were last tried, which it moves on to `now`; and
+/// nothing otherwise. So wakeups sooner than `RETRY`, each asking a fresh
+/// wait, can't keep a waiting folder's kind unread.
+fn woken<K: Kernel>(
+    folders: &mut Folders<K>,
+    settling: &mut Settling,
+    retried: &mut Instant,
+    ran_out: bool,
+    now: Instant,
+) -> io::Result<u8> {
+    let due = ran_out || (folders.wait() && now >= *retried + RETRY);
+    if !due {
+        return Ok(0);
+    }
+    *retried = now;
+    timed_out(folders, settling, now)
 }
 
 /// Ends the hearing with its facts removed, so nothing reads them stale:
@@ -549,6 +572,7 @@ pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
         };
     let mut due = DISPLAYS | SOUND | CAMERAS | BLUETOOTH | KEYBOARDS;
     let mut settling = Settling::default();
+    let mut retried = Instant::now();
     loop {
         rewrite(due, &mut desk);
         let mut waiting: Vec<PollFd> = [stop.as_raw_fd(), kernel.as_raw_fd(), -1, -1, -1]
@@ -558,7 +582,8 @@ pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
             .collect();
         due = 0;
         while due == 0 {
-            let wait = asked(&folders, &settling, &mut waiting[2..5], Instant::now());
+            let now = Instant::now();
+            let wait = asked(&folders, &settling, &mut waiting[2..5], retried, now);
             let count = waiting.len() as u64;
             // SAFETY: valid pollfds for the length given.
             let ready = unsafe { poll(waiting.as_mut_ptr(), count, wait) };
@@ -569,7 +594,7 @@ pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
             // the unit, as at the start, so systemd starts it afresh, ever
             // more slowly, the fault in the journal each time.
             let heard = if ready == 0 {
-                timed_out(&mut folders, &mut settling, Instant::now())
+                Ok(0)
             } else if waiting[0].revents & POLLIN != 0 {
                 let _ = stop.read(&mut [0; 128]);
                 return end(&desk, ExitCode::SUCCESS);
@@ -589,6 +614,11 @@ pub(crate) fn run(folder: &Path, loopbacks: Vec<Loopback>) -> ExitCode {
                 }
                 said
             };
+            let heard = heard.and_then(|kinds| {
+                let now = Instant::now();
+                woken(&mut folders, &mut settling, &mut retried, ready == 0, now)
+                    .map(|more| kinds | more)
+            });
             match heard {
                 Ok(heard) => due |= heard,
                 Err(error) => {

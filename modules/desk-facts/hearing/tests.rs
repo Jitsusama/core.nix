@@ -134,11 +134,17 @@ fn poll_waits_a_retry_for_inotify_to_start_then_on_it_and_for_settling() {
     let (now, mut settling) = (Instant::now(), Settling::default());
     let mut slots = [-1; 3].map(PollFd::reading);
     let fds = |slots: &[PollFd; 3]| slots.each_ref().map(|slot| slot.fd);
-    let unstarted = (asked(&folders, &settling, &mut slots, now), fds(&slots));
+    let unstarted = (
+        asked(&folders, &settling, &mut slots, now, now),
+        fds(&slots),
+    );
     fake.0.borrow_mut().unopenable = None;
     let due = timed_out(&mut folders, &mut settling, now).expect("nothing refused for good");
-    let settles = (asked(&folders, &settling, &mut slots, now), fds(&slots));
-    let settled = asked(&folders, &Settling::default(), &mut slots, now);
+    let settles = (
+        asked(&folders, &settling, &mut slots, now, now),
+        fds(&slots),
+    );
+    let settled = asked(&folders, &Settling::default(), &mut slots, now, now);
     let retry = c_int::try_from(RETRY.as_millis()).expect("the retry fits poll's wait");
     let first = c_int::try_from(SETTLING[0].as_millis()).expect("a settling read fits");
     assert_eq!(
@@ -151,6 +157,35 @@ fn poll_waits_a_retry_for_inotify_to_start_then_on_it_and_for_settling() {
         ),
         "poll didn't wait a retry while inotify wouldn't start, then on inotify once it \
          did, till the first settling read, and then till something was heard"
+    );
+}
+
+// Woken every 5 s, as by uevents or a control's events, a folder refused
+// for now still has its kind read each `RETRY`, and poll waits no later
+// than the retry past the last, rather than a fresh `RETRY` each wake.
+#[test]
+fn wakeups_sooner_than_a_retry_dont_keep_a_waiting_folders_kind_unread() {
+    let fake = Fake::default();
+    for made in ["/snd", "/holders", "/said"] {
+        fake.make(made);
+    }
+    fake.0.borrow_mut().refusing = Some(("/holders".into(), 13));
+    let mut folders = folders(&fake);
+    let (since, mut settling) = (Instant::now(), Settling::default());
+    let mut retried = since;
+    let mut slots = [-1; 3].map(PollFd::reading);
+    let mut each_wake = Vec::new();
+    for wake in 1..=4 {
+        let now = since + Duration::from_secs(5 * wake);
+        let due = woken(&mut folders, &mut settling, &mut retried, false, now)
+            .expect("nothing refused for good");
+        each_wake.push((due, asked(&folders, &settling, &mut slots, retried, now)));
+    }
+    assert_eq!(
+        each_wake,
+        [(0, 5000), (CAMERAS, 10_000), (0, 5000), (CAMERAS, 10_000)],
+        "a wake sooner than a retry read the waiting folder's kind, or wakes every 5 s \
+         kept it unread, or poll's wait didn't run to the retry past the last"
     );
 }
 
@@ -306,25 +341,26 @@ fn each_uevent_reads_again_only_the_kinds_it_changes() {
 fn sound_is_read_again_as_it_settles_and_then_only_when_heard() {
     let since = Instant::now();
     assert_eq!(
-        waiting_for(None, false, since),
+        waiting_for(None, None, since),
         -1,
         "nothing settling waits for events"
     );
-    assert_eq!(waiting_for(Some((since, 0)), false, since), 250);
-    assert_eq!(waiting_for(Some((since, 3)), false, since), 2000);
+    assert_eq!(waiting_for(Some((since, 0)), None, since), 250);
+    assert_eq!(waiting_for(Some((since, 3)), None, since), 2000);
     assert_eq!(
-        waiting_for(Some((since, 1)), false, since + Duration::from_secs(9)),
+        waiting_for(Some((since, 1)), None, since + Duration::from_secs(9)),
         0,
         "one overdue reads at once"
     );
     assert_eq!(
         [
-            waiting_for(None, true, since),
-            waiting_for(Some((since, 3)), true, since),
-            waiting_for(Some((since, 0)), true, since),
+            waiting_for(None, Some(since + RETRY), since),
+            waiting_for(Some((since, 3)), Some(since + RETRY), since),
+            waiting_for(Some((since, 0)), Some(since + RETRY), since),
+            waiting_for(None, Some(since + RETRY), since + Duration::from_secs(4)),
         ],
-        [10_000, 2000, 250],
-        "a folder waiting to be watched didn't bound the wait at RETRY, or overrode \
+        [10_000, 2000, 250, 6000],
+        "a folder waiting to be watched didn't bound the wait at its retry, or overrode \
          settling's sooner one"
     );
     let mut settling = Some((since, 0));
