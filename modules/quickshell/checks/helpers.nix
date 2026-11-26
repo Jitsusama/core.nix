@@ -77,7 +77,10 @@ let
       )
     else
       ''
-        echo "imports.nix doesn't say what these import: ${lib.concatStringsSep ", " wrong}" >&2
+        # Named in full, since a program's check that fails here lives in another folder.
+        echo "modules/quickshell/checks/imports.nix doesn't say what these import:" \
+          "${lib.concatStringsSep ", " wrong}" \
+          "(under modules/quickshell; give each its row there)" >&2
         exit 1
       '';
   # The shell's files a program's step in the launcher is drawn from, as
