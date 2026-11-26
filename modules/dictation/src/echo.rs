@@ -577,6 +577,21 @@ mod tests {
     }
 
     #[test]
+    fn their_echo_misheard_far_below_them_is_cut_however_little_joel_says_alone() {
+        // Where Joel says little, too few of his words are heard alone to
+        // know his voice, while his side is mostly their echo: that's then
+        // told by how far below theirs it is alone.
+        let theirs = at_level(timed("Lunch at noon on Thursday then.", 5_000), -20.0);
+        let mut mine = at_level(timed("Fine.", 1_000), -20.0);
+        mine.extend(at_level(timed("Bunch had moon in Tuesday", 5_050), -42.0));
+        assert_eq!(
+            cut_from(&[theirs], &[mine]),
+            ["Fine."],
+            "their echo, misheard far below them where Joel says little, wasn't cut"
+        );
+    }
+
+    #[test]
     fn joel_talking_over_them_near_their_level_is_his_own() {
         // His own voice in his microphone is near theirs in theirs, so
         // words of his said over them stay his, however they're spelled.
