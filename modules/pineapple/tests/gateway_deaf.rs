@@ -168,6 +168,9 @@ fn a_heard_round_or_a_deaf_one_of_another_cause_starts_each_run_afresh() {
     let breaks = [Round::Heard, Round::Deaf(Deafness::Refused)];
     for (run, broken_by) in runs.into_iter().flat_map(|run| breaks.map(|by| (run, by))) {
         let mut deaf = Deaf::through_gateway();
+        // A reader's first round heard takes away whatever row an earlier
+        // one left, so it's had before the run.
+        let _ = deaf.heard(Round::Heard, round(0));
         for n in 1..=UNREACHED {
             assert_eq!(deaf.heard(run, round(n)), Change::Keep, "{run:?} round {n}");
         }

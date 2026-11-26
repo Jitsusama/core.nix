@@ -322,12 +322,8 @@ fn judge(
         edited: message.edited,
         age: read_at.saturating_sub(said_at),
     };
-    let gated = reply_gate(
-        &asked,
-        &sent,
-        (read_at, state),
-        account.is_none() && !reader.shadow,
-    );
+    let mute = account.is_none() && !reader.shadow;
+    let gated = reply_gate(&asked, &sent, (read_at, state), mute);
     let entry = record::line(&source, &decision, gated, now, reader.shadow);
     if agreed && let Err(error) = record::append(&state.join("decisions.jsonl"), &entry) {
         eprintln!("<3>couldn't write a decision down: {error}");

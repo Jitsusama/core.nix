@@ -10,63 +10,75 @@ use serde_json::json;
 
 use super::{Reply, Seen, gateway, json_reply, methods, opened, scratch, sign_in, status, tool};
 
-#[test]
-fn an_alert_is_unsure_only_once_its_tool_was_asked_and_its_words_never_hold_it_back() {
-    /// The gateway answering a session's opening with Slack's refusal.
-    fn refused_opening(one: &Seen, _: usize) -> Reply {
-        match one.method.as_str() {
-            "initialize" => json_reply(&json!({
-                "jsonrpc": "2.0", "id": 1, "error": { "message": "invalid_auth" },
-            })),
-            _ => status(202),
-        }
+/// How the gateway answers a send, given how many calls came before.
+type Answer = fn(&Seen, usize) -> Reply;
+
+/// A case: its name, how the gateway answers, what Joel's phone is said
+/// to have been told, and how many times the tool is asked.
+type Case = (&'static str, Answer, &'static str, usize);
+
+/// The gateway answering a session's opening with Slack's refusal.
+fn refused_opening(one: &Seen, _: usize) -> Reply {
+    match one.method.as_str() {
+        "initialize" => json_reply(&json!({
+            "jsonrpc": "2.0", "id": 1, "error": { "message": "invalid_auth" },
+        })),
+        _ => status(202),
     }
-    /// A proxy answering a session's opening with its own sign-in page.
-    fn page_at_opening(one: &Seen, _: usize) -> Reply {
-        match one.method.as_str() {
-            "initialize" => Reply {
-                kind: "text/html",
-                body: "<html>sign in</html>".to_owned(),
-                ..status(200)
-            },
-            _ => status(202),
-        }
+}
+
+/// A proxy answering a session's opening with its own sign-in page.
+fn page_at_opening(one: &Seen, _: usize) -> Reply {
+    match one.method.as_str() {
+        "initialize" => Reply {
+            kind: "text/html",
+            body: "<html>sign in</html>".to_owned(),
+            ..status(200)
+        },
+        _ => status(202),
     }
-    /// A send whose session the gateway forgot, then whose opening again
-    /// meets a proxy's sign-in page, so the tool was never asked.
-    fn forgotten_then_page(one: &Seen, calls: usize) -> Reply {
-        match one.method.as_str() {
-            "initialize" if calls == 0 => opened("s1"),
-            "initialize" => page_at_opening(one, calls),
-            "tools/call" => status(404),
-            _ => status(202),
-        }
+}
+
+/// A send whose session the gateway forgot, then whose opening again
+/// meets a proxy's sign-in page, so the tool was never asked.
+fn forgotten_then_page(one: &Seen, calls: usize) -> Reply {
+    match one.method.as_str() {
+        "initialize" if calls == 0 => opened("s1"),
+        "initialize" => page_at_opening(one, calls),
+        "tools/call" => status(404),
+        _ => status(202),
     }
-    /// A send the gateway answers with JSON-RPC's error `CODE`.
-    fn rpc<const CODE: i64>(one: &Seen, _: usize) -> Reply {
-        match one.method.as_str() {
-            "initialize" => opened("s1"),
-            "tools/call" => json_reply(&json!({
-                "jsonrpc": "2.0", "id": one.id,
-                "error": { "code": CODE, "message": "refused" },
-            })),
-            _ => status(202),
-        }
+}
+
+/// A send the gateway answers with JSON-RPC's error `CODE`.
+fn rpc<const CODE: i64>(one: &Seen, _: usize) -> Reply {
+    match one.method.as_str() {
+        "initialize" => opened("s1"),
+        "tools/call" => json_reply(&json!({
+            "jsonrpc": "2.0", "id": one.id,
+            "error": { "code": CODE, "message": "refused" },
+        })),
+        _ => status(202),
     }
-    /// The gateway saying the send's tools are turned off.
-    fn turned_off() -> Reply {
-        tool("\"slack_send_message_to_self\" is not available", true)
+}
+
+/// The gateway saying the send's tools are turned off.
+fn turned_off() -> Reply {
+    tool("\"slack_send_message_to_self\" is not available", true)
+}
+
+/// The send answered as `answer` says of how many came before it.
+fn sending(one: &Seen, calls: usize, answer: fn(usize) -> Reply) -> Reply {
+    match one.method.as_str() {
+        "initialize" => opened("s1"),
+        "tools/call" => answer(calls),
+        _ => status(202),
     }
-    /// The send answered as `answer` says of how many came before it.
-    fn sending(one: &Seen, calls: usize, answer: fn(usize) -> Reply) -> Reply {
-        match one.method.as_str() {
-            "initialize" => opened("s1"),
-            "tools/call" => answer(calls),
-            _ => status(202),
-        }
-    }
-    type Answer = fn(&Seen, usize) -> Reply;
-    let cases: [(&str, Answer, &str, usize); 19] = [
+}
+
+/// Cases where the gateway, or what's between, answers in its own way.
+fn answered_by_the_gateway() -> [Case; 11] {
+    [
         (
             "lost",
             |one, n| sending(one, n, |_| status(502)),
@@ -96,6 +108,12 @@ fn an_alert_is_unsure_only_once_its_tool_was_asked_and_its_words_never_hold_it_b
         // A server may say either of what a tool gave back once it ran.
         ("arguments", rpc::<{ -32_602 }>, "unsure", 2),
         ("internal", rpc::<{ -32_603 }>, "unsure", 2),
+    ]
+}
+
+/// Cases where the tool itself answers, turned off, refusing or failing.
+fn answered_by_the_tool() -> [Case; 8] {
+    [
         (
             "enable-lost",
             |one, n| {
@@ -183,12 +201,19 @@ fn an_alert_is_unsure_only_once_its_tool_was_asked_and_its_words_never_hold_it_b
             "unsure",
             2,
         ),
-    ];
+    ]
+}
+
+#[test]
+fn an_alert_is_unsure_only_once_its_tool_was_asked_and_its_words_never_hold_it_back() {
     let alert = Alert {
         title: "Someone stopped your agents",
         words: "we hit the rate limit",
         link: "https://example.slack.com/archives/C1/p1",
     };
+    let cases = answered_by_the_gateway()
+        .into_iter()
+        .chain(answered_by_the_tool());
     for (name, answer, said, sends) in cases {
         let dir = scratch(&format!("tell-self-{name}"));
         let (url, seen) = gateway(answer);
