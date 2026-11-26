@@ -602,7 +602,8 @@ fn an_ask_with_main_where_it_was_builds_nothing() {
         ending,
         Line::Unchanged {
             commit: head,
-            followed: BTreeMap::new()
+            followed: BTreeMap::new(),
+            boots: None,
         }
     );
     assert_eq!(world.builds(), 1);
@@ -1513,6 +1514,44 @@ fn a_new_initrd_whose_boot_check_fails_runs_but_isnt_booted_next() {
         first,
         "the boot default should stay where it was"
     );
+    // The next ask finds main where the machine runs it, builds nothing
+    // and switches nothing, but the machine still boots what it did.
+    let (_, again) = world.update();
+    let Line::Unchanged { boots: still, .. } = again else {
+        panic!("an ask at the main it runs wasn't unchanged: {again:?}")
+    };
+    assert_eq!(
+        still.as_deref(),
+        Some(boots.as_str()),
+        "an unchanged ask forgot why the machine boots its old system"
+    );
+}
+
+#[test]
+fn a_boot_check_that_passes_later_ends_the_why_the_old_system_boots() {
+    let mut world = World::new();
+    let head = world.signed("one");
+    a_new_initrd(&mut world, &head, "echo 'no passphrase prompt' >&2; exit 1");
+    let (_, failed) = world.update();
+    assert!(
+        matches!(failed, Line::Done { boots: Some(_), .. }),
+        "{failed:?}"
+    );
+    let newer = world.signed("two");
+    let system = world.system(&newer);
+    fs::write(system.join("initrd"), "three").unwrap();
+    world.config.boot_check = Some(vec![shell(), "-c".to_owned(), "true".to_owned()]);
+    let (_, passed) = world.update();
+    assert!(
+        matches!(passed, Line::Done { boots: None, .. }),
+        "the passing boot check still said the old system boots: {passed:?}"
+    );
+    assert_eq!(world.boots(), system, "the checked system boots next");
+    let (_, again) = world.update();
+    assert!(
+        matches!(again, Line::Unchanged { boots: None, .. }),
+        "an unchanged ask kept a why the passing check ended: {again:?}"
+    );
 }
 
 #[test]
@@ -2385,7 +2424,8 @@ fn a_folder_read_from_the_host_where_it_was_never_asks_how_main_moved() {
         world.update().1,
         Line::Unchanged {
             commit: one.clone(),
-            followed: BTreeMap::new()
+            followed: BTreeMap::new(),
+            boots: None,
         }
     );
     assert!(
@@ -2410,7 +2450,8 @@ fn a_folder_read_from_the_host_where_it_was_is_not_built() {
         world.update().1,
         Line::Unchanged {
             commit: one.clone(),
-            followed: BTreeMap::new()
+            followed: BTreeMap::new(),
+            boots: None,
         }
     );
     assert_eq!(world.builds(), 1);
@@ -2533,7 +2574,8 @@ fn a_head_that_mayn_t_be_fetched_leaves_the_machine_where_it_is() {
         world.update().1,
         Line::Unchanged {
             commit: one.clone(),
-            followed: BTreeMap::new()
+            followed: BTreeMap::new(),
+            boots: None,
         }
     );
     assert!(!world.checkout_has(&two), "main was fetched");
@@ -2591,7 +2633,8 @@ fn a_commit_the_checkout_holds_that_main_doesnt_is_never_taken() {
         world.update().1,
         Line::Unchanged {
             commit: one,
-            followed: BTreeMap::new()
+            followed: BTreeMap::new(),
+            boots: None,
         }
     );
     assert_eq!(world.read("seen"), "one");
@@ -2690,7 +2733,8 @@ fn a_hosted_folder_where_it_was_is_neither_fetched_nor_built() {
         world.update().1,
         Line::Unchanged {
             commit: one.clone(),
-            followed: BTreeMap::new()
+            followed: BTreeMap::new(),
+            boots: None,
         }
     );
     assert_eq!(
@@ -3022,6 +3066,7 @@ fn main_where_it_was_with_its_input_moved_on_is_built_again() {
         Line::Unchanged {
             commit: head.clone(),
             followed: BTreeMap::from([("core".to_owned(), pinned)]),
+            boots: None,
         }
     );
     let newer = world.core_commit("newer", true);
@@ -4865,6 +4910,7 @@ fn heads_that_build_the_running_system_switch_nothing() {
         Line::Unchanged {
             commit: head.clone(),
             followed: BTreeMap::new(),
+            boots: None,
         }
     );
     assert_eq!(world.builds(), 1);

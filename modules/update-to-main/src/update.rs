@@ -139,6 +139,7 @@ fn run(
         return Line::Unchanged {
             commit: head,
             followed,
+            boots: None,
         };
     }
     if let Some(refused) = untrusted(config, &main, last.as_deref(), &head) {
@@ -184,6 +185,7 @@ fn run(
         return Line::Unchanged {
             commit: head,
             followed,
+            boots: None,
         };
     }
     // A pause or hold asked while it built or waited, up to an hour, is
