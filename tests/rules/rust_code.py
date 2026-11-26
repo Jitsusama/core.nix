@@ -328,11 +328,16 @@ def reached(starts: list[Path], through: dict[Path, list[Path]], past: set[Path]
     return found
 
 
+# The files under src cargo builds as crates of their own, by default.
+CARGO_ROOTS = ("lib.rs", "main.rs", "bin/*.rs", "bin/*/main.rs")
+
+
 def read_by_tests_alone(src: Path) -> set[Path]:
     """Give each Rust file under a crate's src that only its tests read, resolved.
 
-    The crate's own code is read from each file no module declares, its
-    roots among them, through the modules built outside tests; what's read
+    The crate's own code is read from its roots, the files cargo builds
+    alone and each file no module declares, through the modules built
+    outside tests, however many a test names by path too; what's read
     from it through modules built only under test, and on from there, and
     isn't its own code too, is the tests'. A module tests always build whose
     file is nowhere rustc would look is refused, naming where that is.
@@ -355,7 +360,9 @@ def read_by_tests_alone(src: Path) -> set[Path]:
         for path, found in known.items()
     }
     everything = {path: [each.file for each in found if each.file] for path, found in known.items()}
-    own = reached([path for path in sorted(known) if path not in declared_files], plainly, set())
+    roots = {path.resolve() for pattern in CARGO_ROOTS for path in src.glob(pattern)}
+    seeds = [path for path in sorted(known) if path not in declared_files or path in roots]
+    own = reached(seeds, plainly, set())
     under_test = [each.file for path in own for each in known[path] if each.file and each.test]
     tests = reached(under_test, everything, own)
     for path in sorted(known):

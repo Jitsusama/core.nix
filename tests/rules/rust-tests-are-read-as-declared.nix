@@ -5,7 +5,9 @@
 # names or doc lines say tests, and holds the reader to the list of those
 # tests read, and to what it leaves of the crate's own code. Then it sees the
 # reader refuse crates it would otherwise misread, each for its own reason,
-# as rust-tests-are-read-as-declared.sh beside this holds it to.
+# as rust-tests-are-read-as-declared.sh beside this holds it to, and
+# commands-agree fail such a crate alone, as
+# commands-agree-refuses-alone.py holds it to.
 {
   bash,
   lib,
@@ -184,11 +186,14 @@ let
     '';
     "real_tests/inner/deeper.rs" = "";
     # A module a test module declares is read by tests alone too, and one it
-    # gives a path is read from beside it, not from its folder.
+    # gives a path is read from beside it, not from its folder; a binary's
+    # root it names so stays real code.
     "checks.rs" = ''
       mod helper;
       #[path = "shared.rs"]
       mod shared;
+      #[path = "bin/tool_tests.rs"]
+      mod tool;
       /*
       mod ghost;
       */
@@ -444,7 +449,11 @@ let
   );
   rule = lib.fileset.toSource {
     root = ./.;
-    fileset = ./rust_code.py;
+    fileset = lib.fileset.unions [
+      ./rust_code.py
+      ./commands-agree.py
+      ./commands-agree-refuses-alone.py
+    ];
   };
 in
 runCommandLocal "rust-tests-are-read-as-declared" { } ''
@@ -454,5 +463,7 @@ runCommandLocal "rust-tests-are-read-as-declared" { } ''
   ${lib.getExe python3} ${rule}/rust_code.py --own src > own
   diff -u ${own} own
   ${refused}
+  mkdir judged
+  ${lib.getExe python3} ${rule}/commands-agree-refuses-alone.py ${rule} judged
   touch $out
 ''
