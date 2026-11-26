@@ -73,6 +73,17 @@ function offering(offered) {
     return Array.isArray(offered) && offered.length > 0;
 }
 
+// The fields of an offer (heard) that In the Cloud's drawer reads.
+const OFFERED = ["shape", "hourly", "currency"];
+
+// Whether the offers heard `now` differ from those kept `before`: by how
+// many, or by any one's shape, price or currency, so a provider pricing a
+// shape anew is said at once rather than at the shell's next start.
+function differs(before, now) {
+    return before.length !== now.length
+        || now.some((one, at) => OFFERED.some(field => before[at][field] !== one[field]));
+}
+
 // Whether what the cloud offers, as last heard at `at`, is to be asked
 // again at `now`: never heard, or kept past OFFERS_KEPT_MS.
 function stale(at, now) {
@@ -144,14 +155,20 @@ function ask(text, place, on, offered) {
 
 // Why the ask for work elsewhere at `place`, `on` saying where with the
 // cloud as last `offered`, was refused when its words weren't: by Start
-// New Work's `words`, the place unnamed, the cloud not taken, else where
-// it starts misnamed.
+// New Work's `words`, the place unnamed, the cloud not heard yet (null
+// offered, as a link's act Returned before the first offers came), the
+// cloud not taken, else where it starts misnamed.
 function refused(place, on, offered, words) {
     if (!named(place)) {
         return words?.unnamed ?? "";
     }
-    return onOf(on)?.needs !== undefined && !offering(offered) ? words?.untaken ?? ""
-        : words?.unmachined ?? "";
+    if (onOf(on)?.needs === undefined) {
+        return words?.unmachined ?? "";
+    }
+    if (offered === null) {
+        return words?.unheard ?? "";
+    }
+    return offering(offered) ? words?.unmachined ?? "" : words?.untaken ?? "";
 }
 
 // Where a link's `on` says its work starts, as Launcher.qml's newWorkOn

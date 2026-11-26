@@ -1897,6 +1897,11 @@ Provider {
         const where = String(on ?? "") === "" ? {} : Cloud.onOf(Cloud.linked(on));
         const elsewhere = where === null ? "" : where.needs !== undefined ? "cloud"
             : where.on ?? "";
+        // Its Return asks the cloud, so the offers are asked now too rather
+        // than only by the opening after it, which may be up to half a
+        // minute behind (Cloud.refused says so until they come).
+        if (elsewhere === "cloud")
+            provider.askOffers();
         const suffix = elsewhere === "" ? "" : elsewhere === "cloud" ? said.inTheCloud ?? ""
             : String(said.onMachine ?? "").replace("{machine}", () => elsewhere);
         const link = Words.name("verb:agents:start-new-work:link");
@@ -2038,12 +2043,14 @@ Provider {
                 + `asked at ${StartSaid.clock(again)}`);
             return;
         }
+        // Null while no offers have been heard, so that's said as not heard yet.
+        const offered = provider.cloudOffersAt > 0 ? provider.cloudOffers : null;
         const ask = elsewhere === "" ? Sprouting.ask(said, folder)
-            : Cloud.ask(said, folder, elsewhere, provider.cloudOffers);
+            : Cloud.ask(said, folder, elsewhere, offered);
         if (ask === null) {
             const why = elsewhere === "" || Sprouting.ask(said, "") === null
                 ? Sprouting.refused(said, elsewhere === "" ? folder : "", words)
-                : Cloud.refused(folder, elsewhere, provider.cloudOffers, words);
+                : Cloud.refused(folder, elsewhere, offered, words);
             sproutSays(key, why);
             sproutReaches({ started: false, why: why });
             return;
@@ -2407,7 +2414,7 @@ Provider {
             const heard = Cloud.heard(provider.cloudUnoffered, answer);
             if (heard.offers !== null) {
                 provider.cloudOffersAt = Date.now();
-                if (Wheres.differs(provider.cloudOffers, heard.offers)) {
+                if (Cloud.differs(provider.cloudOffers, heard.offers)) {
                     provider.cloudOffers = heard.offers;
                     provider.changed();
                 }

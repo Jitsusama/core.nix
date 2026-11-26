@@ -11,7 +11,8 @@ QtObject {
     Component.onCompleted: Expect.run(cases)
 
     function cases() {
-        const words = { unnamed: "unnamed", unmachined: "unmachined", untaken: "untaken" };
+        const words = { unnamed: "unnamed", unmachined: "unmachined", untaken: "untaken",
+            unheard: "unheard" };
         const offered = [{ shape: "standard" }];
 
         // Joel, 2026-11-25: "we need full integation, from pi, from cli, from laucnher,
@@ -34,6 +35,18 @@ QtObject {
         Expect.same("a node that can't take the cloud's need takes back what it offered",
             Cloud.heard("", { error: { code: "untaken", message: "can't yet" } }),
             { offers: [], unoffered: "can't yet", journal: "can't yet" });
+        // In the Cloud's drawer says the cheapest by the hour, the figure Joel reads
+        // before a machine that costs money is made, so a new price is news.
+        const standard = { shape: "standard", hourly: "0.38", currency: "USD" };
+        Expect.same("offers differ by a shape, a price or a currency, as well as by count",
+            [Cloud.differs([standard], [Object.assign({}, standard, { hourly: "0.52" })]),
+                Cloud.differs([standard], [Object.assign({}, standard, { currency: "EUR" })]),
+                Cloud.differs([standard], [Object.assign({}, standard, { shape: "large" })]),
+                Cloud.differs([standard], [standard, { shape: "small" }]),
+                Cloud.differs([standard], [{ shape: "standard" }]),
+                Cloud.differs([standard], [Object.assign({}, standard)]),
+                Cloud.differs([], [])],
+            [true, true, true, true, true, false, false]);
         Expect.same("asked again only when never heard or ten minutes old",
             [Cloud.stale(0, 1000), Cloud.stale(1000, 1000 + 599999),
                 Cloud.stale(1000, 1000 + 600000)], [true, false, true]);
@@ -92,6 +105,13 @@ QtObject {
                 Cloud.ask("https://github.com/o/r/issues/7", "", Cloud.linked("on:cloud"), null),
                 Cloud.refused("core.nix", "cloud", [], words)],
             [null, null, "untaken"]);
+        // A link's cloud act may be Returned before the shell has heard any offers,
+        // which take up to half a minute, so not yet heard is never said as can't.
+        Expect.same("the cloud not heard yet says so, rather than that it can't be taken",
+            [Cloud.ask("fix it", "core.nix", "cloud", null),
+                Cloud.refused("core.nix", "cloud", null, words),
+                Cloud.refused("/home/j/src/core.nix", "cloud", null, words)],
+            [null, "unheard", "unnamed"]);
         Expect.same("a machine by its name needs no offer",
             Cloud.ask("https://github.com/o/r/issues/7", "", "skiff", []),
             { ask: "sprout", text: "https://github.com/o/r/issues/7", on: "skiff" });
