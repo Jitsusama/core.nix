@@ -7,7 +7,7 @@
 //! next look, and so is one whose program someone took off.
 
 use crate::meetings::{self, Meeting};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -28,13 +28,82 @@ impl Cgroups for crate::bpf::Guard {
     }
 }
 
+/// The most causes said in one stretch of an unreadable calendar.
+const CAUSES: usize = 8;
+
+/// The longest cause said, in characters. A refusal carries the daemon's
+/// own text, which could run to the whole answer, and root's journal keeps
+/// every line.
+const BRIEF: usize = 200;
+
+/// `why`, cut to `BRIEF` characters.
+fn brief(why: &str) -> String {
+    if why.chars().count() <= BRIEF {
+        why.to_owned()
+    } else {
+        format!("{}...", why.chars().take(BRIEF).collect::<String>())
+    }
+}
+
+/// Whether the meetings heard are still to be kept, and what the last
+/// failure to keep them said, so each failure is said once and the journal
+/// hears when keeping works again.
+#[derive(Default)]
+pub struct Keeping {
+    /// Whether the next answer must be kept even if unchanged.
+    owed: bool,
+    /// What the last failed keep said. Apart from the start's read, so a
+    /// keep failing as the read did is still said.
+    failed: Option<String>,
+}
+
+impl Keeping {
+    /// After the start's read of the kept file failed, so the next answer
+    /// writes it afresh.
+    pub fn unread() -> Self {
+        Self {
+            owed: true,
+            failed: None,
+        }
+    }
+
+    /// Whether the next answer must be kept even if its meetings are the same.
+    pub fn owed(&self) -> bool {
+        self.owed
+    }
+
+    /// Takes how a keep went, answering the journal's line, if any.
+    pub fn kept(&mut self, how: Result<(), String>) -> Option<String> {
+        match how {
+            Ok(()) => {
+                self.owed = false;
+                self.failed
+                    .take()
+                    .map(|_| "<5>the meetings are kept for the next run again".to_owned())
+            }
+            Err(why) => {
+                self.owed = true;
+                let why = brief(&why);
+                if self.failed.as_ref() == Some(&why) {
+                    return None;
+                }
+                let line = format!("<4>the meetings couldn't be kept for the next run: {why}");
+                self.failed = Some(why);
+                Some(line)
+            }
+        }
+    }
+}
+
 /// What the guard knows between looks.
 #[derive(Default)]
 pub struct Watch {
     /// The meetings from the last answer the calendar gave.
     pub meetings: Vec<Meeting>,
-    /// Why the calendar couldn't be read, while it can't.
-    unread: Option<String>,
+    /// Each cause said while the calendar can't be read, so a daemon that
+    /// alternates between two, stalling then failing, is heard once for
+    /// each rather than twice a minute.
+    unread: Option<BTreeSet<String>>,
     /// Whether the guard was up at the last look, unknown before the first.
     up: Option<bool>,
     /// What each cgroup's last failure said, so it's said once, not each look.
@@ -54,8 +123,10 @@ impl Watch {
     /// whether the meetings changed, to be kept. A calendar that can't be
     /// read leaves the meetings it last said, so a meeting already known
     /// still keeps the guard up. Why it can't is said when it starts and
-    /// again each time the cause changes, so the journal never goes on
-    /// naming a cause that has passed, as a refusal followed by a stall would.
+    /// again for each new cause, so the journal never names only a cause
+    /// that has passed, as a refusal followed by a stall would. A cause
+    /// already said this stretch isn't said again, and past `CAUSES` none
+    /// is, since a cause's text is the daemon's and may vary without end.
     pub fn heard(&mut self, answer: Result<Vec<Meeting>, String>) -> (Vec<String>, bool) {
         let mut said = Vec::new();
         match answer {
@@ -68,18 +139,21 @@ impl Watch {
                 (said, changed)
             }
             Err(why) => {
-                match &self.unread {
-                    None => said.push(format!(
+                let why = brief(&why);
+                let first = self.unread.is_none();
+                let causes = self.unread.get_or_insert_with(BTreeSet::new);
+                if first {
+                    said.push(format!(
                         "<4>the calendar can't be read, so the {} meetings it last said \
                          stand: {why}",
                         self.meetings.len()
-                    )),
-                    Some(was) if *was != why => {
-                        said.push(format!("<4>the calendar still can't be read, now: {why}"));
-                    }
-                    Some(_) => {}
+                    ));
+                } else if causes.len() < CAUSES && !causes.contains(&why) {
+                    said.push(format!("<4>the calendar still can't be read, now: {why}"));
                 }
-                self.unread = Some(why);
+                if causes.len() < CAUSES {
+                    causes.insert(why);
+                }
                 (said, false)
             }
         }

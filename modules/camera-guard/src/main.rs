@@ -151,17 +151,12 @@ fn now() -> u64 {
 /// thread, not one a minute. Until it ends, a meeting the calendar adds is
 /// unheard. Each stall and each failure to keep is said once.
 fn watch(program: &bpf::Guard, paths: &[PathBuf], socket: &Path, kept: &Path) {
-    // Whether the meetings heard are still to be kept, after a read or write
-    // of the kept file failed, so the next answer writes them afresh.
-    let mut unkept = false;
-    // What the last failed keep said, apart from the start's read, so a keep
-    // that fails as the read did is still said once.
-    let mut keep_failed: Option<String> = None;
+    let mut keeping = guard::Keeping::default();
     let mut watch = guard::Watch::from(meetings::kept(kept).unwrap_or_else(|why| {
         println!(
             "<4>the meetings kept can't be read, so none stand until the calendar says: {why}"
         );
-        unkept = true;
+        keeping = guard::Keeping::unread();
         Vec::new()
     }));
     let mut asked: Option<Instant> = None;
@@ -195,20 +190,11 @@ fn watch(program: &bpf::Guard, paths: &[PathBuf], socket: &Path, kept: &Path) {
             for line in said {
                 println!("{line}");
             }
-            if answered && (changed || unkept) {
-                match meetings::keep(kept, &watch.meetings) {
-                    Ok(()) => {
-                        unkept = false;
-                        keep_failed = None;
-                    }
-                    Err(why) => {
-                        if keep_failed.as_ref() != Some(&why) {
-                            println!("<4>the meetings couldn't be kept for the next run: {why}");
-                        }
-                        unkept = true;
-                        keep_failed = Some(why);
-                    }
-                }
+            if answered
+                && (changed || keeping.owed())
+                && let Some(line) = keeping.kept(meetings::keep(kept, &watch.meetings))
+            {
+                println!("{line}");
             }
         }
         if out.is_none() && asked.is_none_or(|at| at.elapsed() >= ASK_EVERY) {

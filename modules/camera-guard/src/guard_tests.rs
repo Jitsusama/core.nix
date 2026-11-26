@@ -2,6 +2,71 @@ use super::*;
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 
+#[test]
+fn a_cause_s_text_is_cut_and_a_stretch_says_only_so_many() {
+    let mut watch = Watch::default();
+    let long = "x".repeat(5000);
+    let said = watch.heard(Err(long)).0;
+    assert_eq!(said.len(), 1, "the first cause wasn't said once");
+    assert!(
+        said[0].len() < 400 && said[0].ends_with("..."),
+        "a long cause reached the journal whole: {} bytes",
+        said[0].len()
+    );
+    let mut lines = 0;
+    for n in 0..100 {
+        lines += watch.heard(Err(format!("refused at column {n}"))).0.len();
+    }
+    assert_eq!(
+        lines,
+        CAUSES - 1,
+        "causes that vary without end were each said"
+    );
+    assert_eq!(
+        watch.heard(Ok(Vec::new())).0,
+        vec!["<5>the calendar answers again"],
+        "the calendar answering again went unsaid"
+    );
+}
+
+#[test]
+fn each_failure_to_keep_is_said_once_and_keeping_again_is_said() {
+    // The start's read failed with the same text the first keep fails with,
+    // as an unwritable state folder gives both; the keep is still said.
+    let mut keeping = Keeping::unread();
+    assert!(
+        keeping.owed(),
+        "a kept file that couldn't be read wasn't owed a keep"
+    );
+    let why = "meetings.json: Permission denied";
+    assert_eq!(
+        keeping.kept(Err(why.into())),
+        Some(format!(
+            "<4>the meetings couldn't be kept for the next run: {why}"
+        )),
+        "a keep failing as the start's read did went unsaid"
+    );
+    assert_eq!(
+        keeping.kept(Err(why.into())),
+        None,
+        "the same failure to keep was said at every answer"
+    );
+    assert!(keeping.owed(), "a failed keep wasn't owed another");
+    assert_eq!(
+        keeping.kept(Ok(())),
+        Some("<5>the meetings are kept for the next run again".to_owned()),
+        "keeping again went unsaid, leaving the journal naming the failure"
+    );
+    assert!(!keeping.owed(), "a keep that worked was still owed");
+    assert_eq!(keeping.kept(Ok(())), None, "each good keep was said");
+    let mut fresh = Keeping::default();
+    assert_eq!(
+        fresh.kept(Ok(())),
+        None,
+        "a first good keep was said as a recovery"
+    );
+}
+
 const MIN: u64 = 60_000;
 
 /// Cgroups held in memory: which carry the program, which aren't there,
@@ -142,6 +207,18 @@ fn an_unreadable_calendar_keeps_the_meetings_it_last_said() {
         vec!["<4>the calendar still can't be read, now: google.sock hasn't answered in a minute"],
         "a new cause went unsaid, leaving the journal naming the old one"
     );
+    // A daemon that stalls each ask and then fails it alternates between
+    // the two, each already said.
+    for why in [
+        "google.sock hasn't answered in a minute",
+        "io: failed to lookup address",
+        "google.sock hasn't answered in a minute",
+    ] {
+        assert!(
+            watch.heard(Err(why.into())).0.is_empty(),
+            "a cause already said was said again: {why}"
+        );
+    }
     watch.look(&cgroups, &agents(), start - 5 * MIN);
     assert_eq!(
         cgroups.on.borrow().len(),

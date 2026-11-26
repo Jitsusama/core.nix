@@ -137,10 +137,13 @@ fn kept_meetings_come_back_as_they_were_and_none_kept_reads_as_none() {
     std::fs::remove_dir_all(&folder).unwrap();
 }
 
-/// Asks a stand-in daemon on a socket of its own that answers with `said`,
-/// then closes.
+/// Asks a stand-in daemon on a socket of its own that answers with `said`
+/// and holds the connection open until the guard hangs up, so only the
+/// guard's own limit can end a read that never meets a newline.
 fn asked(name: &str, said: Vec<u8>) -> Result<Value, String> {
     let folder = std::env::temp_dir().join(format!("camera-guard-{name}-{}", std::process::id()));
+    // A run that panicked may have left its socket, which a bind refuses.
+    let _ = std::fs::remove_dir_all(&folder);
     std::fs::create_dir_all(&folder).unwrap();
     let socket = folder.join("google.sock");
     let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
@@ -151,6 +154,7 @@ fn asked(name: &str, said: Vec<u8>) -> Result<Value, String> {
         // The guard stops reading at its limit and hangs up, which a write
         // past it hears as a broken pipe; that's the guard's choice, not a fault.
         let _ = stream.write_all(&said);
+        let _ = stream.read_to_end(&mut Vec::new());
     });
     let answer = ask(&socket);
     daemon.join().unwrap();
@@ -165,10 +169,29 @@ fn an_answer_is_read_and_one_past_the_limit_is_refused() {
         Ok(json!({"read": 1, "records": []})),
         "a daemon's one-line answer wasn't read"
     );
-    let endless = vec![b' '; usize::try_from(LONGEST).unwrap() + 1];
+    let longest = usize::try_from(LONGEST).unwrap();
+    let (head, tail) = (b"{\"read\":1,\"records\":[],\"pad\":\"", b"\"}\n");
+    let mut full = head.to_vec();
+    full.resize(longest - tail.len(), b'x');
+    full.extend_from_slice(tail);
+    assert!(
+        asked("full", full).is_ok(),
+        "an answer of exactly the limit, newline included, was refused"
+    );
+    // Without the limit, the read would wait out its ten seconds for a
+    // newline the stand-in never sends, and fail as a timeout.
+    let endless = vec![b' '; longest + 1];
     let refused = asked("endless", endless).unwrap_err();
     assert!(
         refused.ends_with(&format!("the answer ran past {LONGEST} bytes")),
         "an answer past the limit wasn't refused as too long: {refused}"
+    );
+    // Two-byte characters after one byte, so the limit falls inside one.
+    let mut cut = b"x".to_vec();
+    cut.extend("\u{e9}".repeat(longest / 2).bytes());
+    let refused = asked("cut", cut).unwrap_err();
+    assert!(
+        refused.ends_with(&format!("the answer ran past {LONGEST} bytes")),
+        "an answer cut inside a character wasn't refused as too long: {refused}"
     );
 }
