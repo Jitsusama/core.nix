@@ -20,10 +20,22 @@ use tuple_call::stream::Person;
 
 use super::{Daemon, Shared, changed, lock, now, write};
 
-/// What the acts need: the tuple command, and where the room is kept.
+/// What the acts need: the tuple command, where the room is kept, and
+/// how long an act waits on Tuple's command before answering that it
+/// hasn't answered, so a command that never ends still has its ask told,
+/// and how long a command still running holds its act. A share waits on
+/// Joel picking a screen, so it's answered once done however long that
+/// takes, and opening the room once `tuple new` prints its link, which it
+/// does as it starts. A command past its wait runs on, what it does once
+/// it ends still counts, and its answer goes to the journal. One asked
+/// again past its hold is let run on and the act asked afresh, so a Tuple
+/// that never answers holds a command a hold for each act, however often
+/// Joel asks.
 pub(super) struct Doing {
     pub(super) tuple: String,
     pub(super) room: PathBuf,
+    pub(super) answers_within: Duration,
+    pub(super) held_for: Duration,
 }
 
 /// One of Tuple's commands running for an act: its words, which act it
@@ -96,26 +108,17 @@ pub(super) fn acts(shared: &Shared, doing: Doing) -> Own {
     Box::new(move |said| ask::act(said).map(|asked| act(&shared, &doing, &asked)))
 }
 
-/// How long an act waits on Tuple's command before answering that it
-/// hasn't answered, so a command that never ends still has its ask told.
-/// Five seconds is far past what Tuple's app takes to answer one that
-/// waits on nobody; a share waits on Joel picking a screen, so it's
-/// answered once done however long that takes, and opening the room once
-/// `tuple new` prints its link, which it does as it starts. The command
-/// runs on, what it does once it ends still counts, and its answer goes
-/// to the journal.
-const ANSWERS_WITHIN: Duration = Duration::from_secs(5);
-
-/// How long a command still running holds its act. One asked again within
-/// it waits on the first; past it, the first is let run on and the act
-/// asked afresh, so a command stuck on a Tuple since restarted leaves Joel
-/// asking again within a minute, and a Tuple that never answers holds a
-/// command a minute for each act, however often he asks.
-const HELD_FOR: Duration = Duration::from_secs(60);
+/// A wait as a person says it: "1 second", "5 seconds".
+fn seconds(wait: Duration) -> String {
+    match wait.as_secs() {
+        1 => "1 second".to_owned(),
+        many => format!("{many} seconds"),
+    }
+}
 
 /// Does one of the call's acts through Tuple's command, answering once
-/// it's done, or once `ANSWERS_WITHIN` has passed without it. One asked
-/// again while Tuple's command for it still runs, within `HELD_FOR`, is
+/// it's done, or once its wait (`Doing`) has passed without it. One asked
+/// again while Tuple's command for it still runs, within its hold, is
 /// answered at once rather than run twice.
 fn act(shared: &Shared, doing: &Doing, asked: &Act) -> Value {
     let arguments: Vec<&str> = match asked {
@@ -138,7 +141,7 @@ fn act(shared: &Shared, doing: &Doing, asked: &Act) -> Value {
         let held = daemon
             .acting
             .iter()
-            .any(|one| one.words == arguments && one.at.elapsed() < HELD_FOR);
+            .any(|one| one.words == arguments && one.at.elapsed() < doing.held_for);
         if held {
             eprintln!("<4>tuple {command} was asked again before Tuple answered the last");
             return unanswered("Tuple hasn't answered the last time it was asked");
@@ -171,13 +174,13 @@ fn act(shared: &Shared, doing: &Doing, asked: &Act) -> Value {
     if *asked == Act::Share {
         return answered.recv().unwrap_or_else(|_| ended());
     }
-    match answered.recv_timeout(ANSWERS_WITHIN) {
+    match answered.recv_timeout(doing.answers_within) {
         Ok(said) => said,
         Err(RecvTimeoutError::Disconnected) => ended(),
         Err(RecvTimeoutError::Timeout) => {
-            let within = ANSWERS_WITHIN.as_secs();
-            eprintln!("<4>tuple {command} hasn't answered in {within} seconds");
-            unanswered(&format!("Tuple hasn't answered in {within} seconds"))
+            let within = seconds(doing.answers_within);
+            eprintln!("<4>tuple {command} hasn't answered in {within}");
+            unanswered(&format!("Tuple hasn't answered in {within}"))
         }
     }
 }
