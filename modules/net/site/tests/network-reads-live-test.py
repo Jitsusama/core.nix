@@ -100,7 +100,21 @@ def says_it_stands(page: Page, state: str, timeout: int = PACE_MS) -> None:
 
 def quoted(key: str) -> str:
     """Return `key` as a CSS string, since an id read back from the page may hold any mark."""
-    return '"' + key.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return '"' + "".join(map(css_character, key)) + '"'
+
+
+# The last of the control characters a CSS string can't hold as written, and the one past them.
+LAST_C0 = 0x1F
+DELETE = 0x7F
+
+
+def css_character(each: str) -> str:
+    """Return `each` as a CSS string holds it: a quote or backslash escaped, a control by code."""
+    if each in '\\"':
+        return "\\" + each
+    if ord(each) <= LAST_C0 or ord(each) == DELETE:
+        return f"\\{ord(each):x} "
+    return each
 
 
 def device(page: Page, key: str) -> Locator:
@@ -323,7 +337,8 @@ FARTHEST = """(from) => {
 }"""
 # The view scrolled from its corner just far enough to show `id`, as a jump to it would.
 TO_SHOW = """(id) => {
-  document.querySelector("#map-view").scrollTo(0, 0);
+  const view = document.querySelector("#map-view");
+  view.scrollTo(view.scrollLeft, 0);
   document.querySelector(`#map-draw [data-level=device][data-id="${CSS.escape(id)}"]`)
     .scrollIntoView({ block: "nearest", inline: "nearest" });
 }"""
@@ -385,8 +400,9 @@ def the_keys_device_stands_in_view(page: Page, where: str) -> None:
 
 def the_first_concern_leaves_it_out(page: Page, keys_on: str, where: str) -> None:
     """Show the first concern, as a jump back to it would, and check `keys_on` is then out."""
-    # TO_SHOW scrolls from the corner with no padding, which loses the keys' device at least as
-    # much as a padded jump down to the concern does, but not a jump up to one drawn above it.
+    # TO_SHOW scrolls down from the top, across as the map stands, with no padding, so it loses
+    # the keys' device no more than a padded jump down to the concern would: lost to it, the
+    # device is lost to that jump too. A jump up to a concern drawn above it is another matter.
     below = page.evaluate(BELOW, [keys_on, FIRST_CONCERN])
     assert below is not None, f"{where}'s map drew no {keys_on} or {FIRST_CONCERN}"
     assert below > 0, (

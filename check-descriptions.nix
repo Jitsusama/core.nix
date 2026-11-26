@@ -2830,12 +2830,11 @@
     each zoom button 44 px inside its set, a bigger house with two switches, a third eero and a
     full floor drawn the same way at a phone's width and a laptop's, the map drawn across on a
     desk, stacked once the window narrows to a phone's and across again once it widens back,
-    the device the keys are on still in view as the map narrows to a small phone's and scrolled
-    back into view as it widens to a short desk's, neither flip jumping back to the worst
-    concern, stacked in a window whose room falls short of across only once its floors' names
-    count, a first visit within its budget and a second answered unchanged, the web-design
-    skill's page checks passing at a phone's width and a desk's in both looks, and nothing logged
-    but what a test causes
+    the device the keys are on in view once the map narrows to a small phone's and once it
+    widens to a short desk's, neither flip jumping back to the worst concern, stacked in a window
+    whose room falls short of across only once its floors' names count, a first visit within its
+    budget and a second answered unchanged, the web-design skill's page checks passing at a
+    phone's width and a desk's in both looks, and nothing logged but what a test causes
   '';
   network-revive-looks-once-the-network-settles = ''
     network-revive looks at the network once a burst of changes goes quiet, or anyway if it never
