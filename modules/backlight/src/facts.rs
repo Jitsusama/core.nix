@@ -309,7 +309,7 @@ mod tests {
     fn a_capabilities_answer_that_isn_t_right_is_refused() {
         let mut summed = answer(0, b"(prot");
         summed[10] ^= 1;
-        assert!(fragment(&summed, 0).is_err());
+        assert!(fragment(&summed, 0).is_err(), "a wrong checksum");
         assert!(
             fragment(&answer(32, b"(prot"), 0).is_err(),
             "another offset"
@@ -374,11 +374,11 @@ mod tests {
         let file = runtime.join("desk/ddc-220ed336000000001c1f");
         {
             let mut told = Told::new(Some(&runtime), Some(&identity));
-            assert!(told.kept());
+            assert!(told.kept(), "a monitor with a runtime folder wasn't kept");
             told.set("brightness", "40%".to_owned());
-            assert!(told.unsaid());
+            assert!(told.unsaid(), "a fact set wasn't waiting to be said");
             told.say();
-            assert!(!told.unsaid());
+            assert!(!told.unsaid(), "a fact said was still waiting");
             assert_eq!(fs::read_to_string(&file).unwrap(), "brightness\t40%\n");
             told.set("brightness", "41%".to_owned());
             told.say();
@@ -390,7 +390,13 @@ mod tests {
 
     #[test]
     fn nothing_is_kept_without_a_runtime_folder_or_an_identity() {
-        assert!(!Told::new(None, Some(&[0; 10])).kept());
-        assert!(!Told::new(Some(Path::new("/run/user/1000")), None).kept());
+        assert!(
+            !Told::new(None, Some(&[0; 10])).kept(),
+            "kept without a runtime folder"
+        );
+        assert!(
+            !Told::new(Some(Path::new("/run/user/1000")), None).kept(),
+            "kept without an identity"
+        );
     }
 }

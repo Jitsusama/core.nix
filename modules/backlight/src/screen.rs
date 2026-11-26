@@ -176,13 +176,19 @@ mod tests {
         let backlights = Backlights::new("passed-over");
         backlights.add("odd", "strange", 100, 50);
         backlights.add("none", "raw", 0, 0);
-        assert!(Screen::find(&backlights.0).unwrap().is_none());
+        assert!(
+            Screen::find(&backlights.0).unwrap().is_none(),
+            "a backlight of no known kind or with no steps was taken"
+        );
     }
 
     #[test]
     fn no_backlights_is_none_found() {
         let backlights = Backlights::new("missing");
-        assert!(Screen::find(&backlights.0.join("gone")).unwrap().is_none());
+        assert!(
+            Screen::find(&backlights.0.join("gone")).unwrap().is_none(),
+            "a screen was found with no backlights at all"
+        );
     }
 
     #[test]
@@ -190,7 +196,11 @@ mod tests {
         let backlights = Backlights::new("steps");
         backlights.add("intel_backlight", "raw", 512, 208);
         let screen = Screen::find(&backlights.0).unwrap().unwrap();
-        assert!((screen.level_of(256) - 0.5).abs() < 1e-9);
+        let level = screen.level_of(256);
+        assert!(
+            (level - 0.5).abs() < 1e-9,
+            "256 of 512 steps read as {level}"
+        );
         assert_eq!(screen.steps_for(0.5), 256);
         assert_eq!(screen.steps_for(2.0), 512);
     }

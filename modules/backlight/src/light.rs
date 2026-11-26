@@ -380,8 +380,14 @@ mod tests {
             "SEQNUM=4211",
         ]);
         let changed = udev_event(&["ACTION=change", "SUBSYSTEM=iio"]);
-        assert!(sets_up_a_sensor(&added));
-        assert!(sets_up_a_sensor(&changed));
+        assert!(
+            sets_up_a_sensor(&added),
+            "an iio device added brought no sensor"
+        );
+        assert!(
+            sets_up_a_sensor(&changed),
+            "an iio device changed brought no sensor"
+        );
     }
 
     #[test]
@@ -391,10 +397,10 @@ mod tests {
         let lookalike = udev_event(&["ACTION=add", "SUBSYSTEM=iio_sw"]);
         // The kernel's own word comes before udev's rules have run.
         let kernel = b"add@/devices/iio:device1\0ACTION=add\0SUBSYSTEM=iio\0";
-        assert!(!sets_up_a_sensor(&removed));
-        assert!(!sets_up_a_sensor(&usb));
-        assert!(!sets_up_a_sensor(&lookalike));
-        assert!(!sets_up_a_sensor(kernel));
+        assert!(!sets_up_a_sensor(&removed), "an iio device removed");
+        assert!(!sets_up_a_sensor(&usb), "a usb device added");
+        assert!(!sets_up_a_sensor(&lookalike), "an iio_sw device added");
+        assert!(!sets_up_a_sensor(kernel), "the kernel's own word");
     }
 
     #[test]
@@ -558,7 +564,11 @@ mod tests {
         assert_eq!(sensor.name(), "iio:device2");
         assert_eq!(sensor.node, Path::new("/dev/iio:device2"));
         assert_eq!(sensor.units.layout.at, 0);
-        assert!((sensor.units.value(25_000) - 25.0).abs() < 1e-9);
+        let lux = sensor.units.value(25_000);
+        assert!(
+            (lux - 25.0).abs() < 1e-9,
+            "25000 at a scale of 0.001 read as {lux} lux"
+        );
     }
 
     #[test]
@@ -577,7 +587,11 @@ mod tests {
             .unwrap();
         assert_eq!(sensor.name(), "iio:device2");
         assert_eq!(sensor.units.layout.at, 0);
-        assert!((sensor.units.value(2_609_000) - 2609.0).abs() < 1e-9);
+        let kelvin = sensor.units.value(2_609_000);
+        assert!(
+            (kelvin - 2609.0).abs() < 1e-9,
+            "2609000 at a scale of 0.001 read as {kelvin} K"
+        );
         let light = Sensor::find(&devices.0, Path::new("/dev"), Heard::Light)
             .unwrap()
             .unwrap();
@@ -602,7 +616,8 @@ mod tests {
         assert!(
             Sensor::find(&devices.0, Path::new("/dev"), Heard::Light)
                 .unwrap()
-                .is_none()
+                .is_none(),
+            "a sensor with a channel not understood was taken"
         );
     }
 
@@ -612,7 +627,8 @@ mod tests {
         assert!(
             Sensor::find(&devices.0.join("gone"), Path::new("/dev"), Heard::Light)
                 .unwrap()
-                .is_none()
+                .is_none(),
+            "a sensor was found with no devices at all"
         );
     }
 
@@ -627,6 +643,10 @@ mod tests {
         let sensor = Sensor::find(&devices.0, Path::new("/dev"), Heard::Light)
             .unwrap()
             .unwrap();
-        assert!(sensor.units.value(-40).abs() < f64::EPSILON);
+        let lux = sensor.units.value(-40);
+        assert!(
+            lux.abs() < f64::EPSILON,
+            "a reading of -40 gave {lux} lux, not none"
+        );
     }
 }

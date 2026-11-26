@@ -175,15 +175,24 @@ pub mod tests {
     #[test]
     fn a_kernel_uevent_is_not_a_udev_one() {
         let event = b"add@/devices/iio:device1\0ACTION=add\0SUBSYSTEM=iio\0";
-        assert!(udev_fields(event).is_none());
+        assert!(
+            udev_fields(event).is_none(),
+            "the kernel's uevent was read as udev's"
+        );
     }
 
     #[test]
     fn a_udev_uevent_cut_short_has_no_fields() {
         let mut event = udev_event(&["ACTION=add", "SUBSYSTEM=iio"]);
         event.truncate(event.len() - 4);
-        assert!(udev_fields(&event).is_none());
-        assert!(udev_fields(b"libudev\0\x01\x02").is_none());
+        assert!(
+            udev_fields(&event).is_none(),
+            "a udev uevent cut short had fields"
+        );
+        assert!(
+            udev_fields(b"libudev\0\x01\x02").is_none(),
+            "a udev header with nothing after it had fields"
+        );
     }
 
     #[test]

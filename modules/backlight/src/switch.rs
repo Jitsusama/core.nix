@@ -92,15 +92,15 @@ mod tests {
 
     #[test]
     fn only_off_turns_it_off() {
-        assert!(!says("off\n"));
-        assert!(says("on\n"));
+        assert!(!says("off\n"), "off didn't turn it off");
+        assert!(says("on\n"), "on turned it off");
         assert!(says(""), "nothing kept yet");
         assert!(says("of"), "a spoiled file");
     }
 
     #[test]
     fn a_choice_is_read_back_as_kept() {
-        assert!(says(kept(true)));
-        assert!(!says(kept(false)));
+        assert!(says(kept(true)), "on kept read back as off");
+        assert!(!says(kept(false)), "off kept read back as on");
     }
 }

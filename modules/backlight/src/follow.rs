@@ -557,7 +557,7 @@ mod tests {
     fn with_the_lid_shut_its_dark_moves_nothing() {
         let start = Instant::now();
         let mut follow = following(1000.0, 0.8, start);
-        assert!(follow.lid(true));
+        assert!(follow.lid(true), "shutting the lid wasn't a change");
         let _ = follow.heard(0.0, 0.8, start);
         assert_eq!(follow.wake(start), None);
         assert_eq!(moved(&mut follow, 0.8, start + LATER), None);
@@ -568,7 +568,7 @@ mod tests {
         let start = Instant::now();
         let mut follow = following(1000.0, 0.8, start);
         let _ = follow.heard(10.0, 0.8, start);
-        assert!(follow.lid(true));
+        assert!(follow.lid(true), "shutting the lid wasn't a change");
         assert_eq!(follow.wake(start), None);
         assert_eq!(moved(&mut follow, 0.8, start + LATER), None);
     }
@@ -578,7 +578,7 @@ mod tests {
         let start = Instant::now();
         let mut follow = following(10.0, 0.8, start);
         follow.start(0.8, start + DIMMING).unwrap();
-        assert!(follow.lid(true));
+        assert!(follow.lid(true), "shutting the lid wasn't a change");
         assert_eq!(follow.step(start + DIMMING), None);
     }
 
@@ -586,11 +586,14 @@ mod tests {
     fn opened_the_light_is_followed_again() {
         let start = Instant::now();
         let mut follow = following(1000.0, 0.8, start);
-        assert!(follow.lid(true));
+        assert!(follow.lid(true), "shutting the lid wasn't a change");
         let _ = follow.heard(0.0, 0.8, start);
-        assert!(follow.lid(false));
+        assert!(follow.lid(false), "opening the shut lid wasn't a change");
         let _ = follow.heard(10.0, 0.8, start);
-        assert!(moved(&mut follow, 0.8, start + DIMMING).is_some());
+        assert!(
+            moved(&mut follow, 0.8, start + DIMMING).is_some(),
+            "the dark heard once the lid opened didn't dim the screen"
+        );
     }
 
     #[test]
@@ -608,9 +611,15 @@ mod tests {
     #[test]
     fn the_lid_said_again_is_no_change() {
         let mut follow = Follow::new(curve(), true);
-        assert!(!follow.lid(false));
-        assert!(follow.lid(true));
-        assert!(!follow.lid(true));
+        assert!(
+            !follow.lid(false),
+            "opening an open lid was taken for a change"
+        );
+        assert!(follow.lid(true), "shutting the lid wasn't a change");
+        assert!(
+            !follow.lid(true),
+            "shutting a shut lid was taken for a change"
+        );
     }
 
     #[test]
@@ -618,14 +627,18 @@ mod tests {
         let start = Instant::now();
         let mut follow = following(10.0, 0.2, start);
         assert_eq!(follow.chose(0.5), Some(10.0));
-        assert!((follow.curve().level_at(10.0) - 0.5).abs() < 1e-9);
+        let learned = follow.curve().level_at(10.0);
+        assert!(
+            (learned - 0.5).abs() < 1e-9,
+            "a pick of 0.5 in 10 lux left the curve giving {learned}"
+        );
     }
 
     #[test]
     fn with_the_lid_shut_a_pick_teaches_nothing() {
         let start = Instant::now();
         let mut follow = following(10.0, 0.2, start);
-        assert!(follow.lid(true));
+        assert!(follow.lid(true), "shutting the lid wasn't a change");
         assert_eq!(follow.chose(0.5), None);
         assert_eq!(follow.curve(), &curve());
     }
@@ -643,8 +656,15 @@ mod tests {
     fn the_first_light_teaches_the_brightness_the_screen_has() {
         let start = Instant::now();
         let mut follow = Follow::new(curve(), false);
-        assert!(follow.heard(100.0, 0.7, start));
-        assert!((follow.curve().level_at(100.0) - 0.7).abs() < 1e-9);
+        assert!(
+            follow.heard(100.0, 0.7, start),
+            "the first light taught nothing"
+        );
+        let learned = follow.curve().level_at(100.0);
+        assert!(
+            (learned - 0.7).abs() < 1e-9,
+            "the first light in 100 lux with the screen at 0.7 left the curve giving {learned}"
+        );
         assert_eq!(follow.wake(start), None, "starting moved the screen");
         assert!(!follow.heard(200.0, 0.7, start), "it learned twice");
     }
@@ -653,8 +673,14 @@ mod tests {
     fn light_that_cant_be_is_passed_over() {
         let start = Instant::now();
         let mut follow = Follow::new(curve(), false);
-        assert!(!follow.heard(f64::NAN, 0.5, start));
-        assert!(!follow.heard(-1.0, 0.5, start));
+        assert!(
+            !follow.heard(f64::NAN, 0.5, start),
+            "light of NaN lux taught the curve"
+        );
+        assert!(
+            !follow.heard(-1.0, 0.5, start),
+            "light of -1 lux taught the curve"
+        );
         assert_eq!(follow.lux(), None);
     }
 
@@ -904,7 +930,10 @@ mod tests {
     fn keys_following(lit: u32, start: Instant) -> Keys {
         let mut keys = Keys::new(lit);
         keys.heard(20.0, start);
-        assert!(keys.saw(0));
+        assert!(
+            keys.saw(0),
+            "the keyboard read unlit at the start wasn't taken as set"
+        );
         keys.heard(20.0, start);
         keys.heard(500.0, start);
         keys.heard(500.0, start);
@@ -977,7 +1006,10 @@ mod tests {
         // Joel lights it in daylight, and it stays lit while the light
         // wavers about where he lit it, even past where daylight would
         // otherwise put it out.
-        assert!(keys.saw(2));
+        assert!(
+            keys.saw(2),
+            "Joel's level of 2 wasn't taken as set by the key"
+        );
         keys.heard(300.0, start);
         for lux in [250.0, 500.0, 1100.0, 150.0, 80.0] {
             keys.heard(lux, start);
@@ -1000,7 +1032,10 @@ mod tests {
         let mut keys = keys_following(1, start);
         // Lit by the key at dusk, between dark and light, it stays lit in
         // light that's daylight but not yet four times where he lit it.
-        assert!(keys.saw(1));
+        assert!(
+            keys.saw(1),
+            "Joel's level of 1 wasn't taken as set by the key"
+        );
         keys.heard(30.0, start);
         keys.heard(110.0, start);
         assert_eq!(keys.wake(), None, "light just past the threshold undid it");
@@ -1014,7 +1049,10 @@ mod tests {
         let mut keys = keys_following(1, start);
         keys.heard(5.0, start);
         assert_eq!(keys_after_the_hold(&mut keys, start), Some(1));
-        assert!(keys.saw(0));
+        assert!(
+            keys.saw(0),
+            "the keyboard put out by the key wasn't taken as set"
+        );
         for lux in [2.0, 0.0, 9.0, 20.0] {
             keys.heard(lux, start + LATER);
             assert_eq!(keys.wake(), None, "{lux} lux lit it again");
@@ -1040,7 +1078,10 @@ mod tests {
         keys.heard(5.0, start);
         assert_eq!(keys_after_the_hold(&mut keys, start), Some(1));
         keys.unset(0);
-        assert!(!keys.saw(0));
+        assert!(
+            !keys.saw(0),
+            "a level that couldn't be set was taken for Joel's"
+        );
     }
 
     #[test]

@@ -404,7 +404,10 @@ mod tests {
         let steps = glide(&mut warmth, now);
         assert_eq!(steps.first(), Some(&6450));
         assert_eq!(steps.last(), Some(&5000));
-        assert!(steps.windows(2).all(|pair| pair[0] - pair[1] == STEP));
+        assert!(
+            steps.windows(2).all(|pair| pair[0] - pair[1] == STEP),
+            "the glide didn't go a step of {STEP} K at a time: {steps:?}"
+        );
         assert_eq!(warmth.wake(), None, "done once there");
     }
 
@@ -587,7 +590,7 @@ mod tests {
         warmth.room(2700.0, now);
         assert_eq!(warmth.wake(), None);
         warmth.follow_the_room(true, now);
-        assert!(warmth.follows());
+        assert!(warmth.follows(), "told to follow the room, it didn't");
         assert_eq!(warmth.stands(), 5000);
     }
 

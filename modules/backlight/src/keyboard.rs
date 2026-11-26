@@ -97,8 +97,14 @@ mod tests {
         let root = std::env::temp_dir().join(format!("no-keyboard-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         led(&root, "input3::capslock", "1\n", "0\n");
-        assert!(Keyboard::find(&root).unwrap().is_none());
-        assert!(Keyboard::find(&root.join("gone")).unwrap().is_none());
+        assert!(
+            Keyboard::find(&root).unwrap().is_none(),
+            "a capslock light was taken for the keyboard's"
+        );
+        assert!(
+            Keyboard::find(&root.join("gone")).unwrap().is_none(),
+            "a keyboard light was found with no lights at all"
+        );
         fs::remove_dir_all(&root).unwrap();
     }
 }

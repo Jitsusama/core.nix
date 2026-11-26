@@ -5,17 +5,6 @@
 # here is lowered, so the list only shrinks.
 {
   "hardware/microsoft-surface-laptop-4-1958/clock/src/main.rs" = 6;
-  "modules/backlight/src/curve.rs" = 11;
-  "modules/backlight/src/facts.rs" = 6;
-  "modules/backlight/src/follow.rs" = 20;
-  "modules/backlight/src/keep.rs" = 1;
-  "modules/backlight/src/keyboard.rs" = 2;
-  "modules/backlight/src/light.rs" = 11;
-  "modules/backlight/src/screen.rs" = 3;
-  "modules/backlight/src/steer.rs" = 5;
-  "modules/backlight/src/switch.rs" = 4;
-  "modules/backlight/src/uevent.rs" = 3;
-  "modules/backlight/src/warmth.rs" = 2;
   "modules/bluetooth-links/src/main.rs" = 1;
   "modules/bluetooth-links/src/reply.rs" = 1;
   "modules/cadence/src/mesh.rs" = 7;

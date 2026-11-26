@@ -232,10 +232,18 @@ mod tests {
     fn a_ramp_starts_where_it_was_and_arrives_where_it_goes() {
         let start = Instant::now();
         let ramp = Ramp::new(0.2, 0.6, start);
-        assert!((ramp.at(start) - 0.2).abs() < 1e-9);
+        let first = ramp.at(start);
+        assert!(
+            (first - 0.2).abs() < 1e-9,
+            "the ramp started at {first}, not 0.2"
+        );
         let end = start + Duration::from_secs(1);
-        assert!(ramp.done(end));
-        assert!((ramp.at(end) - 0.6).abs() < 1e-9);
+        assert!(ramp.done(end), "the ramp wasn't done at its end");
+        let last = ramp.at(end);
+        assert!(
+            (last - 0.6).abs() < 1e-9,
+            "the ramp arrived at {last}, not 0.6"
+        );
     }
 
     #[test]
@@ -243,8 +251,12 @@ mod tests {
         let start = Instant::now();
         let ramp = Ramp::new(0.0, 1.0, start);
         let half = start + ramp.length / 2;
-        assert!(!ramp.done(half));
-        assert!(ramp.at(half) > 0.5);
+        assert!(!ramp.done(half), "the ramp was done at half its time");
+        let halfway = ramp.at(half);
+        assert!(
+            halfway > 0.5,
+            "at half its time the ramp was at {halfway}, not past 0.5"
+        );
     }
 
     #[test]
