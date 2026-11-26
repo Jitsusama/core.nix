@@ -2425,9 +2425,10 @@ ShellRoot {
         Sessions.wanting = [acted];
         agents.rows.ACTED = { key: "agent:ACTED", name: "Session E", side: "",
             doing: "listening" };
+        // Written in ACTED's own waiting file, as mesh_wait writes it.
         const form = { v: 2, title: "Sign The Form", quest: "QEST-E", ready: false,
-            raisedAt: Date.now() };
-        WaitingOnYou.sessionOf = { "Sign The Form": acted };
+            raisedAt: Date.now(), from: "acted" };
+        WaitingOnYou.sessionOf = { ACTED: acted };
         WaitingOnYou.now = [form];
         now.lookTexts = { "e.json": JSON.stringify({ v: 1, id: "e", kind: "page",
             at: new Date(Date.now() - 7 * 3600000).toISOString(),
@@ -2440,6 +2441,48 @@ ShellRoot {
                 ["on:heading:cell:ACTED", "Session E \u00b7 listening"],
                 ["on:waiting:item:Sign The Form", ""], ["on:look:e", ""]]),
             JSON.stringify(read));
+        // One in its file that another session on its quest blocks on, its
+        // own cell asking nothing, stands by weight under its cell, so a
+        // heavier to-do of its own, past due and blocking none, leads. The
+        // look it left blocks nothing then, so it's in To Look At.
+        const brief = { v: 2, title: "Read The Brief", quest: "QEST-B", ready: true,
+            raisedAt: Date.now() - 7 * 3600000,
+            deadline: new Date(Date.now() - 3600000).toISOString(), from: "acted" };
+        WaitingOnYou.now = [form, brief];
+        const ownKeys = key => key === "on:waiting:item:Sign The Form"
+            || key === "on:waiting:item:Read The Brief";
+        const calm = { address: "ACTED", title: "Session E", presence: { session: "s-e",
+            owns: ["QEST-E"], addresses: ["ACTED"] } };
+        const other = { address: "KELP01", title: "Session K", presence: { session: "s-k",
+            owns: ["QEST-E"], addresses: ["KELP01"],
+            wants: { kind: "action", said: "Sign it" } } };
+        Sessions.running = [calm, other];
+        Sessions.wanting = [other];
+        WaitingOnYou.sessionOf = { ACTED: calm };
+        const underCalm = shown().map(row => row[0]).filter(ownKeys);
+        Sessions.running = [acted];
+        Sessions.wanting = [acted];
+        WaitingOnYou.sessionOf = { ACTED: acted };
+        expect("a to-do blocking only another session on its quest never leads its own cell",
+            JSON.stringify(underCalm) === JSON.stringify(["on:waiting:item:Read The Brief",
+                "on:waiting:item:Sign The Form"]),
+            JSON.stringify(underCalm));
+        // Its own cell's ask put off, so Sessions hears it wanting nothing,
+        // the to-do no longer leads it either, as it blocks none.
+        Sessions.wanting = [];
+        const underPutOff = shown().map(row => row[0]).filter(ownKeys);
+        Sessions.wanting = [acted];
+        // Its own cell asking, the to-do it asks leads over the heavier.
+        const underAsked = shown().map(row => row[0]).filter(ownKeys);
+        WaitingOnYou.now = [form];
+        expect("a to-do whose own cell's ask is put off never leads it",
+            JSON.stringify(underPutOff) === JSON.stringify(["on:waiting:item:Read The Brief",
+                "on:waiting:item:Sign The Form"]),
+            JSON.stringify(underPutOff));
+        expect("a to-do its own cell asks leads it over a heavier one of its own",
+            JSON.stringify(underAsked) === JSON.stringify(["on:waiting:item:Sign The Form",
+                "on:waiting:item:Read The Brief"]),
+            JSON.stringify(underAsked));
         // Inside, Talk to its session follows dealing with it there, so
         // what's working on it is reached from it (42P0R4, 2026-11-19); one
         // done in a window of its own leads with going there.
@@ -2468,7 +2511,7 @@ ShellRoot {
             { wants: { kind: "question", said: "Which?" } }) });
         Sessions.running = [asked];
         Sessions.wanting = [asked];
-        WaitingOnYou.sessionOf = { "Sign The Form": asked };
+        WaitingOnYou.sessionOf = { ACTED: asked };
         // Its want, asked of Agents Asking, stands as a row of its own.
         const talksAll = () => [talksOf("on:waiting:item:Sign The Form"), talksOf("on:look:e"),
             talksOf("on:waiting:want:ACTED")];
@@ -2477,7 +2520,7 @@ ShellRoot {
             acted.presence, { wants: { kind: "approval", said: "May I?" } }) });
         Sessions.running = [approved];
         Sessions.wanting = [approved];
-        WaitingOnYou.sessionOf = { "Sign The Form": approved };
+        WaitingOnYou.sessionOf = { ACTED: approved };
         const talksYes = talksAll();
         // Parked, it runs no ask: woken, it reads its inbox as it starts,
         // so Talk reaches it, waking it as Agents' own row does.
@@ -2496,7 +2539,7 @@ ShellRoot {
             acted.presence, { wants: { kind: "blocked", said: "Stuck" } }) });
         Sessions.running = [blocked];
         Sessions.wanting = [blocked];
-        WaitingOnYou.sessionOf = { "Sign The Form": blocked };
+        WaitingOnYou.sessionOf = { ACTED: blocked };
         const withAgents = talksAll();
         const sources = theLauncher.sources;
         theLauncher.sources = sources.filter(one => one !== agents);
@@ -2606,6 +2649,24 @@ ShellRoot {
         now.lookTexts = textsGone;
         theLauncher.goneTold = 0;
         theLauncher.goneMoved = [];
+        // Go on one whose session is held but whose window Go To can't
+        // raise or open (Sessions.qml's unopened and unhosted, said there)
+        // opened nothing too, so its look stays waiting.
+        const shutLook = { id: "u", file: "u.json", kind: "terminal", title: "Read U",
+            target: "", state: "waiting", quest: "QEST-2", cell: "ACTED" };
+        now.lookTexts = Object.assign({}, textsGone, { "u.json": JSON.stringify(shutLook) });
+        const textShut = now.lookTexts["u.json"];
+        Sessions.opens = false;
+        const openedShut = now.openLook(shutLook);
+        Sessions.opens = true;
+        expect("Go on a held session Go To can't open opens nothing, and settles nothing",
+            openedShut === false && Sessions.wentTo?.address === "ACTED"
+                && now.lookTexts["u.json"] === textShut
+                && now.looksSettling["u.json"] === undefined,
+            JSON.stringify([openedShut, Sessions.wentTo?.address ?? null,
+                now.looksSettling["u.json"] ?? null]));
+        now.lookTexts = textsGone;
+        Sessions.wentTo = null;
         now.lookServed({ held: { id: "q", kind: "terminal", title: "Read Q", target: "",
             state: "quiet", session: "s-gone", address: "GONEQQ", quest: "QEST-Q",
             cell: "GONEQQ" } }, "row:looks-history:q").run();
@@ -2660,7 +2721,7 @@ ShellRoot {
             JSON.stringify(endedActs));
         Sessions.running = [acted];
         Sessions.wanting = [acted];
-        WaitingOnYou.sessionOf = { "Sign The Form": acted };
+        WaitingOnYou.sessionOf = { ACTED: acted };
         const heardBefore = root.forYouHeardTimes;
         agents.rows.ACTED.doing = "working";
         agents.remade += 1;

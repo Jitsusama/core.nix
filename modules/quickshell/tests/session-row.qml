@@ -338,7 +338,12 @@ QtObject {
             // A session's folder is only its last part, so its record's
             // cwd is what says where it works.
             { address: "TREE", folder: "modules", changed: 20,
-                presence: { questInfo: { id: "TIDE" }, cwd: "/home/ada/trees/tidepool/modules/" } }
+                presence: { questInfo: { id: "TIDE" }, cwd: "/home/ada/trees/tidepool/modules/" } },
+            // A session owning a quest is at work on it, whichever it has
+            // loaded, as the agents daemon reads it (cells.rs `quest_of`).
+            { address: "OWNER", folder: "shoal", changed: 5,
+                presence: { owns: ["KELP"], questInfo: { id: "SHOAL" },
+                    cwd: "/home/ada/src/shoal" } }
         ];
         const owns = holder => Holders.owners(working, holder).map(one => one.address)
             .join(" ");
@@ -349,6 +354,9 @@ QtObject {
             ["a quest whose id its record names whole",
                 { path: "/home/ada/.cache/scratch/TIDE", owner: { kind: "quest", name: "TIDE" } },
                 "TREE"],
+            ["a quest a session owns while it has another loaded",
+                { path: "/home/ada/.cache/scratch/KELP", owner: { kind: "quest", name: "KELP" } },
+                "OWNER"],
             ["a tree a session works inside",
                 { path: "/home/ada/trees/tidepool", owner: { kind: "worktree", name: "tidepool" } },
                 "TREE"],

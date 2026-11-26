@@ -543,9 +543,14 @@ let
         property var asked: []
         property var settled: ({})
         property var titles: ({})
-        // The session behind each item, by its title, as a test sets it.
+        // The session behind each item, by its owner's address, else its
+        // file's, in capitals, as Waiting.js's sessionOf joins them; a test
+        // sets which session goes by each address.
         property var sessionOf: ({})
-        function session(each) { return sessionOf[each.title] ?? null; }
+        function session(each) {
+          const address = String(each.owner?.address ?? each.from ?? "").toUpperCase();
+          return address === "" ? null : (sessionOf[address] ?? null);
+        }
         function watched(each) { return true; }
         function waitsFor(each) { return null; }
       '';

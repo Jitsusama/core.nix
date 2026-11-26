@@ -2662,7 +2662,9 @@ Singleton {
     // in the launcher's foot, since a press is never met with nothing.
     signal unhosted(var session, string why)
     // A window Go To opens goes where the session would reopen (goesTo),
-    // never on whichever workspace Joel is on.
+    // never on whichever workspace Joel is on. Whether it raised, opened or
+    // joined a window, or one is already coming, so a look opened through
+    // it settles only then: false where it said why it couldn't instead.
     function goTo(session) {
         readKittyPid();
         if (session.presence?.hosted)
@@ -2680,33 +2682,44 @@ Singleton {
             const named = viewerOf(session.presence);
             const listed = listedNamed(named);
             const words = session.attach;
-            if (listed)
+            if (listed) {
                 Niri.act({ FocusWindow: { id: listed.id } });
-            else if (named === "" || !Array.isArray(words) || words.length === 0)
-                unhosted(session, named === "" ? "unnamed" : "hosted");
-            else if (!disowned(named, session) && !heldBack(session.address, named, session)) {
-                view(session, root.goesTo(session), true);
-                // Its own asked for, whose window holds its name is said,
-                // so a stray window is seen at the press. One held back is
-                // said opening, as its own is.
-                if (heldByAnother(named))
-                    unhosted(session, "unowned");
+                return true;
             }
-            return;
+            if (named === "" || !Array.isArray(words) || words.length === 0) {
+                unhosted(session, named === "" ? "unnamed" : "hosted");
+                return false;
+            }
+            if (disowned(named, session))
+                return false;
+            // One whose viewer was asked for moments ago is already
+            // coming, said "opening", so it counts as opened, as attach's
+            // second ask does.
+            if (heldBack(session.address, named, session))
+                return true;
+            const opened = view(session, root.goesTo(session), true);
+            // Its own asked for, whose window holds its name is said,
+            // so a stray window is seen at the press. One held back is
+            // said opening, as its own is.
+            if (heldByAnother(named))
+                unhosted(session, "unowned");
+            return opened;
         }
-        if (!session.here && !session.window && !session.kitty) {
-            joinElsewhere(session);
-            return;
-        }
-        if (session.window)
+        if (!session.here && !session.window && !session.kitty)
+            return joinElsewhere(session);
+        if (session.window) {
             Niri.act({ FocusWindow: { id: session.window.id } });
-        else if (session.kitty)
+            return true;
+        }
+        if (session.kitty) {
             Niri.spawn(["kitten", "@", "--to", session.kitty.socket, "focus-window",
                 "--match", `id:${session.kitty.window}`]);
-        else if (session.held)
-            attach(session.held, root.goesTo(session));
-        else
-            unopened(session);
+            return true;
+        }
+        if (session.held)
+            return attach(session.held, root.goesTo(session));
+        unopened(session);
+        return false;
     }
     // A session here in no window, kitty or holder the shell can reach, as
     // pi run in another terminal is, which Go To can't open: said, never
@@ -2744,14 +2757,15 @@ Singleton {
         const joining = `${session.machine}:${session.address}`;
         if (!words || (Array.isArray(words) && words.length === 0)) {
             unjoined(session);
-            return;
+            return false;
         }
         if (Date.now() - (attaching[joining] ?? 0) < attachPatience)
-            return;
+            return true;
         attaching = Object.assign({}, attaching, { [joining]: Date.now() });
         const command = Array.isArray(words) ? words.map(String) : ["zsh", "-lic", String(words)];
         root.inSessions("pi-session", command, root.goesTo(session));
         Report.say(`joined session ${session.address} on ${session.machine}`);
+        return true;
     }
 
     // Views a hosted session in a new window of the sessions' kitty, by its
@@ -3459,16 +3473,20 @@ Singleton {
     // `into` a place kept for it (viewKept, as a sleeper wakes), which
     // opens without the focus, or where niri opens one. The node names the
     // window within moments of its joining; until it does, asking again
-    // opens nothing more.
+    // opens nothing more. Whether a window is opening, false only where
+    // nothing here holds sessions to attach.
     readonly property int attachPatience: 5000
     property var attaching: ({})
     function attach(id, into) {
-        if (!holds || Date.now() - (attaching[id] ?? 0) < attachPatience)
-            return;
+        if (!holds)
+            return false;
+        if (Date.now() - (attaching[id] ?? 0) < attachPatience)
+            return true;
         attaching = Object.assign({}, attaching, { [id]: Date.now() });
         root.inSessions("pi-session", ["zsh", "-lic", 'exec mycelium --realm "$0" attach "$1"',
             realm, id], into ?? null);
         Report.say(`attached session ${id}`);
+        return true;
     }
 
     // Where a session may start: each machine the realm's node places work
@@ -4249,11 +4267,14 @@ Singleton {
     // it's parked. One only viewing wakes is left to goTo's own viewer,
     // which opens where Joel is and takes focus: wake's would open where it
     // slept, unfocused, and hold goTo's off while it came. Agents' Go To,
-    // What's On's and For You's Deal With It all go through here.
+    // What's On's and For You's Deal With It all go through here. Whether
+    // Go To opened it (goTo) or the node was asked to wake it, whose window
+    // opens as it wakes.
     function wakeToGo(resting, session) {
-        if (resting && !wokenByViewing(resting))
+        const waking = !!resting && !wokenByViewing(resting);
+        if (waking)
             wake(resting);
-        goTo(session);
+        return goTo(session) || (waking && !!resting.address);
     }
     // Whether `session` sleeps in pi's host with no window, which only
     // viewing it wakes.

@@ -244,17 +244,21 @@ ShellRoot {
             keptNot.join(", "));
         Sessions.keepPlaces({});
 
-        Sessions.goTo(other);
-        expect("Go To focuses its window", JSON.stringify(Niri.acted) === '{"FocusWindow":{"id":21}}',
-            JSON.stringify(Niri.acted));
+        // Go To says whether it opened anything, so a look opened through it
+        // settles only then.
+        const wentOther = Sessions.goTo(other);
+        expect("Go To focuses its window, and says it opened", wentOther === true
+            && JSON.stringify(Niri.acted) === '{"FocusWindow":{"id":21}}',
+            `${wentOther} ${JSON.stringify(Niri.acted)}`);
         const unseen = find("NOWIN6");
         expect("with no window niri shows, none", unseen.window === null,
             JSON.stringify(unseen.window));
         expect("a session with no window is itself", Sessions.isOf(unseen) === "agent:NOWIN6",
             Sessions.isOf(unseen));
-        Sessions.goTo(unseen);
-        expect("Go To asks its kitty", Niri.spawned.join(" ")
-            === "kitten @ --to unix:@kitty-700 focus-window --match id:2", Niri.spawned.join(" "));
+        const wentUnseen = Sessions.goTo(unseen);
+        expect("Go To asks its kitty, and says it opened", wentUnseen === true
+            && Niri.spawned.join(" ") === "kitten @ --to unix:@kitty-700 focus-window --match id:2",
+            `${wentUnseen} ${Niri.spawned.join(" ")}`);
         elsewhere();
         parks();
         lastBoot();
@@ -271,10 +275,11 @@ ShellRoot {
             JSON.stringify(out));
         expect("this machine's first", Sessions.running.slice(0, 3).every(session => session.here),
             Sessions.running.map(session => session.address).join(" "));
-        Sessions.goTo(far);
+        const wentFar = Sessions.goTo(far);
         const joined = Niri.spawned.join(" ");
-        expect("Go To joins it by its node's words", inSessions(joined)
-            === "sessions zsh -lic mycelium attach r-far", joined);
+        expect("Go To joins it by its node's words, and says it opened", wentFar === true
+            && inSessions(joined) === "sessions zsh -lic mycelium attach r-far",
+            `${wentFar} ${joined}`);
         // Its window opens on its orchestrator's workspace, never on the
         // one Joel is on, keeping niri's token, since he asked for it (Joel,
         // 2026-11-15 18:45: one "materialize[d] on my main chrome workspace").
@@ -286,8 +291,9 @@ ShellRoot {
             opened?.reference?.Id === 8 && opened?.app_id === asked(joined)?.classed,
             JSON.stringify(Niri.acted));
         expect("and keeps niri's token", !joined.includes("XDG_ACTIVATION_TOKEN"), joined);
-        Sessions.goTo(out);
-        expect("one out of reach isn't joined", root.unjoined === "OUTRCH", root.unjoined);
+        const wentOut = Sessions.goTo(out);
+        expect("one out of reach isn't joined, nor said opened",
+            root.unjoined === "OUTRCH" && wentOut === false, `${root.unjoined} ${wentOut}`);
         hosts();
         Sessions.steer("farawy", { act: "pause" }, (put, answer, sent) => {
             root.farawyTold = [put, answer?.error?.message ?? null, sent];
@@ -309,7 +315,8 @@ ShellRoot {
                 session: "s-hosted", addresses: ["HOSTED"] }
         };
         const before = Niri.spawns.length;
-        Sessions.goTo(hosted);
+        const wentHosted = Sessions.goTo(hosted);
+        expect("a hosted one viewed is said opened", wentHosted === true, String(wentHosted));
         const viewed = Niri.spawned.join(" ");
         const hostedAsk = asked(viewed);
         // Titled before its words run, as pi's would be with no name or folder said.
@@ -319,11 +326,12 @@ ShellRoot {
                 + 'sh -c printf "\\033]2;%s\\007" "$0"; exec "$@" \u03c0 '
                 + "mycelium --realm harbour attach --host harbour-attended --session s-hosted",
             viewed);
-        Sessions.goTo(hosted);
-        expect("viewed only once while its window comes, and asked again it says so",
+        const wentAgain = Sessions.goTo(hosted);
+        expect("viewed only once while its window comes, and asked again it says so, opened",
             Niri.spawns.length === before + 1 && root.unhosted === "HOSTED"
-            && root.unhostedWhy === "opening",
-            `${root.unhosted} ${root.unhostedWhy} ${Niri.spawns.slice(before).join("\n")}`);
+            && root.unhostedWhy === "opening" && wentAgain === true,
+            `${root.unhosted} ${root.unhostedWhy} ${wentAgain} `
+                + Niri.spawns.slice(before).join("\n"));
         const record = { opened: "", kitty: null, presence: hosted.presence };
         const window = { id: 40, opened: "pi-hosted.s-hosted" };
         expect("its viewer is its window, by the name it opened with",
@@ -331,34 +339,39 @@ ShellRoot {
             JSON.stringify(Sessions.windowOf(record, {}, { "pi-hosted.s-hosted": [window] })));
         const listing = Niri.windows;
         Niri.windows = Object.assign({}, listing, { "40": window });
-        Sessions.goTo(Object.assign({}, hosted, { window: window }));
+        const wentRaised = Sessions.goTo(Object.assign({}, hosted, { window: window }));
         Niri.windows = listing;
         const raised = JSON.stringify(Niri.acted);
-        expect("Go To raises its viewer", raised === '{"FocusWindow":{"id":40}}', raised);
+        expect("Go To raises its viewer, and says it opened",
+            wentRaised === true && raised === '{"FocusWindow":{"id":40}}',
+            `${wentRaised} ${raised}`);
         // No words to view it by is said as that, even while a viewer
         // asked for moments ago comes, as a row's Reopen says it.
-        Sessions.goTo(Object.assign({}, hosted, { address: "WORDLESS", attach: null }));
+        const wentWordless = Sessions.goTo(Object.assign({}, hosted,
+            { address: "WORDLESS", attach: null }));
         expect("one with no words is said, never opened", root.unhosted === "WORDLESS"
-            && root.unhostedWhy === "hosted" && Niri.spawns.length === before + 1,
-            `${root.unhosted} ${root.unhostedWhy} ${Niri.spawned.join(" ")}`);
+            && root.unhostedWhy === "hosted" && Niri.spawns.length === before + 1
+            && wentWordless === false,
+            `${root.unhosted} ${root.unhostedWhy} ${wentWordless} ${Niri.spawned.join(" ")}`);
         // One whose id no app id could carry has no viewer to raise, even
         // while niri lists a window that opened with no app id.
         const windows = Niri.windows;
         Niri.windows = Object.assign({}, windows, { "99": { id: 99, pid: 990, opened: "" } });
         Niri.acted = null;
-        Sessions.goTo(Object.assign({}, hosted, { address: "UNNAMED",
+        const wentUnnamed = Sessions.goTo(Object.assign({}, hosted, { address: "UNNAMED",
             presence: Object.assign({}, hosted.presence, { session: "s unnamed" }) }));
         Niri.windows = windows;
         expect("one whose viewer can't be named raises no window, but is said",
             Niri.acted === null && root.unhosted === "UNNAMED" && root.unhostedWhy === "unnamed"
-            && Niri.spawns.length === before + 1,
-            `${JSON.stringify(Niri.acted)} ${root.unhosted} ${root.unhostedWhy}`);
+            && Niri.spawns.length === before + 1 && wentUnnamed === false,
+            `${JSON.stringify(Niri.acted)} ${root.unhosted} ${root.unhostedWhy} ${wentUnnamed}`);
         // pi run here in another terminal: no window, kitty or holder.
-        Sessions.goTo({ address: "ELSETERM", window: null, kitty: null, held: null,
-            here: true, presence: { session: "s-elsewhere-term" } });
+        const wentElsewhere = Sessions.goTo({ address: "ELSETERM", window: null, kitty: null,
+            held: null, here: true, presence: { session: "s-elsewhere-term" } });
         expect("one in a terminal it can't reach is said, never a press that does nothing",
-            root.unreached === "ELSETERM" && Niri.spawns.length === before + 1,
-            `${root.unreached} ${Niri.spawned.join(" ")}`);
+            root.unreached === "ELSETERM" && Niri.spawns.length === before + 1
+            && wentElsewhere === false,
+            `${root.unreached} ${wentElsewhere} ${Niri.spawned.join(" ")}`);
         // A row's own Reopen for one no host serves yet, as just after a
         // crash, views it by its entry's words to wait for its host, once
         // while that window comes; one whose entry gives none is said.
@@ -711,10 +724,11 @@ ShellRoot {
             asleep: true } });
         const goneAt = Niri.spawns.length;
         Niri.acted = null;
-        Sessions.wakeToGo(dreamer, dreamer);
+        const wentDreamer = Sessions.wakeToGo(dreamer, dreamer);
         const opened = Niri.spawns.slice(goneAt);
         expect("Go To on one asleep in pi's host opens one viewer where Joel is",
-            opened.length === 1 && asked(opened[0])?.classed === "pi-hosted.s-dreamer"
+            wentDreamer === true && opened.length === 1
+            && asked(opened[0])?.classed === "pi-hosted.s-dreamer"
             && !JSON.stringify(Niri.acted).includes('"reference":{"Id":5}'),
             `${opened.join(" | ")} ${JSON.stringify(Niri.acted)}`);
         // Its closed window still named by the windows daemon's index alone,

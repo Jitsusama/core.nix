@@ -1182,8 +1182,7 @@ Provider {
     // session is gone opened nothing, so it stays as it was. Whether it
     // opened, so a caller settling it elsewhere settles only what opened.
     // A session held whose window can't be raised or opened (Sessions.qml's
-    // unopened and unhosted) still counts as opened, until Sessions.goTo
-    // says whether it opened anything, by Mon 23 Nov 2026.
+    // unopened and unhosted) opened nothing either, as Sessions.goTo says.
     function openLook(one) {
         if (one.kind === "terminal") {
             if (!goToCell(one))
@@ -1246,8 +1245,8 @@ Provider {
                 + ` ${moved ? "moved on" : "gone"}, ${told ? "told" : "not told, in use"}`);
             return false;
         }
-        Sessions.wakeToGo(Sessions.parkedAs(cell.address), cell);
-        return true;
+        // Only a plain false says nothing opened, since Go To said why.
+        return Sessions.wakeToGo(Sessions.parkedAs(cell.address), cell) !== false;
     }
 
     // What a look's row does with the cell behind it (Joel, 2026-11-16:
@@ -2350,6 +2349,17 @@ Provider {
             kind: "do",
             thing: provider.itemThing(each),
             cell: () => WaitingOnYou.session(each),
+            // It asks its own cell only while it blocks that cell, not
+            // another session on its quest (cellRows), and only while that
+            // cell wants Joel as For You hears it, so one whose ask he put
+            // off leads nothing, as its blocks count it (wantingHeard).
+            asksItsCell: () => {
+                const cell = WaitingOnYou.session(each);
+                const to = String(cell?.address ?? "").toUpperCase();
+                const heard = provider.wantingHeard.filter(session =>
+                    String(session.address).toUpperCase() === to);
+                return cell !== null && ForYou.blocked(each, heard) > 0;
+            },
             make: now => provider.item(each, now)
         })), looks.waiting.map(one => ({
             kind: "look",
@@ -2485,9 +2495,12 @@ Provider {
     // or none, stands first while headings show, else by `weight`, its
     // heaviest, among the loose rows (ForYouCells.js's laidOut). What a
     // cell asks is its want's row, or a to-do of its own it blocks on, as a
-    // session whose want is an action asks it (ForYou.js's blocked).
+    // session whose want is an action asks it (ForYou.js's blocked): the
+    // cell itself, where a to-do can tell (asksItsCell), so one that
+    // blocks only another session on its quest never leads it.
     function cellRows(band, now, asked, weight) {
-        const asks = one => one.kind === "agent" || one.kind === "do" && one.thing.blocks > 0;
+        const asks = one => one.kind === "agent" || (one.asksItsCell
+            ? one.asksItsCell() : one.kind === "do" && one.thing.blocks > 0);
         return Cells.laidOut(Cells.byCell(band, one => one.cell(), asks),
             items => bandRows(items, now), cellHeading, { rows: asked, weight });
     }
