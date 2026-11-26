@@ -20,6 +20,7 @@ mod carried;
 mod cells;
 pub mod cited;
 pub mod holds;
+pub mod load;
 pub mod locked;
 mod misses;
 mod owner;

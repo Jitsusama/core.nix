@@ -38,6 +38,15 @@ holding a space, as one broken across two lines does, is counted too.
 - Over costs him: nothing watches his apps, so a call or a window going slow under load goes
   unseen until he finds it himself.
 
+## The Machine Loaded Past His Limits
+
+- Measures: `load-over`
+- Target: 0 minutes in the hour.
+- Joel, 25 Nov: "i want this laptop to be less loaded overall. i would like to more heavily
+  weight cloud VMs and the MacBook and keep this laptop lively but never heavily loaded."
+- Over costs him: a machine he works on that answers slowly, its apps and desktop waiting while
+  agents run there that could have run elsewhere.
+
 ## Wi-Fi Holding a Call's Video
 
 - Measures: `wifi-video-held`
