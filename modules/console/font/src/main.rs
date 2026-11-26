@@ -466,17 +466,20 @@ mod tests {
     fn more_than_256_glyphs_are_refused_for_the_colours() {
         let why = parse_glyphs("U+0100..U+0200").unwrap_err();
         assert!(why.contains("bright colours"), "{why}");
-        assert!(parse_glyphs("U+0100..U+01FF").is_ok());
+        assert_eq!(
+            parse_glyphs("U+0100..U+01FF")
+                .expect("256 glyphs should fit the bright colours")
+                .len(),
+            256
+        );
     }
 
     #[test]
     fn a_word_that_is_neither_is_refused() {
-        assert!(parse_glyphs("ab").unwrap_err().contains("neither"));
-        assert!(
-            parse_glyphs("U+0042..U+0041")
-                .unwrap_err()
-                .contains("backwards")
-        );
+        let why = parse_glyphs("ab").unwrap_err();
+        assert!(why.contains("neither"), "{why}");
+        let why = parse_glyphs("U+0042..U+0041").unwrap_err();
+        assert!(why.contains("backwards"), "{why}");
     }
 
     #[test]
@@ -488,18 +491,33 @@ mod tests {
                 height: 24
             }
         );
-        assert!(parse_cell("64x64").is_err());
-        assert!(parse_cell("16").is_err());
+        assert!(
+            parse_cell("64x64").is_err(),
+            "a 64x64 cell is past what the console draws"
+        );
+        assert!(
+            parse_cell("16").is_err(),
+            "a cell needs a width and a height"
+        );
     }
 
     #[test]
     fn a_half_block_is_half_the_cell() {
         let top = block('▀', CELL).unwrap();
-        assert!(top[..16 * 16].iter().all(|on| *on));
-        assert!(top[16 * 16..].iter().all(|on| !on));
+        assert!(
+            top[..16 * 16].iter().all(|on| *on),
+            "the top half of ▀ should be lit"
+        );
+        assert!(
+            top[16 * 16..].iter().all(|on| !on),
+            "the bottom half of ▀ should be dark"
+        );
         let shade = block('▒', CELL).unwrap();
         assert_eq!(shade.iter().filter(|on| **on).count(), 16 * 32 / 2);
-        assert!(block('A', CELL).is_none());
+        assert!(
+            block('A', CELL).is_none(),
+            "a letter is no block, so it is drawn from the font"
+        );
     }
 
     #[test]
@@ -513,7 +531,10 @@ mod tests {
         }
         pixels[16 * 16 + 10] = true;
         carry_to_edges(&mut pixels, CELL);
-        assert!((0..32).all(|y| pixels[y * 16 + 7] && pixels[y * 16 + 8]));
+        assert!(
+            (0..32).all(|y| pixels[y * 16 + 7] && pixels[y * 16 + 8]),
+            "a stroke two rows short of each edge should reach both"
+        );
         assert!(
             !pixels[16 * 16 + 15],
             "a dot five columns from the edge stays where it is"
@@ -571,7 +592,10 @@ mod tests {
             bitmaps[..64].iter().all(|byte| *byte == 0xff),
             "█ in slot 0"
         );
-        assert!(bitmaps[64..].iter().all(|byte| *byte == 0));
+        assert!(
+            bitmaps[64..].iter().all(|byte| *byte == 0),
+            "every slot but █'s should be blank"
+        );
         let table: Vec<&[u8]> = out[32 + 256 * 64..].split(|byte| *byte == 0xff).collect();
         assert_eq!(table.len(), 257, "a 0xFF ends each slot's entry");
         assert_eq!(

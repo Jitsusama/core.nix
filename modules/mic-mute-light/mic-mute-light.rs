@@ -135,35 +135,64 @@ mod tests {
 
     #[test]
     fn only_the_outermost_closing_bracket_ends_an_array() {
-        assert!(ends_an_array("]"));
-        assert!(!ends_an_array("  ]"));
-        assert!(!ends_an_array("    \"permissions\": [ \"r\" ],"));
+        assert!(ends_an_array("]"), "a bracket alone should end an array");
+        assert!(
+            !ends_an_array("  ]"),
+            "an indented bracket closes an inner array, not the dump's"
+        );
+        assert!(
+            !ends_an_array("    \"permissions\": [ \"r\" ],"),
+            "a bracket inside a line should not end an array"
+        );
     }
 
     #[test]
     fn a_mute_or_the_default_source_touches_the_mute() {
-        assert!(touches_the_mute("            \"mute\": true,"));
-        assert!(touches_the_mute(
-            "        \"key\": \"default.audio.source\","
-        ));
-        assert!(!touches_the_mute("            \"volume\": 1.0,"));
-        assert!(!touches_the_mute(
-            "        \"key\": \"default.audio.sink\","
-        ));
+        assert!(
+            touches_the_mute("            \"mute\": true,"),
+            "a node's mute should touch the mute"
+        );
+        assert!(
+            touches_the_mute("        \"key\": \"default.audio.source\","),
+            "a change of default source should touch the mute"
+        );
+        assert!(
+            !touches_the_mute("            \"volume\": 1.0,"),
+            "a volume alone should not touch the mute"
+        );
+        assert!(
+            !touches_the_mute("        \"key\": \"default.audio.sink\","),
+            "the default sink is a speaker, so it should not touch the mute"
+        );
     }
 
     #[test]
     fn a_light_not_yet_set_is_asked_after_at_any_array() {
-        assert!(asks_again(false, None));
-        assert!(asks_again(true, Some(false)));
-        assert!(!asks_again(false, Some(true)));
+        assert!(
+            asks_again(false, None),
+            "a light not yet set should be asked after at any array"
+        );
+        assert!(
+            asks_again(true, Some(false)),
+            "an array touching the mute should be asked after"
+        );
+        assert!(
+            !asks_again(false, Some(true)),
+            "a set light and an untouched mute need no asking"
+        );
     }
 
     #[test]
     fn wpctl_says_muted_only_with_its_mark() {
-        assert!(muted("Volume: 1.00 [MUTED]\n"));
-        assert!(!muted("Volume: 1.00\n"));
-        assert!(!muted(""));
+        assert!(
+            muted("Volume: 1.00 [MUTED]\n"),
+            "wpctl's [MUTED] mark should read as muted"
+        );
+        assert!(
+            !muted("Volume: 1.00\n"),
+            "a volume without the mark should not read as muted"
+        );
+        assert!(!muted(""), "no answer should not read as muted");
     }
 
     #[test]

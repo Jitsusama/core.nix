@@ -54,7 +54,7 @@ const KERNEL_LOG_RECORD: &str = "dmesg-";
 #[cfg(target_arch = "x86_64")]
 const O_DIRECT: i32 = 0o40000;
 #[cfg(target_arch = "aarch64")]
-const O_DIRECT: i32 = 0o200000;
+const O_DIRECT: i32 = 0o200_000;
 
 const MCL_CURRENT: i32 = 1;
 const MCL_FUTURE: i32 = 2;
@@ -307,9 +307,13 @@ mod tests {
             level: 3,
             message: "INFO: task btrfs-transacti:612 blocked for more than 120 seconds.",
         };
-        assert!(names_disk_trouble(&btrfs));
-        assert!(names_disk_trouble(&nvme));
-        assert!(names_disk_trouble(&hung));
+        for trouble in [btrfs, nvme, hung] {
+            assert!(
+                names_disk_trouble(&trouble),
+                "{:?} should name disk trouble",
+                trouble.message
+            );
+        }
     }
 
     #[test]
@@ -322,25 +326,42 @@ mod tests {
             level: 3,
             message: "iwlwifi 0000:02:00.0: Microcode SW error detected",
         };
-        assert!(!names_disk_trouble(&notice));
-        assert!(!names_disk_trouble(&wifi));
+        for fine in [notice, wifi] {
+            assert!(
+                !names_disk_trouble(&fine),
+                "{:?} should not name disk trouble",
+                fine.message
+            );
+        }
     }
 
     #[test]
     fn pstore_holding_a_kernel_log_is_seen() {
         let pstore = std::env::temp_dir().join(format!("pstore-{}", std::process::id()));
         fs::create_dir_all(&pstore).unwrap();
-        assert!(!holds_a_kernel_log(&pstore));
+        assert!(
+            !holds_a_kernel_log(&pstore),
+            "an empty pstore should hold no kernel log"
+        );
         fs::write(pstore.join("pmsg-ramoops-0"), "").unwrap();
-        assert!(!holds_a_kernel_log(&pstore));
+        assert!(
+            !holds_a_kernel_log(&pstore),
+            "a user message log is no kernel log"
+        );
         fs::write(pstore.join("dmesg-efi-178000000001"), "").unwrap();
-        assert!(holds_a_kernel_log(&pstore));
+        assert!(
+            holds_a_kernel_log(&pstore),
+            "a dmesg file should be seen as a kernel log"
+        );
         fs::remove_dir_all(&pstore).unwrap();
     }
 
     #[test]
     fn no_pstore_holds_no_kernel_log() {
-        assert!(!holds_a_kernel_log(Path::new("/nonexistent/pstore")));
+        assert!(
+            !holds_a_kernel_log(Path::new("/nonexistent/pstore")),
+            "a pstore that isn't there should hold no kernel log"
+        );
     }
 
     #[test]
