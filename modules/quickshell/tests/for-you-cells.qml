@@ -113,6 +113,21 @@ QtObject {
         expect("no words, nothing made up", Cells.headingName(cellA, { doing: "working" }, {}),
             "");
 
+        // What a heading takes as served is read from the agents daemon's
+        // records as Agents.qml's standingOf reads them, by the row's key:
+        // its name, and how it stands without its figures.
+        const records = { "row:agents:AAAAAA": { row: { name: "Served A", order: 3,
+            held: { doing: "needs you", spent: "$4" } } } };
+        expect("a heading through the daemon's record",
+            Cells.headingName(cellA, Cells.standing(records, cellA.address), said),
+            "Served A \u00b7 needs you");
+        expect("a record saying nothing of how it stands, its name alone",
+            Cells.standing({ "row:agents:AAAAAA": { row: { name: "Served A" } } }, "AAAAAA"),
+            { name: "Served A", doing: "" });
+        expect("no record yet, its title alone",
+            Cells.headingName(cellA, Cells.standing(records, "BBBBBB"), said), "a");
+        expect("no records at all, none", Cells.standing(undefined, "AAAAAA"), null);
+
         // A desktop notice a session raised names its cell as a link, which
         // finds the session among those held by any address it answers to,
         // so the notice stands under that session's heading; one naming no
