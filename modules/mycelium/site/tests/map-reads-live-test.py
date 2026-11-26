@@ -1947,7 +1947,7 @@ def test_a_reading_that_fails_to_draw_is_said_broken_until_the_next_draws(
     expect(asof, "the map didn't say it couldn't draw").to_contain_text("The map couldn't draw")
     # The node stays live throughout, so only the next reading drawn whole can say so again.
     mycelium_node.tell("cell", changed=[{"key": "cell:TERN03", "standing": "moving"}])
-    the_map_counts(page, "8 cells, 3 moving, 1 stuck", "the map missed the next reading")
+    the_map_counts(page, COUNTED_MOVED, "the map missed the next reading")
     the_map_stands(page, "live")
     expect(asof, "the map still said it couldn't draw").not_to_contain_text("couldn't draw")
 

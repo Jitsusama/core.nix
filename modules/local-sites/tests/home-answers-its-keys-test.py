@@ -77,16 +77,21 @@ LIGHT_STROKE = re.compile(r"^    g \{ stroke: ([^;]+); \}", re.MULTILINE)
 # first screen; one tall enough for the crest at its 13rem, as home.css draws
 # it from about 70rem tall; and one between, past the 60rem the threshold
 # tightens under, whose crest still follows its height: 30svh less 8rem.
+# Each crest is said as pixels of the height and a number of rems, since an
+# interface's rem is its body's size, which grows with the width from 15 px
+# to 16 px (theme/web/web.nix).
 LAPTOPS = [(1280, 800), (1024, 768)]
 TALL = (1280, 1200)
-FULL_CREST_PX = 208
+FULL_CREST = (0, 13)
 BETWEEN = (1280, 1000)
-BETWEEN_CREST_PX = 172
+BETWEEN_CREST = (300, -8)
 # A phone, narrow and short, whose crest goes by its width alone, at 9rem: a
 # short screen's shrinking is the wide one's, so the crest doesn't fall to its
 # least on a phone or change size as its address bar slides.
 PHONE = (375, 667)
-PHONE_CREST_PX = 144
+PHONE_CREST = (0, 9)
+# The page's rem, in pixels.
+REM = "() => parseFloat(getComputedStyle(document.documentElement).fontSize)"
 
 
 @pytest.fixture
@@ -244,21 +249,23 @@ def test_a_laptops_first_screen_shows_a_site_whole(
 
 
 @pytest.mark.parametrize(
-    ("size", "crest_px"),
-    [(TALL, FULL_CREST_PX), (BETWEEN, BETWEEN_CREST_PX), (PHONE, PHONE_CREST_PX)],
+    ("size", "crest"),
+    [(TALL, FULL_CREST), (BETWEEN, BETWEEN_CREST), (PHONE, PHONE_CREST)],
     ids=["tall", "between", "phone"],
 )
 def test_a_screens_crest_follows_its_height_when_wide_and_its_width_on_a_phone(
-    browser: Browser, home: str, size: tuple[int, int], crest_px: int
+    browser: Browser, home: str, size: tuple[int, int], crest: tuple[int, int]
 ) -> None:
     """A tall screen draws its crest whole, a shorter one smaller, and a phone at its width's."""
     opened = Opened(browser, home, size, "dark")
     try:
-        crest = opened.page.locator(".crest").bounding_box()
-        assert crest, "the crest was drawn with no box"
+        box = opened.page.locator(".crest").bounding_box()
+        assert box, "the crest was drawn with no box"
+        pixels, rems = crest
+        wanted = pixels + rems * opened.page.evaluate(REM)
         # Within a pixel, since the browser lays boxes out in 1/64 px steps.
-        drawn = crest["width"]
-        assert abs(drawn - crest_px) < 1, f"a {size} screen drew the crest {drawn} px"
+        drawn = box["width"]
+        assert abs(drawn - wanted) < 1, f"a {size} screen drew the crest {drawn} px, not {wanted}"
     finally:
         opened.close()
 
@@ -271,18 +278,23 @@ GAPS = """() => [".crest", ".contents"].map((part) => {
 })"""
 
 
+# The threshold's gaps once a short wide screen has taken them to nothing.
+SHUT = ["0px", "0px"]
+
+
 @pytest.mark.parametrize(
-    ("size", "tightened"),
-    [(LAPTOPS[0], True), (BETWEEN, False)],
+    ("size", "threshold"),
+    [(LAPTOPS[0], "shut"), (BETWEEN, "open")],
     ids=["laptop", "between"],
 )
 def test_only_a_screen_under_60rem_tall_tightens_the_threshold(
-    browser: Browser, home: str, size: tuple[int, int], tightened: bool
+    browser: Browser, home: str, size: tuple[int, int], threshold: str
 ) -> None:
     """The threshold's gaps go only on a wide screen shorter than 60rem."""
     opened = Opened(browser, home, size, "dark")
     try:
         gaps = opened.page.evaluate(GAPS)
-        assert (gaps == ["0px", "0px"]) == tightened, f"a {size} screen's gaps were {gaps}"
+        shut = gaps == SHUT
+        assert shut == (threshold == "shut"), f"a {size} screen's gaps were {gaps}"
     finally:
         opened.close()
