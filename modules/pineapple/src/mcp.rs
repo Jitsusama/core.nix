@@ -122,6 +122,8 @@ pub struct Gateway {
     /// The tool the last call put to the gateway, once its `tools/call`
     /// went out, so a caller can tell a tool's failing from one before.
     put: Option<String>,
+    /// Each tool the last call put to the gateway, on any of its passes.
+    asked_of: Vec<String>,
 }
 
 /// Why a sign-in is rested from.
@@ -167,6 +169,7 @@ impl Gateway {
             resting: None,
             asked: 0,
             put: None,
+            asked_of: Vec::new(),
         }
     }
 
@@ -178,12 +181,20 @@ impl Gateway {
         self.put.as_deref() == Some(tool)
     }
 
+    /// Whether the last call put `tool` to the gateway on any of its
+    /// passes, as before it turned the tool's backend on.
+    #[must_use]
+    pub fn asked_of(&self, tool: &str) -> bool {
+        self.asked_of.iter().any(|one| one == tool)
+    }
+
     /// What `tool` says, asked with `arguments`.
     ///
     /// # Errors
     ///
     /// Why it said nothing: see [`Called`].
     pub fn call(&mut self, tool: &str, arguments: &Value) -> Result<String, Called> {
+        self.asked_of.clear();
         match self.once(tool, arguments) {
             Err(Called::Failed(why)) if why.contains(&format!("{tool}{NOT_AVAILABLE}")) => {
                 let backend = tool.split('_').next().unwrap_or_default();
@@ -235,6 +246,7 @@ impl Gateway {
             })?;
             let answer = if opened {
                 self.put = Some(tool.to_owned());
+                self.asked_of.push(tool.to_owned());
                 match self.post("tools/call", Some(&params)) {
                     Ok(answer) => answer,
                     Err(unreached) => {

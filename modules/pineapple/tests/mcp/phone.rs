@@ -66,7 +66,7 @@ fn an_alert_is_unsure_only_once_its_tool_was_asked_and_its_words_never_hold_it_b
         }
     }
     type Answer = fn(&Seen, usize) -> Reply;
-    let cases: [(&str, Answer, &str, usize); 18] = [
+    let cases: [(&str, Answer, &str, usize); 19] = [
         (
             "lost",
             |one, n| sending(one, n, |_| status(502)),
@@ -98,9 +98,17 @@ fn an_alert_is_unsure_only_once_its_tool_was_asked_and_its_words_never_hold_it_b
         ("internal", rpc::<{ -32_603 }>, "unsure", 2),
         (
             "enable-lost",
-            |one, n| sending(one, n, |n| if n == 0 { turned_off() } else { status(502) }),
+            |one, n| {
+                sending(one, n, |n| {
+                    if n % 2 == 0 {
+                        turned_off()
+                    } else {
+                        status(502)
+                    }
+                })
+            },
             "unsent",
-            2,
+            4,
         ),
         (
             "still-off",
@@ -129,6 +137,19 @@ fn an_alert_is_unsure_only_once_its_tool_was_asked_and_its_words_never_hold_it_b
             },
             "sent plain",
             4,
+        ),
+        // Nor when the turn-on they set off fails.
+        (
+            "quoting-off-refused",
+            |one, n| {
+                sending(one, n, |n| match n {
+                    0 => turned_off(),
+                    1 => tool("already on", true),
+                    _ => tool("sent", false),
+                })
+            },
+            "sent plain",
+            3,
         ),
         (
             "refused",

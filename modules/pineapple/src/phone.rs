@@ -222,9 +222,7 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> 
         (said, called)
     };
     let (said, sent) = match ask(gateway, alert) {
-        (_, Err(Called::Failed(_) | Called::Declined(_)))
-            if gateway.put_to(TO_SELF) && !alert.words.is_empty() =>
-        {
+        (_, Err(called)) if !alert.words.is_empty() && plainly(gateway, &called) => {
             let plain = Alert {
                 words: WORDS_NOT_TAKEN,
                 ..alert
@@ -246,6 +244,17 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> 
         Called::Refused => Missed::NotSent("the gateway refused Joel's sign-in".to_owned()),
         Called::NoSignIn(_) => Missed::NotSent("no sign-in to the gateway was given".to_owned()),
     })
+}
+
+/// Whether a send that came back `called` is sent once more without its
+/// words: its tool's failing or refusal, or a failing after the tool was
+/// asked, as its backend was turned on, when nothing had run.
+fn plainly(gateway: &Gateway, called: &Called) -> bool {
+    if gateway.put_to(TO_SELF) {
+        matches!(called, Called::Failed(_) | Called::Declined(_))
+    } else {
+        gateway.asked_of(TO_SELF)
+    }
 }
 
 /// Whether a tool's failing says Slack's rate was spent, which did nothing:
