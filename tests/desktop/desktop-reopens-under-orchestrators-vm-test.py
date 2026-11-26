@@ -1275,8 +1275,10 @@ def asked_from_a_link(desktop: Desktop, link: str) -> None:
     desktop.launcher_until(lambda shown: shown["mode"] == "insert")
     machine.send_chars(link)
     machine.send_key("ret")
-    # Return keeps the words, taken, and says the start under them, and then he leaves.
-    desktop.launcher_until(lambda shown: (shown.get("start") or {}).get("says", "") != "")
+    # Return keeps the words, taken, and says the start under them, and then he leaves. Its
+    # wait is counted only while it's under way, which each caller's silent node keeps it, so
+    # an earlier walk's words left on the link's act can't pass for this one's.
+    desktop.launcher_until(lambda shown: (shown.get("start") or {}).get("waited", "") != "")
     desktop.as_account("qs ipc call launcher toggle")
     desktop.launcher_until(lambda shown: shown["open"] is False)
 
