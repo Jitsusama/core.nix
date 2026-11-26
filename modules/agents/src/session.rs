@@ -217,13 +217,28 @@ impl<'a> Session<'a> {
     }
 
     /// How it stands among the others, given who has something Joel can
-    /// do now and the machine's queue.
+    /// do now and the machine's queue: parked where the node says it is,
+    /// whatever its presence last said, as one its presence says is parked
+    /// stays parked (`standing::state`), since the node wakes a parked
+    /// session for any steer, so its state, Return, acts and hue may offer
+    /// only Wake and Talk.
     pub fn stands(self, joel_can: &JoelCan, jobs: &[Value]) -> Stands {
-        standing::state(
-            self.presence(),
-            asks_joel(self.presence(), joel_can),
-            in_line(jobs, self.id()).is_some(),
-        )
+        self.parked_or(|| {
+            standing::state(
+                self.presence(),
+                asks_joel(self.presence(), joel_can),
+                in_line(jobs, self.id()).is_some(),
+            )
+        })
+    }
+
+    /// Parked where the node says it is, else as `presence` reads.
+    fn parked_or(self, presence: impl FnOnce() -> Stands) -> Stands {
+        if self.lives() == Lives::Parked {
+            Stands::Parked
+        } else {
+            presence()
+        }
     }
 
     /// The kind of want it has, whoever the want is put to, such as
@@ -243,7 +258,9 @@ impl<'a> Session<'a> {
     /// stands for its hour: parked, paused, in line, working or listening.
     #[must_use]
     pub fn stands_wanting_nothing(self, jobs: &[Value]) -> Stands {
-        standing::state(self.presence(), false, in_line(jobs, self.id()).is_some())
+        self.parked_or(|| {
+            standing::state(self.presence(), false, in_line(jobs, self.id()).is_some())
+        })
     }
 
     /// How it stands as Joel looks for what waits on him: parked with its

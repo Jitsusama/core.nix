@@ -467,13 +467,9 @@ impl Row {
 /// Joel needs him, but its acts stay a paused one's, Resume and no Park,
 /// since the harness parks none under another hold (agentic-harness.pi
 /// #2159), as a parked one's stay a parked one's
-/// (`Session::stands_to_joel`). One the node says is parked acts as
-/// parked whatever its presence last said, since the node wakes a parked
-/// session for any steer, so only Wake and Talk may be offered it.
+/// (`Session::stands_to_joel`), one the node says is parked among them
+/// (`Session::stands`).
 fn acting(session: Session, stands: Stands, known: &Known) -> Stands {
-    if session.lives() == session::Lives::Parked {
-        return Stands::Parked;
-    }
     match stands {
         Stands::Needs if session.stands_wanting_nothing(known.jobs) == Stands::Paused => {
             Stands::Paused
@@ -773,6 +769,11 @@ mod tests {
                 row.acts.join(" "),
                 "wake talk",
                 "parked by the node, {what}, it's offered no steer that would wake it"
+            );
+            assert_eq!(
+                (row.state, row.returns),
+                ("parked", "wake"),
+                "parked by the node, {what}, it reads parked and its Return wakes it"
             );
         }
     }

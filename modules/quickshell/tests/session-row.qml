@@ -141,15 +141,16 @@ QtObject {
             if (SessionRow.known(key) !== want)
                 failures.push(`${what}: known "${SessionRow.known(key)}", not "${want}"`);
         }
-        // The shell's own acts: before a row's held, one standing "off"'s,
-        // with no Park; held with nothing the shell makes, Talk alone.
+        // The shell's own acts: Go To where it has a window before its row's held,
+        // and Talk, none that steers or ends it, as how it stands isn't known;
+        // held with nothing the shell makes, Talk alone.
         const fallbacks = [
-            ["unheld, its window here", false, true, true, "switch talk pause close"],
-            ["unheld, elsewhere", false, false, false, "talk pause"],
-            ["held, its window here", true, true, true, "talk"]
+            ["unheld, with a window", false, true, "switch talk"],
+            ["unheld, with none", false, false, "talk"],
+            ["held, with a window", true, true, "talk"]
         ];
-        for (const [what, held, windowed, here, want] of fallbacks) {
-            const got = SessionRow.fallbackOf(held, windowed, here).join(" ");
+        for (const [what, held, windowed, want] of fallbacks) {
+            const got = SessionRow.fallbackOf(held, windowed).join(" ");
             if (got !== want)
                 failures.push(`fallback ${what}: "${got}", not "${want}"`);
         }
@@ -168,38 +169,50 @@ QtObject {
                 failures.push(`Return of ${what}: ${got}, marked ${marked}, not ${want}`);
         }
         // Pressed, an act is kept back only where it would wake what it meant to
-        // steer: anything but Wake and Talk once parked, and Park wherever its row
-        // doesn't offer it, held or not; any other goes for the node to answer.
+        // steer: anything but Wake and Talk once parked, by its row or by the
+        // shell's word; anything but Go To, Wake and Talk before its row's held,
+        // as it may be parked already; and Park wherever its row doesn't offer
+        // it. Any other goes for the node to answer.
         const liveRow = { acts: served(["switch", "talk", "pause", "park", "close"]) };
         const parkedRow = { acts: served(["wake", "talk"]) };
-        const askingRow = { acts: served(["switch", "talk", "pause"]) };
+        const pausedRow = { acts: served(["switch", "talk", "resume", "close"]) };
+        const newerRow = { acts: served(["hush"]) };
         const pressed = [
-            ["Park on one still live", liveRow, "park", ""],
-            ["Park on one parked since", parkedRow, "park", "unsentParked"],
-            ["Pause on one parked since", parkedRow, "pause", "unsentParked"],
-            ["Stop on one parked since", parkedRow, "stop", "unsentParked"],
-            ["Close on one parked since", parkedRow, "close", "unsentParked"],
-            ["Resume on one parked since", parkedRow, "resume", "unsentParked"],
-            ["Wake on one parked", parkedRow, "wake", ""],
-            ["Talk on one parked", parkedRow, "talk", ""],
-            ["Park on one asking Joel since", askingRow, "park", "unsent"],
-            ["Stop on one asking Joel since", askingRow, "stop", ""],
-            ["Resume on one unpaused since", liveRow, "resume", ""],
-            ["Park on a row not yet held", null, "park", "unsent"],
-            ["Park on a row serving no acts", {}, "park", "unsent"],
-            ["Pause on a row not yet held", null, "pause", ""]
+            ["Park on one still live", liveRow, "park", false, ""],
+            ["Park on one parked since", parkedRow, "park", false, "unsentParked"],
+            ["Pause on one parked since", parkedRow, "pause", false, "unsentParked"],
+            ["Stop on one parked since", parkedRow, "stop", false, "unsentParked"],
+            ["Close on one parked since", parkedRow, "close", false, "unsentParked"],
+            ["Resume on one parked since", parkedRow, "resume", false, "unsentParked"],
+            ["Wake on one parked", parkedRow, "wake", false, ""],
+            ["Talk on one parked", parkedRow, "talk", false, ""],
+            ["Park on one paused since", pausedRow, "park", false, "unsent"],
+            ["Stop on one paused since", pausedRow, "stop", false, ""],
+            ["Resume on one unpaused since", liveRow, "resume", false, ""],
+            ["Pause on one the shell holds parked", liveRow, "pause", true, "unsentParked"],
+            ["Talk on one the shell holds parked", liveRow, "talk", true, ""],
+            ["Park on a row not yet held", null, "park", false, "unsentUnheld"],
+            ["Park on a row serving no acts", {}, "park", false, "unsentUnheld"],
+            ["Pause on a row not yet held", null, "pause", false, "unsentUnheld"],
+            ["Close on a row not yet held", null, "close", false, "unsentUnheld"],
+            ["Stop on a row serving only newer acts", newerRow, "stop", false, "unsentUnheld"],
+            ["Go To on a row not yet held", null, "switch", false, ""],
+            ["Talk on a row not yet held", null, "talk", false, ""],
+            ["Wake on a row not yet held", null, "wake", false, ""]
         ];
-        for (const [what, row, id, want] of pressed) {
-            const got = SessionRow.withheld(row, id);
+        for (const [what, row, id, parked, want] of pressed) {
+            const got = SessionRow.withheld(row, id, parked);
             if (got !== want)
                 failures.push(`${what}: withheld "${got}", not "${want}"`);
         }
         // What the foot says of one kept back, in the act's own name, plainly.
         const keptSaid = { unsent: "{act} not sent, its row doesn't offer it now",
-            unsentParked: "{act} not sent, it's parked now, and that would wake it" };
+            unsentParked: "{act} not sent, it's parked now, and that would wake it",
+            unsentUnheld: "{act} not sent, how it stands isn't known yet" };
         const unsents = [
             ["unsent", "Park", "Park not sent, its row doesn't offer it now"],
             ["unsentParked", "Stop", "Stop not sent, it's parked now, and that would wake it"],
+            ["unsentUnheld", "Pause", "Pause not sent, how it stands isn't known yet"],
             ["unsent", "$& {act}", "$& {act} not sent, its row doesn't offer it now"],
             ["unknown", "Park", ""]
         ];

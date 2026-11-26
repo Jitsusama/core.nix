@@ -40,9 +40,9 @@ function rankOf(row) {
 // landing's acts keep no Park (behindActs). Only one here can be closed,
 // last, since the harness ends a session on a close Joel steers it from
 // this machine and drops one a node relays (harness #1023). The daemon
-// serves a held row's own acts (modules/agents/src/row.rs), so a row's
-// drawer asks these only before it's held, standing "off"; a landing's
-// Talk and Go To ask them for its served state (behindActs). The other
+// serves a session's own row its acts (modules/agents/src/row.rs), and
+// before it's held the row offers only Go To and Talk (fallbackOf); a
+// landing's Talk and Go To ask these for its served state (behindActs). The other
 // states restate standing.rs's rule, where a paused session wanting Joel
 // stands "needs" but is served a paused one's acts.
 function acts(standing, windowed, here) {
@@ -120,31 +120,40 @@ function offered(rowActs, returns, fallback) {
     return { ids, marked: returning === "" ? ids[0] ?? "" : returning };
 }
 
-// The shell's own acts for a session's row, `offered`'s fallback: before
-// its row is held, those for one standing "off", which offer no Park;
-// held with no act the shell makes, as from a daemon newer than it, Talk
-// alone, which every session takes, rather than a guess at its state.
-function fallbackOf(held, windowed, here) {
-    return held ? ["talk"] : acts("off", windowed, here);
+// The shell's own acts for a session's row, `offered`'s fallback: Go To
+// where it has a window, and Talk, which every session takes, and none
+// that steers or ends it, since how it stands isn't known: before its row
+// is held it may be parked already, and the node wakes a parked session
+// for any steer; held with no act the shell makes, as from a daemon newer
+// than it, it's no better known. `withheld` keeps back the rest.
+function fallbackOf(held, windowed) {
+    return windowed && !held ? ["switch", "talk"] : ["talk"];
 }
 
 // The act a held row's Return does, read as its drawer marks it, so the
 // two never name different acts.
 function returnOf(rowActs, returns) {
-    return offered(rowActs, returns, fallbackOf(true, false, false)).marked;
+    return offered(rowActs, returns, fallbackOf(true, false)).marked;
 }
 
 // Why an act pressed on a session's row isn't steered, asked of the row
-// as it's served at the press, or "" when it is: one parked since (its
+// as it's served at the press, and whether the shell holds it `parked`,
+// or "" when it is: one parked since (the shell holds it parked, or its
 // row offers Wake) takes only Wake and Talk, since the node wakes a
-// parked session for any steer; Park goes only while its row offers it,
-// so never before the row's held, as one not yet served may be parked
-// already. Any other act goes for the node or the harness to answer, so
-// a Stop pressed as its turn comes to ask Joel still stops it.
-function withheld(row, id) {
-    const served = Array.isArray(row?.acts) ? row.acts.map(one => known(one?.key)) : [];
-    if (served.includes("wake")) {
+// parked session for any steer. One whose row isn't held, or serves no
+// act the shell makes, takes only Go To, Wake and Talk, as it may be
+// parked already. Park goes only while its row offers it. Any other act
+// goes for the node or the harness to answer, so a Stop pressed as its
+// turn comes to ask Joel still stops it.
+function withheld(row, id, parked) {
+    const served = (Array.isArray(row?.acts) ? row.acts : [])
+        .map(one => known(one?.key))
+        .filter(one => one !== "");
+    if (parked || served.includes("wake")) {
         return id === "wake" || id === "talk" ? "" : "unsentParked";
+    }
+    if (served.length === 0) {
+        return ["switch", "wake", "talk"].includes(id) ? "" : "unsentUnheld";
     }
     return id !== "park" || served.includes("park") ? "" : "unsent";
 }

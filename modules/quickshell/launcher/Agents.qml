@@ -115,7 +115,7 @@ Provider {
             Object.assign(provider.topReopens(row), provider.topDrawer(row),
                 provider.topNetwork(row))), row)
         actMade: (key, one, row) => provider.topTalk(key, one, row)
-            ?? provider.topGoTo(one)
+            ?? provider.topSessionAct(one)
             ?? provider.topCarryBack(one, row)
             ?? provider.topLetStart(key, one)
         maker: provider
@@ -300,12 +300,15 @@ Provider {
     // Go To on a served orchestration is the shell's, as a session's own is
     // (sessionAct), since only the shell moves niri's focus (acts.rs): asked
     // of the daemon, it answered nothing and said it couldn't
-    // (moves-keep-their-window, 2026-11-13). Close is the daemon's, served
-    // saying what stays (ReadyRows.js's asking). Null for any other act, or
-    // a session not here.
-    function topGoTo(one) {
-        const session = one.key === "verb:agent:switch" ? sessionAt(one.ask?.address) : null;
-        return session ? sessionAct(session, "switch") : null;
+    // (moves-keep-their-window, 2026-11-13). Park is the shell's too, so a
+    // press on a row gone stale is kept back as a session's own is
+    // (SessionRow.withheld), not sent to wake one parked since. Close is the
+    // daemon's, served saying what stays (ReadyRows.js's asking). Null for
+    // any other act, or a session Sessions doesn't hold.
+    function topSessionAct(one) {
+        const id = /^verb:agent:(switch|park)$/u.exec(String(one.key ?? ""))?.[1];
+        const session = id ? sessionAt(one.ask?.address) : null;
+        return session ? sessionAct(session, id) : null;
     }
 
     // A served row naming its session's drawer, "drawer:agents-top:<address>",
@@ -1428,7 +1431,7 @@ Provider {
     function offeredOf(session) {
         const row = rowsKind?.held?.[`row:agents:${session.address}`]?.row ?? null;
         return SessionRow.offered(row?.acts, row?.held?.returns,
-            SessionRow.fallbackOf(row !== null, windowedOf(session), session.here));
+            SessionRow.fallbackOf(row !== null, windowedOf(session)));
     }
 
     // A session's own acts, in the order its row offers them, each steering
@@ -1572,7 +1575,7 @@ Provider {
         const steered = what => () => {
             const now = current();
             const row = rowsKind?.held?.[`row:agents:${now.address}`]?.row ?? null;
-            const why = SessionRow.withheld(row, what);
+            const why = SessionRow.withheld(row, what, Sessions.parkedAs(now.address) !== null);
             if (why === "") {
                 provider.actOn(now, what);
                 return;

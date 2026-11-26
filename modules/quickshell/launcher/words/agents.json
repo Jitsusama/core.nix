@@ -333,6 +333,7 @@
         "refused": "{act} refused, {why}",
         "unsent": "{act} not sent, its row doesn't offer it now",
         "unsentParked": "{act} not sent, it's parked now, and that would wake it",
+        "unsentUnheld": "{act} not sent, how it stands isn't known yet",
         "unanswered": "the node didn't answer, so it may not have been told",
         "unansweredTo": "{act} had no answer from the node, so it may not be done",
         "unfenced": "not woken, it might come back outside its sandbox",
