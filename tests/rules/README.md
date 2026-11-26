@@ -35,7 +35,8 @@ reads the scripts Nix wrappers build as well as the crates' programs. It
 reads a crate's own code, without its tests, through `rust_code.py`, which
 tells what only tests read as rustc finds modules, not by their names; the
 reader is held to a planted crate by `rust-tests-are-read-as-declared.nix`,
-which runs on a Mac too.
+which runs on a Mac too, and to refuse each crate it would misread by
+`rust-tests-are-read-as-declared.sh`.
 Every rule but `every-ruff-exception-hides-a-finding` is also given to other
 repositories built on core, through `core.lib` in `flake.nix`, each but
 `every-script-finds-what-it-imports` with a waiting list of their own; that

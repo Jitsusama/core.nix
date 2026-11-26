@@ -134,11 +134,12 @@ let
     # Read by tests alone from the folder of the inline module they're
     # declared in, and real code at the top, where no module declares it.
     # A path inside one is read from its folder too, and a module a test's
-    # file declares, under no cfg, is the tests' as well.
+    # file declares, under no cfg or under test's, is the tests' as well.
     "wrap/held.rs" = "";
     "wrap/pathed.rs" = "";
-    "wrap/tests/fixture.rs" = "mod data;\n";
+    "wrap/tests/fixture.rs" = "mod data;\n#[cfg(test)]\nmod probe;\n";
     "wrap/tests/fixture/data.rs" = "";
+    "wrap/tests/fixture/probe.rs" = "";
     "held.rs" = "";
     "pathed.rs" = "";
     "tests/fixture.rs" = "";
@@ -240,6 +241,7 @@ let
     wrap/pathed.rs
     wrap/tests/fixture.rs
     wrap/tests/fixture/data.rs
+    wrap/tests/fixture/probe.rs
     wrapped.rs
   '';
   # The crate's own code, each file named as `--own` names it and followed
