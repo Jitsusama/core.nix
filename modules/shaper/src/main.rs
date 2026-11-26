@@ -2034,7 +2034,7 @@ fn step_links(
         if let Some(said) = said {
             eprintln!("{said}");
         }
-        let rates = led(rates, held, most);
+        let rates = led(rates, held, upload.rate);
         let why = if held { &why } else { &why::Judged::Nothing };
         s.under = upload.queues;
         hold(s, rates, why, room);
