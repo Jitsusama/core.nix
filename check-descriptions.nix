@@ -19,7 +19,9 @@
   a-check-copies-what-each-file-imports = ''
     the shell's checks copy every file a root reaches through imports.nix, a row listing its
     imports in another order copies the same files, and a row left empty is refused, naming
-    its file and imports.nix by its path, each case taking its file from imports.nix as it is
+    its file and imports.nix by its path, each case taking its file from imports.nix as it is;
+    a program's own file importing that file copies what copying it does, and one importing
+    a file the shell's folder doesn't hold is refused, naming it
   '';
   a-claimed-chord-is-refused = ''
     a chord two layers claim, or one claims twice, is refused
@@ -3571,6 +3573,14 @@
     the edit fails and refusing it in place when the host can't, and asks its host before a
     quit, at once, running on when the host says it doesn't hold
   '';
+  pi-hosted-draws-before-it-binds = ''
+    pi built with the host's patches, applied exactly, draws a hosted screen's conversation
+    before its extensions' session start settles, then only what the bind added, or all of it
+    again where the bind did more than add or added beside a call awaiting its result; a
+    throwing early draw takes back only what it added and leaves the history unrepeated, and
+    the conversation is drawn after the bind; it hears the agent only once they are bound,
+    while plain pi still binds before it draws
+  '';
   pi-hosted-screen-stays-in-its-session = ''
     pi built with the host's patches, applied exactly, ends only a hosted screen when it quits
     or crashes, suspends only the viewer that asked when its host can and refuses otherwise,
@@ -4514,10 +4524,12 @@
   start-new-work-goes-to-the-cloud = ''
     Cloud.js, behind Start New Work's In the Cloud, reads the offers the agents daemon passes on,
     dropping them where the node can't take the cloud's need, its price the cheapest in one
-    currency; lists only the places another machine knows by name, a zone's path or a checkout's
-    last step, each once; reads a link's on: past its name; and asks a sprout that needs the
-    cloud, or names a machine by one plain word, refusing a place or a machine it couldn't say
-    and the cloud while it offers nothing
+    currency, and a new price or shape kept as news; asks again once they're stale, or at a
+    Return while none is offered; lists only the places another machine knows by name, a zone's
+    path or a checkout's last step, each once; reads a link's on: past its name; and asks a
+    sprout that needs the cloud, or names a machine by one plain word, refusing a place or a
+    machine it couldn't say and the cloud while it offers nothing, saying apart that nothing is
+    heard yet, why its last ask came back, or that its providers offer none
   '';
   starts-stopped-lifts-only-on-joels-return = ''
     Starts Stopped's Return steps in among its acts wherever the launcher drops its drawer's step,
