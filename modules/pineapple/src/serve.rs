@@ -510,6 +510,8 @@ fn notice(notify: &Path, row: &Value) -> Knock {
             "--category=pineapple.stop",
             "--app-name=pineapple",
             "--print-id",
+            // Ends the flags, so a title opening with "-" is said.
+            "--",
             title,
             &body,
         ])

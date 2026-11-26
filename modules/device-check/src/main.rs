@@ -415,7 +415,8 @@ fn tell(places: &Places, look: &Look) {
             eprintln!("<{priority}>{line}");
         }
         let _ = Command::new(&places.notify)
-            .args(["-u", urgency, "-a", "Devices"])
+            // "--" ends the flags, so a finding opening with "-" is said.
+            .args(["-u", urgency, "-a", "Devices", "--"])
             .arg(line)
             .stdin(Stdio::null())
             .status();

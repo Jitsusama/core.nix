@@ -205,7 +205,9 @@ Scope {
                 .concat(piece.now ? ["--urgency=critical"] : [])
                 .concat(piece.withdraws ? [`--hint=string:x-arrival:${mark}`] : [])
                 .concat(actions.map((action, index) => `--action=${index}=${root.offered(action)}`))
-                .concat([root.summary(piece)],
+                // "--" ends the flags, so words opening with - are said, not
+                // read as notify-send's own flags.
+                .concat(["--", root.summary(piece)],
                     root.message(piece) === "" ? [] : [root.message(piece)])
         });
         told[mark] = {

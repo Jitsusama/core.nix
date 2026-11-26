@@ -161,6 +161,11 @@ fn knocked(case: &str) -> (Daemon, PathBuf, PathBuf, PathBuf) {
     until("the live stop never knocked", || {
         fs::read_to_string(&notified).is_ok_and(|text| text.contains("Someone stopped agents"))
     });
+    let heard = fs::read_to_string(&notified).expect("the notice was heard");
+    assert!(
+        heard.contains("--print-id -- Someone stopped agents"),
+        "the stop's words didn't follow a -- ending notify-send's flags: {heard}"
+    );
     until("the live stop's notice was never kept", || {
         fs::read_to_string(dir.join("pineapple/told.json")).is_ok_and(|told| told.contains(":1.42"))
     });

@@ -113,6 +113,8 @@ def prompts_close(joel: Connection, cgroup: Path, lines: Path, told: Path, own: 
     notices = written(told, "run-r1.scope", 1)
     if f"in {Path.cwd()}" not in notices or "run-r1.scope" not in notices:
         failures.append(f"2: Joel wasn't told its scope and folder: {notices!r}")
+    if "\n--\n" not in f"\n{notices}":
+        failures.append(f"2: its words didn't follow a -- ending the flags: {notices!r}")
     return failures
 
 
