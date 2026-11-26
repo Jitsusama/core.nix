@@ -63,7 +63,7 @@ function screen() {
         prompt: mock.fn(),
       },
     },
-    editor: { getText: () => "draft", setText: mock.fn() },
+    editor: { getText: () => "draft", setText: mock.fn(), addToHistory: mock.fn() },
     themeController: { disableAutoSync: mock.fn() },
     ui: {
       stop: mock.fn(),
@@ -166,6 +166,7 @@ function startingScreen(quitAt) {
     mode[`${part}Container`] = {};
   }
   Object.assign(mode, { widgetContainerAbove: {}, widgetContainerBelow: {} });
+  mode.chatContainer = { children: [] }; // the early draw counts its lines, as pi has them
   mode.options.initialMessage = "hello";
   mode.runtimeHost.session.settingsManager.getFullscreenScrollbar = () => "auto";
   Object.assign(mode.themeController, {
