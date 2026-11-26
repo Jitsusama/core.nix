@@ -2730,7 +2730,8 @@
     full floor drawn the same way at a phone's width and a laptop's, the map drawn across on a
     desk, stacked once the window narrows to a phone's and across again once it widens back,
     the device the keys are on scrolled into view as the map narrows to a phone's and widens to a
-    short desk's, each too big for its room, stacked in a window whose room falls
+    short desk's, each too big for its room to show it beside the worst concern, stacked in a
+    window whose room falls
     short of across only once its floors' names count, a first visit within its budget and a
     second answered unchanged, the web-design skill's page
     checks passing at a phone's width and a desk's in both looks, and nothing logged but what a
