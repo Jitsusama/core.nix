@@ -655,9 +655,10 @@ fn a_search_that_blinks_beside_one_that_cant_be_read_isnt_told_as_both() {
                 said(tool, now)
             } else if asked["query"] == "pineapple" {
                 poisoned()
-            } else if TAGS.fetch_add(1, Ordering::SeqCst) < 2 {
+            } else if TAGS.fetch_add(1, Ordering::SeqCst) != 2 {
                 said(tool, now)
             } else {
+                // The tag's search blinks in one round alone.
                 format!("{FAILS}Slack said: ratelimited")
             }
         },
@@ -670,7 +671,7 @@ fn a_search_that_blinks_beside_one_that_cant_be_read_isnt_told_as_both() {
     assert!(
         came.why
             .contains("search of Slack for pineapple can't be read"),
-        "rounds whose tag search wasn't asked leave the row as it was: {}",
+        "a round whose tag search blinked once leaves the row as it was: {}",
         came.why
     );
 }
