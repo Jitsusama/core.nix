@@ -8,8 +8,9 @@ use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::os::fd::AsRawFd;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixDatagram;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::rc::Rc;
 use std::sync::mpsc::{self, Receiver};
@@ -285,9 +286,7 @@ impl Running {
             &words,
             &also,
         );
-        std::fs::write(&bwrap, format!("#!/bin/sh\n{BWRAP}")).unwrap();
-        std::fs::set_permissions(&bwrap, std::os::unix::fs::PermissionsExt::from_mode(0o755))
-            .unwrap();
+        program(&bwrap, &format!("#!/bin/sh\n{BWRAP}"));
         std::fs::write(running.fence_list(), FENCE_LIST).unwrap();
         for folder in [".secret-folder", ".ssh", ".cache", ".docker"] {
             std::fs::create_dir_all(home.join(folder)).unwrap();
@@ -362,9 +361,7 @@ impl Running {
         let copier = folder.join("copier");
         // Run as wl-copy is, by its path alone, so it names its own shell;
         // it needs nothing past POSIX sh, which Nix's build sandbox has too.
-        std::fs::write(&copier, format!("#!/bin/sh\n{COPIER}")).unwrap();
-        std::fs::set_permissions(&copier, std::os::unix::fs::PermissionsExt::from_mode(0o755))
-            .unwrap();
+        program(&copier, &format!("#!/bin/sh\n{COPIER}"));
         let mut daemon = Command::new(env!("CARGO_BIN_EXE_passwords"))
             .current_dir(&folder)
             .arg("daemon")
@@ -604,6 +601,37 @@ impl Breaches {
     pub fn requests(&self) -> Vec<String> {
         self.requests.lock().unwrap().clone()
     }
+}
+
+/// Writes `script` to `path` as a program that runs. The tests run on many
+/// threads, and a child forked on one keeps every file the process had open
+/// for writing until it runs its own program, so a program this process
+/// had just written would fail to start as busy (ETXTBSY) meanwhile, saying
+/// so only to whoever reads its starter's errors. It's written to a draft,
+/// then copied into place by `cp`, a process of its own, so nothing a test
+/// forks ever holds the program itself open.
+pub fn program(path: &Path, script: &str) {
+    let draft = path.with_extension("draft");
+    std::fs::write(&draft, script).unwrap();
+    program_copied(&draft, path);
+    std::fs::remove_file(&draft).unwrap();
+}
+
+/// Copies the program at `from` to `to` as `program` writes one: by `cp`,
+/// so this process never holds `to` open, made runnable by its path alone.
+pub fn program_copied(from: &Path, to: &Path) {
+    let copied = Command::new("cp")
+        .arg(from)
+        .arg(to)
+        .status()
+        .expect("cp runs");
+    assert!(
+        copied.success(),
+        "cp {} {} failed",
+        from.display(),
+        to.display()
+    );
+    std::fs::set_permissions(to, PermissionsExt::from_mode(0o755)).unwrap();
 }
 
 pub fn until(what: &str, holds: impl Fn() -> bool) {
