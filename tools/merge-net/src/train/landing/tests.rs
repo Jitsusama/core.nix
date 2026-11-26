@@ -735,10 +735,12 @@ fn a_merge_github_cant_say_it_made_keeps_every_merge_and_says_so() {
         "a merge GitHub couldn't say it made wasn't kept and said, with those under it: {:?}",
         landed.landing
     );
+    // Each failed read asks for the merge again, which merges a pull
+    // request once at most, and nothing is reverted under it.
     assert_eq!(
         landed.asked,
-        ["merge 1", "merge 2"],
-        "the train reverted under a merge that may stand, leaving a tree nobody wrote"
+        [vec!["merge 1"], vec!["merge 2"; MERGE_TRIES]].concat(),
+        "the train didn't ask again for a merge GitHub couldn't say it made, or reverted under it"
     );
 }
 
