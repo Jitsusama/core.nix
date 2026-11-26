@@ -11,8 +11,9 @@ colour the foot by it (`viewedWhy(why)`, in its code), or the colour chosen
 would go unused. Each why Sessions says a session
 by (`unhosted(session, "why")`, a word or a choice of words, nested or not)
 and each key the launcher names to its foot (`elsewhere("key", ...)`, or a
-refused Go To's `refusedGoing(session, "key")`) must have words in agents:machine's `said`: the launcher reads them there and
-says nothing for a key it hasn't, so a press would be met with an empty foot
+refused Go To's `refusedGoing(session, "key")`) must have words in
+agents:machine's `said`: the launcher reads them there and says nothing
+for a key it hasn't, so a press would be met with an empty foot
 (Joel, 2026-11-15: a press must never do nothing). Keys the launcher reads off
 agents:machine by name elsewhere, as SessionRow.js's unsteered does, aren't
 read here. A call is read to its closing paren, however it's wrapped. Each why

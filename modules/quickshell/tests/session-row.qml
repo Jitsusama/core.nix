@@ -549,6 +549,10 @@ QtObject {
         const tellings = [
             ["a Go To pressed for it moments ago opens", "PARKED",
                 { waking: "", goneTo: pressed }, "opens"],
+            ["a second refusal of a press that opened it is held, not opened again", "PARKED",
+                { waking: "", goneTo: pressed, opened: pressed.at }, "held"],
+            ["a later press opens, though the one before it opened", "PARKED",
+                { waking: "", goneTo: pressed, opened: now - 9000 }, "opens"],
             ["one Go To is waking is unsaid", "PARKED",
                 { waking: "PARKED", goneTo: pressed }, "unsaid"],
             ["a Go To pressed for another is held", "FARAWY",

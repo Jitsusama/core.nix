@@ -328,14 +328,18 @@ const PRESS_TELLS_MS = 15000;
 // shuts it before it runs (KP0L6A, 2026-11-24 [00902e94]); else "held" in
 // the foot for his next opening, as a walk's, a kept view's or a start's
 // late refusal is, which came of no press just then and mustn't open the
-// launcher over his work.
+// launcher over his work. A press opens it once: a second refusal of it,
+// as a window refused after the terminal was, is held as well (`opened`,
+// the press it last opened for), or it would open the launcher again
+// after Joel shut it.
 function refusalTold(address, going, now) {
     const said = String(address ?? "");
     if (said !== "" && going?.waking === said) {
         return "unsaid";
     }
     const gone = going?.goneTo;
-    if (said !== "" && gone?.address === said && now - Number(gone.at) < PRESS_TELLS_MS) {
+    if (said !== "" && gone?.address === said && now - Number(gone.at) < PRESS_TELLS_MS
+        && going?.opened !== gone.at) {
         return "opens";
     }
     return "held";

@@ -852,17 +852,20 @@ Provider {
     // (SessionRow.refusalTold). Not Provider's refused, which takes back a
     // row by its key.
     function refusedGoing(session, why) {
-        const told = SessionRow.refusalTold(session.address,
-            { waking: Sessions.waking, goneTo: Sessions.goneTo }, Date.now());
+        const told = SessionRow.refusalTold(session.address, { waking: Sessions.waking,
+            goneTo: Sessions.goneTo, opened: provider.refusalOpened }, Date.now());
         if (told === "unsaid")
             return;
         const name = provider.footName(session);
         const said = provider.elsewhere(why, session);
         provider.refusedWhy = `${name}: ${said}`;
         provider.launcher?.tellOnOpen([[name, said, Theme.alert]]);
-        if (told === "opens")
-            provider.launcher?.toldHere?.();
+        if (told === "opens" && provider.launcher?.toldHere?.())
+            provider.refusalOpened = Sessions.goneTo.at;
     }
+    // The Go To press a refusal last opened the launcher for, by when it
+    // was pressed, so that press opens it once (SessionRow.refusalTold).
+    property real refusalOpened: 0
     // The last refusal said, as refusedGoing says it, so a Go To asked from
     // outside answers with the why it was given (goToFor), never one read
     // back from the launcher's foot, which its opening has taken.
