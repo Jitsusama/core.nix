@@ -30,11 +30,17 @@ pub fn help() -> Help {
     .argument("TUPLE", "the tuple command it follows and acts through")
     .option(
         "--answers-within SECONDS",
-        "how long an act waits on Tuple before saying it hasn't answered, 5 unless given",
+        &format!(
+            "how long an act waits on Tuple before saying it hasn't answered, {} unless given",
+            ANSWERS_WITHIN.as_secs()
+        ),
     )
     .option(
         "--held-for SECONDS",
-        "how long a command still running holds its act, 60 unless given",
+        &format!(
+            "how long a command still running holds its act, {} unless given",
+            HELD_FOR.as_secs()
+        ),
     )
     .exit(Exit::Failed, "its socket couldn't be listened on")
 }
@@ -92,5 +98,23 @@ pub fn asked(args: &[String]) -> Result<Asked, Failure> {
         ))),
         [_] => Err(wrongly("tuple-call needs TUPLE after its SOCKET".into())),
         [] => Err(wrongly("tuple-call needs its SOCKET and TUPLE".into())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The unit hands it no wait, so these are the waits Joel's acts get.
+    #[test]
+    fn an_act_waits_five_seconds_and_a_command_holds_it_a_minute_unless_told() {
+        let Ok(asked) = asked(&["socket".into(), "tuple".into()]) else {
+            panic!("its socket and tuple command alone were refused");
+        };
+        assert_eq!(
+            (asked.answers_within, asked.held_for),
+            (Duration::from_secs(5), Duration::from_secs(60)),
+            "the waits its unit runs with moved"
+        );
     }
 }
