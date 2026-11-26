@@ -17,9 +17,9 @@
     as room runs short, the keys list's and Return's staying
   '';
   a-check-copies-what-each-file-imports = ''
-    the shell's checks copy every file a root reaches through imports.nix, a row listing its
-    imports in another order copies the same files, and a row left empty is refused, naming
-    its file and imports.nix by its path, each case taking its file from imports.nix as it is;
+    the shell's checks copy every file a root reaches through imports.nix and nothing else, a
+    row past the root listing its imports in another order copies the same files, and one left
+    empty is refused, copying nothing, each case taking its file from imports.nix as it is;
     a program's own file importing that file copies what copying it does, and one importing
     a file the shell's folder doesn't hold is refused, naming it
   '';

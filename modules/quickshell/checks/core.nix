@@ -8,6 +8,7 @@
   account,
   copied,
   copiedWith,
+  wrongWith,
   programStepWith,
   graphical,
   launcherOnNiri,
@@ -341,9 +342,10 @@ in
     '';
 
   # copied's walk and guard, by what it makes of tables given it, so nothing
-  # is built: it copies every file a root reaches, walked here apart from it;
-  # a row in another order copies the same; and a row left empty is refused,
-  # naming its file. Each case takes its file from imports.nix, so an edit to
+  # is built: it copies every file a root reaches, walked here apart from it,
+  # and nothing else; a row past the root in another order copies the same;
+  # and one left empty is refused, copying nothing, as the guard names it
+  # (wrongWith). Each case takes its file from imports.nix, so an edit to
   # one file's imports moves a case rather than failing it. Today's rows are
   # all sorted, so only this sees the order case break. A program's own file,
   # placed in a folder of its own, is copied there and brings what copying the
@@ -370,7 +372,9 @@ in
           }
         );
       reached = reach root;
-      several = lib.filter (file: lib.length (rowOf file) > 1) reached;
+      # A file past the root, since the walk gives the root first and the
+      # cases must reach a row through another's, as a program's file does.
+      several = lib.filter (file: file != root && lib.length (rowOf file) > 1) reached;
       picked = lib.head several;
       withTurned = table // {
         ${picked} = lib.reverseList (rowOf picked);
@@ -388,6 +392,11 @@ in
       uncopiedBy = script: lib.filter (file: !(lib.any (lib.hasSuffix " ${file}") (copyLines script)));
       uncopied = uncopiedBy real reached;
       leftOut = lib.concatStringsSep ", " uncopied;
+      # Where each cp line copies to, so a file copied that nothing reaches,
+      # or one copied twice, is seen as well as one left out.
+      copiedTo = lib.sort lib.lessThan (map (line: lib.last (lib.splitString " " line)) (copyLines real));
+      copiedOtherwise = copiedTo != lib.sort lib.lessThan reached;
+      copiedBeyond = lib.concatStringsSep ", " (lib.subtractLists reached copiedTo);
       # A program's own file in a folder nothing of the shell's is in, so only
       # the step makes it, importing one as a file there names it.
       ownFolder = "planted";
@@ -488,21 +497,33 @@ in
       unplantedSaid = "a program's file importing ${picked} left out ${plantedLeftOut}";
       ownUnmadeSaid = "a program's file in ${ownFolder} was copied with no folder made first";
       unrefusedSaid = "a program's file importing these wasn't refused as each should be: ";
-      refusal = "modules/quickshell/checks/imports.nix doesn't say";
-      refused = file: script: lib.hasInfix refusal script && lib.hasInfix file script;
+      # The guard by what it finds wrong, and a step it refuses by stopping
+      # before it copies anything, so neither leans on what the refusal says.
+      stopped =
+        script:
+        let
+          stopAt = at (line: line == "exit 1") script;
+          copyAt = at (lib.hasPrefix "cp ") script;
+        in
+        stopAt != null && (copyAt == null || stopAt < copyAt);
       sameTurned = copiedWith withTurned [ root ] == real;
-      emptiedRefused = refused picked (copiedWith withEmptied [ root ]);
-      plantedEmptiedRefused = refused picked (
-        programStepWith withEmptied [ ] (ownImporting "../${picked}")
-      );
+      emptiedRefused =
+        wrongWith withEmptied [ root ] == [ picked ] && stopped (copiedWith withEmptied [ root ]);
+      plantedEmptied = programStepWith withEmptied [ ] (ownImporting "../${picked}");
+      plantedEmptiedRefused =
+        stopped plantedEmptied && lib.hasInfix (copiedWith withEmptied [ picked ]) plantedEmptied;
       plantedEmptiedSaid = "${picked}'s row, emptied, went unrefused from a program's file";
       failures =
-        if refused "" real then
+        if wrongWith table [ root ] != [ ] then
           [ "imports.nix's rows don't match the files; the shell's checks name which" ]
         else if several == [ ] then
-          [ "nothing ${root} reaches imports two files; give this check another root" ]
+          [ "no file ${root} reaches past itself imports two files; give this check another root" ]
         else
           lib.optional (uncopied != [ ]) "copying ${root} left out ${leftOut}"
+          ++ lib.optional (uncopied == [ ] && copiedOtherwise) (
+            "copying ${root} copied more than it reaches: "
+            + (if copiedBeyond == "" then "a file twice" else copiedBeyond)
+          )
           ++ lib.optional (!sameTurned) "${picked}'s row, reversed, copied otherwise"
           ++ lib.optional (!emptiedRefused) "${picked}'s row, emptied, went unrefused"
           ++ lib.optional (!plantedEmptiedRefused) plantedEmptiedSaid
