@@ -489,7 +489,7 @@ QtObject {
         const bar = StartSaid.made([], barInA, up, began);
         const again = (list, key, said, at) => StartSaid.again(list, key, said, at)?.words ?? null;
         Expect.same("the same words again say when they started",
-            StartSaid.at(StartSaid.again(bar, inA, "  fix the bar ", began + minute)), "14:30");
+            StartSaid.clock(StartSaid.again(bar, inA, "  fix the bar ", began + minute)), "14:30");
         Expect.same("other words start", again(bar, inA, "fix the foot", began + minute), null);
         Expect.same("the same words in another folder start",
             again(bar, inB, "fix the bar", began + minute), null);
