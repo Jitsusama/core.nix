@@ -1151,6 +1151,47 @@ def test_a_paused_sessions_return_lands_on_resume_and_a_second_sends_it(shell: S
     assert [one["text"] for one in talks if "text" in one] == ["how goes it?"], talks
 
 
+def test_a_park_pressed_reads_parking_and_one_never_parked_says_so(shell: Shell) -> None:
+    """Park on a listening session keeps the launcher, its row parking, and steers it a park.
+
+    The harness says a Park it drops or refuses only in the session's own window, and no
+    harness here parks it, so once it's stood idle and unparked a while the row is taken back
+    and the foot says it isn't parked, sending Joel to that window (Agents' parksWatched;
+    when is tests/session-row.qml's, of SessionRow.parkStands).
+    """
+    inbox = STEER / "LISTEN"
+    steered = set(inbox.glob("*.json"))
+    found(shell, "listening quest", "Listening Quest")
+    shell.step_in("ctrl-bracketright")
+    shell.launcher_until(lambda shown: "Park" in shown["rows"])
+    shell.down_to("Park")
+    since = shell.mark()
+    shell.send_key("ret")
+    shell.reported("becoming agent:LISTEN", lambda rest: rest == "", since)
+    deadline = time.monotonic() + 10
+    while not set(inbox.glob("*.json")) - steered:
+        assert time.monotonic() < deadline, "nothing reached the listening session's inbox"
+        time.sleep(0.1)
+    told = [json.loads(one.read_text()) for one in set(inbox.glob("*.json")) - steered]
+    assert [one["act"] for one in told] == ["park"], told
+    assert shell.showing()["open"], shell.showing()
+    unparked = "it's still up, and its window says why"
+    shell.reported(
+        "not become agent:LISTEN: ",
+        lambda why: why == unparked,
+        since,
+        timeout=timedelta(seconds=60),
+    )
+    shell.launcher_until(
+        lambda shown: any(
+            "not parked" in said.replace("\u00a0", " ") for said in shown["saying"]
+        )
+    )
+    for one in set(inbox.glob("*.json")) - steered:
+        one.unlink()
+    shell.close_launcher()
+
+
 def test_a_sessions_drawer_marks_return_on_the_act_return_does(shell: Shell) -> None:
     """Each session's drawer marks Return on the act its Return does, whatever its state.
 

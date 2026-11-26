@@ -941,6 +941,54 @@ mod tests {
     }
 
     #[test]
+    fn park_is_offered_where_a_row_offers_it_and_a_parked_one_inside_offers_wake() {
+        let rows = top(&[
+            row(
+                "O",
+                "working",
+                0,
+                &["switch", "talk", "pause", "park", "close"],
+            ),
+            row(
+                "A",
+                "listening",
+                1,
+                &["switch", "talk", "pause", "park", "close"],
+            ),
+            row("P", "parked", 1, &["wake", "talk"]),
+        ]);
+        let park = found(&rows, "row:agents-top:O:park");
+        assert_eq!(
+            (&park["name"], &park["glyph"], &park["acts"]),
+            (
+                &json!("Park"),
+                &json!("suspend"),
+                &json!([{"key": "verb:agent:park", "ask": {"ask": "park", "address": "O"}}])
+            ),
+            "an orchestrator's Park is a row inside it, parking the orchestrator: {park}"
+        );
+        assert!(
+            acts(found(&rows, "row:agents-top:O")).contains(&"verb:agent:park"),
+            "and among its own row's acts"
+        );
+        assert_eq!(
+            acts(found(&rows, "row:agents-top:A")),
+            [
+                "verb:details",
+                "verb:agent:pause",
+                "verb:agent:park",
+                "verb:agent:close"
+            ],
+            "a running session inside keeps the Park its row offers"
+        );
+        assert_eq!(
+            acts(found(&rows, "row:agents-top:P")),
+            ["verb:details", "verb:agent:wake"],
+            "a parked one inside offers Wake, never Park, which would wake it"
+        );
+    }
+
+    #[test]
     fn a_session_inside_whose_want_joel_put_off_lights_nothing_and_offers_no_talk() {
         let mut put_off = row("A", "needs", 1, LIVE);
         if let Shown::Session(row) = &mut put_off {
