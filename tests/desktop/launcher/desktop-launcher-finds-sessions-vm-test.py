@@ -158,9 +158,7 @@ def test_the_launcher_finds_a_pi_session_by_its_quest_and_goes_to_its_window(
         return [act.removeprefix("\u21b5 ") for act in shown["drawer"]["acts"]]
 
     acts = acts_of(
-        desktop.launcher_until(
-            lambda shown: says_what_is_known(shown) and "Stop" in acts_of(shown)
-        )
+        desktop.launcher_until(lambda shown: says_what_is_known(shown) and "Stop" in acts_of(shown))
     )
     assert acts[-1] == "Close", acts
     assert {"Go To", "Talk", "Pause", "Park", "Stop"} <= set(acts), acts

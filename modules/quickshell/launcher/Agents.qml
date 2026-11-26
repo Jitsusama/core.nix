@@ -538,9 +538,9 @@ Provider {
     // which its Return reads (SessionRow.drawn), so a park or wake the
     // daemon hasn't served yet wraps it again (rowOf).
     readonly property var wrappedParked: ({})
-    // The sessions the shell holds parked, by every address each goes by,
-    // made once a park or wake changes them, so every row laid out asks in
-    // one lookup (SessionRow.parkedSet), not by walking the parked.
+    // The sessions the shell holds parked, by each one's own address, made
+    // once a park or wake changes them, so every row laid out asks in one
+    // lookup (SessionRow.parkedSet), not by walking the parked.
     readonly property var parkedHere: SessionRow.parkedSet(Sessions.parked)
     function shellParked(address) {
         return parkedHere.has(String(address).toUpperCase());
@@ -1217,7 +1217,7 @@ Provider {
     // What the session `session` asks Joel that its Talk answers (TalkAnswers.js's asked): its
     // want's answers while it asks and isn't parked, as Now's rows read it (Now.qml's asking).
     function answersOf(session) {
-        const asking = SessionRow.asks(session.presence) && !Sessions.parkedAs(session.address);
+        const asking = SessionRow.asks(session.presence) && !shellParked(session.address);
         return { want: wantOf(session.address), asking };
     }
 

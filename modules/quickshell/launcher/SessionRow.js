@@ -112,11 +112,13 @@ function offered(rowActs, returns, fallback) {
 // word, it offers a parked one's acts whatever its row still serves,
 // since `withheld` keeps back every other act then, so what's offered and
 // what goes agree; its Return is Wake, but Talk for one at the top, which
-// is gone to to be told something however it stands, as row.rs serves it.
+// is gone to to be told something however it stands, as row.rs serves it,
+// held, unheld or parked.
 function drawn(row, windowed, parked, top) {
     const fallback = fallbackOf(windowed, parked);
-    return parked ? offered([], top ? `${AGENT}talk` : "", fallback)
-        : offered(row?.acts, row?.held?.returns, fallback);
+    const talks = top ? `${AGENT}talk` : "";
+    return parked ? offered([], talks, fallback)
+        : offered(row?.acts, talks || row?.held?.returns, fallback);
 }
 
 // Whether a session stands at the top, gone to by name as the void is,
@@ -141,20 +143,15 @@ function fallbackOf(windowed, parked) {
 }
 
 // The addresses of the sessions the shell holds parked (Sessions.parked),
-// upper-cased, each by every address it goes by, as Sessions.parkedAs
-// finds one, so a row asks whether its session is parked in one lookup
-// and by the same rule as the shell's other places.
+// upper-cased, each by its own address, the one its row is keyed by, so a
+// row asks whether its session is parked in one lookup. An address one
+// parked session only lists is another's own (the agents daemon's
+// cells.rs: the one that is it now wins), so it parks none but its own,
+// as the daemon judges parked from a session's own record.
 function parkedSet(parked) {
-    const addresses = new Set();
-    for (const one of Array.isArray(parked) ? parked : []) {
-        for (const address of one?.presence?.addresses ?? [one?.address]) {
-            const upper = String(address ?? "").toUpperCase();
-            if (upper !== "") {
-                addresses.add(upper);
-            }
-        }
-    }
-    return addresses;
+    return new Set((Array.isArray(parked) ? parked : [])
+        .map(one => String(one?.address ?? "").toUpperCase())
+        .filter(address => address !== ""));
 }
 
 // The act a served orchestration's row names by `key` that the shell

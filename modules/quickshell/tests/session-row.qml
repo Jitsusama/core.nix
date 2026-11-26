@@ -156,15 +156,17 @@ QtObject {
             if (SessionRow.topActOf(key) !== want)
                 failures.push(`top ${key}: "${SessionRow.topActOf(key)}", not "${want}"`);
         }
-        // The shell's parked are known by every address each goes by, whatever
-        // its case, as Sessions.parkedAs finds one.
+        // The shell's parked are known by each one's own address, whatever its
+        // case; an address one only lists is another's own, which it doesn't
+        // park (cells.rs: the one that is it now wins).
         const parkedHere = SessionRow.parkedSet([
-            { address: "ab12cd", presence: { addresses: ["ab12cd", "OLD001"] } },
-            { address: "ef34gh" }, { address: "" }, {}
+            { address: "ab12cd", presence: { addresses: ["ab12cd", "LIVE01"] } },
+            { address: "ef34gh", presence: { addresses: ["OLD001"] } }, { address: "" }, {}
         ]);
         const parkings = [["its own, upper-cased", "AB12CD", true],
-            ["another it goes by", "OLD001", true], ["one with no presence", "EF34GH", true],
-            ["one not parked", "LIVE01", false], ["none", "", false]];
+            ["its own, though it doesn't list it", "EF34GH", true],
+            ["another's it lists", "LIVE01", false], ["one it only lists", "OLD001", false],
+            ["none", "", false]];
         for (const [what, address, want] of parkings) {
             if (parkedHere.has(address) !== want)
                 failures.push(`parked, ${what}: ${!want}, not ${want}`);
@@ -206,10 +208,16 @@ QtObject {
             ["unheld, parked by the shell", null, true, true, "wake talk", "wake"]
         ];
         // One at the top, as the void, is gone to to be told something however
-        // it stands, so Return talks to it, parked by the shell's word too.
+        // it stands, so Return talks to it, held, unheld or parked, by its row's
+        // word or the shell's; and what it offers is never kept back.
         const voids = [
-            ["the void held parked", rowOf(["wake", "talk"], "verb:agent:talk"), false, true,
-                true, "wake talk", "talk"],
+            ["the void parked by its row alone", rowOf(["wake", "talk"], "verb:agent:talk"),
+                false, false, true, "wake talk", "talk"],
+            ["the void held parked, and by the shell", rowOf(["wake", "talk"], "verb:agent:wake"),
+                false, true, true, "wake talk", "talk"],
+            ["the void unheld", null, true, false, true, "switch talk", "talk"],
+            ["the void served Go To as Return", rowOf(["switch", "talk", "pause"],
+                "verb:agent:switch"), true, false, true, "switch talk pause", "talk"],
             ["the void held live, parked by the shell", live, true, true, true, "wake talk",
                 "talk"],
             ["the void unheld, parked by the shell", null, false, true, true, "wake talk",
@@ -222,6 +230,9 @@ QtObject {
             if (ids.join(" ") !== want || marked !== mark)
                 failures.push(`drawn ${what}: "${ids.join(" ")}" marking ${marked}, `
                     + `not "${want}" marking ${mark}`);
+            const kept = ids.filter(id => SessionRow.withheld(row, id, parked) !== "");
+            if (kept.length > 0)
+                failures.push(`drawn ${what}: offers ${kept.join(" ")}, which it keeps back`);
         }
         const atTop = [[{ standsAtTop: { name: "Void" } }, true],
             [{ standsAtTop: { name: "" } }, false], [{}, false], [undefined, false]];
