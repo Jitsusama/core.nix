@@ -40,6 +40,7 @@ use serde_json::{Value, json};
 use crate::clock::{iso, now, when};
 use crate::page;
 use crate::peer::Told;
+use crate::posing;
 
 /// Who holds the other end of a connection, by its two ends: the browser's,
 /// then the server's.
@@ -336,7 +337,9 @@ fn said(body: &[u8]) -> Result<(String, String), Refused> {
 /// Whether `look` waits on him at `now`, in milliseconds since the epoch,
 /// and offers `value`, as ask.ts's `answering` reads it: whole, waiting,
 /// asking, not past its `expiresAt` nor quiet three days after it came, and
-/// `value` one of its first four choices' values, exactly.
+/// `value` one of its first four choices' values, exactly, of one whose
+/// label doesn't pass for the launcher's own act (posing.rs). The table of
+/// looks kit/tests/offered.json holds both readings to one.
 fn offered(look: &Value, value: &str, now: i64) -> Result<(), Refused> {
     let text = |field: &str| look.get(field).and_then(Value::as_str).unwrap_or("");
     let whole = look.get("v") == Some(&json!(1))
@@ -365,10 +368,19 @@ fn offered(look: &Value, value: &str, now: i64) -> Result<(), Refused> {
         .map(Vec::as_slice)
         .unwrap_or_default()
         .iter()
-        .filter_map(|choice| choice.get("value").and_then(Value::as_str))
-        .filter(|offer| !offer.is_empty())
+        .filter_map(|choice| {
+            let value = choice.get("value").and_then(Value::as_str)?;
+            let label = choice.get("label").and_then(Value::as_str);
+            Some((
+                value,
+                label.filter(|label| !label.is_empty()).unwrap_or(value),
+            ))
+        })
+        .filter(|(offer, _)| !offer.is_empty())
         .take(OFFERED)
-        .any(|offer| offer == value);
+        // One whose label passes for the launcher's own act is offered
+        // nowhere, as For You's `shown` drops it.
+        .any(|(offer, label)| offer == value && !posing::poses(label));
     if !offers {
         return Err(refused("unoffered", 409, "the look doesn't offer that"));
     }
@@ -431,6 +443,28 @@ mod tests {
     use super::*;
 
     const NOW: i64 = 1_764_025_800_000;
+
+    #[test]
+    fn the_server_takes_just_the_looks_the_table_says_a_page_answers() {
+        let table: Value = serde_json::from_str(include_str!("../kit/tests/offered.json"))
+            .expect("the table reads");
+        let now = when(table.get("now")).expect("the table's now");
+        let cases = table["cases"].as_array().expect("its cases");
+        for case in cases {
+            let mut look = table["look"].clone();
+            for (field, value) in case["with"].as_object().expect("what it differs by") {
+                look[field] = value.clone();
+            }
+            let value = case["value"].as_str().expect("what's pressed");
+            assert_eq!(
+                offered(&look, value, now).is_ok(),
+                case["offered"] == true,
+                "{}",
+                case["why"]
+            );
+        }
+        assert!(cases.len() > 20, "the table lost its cases");
+    }
 
     /// Answers whose presses `told` says who pressed.
     fn answers_told(told: Told) -> Answers {

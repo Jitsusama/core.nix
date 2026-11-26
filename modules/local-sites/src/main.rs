@@ -33,6 +33,7 @@ mod gate;
 mod http;
 mod page;
 mod peer;
+mod posing;
 mod sweep;
 mod upstream;
 

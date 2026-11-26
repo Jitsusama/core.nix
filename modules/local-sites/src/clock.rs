@@ -17,11 +17,13 @@ pub fn when(value: Option<&Value>) -> Option<i64> {
     }
 }
 
-/// An ISO time, `2026-11-24T23:10:00.123Z` or with an offset, in
-/// milliseconds since the epoch; none where it names no zone, which a
-/// browser reads as its own and this server can't know.
+/// An ISO time, `2026-11-24T23:10:00.123Z` or with an offset, its seconds
+/// left out or not, or a day alone, read as its midnight in UTC, as a
+/// browser reads each, in milliseconds since the epoch; none where a time
+/// names no zone, which a browser reads as its own and this server can't
+/// know.
 fn parsed(text: &str) -> Option<i64> {
-    let (date, rest) = text.split_once('T')?;
+    let (date, rest) = text.split_once('T').unwrap_or((text, ""));
     let mut parts = date.split('-').map(str::parse::<i64>);
     let (year, month, day) = (
         parts.next()?.ok()?,
@@ -30,6 +32,9 @@ fn parsed(text: &str) -> Option<i64> {
     );
     if parts.next().is_some() || !(1..=12).contains(&month) || !(1..=31).contains(&day) {
         return None;
+    }
+    if !text.contains('T') {
+        return Some(days_from_civil(year, month, day) * 86_400_000);
     }
     let (clock, offset) = if let Some(clock) = rest.strip_suffix(['Z', 'z']) {
         (clock, 0)
@@ -46,11 +51,18 @@ fn parsed(text: &str) -> Option<i64> {
     let (hour, minute, second) = (
         parts.next()?.ok()?,
         parts.next()?.ok()?,
-        parts.next()?.ok()?,
+        parts
+            .next()
+            .map_or(Some(None), |second| second.ok().map(Some))?,
     );
-    if parts.next().is_some() || !fraction.bytes().all(|digit| digit.is_ascii_digit()) {
+    let whole_seconds = second.is_some() || fraction.is_empty();
+    if parts.next().is_some()
+        || !whole_seconds
+        || !fraction.bytes().all(|digit| digit.is_ascii_digit())
+    {
         return None;
     }
+    let second = second.unwrap_or(0);
     let millis: String = fraction
         .chars()
         .chain(std::iter::repeat('0'))
@@ -118,7 +130,7 @@ mod tests {
     const NOW: i64 = 1_764_025_800_000;
 
     #[test]
-    fn a_time_reads_as_a_browser_reads_it_and_is_written_as_the_shell_writes_it() {
+    fn a_time_reads_as_a_browser_reads_one_in_utc_or_an_offset_and_writes_as_the_shell_does() {
         assert_eq!(parsed("1970-01-01T00:00:00Z"), Some(0));
         assert_eq!(parsed("2000-03-01T00:00:00.5Z"), Some(951_868_800_500));
         assert_eq!(parsed("2025-11-24T23:10:00.000Z"), Some(NOW));
@@ -128,17 +140,28 @@ mod tests {
             "an offset is taken off"
         );
         assert_eq!(parsed("2025-11-25T00:40:00+01:30"), Some(NOW));
+        assert_eq!(
+            parsed("2025-11-24T23:10Z"),
+            Some(NOW),
+            "a time without seconds"
+        );
+        assert_eq!(
+            parsed("2025-11-24"),
+            Some(NOW - (23 * 60 + 10) * 60_000),
+            "a day alone is its midnight in UTC"
+        );
         assert_eq!(iso(NOW), "2025-11-24T23:10:00.000Z");
         assert_eq!(iso(951_868_800_500), "2000-03-01T00:00:00.500Z");
         for day in [-800_000, -1, 0, 59, 11_016, 20_416, 2_000_000] {
             assert_eq!(days_from_civil_of(civil_from_days(day)), day, "day {day}");
         }
         for unread in [
-            "2025-11-24",
             "2025-11-24T23:10:00",
+            "2025-11-24T23:10",
             "2025-13-01T00:00:00Z",
             "x-y-zT00:00:00Z",
-            "2025-11-24T23:10Z",
+            "2025-11-24T23:10.5Z",
+            "2025-11-24T",
         ] {
             assert_eq!(parsed(unread), None, "{unread}");
         }
