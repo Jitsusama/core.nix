@@ -335,8 +335,13 @@ class Shell:
         return ", ".join(self.made()["lately"][place]) or "none"
 
     def made_since(self, place: str, before: int) -> list[str]:
-        """Give the keys of the rows the place made after it had made `before`, oldest first."""
-        return [row.split(" ")[0] for row in self.rows_made_since(place, before)]
+        """Give the keys of the rows the place made after it had made `before`, oldest first.
+
+        Each whole, spaces and all, as an emoji's name holds them: only the marks Provider.qml
+        writes after it, shut and then walked, are taken off.
+        """
+        rows = self.rows_made_since(place, before)
+        return [row.removesuffix(" walked").removesuffix(" shut") for row in rows]
 
     def rows_made_since(self, place: str, before: int) -> list[str]:
         """Give the rows the place made after it had made `before`, whole, marked shut or walked."""
