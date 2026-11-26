@@ -1554,7 +1554,8 @@ Provider {
     function parkNow(session) {
         const key = `agent:${session.address}`;
         const id = String(session.presence?.session ?? "");
-        const working = stateOf(session) === "working";
+        // One in line for the machine is in a turn too, which it parks after.
+        const working = ["working", "inLine"].includes(stateOf(session));
         const doing = word(working ? "parksAfterTurn" : "parking");
         const now = sessionRows(everything()).find(row => row.key === key);
         const items = SessionRow.sideDoing(now?.sideItems ?? [], doing);
