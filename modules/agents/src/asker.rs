@@ -12,9 +12,9 @@
 //! unit too (pi-ask while Super+S talks, the shell's helpers, their
 //! children and orphans), and any of them could run a program named
 //! quickshell, so the program alone is a second line, as pineapple's
-//! peer.rs holds it (ISXEG8 on #5456). The shell in turn starts new work and answers only from Joel's own
-//! Return, never a walk from outside (Agents.qml's sprout and
-//! answerKept, Now.qml's answerLook).
+//! peer.rs holds it (ISXEG8 on #5456). The shell in turn starts new work
+//! and answers only from Joel's own Return, never a walk from outside
+//! (Agents.qml's sprout and answerKept, Now.qml's answerLook).
 //!
 //! What this holds to: a fenced command can't move itself out of its own
 //! cgroup, but an unfenced process of Joel's could write itself into the
