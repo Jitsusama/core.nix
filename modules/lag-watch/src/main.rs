@@ -574,10 +574,8 @@ fn run() -> Result<(), Failure> {
                 sched: read_of(&then),
                 asleep: sleeping,
             };
-            // A thread still watched keeps where its counts stood, so a
-            // wait carried from the window just ended is still counted.
-            // The ticks' reads were taken first, as they count each tick
-            // alone.
+            // A thread still watched keeps where its counts stood, after
+            // the ticks' read, which counts each tick alone.
             for (key, s) in &mut then.threads {
                 if let Some(was) = now.threads.get(key) {
                     s.credited = was.credited;
