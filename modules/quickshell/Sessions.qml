@@ -2640,7 +2640,9 @@ Singleton {
     // "disowned", told opening none, the window that came for the one it
     // asked for was refused too (refusedAsks), as a pid read wrong refuses
     // its own; "untaken", told to the press that asked, no kitty took the
-    // window it asked for (untaken).
+    // window it asked for (untaken); "askedAgain", told to the press that
+    // asked, no kitty took it but it's asked for again of a kitty come
+    // since (pressedAgain), "startedAskedAgain" for a hosted start.
     // A row's Reopen or a hosted start tells it too, why naming the one
     // that held: "hostless", no host serves it and its entry gives no
     // words to wait with; "opening", its viewer was asked for moments ago
@@ -3112,7 +3114,7 @@ Singleton {
     // pid too, it's let go, and so is one asked with no pid ever known,
     // since no kitty come again could be told from it.
     // Says whether it asked again, so the press holding the ask is told
-    // it's opening (pressedAgain).
+    // it was asked for again (pressedAgain).
     property var keptAsks: ({})
     function keepAgain(back, named) {
         if (!back || keptPlaces[back.id] !== undefined)
