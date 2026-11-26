@@ -18,6 +18,20 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+/// Where the git built beside the engine reads its system-wide config, as
+/// its `git var` said when the engine was built; /etc's, as git's own
+/// build has it, where nothing said.
+const SYSTEM_CONFIG: &str = match option_env!("GIT_ENGINE_CONFIG_SYSTEM") {
+    Some(path) => path,
+    None => "/etc/gitconfig",
+};
+
+/// Where that git reads its system-wide attributes, as `SYSTEM_CONFIG` is.
+const SYSTEM_ATTRIBUTES: &str = match option_env!("GIT_ENGINE_ATTR_SYSTEM") {
+    Some(path) => path,
+    None => "/etc/gitattributes",
+};
+
 /// Where a repository's folders are.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Location {
@@ -116,6 +130,23 @@ pub struct Repo {
     monitor: Option<Monitor>,
 }
 
+/// The folder git reads its XDG files from, config, ignore and attributes
+/// alike: `XDG_CONFIG_HOME`'s, as `xdg` gives it, or home's .config where
+/// it's unset or empty, as git takes it.
+fn xdg_folder(xdg: Option<std::ffi::OsString>, home: Option<&Path>) -> Option<PathBuf> {
+    xdg.filter(|xdg| !xdg.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| home.map(|h| h.join(".config")))
+}
+
+/// The system-wide attributes git reads, from its environment as `var`
+/// gives it: none where `GIT_ATTR_NOSYSTEM` turns them off, else
+/// `SYSTEM_ATTRIBUTES`. git has no variable moving the file, as
+/// `GIT_CONFIG_SYSTEM` moves the config's.
+fn system_attributes(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> Option<PathBuf> {
+    config::system_file(var, "GIT_ATTR_NOSYSTEM", None, SYSTEM_ATTRIBUTES)
+}
+
 /// The config files git reads for a repository whose common folder is
 /// `common`, from its environment as `var` gives it, lowest first: the
 /// system's, the global ones, then the repository's own. The environment's
@@ -129,17 +160,14 @@ fn config_files(
         &var,
         "GIT_CONFIG_NOSYSTEM",
         Some("GIT_CONFIG_SYSTEM"),
-        "/etc/gitconfig",
+        SYSTEM_CONFIG,
     )
     .into_iter()
     .collect();
     if let Some(global) = var("GIT_CONFIG_GLOBAL") {
         files.push(PathBuf::from(global));
     } else {
-        let xdg = var("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .or_else(|| home.map(|h| h.join(".config")));
-        if let Some(xdg) = xdg {
+        if let Some(xdg) = xdg_folder(var("XDG_CONFIG_HOME"), home) {
             files.push(xdg.join("git/config"));
         }
         if let Some(home) = home {
@@ -156,8 +184,12 @@ fn load_config(location: &Location, home: Option<&Path>, branch: Option<&str>) -
         branch,
         home,
     };
-    let mut files = config_files(&location.common, home, |name| std::env::var_os(name));
-    let parameters = config::parameters(|name| std::env::var(name).ok());
+    let var = |name: &str| std::env::var_os(name);
+    let mut files = config_files(&location.common, home, var);
+    // A -c pair's byte that isn't UTF-8 is read as a file's is, rather than
+    // losing every pair beside it.
+    let parameters =
+        config::parameters(|name| var(name).map(|value| value.to_string_lossy().into_owned()));
     let first = Config::load(&files, &parameters, &context);
     if first.get_bool("extensions.worktreeconfig") == Some(true) {
         files.push(location.git_dir.join("config.worktree"));
@@ -676,9 +708,7 @@ impl Repo {
                 Some("no" | "false" | "off" | "0")
             ),
         };
-        let xdg = std::env::var_os("XDG_CONFIG_HOME")
-            .map(PathBuf::from)
-            .or_else(|| self.home.as_ref().map(|h| h.join(".config")));
+        let xdg = xdg_folder(std::env::var_os("XDG_CONFIG_HOME"), self.home.as_deref());
         let excludes_file = self
             .config
             .get("core.excludesfile")
@@ -704,14 +734,7 @@ impl Repo {
             workdir: &self.location.workdir,
             common: &self.location.common,
             excludes_file,
-            // git has no variable moving the system attributes file, as
-            // GIT_CONFIG_SYSTEM moves the config's.
-            system_attributes: config::system_file(
-                |name| std::env::var_os(name),
-                "GIT_ATTR_NOSYSTEM",
-                None,
-                "/etc/gitattributes",
-            ),
+            system_attributes: system_attributes(|name| std::env::var_os(name)),
             attributes_file,
             monitored: self.monitor.is_some(),
             changed: match &since {

@@ -3,8 +3,8 @@
 //! git doesn't track or ignore. Each count stops at the limit gitstatusd
 //! was started with, since the prompt asks only whether there are any.
 //! Telling whether a file's contents changed, by turning it into a blob
-//! as `git add` would, is `convert`'s; the walk for untracked files is
-//! `untracked`'s.
+//! as `git add` would, is `convert`'s, with what git-lfs writes `lfs`'s;
+//! the walk for untracked files is `untracked`'s.
 
 use crate::attrs;
 use crate::fsmonitor::Changed;
@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 mod convert;
+mod lfs;
 mod untracked;
 
 use convert::{Conversion, conversion_of, same_contents};

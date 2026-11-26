@@ -4,10 +4,11 @@
 //! moved is told from one whose contents did by comparing that blob with
 //! the index's.
 
+use super::lfs::{is_git_lfs, matches_lfs_pointer};
 use super::{Cache, Paths, Settings, os};
 use crate::attrs::{self, State};
 use crate::config::Config;
-use crate::hash::{Oid, Sha256, to_hex};
+use crate::hash::Oid;
 use crate::index::Entry;
 use crate::odb::Odb;
 use std::collections::{BTreeMap, HashMap};
@@ -121,19 +122,6 @@ pub fn filter_drivers(config: &Config) -> BTreeMap<String, Driver> {
             Some((name.to_owned(), driver))
         })
         .collect()
-}
-
-/// Whether `command` runs git-lfs's `verb`, by any path to it, itself or
-/// as `git lfs`: a driver running anything else might write something
-/// other than its pointer.
-fn is_git_lfs(command: &str, verb: &str) -> bool {
-    let is = |word: Option<&str>, program: &str| {
-        word.is_some_and(|word| word.rsplit('/').next() == Some(program))
-    };
-    let mut words = command.split_ascii_whitespace();
-    let first = words.next();
-    (is(first, "git-lfs") || is(first, "git") && words.next() == Some("lfs"))
-        && words.next() == Some(verb)
 }
 
 /// What runs on a file's way in before its line endings, as convert.c
@@ -315,39 +303,6 @@ fn collapse_ident(data: &[u8]) -> Vec<u8> {
     out
 }
 
-/// The pointer git-lfs writes for these contents.
-fn lfs_pointer(raw: &[u8]) -> String {
-    let mut sha = Sha256::new();
-    sha.update(raw);
-    format!(
-        "version https://git-lfs.github.com/spec/v1\noid sha256:{}\nsize {}\n",
-        to_hex(&sha.finish()),
-        raw.len()
-    )
-}
-
-/// Whether the index's blob, `oid`, is the LFS pointer git-lfs would write
-/// for these contents.
-fn matches_lfs_pointer(odb: &mut Odb, oid: &Oid, raw: &[u8]) -> io::Result<bool> {
-    let pointer = lfs_pointer(raw);
-    if Oid::of("blob", pointer.as_bytes()) == *oid {
-        return Ok(true);
-    }
-    // A pointer with extensions, or one written differently: compare what
-    // it says rather than its bytes.
-    let Some(blob) = odb.read(oid)? else {
-        return Ok(false);
-    };
-    let text = String::from_utf8_lossy(&blob.data);
-    let wanted_oid = pointer.lines().nth(1).unwrap_or_default();
-    let wanted_size = pointer.lines().nth(2).unwrap_or_default();
-    Ok(
-        text.starts_with("version https://git-lfs.github.com/spec/v1")
-            && text.lines().any(|l| l == wanted_oid)
-            && text.lines().any(|l| l == wanted_size),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -369,10 +324,19 @@ mod tests {
              [filter \"pathed\"]\n clean = /bin/git-lfs clean -- %f\n\
              [filter \"wrapped\"]\n process = git-lfs-wrapper filter-process\n\
              [filter \"crossed\"]\n process = git-lfs clean\n\
+             [filter \"crossedthrough\"]\n process = git lfs clean\n\
+             [filter \"piped\"]\n clean = git-lfs clean -- %f | tr a b\n\
+             [filter \"bare\"]\n clean = git-lfs clean\n\
+             [filter \"named\"]\n clean = git-lfs clean %f\n\
              [filter \"through\"]\n process = git lfs filter-process\n\
              [filter \"cleaned\"]\n clean = /usr/bin/git lfs clean -- %f\n\
              [filter \"lfsx\"]\n process = git lfsx filter-process\n\
              [filter \"either\"]\n clean = git-lfs clean -- %f\n process = crypt\n\
+             [filter \"skipping\"]\n process = git-lfs filter-process --skip\n\
+             [filter \"skipclean\"]\n clean = git-lfs clean --skip -- %f\n\
+             [filter \"skipafter\"]\n process = git-lfs filter-process --skip x\n\
+             [filter \"skipnamed\"]\n process = git-lfs filter-process --skip %f\n\
+             [filter \"skipdashed\"]\n process = git-lfs filter-process --skip -- %f\n\
              [filters]\n x = y\n",
         );
         let runs = |name: &str| (name.to_owned(), Driver::Runs);
@@ -383,6 +347,10 @@ mod tests {
                 runs("Crypt"),
                 runs("a.b"),
                 runs("crossed"),
+                runs("crossedthrough"),
+                runs("piped"),
+                lfs("bare"),
+                lfs("named"),
                 lfs("lfs"),
                 lfs("pathed"),
                 runs("wrapped"),
@@ -393,12 +361,18 @@ mod tests {
                 lfs("cleaned"),
                 runs("lfsx"),
                 runs("either"),
+                lfs("skipping"),
+                runs("skipclean"),
+                runs("skipafter"),
+                lfs("skipnamed"),
+                lfs("skipdashed"),
             ]),
             "took a filter only smudging, with an empty or emptied command, an empty \
              process over a clean one, or another section's keys; missed one with a dot \
              or a capital in its name; misjudged a required one; took for git-lfs's \
-             a command other than its process or clean, or one whose process runs \
-             another; or missed git-lfs run through git"
+             a command other than its process or clean, one whose process runs \
+             another, or one piping it on; or missed git-lfs run through git, bare, \
+             given the file's name or its process told to skip smudging"
         );
     }
 
@@ -656,72 +630,5 @@ mod tests {
                 String::from_utf8_lossy(data)
             );
         }
-    }
-
-    /// An object store holding these blobs as loose objects.
-    fn store(name: &str, blobs: &[&[u8]]) -> std::path::PathBuf {
-        let objects =
-            std::env::temp_dir().join(format!("git-engine-convert-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&objects);
-        for blob in blobs {
-            let hex = Oid::of("blob", blob).hex();
-            let dir = objects.join(&hex[..2]);
-            std::fs::create_dir_all(&dir).expect("made no object folder");
-            let mut raw = format!("blob {}\0", blob.len()).into_bytes();
-            raw.extend_from_slice(blob);
-            let packed = miniz_oxide::deflate::compress_to_vec_zlib(&raw, 6);
-            std::fs::write(dir.join(&hex[2..]), packed).expect("wrote no object");
-        }
-        objects
-    }
-
-    #[test]
-    fn an_lfs_pointer_matches_by_what_it_says() {
-        assert_eq!(
-            lfs_pointer(b"hello\n"),
-            "version https://git-lfs.github.com/spec/v1\n\
-             oid sha256:5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03\n\
-             size 6\n",
-            "the pointer isn't the one git-lfs writes"
-        );
-        let extended = b"version https://git-lfs.github.com/spec/v1\n\
-            ext-0-foo sha256:00\n\
-            oid sha256:5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03\n\
-            size 6\n";
-        let other = b"version https://git-lfs.github.com/spec/v1\n\
-            oid sha256:5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03\n\
-            size 7\n";
-        let changed = b"version https://git-lfs.github.com/spec/v1\n\
-            oid sha256:5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be04\n\
-            size 6\n";
-        let objects = store("lfs", &[extended, other, changed]);
-        let mut odb = Odb::open(&objects);
-        let exact = Oid::of("blob", lfs_pointer(b"hello\n").as_bytes());
-        for (oid, wanted, what) in [
-            (exact, true, "the pointer git-lfs writes"),
-            (
-                Oid::of("blob", extended),
-                true,
-                "a pointer with an extension",
-            ),
-            (Oid::of("blob", other), false, "a pointer of another size"),
-            (
-                Oid::of("blob", changed),
-                false,
-                "a pointer of the same size to another object",
-            ),
-            (
-                Oid::of("blob", b"absent"),
-                false,
-                "a pointer the store lacks",
-            ),
-        ] {
-            assert_eq!(
-                matches_lfs_pointer(&mut odb, &oid, b"hello\n").expect("read no blob"),
-                wanted,
-                "{what}"
-            );
-        }
-        let _ = std::fs::remove_dir_all(&objects);
     }
 }
