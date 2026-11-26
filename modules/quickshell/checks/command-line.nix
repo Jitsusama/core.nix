@@ -134,7 +134,7 @@
     '';
 
   # A modal Prompt.qml says a key acted exactly where its own handlers did
-  # something with it, keys sent through Qt as the launcher's line takes them
+  # something with it, keys sent through Qt as the launcher's field takes them
   # (modules/quickshell/tests/prompt-keys.qml), and the command line names the
   # key that let it go, which the launcher times as acting
   # (modules/quickshell/tests/command-line-keys.qml), in Qt's test runner. The
@@ -142,7 +142,7 @@
   # there, Lights.qml a stand-in with caps lock off, and Quickshell a module
   # outside the linted folder holding only a clipboard; the lint reads
   # Quickshell's own types.
-  the-launchers-line-says-which-keys-acted =
+  the-launchers-field-says-which-keys-acted =
     let
       qt = pkgs.qt6.qtdeclarative;
       theme = (account graphical).xdg.configFile."quickshell/Theme.qml".source;
@@ -163,7 +163,10 @@
         cp ${clipboard} $out/Quickshell/Quickshell.qml
       '';
     in
-    pkgs.runCommandLocal "the-launchers-line-says-which-keys-acted" { } ''
+    # Kept in Nix because each line copies, or names in a variable, a file
+    # Nix gives it, and the cases it runs are QML files of their own
+    # (modules/quickshell/tests/prompt-keys.qml and command-line-keys.qml).
+    pkgs.runCommandLocal "the-launchers-field-says-which-keys-acted" { } ''
       cp ${../tests/prompt-keys.qml} prompt-keys.qml
       cp ${../tests/command-line-keys.qml} command-line-keys.qml
       ${copied [
