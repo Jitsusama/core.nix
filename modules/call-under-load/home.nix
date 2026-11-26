@@ -20,7 +20,16 @@ let
   device = config.jitsusama.camera.device or osConfig.jitsusama.camera.device or null;
 in
 {
+  imports = [ ../subvolumes/home.nix ];
+
   home.packages = [ package ];
+
+  # The test call's two Chromium profiles are made and removed under this
+  # folder each hour, and their commits would wait behind every agent's in
+  # the home's one tree, as Joel's Chrome's did, so the call would measure
+  # a disk his Chrome no longer shares. Its own subvolume puts it beside
+  # his. The move waits while a run is under way.
+  jitsusama.subvolumes.folders.".cache/call-under-load".before = [ "call-under-load.service" ];
 
   # A switch leaves a run under way be, and the next hour's starts the new
   # build: restarting it mid-call made the switch wait on a run of up to
