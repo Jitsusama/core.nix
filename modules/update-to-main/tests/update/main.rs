@@ -23,7 +23,7 @@ use std::process::Command;
 use std::thread;
 use std::time::{Duration, Instant};
 use update_to_main::config::{
-    Batches, Busy, Config, Follow, Here, Holds, Hosted, Kept, Kind, Session, Signers, Tools,
+    Batches, Busy, Config, Follow, Here, Holds, Hosted, Kept, Kind, Says, Session, Signers, Tools,
 };
 use update_to_main::line::{Applied, Line};
 use update_to_main::{ask, held, serve, update};
@@ -3839,7 +3839,7 @@ fn refuse_during_calls(world: &mut World) {
         every_ask_waits: false,
         refuses_the_ask_alone: false,
         refuses_at_most: None,
-        says_why: false,
+        says: Says::Beside,
     }];
 }
 
@@ -3859,7 +3859,7 @@ fn over_its_load(world: &mut World, at_most: Option<u64>) {
         every_ask_waits: false,
         refuses_the_ask_alone: true,
         refuses_at_most: at_most,
-        says_why: false,
+        says: Says::Beside,
     }];
 }
 
@@ -3892,7 +3892,7 @@ fn a_check_refusing_the_ask_alone_holds_no_switch() {
 fn a_refusal_carries_what_its_check_said() {
     let mut world = World::new();
     over_its_load(&mut world, None);
-    world.config.refuse_while[0].says_why = true;
+    world.config.refuse_while[0].says = Says::Why;
     world.config.refuse_while[0].command[2] = format!(
         "echo 'mac-room: 30% then 20% free' >&2; test -e {}/call",
         world.root.display()
@@ -4277,7 +4277,7 @@ fn waits_on(world: &World, why: &str, counted: &str, times: usize, at_most: Opti
         every_ask_waits: false,
         refuses_the_ask_alone: false,
         refuses_at_most: None,
-        says_why: false,
+        says: Says::Beside,
     }
 }
 

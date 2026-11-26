@@ -692,7 +692,7 @@ in
               every_ask_waits = busy.everyAskWaits;
               refuses_the_ask_alone = busy.refusesTheAskAlone;
               refuses_at_most = busy.refusesAtMost;
-              says_why = busy.saysWhy;
+              says = if busy.saysWhy then "why" else "beside";
             }) cfg.refuseWhile;
             follower_tells = cfg.followerTells;
             holds =

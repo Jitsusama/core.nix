@@ -243,12 +243,22 @@ pub struct Busy {
     /// the ask it let through.
     #[serde(default)]
     pub refuses_at_most: Option<u64>,
-    /// Whether the last line it says on its error stream while busy says
-    /// why, as a Mac's readings do, so a refusal ends with it. Another's
-    /// is left out, since a call check's caution that a peer went unheard
-    /// is no reason a call is on.
+    /// What the last line it says on its error stream while busy is.
     #[serde(default)]
-    pub says_why: bool,
+    pub says: Says,
+}
+
+/// What a busy command's last line on its error stream is, while it says
+/// busy. What one that can't tell says is the reason either way.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Says {
+    /// Something beside, left out of a refusal: a call check's caution
+    /// that a peer went unheard is no reason a call is on.
+    #[default]
+    Beside,
+    /// Why it's busy, as a Mac's readings are, so a refusal ends with it.
+    Why,
 }
 
 #[derive(Clone, Debug, Deserialize)]
