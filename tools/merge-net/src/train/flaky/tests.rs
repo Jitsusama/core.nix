@@ -186,16 +186,18 @@ fn the_same_failure_reads_alike_whatever_its_times_and_store_paths() {
     let candidate = "formatting> error: /nix/store/aaaa-source/Presented.js has 503 lines\n";
     let base = "formatting> error: /nix/store/bbbb-source/Presented.js has 501 lines\n\
                 formatting> Checked 300 files in 1799ms\n";
-    assert!(fails_as_at_base(candidate, base, "formatting"));
+    assert!(
+        fails_as_at_base(candidate, base, "formatting"),
+        "the same failure, at other times and store paths, read as a new one"
+    );
     assert!(
         !fails_as_at_base("", base, "formatting"),
         "a failure whose builder said nothing was read as main's"
     );
-    assert!(!fails_as_at_base(
-        "formatting> error: Other.js\n",
-        base,
-        "formatting"
-    ));
+    assert!(
+        !fails_as_at_base("formatting> error: Other.js\n", base, "formatting"),
+        "a failure the base didn't say was read as main's"
+    );
 }
 
 #[test]
@@ -253,7 +255,10 @@ fn once_a_failure_is_the_riders_nothing_after_it_is_built_again() {
 #[test]
 fn a_red_of_more_checks_than_are_rebuilt_is_the_riders_unbuilt() {
     let many = ["a", "b", "c", "d", "e"];
-    assert!(many.len() > MOST_REBUILT);
+    assert!(
+        many.len() > MOST_REBUILT,
+        "the test's red fails no more checks than are rebuilt"
+    );
     let built = std::cell::Cell::new(false);
     let at_base = |check: &str| {
         built.set(true);
@@ -295,8 +300,14 @@ fn words_naming_no_failed_derivation_say_nothing_of_whose_the_red_is() {
 
 #[test]
 fn only_a_plain_check_name_goes_into_nix() {
-    assert!(plainly_named("the-margin-cat-on-niri"));
-    assert!(plainly_named("vm_pi'"));
-    assert!(!plainly_named("x${builtins.abort \"\"}"));
-    assert!(!plainly_named(""));
+    assert!(
+        plainly_named("the-margin-cat-on-niri"),
+        "a check's name was refused"
+    );
+    assert!(plainly_named("vm_pi'"), "a name Nix allows was refused");
+    assert!(
+        !plainly_named("x${builtins.abort \"\"}"),
+        "a name splicing an expression went into nix"
+    );
+    assert!(!plainly_named(""), "an empty name went into nix");
 }
