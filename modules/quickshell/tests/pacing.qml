@@ -1220,6 +1220,9 @@ QtObject {
         check(failures, "and a program's key with more past its id counts the row",
             Presented.timedShown("\u2192 Spotify", "\u2192 Spotify", false,
                 "program:media:spotify"), "\u2192 7 letters");
+        check(failures, "and a key said whole that's neither a program nor its own counts the row",
+            Presented.timedShown("\u2192 Details", "\u2192 Details", false, "verb:details"),
+            "\u2192 7 letters");
         check(failures, "and a step whose row has no key counts it",
             Presented.timedShown("\u2192 Harbour", "\u2192 Harbour", false, ""),
             "\u2192 7 letters");

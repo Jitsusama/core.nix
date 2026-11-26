@@ -7146,7 +7146,7 @@ Scope {
             searchParts = trials.stepped(searchParts, { began, made: at.made,
                 pushed: at.pushed, opened: at.pushed, ended: Date.now() });
             steppedByKey = named.name;
-            steppedByKeyInto = `category:${named.id}`;
+            steppedByKeyInto = String(held[held.length - 1]?.row?.key ?? "");
             return;
         }
         const whole = category !== null ? askedWhole(letters) : "";

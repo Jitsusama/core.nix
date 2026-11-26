@@ -118,7 +118,7 @@ def test_a_step_in_and_out_says_its_arrow_and_the_places_key(shell: Shell) -> No
     steps = [key for key in said if key[:2] in STEPS]
     assert {key[:2] for key in steps} == STEPS, f"a step wasn't said: {said}"
     assert all(key[2:] == PROGRAMS for key in steps), f"a step said more than its key: {said}"
-    assert not any("Programs" in key for key in said), f"a key said the row's name: {said}"
+    assert not any("rograms" in key for key in said), f"a key said the row's name: {said}"
 
 
 def test_a_word_and_a_space_says_the_step_it_took(shell: Shell) -> None:
@@ -138,7 +138,9 @@ def test_a_word_and_a_space_says_the_step_it_took(shell: Shell) -> None:
     steps = [key for key in said if key.startswith("\u2192 ")]
     assert steps, f"the step a space took wasn't said: {said}"
     assert all(key[2:] == NETWORK for key in steps), f"the step said more than its key: {said}"
-    assert not any("Network" in key for key in said), f"a key said the row's name: {said}"
+    # The step's own key holds the word typed, so only the other lines are read for it.
+    others = [key for key in said if key not in steps]
+    assert not any("etwork" in key for key in others), f"a key said the row's name: {said}"
 
 
 def logged_until(shell: Shell, mark: int, wanted: re.Pattern[str]) -> list[str]:
