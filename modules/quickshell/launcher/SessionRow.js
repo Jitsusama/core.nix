@@ -40,10 +40,11 @@ function rankOf(row) {
 // there would wake what it meant to park. Only one here can be closed,
 // last, since the harness ends a session on a close Joel steers it from
 // this machine and drops one a node relays (harness #1023). The daemon
-// serves a row's acts once it holds the row (modules/agents/src/row.rs),
-// so these are asked only of a row it doesn't yet serve, standing "off";
-// the other states restate standing.rs's rule, where a paused session
-// wanting Joel stands "needs" but is served a paused one's acts.
+// serves a held row's own acts (modules/agents/src/row.rs), so a row's
+// drawer asks these only before it's held, standing "off"; a landing's
+// Talk and Go To ask them for its served state (behindActs). The other
+// states restate standing.rs's rule, where a paused session wanting Joel
+// stands "needs" but is served a paused one's acts.
 function acts(standing, windowed, here) {
     if (standing === "parked") {
         return ["wake", "talk"];
@@ -87,29 +88,35 @@ function asks(presence) {
     return kind === "question" || kind === "approval";
 }
 
-// The acts a session's row offers, by their ids, and `marked`, the one its
-// Return does: those its row serves (`rowActs`), in their order, and its `returns`
-// (modules/agents/src/row.rs), else `fallback`, the shell's own list, with
-// Return on its first, while its row isn't held. An act Return does that
-// the row doesn't list leads it, so nothing marks an act Return won't do.
-// Its drawer and its step in read the same list. Only the acts the shell
-// makes (KNOWN) are taken: a switch restarts the daemon at once but leaves
-// the running shell alone until its handover, so a daemon serving an act
-// newer than the shell would otherwise break every row offering it.
-const AGENT = "verb:agent:";
 // The acts a session's own row can do, as Agents.qml's sessionAct makes
-// each.
+// each. Only these are taken from what the daemon serves: a switch
+// restarts the daemon at once but leaves the running shell alone until its
+// handover, so a daemon serving an act newer than the shell would
+// otherwise offer what the shell can't do.
+const AGENT = "verb:agent:";
 const KNOWN = ["switch", "talk", "wake", "pause", "resume", "park", "stop", "close"];
+
+// The id of a session's act its key names, as "verb:agent:park" names
+// park, or "" for a key that isn't one the shell makes, which is how a
+// row's Return (Agents.qml's sessionRow) and its acts are both read.
+function known(key) {
+    const said = String(key ?? "");
+    const id = said.startsWith(AGENT) ? said.slice(AGENT.length) : "";
+    return KNOWN.includes(id) ? id : "";
+}
+
+// The acts a session's row offers, by their ids, and `marked`, the one its
+// Return does: those its row serves (`rowActs`) that the shell makes, in
+// their order, and its `returns` (modules/agents/src/row.rs), else
+// `fallback`, the shell's own list, with Return on its first. An act
+// Return does that the row doesn't list leads it, so nothing marks an act
+// Return won't do. Its drawer and its step in read the same list.
 function offered(rowActs, returns, fallback) {
     const served = (Array.isArray(rowActs) ? rowActs : [])
-        .map(one => String(one?.key ?? ""))
-        .filter(key => key.startsWith(AGENT))
-        .map(key => key.slice(AGENT.length))
-        .filter(id => KNOWN.includes(id));
+        .map(one => known(one?.key))
+        .filter(id => id !== "");
     const ids = served.length > 0 ? served : fallback.slice();
-    const said = String(returns ?? "");
-    const named = said.startsWith(AGENT) ? said.slice(AGENT.length) : "";
-    const returning = KNOWN.includes(named) ? named : "";
+    const returning = known(returns);
     if (returning !== "" && !ids.includes(returning)) {
         ids.unshift(returning);
     }

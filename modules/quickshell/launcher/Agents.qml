@@ -931,7 +931,7 @@ Provider {
             ? presence.owns.find(owned => /^QEST-/.test(owned)) ?? "" : "";
         const place = { depth: served.depth, orchestrates: !!held.orchestrates };
         const said = items => (items ?? []).map(item => item.said).join(" \u00b7 ");
-        const returning = String(held.returns ?? "").replace(/^verb:agent:/, "");
+        const returning = SessionRow.known(held.returns);
         const row = member({
             thing: true,
             key: served.row,
@@ -1424,18 +1424,21 @@ Provider {
     // The acts a session's row offers and the one its Return does, as the
     // agents daemon serves its row (SessionRow.offered), so its drawer and
     // its step in list the same; while its row isn't held, SessionRow.js's
-    // own for how it stands.
+    // own for one standing "off". A row served with no act the shell makes,
+    // as from a daemon newer than it, offers Talk alone, which every
+    // session takes, rather than the shell's guess at its served state.
     function offeredOf(session) {
         const row = rowsKind?.held?.[`row:agents:${session.address}`]?.row ?? null;
-        return SessionRow.offered(row?.acts, row?.held?.returns,
-            SessionRow.acts(stateOf(session), windowedOf(session), session.here));
+        return SessionRow.offered(row?.acts, row?.held?.returns, row ? ["talk"]
+            : SessionRow.acts("off", windowedOf(session), session.here));
     }
 
     // A session's own acts, in the order its row offers them, each steering
     // it through its inbox but Go To; an orchestrator's row is its
     // session's, with its talks after them.
     function sessionActs(session) {
-        return offeredOf(session).ids.map(id => sessionAct(session, id));
+        return offeredOf(session).ids.map(id => sessionAct(session, id))
+            .filter(act => act !== null);
     }
 
     // What Close leaves of a session, its worktree or folder and its quest's
@@ -1554,7 +1557,8 @@ Provider {
     // One of a session's acts, by its id in SessionRow.js's acts. Go To
     // and Wake take the session as it stands when pressed, since its row
     // is kept while its window moves, and Switch would otherwise go to
-    // the old one (Y2YBTS's review of #2521).
+    // the old one (Y2YBTS's review of #2521). An id it doesn't make is
+    // null, so a row served one by a newer daemon still builds.
     function sessionAct(session, id) {
         const current = () => provider.sessionAt(session.address) ?? session;
         const act = (id, fields) => thing(Object.assign({
@@ -1647,7 +1651,8 @@ Provider {
                 leaves: leaves(session), askedAs: session.address }, costly(session),
                 Words.ending("verb:agent:close")))
         };
-        return made[id]();
+        const make = made[id];
+        return make ? make() : null;
     }
 
     // When a session started, as a clock says it, with its day when that

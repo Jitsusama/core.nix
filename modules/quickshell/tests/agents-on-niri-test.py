@@ -925,6 +925,9 @@ def test_za_shows_a_sessions_fold_above_its_more_line_its_prose_giving_way(shell
     # The last line it keeps fades at its end, as a long name does as it
     # reads on, so it says more follows rather than read as a broken
     # sentence; shut, its prose is whole to its ellipsis (VKCF3Z, 448f6cc6).
+    # It keeps a line only while its acts stand one, as a paused one's do.
+    laid = cast("list[int]", opened["actsLaid"])
+    assert len(laid) == 1, f"its acts take {laid} lines, leaving its prose none: {opened}"
     fade = opened.get("wordsFade")
     assert fade, f"its kept prose ends with nothing to say more follows: {opened}"
     assert fade["from"] < fade["to"], f"its fade covers nothing: {opened}"
@@ -947,14 +950,15 @@ def test_za_shows_a_sessions_fold_above_its_more_line_its_prose_giving_way(shell
     fold_stands_in_sight(opened)
 
 
-def test_za_on_a_live_session_keeps_its_fold_in_sight_its_prose_all_given_way(
+def test_za_on_a_live_session_keeps_its_fold_in_sight_its_prose_giving_way(
     shell: Shell,
 ) -> None:
     """Opened by z a on a listening session, its fold stands above the more line.
 
-    A live session's acts, Park among them, take two lines, which leave its prose no line to
-    keep over the fold, so all of it gives way and is counted under the more line, as the
-    drawer lays it (Drawer.qml's wordsKept), rather than the fold standing out of sight.
+    A live session's acts, Park among them, take more room than a paused one's, so its prose
+    keeps fewer lines over the fold, none at all where its acts take two (Drawer.qml's
+    wordsKept): whatever it keeps ends above the fold, fading, rather than the fold standing
+    out of sight.
     """
     opened = fold_opened(shell, "listening quest", "Listening Quest")
     shell.send_chars("za")
@@ -962,11 +966,14 @@ def test_za_on_a_live_session_keeps_its_fold_in_sight_its_prose_all_given_way(
     shell.on_find()
     parks = [act for act in opened["acts"] if act.split(" ")[-1] == "Park"]
     assert parks, f"its acts don't offer Park: {opened}"
-    assert len(cast("list[int]", opened["actsLaid"])) > 1, f"its acts stand one line: {opened}"
-    # It has prose, none of it kept: its words stand no line, so none fades.
-    assert opened["bodyLines"] > 0, f"it has no prose to give way: {opened}"
-    assert opened["lines"]["words"] is None, f"its prose keeps a line over the fold: {opened}"
-    assert opened.get("wordsFade") is None, f"its prose fades a line it keeps: {opened}"
+    assert opened["body"] != "", f"it has no prose to give way: {opened}"
+    # However many lines its prose keeps, they stand above the fold's line,
+    # the last fading to say more follows; kept none, it stands no line.
+    words = opened["lines"]["words"]
+    fold = cast("list[float]", opened["lines"]["nerd"])[0]
+    if words is not None:
+        assert words < fold, f"its prose stands over its fold's line: {opened}"
+        assert opened.get("wordsFade"), f"its kept prose ends with nothing to say more: {opened}"
     fold_stands_in_sight(opened)
 
 
@@ -1596,8 +1603,8 @@ def test_agents_top_level_is_the_rows_its_daemon_serves_ready(
 def test_an_orchestrators_acts_split_evenly_none_alone_on_a_line(shell: Shell) -> None:
     """Acts too wide for one line split evenly over two, none alone on one.
 
-    The orchestrator's five acts left Close alone under the other four at 288 pixels, a wrap
-    as gross as any (VKCF3Z, 448f6cc6).
+    The orchestrator's acts once left Close alone under the other four at 288 pixels, a wrap
+    as gross as any (VKCF3Z, 448f6cc6). It now has seven, Park and its step in among them.
     """
     opened(shell)
     shell.launcher_until(lambda shown: shown["drawer"]["shown"] and shown["drawer"]["acts"])

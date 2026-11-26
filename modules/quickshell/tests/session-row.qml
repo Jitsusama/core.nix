@@ -108,6 +108,9 @@ QtObject {
                 "verb:agent:resume", ["talk"], "switch talk resume close", "resume"],
             ["one listening marks Talk after Go To", served(["switch", "talk", "pause"]),
                 "verb:agent:talk", ["talk"], "switch talk pause", "talk"],
+            ["one live offers Park as served",
+                served(["switch", "talk", "pause", "park", "stop", "close"]),
+                "verb:agent:talk", [], "switch talk pause park stop close", "talk"],
             ["one parked marks Wake", served(["wake", "talk"]), "verb:agent:wake", ["talk"],
                 "wake talk", "wake"],
             ["its order is the daemon's, not the shell's", served(["talk", "pause"]),
@@ -128,6 +131,17 @@ QtObject {
             ["only acts it can't make served, the shell's own", served(["hush"]),
                 "verb:agent:hush", ["talk"], "talk", "talk"]
         ];
+        // A row's own Return is read as its acts are, so an act the shell
+        // doesn't make is none, rather than one sessionAct can't make.
+        const keys = [
+            ["park", "verb:agent:park", "park"], ["stop", "verb:agent:stop", "stop"],
+            ["one the shell doesn't make", "verb:agent:hush", ""],
+            ["another kind's", "verb:agents:park", ""], ["none", undefined, ""]
+        ];
+        for (const [what, key, want] of keys) {
+            if (SessionRow.known(key) !== want)
+                failures.push(`${what}: known "${SessionRow.known(key)}", not "${want}"`);
+        }
         for (const [what, acts, returns, fallback, want, mark] of offers) {
             const { ids, marked } = SessionRow.offered(acts, returns, fallback);
             if (ids.join(" ") !== want || marked !== mark)
