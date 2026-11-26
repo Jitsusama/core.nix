@@ -17,12 +17,15 @@ let
   # What each file the checks copy imports of the shell's own (imports.nix).
   imports = import ./imports.nix;
   # A path under modules/quickshell, as an import in a file in folder names it.
+  # One climbing out of the folder keeps its leading .., so it names no file
+  # there rather than stopping evaluation.
   under =
     folder: path:
     lib.concatStringsSep "/" (
-      lib.foldl' (kept: part: if part == ".." then lib.init kept else kept ++ [ part ]) [ ] (
-        lib.filter (part: part != "" && part != ".") (lib.splitString "/" "${folder}/${path}")
-      )
+      lib.foldl' (
+        kept: part:
+        if part == ".." && kept != [ ] && lib.last kept != ".." then lib.init kept else kept ++ [ part ]
+      ) [ ] (lib.filter (part: part != "" && part != ".") (lib.splitString "/" "${folder}/${path}"))
     );
   # What a QML or JavaScript file placed at file in the shell's folder
   # imports of the shell's own, as its source says.
@@ -112,9 +115,10 @@ let
   # own files, by where the shell's folder holds each, with every shell file
   # they import and what that imports, guarded as copied guards it, so an
   # import added to Reader.js comes with it, as it does when the account's
-  # shell is made. An import the shell's folder doesn't hold, nor the
-  # program, fails the check instead, naming it. The table and the roots are
-  # given, so a check can give it others (core.nix's
+  # shell is made. An import the shell's folder doesn't hold as a file, nor
+  # the program, fails the check instead, naming it: a missing file, a
+  # folder, or one climbing out of the shell's folder. The table and the
+  # roots are given, so a check can give it others (core.nix's
   # a-check-copies-what-each-file-imports).
   programStepWith =
     table: roots: own:
@@ -124,7 +128,15 @@ let
         lib.concatLists (lib.mapAttrsToList (file: source: importingFrom source file) own)
       );
       shells = lib.filter (file: !(lib.elem file placed)) imported;
-      strays = lib.filter (file: !(builtins.pathExists (../. + "/${file}"))) shells;
+      held =
+        file:
+        let
+          path = ../. + "/${file}";
+        in
+        !(lib.elem ".." (lib.splitString "/" file))
+        && builtins.pathExists path
+        && builtins.readFileType path == "regular";
+      strays = lib.filter (file: !(held file)) shells;
       folders = lib.unique (lib.filter (folder: folder != ".") (map dirOf placed));
     in
     if strays == [ ] then
@@ -135,7 +147,7 @@ let
       )
     else
       ''
-        echo "A program's own files import what modules/quickshell doesn't hold:" \
+        echo "A program's own files import what modules/quickshell doesn't hold as a file:" \
           "${lib.concatStringsSep ", " strays}" \
           "(each as the shell's folder would place it; give the check that file)" >&2
         exit 1
