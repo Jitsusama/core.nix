@@ -285,6 +285,12 @@
     a stick given Apple's restore image lays it last, as a partition of its own named for its zip,
     with a usbmuxd that skips pairing and a line saying `guide revive`; core's own stick has none
   '';
+  a-switch-leaves-timed-runs-be = ''
+    a timed oneshot saying nothing of its own keeps its run over a switch, which sd-switch reads
+    as keep-old, and its run ends after three hours; its own method, legacy key or TimeoutSec is
+    read rather than overruled, another type and an untimed service restart as before, and a
+    timer naming its service, or running a template's instance, sets them on that service
+  '';
   a-talk-answers-what-its-session-asks = ''
     Talk to It on a session asking shows what it asks whole with what it takes; words answer it
     by a choice's label, else its value, or as its own words where it takes them, and read sent,
@@ -1461,6 +1467,11 @@
     no test passes without running, by an #[ignore] with no reason, a printed skip, an early return
     or pytest's or QML's skips, but those still waiting to run where they can
   '';
+  every-timer-runs-a-written-service = ''
+    home.nix's assertions refuse, by name, a timer whose service the account doesn't write and a
+    written service named in jitsusama.timedRuns.unwritten; one unwritten is left out, so a
+    switch's setting is never a unit of its own
+  '';
   every-vm-test-keeps-to-the-pyramid = ''
     no VM test holds more than twenty subtests, but those past it today, each held to its count
   '';
@@ -2061,6 +2072,14 @@
     the Linux VM's collection, run for a collecting key, collects all that's dead, or at most the
     GiB asked, or nothing for free, prints the store's free bytes, and refuses anything else
   '';
+  linux-builder-is-offered-only-with-room = ''
+    the Mac's Nix reads its builders from the room job's file, which a job every 15 seconds,
+    given the set floor and hold in order, keeps clear of the builder below the floor, as at 34%
+    free, on a page swapped out, on a swap-out count that started again, with the room or its
+    own record unread or that record from later than now, or when a step fails, and gives the
+    line back only after the hold, at 35% and 600 s exactly but not 595 s, saying each change
+    once, opening with its UTC time
+  '';
   linux-builder-gives-up-on-a-guest-that-stops-answering = ''
     the Mac's ssh to the Linux VM waits five minutes for a guest to greet it and, once in, gives
     up after four asks 15 seconds apart go unanswered, each setting said once in the entry in any
@@ -2144,16 +2163,27 @@
     is said again five minutes on, one read again a moment on isn't said, and a name it
     couldn't read or set is said, and a set tried, once in five minutes
   '';
+  local-name-answers-on-its-link = ''
+    the name answers the first wired or Wi-Fi link's address, past a tunnel or a bridge and
+    never from the IPv6 list, on that link alone and as a host of its own; a moved address,
+    another link or none ends it and its answer, waited for; with no link, or a scutil that
+    fails, it waits, saying which once, and a scutil that fails while it answers changes
+    nothing; it says the name offered, not answering; and an answer that ends by itself ends
+    it, saying so
+  '';
   local-name-is-kept-by-a-job = ''
-    a Mac with a local name runs a root job, labelled as nix-darwin labels it, under the Mac's
-    own bash that sets it back, by that name and not the host name, from its start, whenever
-    macOS writes its network settings and once a minute, finding its tools only in macOS's own
-    folders and saying what it does in its log, given nothing else, and a Mac with none runs
-    nothing; the module adds or changes no launchd plist but that job's, nor any agent of the
-    account's, the job's plist is on, is the text its options lower to, is written from that
-    text and opens no socket, and keep.sh names, in any case, none of dns-sd,
-    launchctl, systemsetup's remote switches, Remote Management's kickstart or the sharing
-    command, since any of those could advertise for the host
+    a Mac with a local name runs two root jobs, each labelled as nix-darwin labels it, under
+    the Mac's own bash, by that name and not the host name, finding their tools only in
+    macOS's own folders and saying what they do in their logs, given nothing else: keep.sh,
+    which sets the name back, from its start, whenever macOS writes its network settings and
+    once a minute, and answer.sh, which answers it, kept running; a Mac with none runs
+    neither; the module adds, changes or turns off no launchd plist but those two, nor any
+    agent of the account's, launchd's environment or a file in /etc but the rotation of the
+    two logs, as held; each plist is on, is linked as its own file, is the text its options
+    lower to, is written from that text and opens no socket; keep.sh names, in any
+    case, none of dns-sd, launchctl, systemsetup's remote switches, Remote Management's kickstart or the
+    sharing command, and answer.sh only dns-sd, in one line answering the name as a host of
+    its own on one link, since any other could advertise for the host
   '';
   local-sites-kit-holds = ''
     the kit every live local site is built on typechecks at its strictest and its tests pass: a
