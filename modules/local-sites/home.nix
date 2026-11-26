@@ -71,7 +71,7 @@ let
   # its record before the server serves; a record that won't read then
   # builds it from the declared rows alone until a session mends it, since
   # the last build went with the reboot.
-  homeFolder = cfg.homeFolder;
+  inherit (cfg) homeFolder;
   # Loopback, under the names a browser sends there by itself.
   served = pkgs.writeText "local-sites.json" (
     builtins.toJSON {
