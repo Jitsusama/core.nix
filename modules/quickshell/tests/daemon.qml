@@ -388,7 +388,8 @@ ShellRoot {
             + `, answered ${JSON.stringify(root.answered)}`
             + `, letting go ${lettingGo.state} ${root.letGo} ${JSON.stringify(root.letGoGiven)}`
             + ` awaiting ${Object.keys(lettingGo.awaited).length}`
-            + `, relinked ${root.relinked}, refused ${lettingGo.refusals} times`
+            + `, relinked ${root.relinked}, tried ${lettingGo.refusals} times`
+            + ` last failing with ${lettingGo.failedWith} (2 nothing there, 0 refused)`
             + `, the census heard ${root.heardSaid} of ${root.heardLines.join(" and ")}`);
         Qt.exit(1);
     }
@@ -427,15 +428,17 @@ ShellRoot {
             // tries end 14 s in, so a daemon slower than that to start on a
             // busy builder could leave it unconnected. Once the daemon
             // answers, the link is connected again here, once, and waited for
-            // as long as a restart's, rather than inside the let-go step's ten
-            // seconds. Its tries count afresh, as the file watch's do, so a
-            // refused relink is tried again 2 s on rather than 16 s, and one
-            // finding no socket is tried again at all.
+            // as long as a restart's from then, rather than what's left of this
+            // step or inside the let-go step's ten seconds. Its tries count
+            // afresh, as the file watch's do, so a refused relink is tried again
+            // 2 s on rather than 16 s, and one finding no socket is tried again
+            // at all, 2, 6 and 14 s on, each inside the 20 s it's given.
             polls: 400,
             holds: () => {
                 const answering = people.state === "answering" && "slack" in people.sources;
                 if (answering && lettingGo.wire === null && !root.relinked) {
                     root.relinked = true;
+                    root.left = 400;
                     lettingGo.refusals = 0;
                     lettingGo.connectAgain();
                 }
