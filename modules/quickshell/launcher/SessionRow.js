@@ -33,11 +33,11 @@ function rankOf(row) {
 // paused, resumed and stopped; one with no window offers no Go To, and
 // only one under way can be stopped. One parked has no process to pause
 // or stop and no window known to go to: it can be woken, or talked to,
-// which wakes it too. One known to run and not paused can be parked,
-// which the harness refuses under another hold (agentic-harness.pi
-// #2159); one standing "off", its row not yet served, may be parked
-// already, and the node wakes a parked session for any steer, so a Park
-// there would wake what it meant to park. Only one here can be closed,
+// which wakes it too. None offers Park here: only the daemon's row does,
+// for one it knows runs and isn't paused (standing.rs), since one not yet
+// served may be parked already, and the node wakes a parked session for
+// any steer, so a Park there would wake what it meant to park, and a
+// landing's acts keep no Park (behindActs). Only one here can be closed,
 // last, since the harness ends a session on a close Joel steers it from
 // this machine and drops one a node relays (harness #1023). The daemon
 // serves a held row's own acts (modules/agents/src/row.rs), so a row's
@@ -52,9 +52,6 @@ function acts(standing, windowed, here) {
     const ids = windowed ? ["switch"] : [];
     ids.push("talk");
     ids.push(standing === "paused" ? "resume" : "pause");
-    if (["working", "inLine", "listening", "needs"].includes(standing)) {
-        ids.push("park");
-    }
     if (standing === "working" || standing === "inLine") {
         ids.push("stop");
     }

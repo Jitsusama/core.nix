@@ -281,7 +281,9 @@ by = "KP0L6A"
 due = "2026-11-26 18:00"
 why = "a cell's drawer offers no park"
 
-# Read by its wiring, not its words alone, so it fails if the act goes.
+# Read by its wiring, not its words alone, so it fails if the shell can no
+# longer make the act; whether a row offers it is the daemon's (standing.rs)
+# and SessionRow.js's KNOWN, which the Rust and Qt cases pin.
 [act.launcher.has]
 file = "modules/quickshell/launcher/Agents.qml"
 holds = ['park: () => act("park"', 'wake: () => act("wake"']
