@@ -15,7 +15,7 @@
 //! is a `drawer:passwords:<entry key>` record of its own, which the row
 //! names and the shell watches by key only while it shows, so a watch of
 //! rows never carries every entry's figures. No secret is ever in either:
-//! an entry is held without its secrets (lib.rs's `Entry`), and a copy is
+//! an entry is held without its secrets (entry.rs's `Entry`), and a copy is
 //! an ask.
 
 use std::cmp::Ordering;
@@ -186,7 +186,7 @@ pub fn drawer_key(entry: &str) -> String {
 
 /// Every entry's row, in the order shown and without its `order`, which
 /// `kept` gives it as it takes them, from the records the daemon serves
-/// (lib.rs's `Held::records`). `kept` holds the rows as last told, so
+/// (held.rs's `Held::records`). `kept` holds the rows as last told, so
 /// each keeps its place among those needing attention where it can.
 pub fn rows(records: &[Value], managers: &[Shown], kept: &Kept) -> Vec<Value> {
     let listed = listed(records);

@@ -24,7 +24,7 @@
 //! nobody asking, nothing runs but the managers waiting on input, and a
 //! manager that has to ask Joel's leave, as 1Password's command does, only
 //! ever asks it in answer to his own key. What's held is each entry
-//! without its secrets (lib.rs); a secret goes from its manager to the
+//! without its secrets (entry.rs); a secret goes from its manager to the
 //! clipboard, marked sensitive and cleared after CLEARS, or is typed into
 //! the window with the keys, never back to an ask, and is never kept,
 //! written or logged here. Copying
@@ -56,7 +56,7 @@
 //! cleared, are kept in `$XDG_STATE_HOME/passwords/checked.json`, else
 //! `~/.local/state`'s, readable by Joel alone and written whole through a
 //! file beside it, so what the last check found stands through a reboot
-//! (lib.rs's `Held::kept`). The `health` ask answers it as `checked`, and
+//! (held.rs's `Held::kept`). The `health` ask answers it as `checked`, and
 //! each watch is told it as it changes.
 //!
 //! Run with any other word, it's the command line, in the terminal kit's
