@@ -779,7 +779,12 @@ fn btrfs_fsid(path: &Path) -> io::Result<PathBuf> {
 
 /// A Btrfs filesystem's 16-byte id, the same from every subvolume.
 fn btrfs_id(path: &Path) -> io::Result<[u8; 16]> {
-    let flags = rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC;
+    // Opened without waiting, as a pipe's open would wait for a writer and
+    // hold the guard until one came, and never as a terminal to answer to.
+    let flags = rustix::fs::OFlags::RDONLY
+        | rustix::fs::OFlags::CLOEXEC
+        | rustix::fs::OFlags::NONBLOCK
+        | rustix::fs::OFlags::NOCTTY;
     let fd = rustix::fs::open(path, flags, rustix::fs::Mode::empty())?;
     // struct btrfs_ioctl_fs_info_args is 1024 bytes: max_id and
     // num_devices, then the 16-byte fsid.

@@ -560,8 +560,9 @@ or launchd, and [`home.nix`][2] the account's.
   begins and ends. While it stands, a filling disk's status says its
   clearing waits, never that it is clearing, unless it has cleared all it
   may or Joel asked for a clear there; the launcher's row says so too.
-  A clear is told as at work from before its survey, which walks for
-  minutes, and no longer once it ends, whether or not it found anything.
+  A clear is told as at work on the disk its first asked folder lies on
+  from before its survey, which walks for minutes, and no longer once it
+  ends, whether it found anything or failed.
   The system's guard and the account's each read their own config, so a
   machine names its marks in both: core knows no program that leaves one.
   A mark's path must be plain and absolute, since one the guard can't

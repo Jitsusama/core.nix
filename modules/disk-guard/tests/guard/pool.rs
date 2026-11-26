@@ -110,6 +110,31 @@ fn the_subvolumes_of_one_btrfs_pool_are_one_filesystem() {
     );
 }
 
+/// A clear may be asked of any path, and a process may hold a pipe open,
+/// so a pipe's pool is read without waiting for a writer to open it too:
+/// on Btrfs, waiting would hold the guard until one did.
+#[test]
+fn a_pipe_s_pool_is_read_without_waiting_for_a_writer() {
+    use std::os::unix::ffi::OsStrExt;
+    let dir = tempfile::tempdir().unwrap();
+    let pipe = dir.path().join("pipe");
+    let name = std::ffi::CString::new(pipe.as_os_str().as_bytes()).unwrap();
+    // SAFETY: a plain system call on a name this test owns.
+    assert_eq!(
+        unsafe { libc::mkfifo(name.as_ptr(), 0o600) },
+        0,
+        "no pipe made"
+    );
+    let (sent, heard) = std::sync::mpsc::channel();
+    std::thread::spawn(move || sent.send(pool(&pipe).is_ok()));
+    let answered = heard.recv_timeout(std::time::Duration::from_secs(5));
+    assert!(
+        answered.is_ok(),
+        "reading a pipe's pool waited for a writer, on {}",
+        dir.path().display()
+    );
+}
+
 #[test]
 fn the_volumes_of_one_apfs_container_share_its_pool() {
     let data = apfs_container("apfs", "/dev/disk3s5").unwrap();

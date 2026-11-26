@@ -1009,9 +1009,10 @@ fn passes_that_find_nothing_are_in_a_row_only_within_a_filling_disk_s_longest_re
     // The first pass rests a minute, to 3660 s. The second comes 890 s
     // or 1200 s after that rest ended, either side of the 15 minutes a
     // filling disk rests longest. In a row, it rests the hour, so a step
-    // past the two minutes it would otherwise rest runs no third pass.
-    // The rest counts from the pass's real end, which a loaded builder
-    // delays, so the far side keeps five minutes in hand.
+    // ten minutes on, well past the two it would otherwise rest, runs no
+    // third pass. The rest counts from the pass's real end, which a loaded
+    // builder delays, so the far side keeps five minutes in hand, and the
+    // third step eight.
     for (gap, third) in [(890.0, 2), (1200.0, 3)] {
         let home = Home::new();
         fs::create_dir_all(home.root.join("scratch")).unwrap();
@@ -1024,7 +1025,7 @@ fn passes_that_find_nothing_are_in_a_row_only_within_a_filling_disk_s_longest_re
         };
         let second = 3660.0 + gap;
         let mut seen = Vec::new();
-        for at in [3600.0, second, second + 150.0] {
+        for at in [3600.0, second, second + 600.0] {
             guard.step(&tick_at(at), &CALM).unwrap();
             seen.push(passes());
         }
