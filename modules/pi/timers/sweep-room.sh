@@ -12,8 +12,12 @@
 # thread and with no limits, and two skipped hours on 26 November did
 # just that. So past its wait it lets the sweep start however the machine
 # stands; it lets it start at once when the last sweep's stamp is too old
-# for a wait to end before the hosts take over, as after a sleep, and on
-# a reading it can't make. The stall marks, 3.5% and 1.4%, are 70% of the
+# for a wait to end before the hosts take over, and on a reading it can't
+# make. It reads the stamp again on every pass, since a machine that
+# sleeps through a wait wakes with the stamp older than the wait counted,
+# and it ends a wait two minutes and one pass short of the hosts' two
+# hours, so its last sleep and the sweep's own start to its lock end
+# before them. The stall marks, 3.5% and 1.4%, are 70% of the
 # 5% and 2% at which an agent's heavy work stops, held over five minutes
 # as a start is judged; a quarter free is the jobs door's own room.
 # Its help takes the shape every command of ours does (docs/commands.md),
@@ -92,12 +96,14 @@ age() {
   esac
 }
 
+# The oldest the stamp may be while a sweep still waits.
+latest=$((7200 - apart - 120))
 ago=$(age)
 if [ -z "$ago" ]; then
   echo "pi-sweep starts: no sweep has left a stamp, so the hosts sweep meanwhile"
   exit 0
 fi
-if [ "$ago" -gt $((7200 - most)) ]; then
+if [ "$ago" -gt $((latest - most)) ]; then
   echo "pi-sweep starts: the last sweep ended $((ago / 60)) minutes ago, too long to wait"
   exit 0
 fi
@@ -131,6 +137,16 @@ while :; do
   fi
   if [ "$SECONDS" -ge "$most" ]; then
     echo "pi-sweep starts without room after waiting $SECONDS s: $said"
+    exit 0
+  fi
+  ago=$(age)
+  if [ -z "$ago" ]; then
+    echo "pi-sweep starts without room: the last sweep's stamp is gone: $said"
+    exit 0
+  fi
+  if [ "$ago" -ge "$latest" ]; then
+    echo "pi-sweep starts without room: the last sweep ended $((ago / 60)) minutes ago," \
+      "too long to wait more: $said"
     exit 0
   fi
   if ! "$waited"; then

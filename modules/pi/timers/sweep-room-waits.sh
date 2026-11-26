@@ -75,11 +75,13 @@ expect 2 "pi-sweep waits for room: $memory $marks
 pi-sweep starts without room after waiting 2 s: $memory" "a stall that outlasts the wait"
 
 # A stalled machine whose last sweep ended too long ago for a wait, or
-# that has no stamp, starts the sweep at once.
+# that has no stamp, starts the sweep at once. A wait of 15 minutes a
+# second apart ends two minutes and a second short of two hours, so a
+# stamp 104 minutes old is already too old.
 machine 3.51 0.00 40000000 64000000
-touch -d '106 minutes ago' "$here/stamp"
+touch -d '104 minutes ago' "$here/stamp"
 said=$("$program" "$here" "$here/meminfo" 900 1 "$here/stamp")
-judge "$said" "$?" "pi-sweep starts: the last sweep ended 106 minutes ago, too long to wait" \
+judge "$said" "$?" "pi-sweep starts: the last sweep ended 104 minutes ago, too long to wait" \
   "a stamp a wait would outlast"
 said=$("$program" "$here" "$here/meminfo" 900 1 "$here/none")
 judge "$said" "$?" "pi-sweep starts: no sweep has left a stamp, so the hosts sweep meanwhile" \
@@ -107,6 +109,26 @@ case $said in
 esac
 if [ "$SECONDS" -gt 10 ]; then
   echo "a stall that cleared still held the sweep $SECONDS more seconds" >&2
+  failed=1
+fi
+
+# A stamp that ages past the wait's end during it, as when the machine
+# sleeps, starts the sweep at the next reading, not when the wait runs out.
+machine 3.51 0.00 40000000 64000000
+touch -d '1 minute ago' "$here/stamp"
+"$program" "$here" "$here/meminfo" 60 1 "$here/stamp" > "$here/said" &
+waiting=$!
+sleep 2
+touch -d '118 minutes ago' "$here/stamp"
+SECONDS=0
+wait "$waiting"
+status=$?
+said=$(cat "$here/said")
+judge "$said" "$status" "pi-sweep waits for room: $memory $marks
+pi-sweep starts without room: the last sweep ended 118 minutes ago, too long to wait more: \
+$memory" "a stamp that ages during a wait"
+if [ "$SECONDS" -gt 10 ]; then
+  echo "a stamp too old to wait for still held the sweep $SECONDS more seconds" >&2
   failed=1
 fi
 

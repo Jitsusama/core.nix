@@ -183,9 +183,10 @@ in
         # the stamp the harness's pi-sweep.ts dates as each run ends
         # (markSweptOutside), and only while no sweep holds the lock, which
         # the sweep takes as it starts and the wait doesn't. So the wait
-        # need only end before those two hours, and one whose stamp it
-        # would outlast, as after a sleep, starts at once. The dash starts
-        # the sweep anyway if the wait itself fails.
+        # ends two minutes and a reading short of those two hours, reading
+        # the stamp on every pass, as a sleep ages it, and one whose stamp
+        # it would outlast starts at once. The dash starts the sweep anyway
+        # if the wait itself fails.
         ExecStartPre = lib.concatStringsSep " " [
           "-${lib.getExe sweepRoom} /proc/pressure /proc/meminfo 900 30"
           "%S/pi/agentic-harness.pi/work/sweep.lock.outside"
@@ -216,8 +217,10 @@ in
         # session's trees as a host's would, and the TPM agent's socket, which
         # a host hides from its conversations too. And what bash reads as
         # it starts a script, as the room check is one: a file to run, its
-        # options, and the trace prompt those options can expand.
+        # options, its shell options, and the trace prompt those options
+        # can expand.
         UnsetEnvironment = [
+          "BASHOPTS"
           "BASH_ENV"
           "SHELLOPTS"
           "PS4"

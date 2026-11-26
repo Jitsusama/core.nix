@@ -181,6 +181,7 @@ onLinux {
       cleared = unit: lib.sort lib.lessThan (lib.toList unit.UnsetEnvironment);
       # What bash reads as it starts the room check, beyond what node reads.
       bashReads = [
+        "BASHOPTS"
         "BASH_ENV"
         "PS4"
         "SHELLOPTS"
