@@ -132,8 +132,8 @@ fn a_held_send_spends_no_try() {
 }
 
 #[test]
-fn sends_late_for_the_run_s_time_are_a_trouble_of_the_hour_and_keep_their_tries() {
-    let place = Place::new("late-hour");
+fn sends_out_of_the_run_s_time_are_a_trouble_of_the_hour_and_keep_their_tries() {
+    let place = Place::new("out-of-time-hour");
     place.routes();
     a_day(&place);
     for _ in 0..5 {
@@ -143,7 +143,8 @@ fn sends_late_for_the_run_s_time_are_a_trouble_of_the_hour_and_keep_their_tries(
             Sent::OutOfTime
         })
         .expect("a run");
-        assert!(tried > 0, "the run had nothing to send");
+        // The day's live pain to its owner and the void's to the fallback.
+        assert_eq!(tried, 2, "the run didn't try the day's two sends");
         assert_eq!(
             hour.troubles,
             [format!(
@@ -158,27 +159,75 @@ fn sends_late_for_the_run_s_time_are_a_trouble_of_the_hour_and_keep_their_tries(
         true
     })
     .expect("a run");
-    assert_eq!(to_owner, 1, "five late runs left the pain its three tries");
+    assert_eq!(
+        to_owner, 1,
+        "five runs out of time left the pain its three tries"
+    );
 }
 
 #[test]
-fn a_keeper_s_note_held_goes_with_the_next_run_s() {
+fn a_pain_too_old_for_its_owner_keeps_its_tries_while_the_keeper_s_ask_is_out_of_time() {
+    let place = Place::new("old-out-of-time");
+    place.routes();
+    place.log(
+        "src",
+        "s-live",
+        Path::new("/home/j/src"),
+        &[
+            user("old", "2026-11-16T15:00:00.000Z", "status update please"),
+            user("new", "2026-11-16T19:50:00.000Z", "no, that's broken"),
+        ],
+    );
+    for _ in 0..5 {
+        let keeper_out = |to: &str| {
+            if to == "ORCH01" {
+                Sent::OutOfTime
+            } else {
+                Sent::Went
+            }
+        };
+        hear_putting(&place.ears(), CELLS, &mut |to, _, _| keeper_out(to)).expect("a run");
+    }
+    assert!(
+        place.heard().iter().any(|h| h.routed_at.is_none()),
+        "the old pain was taken as routed while its keeper's ask never went: {:?}",
+        place.heard()
+    );
+    let mut to_keeper = Vec::new();
+    hear(&place.ears(), CELLS, &mut |to, text| {
+        if to == "ORCH01" {
+            to_keeper.push(text.to_owned());
+        }
+        true
+    })
+    .expect("a run");
+    assert!(
+        to_keeper
+            .iter()
+            .any(|text| text.contains("status update please")),
+        "five runs out of time spent the old pain's tries: {to_keeper:?}"
+    );
+}
+
+#[test]
+fn a_keeper_s_note_not_tried_goes_with_the_next_run_s() {
     for untried in [Sent::Held, Sent::OutOfTime] {
-        a_keeper_s_note_not_tried_goes_with_the_next_run_s(untried);
+        a_keeper_s_note_answered(untried);
     }
 }
 
 /// The keeper's one note, answered `untried` by its first run, goes with
-/// the next and is said no more after.
-fn a_keeper_s_note_not_tried_goes_with_the_next_run_s(untried: Sent) {
-    let place = Place::new("held-note");
+/// the next and is said no more after; one out of time is the hour's
+/// trouble, and one held, as the node stopped answering, is not.
+fn a_keeper_s_note_answered(untried: Sent) {
+    let place = Place::new("untried-note");
     place.routes();
     a_day(&place);
     let note = |to: &str, text: &str| to == "ORCH01" && text.contains(route::FOR_THE_KEEPER);
-    let mut held = 0;
+    let mut untried_sends = 0;
     let hour = hear_putting(&place.ears(), CELLS, &mut |to, text, _| {
         if note(to, text) {
-            held += 1;
+            untried_sends += 1;
             untried
         } else {
             Sent::Went
@@ -186,7 +235,15 @@ fn a_keeper_s_note_not_tried_goes_with_the_next_run_s(untried: Sent) {
     })
     .expect("a run");
     assert_eq!(hour.routed, 3, "the day's pains were routed: {hour:?}");
-    assert_eq!(held, 1, "the keeper's one note was {untried:?}: {hour:?}");
+    assert_eq!(
+        untried_sends, 1,
+        "the keeper's one note wasn't {untried:?}: {hour:?}"
+    );
+    assert_eq!(
+        hour.troubles.is_empty(),
+        untried == Sent::Held,
+        "a note {untried:?} was a trouble when it shouldn't be, or not when it should: {hour:?}"
+    );
     let mut notes = Vec::new();
     hear(&place.ears(), CELLS, &mut |to, text| {
         if note(to, text) {
@@ -195,12 +252,16 @@ fn a_keeper_s_note_not_tried_goes_with_the_next_run_s(untried: Sent) {
         true
     })
     .expect("a run");
-    assert_eq!(notes.len(), 1, "the held note went with the next run");
+    assert_eq!(
+        notes.len(),
+        1,
+        "the note {untried:?} didn't go with the next run"
+    );
     let mut again = 0;
     hear(&place.ears(), CELLS, &mut |to, text| {
         again += usize::from(note(to, text));
         true
     })
     .expect("a run");
-    assert_eq!(again, 0, "a note that went is said no more");
+    assert_eq!(again, 0, "a note {untried:?} that went was said again");
 }
