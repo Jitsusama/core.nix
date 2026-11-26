@@ -147,7 +147,9 @@ def test_a_folder_whose_writer_runs_stays_though_nothing_is_open(moved: BaseMach
     assert "busy.service is running, so" in said(moved, "busy")
     nothing_beside(moved, "busy")
     # Nothing holds it, so nothing would say when to move it, and no waiter ever started.
-    assert "Started" not in waited(moved, "busy"), "a waiter started for a writer alone"
+    waiter = unit("busy").replace(".service", "-after-quit.service")
+    started = as_account(moved, f"systemctl --user show -P InvocationID {waiter}").strip()
+    assert started == "", f"a waiter started for a writer alone, as {started}"
 
 
 def test_a_folder_missing_is_left_and_its_unit_passes(moved: BaseMachine) -> None:
@@ -174,10 +176,11 @@ def test_a_folder_a_program_opens_as_it_is_copied_stays_whole(moved: BaseMachine
     assert inode(moved, f"{HOME}/raced") != "256", "the folder moved under the racer"
     assert as_account(moved, "systemctl --user is-active racer").strip() == "active"
     told = said(moved, "raced")
-    # The file it wrote is seen first, by the look before the exchange or the one after it,
-    # and the file it holds is what the waiter is started for.
-    assert "f2, as it" in told, f"the move didn't say the racer wrote in it: {told}"
-    assert "raced/f1 open, so" in told, f"the move didn't say the racer held it: {told}"
+    # Seen by the look before the exchange or the one after it, by the file it wrote or the
+    # one it holds; either way the waiter is started for the file it holds.
+    seen = ", as it was copied" in told or ", as it moved" in told
+    assert seen, f"the move didn't say the racer reached it as it moved: {told}"
+    assert "raced/f1 open" in told, f"the move didn't say the racer held it: {told}"
     assert "until that quits" in told, f"the move started no waiter for the racer: {told}"
     assert moved.succeed(f"ls {HOME}/raced | wc -l").strip() == "8000"
     moved.succeed(f"grep -qx opened {HOME}/raced/f2")

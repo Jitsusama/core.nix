@@ -338,6 +338,15 @@ own() {
   # A subvolume's root is always inode 256.
   if [ "$inode" = 256 ]; then
     tidy "$real"
+    # A move that couldn't put the folder back left it at the copy's path,
+    # marked, and the subvolume in use may lack what was written in it, so
+    # each run says so until Joel has looked.
+    new=$(making "$real")
+    if [ -e "$new.keep" ]; then
+      echo "✕ $folder is a subvolume, but what was written in it as it moved is at $new;" \
+        "once what's wanted is out of it, removing it and $new.keep ends this" >&2
+      return 1
+    fi
     return 0
   fi
   tidy "$real"
@@ -382,12 +391,22 @@ own() {
     echo "✕ couldn't make a stamp for $folder's exchange, so it's left as it is" >&2
     return 1
   }
+  # Past the clock's coarse tick, at most a hundredth of a second, so a
+  # write just after the exchange can't share the stamp's time and pass it.
+  sleep 0.01
   # Two renames would leave no folder between them, for a run stopped there
   # or a writer to make afresh; an exchange either swaps both or neither.
   if ! mv --exchange -T -- "$new" "$real"; then
     rm -rf -- "$new" "$stamp" "$swapped"
     echo "✕ couldn't put the subvolume in $folder's place, so it's left as it is" >&2
     return 1
+  fi
+  # Until the looks below find what sits at the copy's path holds nothing
+  # the folder lacks, it's marked, so a run stopped meanwhile, or an
+  # exchange back that fails, leaves it to Joel, never to the next run to
+  # clear.
+  if touch -- "$new.keep"; then
+    marked=yes
   fi
   # The look above takes seconds, and a program started meanwhile, as Joel
   # opening Slack, isn't in it. The folder as it was now sits where the copy
@@ -400,17 +419,16 @@ own() {
   [ -n "$why" ] || why=$(changed "$new" "$stamp")
   rm -f -- "$stamp"
   if [ -n "$why" ]; then
-    # From here until the copy is known to hold no late writes, what sits
-    # at its path may hold writes the folder lacks, so it's marked: a run
-    # stopped meanwhile, or an exchange back that fails, leaves it to Joel,
-    # never to the next run to clear.
-    if touch -- "$new.keep"; then
-      marked=yes
-    fi
     if ! mv --exchange -T -- "$new" "$real"; then
       rm -f -- "$swapped"
-      echo "✕ $folder was in use as it moved ($why), and couldn't be put back; the" \
-        "folder as it was, with what was written in it, is at $new" >&2
+      if [ -n "$marked" ]; then
+        echo "✕ $folder was in use as it moved ($why), and couldn't be put back; the" \
+          "folder as it was, with what was written in it, is kept at $new" >&2
+      else
+        echo "✕ $folder was in use as it moved ($why), and couldn't be put back; the" \
+          "folder as it was, with what was written in it, is at $new, which couldn't" \
+          "be marked, so the next run sets it aside for three days" >&2
+      fi
       return 1
     fi
     # Between the two exchanges the copy had the folder's path, so a
@@ -441,8 +459,10 @@ own() {
         "in the copy meanwhile ($late) is kept at $aside" >&2
       return 1
     fi
-    rm -rf -- "$new"
+    # Known to hold nothing, the copy is unmarked first, so a removal
+    # stopped partway leaves a half copy the next run clears.
     rm -f -- "$new.keep"
+    rm -rf -- "$new"
     # Said by the folder's own path, as the copy's is gone.
     left "$folder" "${why//"$new"/"$real"}, as it moved" "$real"
     return 0
@@ -451,9 +471,12 @@ own() {
   # The folder as it was now sits where the copy was made.
   aside=$(kept "$real")
   if ! mv -T -- "$new" "$aside"; then
+    # Unmarked, so the next run keeps it as any other.
+    rm -f -- "$new.keep"
     echo "✕ $folder is a subvolume now; the folder as it was, at $new, is kept by the next run" >&2
     return 1
   fi
+  rm -f -- "$new.keep"
   base=$(counted)
   [ -z "$base" ] || rm -f -- "$base.copies" "$base.waits"
   echo "$folder is a subvolume of its own now, the folder as it was kept at $aside"
@@ -489,7 +512,20 @@ after_quit() {
       continue
     fi
     why=$(holding "$real")
-    [ -n "$why" ] || break
+    if [ -z "$why" ]; then
+      # A move under way, as a switch's or the one that started this, is
+      # let end rather than stopped partway, and the folder looked at again.
+      state=$(systemctl --user is-active -- "$move" 2> /dev/null) || true
+      [ "$state" = activating ] || break
+      echo "nothing holds $folder now, and its move is under way, so this waits for it"
+      while [ "$state" = activating ]; do
+        # systemd has no wait for a job to end, and a look every two
+        # seconds is one call, against a move's copy of seconds or minutes.
+        sleep 2
+        state=$(systemctl --user is-active -- "$move" 2> /dev/null) || true
+      done
+      continue
+    fi
     pid=${why#/proc/}
     pid=${pid%%/*}
     # Said once for each holder, not each minute it's looked at again.
@@ -509,13 +545,6 @@ after_quit() {
       [ -n "$held" ] || break
     done
   done
-  # A move already under way, as a switch's, looks for itself; restarting
-  # it would stop it partway.
-  state=$(systemctl --user is-active -- "$move" 2> /dev/null) || true
-  if [ "$state" = activating ]; then
-    echo "nothing holds $folder now, and its move is under way already"
-    return 0
-  fi
   echo "nothing holds $folder now, so its move starts again"
   systemctl --user restart --no-block -- "$move"
 }
