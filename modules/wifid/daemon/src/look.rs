@@ -90,7 +90,7 @@ pub enum Again {
     /// heeded without a look, so it's heeded as any.
     Fresh,
     /// The card waited on a look `LOOK_AT_MOST` and was never said its
-    /// end, so the newer ask is heeded afresh.
+    /// end, so the newer ask is heeded as its one look had failed.
     Lapsed,
     /// The look waits on with the warning it had, as the newer ask warns
     /// nothing, and a point that warned still drops the card.
@@ -98,6 +98,22 @@ pub enum Again {
     /// The look ends with the newer ask heeded, as a point warns again
     /// until the card is gone.
     Taken,
+}
+
+impl Again {
+    /// How far the card has looked for the newer ask, if it's heeded now
+    /// rather than as the look ends. One whose look lapsed has had its one
+    /// look: heeded as not yet looked, a warning queued as the look lapsed
+    /// would have it look `LOOK_AT_MOST` again, and a point warning each
+    /// time it lapsed would keep the card looking until it's dropped. So
+    /// it's moved to a point it hears, or let go.
+    pub fn heeds(self) -> Option<Looked> {
+        match self {
+            Again::Fresh => Some(Looked::Not),
+            Again::Lapsed => Some(Looked::Failed),
+            Again::Kept | Again::Taken => None,
+        }
+    }
 }
 
 /// What a look ending says of a card waiting on one.
@@ -537,6 +553,20 @@ mod tests {
             "a look never said to end swallowed the point's next warning",
         );
         assert!(!looks.waits("wlan2"), "and the look is past");
+        assert!(
+            Again::Lapsed.heeds().is_some_and(Looked::over),
+            "a warning after a look lapsed had the card look again, for another 15 s"
+        );
+        assert_eq!(
+            Again::Fresh.heeds(),
+            Some(Looked::Not),
+            "a fresh warning was heeded as looked already"
+        );
+        assert_eq!(
+            [Again::Kept.heeds(), Again::Taken.heeds()],
+            [None, None],
+            "an ask the look takes was heeded before the look ended"
+        );
 
         let mut looks = waiting(&request, Looked::Done);
         looks.clear();

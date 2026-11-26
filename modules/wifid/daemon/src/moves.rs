@@ -179,6 +179,24 @@ fn chosen(
             println!("<6>{why}");
             Some(Next::Move(to))
         }
+        // A trial's way back is to the point it began on, which the
+        // chooser keeps itself and may since have warned it drops the
+        // card, so it's taken only to a point the card may choose. Why it
+        // would have gone is taken all the same, so it isn't said of a
+        // later way back.
+        Choice::Back(to)
+            if !around
+                .iter()
+                .any(|heard| heard.bssid.eq_ignore_ascii_case(&to)) =>
+        {
+            chooser.went_back();
+            println!(
+                "<6>{} stays on {} rather than go back to {to}, which it may not choose now, \
+                 unheard or warned it drops the card",
+                on.card, on.point
+            );
+            None
+        }
         Choice::Back(to) => {
             println!("<6>{}", said_back(chooser, now, (on, measured), &to));
             Some(Next::Move(to))
@@ -1398,6 +1416,61 @@ mod tests {
         );
 
         assert_eq!(to, None, "30 ms is carrying well, and the hall is unknown");
+    }
+
+    #[test]
+    fn a_trial_goes_back_only_to_a_point_the_card_may_choose() {
+        let dir = tempfile::tempdir().unwrap();
+        let learned = the_hall_at_eight(dir.path(), 10);
+        let (lately, start) = (Measures::default(), Instant::now());
+        let known = known(&lately, &learned, (start, 20));
+        // A trial of the hall, learned far quicker, carrying far worse
+        // than the desk it left once there, with or without the desk
+        // among what the card may choose, as a warning from the desk
+        // takes it out (`State::around_to_choose`).
+        let judged = |desk_heard: bool| {
+            let mut chooser = Chooser::default();
+            let tried = chosen(
+                &mut chooser,
+                start,
+                (&joined(DESK), &idle(30)),
+                &[heard(DESK, -50), heard(HALL, -50)],
+                &known,
+                false,
+            );
+            assert_eq!(tried, Some(Next::Move(HALL.into())), "the hall is tried");
+            let around: Vec<Heard> = [heard(HALL, -50), heard(DESK, -50)]
+                .into_iter()
+                .filter(|heard| desk_heard || heard.bssid != DESK)
+                .collect();
+            let at = start + choose::TRIAL;
+            let next = chosen(
+                &mut chooser,
+                at,
+                (&joined(HALL), &idle(200)),
+                &around,
+                &known,
+                false,
+            );
+            (next, chooser.went_back())
+        };
+
+        let (back, _) = judged(true);
+        let (kept, why) = judged(false);
+
+        assert_eq!(
+            back,
+            Some(Next::Move(DESK.into())),
+            "a trial carrying 200 ms against the 30 it left didn't go back"
+        );
+        assert_eq!(
+            kept, None,
+            "a trial went back to a point that warned it drops the card"
+        );
+        assert!(
+            why.is_none(),
+            "why a way back not taken was left to be said of a later one"
+        );
     }
 
     #[test]

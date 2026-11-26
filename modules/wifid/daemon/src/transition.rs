@@ -40,7 +40,10 @@
 //! the home network is one: every warning its points send comes
 //! unprotected, so following none would follow nothing there. What such a
 //! frame can't do is say how long the point is kept off: that's only ever
-//! as long as a move settles (`Request::keeps_off`).
+//! as long as a move settles (`Request::keeps_off`). Each frame sent anew
+//! keeps it off anew, so one sent every ten minutes keeps the card off its
+//! point as long as they're sent; a forged drop sent as often costs the
+//! card its link each time, which is worse, and needs no warning heeded.
 //!
 //! A card looking for the points named waits in `look`. Long because its
 //! cases, over half of it, stay beside the private reading they prove, as

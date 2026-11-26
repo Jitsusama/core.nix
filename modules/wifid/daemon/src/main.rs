@@ -1111,14 +1111,19 @@ impl<'a> Air<'a> {
         // once a look it doesn't need ends.
         let at_once = !request.needs_look(from.as_deref(), &heard, link);
         let now = Instant::now();
-        match self
+        let again = self
             .looks
-            .asked_again(&card, &request, from.as_deref(), at_once, now)
-        {
-            Again::Fresh => self.asked.push((card, request, Looked::Not, None)),
-            Again::Lapsed => {
-                println!("<4>{card}'s look for the points asked never ended, so it heeds anew");
-                self.asked.push((card, request, Looked::Not, None));
+            .asked_again(&card, &request, from.as_deref(), at_once, now);
+        // Heeded as looked, the ask isn't said where it's heeded, so it's
+        // said here.
+        if again == Again::Lapsed {
+            println!("<6>{}", request.said(&card, from.as_deref()));
+            println!("<4>{card}'s look never ended in time, so this ask is heeded as looked");
+        }
+        match again {
+            Again::Fresh | Again::Lapsed => {
+                let looked = again.heeds().unwrap_or(Looked::Not);
+                self.asked.push((card, request, looked, None));
             }
             Again::Kept => {
                 println!("<6>{}", request.said(&card, from.as_deref()));
@@ -1994,7 +1999,10 @@ impl Wifid<'_> {
     /// restarted it on 15 Nov 2026, wpa_supplicant moved the card on its
     /// own, the gateway silent 291 ms, and a hold kept from before was
     /// never let go, so once its point went the card couldn't rejoin its
-    /// network elsewhere.
+    /// network elsewhere. A card let go of a point that warned it drops
+    /// the card isn't held back to it, as `ready` holds none there: cards
+    /// are handed over again as networks are saved, or networkd restarts,
+    /// and one held back would wait there until it's dropped.
     async fn hold_where_it_is(
         &self,
         card: &str,
@@ -2010,6 +2018,7 @@ impl Wifid<'_> {
                 }
                 _ => None,
             };
+            let on = on.filter(|(_, bssid)| self.holds_to(card, bssid));
             for network in interface.networks().await? {
                 if on.as_ref().is_some_and(|(held, _)| *held == network) {
                     continue;
@@ -3510,18 +3519,9 @@ impl Wifid<'_> {
             let point = interface.current_access_point().await?;
             let on = AccessPoint::new(described(self.bus, &point).await?).heard();
             let on = on.map(|heard| heard.bssid);
-            // A card let go of a point that warned it drops the card isn't
-            // held back to it: should the move asked next never come, it
-            // would wait there until it's dropped.
-            let dropping = on
-                .as_deref()
-                .is_some_and(|on| self.arrivals.borrow().drops(&card, on, Instant::now()));
-            let on = on.filter(|on| {
-                if dropping {
-                    println!("<7>{card} isn't held to {on}, as it warned it drops the card");
-                }
-                !dropping
-            });
+            // Should the move asked next never come, a card held back to a
+            // point that warned it would wait there until it's dropped.
+            let on = on.filter(|on| self.holds_to(&card, on));
             if let Some(on) = &on {
                 self.hold(&network, on).await?;
                 self.held.borrow_mut().insert(card.clone(), network);
@@ -3555,6 +3555,17 @@ impl Wifid<'_> {
             println!("<7>{card} didn't look before moving: {error}");
         }
         Ok(())
+    }
+
+    /// Whether a card on that access point may be held to it: not while
+    /// the point is one that warned it drops the card (`Arrivals::drops`),
+    /// which is said, as whatever holds it would leave it there to be.
+    fn holds_to(&self, card: &str, bssid: &str) -> bool {
+        let dropping = self.arrivals.borrow().drops(card, bssid, Instant::now());
+        if dropping {
+            println!("<7>{card} isn't held to {bssid}, as it warned it drops the card");
+        }
+        !dropping
     }
 
     /// Has wpa_supplicant join the network only at that access point, or at
@@ -3669,6 +3680,13 @@ impl Wifid<'_> {
                 println!(
                     "<6>{card} was warned unprotected on an open network, so may join any again"
                 );
+                // Nothing is kept off, but a move under way from the point
+                // is let join what it hears should it miss, as the card
+                // is: sent back, it would be held to the point it was
+                // just let go of.
+                if let Some(from) = from.as_deref() {
+                    self.arrivals.borrow_mut().wont_return(card, from);
+                }
                 self.let_go(card, joining != Some(card)).await;
             }
             Heed::Move(bssid) => match self.roam_card(card, &bssid, joining, Missed::LetJoin).await

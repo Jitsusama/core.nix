@@ -305,13 +305,18 @@ def held_to(machine: BaseMachine, wifid: Wifid, bssid: str) -> bool:
     return "goes back to" not in said and "may join any access point" not in said
 
 
-def held_nowhere(machine: BaseMachine) -> bool:
-    """Say whether Lantern joins at any of its points, as wpa_supplicant holds it."""
+def held_at(machine: BaseMachine) -> str:
+    """Give the point wpa_supplicant holds Lantern to, or FAIL where it's held to none."""
     lantern = machine.succeed(
         "wpa_cli -i wlan2 list_networks | awk -F'\\t' '$2 == \"Lantern\" {print $1}'"
     ).strip()
+    return machine.succeed(f"wpa_cli -i wlan2 get_network {lantern} bssid").strip()
+
+
+def held_nowhere(machine: BaseMachine) -> bool:
+    """Say whether Lantern joins at any of its points, as wpa_supplicant holds it."""
     # wpa_supplicant answers FAIL for a network's address once it's held to none.
-    return machine.succeed(f"wpa_cli -i wlan2 get_network {lantern} bssid").strip() == "FAIL"
+    return held_at(machine) == "FAIL"
 
 
 def warning(machine: BaseMachine, wifid: Wifid, *, warns: bool = True) -> str:
@@ -366,7 +371,16 @@ def forgets_all_but_its_point(machine: BaseMachine) -> None:
     assert FIRST not in machine.succeed("wpa_cli -i wlan2 scan_results"), "still heard"
 
 
-def reached_in_time(machine: BaseMachine, since: str, *said: str) -> None:
+def sent(machine: BaseMachine, ask: str) -> int:
+    """Send the ask, and give when, in microseconds since 1970, as the journal says its lines.
+
+    Timed from here rather than from wifid's line saying the ask, a move is timed as the point
+    times its drop, so wifid reading the ask late counts against it.
+    """
+    return int(machine.succeed(f"date +%s%6N; {ask} | grep -qx OK").strip())
+
+
+def reached_in_time(machine: BaseMachine, since: str, asked: int, *said: str) -> None:
     """Check wifid said each line in order and the card reached the first before its drop."""
     reached = f"^wlan2 reached {FIRST} [0-9]+ ms after it was asked"
     machine.wait_until_succeeds(
@@ -382,16 +396,16 @@ def reached_in_time(machine: BaseMachine, since: str, *said: str) -> None:
     landed = next((at for at, line in timed if line.startswith(f"wlan2 reached {FIRST} ")), None)
     assert heard is not None, f"wifid never said the warning in:\n{lines}"
     assert landed is not None, f"wifid never said the card reached {FIRST} in:\n{lines}"
-    took = (landed - heard) // 1000
+    took = (landed - asked) // 1000
     assert took < DROPS_IN_MS, f"the card took {took} ms, past the {DROPS_IN_MS} ms warned of"
     machine.succeed(f"wpa_cli -i wlan2 status | grep -qx bssid={FIRST}")
 
 
 def said_since(machine: BaseMachine, since: str) -> list[tuple[int, str]]:
-    """Give each line wifid said since the cursor, with when, in microseconds since boot."""
+    """Give each line wifid said since the cursor, with when, in microseconds since 1970."""
     lines = machine.succeed(f"journalctl -o json -u wifid --after-cursor='{since}'")
     entries = [json.loads(line) for line in lines.splitlines() if line.strip()]
-    return [(int(entry["__MONOTONIC_TIMESTAMP"]), str(entry["MESSAGE"])) for entry in entries]
+    return [(int(entry["__REALTIME_TIMESTAMP"]), str(entry["MESSAGE"])) for entry in entries]
 
 
 def test_a_held_card_says_its_points_asks_and_moves_when_one_warns_it_drops_it(
@@ -421,11 +435,14 @@ def test_a_held_card_says_its_points_asks_and_moves_when_one_warns_it_drops_it(
         )
         said = machine.succeed(f"journalctl -o cat -u wifid --after-cursor='{since}'")
         assert "before it's dropped" not in said, f"wifid moved the card for a plain ask:\n{said}"
-        # Whether wpa_supplicant left the point on its own is read by the warned ask below:
-        # the second answers OK only for a card still joined to it, and a status read here
-        # could come before a move wpa_supplicant began after the signal.
+        # A hold let go after the line, or a move wpa_supplicant began on its own after the
+        # signal, comes within milliseconds, so a second on either would have come.
+        machine.sleep(1)
+        held = held_at(machine)
+        assert held == SECOND, f"a plain ask left the card held to {held}, not {SECOND}"
+        machine.succeed(f"wpa_cli -i wlan2 status | grep -qx bssid={SECOND}")
         since = wifid.journal_now()
-        machine.succeed(f"{warning(machine, wifid)} | grep -qx OK")
+        asked_at = sent(machine, warning(machine, wifid))
         # Gone before the time it was warned of, the card was never the point's to drop, and
         # its chooser keeps off the point that warned for as long as a move settles, as the
         # ask's 20 s of candidates is shorter.
@@ -433,6 +450,7 @@ def test_a_held_card_says_its_points_asks_and_moves_when_one_warns_it_drops_it(
         reached_in_time(
             machine,
             since,
+            asked_at,
             warned,
             f"wlan2's chooser keeps off {SECOND} for 10 minutes, as it warned",
             f"wlan2 moves to {FIRST} before it's dropped",
@@ -462,10 +480,11 @@ def test_a_warned_card_that_hears_none_of_the_points_named_looks_on_their_channe
         # Says what it forgets to wifid ahead of the warning, on the same bus.
         forgets_all_but_its_point(machine)
         since = wifid.journal_now()
-        machine.succeed(f"{ask} | grep -qx OK")
+        asked_at = sent(machine, ask)
         reached_in_time(
             machine,
             since,
+            asked_at,
             "warning it drops the card in 5120 ms",
             "wlan2 hears none of the points asked, so looks over 2437 MHz",
             f"wlan2 moves to {FIRST} before it's dropped",
@@ -490,10 +509,11 @@ def test_a_warned_card_stops_looking_to_move_before_it_s_dropped(
         looking(machine, now=False)
         machine.succeed("wpa_cli -i wlan2 scan | grep -qx OK")
         looking(machine, now=True)
-        machine.succeed(f"{ask} | grep -qx OK")
+        asked_at = sent(machine, ask)
         reached_in_time(
             machine,
             since,
+            asked_at,
             "warning it drops the card in 5120 ms",
             "wlan2 stops looking to move before it's dropped",
             f"wlan2 moves to {FIRST} before it's dropped",
@@ -530,10 +550,11 @@ def test_a_warned_card_hearing_none_named_stops_a_look_under_way_to_look_for_the
         since = wifid.journal_now()
         machine.succeed(f"wpa_cli -i wlan2 scan freq={UNDER_WAY} | grep -qx OK")
         looking(machine, now=True)
-        machine.succeed(f"{ask} | grep -qx OK")
+        asked_at = sent(machine, ask)
         reached_in_time(
             machine,
             since,
+            asked_at,
             "warning it drops the card in 5120 ms",
             "wlan2 stops looking to look over 2437 MHz",
             "wlan2 hears none of the points asked, so looks over 2437 MHz",
@@ -545,7 +566,12 @@ def test_a_warned_card_hearing_none_named_stops_a_look_under_way_to_look_for_the
 
 
 # An access point that says its whole network drops the card names no point to go to, so the card
-# is let join any point, and any network, rather than held to one that drops it.
+# is let join any point, and any network, rather than held to one that drops it. It's warned 30 s
+# ahead, so the card is still on the point as a network trusted hands every card over again, which
+# holds a card where it is: one held back to the point would wait there to be dropped.
+ESS_DROPS_IN_MS = 30720
+
+
 def test_a_card_whose_whole_network_drops_it_may_join_any_point_again(
     machine: BaseMachine, wifid: Wifid
 ) -> None:
@@ -558,11 +584,11 @@ def test_a_card_whose_whole_network_drops_it_may_join_any_point_again(
         since = wifid.journal_now()
         machine.succeed(
             "hostapd_cli -p /run/hostapd-lantern-two -i wlan5"
-            f" ess_disassoc {station} 50 https://api.lantern/ | grep -qx OK"
+            f" ess_disassoc {station} 300 https://api.lantern/ | grep -qx OK"
         )
         said = (
             f"wlan2 was asked by {SECOND} to move, naming no point,"
-            f" warning its whole network drops the card in {DROPS_IN_MS} ms"
+            f" warning its whole network drops the card in {ESS_DROPS_IN_MS} ms"
         )
         machine.wait_until_succeeds(
             f"journalctl -o cat -u wifid --after-cursor='{since}' | grep -qxF '{said}'"
@@ -572,6 +598,18 @@ def test_a_card_whose_whole_network_drops_it_may_join_any_point_again(
         )
         # The line is said before the hold is let go, so the hold is read until it goes.
         retry(lambda _: held_nowhere(machine), timeout=timedelta(seconds=10))
+        machine.succeed(f"wpa_cli -i wlan2 status | grep -qx bssid={SECOND}")
+        since = wifid.journal_now()
+        wifid.ask("Trust", {"name": "Lantern", "trusted": False})
+        unheld = f"wlan2 isn't held to {SECOND}, as it warned it drops the card"
+        # wifid answers once every card is handed over, but the journal may take its lines later.
+        machine.wait_until_succeeds(
+            f"journalctl -o cat -u wifid --after-cursor='{since}' | grep -qxF \"{unheld}\"",
+            timeout=timedelta(seconds=10),
+        )
+        said = machine.succeed(f"journalctl -o cat -u wifid --after-cursor='{since}'")
+        assert f"keeps to {SECOND}" not in said, f"wifid held the card back to {SECOND}:\n{said}"
+        assert held_nowhere(machine), f"handed over again, the card was held to {held_at(machine)}"
     finally:
         machine.log(machine.succeed(f"journalctl -o short-precise --after-cursor='{since}'"))
         machine.succeed("systemctl stop lantern-two")
