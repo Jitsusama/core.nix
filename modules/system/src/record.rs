@@ -369,8 +369,7 @@ mod tests {
             {"health": "watch", "side": "code wants a look", "matters": "Its own check says so."},
         ]);
         assert_eq!(
-            records[2]["looks"],
-            looks,
+            records[2]["looks"], looks,
             "each look with its own health and why"
         );
         assert_eq!(records[3]["looks"], json!([]), "a ready machine has none");
