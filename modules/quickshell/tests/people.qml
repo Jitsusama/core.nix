@@ -217,8 +217,10 @@ ShellRoot {
     function ran() {
         return JSON.stringify(Niri.spawned);
     }
-    function told(...words) {
-        return JSON.stringify(words);
+    // QML takes no rest parameter on a method, so the words come as its
+    // arguments.
+    function told() {
+        return JSON.stringify(Array.from(arguments));
     }
 
     // A search, once the daemon has answered it.
