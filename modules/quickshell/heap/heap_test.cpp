@@ -21,7 +21,10 @@
 // (qtdeclarative-large-runs-by-size.patch); and small stores made next
 // split the small free runs and leave the large runs whole for the large
 // stores after them, reading back as they were made
-// (qtdeclarative-small-runs-split-first.patch). Its census counts all that's
+// (qtdeclarative-small-runs-split-first.patch); and what's made after a
+// sweep over chunks half and a quarter full fills the half-full ones, so the
+// others empty and are freed once what they kept is let go
+// (qtdeclarative-chunks-fullest-filled-first.patch). Its census counts all that's
 // live and names a shape kept by its property names, but no key taken from
 // data. Its holders count names the property that keeps the most first,
 // each by the file declaring it and its folder, counts what the engine
@@ -826,6 +829,92 @@ bool leavesLargeRunsWhole() {
                      thirdsMB, madeMB - thirdsMB, freed.live, after.live, freed.held, after.held,
                      freed.free, after.free);
     return tried && intact && whole;
+}
+
+// How many objects are made in each of two runs of chunks, the first
+// keeping three of every six, half full, and the second, made after it, one
+// of every four, a quarter full, so the free runs in both are three objects
+// long and fall in the one bin; and how many are made once they're swept,
+// as many as the half-full chunks have room for and fewer than the
+// quarter-full ones have.
+constexpr int HALF_FULL = 120000;
+constexpr int QUARTER_FULL = 120000;
+constexpr int FILLING = HALF_FULL / 2;
+
+// Whether what's made after a sweep fills the fullest chunks first, so the
+// chunks using little are left to empty and be freed once what they keep
+// is let go. Each chunk's runs went on the front of the bins in the order
+// the chunks lay, so the chunks made last were filled first whatever they
+// held, and what lived long scattered over chunks nearly empty, none of
+// them ever freed: in five hours Joel's shell held 284 MB around 72 live
+// (2026-11-25). It holds only if the quarter-full chunks were made and
+// what's made is live, so a Qt that collected while making them, filling
+// them in, fails it rather than passing with nothing tried.
+bool fillsTheFullestFirst() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    heap.leaveRoom(ROOM_MB);
+    const QJSValue kept = engine.evaluate(
+        QStringLiteral("(() => { const kept = { half: new Array(%1), quarter: new Array(%2), "
+                       "made: new Array(%3) }; let j = 0; for (let i = 0; i < %4; i++) { "
+                       "const each = { n: i }; if (i % 6 < 3) kept.half[j++] = each; } "
+                       "return kept; })()")
+            .arg(HALF_FULL / 2)
+            .arg(QUARTER_FULL / 4)
+            .arg(FILLING)
+            .arg(HALF_FULL));
+    const double halfChunks = heap.standing().value(QStringLiteral("chunks")).toDouble();
+    const QJSValue quarter = engine.evaluate(
+        QStringLiteral("(kept) => { let j = 0; for (let i = 0; i < %1; i++) { const each = { "
+                       "n: i }; if (i % 4 === 0) kept.quarter[j++] = each; } }")
+            .arg(QUARTER_FULL));
+    quarter.call({kept});
+    const double quarterMB =
+        heap.standing().value(QStringLiteral("chunks")).toDouble() - halfChunks;
+    const Weight swept = weighed(engine, heap);
+    heap.leaveRoom(ROOM_MB);
+    engine
+        .evaluate(QStringLiteral("(kept) => { for (let i = 0; i < %1; i++) kept.made[i] = { n: "
+                                 "i }; kept.quarter = null; }")
+                      .arg(FILLING))
+        .call({kept});
+    const Weight after = weighed(engine, heap);
+    const QJSValue read =
+        engine
+            .evaluate(QStringLiteral("(kept) => kept.made.every((each, i) => each.n === i) && "
+                                     "kept.half.every((each, i) => each.n === (i / 3 | 0) * "
+                                     "6 + i % 3)"))
+            .call({kept});
+    // Each object takes the same slots, so what's made is to the quarter-full
+    // chunks as how many are made is to how many were made in them.
+    const double madeMB = quarterMB * FILLING / QUARTER_FULL;
+    const bool tried = !kept.isError() && quarterMB > 0 &&
+                       swept.held - swept.live > quarterMB / 2 &&
+                       after.live - swept.live > madeMB / 2;
+    const bool intact = read.toBool();
+    const double beyond = after.held - after.live;
+    const bool freed = beyond < quarterMB / 2;
+    // Said whether it holds or not, so a build's log shows how far it's
+    // within its bound.
+    std::fprintf(stderr,
+                 "heap_test: %.1f MB made after a sweep over chunks half and a quarter full "
+                 "left %.2f MB held beyond live, within %.2f MB\n",
+                 madeMB, beyond, quarterMB / 2);
+    if (!tried)
+        std::fprintf(stderr,
+                     "FAIL the chunks a quarter full were made and what's made after is live: "
+                     "%.1f MB of them, live %.1f then %.1f MB, held %.1f then %.1f MB\n",
+                     quarterMB, swept.live, after.live, swept.held, after.held);
+    else if (!intact)
+        std::fprintf(stderr, "FAIL what's made in the fullest chunks reads back as it was made\n");
+    else if (!freed)
+        std::fprintf(stderr,
+                     "FAIL %.1f MB made after a sweep fills the half-full chunks and leaves "
+                     "the %.1f MB a quarter full to be freed: live %.1f then %.1f MB, held %.1f "
+                     "then %.1f MB, free %.1f then %.1f MB\n",
+                     madeMB, quarterMB, swept.live, after.live, swept.held, after.held,
+                     swept.free, after.free);
+    return tried && intact && freed;
 }
 
 bool expect(const char *what, bool holds, const Weight &before, const Weight &after) {
@@ -1812,6 +1901,7 @@ int main(int argc, char **argv) {
     const bool lent = lendsBack();
     const bool fits = takesRunsThatFit();
     const bool whole = leavesLargeRunsWhole();
+    const bool fullest = fillsTheFullestFirst();
     const bool census = namesWhatsKept();
     const bool covered = residentCoversWhatsLive();
     const bool placed = placesWhatMadeIt();
@@ -1825,7 +1915,8 @@ int main(int argc, char **argv) {
     const bool chained = followsAChain();
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
                    roomyOutside && lasting && lastingOutside && stillCollectsOutside &&
-                   reckoned && ownLimits && follows && given && lent && fits && whole && census &&
+                   reckoned && ownLimits && follows && given && lent && fits && whole && fullest &&
+                   census &&
                    covered && placed && stands && underWay && holdsIt && waitsItOut && stray &&
                    alone && swept && chained
                ? 0
