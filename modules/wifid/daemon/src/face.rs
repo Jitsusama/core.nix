@@ -483,10 +483,12 @@ impl Connection {
                 // move it out of user.slice, so a unit's name alone is only
                 // a hint. The uid is the kernel's, the effective one taken
                 // as the connection was; the pid is too, and the path is
-                // read by it as wifid answers, said only while the kernel's
-                // pidfd shows the process that connected still holds it
-                // (`Peer::on`), as a connection queued on the socket while
-                // wifid restarts may wait a minute (`RestartMaxDelaySec`).
+                // read by it as wifid answers, said as the asker's only
+                // while the kernel's pidfd shows the process that connected
+                // hasn't exited (`Peer::on`), and said as unproven on a
+                // kernel giving no pidfd for a socket, as a connection
+                // queued on the socket while wifid restarts may wait a
+                // minute (`RestartMaxDelaySec`).
                 // The fd a process holds can still be passed on.
                 println!("<6>{} asks {}", self.peer, acts::wanted(&said));
                 let asks = self.face.asks.clone();
