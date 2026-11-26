@@ -10507,8 +10507,9 @@ Scope {
                 // Each fact's value as it's drawn, null while it's asked, in
                 // drawnFacts' order: facts above is what was given, by label,
                 // and parts from it where the card drops a fact that repeats
-                // its title (DrawerValue.factsShown) and where a fact's
-                // heading names it in place of its label.
+                // its title (DrawerValue.factsDrawn), where a fact's heading
+                // names it in place of its label, and while the card slides
+                // away with what it last showed, given nothing.
                 values: drawerCard.facts.map(fact => fact.value ?? null),
                 // Each fact's figure drawn beside its value, by its shape,
                 // "" for none or one given way.

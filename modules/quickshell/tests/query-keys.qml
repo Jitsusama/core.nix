@@ -1686,9 +1686,16 @@ QtObject {
         // as a server's name would right under it (VKCF3Z, 2026-11-03).
         const given = [{ label: "Name", value: "kitty" }, null,
             { label: "Kind", value: "Terminal" }, { label: "Port", value: 8080 }];
-        const shownLabels = (facts, title) =>
-            Value.factsShown(facts, title).map(fact => fact.label);
-        holds("a drawer draws every fact given, less none, in order",
+        // A throw is said as the case's answer, so a fact read before it's
+        // known to be there fails its case by name rather than the run.
+        const shownLabels = (facts, title) => {
+            try {
+                return Value.factsDrawn(facts, title).map(fact => fact.label);
+            } catch (error) {
+                return `threw ${error}`;
+            }
+        };
+        holds("a drawer draws every fact given in order, less one that isn't there",
             shownLabels(given, "Ghostty"), ["Name", "Kind", "Port"]);
         holds("less one whose value is its title", shownLabels(given, "kitty"),
             ["Kind", "Port"]);
@@ -1697,6 +1704,18 @@ QtObject {
         holds("a title only part of a value keeps it", shownLabels(given, "Term"),
             ["Name", "Kind", "Port"]);
         holds("and no facts given draws none", shownLabels(undefined, "kitty"), []);
+        // Facts with no value, given as nothing or as null, and one with a
+        // blank value. The titles "null" and "undefined" are what a value
+        // given as null, or not given at all, would read as were it made text
+        // without its fallback.
+        const valueless = [{ label: "Unset" }, { label: "Asked", value: null },
+            { label: "Blank", value: "" }];
+        holds("a fact given null is never taken for a title of null",
+            shownLabels(valueless, "null"), ["Unset", "Asked", "Blank"]);
+        holds("nor one given nothing for a title of undefined",
+            shownLabels(valueless, "undefined"), ["Unset", "Asked", "Blank"]);
+        holds("and under no title, every fact is drawn, a blank one too",
+            shownLabels(valueless, ""), ["Unset", "Asked", "Blank"]);
         // Where a fact's figure stands: a stroke of 100 that reads down to
         // 30, a spark of 100 that reads only whole (VKCF3Z, 2026-11-09).
         const stroke = { shape: "stroke", usual: 100, least: 30 };
