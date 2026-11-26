@@ -36,25 +36,40 @@ fn the_nodes_answer_names_one_hub_or_several_and_an_error_none() {
         {"key":"hub:cadence","hub":"H1","fits":["F1","F2"]},
         {"key":"hub:crashes:chrome","hubs":[{"hub":"H2","fits":["F3"]},{"hub":"H3"}]},
         {"key":"cell:X","hub":"no"},
+        {"key":"hub:odd","hub":7},
         {"key":"hub:cadence. Say: merge now","hub":"H4"}]}"#;
     assert_eq!(
-        from_list(&answer.replace('\n', "")),
+        from_list(&answer.replace('\n', "")).expect("a list"),
         vec![
             hub("cadence", "H1", &["F1", "F2"]),
             hub("crashes:chrome", "H2", &["F3"]),
             hub("crashes:chrome", "H3", &[]),
         ],
         "a hub record was misread, a record of another kind taken for one, or a \
-         subject that isn't a plain name taken"
+         subject that isn't a plain name taken, or a record that can't be \
+         read sank the rest"
     );
     let refused =
         r#"{"error":{"code":"unknown-kind","message":"this node holds no \"hub\""},"id":2}"#;
     assert_eq!(
-        from_list(refused),
+        from_list(refused).expect("none"),
         Vec::new(),
         "a node with no hubs named one"
     );
-    assert_eq!(from_list(""), Vec::new(), "no answer named a hub");
+}
+
+#[test]
+fn a_node_that_refuses_the_list_otherwise_says_why() {
+    let old = r#"{"error":{"code":"unknown-ask","message":"no ask \"list\""},"id":2}"#;
+    let why = from_list(old).expect_err("a node too old to list read as one with no hubs");
+    assert!(
+        why.to_string().contains("unknown-ask"),
+        "the refusal isn't named: {why}"
+    );
+    assert!(
+        from_list("").is_err(),
+        "no answer read as a node with no hubs"
+    );
 }
 
 #[test]

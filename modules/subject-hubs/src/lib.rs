@@ -117,9 +117,16 @@ const SUBJECT_AT_MOST: usize = 80;
 
 /// The hubs in the node's answer to `list hub`: each record names one hub
 /// and its fits, or several under `hubs`. A node that holds no hubs
-/// answers with an error, which lists none.
-#[must_use]
-pub fn from_list(line: &str) -> Vec<Hub> {
+/// refuses the kind (`unknown-kind`), which lists none, as the harness
+/// reads it; one record that can't be read is left out, so it costs only
+/// its own hubs.
+///
+/// # Errors
+///
+/// When the answer isn't one, or carries another error, such as a node
+/// too old to list, so a sender says why it read no hubs rather than
+/// reading it as a node with none.
+pub fn from_list(line: &str) -> io::Result<Vec<Hub>> {
     #[derive(Deserialize)]
     struct Named {
         hub: Option<String>,
@@ -135,15 +142,39 @@ pub fn from_list(line: &str) -> Vec<Hub> {
         hubs: Vec<Named>,
     }
     #[derive(Deserialize)]
-    struct Listed {
+    struct Refusal {
         #[serde(default)]
-        records: Vec<Record>,
+        code: String,
+        #[serde(default)]
+        message: String,
     }
-    let Ok(listed) = serde_json::from_str::<Listed>(line) else {
-        return Vec::new();
-    };
+    #[derive(Deserialize)]
+    struct Listed {
+        error: Option<Refusal>,
+        #[serde(default)]
+        records: Vec<serde_json::Value>,
+    }
+    let listed = serde_json::from_str::<Listed>(line).map_err(|error| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("the node's list of hubs couldn't be read: {error}"),
+        )
+    })?;
+    if let Some(refusal) = listed.error {
+        if refusal.code == "unknown-kind" {
+            return Ok(Vec::new());
+        }
+        return Err(io::Error::other(format!(
+            "the node refused the list of hubs: {} ({})",
+            refusal.message, refusal.code
+        )));
+    }
     let mut hubs = Vec::new();
     for record in listed.records {
+        // One the node wrote in another shape names no hub of its own.
+        let Ok(record) = serde_json::from_value::<Record>(record) else {
+            continue;
+        };
         let Some(subject) = record
             .key
             .strip_prefix("hub:")
@@ -164,7 +195,7 @@ pub fn from_list(line: &str) -> Vec<Hub> {
             })
         }));
     }
-    hubs
+    Ok(hubs)
 }
 
 /// The most lines read for the list's answer, past the hello's and any
@@ -178,7 +209,8 @@ const LINES_AT_MOST: usize = 16;
 ///
 /// # Errors
 ///
-/// When the node can't be reached or read, or never answers the list.
+/// When the node can't be reached or read, never answers the list, or
+/// answers it with an error other than holding no hubs.
 pub fn listed(socket: &Path) -> io::Result<Vec<Hub>> {
     let mut stream = UnixStream::connect(socket)?;
     stream.set_read_timeout(Some(Duration::from_secs(3)))?;
@@ -191,7 +223,7 @@ pub fn listed(socket: &Path) -> io::Result<Vec<Hub>> {
             .ok()
             .and_then(|v| v.get("id").and_then(serde_json::Value::as_i64));
         if id == Some(2) {
-            return Ok(from_list(&line));
+            return from_list(&line);
         }
     }
     Err(io::Error::new(
