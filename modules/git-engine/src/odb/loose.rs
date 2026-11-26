@@ -190,9 +190,12 @@ mod tests {
         ];
         for (stream, refused) in cases {
             // 64 KiB is room for any header and the object it says, not for
-            // what the bomb inflates to.
+            // what the bomb inflates to. Apart, so a read that spins fails
+            // by its message.
+            let heard =
+                crate::regular_file::tests::apart(move || read("bomb", &stream, Some(64 << 10)));
             assert_eq!(
-                read("bomb", &stream, Some(64 << 10)),
+                heard.expect("a loose read was still inflating after 30 s"),
                 Err(refused.to_string()),
                 "a stream inflating past or short of its header's size, not zlib, or with \
                  bytes after it, wasn't refused at it"
