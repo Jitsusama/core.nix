@@ -71,10 +71,19 @@ mod tests {
         let words = Words::from_value(&serde_json::json!({"terminal": {"offers": {
             "show": "what Joel's launcher holds"}}}));
         let written = completion(&words);
-        assert!(written.starts_with("#compdef launcher\n"));
-        assert!(written.contains("commands=('show:what Joel'\\''s launcher holds' 'do:do')"));
+        assert!(
+            written.starts_with("#compdef launcher\n"),
+            "the completion doesn't open as zsh's for launcher:\n{written}"
+        );
+        assert!(
+            written.contains("commands=('show:what Joel'\\''s launcher holds' 'do:do')"),
+            "show isn't offered in the launcher's words:\n{written}"
+        );
         let bare = completion(&Words::from_value(&Value::Null));
-        assert!(bare.contains("commands=('show:show' 'do:do')"));
+        assert!(
+            bare.contains("commands=('show:show' 'do:do')"),
+            "with no words, show isn't offered by its name:\n{bare}"
+        );
     }
 
     #[test]

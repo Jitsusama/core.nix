@@ -192,15 +192,7 @@
   "modules/pi-packages/src/inuse/macos.rs" = 4;
   "modules/pi-packages/tests/inuse.rs" = 3;
   "modules/plymouth/waits/src/main.rs" = 7;
-  "modules/processor-telemetry/src/layout.rs" = 3;
-  "modules/processor-telemetry/src/reading.rs" = 8;
-  "modules/processor-telemetry/src/resting.rs" = 10;
-  "modules/processor-telemetry/src/service.rs" = 8;
   "modules/quickshell/clipboard/src/main.rs" = 3;
-  "modules/quickshell/in-a-terminal/src/asking.rs" = 8;
-  "modules/quickshell/in-a-terminal/src/layout.rs" = 1;
-  "modules/quickshell/in-a-terminal/src/main.rs" = 12;
-  "modules/quickshell/in-a-terminal/src/names.rs" = 3;
   "modules/quickshell/keyboard-lights.rs" = 1;
   "modules/quickshell/timekeeping/src/calendar.rs" = 2;
   "modules/quickshell/timekeeping/src/candm.rs" = 6;

@@ -660,15 +660,12 @@ mod tests {
 
     #[test]
     fn only_y_is_yes() {
-        assert!(is_yes("y\n"));
-        assert!(is_yes("y\r\n"));
-        assert!(is_yes("y"));
-        assert!(!is_yes(" Y \n"));
-        assert!(!is_yes("Y\n"));
-        assert!(!is_yes(" y\n"));
-        assert!(!is_yes("yes please\n"));
-        assert!(!is_yes("n\n"));
-        assert!(!is_yes(""));
+        for typed in ["y\n", "y\r\n", "y"] {
+            assert!(is_yes(typed), "{typed:?} wasn't taken as yes");
+        }
+        for typed in [" Y \n", "Y\n", " y\n", "yes please\n", "n\n", ""] {
+            assert!(!is_yes(typed), "{typed:?} was taken as yes");
+        }
     }
 
     /// What answering the question with this gives, and what was put before it.
@@ -688,9 +685,10 @@ mod tests {
             answering("y\n"),
             (true, "Close Kestrel Notes? (y/n) ".to_string())
         );
-        assert!(!answering("n\n").0);
-        assert!(!answering(" Y \n").0);
+        for typed in ["n\n", " Y \n"] {
+            assert!(!answering(typed).0, "{typed:?} did it");
+        }
         // The end of what's given, as </dev/null is, before any answer.
-        assert!(!answering("").0);
+        assert!(!answering("").0, "the end of what's given did it");
     }
 }

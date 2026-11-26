@@ -172,8 +172,14 @@ mod tests {
 
     #[test]
     fn a_region_of_another_size_is_refused() {
-        assert!(Region::from_bytes(&[0; 3352]).is_none());
-        assert!(Region::from_bytes(&[0; WORDS * 8]).is_some());
+        assert!(
+            Region::from_bytes(&[0; 3352]).is_none(),
+            "a region of 3352 bytes was read"
+        );
+        assert!(
+            Region::from_bytes(&[0; WORDS * 8]).is_some(),
+            "a region of the layout's size was refused"
+        );
     }
 
     #[test]
@@ -184,7 +190,10 @@ mod tests {
             .chain([&KEPT_AT_ALL])
             .map(|field| (field.word, field.lsb))
             .collect();
-        assert!(fields.iter().all(|&(word, _)| word < WORDS));
+        assert!(
+            fields.iter().all(|&(word, _)| word < WORDS),
+            "a keeper's counter lies past the region's {WORDS} words"
+        );
         let all = fields.len();
         fields.sort_unstable();
         fields.dedup();
@@ -194,7 +203,11 @@ mod tests {
     #[test]
     fn resting_all_second_says_nothing_kept_it() {
         let rested = resting(&region(&[]), &region(&[]), 1.0);
-        assert!(rested.kept.abs() < 1e-9);
+        let kept = rested.kept;
+        assert!(
+            kept.abs() < 1e-9,
+            "with no counter moving, it was said kept {kept}"
+        );
         assert_eq!(rested.by, [] as [crate::resting::Kept; 0]);
     }
 
@@ -203,10 +216,18 @@ mod tests {
         let before = region(&[(KEPT_AT_ALL, 100), (low(9), 40)]);
         let after = region(&[(KEPT_AT_ALL, 400), (low(9), 290)]);
         let rested = resting(&before, &after, 1.0);
-        assert!((rested.kept - 0.3).abs() < 1e-9);
+        let kept = rested.kept;
+        assert!(
+            (kept - 0.3).abs() < 1e-9,
+            "it was said kept {kept} of the second, not 0.3"
+        );
         assert_eq!(rested.by.len(), 1);
         assert_eq!(rested.by[0].by, Keeper::Display);
-        assert!((rested.by[0].share - 0.25).abs() < 1e-9);
+        let share = rested.by[0].share;
+        assert!(
+            (share - 0.25).abs() < 1e-9,
+            "the display engine was said to keep it {share}, not 0.25"
+        );
     }
 
     #[test]
@@ -214,7 +235,11 @@ mod tests {
         let after = region(&[(high(7), 200), (high(13), 600), (high(14), 100)]);
         let rested = resting(&region(&[]), &after, 1.0);
         assert_eq!(rested.by[0].by, Keeper::ImageProcessor);
-        assert!((rested.by[0].share - 0.6).abs() < 1e-9);
+        let share = rested.by[0].share;
+        assert!(
+            (share - 0.6).abs() < 1e-9,
+            "the image processor was said to keep it {share}, not its longest, 0.6"
+        );
     }
 
     #[test]
@@ -229,7 +254,11 @@ mod tests {
     fn a_counter_is_read_across_its_wrap() {
         let before = region(&[(KEPT_AT_ALL, u32::MAX - 99)]);
         let after = region(&[(KEPT_AT_ALL, 400)]);
-        assert!((resting(&before, &after, 1.0).kept - 0.5).abs() < 1e-9);
+        let kept = resting(&before, &after, 1.0).kept;
+        assert!(
+            (kept - 0.5).abs() < 1e-9,
+            "read across its wrap, it was said kept {kept}, not 0.5"
+        );
     }
 
     #[test]
@@ -237,13 +266,21 @@ mod tests {
         let before = region(&[(KEPT_AT_ALL, 5_000_000), (low(9), 5_000_000)]);
         let after = region(&[(KEPT_AT_ALL, 10), (low(9), 10)]);
         let rested = resting(&before, &after, 1.0);
-        assert!(rested.kept.abs() < 1e-9);
+        let kept = rested.kept;
+        assert!(
+            kept.abs() < 1e-9,
+            "counters started again read as kept {kept}"
+        );
         assert_eq!(rested.by, [] as [crate::resting::Kept; 0]);
     }
 
     #[test]
     fn the_share_is_of_the_time_between() {
         let after = region(&[(KEPT_AT_ALL, 1000)]);
-        assert!((resting(&region(&[]), &after, 2.0).kept - 0.5).abs() < 1e-9);
+        let kept = resting(&region(&[]), &after, 2.0).kept;
+        assert!(
+            (kept - 0.5).abs() < 1e-9,
+            "over two seconds it was said kept {kept}, not 0.5"
+        );
     }
 }
