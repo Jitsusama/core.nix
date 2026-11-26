@@ -76,7 +76,9 @@ const DROWNED: f32 = 15.0;
 const QUIETER: f32 = 12.0;
 
 /// How many of Joel's words, heard while none of theirs is, it takes to
-/// know his voice's level: with fewer, nothing is cut for its level.
+/// know his voice's level: with fewer, a word is cut for its level
+/// against theirs alone, as where he says little his side is mostly their
+/// echo.
 const ALONE: usize = 5;
 
 /// Whether `line` is Joel's microphone hearing one of the others' lines,
@@ -202,15 +204,12 @@ fn voice<'a>(mine: impl IntoIterator<Item = &'a Word>, theirs: &[Word]) -> Optio
 }
 
 /// For each of Joel's `mine`, the loudest of `theirs` said within a
-/// moment of it, if that's `DROWNED` louder, his `voice` is `QUIETER`
-/// louder, and they go on speaking past it, or his word just before it
+/// moment of it, if that's `DROWNED` louder, his `voice`, once known, is
+/// `QUIETER` louder, and they go on speaking past it, or his word just before it
 /// was cut so: his words heard inside their speech far below it are its
 /// echo, and so is the echo of their last words, which follows them,
 /// while a word of his that opens as their line ends may be his answer.
 fn drowned(mine: &[Word], theirs: &[Word], voice: Option<f32>) -> Vec<Option<usize>> {
-    let Some(voice) = voice else {
-        return vec![None; mine.len()];
-    };
     let mut drowned: Vec<Option<usize>> = Vec::with_capacity(mine.len());
     for (i, word) in mine.iter().enumerate() {
         let near = around(word, theirs);
@@ -218,7 +217,7 @@ fn drowned(mine: &[Word], theirs: &[Word], voice: Option<f32>) -> Vec<Option<usi
             .first()
             .is_some_and(|said| said.at <= word.at + LAG);
         let echoing = i > 0 && drowned[i - 1].is_some() && mine[i - 1].at + LAG >= word.at;
-        let quiet = word.level + QUIETER <= voice;
+        let quiet = voice.is_none_or(|voice| word.level + QUIETER <= voice);
         let loudest = near.max_by(|&a, &b| theirs[a].level.total_cmp(&theirs[b].level));
         let below = |j: &usize| theirs[*j].level >= word.level + DROWNED;
         drowned.push(loudest.filter(|j| (on || echoing) && quiet && below(j)));
