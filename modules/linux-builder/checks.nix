@@ -101,7 +101,8 @@ in
   # which holds the builder's line only while the Mac has room: under the
   # floor, swapping or unread, it holds none at once, and the line comes
   # back only after the hold (room-test.sh). The job runs every 15 seconds
-  # with the floor and hold the options give, each in its place.
+  # with the floor and hold the options give, each in its place, and
+  # newsyslog moves aside the log it names.
   linux-builder-is-offered-only-with-room =
     let
       mac = macOf {
@@ -132,6 +133,9 @@ in
       && lib.hasSuffix "room.sh" (builtins.elemAt job.ProgramArguments 1)
       && job.StandardErrorPath == "/var/log/linux-builder-room.log"
     ) "The room job doesn't run room.sh each 15 s with its line, file, floor, hold and log.";
+    assert lib.assertMsg (lib.any (lib.hasPrefix "${job.StandardErrorPath} ") (
+      lib.splitString "\n" mac.environment.etc."newsyslog.d/linux-builder-room.conf".text
+    )) "macOS's newsyslog doesn't move aside the log the room job writes.";
     pkgs.runCommandLocal "linux-builder-is-offered-only-with-room" { } ''
       $BASH ${./room-test.sh} ${./room.sh}
       touch $out

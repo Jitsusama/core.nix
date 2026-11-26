@@ -197,6 +197,17 @@ chmod 755 "${state}"
 look 50 3
 holds withheld "*it no longer fails, and the builder isn't offered: it had no record*" \
   "a look that no longer failed left the failure standing in the log"
+look 50 3
+holds withheld "" "a look after a failure cleared said it cleared again"
+# A failure that emptied the file but couldn't write why, as on a full
+# disk, clears all the same.
+chmod 555 "${state}"
+look 50 3
+: >"${offered}"
+chmod 755 "${state}"
+look 50 3
+holds withheld "*it no longer fails, and the builder isn't offered: it had no record*" \
+  "a look after a failure that couldn't write why left the failure standing in the log"
 
 # A move into place that fails says only that it failed, never the offer
 # it couldn't make. The stand-in mv refuses only the file Nix reads.
@@ -214,6 +225,11 @@ PATH=${bin}/stuck:${PATH} look 50 3
 [[ ${offer} == withheld && ${ended} != 0 && ${said} != *"offered again"* &&
   ${said} == *"isn't offered: it failed, ending ${ended}" ]] ||
   fail "a move that failed was said as the builder offered again, or not said as failing"
+# Failing again at the move, with the file saying it failed, says nothing,
+# never that it cleared.
+PATH=${bin}/stuck:${PATH} look 50 3
+[[ ${offer} == withheld && ${ended} != 0 && ${said} != *" room: "* ]] ||
+  fail "a move that failed again said so, or said the failure had cleared"
 
 pressed_ago 601
 look 50 3

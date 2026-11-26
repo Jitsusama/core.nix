@@ -516,7 +516,8 @@ in
     '';
 
     # Every 15 seconds, so a Mac that starts swapping stops taking builds
-    # within that. It writes its log only when the offer changes. A first
+    # within that. It writes its log when the offer changes, when a look
+    # fails and when a failure clears (room.sh says which). A first
     # look counts as short, so after the switch that brings it the builder
     # waits out the hold before it's offered, and a Linux build meanwhile
     # fails for want of it.

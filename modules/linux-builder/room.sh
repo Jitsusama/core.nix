@@ -126,12 +126,15 @@ fi
 # at the first look, counts as a change either way. Said once it's moved
 # into place, so a move that fails says only that it failed. A look that
 # no longer fails says so too, even with the builder still withheld, so
-# the log never leaves a failure standing that has cleared.
+# the log never leaves a failure standing that has cleared. A file there
+# but empty is one a failure emptied and couldn't write why into, as on a
+# full disk, since every look that ends well leaves a line in it.
 was=$(grep -v '^#' "${offered}" 2>/dev/null || true)
 reason=""
 read -r reason 2>/dev/null <"${offered}" || true
 cleared=""
-if [[ ${reason} == "# withheld by linux-builder-room: it failed, ending "* ]]; then
+if [[ ${reason} == "# withheld by linux-builder-room: it failed, ending "* ]] ||
+  { [ -e "${offered}" ] && [ ! -s "${offered}" ]; }; then
   cleared=yes
 fi
 is=$(grep -v '^#' "${offered}.new" || true)
