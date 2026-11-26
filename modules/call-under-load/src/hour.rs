@@ -393,8 +393,8 @@ fn blind(calls: &[crate::watch::Real], since: u64, at: u64) -> Measure {
         "Joel's calls since the last hour with a call app open but no sending thread read, \
          so their waits are unread; the microphone in use outside a call while a call app \
          is open reads so, and so does a call in Zoom, whose threads aren't named as \
-         Chromium's or Tuple's, unless Chrome or Slack holds a sending thread then, when \
-         it reads as that thread's waits and isn't counted here"
+         Chromium's or Tuple's, unless Chrome, Slack or Tuple holds a sending thread \
+         then, when it reads as that thread's waits and isn't counted here"
             .to_string(),
     ];
     behind.extend(unread.iter().map(|call| {
