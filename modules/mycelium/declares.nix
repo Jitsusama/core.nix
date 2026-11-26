@@ -130,6 +130,28 @@ rec {
           each minute.
         '';
       };
+      # The node adds these only to a sprout placement chooses for, so one
+      # naming a machine, asking needs of its own or staying here starts as
+      # asked; a mycelium that predates them ignores them.
+      needsIn = lib.mkOption {
+        type = lib.types.listOf needsIn;
+        default = [ ];
+        example = [
+          {
+            folders = [ "src/inner" ];
+            words = [ "forge.example" ];
+            needs = [ "reach=inner" ];
+          }
+        ];
+        description = ''
+          What work sprouted here needs wherever placement sends it: work
+          begun in one of a rule's folders or below, or whose words hold
+          one of its words in any case, needs each of its needs. Work met
+          only by a probe is refused while no machine's probe answers,
+          rather than started where it can't work. A mycelium that
+          predates this ignores it.
+        '';
+      };
       # A carry an orchestrator orders lands only in a kind at least as
       # strict as the session's own, behind no door it lacked, judged from
       # what each machine says here; a kind left unsaid is one no ordered carry lands in, so the
@@ -167,6 +189,31 @@ rec {
           declare it, to Linux or to a Mac that does, lands looser for the
           agent itself, which the carry's judge, reading kinds, can't see.
         '';
+      };
+    };
+  };
+  # Work begun in some folders, or naming some words, and what it needs,
+  # each need as `mycelium sprout --need` takes it.
+  needsIn = lib.types.submodule {
+    options = {
+      folders = lib.mkOption {
+        type = lib.types.listOf lib.types.nonEmptyStr;
+        default = [ ];
+        example = [ "src/inner" ];
+        description = "The folders, each within home unless whole, whose work or work below needs these.";
+      };
+      words = lib.mkOption {
+        type = lib.types.listOf lib.types.nonEmptyStr;
+        default = [ ];
+        example = [ "forge.example" ];
+        description = "The words, such as a link's host, whose naming anywhere in work's words, in any case, needs these.";
+      };
+      needs = lib.mkOption {
+        type = lib.types.nonEmptyListOf (
+          lib.types.strMatching "cloud|(machine|system|arch|reach|accelerator|tool)=.+"
+        );
+        example = [ "reach=inner" ];
+        description = "What such work needs: cloud, or kind=value, as `mycelium sprout --need` takes it.";
       };
     };
   };

@@ -1573,6 +1573,47 @@ in
         })
       );
 
+  # What work begun in some folders or naming some words needs is written
+  # in mycelium's words, each need as mycelium reads it from the words
+  # `--need` takes, and left out where nothing is said. A need mycelium
+  # couldn't read fails here rather than reading as none.
+  mycelium-declares-what-work-needs =
+    holds "mycelium-declares-what-work-needs"
+      "What a machine declares work begun in some folders or naming some words needs isn't written in mycelium's words, a cloud need isn't written alone or a kind=value one as its kind keyed to its value, one is written where nothing is said, or a need mycelium can't read, a rule naming none, or an empty folder or word is taken."
+      (
+        let
+          rule = {
+            folders = [ "src/inner" ];
+            words = [ "forge.example" ];
+            needs = [
+              "reach=inner"
+              "system=linux"
+              "cloud"
+            ];
+          };
+          taken =
+            extra:
+            (builtins.tryEval (builtins.deepSeq (declaredAs { needsIn = [ (rule // extra) ]; }) true)).success;
+        in
+        (declaredAs { needsIn = [ rule ]; }).needs_in or null == [
+          {
+            inherit (rule) folders words;
+            needs = [
+              { reach = "inner"; }
+              { system = "linux"; }
+              "cloud"
+            ];
+          }
+        ]
+        && !((declared linux) ? needs_in)
+        && taken { }
+        && !taken { needs = [ "reach" ]; }
+        && !taken { needs = [ "colour=blue" ]; }
+        && !taken { needs = [ ]; }
+        && !taken { folders = [ "" ]; }
+        && !taken { words = [ "" ]; }
+      );
+
   # Each realm's node on either system reads what its machine declares from
   # the store, where only root writes, never from the account's config
   # folder, whose link anything running as the account could repoint; it
