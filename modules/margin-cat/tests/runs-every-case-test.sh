@@ -6,7 +6,8 @@
 # slowing the spinning case never makes it a hang; then, under a guard of
 # three seconds, a hang that stops the run and one that ignores the guard's
 # signal until its kill, each with a case left unrun after it; a case whose
-# limits the system refuses, failed unrun; and limits and guards that aren't
+# limits the system refuses, failed unrun with the limit in force said,
+# wherever this user can't raise a hard limit; and limits and guards that aren't
 # whole seconds, refused.
 # usage: runs-every-case-test.sh <runs-every-case.sh>
 set -euo pipefail
@@ -22,6 +23,8 @@ cat >>"$here/qml" <<'EOF'
 read -r how <"$1"
 case $how in
   pass) exit 0 ;;
+  # A case that leaves a mark that it ran, for a case that mustn't.
+  mark) : >"$1.ran" ;;
   fail) exit 2 ;;
   spin) while :; do :; done ;;
   die) kill -KILL $$ ;;
@@ -131,14 +134,23 @@ never "a-passes.qml took"
 runs refused-zero 0 60 a-passes:pass
 ends 2
 holds "CASE_LIMIT and CASE_GUARD must be whole seconds, not '0' and '60'"
+never "a-passes.qml took"
 
 # Its hard limit of 11 s is past the 5 s already in force, so it's refused,
-# and the case fails without running rather than running with no limit.
-cap=5
-runs capped 1 60 a-passes:pass
-cap=
-ends 1
-holds "a-passes.qml never ran: its limits or its guard couldn't be set"
-never "a-passes.qml failed"
+# and the case fails without running rather than running with no limit. Only
+# a user who can't raise a hard limit is refused, so where this one can, as
+# root can, the case can't be shown and says so rather than failing.
+if (ulimit -t 5 && ulimit -Ht 11) 2>/dev/null; then
+  echo "left out the capped case: this user may raise a hard limit"
+else
+  cap=5
+  runs capped 1 60 a-marks:mark
+  cap=
+  ends 1
+  holds "a-marks.qml's limits of 1 and 11 s were refused, the builder holding it to 5 s"
+  holds "a-marks.qml never ran: its limits couldn't be set"
+  never "a-marks.qml failed"
+  [ ! -e "$here/capped/a-marks.qml.ran" ] || failing "a-marks.qml ran"
+fi
 
 [ "$fails" = 0 ]

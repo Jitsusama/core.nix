@@ -46,8 +46,13 @@ trap 'rm -f "$used"' EXIT
 run() {
   ulimit -c 0
   # A limit the builder refuses fails the case unrun, rather than letting it
-  # run with none, by timeout's own code for a command it couldn't run.
-  if ! { ulimit -St "$limit" && ulimit -Ht "$hard"; }; then
+  # run with none, saying the hard limit the builder holds it to. It ends by
+  # 125, the code timeout gives for a failure of its own rather than of the
+  # command it runs, so it reads as the runner's and not the case's.
+  local held
+  held=$(ulimit -Ht)
+  if ! { ulimit -St "$limit" && ulimit -Ht "$hard"; } 2>/dev/null; then
+    echo "$1's limits of $limit and $hard s were refused, the builder holding it to $held s" >&2
     return 125
   fi
   timeout -k 10 "$guard" "$qml" "$1"
@@ -71,7 +76,7 @@ ended() {
   elif [ "$code" = 152 ]; then
     echo "$case ran past its $limit s of its own time"
   elif [ "$code" = 125 ]; then
-    echo "$case never ran: its limits or its guard couldn't be set"
+    echo "$case never ran: its limits couldn't be set"
   else
     echo "$case failed, exit code $code"
   fi
