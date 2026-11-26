@@ -3274,10 +3274,11 @@ import {
     const health = pool
       ? pool.map((y) => machineHealth(y, { label: y.name, mono: true, lead: [plural(cells.filter((s) => s.host === y.name).length, "cell")] }) + machineShareRow(y, `${y.name}'s share`)).join("")
       : machineHealth(x) + machineShareRow(x);
+    const lent = sandboxWords(x);
     const says = pool
       ? `A basin, drawn as one machine: ${plural(pool.length, "machine")} borrowed from a pool in the cloud. A cord`
-      : isSandbox(x)
-        ? `A machine: ${sandboxWords(x)}. A cord`
+      : lent
+        ? `${lent[0].toUpperCase()}${lent.slice(1)}. A cord`
         : "A machine; a cord";
     const facts = [
       ["Made of", what],
@@ -3307,6 +3308,10 @@ import {
         `<ul class="rows health">${health}${healthRow(`Its ${plural(cells.length, "cell")}`, cells)}</ul>`,
       ) +
       faultLine(cells) +
+      // Its row in the Launcher's Machines is where Joel starts work on it.
+      // A basin's stand is named "<basin> basin", which no row is: the space
+      // in it is one no machine's name holds, so linkOf offers no link.
+      launcherLink("machine", name, "Open It in the Launcher") +
       // Its home as a device is the network page, which knows it by name.
       // A sandbox or a basin isn't a device on the home network, so it has
       // no row there.
@@ -3320,16 +3325,16 @@ import {
 
   // Where Joel says something himself: a link the desktop hands the
   // launcher (modules/quickshell/mycelium-link), opening Agents' Talk to a
-  // cell or Networks on a network, so the page still writes nothing. The
-  // link names it and nothing more, in the letters mycelium-link lets
-  // through, so a name it would refuse is never offered as a link that
-  // does nothing. A cell's is the kit's cellLink, saying the machine it
+  // cell, Networks on a network or Machines on a machine, so the page still
+  // writes nothing. The link names it and nothing more, in the letters
+  // mycelium-link lets through, so a name it would refuse is never offered
+  // as a link that does nothing. A cell's is the kit's cellLink, saying the machine it
   // runs on (its host, never the basin it is drawn from) as a notice's
-  // link does; a network's name takes more letters.
+  // link does; a network's or a machine's name takes more letters.
   const NETWORK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
   const linkOf = (kind, name, machine) => {
     if (kind === "cell") return cellLink(name || "", machine);
-    return NETWORK_NAME.test(name || "") ? `mycelium:network/${name}` : null;
+    return NETWORK_NAME.test(name || "") ? `mycelium:${kind}/${name}` : null;
   };
   const launcherLink = (kind, name, words, machine) => {
     const href = linkOf(kind, name, machine);

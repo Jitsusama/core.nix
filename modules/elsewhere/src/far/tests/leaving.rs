@@ -178,8 +178,9 @@ fn a_file_is_gathered_while_its_archive_fits_a_shared_file_and_not_a_byte_past()
 #[test]
 fn files_are_gathered_while_their_archives_fit_a_shared_folder_and_not_a_byte_past() {
     // Fifteen files each fill an archive's room, and a sixteenth takes
-    // what, with every archive's close, comes to just what a shared
-    // folder carries; a byte more takes another block.
+    // what comes to just what a shared folder carries with the closes
+    // `archived` counts at worst, 33 for 16 rooms' worth, not the 16
+    // these files make; a byte more takes another block.
     let full = LARGEST_FILE - archive::CLOSED - 512;
     let last = LARGEST_FILE - 18 * archive::CLOSED - 512;
     let count = 16;

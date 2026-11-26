@@ -16,7 +16,13 @@ const CLOCK = [
   new Intl.DateTimeFormat("en-CA", HOURS),
   new Intl.DateTimeFormat("en-CA", { ...HOURS, second: "2-digit" }),
 ] as const;
-const DAY = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
+const DATE = { day: "numeric", month: "short" } as const;
+const DAY = [
+  new Intl.DateTimeFormat("en-GB", DATE),
+  new Intl.DateTimeFormat("en-GB", { ...DATE, year: "numeric" }),
+] as const;
+// A lease this long or longer is said in days, not hours.
+const DAYS_MS = 2 * DAY_MS;
 
 /** A time as the clock reads it, to the second unless `seconds` is false. */
 export const clock = (iso: string, seconds = true): string =>
@@ -26,7 +32,7 @@ const midnight = (t: string): number => new Date(t).setHours(0, 0, 0, 0);
 
 /**
  * A time to the minute, carrying its day when that isn't the reading's, or
- * yesterday's 06:49 reads as this morning's.
+ * yesterday's 06:49 reads as this morning's, and its year when that isn't.
  */
 export const dayClock = (t: string, at: string): string => {
   const days = Math.round((midnight(t) - midnight(at)) / DAY_MS);
@@ -40,7 +46,9 @@ export const dayClock = (t: string, at: string): string => {
   if (days === 1) {
     return `tomorrow at ${hm}`;
   }
-  return `${DAY.format(new Date(t))} at ${hm}`;
+  const day = new Date(t);
+  const year = day.getFullYear() === new Date(at).getFullYear() ? 0 : 1;
+  return `${DAY[year].format(day)} at ${hm}`;
 };
 
 /** A time to follow a verb: "at 06:49", "on 3 Nov at 06:49" or "yesterday at 06:49". */
@@ -65,11 +73,17 @@ export const agoWords = (iso: string, at: string): string => {
 export const minutesWord = (ms: number): string =>
   ms < MINUTE_MS ? "under a minute" : `${Math.round(ms / MINUTE_MS)} min`;
 
-/** How long is left until a time, and when it is, or that it has passed. */
+/**
+ * How long is left until a time, and when it is, or that it has passed:
+ * in hours and minutes up to two days, and in days past them.
+ */
 export const leftWords = (iso: string, at: string): string => {
   const ms = Date.parse(iso) - Date.parse(at);
   if (!(ms > 0)) {
     return "its time is up";
+  }
+  if (ms >= DAYS_MS) {
+    return `${Math.floor(ms / DAY_MS)} days left, until ${dayClock(iso, at)}`;
   }
   const h = Math.floor(ms / HOUR_MS);
   const min = Math.floor((ms % HOUR_MS) / MINUTE_MS);

@@ -81,13 +81,15 @@ CELLS = 8
 # their own; about 668 KB since the builders, the legend's moving samples and
 # new work's line, and since no comment is sent, view.js's and the styles'
 # included, a little more with the drawer's acts and its whole question, and
-# 677.4 KB once a network's label keeps what tells it apart, under the 678 KB
-# allowed then; new work's line and its hidden controls draw about 20
-# elements of the 611. One file more and two of the kilobytes are the kit's
-# head.css, the head every live page shares, less the map's own head rules;
-# the head and its link are seven elements more in the markup than the map's
-# header was, and the budget rose by three, the rest within its room.
-BUDGET = Budget(files=34, kilobytes=680, elements=623)
+# 677.4 KB once a network's label keeps what tells it apart, and 678.2 KB
+# once a cloud machine says it's kept, a little more once a long lease counts
+# days, under the 679 KB allowed then; new work's line and its hidden
+# controls draw about 20 elements of the 611. One file more and two of the
+# kilobytes are the kit's head.css, the head every live page shares, less the
+# map's own head rules; the head and its link are seven elements more in the
+# markup than the map's header was, and the budget rose by three, the rest
+# within its room.
+BUDGET = Budget(files=34, kilobytes=681, elements=623)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -103,6 +105,8 @@ BASIN = "shoal"
 BASIN_MARK = f"{BASIN} basin"
 BASIN_MACHINES = ("pool-a", "pool-b")
 BASIN_CELLS = ("HERON1", "HERON2")
+# A cloud machine made for the person to keep declares its end in this year.
+KEPT_UNTIL = "9999-01-01T00:00:00Z"
 # A cell find is asked for by name, and the title its drawer heads it with.
 SOUGHT = "TERN03"
 SOUGHT_TITLE = "Count the Cleats"
@@ -298,6 +302,16 @@ def basins() -> dict[str, list[dict[str, object]]]:
     return {**reading, "machine": reading["machine"] + pool, "cell": cells}
 
 
+def lent() -> dict[str, list[dict[str, object]]]:
+    """Node.json's realm with osprey a cloud machine the person keeps."""
+    reading = json.loads((HERE / "node.json").read_text())["kinds"]
+    machines = copy.deepcopy(reading["machine"])
+    for machine in machines:
+        if machine["name"] == "osprey":
+            machine["declared"] = {"reach": ["internet"], "leaves_at": KEPT_UNTIL}
+    return {**reading, "machine": machines}
+
+
 def feeding(cell: str, ago: timedelta = timedelta()) -> dict[str, object]:
     """FED_RECEPTOR feeding `cell` a call's summary, `ago` before now, as the node serves it."""
     said = datetime.now(UTC) - ago
@@ -411,6 +425,13 @@ def crowd_served(tmp_path: Path) -> Iterator[Served]:
 @pytest.fixture
 def basins_served(tmp_path: Path) -> Iterator[Served]:
     stand_in = StandIn(tmp_path / "basins.sock", "node", basins()).start()
+    yield from serve(tmp_path, stand_in)
+    stand_in.leave()
+
+
+@pytest.fixture
+def lent_served(tmp_path: Path) -> Iterator[Served]:
+    stand_in = StandIn(tmp_path / "lent.sock", "node", lent()).start()
     yield from serve(tmp_path, stand_in)
     stand_in.leave()
 
@@ -1624,6 +1645,12 @@ def test_a_basins_machines_are_drawn_as_one(browser: Browser, basins_served: Ser
         body = page.locator("#panel-body")
         said = "A basin, drawn as one machine: 2 machines"
         expect(body, "the drawer didn't say it was a basin").to_contain_text(said)
+        # The Launcher's Machines has a row for each of its machines, none for
+        # it: its name holds a space, which no machine's name does, so the
+        # map never offers a link to a row that isn't there.
+        expect(
+            body.locator('a[href^="mycelium:machine/"]'), "the basin linked a row it has none of"
+        ).to_have_count(0)
         for name in BASIN_MACHINES:
             exactly = page.locator(".name", has_text=re.compile(f"^{re.escape(name)}$"))
             row = body.locator(".health .row", has=exactly)
@@ -2171,6 +2198,55 @@ def spent(page: Page) -> list[str]:
     expect(fold.locator("ul.rows").first, "the Spent Today fold never opened").to_be_visible()
     lines = [line for line in fold.inner_text().splitlines() if line.strip()]
     return lines[1:2] + lines[3:]
+
+
+def test_a_machines_drawer_opens_its_row_in_the_launcher(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate("location.hash = '#machine=osprey'")
+    expect(page.locator("#panel-title"), "osprey's drawer never opened").to_have_text("osprey")
+    # Its row's acts are where Joel starts work on it, as the system page's link is.
+    link = page.locator("#panel-body").get_by_role("link", name="Open It in the Launcher")
+    expect(link, "osprey's drawer didn't open its row").to_have_attribute(
+        "href", "mycelium:machine/osprey"
+    )
+
+
+def test_a_kept_cloud_machine_says_so_and_opens_its_row(
+    browser: Browser, lent_served: Served
+) -> None:
+    root, _ = lent_served
+    opened = Opened(browser, f"{root}mycelium/#machine=osprey", SIZES[-1], "light")
+    try:
+        page = opened.page
+        the_map_stands(page, "live")
+        body = page.locator("#panel-body")
+        expect(body.locator(".carries"), "osprey didn't say it was kept").to_contain_text(
+            "A cloud machine, kept until you let it go. A cord runs from it"
+        )
+        expect(
+            body.locator(".health"), "osprey's health counted down a kept lease"
+        ).to_contain_text("kept until you let it go")
+        link = body.get_by_role("link", name="Open It in the Launcher")
+        expect(link, "a cloud machine's drawer didn't open its row").to_have_attribute(
+            "href", "mycelium:machine/osprey"
+        )
+        # It is no device on the home network, so the network page has no row.
+        expect(
+            body.get_by_role("link", name="osprey on the network page"),
+            "a cloud machine linked the home network's page",
+        ).to_have_count(0)
+        # A cell on it says so where it says the machine it runs on, and in
+        # its machine's row.
+        page.evaluate("location.hash = '#cell=GULL01'")
+        kept = "on osprey, a cloud machine, kept until you let it go"
+        expect(body, "GULL01 didn't say its machine was kept").to_contain_text(kept)
+        row = body.locator(".rows .row", has=page.locator(".name", has_text=re.compile("^osprey$")))
+        expect(row, "GULL01's machine row counted down a kept lease").to_contain_text(
+            "a cloud machine, kept until you let it go"
+        )
+    finally:
+        opened.close()
 
 
 def test_what_each_spent_today_is_listed_most_first(mycelium_opened: Opened) -> None:

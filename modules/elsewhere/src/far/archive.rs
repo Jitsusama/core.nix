@@ -183,7 +183,7 @@ fn read(root: &Path, name: &str, most: u64) -> io::Result<(Vec<u8>, fs::Metadata
 
 /// All of `from` when it holds at most `most` bytes, and nothing when it
 /// holds more, found by reading no further than the byte past them.
-fn at_most(from: impl io::Read, most: u64) -> io::Result<Option<Vec<u8>>> {
+pub(super) fn at_most(from: impl io::Read, most: u64) -> io::Result<Option<Vec<u8>>> {
     let mut data = Vec::new();
     io::Read::read_to_end(&mut from.take(most.saturating_add(1)), &mut data)?;
     Ok((data.len() as u64 <= most).then_some(data))

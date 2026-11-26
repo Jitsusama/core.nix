@@ -13,7 +13,8 @@
 //! its end. Each manager in MANAGERS, a JSON file
 //! `{"managers": [{"name", "command"}]}`, runs as a child on the passwords
 //! line protocol: a JSON line in for each ask, `{"id", "ask"}` with `list`,
-//! `get`, `reveal`, `code`, `audit` or `let-in`, and a JSON line out answering it by
+//! `get`, `copy`, `type`, `audit` or `let-in`, `reveal` and `code` refused, and a JSON
+//! line out answering it by
 //! its id, or `{"state", "reason"}` unasked as how it stands changes. A
 //! manager that stops is started again. How each manager stands goes to
 //! the shell as the interface's `sources`, the word every daemon's client
@@ -24,8 +25,9 @@
 //! manager that has to ask Joel's leave, as 1Password's command does, only
 //! ever asks it in answer to his own key. What's held is each entry
 //! without its secrets (lib.rs); a secret goes from its manager to the
-//! ask that wanted to see it, or to the clipboard, marked sensitive and
-//! cleared after CLEARS, and is never kept, written or logged here. Copying
+//! clipboard, marked sensitive and cleared after CLEARS, or is typed into
+//! the window with the keys, never back to an ask, and is never kept,
+//! written or logged here. Copying
 //! is off while `$PASSWORDS_COPIER` names no copier, which nothing names
 //! until agents are fenced off the clipboard any of them can read.
 //!
@@ -216,6 +218,9 @@ struct Daemon {
     rows: Rows,
     /// What answers secret asks, where any references are listed.
     asks: Option<Arc<Engine>>,
+    /// Where each type is told, journald's own socket unless the managers
+    /// file names another, as the asks' readings are.
+    journal: PathBuf,
 }
 
 /// The daemon's state, and what wakes an ask waiting on a manager to start.
@@ -269,6 +274,10 @@ fn daemon(managers: &str, words: Option<&str>) -> Result<(), Failure> {
         .map(|manager| manager.name.clone())
         .collect();
     let kept = kept_at();
+    let journal = given
+        .journal
+        .clone()
+        .unwrap_or_else(|| PathBuf::from(secret_asks::reading::JOURNAL));
     let mut held = Held::of(&names);
     if let Some(kept) = &kept {
         load(&mut held, kept);
@@ -292,6 +301,7 @@ fn daemon(managers: &str, words: Option<&str>) -> Result<(), Failure> {
                 asks: Kept::default(),
             },
             asks: None,
+            journal,
         }),
         Condvar::new(),
     ));
@@ -940,6 +950,22 @@ fn serve(shared: &Shared, reading: impl BufRead, writing: impl Write + Send + 's
     lock(shared).watches.clear();
 }
 
+/// Copies an entry's secret to the clipboard, refused before any secret is read while no
+/// copier is named.
+fn copied(shared: &Shared, id: &Value, key: &str, detail: Option<&str>) -> Value {
+    if copier().is_none() {
+        return error(id, "refused", COPY_OFF);
+    }
+    match secret(shared, key, detail) {
+        Ok(secret) => match copy(shared, &secret.value) {
+            Ok(clears) => secret.lasting(json!({"id": id, "copied": true,
+                                                "detail": secret.label, "clears": clears})),
+            Err(why) => error(id, "refused", &why),
+        },
+        Err((code, message)) => error(id, code, &message),
+    }
+}
+
 /// Answers one ask; null for one whose answers go by its watch alone.
 fn answer(shared: &Shared, asked: Ask, told: &Sender<String>) -> Value {
     match asked {
@@ -997,22 +1023,19 @@ fn answer(shared: &Shared, asked: Ask, told: &Sender<String>) -> Value {
         Ask::Search { id, words, limit } => {
             json!({"id": id, "records": lock(shared).held.search(&words, limit)})
         }
-        Ask::Reveal { id, key, detail } => match secret(shared, &key, detail.as_deref()) {
-            Ok(secret) => secret.lasting(json!({"id": id, "value": secret.value,
-                                                "detail": secret.label})),
-            Err((code, message)) => error(&id, code, &message),
-        },
-        // Refused before any secret is read, while no copier is named.
-        Ask::Copy { id, .. } if copier().is_none() => error(&id, "refused", COPY_OFF),
-        Ask::Copy { id, key, detail } => match secret(shared, &key, detail.as_deref()) {
-            Ok(secret) => match copy(shared, &secret.value) {
-                Ok(clears) => secret.lasting(json!({"id": id, "copied": true,
-                                                    "detail": secret.label, "clears": clears})),
-                Err(why) => error(&id, "refused", &why),
-            },
-            Err((code, message)) => error(&id, code, &message),
-        },
-        Ask::Code { id, key } => code(shared, &id, &key),
+        // Refused, reading nothing: a secret handed back on the pipe would
+        // reach any process of Joel's that opens the shell's end of it, which
+        // copying and typing never hand back (ISXEG8, 2026-11-25), and
+        // nothing in the shell asks it. A one-time code is such a secret,
+        // and a copy of one already says how long it lasts.
+        Ask::Reveal { id, .. } | Ask::Code { id, .. } => error(&id, "refused", REVEALS_NOTHING),
+        Ask::Copy { id, key, detail } => copied(shared, &id, &key, detail.as_deref()),
+        Ask::Type {
+            id,
+            key,
+            detail,
+            window,
+        } => type_in(shared, &id, &key, detail.as_deref(), window),
         Ask::Audit { id, asked } => audit_all(shared, &id, asked),
         Ask::LetIn { id, manager } => {
             if !lock(shared).held.managers().contains(&manager) {
@@ -1321,27 +1344,150 @@ fn copy(shared: &Shared, value: &str) -> Result<u64, String> {
     Ok(u64::try_from(u128::from(now()) + clears.as_millis()).unwrap_or(u64::MAX))
 }
 
-/// The one-time code an entry gives now, with its period and the seconds
-/// left in it.
-fn code(shared: &Shared, id: &Value, key: &str) -> Value {
-    let Some((manager, entry)) = named(key) else {
-        return error(id, "refused", &format!("{key} isn't an entry's key"));
-    };
-    match ask_of(
-        shared,
-        manager,
-        asking("code", &[("entry", json!(entry))]),
-        PATIENCE * 6,
-    ) {
-        Ok(answer) => json!({
-            "id": id,
-            "code": answer.get("code"),
-            "period": answer.get("period"),
-            "left": answer.get("left"),
-        }),
-        Err((code, message)) => error(id, code, &message),
-    }
+/// Why nothing is typed: no typist is named, as the checks that copy
+/// name none.
+const TYPE_OFF: &str = "typing is off, since no typist is named";
+
+/// Held while a secret is typed, so no other type starts meanwhile.
+static TYPING: Mutex<()> = Mutex::new(());
+
+/// Why a type isn't started: another is under way.
+const TYPING_ALREADY: &str = "a type is already under way";
+
+/// Why no secret is handed back: only copied or typed, never on the pipe.
+const REVEALS_NOTHING: &str = "a secret is only copied or typed, never handed back";
+
+/// The program that types what it reads on its standard input into the
+/// window with the keys, `$PASSWORDS_TYPIST` (wtype, given `-`), or none
+/// while typing is off.
+fn typist() -> Option<String> {
+    std::env::var("PASSWORDS_TYPIST")
+        .ok()
+        .filter(|program| !program.is_empty())
 }
+
+/// Types an entry's password, or a detail of it, into niri's `window`,
+/// the one the launcher opened over, and tells the journal one line of
+/// it, whether it was typed or why not, never the secret (typing.rs).
+fn type_in(shared: &Shared, id: &Value, key: &str, detail: Option<&str>, window: u64) -> Value {
+    // One type at a time: two at once would each check the window, then
+    // type into it together, one secret's keys among the other's. One
+    // asked while another is under way is refused, not queued, since a
+    // Return pressed again while nothing seems to happen would otherwise
+    // type the secret a second time once the first is done.
+    let title = lock(shared)
+        .held
+        .get(key)
+        .map(|entry| entry.title().to_owned())
+        .unwrap_or_default();
+    let journal = lock(shared).journal.clone();
+    let _one = match TYPING.try_lock() {
+        Ok(one) => one,
+        Err(std::sync::TryLockError::Poisoned(one)) => one.into_inner(),
+        Err(std::sync::TryLockError::WouldBlock) => {
+            // Said in the journal as every other refused type is.
+            let line = passwords::typing::journal_line(&title, "", "didn't type", TYPING_ALREADY);
+            secret_asks::reading::send(&journal, &line);
+            return error(id, "refused", TYPING_ALREADY);
+        }
+    };
+    let (answer, line) = match typed(shared, key, detail, window) {
+        Ok((app, label)) => (
+            json!({"id": id, "typed": true, "detail": label}),
+            passwords::typing::journal_line(&title, &app, "typed", ""),
+        ),
+        Err((app, why)) => (
+            error(id, "refused", &why),
+            passwords::typing::journal_line(&title, &app, "didn't type", &why),
+        ),
+    };
+    secret_asks::reading::send(&journal, &line);
+    answer
+}
+
+/// Types the secret once every check holds, answering the window's app
+/// id and the detail's label, or the app id as far as it was known and
+/// why it wasn't typed. The window is checked before the secret is read,
+/// so a refused type reads none, and again just before the typist runs,
+/// so the keys can't have moved while its manager answered. That second
+/// check waits a moment for the keys to come back, since 1Password may
+/// have asked Joel's leave in a window of its own meanwhile.
+fn typed(
+    shared: &Shared,
+    key: &str,
+    detail: Option<&str>,
+    window: u64,
+) -> Result<(String, String), (String, String)> {
+    let unknown = |why: &str| (String::new(), why.to_owned());
+    let program = typist().ok_or_else(|| unknown(TYPE_OFF))?;
+    let niri = std::env::var_os("NIRI_SOCKET")
+        .map(PathBuf::from)
+        .ok_or_else(|| unknown("niri can't be asked which window has the keys"))?;
+    let kitty = std::env::var("PASSWORDS_KITTY")
+        .ok()
+        .filter(|program| !program.is_empty());
+    if !passwords::typing::keys_let_go(&niri) {
+        return Err(unknown("the launcher kept the keys"));
+    }
+    let fit = || passwords::typing::fit(&niri, window, kitty.as_deref());
+    let first = fit()?;
+    let secret = secret(shared, key, detail).map_err(|(_, why)| (first.clone(), why))?;
+    let deadline = Instant::now() + passwords::typing::LETTING_GO;
+    let app = loop {
+        match fit() {
+            Ok(app) => break app,
+            Err((_, why)) if passwords::typing::elsewhere(&why) && Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            Err(refused) => return Err(refused),
+        }
+    };
+    let failed = |why: String| (app.clone(), format!("couldn't type it: {why}"));
+    // The typist types each character as a key, so a line break or a tab
+    // in a stored secret would press Return or Tab where Joel is, as past a
+    // terminal's password prompt.
+    if secret.value.chars().any(char::is_control) {
+        return Err((app, KEYS_IN_IT.to_owned()));
+    }
+    let mut child = Command::new(program)
+        .arg("-")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|why| failed(why.to_string()))?;
+    if let Some(mut input) = child.stdin.take() {
+        input
+            .write_all(secret.value.as_bytes())
+            .map_err(|why| failed(why.to_string()))?;
+    }
+    // A typist that never ends would hold TYPING for the daemon's life,
+    // every later type refused as one under way, so it's given a time.
+    let typed_by = Instant::now() + TYPIST_PATIENCE;
+    let ended = loop {
+        match child.try_wait().map_err(|why| failed(why.to_string()))? {
+            Some(ended) => break ended,
+            None if Instant::now() < typed_by => std::thread::sleep(Duration::from_millis(20)),
+            None => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(failed("the typist didn't end in time".to_owned()));
+            }
+        }
+    };
+    if !ended.success() {
+        return Err(failed(format!("the typist ended {ended}")));
+    }
+    Ok((app, secret.label))
+}
+
+/// How long the typist may take to type a secret, well past wtype's
+/// time for the longest a manager holds.
+const TYPIST_PATIENCE: Duration = Duration::from_secs(10);
+
+/// Why a secret holding a control character, such as a line break, isn't
+/// typed.
+const KEYS_IN_IT: &str = "it holds a line break or tab, which would be typed as a key";
 
 /// How long a manager may take to give every password: 1Password asks
 /// Joel to let it in first where its leave has lapsed, as letting in does.

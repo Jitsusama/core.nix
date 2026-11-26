@@ -208,15 +208,75 @@ impl Index {
     }
 }
 
+/// One pack's `.idx` name as a multi-pack-index gives it, taken only as a
+/// file of the pack folder, since the store joins it onto that folder: a
+/// name that climbs out or into a subfolder is a crafted or broken index.
+#[expect(
+    clippy::case_sensitive_file_extension_comparisons,
+    reason = "git names a pack's index .idx, in lowercase"
+)]
+fn pack_name(raw: &[u8]) -> io::Result<String> {
+    let name = std::str::from_utf8(raw).map_err(|_| invalid("multi-pack-index pack name"))?;
+    let bare = !name.starts_with('.') && !name.contains(['/', '\\']);
+    if bare && name.ends_with(".idx") {
+        Ok(name.to_owned())
+    } else {
+        Err(invalid("multi-pack-index pack name"))
+    }
+}
+
+/// How many bytes of pack names one read takes in: dozens of git's names.
+const NAMES_READ: u64 = 4096;
+
+/// The first `count` pack names of a names chunk running from `at` to
+/// `end`, read a window at a time. Git ends each name with a NUL and pads
+/// only after the last, so an empty name before the last is an index
+/// naming fewer packs than it holds, refused at the first window rather
+/// than once a sparse file's whole apparent tail is read.
+fn pack_names(file: &File, mut at: u64, end: u64, count: usize) -> io::Result<Vec<String>> {
+    let fewer = || invalid("multi-pack-index names fewer packs than it holds");
+    let mut packs = Vec::new();
+    let mut name = Vec::new();
+    while packs.len() < count {
+        let len = NAMES_READ.min(end - at);
+        if len == 0 {
+            return Err(fewer());
+        }
+        let window = read_exact_at(file, usize::try_from(len).expect("a window"), at)?;
+        at += len;
+        for byte in window {
+            if byte != 0 {
+                // No file name passes 255 bytes.
+                if name.len() == 255 {
+                    return Err(invalid("multi-pack-index pack name"));
+                }
+                name.push(byte);
+                continue;
+            }
+            if name.is_empty() {
+                return Err(fewer());
+            }
+            packs.push(pack_name(&name)?);
+            name.clear();
+            if packs.len() == count {
+                break;
+            }
+        }
+    }
+    Ok(packs)
+}
+
 /// A multi-pack-index: one sorted table of names across many packs.
 pub struct Midx {
     file: File,
-    /// The `.idx` names of the packs it covers, in its order.
+    /// The `.idx` names of the packs it covers, in its order, each a bare
+    /// file name of the pack folder.
     pub packs: Vec<String>,
     fanout: u64,
     names: u64,
     offsets: u64,
-    large: Option<u64>,
+    /// Where its large offsets lie, and how many its chunk holds.
+    large: Option<(u64, u64)>,
 }
 
 impl Midx {
@@ -240,25 +300,71 @@ impl Midx {
                 .copied()
                 .ok_or_else(|| invalid("missing chunk"))
         };
-        let names_at = chunk(b"PNAM")?;
-        let pack_count = u32::from_be_bytes(head[8..12].try_into().expect("4 bytes")) as usize;
-        // The names run to the next chunk; read generously and split.
-        let next = found.values().copied().filter(|&at| at > names_at).min();
-        let len = next.map_or(65_536, |next| next - names_at);
-        let raw = read_exact_at(&file, usize::try_from(len).unwrap_or(65_536), names_at)?;
-        let packs: Vec<String> = raw
-            .split(|&b| b == 0)
-            .filter(|name| !name.is_empty())
-            .take(pack_count)
-            .map(|name| String::from_utf8_lossy(name).into_owned())
+        // Every chunk lies before the checksum git ends the file with. One
+        // said to lie further is a crafted or broken index, refused here
+        // rather than at each lookup, so the store reads each pack's own
+        // index instead. The table just read already holds more than the
+        // checksum's 20 bytes.
+        let body = file.metadata()?.len().saturating_sub(20);
+        let within = |at: u64, len: u64, what: &str| {
+            at.checked_add(len)
+                .filter(|&end| end <= body)
+                .map(|_| at)
+                .ok_or_else(|| invalid(what))
+        };
+        let fanout = within(
+            chunk(b"OIDF")?,
+            1024,
+            "multi-pack-index fan-out past its end",
+        )?;
+        // Sorted names give counts that never fall. One that does would
+        // send a lookup past the names, so it's refused here, where the
+        // store reads each pack's own index instead.
+        let counts: Vec<u32> = read_exact_at(&file, 1024, fanout)?
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|count| u32::from_be_bytes(*count))
             .collect();
+        if counts.windows(2).any(|pair| pair[0] > pair[1]) {
+            return Err(invalid("multi-pack-index fan-out out of order"));
+        }
+        let objects = u64::from(counts[255]);
+        let names = within(
+            chunk(b"OIDL")?,
+            20 * objects,
+            "multi-pack-index object names past its end",
+        )?;
+        let offsets = within(
+            chunk(b"OOFF")?,
+            8 * objects,
+            "multi-pack-index offsets past its end",
+        )?;
+        // A chunk whose length the table alone gives runs to the next
+        // chunk, or to the checksum.
+        let end_of = |at: u64| {
+            found
+                .values()
+                .copied()
+                .filter(|&next| next > at)
+                .min()
+                .map_or(body, |next| next.min(body))
+        };
+        let large = found
+            .get(b"LOFF")
+            .map(|&at| within(at, 0, "multi-pack-index large offsets past its end"))
+            .transpose()?
+            .map(|at| (at, (end_of(at) - at) / 8));
+        let names_at = within(chunk(b"PNAM")?, 0, "multi-pack-index names past its end")?;
+        let pack_count = u32::from_be_bytes(head[8..12].try_into().expect("4 bytes")) as usize;
+        let packs = pack_names(&file, names_at, end_of(names_at), pack_count)?;
         Ok(Midx {
             file,
             packs,
-            fanout: chunk(b"OIDF")?,
-            names: chunk(b"OIDL")?,
-            offsets: chunk(b"OOFF")?,
-            large: found.get(b"LOFF").copied(),
+            fanout,
+            names,
+            offsets,
+            large,
         })
     }
 
@@ -273,11 +379,22 @@ impl Midx {
         let offset = if small & 0x8000_0000 == 0 {
             u64::from(small)
         } else {
-            let large = self
+            let (large, held) = self
                 .large
                 .ok_or_else(|| invalid("large offset without LOFF"))?;
-            u64_at(&self.file, large + 8 * u64::from(small & 0x7fff_ffff))?
+            // One past what its chunk holds would read the next chunk, or
+            // the checksum, as an offset.
+            let entry = u64::from(small & 0x7fff_ffff);
+            if entry >= held {
+                return Err(invalid("multi-pack-index large offset past its chunk"));
+            }
+            u64_at(&self.file, large + 8 * entry)?
         };
         Ok(Some((pack, offset)))
     }
 }
+
+// The store's tests build their indexes with these, so they're the crate's.
+#[cfg(test)]
+#[path = "pack_index_tests.rs"]
+pub(crate) mod tests;
