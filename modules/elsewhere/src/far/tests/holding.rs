@@ -313,10 +313,12 @@ fn a_link_put_at_the_copies_folder_or_the_copy_while_it_is_made_leaves_the_job_u
     // far line may clear the link and where it may not; or moving the copy
     // aside, with a link at its name, once tar unpacked into it, once its
     // folders were opened, so the odd files' find meets the link and a
-    // refusal reads through it, or once the copy was checked, before the
-    // job's cd; or moving the copies' folder aside then, where the link
-    // can't be cleared. Each is this machine's to answer, nothing is
-    // unpacked or cleared through the link, and the job never runs.
+    // refusal reads through it, or once the odd files' find ran, before
+    // the copy's check, which says it was moved; or moving the copies'
+    // folder aside then, where the link can't be cleared. Each is this
+    // machine's to answer, nothing is unpacked or cleared through the
+    // link, and the job never runs. Between that check and the job's cd
+    // only builtins run, so no stand-in reaches the cd's own check.
     let folder = r#"mv "$s" "$HOME/aside" && ln -s "$HOME/aside" "$s""#;
     let copy = r#"mv "$s/1" "$HOME/moved" && ln -s "$HOME/moved" "$s/1""#;
     let (rm, pinned) = refusing("rm", "*\"/.s \"*", "exit 1");
@@ -398,7 +400,10 @@ exit $r"#,
         assert!(
             home.join("swapped").exists()
                 && code == Some(75)
-                && err.contains("so its copy stays") == stays,
+                && err.contains("so its copy stays") == stays
+                && (step != "find"
+                    || swap != copy
+                    || err.contains("moved or linked from its place")),
             "a link put at {case} didn't leave the job untaken ({code:?}): {err}"
         );
         assert!(
