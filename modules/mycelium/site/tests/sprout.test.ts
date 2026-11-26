@@ -5,7 +5,20 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
-import { handedWords, isAddress, LONGEST_WORDS, sproutLink, sproutWords } from "../sprout.ts";
+import {
+  CLOUD,
+  handedWords,
+  isAddress,
+  isMachine,
+  keptOnStands,
+  LONGEST_WORDS,
+  NO_MACHINE,
+  NO_WORDS,
+  onWords,
+  sproutLink,
+  sproutWords,
+  unsprouted,
+} from "../sprout.ts";
 
 it("reads the typed words as one line", () => {
   assert.equal(
@@ -95,8 +108,70 @@ it("says the cell it comes from only when that is an address", () => {
   }
 });
 
+it("says the machine it starts on, and hands nothing for a misshaped one", () => {
+  assert.equal(
+    sproutLink("tidy the rows", null, "osprey"),
+    "mycelium:sprout?words=tidy%20the%20rows&on=osprey",
+    "a machine's name should go with the words",
+  );
+  assert.equal(
+    sproutLink("tidy", "TERN02", CLOUD),
+    "mycelium:sprout?words=tidy&from=TERN02&on=cloud",
+    "the cloud should go as cloud, after the cell",
+  );
+  assert.equal(
+    sproutLink("tidy", null, "v2s-gcp-provider-s99ia2-1795647845"),
+    "mycelium:sprout?words=tidy&on=v2s-gcp-provider-s99ia2-1795647845",
+    "a cloud machine's own name should go as it is",
+  );
+  assert.equal(isMachine(null), false, "no machine should be no name");
+  assert.equal(isMachine("a".repeat(64)), true, "64 letters should be a name");
+  assert.equal(
+    sproutLink("tidy", null, ""),
+    "mycelium:sprout?words=tidy",
+    "an empty machine should name none, as mycelium-link reads it",
+  );
+  for (const on of ["-help", ".hidden", "os prey", "osprey&words=x", "a".repeat(65)]) {
+    assert.equal(
+      sproutLink("tidy", null, on),
+      null,
+      `${JSON.stringify(on)} isn't a machine's name, so work should start nowhere`,
+    );
+  }
+  assert.equal(sproutLink("", null, "osprey"), null, "no words should hand nothing");
+  assert.equal(onWords("osprey"), "On osprey", "a machine should be said by its name");
+  assert.equal(onWords(CLOUD), "On the cloud", "the cloud should be said as a place");
+});
+
+it("says why no link was given: no words, or a machine no link can name", () => {
+  assert.equal(unsprouted("  ", null), NO_WORDS, "no words should be said as no words");
+  assert.equal(unsprouted("", "os prey"), NO_WORDS, "with no words, those come first");
+  assert.equal(unsprouted("tidy", "os prey"), NO_MACHINE, "words on a bad machine name it");
+  assert.equal(unsprouted("tidy", "osprey"), null, "words on a machine a link names go");
+  for (const typed of ["", " \t", "tidy", "\u200b"]) {
+    for (const on of [null, "", "osprey", "cloud", "os prey", "-help"]) {
+      assert.equal(
+        sproutLink(typed, "DAHTNJ", on) === null,
+        unsprouted(typed, on) !== null,
+        `${JSON.stringify(typed)} on ${JSON.stringify(on)}: a link only where nothing is said`,
+      );
+    }
+  }
+});
+
+it("keeps words for a machine only while the map still has it", () => {
+  const names = ["kestrel", "osprey"];
+  assert.equal(keptOnStands("osprey", names), true, "a machine on the map should stand");
+  assert.equal(keptOnStands("heron", names), false, "a machine that left should go");
+  assert.equal(keptOnStands(CLOUD, []), true, "the cloud is no machine, and should stand");
+  assert.equal(keptOnStands(null, []), true, "words sent on no machine should stand");
+});
+
 /** The escape a case may hold: 1 to 6 capital hex digits (README.md, The Address Cases). */
 const ESCAPE = /\\u\{([0-9A-F]{1,6})\}/gu;
+
+/** Plain letters and digits, as a machine case at the length bound's edge is written. */
+const PLAIN_LETTERS = /^[a-z0-9]+$/iu;
 
 /** A case's text with each escape made the character it names, failing on any other. */
 function caseText(written: string): string {
@@ -180,6 +255,18 @@ it("judges each shared address case", () => {
   }
 });
 
+it("judges each shared machine case, as mycelium-link does", () => {
+  const cases = casesIn(readFileSync(new URL("machines.txt", import.meta.url), "utf8"));
+  assert.ok(cases.length > 20, "the shared cases should be read");
+  // The length bound's own edge, in plain letters, so neither copy can move it and pass.
+  const plainAt = (at: number, is: boolean) =>
+    cases.some(([said, text]) => said === is && text.length === at && PLAIN_LETTERS.test(text));
+  assert.ok(plainAt(64, true) && plainAt(65, false), "the cases should hold the edge at 64");
+  for (const [is, text] of cases) {
+    assert.equal(isMachine(text), is, `${JSON.stringify(text)} should ${is ? "" : "not "}be one`);
+  }
+});
+
 it("says where the work went, that nothing starts yet, and how to send it again", () => {
   const again = " If it didn't open, wait a moment, then s brings the words back.";
   assert.equal(
@@ -190,5 +277,13 @@ it("says where the work went, that nothing starts yet, and how to send it again"
   assert.equal(
     handedWords("Heron"),
     `${fromHeron}nothing starts until you press Return there.${again}`,
+  );
+  assert.equal(
+    handedWords(null, "osprey"),
+    `Sent to the Launcher's Start New Work, on osprey; nothing starts until you press Return there.${again}`,
+  );
+  assert.equal(
+    handedWords("Heron", CLOUD),
+    `Sent to the Launcher's Start New Work, from Heron, on the cloud; nothing starts until you press Return there.${again}`,
   );
 });
