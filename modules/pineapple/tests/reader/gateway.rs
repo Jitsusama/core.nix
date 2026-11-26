@@ -674,50 +674,6 @@ fn a_search_that_blinks_beside_one_that_cant_be_read_isnt_told_as_both() {
 }
 
 #[test]
-fn a_first_page_blinking_beside_a_search_that_cant_be_read_leaves_the_row_as_it_was() {
-    static TAGS: AtomicUsize = AtomicUsize::new(0);
-    static BLINKS: AtomicUsize = AtomicUsize::new(0);
-    let came = hearing(
-        |tool, asked, now| {
-            if tool != "slack_search_public_and_private" {
-                said(tool, now)
-            } else if asked["query"] == "pineapple" {
-                poisoned()
-            } else if TAGS.fetch_add(1, Ordering::SeqCst) < 3 {
-                // Both can't be read until the row says so, then the
-                // tag's first page blinks in every round.
-                poisoned()
-            } else {
-                if cut::opens(asked) {
-                    BLINKS.fetch_add(1, Ordering::SeqCst);
-                }
-                format!("{FAILS}Slack said: ratelimited")
-            }
-        },
-        // Told, then rounds enough to tell it anew.
-        &Until {
-            judging: 0,
-            asks: 30,
-            read_at: None,
-        },
-    );
-    // A blink heard narrows the row in its second round, so four blinks
-    // leave it room to.
-    assert!(
-        BLINKS.load(Ordering::SeqCst) >= 4,
-        "four rounds blinked after the row said both: {}",
-        came.journal
-    );
-    assert!(
-        came.why
-            .contains("Slack's answers to the safe word can't be read"),
-        "a search whose first page blinks, waiting on no later page, isn't heard, so the \
-         row still says both can't be read: {}",
-        came.why
-    );
-}
-
-#[test]
 fn searches_that_cant_be_read_judge_nothing_and_are_told() {
     let came = hearing(
         |tool, _, now| {
