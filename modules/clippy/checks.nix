@@ -34,7 +34,7 @@ onLinux {
         ../disk-loss-panic/disk-loss-panic.rs
         ../ergodox/ergodox-watch.rs
         ../linux-id/pinentry.rs
-        ../litra/litra.rs
+        "${import ../litra/source.nix { inherit lib; }}/litra.rs"
         (withTests ../lid-hinge/lid-hinge.rs)
         ../mic-mute-light/mic-mute-light.rs
         ../quickshell/keyboard-lights.rs
