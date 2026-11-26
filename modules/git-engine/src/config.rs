@@ -154,14 +154,20 @@ pub fn parse_bool(value: Option<&str>) -> Option<bool> {
 /// none where `nosystem` is true, else where `system` names, where git
 /// has such a variable, none where it is empty, else `default`. The
 /// environment's own bytes name the file, as git takes them, whether or
-/// not they are UTF-8.
+/// not they are UTF-8. A `nosystem` that isn't UTF-8 is no boolean, which
+/// git dies on; the file is read, as where `nosystem` isn't set.
 pub fn system_file(
     var: impl Fn(&str) -> Option<OsString>,
     nosystem: &str,
     system: Option<&str>,
     default: &str,
 ) -> Option<PathBuf> {
-    if var(nosystem).is_some_and(|value| parse_bool(value.to_str()) == Some(true)) {
+    let off = var(nosystem).is_some_and(|value| {
+        value
+            .to_str()
+            .is_some_and(|value| parse_bool(Some(value)) == Some(true))
+    });
+    if off {
         return None;
     }
     match system.and_then(&var) {
@@ -733,6 +739,20 @@ mod tests {
             at(&[("NOSYSTEM", "false"), ("SYSTEM", "/x")]),
             Some(PathBuf::from("/x")),
             "a false NOSYSTEM left the system file out"
+        );
+        let unreadable = system_file(
+            |name| {
+                use std::os::unix::ffi::OsStringExt;
+                (name == "NOSYSTEM").then(|| OsString::from_vec(b"\xff".to_vec()))
+            },
+            "NOSYSTEM",
+            None,
+            "/etc/default",
+        );
+        assert_eq!(
+            unreadable,
+            Some(PathBuf::from("/etc/default")),
+            "a NOSYSTEM that isn't UTF-8 was taken for true"
         );
     }
 }

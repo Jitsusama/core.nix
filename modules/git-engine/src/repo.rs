@@ -18,6 +18,20 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+/// Where the git built beside the engine reads its system-wide config, as
+/// its `git var` said when the engine was built; /etc's, as git's own
+/// build has it, where nothing said.
+const SYSTEM_CONFIG: &str = match option_env!("GIT_ENGINE_CONFIG_SYSTEM") {
+    Some(path) => path,
+    None => "/etc/gitconfig",
+};
+
+/// Where that git reads its system-wide attributes, as `SYSTEM_CONFIG` is.
+const SYSTEM_ATTRIBUTES: &str = match option_env!("GIT_ENGINE_ATTR_SYSTEM") {
+    Some(path) => path,
+    None => "/etc/gitattributes",
+};
+
 /// Where a repository's folders are.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Location {
@@ -129,14 +143,16 @@ fn config_files(
         &var,
         "GIT_CONFIG_NOSYSTEM",
         Some("GIT_CONFIG_SYSTEM"),
-        "/etc/gitconfig",
+        SYSTEM_CONFIG,
     )
     .into_iter()
     .collect();
     if let Some(global) = var("GIT_CONFIG_GLOBAL") {
         files.push(PathBuf::from(global));
     } else {
+        // git takes an empty XDG_CONFIG_HOME as unset.
         let xdg = var("XDG_CONFIG_HOME")
+            .filter(|xdg| !xdg.is_empty())
             .map(PathBuf::from)
             .or_else(|| home.map(|h| h.join(".config")));
         if let Some(xdg) = xdg {
@@ -156,8 +172,12 @@ fn load_config(location: &Location, home: Option<&Path>, branch: Option<&str>) -
         branch,
         home,
     };
-    let mut files = config_files(&location.common, home, |name| std::env::var_os(name));
-    let parameters = config::parameters(|name| std::env::var(name).ok());
+    let var = |name: &str| std::env::var_os(name);
+    let mut files = config_files(&location.common, home, var);
+    // A -c pair's byte that isn't UTF-8 is read as a file's is, rather than
+    // losing every pair beside it.
+    let parameters =
+        config::parameters(|name| var(name).map(|value| value.to_string_lossy().into_owned()));
     let first = Config::load(&files, &parameters, &context);
     if first.get_bool("extensions.worktreeconfig") == Some(true) {
         files.push(location.git_dir.join("config.worktree"));
@@ -710,7 +730,7 @@ impl Repo {
                 |name| std::env::var_os(name),
                 "GIT_ATTR_NOSYSTEM",
                 None,
-                "/etc/gitattributes",
+                SYSTEM_ATTRIBUTES,
             ),
             attributes_file,
             monitored: self.monitor.is_some(),
