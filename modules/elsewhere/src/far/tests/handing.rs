@@ -280,7 +280,7 @@ fn a_link_put_at_or_above_the_handover_between_two_files_leaves_the_rest_and_the
         assert!(
             home.join("swapped").exists()
                 && left_in(&home.join("beyond").join(back)) == ["0"]
-                && beyond.is_none_or(|it| !it.contains("cut")),
+                && beyond.as_deref().is_none_or(|it| !it.contains("cut")),
             "the far line copied the second file, or cut its list, through a link at {moved} \
              ({code:?}): {beyond:?} {err}"
         );
