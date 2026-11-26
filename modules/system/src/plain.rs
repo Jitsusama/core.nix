@@ -39,7 +39,7 @@ pub fn words(line: &str) -> String {
             }
             each if each.is_control() || matches!(each, '\u{2028}' | '\u{2029}') => {
                 parted = true;
-                kept.truncate(kept.trim_end_matches(char::is_whitespace).len());
+                kept.truncate(kept.trim_end_matches(blank).len());
                 if !kept.is_empty() {
                     kept.push(' ');
                 }
@@ -47,7 +47,7 @@ pub fn words(line: &str) -> String {
             // Gone here rather than by the line's own form after, so none
             // stands between a control and a space to keep both.
             each if hides(each) || unseen(each) => {}
-            each if parted && each.is_whitespace() => {}
+            each if parted && blank(each) => {}
             each => {
                 parted = false;
                 kept.push(each);
@@ -60,16 +60,28 @@ pub fn words(line: &str) -> String {
     one_line(&kept).trim().to_owned()
 }
 
+/// Whether `each` draws a blank cell, as the terminal kit's own words count
+/// one: a space of any width, a braille blank, or a Hangul filler that
+/// starts a syllable.
+fn blank(each: char) -> bool {
+    each.is_whitespace() || matches!(each, '\u{115f}' | '\u{2800}')
+}
+
 /// Passes over an escape sequence's rest, its escape already taken: a
 /// control sequence such as a colour, a string such as a title or a link,
 /// or one that runs through intermediates to its final character, such as
-/// a character set chosen; any other takes the one character after it. A
+/// a character set chosen; any other takes the one character after it,
+/// unless that is a control, which a terminal runs inside the sequence and
+/// so is left to part the words. A
 /// string ended by the escape of a sequence of its own goes on to that one
 /// here, in a loop, so text nesting a million of them costs no more stack
 /// than one: the text is a node's or an owner's, and a stack overflow ends
 /// the daemon reading it with no way to catch it.
 fn escape(chars: &mut Peekable<Chars>) {
     loop {
+        if chars.peek().is_some_and(|each| each.is_control()) {
+            return;
+        }
         match chars.next() {
             Some('[') => control_sequence(chars),
             Some(']' | 'P' | 'X' | '^' | '_') => {
@@ -183,6 +195,26 @@ mod tests {
                 "a\u{3000}\u{a0}\tb",
                 "a b",
                 "a no-break or an ideographic space before a control folds into its one",
+            ),
+            (
+                "a\u{2800}\t\u{115f}b",
+                "a b",
+                "a braille blank or a Hangul filler beside a control folds into its one",
+            ),
+            (
+                "a\t\u{200b} b",
+                "a b",
+                "a space after a format character that hides folds into a control's one",
+            ),
+            (
+                "a\u{1b}\tb",
+                "a b",
+                "a control after a lone escape still parts the words",
+            ),
+            (
+                "a\u{1b}\u{1b}[31mb",
+                "ab",
+                "an escape after a lone escape begins its own",
             ),
             (
                 "a\t\u{1b}[31m b",
