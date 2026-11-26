@@ -250,8 +250,9 @@ let
       stopMachine = lib.mkOption {
         description = ''
           The machine's full memory pressure over ten seconds, in percent,
-          that stops the job: a backstop, since a job stalling at its own
-          limit counts in it.
+          that stops the job: a backstop, held to what the machine waits
+          beyond the job's own cgroup, so a job stalling only itself at its
+          own limit runs on.
         '';
         type = lib.types.number;
         default = 25;
@@ -272,8 +273,9 @@ let
       stopIo = lib.mkOption {
         description = ''
           The machine's full io pressure over the last minute, in percent,
-          that the job starts only under and is stopped once past; null
-          leaves the disk unwatched.
+          that the job starts only under and is stopped once what the
+          machine waits beyond the job's own cgroup is past; null leaves
+          the disk unwatched.
         '';
         type = lib.types.nullOr lib.types.number;
         default = null;
@@ -281,7 +283,11 @@ let
       stopMachineWhileAway = lib.mkOption {
         description = ''
           An eased bar for the machine, in place of `stopMachine` while Joel
-          is away; null keeps `stopMachine` whether he's here or not.
+          is away, under 100 so the backstop stays; null keeps
+          `stopMachine` whether he's here or not. Set it only in the
+          account he works in: elsewhere his mark is never there and the
+          call probe sees only that account's calls, so he always reads as
+          away, though this bar is the whole machine's.
         '';
         type = lib.types.nullOr lib.types.number;
         default = null;
@@ -417,6 +423,14 @@ in
               )
               && (job.stopMachineWhileAway == null || job.stopMachineWhileAway >= job.stopMachine);
             message = "night-shift job ${name} eases a bar to under its own, which would tighten it while Joel is away: give stopsWhileAway and stopMachineWhileAway bars at or over stops and stopMachine";
+          }) jobs
+          # A bar of 100 or more is never passed, so it would take the
+          # backstop away rather than ease it.
+          ++ lib.mapAttrsToList (name: job: {
+            assertion =
+              lib.all (bar: bar < 100) (lib.attrValues job.stopsWhileAway)
+              && (job.stopMachineWhileAway == null || job.stopMachineWhileAway < 100);
+            message = "night-shift job ${name} eases a bar to 100 or more, which is never passed, so nothing would stop it while Joel is away: give stopsWhileAway and stopMachineWhileAway bars under 100";
           }) jobs
           # With nothing keeping the mark, it is never there, and Joel
           # would always read as away, so a job eases only where

@@ -94,7 +94,9 @@ fn with_joel_away_the_machines_eased_bar_holds_and_still_stops() {
         assert!(output.status.success(), "at {machine_at}: {said}");
         assert!(said.contains("Joel is away"), "at {machine_at}: {said}");
         assert_eq!(
-            said.contains(&format!("memory full avg10 is {machine_at:.2}%, past 12%")),
+            said.contains(&format!(
+                "memory full avg10 is {machine_at:.2}%, {machine_at:.2}% beyond the job's own, past 12%"
+            )),
             stopped,
             "at {machine_at}, the machine's eased bar of 12 wasn't the one held: {said}"
         );

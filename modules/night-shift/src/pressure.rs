@@ -7,7 +7,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// A pressure file's `full` line: the share of time, in percent, in which
-/// every task that wanted memory was waiting for it.
+/// every task that wanted what the file is about, memory or the disk, was
+/// waiting for it.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Full {
     pub avg10: f64,

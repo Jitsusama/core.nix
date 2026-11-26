@@ -16,10 +16,14 @@
 //! as `--away-call` says: a program and its arguments, split at spaces,
 //! exiting 0 during a call and 1 without one; a call it can't tell about
 //! counts as one, and so does a program that won't start or doesn't
-//! answer within `CALL_ANSWERS_WITHIN`, which is stopped. The watch never
-//! waits on it longer than `CALL_WAITED_ON_AT_MOST`: while it hasn't
-//! answered, its last answer holds, or a call before any, for that sample
-//! alone: the next looks at it again. Each time a call,
+//! answer within `CALL_ANSWERS_WITHIN`, which is stopped with every
+//! process it started. The watch never waits on it longer than
+//! `CALL_WAITED_ON_AT_MOST`: while it hasn't answered, it counts as a
+//! call for that sample alone, and the next looks at it again. calls'
+//! own probe takes two seconds and more to say a call is on, so its yes
+//! seldom comes inside one sample's wait. The mark coming back drops a
+//! program still asking and its last answer, so an answer never outlives
+//! the stretch it was asked in. Each time a call,
 //! or a probe that can't tell, starts keeping him counted as here, the
 //! run says so once. He's away once neither
 //! has held for `--away-after` seconds. At the start, the last minute he
@@ -33,6 +37,7 @@
 //! only the account he works in should ease it.
 
 use std::fs;
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread;
@@ -44,7 +49,7 @@ const CALL_ASKED_EVERY: Duration = Duration::from_secs(30);
 
 /// How long the call program may take before it counts as a call and is
 /// stopped, so one that hangs holds no bar off for longer.
-pub const CALL_ANSWERS_WITHIN: Duration = Duration::from_secs(10);
+const CALL_ANSWERS_WITHIN: Duration = Duration::from_secs(10);
 
 /// How long one sample waits for the call program before it reads the
 /// slices; a quick program answers inside it, and a slow one is looked
@@ -53,6 +58,13 @@ const CALL_WAITED_ON_AT_MOST: Duration = Duration::from_secs(2);
 
 /// How often a sample looks whether the call program has answered.
 const CALL_LOOKED_AT_EVERY: Duration = Duration::from_millis(20);
+
+const SIGKILL: i32 = 9;
+
+// std links libc, so this comes from it.
+unsafe extern "C" {
+    fn kill(pid: i32, signal: i32) -> i32;
+}
 
 /// How a job tells Joel is away, and the bars it has while he is.
 #[derive(Debug, Clone, PartialEq)]
@@ -127,13 +139,15 @@ impl Away {
                     "--away-stop {slice}={eased} is under its --stop of {own}, so it would tighten the bar while Joel is away"
                 ));
             }
+            never_passed(&format!("--away-stop {slice}={eased}"), *eased)?;
         }
-        if let Some(eased) = self.stop_machine
-            && eased < machine
-        {
-            return Err(format!(
-                "--away-stop-machine {eased} is under --stop-machine {machine}, so it would tighten the bar while Joel is away"
-            ));
+        if let Some(eased) = self.stop_machine {
+            if eased < machine {
+                return Err(format!(
+                    "--away-stop-machine {eased} is under --stop-machine {machine}, so it would tighten the bar while Joel is away"
+                ));
+            }
+            never_passed(&format!("--away-stop-machine {eased}"), eased)?;
         }
         Ok(())
     }
@@ -176,10 +190,22 @@ impl Away {
             here_at: seen.unwrap_or(now).min(now),
             call_asked: None,
             asking: None,
+            answers_within: CALL_ANSWERS_WITHIN,
             told: None,
             news: None,
         }
     }
+}
+
+/// Refuses an eased bar of 100 or more, which a pressure never passes, so
+/// it would take the stop away rather than ease it.
+fn never_passed(given: &str, eased: f64) -> Result<(), String> {
+    if eased >= 100.0 {
+        return Err(format!(
+            "{given} is never passed, so nothing would stop the job while Joel is away"
+        ));
+    }
+    Ok(())
 }
 
 /// The last minute a file of rhythm's minutes holds.
@@ -197,8 +223,19 @@ pub struct Watch {
     here_at: SystemTime,
     call_asked: Option<(Instant, bool)>,
     asking: Option<(Child, Instant)>,
+    answers_within: Duration,
     told: Option<String>,
     news: Option<String>,
+}
+
+/// Kills the call program and every process it started, its group, and
+/// reaps it.
+fn end(child: &mut Child) {
+    if let Ok(group) = i32::try_from(child.id()) {
+        // SAFETY: kill takes any pid and signal, and only reports errors.
+        unsafe { kill(-group, SIGKILL) };
+    }
+    let _ = child.wait();
 }
 
 /// What the call program's status says: whether a call counts as on,
@@ -224,6 +261,10 @@ impl Watch {
         let now = SystemTime::now();
         if self.away.mark.as_ref().is_some_and(|mark| mark.exists()) {
             self.here_at = now;
+            if let Some((mut child, _)) = self.asking.take() {
+                end(&mut child);
+            }
+            self.call_asked = None;
             return false;
         }
         let gone = now.duration_since(self.here_at).unwrap_or_default();
@@ -260,11 +301,13 @@ impl Watch {
             {
                 return on;
             }
+            // Its stderr is the run's, so why it couldn't tell reaches
+            // the journal; its own group lets a stop reach what it ran.
             match Command::new(program)
                 .args(args)
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
-                .stderr(Stdio::null())
+                .process_group(0)
                 .spawn()
             {
                 Ok(child) => self.asking = Some((child, Instant::now())),
@@ -279,7 +322,7 @@ impl Watch {
         let waited_from = Instant::now();
         loop {
             let Some((child, began)) = self.asking.as_mut() else {
-                return self.last_answer();
+                return true;
             };
             match child.try_wait() {
                 Ok(Some(status)) => {
@@ -287,31 +330,24 @@ impl Watch {
                     let (on, why) = call_answer(status);
                     return self.answer(on, why);
                 }
-                Ok(None) if began.elapsed() < CALL_ANSWERS_WITHIN => {}
+                Ok(None) if began.elapsed() < self.answers_within => {}
                 Ok(None) | Err(_) => {
-                    let _ = child.kill();
-                    let _ = child.wait();
+                    end(child);
                     self.asking = None;
                     let why = format!(
                         "the call program didn't answer within {}s, so it counts as a call",
-                        CALL_ANSWERS_WITHIN.as_secs()
+                        self.answers_within.as_secs_f64()
                     );
                     return self.answer(true, why);
                 }
             }
             if waited_from.elapsed() >= CALL_WAITED_ON_AT_MOST {
-                return self.last_answer();
+                return true;
             }
             // A short look again for the program's exit: try_wait doesn't
             // block, and a quick program answers within a few of these.
             thread::sleep(CALL_LOOKED_AT_EVERY);
         }
-    }
-
-    /// The answer before this one, while the program hasn't answered: a
-    /// call, before any.
-    fn last_answer(&self) -> bool {
-        self.call_asked.is_none_or(|(_, on)| on)
     }
 
     /// Keeps the program's answer, with news where why he's here changed.
@@ -331,8 +367,7 @@ impl Drop for Watch {
     /// A call program still running when the run ends goes with it.
     fn drop(&mut self) {
         if let Some((child, _)) = self.asking.as_mut() {
-            let _ = child.kill();
-            let _ = child.wait();
+            end(child);
         }
     }
 }
@@ -408,6 +443,17 @@ mod tests {
             tighter_machine.check(&watched, 10.0).is_ok(),
             "a machine bar eased above its own was refused"
         );
+        for (option, bar) in [
+            ("--away-stop-machine", "100"),
+            ("--away-stop", "app.slice=100"),
+        ] {
+            let unpassable = away(&[("--away-mark", "/run/here"), (option, bar)]);
+            let refused = unpassable.check(&watched, 25.0).unwrap_err();
+            assert!(
+                refused.contains("never passed"),
+                "{option} {bar}: {refused}"
+            );
+        }
     }
 
     #[test]
@@ -446,7 +492,6 @@ mod tests {
     #[test]
     fn why_a_call_keeps_him_here_is_news_once_each_time_it_starts() {
         let mut watch = away(&[("--away-mark", "/run/here")]).watch();
-        assert!(watch.last_answer(), "no answer yet didn't count as a call");
         assert!(
             watch.answer(true, "a call".into()),
             "a call didn't keep him here"
@@ -458,7 +503,6 @@ mod tests {
         );
         assert_eq!(watch.news(), None, "the same reason was said twice");
         assert!(!watch.answer(false, String::new()), "no call kept him here");
-        assert!(!watch.last_answer(), "no call didn't hold until the next");
         assert!(
             watch.answer(true, "a call".into()),
             "a call after none didn't keep him here"
@@ -472,11 +516,8 @@ mod tests {
 
     #[test]
     fn a_call_program_still_running_is_looked_at_again_at_the_next_sample() {
-        let mut gone = away(&[("--away-mark", "/run/no-such-mark"), ("--away-after", "60")]);
         // Answers "no call" only once it has outlasted the watch's wait.
-        gone.call = ["sh", "-c", "sleep 3; exit 1"].map(str::to_owned).to_vec();
-        let mut watch = gone.watch();
-        watch.here_at = SystemTime::now() - Duration::from_secs(120);
+        let mut watch = gone_asking("sleep 3; exit 1");
         assert!(
             !watch.is_away(),
             "a call program still running didn't count as a call"
@@ -484,6 +525,107 @@ mod tests {
         assert!(
             watch.is_away(),
             "a call program still running wasn't looked at again, so its answer of no call was missed"
+        );
+    }
+
+    /// One asking interval ago, so an answer given then is asked again at
+    /// the next look.
+    fn one_interval_ago() -> Instant {
+        Instant::now()
+            .checked_sub(CALL_ASKED_EVERY)
+            .expect("the clock has run longer than one asking interval")
+    }
+
+    /// A watch of a run whose mark isn't there, gone long past `after`,
+    /// asking `script` whether a call is on.
+    fn gone_asking(script: &str) -> Watch {
+        let mut gone = away(&[("--away-mark", "/run/no-such-mark"), ("--away-after", "60")]);
+        gone.call = ["sh", "-c", script].map(str::to_owned).to_vec();
+        let mut watch = gone.watch();
+        watch.here_at = SystemTime::now() - Duration::from_secs(120);
+        watch
+    }
+
+    #[test]
+    fn a_call_said_slowly_after_none_keeps_him_here_from_the_first_sample() {
+        // calls' probe says yes only after its two-second second look.
+        let mut watch = gone_asking("sleep 3; exit 0");
+        watch.call_asked = Some((one_interval_ago(), false));
+        assert!(
+            !watch.is_away(),
+            "a call program still running after an answer of no call let the old answer stand"
+        );
+    }
+
+    #[test]
+    fn a_call_program_that_hangs_is_stopped_whole_at_its_bound() {
+        let pid_file = std::env::temp_dir().join(format!("away-hang-{}", std::process::id()));
+        // A child of its own that outlives a kill of its parent alone.
+        let mut watch = gone_asking(&format!(
+            "sleep 60 & echo $! > {}; wait",
+            pid_file.display()
+        ));
+        watch.call_asked = Some((one_interval_ago(), false));
+        watch.answers_within = Duration::from_millis(500);
+        assert!(
+            !watch.is_away(),
+            "a call program past its bound didn't count as a call"
+        );
+        let news = watch.news().unwrap_or_default();
+        assert!(
+            news.contains("didn't answer within 0.5s"),
+            "a call program past its bound wasn't said to have hung: {news:?}"
+        );
+        assert!(
+            watch.asking.is_none(),
+            "a call program past its bound was left asking"
+        );
+        let child = fs::read_to_string(&pid_file).unwrap_or_default();
+        let _ = fs::remove_file(&pid_file);
+        let child = child.trim();
+        assert!(
+            !child.is_empty(),
+            "the hanging program never said its child"
+        );
+        // A killed child lingers as a zombie only until its reaper, init
+        // or a subreaper, takes it; give that a moment.
+        let stopped = Instant::now();
+        while fs::read_to_string(format!("/proc/{child}/stat"))
+            .is_ok_and(|stat| !stat.contains(") Z "))
+            && stopped.elapsed() < Duration::from_secs(2)
+        {
+            thread::sleep(CALL_LOOKED_AT_EVERY);
+        }
+        assert!(
+            fs::read_to_string(format!("/proc/{child}/stat"))
+                .map_or(true, |stat| stat.contains(") Z ")),
+            "the call program's own child {child} was left running"
+        );
+    }
+
+    #[test]
+    fn the_mark_coming_back_drops_a_call_program_still_asking() {
+        let mark = std::env::temp_dir().join(format!("away-mark-{}", std::process::id()));
+        let mut gone = away(&[("--away-after", "60")]);
+        gone.mark = Some(mark.clone());
+        gone.call = ["sh", "-c", "sleep 3; exit 1"].map(str::to_owned).to_vec();
+        let mut watch = gone.watch();
+        watch.here_at = SystemTime::now() - Duration::from_secs(120);
+        assert!(
+            !watch.is_away(),
+            "a call program still running didn't count as a call"
+        );
+        fs::write(&mark, "").expect("the mark can be made");
+        let here = watch.is_away();
+        let _ = fs::remove_file(&mark);
+        assert!(!here, "he wasn't here with his mark there");
+        assert!(
+            watch.asking.is_none(),
+            "the mark left a call program asking"
+        );
+        assert!(
+            watch.call_asked.is_none(),
+            "the mark left an old answer standing"
         );
     }
 

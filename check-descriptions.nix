@@ -2744,7 +2744,7 @@
     a night job easing its bars while Joel is away tells he is from swayidle-away's mark, rhythm's
     minutes and a call on this machine, their paths left to systemd to expand, gives each eased bar
     and the wait before one, and is refused where it eases a slice it has no stop for, where an
-    eased bar is under its own, or where nothing in the account keeps the mark
+    eased bar is under its own or at 100 or more, or where nothing in the account keeps the mark
   '';
   night-shift-passes-clippy = ''
     clippy finds nothing in night-shift or its tests
@@ -2762,8 +2762,9 @@
     night-shift runs a job once a night on a quiet machine, starts nothing outside its hours, even
     once a wait for the turn outlasts them, nor on a busy machine or beside another, stops one for
     a watched slice's stall or the machine's past its backstop and kills what ignores TERM, starts
-    nothing and stops what runs past its io bar, lets a job stalling only itself run on, runs a
-    job with limits in a cgroup apart from its watcher or not at all, and fails with a failing job
+    nothing and stops what runs past its io bar, lets a job stalling only itself, in memory or on
+    the disk, run on, runs a job with limits in a cgroup apart from its watcher or not at all, and
+    fails with a failing job
   '';
   niri-accepts-its-configuration = ''
     niri loads the files an account gets
