@@ -8,21 +8,25 @@
 //! The asks are the orchestration's record, `mission/asks.jsonl`, each
 //! line one ask with its `id` and the cell that `answers` for it (J7XHQN,
 //! 775a3aa8), read as his where cadence counts them his (tracking.rs) and
-//! open until it `landed`; its `live` is a batch's stamp, not when it went
+//! open until it `landed`. An ask is written again whole as its date
+//! moves or it lands, so each is read from its latest line, as the hour's
+//! measures read it. An owner kept by hand before `answers` reads as the
+//! hour reads one (hour/measures/owner.rs). Its `live` is a batch's stamp, not when it went
 //! live (A210E4CA, 20e58736), so it says nothing here. Each probe stands
 //! by its newest run (probes.rs). An ask late comes first, the longest late
 //! leading, then those due soonest, then those given no date, oldest
 //! asked first. Times are served as `{at, as}` for the shell to word, so a
 //! row read at 13:59 still says how it stands at 14:01.
 //!
-//! The list is read whole as the hour reads it (hour/ledger.rs): one
-//! written over, holding fewer asks than were read in it before, is unread
-//! rather than served as most of his asks gone, so cadence-spec keeps the
-//! last rows, and one never seen and not there holds no asks yet. What
-//! was seen of it is kept in `asked.json`, apart from the hour's.
+//! The list is read whole against what the hour saw of it (hour/ledger.rs,
+//! hour/card.rs), never a second record of its own on another clock: one
+//! written over, holding fewer asks than the hour read in it, is unread
+//! until the hour takes it as pruned, rather than served as most of his
+//! asks gone, so cadence-spec keeps the last rows; one the hour never saw
+//! and not there holds no asks yet; and the hour's record unreadable leaves
+//! the list unread, as the hour reads it then too (round 2, F9 and F20).
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
 use std::path::PathBuf;
 
 use jiff::Timestamp;
@@ -32,9 +36,8 @@ use terminal_kit::Failure;
 use super::probes::{self, Probed};
 use super::spec::{launcher_words, quests, titled};
 use super::words::Words;
-use crate::hour::ledger::{self, Seen};
+use crate::hour::{Kept, first_owner, ledger};
 use crate::tracking::{self, Tracking};
-use crate::whole::write_whole;
 use crate::{failed, folders, now_ms, wrongly};
 
 /// The place its rows are served in.
@@ -48,19 +51,10 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
     let words = launcher_words(&vocabulary)?;
     let (home, state_home, folder) = folders().map_err(failed)?;
     let now = now_ms() / 1000;
-    let seen_at = folder.join("asked.json");
-    let mut seen: Seen = fs::read_to_string(&seen_at)
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default();
-    let (asks, unread) = ledger::whole(&state_home.join("mission/asks.jsonl"), &mut seen, now);
-    if let Err(why) = serde_json::to_string(&seen)
-        .map_err(std::io::Error::other)
-        .and_then(|text| write_whole(&seen_at, &text))
-    {
-        eprintln!("cadence: what Asked For saw of the asks list can't be kept: {why}");
-    }
-    if let Some(why) = unread {
+    // Read, never written: the hour alone keeps what it saw.
+    let mut hour = Kept::last(&folder.join("hour.json"));
+    let (asks, unread) = ledger::whole(&state_home.join("mission/asks.jsonl"), &mut hour.asks, now);
+    if let Some(why) = hour.unread.or(unread) {
         return Err(failed(format!("the asks list is unread, as {why}")));
     }
     let open = open(&asks);
@@ -93,24 +87,37 @@ struct Ask {
     probed: bool,
 }
 
-/// His asks in `text` not yet landed, each with the id it's known by; one
-/// with no id or time is none, since nothing could find it again.
+/// His asks in `text` not yet landed, each with the id it's known by and
+/// read from its latest line; one with no id or time is none, since
+/// nothing could find it again.
 fn open(text: &str) -> Vec<Ask> {
     let time = |v: &Value| {
         v.as_str()
             .and_then(|t| t.parse::<Timestamp>().ok())
             .map(Timestamp::as_second)
     };
-    text.lines()
+    let mut latest: BTreeMap<String, Value> = BTreeMap::new();
+    for ask in text
+        .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+    {
+        if let Some(id) = ask["id"].as_str().filter(|id| !id.is_empty()) {
+            latest.insert(id.to_owned(), ask);
+        }
+    }
+    latest
+        .into_values()
         .filter(|ask| tracking::of(ask) == Some(Tracking::His) && ask["landed"].is_null())
         .filter_map(|ask| {
-            let answers = ask["answers"].as_str().or_else(|| ask["owner"].as_str());
+            let answers = ask["answers"].as_str().map_or_else(
+                || first_owner(ask["owner"].as_str().unwrap_or("")),
+                str::to_owned,
+            );
             Some(Ask {
                 id: ask["id"].as_str().filter(|id| !id.is_empty())?.to_owned(),
                 at: time(&ask["at"])?,
                 words: one_line(ask["words"].as_str().unwrap_or("")),
-                answers: answers.unwrap_or("").to_owned(),
+                answers,
                 expected: time(&ask["expected"]),
                 moved: ask["promised"]
                     .as_array()
@@ -314,6 +321,64 @@ mod tests {
         .join("\n");
         let ids: Vec<String> = open(&text).into_iter().map(|ask| ask.id).collect();
         assert_eq!(ids, ["a1"]);
+    }
+
+    #[test]
+    fn an_ask_written_again_is_read_from_its_latest_line() {
+        let at = "2026-11-26T09:00:00-05:00";
+        let text = [
+            line(
+                "m1",
+                at,
+                "moved",
+                r#", "expected": "2026-11-26T10:00:00-05:00""#,
+            ),
+            line("l2", at, "landed", ""),
+            line(
+                "m1",
+                at,
+                "moved",
+                r#", "expected": "2026-11-26T15:00:00-05:00""#,
+            ),
+            line(
+                "l2",
+                at,
+                "landed",
+                r#", "landed": "2026-11-26T11:00:00-05:00""#,
+            ),
+        ]
+        .join("\n");
+        let open = open(&text);
+        let read: Vec<(&str, Option<i64>)> = open
+            .iter()
+            .map(|ask| (ask.id.as_str(), ask.expected))
+            .collect();
+        assert_eq!(
+            read,
+            [("m1", Some(NOON + 3 * 3600))],
+            "one row for an ask whose date moved, at its new date, and none for one landed \
+             on a later line"
+        );
+    }
+
+    #[test]
+    fn an_owner_kept_by_hand_reads_as_the_hour_reads_it() {
+        let by_hand = |id: &str, owner: &str| {
+            serde_json::json!({"id": id, "at": "2026-11-26T09:00:00-05:00", "words": id,
+                "owner": owner})
+            .to_string()
+        };
+        let text = [
+            by_hand("o1", "PN2VZC (H6EDLC)"),
+            by_hand("o2", "QEST-20261111-Y2YBTS"),
+        ]
+        .join("\n");
+        let owners: Vec<String> = open(&text).into_iter().map(|ask| ask.answers).collect();
+        assert_eq!(
+            owners,
+            ["PN2VZC", "Y2YBTS"],
+            "the first owner, by the address it answers to"
+        );
     }
 
     #[test]

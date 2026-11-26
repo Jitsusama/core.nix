@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use jiff::Timestamp;
 use serde_json::Value;
 
-use owner::first_owner;
+pub(crate) use owner::first_owner;
 
 use crate::tracking::{self, Tracking};
 

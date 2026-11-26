@@ -21,7 +21,7 @@ fn started(name: &str, body: &str) -> Daemon {
     fs::write(
         &cadence,
         format!(
-            "#!{}\necho \"$*\" > {}\n{body}\n",
+            "#!{}\necho \"$*\" >> {}\n{body}\n",
             stand_in_shell().display(),
             folder.join("asked").display()
         ),
@@ -70,7 +70,7 @@ fn stand_in_shell() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("/bin/sh"))
 }
 
-/// What the stand-in cadence was last asked, or nothing yet.
+/// Everything the stand-in cadence was asked, a line each, or nothing yet.
 fn asked(folder: &Path) -> String {
     fs::read_to_string(folder.join("asked")).unwrap_or_default()
 }
@@ -111,7 +111,11 @@ fn a_watch_of_asked_for_is_served_the_rows_cadence_makes_for_it() {
     assert_eq!(
         asked(daemon.folder()).trim(),
         "axes --asked words.json",
-        "only the place watched is asked for"
+        "only the place watched is asked for, and once"
+    );
+    assert!(
+        !held.contains_key("head:spec"),
+        "no Spec unwatched: {held:?}"
     );
 }
 

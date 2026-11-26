@@ -20,13 +20,16 @@
 //! made again after a minute, since they read one file in milliseconds
 //! and an ask's owner may write it at any time (1JQPPC, 2026-11-26,
 //! 4443be2d). Each place's read has a deadline of its own, past which
-//! cadence is stopped and the place keeps its last rows, so a Spec read
-//! that hangs, on a git lock or a niri that doesn't answer, never holds
-//! Asked For's rows back for longer than Spec's deadline.
+//! cadence is stopped with all it started and the place keeps its last
+//! rows, so a Spec read that hangs, on a git lock or a niri that doesn't
+//! answer, holds Asked For back for no longer than Spec's deadline. The
+//! places are read one after the other, so Asked For asked while Spec is
+//! being read waits out that read, its seconds.
 
 use std::io::Read;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode, Stdio};
+use std::process::{Child, Command, ExitCode, Stdio};
 use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -217,41 +220,72 @@ fn made(asking: &Asking, place: &Place) -> Option<(Vec<Value>, Value)> {
 
 /// What `command` printed, where it ended well within `deadline`; else
 /// why not, the command stopped where it ran past. Its output is read as
-/// it comes, so a long answer can't fill the pipe and hold it up.
+/// it comes, so a long answer can't fill the pipe and hold it up, and
+/// waited for no longer than the deadline, so a child of its own still
+/// holding the pipe can't either. It runs in a process group of its own,
+/// so stopping it stops what it started too: cadence's hangs are in its
+/// own `git` and `niri msg`, which would otherwise be left running, one
+/// more on each read that hung (round 2, F21).
 fn within(command: &mut Command, deadline: Duration) -> Result<Vec<u8>, String> {
     let program = command.get_program().to_string_lossy().into_owned();
     let mut child = command
+        .process_group(0)
         .spawn()
         .map_err(|why| format!("{program} couldn't run: {why}"))?;
-    let mut out = child.stdout.take().ok_or("its output wasn't kept")?;
-    let reading = thread::spawn(move || {
+    let Some(mut out) = child.stdout.take() else {
+        stopped(&mut child);
+        return Err("its output wasn't kept".to_owned());
+    };
+    let (sent, reading) = mpsc::channel();
+    thread::spawn(move || {
         let mut printed = Vec::new();
-        out.read_to_end(&mut printed).map(|_| printed)
+        let _ = sent.send(out.read_to_end(&mut printed).map(|_| printed));
     });
     let started = Instant::now();
     let status = loop {
-        match child.try_wait() {
+        let waited = child.try_wait();
+        if matches!(waited, Ok(None)) && started.elapsed() < deadline {
+            thread::sleep(Duration::from_millis(20));
+            continue;
+        }
+        match waited {
             Ok(Some(status)) => break status,
-            Ok(None) if started.elapsed() < deadline => thread::sleep(Duration::from_millis(20)),
             Ok(None) => {
-                let _ = child.kill();
-                let _ = child.wait();
+                stopped(&mut child);
                 return Err(format!(
                     "{program} ran past {} s, so it was stopped",
                     deadline.as_secs()
                 ));
             }
-            Err(why) => return Err(format!("{program} couldn't be waited on: {why}")),
+            Err(why) => {
+                stopped(&mut child);
+                return Err(format!("{program} couldn't be waited on: {why}"));
+            }
         }
     };
     if !status.success() {
         return Err(format!("cadence ended {status}"));
     }
-    match reading.join() {
+    match reading.recv_timeout(deadline.saturating_sub(started.elapsed())) {
         Ok(Ok(printed)) => Ok(printed),
         Ok(Err(why)) => Err(format!("cadence's output couldn't be read: {why}")),
-        Err(_) => Err("cadence's output couldn't be read".to_owned()),
+        Err(_) => Err(format!(
+            "cadence's output stayed open past {} s",
+            deadline.as_secs()
+        )),
     }
+}
+
+/// Stops `child` and everything it started, its whole process group, and
+/// reaps it, so nothing it left is a zombie.
+fn stopped(child: &mut Child) {
+    if let Ok(group) = libc::pid_t::try_from(child.id()) {
+        // SAFETY: a plain system call, to the group the child leads
+        // (process_group(0)), signalled before the child is reaped, so its
+        // number can't have gone to another.
+        unsafe { libc::kill(-group, libc::SIGKILL) };
+    }
+    let _ = child.wait();
 }
 
 /// The rows and headline in what cadence printed for `place`, the
@@ -324,14 +358,43 @@ mod tests {
             within(&mut quick, Duration::from_secs(5)),
             Ok(b"made\n".to_vec())
         );
+        // What hangs is a child of its own, as cadence's git or niri msg
+        // would be, its number written down to look for after.
+        let folder = std::env::temp_dir().join(format!("cadence-spec-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("a folder for the hung child's number");
+        let numbered = folder.join("hung");
         let mut hung = Command::new(&shell);
-        hung.args(["-c", "sleep 30"]).stdout(Stdio::piped());
+        hung.args([
+            "-c",
+            &format!("sleep 30 & echo $! > {}; wait", numbered.display()),
+        ])
+        .stdout(Stdio::piped());
         let started = Instant::now();
-        let stopped = within(&mut hung, Duration::from_millis(200));
+        let stopped = within(&mut hung, Duration::from_millis(500));
         assert!(stopped.is_err_and(|why| why.contains("ran past")));
         assert!(
             started.elapsed() < Duration::from_secs(5),
             "a hung read is stopped at its deadline, not waited out"
+        );
+        let left = std::fs::read_to_string(&numbered).expect("the hung child's number");
+        let proc = format!("/proc/{}/stat", left.trim());
+        // Gone, or dead and waiting on whoever reaps it now.
+        let ended = || match std::fs::read_to_string(&proc) {
+            Err(_) => true,
+            Ok(stat) => stat.split(' ').nth(2) == Some("Z"),
+        };
+        let mut gone = ended();
+        for _ in 0..50 {
+            if gone {
+                break;
+            }
+            thread::sleep(Duration::from_millis(20));
+            gone = ended();
+        }
+        let _ = std::fs::remove_dir_all(&folder);
+        assert!(
+            gone,
+            "what the read started is stopped with it, not left running"
         );
         let mut failing = Command::new(&shell);
         failing.args(["-c", "exit 3"]).stdout(Stdio::piped());
