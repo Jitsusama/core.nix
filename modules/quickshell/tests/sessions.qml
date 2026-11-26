@@ -1440,6 +1440,14 @@ ShellRoot {
         // The pid a place was kept under, kept still or asked for since.
         const keptUnderOf = id => Sessions.keptPlaces[id]?.keptUnder
             ?? Sessions.keptAsks[`pi-hosted.${id}`]?.place?.keptUnder;
+        // Who was told what since untell, and how many times, as a press
+        // told twice in one give-up would flash its foot.
+        const untell = () => {
+            root.unhosted = "";
+            root.unhostedWhy = "";
+            root.unhostedTold = 0;
+        };
+        const told = () => `${root.unhosted} ${root.unhostedWhy} x${root.unhostedTold}`;
         const downNamed = "pi-hosted.s-kept-down";
         Sessions.keepPlaces({ "s-kept-down": keptOne("s-kept-down") });
         const downFrom = Niri.spawns.length;
@@ -1527,28 +1535,52 @@ ShellRoot {
         const pressedGoing = Sessions.goingTo;
         kittyPidFile.setText("6666\n");
         Sessions.readKittyPid();
-        root.unhosted = "";
-        root.unhostedWhy = "";
+        untell();
         Sessions.untaken(pressedNamed, String(Sessions.attaching[pressedNamed]));
         expect("a press asked again of a kitty come since is told so, its own focus kept",
-            spawnsOf(pressedNamed, pressedFrom) === 2
-            && `${root.unhosted} ${root.unhostedWhy}` === "PRESSED askedAgain"
+            spawnsOf(pressedNamed, pressedFrom) === 2 && told() === "PRESSED askedAgain x1"
             && pressedGoing?.app === pressedNamed && Sessions.goingTo === pressedGoing
             && Sessions.pressedFor[pressedNamed]?.address === "PRESSED",
-            `${spawnsOf(pressedNamed, pressedFrom)} ${root.unhosted} ${root.unhostedWhy} `
+            `${spawnsOf(pressedNamed, pressedFrom)} ${told()} `
                 + `${JSON.stringify(Sessions.goingTo)}`);
         // Given up on again, under the kitty come since, it's asked no
         // more: its press is told untaken and the focus it took let go, so
         // the foot doesn't stay on asked again.
-        root.unhostedWhy = "";
+        untell();
         Sessions.untaken(pressedNamed, String(Sessions.attaching[pressedNamed]));
         expect("a press asked again and given up on again is told untaken, its focus let go",
-            root.unhostedWhy === "untaken" && Sessions.goingTo === null
+            told() === "PRESSED untaken x1" && Sessions.goingTo === null
             && spawnsOf(pressedNamed, pressedFrom) === 2,
-            `${root.unhostedWhy} ${JSON.stringify(Sessions.goingTo)} `
+            `${told()} ${JSON.stringify(Sessions.goingTo)} `
                 + `${spawnsOf(pressedNamed, pressedFrom)}`);
         Sessions.goingTo = goingBeforePressed;
         Sessions.forgetAsk(pressedNamed);
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        // A press whose focus another Go To took before its give-up is told
+        // it was asked for again, and leaves that other press's focus be.
+        const elsewhereNamed = "pi-hosted.s-kept-elsewhere";
+        Sessions.keepPlaces({ "s-kept-elsewhere": keptOne("s-kept-elsewhere") });
+        const elsewhereFrom = Niri.spawns.length;
+        Sessions.viewKept();
+        const goingBeforeElsewhere = Sessions.goingTo;
+        Sessions.goTo({ address: "ELSEWHERE",
+            presence: { hosted: true, session: "s-kept-elsewhere" },
+            attach: keptOne("s-kept-elsewhere").waiting, here: true });
+        const otherGoing = { app: "pi-hosted.s-kept-other", at: Date.now(), from: null };
+        Sessions.goingTo = otherGoing;
+        kittyPidFile.setText("6969\n");
+        Sessions.readKittyPid();
+        untell();
+        Sessions.untaken(elsewhereNamed, String(Sessions.attaching[elsewhereNamed]));
+        expect("a press asked again after another took the focus leaves that focus be",
+            spawnsOf(elsewhereNamed, elsewhereFrom) === 2
+            && told() === "ELSEWHERE askedAgain x1" && Sessions.goingTo === otherGoing,
+            `${spawnsOf(elsewhereNamed, elsewhereFrom)} ${told()} `
+                + `${JSON.stringify(Sessions.goingTo)}`);
+        Sessions.untaken(elsewhereNamed, String(Sessions.attaching[elsewhereNamed]));
+        Sessions.goingTo = goingBeforeElsewhere;
+        Sessions.forgetAsk(elsewhereNamed);
         kittyPidFile.setText("4242\n");
         Sessions.readKittyPid();
         // A press told disowned, as the walk's viewer came refused, is told
@@ -1572,22 +1604,23 @@ ShellRoot {
         const disownedTold = root.unhostedWhy;
         kittyPidFile.setText("6767\n");
         Sessions.readKittyPid();
-        root.unhosted = "";
-        root.unhostedWhy = "";
+        untell();
         Sessions.untaken(disownedNamed, String(Sessions.refusedAt[disownedNamed]));
         expect("a press told disowned, asked again of a kitty come since, is told so, focus kept",
             disownedTold === "disowned" && spawnsOf(disownedNamed, disownedFrom) === 2
-            && `${root.unhosted} ${root.unhostedWhy}` === "DISOWNED askedAgain"
+            && told() === "DISOWNED askedAgain x1"
             && disownedGoing?.app === disownedNamed && Sessions.goingTo === disownedGoing
             && Sessions.pressedFor[disownedNamed]?.address === "DISOWNED",
-            `${disownedTold} ${spawnsOf(disownedNamed, disownedFrom)} ${root.unhosted} `
-                + `${root.unhostedWhy} ${JSON.stringify(Sessions.goingTo)}`);
+            `${disownedTold} ${spawnsOf(disownedNamed, disownedFrom)} ${told()} `
+                + `${JSON.stringify(Sessions.goingTo)}`);
         Niri.windows = listedBeforeDisowned;
-        root.unhostedWhy = "";
+        untell();
         Sessions.untaken(disownedNamed, String(Sessions.attaching[disownedNamed]));
         expect("a press told disowned, asked again, given up on again, is told untaken",
-            root.unhostedWhy === "untaken" && Sessions.goingTo === null,
-            `${root.unhostedWhy} ${JSON.stringify(Sessions.goingTo)}`);
+            told() === "DISOWNED untaken x1" && Sessions.goingTo === null
+            && spawnsOf(disownedNamed, disownedFrom) === 2,
+            `${told()} ${JSON.stringify(Sessions.goingTo)} `
+                + `${spawnsOf(disownedNamed, disownedFrom)}`);
         Sessions.goingTo = goingBeforeKeptDisowned;
         Sessions.forgetAsk(disownedNamed);
         kittyPidFile.setText("4242\n");
@@ -1606,22 +1639,22 @@ ShellRoot {
         const startedTold = root.unhostedWhy;
         kittyPidFile.setText("6868\n");
         Sessions.readKittyPid();
-        root.unhosted = "";
-        root.unhostedWhy = "";
+        untell();
         Sessions.untaken(heldNamed, String(Sessions.attaching[heldNamed]));
         expect("a start held back, asked again of a kitty come since, is told so as started",
             startedTold === "startedOpening" && spawnsOf(heldNamed, heldFrom) === 2
-            && `${root.unhosted} ${root.unhostedWhy}` === "STARTED startedAskedAgain"
+            && told() === "STARTED startedAskedAgain x1"
             && startedGoing?.app === heldNamed && Sessions.goingTo === startedGoing
             && Sessions.pressedFor[heldNamed]?.address === "STARTED"
             && Sessions.pressedFor[heldNamed]?.startedInHost === true,
-            `${startedTold} ${spawnsOf(heldNamed, heldFrom)} ${root.unhosted} `
-                + `${root.unhostedWhy} ${JSON.stringify(Sessions.goingTo)}`);
-        root.unhostedWhy = "";
+            `${startedTold} ${spawnsOf(heldNamed, heldFrom)} ${told()} `
+                + `${JSON.stringify(Sessions.goingTo)}`);
+        untell();
         Sessions.untaken(heldNamed, String(Sessions.attaching[heldNamed]));
         expect("a start asked again and given up on again is told so as started, focus let go",
-            root.unhostedWhy === "startedUntaken" && Sessions.goingTo === null,
-            `${root.unhostedWhy} ${JSON.stringify(Sessions.goingTo)}`);
+            told() === "STARTED startedUntaken x1" && Sessions.goingTo === null
+            && spawnsOf(heldNamed, heldFrom) === 2,
+            `${told()} ${JSON.stringify(Sessions.goingTo)} ${spawnsOf(heldNamed, heldFrom)}`);
         Sessions.goingTo = goingBeforeStarted;
         Sessions.forgetAsk(heldNamed);
         kittyPidFile.setText("4242\n");
@@ -2273,6 +2306,8 @@ ShellRoot {
     property string unjoined: ""
     property string unhosted: ""
     property string unhostedWhy: ""
+    // How many times a press was told since a case last counted.
+    property int unhostedTold: 0
     // The last that Go To couldn't open, in a terminal it can't reach.
     property string unreached: ""
     property bool steered: false
@@ -2300,6 +2335,7 @@ ShellRoot {
         function onUnhosted(session, why) {
             root.unhosted = session.address;
             root.unhostedWhy = why ?? "";
+            root.unhostedTold += 1;
         }
 
         function onUnopened(session) {
