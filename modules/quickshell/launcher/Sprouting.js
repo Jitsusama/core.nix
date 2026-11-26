@@ -302,39 +302,37 @@ function sproutedOf(running, held, machine) {
 }
 
 // Whether Joel still waits on the act `key` in `launcher`: open, on its row
-// or held in its ask, where Return leaves him with the field emptied, and no
-// letter typed since the answer, when its `lettersAt` was `letters`. Only
-// then may its window take the keys; otherwise what he types next, a new try
-// in the ask included, could go into an agent's prompt.
-function waitsOn(launcher, key, letters) {
+// or held in its ask, where Return leaves him with the field emptied, with
+// no key taken and no letter given since his Return, when its `keysTaken`
+// was `keys` and its `lettersAt` `letters`: an arrow moves only the keys, a
+// paste only the letters. Else what he types could reach an agent's prompt.
+function waitsOn(launcher, key, keys, letters) {
     const on = row => row?.key === key;
-    return (
-        launcher?.open === true &&
-        launcher.lettersAt === letters &&
-        (on(launcher.asking) || on(launcher.selected))
-    );
+    return launcher?.open === true && launcher.keysTaken === keys &&
+        launcher.lettersAt === letters && (on(launcher.asking) || on(launcher.selected));
 }
 
-// How `openings` ({key, held, machine, since}) stand at `now`, `found`
-// giving each one's session or null: `late` have waited `patience`
-// milliseconds or more, and open nothing even if up by now, so a window
-// never comes past the minute it's said to; `up` came up within it, each
-// with its `session`; `waiting` are neither yet.
-function settled(openings, found, now, patience) {
-    const late = [];
-    const up = [];
-    const waiting = [];
+// How `openings` ({key, held, machine, since, late}) stand at `now`, by
+// `found` giving each one's session or null: `up` are up, however late;
+// `late` waited `patience` unmarked, and wait on in `waiting` marked `late`,
+// so each is said late once; `gone` waited `watch`; `waiting` wait on.
+function settled(openings, found, now, { patience, watch }) {
+    const stood = { late: [], up: [], gone: [], waiting: [] };
     for (const one of openings) {
         const session = found(one);
-        if (now - one.since >= patience) {
-            late.push(one);
-        } else if (session) {
-            up.push(Object.assign({}, one, { session }));
+        const waited = now - one.since;
+        if (session) {
+            stood.up.push(Object.assign({}, one, { session }));
+        } else if (waited >= watch) {
+            stood.gone.push(one);
+        } else if (waited >= patience && one.late !== true) {
+            stood.late.push(one);
+            stood.waiting.push(Object.assign({}, one, { late: true }));
         } else {
-            waiting.push(one);
+            stood.waiting.push(one);
         }
     }
-    return { late, up, waiting };
+    return stood;
 }
 
 // What opens a placement refusal, and a machine's reason in one that waiting
