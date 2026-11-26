@@ -89,7 +89,11 @@ while :; do
 done
 # Waiting takes one folder and no seconds, since it copies nothing.
 if [ -n "$move" ]; then
-  [ $# -eq 1 ] || asked_wrongly
+  if [ $# -ne 1 ]; then
+    echo "✕ own-subvolumes --after-quit needs a unit, then one folder" >&2
+    echo "  try  own-subvolumes --help" >&2
+    exit 64
+  fi
 else
   [ $# -ge 2 ] || asked_wrongly
   case $1 in
@@ -159,6 +163,35 @@ running() {
   done
 }
 
+# Says whether the process `$1` still holds anything under `$2`, a real
+# path, as holding would find it: one process's links and map, against
+# holding's walk of every process.
+holds() {
+  local found
+  found=$(find "/proc/$1/fd" "/proc/$1/cwd" -maxdepth 1 \
+    \( -lname "$2" -o -lname "$2/*" \) ! -lname '* (deleted)' \
+    -print -quit 2> /dev/null) || true
+  if [ -z "$found" ]; then
+    found=$(awk -v under="$2/" '
+      index($0, "/") {
+        path = substr($0, index($0, "/"))
+        if (index(path, under) == 1 && path !~ / \(deleted\)$/) {
+          print "maps"
+          exit
+        }
+      }' "/proc/$1/maps" 2> /dev/null) || true
+  fi
+  echo "$found"
+}
+
+# Where a folder's waiter keeps how often a move started it since the
+# machine started, or nothing where the account has no runtime folder.
+tries_kept() {
+  if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -n "$waiter" ]; then
+    echo "$XDG_RUNTIME_DIR/own-subvolumes/$waiter.tries"
+  fi
+}
+
 # The copy being made, and the folder as it was once moved aside.
 making() { echo "$1.subvolume-new"; }
 kept() {
@@ -176,20 +209,19 @@ tidy() {
   name=$(basename "$folder")
   # A copy a run kept for the writes in it, but couldn't set aside, stays
   # until Joel has looked; each run until then fails at making its copy.
-  if [ -e "$new.keep" ]; then
-    return 0
-  fi
   # A copy half made is a subvolume's root; anything else there is the
   # folder as it was, left by a run stopped just after its exchange, and is
   # kept as any other.
-  if [ -d "$new" ]; then
-    root=$(stat -c %i -- "$new") || return 0
-    if [ "$root" != 256 ]; then
-      old=$(kept "$folder")
-      mv -T -- "$new" "$old" || return 0
+  if [ ! -e "$new.keep" ]; then
+    if [ -d "$new" ]; then
+      root=$(stat -c %i -- "$new") || return 0
+      if [ "$root" != 256 ]; then
+        old=$(kept "$folder")
+        mv -T -- "$new" "$old" || return 0
+      fi
     fi
+    rm -rf -- "$new"
   fi
-  rm -rf -- "$new"
   find "$beside" -maxdepth 1 -name "$name.before-subvolume-*" \
     -ctime +2 -print0 2> /dev/null | while IFS= read -r -d '' old; do
     rm -rf -- "$old" && echo "removed $old, kept three days since the move"
@@ -216,19 +248,49 @@ in_use() {
 # process lets go. The holder is looked for whatever the reason, since a
 # program writes as it opens its folder, and a writer's run may be what
 # was seen first while the program holds it all the same. A writer that
-# holds nothing open is left to the next start: nothing says when it next
-# writes.
+# holds nothing open is left to the next start, since nothing says when it
+# next writes, unless a waiter already started this run: Chrome's metrics
+# writer runs again as Chrome quits, and the move its waiter starts may
+# find it. Each start costs a whole copy, so after three since the machine
+# started, the folder waits for the next.
 left() {
-  local folder=$1 why=$2 real=$3 holder
+  local folder=$1 why=$2 real=$3 holder count tries=0 wait=''
   case $why in
   /proc/*) holder=$why ;;
   *) holder=$(holding "$real") ;;
   esac
-  if [ -n "$holder" ] && [ -n "$waiter" ] &&
+  count=$(tries_kept)
+  if [ -n "$count" ] && [ -f "$count" ]; then
+    tries=$(cat -- "$count")
+  fi
+  case $tries in
+  '' | *[!0-9]*) tries=0 ;;
+  *) ;;
+  esac
+  [ -z "$holder" ] || wait=yes
+  case $why in
+  *" is running"*) [ "$tries" -eq 0 ] || wait=yes ;;
+  *) ;;
+  esac
+  if [ -n "$wait" ] && [ -n "$waiter" ] && [ "$tries" -ge 3 ]; then
+    echo "$why, so $folder stays in the home's tree until the account's manager next" \
+      "starts, its move begun $tries times since the machine started"
+    return 0
+  fi
+  if [ -n "$wait" ] && [ -n "$waiter" ] &&
     systemctl --user restart --no-block -- "$waiter"; then
+    if [ -n "$count" ]; then
+      mkdir -p -- "${count%/*}" && echo $((tries + 1)) > "$count"
+    fi
     case $why in
     /proc/*) echo "$why, so $folder stays in the home's tree until that quits" ;;
-    *) echo "$why, and $holder, so $folder stays in the home's tree until that quits" ;;
+    *)
+      if [ -n "$holder" ]; then
+        echo "$why, and $holder, so $folder stays in the home's tree until that quits"
+      else
+        echo "$why, so $folder stays in the home's tree until that stops"
+      fi
+      ;;
     esac
     return 0
   fi
@@ -299,7 +361,9 @@ own() {
   # opening Slack, isn't in it. The folder as it was now sits where the copy
   # was made, a path no program opens it by, so one more look at it there
   # finds whatever reached it before the exchange, and no later one can.
-  why=$(in_use "$new" "$stamp")
+  # A writer named running would next open the subvolume, so it isn't asked.
+  why=$(changed "$new" "$stamp")
+  [ -n "$why" ] || why=$(holding "$new")
   rm -f -- "$stamp"
   if [ -n "$why" ]; then
     if ! mv --exchange -T -- "$new" "$real"; then
@@ -321,9 +385,14 @@ own() {
       if ! mv -T -- "$new" "$aside"; then
         # The next run would take the copy for a half-made one and clear
         # it, so it's marked to be kept.
-        touch -- "$new.keep"
-        echo "✕ $folder was in use as it moved, so it's back, and what was written" \
-          "in the copy meanwhile ($late) is at $new, kept until $new.keep is removed" >&2
+        if touch -- "$new.keep"; then
+          echo "✕ $folder was in use as it moved, so it's back, and what was written" \
+            "in the copy meanwhile ($late) is at $new, kept until $new.keep is removed" >&2
+        else
+          echo "✕ $folder was in use as it moved, so it's back, and what was written" \
+            "in the copy meanwhile ($late) is at $new, which couldn't be marked, so" \
+            "the next run clears it unless it's moved aside first" >&2
+        fi
         return 1
       fi
       echo "✕ $folder was in use as it moved, so it's back, and what was written" \
@@ -331,7 +400,8 @@ own() {
       return 1
     fi
     rm -rf -- "$new"
-    left "$folder" "$why, as it moved" "$real"
+    # Said by the folder's own path, as the copy's is gone.
+    left "$folder" "${why//"$new"/"$real"}, as it moved" "$real"
     return 0
   fi
   rm -f -- "$swapped"
@@ -341,6 +411,8 @@ own() {
     echo "✕ $folder is a subvolume now; the folder as it was, at $new, is kept by the next run" >&2
     return 1
   fi
+  count=$(tries_kept)
+  [ -z "$count" ] || rm -f -- "$count"
   echo "$folder is a subvolume of its own now, the folder as it was kept at $aside"
 }
 
@@ -349,7 +421,7 @@ own() {
 # go, as its folder's move would find it, so Chrome's many processes are
 # waited for one at a time, though they mostly quit together.
 after_quit() {
-  local folder=$1 real inode why pid last=''
+  local folder=$1 real inode why pid held state last=''
   while :; do
     if [ ! -d "$folder" ] || [ -L "$folder" ]; then
       echo "$folder isn't a folder here, so there's nothing to wait for"
@@ -364,11 +436,11 @@ after_quit() {
     why=$(running)
     if [ -n "$why" ]; then
       echo "$why, so this waits for it to stop"
-      # systemd has no wait for a unit to stop, and a look every five
-      # seconds is one call, against the minute a writer such as Chrome's
-      # metrics move takes.
+      # systemd has no wait for a unit to stop, and a look every half
+      # minute is one call, against the minute a writer such as Chrome's
+      # metrics move takes, and the days the node runs.
       while [ -n "$why" ]; do
-        sleep 5
+        sleep 30
         why=$(running)
       done
       continue
@@ -385,10 +457,22 @@ after_quit() {
     # tail looks for the process every two seconds, which is as soon after
     # a quit as the move needs to start. A process that only passed
     # through, as a shell cd'd there or a reader of Chrome's sessions, may
-    # let go and live on, and its number may pass to another, so the
-    # holders are looked at again each minute.
-    timeout 60 tail --pid="$pid" -s 2 -f /dev/null || true
+    # let go and live on, so each minute that one process is asked whether
+    # it still holds the folder, and only once it doesn't are all of them
+    # looked at again.
+    while :; do
+      timeout 60 tail --pid="$pid" -s 2 -f /dev/null || true
+      held=$(holds "$pid" "$real")
+      [ -n "$held" ] || break
+    done
   done
+  # A move already under way, as a switch's, looks for itself; restarting
+  # it would stop it partway.
+  state=$(systemctl --user is-active -- "$move" 2> /dev/null) || true
+  if [ "$state" = activating ]; then
+    echo "nothing holds $folder now, and its move is under way already"
+    return 0
+  fi
   echo "nothing holds $folder now, so its move starts again"
   systemctl --user restart --no-block -- "$move"
 }

@@ -146,9 +146,8 @@ def test_a_folder_whose_writer_runs_stays_though_nothing_is_open(moved: BaseMach
     assert inode(moved, f"{HOME}/busy") != "256"
     assert "busy.service is running, so" in said(moved, "busy")
     nothing_beside(moved, "busy")
-    # Nothing holds it, so nothing would say when to move it, and no waiter starts.
-    waiter = unit("busy").replace(".service", "-after-quit.service")
-    as_account(moved, f"systemctl --user is-active {waiter}", succeed=False)
+    # Nothing holds it, so nothing would say when to move it, and no waiter ever started.
+    assert "Started" not in waited(moved, "busy"), "a waiter started for a writer alone"
 
 
 def test_a_folder_missing_is_left_and_its_unit_passes(moved: BaseMachine) -> None:
@@ -203,6 +202,9 @@ def test_a_second_run_leaves_a_subvolume_as_it_is(moved: BaseMachine) -> None:
     """A subvolume's root isn't copied again, and folders freed since move at the next run."""
     before = moved.succeed(f"ls -d {HOME}/moved.before-subvolume-*")
     as_account(moved, "chmod 600 unreadable/file")
+    # The held folders' waiters would start the same moves as their holders stop.
+    waiters = (unit(f).replace(".service", "-after-quit.service") for f in ("held", "mapped"))
+    as_account(moved, "systemctl --user stop " + " ".join(waiters))
     as_account(moved, "systemctl --user stop holder mapper writer busy")
     freed = ("moved", "held", "mapped", "unreadable", "busy")
     as_account(moved, "systemctl --user restart " + " ".join(unit(f) for f in freed))
