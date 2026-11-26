@@ -2655,7 +2655,8 @@
     a fenced or strict one says its system's launcher for an agent's run, which runs pi's strict
     profile, and an unfenced one none, no fence says a launcher when agents' runs are turned
     off, a machine of either system declaring every fence evaluates, a machine kept lively
-    says its ceiling and one not kept lively none, one declaring nothing has no file, and
+    says its ceiling, and the memory it keeps available only where it keeps some, and one not
+    kept lively none, one declaring nothing has no file, and
     agents in a realm it doesn't join are refused
   '';
   mycelium-lends-from-the-store = ''

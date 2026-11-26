@@ -92,8 +92,11 @@ rec {
               cpu = lib.mkOption {
                 type = lib.types.ints.between 0 100;
                 description = ''
-                  The processor pressure it stays at or under, in percent of
-                  the last ten seconds some work waited on a processor.
+                  The processor pressure it stays at or under, in percent:
+                  of the last minute some work waited on a processor,
+                  machine-wide, where its node reads the kernel's, or else
+                  its queue's measure of the last ten seconds, which on a
+                  Mac is the queue's own stand-in for pressure.
                 '';
               };
               memoryAvailable = lib.mkOption {
@@ -112,7 +115,9 @@ rec {
         description = ''
           The ceiling this machine is kept lively under, where the person
           works at it and the realm's other machines are to take new work
-          first; null where it is ranked as any machine is.
+          first; null where it is ranked as any machine is. A mycelium
+          that predates the ceiling ignores it, placing work here as on
+          any machine.
         '';
       };
       # A Mac's pi in pi-fence's launcher can't reach its own state, so the
