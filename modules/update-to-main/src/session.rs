@@ -773,11 +773,13 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let status = folder.path().join(STATUS);
         let (lands, appears) = (4 * EVERY, 6 * EVERY);
+        // Timed from before the writer starts, so its sleep can't begin
+        // before the clock and the status turn up early by it.
+        let since = Instant::now();
         let appearing = std::thread::spawn(move || {
             std::thread::sleep(appears);
             fs::write(status, "").unwrap();
         });
-        let since = Instant::now();
         let told = wait(folder.path(), "fetching", Duration::from_secs(5), lands).unwrap_err();
         let waited = since.elapsed();
         appearing.join().unwrap();
