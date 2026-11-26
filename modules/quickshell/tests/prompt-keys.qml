@@ -7,8 +7,10 @@
 // table alone. Tab asks where it goes (intoHere) and no other key does,
 // gv takes back what there is and acts only then, an ask takes the
 // operator pressed again before the operator does, and a register's keys,
-// a modifier alone and a letter typed act on nothing. It runs in Qt's
-// test runner, which fails naming each case that doesn't hold.
+// a modifier alone and a letter typed act on nothing. A secret, which has
+// no modes, names Escape or Ctrl+C giving it up and says its Return, the
+// keys the launcher times there. It runs in Qt's test runner, which fails
+// naming each case that doesn't hold.
 import QtQuick
 import QtTest
 
@@ -258,6 +260,82 @@ Item {
             compare(answered.count, 1, "the ask hears d again");
             compare(operated.count, 1);
             verify(line.keyActed, "d again, the ask's answer");
+        }
+    }
+
+    // A secret, a line with no modes, which names the key giving it up and
+    // says Return, as the launcher times both (Launcher.qml's onCancelled
+    // and onAccepted), and says nothing of the keys that only delete.
+    Prompt {
+        id: secret
+
+        width: parent.width
+        height: parent.height
+        secret: true
+    }
+
+    SignalSpy {
+        id: cancelled
+
+        target: secret
+        signalName: "cancelled"
+    }
+    SignalSpy {
+        id: accepted
+
+        target: secret
+        signalName: "accepted"
+    }
+
+    TestCase {
+        name: "SecretKeys"
+        when: windowShown
+
+        function init() {
+            secret.text = "";
+            secret.take();
+            cancelled.clear();
+            accepted.clear();
+        }
+
+        // That the secret was given up once, by the key named `key`.
+        function givenUpBy(key) {
+            compare(cancelled.count, 1, `${key} gives the secret up once`);
+            compare(cancelled.signalArguments[0][0], key, "the key named as the prompt names it");
+            compare(accepted.count, 0, `${key} hands over nothing`);
+        }
+
+        function test_escapeGivesTheSecretUpNamingIt() {
+            keyClick("a");
+            keyClick(Qt.Key_Escape);
+            givenUpBy("Escape");
+        }
+
+        function test_ctrlCGivesTheSecretUpNamingIt() {
+            keyClick("a");
+            keyClick(Qt.Key_C, Qt.ControlModifier);
+            givenUpBy("Ctrl+c");
+        }
+
+        function test_returnHandsTheSecretOverOnce() {
+            keyClick("a");
+            keyClick(Qt.Key_Return);
+            compare(accepted.count, 1, "Return hands the secret over once");
+            compare(cancelled.count, 0, "Return gives nothing up");
+        }
+
+        function test_deletingKeysGiveNothingUp() {
+            keyClick("a");
+            keyClick("b");
+            keyClick("c");
+            keyClick(Qt.Key_H, Qt.ControlModifier);
+            compare(secret.text, "ab", "Ctrl+H deletes the letter before");
+            keyClick(Qt.Key_U, Qt.ControlModifier);
+            compare(secret.text, "", "Ctrl+U deletes back to the start");
+            keyClick(Qt.Key_Backspace);
+            keyClick(Qt.Key_W, Qt.ControlModifier);
+            compare(cancelled.count, 0, "deleting keys give nothing up");
+            compare(accepted.count, 0, "deleting keys hand nothing over");
         }
     }
 }
