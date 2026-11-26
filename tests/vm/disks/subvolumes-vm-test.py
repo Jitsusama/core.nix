@@ -180,15 +180,16 @@ def test_a_folder_a_program_opens_as_it_is_copied_stays_whole(moved: BaseMachine
     assert "raced/f1 open, so" in told, f"the move didn't say the racer held it: {told}"
     assert "until that quits" in told, f"the move started no waiter for the racer: {told}"
     assert moved.succeed(f"ls {HOME}/raced | wc -l").strip() == "8000"
+    moved.succeed(f"grep -qx opened {HOME}/raced/f2")
     nothing_beside(moved, "raced")
 
 
 def test_a_folder_moves_once_the_process_holding_it_quits(moved: BaseMachine) -> None:
     """A folder left for a process holding it moves by itself, whole, once that one quits."""
+    # The racer starts once, but its trigger would go on firing at each copy.
+    as_account(moved, "systemctl --user stop racer.path")
     for folder, holder in (("quitting", "quitter"), ("raced", "racer")):
         assert inode(moved, f"{HOME}/{folder}") != "256", f"{folder} moved under {holder}"
-        # The racer starts once, but its trigger would go on firing at each copy.
-        as_account(moved, "systemctl --user stop racer.path")
         as_account(moved, f"systemctl --user stop {holder}")
         moves = f"test $(stat -c %i {HOME}/{folder}) = 256"
         as_account(moved, f"timeout 60 sh -c 'until {moves}; do sleep 0.5; done'")
@@ -196,6 +197,8 @@ def test_a_folder_moves_once_the_process_holding_it_quits(moved: BaseMachine) ->
         assert "so this waits for it to quit" in told, f"{folder}'s waiter said: {told}"
     assert moved.succeed(f"cat {HOME}/quitting/file").strip() == "held"
     assert moved.succeed(f"ls {HOME}/raced | wc -l").strip() == "8000"
+    # What the racer wrote as the first move copied went with the folder.
+    moved.succeed(f"grep -qx opened {HOME}/raced/f2")
 
 
 def test_a_second_run_leaves_a_subvolume_as_it_is(moved: BaseMachine) -> None:
