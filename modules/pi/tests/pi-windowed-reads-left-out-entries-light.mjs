@@ -20,7 +20,7 @@ const { SessionManager, buildSessionContext } = await import(
 );
 
 const dir = mkdtempSync(join(tmpdir(), "pi-windowed-"));
-const big = (seed) => `${seed} `.repeat(1_000);
+const big = (seed) => `${seed} `.repeat(1000);
 const usage = {
   input: 10,
   output: 5,
@@ -138,7 +138,7 @@ const same = (actual, expected, what) =>
   );
   assert.ok(light(m2[2], "arguments"), "m2's tool call arguments are still held whole");
   assert.ok(
-    !light(m2[2], "id") && !light(m2[2], "name"),
+    !(light(m2[2], "id") || light(m2[2], "name")),
     "a tool call's id or name was read light",
   );
   assert.ok(!light(m2[0], "thinkingSignature"), "a short value was read light");
@@ -169,7 +169,7 @@ const same = (actual, expected, what) =>
   manager.branch("m2");
   same(manager.buildSessionContext(), buildSessionContext(plain, "m2"), "m2's context differs");
   assert.ok(
-    !light(part(manager, "m1"), "text") && !light(part(manager, "m2", 1), "text"),
+    !(light(part(manager, "m1"), "text") || light(part(manager, "m2", 1), "text")),
     "m2's context is still read light",
   );
 }
