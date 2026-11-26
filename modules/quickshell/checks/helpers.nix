@@ -126,8 +126,9 @@ let
   # import added to Reader.js comes with it, as it does when the account's
   # shell is made. An import the shell's folder doesn't hold as a file, nor
   # the program, fails the check instead, naming the file, the import as
-  # written and which it is: a missing file, a folder, or one above the
-  # shell's folder. The table and the roots are given, so a check can give
+  # written and what to do for its kind: a missing file, a folder, or one
+  # above the shell's folder. So does an own file given above the shell's
+  # folder or by a path from the root. The table and the roots are given, so a check can give
   # it others (core.nix's a-check-copies-what-each-file-imports).
   programStepWith =
     table: roots: own:
@@ -138,30 +139,34 @@ let
       );
       shells = lib.filter (file: !(lib.elem file placed)) (lib.unique (map (one: one.placed) found));
       climbs = file: lib.elem ".." (lib.splitString "/" file);
+      above = "above modules/quickshell, where a check can't be given a file; move it in";
+      # The program's own files given by no place in the shell's folder, which
+      # would be copied out of the check's folder.
+      outside = lib.filter (file: climbs file || lib.hasPrefix "/" file) placed;
       # Why the shell's folder can't give a check what an import names, and
       # what can be done instead, or null when it can. A file above the
-      # shell's folder can't be given even as the program's own, since it
-      # would be copied out of the check's folder.
+      # shell's folder can't be given even as the program's own.
       unheld =
         file:
         let
           path = ../. + "/${file}";
         in
         if climbs file then
-          "above modules/quickshell, where a check can't be given a file"
+          above
         else if !(builtins.pathExists path) then
           "not in modules/quickshell; add it to the program's own files as ${file}"
         else if builtins.readFileType path != "regular" then
-          "a folder; import the files taken from it by name"
+          "a folder; import a JavaScript file by name, or a type through qs with its file in the roots"
         else
           null;
       strays = lib.filter (
         one: climbs one.placed || !(lib.elem one.placed placed) && unheld one.placed != null
       ) found;
       said = one: "the program's file at ${one.file} imports \"${one.written}\": ${unheld one.placed}";
+      saidOutside = file: "the program's own file given as \"${file}\": ${above}";
       folders = lib.unique (lib.filter (folder: folder != ".") (map dirOf placed));
     in
-    if strays == [ ] then
+    if strays == [ ] && outside == [ ] then
       lib.concatStringsSep "\n" (
         [ (copiedWith table (lib.unique (roots ++ shells))) ]
         ++ lib.optional (folders != [ ]) "mkdir -p ${lib.concatStringsSep " " folders}"
@@ -170,6 +175,7 @@ let
     else
       ''
         echo "A program's own files import what modules/quickshell doesn't hold as a file:" >&2
+        ${lib.concatMapStrings (file: "echo ${lib.escapeShellArg (saidOutside file)} >&2\n") outside}
         ${lib.concatMapStrings (one: "echo ${lib.escapeShellArg (said one)} >&2\n") strays}
         exit 1
       '';

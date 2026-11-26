@@ -408,12 +408,19 @@ in
       # that is there (the flake's own), and a folder, named or as ".."
       # alone, and a file above the folder even when given as the program's
       # own. All are in one file, placed after the planted one, so each must
-      # be said, of the file that imports it.
+      # be said, of the file that imports it. The program's own files given
+      # above the folder, or by a path from the root, imported or not, must
+      # each be refused too, or they'd be copied out of the check's folder.
       quoted = "it's-$(gone).js";
       missing = file: "not in modules/quickshell; add it to the program's own files as ${file}";
-      folder = "a folder; import the files taken from it by name";
-      above = "above modules/quickshell, where a check can't be given a file";
+      folder = "a folder; import a JavaScript file by name, or a type through qs with its file in the roots";
+      above = "above modules/quickshell, where a check can't be given a file; move it in";
       ownAbove = "../Planted-above.js";
+      outside = [
+        ownAbove
+        "../Planted-unimported.js"
+        "/Planted-rooted.js"
+      ];
       strays = {
         "../${stray}" = missing stray;
         "../${quoted}" = missing quoted;
@@ -426,18 +433,30 @@ in
       strayed = programStepWith table [ ] (
         ownImporting "../${picked}"
         // {
-          ${ownAbove} = builtins.toFile "Planted-above.js" "";
           ${strayFile} = builtins.toFile "Strays.js" (
             lib.concatMapStrings (written: ".import \"${written}\" as Stray\n") (lib.attrNames strays)
           );
         }
+        // outsideGiven
       );
+      outsideGiven = lib.genAttrs outside (file: builtins.toFile "Planted-outside.js" "");
+      # Given alone, with no import astray, they must still stop the step.
+      outsideCopied =
+        !(lib.elem "exit 1" (
+          lines (programStepWith table [ ] (ownImporting "../${picked}" // outsideGiven))
+        ));
       sayingOf =
         written: "the program's file at ${strayFile} imports \"${written}\": ${strays.${written}}";
       strayUnrefused = lib.filter (
         written: !(lib.elem "echo ${lib.escapeShellArg (sayingOf written)} >&2" (lines strayed))
       ) (lib.attrNames strays);
       strayUnended = !(lib.elem "exit 1" (lines strayed));
+      outsideUnrefused = lib.filter (
+        file:
+        !(lib.elem "echo ${lib.escapeShellArg "the program's own file given as \"${file}\": ${above}"} >&2" (
+          lines strayed
+        ))
+      ) outside;
       strayHeldSaid = "the shell's folder holds ${stray} or ${quoted}; give this check other names";
       ownHeldSaid = "the shell's folder holds ${ownFolder}; give this check another folder";
       plantedLeftOut = lib.concatStringsSep ", " unplanted;
@@ -467,7 +486,12 @@ in
           ++ lib.optional ownHeld ownHeldSaid
           ++ lib.optional strayHeld strayHeldSaid
           ++ lib.optional (strayUnrefused != [ ]) (unrefusedSaid + lib.concatStringsSep ", " strayUnrefused)
-          ++ lib.optional strayUnended "a program's file importing those went on unstopped";
+          ++ lib.optional strayUnended "a program's file importing those went on unstopped"
+          ++ lib.optional (outsideUnrefused != [ ]) (
+            "a program's own files given outside the shell's folder weren't refused: "
+            + lib.concatStringsSep ", " outsideUnrefused
+          )
+          ++ lib.optional outsideCopied "a program's own files given outside the shell's folder alone were copied";
     in
     pkgs.runCommandLocal "a-check-copies-what-each-file-imports" { } ''
       ${lib.concatMapStrings (failure: "echo ${lib.escapeShellArg failure} >&2\n") failures}
