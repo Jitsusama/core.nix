@@ -10,6 +10,9 @@
 // the harness writes it (ACT_WORDS).
 const ENDED = /[.!?\u2026]["'\u2019\u201d)\]]*$/u;
 const ACT_WORDS = 4;
+// The most characters a choice opening with a one-word act runs to and is
+// still taken to draw whole on the narrowest verb line (poses).
+const WHOLE_CHOICE = 24;
 const SPACES = /\s+/gu;
 // What draws as nothing, or as a space, which a name may hide in to pass
 // for another, the blank fillers of Hangul and Braille among them; and the
@@ -116,13 +119,17 @@ function headOf(name) {
 // follows, since a verb's line cut short where it runs out of room shows
 // only those, as Clear It and one long word draws as Clear It and an
 // ellipsis; the line's room isn't known here, so it's never trusted to
-// show the rest.
+// show the rest. A one-word act, as Open, Answer or Talk, begins many a
+// choice Joel should press (Open a PR, Answer Later, Talk It Through), so
+// one opening with it poses only once it's long enough to be cut short to
+// it: past ACT_WORDS words or WHOLE_CHOICE characters.
 function poses(name, taken) {
     const read = readAs(name);
     const head = readAs(headOf(name));
+    const cut = read.split(" ").length > ACT_WORDS || read.length > WHOLE_CHOICE;
     return taken.length > 0 && (TURNS.test(String(name))
-        || taken.map(readAs).some(each => each !== ""
-            && (each === read || each === head || opensWith(read, each))));
+        || taken.map(readAs).some(each => each !== "" && (each === read || each === head
+            || (opensWith(read, each) && (each.includes(" ") || cut)))));
 }
 
 // Whether `read` opens with the words `each` and then a break between

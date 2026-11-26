@@ -508,12 +508,24 @@ QtObject {
             [LookForm.poses(`Clear It ${"Everything".repeat(8)}`, ["Clear It"]),
                 LookForm.poses("Clear It Away", ["Clear It"]),
                 LookForm.poses("clear it, now", ["Clear It"]),
-                LookForm.poses("Talk\u00a0to Them", ["Talk"]),
+                LookForm.poses(`Talk\u00a0${"Everything".repeat(3)}`, ["Talk"]),
+                LookForm.poses("Talk to them about it, now", ["Talk"]),
                 LookForm.poses("Keep It Clear", ["Clear It"]),
                 LookForm.poses("Clear", ["Clear It"])],
-            [true, true, true, true, false, false]);
+            [true, true, true, true, true, false, false]);
+        // A one-word act begins many a choice Joel should press, so one
+        // opening with it poses only once it's long enough to be cut short
+        // to it (#6562's third review).
+        expect("a short choice opening with a one-word act is his to press",
+            [LookForm.poses("Open a PR", ["Open", "Clear It"]),
+                LookForm.poses("Answer Later", ["Answer"]),
+                LookForm.poses("Talk It Through", ["Talk"]),
+                LookForm.poses("Talk\u00a0to Them", ["Talk"]),
+                LookForm.poses("Open", ["Open"])],
+            [false, false, false, false, true]);
         // And a look's own act can't pass for a choice, nor a choice for it,
-        // once either is cut short.
+        // once either is cut short; a one-word choice its short act opens
+        // with draws whole beside it, so both stay.
         const offeringOf = labels => second({ act: "Review It",
             choices: labels.map(label => ({ value: label, label: label })),
             wants: { choices: labels.map(label => ({ label: label })) } });
@@ -522,7 +534,7 @@ QtObject {
                 LookForm.actOf(offeringOf(["Review"])),
                 LookForm.actOf(offeringOf(["Review It\nfor good"])),
                 LookForm.actOf(offeringOf(["Keep It", "Roll It Back"]))],
-            ["", "", "", "Review It"]);
+            ["", "Review It", "", "Review It"]);
         // A verb draws on one line, cut short where it runs out of room, so
         // what follows a line break, or a run of spaces past its room, never
         // shows: a name whose words before either read as an act poses as it.
