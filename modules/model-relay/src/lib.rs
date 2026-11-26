@@ -3168,7 +3168,10 @@ mod tests {
         // lookup runs on a blocking thread a runtime's drop would wait on,
         // so the runtime is let go in the background, and a resolver that
         // never answers fails the test at the bound rather than hangs it.
-        let outcome = runtime.block_on(tokio::time::timeout(Duration::from_secs(10), reaching));
+        let outcome = runtime.block_on(async {
+            // A timer is made within the runtime it runs on.
+            tokio::time::timeout(Duration::from_secs(10), reaching).await
+        });
         runtime.shutdown_background();
         let failed =
             outcome.expect("the machine's resolver took over 10 s to fail a name under .invalid");
