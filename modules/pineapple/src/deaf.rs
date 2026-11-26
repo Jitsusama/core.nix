@@ -316,10 +316,12 @@ impl Deaf {
     /// answered can't be read; a deafness after is a time of its own,
     /// told anew even where Joel marked that row done. A row saying it's
     /// unreached, though, is narrowed to the search still left unasked
-    /// rather than taken away, since that search is still unheard.
+    /// rather than taken away, since that search is still unheard, unless
+    /// the round before left the other unasked: each was answered then.
     fn answered(&mut self, alone: Option<Search>, at: u64) -> Change {
         if let Some(search) =
             alone.filter(|_| self.gateway && self.told == Some(Deafness::Unreached))
+            && !matches!(self.held, Some((Deafness::Unread(last), _)) if last != search)
         {
             let run = match self.alone {
                 Some((last, run)) if last == search => run.saturating_add(1),

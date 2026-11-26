@@ -255,6 +255,43 @@ fn an_outage_then_one_search_answered_narrows_its_row_to_the_other_rather_than_b
 }
 
 #[test]
+fn an_outage_then_its_searches_answered_by_turns_takes_its_row_away() {
+    let round = |n: u32| AT + u64::from(n) * 30_000;
+    let mut deaf = Deaf::through_gateway();
+    for n in 1..=UNREACHED + 1 {
+        let _ = deaf.heard(Round::Unasked, round(n));
+    }
+    let first = round(UNREACHED + 2);
+    assert_eq!(
+        deaf.heard(Round::Unasked, first),
+        Change::Tell(waits_on_gateway(Deafness::Unreached, first, first)),
+        "unreached, told"
+    );
+    assert_eq!(
+        deaf.heard(Round::Partly(Some(Search::Tag)), round(UNREACHED + 3)),
+        Change::Keep,
+        "one round answering only the phrase leaves the row standing"
+    );
+    assert_eq!(
+        deaf.heard(Round::Partly(Some(Search::Phrase)), round(UNREACHED + 4)),
+        Change::Untell,
+        "the next answering only the tag shows each heard, so the row goes"
+    );
+    for n in UNREACHED + 5..UNREACHED + 9 {
+        let alone = if n % 2 == 1 {
+            Search::Tag
+        } else {
+            Search::Phrase
+        };
+        assert_eq!(
+            deaf.heard(Round::Partly(Some(alone)), round(n)),
+            Change::Keep,
+            "round {n}: searches answered by turns tell nothing"
+        );
+    }
+}
+
+#[test]
 fn a_search_left_unasked_is_never_told_as_alone_while_the_gateway_answers_nothing() {
     let round = |n: u32| AT + u64::from(n) * 30_000;
     let mut deaf = Deaf::through_gateway();
