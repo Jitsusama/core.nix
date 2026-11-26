@@ -344,8 +344,8 @@ mod tests {
     }
 
     /// Where the card is, `ON`, for a lapse to judge.
-    fn on_its_point(_: &str) -> Option<String> {
-        Some(ON.to_owned())
+    fn on_its_point() -> impl Fn(&str) -> Option<String> {
+        |_| Some(ON.to_owned())
     }
 
     /// When each case's look began.
@@ -556,12 +556,12 @@ mod tests {
         assert_eq!(looks.due(), Some(lapsed), "the look was never timed");
         assert!(
             looks
-                .lapsed(lapsed - Duration::from_millis(1), on_its_point)
+                .lapsed(lapsed - Duration::from_millis(1), on_its_point())
                 .is_empty(),
             "a card was let go before it looked as long as it may"
         );
         assert_eq!(
-            looks.lapsed(lapsed, on_its_point),
+            looks.lapsed(lapsed, on_its_point()),
             vec![("wlan2".to_owned(), Ended::Lapsed)],
             "a card held to the point that warned it waited there to be dropped",
         );
@@ -629,7 +629,7 @@ mod tests {
             looks.wait("wlan2", request, Some(ON.to_owned()), begun, first);
         }
         assert_eq!(
-            looks.lapsed(start() + LOOK_AT_MOST, on_its_point),
+            looks.lapsed(start() + LOOK_AT_MOST, on_its_point()),
             vec![("wlan2".to_owned(), Ended::Lapsed)],
             "warnings over channel after channel kept the card looking past its time",
         );

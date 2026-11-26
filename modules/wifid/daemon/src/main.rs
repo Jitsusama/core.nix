@@ -453,39 +453,18 @@ async fn follow(
             // look's end still queued would otherwise be judged too late,
             // and the card let go rather than moved to what it heard.
             () = until(unlooked), if unlooked.is_some() => {
-                tokio::task::yield_now().await;
-                for _ in 0..signals.len() {
-                    if let Ok(Ok(message)) = signals.try_recv() {
-                        take_signal(wifid, &mut air, joining.as_ref(), &message).await;
-                    }
-                }
-                let lapsed = {
-                    let state = wifid.state.borrow();
-                    air.looks.lapsed(Instant::now(), |card| state.point_of(card))
-                };
+                take_queued(wifid, &mut air, joining.as_ref(), &mut signals).await;
                 let joining = joining.as_ref().map(|joining| joining.card.as_str());
-                for (card, ended) in lapsed {
-                    match ended {
-                        Ended::Moved(from) => left_as_it_looked(&card, from.as_deref()),
-                        Ended::Lapsed => wifid.look_lapsed(&card, joining).await,
-                        Ended::Unwaited | Ended::Earlier | Ended::Heed(..) => {}
-                    }
-                }
+                looks_lapsed(wifid, &mut air, joining).await;
             }
             () = until(unreached), if unreached.is_some() => {
                 // What wpa_supplicant has said is taken in before a move's
                 // time is judged: a move that completed as its time ran
                 // out, the signal still queued, would otherwise be sent
-                // back off the point it reached. Only what's queued now is,
-                // so signals coming without end can't hold the judging off.
-                // One still on its way across the bus isn't, so `overdue`
+                // back off the point it reached. One still on its way
+                // across the bus isn't taken in, so `overdue`
                 // asks wpa_supplicant where each card is before acting.
-                tokio::task::yield_now().await;
-                for _ in 0..signals.len() {
-                    if let Ok(Ok(message)) = signals.try_recv() {
-                        take_signal(wifid, &mut air, joining.as_ref(), &message).await;
-                    }
-                }
+                take_queued(wifid, &mut air, joining.as_ref(), &mut signals).await;
                 let joining = joining.as_ref().map(|joining| joining.card.as_str());
                 wifid.overdue(joining, Instant::now()).await;
             }
@@ -505,6 +484,41 @@ async fn follow(
                 }
             }
             else => return Ok(()),
+        }
+    }
+}
+
+/// Takes in every signal of wpa_supplicant's queued now, once the tasks
+/// that read the bus have had their turn. Only what's queued now is, so
+/// signals coming without end can't hold off what waits on them.
+async fn take_queued(
+    wifid: &Wifid<'_>,
+    air: &mut Air<'_>,
+    joining: Option<&Joining>,
+    signals: &mut mpsc::UnboundedReceiver<zbus::Result<zbus::Message>>,
+) {
+    tokio::task::yield_now().await;
+    for _ in 0..signals.len() {
+        if let Ok(Ok(message)) = signals.try_recv() {
+            take_signal(wifid, air, joining, &message).await;
+        }
+    }
+}
+
+/// Lets go each warned card whose look has run past its time while it's
+/// still on the point that warned, and says of one that moved off it as it
+/// looked that what it asked is past.
+async fn looks_lapsed(wifid: &Wifid<'_>, air: &mut Air<'_>, joining: Option<&str>) {
+    let lapsed = {
+        let state = wifid.state.borrow();
+        air.looks
+            .lapsed(Instant::now(), |card| state.point_of(card))
+    };
+    for (card, ended) in lapsed {
+        match ended {
+            Ended::Moved(from) => left_as_it_looked(&card, from.as_deref()),
+            Ended::Lapsed => wifid.look_lapsed(&card, joining).await,
+            Ended::Unwaited | Ended::Earlier | Ended::Heed(..) => {}
         }
     }
 }
