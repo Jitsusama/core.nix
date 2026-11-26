@@ -37,8 +37,13 @@ WORK = "/home/alice/work"
 # Naming a conversation here parks it after two minutes idle, as parking is proven on one.
 SWITCH = "/home/alice/.local/state/pi/agentic-harness.pi/park-workflow/switch"
 ROSTER = f"/home/alice/.local/state/pi/agentic-harness.pi/host-rosters/{KEY}.json"
-# What a ready host holding both says, as systemd's status and the journal show it.
-SERVING_BOTH = "ready, serving 2 conversations"
+# What a ready host holding both says, as systemd's status and the journal show it, as a
+# pattern grep -E and Python read alike: it counts those it runs awake and parked apart, and
+# either may be awake after a start, so the two add up to both, with none dropped.
+HOLDING_BOTH = (
+    r"ready: loaded (2, parked 0|1, parked 1|0, parked 2)"
+    r"(, [0-9]+ in processes of their own)?, dropped 0"
+)
 # The harness's scripted model, as its test support names it.
 PROVIDER = "sealed-faux"
 MODEL = "faux-1"
@@ -113,7 +118,7 @@ class Host:
         """Wait until the host is ready again, saying it holds both."""
         self.until(
             f"systemctl --user show -p StatusText --value {UNIT}"
-            f" | grep -qxF {shlex.quote(SERVING_BOTH)}",
+            f" | grep -qxE {shlex.quote(HOLDING_BOTH)}",
             timeout,
         )
 
@@ -127,7 +132,7 @@ class Host:
         )
         started = self.show("MainPID")
         self.machine.wait_until_succeeds(
-            f"journalctl --no-pager _PID={started} | grep -qF {shlex.quote(SERVING_BOTH)}",
+            f"journalctl --no-pager _PID={started} | grep -qE {shlex.quote(HOLDING_BOTH)}",
             timeout=COMING_BACK,
         )
 
@@ -240,7 +245,7 @@ def test_a_rebooted_machine_starts_the_host_and_resumes_both(rebooted: Host) -> 
     host = rebooted
     assert host.show("ActiveState") == "active"
     said = host.said()
-    assert SERVING_BOTH in said, said
+    assert re.search(HOLDING_BOTH, said), said
     assert set(host.states()) == set(host.ids.values()), host.states()
     roster = host.run(f"cat {ROSTER}")
     for name, session in host.ids.items():
