@@ -48,6 +48,6 @@ printf '%s\n' 'modules/a/lib.rs modules/a/gone.rs' 'modules/a/lib.rs modules/b' 
   >"${scratch}/more"
 refuses "${scratch}/more" "modules/a/lib.rs modules/b (found nowhere" "modules/a/lib.rs:1:"
 printf '%s\n' 'modules/a/lib.rs modules/a/gone.rs' 'modules/a/lib.rs unread' >"${scratch}/waived"
-refuses "${scratch}/waived" "modules/a/lib.rs unread (read now: take it off)" "modules/a/lib.rs:1:"
+refuses "${scratch}/waived" "modules/a/lib.rs unread (read now or gone: take it off)" "modules/a/lib.rs:1:"
 
 code-health stale "${tree}" "${waiting}"

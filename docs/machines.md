@@ -372,7 +372,8 @@ Its code comments are held the same way, through another:
 ```nix
 comments-name-what-exists = core.lib.commentsNameWhatExists pkgs {
   src = ./.;
-  # Each mention of a path gone, as `file path`, once for each, until fixed.
+  # Each mention of a path gone, as `file path`, once for each, until fixed;
+  # and each file whose comments the reader can't read, as `file unread`.
   waiting = [ ];
 };
 ```
@@ -380,6 +381,10 @@ comments-name-what-exists = core.lib.commentsNameWhatExists pkgs {
 It fails on a comment naming a path from one of the repository's top folders
 that names nothing while the folder under the top it names still stands, and
 on a waiting line listed more often than it's found, so the list only shrinks.
+It fails too on a file whose comments it can't read, since a stale comment in
+one would pass unseen, unless the list lets it through as `file unread` while
+code-health's reader learns it; such a waiver must come off once its file
+reads or is gone.
 It reads whole-line comments in the languages code-health's stale.rs knows:
 `//` lines in Rust, JavaScript, TypeScript, QML and C, `#` lines in Nix,
 shell, Python, TOML and YAML, block comments opening a line in Nix and the

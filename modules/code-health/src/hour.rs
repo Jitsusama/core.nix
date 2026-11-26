@@ -730,7 +730,10 @@ mod tests {
     fn a_day_with_comments_unread_holds_no_stale_figure_but_holds_the_rest() {
         // Two days of 1 stale path, each with a file unread, then two of 4
         // with every file read.
-        let day = |stale: f64, unread: f64| json!({"core": {STALE_PATHS: stale, UNREAD_COMMENTS: unread, "long-files": stale}});
+        let day = |stale: f64, unread: f64| {
+            let figures = json!({STALE_PATHS: stale, UNREAD_COMMENTS: unread, "long-files": stale});
+            json!({"core": figures})
+        };
         let days = [day(1.0, 1.0), day(1.0, 2.0), day(4.0, 0.0), day(4.0, 0.0)];
         assert_eq!(
             (
