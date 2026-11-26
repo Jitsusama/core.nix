@@ -5,7 +5,10 @@
 //! often each time, so a broken thread costs his shared limit little, and
 //! after [`TRIES`] failed asks it's let go, the journal and a row in For
 //! You naming the span nobody read, with its link, so he can look there
-//! himself.
+//! himself. One his search or the watch lists again is asked early, and
+//! both list one for an hour after it changed, so for that hour it's
+//! asked each round: early asks cost no try, and a round's
+//! [`super::FAILS`] bound what they cost.
 
 use pineapple::github::{self, Thread};
 use pineapple::progress::Owed;
@@ -76,16 +79,15 @@ fn merged(threads: &mut [Listed], thread: &Thread, from: u64, read_from: u64) ->
 }
 
 /// What a round on the site whose rows `tell` writes, which `began` then
-/// owes, of the
-/// `threads` it listed, as it `read` them (where they failed, where GitHub
-/// said they were gone, and where it stopped asking): those that failed,
-/// asked again later each time; those from where it stopped, which a
-/// spent limit or too many failures kept back, due as they were; and what
-/// it owed `before` and didn't list, a round nearer due. One owed that
+/// owes, of the `threads` it listed, as it `read` them (where they failed,
+/// where GitHub said they were gone, and where it stopped asking): those
+/// that failed, asked again later each time; those from where it stopped,
+/// which a spent limit or too many failures kept back, and what it owed
+/// `before` and didn't list, each a round nearer due. One owed that
 /// GitHub says is gone is asked again as one that failed, as it says so
 /// of one that's there when an organization's sign-in lapses, and one
-/// truly gone is let go after its tries, its span named to Joel. One gone that
-/// wasn't owed goes, as it did before anything was owed: what notified
+/// truly gone is let go after its tries, its span named to Joel. One gone
+/// that wasn't owed goes, as it did before anything was owed: what notified
 /// Joel loses a round's span, but a search hit loses from its reach on,
 /// as the search gives it again only once it changes, and while a sign-in
 /// lapses each new one there goes so, under a warning each.
@@ -136,8 +138,8 @@ pub(super) fn kept(
         let tries = was.map_or(0, |owed| owed.tries) + u32::from(chosen);
         if tries >= TRIES {
             eprintln!(
-                "<3>couldn't read {} in {TRIES} tries since {}, so what was said there from {} on \
-                 goes unjudged: look there for a stop",
+                "<3>couldn't read {} in {TRIES} tries since {}, each failing or answered gone, so \
+                 what was said there from {} on goes unjudged: look there for a stop",
                 thread.key(),
                 github::stamp(at),
                 github::stamp(*from)
@@ -294,6 +296,20 @@ mod tests {
             owing,
             [fresh, before[0].clone()],
             "both are owed as they were, the one a try from let go not let go"
+        );
+    }
+
+    #[test]
+    fn what_a_spent_limit_kept_back_while_it_waited_is_a_round_nearer_due() {
+        // Its search hit lists it early; the limit keeps it unasked.
+        let before = [owed(15, 100, 4, 3)];
+        let threads = list(vec![(thread(15), 300, 300)], Vec::new(), &before);
+        let owing = kept(&left(), &threads, (&[], &[], 0), &before, 900);
+
+        assert_eq!(
+            owing,
+            [owed(15, 100, 4, 2)],
+            "its wait counts the round down, its tries and span kept"
         );
     }
 

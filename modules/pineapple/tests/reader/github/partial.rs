@@ -21,8 +21,10 @@ use serde_json::{Value, json};
 use super::{LOGIN, MARK, answer_with, commented, github_reader, journal, read_lately, searches};
 use crate::{Answered, PATIENCE, answering_whole, decisions, each};
 
-/// When every thread a search gives last changed: a minute before its
-/// first answer, and the same in every round after, as nothing changes.
+/// When every thread a search gives last changed: a minute before the
+/// first answer any case here is given, and the same in every round and
+/// case after, as nothing changes. Cases share it, so it's never later
+/// than a case's own first answer.
 static CHANGED: OnceLock<String> = OnceLock::new();
 
 /// What a search for Joel's words gives at `now`: example/shop's pull
@@ -418,8 +420,8 @@ fn github_one_failing_in_every_try_is_let_go_naming_the_span_nobody_read() {
         "one failing in every try is owed and asked no more: {seen:?}"
     );
     let gone = format!(
-        "<3>couldn't read github:example/shop#14 in 12 tries since {}, so what was said there \
-         from {} on goes unjudged: look there for a stop",
+        "<3>couldn't read github:example/shop#14 in 12 tries since {}, each failing or answered \
+         gone, so what was said there from {} on goes unjudged: look there for a stop",
         stamp(last - 3 * 60 * 60),
         stamp(last - 60)
     );
