@@ -1,7 +1,7 @@
 # How this machine is doing, held ready for the shell: one resident
 # program that reads the kernel's files, and asks UDisks for each disk's
 # health, only while someone watches, and answers over a socket in the
-# shell's daemon interface (src/main.rs says how).
+# shell's daemon interface (src/bin/machine/main.rs says how).
 [package]
 name = "machine"
 version = "0.1.0"

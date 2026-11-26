@@ -7,7 +7,7 @@ and fwupd for each device's firmware, the screen's backlight and the
 room's light sensor among the files, and answers over `$XDG_RUNTIME_DIR/daemons/machine.sock` in
 version 1 of the shell's daemon interface (hello, get, list, watch,
 unwatch, health), and acts on what it holds when asked (act), so the
-launcher spawns and writes nothing itself. [`src/main.rs`][main] says how
+launcher spawns and writes nothing itself. [`src/bin/machine/main.rs`][main] says how
 it reads and when;
 [`src/lib.rs`][lib] how a record names its figures, with its unit in its
 key. The launcher's Machine draws only what it holds
@@ -401,7 +401,7 @@ nothing is spawned.
   chooses which screen's drawer holds Brightness, whose eyebrow already
   names it.
 
-[main]: src/main.rs
+[main]: src/bin/machine/main.rs
 [lib]: src/lib.rs
 [machine]: ../quickshell/launcher/Machine.qml
 [firmware-rows]: src/firmware_rows.rs

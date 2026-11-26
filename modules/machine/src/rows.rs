@@ -4,7 +4,7 @@
 //! and the graphs worked out whole in the steps the shell draws, so a
 //! reading that leaves a drawing as it was changes nothing and the row
 //! isn't sent again. Each place's rows are given their spaced order as
-//! they're kept (ready-rows' `Kept`, in `main.rs`), each keeping its last,
+//! they're kept (ready-rows' `Kept`, in `bin/machine/making.rs`), each keeping its last,
 //! so a row coming or going sends itself alone. Heat's rows ([`crate::heat_rows`])
 //! are made with it, and Power's, Firmware's and Machine's own are to be.
 
