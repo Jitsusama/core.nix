@@ -112,7 +112,8 @@ const BYTES_MOST: u64 = 3_750_000_000;
 /// sawtooth, and a ceiling that moved with it would clamp the controller
 /// to each second's low and let it climb back only by its 5% a second, so
 /// it would hold this machine under the lowest of the last several, not
-/// what the house leaves. The link is held to each second's all the same.
+/// what the house leaves. The link's rate is held to each second's all the
+/// same, and its queues take it to within 1% (`due` in main).
 pub const STEADY: Duration = Duration::from_secs(5);
 
 /// The step the controller's ceiling moves by, in kbit/s, so it is tuned

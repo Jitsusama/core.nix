@@ -887,6 +887,15 @@ mod tests {
         let lines = flow_queued(NOV3);
         follow.take(&parse(&lines[0]).expect("a sample"));
         assert_eq!(up(&follow, NOV3), Some(9_500), "the stay's first line");
+        // What `Live::ceiling` reads: the ceiling stands before a second
+        // is stepped on, when nothing is heard yet (exact ceiling round
+        // 2's F2).
+        assert!(follow.heard().is_none(), "nothing heard yet");
+        assert_eq!(
+            follow.tuning().most_kbit,
+            Some(9_500.0),
+            "the ceiling before a second"
+        );
         assert_eq!(follow.controller.up.limit(), Some(9_500), "its start");
         for line in &lines[1..] {
             follow.take(&parse(line).expect("a sample"));
