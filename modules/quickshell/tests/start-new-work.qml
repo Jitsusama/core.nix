@@ -744,6 +744,13 @@ QtObject {
         Expect.same("another act is new work", underWay({ key: inB }), null);
         Expect.same("a start still coming up given again keeps its receipt too",
             underWay({ key: inA, words: "fix the bar" })?.held, "h2");
+        // Lost, a start no longer counts as made, so the same words start again;
+        // the same words for the cloud are another start, and kept.
+        const lostHere = StartSaid.forgot(StartSaid.made(barThere, barInA, up, began), coming);
+        Expect.same("a start whose session was lost is made no more, the same words start",
+            StartSaid.again(lostHere, asks(inA, "fix the bar"), began + minute), null);
+        Expect.same("but the same words in the cloud are still made",
+            lostHere.map(one => one.on), ["cloud"]);
         Expect.same("nothing running, nothing is under way again",
             StartSaid.underWayAgain([], running), null);
         Expect.same("and Start New Work says so in its own words, with the time",

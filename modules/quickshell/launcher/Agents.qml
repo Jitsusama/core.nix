@@ -1900,8 +1900,12 @@ Provider {
         const act = newWorkAct("link", "", suffix === "" ? link : `${link}, ${suffix}`,
             undefined, where === null ? "-" : elsewhere);
         // Fresh words, so how the last start ended is no longer theirs to show,
-        // unless one is still starting.
-        if (sprouting !== act.key) {
+        // unless one is still starting, or the page offers again the words of a
+        // start still coming up: its Return keeps that start's receipt and its
+        // window's keys (sproutHeardAgain), which a stamp here would take.
+        const offered = { key: act.key, words: String(offer.words ?? ""), on: elsewhere };
+        if (sprouting !== act.key
+            && StartSaid.underWayAgain(sproutsUnderWay(), offered) === null) {
             sproutPressed = Openings.pressedAt(sproutPressed, act.key, Date.now());
             sproutSays(act.key, "");
         }
@@ -1965,6 +1969,12 @@ Provider {
         // start's first Return is.
         Qt.callLater(marking);
     }
+    // The starts under way, each { key, words, on }: the one asked of the
+    // node, then every opening whose session is still coming up.
+    function sproutsUnderWay() {
+        return (sprouting === "" ? []
+            : [Object.assign({ key: sprouting }, sproutGiven)]).concat(openings);
+    }
     // `on` is "" for work started here, or where it starts elsewhere:
     // "cloud", or a machine by its name (Cloud.ask).
     function sprout(key, said, folder, on) {
@@ -1990,9 +2000,7 @@ Provider {
         // thrice"). Other words on the same row, as another page's link,
         // or the same for another place, are new work (StartSaid.underWayAgain).
         const asked = { key, words: said, on: elsewhere };
-        const running = (sprouting === "" ? []
-            : [Object.assign({ key: sprouting }, sproutGiven)]).concat(openings);
-        const same = StartSaid.underWayAgain(running, asked);
+        const same = StartSaid.underWayAgain(sproutsUnderWay(), asked);
         if (same !== null) {
             sproutHeardAgain(same);
             console.info("launcher: new work's Return was heard again while it starts");
@@ -2483,6 +2491,9 @@ Provider {
             sproutJournal(`new work held ${one.held} on ${one.machine} wasn't up in time`);
             // "Lost" answers its "still coming up", as an up word does.
             takeBack(one);
+            // Lost, it no longer counts as made, so the same words again start
+            // it rather than say it started and Go To opens it.
+            sproutsMade = StartSaid.forgot(sproutsMade, one);
         });
         const told = late.concat(stood.gone.map(one => ({ one, text: said(one, "lost") })));
         stood.up.forEach(one => {

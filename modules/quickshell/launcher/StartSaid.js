@@ -56,6 +56,13 @@ function made(list, given, how, now) {
     return kept.concat([start]).slice(-MOST_MADE);
 }
 
+// The starts made (`list`) without `lost` ({ key, words, on }), one whose
+// session never came up: the same words given again start it once more,
+// rather than say it started and Go To opens it.
+function forgot(list, lost) {
+    return (Array.isArray(list) ? list : []).filter(one => !alike(one, lost));
+}
+
 // The start among `list` that `asked` ({ key, words, on }) at `now` makes
 // again, to be told rather than started: the same act, words and place
 // (alike), within AGAIN_MS, unless he was told of it between HEARD_MS and
