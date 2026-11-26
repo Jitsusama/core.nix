@@ -35,13 +35,16 @@ hold=$7
 # A step that fails past here, as a write on a full disk, ends the job
 # with what Nix reads emptied in place but for a comment saying so, said
 # once, rather than with the last offer standing: emptying a file in place
-# takes no room.
+# takes no room. Its record of when the Mac was last short is emptied too,
+# so a shortage this look saw but couldn't write down isn't forgotten: the
+# next look finds no record, counts the Mac short, and runs the hold.
 failed() {
   local status=$? when
   [ "${status}" -ne 0 ] || return 0
+  : 2>/dev/null >"${state}/pressed" || true
   if grep -qv '^#' "${offered}" 2>/dev/null; then
-    echo "# withheld by linux-builder-room: it failed, ending ${status}" >"${offered}" ||
-      true
+    printf '%s\n' "# withheld by linux-builder-room: it failed, ending ${status}" \
+      "# linux-builder-room's log says when, as launchd's job names it" >"${offered}" || true
     when=$(date -u +%Y-%m-%dT%H:%M:%SZ) || when=""
     echo "${when} room: the builder isn't offered: it failed, ending ${status}" >&2 || true
   fi
@@ -99,20 +102,28 @@ printf '%s\n' "${swapouts}" >"${state}/swapouts.new"
 mv "${state}/swapouts.new" "${state}/swapouts"
 
 # Short of room now, or within the hold, holds no builder: a comment Nix
-# skips, saying why, for whoever reads the file.
+# skips, saying why, for whoever reads the file, and where to read when,
+# since a build Nix finds no builder for says only that.
 withheld=${why:-the Mac was short of room under ${hold} s ago}
 if [ -z "${why}" ] && [ $((now - pressed)) -ge "${hold}" ]; then
   cp "${line}" "${offered}.new"
 else
-  echo "# withheld by linux-builder-room: ${withheld}" >"${offered}.new"
+  {
+    echo "# withheld by linux-builder-room: ${withheld}"
+    echo "# linux-builder-room's log says when, as launchd's job names it"
+  } >"${offered}.new"
 fi
 
 # Said only when what Nix reads changes, whether it holds the builder or
 # not, so a Mac that stays short says so once. A file not there yet, as
-# at the first look, counts as a change either way.
+# at the first look, counts as a change either way. Said once it's moved
+# into place, so a move that fails says only that it failed.
 was=$(grep -v '^#' "${offered}" 2>/dev/null || true)
 is=$(grep -v '^#' "${offered}.new" || true)
-if [ "${is}" != "${was}" ] || [ ! -e "${offered}" ]; then
+first=""
+[ -e "${offered}" ] || first=yes
+mv "${offered}.new" "${offered}"
+if [ "${is}" != "${was}" ] || [ -n "${first}" ]; then
   when=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   if [ -z "${is}" ]; then
     echo "${when} room: the builder isn't offered: ${withheld}" >&2
@@ -123,4 +134,3 @@ if [ "${is}" != "${was}" ] || [ ! -e "${offered}" ]; then
     echo "${when} room: the builder's line changed, and is offered as it is now" >&2
   fi
 fi
-mv "${offered}.new" "${offered}"

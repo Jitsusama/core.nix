@@ -35,7 +35,7 @@ offered=${PWD}/offered
 # Looks once at the Mac given its share free and swap-outs so far, with 35%
 # as the floor and 600 s as the hold, keeping what it said, how it ended
 # and whether the file Nix reads holds the builder's line, or no builder
-# with only a comment saying why.
+# with only comments saying why and where its log says when.
 look() {
   echo "$1" >"${PWD}/free"
   echo "$2" >"${PWD}/swapouts"
@@ -46,8 +46,9 @@ look() {
   offer=something-else
   if cmp -s "${offered}" "${PWD}/line"; then
     offer=offered
-  elif [[ -s ${offered} ]] &&
-    ! grep -qv '^# withheld by linux-builder-room: ..*$' "${offered}"; then
+  elif [[ -s ${offered} ]] && ! grep -qv '^# ' "${offered}" &&
+    head -n 1 "${offered}" | grep -qx '# withheld by linux-builder-room: ..*' &&
+    grep -qxF "# linux-builder-room's log says when, as launchd's job names it" "${offered}"; then
     offer=withheld
   fi
 }
@@ -59,9 +60,11 @@ fail() {
   echo "room-test: $*; the file held ${offer}, it ended ${ended} and said: ${said}" >&2
   exit 1
 }
-# Fails saying $3 unless the look left the file $1 and said what $2 matches.
+# Fails saying $3 unless the look left the file $1 and said what $2 matches,
+# in one line at most, so a change said twice in a look fails too.
 holds() {
   [[ ${offer} == "$1" ]] || fail "$3"
+  [[ ${said} != *$'\n'* ]] || fail "$3, or said it more than once"
   # shellcheck disable=SC2053 # $2 is a pattern, matched as one.
   [[ ${said} == $2 ]] || fail "$3, or didn't say so as it should"
   [[ -z ${said} || ${said} =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\ room:\  ]] ||
@@ -93,6 +96,8 @@ holds offered "*offered again*" "a Mac at exactly 35% free for the hold wasn't o
 look 50 105
 holds withheld "*isn't offered: 5 pages swapped out" \
   "a Mac at 50% free that swapped out was still offered"
+look 50 105
+holds withheld "" "a Mac that swapped out a look ago was offered before the hold"
 pressed_ago 30
 look 50 105
 holds withheld "" "a Mac that swapped out 30 s ago was offered before the hold"
@@ -108,6 +113,8 @@ holds offered "*offered again*" "a Mac quiet for the hold after swapping wasn't 
 look 50 3
 holds withheld "*isn't offered: the swap-out count started again*" \
   "a swap-out count that started again, as after a restart, wasn't taken as swapping"
+look 50 3
+holds withheld "" "a Mac whose count started again a look ago was offered before the hold"
 
 pressed_ago 601
 look 50 3
@@ -116,6 +123,8 @@ holds offered "*offered again*" \
 look fails 3
 holds withheld "*isn't offered: it couldn't read the Mac's room: its share of memory free" \
   "a sysctl that failed left the builder offered"
+look 50 3
+holds withheld "" "a Mac unread a look ago was offered before the hold"
 pressed_ago 601
 look fails 3
 holds withheld "" "a room still unread was offered, or said again"
@@ -133,6 +142,8 @@ look 50 3
 look 50 3
 holds withheld "*isn't offered: it had no record of the Mac's room yet" \
   "an emptied record of when the Mac was short skipped the hold"
+look 50 3
+holds withheld "" "a Mac with no record a look ago was offered before the hold"
 
 pressed_ago 601
 look 50 3
@@ -140,9 +151,13 @@ pressed_ago -3600
 look 50 3
 holds withheld "*isn't offered: its record of the Mac's room is from later than now" \
   "a record from an hour ahead kept the builder offered"
+look 50 3
+holds withheld "" "a Mac whose record was ahead a look ago was offered before the hold"
 
 # A record it can't write, as on a full disk, ends the job with no builder
-# offered. Root writes anywhere, so the test needs an account that can't.
+# offered, said once however many looks fail, and a shortage that look saw
+# still runs the hold. Root writes anywhere, so the test needs an account
+# that can't.
 pressed_ago 601
 look 50 3
 holds offered "*offered again*" "the builder wasn't offered before a write failed"
@@ -152,11 +167,17 @@ if : 2>/dev/null >"${state}/probe"; then
     "so this tests nothing" >&2
   exit 1
 fi
-look 50 3
-chmod 755 "${state}"
+look 34 3
 failing="isn't offered: it failed, ending ${ended}"
 [[ ${offer} == withheld && ${ended} != 0 && ${said} == *"${failing}" ]] ||
   fail "a record it couldn't write left the builder offered"
+look 50 3
+# bash says the write it refused; room.sh says nothing of its own again.
+[[ ${offer} == withheld && ${ended} != 0 && ${said} != *" room: "* ]] ||
+  fail "a second look that couldn't write left the builder offered, or said it again"
+chmod 755 "${state}"
+look 50 3
+holds withheld "" "a shortage a look couldn't write down was forgotten, skipping the hold"
 
 pressed_ago 601
 look 50 3
