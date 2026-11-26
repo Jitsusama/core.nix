@@ -274,8 +274,11 @@ in
           start = startOf growing "pi-conversation-set-${kind}@";
           proven = growing."pi-conversation-set-${kind}@".Unit.X-HeapGrowthTakenBy or "";
         in
-        lib.hasInfix " '--max-old-space-size=4096' '--heap-growing-percent=30' /" start
-        && lib.hasSuffix "/scripts/pi-host.ts --child" start
+        # The shell before node's words chooses the harness's entry and
+        # ends them with --child (pi-conversations-run-apart), so node's
+        # own words end the command.
+        lib.hasInfix "/scripts/pi-host.mjs; else e=/" start
+        && lib.hasSuffix " '--max-old-space-size=4096' '--heap-growing-percent=30'" start
         && proven == proof
         && builtins.getContext proven == builtins.getContext proof;
       # Whether a unit is there, its command leaves V8 its own growth and it
@@ -288,7 +291,7 @@ in
       # Taken when the realm's conversation holds the percent's word.
       taken =
         realm: percent:
-        lib.hasInfix " '--heap-growing-percent=${toString percent}' /" (
+        lib.hasSuffix " '--heap-growing-percent=${toString percent}'" (
           startOf growing "pi-conversation-${realm}-attended@"
         );
       # Refused when a realm naming it doesn't evaluate at all: each is a

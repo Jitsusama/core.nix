@@ -404,27 +404,6 @@ mod tests {
             Some(100_000),
             0,
         );
-        process(
-            proc.path(),
-            30,
-            &format!("{node}\0{flags}\0/srv/harness/scripts/pi-host.mjs\0--child\0"),
-            Some(500_000),
-            0,
-        );
-        process(
-            proc.path(),
-            31,
-            &format!("{node}\0{flags}\0scripts/pi-host.mjs\0realm\0"),
-            Some(600_000),
-            0,
-        );
-        process(
-            proc.path(),
-            32,
-            &format!("{node}\0scripts/not-pi-host.mjs\0--child\0"),
-            Some(75),
-            0,
-        );
         process(proc.path(), 27, "vim\0scripts/pi-host.ts\0", Some(80), 0);
         process(
             proc.path(),
@@ -449,21 +428,66 @@ mod tests {
         };
         assert_eq!(
             kib("pi-conversation"),
-            vec![100_000, 200_000, 300_000, 500_000],
+            vec![100_000, 200_000, 300_000],
             "each conversation's own process, by the host's program and --child, \
-             either entry, whatever its node is called"
+             whatever its node is called"
         );
         assert_eq!(
             kib("pi-host"),
-            vec![400_000, 600_000, 900_000],
-            "the host, by its program alone, either entry, a --child before it \
-             being node's"
+            vec![400_000, 900_000],
+            "the host, by its program alone, a --child before it being node's"
         );
         assert_eq!(
             seen.len(),
             2,
             "another node program, one named like the host's, or the host's \
              program open in an editor isn't pi: {seen:?}"
+        );
+    }
+
+    #[test]
+    fn a_host_and_its_conversations_started_by_the_mjs_entry_are_found_too() {
+        let proc = tempfile::tempdir().expect("a stand-in /proc");
+        fs::write(proc.path().join("uptime"), "7200.55 14000.10\n").expect("uptime");
+        let node = "/nix/store/y-pi-host-runtime-1.5.0/libexec/pi-host/node";
+        let flags = "--disable-sigusr1\0--max-old-space-size=4096";
+        process(
+            proc.path(),
+            30,
+            &format!("{node}\0{flags}\0/srv/harness/scripts/pi-host.mjs\0--child\0"),
+            Some(500_000),
+            0,
+        );
+        process(
+            proc.path(),
+            31,
+            &format!("{node}\0{flags}\0scripts/pi-host.mjs\0realm\0"),
+            Some(600_000),
+            0,
+        );
+        process(
+            proc.path(),
+            32,
+            &format!("{node}\0scripts/not-pi-host.mjs\0--child\0"),
+            Some(75),
+            0,
+        );
+        let seen = look(proc.path());
+        let kib = |name: &str| -> Vec<u64> { seen[name].iter().map(|held| held.kib).collect() };
+        assert_eq!(
+            kib("pi-conversation"),
+            vec![500_000],
+            "a conversation's own process, by the .mjs entry and --child"
+        );
+        assert_eq!(
+            kib("pi-host"),
+            vec![600_000],
+            "the host, by the .mjs entry alone"
+        );
+        assert_eq!(
+            seen.len(),
+            2,
+            "a program only named like the .mjs entry isn't pi: {seen:?}"
         );
     }
 
