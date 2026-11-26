@@ -1774,11 +1774,13 @@ Provider {
         [Words.all, provider.weight], startNewWorkMade) : madeBefore("startNewWork")
     function startNewWorkMade() {
         const words = Words.of("agents:start-new-work");
-        const inside = () => [newWorkAct("link", "",
-            Words.name("verb:agents:start-new-work:link"))]
-            .concat(startWheres().map(one => newWorkAct("in", one.folder,
-                Words.name("verb:agents:start-new-work:in").replace("{folder}", () => one.name),
-                one.start)));
+        const inside = () => {
+            provider.askPlaces();
+            return [newWorkAct("link", "", Words.name("verb:agents:start-new-work:link"))]
+                .concat(startWheres().map(one => newWorkAct("in", one.folder,
+                    Words.name("verb:agents:start-new-work:in")
+                        .replace("{folder}", () => one.name), one.start)));
+        };
         return Object.assign(thingRow({
             key: "agents:start-new-work",
             name: Words.name("agents:start-new-work"),
@@ -2107,9 +2109,12 @@ Provider {
         return true;
     }
     // Where Start New Work can begin, as the realm's node last listed them
-    // (the agents daemon's places.rs), asked again each time the launcher
-    // opens, so a zone or checkout made since is there by the next, and read
-    // once as each list comes (Wheres.listable). None until it first
+    // (the agents daemon's places.rs), asked again the first time Start New
+    // Work is stepped into at an opening, so a zone or checkout made since is
+    // there by the next, and read once as each list comes (Wheres.listable).
+    // Never as it opens: a node's 2000 places are some 200 KB for the
+    // shell's thread to read, which every opening paid, For You's among them,
+    // though only Start New Work lists them (25 November). None until it first
     // answers, which leaves the quests' folders; where it can't, the last
     // list stays, why journalled once as each new why comes rather than at
     // every opening (Wheres.heard). One ask is out at a time, so a node
@@ -2120,11 +2125,15 @@ Provider {
     property var startPlaces: []
     property string startPlacesUnlisted: ""
     property bool startPlacesAsking: false
+    // Whether they were asked since the launcher opened, so its rows made
+    // again as the list lands don't ask again.
+    property bool startPlacesAsked: false
     function askPlaces() {
         const daemon = rowsKind ?? null;
-        if (daemon === null || provider.startPlacesAsking)
+        if (daemon === null || provider.startPlacesAsking || provider.startPlacesAsked)
             return;
         provider.startPlacesAsking = true;
+        provider.startPlacesAsked = true;
         daemon.ask({ ask: "places" }, answer => {
             provider.startPlacesAsking = false;
             const heard = Wheres.heard(provider.startPlacesUnlisted, answer);
@@ -2376,7 +2385,7 @@ Provider {
             provider.wrapAhead();
             provider.wrapForTyping();
             if (provider.launcher.open)
-                provider.askPlaces();
+                provider.startPlacesAsked = false;
             // Shut, no drawer shows, so none is watched.
             if (!provider.launcher.open) {
                 provider.drawerWanted = "";

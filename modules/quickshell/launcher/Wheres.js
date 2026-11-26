@@ -33,12 +33,20 @@ const ZONE_NAMED = /^\/\/\S+$/u;
 const NO_WHY = "the agents daemon gave no reason";
 const NO_ANSWER = "the agents daemon isn't answering";
 
+// Printable ASCII, not all spaces, which holds no control, format or blank
+// character, so a line of it is read no further. Each opening asks for the places
+// (Agents.qml's askPlaces), and reading each of a node's 2000 a character
+// at a time held the shell 5 to 7 s after the opening (Joel's journal,
+// 25 November).
+const PRINTABLE = /^[ -~]*[!-~][ -~]*$/u;
+
 // Whether `text` is a plain, non-empty line of at most MOST_NAMED
 // characters: nothing a control, format or blank character would hide,
 // turn or join.
 function plain(text) {
-    return typeof text === "string" && text.trim() !== "" && text.length <= MOST_NAMED
-        && Sprouting.uncontrolled(text) === text && Sprouting.unformatted(text) === text;
+    return typeof text === "string" && text.length <= MOST_NAMED && (PRINTABLE.test(text)
+        || (text.trim() !== "" && Sprouting.uncontrolled(text) === text
+            && Sprouting.unformatted(text) === text));
 }
 
 // The node's `places` that can be listed, read once as they come
@@ -64,11 +72,17 @@ function heard(unlisted, answer) {
     return { places: null, unlisted: why, journal: why === unlisted ? null : why };
 }
 
-// Whether the places `now` differ from those listed `before`, so a list
-// landing while Joel is inside Start New Work draws its rows again
-// (Agents.qml's askPlaces) and one the same as the last costs nothing.
+// What of a place its rows are made of (wheres).
+const READ = ["folder", "name", "kind", "out"];
+
+// Whether the places `now` differ from those listed `before` in what their
+// rows are made of, so a list landing while Joel is inside Start New Work
+// draws its rows again (Agents.qml's askPlaces) and one the same as the
+// last costs little: compared field by field, never written out whole,
+// which took 66 ms of the shell's thread over 2000 places.
 function differs(before, now) {
-    return JSON.stringify(before) !== JSON.stringify(now);
+    return before.length !== now.length
+        || now.some((one, at) => READ.some(field => before[at][field] !== one[field]));
 }
 
 // The checkout of the node's `checkouts` a `folder` is in, the innermost,
