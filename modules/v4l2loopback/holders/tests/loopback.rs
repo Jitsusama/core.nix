@@ -3,14 +3,21 @@
 //! only then is the run ready; a trouble is the run's, not the step's, so
 //! it's said once whether the nobody or the watch of a camera met it; and
 //! the node a camera's watch couldn't say in `.devices/` is said once it
-//! can be, its trouble said once, and only then is the run ready.
+//! can be, its trouble said once, and only then is the run ready; and as
+//! its camera goes, a node file it couldn't remove is tried again.
 
 use std::fs::{self, File, Permissions};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::thread::sleep;
 use std::time::Duration;
+
+/// Held by each watch while it runs, so the tests run one at a time: a
+/// test holding /dev/random would make another's watch look, and do for
+/// it what its timer should.
+static TURN: Mutex<()> = Mutex::new(());
 
 /// A watch on a loopback, its file in a folder of its own, its log and
 /// complaints in files beside it.
@@ -18,6 +25,7 @@ struct Watch {
     root: PathBuf,
     folder: PathBuf,
     program: Child,
+    _turn: MutexGuard<'static, ()>,
 }
 
 impl Watch {
@@ -42,9 +50,22 @@ impl Watch {
         })
     }
 
+    /// Starts the watch on a camera of the test's own, a file it can
+    /// remove, as a relay's node goes when its camera does.
+    fn owned(name: &str) -> Self {
+        let camera = Self::root(name).join("camera");
+        Self::started(name, camera.to_str().unwrap(), |folder| {
+            fs::write(folder.parent().unwrap().join("camera"), "").unwrap();
+        })
+    }
+
+    fn root(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("holders-loopback-{name}-{}", std::process::id()))
+    }
+
     fn started(name: &str, node: &str, before: impl FnOnce(&Path)) -> Self {
-        let root =
-            std::env::temp_dir().join(format!("holders-loopback-{name}-{}", std::process::id()));
+        let turn = TURN.lock().unwrap_or_else(PoisonError::into_inner);
+        let root = Self::root(name);
         let _ = fs::remove_dir_all(&root);
         let folder = root.join("camera-holders");
         fs::create_dir_all(&folder).unwrap();
@@ -64,6 +85,7 @@ impl Watch {
             root,
             folder,
             program,
+            _turn: turn,
         }
     }
 
@@ -75,9 +97,16 @@ impl Watch {
         self.folder.join(".devices/Stand-in")
     }
 
-    /// Whether `.devices/` says the camera is the node it watches.
+    /// Whether `.devices/` says the camera is /dev/random.
     fn named(&self) -> bool {
-        let node = fs::canonicalize("/dev/random").unwrap();
+        self.names("/dev/random")
+    }
+
+    /// Whether `.devices/` says the camera is the node given.
+    fn names(&self, node: impl AsRef<Path>) -> bool {
+        let Ok(node) = fs::canonicalize(node) else {
+            return false;
+        };
         fs::read_to_string(self.device()).is_ok_and(|said| said == format!("{}\n", node.display()))
     }
 
@@ -100,15 +129,21 @@ impl Watch {
         fs::read_to_string(self.root.join(name)).unwrap_or_default()
     }
 
-    /// Waits up to five seconds for what's asked of the watch.
+    /// Waits up to twenty seconds for what's asked of the watch: each look
+    /// reads every process's open files first, which on a machine running
+    /// thousands of them under load has taken past five.
     fn until(&self, wanted: impl Fn(&Self) -> bool, what: &str) {
-        for _ in 0..100 {
+        for _ in 0..400 {
             if wanted(self) {
                 return;
             }
             sleep(Duration::from_millis(50));
         }
-        panic!("{what}: it complained {:?}", self.read("complaints"));
+        panic!(
+            "{what}: its file said {:?}, and it complained {:?}",
+            fs::read_to_string(self.file()),
+            self.read("complaints")
+        );
     }
 }
 
@@ -281,5 +316,46 @@ fn a_camera_is_ready_only_once_its_node_is_said() {
         1,
         "a node right on each look was said right again each look: {:?}",
         watch.read("complaints")
+    );
+}
+
+#[test]
+fn a_node_file_it_couldnt_remove_as_its_camera_went_is_tried_again() {
+    let watch = Watch::owned("removed");
+    let camera = watch.root.join("camera");
+    watch.until(
+        |watch| watch.names(&camera),
+        "the camera's node went unsaid",
+    );
+    watch.until(
+        |watch| ready(&watch.read("log")) == 1,
+        "a camera whose files were written wasn't said ready",
+    );
+    // A folder with a file in it where the node file was, so removing it
+    // fails; nothing is owed, so no look writes it again.
+    fs::remove_file(watch.device()).unwrap();
+    fs::create_dir(watch.device()).unwrap();
+    fs::write(watch.device().join("kept"), "").unwrap();
+    fs::remove_file(&camera).unwrap();
+    watch.until(
+        |watch| complaints_of(watch, &watch.device()) == 1,
+        "a node file it couldn't remove went unsaid",
+    );
+    watch.until(
+        |watch| fs::read_to_string(watch.file()).is_ok_and(|said| said.is_empty()),
+        "a camera gone wasn't said held by nobody",
+    );
+    // Past two more of the one-second tries with no camera.
+    sleep(Duration::from_millis(2500));
+    assert_eq!(
+        complaints_of(&watch, &watch.device()),
+        1,
+        "a node file it couldn't remove each try was complained of each try: {:?}",
+        watch.read("complaints")
+    );
+    fs::remove_dir_all(watch.device()).unwrap();
+    watch.until(
+        |watch| right_again(watch, &watch.device()) == 1,
+        "a node file it couldn't remove wasn't tried again",
     );
 }
