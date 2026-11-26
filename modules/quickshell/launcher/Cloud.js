@@ -73,6 +73,66 @@ function offering(offered) {
     return Array.isArray(offered) && offered.length > 0;
 }
 
+// The fields of an offer (heard) that In the Cloud's drawer reads.
+const OFFERED = ["shape", "hourly", "currency"];
+
+// Whether the offers heard `now` differ from those kept `before`: by how
+// many, or by any one's shape, price or currency, so a provider pricing a
+// shape anew is said at once rather than at the shell's next start.
+function differs(before, now) {
+    return before.length !== now.length
+        || now.some((one, at) => OFFERED.some(field => before[at][field] !== one[field]));
+}
+
+// What the offers `kept`, `{ offers, at, unoffered }` as Agents.qml keeps
+// them, become once `answer` comes `now` (heard): `{ offers, at, unoffered,
+// changed, journal }`, `changed` where the offers differ, so Start New
+// Work draws its rows again, and `at` moving only when offers came.
+function answered(kept, answer, now) {
+    const heardNow = heard(kept.unoffered, answer);
+    const came = heardNow.offers !== null;
+    return {
+        offers: came ? heardNow.offers : kept.offers,
+        at: came ? now : kept.at,
+        unoffered: heardNow.unoffered,
+        changed: came && differs(kept.offers, heardNow.offers),
+        journal: heardNow.journal
+    };
+}
+
+// Whether the offers `kept`, `{ asking, at, offers }`, are asked for `now`:
+// never while an ask is out, else once they're stale, and, for a start
+// Returned (`pressed`), whenever none are offered, so a Return refused
+// for want of them always asks again.
+function asksNow(kept, now, pressed) {
+    return !kept.asking && (stale(kept.at, now) || pressed && !offering(kept.offers));
+}
+
+// What a start in the cloud is given as offered: the `offers` heard at
+// `at` where some are offered, or none were, the node answering; else
+// `unoffered`, the why the last ask came back with, even while another is
+// out, so Joel is never told of a wait the last ask already ended; else,
+// nothing heard yet, null (refused).
+function offeredNow(at, offers, unoffered) {
+    if (at > 0 && (offering(offers) || unoffered === "")) {
+        return offers;
+    }
+    return unoffered === "" ? null : unoffered;
+}
+
+// What a start Returned to the cloud is given as offered (offeredNow): it
+// asks first where asksNow says, `askOffers()`, then reads what's kept, `read()`
+// giving `{ asking, at, offers, unoffered }` as it stands, so a daemon
+// that answers at once, as one missing does (Daemon.qml's sent), is said
+// by that answer on this Return rather than the next.
+function returning(read, askOffers, now) {
+    if (asksNow(read(), now, true)) {
+        askOffers();
+    }
+    const kept = read();
+    return offeredNow(kept.at, kept.offers, kept.unoffered);
+}
+
 // Whether what the cloud offers, as last heard at `at`, is to be asked
 // again at `now`: never heard, or kept past OFFERS_KEPT_MS.
 function stale(at, now) {
@@ -144,14 +204,28 @@ function ask(text, place, on, offered) {
 
 // Why the ask for work elsewhere at `place`, `on` saying where with the
 // cloud as last `offered`, was refused when its words weren't: by Start
-// New Work's `words`, the place unnamed, the cloud not taken, else where
-// it starts misnamed.
+// New Work's `words`, the place unnamed, the cloud not heard yet (null
+// offered, as a link's act Returned before the first offers came), the
+// why its last ask came back with no offers (a why offered, offeredNow),
+// none offered by a node that takes the cloud, else where it starts
+// misnamed. With offers offered the cloud refuses nothing, so a refusal
+// then is its words', which Agents asks Sprouting.refused for, and this
+// gives "" rather than a why that isn't so (#6792's fourth round).
 function refused(place, on, offered, words) {
     if (!named(place)) {
         return words?.unnamed ?? "";
     }
-    return onOf(on)?.needs !== undefined && !offering(offered) ? words?.untaken ?? ""
-        : words?.unmachined ?? "";
+    if (onOf(on)?.needs === undefined) {
+        return words?.unmachined ?? "";
+    }
+    if (offered === null) {
+        return words?.unheard ?? "";
+    }
+    if (typeof offered === "string") {
+        // A function, so a `$` in the node's words is said as written.
+        return String(words?.unoffered ?? "").replace("{why}", () => offered);
+    }
+    return offering(offered) ? "" : words?.unprovided ?? "";
 }
 
 // Where a link's `on` says its work starts, as Launcher.qml's newWorkOn

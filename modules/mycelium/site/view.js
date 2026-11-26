@@ -22,7 +22,7 @@
 // holds stand in waits.ts, which this imports as the modules they're built to.
 // A cell's link, and the cell a link or a hash names, are the kit's cell.ts,
 // the one way every site names a cell.
-import { addressIn, cellLink } from "../../local-sites/kit/cell.js";
+import { addressIn, cellLink, isNamed } from "../../local-sites/kit/cell.js";
 import { tell } from "../../local-sites/kit/status.js";
 import { asksOrFinds, cellDoing as cellDoingAt, fedWords, groupDoing as groupDoingAt, sensesDoing, talkLineWords } from "./doing.js";
 import {
@@ -76,7 +76,7 @@ import { grownOf, oneCopyEach } from "./lineage.js";
 import { drawnWidth } from "./lines.js";
 import { durationOf, easedInOut, goneAndBack } from "./motion.js";
 import { shapeOf as shapeOfReading } from "./shape.js";
-import { FULL_WORDS, handedWords, isAddress, LONGEST_WORDS, NO_WORDS, sproutLink } from "./sprout.js";
+import { CLOUD, FULL_WORDS, handedWords, isAddress, isMachine, keptOnStands, LONGEST_WORDS, onWords, sproutLink, unsprouted } from "./sprout.js";
 import { EVERY_TREE_STEP, hasKids as hangsAny, kidsOf, openedTo, rootsOf, rowsOf, rowWords, upOf, walked, worstFirst } from "./outline.js";
 import {
   allCells,
@@ -164,12 +164,18 @@ import {
   const sproutFromLine = document.getElementById("sprout-from-line");
   const sproutFromBox = document.getElementById("sprout-from");
   const sproutFromWords = document.getElementById("sprout-from-words");
+  const sproutOnLine = document.getElementById("sprout-on-line");
+  const sproutOnBox = document.getElementById("sprout-on");
+  const sproutOnWords = document.getElementById("sprout-on-words");
   const sproutGo = document.getElementById("sprout-link");
   const sproutControl = document.getElementById("sprout-control");
   // The cell new work would start from, the one open as its line opened.
   let sproutFrom = null;
-  // The words last handed on and the cell they went from, kept to send
-  // again, and whether the line offers that cell now.
+  // The machine new work would start on, the one whose drawer opened it.
+  let sproutOn = null;
+  // The words last handed on, the cell they went from and the machine
+  // they went to, kept to send again, and whether the line offers those
+  // now.
   let sproutKept = null;
   let sproutKeptFromOffered = false;
   let sproutOpener = null;
@@ -3318,6 +3324,9 @@ import {
       // A basin's stand is named "<basin> basin", which no row is: the space
       // in it is one no machine's name holds, so linkOf offers no link.
       launcherLink("machine", name, "Open It in the Launcher") +
+      // New work starts on it, or on any of the cloud's for a basin's
+      // stand, from the Launcher's Start New Work as any new work does.
+      sproutOnButton(pool ? CLOUD : name, pool ? "Start New Work on the Cloud" : "Start New Work Here") +
       // Its home as a device is the network page, which knows it by name.
       // A sandbox or a basin isn't a device on the home network, so it has
       // no row there.
@@ -3336,16 +3345,19 @@ import {
   // mycelium-link lets through, so a name it would refuse is never offered
   // as a link that does nothing. A cell's is the kit's cellLink, saying the machine it
   // runs on (its host, never the basin it is drawn from) as a notice's
-  // link does; a network's or a machine's name takes more letters.
-  const NETWORK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+  // link does; a network's or a machine's name takes more letters, by the
+  // kit's one rule for a name a link carries.
   const linkOf = (kind, name, machine) => {
     if (kind === "cell") return cellLink(name || "", machine);
-    return NETWORK_NAME.test(name || "") ? `mycelium:${kind}/${name}` : null;
+    return isNamed(name || "") ? `mycelium:${kind}/${name}` : null;
   };
   const launcherLink = (kind, name, words, machine) => {
     const href = linkOf(kind, name, machine);
     return href ? `<p class="led"><a class="inline" href="${esc(href)}">${esc(words)}</a></p>` : "";
   };
+  // A machine's name mycelium-link would refuse is never offered.
+  const sproutOnButton = (on, words) =>
+    isMachine(on) ? `<p class="led"><button type="button" class="inline" data-sprout-on="${esc(on)}">${esc(words)}</button></p>` : "";
 
   const backButton = (label) =>
     `<button type="button" class="back" data-back><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M7 1.5L3 5L7 8.5"/></svg>${esc(label)}</button>`;
@@ -3708,8 +3720,20 @@ import {
     // is there to see too.
     sproutFromLine.title = sproutFrom ? `${short} (${sproutFrom})` : "";
   };
-  // `named` is a drawer's button, which names its own cell.
-  const openSprout = (from, { named = false } = {}) => {
+  // The machine a drawer's Start New Work Here names, offered as the
+  // cell is, with a tick that lets go of it so the work starts where new
+  // work does when none is named.
+  const drawerOn = () => panelBody.querySelector("[data-sprout-on]")?.dataset.sproutOn ?? null;
+  const offerOn = (on, { kept = false } = {}) => {
+    sproutOn = isMachine(on) && (kept || on === drawerOn()) ? on : null;
+    sproutOnLine.hidden = sproutOn === null;
+    sproutOnBox.checked = true;
+    sproutOnWords.textContent = sproutOn ? onWords(sproutOn) : "";
+    sproutOnLine.title = sproutOnWords.textContent;
+  };
+  // `named` is a drawer's button, which names its own cell, or its own
+  // machine as `on`.
+  const openSprout = (from, { named = false, on = null } = {}) => {
     // Asked again while open, it only takes the keys back, so a cleared
     // tick stays cleared, unless a drawer's button names another cell,
     // which it then offers, the keys going back to it on close.
@@ -3719,6 +3743,8 @@ import {
         sproutKeptFromOffered = false;
         if (from === sproutFrom) sproutFromBox.checked = true;
         else offerFrom(from);
+        if (on === sproutOn) sproutOnBox.checked = true;
+        else offerOn(on);
       }
       holdKeysDown();
       sproutInput.focus();
@@ -3727,12 +3753,18 @@ import {
     holdKeysDown();
     sproutOpener = document.activeElement;
     closeFind({ said: false });
-    // Words kept to send again go from the cell they went from while it
-    // is still on the map, unless a drawer's button names its own.
+    // Words kept for a machine that has left the map go with it. Others go
+    // from the cell they went from while it is still on the map, and on
+    // the machine they went to, unless a drawer's button names its own.
+    if (sproutKept && !keptOnStands(sproutKept.on, current?.machines.map((x) => x.name) ?? [])) {
+      sproutKept = null;
+      sproutInput.value = "";
+    }
     const kept = sproutKept?.from;
     sproutKeptFromOffered =
       sproutKept !== null && !named && (kept === null || !!current?.byAddress.has(kept));
     offerFrom(sproutKeptFromOffered ? kept : from, { kept: sproutKeptFromOffered });
+    offerOn(sproutKeptFromOffered ? sproutKept.on : on, { kept: sproutKeptFromOffered });
     trail.inert = true;
     sproutLine.hidden = false;
     sproutControl.setAttribute("aria-expanded", "true");
@@ -3746,7 +3778,12 @@ import {
   // its place; else to the map.
   const sproutBack = () => {
     const address = sproutOpener?.dataset?.sproutFrom;
-    const again = address ? panelBody.querySelector(`[data-sprout-from="${CSS.escape(address)}"]`) : null;
+    const machine = sproutOpener?.dataset?.sproutOn;
+    const again = address
+      ? panelBody.querySelector(`[data-sprout-from="${CSS.escape(address)}"]`)
+      : machine
+        ? panelBody.querySelector(`[data-sprout-on="${CSS.escape(machine)}"]`)
+        : null;
     const stands = sproutOpener?.isConnected && sproutOpener !== document.body && sproutOpener.checkVisibility();
     (stands ? sproutOpener : again || view).focus({ preventScroll: true });
   };
@@ -3765,30 +3802,37 @@ import {
     sproutLine.hidden = true;
     trail.inert = false;
     sproutFrom = null;
+    sproutOn = null;
     sproutControl.setAttribute("aria-expanded", "false");
     if (inLine) sproutBack();
     sproutOpener = null;
     if (said && view.contains(document.activeElement)) where.textContent = "New work closed; nothing was handed on.";
   }
-  const toggleSprout = () => (sproutLine.hidden ? openSprout(chosen?.kind === "cell" ? chosen.id : null) : closeSprout());
+  // The s key and the control open it from what is open now: the cell, or
+  // the machine whose drawer is.
+  const openSproutOnOpen = () => openSprout(chosen?.kind === "cell" ? chosen.id : null, { on: drawerOn() });
+  const toggleSprout = () => (sproutLine.hidden ? openSproutOnOpen() : closeSprout());
   sproutLine.addEventListener("submit", (e) => {
     e.preventDefault();
     const from = sproutFrom !== null && sproutFromBox.checked ? sproutFrom : null;
-    const link = sproutLink(sproutInput.value, from);
-    // No words is said where they go, in the field's own bubble, and once
-    // to a screen reader, until a word is typed.
+    const on = sproutOn !== null && sproutOnBox.checked ? sproutOn : null;
+    const link = sproutLink(sproutInput.value, from, on);
+    // No words, or a machine no link can name, is said where the words go,
+    // in the field's own bubble, and once to a screen reader, until a word
+    // is typed.
     if (!link) {
-      sproutInput.setCustomValidity(NO_WORDS);
+      const why = unsprouted(sproutInput.value, on);
+      sproutInput.setCustomValidity(why);
       sproutInput.reportValidity();
-      where.textContent = NO_WORDS;
+      where.textContent = why;
       return;
     }
     sproutGo.href = link;
     sproutGo.click();
-    sproutKept = { words: sproutInput.value, from };
+    sproutKept = { words: sproutInput.value, from, on };
     const short = from === null ? null : current?.byAddress.get(from)?.short || from;
     closeSprout({ said: false, keep: true });
-    where.textContent = handedWords(short);
+    where.textContent = handedWords(short, on);
   });
   // The field leaves off what would take it past the cap by itself, so
   // that is said, only when something was left off.
@@ -3807,10 +3851,19 @@ import {
     if (sproutKeptFromOffered && sproutInput.value !== sproutKept?.words) {
       sproutKeptFromOffered = false;
       const ticked = sproutFromBox.checked;
+      const onTicked = sproutOnBox.checked;
       offerFrom(chosen?.kind === "cell" ? chosen.id : null);
+      offerOn(drawerOn());
       sproutFromBox.checked = ticked;
+      sproutOnBox.checked = onTicked;
     }
   });
+  // A tick changed changes what Return would send, so why it sent nothing
+  // is said again only at the next Return: unticking a machine no link can
+  // name lets the words go, as its bubble says.
+  for (const box of [sproutFromBox, sproutOnBox]) {
+    box.addEventListener("change", () => sproutInput.setCustomValidity(""));
+  }
   // A key that opens, closes or sends the line does so once, whatever
   // opened it and wherever focus lands: the keys down as it does are
   // held, so a held s types nothing, a held Return sends once and never
@@ -4073,6 +4126,11 @@ import {
     const sprout = e.target.closest("[data-sprout-from]");
     if (sprout) {
       openSprout(sprout.dataset.sproutFrom, { named: true });
+      return;
+    }
+    const sproutHere = e.target.closest("[data-sprout-on]");
+    if (sproutHere) {
+      openSprout(null, { named: true, on: sproutHere.dataset.sproutOn });
       return;
     }
     // The way back to the whole map is the way to Now, as it says.
@@ -5079,7 +5137,7 @@ import {
     keys: () => toggleKeys(),
     find: () => openFind(),
     "close-find": () => closeFind(),
-    sprout: () => openSprout(chosen?.kind === "cell" ? chosen.id : null),
+    sprout: openSproutOnOpen,
     "close-sprout": () => closeSprout(),
     "next-found": () => stepFound(1),
     "found-before": () => stepFound(-1),
@@ -5132,7 +5190,7 @@ import {
     e.preventDefault();
     view.focus();
   });
-  const taps = { "/": openFind, s: () => openSprout(chosen?.kind === "cell" ? chosen.id : null), ".": toggleNow, "?": toggleKeys };
+  const taps = { "/": openFind, s: openSproutOnOpen, ".": toggleNow, "?": toggleKeys };
   // A keycap in the key line does what its key does under a pointer, as
   // the Network's does. It isn't a control of its own: one showing only
   // "/" and named "Find a cell" is named apart from what shows, a voice
