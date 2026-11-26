@@ -63,7 +63,7 @@ KESTREL = "mac:00:00:5e:00:53:20"
 # within the room the budget held before it.
 BUDGET = Budget(files=36, kilobytes=505, elements=335)
 # The lede once net has answered, counting what stands, and while it never has.
-COUNTED = re.compile(r"^\d+ devices? on \d+ eeros? across \d+ floors?, and .+\.$")
+COUNTED = re.compile(r"^[1-9]\d* devices? on \d+ eeros? across \d+ floors?, and .+\.$")
 UNANSWERED = "Net hasn't answered, so no device is drawn."
 
 
