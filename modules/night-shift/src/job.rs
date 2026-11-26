@@ -103,7 +103,7 @@ pub fn parse(args: &[String]) -> Result<Job, String> {
             _ => return Err(format!("{option} isn't an option of run")),
         }
     }
-    job.away.check(&job.stops)?;
+    job.away.check(&job.stops, job.stop_machine)?;
     Ok(job)
 }
 

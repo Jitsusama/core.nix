@@ -37,7 +37,8 @@
 # it, which stopped a repack 19 times on 23 November's night. Away is
 # `away.after` with no key or touch and no call on this machine, as
 # swayidle-away's mark, rhythm's minutes and the calls module say; the
-# moment he's back, the job's own bars hold again (src/away.rs).
+# moment he's back, the job's own bars hold again (src/away.rs). An eased
+# bar only loosens: one under the bar it replaces is refused.
 {
   config,
   lib,
@@ -406,6 +407,16 @@ in
           lib.mapAttrsToList (name: job: {
             assertion = lib.all (slice: job.stops ? ${slice}) (lib.attrNames job.stopsWhileAway);
             message = "night-shift job ${name} eases a slice's bar it has no stop for: give each slice in stopsWhileAway a bar in stops";
+          }) jobs
+          # An eased bar only loosens: one under the job's own would stop
+          # it sooner while Joel is away, which night-shift refuses too.
+          ++ lib.mapAttrsToList (name: job: {
+            assertion =
+              lib.all (slice: !(job.stops ? ${slice}) || job.stopsWhileAway.${slice} >= job.stops.${slice}) (
+                lib.attrNames job.stopsWhileAway
+              )
+              && (job.stopMachineWhileAway == null || job.stopMachineWhileAway >= job.stopMachine);
+            message = "night-shift job ${name} eases a bar to under its own, which would tighten it while Joel is away: give stopsWhileAway and stopMachineWhileAway bars at or over stops and stopMachine";
           }) jobs
           # With nothing keeping the mark, it is never there, and Joel
           # would always read as away, so a job eases only where

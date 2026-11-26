@@ -540,7 +540,10 @@ fn watch(
         if let Some(why) = past {
             say(
                 job,
-                &format!("stopping: {why} (its own {:.2}%)", own_now.avg10),
+                &format!(
+                    "stopping: {why} (its own memory full avg10 {:.2}%)",
+                    own_now.avg10
+                ),
             );
             return None;
         }
@@ -549,8 +552,9 @@ fn watch(
 }
 
 /// Which bar a sample passes first, if any: a watched slice's, then the
-/// machine's memory backstop, then its io bar, each as eased while Joel
-/// is `away`. Each figure read goes on the sample's `line`.
+/// machine's memory backstop, each as eased while Joel is `away`, then
+/// its io bar, which nothing eases. Each figure read goes on the sample's
+/// `line`.
 fn first_past(
     job: &Job,
     pressures: &Places,

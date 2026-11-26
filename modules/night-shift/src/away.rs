@@ -18,7 +18,8 @@
 //! counts as one, and so does a program that won't start or doesn't
 //! answer within `CALL_ANSWERS_WITHIN`, which is stopped. The watch never
 //! waits on it longer than `CALL_WAITED_ON_AT_MOST`: while it hasn't
-//! answered, its last answer holds, or a call before any. Each time a call,
+//! answered, its last answer holds, or a call before any, for that sample
+//! alone: the next looks at it again. Each time a call,
 //! or a probe that can't tell, starts keeping him counted as here, the
 //! run says so once. He's away once neither
 //! has held for `--away-after` seconds. At the start, the last minute he
@@ -106,20 +107,33 @@ impl Away {
     }
 
     /// Whether these bars can hold as given: each eases a slice the job
-    /// watches, and some mark says when he's there.
-    pub fn check(&self, watched: &[(String, f64)]) -> Result<(), String> {
+    /// watches, none is under the bar it eases (`machine` for the
+    /// machine's), and some mark says when he's there.
+    pub fn check(&self, watched: &[(String, f64)], machine: f64) -> Result<(), String> {
         if self.stops.is_empty() && self.stop_machine.is_none() {
             return Ok(());
         }
         if self.mark.is_none() {
             return Err("an eased bar needs --away-mark to tell when Joel is away".into());
         }
-        for (slice, _) in &self.stops {
-            if !watched.iter().any(|(stopped, _)| stopped == slice) {
+        for (slice, eased) in &self.stops {
+            let Some((_, own)) = watched.iter().find(|(stopped, _)| stopped == slice) else {
                 return Err(format!(
                     "--away-stop {slice} eases a bar it hasn't, so give it a --stop too"
                 ));
+            };
+            if eased < own {
+                return Err(format!(
+                    "--away-stop {slice}={eased} is under its --stop of {own}, so it would tighten the bar while Joel is away"
+                ));
             }
+        }
+        if let Some(eased) = self.stop_machine
+            && eased < machine
+        {
+            return Err(format!(
+                "--away-stop-machine {eased} is under --stop-machine {machine}, so it would tighten the bar while Joel is away"
+            ));
         }
         Ok(())
     }
@@ -217,7 +231,12 @@ impl Watch {
             return false;
         }
         if self.on_a_call() {
-            self.here_at = now;
+            // Only an answer counts as his being here: a program still
+            // running counts as a call for this sample alone, so the next
+            // looks at it again and stops it at its bound.
+            if self.asking.is_none() {
+                self.here_at = now;
+            }
             return false;
         }
         true
@@ -362,16 +381,32 @@ mod tests {
     fn an_eased_bar_needs_a_mark_and_a_bar_to_ease() {
         let watched = vec![("app.slice".to_owned(), 1.0)];
         let no_mark = away(&[("--away-stop", "app.slice=50")]);
-        assert!(no_mark.check(&watched).is_err(), "it eased with no mark");
+        assert!(
+            no_mark.check(&watched, 25.0).is_err(),
+            "it eased with no mark"
+        );
         let unwatched = away(&[
             ("--away-mark", "/run/here"),
             ("--away-stop", "session.slice=50"),
         ]);
-        let refused = unwatched.check(&watched).unwrap_err();
+        let refused = unwatched.check(&watched, 25.0).unwrap_err();
         assert!(refused.contains("session.slice"), "{refused}");
         assert!(
-            Away::default().check(&watched).is_ok(),
+            Away::default().check(&watched, 25.0).is_ok(),
             "a job easing nothing was refused"
+        );
+        let tighter_slice = away(&[
+            ("--away-mark", "/run/here"),
+            ("--away-stop", "app.slice=0.5"),
+        ]);
+        let refused = tighter_slice.check(&watched, 25.0).unwrap_err();
+        assert!(refused.contains("tighten"), "{refused}");
+        let tighter_machine = away(&[("--away-mark", "/run/here"), ("--away-stop-machine", "12")]);
+        let refused = tighter_machine.check(&watched, 25.0).unwrap_err();
+        assert!(refused.contains("tighten"), "{refused}");
+        assert!(
+            tighter_machine.check(&watched, 10.0).is_ok(),
+            "a machine bar eased above its own was refused"
         );
     }
 
@@ -432,6 +467,23 @@ mod tests {
             watch.news().as_deref(),
             Some("a call"),
             "a call after none wasn't said again"
+        );
+    }
+
+    #[test]
+    fn a_call_program_still_running_is_looked_at_again_at_the_next_sample() {
+        let mut gone = away(&[("--away-mark", "/run/no-such-mark"), ("--away-after", "60")]);
+        // Answers "no call" only once it has outlasted the watch's wait.
+        gone.call = ["sh", "-c", "sleep 3; exit 1"].map(str::to_owned).to_vec();
+        let mut watch = gone.watch();
+        watch.here_at = SystemTime::now() - Duration::from_secs(120);
+        assert!(
+            !watch.is_away(),
+            "a call program still running didn't count as a call"
+        );
+        assert!(
+            watch.is_away(),
+            "a call program still running wasn't looked at again, so its answer of no call was missed"
         );
     }
 

@@ -2743,8 +2743,8 @@
   night-shift-eases-its-bars-only-while-joel-is-away = ''
     a night job easing its bars while Joel is away tells he is from swayidle-away's mark, rhythm's
     minutes and a call on this machine, their paths left to systemd to expand, gives each eased bar
-    and the wait before one, and is refused where it eases a slice it has no stop for or where
-    nothing in the account keeps the mark
+    and the wait before one, and is refused where it eases a slice it has no stop for, where an
+    eased bar is under its own, or where nothing in the account keeps the mark
   '';
   night-shift-passes-clippy = ''
     clippy finds nothing in night-shift or its tests
