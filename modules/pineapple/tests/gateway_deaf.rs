@@ -225,6 +225,56 @@ fn a_gateway_answering_takes_away_its_unreached_row_so_an_outage_after_is_told_a
 }
 
 #[test]
+fn an_outage_then_one_search_answered_narrows_its_row_to_the_other_rather_than_blanking_it() {
+    let round = |n: u32| AT + u64::from(n) * 30_000;
+    let mut deaf = Deaf::through_gateway();
+    for n in 1..=UNREACHED + 1 {
+        let _ = deaf.heard(Round::Unasked, round(n));
+    }
+    let first = round(UNREACHED + 2);
+    assert_eq!(
+        deaf.heard(Round::Unasked, first),
+        Change::Tell(waits_on_gateway(Deafness::Unreached, first, first)),
+        "unreached, told"
+    );
+    let tag = Round::Partly(Some(Search::Tag));
+    assert_eq!(
+        deaf.heard(tag, round(UNREACHED + 3)),
+        Change::Keep,
+        "one round answering only the phrase leaves the row standing, never blank"
+    );
+    let at = round(UNREACHED + 4);
+    assert_eq!(
+        deaf.heard(tag, at),
+        Change::Tell(waits_on_gateway(Deafness::Unread(Search::Tag), at, at)),
+        "a second narrows it to the tag's, still unheard, as a time of its own"
+    );
+}
+
+#[test]
+fn a_search_left_unasked_is_never_told_as_alone_while_the_gateway_answers_nothing() {
+    let round = |n: u32| AT + u64::from(n) * 30_000;
+    let mut deaf = Deaf::through_gateway();
+    let tag = Round::Partly(Some(Search::Tag));
+    for n in 1..UNREACHED {
+        assert_eq!(deaf.heard(tag, round(n)), Change::Keep, "round {n}");
+    }
+    for n in UNREACHED..=2 * UNREACHED {
+        assert_eq!(
+            deaf.heard(Round::Unasked, round(n)),
+            Change::Keep,
+            "round {n}: with nothing answered, the tag's run isn't told as the phrase heard"
+        );
+    }
+    let at = round(2 * UNREACHED + 1);
+    assert_eq!(
+        deaf.heard(Round::Unasked, at),
+        Change::Tell(waits_on_gateway(Deafness::Unreached, at, at)),
+        "it's told as the gateway not answering"
+    );
+}
+
+#[test]
 fn a_search_left_unasked_alone_counts_on_through_rounds_none_was_answered_in() {
     let round = |n: u32| AT + u64::from(n) * 30_000;
     let mut deaf = Deaf::through_gateway();

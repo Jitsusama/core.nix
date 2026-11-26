@@ -314,8 +314,21 @@ impl Deaf {
     /// unasked, if one. The gateway answered it, so a row saying it's
     /// unreached is taken away, as is one saying only the search it
     /// answered can't be read; a deafness after is a time of its own,
-    /// told anew even where Joel marked that row done.
+    /// told anew even where Joel marked that row done. A row saying it's
+    /// unreached, though, is narrowed to the search still left unasked
+    /// rather than taken away, since that search is still unheard.
     fn answered(&mut self, alone: Option<Search>, at: u64) -> Change {
+        if let Some(search) =
+            alone.filter(|_| self.gateway && self.told == Some(Deafness::Unreached))
+        {
+            let run = match self.alone {
+                Some((last, run)) if last == search => run.saturating_add(1),
+                _ => 1,
+            };
+            let change = self.heard(Round::Deaf(Deafness::Unread(search)), at);
+            self.alone = Some((search, run));
+            return change;
+        }
         let reached = match self.told {
             Some(Deafness::Unreached) => true,
             Some(Deafness::Unread(told)) => alone.is_some_and(|left| left != told),
@@ -337,15 +350,21 @@ impl Deaf {
     /// a run of them is deaf as any cause is, since nothing else hears
     /// Slack while it lasts. A search left unasked alone is left unasked
     /// here too, so its run goes on, and a gateway answering the other
-    /// now and then can't keep it untold.
+    /// now and then can't keep it untold. Once its partner too has gone
+    /// unanswered [`ROUNDS`] in a row, the run only counts: a row saying
+    /// the partner is still heard would mislead while nothing answers.
     fn none_answered(&mut self, at: u64) -> Change {
         self.unasked = self.unasked.saturating_add(1);
         if self.unasked > UNREACHED {
             return self.heard(Round::Deaf(Deafness::Unreached), at);
         }
-        let Some((search, _)) = self.alone else {
+        let Some((search, run)) = self.alone else {
             return Change::Keep;
         };
+        if self.unasked >= ROUNDS {
+            self.alone = Some((search, run.saturating_add(1)));
+            return Change::Keep;
+        }
         let unasked = self.unasked;
         let change = self.partly(Some(search), at);
         self.unasked = unasked;
