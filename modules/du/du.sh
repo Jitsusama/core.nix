@@ -266,40 +266,17 @@ leave() {
   leaving[${name}]=yes
   names+=("${name}")
 }
-# Sets gone when folder $1 isn't there for du to go into, so du says so:
-# a file stands where it would be, or the nearest step of its path that is
-# there is a file, a link to nothing, or a folder that may be searched. A
-# folder in the way that can't be searched keeps what's below it unknown.
-missing() {
-  local at=$1
-  gone=""
-  if [ -d "${at}" ]; then
-    return 0
-  fi
-  while [ ! -e "${at}" ] && [ ! -L "${at}" ]; do
-    if [[ ${at} != */* ]]; then
-      at=.
-      break
-    fi
-    at=${at%/*}
-    at=${at:-/}
-  done
-  if [ ! -d "${at}" ] || [ -x "${at}" ]; then
-    gone=yes
-  fi
-}
 # Sets real to start `path`'s real path, by its folder's with its name,
-# clearing judged when that folder can't be entered; with no folder there,
-# real is left empty, for du to say.
+# clearing judged when that folder can't be entered. One that isn't there
+# is cleared too: a folder that can't be searched hides whether what's
+# below it is there, and reads as missing all the same, so the two can't
+# be told apart without going where a guarded folder may be.
 by_folder() {
   local folder=.
   [[ ${path} != */* ]] || folder=${path%/*}
   real "${folder:-/}"
   [ -z "${real}" ] || real=${real%/}/${path##*/}
-  if [ -z "${real}" ]; then
-    missing "${folder:-/}"
-    [ -n "${gone}" ] || judged=""
-  fi
+  [ -n "${real}" ] || judged=""
 }
 # Sets real to the real path of link $1, which du follows, by the links it
 # leads through: each is read as written, from the real folder holding it,
@@ -359,8 +336,9 @@ for path in "${starts[@]}"; do
   # with its name, as is a link's that du doesn't follow, since it counts
   # the link alone, and one -H or a / after it follows by where it leads. A
   # link is told before a folder, since asking whether it's a folder goes
-  # where it leads. One that can't be judged is left out too, said apart;
-  # one that isn't there is du's to say.
+  # where it leads. One that can't be judged, its folder not there or not
+  # to be entered, is left out too, said apart; one alone not there in a
+  # folder that is, is du's to say.
   real=""
   judged=yes
   bare=${path%"${path##*[!/]}"}
@@ -371,7 +349,7 @@ for path in "${starts[@]}"; do
   elif [ -d "${path}" ]; then
     real "${path}"
     [ -n "${real}" ] || judged=""
-  elif [ -e "${path}" ]; then
+  else
     by_folder
   fi
   if [ -z "${judged}" ]; then
