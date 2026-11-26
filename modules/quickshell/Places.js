@@ -73,9 +73,9 @@ function awayOf(at, output, moment, screens) {
     if (output !== undefined && !(at.screen && screens[output] === "")) {
         return null;
     }
-    const lefts = twinsOf(at, moment).filter(one => !screens[one]);
-    const heard = Object.assign({}, screens, ...lefts.map(one => ({ [one]: at.screen })));
     const said = Object.keys(screens).filter(name => screens[name]);
+    const lefts = twinsOf(at, moment).filter(one => !said.includes(one));
+    const heard = Object.assign({}, screens, ...lefts.map(one => ({ [one]: at.screen })));
     const others = othersAt(at.output, said, lefts, heard);
     return { screen: at.screen || at.output, workspace: at.workspace, output: at.output, others };
 }
@@ -218,7 +218,7 @@ function wayBack(one, screen, screens, claimed) {
 function othersAt(left, outputs, lefts, screens) {
     const others = {};
     for (const name of outputs.concat(lefts)) {
-        if (name !== left && !(name in others)) {
+        if (name !== left && !Object.keys(others).includes(name)) {
             others[name] = screens?.[name] ?? "";
         }
     }

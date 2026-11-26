@@ -255,11 +255,11 @@ function placedGiven(kept, screens, inUse, moments, before) {
 
 // Where a window kept at `at` (of `moment`, the windows its boot kept) goes back by its kept
 // place, `kept` (Places.js's whereKept, past the twin connectors `given` so far, by the screen
-// `inUse`), and the entry it adds to `given`: givenOn's connector, not the one found, which is
-// last boot's while no screen is said, so its twin's windows aren't kept off a connector by it.
+// `inUse`), and the one entry it adds to `given`, `gives`: givenOn's connector, not the one found,
+// which is last boot's while no screen is said, so its twin's windows aren't kept off it.
 function keptBack(at, moment, screens, given, inUse) {
     const kept = Places.whereKept(at, moment, screens, { given, inUse });
-    return { kept, given: { at, output: givenOn(at.screen, kept, screens) } };
+    return { kept, gives: { at, output: givenOn(at.screen, kept, screens) } };
 }
 
 // Reopen Them All's queue with `more` joined at its end, but for each one

@@ -2356,7 +2356,8 @@ Singleton {
     function noteAway(away, id) {
         if (!away || id === null || id === undefined)
             return;
-        const kept = awayFrom[away.screen] ?? [];
+        // Own keys alone: a place kept on a prototype's name is noted too.
+        const kept = Object.keys(awayFrom).includes(away.screen) ? awayFrom[away.screen] : [];
         if (kept.some(one => one.id === id))
             return;
         const next = Object.assign({}, awayFrom);
@@ -2505,7 +2506,7 @@ Singleton {
         // only one connected now showing its screen (Reopening.js's keptBack).
         const back = Reopening.keptBack(at, going.kept, there, going.given, inUse);
         const kept = back.kept;
-        going.given.push(back.given);
+        going.given.push(back.gives);
         const output = found.output ?? kept.output ?? inUse;
         const where = found.make ? Object.assign({}, found, { output }) : found;
         const workspace = Niri.workspace(window.workspace_id);
