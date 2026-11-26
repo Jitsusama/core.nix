@@ -1577,12 +1577,14 @@ in
   # in mycelium's words, each need as mycelium reads it from the words
   # `--need` takes, and left out where nothing is said. A need mycelium
   # couldn't read fails here rather than reading as none. The kinds are
-  # read from the locked mycelium's own Need, so one it gains or renames
-  # fails here, and its declaration must take fields it doesn't know, or
-  # a node on the lock would refuse the whole file.
+  # read from the locked mycelium's own Need, so one it gains, loses or
+  # renames fails here, as does a line of it the scan can't read. Its
+  # declaration must take fields it doesn't know, or a node on the lock
+  # would refuse the whole file, and once it reads needs_in, its field
+  # names and its rule's are pinned to those written here.
   mycelium-declares-what-work-needs =
     holds "mycelium-declares-what-work-needs"
-      "What a machine declares work begun in some folders or naming some words needs isn't written in mycelium's words, a cloud need isn't written alone or a kind=value one as its kind keyed to its value, one is written where nothing is said, a kind the locked mycelium's Need has isn't taken, the locked mycelium's declaration refuses fields it doesn't know, or a need mycelium can't match, a rule naming none, or an empty, ~, / or /-ended folder or empty word is taken."
+      "What a machine declares work begun in some folders or naming some words needs isn't written in mycelium's words, a cloud need isn't written alone or a kind=value one as its kind keyed to its value, one is written where nothing is said, the kinds the locked mycelium's Need has, read from a scan failing on any line it can't read, aren't those taken, the locked declaration refuses fields it doesn't know or reads needs_in or its rule by other names, or a need mycelium can't match, a machine no realm could name, a rule naming no folder or word, a folder from ~ or $, with an empty, . or .. part or space at an end, or an empty word is taken."
       (
         let
           rule = {
@@ -1601,19 +1603,67 @@ in
           taken =
             extra:
             (builtins.tryEval (builtins.deepSeq (declaredAs { needsIn = [ (rule // extra) ]; }) true)).success;
-          # Each variant of the locked Need, as its snake_case reads it,
-          # with a value of its kind beside it.
-          enumOf =
-            file: enum:
-            let
-              after = lib.last (lib.splitString "pub enum ${enum} {" (builtins.readFile file));
-              lines = lib.splitString "\n" (lib.head (lib.splitString "\n}" after));
-            in
-            map (line: lib.toLower (lib.head line)) (
-              lib.filter (line: line != null) (map (builtins.match "    ([A-Z][A-Za-z]*)(\\(.*\\))?,") lines)
-            );
           locked = "${self.inputs.mycelium}/src";
-          kinds = enumOf "${locked}/placement.rs" "Need";
+          linesOf = file: lib.splitString "\n" (builtins.readFile "${locked}/${file}");
+          # The attribute and doc lines over item ITEM in LINES, nearest
+          # first, and the lines of its body, or null where it isn't found.
+          item =
+            lines: start:
+            let
+              from = lib.lists.findFirstIndex (line: line == start) null lines;
+              rest = lib.drop (from + 1) lines;
+              to = lib.lists.findFirstIndex (line: line == "}") null rest;
+              before = lib.reverseList (lib.take from lines);
+              unmarked = line: !lib.hasPrefix "#[" line && !lib.hasPrefix "///" line;
+              marks = lib.lists.findFirstIndex unmarked (lib.length before) before;
+            in
+            if from == null || to == null then
+              null
+            else
+              {
+                over = lib.take marks before;
+                body = lib.filter (line: !lib.hasPrefix "    ///" line) (lib.take to rest);
+              };
+          # The variants of enum ENUM in FILE as serde names them: one word
+          # each, lowercased, serde told only RENAMING over it, each plain
+          # or holding one of HOLDS. Any other line there, a variant
+          # renamed, skipped, of two words or holding fields, or no such
+          # enum gives null, so what it can't read fails rather than passing
+          # unread.
+          variantsOf =
+            file: enum: renaming: holds:
+            let
+              found = item (linesOf file) "pub enum ${enum} {";
+              # POSIX refuses an empty group, so a plain enum's pattern has none.
+              plain = "    ([A-Z][a-z]*),";
+              holding = "    ([A-Z][a-z]*)(\\((${holds})\\))?,";
+              variant = builtins.match (if holds == null then plain else holding);
+              serde = lib.filter (lib.hasPrefix "#[serde") found.over;
+              unread = lib.any (line: variant line == null) found.body;
+            in
+            if found == null || serde != [ renaming ] || unread then
+              null
+            else
+              map (line: lib.toLower (lib.head (variant line))) found.body;
+          # The fields of struct STRUCT in declared.rs by name, or null.
+          fieldsOf =
+            struct:
+            let
+              found = item (linesOf "declared.rs") "pub struct ${struct} {";
+            in
+            if found == null then
+              null
+            else
+              map lib.head (
+                lib.filter (field: field != null) (
+                  map (builtins.match "    pub ([a-z_][a-z0-9_]*): .*,") found.body
+                )
+              );
+          declaredOver = (item (linesOf "declared.rs") "pub struct Declared {").over or null;
+          rules = fieldsOf "NeedsIn";
+          kinds =
+            variantsOf "placement.rs" "Need" "#[serde(rename_all = \"snake_case\")]"
+              "String|AcceleratorKind";
           said =
             kind: if kind == "cloud" then kind else "${kind}=${if kind == "accelerator" then "gpu" else "a"}";
         in
@@ -1631,14 +1681,38 @@ in
             ];
           }
         ]
-        && kinds != [ ]
+        # Every kind the type takes, no more and no fewer, and each taken.
+        &&
+          kinds == [
+            "machine"
+            "system"
+            "arch"
+            "reach"
+            "accelerator"
+            "tool"
+            "cloud"
+          ]
         && lib.all (kind: taken { needs = [ (said kind) ]; }) kinds
         &&
-          enumOf "${locked}/facts.rs" "AcceleratorKind" == [
+          variantsOf "facts.rs" "AcceleratorKind" "#[serde(rename_all = \"lowercase\")]" null == [
             "gpu"
             "npu"
           ]
-        && !lib.hasInfix "deny_unknown_fields" (builtins.readFile "${locked}/declared.rs")
+        # A lock from before needs_in takes it unread only while Declared
+        # refuses no field; one with it names it and its rule's fields
+        # as written here, which pins them from the lock that first does.
+        && declaredOver != null
+        && !lib.any (lib.hasInfix "deny_unknown_fields") declaredOver
+        && lib.elem "needs_in" (fieldsOf "Declared") == (rules != null)
+        && (
+          rules == null
+          ||
+            rules == [
+              "folders"
+              "words"
+              "needs"
+            ]
+        )
         && !((declared linux) ? needs_in)
         && taken { }
         && taken { words = [ ]; }
@@ -1654,6 +1728,20 @@ in
         && !taken { needs = [ "reach=Inner" ]; }
         && !taken { needs = [ "reach=inner net" ]; }
         && !taken { needs = [ "accelerator=tpu" ]; }
+        && taken { needs = [ "reach=office_vpn" ]; }
+        && !taken { needs = [ "machine=box_1" ]; }
+        && !taken { needs = [ "machine=-box" ]; }
+        && !taken { needs = [ "system=Linux" ]; }
+        && taken { folders = [ "/srv/inner" ]; }
+        && taken { folders = [ "src/an inner" ]; }
+        && !taken { folders = [ "." ]; }
+        && !taken { folders = [ "./src/inner" ]; }
+        && !taken { folders = [ "src/../inner" ]; }
+        && !taken { folders = [ "src//inner" ]; }
+        && !taken { folders = [ "src/inner/." ]; }
+        && !taken { folders = [ "$HOME/src/inner" ]; }
+        && !taken { folders = [ "src/$HOME" ]; }
+        && !taken { folders = [ " src/inner" ]; }
         && !taken { needs = [ ]; }
         && !taken { folders = [ "" ]; }
         && !taken { folders = [ "~/src/inner" ]; }
