@@ -3,6 +3,7 @@
 //! the run that sends the card may keep the hour or owe anyone its drag,
 //! since a look by hand, missing the timer's checkouts, reads differently.
 
+use std::fmt::Write;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -267,11 +268,13 @@ fn a_last_hour_that_wont_read_is_said() {
 fn what_an_hour_saw_of_the_asks_guards_the_next() {
     let account = account();
     let asks = account.path().join("state/mission/asks.jsonl");
-    let records: String = (1..=4)
-        .map(|day| {
-            format!("{{\"at\":\"2026-11-1{day}T10:00:00-05:00\",\"words\":\"ask {day}\"}}\n")
-        })
-        .collect();
+    let records = (1..=4).fold(String::new(), |mut text, day| {
+        let _ = writeln!(
+            text,
+            "{{\"at\":\"2026-11-1{day}T10:00:00-05:00\",\"words\":\"ask {day}\"}}"
+        );
+        text
+    });
     fs::write(&asks, records).expect("the asks list");
     let ran = hour(account.path(), &["--to", "WCJQSG"]);
     let said = String::from_utf8_lossy(&ran.stderr);
