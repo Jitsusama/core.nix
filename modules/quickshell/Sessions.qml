@@ -2690,8 +2690,13 @@ Singleton {
                 unhosted(session, named === "" ? "unnamed" : "hosted");
                 return false;
             }
-            if (disowned(named, session) || heldBack(session.address, named, session))
+            if (disowned(named, session))
                 return false;
+            // One whose viewer was asked for moments ago is already
+            // coming, said "opening", so it counts as opened, as attach's
+            // second ask does.
+            if (heldBack(session.address, named, session))
+                return true;
             const opened = view(session, root.goesTo(session), true);
             // Its own asked for, whose window holds its name is said,
             // so a stray window is seen at the press. One held back is
