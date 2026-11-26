@@ -332,11 +332,15 @@ QtObject {
         // last cell's.
         const shownAgain = [
             ["a row under no heading waits", "#A=a1 a1", "#A=a1 a1 look later", "#A a1", 2],
-            // The heading closing For You's cells holds none, so what comes
-            // after it stands under no heading (Now.qml's cellsClosed), and
-            // a row arriving there reads as no cell's, so comes in.
+            // The heading closing For You's cells holds none (Now.qml's
+            // cellsClosed), so it changes nothing of what comes after it:
+            // To Look At stands under no heading either way, and a row
+            // arriving past it reads as no cell's, so comes in, with the
+            // closer or without it.
             ["a row past the heading closing the cells comes in", "#A=a1 a1 #K= look",
                 "#A=a1 a1 #K= look later", "#A a1 #K look later", 0],
+            ["as it does past To Look At with no closer", "#A=a1 a1 look",
+                "#A=a1 a1 look later", "#A a1 look later", 0],
             ["and that heading comes only with the list made again", "#A=a1 a1 look",
                 "#A=a1 a1 #K= look", "#A a1 look", 0],
             ["and one above every heading", "#A=a1 a1", "x #A=a1 a1", "#A a1", 1],
@@ -531,13 +535,24 @@ QtObject {
                 + `${steadiedList.waiting}, standing "${readHeaded(standingList.rows)}" with `
                 + `${standingList.waiting}, found "${readHeaded(foundList.rows)}" with `
                 + `${foundList.waiting}`);
-        // Held still with a row shown that waits unseen, as one Return acted
-        // on may be, the rows held are those the rows shown put back, so a
-        // cell's new row waits too, rather than slip in among them.
-        const heldUnseen = Steady.held(lateStep, underHeadings("#A=a1,a2 a1 a2 look"), id);
+        // Held still while the step's rows carry one kept unseen, as visual
+        // meets them (Held.js's kept puts it there, never among the rows
+        // shown), the rows held are those shown, so it waits, and a cell's
+        // new row waits beside it rather than slip in among them.
+        const heldUnseen = Steady.held(underHeadings("#A=a1 a1"),
+            Steady.kept(underHeadings("#A=a1 a1"), underHeadings("#A=a1,a2 a1 a2 look"), id),
+            id);
         if (readHeaded(heldUnseen.rows) !== "#A a1" || heldUnseen.waiting !== 2)
-            failures.push(`held, a row shown that waits unseen: `
+            failures.push(`held, a row the step keeps unseen: `
                 + `"${readHeaded(heldUnseen.rows)}" with ${heldUnseen.waiting} waiting`);
+        // Of those, the row of no cell still waits once the hold ends, as a
+        // refresh withholds it, so only the cell's new row is the end's to
+        // bring in (Launcher.qml's waitingLate); a refresh says the same.
+        const lateRefresh = Steady.refreshed(underHeadings("#A=a1 a1"),
+            underHeadings("#A=a1 a1 look"), id);
+        if (heldUnseen.late !== 1 || lateRefresh.late !== lateRefresh.waiting)
+            failures.push(`what waits late: held ${heldUnseen.late}, refreshed `
+                + `${lateRefresh.late} of ${lateRefresh.waiting}`);
         // A row's id may name what every object has, and is kept as any.
         const ownNames = Steady.refreshed(underHeadings("a1 constructor"),
             underHeadings("a1 constructor __proto__ toString"), id);

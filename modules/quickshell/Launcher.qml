@@ -421,6 +421,7 @@ Scope {
         // Said once the rows are in, so a source that throws before leaves
         // the foot's count beside the rows it counts.
         waitingRows = steady?.waiting ?? 0;
+        waitingLate = steady?.late ?? 0;
         const selectingAt = KeyTimes.now();
         const drawerPutting = drawerJoining;
         // An answer only started gives way to a name that starts the same,
@@ -5447,10 +5448,15 @@ Scope {
     readonly property bool holdingRows: open && (visual || pendingSaid !== ""
         || commanding !== null)
     property int waitingRows: 0
+    // Of those, how many wait to be shown afresh, which a mode's end
+    // won't bring in, so it shows the list again only while any other
+    // waits: with only those, each V, d or : ending in For You searched it
+    // all again to end as it was.
+    property int waitingLate: 0
     readonly property string waitingSaid: waitingRows === 0 ? ""
         : (Words.field.waiting ?? "").replace("{count}", String(waitingRows))
     onHoldingRowsChanged: {
-        if (!holdingRows && waitingRows > 0)
+        if (!holdingRows && waitingRows > waitingLate)
             reshow(held.length);
     }
 
@@ -7166,6 +7172,7 @@ Scope {
             answer = null;
             current = 0;
             waitingRows = 0;
+            waitingLate = 0;
             return;
         }
         // A category's word and a space step into it, unless a name goes on
@@ -7215,8 +7222,10 @@ Scope {
                 : seenHere(inCategory(letters));
             const foundAt = Date.now();
             compose(!steadying);
-            if (!steadying || ordering)
+            if (!steadying || ordering) {
                 waitingRows = standing.waiting;
+                waitingLate = standing.waiting;
+            }
             if (steadying)
                 return;
             if (backRow() < 0)
@@ -7288,6 +7297,7 @@ Scope {
                 const steady = ordering ? null : steadied(unheaded(found));
                 matches = unheaded(live(steady?.rows ?? found));
                 waitingRows = steady?.waiting ?? unseen;
+                waitingLate = steady?.late ?? unseen;
                 if (current === -1 && !lined)
                     current = 0;
                 return;
@@ -7306,6 +7316,7 @@ Scope {
             const puttingAt = KeyTimes.now();
             matches = listedRows;
             waitingRows = unseen;
+            waitingLate = unseen;
             const selectingAt = KeyTimes.now();
             const drawerPutting = drawerJoining;
             // What's typed taken away whole leaves the selection on the row
@@ -11289,6 +11300,7 @@ Scope {
             prompt.unlinked();
             answersLate = null;
             waitingRows = 0;
+            waitingLate = 0;
             seenFound = Object.create(null);
         }
         tallyMarked();

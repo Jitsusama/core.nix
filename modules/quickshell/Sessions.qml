@@ -2716,14 +2716,18 @@ Singleton {
                 "--match", `id:${session.kitty.window}`]);
             return true;
         }
-        if (session.held)
-            return attach(session.held, root.goesTo(session));
+        // One held where nothing here holds sessions to attach, as on a
+        // machine in no realm, is said too, never left a press that opens
+        // nothing.
+        if (session.held && attach(session.held, root.goesTo(session)))
+            return true;
         unopened(session);
         return false;
     }
     // A session here in no window, kitty or holder the shell can reach, as
-    // pi run in another terminal is, which Go To can't open: said, never
-    // a press that does nothing.
+    // pi run in another terminal is, or one held while nothing here holds
+    // sessions, which Go To can't open: said, never a press that does
+    // nothing.
     signal unopened(var session)
 
     // Where Go To opens a new window of a session, focused, since Joel asked

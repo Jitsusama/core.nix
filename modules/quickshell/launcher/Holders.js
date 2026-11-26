@@ -19,9 +19,14 @@ const WORKTREE_PREFIX = /^worktree-/;
 function owners(sessions, holder) {
     const owner = holder.owner ?? {};
     const path = holder.path ?? "";
-    const loaded = one => one.presence?.questInfo?.id ?? one.presence?.quest ?? null;
-    const onQuest = one => (Array.isArray(one.presence?.owns) ? one.presence.owns : [])
-        .includes(owner.name) || loaded(one) === owner.name;
+    // Read as Looks.js's loadedBy and ownedBy read them: a quest it owns
+    // is an id, "QEST-" and more, and a name that's no string is none.
+    const text = value => typeof value === "string" ? value : undefined;
+    const loaded = one => text(one.presence?.questInfo?.id) ?? text(one.presence?.quest) ?? "";
+    const owned = one => (Array.isArray(one.presence?.owns) ? one.presence.owns : [])
+        .filter(id => typeof id === "string" && id.startsWith("QEST-"));
+    const quest = text(owner.name) ?? "";
+    const onQuest = one => quest !== "" && (owned(one).includes(quest) || loaded(one) === quest);
     const inside = folder => typeof folder === "string" && path !== ""
         && (folder === path || folder.startsWith(`${path}/`));
     const owns = owner.kind === "quest" ? onQuest

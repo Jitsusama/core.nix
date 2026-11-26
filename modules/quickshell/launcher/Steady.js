@@ -44,10 +44,10 @@ function kept(shown, now, id) {
 
 // The rows as kept lays them, but for the new ones that wait unseen, and
 // how many, counted in the foot as "1 new" (Launcher.qml's waitingRows):
-// { rows, waiting }.
+// { rows, waiting, late }, each that waits late, as held says it.
 function refreshed(shown, now, id) {
     const again = LaidAgain.laidAgain(shown, now, id, true);
-    return { rows: again.lit(again.rows), waiting: again.late };
+    return { rows: again.lit(again.rows), waiting: again.late, late: again.late };
 }
 
 // A held step's rows as kept lays them, listed as they stand, as a key
@@ -101,9 +101,11 @@ function seenAmong(rows, found, id) {
 // The rows shown, held still as kept holds them, with no new one among
 // them: while visual, a pending operator or the command line holds the
 // rows, what arrives waits, counted, and comes in at the end once it ends
-// (VKCF3Z's spec). { rows, waiting }. A heading is never a row, so none
-// is counted among what waits; what waits to be shown afresh is. A
-// heading said again is dimmed by the rows held, not by one that waits.
+// (VKCF3Z's spec). { rows, waiting, late }. A heading is never a row, so
+// none is counted among what waits; what waits to be shown afresh is, and
+// `late` says how many of those, as a refresh still withholds them, the
+// hold's end won't bring in. A heading said again is dimmed by the rows
+// held, not by one that waits.
 function held(shown, now, id) {
     const again = LaidAgain.laidAgain(shown, now, id, true);
     // Lit from the first, as `lit` knows each row by its place; what was
@@ -111,7 +113,8 @@ function held(shown, now, id) {
     const ends = again.raised + again.putBack;
     return { rows: again.lit(again.rows.slice(0, ends)).slice(again.raised),
         waiting: again.raised
-            + again.rows.slice(ends).filter(row => row.heading !== true).length + again.late };
+            + again.rows.slice(ends).filter(row => row.heading !== true).length + again.late,
+        late: again.late };
 }
 
 // The rows without those that left since they were shown, as a key makes
