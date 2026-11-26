@@ -3542,6 +3542,25 @@
     keep a copy for each folder, so a pairing made in one folder never reaches another; a reload,
     and a moved link, load afresh, and a load begun before a reload caches nothing
   '';
+  pi-hosted-shares-keyed-modules = ''
+    pi built with the host's patches, applied exactly, evaluates each module a package declaring
+    its per-session state keyed reaches once for all of its extensions, while another keyed package
+    and each extension of an unkeyed one evaluate their own, and puts none in Node's module cache;
+    a reload or a moved link reads the files afresh, a load begun before a reload hands a later
+    load nothing, loads take turns, a reload or a moved link lets go of loads queued behind one
+    that never ends, which evaluate afresh what the package finished, keeping none it let go of
+    for the copy it moved to, and a turn held too long lets loads go on without it, sharing only
+    what the package finished and keeping every factory, until it ends and loads wait again;
+    a failed load's retry evaluates afresh every module, however deep, that the failed load
+    evaluated and none another extension finished, and is shared after; an import made as an
+    extension runs is given only finished modules, so one that threw, or whose throw its load
+    caught, is evaluated afresh by its own import or require again, a sibling's and a later load,
+    a load and a late import racing each evaluate their own, an import during its own load shares
+    what that load finished, is given part-way what it is still evaluating and fails with it, as
+    does what a failed load's modules import after it, however deep, two late imports of one
+    module at once share one evaluation, and a builtin, a data URL, JSON and a module jiti leaves
+    to Node are jiti's own, evaluated no second time
+  '';
   pi-hosted-keeps-each-conversations-keys = ''
     pi built with the host's patches, applied exactly, marks a model runtime that reads keys and
     headers through an auth context, gives each runtime the key, provider headers, model headers
