@@ -224,10 +224,12 @@ fn logs_of(logs: &Path, sessions: &BTreeSet<String>) -> Vec<(String, PathBuf)> {
 /// are parsed, since the log holds far more than what it said, and the
 /// reading starts near `from`. An assistant entry with no time to read,
 /// or a line holding the assistant's words that isn't whole before the
-/// log's last, leaves the log unread, unless the next line with a time
-/// is from by `from`: entries are in time order, so the torn one was
-/// too, and a log torn by a crash and then resumed is unread for a day
-/// at most, not for good.
+/// log's last, leaves the log unread, unless the next message with a
+/// time is from by `from`: messages are written in time order, so the
+/// torn one was too, and a log torn by a crash and then resumed is unread
+/// for a day at most, not for good. Only a message dates it, since a
+/// session's header or an entry carried from another log may hold an
+/// older time than the line before it.
 fn said_in(log: &Path, from: i64, to: i64) -> io::Result<Vec<Said>> {
     let mut file = File::open(log)?;
     let start = start_of(&mut file, from)?;
@@ -248,7 +250,8 @@ fn said_in(log: &Path, from: i64, to: i64) -> io::Result<Vec<Said>> {
         let text = String::from_utf8_lossy(&line);
         if torn {
             let next = serde_json::from_str::<Value>(&text).ok();
-            match next.and_then(|entry| seconds(&entry["timestamp"])) {
+            let message = next.filter(|entry| entry["type"] == "message");
+            match message.and_then(|entry| seconds(&entry["timestamp"])) {
                 Some(at) if at <= from => (torn, after) = (false, false),
                 Some(_) => {
                     return Err(io::Error::other("a line of the assistant's isn't whole"));

@@ -525,6 +525,24 @@ fn a_torn_line_from_before_the_day_is_passed_over_once_a_later_line_dates_it() {
 }
 
 #[test]
+fn a_torn_line_amid_the_day_isnt_dated_by_an_older_entry_that_isnt_a_message() {
+    let root = tempfile::tempdir().expect("a scratch folder");
+    let log = root.path().join(LOG);
+    let header = json!({"type": "session", "timestamp": iso(NOW - 3 * DAY)});
+    let resumed = [
+        entry(NOW - 90, "First."),
+        "{\"assistant\": torn".to_owned(),
+        header.to_string(),
+        entry(NOW - 30, "Last."),
+    ];
+    fs::write(&log, resumed.join("\n")).expect("the log is written");
+    assert!(
+        said_in(&log, NOW - DAY, NOW).is_err(),
+        "a session header's older time dated a torn line amid the day"
+    );
+}
+
+#[test]
 fn a_message_sent_before_citations_reach_backs_nothing() {
     let root = tempfile::tempdir().expect("a scratch folder");
     machine(root.path(), NOW - CITES_LAST - 60);
