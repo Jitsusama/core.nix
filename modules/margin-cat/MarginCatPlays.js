@@ -200,7 +200,8 @@ function next(lively, draw, last, more) {
 function handed(was, beat, taken, now) {
     const refusedAt = was.answers && !taken && was.refusedAt === null ? now : was.refusedAt;
     const spent = was.answers && (taken || now - refusedAt >= REFUSED_FOR);
-    const rests = taken && RESTS_BETWEEN[beat.play] !== undefined;
+    // Its own plays alone, as Qt's engine has no Object.hasOwn.
+    const rests = taken && Object.keys(RESTS_BETWEEN).includes(beat.play);
     return {
         answers: false,
         asked: spent ? "" : was.asked,

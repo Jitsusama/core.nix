@@ -955,10 +955,21 @@ PanelWindow {
             // puppy fades where it is and the cat sits from where it's got
             // to, never playing on while he types and wanting every tile.
             // With nowhere to walk to, as niri says its column nowhere for
-            // a moment, the visit still ends where it is.
-            if (going?.kind === "puppy")
-                walkFrom(true, null);
-            if (going?.kind === "puppy") {
+            // a moment, the visit still ends where it is. With the keys gone
+            // to another column, it goes back over the window it sat on, and
+            // follow()'s rest sends it on once they rest there, as after any
+            // play, never at once to a column the focus passed through.
+            // Dozing off is still his being away, so the visit plays on.
+            const home = wanted === sat ? there : seat(tile(sat));
+            const cut = going?.kind === "puppy" && window.scene.lively !== "asleep";
+            if (cut && !(wanted !== sat && home !== null && placedAt(home))) {
+                walkTo(true, null, home);
+                if (going !== null && going.kind !== "puppy" && wanted !== sat) {
+                    goingTo = sat;
+                    under = tile(sat);
+                }
+            }
+            if (cut && going?.kind === "puppy") {
                 tell("puppy");
                 halt();
             }
@@ -969,7 +980,7 @@ PanelWindow {
             return;
         }
         if (place === null || column === null || going !== null || resting.running
-            || wanted !== sat || holding)
+            || wanted !== sat || holding || carry !== null)
             return;
         if (to === "play") {
             play(window.scene.playing);
@@ -1265,6 +1276,8 @@ PanelWindow {
             lag = { x: 0, y: 0 };
             say();
         }
+        if (stilled && puppyFades.running && !byHand)
+            goes(puppyFades);
         for (const clock of [walker, mover, yarnFades, puppyFades]) {
             if (stilled && clock.running && !byHand)
                 clock.pause();
@@ -1293,6 +1306,14 @@ PanelWindow {
     // off. It reads the card itself rather than
     // `stilled`, which another handler of the same change may run before.
     function goes(clock: var): void {
+        // Under the card the puppy goes at once, a frame rather than a
+        // fade held at full sight beside his keys till the card closes.
+        if (clock === puppyFades && Launched.up && !byHand) {
+            puppyFades.stop();
+            puppyAt = null;
+            puppyLeft = 1;
+            return;
+        }
         clock.restart();
         if (Launched.up && !byHand) {
             clock.pause();
