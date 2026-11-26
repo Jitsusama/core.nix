@@ -251,9 +251,7 @@ named "${home}"
 # says is left out of what's read. ' -1' and '+-1' are -1, find's own no
 # limit, and zeros before a digit count for nothing however many there are.
 # A number past a long long, 2^64 + 1, is held at its most, and kept in
-# an int, as -1, where wrapping round would make it 1. Kept in an int,
-# 2^32 + 1 is 1, and zeros past a long long's digits are 0, each of which
-# opens no guarded folder, so runs with nothing said.
+# an int, as -1, where wrapping round would make it 1.
 for given in '+3' ' 3' '+ +3' ' -1' '+-1' '0000000000000000000003' '18446744073709551617'; do
   search "${home}" -maxdepth 1 -maxdepth "${given}" -name needle >/dev/null
   if ! grep -qxF "${note}" "${said}"; then
@@ -261,29 +259,6 @@ for given in '+3' ' 3' '+ +3' ' -1' '+-1' '0000000000000000000003' '184467440737
     exit 1
   fi
 done
-for given in '4294967297' '0000000000000000000000'; do
-  search "${home}" -maxdepth 3 -maxdepth "${given}" -name needle >/dev/null
-  if grep -qxF "${note}" "${said}"; then
-    echo "${who} with -maxdepth 3 then '${given}' was pruned: $(<"${said}")" >&2
-    exit 1
-  fi
-done
-# -d is -depth, so a number after either makes a test of depth, which
-# walks as ever and is pruned; and -exec's command ends at a word that
-# starts with ;, so a -mindepth after it is read, as find reads it.
-for given in '-d 2' '-depth 2'; do
-  # shellcheck disable=SC2086 # Each is split into its words, as typed.
-  search "${home}" ${given} -name needle >/dev/null
-  if ! grep -qxF "${note}" "${said}"; then
-    echo "${who} with ${given} wasn't pruned: $(<"${said}")" >&2
-    exit 1
-  fi
-done
-search "${home}" -exec true ';x' -mindepth 3 >/dev/null
-if grep -qxF -e "${note}" -e "${unlisted}" "${said}"; then
-  echo "${who} with -exec ending at ';x' lost the -mindepth after it: $(<"${said}")" >&2
-  exit 1
-fi
 # An action of its own that opens nothing lists each guarded folder it
 # matches once, as it prints, with nothing added: NUL-ended, as -print0 asks.
 found=$(wrapped "${home}" . -type d -print0 2>"${said}" | tr '\n\0' '!\n')
@@ -368,7 +343,10 @@ fi
 # a slashed start named as macOS doubles the slash, and as Linux doesn't;
 # / pruned by both the home folder's names; a depth test, -f, -- and
 # -mindepth 1 pruned; and depth first, as an option or a primary, or a
-# -mindepth past a guarded folder, given as typed.
+# -mindepth past a guarded folder, given as typed. -d is -depth, so a number
+# after it is a depth test too. A command ends at a word starting with ;, or
+# with + after {}, so a -mindepth after either is read; a ; or + inside a
+# word, or a + after anything else, goes on with the command.
 printf '#!%s\nprintf "%%s\\n" "$@"\n' "${BASH}" >"${stand}/find"
 chmod +x "${stand}/find"
 real=${stand}/find
@@ -388,9 +366,12 @@ if ! grep -qxF "/${home#/}/Desktop" <<<"${said//\\/}" \
   exit 1
 fi
 # Each pruned search keeps its options and start first, as typed.
-for args in depth-test f-path dashes shallow option exec-d; do
+for args in depth-test d-test f-path dashes shallow option exec-d semi-inside plus-alone; do
   case ${args} in
     depth-test) lead=("${home}") && given "${home}" -depth 2 -name x ;;
+    d-test) lead=("${home}") && given "${home}" -d 2 -name x ;;
+    semi-inside) lead=("${home}") && given "${home}" -exec true 'x;' -mindepth 3 ';' ;;
+    plus-alone) lead=("${home}") && given "${home}" -exec true +x -mindepth 3 ';' ;;
     f-path) lead=(-f "${home}") && given -f "${home}" -name x ;;
     dashes) lead=(-- "${home}") && given -- "${home}" -name x ;;
     shallow) lead=("${home}") && given "${home}" -mindepth 1 -name x ;;
@@ -414,9 +395,15 @@ for action in -ok -okdir; do
     exit 1
   fi
 done
-for args in depth-primary depth-option deep delete; do
+# Kept in an int, 2^32 + 1 is 1, and zeros past a long long's digits are 0,
+# each of which opens no guarded folder.
+for args in depth-primary depth-option deep delete semi-led plus-led int-wraps zeros; do
   case ${args} in
     depth-primary) given "${home}" -name x -d ;;
+    semi-led) given "${home}" -exec true ';x' -mindepth 3 ;;
+    plus-led) given "${home}" -exec true '{}' +x -mindepth 3 ;;
+    int-wraps) given "${home}" -maxdepth 3 -maxdepth 4294967297 -name x ;;
+    zeros) given "${home}" -maxdepth 3 -maxdepth 0000000000000000000000 -name x ;;
     depth-option) given -d "${home}" -name x ;;
     deep) given "${home}" -mindepth 2 -name x ;;
     delete) given "${home}" -name x -delete ;;

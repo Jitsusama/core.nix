@@ -96,10 +96,11 @@ done
 expression=("${args[@]:at}")
 starts+=(${paths[@]+"${paths[@]}"})
 
-# macOS's -depth followed by a number tests a file's depth and walks as ever;
-# alone, as -d, it goes depth first. find tests nothing above -mindepth, so a
-# guarded folder there is never pruned. A command an -exec runs is its own
-# words, read no further than its ; or {} +, so its -d is never find's. -empty
+# macOS's -d or -depth followed by a number tests a file's depth and walks as
+# ever; alone, either goes depth first. find tests nothing above -mindepth, so
+# a guarded folder there is never pruned. A command an -exec runs is its own
+# words, read no further than a word starting with ;, or with + after {}, so
+# its -d is never find's. -empty
 # reads a folder to test it, and a command given a folder may open it, so
 # either opens a guarded folder it's run on. A primary's operand, such as
 # -name's pattern, is its own word, never a primary, so -name -empty opens
