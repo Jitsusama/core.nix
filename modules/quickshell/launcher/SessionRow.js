@@ -26,43 +26,13 @@ function rankOf(row) {
     return Number.isFinite(rank) ? rank : UNRANKED;
 }
 
-// The acts a running session offers, by their vocabulary's ids, in the
-// order every kind keeps (docs/design.md, the order of actions): what
-// leaves it as it is before what changes it, and what ends it last. Every
-// session on the mesh reads its steer inbox, so each can be talked to,
-// paused, resumed and stopped; one with no window offers no Go To, and
-// only one under way can be stopped. One parked has no process to pause
-// or stop and no window known to go to: it can be woken, or talked to,
-// which wakes it too. None offers Park here: only the daemon's row does,
-// for one it knows runs and isn't paused (standing.rs), since one not yet
-// served may be parked already, and the node wakes a parked session for
-// any steer, so a Park there would wake what it meant to park, and a
-// landing's acts keep no Park (behindActs). Only one here can be closed,
-// last, since the harness ends a session on a close Joel steers it from
-// this machine and drops one a node relays (harness #1023). The daemon
-// serves a session's own row its acts (modules/agents/src/row.rs), and
-// before it's held the row offers only Go To and Talk (fallbackOf); a
-// landing's Talk and Go To ask these for its served state (behindActs). The other
-// states restate standing.rs's rule, where a paused session wanting Joel
-// stands "needs" but is served a paused one's acts.
-function acts(standing, windowed, here) {
-    if (standing === "parked") {
-        return ["wake", "talk"];
-    }
-    const ids = windowed ? ["switch"] : [];
-    ids.push("talk");
-    ids.push(standing === "paused" ? "resume" : "pause");
-    if (standing === "working" || standing === "inLine") {
-        ids.push("stop");
-    }
-    if (here) {
-        ids.push("close");
-    }
-    return ids;
-}
+// Which acts a session's own row offers, and in what order, is the agents
+// daemon's (standing.rs's acts, served on its row by row.rs), so nothing
+// here says it a second way: before its row is held, the shell offers
+// only what can't wake one parked already (fallbackOf).
 
 // The acts a session offers from a row it's behind but isn't its own, as
-// a landing's in For You: Talk and Go To of its own acts, in their order,
+// a landing's in For You: Go To, then Talk, in the order of its own acts,
 // so Joel reaches whoever made the thing from the thing (Joel,
 // 2026-11-16: "i have no way to go from the thing it shows to engaging
 // with the thing working on it"). None steers or ends it, since that row
@@ -70,11 +40,15 @@ function acts(standing, windowed, here) {
 // Close weighs, never changes them. One `asking` a question or a yes has
 // no Talk, as What Needs Me gives none (Now.qml's talkTo): its ask runs
 // until he answers, so words said to it would come after the answer they
-// were meant to shape. Parked, it runs no ask, so Talk stays.
+// were meant to shape. Parked, it runs no ask, so Talk stays, and it has
+// no window known to go to, so no Go To.
 function behindActs(standing, windowed, asking) {
-    const talks = !asking || standing === "parked";
-    return acts(standing, windowed, false)
-        .filter(id => id === "switch" || (id === "talk" && talks));
+    const parked = standing === "parked";
+    const ids = windowed && !parked ? ["switch"] : [];
+    if (!asking || parked) {
+        ids.push("talk");
+    }
+    return ids;
 }
 
 // Whether a session's presence holds an ask open, a question or a yes,
@@ -102,29 +76,29 @@ function known(key) {
     return KNOWN.includes(id) ? id : "";
 }
 
-// The acts Return may fall to when the row names none the shell makes:
-// those that leave a session as it is, or wake it, as Wake is Return for a
-// parked one.
+// The acts Return may fall to when the row names none it lists: those
+// that leave a session as it is, or wake it, as Wake is Return for a
+// parked one, whose list holds it.
 const HARMLESS = ["switch", "talk", "wake"];
 
 // The acts a session's row offers, by their ids, and `marked`, the one its
 // Return does: those its row serves (`rowActs`) that the shell makes, in
 // their order, and its `returns` (modules/agents/src/row.rs), else
-// `fallback`, the shell's own list. A Return the row doesn't list leads
-// it only where it leaves the session as it is, so nothing marks an act
-// Return won't do, nor one `withheld` keeps back. Otherwise, or with no
-// Return the shell makes, Return is the first act that leaves the session
-// as it is, else Talk, put first, never one that steers or ends it,
-// whatever order a newer daemon serves (standing.rs's returns). Its drawer
-// and its step in read the same list.
+// `fallback`, the shell's own list. A Return it doesn't list, which only
+// a daemon out of step with the shell serves (standing.rs gives each
+// Return in its acts), isn't trusted, as Go To on a row with no window or
+// Wake on one running would be: Return is then, as with no Return the
+// shell makes, the first act that leaves the session as it is, else Talk,
+// put first, never one that steers or ends it, whatever order a newer
+// daemon serves. Its drawer and its step in read the same list.
 function offered(rowActs, returns, fallback) {
     const served = (Array.isArray(rowActs) ? rowActs : [])
         .map(one => known(one?.key))
         .filter(id => id !== "");
     const ids = served.length > 0 ? served : fallback.slice();
     const named = known(returns);
-    const trusted = ids.includes(named) || HARMLESS.includes(named) ? named : "";
-    const returning = trusted || (ids.find(id => HARMLESS.includes(id)) ?? "talk");
+    const returning = ids.includes(named) ? named
+        : ids.find(id => HARMLESS.includes(id)) ?? "talk";
     if (!ids.includes(returning)) {
         ids.unshift(returning);
     }
@@ -153,9 +127,19 @@ function drawn(row, windowed, parked) {
 // known, so it gets the same. `withheld` keeps back the rest.
 function fallbackOf(windowed, parked) {
     if (parked) {
-        return acts("parked", windowed, false);
+        return ["wake", "talk"];
     }
     return windowed ? ["switch", "talk"] : ["talk"];
+}
+
+// The addresses of the sessions the shell holds parked (Sessions.parked),
+// upper-cased, each by the address its row is keyed by, so a row asks
+// whether its own session is parked in one lookup, and a parked record
+// naming another session among its aliases speaks for none but its own.
+function parkedSet(parked) {
+    return new Set((Array.isArray(parked) ? parked : [])
+        .map(one => String(one?.address ?? "").toUpperCase())
+        .filter(address => address !== ""));
 }
 
 // The act a served orchestration's row names by `key` that the shell

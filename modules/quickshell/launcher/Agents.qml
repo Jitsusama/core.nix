@@ -538,6 +538,13 @@ Provider {
     // which its Return reads (SessionRow.drawn), so a park or wake the
     // daemon hasn't served yet wraps it again (rowOf).
     readonly property var wrappedParked: ({})
+    // The sessions the shell holds parked, by the address each row is keyed
+    // by, made once a park or wake changes them, so every row laid out asks
+    // in one lookup (SessionRow.parkedSet), not by walking the parked.
+    readonly property var parkedHere: SessionRow.parkedSet(Sessions.parked)
+    function shellParked(address) {
+        return parkedHere.has(String(address).toUpperCase());
+    }
     property int placings: 0
     // Says Recent's records moved, so only Recent is made again.
     property int recentMoves: 0
@@ -654,9 +661,6 @@ Provider {
     // its members, then the closed orchestrators.
     function laidOut() {
         void placings;
-        // A park or wake is read here, so a row whose Return it moves is
-        // wrapped again (wrappedParked).
-        void Sessions.parked;
         const held = rowsKind?.held ?? {};
         const rows = placing.keys.filter(key => !held[key]?.row?.held?.fold)
             .map(key => rowOf(key, held)).filter(row => row !== null);
@@ -728,11 +732,15 @@ Provider {
             return row;
         }
         const address = String(served.row).replace(/^agent:/, "");
-        const parked = Sessions.parkedAs(address) !== null;
+        // A park or wake the shell hears wraps its row again, as it moves
+        // the row's Return (wrappedParked); between a wake's two lists, as
+        // Sessions.relive sets them, the session is in neither for a moment,
+        // so its row keeps its wrap until it's found, not dropped.
+        const parked = shellParked(address);
         if (!(key in wrapped) || wrappedParked[key] !== parked) {
             const session = sessionAt(address);
             if (session === null)
-                return null;
+                return wrapped[key] ?? null;
             wrapped[key] = sessionRow(session, served);
             wrappedFrom[key] = wrapSign(served);
             wrappedParked[key] = parked;
@@ -955,7 +963,7 @@ Provider {
         const place = { depth: served.depth, orchestrates: !!held.orchestrates };
         const said = items => (items ?? []).map(item => item.said).join(" \u00b7 ");
         const returning = SessionRow.drawn(served, windowedOf(session),
-            Sessions.parkedAs(session.address) !== null).marked;
+            shellParked(session.address)).marked;
         const row = member({
             thing: true,
             key: served.row,
@@ -1451,8 +1459,7 @@ Provider {
     // it parked, SessionRow.js's own (SessionRow.drawn).
     function offeredOf(session) {
         const row = rowsKind?.held?.[`row:agents:${session.address}`]?.row ?? null;
-        return SessionRow.drawn(row, windowedOf(session),
-            Sessions.parkedAs(session.address) !== null);
+        return SessionRow.drawn(row, windowedOf(session), shellParked(session.address));
     }
 
     // A session's own acts, in the order its row offers them, each steering
@@ -1596,7 +1603,7 @@ Provider {
         const steered = what => () => {
             const now = current();
             const row = rowsKind?.held?.[`row:agents:${now.address}`]?.row ?? null;
-            const why = SessionRow.withheld(row, what, Sessions.parkedAs(now.address) !== null);
+            const why = SessionRow.withheld(row, what, shellParked(now.address));
             if (why === "") {
                 provider.actOn(now, what);
                 return;

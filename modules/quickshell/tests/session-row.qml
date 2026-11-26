@@ -44,29 +44,8 @@ QtObject {
         // the agents daemon's alone (modules/agents/src/standing.rs), its
         // cases there.
 
-        // A session's acts follow how it stands: one at work or in line can
-        // be stopped, one paused resumed, one parked only woken or talked to, with no
-        // window known to go to. One here closes, last; one elsewhere can't, since its
-        // node's relay of a close is dropped. None offers Park: only the daemon's served
-        // row does, since one not yet served may be parked already and would be woken by
-        // it, as the node wakes a parked session for any steer.
-        const acts = [
-            ["working", true, true, "switch talk pause stop close"],
-            ["working", true, false, "switch talk pause stop"],
-            ["inLine", false, true, "talk pause stop close"],
-            ["listening", true, true, "switch talk pause close"],
-            ["needs", true, false, "switch talk pause"],
-            ["paused", true, true, "switch talk resume close"],
-            ["parked", false, true, "wake talk"],
-            ["off", false, true, "talk pause close"],
-            ["off", true, false, "switch talk pause"]
-        ];
-        for (const [state, windowed, here, want] of acts) {
-            const got = SessionRow.acts(state, windowed, here).join(" ");
-            if (got !== want)
-                failures.push(`the acts of one ${state}${here ? " here" : ""}: "${got}", `
-                    + `not "${want}"`);
-        }
+        // Which acts a session's own row offers is the daemon's, its cases
+        // in standing.rs (a_sessions_acts_follow_how_it_stands).
 
         // A row a session is behind but isn't its own, as a landing's,
         // offers Talk and Go To of its acts, in their order, and none that
@@ -107,8 +86,8 @@ QtObject {
         }
         // A row offers the acts the daemon serves, in their order, and marks
         // the one its Return does, which for one paused is Resume, not its
-        // first; one it doesn't list leads, and with nothing served, the
-        // shell's own list, Return on its first.
+        // first; one it doesn't list isn't trusted, and with nothing served,
+        // the shell's own list, Return on its first harmless act.
         const served = ids => ids.map(id => ({ key: `verb:agent:${id}` }));
         const offers = [
             ["one paused marks Resume", served(["switch", "talk", "resume", "close"]),
@@ -122,8 +101,13 @@ QtObject {
                 "wake talk", "wake"],
             ["its order is the daemon's, not the shell's", served(["talk", "pause"]),
                 "verb:agent:talk", ["switch", "talk", "pause"], "talk pause", "talk"],
-            ["what Return does leads when the row doesn't list it", served(["talk", "pause"]),
-                "verb:agent:switch", ["talk"], "switch talk pause", "switch"],
+            // A Return it doesn't list comes only from a daemon out of step,
+            // so it isn't trusted: Go To on a row with no window, or Wake on
+            // one running, isn't marked, nor anything kept back at the press.
+            ["a Go To Return the row doesn't list isn't marked", served(["talk", "pause"]),
+                "verb:agent:switch", ["talk"], "talk pause", "talk"],
+            ["a Wake Return on a live row isn't marked", served(["switch", "talk", "pause"]),
+                "verb:agent:wake", [], "switch talk pause", "switch"],
             ["its other keys aren't a session's acts",
                 [{ key: "verb:agents:landed:try" }, ...served(["talk"])], "verb:agent:talk", [],
                 "talk", "talk"],
@@ -131,8 +115,6 @@ QtObject {
                 undefined, ["switch", "talk", "pause"], "switch talk pause", "switch"],
             ["nothing served, Return passes over a steer leading", undefined, undefined,
                 ["pause", "talk"], "pause talk", "talk"],
-            // A served Return it doesn't list leads only where it leaves the
-            // session as it is, so nothing it marks is kept back at the press.
             ["a Park Return the row doesn't list isn't marked", served(["talk", "pause"]),
                 "verb:agent:park", [], "talk pause", "talk"],
             ["a Pause Return on a row serving nothing it makes isn't marked",
@@ -141,8 +123,8 @@ QtObject {
             // the shell can't make: they're left out, Return's too.
             ["an act the shell doesn't make is left out", served(["talk", "hush", "pause"]),
                 "verb:agent:talk", [], "talk pause", "talk"],
-            ["a Return the shell doesn't make marks its first", served(["talk", "pause"]),
-                "verb:agent:hush", [], "talk pause", "talk"],
+            ["a Return the shell doesn't make marks its first harmless",
+                served(["pause", "talk"]), "verb:agent:hush", [], "pause talk", "talk"],
             // Return never falls to an act that steers or ends it, whatever
             // order a newer daemon serves.
             ["a Return it doesn't make passes over Park", served(["park", "stop", "talk"]),
@@ -174,6 +156,21 @@ QtObject {
             if (SessionRow.topActOf(key) !== want)
                 failures.push(`top ${key}: "${SessionRow.topActOf(key)}", not "${want}"`);
         }
+        // The shell's parked are known by the address each row is keyed by,
+        // whatever its case, and a parked record's other addresses speak for
+        // no other session.
+        const parkedHere = SessionRow.parkedSet([
+            { address: "ab12cd", presence: { addresses: ["ab12cd", "LIVE01"] } },
+            { address: "" }, {}
+        ]);
+        const parkings = [["its own, upper-cased", "AB12CD", true],
+            ["an alias it lists", "LIVE01", false], ["none", "", false]];
+        for (const [what, address, want] of parkings) {
+            if (parkedHere.has(address) !== want)
+                failures.push(`parked, ${what}: ${!want}, not ${want}`);
+        }
+        if (SessionRow.parkedSet(undefined).size !== 0)
+            failures.push("parked of nothing: not empty");
         // The shell's own acts: Go To where it has a window, and Talk, none that
         // steers or ends it, as how it stands isn't known; one the shell holds
         // parked, Wake and Talk.
