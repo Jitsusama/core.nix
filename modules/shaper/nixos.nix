@@ -165,14 +165,18 @@ in
             nine tenths of it, or the controller holds it under a full
             line, having cut it in the last few seconds or with the
             download filling its hold, the download is held at nine
-            tenths, under the router's queue, so
-            it queues in this machine's CAKE, which puts the call first,
-            rather than in a router's flow queues, where a call that
-            shares one with a bulk download loses what it loses. The
-            controller may hold it lower, and the hold goes when the call
-            ends. Declare the line at its slowest busy hour, and again
-            when it's made faster: held, the download can't show a faster
-            line, so each call would hold it at nine tenths of the old one.
+            tenths, under the router's queue, so it queues in this
+            machine's CAKE, which puts the call first, rather than in a
+            router's flow queues, where a call that shares one with a
+            bulk download loses what it loses. The controller may hold it
+            lower, and the hold goes when the call ends. A link following
+            another to the router, as Wi-Fi beside a cable, isn't
+            measured, so it's held at nine tenths for the whole of a call
+            whatever it carries; each link's hold is its own, so two
+            downloading at once may together pass the line. Declare the
+            line at its slowest busy hour, and again when it's made
+            faster: held, the download can't show a faster line, so each
+            call would hold it at nine tenths of the old one.
           '';
         };
         options.links = lib.mkOption {

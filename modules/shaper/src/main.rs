@@ -1877,8 +1877,17 @@ struct Taken {
 /// what the controller asked of the leader's download, held under the
 /// follower's room, never the leader's. Neither way is told more than the
 /// follower's own link carries (a link's own line round 7's F5 and F12).
+/// A leader the controller leaves unlimited is told its own link's most,
+/// which says nothing of the follower's, so the follower takes its own
+/// most then, under its room: a cable's wire never holds the Wi-Fi
+/// following it (a link's own line round 9's F2).
 fn taken(follows: &Followed, room: Option<u64>, most: Held) -> Taken {
-    let (down, straight) = held_down(follows.asked_down, room);
+    let asked = if follows.asked_down.1 {
+        (most.down, true)
+    } else {
+        follows.asked_down
+    };
+    let (down, straight) = held_down(asked, room);
     Taken {
         up: follows.up,
         up_most: follows.up_most.min(most.up),
@@ -1965,10 +1974,14 @@ fn held_down((down, unheld): (u64, bool), room: Option<u64>) -> (u64, bool) {
 }
 
 /// One step of the controller, `live`, over every uplink that leads its
-/// router: a follower takes its leader's rates after. While a call is on,
-/// `calling`, a link whose network declares its download's line in
-/// `lines` is given the call's room under it (src/room.rs), under
-/// whatever the controller asks.
+/// router: a follower takes its leader's rates after. Each link takes its
+/// own download line from `lines`, or its network's where it has none
+/// (`networks::line_of`), and the journal says it as it changes
+/// (`line_said`). While a call is on, `calling`, a leader under a line is
+/// given the call's room as its download fills it (`room::Room::step`),
+/// under whatever the controller asks, and a follower under one is held
+/// at its room for the whole call (`room::Room::follow`; a link's own
+/// line round 9's F4).
 fn step_links(
     shaped: &mut BTreeMap<String, Shaped>,
     live: &mut live::Live,
@@ -2852,7 +2865,8 @@ mod tests {
     // field can be told from the others: a swap of the upload's rate and
     // most, the leader's room taken for the follower's, or a steady
     // ceiling left behind each fails (a link's own line round 7's F2, F7
-    // and F14, round 8's F1 and F3).
+    // and F14, round 8's F1 and F3), and an unlimited leader's own most
+    // taken for the follower's (round 9's F2).
     #[test]
     fn a_follower_takes_each_of_its_leader_s_rates_under_its_own_link() {
         let follows = Followed {
@@ -2893,6 +2907,20 @@ mod tests {
             taken(&unlimited, Some(18_000), most).down,
             (18_000, false),
             "a call's room holds it though its leader goes unlimited"
+        );
+        let wired = Followed {
+            asked_down: (83_000, true),
+            ..follows
+        };
+        assert_eq!(
+            taken(&wired, Some(360_000), most).down,
+            (360_000, false),
+            "an unlimited leader's own most never holds it: its room does"
+        );
+        assert_eq!(
+            taken(&wired, None, most).down,
+            (400_000, true),
+            "outside a call, its own most"
         );
     }
 

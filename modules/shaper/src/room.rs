@@ -60,13 +60,14 @@ impl Room {
     /// declares none. A hold is kept only on the network it began on and
     /// at the line it filled: a link that moves to another network, even
     /// one declaring the same line, or whose line changes, lets it go
-    /// unless the download fills the new one, so a hold is never carried
-    /// to a line it didn't fill (download hold round 2's F7 and F24, round
-    /// 3's F5). The one exception is a hold `follow` gave a link while it
-    /// followed, unmeasured, which it keeps on the same network and line
-    /// as it leads for the rest of the call, at a tenth of its line, rather
-    /// than let a download it couldn't hear go a second (a link's own line
-    /// round 4's F2 and F12). A link the recorder doesn't follow carries nothing known
+    /// unless the download fills the new one, so a hold begun here is never
+    /// carried to a line it didn't fill (download hold round 2's F7 and F24,
+    /// round 3's F5). The one exception is a hold `follow` gave a link while
+    /// it followed, unmeasured, which it keeps on the same network and line
+    /// as it leads for the rest of the call, whether or not it fills it, at
+    /// a tenth of its line, rather than let a download it couldn't hear go a
+    /// second (a link's own line round 4's F2 and F12, round 9's F8). A
+    /// link the recorder doesn't follow carries nothing known
     /// and isn't cut, so it starts no hold, but keeps one it has, as it
     /// does through a second the recorder missed: a call held through a
     /// spell costs the download a tenth, where one let go a second costs
@@ -398,6 +399,16 @@ mod tests {
         assert!(
             said.contains("following eth1's, isn't measured") && said.contains("held to 18000"),
             "the hold taken again is said as one beginning: {said}"
+        );
+        // A follower that roams mid-call to another router declaring the
+        // same line takes its hold there anew, as a leader does (a link's
+        // own line round 9's F7).
+        let (held, said) = room.follow(wifi, "office", true, Some(20_000));
+        let said = said.expect("the journal says the hold was taken on the new network");
+        assert_eq!(held, Some(18_000), "held under the same line there: {said}");
+        assert!(
+            said.contains("following eth1's, isn't measured"),
+            "the hold on the new network is said as one beginning: {said}"
         );
         let (held, said) = room.follow(wifi, HOME, false, Some(20_000));
         assert_eq!(held, None, "the call's end lets it go");
