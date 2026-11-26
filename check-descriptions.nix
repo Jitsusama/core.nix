@@ -2206,8 +2206,8 @@
     never from the IPv6 list, on that link alone and as a host of its own; a moved address,
     another link or none ends it and its answer, waited for; with no link, or a scutil that
     fails, it waits, saying which once, and a scutil that fails while it answers changes
-    nothing; it says the name offered, not answering; and an answer that ends by itself ends
-    it, saying so
+    nothing; it says the name offered, not answering, before dns-sd says anything; and an
+    answer that ends by itself ends it, saying so
   '';
   local-name-is-kept-by-a-job = ''
     a Mac with a local name runs two root jobs, each labelled as nix-darwin labels it, under
