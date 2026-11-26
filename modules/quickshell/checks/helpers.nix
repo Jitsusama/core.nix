@@ -27,19 +27,28 @@ let
         if part == ".." && kept != [ ] && lib.last kept != ".." then lib.init kept else kept ++ [ part ]
       ) [ ] (lib.filter (part: part != "" && part != ".") (lib.splitString "/" "${folder}/${path}"))
     );
+  # Each import a QML or JavaScript file placed at file in the shell's
+  # folder names, as written and as the shell's folder places it.
+  importsOf =
+    source: file:
+    lib.concatMap (
+      line:
+      let
+        named = builtins.match "[[:space:]]*[.]?import[[:space:]]+\"([^\"]+)\".*" line;
+      in
+      if named == null then
+        [ ]
+      else
+        [
+          {
+            written = lib.head named;
+            placed = under (dirOf file) (lib.head named);
+          }
+        ]
+    ) (lib.splitString "\n" (builtins.readFile source));
   # What a QML or JavaScript file placed at file in the shell's folder
   # imports of the shell's own, as its source says.
-  importingFrom =
-    source: file:
-    lib.unique (
-      lib.concatMap (
-        line:
-        let
-          named = builtins.match "[[:space:]]*[.]?import[[:space:]]+\"([^\"]+)\".*" line;
-        in
-        if named == null then [ ] else [ (under (dirOf file) (lib.head named)) ]
-      ) (lib.splitString "\n" (builtins.readFile source))
-    );
+  importingFrom = source: file: lib.unique (map (named: named.placed) (importsOf source file));
   # What one of the shell's own files imports of the shell's own.
   importing = file: importingFrom (../. + "/${file}") file;
   # Copies each file a check names into the folder it runs in, where the
@@ -116,27 +125,35 @@ let
   # they import and what that imports, guarded as copied guards it, so an
   # import added to Reader.js comes with it, as it does when the account's
   # shell is made. An import the shell's folder doesn't hold as a file, nor
-  # the program, fails the check instead, naming it: a missing file, a
-  # folder, or one climbing out of the shell's folder. The table and the
-  # roots are given, so a check can give it others (core.nix's
-  # a-check-copies-what-each-file-imports).
+  # the program, fails the check instead, naming the file, the import as
+  # written and which it is: a missing file, a folder, or one above the
+  # shell's folder. The table and the roots are given, so a check can give
+  # it others (core.nix's a-check-copies-what-each-file-imports).
   programStepWith =
     table: roots: own:
     let
       placed = lib.attrNames own;
-      imported = lib.unique (
-        lib.concatLists (lib.mapAttrsToList (file: source: importingFrom source file) own)
+      found = lib.concatLists (
+        lib.mapAttrsToList (file: source: map (one: one // { inherit file; }) (importsOf source file)) own
       );
-      shells = lib.filter (file: !(lib.elem file placed)) imported;
-      held =
+      shells = lib.filter (file: !(lib.elem file placed)) (lib.unique (map (one: one.placed) found));
+      # Why the shell's folder can't give a check what an import names, or
+      # null when it can.
+      unheld =
         file:
         let
           path = ../. + "/${file}";
         in
-        !(lib.elem ".." (lib.splitString "/" file))
-        && builtins.pathExists path
-        && builtins.readFileType path == "regular";
-      strays = lib.filter (file: !(held file)) shells;
+        if lib.elem ".." (lib.splitString "/" file) then
+          "above modules/quickshell; give the check that file itself"
+        else if !(builtins.pathExists path) then
+          "not in modules/quickshell; give the check that file"
+        else if builtins.readFileType path != "regular" then
+          "a folder, not a file; name the files taken from it in the check's roots"
+        else
+          null;
+      strays = lib.filter (one: !(lib.elem one.placed placed) && unheld one.placed != null) found;
+      said = one: "${one.file} imports \"${one.written}\": ${unheld one.placed}";
       folders = lib.unique (lib.filter (folder: folder != ".") (map dirOf placed));
     in
     if strays == [ ] then
@@ -147,9 +164,8 @@ let
       )
     else
       ''
-        echo "A program's own files import what modules/quickshell doesn't hold as a file:" \
-          "${lib.concatStringsSep ", " strays}" \
-          "(each as the shell's folder would place it; give the check that file)" >&2
+        echo "A program's own files import what modules/quickshell doesn't hold as a file:" >&2
+        ${lib.concatMapStrings (one: "echo ${lib.escapeShellArg (said one)} >&2\n") strays}
         exit 1
       '';
   programStep = programStepWith imports programRoots;

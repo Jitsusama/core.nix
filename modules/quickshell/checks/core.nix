@@ -349,7 +349,8 @@ in
   # placed in a folder of its own, is copied there and brings what copying the
   # file it imports does, guarded as copying it is; one importing a file the
   # shell's folder doesn't hold, a folder, or a file above the shell's folder
-  # is refused, naming it (programStepWith).
+  # is refused, naming the file, the import as written and which it is
+  # (programStepWith).
   a-check-copies-what-each-file-imports =
     let
       table = import ./imports.nix;
@@ -378,11 +379,8 @@ in
       real = copiedWith table [ root ];
       lines = lib.splitString "\n";
       copyLines = script: lib.filter (lib.hasPrefix "cp ") (lines script);
-      madeBy =
-        script:
-        lib.concatMap (line: lib.drop 2 (lib.splitString " " line)) (
-          lib.filter (lib.hasPrefix "mkdir -p ") (lines script)
-        );
+      at = pred: script: lib.lists.findFirstIndex pred null (lines script);
+      making = folder: line: lib.hasPrefix "mkdir -p " line && lib.elem folder (lib.splitString " " line);
       uncopiedBy = script: lib.filter (file: !(lib.any (lib.hasSuffix " ${file}") (copyLines script)));
       uncopied = uncopiedBy real reached;
       leftOut = lib.concatStringsSep ", " uncopied;
@@ -390,42 +388,48 @@ in
       # the step makes it, importing one as a file there names it.
       ownFolder = "planted";
       own = "${ownFolder}/Planted.js";
-      ownImporting = file: {
-        ${own} = builtins.toFile "Planted.js" ".import \"../${file}\" as Planted\n";
+      ownImporting = written: {
+        ${own} = builtins.toFile "Planted.js" ".import \"${written}\" as Planted\n";
       };
-      planted = programStepWith table [ ] (ownImporting picked);
+      planted = programStepWith table [ ] (ownImporting "../${picked}");
       unplanted = uncopiedBy planted ([ own ] ++ reach picked);
-      ownUnmade = !(lib.elem ownFolder (madeBy planted));
+      madeAt = at (making ownFolder) planted;
+      ownCopiedAt = at (lib.hasSuffix " ${own}") planted;
+      ownUnmade = madeAt == null || ownCopiedAt != null && madeAt > ownCopiedAt;
       ownHeld = builtins.pathExists (../. + "/${ownFolder}");
       stray = "Planted-nowhere.js";
       strayHeld = builtins.pathExists (../. + "/${stray}");
-      strayRefusal = "modules/quickshell doesn't hold as a file";
-      # Each import a program's file can't be given, under the shell's folder
-      # as the step names it: a missing file, a file above the folder that is
-      # there (the flake's own), and a folder.
-      strays = [
-        stray
-        "../../flake.nix"
-        "launcher"
-      ];
-      strayUnrefused = lib.filter (
-        imported:
-        let
-          script = programStepWith table [ ] (ownImporting imported);
-        in
-        !(lib.hasInfix strayRefusal script && lib.hasInfix "\"${imported}\"" script)
-      ) strays;
+      # Each import a program's file can't be given, as written in it, and
+      # what the step must say of it: a missing file, a file above the
+      # shell's folder that is there (the flake's own), and a folder, named
+      # or as ".." alone.
+      strays = {
+        "../${stray}" = "not in modules/quickshell";
+        "../../../flake.nix" = "above modules/quickshell";
+        "../launcher" = "a folder, not a file";
+        ".." = "a folder, not a file";
+      };
+      strayUnrefused = lib.attrNames (
+        lib.filterAttrs (
+          written: why:
+          !(lib.hasInfix "${own} imports \"${written}\": ${why}" (
+            programStepWith table [ ] (ownImporting written)
+          ))
+        ) strays
+      );
       strayHeldSaid = "the shell's folder holds ${stray}; give this check another name";
       ownHeldSaid = "the shell's folder holds ${ownFolder}; give this check another folder";
       plantedLeftOut = lib.concatStringsSep ", " unplanted;
       unplantedSaid = "a program's file importing ${picked} left out ${plantedLeftOut}";
-      ownUnmadeSaid = "a program's file in ${ownFolder} was copied with no folder made for it";
+      ownUnmadeSaid = "a program's file in ${ownFolder} was copied with no folder made first";
       unrefusedSaid = "a program's file importing these went unrefused: ";
       refusal = "modules/quickshell/checks/imports.nix doesn't say";
       refused = file: script: lib.hasInfix refusal script && lib.hasInfix file script;
       sameTurned = copiedWith withTurned [ root ] == real;
       emptiedRefused = refused picked (copiedWith withEmptied [ root ]);
-      plantedEmptiedRefused = refused picked (programStepWith withEmptied [ ] (ownImporting picked));
+      plantedEmptiedRefused = refused picked (
+        programStepWith withEmptied [ ] (ownImporting "../${picked}")
+      );
       plantedEmptiedSaid = "${picked}'s row, emptied, went unrefused from a program's file";
       failures =
         if refused "" real then
