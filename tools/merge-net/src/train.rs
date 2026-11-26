@@ -35,7 +35,10 @@
 //! changes that would merge alone board it rather than move main again
 //! (`right_of_way.rs`).
 //!
-//! A candidate that fails splits: the train takes the first half of its
+//! A candidate that fails only checks that fail at its base too, or VM
+//! tests no rider touches that pass there, lands as a pass would, each
+//! told to its owner (`flaky.rs`).
+//! A candidate that fails otherwise splits: the train takes the first half of its
 //! riders to board, and halves again while they fail, so the riders that
 //! broke nothing land together and the one that breaks it is found alone,
 //! five riders in five runs at most (`Splitting`). A train red for more
@@ -66,6 +69,7 @@ use crate::state::short;
 use right_of_way::Ended;
 pub use right_of_way::gives_way;
 
+mod flaky;
 mod gated;
 mod hub;
 mod installed;
@@ -553,6 +557,10 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         );
         match gate(&checkout, &log) {
             Gated::Passed => splitting.taken(),
+            // A red that is main's or a flake's lands as a pass would.
+            Gated::Red if flaky::excuses(&root, url, &checkout, &base, &candidate, &log) => {
+                splitting.taken();
+            }
             Gated::Red => {
                 right_of_way::run_ends(&root);
                 splitting.taken();
