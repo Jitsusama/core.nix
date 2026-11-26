@@ -1151,14 +1151,21 @@ fn failed_units(lines: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// Switches back to `system`, the one the machine left.
+/// Switches back to `system`, the one the machine left. One that waits on
+/// its boot check is only activated, as `switch` activates it: it ran
+/// without being booted, since its check failed or never ended, and going
+/// back with `switch` made it the boot default that nothing had checked.
 pub fn go_back(config: &Config, system: &Path) -> Result<(), Failure> {
     set_profile(config, system)?;
     match config.kind {
         Kind::Nixos => run::output(
             run::command(&system.join("bin/switch-to-configuration"), &config.state),
             "switching back",
-            ["switch"],
+            [if waits_on_its_boot_check(config, system) {
+                "test"
+            } else {
+                "switch"
+            }],
         ),
         Kind::Darwin => run::logged(
             run::command(&system.join("activate"), &config.state),

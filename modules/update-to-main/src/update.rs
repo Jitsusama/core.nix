@@ -78,10 +78,12 @@ fn unchanged(head: String, followed: follows::Followed) -> Line {
 }
 
 /// `ending`, when it switched nothing, with why the machine boots the
-/// system it booted before, while the system that why was kept beside still
-/// runs. Without it the machine read as booting what it ran from the next
-/// ask on, though nothing had moved its boot default; and a system switched
-/// to by hand, or rolled back to, is another the why doesn't speak of.
+/// system it booted before, while the system that why was kept beside runs
+/// unbooted, or that a boot left it on that older system. Without it the
+/// machine read as booting what it ran from the next ask on, though
+/// nothing had moved its boot default. Main's system booted is the why
+/// over, however its boot default moved; and one switched to by hand is a
+/// system the why doesn't speak of.
 fn still_boots(config: &Config, ending: Line) -> Line {
     let Line::Unchanged {
         commit,
@@ -92,10 +94,19 @@ fn still_boots(config: &Config, ending: Line) -> Line {
         return ending;
     };
     let kept = fs::read_to_string(config.boots_file()).unwrap_or_default();
-    let boots = kept.split_once('\n').and_then(|(system, why)| {
-        (system::runs(config, std::path::Path::new(system)) && !why.is_empty())
-            .then(|| why.to_owned())
-    });
+    let booted = fs::canonicalize(&config.booted).ok();
+    let boots = kept
+        .split_once('\n')
+        .filter(|(_, why)| !why.is_empty())
+        .and_then(|(system, why)| {
+            let system = std::path::Path::new(system);
+            if system::runs(config, system) {
+                (booted != fs::canonicalize(system).ok()).then(|| why.to_owned())
+            } else {
+                (booted.is_some() && booted == system::current(config))
+                    .then(|| format!("a boot left it on the system before main's, since {why}"))
+            }
+        });
     Line::Unchanged {
         commit,
         followed,
@@ -106,7 +117,9 @@ fn still_boots(config: &Config, ending: Line) -> Line {
 /// Keeps `why` the machine boots what it booted before, beside `system`, the
 /// one it runs instead, for the asks after this one that switch nothing.
 /// One that can't be kept leaves those asks to say none, as every ask did
-/// before a why was kept, so it is said on standard error and no further.
+/// before a why was kept, so it is said on standard error and no further;
+/// the one kept before it goes, so a check said unended isn't said so
+/// once it has ended.
 fn keep_boots(config: &Config, system: &std::path::Path, why: &str) {
     let file = config.boots_file();
     let new = file.with_extension("new");
@@ -114,12 +127,15 @@ fn keep_boots(config: &Config, system: &std::path::Path, why: &str) {
         .and_then(|()| fs::rename(&new, &file))
     {
         eprintln!("{}: {e}", file.display());
+        // A file that was never there is nothing left standing.
+        let _ = fs::remove_file(&file);
     }
 }
 
 /// Ends the why kept by `keep_boots`, once the boot default has moved: a
-/// boot check that passed, a switch that needed none, or a going back,
-/// which switches to the system it goes back to.
+/// boot check that passed, or a switch that needed none. A going back
+/// leaves it, since it goes back to a system left unbooted without making
+/// it the boot default (`system::go_back`).
 fn booted_as_run(config: &Config) {
     // Nothing kept is nothing to end.
     let _ = fs::remove_file(config.boots_file());
@@ -546,8 +562,15 @@ fn switch_from(
         Ok(mut switched) => {
             // Ended before the head is remembered, so a daemon that dies
             // between the two leaves the head to build again, not a
-            // checked switch marked unended.
+            // checked switch marked unended. A system left unbooted is said
+            // so first, so a daemon that dies before its check ends, or
+            // before it begins, leaves the asks after it saying so.
             end_switch(config);
+            if switched.unbooted {
+                keep_boots(config, built.system, UNCHECKED);
+            } else {
+                booted_as_run(config);
+            }
             if let Err(e) =
                 remember(config, &head).and_then(|()| follows::remember(config, &followed))
             {
@@ -555,11 +578,9 @@ fn switch_from(
             }
             // A failed boot check leaves the system running, since it's
             // whole, but booting what it booted before, which no restart
-            // changes. A daemon cut off before its check ends leaves that
-            // said too, since the boot default moves only once one passes.
+            // changes.
             let mut boots = None;
             if switched.unbooted {
-                keep_boots(config, built.system, UNCHECKED);
                 match system::boot_once_checked(config, built, &head) {
                     Ok(()) => booted_as_run(config),
                     Err(failure) => {
@@ -573,8 +594,6 @@ fn switch_from(
                         boots = Some(why);
                     }
                 }
-            } else {
-                booted_as_run(config);
             }
             Line::Done {
                 commit: head,
@@ -614,7 +633,6 @@ fn going_back(
     match system::go_back(config, &previous) {
         Ok(()) => {
             end_switch(config);
-            booted_as_run(config);
             failure
                 .why
                 .push_str("; the machine went back to what it ran");
