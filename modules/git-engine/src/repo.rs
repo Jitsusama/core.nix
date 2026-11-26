@@ -39,15 +39,13 @@ pub fn discover(dir: &Path) -> Option<Location> {
             let git_dir = if meta.is_dir() {
                 Some(dot)
             } else {
-                std::fs::read_to_string(&dot)
-                    .ok()
-                    .and_then(|text| text.strip_prefix("gitdir:").map(|p| dir.join(p.trim())))
+                text(&dot).and_then(|text| text.strip_prefix("gitdir:").map(|p| dir.join(p.trim())))
             };
             if let Some(git_dir) = git_dir
                 && git_dir.join("HEAD").exists()
             {
-                let common = std::fs::read_to_string(git_dir.join("commondir"))
-                    .map_or_else(|_| git_dir.clone(), |text| git_dir.join(text.trim()));
+                let common = text(&git_dir.join("commondir"))
+                    .map_or_else(|| git_dir.clone(), |text| git_dir.join(text.trim()));
                 let common = std::fs::canonicalize(&common).unwrap_or(common);
                 return Some(Location {
                     workdir: dir.to_path_buf(),
@@ -59,6 +57,13 @@ pub fn discover(dir: &Path) -> Option<Location> {
         at = dir.parent();
     }
     None
+}
+
+/// The text of the regular file at `path`, or None where it isn't one, or
+/// isn't text: a `.git` file or a commondir, which a FIFO in its place
+/// would hold the prompt on.
+fn text(path: &Path) -> Option<String> {
+    String::from_utf8(crate::regular_file::read(path).ok()??).ok()
 }
 
 /// What one question about a repository is answered with: gitstatusd's
@@ -157,11 +162,11 @@ fn is_reftable(config: &Config) -> bool {
 }
 
 /// HEAD, read from the worktree's own file unless refs live in reftable.
-fn head(location: &Location, refs: &Refs, reftable: bool) -> Option<Value> {
+pub(crate) fn head(location: &Location, refs: &Refs, reftable: bool) -> Option<Value> {
     if reftable {
         return refs.read("HEAD");
     }
-    let text = std::fs::read(location.git_dir.join("HEAD")).ok()?;
+    let text = crate::regular_file::read(&location.git_dir.join("HEAD")).ok()??;
     let text = text.trim_ascii_end();
     if let Some(target) = text.strip_prefix(b"ref:") {
         return Some(Value::Symbolic(

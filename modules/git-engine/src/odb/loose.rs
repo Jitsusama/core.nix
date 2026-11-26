@@ -172,14 +172,18 @@ mod tests {
 
     #[test]
     fn a_stream_is_inflated_no_further_than_its_header_says_nor_taken_short_of_it() {
-        let bomb = [b"blob 3\0".as_slice(), &vec![0; 8 << 20]].concat();
+        // Cut halfway, so a reader inflating the whole stream finds it ends
+        // early; only one stopping at the size its header gives refuses it
+        // for its size, long before the cut.
+        let mut bomb = deflated(&[b"blob 3\0".as_slice(), &vec![0; 8 << 20]].concat());
+        bomb.truncate(bomb.len() / 2);
         // Cut inside the checksum that closes it, after every byte it gives.
         let mut cut = deflated(b"blob 2\0hi");
         cut.truncate(cut.len() - 2);
         let trailed = [deflated(b"blob 2\0hi").as_slice(), b"x"].concat();
         let cases = [
             (trailed, "garbage at end of loose object"),
-            (deflated(&bomb), "loose object's size"),
+            (bomb, "loose object's size"),
             (deflated(b"blob 9\0hi"), "loose object's size"),
             (cut, "loose object's stream ends early"),
             (b"not zlib".to_vec(), "loose object's stream"),

@@ -12,6 +12,9 @@ use std::path::Path;
 
 /// The regular file at `path`, or None where nothing is; anything else
 /// there, a FIFO, a device or a folder, is refused as data that won't read.
+/// The type is known only from the file opened, so the open comes first:
+/// a device whose opening does something has it done, though nothing is
+/// read from it.
 /// `O_NONBLOCK` stays set on the file returned, which changes nothing for
 /// a regular file's reads.
 pub(crate) fn open(path: &Path) -> io::Result<Option<File>> {
@@ -64,9 +67,21 @@ pub(crate) fn read(path: &Path) -> io::Result<Option<Vec<u8>>> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::{present, read, read_present};
     use std::path::Path;
+
+    /// What `work` answers, on a thread of its own, or Err where it took
+    /// past 30 s or panicked. A reader that waited on a FIFO would wait for
+    /// ever, so each runs apart, and a test fails by its message rather
+    /// than hanging; the thread is left to the test's process to end.
+    pub(crate) fn apart<T: Send + 'static>(
+        work: impl FnOnce() -> T + Send + 'static,
+    ) -> Result<T, std::sync::mpsc::RecvTimeoutError> {
+        let (send, heard) = std::sync::mpsc::channel();
+        std::thread::spawn(move || send.send(work()));
+        heard.recv_timeout(std::time::Duration::from_secs(30))
+    }
 
     #[test]
     fn only_a_regular_file_is_read() {
@@ -80,25 +95,31 @@ mod tests {
             .status()
             .expect("mkfifo runs");
         assert!(made.success(), "mkfifo made no FIFO at {}", fifo.display());
-        let read = |path: &Path| read(path).map_err(|error| error.kind());
-        let found = [
-            read(&plain),
-            read(&folder.join("none")),
-            read(&fifo),
-            read(Path::new("/dev/zero")),
-            read(&folder),
-        ];
-        let kind = |result: std::io::Result<Vec<u8>>| result.map_err(|error| error.kind());
-        let opened = |path: &Path| kind(present(path).map(|_| Vec::new()));
-        let either = [
-            kind(read_present(&plain)),
-            kind(read_present(&folder.join("none"))),
-            kind(read_present(&fifo)),
-            opened(&plain),
-            opened(&folder.join("none")),
-            opened(&fifo),
-        ];
+        let (none, readers) = (folder.join("none"), folder.clone());
+        let heard = apart(move || {
+            let read = |path: &Path| read(path).map_err(|error| error.kind());
+            let found = [
+                read(&plain),
+                read(&none),
+                read(&fifo),
+                read(Path::new("/dev/zero")),
+                read(&readers),
+            ];
+            let kind = |result: std::io::Result<Vec<u8>>| result.map_err(|error| error.kind());
+            let opened = |path: &Path| kind(present(path).map(|_| Vec::new()));
+            let either = [
+                kind(read_present(&plain)),
+                kind(read_present(&none)),
+                kind(read_present(&fifo)),
+                opened(&plain),
+                opened(&none),
+                opened(&fifo),
+            ];
+            (found, either)
+        });
         std::fs::remove_dir_all(&folder).expect("the temp folder gives its folder back");
+        let (found, either) =
+            heard.expect("a read of a FIFO or a device was still waiting after 30 s");
         let gone = Err(std::io::ErrorKind::NotFound);
         let refused = Err(std::io::ErrorKind::InvalidData);
         assert_eq!(
@@ -130,7 +151,7 @@ mod tests {
     }
 
     /// Makes a FIFO at `path`, which nothing will ever write to.
-    fn fifo(path: &Path) {
+    pub(crate) fn fifo(path: &Path) {
         let folder = path.parent().expect("a FIFO is made in a folder");
         std::fs::create_dir_all(folder).expect("the temp folder takes a folder");
         let made = std::process::Command::new("mkfifo")
@@ -140,10 +161,8 @@ mod tests {
         assert!(made.success(), "mkfifo made no FIFO at {}", path.display());
     }
 
-    // Each reader of git's own files meets a FIFO where its file should be.
-    // One that waited on it would wait for ever, so they run apart and the
-    // test fails by its message once they've taken far longer than reading
-    // a few small files can.
+    // Each reader of git's own files meets a FIFO where its file should be,
+    // apart, as above.
     #[test]
     fn no_reader_of_gits_files_waits_on_a_fifo() {
         use crate::hash::Oid;
@@ -171,9 +190,8 @@ mod tests {
         ] {
             fifo(&path);
         }
-        let (send, heard) = std::sync::mpsc::channel();
         let readers = git.clone();
-        std::thread::spawn(move || {
+        let heard = apart(move || {
             let git = readers;
             let refs = crate::refs::Refs::open(&git, &git, false)
                 .expect("loose refs open with a FIFO among them");
@@ -194,9 +212,8 @@ mod tests {
             let mut walks = crate::walks::Walks::new(Some(cache), &git);
             let before = walks.get(a, b);
             walks.put(a, b, (1, 2));
-            let _ = send.send((found, stashes, reftable, index, midx, before));
+            (found, stashes, reftable, index, midx, before)
         });
-        let heard = heard.recv_timeout(std::time::Duration::from_secs(30));
         let _ = std::fs::remove_dir_all(&git);
         let packed = Oid::from_hex(main.as_bytes()).map(Value::Oid);
         let refused = Err(std::io::ErrorKind::InvalidData);
@@ -211,7 +228,7 @@ mod tests {
 
     // packed-refs, a loose tag, the alternates and a loose object each a
     // FIFO, as the readers of the refs, the tags and the objects meet them,
-    // apart for the same reason as above.
+    // apart, as above.
     #[test]
     fn no_reader_of_tags_or_objects_waits_on_a_fifo() {
         use crate::hash::Oid;
@@ -232,9 +249,8 @@ mod tests {
         ] {
             fifo(&path);
         }
-        let (send, heard) = std::sync::mpsc::channel();
         let readers = git.clone();
-        std::thread::spawn(move || {
+        let heard = apart(move || {
             let git = readers;
             let main = crate::refs::Refs::open(&git, &git, false)
                 .map(|refs| refs.read("refs/heads/main"))
@@ -244,9 +260,8 @@ mod tests {
             let mut odb = crate::odb::Odb::open(&git.join("objects"));
             let kind = odb.kind(&object).map(|_| ()).map_err(|error| error.kind());
             let read = odb.read(&object).map(|_| ()).map_err(|error| error.kind());
-            let _ = send.send((main, tags, kind, read));
+            (main, tags, kind, read)
         });
-        let heard = heard.recv_timeout(std::time::Duration::from_secs(30));
         let _ = std::fs::remove_dir_all(&git);
         let oid = Oid::from_hex(main.as_bytes()).expect("main's line is an oid");
         let refused = Err(std::io::ErrorKind::InvalidData);
@@ -262,6 +277,84 @@ mod tests {
             "a loose ref beside a packed-refs that isn't a file wasn't read, a loose tag \
              that isn't one was named, or a loose object that isn't a file was kinded or \
              read"
+        );
+    }
+
+    // A worktree's .git file, a commondir and a HEAD each a FIFO, as finding
+    // a repository meets them; two packs, one a multi-pack-index names, each
+    // a FIFO beside a sound index; and a reftable's one table a FIFO: apart,
+    // as above.
+    #[test]
+    fn no_reader_of_where_a_repository_is_nor_of_its_packs_waits_on_a_fifo() {
+        use crate::hash::Oid;
+        use crate::pack_index::tests::{midx, sorted, version_2};
+        use crate::repo::{Location, discover};
+        let top = crate::pack_index::tests::unique("fifo-places");
+        let linked = top.join("linked");
+        fifo(&linked.join(".git"));
+        let shared = top.join("shared");
+        let git = shared.join(".git");
+        fifo(&git.join("commondir"));
+        fifo(&git.join("HEAD"));
+        let pack = git.join("objects/pack");
+        for name in ["pack-a", "pack-b"] {
+            fifo(&pack.join(format!("{name}.pack")));
+            std::fs::write(pack.join(format!("{name}.idx")), version_2(&sorted()))
+                .expect("the temp folder takes a file");
+        }
+        std::fs::write(
+            pack.join("multi-pack-index"),
+            midx(&["pack-a.idx"], 1, None),
+        )
+        .expect("the temp folder takes a file");
+        fifo(&git.join("reftable/t.ref"));
+        std::fs::write(git.join("reftable/tables.list"), "t.ref\n")
+            .expect("the temp folder takes a file");
+        let found = Location {
+            workdir: shared.clone(),
+            git_dir: git.clone(),
+            common: std::fs::canonicalize(&git).expect("the temp folder has a real path"),
+        };
+        let (linked_at, shared_at, readers) = (linked.clone(), shared.clone(), git.clone());
+        let heard = apart(move || {
+            let git = readers;
+            let linked = discover(&linked_at).map(|location| location.workdir);
+            let shared = discover(&shared_at);
+            let refs = crate::refs::Refs::open(&git, &git, false)
+                .expect("loose refs open with none there");
+            let head = shared
+                .as_ref()
+                .map(|location| crate::repo::head(location, &refs, false));
+            let object = crate::odb::Odb::open(&git.join("objects"))
+                .read(&Oid(sorted()[0]))
+                .map(|object| object.is_some())
+                .map_err(|error| error.kind());
+            let table = crate::reftable::Stack::read(&git.join("reftable"))
+                .map(|_| ())
+                .map_err(|error| error.kind());
+            (linked, shared, head, object, table)
+        });
+        let _ = std::fs::remove_dir_all(&top);
+        let (linked_found, shared_found, at_head, object, table) = heard.expect(
+            "a reader of where a repository is, its HEAD, its packs or its reftable was still \
+             waiting on a FIFO after 30 s",
+        );
+        assert_ne!(
+            linked_found,
+            Some(linked),
+            "a .git file that isn't a file named a repository"
+        );
+        assert_eq!(
+            (shared_found, at_head, object, table),
+            (
+                Some(found),
+                Some(None),
+                Ok(false),
+                Err(std::io::ErrorKind::InvalidData)
+            ),
+            "a commondir that isn't a file wasn't passed over for the git folder itself, a \
+             HEAD that isn't one was read, a pack that isn't one was read from, or a \
+             reftable's table that isn't one was read"
         );
     }
 }
