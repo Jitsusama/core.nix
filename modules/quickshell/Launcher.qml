@@ -5146,6 +5146,14 @@ Scope {
         // that one press, so it runs nothing; only a fresh Return does.
         if (commanding?.typed && Date.now() - linedAt < Options.keyTiming.wait)
             return;
+        // The command line's own Return, which the prompt never reads, runs
+        // what's typed, or says why not, as E492, closing the line either
+        // way, as its Escape does, so it's timed as acting before it's
+        // known which, and as a move where it goes to a row, as Down does;
+        // @: comes with no key of its own (`from`), since the prompt timed
+        // it as commandAgain.
+        if (from !== "")
+            keyActs(from, read.error === undefined && read.go !== undefined);
         const opened = commanding;
         commandEarlier = Commands.remembered(commandEarlier, read.typed ?? "");
         // What went wrong is said where the line was, over a viewer too,
@@ -5157,18 +5165,13 @@ Scope {
         else
             commandLeft(read.error ? "said" : "normal");
         if (drawn && read.error === undefined && read.go === undefined
-            && read.entry.kind === "quit") {
-            commandTimed(from, false);
+            && read.entry.kind === "quit")
             return;
-        }
-        // A line that only says what went wrong acts on nothing, as h and
-        // E21 do, so its Return isn't timed.
         if (read.error !== undefined) {
             commandSay(read.error, true);
             return;
         }
         if (read.go !== undefined && opened.go) {
-            commandTimed(from, true);
             opened.go(read.go);
             return;
         }
@@ -5179,21 +5182,11 @@ Scope {
             return;
         }
         if (read.go !== undefined) {
-            commandTimed(from, true);
             const last = matches.length - 1;
             arrowed(read.go === "$" ? last : Headings.nth(headingsAt, read.go, last), ":");
             return;
         }
         const entry = read.entry;
-        // Bound before it's timed, since an act with no rows it can take
-        // only says so; the kinds the switch runs take none.
-        const unbound = ["quit", "help", "set", "setlocal", "history"].includes(entry.kind);
-        const bound = unbound ? null : commandBound(read, opened);
-        if (!unbound && bound.error !== undefined) {
-            commandSay(bound.error, true);
-            return;
-        }
-        commandTimed(from, false);
         switch (entry.kind) {
         case "quit":
             open = false;
@@ -5209,6 +5202,11 @@ Scope {
             return;
         case "history":
             commandLine({ earlier: true });
+            return;
+        }
+        const bound = commandBound(read, opened);
+        if (bound.error !== undefined) {
+            commandSay(bound.error, true);
             return;
         }
         if (entry.kind === "surface") {
@@ -5319,15 +5317,6 @@ Scope {
         }
         commandLine(null);
         commandRan(Object.assign(Commands.ran(last, commanding.menu), { typed: last }), "");
-    }
-
-    // Times the command line's own Return, which the prompt never reads,
-    // once what it ran is known to act: as a move where it only goes to a
-    // row, as Down does. @: comes with no key of its own (`from`), since the
-    // prompt timed it as commandAgain.
-    function commandTimed(from, moved) {
-        if (from !== "")
-            keyActs(from, moved);
     }
 
     // The things a line acts on: those bound as : was pressed, or where a
@@ -7781,10 +7770,8 @@ Scope {
     // A key while the ask stands, as Prompt.qml hands it over.
     function answerAsk(key) {
         const ask = asked;
-        if (ask === null)
-            return;
-        const said = Confirm.answer(ask, key, Date.now(), askReady.interval);
-        if (said === "early")
+        const said = askSaid(key);
+        if (ask === null || said === "early")
             return;
         asked = null;
         Report.say(`answered ${said}`);
@@ -7792,6 +7779,13 @@ Scope {
             ask.yes();
         else
             ask.no();
+    }
+
+    // What the ask standing makes of `key` (Confirm.answer), or "" with none
+    // standing: answerAsk answers by it, and the prompt times a key as
+    // acting by it (answerTaken), so the two can't disagree.
+    function askSaid(key) {
+        return asked === null ? "" : Confirm.answer(asked, key, Date.now(), askReady.interval);
     }
 
     // When the ask can be answered, the same 300 ms as the key language's
@@ -14647,11 +14641,15 @@ Scope {
                         reselectable: root.lastVisual !== null
                         // Where Tab goes into the row and - goes up, so
                         // a key that only says it can't acts on nothing.
-                        intoHere: root.goesIn(root.matches[root.current] ?? null)
+                        // Tab is asked of the row it will find: a search
+                        // held back runs first, as onStepped runs it.
+                        intoHere: () => {
+                            root.searchNow();
+                            return root.goesIn(root.matches[root.current] ?? null);
+                        }
                         upHere: root.canGoUp
                         // The ask takes a key as answerAsk does.
-                        answerTaken: key => root.asked !== null && Confirm.answer(root.asked,
-                            key, Date.now(), askReady.interval) !== "early"
+                        answerTaken: key => !["", "early"].includes(root.askSaid(key))
                         // A search run in the drawer puts its cursor on
                         // the match.
                         onSought: (pattern, forward, count) => {
@@ -14829,10 +14827,16 @@ Scope {
                             // Let go from the drawer, the keys go back onto
                             // its page however it was let go, choosing
                             // nothing, as Vim's visual ends at its : line.
-                            onLetGo: how => root.commandLeft(
-                                QueryKeys.paged(root.commanding?.from ?? "") ? "page"
-                                : how === "dropped" ? root.commanding?.from ?? "normal"
-                                : "normal")
+                            // The key that let it go, which the prompt
+                            // never reads, closes the line, so it's timed
+                            // as acting, as the line's Return is.
+                            onLetGo: (how, key) => {
+                                root.keyActs(key);
+                                root.commandLeft(
+                                    QueryKeys.paged(root.commanding?.from ?? "") ? "page"
+                                    : how === "dropped" ? root.commanding?.from ?? "normal"
+                                    : "normal");
+                            }
                         }
                     }
 

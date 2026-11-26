@@ -40,10 +40,11 @@ function reselectHere(mode, rows, chosen) {
 // each by the line's word for whether it has: Space or Ctrl+W l into the
 // drawer with none out, Tab in normal into a row with no parts, which only
 // says so (Launcher.qml's tabbedIn), - with nothing above, and gv on the
-// rows with no selection to take back.
+// rows with no selection to take back. Where Tab goes is asked of Tab
+// alone (`intoHere`), since the launcher runs a search held back first.
 function nowhere(act, line) {
     return (act === "drawer" && !line.drawerHere)
-        || (act === "into" && line.mode !== "find" && !line.intoHere)
+        || (act === "into" && line.mode !== "find" && !line.intoHere())
         || (act === "out" && !line.upHere)
         || (act === "reselect" && !line.reselectHere);
 }
