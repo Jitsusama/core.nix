@@ -1204,6 +1204,13 @@ in
         touch $out
       '';
 
+  # Every realm's node runs among the sessions, and what it swaps out stays
+  # compressed in memory rather than going to disk, as the sessions' kitty's
+  # does, so a wake after a quiet spell faults back from memory. On
+  # 2026-11-26 a node held 1.43 GB in swap, 25 KB of it in zswap, the kernel
+  # having reclaimed it past its floor 3,986,771 times; while the disk was
+  # busiest, 12 of 41 calls to it took 1.8 to 44 s. With writeback off, 38
+  # of 40 calls took under 0.7 s through the same load, and none hung.
   mycelium-runs-among-the-sessions =
     holds "mycelium-runs-among-the-sessions"
       "A mycelium node runs outside agents.slice, where its wakeups preempt Joel's programs, or writes its swapped memory out to disk, where a wake waits to read it back."

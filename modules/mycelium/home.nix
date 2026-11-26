@@ -363,18 +363,11 @@ let
       # number would set the hard limit too, so the hard limit is named
       # as systemd's own default, 524288, rather than lowered.
       LimitNOFILE = "65536:524288";
-      # The node wakes with every session it carries, so it runs among
-      # them rather than among Joel's programs, whose tasks each wakeup
-      # would preempt. Moving it restarts it once, which the sessions,
-      # in their terminals' scopes, outlive.
+      # It wakes with every session it carries, so it runs among them, not
+      # among Joel's programs, whose tasks each wakeup would preempt. What it
+      # swaps out stays compressed in memory (checks.nix has the numbers):
+      # waking to read it back from the disk held its calls up to 44 s.
       Slice = "agents.slice";
-      # What it swaps out stays compressed in memory rather than going to
-      # disk, as the sessions' kitty's does, so a wake after a quiet spell
-      # faults back from memory rather than waiting on the disk. On
-      # 2026-11-26 it held 1.43 GB in swap, 25 KB of it in zswap, the kernel
-      # having reclaimed it past its floor 3,986,771 times; while the disk
-      # was busiest, 12 of 41 calls to it took 1.8 to 44 s, against 23 of
-      # 25 under 1.5 s while it was quiet.
       MemoryZSwapWriteback = false;
     };
     Install.WantedBy = [ "default.target" ];
