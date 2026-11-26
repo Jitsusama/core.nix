@@ -225,7 +225,10 @@ if [ -n "$judged" ] && [ -d "$runs" ] && [ ! -L "$runs" ]; then
       *'No such process'*) ;;
       *) continue ;;
     esac
-    copies || break
+    copies || {{
+      printf "elsewhere: a link at its copies' folder couldn't be cleared, so the sweep stops\n" >&2
+      break
+    }}
     {{ cleared "$copy.names" "$copy.tar" "$copy.back" "$copy.back".* "$copy" &&
       rm -f "$run"; }} 2>/dev/null ||
       printf "elsewhere: couldn't clear %s, an earlier run's copy\n" "$copy" >&2
@@ -265,10 +268,11 @@ cleared() {
 # rename and names list, the unpacking, each clearing after, and the
 # bring-back before its lists are made and again before they're sorted
 # ask first, which narrows a link put there after to the span of a step
-# rather than closing it. Not asked again: the reads of an archive and
-# its names once written, the unpacking's chmod, the odd files' find and
-# the job's cd, which is why a refusal is this machine's where the
-# copy's place no longer holds after, and the bring-back's finds and
+# rather than closing it, and the job's cd asks once in. Not asked
+# again: the reads of an archive and its names once written, the
+# unpacking's chmod and the odd files' find, which is why a refusal is
+# this machine's where the copy's place no longer holds after, and the
+# bring-back's finds and
 # reads of its lists, which follow a link put meanwhile. Only
 # a link is caught: a folder put in its place is taken as the copies'
 # own. Under a strict fence either gains a job of the quest nothing it
@@ -284,6 +288,10 @@ copies() {
 # the quest may put one at either, which tar's -C and the job's cd follow.
 placed() {
   copies && [ -d "$work" ] && [ ! -L "$work" ]
+}
+# Says the copy isn't the folder it was where `placed` no longer holds.
+moved() {
+  printf "elsewhere: the job's copy was moved or linked from its place\n" >&2
 }
 # Says the copy stays, as a link at the copies' folder couldn't be
 # cleared, and fails, so what would clear it is passed over.
@@ -438,9 +446,10 @@ pub(super) fn copying() -> String {
           exit 1 ;;
       esac
     done < "$work.names"
-    placed || exit 2
+    placed || {{ moved; exit 2; }}
     tar -xf "$work.tar" -C "$work"; unpacked=$?
-    placed && rm -f "$work.tar" || exit 2
+    placed || {{ moved; exit 2; }}
+    rm -f "$work.tar" || exit 2
     find "$work" -type d ! -perm -700 -exec chmod u+rwx {{}} \; || exit 2
     [ "$unpacked" -eq 0 ] || exit 2
     odd=$(find "$work" -type l -o -type p -o -type s -o -type b -o -type c \

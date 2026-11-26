@@ -91,7 +91,7 @@ fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
          QEST-20261115-ABC123/.e/7-9\n",
         "bytes=1048576\n",
         "until arrived; do",
-        "cd \"$work\"/'a b' || {\n",
+        "cd \"$work\"/'a b' && placed || {\n",
         "  [ \"$why\" -ne 0 ] || { say 'elsewhere: refusing 7-9'; exit 77; }\n  \
          say 'elsewhere: can'\\''t take 7-9'\n  exit 75\n}\nsay 'elsewhere: running 7-9'\n",
         "{ export PATH=/far/bin:$PATH\n  } && exec tla-rs -config 'it'\\''s.cfg'\n",

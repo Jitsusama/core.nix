@@ -402,9 +402,7 @@ exit $r"#,
                 && code == Some(75)
                 && err.contains("so its copy stays") == stays
                 && (!when.contains("-type d") || err.contains("neither a file nor a folder"))
-                && (step != "find"
-                    || swap != copy
-                    || err.contains("moved or linked from its place")),
+                && (swap != copy || err.contains("moved or linked from its place")),
             "a link put at {case} didn't leave the job untaken ({code:?}): {err}"
         );
         assert!(
