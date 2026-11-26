@@ -522,7 +522,8 @@ fi
 pub(super) fn bringing(kind: &Kind) -> String {
     if kind.brings_back.is_empty() {
         return format!(
-            "{}rm -f \"$job/{BROUGHT}\" && (set -C && echo {END} > \"$job/{BROUGHT}\")\n",
+            "{}[ -z \"$handed\" ] || {{ rm -f \"$job/{BROUGHT}\" && \
+             (set -C && echo {END} > \"$job/{BROUGHT}\"); }}\n",
             freed()
         );
     }
@@ -618,17 +619,22 @@ else
 fi
 ) || wrote=$?
 # Freed before the list ends, the job's copy and its tree with them, as
-# on a disk that filled, these are the room its end needs.
+# on a disk that filled, these are the room its end needs. Where a link
+# at the handover couldn't be cleared, as `freed` says, nothing more is
+# written through it, and the near side waits out a list with no end.
 ! copies || rm -f "$names" "$names".*
-{freed}if [ $wrote -ne 0 ]; then
+{freed}if [ -z "$handed" ]; then wrote=1
+elif [ $wrote -ne 0 ]; then
   printf "elsewhere: couldn't write down all it brings back\n" >&2
 elif ! echo {END} >> "$job/{BROUGHT}"; then
   printf "elsewhere: couldn't end the list of what it brings back\n" >&2
   wrote=1
 fi
 # Cut on a line of its own, so a line the full disk cut in half can't
-# hide it, and never through a link that couldn't be cleared at its name.
-[ $wrote -eq 0 ] || [ -L "$job/{BROUGHT}" ] || printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"
+# hide it, and never through a link that couldn't be cleared at its name
+# or at the handover.
+[ $wrote -eq 0 ] || [ -z "$handed" ] || [ -L "$job/{BROUGHT}" ] ||
+  printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"
 "#,
         freed = freed(),
     )
@@ -645,8 +651,9 @@ fi
 /// is said, and each goes whether or not the other could.
 pub(super) fn freed() -> String {
     format!(
-        r#"cd "$HOME" && {{
-  if unlinked; then handed=1; else handed=
+        r#"handed=
+cd "$HOME" && {{
+  if unlinked; then handed=1; else
     printf "elsewhere: a link at the job's handover couldn't be cleared, so its tree stays\n" >&2
   fi
   if ! copies; then

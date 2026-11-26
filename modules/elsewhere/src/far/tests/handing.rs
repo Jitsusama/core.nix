@@ -169,6 +169,41 @@ fn a_link_a_job_pins_at_its_handover_folder_stops_all_it_would_bring_back() {
 }
 
 #[test]
+fn a_link_pinned_at_the_handover_as_it_brings_back_gets_nothing_more_written_through_it() {
+    let mut kind = kind("");
+    kind.brings_back = vec!["out".into()];
+    // A cp that, once the job's one file crossed, moves the handover aside
+    // for a link the far line isn't allowed to clear: the list's end and
+    // its cut, written after, would go through it.
+    let swapping = format!(
+        "PATH=${{PATH#*:}} cp \"$@\" || exit\n\
+         [ -e \"$HOME/swapped\" ] || {{ {} && : > \"$HOME/swapped\"; }}",
+        linking_its_handover()
+    );
+    let (rm, refused) = pinning();
+    let programs = [("cp", swapping.as_str()), (rm, refused.as_str())];
+    let job = "mkdir out && printf a > out/a";
+    let (code, err, home) = far_line(Left::Whole, &[("x", "x")], job, &kind, None, &programs);
+    let listed = std::fs::read_to_string(home.join("moved").join(BROUGHT)).unwrap_or_default();
+    assert!(
+        home.join("swapped").exists() && kept_beyond(&home),
+        "the far line wrote or cleared through a link pinned as it brought back \
+         ({code:?}): {err}"
+    );
+    assert!(
+        code == Some(0)
+            && err.contains("a link at the job's handover couldn't be cleared, so its tree stays")
+            && listed.contains("\tout/a\n")
+            && !listed.contains("end")
+            && !listed.contains("cut")
+            && !work(&home).join("1").exists(),
+        "the far line didn't say the link stays, ended the list it began, or kept its \
+         copy ({code:?}): {listed:?} {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
 fn a_handover_whose_folder_for_copies_cant_be_made_new_ends_its_list_cut() {
     let mut kind = kind("");
     kind.brings_back = vec!["out".into()];
