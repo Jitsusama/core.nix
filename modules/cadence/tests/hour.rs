@@ -297,6 +297,38 @@ fn what_an_hour_saw_of_the_asks_guards_the_next() {
     );
 }
 
+/// An hour whose last hour won't read leaves the asks unread on its card,
+/// yet keeps what it saw of them, so the hour after it is guarded again.
+#[test]
+fn an_hour_after_one_that_wont_read_still_keeps_what_it_saw_of_the_asks() {
+    let account = account();
+    let kept = account.path().join("state/cadence");
+    fs::create_dir_all(&kept).expect("cadence's folder");
+    fs::write(kept.join("hour.json"), "{\"asks\":").expect("last hour");
+    let records = (1..=4).fold(String::new(), |mut text, day| {
+        let _ = writeln!(
+            text,
+            "{{\"at\":\"2026-11-1{day}T10:00:00-05:00\",\"words\":\"ask {day}\"}}"
+        );
+        text
+    });
+    let asks = account.path().join("state/mission/asks.jsonl");
+    fs::write(&asks, records).expect("the asks list");
+    let ran = hour(account.path(), &["--to", "WCJQSG"]);
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(ran.status.success(), "cadence failed: {said}");
+    let card = String::from_utf8_lossy(&ran.stdout);
+    assert!(
+        card.contains("the asks list unread: what the last hour saw of it can't be read"),
+        "an hour starting from nothing read the asks against nothing: {card}"
+    );
+    let kept = fs::read_to_string(kept.join("hour.json")).expect("the hour kept");
+    assert!(
+        kept.contains(r#""asks":{"most":4"#),
+        "an hour after one that wouldn't read kept nothing of the asks: {kept}"
+    );
+}
+
 /// A card that can't be sent leaves last hour kept as it was, so the
 /// "fixed" lines it held are told again next hour rather than never, and
 /// leaves the findings ledger as it was, so no owner's finding is lost.

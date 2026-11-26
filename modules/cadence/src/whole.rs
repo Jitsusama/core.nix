@@ -1,7 +1,7 @@
 //! Writing a file whole: cadence keeps each reading, ledger and note by
 //! staging it beside its place and renaming it in, so no reader ever sees
-//! half of one. And reading one that others append to, which may be
-//! caught half written, as text line by line.
+//! half of one. And reading one another program writes whole the same
+//! way, as text line by line, naming the first line that isn't text.
 
 use std::fs;
 use std::io;

@@ -237,6 +237,16 @@ fn a_line_that_is_no_text_leaves_the_list_unread_saying_which() {
         Some("its line 7 isn't text"),
         "a list with a line that's no text wasn't said unread, with which"
     );
+    // A record torn after it is named second, as the first bad line leads.
+    let mut then_torn = list(4).into_bytes();
+    then_torn.extend_from_slice(b"{\"at\":\"x\",\"words\":\"torn \xff\"}\n{\"at\":\"y\n");
+    fs::write(&path, then_torn).expect("the asks list is written");
+    let (_, why) = whole(&path, &mut seen, NOW);
+    assert_eq!(
+        why.as_deref(),
+        Some("its line 7 isn't text"),
+        "a record torn after a line that's no text was named before it"
+    );
 }
 
 #[test]
@@ -342,6 +352,14 @@ fn every_measure_the_asks_list_feeds_is_one_it_says_unread() {
         measures::to_first_slice("", NOW, Tracking::His),
         measures::to_first_slice("", NOW, Tracking::Derived),
         measures::holds::holds(&[], "", NOW),
+        measures::told_late("", NOW, Tracking::His),
+        measures::told_late("", NOW, Tracking::Derived),
+        measures::at_risk::at_risk("", NOW, Tracking::His, &|_| Ok(Vec::new()), &|_| {
+            Ok(Vec::new())
+        }),
+        measures::at_risk::at_risk("", NOW, Tracking::Derived, &|_| Ok(Vec::new()), &|_| {
+            Ok(Vec::new())
+        }),
     ];
     for measure in &fed {
         let key = measure.key.strip_suffix("-derived").unwrap_or(&measure.key);
