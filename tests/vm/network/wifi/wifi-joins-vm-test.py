@@ -277,17 +277,25 @@ def test_and_hears_an_account_say_a_call_is_on_naming_who_said_it(
     machine: BaseMachine, wifid: Wifid
 ) -> None:
     """And hears an account say a call is on, and over, naming the process that said it."""
+    # The ask comes the way wifid.acting sends it, so its slice is the one this lands in,
+    # whichever PAM gives runuser, and never wifid's own.
+    asker = machine.succeed("runuser -u guest -- cat /proc/self/cgroup").strip()
+    slice_ = asker.removeprefix("0::/").split("/")[0]
+    assert slice_ in {"user.slice", "system.slice"}, f"the asker is in no slice: {asker}"
+    own = machine.succeed("cat /proc/$(systemctl show -P MainPID wifid)/cgroup").strip()
     for on, stands in ((True, "on"), (False, "over")):
         answer = wifid.acting({"act": "calling", "on": on})
         assert answer == {"id": 1, "done": True}, answer
         # Any process of the wifi group's may say it, so each change names who did, by its
         # cgroup's whole path, which tells a user's unit from a system one of the same name.
-        who = "^pid [0-9]+ \\((user|system)\\.slice/[^)]+\\)"
-        machine.wait_until_succeeds(
+        who = f"^pid [0-9]+ \\({re.escape(slice_)}/[^)]+\\)"
+        said = machine.wait_until_succeeds(
             "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
-            f" | grep -qE '{who} says a call is {stands}$'",
+            f" | grep -E '{who} says a call is {stands}$'",
             timeout=timedelta(seconds=10),
         )
+        named = said.splitlines()[-1]
+        assert f"({own.removeprefix('0::/')})" not in named, f"wifid named itself: {named}"
 
 
 @pytest.mark.usefixtures("wifid")

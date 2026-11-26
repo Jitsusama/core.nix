@@ -1196,6 +1196,12 @@ mod tests {
         // once.
         let hour_and_a_bit = choose::SPURNED + Duration::from_secs(30);
         let barely = kept_off(&joined(HALL), DESK, hour_and_a_bit);
+        // A minute past the hour is past it, though not yet two hours.
+        let past = kept_off(
+            &joined(HALL),
+            DESK,
+            choose::SPURNED + Duration::from_secs(60),
+        );
 
         assert!(
             why.ends_with(&format!(
@@ -1218,6 +1224,13 @@ mod tests {
                  since it was moved"
             )),
             "a keep-off of 60 minutes and some seconds said the hour twice: {barely}"
+        );
+        assert!(
+            past.ends_with(&format!(
+                "keeps off {DESK} for 61 minutes, as it's on {HALL} rather than there \
+                 since it was moved, or for 60 minutes should {HALL} fail a whole span"
+            )),
+            "a keep-off of 61 minutes didn't say what may leave for it after an hour: {past}"
         );
     }
 

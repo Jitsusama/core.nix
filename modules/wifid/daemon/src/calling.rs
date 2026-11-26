@@ -75,18 +75,18 @@ pub fn asked(line: &str, said: &Value) -> Result<bool, &'static str> {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Peer {
     pub pid: Option<i32>,
-    /// The cgroup's whole path, as `cgroup_of` says it.
+    /// The cgroup's whole path, as `cgroup_of` says it, or none when it
+    /// couldn't be read.
     pub cgroup: Option<String>,
 }
 
 impl Peer {
-    /// The peer at a pid, with the cgroup it's in. A path the kernel
-    /// gives in bytes that aren't UTF-8 is read all the same, those bytes
-    /// said as `?`, so the line never reads as a process in no cgroup.
+    /// The peer at a pid, with the cgroup it's in, read as bytes so a path
+    /// that isn't UTF-8 is still said.
     pub fn at(pid: Option<i32>) -> Peer {
         let cgroup = pid
             .and_then(|pid| std::fs::read(format!("/proc/{pid}/cgroup")).ok())
-            .and_then(|cgroup| cgroup_of(&String::from_utf8_lossy(&cgroup)));
+            .and_then(|cgroup| cgroup_of(&cgroup));
         Peer { pid, cgroup }
     }
 }
@@ -98,25 +98,60 @@ impl fmt::Display for Peer {
             // user's manager: a unit called wifid-calls.service there
             // still reads as under user.slice, not system.slice.
             (Some(pid), Some(cgroup)) => write!(out, "pid {pid} ({cgroup})"),
-            (Some(pid), None) => write!(out, "pid {pid}"),
+            // A process may have gone, or nest its cgroup too deep for
+            // the kernel to say, so a line it asks for says the path went
+            // unread rather than passing as one that has none.
+            (Some(pid), None) => write!(out, "pid {pid} (its cgroup unread)"),
             (None, _) => write!(out, "a process the kernel didn't name"),
         }
     }
 }
 
-/// The path of the cgroup a process runs in, from the root, each byte no
-/// unit's name may hold said as `?`. A process names its own cgroup under
-/// its user's manager, so the name could otherwise hold a control byte,
-/// which has journalctl show the whole line as a blob, or a `) asks a
-/// look; pid 2211 (` writing a second asker into the line.
-fn cgroup_of(cgroup: &str) -> Option<String> {
+/// The path of the cgroup a process runs in, from the root, each character
+/// no unit's name may hold said as `?`. A process names its own cgroup
+/// under its user's manager, so the name could otherwise hold a control
+/// character, which has journalctl show the whole line as a blob, or a
+/// `) asks a look; pid 2211 (` writing a second asker into the line. Bytes
+/// that aren't UTF-8 are said as `?` too.
+fn cgroup_of(cgroup: &[u8]) -> Option<String> {
+    let cgroup = String::from_utf8_lossy(cgroup);
     let path = cgroup.lines().find_map(|line| line.strip_prefix("0::/"))?;
-    let allowed = |byte: char| byte.is_ascii_alphanumeric() || ":-_.\\@/".contains(byte);
+    let allowed = |said: char| said.is_ascii_alphanumeric() || ":-_.\\@/".contains(said);
     let said: String = path
         .chars()
-        .map(|byte| if allowed(byte) { byte } else { '?' })
+        .map(|said| if allowed(said) { said } else { '?' })
         .collect();
-    Some(said).filter(|path| !path.is_empty())
+    // The root's path is empty, said as itself so it doesn't read as one
+    // that went unread.
+    Some(if said.is_empty() {
+        "/".into()
+    } else {
+        cut(&said)
+    })
+}
+
+/// The most of a cgroup's path from its root an ask's line says, enough
+/// for `user.slice/user-1000.slice/user@1000.service/`, which says whose
+/// manager runs it.
+const SLICE_MOST: usize = 64;
+
+/// The most of a cgroup's path at its end an ask's line says: a unit's
+/// name is at most 255 characters, and a scope or slice under it rarely
+/// more than a few.
+const UNIT_MOST: usize = 128;
+
+/// A path as an ask's line says it: whole up to `SLICE_MOST` and
+/// `UNIT_MOST` together, and past that its start and end around `...`. A
+/// process may nest cgroups under its own manager as deep as the kernel
+/// lets it, and journald splits a line past its `LineMax` into records of
+/// their own, the rest reading as wifid's. The path is ASCII by now, so a
+/// character is a byte.
+fn cut(path: &str) -> String {
+    if path.len() <= SLICE_MOST + UNIT_MOST {
+        return path.to_owned();
+    }
+    let (start, end) = (&path[..SLICE_MOST], &path[path.len() - UNIT_MOST..]);
+    format!("{start}...{end}")
 }
 
 #[cfg(test)]
@@ -190,17 +225,44 @@ mod tests {
     fn a_process_is_named_by_its_cgroups_whole_path() {
         let path = "user.slice/user-1000.slice/user@1000.service/app.slice/wifid-calls.service";
         assert_eq!(
-            cgroup_of(&format!("0::/{path}\n")).as_deref(),
+            cgroup_of(format!("0::/{path}\n").as_bytes()).as_deref(),
             Some(path),
             "the path"
         );
-        assert_eq!(cgroup_of("0::/\n"), None, "the root names none");
-        assert_eq!(cgroup_of(""), None, "nothing read names none");
-        let lossy = String::from_utf8_lossy(b"0::/system.slice/x\xff.service\n");
+        assert_eq!(cgroup_of(b"0::/\n").as_deref(), Some("/"), "the root");
+        assert_eq!(cgroup_of(b""), None, "nothing read names none");
         assert_eq!(
-            cgroup_of(&lossy).as_deref(),
-            Some("system.slice/x?.service"),
-            "a path not in UTF-8 named no cgroup"
+            cgroup_of(b"0::/system.slice/x\xff\xc3\xa9.service\n").as_deref(),
+            Some("system.slice/x??.service"),
+            "a path not in UTF-8 named no cgroup, or said a character as more than one ?"
+        );
+    }
+
+    #[test]
+    fn a_cgroup_nested_deep_says_its_slice_and_its_unit() {
+        let user = "user.slice/user-1000.slice/user@1000.service/app.slice/";
+        let deep = format!("{user}{}wifid-calls.service", "a/".repeat(2000));
+
+        let said = cgroup_of(format!("0::/{deep}\n").as_bytes()).expect("a path");
+
+        assert_eq!(
+            said.len(),
+            SLICE_MOST + "...".len() + UNIT_MOST,
+            "a deep path wasn't cut: {said}"
+        );
+        assert!(
+            said.starts_with("user.slice/user-1000.slice/user@1000.service/"),
+            "a cut path lost whose manager runs it: {said}"
+        );
+        assert!(
+            said.ends_with("/a/wifid-calls.service"),
+            "a cut path lost its unit: {said}"
+        );
+        let whole = format!("{user}{}", "x".repeat(SLICE_MOST + UNIT_MOST - user.len()));
+        assert_eq!(
+            cgroup_of(format!("0::/{whole}\n").as_bytes()),
+            Some(whole),
+            "a path at the most was cut"
         );
     }
 
@@ -211,12 +273,12 @@ mod tests {
         let forging = format!("0::/{user}/init.scope) asks a look; pid 2211 (quickshell.service\n");
 
         assert_eq!(
-            cgroup_of(&escaping),
+            cgroup_of(escaping.as_bytes()),
             Some(format!("{user}/??2Jx.service")),
             "a unit's control byte reached the journal raw"
         );
         assert_eq!(
-            cgroup_of(&forging),
+            cgroup_of(forging.as_bytes()),
             Some(format!(
                 "{user}/init.scope??asks?a?look??pid?2211??quickshell.service"
             )),
@@ -240,8 +302,8 @@ mod tests {
                 ..named
             }
             .to_string(),
-            "pid 42",
-            "a process in no cgroup read is named by its pid"
+            "pid 42 (its cgroup unread)",
+            "a process whose cgroup went unread passed as one in none"
         );
         assert_eq!(
             Peer::default().to_string(),
