@@ -12,6 +12,7 @@
 import QtQuick
 import "launcher/Found.js" as Found
 import "launcher/ReadyRows.js" as Ready
+import "launcher/Presented.js" as Presented
 import "launcher/ActForms.js" as Forms
 import "launcher/Moved.js" as Moved
 import "launcher/Beneath.js" as Beneath
@@ -698,6 +699,20 @@ QtObject {
         Expect.same("going to a program is done once the launcher's gone",
             Ready.leaving({ key: "verb:go", go: "kitty" }),
             { stays: false, now: false, later: true });
+        // A row is made with its thing, else its key, as its daemon wrote
+        // them, but never as one of the launcher's own kinds, whose keys
+        // the journal says whole as the launcher's ids (Presented.keyShown).
+        Expect.same("a served row is made with its thing",
+            Presented.keyMade({ thing: "mail:7" }, "row:mail:7"), "mail:7");
+        Expect.same("or its key where it has none", Presented.keyMade({}, "row:wifi:eduroam"),
+            "row:wifi:eduroam");
+        Expect.same("but a thing claiming a place is kept under its daemon's row:",
+            Presented.keyMade({ thing: "place:eduroam" }, "row:wifi:eduroam"),
+            "row:place:eduroam");
+        Expect.same("as is a key claiming a collection",
+            Presented.keyMade({}, "collection:Harbour"), "row:collection:Harbour");
+        Expect.same("or a category", Presented.keyMade({ thing: "category:x" }, "k"),
+            "row:category:x");
         Expect.same("an ask is read by its act's words in the key language",
             Ready.wordsOf({ key: "verb:firmware:install", ask: { ask: "install" } }),
             "verb:firmware:install");

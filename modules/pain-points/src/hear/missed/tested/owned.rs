@@ -9,7 +9,8 @@
 //! it lacked, the same miss takes them; a time another miss holds is
 //! refused, as an owner names its miss by its time. pain-points can't
 //! tell which cell runs it, so the card names the owner given, and one
-//! given a miss wrongly says it was none, as of any miss.
+//! given a miss wrongly says it was none, as of any miss, or moves it to
+//! the cell whose fix it waits on with `--owner` alone.
 
 use super::{Saying, changed_in};
 use serde_json::{Value, json};
@@ -29,16 +30,17 @@ pub(super) struct Owned<'a> {
 }
 
 /// The miss `--owner` and `--what` write at `at`, if they're given, or why
-/// they can't: both given, each said plainly on one line, and at a time as
-/// the ledger writes one.
+/// they can't: each said plainly on one line, and at a time as the ledger
+/// writes one. `--what` goes with `--owner`; `--owner` alone moves a miss
+/// rather than writing one, as `moved` reads it.
 pub(super) fn given<'a>(
     flags: &'a BTreeMap<&str, String>,
     at: &str,
 ) -> Result<Option<Owned<'a>>, String> {
     let (owner, what) = match (flags.get("--owner"), flags.get("--what")) {
         (Some(owner), Some(what)) => (owner.trim(), what.trim()),
-        (None, None) => return Ok(None),
-        _ => return Err("--owner and --what write a miss together".to_owned()),
+        (_, None) => return Ok(None),
+        (None, Some(_)) => return Err("--owner and --what write a miss together".to_owned()),
     };
     if !plain(owner) || !plain(what) {
         return Err("--owner and --what each say theirs plainly, on one line".to_owned());
@@ -49,6 +51,23 @@ pub(super) fn given<'a>(
         ));
     }
     Ok(Some(Owned { owner, what }))
+}
+
+/// The cell `--owner` alone moves a miss to, if it's given without
+/// `--what`, which would write one instead, or why it can't be one: said
+/// plainly on one line.
+pub(super) fn moved<'a>(flags: &'a BTreeMap<&str, String>) -> Result<Option<&'a str>, String> {
+    if flags.contains_key("--what") {
+        return Ok(None);
+    }
+    let Some(owner) = flags.get("--owner").map(|owner| owner.trim()) else {
+        return Ok(None);
+    };
+    if plain(owner) {
+        Ok(Some(owner))
+    } else {
+        Err("--owner says the cell a miss moves to plainly, on one line".to_owned())
+    }
 }
 
 /// The change `--fix` names, if it's given, or why it can't be one: a
@@ -182,6 +201,7 @@ mod tests {
     const NOTHING: Saying<'static> = Saying {
         said: None,
         fix: None,
+        owner: None,
     };
 
     /// What it says of a miss: `test` as its test, and `fix` as its fix.
@@ -189,6 +209,7 @@ mod tests {
         Saying {
             said: test.map(Said::Test),
             fix,
+            owner: None,
         }
     }
 
@@ -337,8 +358,9 @@ mod tests {
         let (owner, what) = (("--owner", "0FX11G"), ("--what", "a du walked his folders"));
         let test = ("--test", "core a b");
         for (at, given, says) in [
-            (AT, &[owner, test][..], "together"),
             (AT, &[what, test][..], "together"),
+            (AT, &[("--owner", "a\nb")][..], "plainly"),
+            (AT, &[("--owner", " "), test][..], "plainly"),
             (AT, &[owner, what, ("--none", "x")][..], "once it's written"),
             (AT, &[("--owner", " "), what, test][..], "plainly"),
             (AT, &[owner, ("--what", "a\nb"), test][..], "plainly"),

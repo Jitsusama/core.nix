@@ -76,10 +76,13 @@ function takesKeys(waits, pressed, one) {
 // from `given`, what its Return recorded (`at` its stamp, `keys` and
 // `letters` the launcher's keysTaken and lettersAt): what's pressed or
 // typed counts from the Return, and the minute's patience from `now`, so
-// a slow answer isn't said to be still coming up seconds after it.
+// a slow answer isn't said to be still coming up seconds after it. Its
+// `words` and `on`, where it was asked to start, say whether a Return
+// later is the same start given again (StartSaid.underWayAgain).
 function opening(how, key, given, now) {
     return { key, held: how.held, machine: how.machine, since: now, asked: given.at,
-        keys: given.keys, letters: given.letters };
+        keys: given.keys, letters: given.letters, words: String(given.words ?? ""),
+        on: String(given.on ?? "") };
 }
 
 // `given` (an opening, or Agents.qml's sproutGiven) once the launcher

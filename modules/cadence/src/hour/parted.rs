@@ -62,6 +62,7 @@ fn let_go(clone: &Path, asked: &BTreeMap<u32, Shared>) {
     let heads = match git(clone, "listing the heads kept", &listing) {
         Ok(heads) => heads,
         Err(err) => {
+            let err = err.to_string().replace(char::is_control, "?");
             eprintln!("cadence: at risk: {err}");
             return;
         }
@@ -72,6 +73,7 @@ fn let_go(clone: &Path, asked: &BTreeMap<u32, Shared>) {
             continue;
         }
         if let Err(err) = git(clone, "letting a head go", &["update-ref", "-d", head]) {
+            let err = err.to_string().replace(char::is_control, "?");
             eprintln!("cadence: at risk: {err}");
         }
     }
