@@ -102,6 +102,14 @@ impl Config {
                 )
             }
         };
+        // The home's files are the sites' own, so a home among what sessions
+        // write would serve a session's page as one of them.
+        if home
+            .as_deref()
+            .is_some_and(|home| home.starts_with(&documents))
+        {
+            return Err("home is within documents, which sessions write".to_owned());
+        }
         let mounts = said
             .get("mounts")
             .and_then(Value::as_object)
@@ -272,6 +280,11 @@ mod tests {
             why.contains("home is under the runtime folder, and none is set"),
             "{why}"
         );
+        for within in ["/home/joel/sites", "/home/joel/sites/home"] {
+            let shared = WHOLE.replace(r#""mounts""#, &format!(r#""home": "{within}", "mounts""#));
+            let why = Config::from_json(&shared, Some(Path::new("/run"))).expect_err("refused");
+            assert!(why.contains("home is within documents"), "{within}: {why}");
+        }
     }
 
     #[test]

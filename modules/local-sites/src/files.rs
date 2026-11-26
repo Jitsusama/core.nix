@@ -119,19 +119,22 @@ pub fn find(config: &Config, path: &str) -> Found {
 /// The home's own file `parts` names, its page for none: one file in its
 /// folder, never a folder, so every deeper path is a mount's or a document.
 /// Answers none where the home has no folder or the name isn't its, and
-/// `Unready` for one of its own names its builder hasn't written.
+/// `Unready` for one of its own names its builder hasn't written. Only
+/// those names are its, whatever else the folder holds, so nothing put
+/// there by another hand is served as the sites' own, and none of them is
+/// a script.
 fn home_file(config: &Config, parts: &[&str]) -> Option<Found> {
     let name = match parts {
         [] => "index.html",
-        [name] => *name,
+        [name] if HOME_OWN.contains(name) => *name,
         _ => return None,
     };
     let file = config.home.as_deref()?.join(name);
-    if file.is_file() {
-        Some(Found::File(file, Made::Built))
+    Some(if file.is_file() {
+        Found::File(file, Made::Built)
     } else {
-        HOME_OWN.contains(&name).then_some(Found::Unready)
-    }
+        Found::Unready
+    })
 }
 
 /// What a file is, by its name, as a browser is told it.
@@ -293,6 +296,12 @@ mod tests {
             find(&folders.config, "/note.html"),
             Found::File(documents.join("note.html"), Made::Written),
             "a file the home doesn't hold is still a document"
+        );
+        fs::write(home.join("planted.js"), "a script").expect("a stray file");
+        assert_eq!(
+            find(&folders.config, "/planted.js"),
+            Found::Missing,
+            "a file the builder never writes was served as the sites' own"
         );
     }
 

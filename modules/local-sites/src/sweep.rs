@@ -9,9 +9,10 @@
 //! cookie no other host can set, and marked again by each page after, so
 //! the mark outlives its year for a browser that keeps coming back.
 //!
-//! What it can't reach: a browser keeping no cookie for the sites is swept
-//! by every page, though one that clears its cookies clears its storage
-//! with them, so it loses nothing it kept; and a worker standing from
+//! What it can't reach: a browser keeping no cookie for the sites, or not
+//! holding a loopback name over plain HTTP as secure and so refusing the
+//! mark, is swept by every page, though one that clears its cookies clears
+//! its storage with them, so it loses nothing it kept; and a worker standing from
 //! before still answers the first navigation in its scope, whose update
 //! check, which every navigation makes, then retires it.
 
@@ -57,11 +58,16 @@ pub fn marked_again(asked: &Asked) -> bool {
     swept(asked) && navigated_here(asked)
 }
 
-/// Whether `asked` carries the server's mark of a sweep.
+/// Whether `asked` carries the server's mark of a sweep. A browser joins
+/// its cookies with `; `, so only a plain space is trimmed: a cookie named
+/// with another space before `__Host-` isn't the prefixed one, and the
+/// documents' name may set it.
 fn swept(asked: &Asked) -> bool {
-    asked
-        .cookies
-        .is_some_and(|cookies| cookies.split(';').any(|cookie| cookie.trim() == SWEPT))
+    asked.cookies.is_some_and(|cookies| {
+        cookies
+            .split(';')
+            .any(|cookie| cookie.trim_matches(' ') == SWEPT)
+    })
 }
 
 /// Whether `asked` is a navigation of Joel's own: one a browser makes to
@@ -119,6 +125,17 @@ mod tests {
     fn a_plain_cookie_another_host_could_set_marks_nothing() {
         let planted = navigated("same-site", Some("sites-swept=1"));
         assert!(due(&planted), "a cookie the documents' name could set");
+        // A name led by a space no browser trims isn't the prefixed one, so
+        // a browser lets the documents' name set it.
+        let wide = char::from_u32(0x2000).expect("an en quad is a char");
+        let spaced = format!("theme=dark; {wide}{SWEPT}");
+        let led = navigated("same-site", Some(&spaced));
+        assert!(due(&led), "a prefixed name led by a Unicode space");
+        let joined = navigated("same-site", Some("theme=dark; __Host-sites-swept=1"));
+        assert!(
+            !due(&joined),
+            "the mark after another cookie, as a browser joins them"
+        );
     }
 
     #[test]

@@ -747,9 +747,14 @@ fn a_browser_is_swept_once_by_the_first_page_of_the_sites_own() {
         None,
         "a page's part marked the browser"
     );
+    // A session's page is never the sites' own: under their name it's sent
+    // on to the documents' (no page a session wrote is served there), and
+    // under the documents' it's served; neither sweeps.
     let documents = format!("{DOCUMENTS}:{}", served.port);
-    for (host, path) in [(&host, "/mycelium/"), (&documents, "/mycelium/")] {
-        let (_, document, _) = asked(served.port, host, &format!("GET {path}"), "");
+    let moved = "HTTP/1.1 307 Temporary Redirect";
+    for (host, sent) in [(&host, moved), (&documents, "HTTP/1.1 200 OK")] {
+        let (status, document, _) = asked(served.port, host, "GET /mycelium/", "");
+        assert_eq!(status, sent, "a document at {host} was answered otherwise");
         let swept = header(&document, "clear-site-data");
         assert_eq!(swept, None, "a document at {host} swept the browser");
     }
