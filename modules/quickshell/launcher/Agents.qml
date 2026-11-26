@@ -307,10 +307,10 @@ Provider {
     // so its steers are kept back until its row is held. Close is the
     // daemon's, served saying what stays (ReadyRows.js's asking), asked
     // before it's sent, and meant to end the session either way. Null for
-    // any other act, and Go To on a session Sessions doesn't hold.
+    // any other act (SessionRow.topActOf), and Go To on a session Sessions
+    // doesn't hold.
     function topSessionAct(one) {
-        const id = /^verb:agent:(switch|park|pause|resume|stop)$/u
-            .exec(String(one.key ?? ""))?.[1];
+        const id = SessionRow.topActOf(one.key);
         const address = one.ask?.address;
         if (!id || !address)
             return null;
@@ -534,6 +534,10 @@ Provider {
     function wrapSign(served) {
         return served ? JSON.stringify(Object.assign({}, served, { order: 0 })) : "";
     }
+    // Whether the shell held each session parked as its row was wrapped,
+    // which its Return reads (SessionRow.drawn), so a park or wake the
+    // daemon hasn't served yet wraps it again (rowOf).
+    readonly property var wrappedParked: ({})
     property int placings: 0
     // Says Recent's records moved, so only Recent is made again.
     property int recentMoves: 0
@@ -575,6 +579,7 @@ Provider {
             if (wrappedFrom[key] !== wrapSign(held[key]?.row)) {
                 delete wrapped[key];
                 delete wrappedFrom[key];
+                delete wrappedParked[key];
             }
             const at = placedKeys.indexOf(key);
             if (at >= 0)
@@ -649,6 +654,9 @@ Provider {
     // its members, then the closed orchestrators.
     function laidOut() {
         void placings;
+        // A park or wake is read here, so a row whose Return it moves is
+        // wrapped again (wrappedParked).
+        void Sessions.parked;
         const held = rowsKind?.held ?? {};
         const rows = placing.keys.filter(key => !held[key]?.row?.held?.fold)
             .map(key => rowOf(key, held)).filter(row => row !== null);
@@ -719,12 +727,15 @@ Provider {
             wrappedFrom[key] = wrapSign(served);
             return row;
         }
-        if (!(key in wrapped)) {
-            const session = sessionAt(String(served.row).replace(/^agent:/, ""));
+        const address = String(served.row).replace(/^agent:/, "");
+        const parked = Sessions.parkedAs(address) !== null;
+        if (!(key in wrapped) || wrappedParked[key] !== parked) {
+            const session = sessionAt(address);
             if (session === null)
                 return null;
             wrapped[key] = sessionRow(session, served);
             wrappedFrom[key] = wrapSign(served);
+            wrappedParked[key] = parked;
         }
         return wrapped[key];
     }

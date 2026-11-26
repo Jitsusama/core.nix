@@ -110,8 +110,9 @@ const HARMLESS = ["switch", "talk", "wake"];
 // The acts a session's row offers, by their ids, and `marked`, the one its
 // Return does: those its row serves (`rowActs`) that the shell makes, in
 // their order, and its `returns` (modules/agents/src/row.rs), else
-// `fallback`, the shell's own list. An act Return does that the row
-// doesn't list leads it, so nothing marks an act Return won't do. With no
+// `fallback`, the shell's own list. A Return the row doesn't list leads
+// it only where it leaves the session as it is, so nothing marks an act
+// Return won't do, nor one `withheld` keeps back. Otherwise, or with no
 // Return the shell makes, Return is the first act that leaves the session
 // as it is, else Talk, put first, never one that steers or ends it,
 // whatever order a newer daemon serves (standing.rs's returns). Its drawer
@@ -121,7 +122,9 @@ function offered(rowActs, returns, fallback) {
         .map(one => known(one?.key))
         .filter(id => id !== "");
     const ids = served.length > 0 ? served : fallback.slice();
-    const returning = known(returns) || (ids.find(id => HARMLESS.includes(id)) ?? "talk");
+    const named = known(returns);
+    const trusted = ids.includes(named) || HARMLESS.includes(named) ? named : "";
+    const returning = trusted || (ids.find(id => HARMLESS.includes(id)) ?? "talk");
     if (!ids.includes(returning)) {
         ids.unshift(returning);
     }
@@ -135,7 +138,7 @@ function offered(rowActs, returns, fallback) {
 // serves, since `withheld` keeps back every other act then, so what's
 // offered and what goes agree.
 function drawn(row, windowed, parked) {
-    const fallback = fallbackOf(row !== null && row !== undefined, windowed, parked);
+    const fallback = fallbackOf(windowed, parked);
     return parked ? offered([], "", fallback)
         : offered(row?.acts, row?.held?.returns, fallback);
 }
@@ -147,12 +150,21 @@ function drawn(row, windowed, parked) {
 // how it stands isn't known: before its row is held it may be parked
 // already, and the node wakes a parked session for any steer; held with
 // no act the shell makes, as from a daemon newer than it, it's no better
-// known. `withheld` keeps back the rest.
-function fallbackOf(held, windowed, parked) {
+// known, so it gets the same. `withheld` keeps back the rest.
+function fallbackOf(windowed, parked) {
     if (parked) {
         return acts("parked", windowed, false);
     }
-    return windowed && !held ? ["switch", "talk"] : ["talk"];
+    return windowed ? ["switch", "talk"] : ["talk"];
+}
+
+// The act a served orchestration's row names by `key` that the shell
+// makes itself, as a session's own (Agents.qml's topSessionAct), or ""
+// for one the daemon does, Close among them, which asks before it's sent.
+const TOP = ["switch", "park", "pause", "resume", "stop"];
+function topActOf(key) {
+    const id = known(key);
+    return TOP.includes(id) ? id : "";
 }
 
 

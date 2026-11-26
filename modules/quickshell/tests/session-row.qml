@@ -127,8 +127,16 @@ QtObject {
             ["its other keys aren't a session's acts",
                 [{ key: "verb:agents:landed:try" }, ...served(["talk"])], "verb:agent:talk", [],
                 "talk", "talk"],
-            ["nothing served, the shell's own, Return on its first", undefined, undefined,
-                ["switch", "talk", "pause"], "switch talk pause", "switch"],
+            ["nothing served, the shell's own, Return on its first harmless", undefined,
+                undefined, ["switch", "talk", "pause"], "switch talk pause", "switch"],
+            ["nothing served, Return passes over a steer leading", undefined, undefined,
+                ["pause", "talk"], "pause talk", "talk"],
+            // A served Return it doesn't list leads only where it leaves the
+            // session as it is, so nothing it marks is kept back at the press.
+            ["a Park Return the row doesn't list isn't marked", served(["talk", "pause"]),
+                "verb:agent:park", [], "talk pause", "talk"],
+            ["a Pause Return on a row serving nothing it makes isn't marked",
+                served(["hush"]), "verb:agent:pause", ["talk"], "talk", "talk"],
             // A daemon newer than the shell, as through a switch, serves acts
             // the shell can't make: they're left out, Return's too.
             ["an act the shell doesn't make is left out", served(["talk", "hush", "pause"]),
@@ -155,19 +163,28 @@ QtObject {
             if (SessionRow.known(key) !== want)
                 failures.push(`${what}: known "${SessionRow.known(key)}", not "${want}"`);
         }
-        // The shell's own acts: Go To where it has a window before its row's held,
-        // and Talk, none that steers or ends it, as how it stands isn't known;
-        // held with nothing the shell makes, Talk alone; one the shell holds
-        // parked, Wake and Talk, its row held or not.
+        // An orchestration's row hands the shell its session's Go To and steers,
+        // so each is checked at the press, and leaves the daemon its Close,
+        // which asks first, and Wake and Talk, which wake nothing it didn't mean.
+        const tops = [["verb:agent:switch", "switch"], ["verb:agent:park", "park"],
+            ["verb:agent:pause", "pause"], ["verb:agent:resume", "resume"],
+            ["verb:agent:stop", "stop"], ["verb:agent:close", ""], ["verb:agent:wake", ""],
+            ["verb:agent:talk", ""], ["verb:agent:hush", ""], ["verb:agents:park", ""]];
+        for (const [key, want] of tops) {
+            if (SessionRow.topActOf(key) !== want)
+                failures.push(`top ${key}: "${SessionRow.topActOf(key)}", not "${want}"`);
+        }
+        // The shell's own acts: Go To where it has a window, and Talk, none that
+        // steers or ends it, as how it stands isn't known; one the shell holds
+        // parked, Wake and Talk.
         const fallbacks = [
-            ["unheld, with a window", false, true, false, "switch talk"],
-            ["unheld, with none", false, false, false, "talk"],
-            ["held, with a window", true, true, false, "talk"],
-            ["unheld, parked by the shell", false, true, true, "wake talk"],
-            ["held, parked by the shell", true, false, true, "wake talk"]
+            ["with a window", true, false, "switch talk"],
+            ["with none", false, false, "talk"],
+            ["parked by the shell, with a window", true, true, "wake talk"],
+            ["parked by the shell, with none", false, true, "wake talk"]
         ];
-        for (const [what, held, windowed, parked, want] of fallbacks) {
-            const got = SessionRow.fallbackOf(held, windowed, parked).join(" ");
+        for (const [what, windowed, parked, want] of fallbacks) {
+            const got = SessionRow.fallbackOf(windowed, parked).join(" ");
             if (got !== want)
                 failures.push(`fallback ${what}: "${got}", not "${want}"`);
         }
@@ -185,7 +202,9 @@ QtObject {
             ["held with nothing it makes, parked by the shell",
                 rowOf(["hush"], "verb:agent:hush"), false, true, "wake talk", "wake"],
             ["held with nothing it makes", rowOf(["hush"], "verb:agent:hush"), true, false,
-                "talk", "talk"],
+                "switch talk", "switch"],
+            ["held, a Park Return it doesn't list", rowOf(["talk", "pause"], "verb:agent:park"),
+                false, false, "talk pause", "talk"],
             ["unheld, with a window", null, true, false, "switch talk", "switch"],
             ["unheld, parked by the shell", null, true, true, "wake talk", "wake"]
         ];
@@ -221,6 +240,8 @@ QtObject {
             ["Resume on one unpaused since", liveRow, "resume", false, ""],
             ["Pause on one the shell holds parked", liveRow, "pause", true, "unsentParked"],
             ["Talk on one the shell holds parked", liveRow, "talk", true, ""],
+            ["Pause on an unheld row the shell holds parked", null, "pause", true,
+                "unsentParked"],
             ["Park on a row not yet held", null, "park", false, "unsentUnheld"],
             ["Park on a row serving no acts", {}, "park", false, "unsentUnheld"],
             ["Pause on a row not yet held", null, "pause", false, "unsentUnheld"],
