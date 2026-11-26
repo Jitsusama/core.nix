@@ -517,13 +517,13 @@ impl Said {
     /// report heard for each house that took it, named as its refusals
     /// are, so a reporter given another house's key is seen heard as that
     /// house's, and a second house's first report from the address is
-    /// still said (every verdict round 2's F7), and under a key two houses
-    /// share, each new address says one for each, the machine on either
-    /// network or not, as each takes it (names its taker round 2's F14);
-    /// each house's refusal at
-    /// most once each `SAID_APART` for whose it is, whatever kinds of
-    /// refusal come; and, once that has
-    /// passed, that address's or house's reports taken again. Refusals no
+    /// still said (every verdict round 2's F7). A report under a key two
+    /// houses share says its first for each house that takes it, wherever
+    /// the machine is (names its taker round 2's F14; house ends round 1's
+    /// F3, F7 and F15). Each house's refusal is said at most once each
+    /// `SAID_APART` for whose it is, whatever kinds of refusal come, and,
+    /// once that has passed, that address's or house's reports are said to
+    /// be taken again, for each house that takes them. Refusals no
     /// house's key signed, from addresses no house names, are said
     /// together, so a forger sending from many addresses writes no more,
     /// and never hide a house's own; their end is never said, since no
@@ -1841,25 +1841,50 @@ mod tests {
             );
             let now = at + Duration::from_secs(s);
             let verdicts = ear.verdicts(&reporters, from, report.as_bytes(), now, stamp);
-            said.of(from, &verdicts, now)
+            (verdicts.taken.clone(), said.of(from, &verdicts, now))
         };
-        let unread = hear(0);
+        let (_, unread) = hear(0);
         fs::write(&key, vector_key()).expect("a key");
-        let past = hear(63);
+        let (taken, within) = hear(30);
+        let (_, past) = hear(63);
         let _ = fs::remove_dir_all(&folder);
         let house_one = format!("the house on {one}");
+        // Each step is counted whole, so a line past what it should say
+        // fails it, and the house is pinned second in `taken`, the case
+        // the test is for, so a change of the order fails here rather than
+        // leaving the test to pass on the first taker (house ends round
+        // 1's F5, F6 and F12).
+        assert_eq!(
+            unread.len(),
+            2,
+            "the address's first report and the house's unread key, alone: {unread:?}"
+        );
+        assert_eq!(
+            unread[0],
+            format!("the first report from {from} for the house was heard"),
+            "the address's own key took first: {unread:?}"
+        );
         assert!(
-            unread
-                .iter()
-                .any(|line| line.contains(&house_one) && line.contains("can't be read")),
+            unread[1].contains(&house_one) && unread[1].contains("can't be read"),
             "the house's unread key went unsaid: {unread:?}"
         );
         assert_eq!(
+            taken,
+            [Source::Address(from), Source::House(one.clone())],
+            "the house no longer takes second, so this test no longer tests that"
+        );
+        assert_eq!(
+            within,
+            [format!(
+                "the first report from {from} for {house_one} was heard"
+            )],
+            "the house taking second ended its refusal within the minute: {within:?}"
+        );
+        assert_eq!(
             past,
-            [
-                format!("the first report from {from} for {house_one} was heard"),
-                format!("the reports from {from} for {house_one} are taken again"),
-            ],
+            [format!(
+                "the reports from {from} for {house_one} are taken again"
+            )],
             "the house taking second wasn't said to end its refusal: {past:?}"
         );
     }
@@ -1927,6 +1952,38 @@ mod tests {
             one_first.sent(Source::House(second), later),
             None,
             "a replay one house's stamp refused was taken by another holding its key"
+        );
+    }
+
+    // Two houses naming no address and sharing a key each say their first
+    // report from an address, as `Said::of` says they do, not only the
+    // first to take it (house ends round 1's F2 and F7).
+    #[test]
+    fn a_report_under_a_shared_key_says_its_first_for_each_house() {
+        let folder =
+            std::env::temp_dir().join(format!("shaper-shared-first-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let key = folder.join("house.key");
+        fs::write(&key, vector_key()).expect("a key");
+        let (one, two) = ("00:00:5e:00:53:01", "00:00:5e:00:53:02");
+        let reporters = Reporters {
+            named: BTreeMap::new(),
+            unnamed: vec![(one.to_owned(), key.clone()), (two.to_owned(), key)],
+        };
+        let from: IpAddr = "192.0.2.12".parse().expect("an address");
+        let at = Instant::now();
+        let report = sign("0 0", STAMP, &vector_key());
+        let verdicts = Ear::default().verdicts(&reporters, from, report.as_bytes(), at, STAMP);
+        let said = Said::default().of(from, &verdicts, at);
+        let _ = fs::remove_dir_all(&folder);
+        assert_eq!(
+            said,
+            [
+                format!("the first report from {from} for the house on {one} was heard"),
+                format!("the first report from {from} for the house on {two} was heard"),
+            ],
+            "a report under a shared key wasn't said first for each house: {said:?}"
         );
     }
 
