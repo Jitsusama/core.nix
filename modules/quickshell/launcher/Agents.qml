@@ -57,6 +57,7 @@ import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
 import "SpendDrawer.js" as SpendDrawer
 import "Sprouting.js" as Sprouting
+import "StartNotices.js" as StartNotices
 import "StartSaid.js" as StartSaid
 import "StartsStopped.js" as StartsStopped
 import "TalkAnswers.js" as TalkAnswers
@@ -2295,7 +2296,8 @@ Provider {
         const text = where ? Sprouting.toldWhere(how, sproutWords())
             : Sprouting.told(Openings.promised(how, sproutGiven), sproutWords());
         sproutSays(key, text, how.started ? how.held !== "" ? "running" : "done" : "failed");
-        // Told Joel before the daemon is told it's told, so it's kept until he is.
+        // Told Joel, in the foot or a notice sent once this turn is done
+        // (sproutNoticed), then the daemon is told it's told.
         sproutReaches(how, where ? text : null);
         sproutsKept(rowsKind?.held ?? {});
         Report.say(how.started ? `sprouted new work on ${how.machine}`
@@ -2455,7 +2457,7 @@ Provider {
     }
     // Tells Joel how starts ended: in the foot while the card is up, and
     // as a notice while it's shut or if it shuts soon after the foot said
-    // it (sproutFooted, Sprouting.noticedAtShut), since a shut launcher may
+    // it (sproutFooted, StartNotices.noticedAtShut), since a shut launcher may
     // not open for hours. That's a notice where an act's end is otherwise the
     // foot's alone (Joel, 18 November, of a start he shut the launcher on
     // five seconds after: "things I send in must be seen through").
@@ -2464,7 +2466,7 @@ Provider {
         const name = Words.name("agents:start-new-work");
         if (launcher !== null && (launcher.open || launcher.opening)) {
             const now = Date.now();
-            const unread = Sprouting.noticedAtShut(sproutFooted, launcher.keysTaken, now)
+            const unread = StartNotices.noticedAtShut(sproutFooted, launcher.keysTaken, now)
                 ? sproutFooted.told : [];
             const shown = unread.concat(told).map(text => [name, text]);
             launcher.tellOnOpen(shown, true);
@@ -2475,13 +2477,37 @@ Provider {
         }
     }
     property var sproutFooted: null
+    // The ends to notice once this turn is done (sproutNoticing), and the
+    // notice last sent (StartNotices.sentOf).
+    property var sproutNotices: []
+    property var sproutSent: null
+    // `told` noticed with any other end told in the same turn, as one
+    // notice: a pass over kept starts tells each on its own, and two
+    // notify-sends begun together reach the notices daemon in no fixed order.
+    // So the notice is sent once the turn is done, after the daemon is told
+    // they're told (sproutTold): a shell gone in that moment loses them.
     function sproutNoticed(told) {
+        const first = sproutNotices.length === 0;
+        sproutNotices = sproutNotices.concat(told);
+        if (first)
+            Qt.callLater(sproutNoticing);
+    }
+    // One notice of the ends gathered, led as StartNotices.sproutNotice says: the
+    // daemon folds what leads it away.
+    function sproutNoticing() {
+        const told = sproutNotices;
+        sproutNotices = [];
+        if (told.length === 0)
+            return;
         const name = Words.name("agents:start-new-work");
+        const made = StartNotices.sproutNotice(told, sproutSent, name,
+            { history: Notices.history, live: Notices.live });
+        sproutSent = made.sent;
         Niri.spawn(["notify-send", "--app-name=Agents", "--", name,
-            Sprouting.noticeBody(told)]);
+            StartNotices.noticeBody(made.ends)]);
     }
     // The launcher shut, or its opening was let go: what the foot said of
-    // a start, unread by Sprouting.noticedAtShut, is noticed, and the foot
+    // a start, unread by StartNotices.noticedAtShut, is noticed, and the foot
     // forgets it, so the next opening doesn't say it again.
     function sproutShut() {
         const footed = sproutFooted;
@@ -2497,7 +2523,7 @@ Provider {
         openings = Openings.shutOn(openings);
         sproutGiven = Openings.spent(sproutGiven);
         if (launcher === null
-            || !Sprouting.noticedAtShut(footed, launcher.keysTaken, Date.now()))
+            || !StartNotices.noticedAtShut(footed, launcher.keysTaken, Date.now()))
             return;
         sproutNoticed(footed.told);
         footCleared(launcher, footed.shown);

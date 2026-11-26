@@ -220,9 +220,9 @@ function untold(kept, known, seen, now) {
     const askerHad = one => !Number.isFinite(one.at) || now - one.at >= ASKER_ANSWERS_MS;
     const waitedOut = one => own(seen, one.token) && now - seen[one.token] >= SETTLE_MS
         && askerHad(one);
-    const unheard = kept.filter(one => !own(known, one.token));
-    const tell = unheard.filter(waitedOut);
-    const waiting = unheard.filter(one => !waitedOut(one)).map(one => one.token);
+    const notHeard = kept.filter(one => !own(known, one.token));
+    const tell = notHeard.filter(waitedOut);
+    const waiting = notHeard.filter(one => !waitedOut(one)).map(one => one.token);
     const said = kept.filter(one => (own(known, one.token) ? known[one.token] !== "asking"
         : waitedOut(one))).map(one => one.token);
     const answered = kept.filter(one => own(known, one.token) && known[one.token] === "asking");
@@ -470,29 +470,4 @@ function journalled(how) {
         return "new work's start went unanswered; it may still start";
     }
     return `new work wasn't started: ${how.why}`;
-}
-
-// How long a tell stands in the foot before a close counts as having read
-// it: the keys that shut the launcher (Escape, then :q or ZZ) are a
-// leaving, not a reading, so a close soon after the tell notices it.
-const READ_MS = 10_000;
-
-// Whether what the foot told, `footed` ({ keys, at }, the keys taken and
-// the time as it was told), is noticed as the launcher shuts with
-// `keysTaken` and `now`: when no key came since, or it shut within
-// READ_MS of the tell. Told twice, a notice beside a read foot, costs less
-// than an end he never sees.
-function noticedAtShut(footed, keysTaken, now) {
-    if (footed === null || footed === undefined) {
-        return false;
-    }
-    return keysTaken === footed.keys || now - footed.at < READ_MS;
-}
-
-// A notice's body for the ends told, `ends`, one to a line and as plain
-// text, since a notice's body is markup and the node writes the why: one
-// notice, so the notices daemon folds none of them away unseen.
-function noticeBody(ends) {
-    return ends.map(text => String(text).replace(/&/gu, "&amp;").replace(/</gu, "&lt;")
-        .replace(/>/gu, "&gt;")).join("\n");
 }
