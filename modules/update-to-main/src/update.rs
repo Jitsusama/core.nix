@@ -60,7 +60,39 @@ pub fn update_at(
     if matches!(ending, Line::Done { .. } | Line::Unchanged { .. }) {
         let _ = fs::remove_file(config.behind_file());
     }
-    ending
+    still_boots(config, ending)
+}
+
+/// `ending` with why the machine still boots the system it booted before:
+/// a switch keeps its own why, or ends the one kept when it says none, and
+/// an ask that switched nothing says the one kept. Without it the machine
+/// read as booting what it ran from the next ask on, though nothing had
+/// moved its boot default. A failure or refusal goes back to, or stays on,
+/// what it ran, which leaves the why kept for the next unchanged ask.
+fn still_boots(config: &Config, ending: Line) -> Line {
+    match ending {
+        Line::Done { ref boots, .. } => {
+            // A why that can't be kept leaves the next unchanged ask to say
+            // none, as every ask did before one was kept.
+            let _ = match boots {
+                Some(why) => fs::write(config.boots_file(), why),
+                None => fs::remove_file(config.boots_file()),
+            };
+            ending
+        }
+        Line::Unchanged {
+            commit,
+            followed,
+            boots: None,
+        } => Line::Unchanged {
+            commit,
+            followed,
+            boots: fs::read_to_string(config.boots_file())
+                .ok()
+                .filter(|why| !why.is_empty()),
+        },
+        ending => ending,
+    }
 }
 
 /// Marks the machine behind main from the first build of a main it
