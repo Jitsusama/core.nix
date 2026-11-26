@@ -96,12 +96,13 @@ type Known<'a> = dyn Fn(&str, i16, Asked) -> Option<(Measured, Whence)> + 'a;
 
 /// Asks a card's chooser where it should be, from what the access point
 /// it's on carried, what it hears of its network and what's known of each,
-/// and moves it there as the roam act does.
+/// and moves it there as the roam act does. What it hears is read here,
+/// less a point that warned it drops the card (`State::around_to_choose`),
+/// so no caller can hand the chooser a point that just shed the card.
 pub fn choose(
     chooser: &mut Chooser,
     (now, hour): (Instant, u8),
     (on, measured): (&Joined, &Measured),
-    around: &[Heard],
     (lately, learned): (&Measures, &Learned),
     (asks, air, looked): (
         &mpsc::Sender<Ask>,
@@ -111,7 +112,8 @@ pub fn choose(
     call: bool,
 ) {
     let known = known(lately, learned, (now, hour));
-    match chosen(chooser, now, (on, measured), around, &known, call) {
+    let around = air.borrow().around_to_choose(&on.card, now);
+    match chosen(chooser, now, (on, measured), &around, &known, call) {
         Some(Next::Move(to)) => {
             tokio::spawn(roam(asks.clone(), air.clone(), on.card.clone(), to));
         }

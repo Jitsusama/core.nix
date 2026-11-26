@@ -337,12 +337,10 @@ pub async fn follow(
                     if let Some(minute) = measures.minute_of(&on.point, now) {
                         chooser.took_minute(now, &on.point, &minute);
                     }
-                    let around = state.borrow().around_to_choose(&on.card, now);
                     moves::choose(
                         chooser,
                         (now, hour),
                         (&on, &carried),
-                        &around,
                         (&measures, &learned),
                         (&asks, &state, &looked),
                         call,
@@ -359,14 +357,12 @@ pub async fn follow(
                 let Some(carried) = measures.of(&on.point, now) else {
                     continue;
                 };
-                let around = state.borrow().around_to_choose(&on.card, now);
                 let chooser = choosers.entry(on.card.clone()).or_default();
                 chooser.looked_over(now);
                 moves::choose(
                     chooser,
                     (now, hour),
                     (&on, &carried),
-                    &around,
                     (&measures, &learned),
                     (&asks, &state, &looked),
                     call,

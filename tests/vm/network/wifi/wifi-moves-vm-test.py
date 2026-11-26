@@ -470,6 +470,34 @@ def test_a_warned_card_stops_looking_to_move_before_it_s_dropped(
         machine.succeed("systemctl stop lantern-two")
 
 
+# A look under way may be over other channels than a warning names, so a card hearing none of them
+# stops it and looks over theirs once it's said to end. What the stopped look heard before it ended
+# may hold the first already, so the card's own look over 2437 MHz is left unchecked: the move
+# comes only once the stopped look's end is heard.
+def test_a_warned_card_hearing_none_named_stops_a_look_under_way_to_look_for_them(
+    machine: BaseMachine, wifid: Wifid
+) -> None:
+    """A warned card hearing none named, mid-look, stops that look, then finds them and moves."""
+    machine.succeed("systemctl start lantern-two")
+    since = wifid.journal_now()
+    try:
+        ask = warning(machine, wifid)
+        machine.succeed("wpa_cli -i wlan2 bss_flush 0 | grep -qx OK")
+        assert FIRST not in machine.succeed("wpa_cli -i wlan2 scan_results"), "still heard"
+        since = wifid.journal_now()
+        machine.succeed(f"wpa_cli -i wlan2 scan | grep -qx OK && {ask} | grep -qx OK")
+        reached_in_time(
+            machine,
+            since,
+            "warning it drops the card in 5120 ms",
+            "wlan2 stops looking to look over 2437 MHz",
+            f"wlan2 moves to {FIRST} before it's dropped",
+        )
+    finally:
+        machine.log(machine.succeed(f"journalctl -o short-precise --after-cursor='{since}'"))
+        machine.succeed("systemctl stop lantern-two")
+
+
 # An access point that says its whole network drops the card names no point to go to, so the card
 # is let join any point, and any network, rather than held to one that drops it.
 def test_a_card_whose_whole_network_drops_it_may_join_any_point_again(
@@ -496,7 +524,8 @@ def test_a_card_whose_whole_network_drops_it_may_join_any_point_again(
             ' | grep -qxF "wlan2\'s whole network drops it, so it may join any point again"',
             timeout=timedelta(seconds=10),
         )
-        assert held_nowhere(machine), "still held to the point whose network drops it"
+        # The line is said before the hold is let go, so the hold is read until it goes.
+        retry(lambda _: held_nowhere(machine), timeout=timedelta(seconds=10))
     finally:
         machine.log(machine.succeed(f"journalctl -o short-precise --after-cursor='{since}'"))
         machine.succeed("systemctl stop lantern-two")

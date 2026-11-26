@@ -16,12 +16,22 @@
 //! may join, so it keeps the card there until it's dropped.
 //!
 //! One warning that the whole network drops the card has no point of that
-//! network to go to, so the card is only let go. A warning read from a
-//! frame its link doesn't protect could have come from any station in
-//! range naming itself as the point. It's followed all the same, and said
-//! as unprotected: a station that can send it can as easily drop the card
-//! and answer as that point, so holding the card to the point never kept
-//! it from one.
+//! network to go to, so the card is only let go.
+//!
+//! A warning read from a frame its link doesn't protect could have come
+//! from any station in range, naming any point it runs, and a point named
+//! is ranked by the preference the frame gives it. Held to its point, a
+//! card can't be taken to a forger's point of its own address, so wifid
+//! keeps that from such a frame:
+//!
+//! - On an open network anyone may run a point of its name, so the card
+//!   is only let go and nothing is kept off: it rejoins by signal once
+//!   dropped, as a forged drop would leave it.
+//! - On one joined with a password or an account, the card is moved only
+//!   to a point heard with that same security, which nobody runs without
+//!   the network's key or proves without its server. One holding a WPA2
+//!   network's shared key can already read what a card joining in its
+//!   hearing sends, so a point of its own gains it little.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -30,6 +40,13 @@ use tokio::time::Duration;
 use zbus::zvariant::{OwnedValue, Value};
 
 use crate::choose::SETTLE;
+use crate::state::Security;
+
+/// The longest a card that left a point asking keeps its chooser off it.
+/// A real point's candidates hold 26 s at most, 255 beacons of 100 TU, so
+/// a request holding longer has a beacon interval no point sends, maybe
+/// forged on a link that doesn't protect its frames.
+const KEEPS_OFF_AT_MOST: Duration = Duration::from_hours(1);
 
 /// One request, as wpa_supplicant said it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -93,6 +110,10 @@ pub enum Heed {
     /// Lets the card join any point again, as its whole network warns it
     /// drops the card, so no other point of it would keep the card.
     NetworkDrops,
+    /// Lets the card join any point again, keeping none off, as the
+    /// warning came unprotected on an open network, where any station
+    /// could have sent it and could run the points it names.
+    Unproven,
     /// Moves the card to this point, the one it would rather of those the
     /// card hears.
     Move(String),
@@ -117,7 +138,8 @@ impl Heed {
     /// move of its goes back there should it miss, and its chooser keeps
     /// off that point for a time (`Request::keeps_off`). One that stays,
     /// unheld or already leaving is none: the first two follow no warning,
-    /// and the last was warned before.
+    /// and the last was warned before. Nor is one unproven, as a forger
+    /// could otherwise keep the card off its own point.
     pub fn leaves(&self) -> bool {
         matches!(
             self,
@@ -134,10 +156,166 @@ pub enum Looked {
     /// Not yet: the request was just said.
     Not,
     /// A look already under way, maybe over other channels, was stopped,
-    /// so the card looks for them once it ends.
+    /// or the card looked over others than a newer ask names, so it looks
+    /// for them once that look ends.
     Stopped,
     /// The card looked over the request's channels.
     Done,
+    /// The card's look over them failed, which says nothing of whether
+    /// the points are there.
+    Failed,
+}
+
+impl Looked {
+    /// Whether the card has had its one look, so it's moved or let go.
+    pub fn over(self) -> bool {
+        matches!(self, Looked::Done | Looked::Failed)
+    }
+}
+
+/// The cards waiting on a look for the points a request names, each with
+/// the request, the point that asked, how far it's looked and the number
+/// of wpa_supplicant's answer that began the look, so the request is
+/// heeded again as that look ends.
+#[derive(Debug, Default)]
+pub struct Looks(HashMap<String, Waiting>);
+
+#[derive(Debug)]
+struct Waiting {
+    request: Request,
+    from: Option<String>,
+    looked: Looked,
+    after: u32,
+}
+
+/// What a newer ask does to a card's look.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Again {
+    /// The card waits on no look of that point's, so it's heeded as any.
+    Fresh,
+    /// The look waits on with the warning it had, as the newer ask warns
+    /// nothing, and a point that warned still drops the card.
+    Kept,
+    /// The look ends with the newer ask heeded, as a point warns again
+    /// until the card is gone.
+    Taken,
+}
+
+/// What a look ending says of a card waiting on one.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Ended {
+    /// It waits on none.
+    Unwaited,
+    /// It's still looking: the look that ended was said to before the
+    /// card's own began, behind the signal that had it ask for its own.
+    Earlier,
+    /// It's no longer on the point that asked, so what that point asked
+    /// is past.
+    Moved(Option<String>),
+    /// Its look is over, so the request is heeded again, this far looked.
+    Heed(Request, Looked),
+}
+
+impl Looks {
+    /// Has a card on `from` wait on its look for what `request` names,
+    /// begun by wpa_supplicant's answer numbered `after`.
+    pub fn wait(
+        &mut self,
+        card: &str,
+        request: Request,
+        from: Option<String>,
+        looked: Looked,
+        after: u32,
+    ) {
+        let waiting = Waiting {
+            request,
+            from,
+            looked,
+            after,
+        };
+        self.0.insert(card.to_owned(), waiting);
+    }
+
+    /// Whether a card waits on a look.
+    pub fn waits(&self, card: &str) -> bool {
+        self.0.contains_key(card)
+    }
+
+    /// Takes a newer ask of a card now on `from`. One from another point
+    /// than asked before is heeded afresh. A newer warning naming a
+    /// channel the card's look didn't cover has it look again.
+    pub fn asked_again(&mut self, card: &str, request: &Request, from: Option<&str>) -> Again {
+        let Some(waiting) = self.0.get_mut(card) else {
+            return Again::Fresh;
+        };
+        if !same_point(waiting.from.as_deref(), from) {
+            self.0.remove(card);
+            return Again::Fresh;
+        }
+        if !request.warns_any() && waiting.request.warns_any() {
+            return Again::Kept;
+        }
+        let looked_over = waiting.request.channels();
+        if waiting.looked.over()
+            && !request
+                .channels()
+                .iter()
+                .all(|channel| looked_over.contains(channel))
+        {
+            waiting.looked = Looked::Stopped;
+        }
+        waiting.request = request.clone();
+        Again::Taken
+    }
+
+    /// Takes the end of a card's look, as wpa_supplicant says one ended:
+    /// the number of its signal, the point the card is on now, and whether
+    /// the look that ended `succeeded`. wpa_supplicant numbers all it
+    /// sends in order, so a signal numbered before the answer that began
+    /// the card's look ended another; the number wraps only past four
+    /// billion messages.
+    pub fn ended(&mut self, card: &str, serial: u32, on: Option<&str>, succeeded: bool) -> Ended {
+        match self.0.get(card) {
+            None => return Ended::Unwaited,
+            Some(waiting) if serial <= waiting.after => return Ended::Earlier,
+            Some(_) => {}
+        }
+        let Some(waiting) = self.0.remove(card) else {
+            return Ended::Unwaited;
+        };
+        if !same_point(waiting.from.as_deref(), on) {
+            return Ended::Moved(waiting.from);
+        }
+        let looked = match waiting.looked {
+            Looked::Done if !succeeded => Looked::Failed,
+            looked => looked,
+        };
+        Ended::Heed(waiting.request, looked)
+    }
+
+    /// Forgets a card's look, as the card came off its network or went.
+    pub fn forget(&mut self, card: &str) {
+        self.0.remove(card);
+    }
+}
+
+/// Whether two points, maybe none, are one, however written.
+fn same_point(one: Option<&str>, other: Option<&str>) -> bool {
+    match (one, other) {
+        (Some(one), Some(other)) => one.eq_ignore_ascii_case(other),
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+/// Each channel these candidates are on, once, in order.
+fn channels_of<'a>(candidates: impl Iterator<Item = &'a Candidate>) -> Vec<u32> {
+    let mut channels: Vec<u32> = candidates
+        .filter_map(|candidate| candidate.frequency)
+        .collect();
+    channels.sort_unstable();
+    channels.dedup();
+    channels
 }
 
 impl Request {
@@ -226,7 +404,17 @@ impl Request {
     /// chooser makes itself holds the card still, so the next minute's
     /// choice can't send the card back to a point that just shed it.
     pub fn keeps_off(&self) -> Duration {
-        Duration::from_millis(self.valid_ms.into()).max(SETTLE)
+        Duration::from_millis(self.valid_ms.into()).clamp(SETTLE, KEEPS_OFF_AT_MOST)
+    }
+
+    /// Whether it warns of a drop, of its point or its whole network.
+    pub fn warns_any(&self) -> bool {
+        self.warns || self.leaves_network
+    }
+
+    /// Each channel its candidates are on, once, in order.
+    fn channels(&self) -> Vec<u32> {
+        channels_of(self.candidates.iter())
     }
 
     /// What the journal says of it, for a card on a point, or on none
@@ -250,7 +438,7 @@ impl Request {
             }
             let _ = write!(said, ", for {} ms", self.valid_ms);
         }
-        if !self.warns && !self.leaves_network {
+        if !self.warns_any() {
             said.push_str(", warning nothing");
             return said;
         }
@@ -271,28 +459,38 @@ impl Request {
     }
 
     /// Where a card on `from`, hearing these points of its network as
-    /// their address and signal, goes for this request: to the candidate
-    /// the point asking would rather, of those heard and not ruled out,
-    /// the more strongly heard of two it would as soon. Only a card wifid
-    /// holds, `held`, is moved, and only to a point `heard` names: one the
-    /// card itself heard on its network. One hearing none looks for them
-    /// first, unless it already has, `looked`, or no channel of theirs is
-    /// known. A card whose whole network drops it is let go, even one
-    /// already on a move within it, and one already `leaving` a point that
-    /// warned it is otherwise left to that move.
+    /// their address, signal and security, goes for this request: to the
+    /// candidate the point asking would rather, of those heard and not
+    /// ruled out, the more strongly heard of two it would as soon. Only a
+    /// card wifid holds, `held`, is moved, and only to a point `heard`
+    /// names with the security its network is joined with, `link`: one
+    /// the card itself heard on its network. One hearing none looks for
+    /// them first, unless it already has, `looked`, or no channel of
+    /// theirs is known. A card whose whole network drops it is let go,
+    /// even one already on a move within it, and one already `leaving` a
+    /// point that warned it is otherwise left to that move. An unprotected
+    /// warning on an open network only lets the card go.
     pub fn heed(
         &self,
         from: Option<&str>,
-        heard: &[(String, i16)],
+        heard: &[(String, i16, Security)],
         held: bool,
         leaving: bool,
         looked: bool,
+        link: Security,
     ) -> Heed {
-        if !self.warns && !self.leaves_network {
+        if !self.warns_any() {
             return Heed::Stay;
         }
         if !held {
             return Heed::Unheld;
+        }
+        if !self.protected && link == Security::Open {
+            return if leaving {
+                Heed::Leaving
+            } else {
+                Heed::Unproven
+            };
         }
         if self.leaves_network {
             return Heed::NetworkDrops;
@@ -308,9 +506,9 @@ impl Request {
         let chosen = ways_out
             .clone()
             .filter_map(|candidate| {
-                let (_, signal) = heard
-                    .iter()
-                    .find(|(bssid, _)| bssid.eq_ignore_ascii_case(&candidate.bssid))?;
+                let (_, signal, _) = heard.iter().find(|(bssid, _, security)| {
+                    bssid.eq_ignore_ascii_case(&candidate.bssid) && *security == link
+                })?;
                 // No preference given ranks below any given.
                 let rank = candidate
                     .preference
@@ -321,11 +519,7 @@ impl Request {
         if let Some((_, _, bssid)) = chosen {
             return Heed::Move(bssid.clone());
         }
-        let mut channels: Vec<u32> = ways_out
-            .filter_map(|candidate| candidate.frequency)
-            .collect();
-        channels.sort_unstable();
-        channels.dedup();
+        let channels = channels_of(ways_out);
         if looked || channels.is_empty() {
             Heed::LetGo
         } else {
@@ -360,8 +554,11 @@ mod tests {
     /// How a card holding to its point, leaving none, heeds a request
     /// before it's looked.
     fn heeds(request: &Request, heard_now: &[(&str, i16)]) -> Heed {
-        request.heed(Some(ON), &heard(heard_now), true, false, false)
+        request.heed(Some(ON), &heard(heard_now), true, false, false, PASSWORD)
     }
+
+    /// How a card on a network joined with a password hears its points.
+    const PASSWORD: Security = Security::Personal;
 
     fn warning(candidates: Vec<Candidate>) -> Request {
         Request {
@@ -374,10 +571,10 @@ mod tests {
         }
     }
 
-    fn heard(points: &[(&str, i16)]) -> Vec<(String, i16)> {
+    fn heard(points: &[(&str, i16)]) -> Vec<(String, i16, Security)> {
         points
             .iter()
-            .map(|&(bssid, signal)| (bssid.to_owned(), signal))
+            .map(|&(bssid, signal)| (bssid.to_owned(), signal, PASSWORD))
             .collect()
     }
 
@@ -520,6 +717,10 @@ mod tests {
         for heed in [Heed::Stay, Heed::Unheld, Heed::Leaving] {
             assert!(!heed.leaves(), "{heed:?} follows no new warning");
         }
+        assert!(
+            !Heed::Unproven.leaves(),
+            "a warning anyone could have sent would keep the card off its own point"
+        );
     }
 
     #[test]
@@ -534,6 +735,192 @@ mod tests {
             ..warning(Vec::new())
         };
         assert_eq!(long.keeps_off(), Duration::from_hours(1));
+        let absurd = Request {
+            valid_ms: u32::MAX,
+            ..warning(Vec::new())
+        };
+        assert_eq!(
+            absurd.keeps_off(),
+            KEEPS_OFF_AT_MOST,
+            "a request holding past any real point's can't keep the point off for days"
+        );
+    }
+
+    #[test]
+    fn an_unprotected_warning_on_an_open_network_only_lets_the_card_go() {
+        let forged = Request {
+            protected: false,
+            ..warning(vec![named(NEAR, Some(255))])
+        };
+        let open = [(NEAR.to_owned(), -40, Security::Open)];
+        let heeds_on = |request: &Request, leaving: bool, link: Security| {
+            request.heed(Some(ON), &open, true, leaving, false, link)
+        };
+        assert_eq!(
+            heeds_on(&forged, false, Security::Open),
+            Heed::Unproven,
+            "anyone in range could have sent it and could run the point it names",
+        );
+        assert_eq!(
+            heeds_on(&forged, true, Security::Open),
+            Heed::Leaving,
+            "a card already leaving keeps to its move",
+        );
+        let protected = Request {
+            protected: true,
+            ..forged
+        };
+        assert_eq!(
+            heeds_on(&protected, false, Security::Open),
+            Heed::Move(NEAR.to_owned()),
+            "a link that protects its frames proves the point sent it",
+        );
+    }
+
+    #[test]
+    fn a_warned_card_moves_only_to_a_point_joined_as_its_own_network_is() {
+        let unprotected = Request {
+            protected: false,
+            ..warning(vec![named(NEAR, Some(255)), named(FAR, Some(10))])
+        };
+        let heard = [
+            (NEAR.to_owned(), -30, Security::Open),
+            (FAR.to_owned(), -70, PASSWORD),
+        ];
+        assert_eq!(
+            unprotected.heed(Some(ON), &heard, true, false, false, PASSWORD),
+            Heed::Move(FAR.to_owned()),
+            "an open point of the same name is anyone's, so the preferred one is passed over",
+        );
+        assert_eq!(
+            unprotected.heed(Some(ON), &heard[..1], true, false, false, PASSWORD),
+            Heed::Look(vec![2437]),
+            "and one hearing only that looks for the real ones",
+        );
+    }
+
+    /// A card on `ON` waiting on its look for the request, the look begun
+    /// by wpa_supplicant's answer numbered 10.
+    fn waiting(request: &Request, looked: Looked) -> Looks {
+        let mut looks = Looks::default();
+        looks.wait("wlan2", request.clone(), Some(ON.to_owned()), looked, 10);
+        looks
+    }
+
+    #[test]
+    fn a_look_s_end_said_before_the_card_s_own_began_is_another_s() {
+        let request = warning(vec![named(NEAR, Some(255))]);
+        let mut looks = waiting(&request, Looked::Done);
+        assert_eq!(
+            looks.ended("wlan2", 9, Some(ON), true),
+            Ended::Earlier,
+            "a look that ended as the card asked for its own is said before the answer",
+        );
+        assert!(looks.waits("wlan2"), "the card still waits on its own");
+        assert_eq!(
+            looks.ended("wlan2", 11, Some(ON), true),
+            Ended::Heed(request, Looked::Done),
+            "its own look's end has the request heeded again",
+        );
+        assert!(!looks.waits("wlan2"), "and it waits no longer");
+        assert_eq!(looks.ended("wlan2", 12, Some(ON), true), Ended::Unwaited);
+    }
+
+    #[test]
+    fn a_look_that_failed_is_said_so_and_a_stopped_one_looks_again() {
+        let request = warning(vec![named(NEAR, Some(255))]);
+        assert_eq!(
+            waiting(&request, Looked::Done).ended("wlan2", 11, Some(ON), false),
+            Ended::Heed(request.clone(), Looked::Failed),
+            "a look that failed says nothing of whether the points are there",
+        );
+        assert!(Looked::Failed.over(), "but it was the card's one look");
+        assert_eq!(
+            waiting(&request, Looked::Stopped).ended("wlan2", 11, Some(ON), false),
+            Ended::Heed(request, Looked::Stopped),
+            "the stopped look ending, however, is the card's turn to look",
+        );
+        assert!(!Looked::Stopped.over());
+    }
+
+    #[test]
+    fn a_card_that_left_the_point_as_it_looked_heeds_nothing_it_asked() {
+        let request = warning(vec![named(NEAR, Some(255))]);
+        let mut looks = waiting(&request, Looked::Done);
+        assert_eq!(
+            looks.ended("wlan2", 11, Some(FAR), true),
+            Ended::Moved(Some(ON.to_owned())),
+            "a card moved by its chooser mid-look isn't the one that was warned",
+        );
+        assert!(!looks.waits("wlan2"));
+        let mut looks = waiting(&request, Looked::Done);
+        assert!(
+            matches!(
+                looks.ended("wlan2", 11, Some(&ON.to_uppercase()), true),
+                Ended::Heed(..)
+            ),
+            "its own point however written is the one it was on"
+        );
+    }
+
+    #[test]
+    fn a_newer_ask_mid_look_keeps_a_warning_and_looks_where_it_names_anew() {
+        let first = warning(vec![named(NEAR, Some(255))]);
+        let plain = Request {
+            warns: false,
+            ..first.clone()
+        };
+        let mut looks = waiting(&first, Looked::Done);
+        assert_eq!(looks.asked_again("wlan2", &plain, Some(ON)), Again::Kept);
+        assert_eq!(
+            looks.ended("wlan2", 11, Some(ON), true),
+            Ended::Heed(first.clone(), Looked::Done),
+            "a plain ask between warnings doesn't keep a warned card on a point that drops it",
+        );
+
+        let again = Request {
+            in_ms: 1024,
+            ..first.clone()
+        };
+        let mut looks = waiting(&first, Looked::Done);
+        assert_eq!(looks.asked_again("wlan2", &again, Some(ON)), Again::Taken);
+        assert_eq!(
+            looks.ended("wlan2", 11, Some(ON), true),
+            Ended::Heed(again, Looked::Done),
+            "a warning said again over the channels looked is heeded with that look",
+        );
+
+        let elsewhere = Candidate {
+            frequency: Some(5180),
+            ..named(FAR, Some(255))
+        };
+        let revised = warning(vec![elsewhere]);
+        let mut looks = waiting(&first, Looked::Done);
+        assert_eq!(looks.asked_again("wlan2", &revised, Some(ON)), Again::Taken);
+        assert_eq!(
+            looks.ended("wlan2", 11, Some(ON), true),
+            Ended::Heed(revised, Looked::Stopped),
+            "a point named on a channel the look didn't cover is looked for",
+        );
+    }
+
+    #[test]
+    fn an_ask_from_another_point_or_of_a_card_not_looking_is_heeded_afresh() {
+        let request = warning(vec![named(NEAR, Some(255))]);
+        let mut looks = waiting(&request, Looked::Done);
+        assert_eq!(
+            looks.asked_again("wlan2", &request, Some(FAR)),
+            Again::Fresh,
+            "the point the card is on now asks for itself",
+        );
+        assert!(!looks.waits("wlan2"), "and the old point's look is past");
+        assert_eq!(looks.asked_again("wlan3", &request, Some(ON)), Again::Fresh);
+        let mut looks = waiting(&request, Looked::Done);
+        looks.forget("wlan2");
+        assert!(
+            !looks.waits("wlan2"),
+            "a card off its network looks for nothing"
+        );
     }
 
     #[test]
@@ -557,7 +944,8 @@ mod tests {
                 &heard(&[(NEAR, -40)]),
                 false,
                 false,
-                false
+                false,
+                PASSWORD
             ),
             Heed::Unheld,
             "a card free to join any point is wpa_supplicant's to move",
@@ -573,7 +961,8 @@ mod tests {
                 &heard(&[(NEAR, -40), (FAR, -30)]),
                 true,
                 true,
-                false
+                false,
+                PASSWORD
             ),
             Heed::Leaving,
             "a warning said again isn't a move asked again",
@@ -588,7 +977,14 @@ mod tests {
             ..warning(vec![named(NEAR, Some(255))])
         };
         assert_eq!(
-            whole.heed(Some(ON), &heard(&[(NEAR, -40)]), true, true, false),
+            whole.heed(
+                Some(ON),
+                &heard(&[(NEAR, -40)]),
+                true,
+                true,
+                false,
+                PASSWORD
+            ),
             Heed::NetworkDrops,
             "a move to another point of the network would land on one that drops the card",
         );
@@ -645,7 +1041,8 @@ mod tests {
                 &heard(&[(ON, -30), (NEAR, -40)]),
                 true,
                 false,
-                false
+                false,
+                PASSWORD
             ),
             Heed::LetGo,
             "its own point however written, and a point at 0, are no way out, nor looked for",
@@ -665,7 +1062,7 @@ mod tests {
             "each channel once, in order",
         );
         assert_eq!(
-            request.heed(Some(ON), &heard(&[(ON, -40)]), true, false, true),
+            request.heed(Some(ON), &heard(&[(ON, -40)]), true, false, true, PASSWORD),
             Heed::LetGo,
             "one that looked and still hears none is let go",
         );
@@ -675,7 +1072,8 @@ mod tests {
                 &heard(&[(ON, -40), (NEAR, -60)]),
                 true,
                 false,
-                true
+                true,
+                PASSWORD
             ),
             Heed::Move(NEAR.to_owned()),
             "one that looked goes to what it heard",
