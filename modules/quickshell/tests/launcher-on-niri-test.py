@@ -2849,10 +2849,10 @@ def test_a_cheap_drawer_comes_in_its_keys_own_frame(shell: Shell) -> None:
 
     Each drawer came the frame after its key, waiting a whole refresh for its swap: 16 ms of
     Joel's median of 69 from the key, against his 50 (2026-11-12), while making one took a
-    median of 2. So one whose kind made in under 8 ms of late comes in the key's own frame,
+    median of 2. So one whose kind made in under 13 ms of late comes in the key's own frame,
     and its line says so (VKCF3Z, 2026-11-12, d4c660a6; 8 rather than 3 from 2026-11-16, for
-    For You's, made in 4 to 7). Home's first places make theirs in 0 to 2 ms here, so the walk
-    is over home's.
+    For You's, made in 4 to 7; 13 from 2026-11-26, for on's and notices', made in 7 to 8).
+    Home's first places make theirs in 0 to 2 ms here, so the walk is over home's.
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
@@ -3077,9 +3077,9 @@ def test_a_key_is_timed_on_its_swap_before_the_drawer_it_brings(shell: Shell) ->
     the key's: Joel's down onto Slack took 28 ms before the shell heard its frame swapped,
     beside Slack's drawer made in 28, and onto mpv 39 beside 39 (2026-11-13, 20:05).
 
-    A drawer whose kind made in under 8 ms of late is made in the key's own handler instead,
+    A drawer whose kind made in under 13 ms of late is made in the key's own handler instead,
     to come in the key's frame, so it's said first by design. A program's makes in 4 to 6 ms
-    here, under 8 on a quick builder and over it on a loaded one, and it was said first on
+    here, under the line on a quick builder and over it on a loaded one, and it was said first on
     five unrelated changes' runs on 2026-11-14 and 15 even under the old 3. So the order
     asserted is the one the way it came promises.
     """
