@@ -16,17 +16,43 @@ rec {
     background = "the pi conversations that run in the background";
   };
 
-  # The harness's host program, in the version pi-packages calls current, in
-  # the account `home`. node follows the link as it loads it, so a running
+  # The harness's scripts, in the version pi-packages calls current, in the
+  # account `home`. node follows the link as it loads a script, so a running
   # host keeps the version it started with through an update, and the next
-  # start takes the new one. It is the .mjs rather than pi-host.ts, which it
-  # runs: node strips a TypeScript entry of its types before any of its code
-  # runs, so only a JavaScript one can start the harness's stripped-source
-  # cache first, which spares node 22 loading its stripper as the host and
-  # each conversation's own process start (lib/internal/stripped-source.mjs).
-  entry =
+  # start takes the new one.
+  scripts =
     home:
-    "${home.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/pi-host.mjs";
+    let
+      inherit (home.jitsusama.pi-packages) root;
+    in
+    "${root}/github.com/Jitsusama/agentic-harness.pi/current/scripts";
+
+  # The harness's host program. It is the .mjs rather than pi-host.ts, which
+  # it runs: node strips a TypeScript entry of its types before any of its
+  # code runs, so only a JavaScript one can start the harness's
+  # stripped-source cache first, which spares node 22 loading its stripper
+  # as the host and each conversation's own process start
+  # (lib/internal/stripped-source.mjs).
+  entry = home: "${scripts home}/pi-host.mjs";
+
+  # The host program of a harness from before the .mjs, which a start runs
+  # where the .mjs isn't, so a harness rolled back past it still starts.
+  # Once no harness that can be rolled back to lacks the .mjs, this and
+  # `choosing` can go.
+  formerEntry = home: "${scripts home}/pi-host.ts";
+
+  # A shell's line that runs the command it is given, followed by the host
+  # program the install has (`entry`, else `formerEntry`) and `rest`, such
+  # as a host's kind. It execs, so the process its system watches is node,
+  # with node's own command line, which mycelium and health read.
+  choosing =
+    home: rest:
+    let
+      mjs = lib.escapeShellArg (entry home);
+      ts = lib.escapeShellArg (formerEntry home);
+      after = lib.escapeShellArgs rest;
+    in
+    ''if [ -e ${mjs} ]; then e=${mjs}; else e=${ts}; fi; exec "$@" "$e" ${after}'';
 
   # What would run code as the host as its node starts, so a host's start
   # clears each and a realm giving one is refused: NODE_OPTIONS, whose
@@ -72,11 +98,15 @@ rec {
       }) home.jitsusama.pi.hostRestartWaitsWhile
     );
 
-  # The words after node, for a process with a heap of `heapMb`: node's own
-  # `flags` after the heap, the harness's program, then `rest`, such as a
-  # host's kind.
-  words =
-    home: host: heapMb: flags: rest:
+  # The words after node, up to the harness's program, which comes next: for
+  # a process with a heap of `heapMb`, then the caller's own node `flags`,
+  # such as a realm's heap growth.
+  nodeFlags =
+    host:
+    {
+      heapMb,
+      flags ? [ ],
+    }:
     [
       # Any process of the account may send SIGUSR1, which would open node's
       # inspector and let it run code as the host. mycelium takes the host's
@@ -96,9 +126,7 @@ rec {
       "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON"
       "--max-old-space-size=${toString heapMb}"
     ]
-    ++ flags
-    ++ [ (entry home) ]
-    ++ rest;
+    ++ flags;
 
   # The environment of a process of `realm`'s host in the account `home`:
   # what the system adds first (`before`), which the realm's own may

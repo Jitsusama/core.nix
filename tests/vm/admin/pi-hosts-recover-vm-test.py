@@ -35,11 +35,16 @@ RESTARTED_STARTS = 2
 # The stand-in's folder, where each start writes its pid and the test leaves what it's told.
 FOLDER = "/home/alice/stand-in"
 STARTS = f"{FOLDER}/background.starts"
-# The host program the unit's condition looks for, which the harness's install puts there.
-ENTRY = (
-    "/home/alice/.local/share/pi-packages/github.com/Jitsusama/agentic-harness.pi"
-    "/current/scripts/pi-host.mjs"
+# The harness's program each start was given, in the order of its starts.
+ENTRIES = f"{FOLDER}/background.entries"
+# Where the harness's install puts its scripts.
+SCRIPTS = (
+    "/home/alice/.local/share/pi-packages/github.com/Jitsusama/agentic-harness.pi/current/scripts"
 )
+# The host program the unit runs, which the harness's install puts there.
+ENTRY = f"{SCRIPTS}/pi-host.mjs"
+# The host program of a harness from before the .mjs, which the unit runs where the .mjs isn't.
+FORMER_ENTRY = f"{SCRIPTS}/pi-host.ts"
 # How many starts the unit is given in ten minutes before it's left down.
 START_LIMIT = 3
 # How long a start, a watchdog's kill and the five seconds before the next start may take.
@@ -101,10 +106,14 @@ class Host:
 
     def afresh(self) -> None:
         """Start the host with nothing told, its starts and its start limit cleared."""
+        self.afresh_unstarted()
+        self.until(f"systemctl --user is-active {UNIT}")
+
+    def afresh_unstarted(self) -> None:
+        """Ask the host to start with nothing told, as afresh does, without waiting for it."""
         self.run(f"systemctl --user stop {UNIT}; systemctl --user reset-failed {UNIT} || true")
         self.run(f"rm -rf {FOLDER}; mkdir -p {FOLDER}")
         self.run(f"systemctl --user start {UNIT}")
-        self.until(f"systemctl --user is-active {UNIT}")
 
 
 @pytest.fixture(scope="module")
@@ -113,7 +122,7 @@ def booted(machine: BaseMachine) -> Host:
     machine.wait_for_unit("multi-user.target")
     machine.wait_for_unit("user@1000.service")
     host = Host(machine)
-    host.run(f"mkdir -p {shlex.quote(ENTRY.rsplit('/', 1)[0])} && touch {shlex.quote(ENTRY)}")
+    host.run(f"mkdir -p {shlex.quote(SCRIPTS)} && touch {shlex.quote(ENTRY)}")
     return host
 
 
@@ -122,6 +131,29 @@ def host(booted: Host) -> Host:
     """Start the background host afresh for this test."""
     booted.afresh()
     return booted
+
+
+def test_a_host_runs_the_harness_s_mjs_or_a_former_harness_s_ts_as_node_itself(host: Host) -> None:
+    """The unit runs the harness's .mjs, else the .ts of a harness from before it, else nothing.
+
+    A harness rolled back past the .mjs still starts. The shell that chooses execs, so the pid
+    systemd watches is node's own, whose command line mycelium and health read.
+    """
+    assert host.run(f"cat {ENTRIES}").split() == [ENTRY]
+    assert host.show("MainPID") == host.starts()[-1]
+    host.run(f"rm {shlex.quote(ENTRY)} && touch {shlex.quote(FORMER_ENTRY)}")
+    try:
+        host.afresh()
+        assert host.run(f"cat {ENTRIES}").split() == [FORMER_ENTRY]
+        assert host.show("MainPID") == host.starts()[-1]
+        # With neither, the unit's condition skips it rather than failing a start.
+        host.run(f"rm {shlex.quote(FORMER_ENTRY)}")
+        host.afresh_unstarted()
+        assert host.show("ConditionResult") == "no"
+        assert host.show("ActiveState") == "inactive"
+        assert host.starts() == []
+    finally:
+        host.run(f"rm -f {shlex.quote(FORMER_ENTRY)} && touch {shlex.quote(ENTRY)}")
 
 
 def test_a_host_whose_loop_stops_pinging_is_killed_and_started_again(host: Host) -> None:

@@ -164,7 +164,11 @@ in
         let
           unit = services."pi-conversation-one-${kind}@" or { Service = { }; };
           service = unit.Service;
-          execStart = first (service.ExecStart or "");
+          # A shell choosing the harness's .mjs, else its .ts, as a host's
+          # does (pi-hosts-start-with-the-session), then node's own words.
+          started = lib.splitString "' pi-host " (first (service.ExecStart or ""));
+          shell = lib.head started;
+          execStart = lib.last started;
           environment = lib.toList (service.Environment or [ ]);
         in
         service.Type or null == "exec"
@@ -188,10 +192,13 @@ in
         && !(unit.Unit ? BindsTo)
         && !(unit.Unit ? Requires)
         && !(unit.Unit ? Requisite)
+        && lib.length started == 2
+        && lib.hasPrefix "${pkgs.dash}/bin/dash -c 'if [ -e /" shell
+        && lib.hasInfix "/scripts/pi-host.mjs; else e=/" shell
+        && lib.hasSuffix ''/scripts/pi-host.ts; fi; exec "$$@" "$$e" --child'' shell
         && lib.hasPrefix "${node} --disable-sigusr1 --experimental-async-context-frame " execStart
         && !(lib.hasInfix "--inspect" (lib.replaceStrings [ "_" ] [ "-" ] execStart))
-        && lib.hasInfix " '--max-old-space-size=3072' /" execStart
-        && lib.hasSuffix "/scripts/pi-host.mjs --child" execStart
+        && lib.hasSuffix " '--max-old-space-size=3072'" execStart
         &&
           lib.sort lib.lessThan (lib.toList (service.UnsetEnvironment or [ ])) == lib.sort lib.lessThan (
             [

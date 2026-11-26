@@ -86,9 +86,9 @@ let
       };
     }
   ];
-  macEntry =
-    (import ./host-launch.nix { inherit lib; }).entry
-      macNaming.config.home-manager.users.someone;
+  macLaunch = import ./host-launch.nix { inherit lib; };
+  macEntry = macLaunch.entry macNaming.config.home-manager.users.someone;
+  macFormerEntry = macLaunch.formerEntry macNaming.config.home-manager.users.someone;
 in
 {
   # A host's own restart waits out a call, always, and what a machine adds,
@@ -327,7 +327,7 @@ in
           last = lib.findFirst (lib.hasPrefix "  /nix/store/") "" (lib.splitString "\n" start);
           program = lib.head (lib.splitString " " (lib.removePrefix "  " last));
         in
-        lib.hasSuffix "/scripts/pi-host.mjs ${kind}" last
+        lib.hasSuffix ''"$entry" ${kind}'' last
         && !lib.hasInfix "--heap-growing-percent" start
         # Each kind writes its own log, and its own record of starts.
         && lib.hasInfix "/Users/someone/Library/Logs/pi-host-one-${kind}.log" start
@@ -398,10 +398,11 @@ in
         inherit start;
         passAsFile = [ "start" ];
         entry = macEntry;
+        formerEntry = macFormerEntry;
       }
       ''
         ${lib.getExe pkgs.bash} ${./tests/the-mac-pi-host-starts-as-its-account.sh} \
-          "$startPath" "$entry" ${lib.getExe pkgs.dash} ${lib.getExe pkgs.bash}
+          "$startPath" "$entry" "$formerEntry" ${lib.getExe pkgs.dash} ${lib.getExe pkgs.bash}
         touch $out
       '';
 
@@ -549,6 +550,27 @@ in
       mac = naming bareDarwin self.darwinModules.workstation;
       # home-manager keeps a unit's settings as lists.
       first = value: lib.head (lib.toList value);
+      # node's command line in a unit's ExecStart, or nothing where the unit
+      # doesn't start through dash running it with the harness's .mjs where
+      # the install has one, else its .ts, then `rest`, through exec, with
+      # dash's $ doubled so systemd hands it on. pi-hosts-recover's VM test
+      # runs the choice.
+      commandOf =
+        execStart: rest:
+        let
+          parts = lib.splitString "' pi-host " execStart;
+          shell = lib.head parts;
+        in
+        if
+          lib.length parts == 2
+          && lib.hasPrefix "${pkgs.dash}/bin/dash -c 'if [ -e /" shell
+          && lib.hasInfix "/scripts/pi-host.mjs ]; then e=/" shell
+          && lib.hasInfix "/scripts/pi-host.mjs; else e=/" shell
+          && lib.hasSuffix ''/scripts/pi-host.ts; fi; exec "$$@" "$$e" ${rest}'' shell
+        then
+          lib.last parts
+        else
+          "";
       # Whether words name a node option that opens its inspector, or undoes
       # the flag that shuts it, as node reads them, with underscores for
       # dashes.
@@ -573,9 +595,9 @@ in
       # variables a library's or module's code. A host started through env
       # is held to it as one started plainly is.
       shutsItsInspector =
-        unit: start:
+        unit: start: kind:
         let
-          execStart = first unit.Service.ExecStart;
+          execStart = commandOf (first unit.Service.ExecStart) kind;
         in
         lib.hasPrefix "${start}${node} --disable-sigusr1 " execStart
         && !(opensInspector execStart)
@@ -587,6 +609,8 @@ in
         let
           unit = services."pi-host-one-${kind}";
           environment = lib.toList unit.Service.Environment;
+          entry = first unit.Unit.ConditionPathExists;
+          command = commandOf (first unit.Service.ExecStart) kind;
         in
         unit.Service.Type == "notify"
         && unit.Service.NotifyAccess == "all"
@@ -608,15 +632,23 @@ in
         && unit.Service.OOMPolicy or null == "continue"
         && unit.Unit.X-SwitchMethod == "keep-old"
         && unit.Install.WantedBy == [ "default.target" ]
-        && shutsItsInspector unit ""
+        && shutsItsInspector unit "" kind
         # Room for the heap of every conversation it holds, past node's 4 GB,
-        # given before the entry, as node reads only flags there; quoted for
-        # its =, which systemd unquotes.
-        && lib.hasInfix " '--max-old-space-size=8192' /" (first unit.Service.ExecStart)
+        # given last, before the entry, as node reads only flags there; quoted
+        # for its =, which systemd unquotes.
+        && lib.hasSuffix " '--max-old-space-size=8192'" command
         # No async context frame flag unless its realm asks.
         && !(lib.hasInfix "async-context-frame" (first unit.Service.ExecStart))
-        && lib.hasSuffix "/scripts/pi-host.mjs ${kind}" (first unit.Service.ExecStart)
-        && lib.hasSuffix "/scripts/pi-host.mjs" (first unit.Unit.ConditionPathExists)
+        # Either entry, beside each other, lets it start, since the start runs
+        # whichever is there: systemd passes paths that each start with | when
+        # any is there.
+        &&
+          lib.toList unit.Unit.ConditionPathExists == [
+            entry
+            "${lib.removeSuffix ".mjs" entry}.ts"
+          ]
+        && lib.hasPrefix "|/" entry
+        && lib.hasSuffix "/scripts/pi-host.mjs" entry
         && lib.elem ''"MYCELIUM_REALM=one"'' environment
         && lib.elem ''"PI_PACKAGE_DIR=${pi}"'' environment
         && lib.elem ''"PI_HOST_PROOF=${proof}"'' environment
@@ -644,8 +676,9 @@ in
         kind:
         shutsItsInspector services."pi-host-two-${kind}"
           "${pkgs.coreutils}/bin/env 'PATH=/first/bin:/second/bin:/100%%/$$HOME:\${PATH}' "
+          kind
         # A realm's own heap reaches both its hosts.
-        && lib.hasInfix " '--max-old-space-size=3072' /" (
+        && lib.hasSuffix " '--max-old-space-size=3072'" (
           first services."pi-host-two-${kind}".Service.ExecStart
         )
         # A realm asking for V8's frame gets it, after the flag that comes first.

@@ -27,7 +27,6 @@ let
 
   launch = import ./host-launch.nix { inherit lib; };
   inherit (launch) kinds loadsCode stopSeconds;
-  entry = launch.entry config;
   growthTakenBy = import ./heap-growth-taken { inherit lib pkgs; };
 
   # Whether pi's SSH agent proxy runs here, as home.nix decides it, so a
@@ -75,13 +74,28 @@ let
   # own limit, three quarters of it, comes first.
   conversationStopSeconds = 60;
 
-  # The command line a host and a conversation's own process share, up to
-  # the harness's program: the realm's folders, the host's node with the
-  # inspector shut, and its heap, then node's own `flags`. `rest` comes
-  # after the program.
+  # The command line a host and a conversation's own process share: a
+  # shell choosing the harness's program as host-launch.nix's `choosing`
+  # does, then the realm's folders, the host's node with the inspector
+  # shut, its heap of `heapMb` and node's own `flags`, which the shell
+  # gives the program and `rest`, such as a host's kind.
   startOf =
-    host: heapMb: flags: rest:
-    lib.escapeShellArgs (
+    host:
+    {
+      heapMb,
+      flags ? [ ],
+      rest,
+    }:
+    # systemd expands % and $ even inside quotes, so the shell's own are
+    # doubled; its $0 names it in its errors.
+    lib.escapeShellArgs [
+      "${pkgs.dash}/bin/dash"
+      "-c"
+      (lib.replaceStrings [ "%" "$" ] [ "%%" "$$" ] (launch.choosing config rest))
+      "pi-host"
+    ]
+    + " "
+    + lib.escapeShellArgs (
       # Environment= can only replace PATH, so env puts the realm's folders
       # before the user manager's; systemd expands ${PATH}, and env execs
       # node in its place, the pid systemd watches. A folder's % and $ are
@@ -95,7 +109,7 @@ let
         }:\${PATH}"
       ]
       ++ [ host.node ]
-      ++ launch.words config host heapMb flags rest
+      ++ launch.nodeFlags host { inherit heapMb flags; }
     );
 
   # A conversation's allocator tuning, for one in a unit of its own (so on
@@ -303,9 +317,13 @@ let
         Service = {
           # It says nothing to systemd: its host follows it on its socket.
           Type = "exec";
-          ExecStart = startOf host host.conversationHeapMb (lib.optional (
-            host.conversationHeapGrowingPercent != null
-          ) "--heap-growing-percent=${toString host.conversationHeapGrowingPercent}") [ "--child" ];
+          ExecStart = startOf host {
+            heapMb = host.conversationHeapMb;
+            flags = lib.optional (
+              host.conversationHeapGrowingPercent != null
+            ) "--heap-growing-percent=${toString host.conversationHeapGrowingPercent}";
+            rest = [ "--child" ];
+          };
           Environment = environmentOf realm host false (
             {
               PI_HOST_CHILD_KEY = key;
@@ -344,10 +362,15 @@ let
     value = {
       Unit = {
         Description = "Holds ${kinds.${kind}} in the ${realm} realm";
-        # Until the harness ships the program there is nothing to run. systemd
-        # judges this only as the unit starts, so a realm named before then
-        # waits for the next login.
-        ConditionPathExists = entry;
+        # Until the harness ships the program there is nothing to run: either
+        # entry will do, as the start runs whichever is there, and systemd
+        # passes a condition whose every path starts with | when any is met.
+        # systemd judges this only as the unit starts, so a realm named before
+        # then waits for the next login.
+        ConditionPathExists = [
+          "|${launch.entry config}"
+          "|${launch.formerEntry config}"
+        ];
         # A restart parks every conversation the host holds and ends the turns
         # they are taking, so a switch leaves a running host be. A new pi or a
         # new harness reaches it at its next start: a login, a crash, or a
@@ -376,7 +399,10 @@ let
         # conversation can be sent to it; it says so from a child process.
         Type = "notify";
         NotifyAccess = "all";
-        ExecStart = startOf host host.heapMb [ ] [ kind ];
+        ExecStart = startOf host {
+          inherit (host) heapMb;
+          rest = [ kind ];
+        };
         # The stop limit below, which the host parks within, and what its
         # restart waits on (host-launch.nix's hostOwn).
         Environment = environmentOf realm host true (launch.hostOwn restartWaitsOn);
