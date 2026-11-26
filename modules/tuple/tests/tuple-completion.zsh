@@ -66,17 +66,17 @@ expect() {
 }
 
 expect 'tuple ca' call capture
-# Every command core runs against it, and the flags tuple-call and
-# tuple-people pass as they follow it: --format before the command, as
-# they pass it, and --raw after state follow.
+# Among these, every command core runs against it, and the flags
+# tuple-call and tuple-people pass as they follow it: --format before the
+# command, as they pass it, and --raw after state follow.
 expect 'tuple --' --format
 expect 'tuple call ' accept join leave mute unmute start
 expect 'tuple call l' leave list
 expect 'tuple cont' contacts
 expect 'tuple contacts ' favorite follow unfavorite
 # Tuple calls these two deprecated, so one failing may mean a build only
-# hides it from Tab, which running it by hand tells apart from dropped.
-# Either way, tuple-call has to move off it.
+# hides it from Tab, or that it's gone. Never try one by hand to tell:
+# new opens a call in Joel's room and share shares his screen.
 expect 'tuple ne' new
 expect 'tuple sh' share
 expect 'tuple st' start state stop
