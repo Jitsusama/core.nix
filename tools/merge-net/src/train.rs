@@ -219,7 +219,7 @@ pub fn subject(number: u64, owner: &str, branch: &str) -> String {
 
 /// A rider as the candidate merges it: its pull request's number, its
 /// head, the merge's subject and its pull request's title.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Merging {
     pub number: u64,
     pub head: String,
