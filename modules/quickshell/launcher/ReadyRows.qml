@@ -582,14 +582,17 @@ Scope {
     }
 
     // How the search stands, for a check that fails waiting on it to say why: what's asked,
-    // the words of the answer held, what waits for the daemon to come back or was asked again
-    // as it did, the same of what's typed inside a row, and the link's finds unanswered.
+    // the words of the answer held, how many keys it held and how many the daemon said it
+    // found, what waits for the daemon to come back or was asked again as it did, the same of
+    // what's typed inside a row, and the link's finds unanswered.
     function searchState() {
         return {
             asking,
             reasked,
             lostTwice,
             found: found.words,
+            held: found.keys.length,
+            all: found.found,
             lost: lost?.words ?? null,
             typedAsking,
             typedReasked,
