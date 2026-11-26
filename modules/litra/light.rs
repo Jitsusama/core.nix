@@ -72,11 +72,18 @@ pub(crate) fn kelvin(asked: u16) -> u16 {
 }
 
 /// A light's node, open. What's sent goes through `exchange`, which takes
-/// the light's turn first, so the file is the light's own.
+/// the light's turn first: an flock on the node, which every litra holds
+/// while it asks, whichever process it runs in. The file is private to this
+/// module, so nothing outside it can send around the turn; code in this
+/// file is trusted to send through `exchange` alone. A program that writes
+/// the node without the lock isn't stopped by any of this.
 pub(crate) struct Light {
     file: File,
 }
 
+/// A raw descriptor, for poll, rather than `AsFd`: a borrowed descriptor
+/// clones into an owned file without `unsafe`, which could then write
+/// around the turn, while a raw one can't be written through without it.
 impl AsRawFd for Light {
     fn as_raw_fd(&self) -> RawFd {
         self.file.as_raw_fd()

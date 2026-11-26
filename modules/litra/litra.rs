@@ -213,12 +213,49 @@ mod tests {
     }
 
     /// A folder no other test shares, even one asking by the same name.
+    /// It's made afresh, never taken over from whoever made one of its name
+    /// first: a folder in the way, left by a run killed under the same
+    /// process id or made by someone else, is passed over for the next name.
     pub(crate) fn root(name: &str) -> Scratch {
         static MADE: AtomicUsize = AtomicUsize::new(0);
-        let made = MADE.fetch_add(1, Ordering::Relaxed);
-        let root = std::env::temp_dir().join(format!("litra-{name}-{}-{made}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).unwrap();
-        Scratch(root)
+        made_in(&std::env::temp_dir(), name, &MADE)
+    }
+
+    /// A folder of `name` under `parent`, numbered by `made`, past any in
+    /// the way.
+    fn made_in(parent: &Path, name: &str, made: &AtomicUsize) -> Scratch {
+        loop {
+            let number = made.fetch_add(1, Ordering::Relaxed);
+            let root = parent.join(format!("litra-{name}-{}-{number}", std::process::id()));
+            match fs::create_dir(&root) {
+                Ok(()) => return Scratch(root),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) => panic!("can't make {}: {error}", root.display()),
+            }
+        }
+    }
+
+    #[test]
+    fn folders_asked_by_one_name_are_each_new_and_their_own() {
+        let parent = root("parent");
+        let made = AtomicUsize::new(0);
+        // In the way of the first name, as a killed run would leave it.
+        let left = parent.join(format!("litra-same-{}-0", std::process::id()));
+        fs::create_dir(&left).expect("the folder in the way is made");
+        fs::write(left.join("mark"), "").expect("the folder in the way takes a file");
+        let (first, second) = (
+            made_in(&parent, "same", &made),
+            made_in(&parent, "same", &made),
+        );
+        let named = |number| parent.join(format!("litra-same-{}-{number}", std::process::id()));
+        assert_eq!(
+            [&first.0, &second.0],
+            [&named(1), &named(2)],
+            "a folder asked by a name in the way wasn't passed on to the next"
+        );
+        assert!(
+            left.join("mark").exists() && fs::read_dir(&*first).expect("made").next().is_none(),
+            "the folder in the way was taken over, or the new one wasn't empty"
+        );
     }
 }
