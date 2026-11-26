@@ -150,11 +150,13 @@ const INTERJECTIONS: [&str; 9] = [
 ];
 
 /// A sentence of lowered text: whether it exclaims, its words, and for
-/// each word whether a comma or the sentence's end follows it.
+/// each word whether a comma or the sentence's end follows it and whether
+/// its clause warns of what might come.
 struct Sentence<'a> {
     exclaims: bool,
     words: Vec<&'a str>,
     closes: Vec<bool>,
+    warned: Vec<bool>,
 }
 
 /// Whether the swear at `at` in a sentence closes a list rather than
@@ -202,25 +204,27 @@ fn sentences(low: &str) -> Vec<Sentence<'_>> {
     pieces(low)
         .into_iter()
         .map(|piece| {
-            let (mut words, mut closes) = (Vec::new(), Vec::new());
+            let (mut words, mut closes, mut warned) = (Vec::new(), Vec::new(), Vec::new());
             for clause in piece.split(',') {
                 let each = words_of(clause);
                 closes.extend((0..each.len()).map(|n| n + 1 == each.len()));
+                warned.extend(std::iter::repeat_n(warns(&each), each.len()));
                 words.extend(each);
             }
             Sentence {
                 exclaims: piece.contains(EXCLAIMS),
                 words,
                 closes,
+                warned,
             }
         })
         .collect()
 }
 
-/// Whether lowered text swears: a swear not before a word of praise, the
-/// next sentence's first word for one ending its own, nor one closing a
-/// list in a sentence that doesn't exclaim, since "it broke and shit!"
-/// is said in anger.
+/// Whether lowered text swears: a swear not in a clause warning of what
+/// might come, not before a word of praise, the next sentence's first
+/// word for one ending its own, nor one closing a list in a sentence that
+/// doesn't exclaim, since "it broke and shit!" is said in anger.
 fn swore(low: &str) -> bool {
     let said = sentences(low);
     said.iter().enumerate().any(|(n, sentence)| {
@@ -230,15 +234,33 @@ fn swore(low: &str) -> bool {
                 .get(at + 1)
                 .or_else(|| said[n + 1..].iter().find_map(|later| later.words.first()));
             (SWEARS.iter().any(|s| w.starts_with(s)) || *w == "ass")
+                && !sentence.warned[at]
                 && !next.is_some_and(|next| PRAISE.contains(next))
                 && (sentence.exclaims || !filler(sentence, at))
         })
     })
 }
 
-/// Whether a message swears at what it's about: a swear, in a message
-/// that doesn't put the agent at ease by a sentence not asked, nor asks
-/// with a swear, nor gives up on the agent.
+/// The word that opens a warning of what might come: "make sure it is
+/// accurate, if you fuck up my wife i will fuck you up" was said before
+/// the work, of nothing that had happened, and its owner found no hurt in
+/// it on 26 November.
+const WARNS: &str = "if";
+
+/// The words that say a warned thing has happened already, so "if you
+/// fuck this up again" still hurts.
+const ALREADY: [&str; 4] = ["again", "still", "another", "keep*"];
+
+/// Whether a clause's words warn of what might come rather than swear at
+/// what came.
+fn warns(words: &[&str]) -> bool {
+    words.first() == Some(&WARNS) && !ALREADY.iter().any(|already| said(words, already))
+}
+
+/// Whether a message swears at what it's about: a swear outside a clause
+/// warning of what might come, in a message that doesn't put the agent at
+/// ease by a sentence not asked, nor asks with a swear, nor gives up on
+/// the agent.
 fn swears(low: &str) -> bool {
     let each = words_of(low);
     if !swore(low) {
@@ -531,6 +553,32 @@ mod tests {
             "it keeps closing",
         ] {
             assert_eq!(kinds(failed, AT, &[]), vec!["corrected"], "{failed}");
+        }
+    }
+
+    #[test]
+    fn a_swear_warning_of_what_might_come_hurts_nothing() {
+        let none: Vec<&str> = Vec::new();
+        for warned in [
+            "make sure it is insanely accurate, if you fuck up my wife i will fuck you up.",
+            "if this shit breaks, tell me first",
+        ] {
+            assert_eq!(
+                kinds(warned, AT, &[]),
+                none,
+                "a warning before the work: {warned}"
+            );
+        }
+        for hurt in [
+            "if you fuck this up again i will scream",
+            "if it keeps fucking up, stop",
+            "if it breaks, fuck it",
+            "fuck, if it breaks tell me",
+        ] {
+            assert!(
+                kinds(hurt, AT, &[]).contains(&"swore"),
+                "a swear at what came, or outside the warning, was spared: {hurt}"
+            );
         }
     }
 
