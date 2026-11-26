@@ -6,6 +6,8 @@
 //! video and audio while the machine is totally under all the
 //! pressures"), so the card leads with them and their drag comes first.
 
+use std::path::Path;
+
 use serde_json::Value;
 
 use super::{Class, Measure};
@@ -43,6 +45,17 @@ pub const LOST: f64 = 6.0;
 /// a drag on it stays open until it reads again. With no hour, one older than two, or one
 /// with no figure to read, a single line says which, judged once the last
 /// hour read is `LOST` hours old.
+/// His apps' figures from apps-under-load's hour beside `state_home`, judged
+/// by the clock as it's read, not as cadence's hour began: apps-under-load
+/// may write it meanwhile, as cadence's ran 17 minutes at 03:10 on 26
+/// November, and an hour dated after the clock it's judged by is unread.
+#[must_use]
+pub fn read(state_home: &Path) -> Vec<Measure> {
+    let text = std::fs::read_to_string(state_home.join(FILE)).ok();
+    apps(text.as_deref(), crate::now_ms() / 1000)
+}
+
+/// `now` is the clock as the hour is read: see [`read`].
 #[must_use]
 pub fn apps(text: Option<&str>, now: i64) -> Vec<Measure> {
     let read: Value = text
@@ -237,6 +250,23 @@ mod tests {
         let lost = apps(Some(&hour(NOW - 7 * 3600)), NOW);
         assert!(lost[0].past().is_some(), "seven hours unread is a fault");
         assert_eq!(apps(Some(&hour(NOW - STALE + 1)), NOW).len(), 5);
+    }
+
+    #[test]
+    fn an_hour_written_after_cadences_began_is_read_by_the_clock_at_the_read() {
+        // cadence's hour ran 17 minutes on 26 November, so apps-under-load
+        // may write its hour after the run began; it's judged as it's read.
+        let written = hour(NOW + 17 * 60);
+        assert_eq!(
+            apps(Some(&written), NOW + 17 * 60).len(),
+            5,
+            "an hour written as it was read went unread"
+        );
+        let by_the_start = apps(Some(&written), NOW);
+        assert!(
+            by_the_start.len() == 1 && by_the_start[0].says.contains("no hour in 2 h"),
+            "an hour dated after the clock it's judged by was read: {by_the_start:?}"
+        );
     }
 
     #[test]

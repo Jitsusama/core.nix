@@ -289,6 +289,12 @@ pub fn tell(ledger: &mut [Entry], date: &str, watcher: Option<&str>) -> Vec<(Str
                  {subject}",
                 entry.key, entry.words, entry.first
             ),
+            // One last found by an earlier day's read, told only now, says
+            // that day's, so its owner doesn't look for it in today's.
+            None if entry.last != date => format!(
+                "{}: {}, found by the {} read{back}",
+                entry.key, entry.words, entry.last
+            ),
             None => format!("{}: {}{back}", entry.key, entry.words),
         };
         by_owner.entry(to).or_default().push(words);
@@ -658,6 +664,39 @@ pub(crate) mod tests {
         assert!(
             tell(&mut ledger, "d1", Some("W")).is_empty(),
             "a run again the same day told an owner twice"
+        );
+    }
+
+    #[test]
+    fn a_finding_told_after_its_day_says_which_day_found_it() {
+        let mut ledger = Vec::new();
+        update(
+            &mut ledger,
+            &day("d1", DAY),
+            &[found("crashes:tec")],
+            &owners(),
+        );
+        let today = tell(&mut ledger, "d1", None);
+        assert!(
+            !today[0].1.contains("found by the"),
+            "a finding told the day it was found named a day: {}",
+            today[0].1
+        );
+        let mut ledger = Vec::new();
+        update(
+            &mut ledger,
+            &day("d1", DAY),
+            &[found("crashes:tec")],
+            &owners(),
+        );
+        update(&mut ledger, &day("d2", 2 * DAY), &[], &owners());
+        let later = tell(&mut ledger, "d2", None);
+        assert!(
+            later[0]
+                .1
+                .contains("- crashes:tec: crashes:tec got worse, found by the d1 read."),
+            "a finding first told a day on read as that day's: {}",
+            later[0].1
         );
     }
 

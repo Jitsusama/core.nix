@@ -20,10 +20,12 @@ const FETCHING_AT_MOST: Duration = Duration::from_mins(5);
 /// Joel's dates at risk and the list's own, from the asks list `asks` at
 /// `now`: a core change asked of cadence's clone `core` once however many
 /// pieces wait on it, with main fetched until once it comes, and a branch
-/// of the zone's gate's record under `state_home`. The heads of changes
-/// no longer asked of are let go after.
+/// of the zone's gate's record under `state_home`, its lines' age judged
+/// by the clock as it was read, since the hour may have run for minutes
+/// before it. The heads of changes no longer asked of are let go after.
 pub(super) fn dates_at_risk(state_home: &Path, core: &Path, asks: &str, now: i64) -> [Measure; 2] {
     let refusals = fs::read_to_string(state_home.join(REFUSALS)).ok();
+    let read_at = crate::now_ms() / 1000;
     let asked: RefCell<BTreeMap<u32, Shared>> = RefCell::new(BTreeMap::new());
     let started = Instant::now();
     let main_fetched = Cell::new(false);
@@ -41,7 +43,7 @@ pub(super) fn dates_at_risk(state_home: &Path, core: &Path, asks: &str, now: i64
         asked.borrow_mut().insert(number, read.clone());
         read
     };
-    let of_world = |branch: &str| drifted(refusals.as_deref(), branch, now);
+    let of_world = |branch: &str| drifted(refusals.as_deref(), branch, read_at);
     let measures = [Tracking::His, Tracking::Derived]
         .map(|which| at_risk(asks, now, which, &of_core, &of_world));
     let_go(core, &asked.borrow());

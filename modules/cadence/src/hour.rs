@@ -40,7 +40,7 @@ use terminal_kit::Failure;
 use crate::findings;
 use crate::mesh::{Mesh, Presence, Rosters, running};
 use crate::tracking::Tracking;
-use crate::{DAY, axes, clock, command, failed, folders, message, now_ms, write_whole, wrongly};
+use crate::{DAY, axes, clock, command, failed, folders, message, now_ms, wrongly};
 use card::{Kept, compose};
 use measures::{Class, Measure};
 use moved::{HARNESS, moved};
@@ -149,7 +149,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
             fallback,
         ));
         measures.push(spent_beside_landed(&state_home, now));
-        measures.extend(spend_watch_measures(now));
+        measures.extend(spend_watch_measures());
     }
     // Every measure read, each is held to its line on the definition of
     // good, and one with none, or another target, is counted.
@@ -192,7 +192,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     // and "fixed" lines again next hour rather than never: an owner told
     // twice is cheaper than one never told.
     findings::keep(&ledger_at, &ledger)?;
-    write_whole(&kept_at, &serde_json::to_string(&next)?)?;
+    kept.keep(&kept_at, &next)?;
     Ok(())
 }
 
@@ -323,8 +323,8 @@ fn gather(
     all.extend(measures::clean(&text(
         &state_home.join("code-health/hour.json"),
     )));
-    let apps = fs::read_to_string(state_home.join(measures::apps::FILE)).ok();
-    all.extend(measures::apps::apps(apps.as_deref(), now));
+    all.extend(measures::apps::read(state_home));
+    all.push(measures::load::hour(state_home, now));
     let wifid = measures::wifi::read(now);
     all.push(measures::wifi::video(wifid.as_deref(), &TimeZone::system()));
     // The balance service names a day's file by the date here, so read yesterday's too.
@@ -332,11 +332,11 @@ fn gather(
     let minutes = [day(now - DAY), day(now)].join("\n");
     all.extend(measures::balanced(&minutes, now, NET_RULES));
     let hearer = state_home.join("pain-points");
-    let pains = fs::read_to_string(hearer.join("hour.json")).ok();
+    let (pains, read_at) = measures::summary(&hearer);
     let routes = fs::read_to_string(hearer.join("routes.json")).ok();
     let keeper = measures::keeper(routes.as_deref());
     let owner = keeper.as_deref().unwrap_or(measures::ASKS);
-    all.push(measures::pains(pains.as_deref(), now, owner));
+    all.push(measures::pains(pains.as_deref(), read_at, owner));
     let outcomes = tail(
         &state_home.join("pi/agentic-harness.pi/priority-workflow/outcomes.jsonl"),
         RECORD_READ,
@@ -484,11 +484,11 @@ fn spent_beside_landed(state_home: &Path, now: i64) -> Measure {
     measures::spent::beside(collection.as_deref(), &landed, measures::ASKS)
 }
 
-/// What spend-watch's collection says at `now` of budgets: those billed
-/// under what they logged, and those sessions couldn't draw on. It
-/// rewrites its collection only when its text changes, so its heartbeat,
-/// not the file's time, says whether it's current.
-fn spend_watch_measures(now: i64) -> [Measure; 2] {
+/// What spend-watch's collection says of budgets as it's read: those billed under what they
+/// logged, and those sessions couldn't draw on. It rewrites it only as its text changes, so its
+/// heartbeat says if it's current, by the clock at the read: an hour may be 17 minutes old here.
+fn spend_watch_measures() -> [Measure; 2] {
+    let now = now_ms() / 1000;
     let collection = spend_watch_file("collection.json");
     let status = spend_watch_file("status.json");
     [

@@ -3,9 +3,12 @@
 //! waited for a CPU, and how long niri took to answer. And what of that
 //! counts as Joel waiting.
 //!
-//! Every figure is per slice, never the whole machine's: the machine's
+//! Trouble is judged per slice, never on the whole machine: the machine's
 //! own pressure is mostly work waiting on work, which is what the slices
-//! are for, and a watch built on it would cry wolf all day.
+//! are for, and a watch built on it would cry wolf all day. The machine's
+//! stalls and the memory it has left are still kept beside the slices',
+//! for cadence's hour to hold to the limits set for how loaded it may be;
+//! they never make trouble here.
 
 use crate::kernel::{CALLERS, Group, Sched, Stall, Thread};
 use serde::{Deserialize, Serialize};
@@ -41,6 +44,8 @@ pub struct Snapshot {
     /// Seconds, from a clock that only goes forward.
     pub at: f64,
     pub groups: BTreeMap<String, Group>,
+    /// The memory the kernel could give a program, in MiB, where it says.
+    pub available_mib: Option<u64>,
     /// Each of app.slice's own units and scopes, by its name: what an app
     /// is to Joel isn't always what runs there, so a stall names its unit.
     pub apps: BTreeMap<String, Group>,
@@ -107,6 +112,9 @@ pub fn book(
         }
     }
 }
+
+/// The group the whole machine's stalls are kept under, beside the slices.
+pub const MACHINE: &str = "machine";
 
 /// A share of the window, in percent, each kind of stall.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -240,6 +248,10 @@ pub struct Window {
     /// not a quiet. Left out when none did, and of windows written before.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub unwatched: BTreeMap<String, usize>,
+    /// The memory the kernel could give a program at the window's end, in
+    /// MiB. Left out where it didn't say, and of windows written before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub available_mib: Option<u64>,
     pub niri: Answers,
     /// What counted as Joel waiting, in words.
     pub trouble: Vec<String>,
@@ -379,6 +391,10 @@ pub fn between(then: &Snapshot, now: &Snapshot, niri: Answers, ended: u64, syste
                 io_full,
             },
         );
+        // The machine keeps no memory of its own to lose, only stalls.
+        if name == MACHINE {
+            continue;
+        }
         memory.insert(
             name.clone(),
             Memory {
@@ -405,6 +421,7 @@ pub fn between(then: &Snapshot, now: &Snapshot, niri: Answers, ended: u64, syste
         call,
         lowered: now.lowered.clone(),
         unwatched: now.unwatched.clone(),
+        available_mib: now.available_mib,
         niri,
         trouble: Vec::new(),
         worst: String::new(),

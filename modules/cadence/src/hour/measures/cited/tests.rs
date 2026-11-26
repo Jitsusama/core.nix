@@ -329,6 +329,35 @@ fn words_leading_into_the_list_are_passed_over_and_words_with_no_list_are_unread
 }
 
 #[test]
+fn a_bold_line_or_words_on_the_opener_with_no_list_are_unread_not_nothing_for_him() {
+    let read = |note: &str| uncited(&[], note, "", &BTreeMap::new(), "WCJQSG");
+    let bold = read("**For you:**\n**Two calls today:**\n- Pick one.\n");
+    assert_eq!(
+        bold.expect_err("a bold lead-in was read as nothing put to him"),
+        "the morning note's \"For you\" opens on a bold line that can't be told from the \
+         next part",
+        "a bold line after the opener wasn't said unread, with why"
+    );
+    let inline = read("**For you:** approve it <!-- owner: 16V6F4 aa11bb22 -->\n## Later\n");
+    assert_eq!(
+        inline.expect_err("words on the opener were read as nothing put to him"),
+        "the morning note's \"For you\" holds words but no list",
+        "words on the opener with no list weren't said unread, with why"
+    );
+    let timed = judged(
+        &[],
+        "**For you this morning (updated 10:31 am):**\nTwo calls:\n- Pick one.\n",
+        "",
+        &BTreeMap::new(),
+    );
+    assert_eq!(
+        timed.behind,
+        ["for you this morning: Pick one, naming no owner's message · WCJQSG"],
+        "a time in the opener was read as words leading into the list"
+    );
+}
+
+#[test]
 fn only_the_messages_cited_are_asked_of_the_mesh() {
     let cites = cited(&[(NOW, "80ECO2", "aa11bb22", "12:00")]);
     assert_eq!(
@@ -521,6 +550,24 @@ fn a_torn_line_from_before_the_day_is_passed_over_once_a_later_line_dates_it() {
         said.ok(),
         Some(1),
         "a torn line written before the day left the log unread for good"
+    );
+}
+
+#[test]
+fn a_torn_line_amid_the_day_isnt_dated_by_an_older_entry_that_isnt_a_message() {
+    let root = tempfile::tempdir().expect("a scratch folder");
+    let log = root.path().join(LOG);
+    let header = json!({"type": "session", "timestamp": iso(NOW - 3 * DAY)});
+    let resumed = [
+        entry(NOW - 90, "First."),
+        "{\"assistant\": torn".to_owned(),
+        header.to_string(),
+        entry(NOW - 30, "Last."),
+    ];
+    fs::write(&log, resumed.join("\n")).expect("the log is written");
+    assert!(
+        said_in(&log, NOW - DAY, NOW).is_err(),
+        "a session header's older time dated a torn line amid the day"
     );
 }
 

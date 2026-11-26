@@ -27,7 +27,7 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 
 use super::{Checkouts, Named, main_of, merged_numbers};
-use crate::{command, write_whole};
+use crate::{command, unasked, write_whole};
 pub use resumed::hosts_started;
 
 /// What a miss's line says between its change and why, after its check's
@@ -702,9 +702,10 @@ fn merge_within(path: &str, number: u64, within: Duration) -> Result<Option<Stri
 
 /// The walk down `path`'s main for the merge of `number`. Each record is
 /// flushed as it's found, since an inherited `GIT_FLUSH=0` would hold the
-/// merge in git's buffer until the walk reached main's root.
+/// merge in git's buffer until the walk reached main's root. It never asks
+/// for a password, as [`unasked::git`] runs it.
 fn walk(path: &str, number: u64) -> Command {
-    let mut git = Command::new("git");
+    let mut git = unasked::git();
     git.args([
         "-C",
         path,
@@ -717,7 +718,6 @@ fn walk(path: &str, number: u64) -> Command {
         main_of(path),
     ])
     .env("GIT_FLUSH", "1")
-    .stdin(Stdio::null())
     .stdout(Stdio::piped())
     .stderr(Stdio::null());
     git

@@ -17,6 +17,7 @@ use super::lines::{figure, shown_lines};
 use super::measures::{Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, drag};
 use super::owing::by_owner;
 use super::stuck::Out;
+use crate::write_whole;
 
 /// How many hours a drag may stay unmoved before the orchestrator is
 /// asked to steer it.
@@ -54,26 +55,46 @@ pub struct Kept {
     /// kept: the hour after reads what this one saw.
     #[serde(skip)]
     pub unread: Option<String>,
+    /// Whether what the last hour kept is left as it stands: the disk
+    /// wouldn't give it, a cause that may pass, rather than it not
+    /// parsing, so this hour, kept from nothing, mustn't write over it.
+    #[serde(skip)]
+    pub left: bool,
 }
 
 impl Kept {
     /// What the last hour kept at `path`, or nothing kept when it isn't
     /// there. One there that won't read is said, as starting from nothing
     /// kept forgets what the hour saw of the asks list and so reads one
-    /// written over as whole, and leaves this hour's asks unread.
+    /// written over as whole, and leaves this hour's asks unread; one the
+    /// disk wouldn't give is [`left`](Self::left) as it stands.
     pub fn last(path: &Path) -> Self {
-        let read = match fs::read_to_string(path) {
+        let (read, left) = match fs::read_to_string(path) {
             Err(err) if err.kind() == io::ErrorKind::NotFound => return Self::default(),
-            Err(err) => Err(err.to_string()),
-            Ok(text) => serde_json::from_str(&text).map_err(|err| err.to_string()),
+            Err(err) => (Err(err.to_string()), true),
+            Ok(text) => (
+                serde_json::from_str(&text).map_err(|err| err.to_string()),
+                false,
+            ),
         };
         read.unwrap_or_else(|err| {
             eprintln!("cadence: the hour kept can't be read, so it starts from nothing: {err}");
             Self {
                 unread: Some("what the last hour saw of it can't be read".to_owned()),
+                left,
                 ..Self::default()
             }
         })
+    }
+
+    /// Keeps `next` at `path` for the hour after, unless what this hour
+    /// read from there is [`left`](Self::left) as it stands.
+    pub fn keep(&self, path: &Path, next: &Self) -> io::Result<()> {
+        if self.left {
+            eprintln!("cadence: the hour kept is left as it stands, as it couldn't be read");
+            return Ok(());
+        }
+        write_whole(path, &serde_json::to_string(next)?)
     }
 }
 
@@ -218,6 +239,7 @@ pub fn compose(
         out_told: kept.out_told.clone(),
         asks: kept.asks,
         unread: None,
+        left: false,
     };
     (card, next)
 }
@@ -838,6 +860,39 @@ mod tests {
         assert_eq!(
             read.asks, kept.asks,
             "an hour.json as kept no longer reads what the hour saw of the asks"
+        );
+    }
+
+    #[test]
+    fn an_hour_kept_the_disk_wont_give_is_left_as_it_stands() {
+        use std::os::unix::fs::PermissionsExt;
+        let folder = tempfile::tempdir().expect("a scratch folder");
+        let path = folder.path().join("hour.json");
+        let kept = r#"{"asks":{"most":853}}"#;
+        fs::write(&path, kept).expect("last hour");
+        let unreadable = fs::Permissions::from_mode(0o200);
+        fs::set_permissions(&path, unreadable).expect("the hour made unreadable");
+        // Root reads it all the same, so there's nothing to leave.
+        if fs::read_to_string(&path).is_ok() {
+            return;
+        }
+        let last = Kept::last(&path);
+        assert!(
+            last.left && last.unread.is_some(),
+            "an hour the disk wouldn't give wasn't left and said unread: {last:?}"
+        );
+        last.keep(&path, &Kept::default()).expect("the hour kept");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).expect("readable again");
+        assert_eq!(
+            fs::read_to_string(&path).expect("the hour kept"),
+            kept,
+            "an hour the disk wouldn't give was written over from nothing"
+        );
+        fs::write(&path, "{\"asks\":").expect("a torn hour");
+        let torn = Kept::last(&path);
+        assert!(
+            !torn.left,
+            "an hour that won't parse was left, so it never mends"
         );
     }
 }

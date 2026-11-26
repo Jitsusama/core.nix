@@ -60,6 +60,7 @@ fn every_measure_the_hour_shows_has_a_line_that_holds_it_to_its_target() {
         at_risk(Tracking::Derived),
     ];
     shown.extend(measures::apps::apps(None, NOW));
+    shown.push(measures::load::load("", NOW));
     let said = serde_json::json!({"none": "no pain", "none_at_ms": NOW * 1000});
     shown.extend(measures::said_none(&said.to_string(), NOW));
     // Those read from a machine's records, under the keys and targets the
@@ -73,6 +74,7 @@ fn every_measure_the_hour_shows_has_a_line_that_holds_it_to_its_target() {
         (measures::locked::KEY, measures::locked::AT_MOST_MIN),
         (measures::wifi::KEY, measures::wifi::TARGET),
         (measures::apps::UNREAD, measures::apps::LOST),
+        (measures::load::KEY, measures::load::TARGET),
         ("reports-unasked", 0.0),
         ("map-cells", 0.0),
         ("cells-idle", 0.0),

@@ -224,10 +224,12 @@ fn logs_of(logs: &Path, sessions: &BTreeSet<String>) -> Vec<(String, PathBuf)> {
 /// are parsed, since the log holds far more than what it said, and the
 /// reading starts near `from`. An assistant entry with no time to read,
 /// or a line holding the assistant's words that isn't whole before the
-/// log's last, leaves the log unread, unless the next line with a time
-/// is from by `from`: entries are in time order, so the torn one was
-/// too, and a log torn by a crash and then resumed is unread for a day
-/// at most, not for good.
+/// log's last, leaves the log unread, unless the next message with a
+/// time is from by `from`: messages are written in time order, so the
+/// torn one was too, and a log torn by a crash and then resumed is unread
+/// for a day at most, not for good. Only a message dates it, since a
+/// session's header or an entry carried from another log may hold an
+/// older time than the line before it.
 fn said_in(log: &Path, from: i64, to: i64) -> io::Result<Vec<Said>> {
     let mut file = File::open(log)?;
     let start = start_of(&mut file, from)?;
@@ -248,7 +250,8 @@ fn said_in(log: &Path, from: i64, to: i64) -> io::Result<Vec<Said>> {
         let text = String::from_utf8_lossy(&line);
         if torn {
             let next = serde_json::from_str::<Value>(&text).ok();
-            match next.and_then(|entry| seconds(&entry["timestamp"])) {
+            let message = next.filter(|entry| entry["type"] == "message");
+            match message.and_then(|entry| seconds(&entry["timestamp"])) {
                 Some(at) if at <= from => (torn, after) = (false, false),
                 Some(_) => {
                     return Err(io::Error::other("a line of the assistant's isn't whole"));
@@ -559,25 +562,28 @@ fn noted_uncited(
 /// you", each with the lines indented past it that carry it on, its own
 /// points among them, until a line that is neither; or why it can't be
 /// read, when a note is written with no such line, so a note in another
-/// shape is never read as putting nothing to Joel.
+/// shape is never read as putting nothing to Joel. Words on that line
+/// after its last colon lead into the list, as a line of their own would.
 fn for_you(note: &str) -> Result<Vec<String>, String> {
     let mut lines = note.lines();
     let opens = |line: &str| {
-        plain(line)
-            .to_lowercase()
-            .strip_prefix("for you")
-            .is_some_and(|rest| !rest.starts_with(char::is_alphanumeric))
+        let line = plain(line).to_lowercase();
+        let rest = line.strip_prefix("for you")?;
+        (!rest.starts_with(char::is_alphanumeric)).then(|| {
+            rest.rsplit_once(':')
+                .is_none_or(|(_, after)| after.trim_matches(['*', '_', ' ']).is_empty())
+        })
     };
-    if lines.by_ref().find(|line| opens(line)).is_none() {
+    let Some(bare) = lines.by_ref().find_map(opens) else {
         return if note.trim().is_empty() {
             Ok(Vec::new())
         } else {
             Err("the morning note has no line opening \"For you\"".to_owned())
         };
-    }
+    };
     let mut items: Vec<String> = Vec::new();
     let mut first: Option<usize> = None;
-    let mut led = false;
+    let mut led = !bare;
     for line in lines {
         if line.trim().is_empty() {
             continue;
@@ -594,6 +600,15 @@ fn for_you(note: &str) -> Result<Vec<String>, String> {
             // One line of words leading into the list, as "Two calls
             // today:"; a second is the next part's, as "Overnight:".
             led = true;
+        } else if first.is_none() && !led && bold(line) {
+            // A line in bold may lead into the list, as "**Two calls
+            // today:**", or open the next part, as "**Overnight:**";
+            // the two read alike, so neither is read as nothing for him.
+            return Err(
+                "the morning note's \"For you\" opens on a bold line that can't be told \
+                 from the next part"
+                    .to_owned(),
+            );
         } else {
             break;
         }
@@ -608,7 +623,13 @@ fn for_you(note: &str) -> Result<Vec<String>, String> {
 /// in bold, as "**For you:**" does.
 fn heading(line: &str) -> bool {
     let line = line.trim_start();
-    line.starts_with('#') || line.starts_with("**") || line.starts_with("__")
+    line.starts_with('#') || bold(line)
+}
+
+/// Whether `line` opens in bold.
+fn bold(line: &str) -> bool {
+    let line = line.trim_start();
+    line.starts_with("**") || line.starts_with("__")
 }
 
 /// The owner and message the last comment in an item names, as

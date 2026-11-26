@@ -151,6 +151,36 @@ pub fn group(dir: &Path) -> Option<Group> {
     })
 }
 
+/// The whole machine's stalls, from `pressure` under `proc`, as a group
+/// holding nothing else, since the root keeps no memory of its own to
+/// lose; none where the kernel keeps no pressure, so it can't read as
+/// stalling nothing.
+pub fn machine(proc: &Path) -> Option<Group> {
+    let pressure = proc.join("pressure");
+    if !pressure.is_dir() {
+        return None;
+    }
+    Some(Group {
+        cpu: stall(&text(&pressure.join("cpu"))),
+        memory: stall(&text(&pressure.join("memory"))),
+        io: stall(&text(&pressure.join("io"))),
+        ..Group::default()
+    })
+}
+
+/// The memory the kernel says it could give a program now, in MiB, from
+/// `meminfo`'s `MemAvailable`; none where it doesn't say.
+pub fn available_mib(meminfo: &str) -> Option<u64> {
+    let kib: u64 = meminfo
+        .lines()
+        .find_map(|l| l.strip_prefix("MemAvailable:"))?
+        .split_whitespace()
+        .next()?
+        .parse()
+        .ok()?;
+    Some(kib >> 10)
+}
+
 /// A thread worth watching: a process by its name, and within it the
 /// threads named so, or its main thread for an empty name.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -383,6 +413,35 @@ pub mod tests {
         assert_eq!(
             stall("some avg10=0.00 avg60=0.00 avg300=0.00 total=5\n").full,
             0
+        );
+    }
+
+    #[test]
+    fn the_machine_is_read_from_its_pressure_or_not_at_all() {
+        let proc = std::env::temp_dir().join(format!("lag-watch-machine-{}", std::process::id()));
+        assert_eq!(machine(&proc), None, "no pressure folder read as a machine");
+        fs::create_dir_all(proc.join("pressure")).expect("a pressure folder is made");
+        let some = |total: u64| format!("some avg10=0.00 avg60=0.00 avg300=0.00 total={total}\n");
+        fs::write(proc.join("pressure/cpu"), some(7)).expect("cpu is written");
+        fs::write(proc.join("pressure/io"), some(9)).expect("io is written");
+        let read = machine(&proc);
+        fs::remove_dir_all(&proc).ok();
+        let read = read.expect("a machine with pressure is read");
+        assert_eq!(
+            (read.cpu.some, read.memory.some, read.io.some),
+            (7, 0, 9),
+            "the machine's stalls weren't its pressure files'"
+        );
+    }
+
+    #[test]
+    fn memory_available_is_meminfo_s_in_mib_or_none() {
+        let meminfo = "MemTotal: 65536000 kB\nMemAvailable:   16777216 kB\n";
+        assert_eq!(available_mib(meminfo), Some(16_384), "MemAvailable misread");
+        assert_eq!(
+            available_mib("MemTotal: 1 kB\n"),
+            None,
+            "a meminfo without MemAvailable read as some"
         );
     }
 
