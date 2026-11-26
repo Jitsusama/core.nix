@@ -37,7 +37,9 @@ const MOST_SAID: usize = 80;
 /// `asker` says whether the shell asked, told only where there's a node to
 /// ask, and `node` is the realm's, none where this machine runs no node.
 /// A provider that couldn't say is journalled by the node, not here: an
-/// offer from another is still one.
+/// offer from another is still one. A node that doesn't say it takes the
+/// cloud as a sprout's need offers none, whatever its providers could
+/// make: one from before it would drop the need and start the work here.
 pub fn answer(asker: impl FnOnce() -> Result<(), String>, node: Option<&Path>) -> Value {
     let Some(node) = node else {
         return unoffered("this machine runs no node to ask what the cloud offers");
@@ -47,6 +49,9 @@ pub fn answer(asker: impl FnOnce() -> Result<(), String>, node: Option<&Path>) -
     }
     match sprout::asked(node, &json!("Offers"), PATIENCE) {
         Ok(reply) => match (&reply["Ok"]["Offers"]["offers"], &reply["Err"]) {
+            (Value::Array(_), _) if !takes_the_cloud(&reply["Ok"]["Offers"]["needs"]) => {
+                unoffered(UNNEEDED)
+            }
             (Value::Array(offers), _) => json!({"offers": offers
                 .iter()
                 .filter_map(offered)
@@ -63,6 +68,18 @@ pub fn answer(asker: impl FnOnce() -> Result<(), String>, node: Option<&Path>) -
         }
         Err(Unanswered::Silent) => unoffered("the node didn't say what the cloud offers in time"),
     }
+}
+
+/// What a node that offers machines but takes no cloud need says, as one
+/// from before mycelium's sprouts took needs does.
+const UNNEEDED: &str = "this machine's node can't start work in the cloud yet";
+
+/// Whether the node's `needs`, beside its offers, says a sprout may need
+/// the cloud.
+fn takes_the_cloud(needs: &Value) -> bool {
+    needs
+        .as_array()
+        .is_some_and(|needs| needs.iter().any(|need| need.as_str() == Some("cloud")))
 }
 
 /// One offer as the launcher is told it: its shape, and its hourly cost
@@ -131,7 +148,8 @@ mod tests {
             concat!(
                 r#"{"Ok": {"Offers": {"offers": [{"shape": "standard", "provider": "/p", "#,
                 r#""facts": {"cores": 8}, "costs": {"hourly": "0.38", "currency": "USD"}}, "#,
-                r#"{"shape": "small"}, {"costs": {"hourly": "1"}}], "unanswered": {}}}}"#,
+                r#"{"shape": "small"}, {"costs": {"hourly": "1"}}], "unanswered": {}, "#,
+                r#""needs": ["cloud"]}}}"#,
             ),
         );
         assert_eq!(
@@ -151,9 +169,32 @@ mod tests {
     fn a_node_whose_providers_offer_nothing_offers_none() {
         let (said, _) = told(
             "none",
-            r#"{"Ok": {"Offers": {"offers": [], "unanswered": {"/p": "no account"}}}}"#,
+            concat!(
+                r#"{"Ok": {"Offers": {"offers": [], "unanswered": {"/p": "no account"}, "#,
+                r#""needs": ["cloud"]}}}"#,
+            ),
         );
         assert_eq!(said, json!({"offers": []}));
+    }
+
+    #[test]
+    fn a_node_that_takes_no_cloud_need_offers_nothing() {
+        for (name, needs) in [
+            ("old", ""),
+            ("other", r#", "needs": ["gpu"]"#),
+            ("misshaped", r#", "needs": "cloud""#),
+        ] {
+            let offered = concat!(
+                r#"{"Ok": {"Offers": {"offers": [{"shape": "standard"}], "#,
+                r#""unanswered": {}"#
+            );
+            let (said, _) = told(name, &format!("{offered}{needs}}}}}}}"));
+            assert_eq!(
+                said,
+                json!({"error": {"code": "unoffered", "message": UNNEEDED}}),
+                "{name}: a node that would drop the need starts nothing in the cloud"
+            );
+        }
     }
 
     #[test]

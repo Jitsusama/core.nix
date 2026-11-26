@@ -35,6 +35,9 @@ const MOST_OFFERS = 20;
 // (mycelium's places.rs): letters, digits, -, _ and ., not opening with -.
 const PLAIN = /^[A-Za-z0-9_.][A-Za-z0-9_.-]{0,199}$/u;
 
+// Dots alone, this folder or the one above, which name no place or machine.
+const DOTS = /^\.+$/u;
+
 // A zone's name, as Wheres.js reads one.
 const ZONE_NAMED = /^\/\/\S+$/u;
 
@@ -94,7 +97,7 @@ function wheres(rows, places) {
     for (const row of Array.isArray(rows) ? rows : []) {
         const last = String(row.folder).split("/").filter(step => step !== "").pop() ?? "";
         const start = ZONE_NAMED.test(row.start) ? row.start
-            : checkouts.has(row.folder) && PLAIN.test(last) ? last : "";
+            : checkouts.has(row.folder) && plain(last) ? last : "";
         if (start !== "" && !seen.has(start)) {
             seen.add(start);
             listed.push({ folder: row.folder, name: row.name, start });
@@ -106,7 +109,12 @@ function wheres(rows, places) {
 // Whether `place` can be said to another machine: none, or a place's name.
 function named(place) {
     const where = String(place ?? "");
-    return where === "" || ZONE_NAMED.test(where) || PLAIN.test(where);
+    return where === "" || ZONE_NAMED.test(where) || plain(where);
+}
+
+// Whether `name` is one plain word that names something: PLAIN, not DOTS.
+function plain(name) {
+    return PLAIN.test(name) && !DOTS.test(name);
 }
 
 // The ask that sprouts `text` elsewhere, `on` saying where (onOf): the
@@ -130,7 +138,16 @@ function refused(place, words) {
     return named(place) ? words?.unmachined ?? "" : words?.unnamed ?? "";
 }
 
-// What a link's `on` (Launcher.qml's newWorkOn) asks of where its work
+// Where a link's `on` says its work starts, as Launcher.qml's newWorkOn
+// is given it, "on:" before it: what follows, or "-", which names nowhere,
+// where nothing does.
+function linked(on) {
+    const said = String(on ?? "");
+    const named = said.startsWith("on:") ? said.slice("on:".length) : "";
+    return named.trim() === "" ? "-" : named;
+}
+
+// What `on`, a link's (linked) or an act's, asks of where its work
 // starts: `{ needs }` for the cloud, `{ on }` for a machine by its name,
 // `{}` for none, or null where it names nothing a start could go to.
 function onOf(on) {
@@ -141,5 +158,5 @@ function onOf(on) {
     if (said === "cloud") {
         return { needs: NEEDS.slice() };
     }
-    return PLAIN.test(said) ? { on: said } : null;
+    return plain(said) ? { on: said } : null;
 }

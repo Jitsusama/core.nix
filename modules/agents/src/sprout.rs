@@ -101,6 +101,7 @@ fn elsewhere(request: &Value) -> bool {
 fn plain(name: &str) -> bool {
     !name.is_empty()
         && !name.starts_with('-')
+        && !name.bytes().all(|byte| byte == b'.')
         && name.len() <= 200
         && name
             .bytes()
@@ -331,6 +332,10 @@ mod tests {
             (ask(&json!({"needs": "cloud"})), "needs that aren't a list"),
             (ask(&json!({"on": "--all"})), "a machine named as a flag"),
             (ask(&json!({"on": "sk iff"})), "a machine of two words"),
+            (
+                ask(&json!({"folder": "..", "needs": ["cloud"]})),
+                "a place named as the folder above",
+            ),
         ] {
             assert!(
                 request_of(&said).is_err_and(|refused| !refused.is_empty()),

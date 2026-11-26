@@ -1850,7 +1850,7 @@ Provider {
             ask: Words.of(`verb:agents:start-new-work:${id}`).ask ?? "",
             // A folder's field opens on words a start refused for want of
             // one carried here (askWhere).
-            offered: () => id === "in" ? provider.sproutCarried : "",
+            offered: () => id === "in" || id === "cloud" ? provider.sproutCarried : "",
             state: () => provider.sproutSaid[key] ?? "",
             // The mark its state wears under the words: a glyph's name, running
             // while it's under way, done once started, failed when refused.
@@ -1886,7 +1886,8 @@ Provider {
         if (offer === null)
             return null;
         const said = sproutWords();
-        const where = Cloud.onOf(on);
+        // A link that names nowhere starts where Start New Work's From a Link does.
+        const where = String(on ?? "") === "" ? {} : Cloud.onOf(Cloud.linked(on));
         const elsewhere = where === null ? "" : where.needs !== undefined ? "cloud"
             : where.on ?? "";
         const suffix = elsewhere === "" ? "" : elsewhere === "cloud" ? said.inTheCloud ?? ""

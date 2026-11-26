@@ -84,5 +84,18 @@ QtObject {
         Expect.same("a link's on: the node's choice, the cloud, a machine, or nowhere",
             [Cloud.onOf(""), Cloud.onOf(" cloud "), Cloud.onOf("skiff"), Cloud.onOf("--all")],
             [{}, { needs: ["cloud"] }, { on: "skiff" }, null]);
+        Expect.same("dots alone name no machine or place",
+            [Cloud.onOf(".."), Cloud.ask("fix it", "..", "cloud"),
+                Cloud.ask("fix it", ".", "cloud")],
+            [null, null, null]);
+        // mycelium-link gives its `on` as it gives words and from, its name before it
+        // (Launcher.qml's newWorkOn).
+        Expect.same("a link's on is read past its name, and nowhere without it",
+            [Cloud.linked("on:cloud"), Cloud.linked("on:skiff"), Cloud.linked("cloud"),
+                Cloud.linked("on:"), Cloud.linked("")],
+            ["cloud", "skiff", "-", "-", "-"]);
+        Expect.same("so a link's cloud start needs the cloud",
+            Cloud.ask("https://github.com/o/r/issues/7", "", Cloud.linked("on:cloud")),
+            { ask: "sprout", text: "https://github.com/o/r/issues/7", needs: ["cloud"] });
     }
 }
