@@ -20,6 +20,11 @@ pub const SCHEMA: i64 = 12;
 /// otherwise keeps it at the largest it ever grew: on 7 November 321 MB,
 /// beside a 400 MB history, every frame of it already checkpointed.
 const WAL_LIMIT: i64 = 32 * 1024 * 1024;
+/// Whether another log holds a session, asked as a log is forgotten. It
+/// reads only the session index, and a test asks SQLite's plan for this
+/// very text so the two can't drift apart.
+const OTHERS_HOLD_SESSION: &str =
+    "SELECT EXISTS (SELECT 1 FROM files WHERE session = ?1 AND path != ?2)";
 
 /// Each hour's turns summed by what the picture splits them by, kept as
 /// they're added and forgotten. Every pass reads every hour, and summing
@@ -496,10 +501,32 @@ impl History {
     /// history of 39,486 logs on 25 November. It's no change of shape,
     /// since an older spend-watch reads the history the same with it, so
     /// it's made where it's missing rather than as a step.
+    ///
+    /// It's asked for first, so a history that has it is opened without
+    /// a write: every pi session's reader opens it, and one waiting on a
+    /// writer would hold the watch's start behind it. One that can't be
+    /// made is said and gone on from, since without it the history still
+    /// reads the same, only slower to forget a log.
     fn index_sessions(&self) -> Result<(), String> {
-        self.db
+        let indexed: bool = self
+            .db
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'index' \
+                 AND name = 'files_session')",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(sql)?;
+        if indexed {
+            return Ok(());
+        }
+        if let Err(error) = self
+            .db
             .execute_batch("CREATE INDEX IF NOT EXISTS files_session ON files (session);")
-            .map_err(sql)
+        {
+            eprintln!("the history's sessions can't be indexed yet, so it's read without: {error}");
+        }
+        Ok(())
     }
 
     /// The shape of the history at `path`, when a newer spend-watch keeps
@@ -681,11 +708,9 @@ impl History {
             .flatten();
         if let Some(session) = session {
             let others: bool = forget
-                .query_row(
-                    "SELECT EXISTS (SELECT 1 FROM files WHERE session = ?1 AND path != ?2)",
-                    params![session, path],
-                    |row| row.get(0),
-                )
+                .query_row(OTHERS_HOLD_SESSION, params![session, path], |row| {
+                    row.get(0)
+                })
                 .map_err(sql)?;
             if !others {
                 for table in ["turns", "refusals", "unresolved"] {
@@ -990,10 +1015,7 @@ mod tests {
         let history = History::open(&path).unwrap();
         let plan: Vec<String> = history
             .db
-            .prepare(
-                "EXPLAIN QUERY PLAN SELECT EXISTS (SELECT 1 FROM files WHERE session = ?1 \
-                 AND path != ?2)",
-            )
+            .prepare(&format!("EXPLAIN QUERY PLAN {OTHERS_HOLD_SESSION}"))
             .unwrap()
             .query_map(params!["teal", "ochre"], |row| row.get(3))
             .unwrap()
@@ -1003,6 +1025,29 @@ mod tests {
             plan.iter().any(|step| step.contains("files_session")),
             "forgetting a log still reads every log's row to learn whether another holds its \
              session: {plan:?}"
+        );
+    }
+
+    // A history that has its index opens without writing, so a reader
+    // opening it beside a writer reads at once rather than waiting the
+    // database's ten seconds and failing, as one did at a switch.
+    #[test]
+    fn a_history_with_its_index_opens_beside_a_writer() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        drop(History::open(&path).unwrap());
+        let writer = Connection::open(&path).unwrap();
+        writer.execute_batch("BEGIN IMMEDIATE;").unwrap();
+        let began = std::time::Instant::now();
+        let opened = History::open(&path);
+        assert!(
+            opened.is_ok(),
+            "a reader couldn't open the history beside a writer: {:?}",
+            opened.err()
+        );
+        assert!(
+            began.elapsed() < Duration::from_secs(5),
+            "a reader waited on the writer to open a history that has its index"
         );
     }
 
