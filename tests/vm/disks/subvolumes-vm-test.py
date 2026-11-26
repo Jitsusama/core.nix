@@ -219,6 +219,27 @@ def test_a_folder_moves_once_the_process_holding_it_quits(moved: BaseMachine) ->
     moved.succeed(f"grep -qx opened {HOME}/raced/f2")
 
 
+def test_a_waiter_finding_nothing_three_times_running_starts_the_move_no_more(
+    moved: BaseMachine,
+) -> None:
+    """A waiter that finds nothing held after three such starts of the move leaves it be.
+
+    Its count is the move's to clear, so once a start lands the move, the count goes with it.
+    It runs before the second run, which moves the busy folder with the rest it frees.
+    """
+    count = f"/run/user/1000/own-subvolumes/{waiter('busy')}.idle"
+    as_account(moved, "systemctl --user stop busy.service")
+    as_account(moved, f"mkdir -p /run/user/1000/own-subvolumes && echo 3 > {count}")
+    as_account(moved, f"systemctl --user start --wait {waiter('busy')}")
+    assert inode(moved, f"{HOME}/busy") != "256"
+    told = waited(moved, "busy")
+    assert "3 times in a row with nothing held a minute" in told, f"the waiter said: {told}"
+    moved.succeed(f"echo 2 > {count}")
+    as_account(moved, f"systemctl --user start --wait {waiter('busy')}")
+    moved.wait_until_succeeds(f"! test -e {count}", timeout=60)
+    assert inode(moved, f"{HOME}/busy") == "256"
+
+
 def test_a_second_run_leaves_a_subvolume_as_it_is(moved: BaseMachine) -> None:
     """A subvolume's root isn't copied again, and folders freed since move at the next run."""
     before = moved.succeed(f"ls -d {HOME}/moved.before-subvolume-*")
@@ -324,23 +345,3 @@ def test_a_folder_with_late_writes_set_aside_stays_until_they_are_dealt_with(
     as_account(moved, "rmdir missing.split-1")
     as_account(moved, restart)
     assert inode(moved, f"{HOME}/missing") == "256"
-
-
-def test_a_waiter_finding_nothing_three_times_running_starts_the_move_no_more(
-    moved: BaseMachine,
-) -> None:
-    """A waiter that finds nothing held after three such starts of the move leaves it be.
-
-    Its count is the move's to clear, so once a start lands the move, the count goes with it.
-    """
-    count = f"/run/user/1000/own-subvolumes/{waiter('busy')}.idle"
-    as_account(moved, "systemctl --user stop busy.service")
-    as_account(moved, f"mkdir -p /run/user/1000/own-subvolumes && echo 3 > {count}")
-    as_account(moved, f"systemctl --user start --wait {waiter('busy')}")
-    assert inode(moved, f"{HOME}/busy") != "256"
-    told = waited(moved, "busy")
-    assert "3 times in a row with nothing held a minute" in told, f"the waiter said: {told}"
-    moved.succeed(f"echo 2 > {count}")
-    as_account(moved, f"systemctl --user start --wait {waiter('busy')}")
-    moved.wait_until_succeeds(f"! test -e {count}", timeout=60)
-    assert inode(moved, f"{HOME}/busy") == "256"
