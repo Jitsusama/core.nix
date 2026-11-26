@@ -88,17 +88,43 @@ pub fn sched(text: &str) -> Option<Sched> {
     })
 }
 
+/// A thread's schedstat, with its wait taken from its `sched` beside it
+/// where the kernel keeps one there (`waited`). The schedstat's own wait
+/// also counts some sleeps: on 26 November, in 20 minutes, it counted 23
+/// sleeps of Slack's threads and a test's as waits of up to 4 s, while the
+/// fair scheduler's count grew by at most 2 ms on each (docs/kernel.md,
+/// The Patches). None for a schedstat that can't be read.
+pub fn read_sched(schedstat: &Path) -> Option<Sched> {
+    let mut read = sched(&text(schedstat))?;
+    if let Some(ns) = waited(&text(&schedstat.with_file_name("sched"))) {
+        read.wait_ns = ns;
+    }
+    Some(read)
+}
+
+/// How long a thread has waited for a CPU in all, in nanoseconds, by the
+/// fair scheduler's own count in its `sched`: `wait_sum`, never the
+/// `iowait_sum` beside it. The kernel keeps it only while
+/// `kernel.sched_schedstats` is on; none where it isn't kept.
+pub fn waited(text: &str) -> Option<u64> {
+    sched_ms(text, |key| key == "wait_sum" || key.ends_with(".wait_sum"))
+}
+
 /// How long a thread has been blocked in the kernel, in nanoseconds, from
 /// its `sched`: asleep where nothing but the kernel could wake it, on a
 /// lock, a page read back or reclaim, which no wait for a CPU shows. The
 /// kernel keeps it only while `kernel.sched_schedstats` is on, and prints
 /// it in milliseconds; none where it isn't kept.
 pub fn blocked(text: &str) -> Option<u64> {
+    sched_ms(text, |key| key.ends_with("sum_block_runtime"))
+}
+
+/// The first line of a `sched` whose key `named` takes, which the kernel
+/// prints in milliseconds, in nanoseconds.
+fn sched_ms(text: &str, named: impl Fn(&str) -> bool) -> Option<u64> {
     let ms: f64 = text.lines().find_map(|line| {
         let (key, value) = line.split_once(':')?;
-        key.trim()
-            .ends_with("sum_block_runtime")
-            .then(|| value.trim().parse().ok())?
+        named(key.trim()).then(|| value.trim().parse().ok())?
     })?;
     #[expect(
         clippy::cast_possible_truncation,
@@ -440,6 +466,52 @@ pub mod tests {
         let unkept = "cat (7, #threads: 1)\n\
                       se.sum_exec_runtime          :          1.019739\n";
         assert_eq!(blocked(unkept), None, "a file without it read as blocked");
+    }
+
+    #[test]
+    fn a_sched_file_gives_the_wait_for_a_cpu_never_the_wait_for_a_disk() {
+        let kept = "slack (7, #threads: 30)\n\
+                    iowait_sum                   :        900.000000\n\
+                    wait_sum                     :         12.250000\n";
+        assert_eq!(
+            waited(kept),
+            Some(12_250_000),
+            "the wait wasn't read from its line"
+        );
+        let only_io = "slack (7, #threads: 30)\n\
+                       iowait_sum                   :        900.000000\n";
+        assert_eq!(
+            waited(only_io),
+            None,
+            "a wait for a disk read as one for a CPU"
+        );
+    }
+
+    #[test]
+    fn a_thread_s_wait_is_the_fair_count_where_it_is_kept() {
+        let root = std::env::temp_dir().join(format!("lag-watch-wait-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let kept = root.join("7/task/7/schedstat");
+        write(&kept, "5000000 999000000 40\n");
+        write(&kept.with_file_name("sched"), "wait_sum : 2.000000\n");
+        assert_eq!(
+            read_sched(&kept),
+            Some(Sched {
+                run_ns: 5_000_000,
+                wait_ns: 2_000_000,
+                slices: 40
+            }),
+            "the schedstat's wait, which counts some sleeps, was kept"
+        );
+        let unkept = root.join("8/task/8/schedstat");
+        write(&unkept, "5000000 3000000 40\n");
+        assert_eq!(
+            read_sched(&unkept).map(|s| s.wait_ns),
+            Some(3_000_000),
+            "a thread with no fair count lost its wait"
+        );
+        assert_eq!(read_sched(&root.join("9/task/9/schedstat")), None);
+        let _ = fs::remove_dir_all(&root);
     }
 
     /// Writes `text` to a stand-in kernel file, making its folders.

@@ -251,8 +251,7 @@ fn snapshot(
         {
             s.blocked.insert(thread.clone(), ns);
         }
-        let text = fs::read_to_string(&thread.schedstat).unwrap_or_default();
-        if let Some(sched) = kernel::sched(&text) {
+        if let Some(sched) = kernel::read_sched(&thread.schedstat) {
             if hidden {
                 s.resting.insert(thread.clone(), sched);
             } else {
@@ -268,7 +267,8 @@ fn snapshot(
 }
 
 /// A read of the threads for `window::book`: when it began, each one's
-/// schedstat, and which were asleep just before theirs was read.
+/// times (`kernel::read_sched`), and which were asleep just before theirs
+/// was read.
 struct Read {
     at: f64,
     sched: BTreeMap<kernel::Thread, kernel::Sched>,
@@ -280,8 +280,8 @@ fn clock() -> f64 {
     started().elapsed().as_secs_f64()
 }
 
-/// The threads asleep now, each by its `stat`, read before its schedstat
-/// so a wait that began after it can't be taken for one before it.
+/// The threads asleep now, each by its `stat`, read before its times so a
+/// wait that began after it can't be taken for one before it.
 fn asleep(threads: &[kernel::Thread]) -> BTreeSet<kernel::Thread> {
     threads
         .iter()
@@ -290,16 +290,13 @@ fn asleep(threads: &[kernel::Thread]) -> BTreeSet<kernel::Thread> {
         .collect()
 }
 
-/// A tick's read of the threads: which are asleep, then each schedstat.
+/// A tick's read of the threads: which are asleep, then each one's times.
 fn reads(threads: &[kernel::Thread]) -> Read {
     let at = clock();
     let asleep = asleep(threads);
     let sched = threads
         .iter()
-        .filter_map(|t| {
-            let text = fs::read_to_string(&t.schedstat).ok()?;
-            Some((t.clone(), kernel::sched(&text)?))
-        })
+        .filter_map(|t| Some((t.clone(), kernel::read_sched(&t.schedstat)?)))
         .collect();
     Read { at, sched, asleep }
 }

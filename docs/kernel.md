@@ -167,7 +167,11 @@ threads, read every 20 ms, booked waits of 217 to 758 ms while every read
 saw them asleep. lag-watch, cadence and call-under-load all read that field,
 so their worst waits showed spikes that weren't there. The patch stops a
 delayed task being marked as queued; its wakeup still marks it. Neither 7.3.4
-nor mainline has it yet.
+nor mainline has it yet. It closes only the move: of 23 such sleeps counted
+as waits over 20 minutes, 9 came with no move between reads, which some
+other path marks. The fair scheduler's own count, `wait_sum` in the
+thread's `sched` file, grew by at most 2 ms on every one of them, so
+lag-watch reads that instead.
 
 7.3.2 to 7.3.3 gave a false W^X warning at boot, with a stack trace, on a
 processor that needs the mitigation for Indirect Target Selection, while the

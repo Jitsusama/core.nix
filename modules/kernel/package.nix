@@ -136,7 +136,8 @@ linux_7_3.override {
       # Stops a sleep being counted as a wait for a processor when the
       # sleeping task is moved to another one, which made schedstat show
       # waits of up to a second that never happened. Upstream's fix, sent
-      # but not yet taken; docs/kernel.md has the cause.
+      # but not yet taken; docs/kernel.md has the cause, and the cases it
+      # leaves.
       name = "sched-delayed-run-delay";
       patch = ./sched-delayed-run-delay.patch;
     }
