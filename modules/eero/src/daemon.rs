@@ -22,7 +22,6 @@
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::{Duration, Instant};
@@ -42,6 +41,7 @@ use crate::model::{Cloud, CloudState, HomeNetwork};
 use crate::notices::{self, Watch};
 use crate::probe::{self, Targets};
 use crate::read::{self, Answers};
+use crate::record::Record;
 use crate::schedule::{Looks, Read, Schedule};
 use crate::served::Mapped;
 use crate::session;
@@ -92,13 +92,16 @@ pub fn run() -> Result<(), String> {
         listeners.follow_net_every(NET_LOOK);
     }
     let mut daemon = Daemon::new(earlier(&file), history());
+    let mut record = Record::at(file);
     if let Some(model) = &daemon.model {
         listeners.send(&value(model));
     }
     loop {
         let listening = listeners.listening();
         if let Some(model) = daemon.cycle(Instant::now(), listening) {
-            write(&file, &line(&model)).map_err(|e| format!("{}: {e}", file.display()))?;
+            if let Some(said) = record.keep(&line(&model)) {
+                eprintln!("{said}");
+            }
             listeners.send(&value(&model));
         }
         match woken.recv_timeout(daemon.wait(Instant::now(), listeners.listening())) {
@@ -557,13 +560,6 @@ fn runtime() -> Result<PathBuf, String> {
     std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .ok_or_else(|| "XDG_RUNTIME_DIR isn't set".into())
-}
-
-/// Writes a file whole, so the shell never reads half of one.
-fn write(file: &Path, contents: &str) -> io::Result<()> {
-    let fresh = file.with_extension("json.new");
-    fs::write(&fresh, contents)?;
-    fs::rename(fresh, file)
 }
 
 fn now_unix() -> i64 {

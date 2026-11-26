@@ -26,6 +26,13 @@ pub struct Read {
     pub internet: Option<Internet>,
 }
 
+/// How long a record that says eero is answering may go unwritten before
+/// net stops taking it for live, in seconds: three of the daemon's slowest
+/// network reads, five minutes apart while nothing listens. The daemon
+/// rewrites the record at each read eero answers, so an older one means
+/// it stopped writing, as it does through a full disk, or stopped.
+const UNWRITTEN: u64 = 3 * 5 * 60;
+
 /// The record as the source says it, or why it isn't there.
 pub fn read(record: Result<Value, String>, now: u64) -> Read {
     let record = match record {
@@ -50,6 +57,19 @@ pub fn read(record: Result<Value, String>, now: u64) -> Read {
         .get("read")
         .and_then(Value::as_str)
         .and_then(time::parse);
+    let mut source = source(&record, read_at);
+    if source.state == SourceState::Answering
+        && let Some(at) = read_at
+        && now.saturating_sub(at) > UNWRITTEN
+    {
+        source.state = SourceState::Unreachable;
+        source.since = Some(at);
+        source.reason = Some(
+            "eero's record stopped being written at its last read; \
+             see systemctl --user status eero-daemon"
+                .into(),
+        );
+    }
     let nodes = list(&record, "nodes");
     let mut devices: Vec<Device> = nodes
         .iter()
@@ -65,7 +85,7 @@ pub fn read(record: Result<Value, String>, now: u64) -> Read {
         links.extend(join(client, &nodes));
     }
     Read {
-        source: source(&record, read_at),
+        source,
         devices,
         links,
         internet: internet(&record),
@@ -540,31 +560,75 @@ mod tests {
     /// daemon writes them; the laptop also runs a virtual machine bridge,
     /// whose address eero happens to list first.
     fn laptop_at_home() -> Read {
-        read(
-            Ok(json!({
-                "cloud": {"state": "answering"},
-                "read": "2026-11-07T22:54:43Z",
-                "nodes": [{
-                    "id": "2003", "location": "Hall", "gateway": true,
-                    "radios": [{"band": "5 GHz low", "channel": 52}]
-                }],
-                "devices": [{
-                    "mac": "02:00:00:00:00:01", "name": "laptop", "node": "2003",
-                    "address": "10.0.0.20",
-                    "addresses": ["10.0.122.1", "10.0.0.20", "fe80::1"],
-                    "band": "5 GHz", "channel": 52, "signal_dbm": -55,
-                    "rx": {"mbps": 1080.6},
-                    "speed": {"down_mbps": 1.5, "up_mbps": 0.25},
-                    "history": {
-                        "at": ["2026-11-07T22:44:43Z", "2026-11-07T22:49:43Z",
-                               "2026-11-07T22:54:43Z"],
-                        "down_mbps": [20.5, 20.5, 1.5],
-                        "up_mbps": [null, 0.5, 0.25]
-                    }
-                }]
-            })),
-            1_794_092_100,
-        )
+        read(Ok(laptop_record()), 1_794_092_100)
+    }
+
+    /// When the laptop's record says eero last answered.
+    const LAPTOP_READ: u64 = 1_794_092_083;
+
+    fn laptop_record() -> Value {
+        json!({
+            "cloud": {"state": "answering"},
+            "read": "2026-11-07T22:54:43Z",
+            "nodes": [{
+                "id": "2003", "location": "Hall", "gateway": true,
+                "radios": [{"band": "5 GHz low", "channel": 52}]
+            }],
+            "devices": [{
+                "mac": "02:00:00:00:00:01", "name": "laptop", "node": "2003",
+                "address": "10.0.0.20",
+                "addresses": ["10.0.122.1", "10.0.0.20", "fe80::1"],
+                "band": "5 GHz", "channel": 52, "signal_dbm": -55,
+                "rx": {"mbps": 1080.6},
+                "speed": {"down_mbps": 1.5, "up_mbps": 0.25},
+                "history": {
+                    "at": ["2026-11-07T22:44:43Z", "2026-11-07T22:49:43Z",
+                           "2026-11-07T22:54:43Z"],
+                    "down_mbps": [20.5, 20.5, 1.5],
+                    "up_mbps": [null, 0.5, 0.25]
+                }
+            }]
+        })
+    }
+
+    #[test]
+    fn a_record_long_unwritten_says_eero_unheard_and_keeps_its_devices() {
+        let fresh = read(Ok(laptop_record()), LAPTOP_READ + UNWRITTEN);
+        assert_eq!(
+            fresh.source.state,
+            SourceState::Answering,
+            "a record as old as eero's slowest reads allow wasn't taken as live"
+        );
+        let stale = read(Ok(laptop_record()), LAPTOP_READ + UNWRITTEN + 1);
+        assert_eq!(
+            (stale.source.state, stale.source.since),
+            (SourceState::Unreachable, Some(LAPTOP_READ)),
+            "a record eero stopped writing was taken as live"
+        );
+        assert!(
+            stale
+                .source
+                .reason
+                .as_deref()
+                .is_some_and(|why| why.contains("eero-daemon")),
+            "the stale record's reason doesn't point at the daemon: {:?}",
+            stale.source.reason
+        );
+        assert_eq!(
+            stale.devices.len(),
+            2,
+            "the stale record's devices were dropped rather than kept as last read"
+        );
+        let mut unreachable = laptop_record();
+        unreachable["cloud"] = json!({
+            "state": "unreachable", "since": "2026-11-07T22:50:00Z", "reason": "timed out"
+        });
+        let said = read(Ok(unreachable), LAPTOP_READ + 10 * UNWRITTEN);
+        assert_eq!(
+            said.source.reason.as_deref(),
+            Some("timed out"),
+            "an outage eero wrote was told as an unwritten record"
+        );
     }
 
     #[test]

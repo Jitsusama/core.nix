@@ -18,6 +18,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::model::{Channel, Modem, Network};
+use crate::record;
 use crate::sources::modem;
 
 /// How far back the day reaches.
@@ -178,9 +179,7 @@ pub fn keep(file: &Path, moment: &Moment) -> io::Result<()> {
             .map(|each| each + "\n")
             .collect();
         kept.push_str(&line);
-        let fresh = file.with_extension("jsonl.new");
-        fs::write(&fresh, kept)?;
-        return fs::rename(fresh, file);
+        return record::write(file, &kept);
     }
     OpenOptions::new()
         .create(true)

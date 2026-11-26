@@ -61,6 +61,7 @@ mod notices;
 mod place;
 mod probe;
 mod read;
+mod record;
 mod rows;
 mod schedule;
 mod served;

@@ -198,6 +198,9 @@ mod tests {
     fn contract() -> Said {
         let mut eero: Value = serde_json::from_str(include_str!("../../eero/home-network.json"))
             .expect("eero's golden record reads");
+        // eero's golden record was read a week before the modem's, so it's
+        // read again just before, as a running daemon's would be.
+        eero["read"] = Value::from("2026-11-15T00:20:00Z");
         if let Some(Value::Array(devices)) = eero.get_mut("devices") {
             devices.push(sony::tests::listing());
             devices.push(hp::tests::listing());

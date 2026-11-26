@@ -71,8 +71,20 @@ def served(machine: BaseMachine) -> BaseMachine:
 
 @pytest.fixture
 def eero_written(served: BaseMachine) -> Iterator[BaseMachine]:
-    """Put eero's record where its daemon writes it, and take it away again after the test."""
-    served.succeed(as_the_account(f"install -D -m 0600 /etc/eero-heard.json {EERO_WRITES}"))
+    """Put eero's record where its daemon writes it, and take it away again after the test.
+
+    It's stamped as read now, as the daemon stamps each answered read, since net takes a record
+    whose read is long past as one its daemon stopped writing.
+    """
+    stamped = 's/"read": "[^"]*"/"read": "\'"$now"\'"/'
+    served.succeed(
+        as_the_account(
+            f'mkdir -p "$(dirname {EERO_WRITES})" && umask 077 && '
+            "now=$(date -u +%Y-%m-%dT%H:%M:%SZ) && "
+            f"sed '{stamped}' /etc/eero-heard.json > {EERO_WRITES}.new && "
+            f"mv {EERO_WRITES}.new {EERO_WRITES}"
+        )
+    )
     yield served
     # Restarted, so the next test's net hasn't read the record it no longer has.
     served.succeed(as_the_account(f"rm -f {EERO_WRITES} && systemctl --user restart net.service"))

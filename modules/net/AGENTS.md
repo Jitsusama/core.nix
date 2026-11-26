@@ -114,6 +114,16 @@ rename, and a line that doesn't parse is skipped, so a crash costs a
 minute. It survives a restart, and a file that can't be kept costs only
 what net says of the day.
 
+A file net, eero or the switch's reader can't write, as on a full disk,
+costs only that file: each keeps going from memory, removes its partial,
+and says so in its journal once a spell, again when the cause changes,
+and again when it's kept (`src/record.rs`). A folder cleared away is made
+again. So a file left stale is never taken as now, each is judged by its
+age: eero's record by its `read`, past 15 minutes, three of the daemon's
+slowest reads, and the switch's report by its `read_at`, past 5 minutes.
+Either then reads as unreachable, naming the service to look at, and
+eero's devices stay as last read.
+
 - eero: the eero daemon's record, `$XDG_RUNTIME_DIR/eero/home-network.json`,
   never eero's cloud, which keeps one reader. `src/sources/eero.rs` maps
   each node and device; its whole entry stays as `detail.eero`.
