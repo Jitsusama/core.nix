@@ -251,9 +251,9 @@ louder: no run saw what main moved since, and on 2026-11-26 a change that
 passed at two commits merged as it stood after main moved a file it
 shared, and formatting went red on main. Where main moves faster than a
 run, the change boards the merge train, whose run checks the merged tree.
-Two changes sharing a
-file merge in the order their gates started, so the one nearly through
-isn't the one made to run again: `nix-offload there --changed` says each
+Two changes sharing a file merge in the order their gates started, so the
+one nearly through isn't the one made to run again:
+`nix-offload there --changed` says each
 gate going in `nix-offload/running/<pid>.json` and keeps its start with its
 pass, and `ready` refuses a head while a gate that started before its own,
 in another tree, still runs and changes one of its files other than the

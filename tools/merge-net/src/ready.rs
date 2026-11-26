@@ -62,6 +62,21 @@ pub enum Before {
     Unchecked,
 }
 
+impl Before {
+    /// Whether this earlier pass lets the head merge as it stands, with no
+    /// run of its own or the train's: only when main moved none of its
+    /// files, since no run saw what main moved.
+    pub fn speaks_for_the_head(&self) -> bool {
+        matches!(self, Self::Clean(_))
+    }
+}
+
+/// How many passes of the same change sharing files with main's moves are
+/// read before the newest is answered: what main moved since a base is a
+/// diff of hundreds of files, so a day of a change's passes isn't each
+/// read, and an older base has only more of main's moves to share.
+const SHARING_READ: usize = 2;
+
 /// Whether the head is the same change as one of `candidates`, newest
 /// first, that a changed-checks run passed at (its `record`, judged as
 /// `built_there` does with `on_main`). `same` says, of a candidate,
@@ -87,7 +102,11 @@ pub fn checked_before(
     same: &dyn Fn(&str) -> Option<Vec<String>>,
 ) -> Before {
     let mut newest_shared: Option<(String, Vec<String>)> = None;
+    let mut sharing = 0;
     for candidate in candidates {
+        if sharing == SHARING_READ {
+            break;
+        }
         if !built_there(&record(candidate), on_main) {
             continue;
         }
@@ -97,6 +116,7 @@ pub fn checked_before(
         if shared.is_empty() {
             return Before::Clean(candidate.clone());
         }
+        sharing += 1;
         newest_shared.get_or_insert((candidate.clone(), shared));
     }
     newest_shared.map_or(Before::Unchecked, |(newest, shared)| {
@@ -595,16 +615,16 @@ mod tests {
     fn mains_commit_pushing_a_shared_file_past_a_checks_limit_is_refused() {
         // #6727's case, 26 November: the change passed at two commits, then
         // main moved a file it shared, and the two merged past what the
-        // formatting check allows, so it went red on main at 11:07.
+        // formatting check allows, so it went red on main at 11:07. The
+        // stand-in check fails a file past 500 lines, and main takes the
+        // merged file unchecked only when ready says the earlier pass
+        // speaks for the head; otherwise a run at the head, or the train's
+        // at the merged tree, reads it first and refuses it.
         const LIMIT: usize = 500;
         let file = "modules/quickshell/launcher/Presented.js";
         let holds = |lines: usize| lines <= LIMIT;
-        let (base, own, mains) = (490, 497, 496);
+        let (base, own, mains) = (488, 495, 496);
         let merged = own + mains - base;
-        assert!(
-            holds(own) && holds(mains) && !holds(merged),
-            "the stand-in's check didn't pass on each side alone and fail merged"
-        );
         let passed = "{\"dir\":null,\"printed\":\"\",\"run\":[\"--system\",\"x86_64-linux\"]}\n";
         let files = owned(&[file, "modules/quickshell/Launcher.qml"]);
         let candidates = owned(&["rebased", "old"]);
@@ -613,15 +633,60 @@ mod tests {
         let before = checked_before(&candidates, &record, &on_main, &|at: &str| {
             sharing(&files, moved(at))
         });
+        let lands_unchecked = before.speaks_for_the_head();
+        let main_after = if lands_unchecked || holds(merged) {
+            merged
+        } else {
+            mains
+        };
         assert!(
-            !matches!(before, Before::Clean(_)),
-            "ready let a head merge as it stands over main's move past a check's limit"
+            holds(own) && holds(main_after),
+            "ready let a head merge as it stands over main's move past a check's limit: \
+             {main_after} lines on main"
         );
         assert_eq!(
             before,
             Before::Shares("rebased".to_owned(), owned(&[file])),
             "the file main pushed past the limit wasn't named for a run at the head"
         );
+    }
+
+    #[test]
+    fn passes_sharing_main_s_moves_are_read_no_further_than_two() {
+        // Each read of a sharing pass diffs what main moved since its base,
+        // so a change that passed six times in a day reads two.
+        let passed = "{\"dir\":null,\"printed\":\"\",\"run\":[\"--system\",\"x86_64-linux\"]}\n";
+        let files = owned(&["a.rs"]);
+        let candidates = owned(&["third", "second", "first", "clean"]);
+        let read = std::cell::RefCell::new(Vec::new());
+        let before = checked_before(&candidates, &|_: &str| passed.to_owned(), &on_main, &|at| {
+            read.borrow_mut().push(at.to_owned());
+            sharing(
+                &files,
+                Some(if at == "clean" {
+                    owned(&[])
+                } else {
+                    files.clone()
+                }),
+            )
+        });
+        assert_eq!(before, Before::Shares("third".to_owned(), files.clone()));
+        assert_eq!(
+            *read.borrow(),
+            owned(&["third", "second"]),
+            "passes past the second sharing one were read"
+        );
+    }
+
+    #[test]
+    fn only_a_clean_pass_speaks_for_the_head() {
+        // The train lands a recut candidate on an earlier pass only so.
+        assert!(Before::Clean("old".to_owned()).speaks_for_the_head());
+        assert!(
+            !Before::Shares("old".to_owned(), owned(&["b.md"])).speaks_for_the_head(),
+            "a pass main moved a shared file under spoke for the head"
+        );
+        assert!(!Before::Unchecked.speaks_for_the_head());
     }
 
     #[test]
