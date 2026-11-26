@@ -310,20 +310,40 @@ type Swap = (
 #[test]
 fn a_link_put_at_the_copies_folder_or_the_copy_while_it_is_made_leaves_the_job_untaken() {
     // Another job of the quest moving the copies' folder aside, with a
-    // link to it at its name, as the archive's names are read, where the
-    // far line may clear the link and where it may not; or moving the copy
-    // aside, with a link at its name, once tar unpacked into it, once its
-    // folders were opened, so the odd files' find meets the link and
-    // refuses it, or once the odd files' find ran, before
-    // the copy's check, which says it was moved; or moving the copies'
-    // folder aside then, where the link can't be cleared. Each is this
+    // link to it at its name, once the copy's folder is made, so the
+    // archive's rename beside it meets the link, once its header was read,
+    // so the list of its names meets it, or as the archive's names are
+    // read, where the far line may clear the link and where it may not;
+    // or moving the copy aside, with a link at its name, once tar unpacked
+    // into it, once its folders were opened, so the odd files' find meets
+    // the link and refuses it, or once the odd files' find ran, before the
+    // copy's check, which says it was moved; or moving the copies' folder
+    // aside then, where the link can't be cleared. Each is this
     // machine's to answer, nothing is unpacked or cleared through the
     // link, and the job never runs. Between that check and the job's cd
     // only builtins run, so no stand-in reaches the cd's own check.
     let folder = r#"mv "$s" "$HOME/aside" && ln -s "$HOME/aside" "$s""#;
     let copy = r#"mv "$s/1" "$HOME/moved" && ln -s "$HOME/moved" "$s/1""#;
     let (rm, pinned) = refusing("rm", "*\"/.s \"*", "exit 1");
-    let cases: [Swap; 6] = [
+    let cases: [Swap; 8] = [
+        (
+            "mkdir",
+            "*\"/.s/1 \"*",
+            true,
+            folder,
+            &["aside/1.run", "aside/1"],
+            &["aside/1.tar", "aside/1/a"],
+            false,
+        ),
+        (
+            "od",
+            "*\" -j257 \"*",
+            true,
+            folder,
+            &["aside/1.run", "aside/1.tar"],
+            &["aside/1.names", "aside/1/a"],
+            false,
+        ),
         (
             "tar",
             "*\" -tf \"*",
