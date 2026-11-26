@@ -1,13 +1,18 @@
 // Start New Work, Agents' act that begins new work from a link or words, run
 // in Qt's own JavaScript engine, the one the shell runs it in. The
 // `start-new-work-asks-only-a-sprout` check copies
-// modules/quickshell/launcher/Sprouting.js, Openings.js and StartSaid.js,
+// modules/quickshell/launcher/Sprouting.js, Openings.js, StartNotices.js and
+// StartSaid.js,
 // tests/lib/Expect.js
 // and Agents' words, as words.json, beside this file and runs it offscreen.
+// Long because a start is one path from what it asks the agents daemon to
+// how its opening, its late end and its kept record each read, and its
+// cases share the words and the stand-in openings they're told with.
 import QtQuick
 import "Expect.js" as Expect
 import "launcher/Openings.js" as Openings
 import "launcher/Sprouting.js" as Sprouting
+import "launcher/StartNotices.js" as StartNotices
 import "launcher/StartSaid.js" as StartSaid
 
 QtObject {
@@ -587,18 +592,18 @@ QtObject {
         // pressed since and ten seconds gone, since the keys that shut it are a leaving.
         const footed = { keys: 4, at: 1000 };
         Expect.same("shut with no key since, it's noticed",
-            Sprouting.noticedAtShut(footed, 4, 60000), true);
+            StartNotices.noticedAtShut(footed, 4, 60000), true);
         Expect.same("shut by keys soon after, it's noticed",
-            Sprouting.noticedAtShut(footed, 7, 4000), true);
+            StartNotices.noticedAtShut(footed, 7, 4000), true);
         Expect.same("shut long after a key, it was read",
-            Sprouting.noticedAtShut(footed, 5, 20000), false);
+            StartNotices.noticedAtShut(footed, 5, 20000), false);
         Expect.same("nothing footed, nothing noticed",
-            Sprouting.noticedAtShut(null, 4, 4000), false);
+            StartNotices.noticedAtShut(null, 4, 4000), false);
         Expect.same("a notice's body is each end, a line each, as plain text",
-            Sprouting.noticeBody(["<a href=\"x\">look</a> & see", "busy"]),
+            StartNotices.noticeBody(["<a href=\"x\">look</a> & see", "busy"]),
             "&lt;a href=\"x\"&gt;look&lt;/a&gt; &amp; see\nbusy");
         Expect.same("its backslashes are doubled, as notify-send reads one as an escape",
-            Sprouting.noticeBody(["a\\b", "\\n"]), "a\\\\b\n\\\\n");
+            StartNotices.noticeBody(["a\\b", "\\n"]), "a\\\\b\n\\\\n");
 
         // A start's notice is led by what an unread one of Agents' own still open under its
         // summary says, since the notices daemon folds that one into it, marked read.
@@ -606,85 +611,86 @@ QtObject {
             read: false };
         const open = { 7: {} };
         Expect.same("an earlier end unread and open leads the next notice",
-            Sprouting.noticed(["busy"], "Start New Work", [earlier], open), ["cut", "busy"]);
+            StartNotices.noticed(["busy"], "Start New Work", [earlier], open), ["cut", "busy"]);
         Expect.same("one read is folded away with nothing lost, so it's not said again",
-            Sprouting.noticed(["busy"], "Start New Work",
+            StartNotices.noticed(["busy"], "Start New Work",
                 [Object.assign({}, earlier, { read: true })], open), ["busy"]);
         Expect.same("one closed folds into nothing, so it's not said again",
-            Sprouting.noticed(["busy"], "Start New Work", [earlier], {}), ["busy"]);
+            StartNotices.noticed(["busy"], "Start New Work", [earlier], {}), ["busy"]);
         Expect.same("another program's never leads it",
-            Sprouting.noticed(["busy"], "Start New Work",
+            StartNotices.noticed(["busy"], "Start New Work",
                 [Object.assign({}, earlier, { app: "Slack" })], open), ["busy"]);
         Expect.same("nor one under another summary",
-            Sprouting.noticed(["busy"], "Start New Work",
+            StartNotices.noticed(["busy"], "Start New Work",
                 [Object.assign({}, earlier, { summary: "Start a Session" })], open), ["busy"]);
         Expect.same("with no notices heard, it's the ends alone",
-            Sprouting.noticed(["busy"], "Start New Work", undefined, undefined), ["busy"]);
+            StartNotices.noticed(["busy"], "Start New Work", undefined, undefined), ["busy"]);
         Expect.same("one whose body is empty leads with no blank line",
-            Sprouting.noticed(["busy"], "Start New Work",
+            StartNotices.noticed(["busy"], "Start New Work",
                 [Object.assign({}, earlier, { body: "" })], open), ["busy"]);
         const slack = { id: 9, app: "Slack", summary: "Start New Work", body: "hi",
             read: false };
         const readStart = Object.assign({}, earlier, { id: 8, body: "old", read: true });
         Expect.same("the open one leads though newer notices stand before it",
-            Sprouting.noticed(["busy"], "Start New Work", [slack, readStart, earlier],
+            StartNotices.noticed(["busy"], "Start New Work", [slack, readStart, earlier],
                 { 7: {}, 8: {}, 9: {} }), ["cut", "busy"]);
         Expect.same("a leading body, plain in the history, is made markup again once",
-            Sprouting.noticeBody(Sprouting.noticed(["busy"], "Start New Work",
+            StartNotices.noticeBody(StartNotices.noticed(["busy"], "Start New Work",
                 [Object.assign({}, earlier, { body: "a & <b>" })], open)),
             "a &amp; &lt;b&gt;\nbusy");
 
         // A notice Agents sent leads the next until the history holds it, since the
         // daemon folds it into the next though the history can't yet say it's open.
-        const sent = Sprouting.sentOf(["cut", "busy"], "Start New Work", [slack, earlier]);
+        const sent = StartNotices.sentOf(["cut", "busy"], "Start New Work", [slack, earlier]);
         const arrived = Object.assign({}, earlier, { id: 10, body: "cut\nbusy" });
         Expect.same("what's sent keeps the ids its summary's notices had then",
             sent.ids, [7]);
         Expect.same("nor another summary's",
-            Sprouting.sentOf(["cut"], "Start New Work",
+            StartNotices.sentOf(["cut"], "Start New Work",
                 [Object.assign({}, earlier, { summary: "Start a Session" })]).ids, []);
         Expect.same("sent and not yet heard, its ends lead the next",
-            Sprouting.unheard(sent, [slack, earlier]), ["cut", "busy"]);
+            StartNotices.unheard(sent, [slack, earlier]), ["cut", "busy"]);
         Expect.same("heard, the history says what leads",
-            Sprouting.unheard(sent, [arrived, earlier]), null);
+            StartNotices.unheard(sent, [arrived, earlier]), null);
         Expect.same("heard behind another program's newer notice, it's heard all the same",
-            Sprouting.unheard(sent, [Object.assign({}, slack, { id: 11 }), arrived, earlier]),
+            StartNotices.unheard(sent, [Object.assign({}, slack, { id: 11 }), arrived, earlier]),
             null);
         Expect.same("another program's newer notice isn't the one sent",
-            Sprouting.unheard(sent, [Object.assign({}, slack, { id: 11, body: "cut\nbusy" }),
+            StartNotices.unheard(sent, [Object.assign({}, slack, { id: 11, body: "cut\nbusy" }),
                 earlier]), ["cut", "busy"]);
         Expect.same("nor one under another summary",
-            Sprouting.unheard(sent, [Object.assign({}, arrived, { summary: "Start a Session" }),
+            StartNotices.unheard(sent, [Object.assign({}, arrived, { summary: "Start a Session" }),
                 earlier]), ["cut", "busy"]);
         Expect.same("an earlier send arriving, saying less, isn't the one sent",
-            Sprouting.unheard(sent, [Object.assign({}, arrived, { body: "cut" }), earlier]),
+            StartNotices.unheard(sent, [Object.assign({}, arrived, { body: "cut" }), earlier]),
             ["cut", "busy"]);
         Expect.same("an older notice saying just the same isn't the one sent",
-            Sprouting.unheard(Sprouting.sentOf(["cut"], "Start New Work", [earlier]), [earlier]),
+            StartNotices.unheard(StartNotices.sentOf(["cut"], "Start New Work", [earlier]),
+                [earlier]),
             ["cut"]);
         Expect.same("never heard, its ends reached no card, so they lead on",
-            Sprouting.unheard(sent, [earlier]), ["cut", "busy"]);
+            StartNotices.unheard(sent, [earlier]), ["cut", "busy"]);
         Expect.same("with nothing sent, nothing leads",
-            Sprouting.unheard(null, [earlier]), null);
+            StartNotices.unheard(null, [earlier]), null);
 
         // Three ends told a turn apart, each before the daemon answered the last: each
         // notice leads with all the last one said, as an earlier send arriving says less.
         const notices = { history: [earlier], live: { 7: {} } };
-        const first = Sprouting.sproutNotice(["a", "b"], null, "Start New Work", notices);
+        const first = StartNotices.sproutNotice(["a", "b"], null, "Start New Work", notices);
         Expect.same("a notice of several ends is led by the unread one still open",
             first.ends, ["cut", "a", "b"]);
-        const second = Sprouting.sproutNotice(["c"], first.sent, "Start New Work", notices);
+        const second = StartNotices.sproutNotice(["c"], first.sent, "Start New Work", notices);
         Expect.same("the next, before the first is heard, leads with all it said",
             second.ends, ["cut", "a", "b", "c"]);
         const firstHeard = { history: [Object.assign({}, earlier, { id: 10,
             body: "cut\na\nb" }), earlier], live: { 10: {} } };
-        const third = Sprouting.sproutNotice(["d"], second.sent, "Start New Work", firstHeard);
+        const third = StartNotices.sproutNotice(["d"], second.sent, "Start New Work", firstHeard);
         Expect.same("the first heard while the second isn't, the second still leads",
             third.ends, ["cut", "a", "b", "c", "d"]);
         const thirdHeard = { history: [Object.assign({}, earlier, { id: 12,
             body: "cut\na\nb\nc\nd", read: true })], live: {} };
         Expect.same("once the last is heard, the history says what leads",
-            Sprouting.sproutNotice(["e"], third.sent, "Start New Work", thirdHeard).ends,
+            StartNotices.sproutNotice(["e"], third.sent, "Start New Work", thirdHeard).ends,
             ["e"]);
 
         // The starts the agents daemon keeps ended and untold: one this shell never heard

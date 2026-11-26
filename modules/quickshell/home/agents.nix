@@ -33,6 +33,7 @@
   "launcher/CarryBack.js"
   "launcher/Openings.js"
   "launcher/Sprouting.js"
+  "launcher/StartNotices.js"
   "launcher/StartSaid.js"
   "launcher/Wheres.js"
   "launcher/Cloud.js"

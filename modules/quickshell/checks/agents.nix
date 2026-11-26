@@ -123,6 +123,7 @@
       ${copied [
         "launcher/Openings.js"
         "launcher/Sprouting.js"
+        "launcher/StartNotices.js"
         "launcher/StartSaid.js"
       ]}
       cp ${(import ../launcher/words.nix).places.agents} words.json
