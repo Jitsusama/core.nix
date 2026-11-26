@@ -5840,7 +5840,8 @@
     then lists once as his, leads with the locked manager's row, whose Return unlocks it, one
     refused saying why the next time the launcher opens, types an entry's password on Return
     into the window the launcher opened over, landing on the row from the find first, copies it
-    by Copy the Password through the daemon to the clipboard as the launcher goes, the
+    by Copy the Password through the daemon and Passwords' own wl-copy to the clipboard as the
+    launcher goes, the
     margin wearing the clipboard's mark and the foot, opened again, counting to its clearing,
     nothing on screen saying it, reads an entry in full as the selection rests on it, never as
     Joel's own ask, its drawer never saying its password, and holds its acts in the design's order
