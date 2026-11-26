@@ -50,6 +50,26 @@ says() {
   fi
 }
 
+# ends <code> <program> <words...>: the program, given the words, ends
+# with the code, and what it said on its standard error is kept in said.
+ends() {
+  local want=$1 got=0
+  shift
+  said=$("$@" 2>&1 > /dev/null) || got=$?
+  if [[ $got != "$want" ]]; then
+    echo "${*##*/} exited $got, not $want, saying '$said'"
+    exit 1
+  fi
+}
+
+# holds <text>: what the program ends kept last said includes the text.
+holds() {
+  if [[ $said != *"$1"* ]]; then
+    echo "it said '$said', not '$1'"
+    exit 1
+  fi
+}
+
 # reads <file> <want>: the file holds the line.
 reads() {
   local got
@@ -124,22 +144,37 @@ if [[ -r $throttle ]]; then
   echo "this runs as root, where a stand-in throttle can't be made unreadable"
   exit 1
 fi
-says "throttle can't be read, so it's recorded as off" "$goal" nvme0n1 75000
+ends 0 "$goal" nvme0n1 75000
+holds "throttle can't be read, so it's recorded as off"
+holds "cat: "
 chmod u+r "$throttle"
 reads "$WRITEBACK_GOAL_RUN/nvme0n1" 0
 reads "$throttle" 75000
 exits 0 "$goal" nvme0n1 kernel
 reads "$throttle" 0
-# A throttle that takes no goal either fails the unit, and the record it
-# made goes, so a later start reads the disk afresh.
+# A throttle that reads but takes no goal fails the unit, saying so, and
+# the record that start made goes, so a later start reads the disk afresh.
 echo 2000 > "$throttle"
-chmod a-rw "$throttle"
-exits 1 "$goal" nvme0n1 0
-chmod u+rw "$throttle"
+chmod a-w "$throttle"
+ends 1 "$goal" nvme0n1 0
+holds "throttle won't take 0"
+chmod u+w "$throttle"
 if [[ -e $WRITEBACK_GOAL_RUN/nvme0n1 ]]; then
   echo "a record outlived the goal it was made for failing"
   exit 1
 fi
+# A record an earlier goal made stays through a later goal's failing, and
+# through a giving back the throttle won't take, so the disk's own still
+# comes back once it will.
+exits 0 "$goal" nvme0n1 0
+chmod a-w "$throttle"
+ends 1 "$goal" nvme0n1 75000
+holds "throttle won't take 75000"
+ends 1 "$goal" nvme0n1 kernel
+holds "throttle won't take 2000 back"
+chmod u+w "$throttle"
+reads "$WRITEBACK_GOAL_RUN/nvme0n1" 2000
+exits 0 "$goal" nvme0n1 kernel
 reads "$throttle" 2000
 # A record of the kernel's default is taken as written, with nothing to
 # say.

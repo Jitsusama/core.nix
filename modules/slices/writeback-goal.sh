@@ -31,10 +31,11 @@ goal=${2:-}
 held=${WRITEBACK_GOAL_SYSFS:-}/sys/block/$disk/queue/wbt_lat_usec
 record=${WRITEBACK_GOAL_RUN:-/run/writeback-goal}/$disk
 # What it's asked is checked first, so a wrong call says so whether or not
-# the disk is there. No disk's name under /sys/block holds a slash or a
-# dot, so refusing both keeps a call off any path outside the records and
-# off a record's half-written copy, <disk>.new.
-if [[ -z $disk || $disk == */* || $disk == *.* ]] \
+# the disk is there. A name is held to letters and digits, as the module
+# holds the disks it makes units for, which keeps a call off any path
+# outside the records, off a record's half-written copy, <disk>.new, and
+# out of the journal's lines as anything but one word.
+if [[ ! $disk =~ ^[a-z0-9]+$ ]] \
   || { [ "$goal" != kernel ] && [[ -z $goal || $goal == *[!0-9]* ]]; }; then
   printf '%s\n' "writeback-goal sets a disk's goal in microseconds, or kernel" \
     "  try  writeback-goal --help" >&2
@@ -67,7 +68,12 @@ if [ "$goal" = kernel ]; then
       echo "writeback-goal: $disk's record reads '$kept', so it gets the kernel's default" >&2
     fi
   fi
-  echo "$before" > "$held"
+  # A throttle that won't take it back keeps the record, so a later giving
+  # back tries the disk's own again.
+  if ! echo "$before" > "$held"; then
+    echo "writeback-goal: $disk's throttle won't take $before back" >&2
+    exit 1
+  fi
   rm -f "$record"
   exit 0
 fi
@@ -78,7 +84,8 @@ fi
 # One that can't be read is recorded as off: as the block layer reads, a
 # queue with no throttle set up refuses the read but takes a write, which
 # sets one up, so giving back the default would turn on a throttle the
-# disk never had. cat's own error goes to the journal, saying why.
+# disk never had; giving back 0 leaves it one set up and off, as near to
+# none as sysfs comes. cat's own error goes to the journal, saying why.
 made=
 if [ ! -e "$record" ]; then
   made=1
@@ -95,7 +102,8 @@ if [ ! -e "$record" ]; then
 fi
 # A goal the throttle won't take fails the unit, and the record this call
 # made goes with it, so a later start reads the disk afresh rather than
-# giving back a record of a goal never set.
+# giving back a record of a goal never set. A record an earlier goal made
+# stays, since it still holds the disk's own.
 if ! echo "$goal" > "$held"; then
   if [ -n "$made" ]; then
     rm -f "$record"
