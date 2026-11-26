@@ -537,23 +537,23 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                 continue;
             }
         }
-        // Said before the first merge, so a merge from outside the train
-        // can wait it out: one landing between the train's merges leaves
-        // main a tree the train never tested, and on 25 November that
-        // reverted all three of a run's merges. Its end is the line after,
-        // that the train landed, fell or reverted.
+        // Said before the first merge, so an outside merge can wait it out:
+        // one between the train's merges left main untested on 25 November,
+        // reverting all three of a run's. Each line until the one saying it
+        // ends is the landing's, and a train stopped between leaves it
+        // unended, so an outside merge waits on.
         println!("merge-net: the train lands {} on main", short(&candidate));
-        let hub = GitHub { slug: slug.clone() };
         let landing = land(
             &checkout,
             &git,
-            &hub,
+            &GitHub { slug: slug.clone() },
             &base,
             &candidate,
             &mergings,
             &done.merged,
         );
         after_landing(&root, landing, &done.merged, began, &mut splitting);
+        println!("merge-net: the landing of {} ends", short(&candidate));
     }
 }
 

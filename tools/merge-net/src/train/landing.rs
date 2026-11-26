@@ -125,16 +125,23 @@ const SETTLE_PAUSE: Duration = if cfg!(test) {
     Duration::from_secs(15)
 };
 
-/// How long those asks may take in all, however slowly GitHub answers
-/// each: twenty reads that each time out three times would otherwise hold
-/// the train for about two hours. Six minutes leaves room for the five
-/// of pauses and the reads between.
+/// How long the train goes on starting those asks: twenty reads that each
+/// time out three times would otherwise hold the train for about two
+/// hours. Six minutes leaves room for the five of pauses and the reads
+/// between. A read started inside it still runs to its end, at most
+/// three of `gh`'s two-minute calls and the pauses between, so the wait
+/// as a whole ends within about twelve minutes.
 const SETTLE_FOR: Duration = Duration::from_mins(6);
 
 /// What `gh` adds to an answer in which GitHub refused the merge, as
 /// `gh: Pull Request is still a draft (HTTP 405)`; any other failure,
 /// a server error, a timeout or a lost link, states no refusal.
 const STATED_REFUSAL: &str = "(HTTP 4";
+
+/// Whether `why`, a merge's failed answer, says GitHub refused it.
+fn states_refusal(why: &str) -> bool {
+    why.contains(STATED_REFUSAL)
+}
 
 /// How a merge GitHub was asked for went.
 enum Merge {
@@ -152,7 +159,9 @@ enum Merge {
 /// reads it merged, and asked again while it reads unmerged.
 fn merge(hub: &dyn Hub, merging: &Merging) -> Merge {
     let mut pause = PAUSE;
-    let mut unstated = false;
+    // The first answer that stated no refusal, which put the merge in
+    // doubt and is what a wait on it quotes.
+    let mut doubt: Option<String> = None;
     for tried in 1..=MERGE_TRIES {
         let why = match hub.merge(merging) {
             Ok(made) => return Merge::Made(made),
@@ -161,18 +170,20 @@ fn merge(hub: &dyn Hub, merging: &Merging) -> Merge {
         // GitHub may refuse a merge it is still finishing, so one answer
         // stating no refusal leaves the merge in doubt however the later
         // ones read.
-        unstated |= !why.contains(STATED_REFUSAL);
-        match merged(hub, merging.number) {
-            Ok(Some(made)) => return Merge::Made(made),
-            Ok(None) if tried == MERGE_TRIES && unstated => {
-                return settled(hub, merging.number, why);
+        if doubt.is_none() && !states_refusal(&why) {
+            doubt = Some(why.clone());
+        }
+        match (merged(hub, merging.number), &doubt) {
+            (Ok(Some(made)), _) => return Merge::Made(made),
+            (Ok(None), Some(doubt)) if tried == MERGE_TRIES => {
+                return settled(hub, merging.number, doubt.clone());
             }
-            Ok(None) if tried == MERGE_TRIES => return Merge::Refused(why),
-            Ok(None) => {}
+            (Ok(None), None) if tried == MERGE_TRIES => return Merge::Refused(why),
+            (Ok(None), _) => {}
             // A merge already in doubt is waited out past a failed read
             // too, rather than stopping the whole train at once.
-            Err(_) if unstated => return settled(hub, merging.number, why),
-            Err(error) => {
+            (Err(_), Some(doubt)) => return settled(hub, merging.number, doubt.clone()),
+            (Err(error), None) => {
                 return Merge::Unknown(format!("{why}, and GitHub couldn't say after: {error}"));
             }
         }
@@ -182,7 +193,7 @@ fn merge(hub: &dyn Hub, merging: &Merging) -> Merge {
     Merge::Refused("it was never asked".to_owned())
 }
 
-/// How a merge in doubt, GitHub's last answer to it `why`, went: made once
+/// How a merge in doubt, `why` the answer that put it there, went: made once
 /// GitHub reads pull request `number` merged, refused when its last read
 /// of `SETTLE_ASKS`, or the last within `SETTLE_FOR`, still says
 /// unmerged, and unknown when that last read failed. A read failing
@@ -191,7 +202,7 @@ fn merge(hub: &dyn Hub, merging: &Merging) -> Merge {
 fn settled(hub: &dyn Hub, number: u64, why: String) -> Merge {
     println!(
         "merge-net: an answer to #{number}'s merge stated no refusal, so the train asks \
-         for up to five minutes whether it landed; its last answer: {}",
+         for about five minutes whether it landed; the answer: {}",
         one_line(&why)
     );
     let until = Instant::now() + SETTLE_FOR;

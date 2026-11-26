@@ -928,3 +928,21 @@ fn a_revert_github_wont_merge_keeps_it_and_those_under_it_on_main() {
         "the train reverted under a merge it couldn't revert, leaving a tree nobody wrote"
     );
 }
+
+#[test]
+fn gh_s_own_answers_split_refusals_from_doubt() {
+    // As train.log quoted gh on 25 November, through `gh` here.
+    for refused in [
+        "gh api: gh: Pull Request is still a draft (HTTP 405)",
+        "gh api: gh: Pull Request has merge conflicts (HTTP 405)",
+    ] {
+        assert!(states_refusal(refused), "{refused} read as no refusal");
+    }
+    for doubt in [
+        "gh api: gh: Server Error (HTTP 502)",
+        "gh api: ",
+        "running gh: No such file or directory (os error 2)",
+    ] {
+        assert!(!states_refusal(doubt), "{doubt} read as a refusal");
+    }
+}
