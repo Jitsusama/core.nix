@@ -411,15 +411,17 @@ Scope {
         keysWeighing = 0;
         drawerJoining = 0;
         readingBegun();
-        // A list shown afresh at the top shows all it has, so nothing
-        // waits; a held step's own listing counts what it still leaves out.
-        if (!steadying || ordering)
-            waitingRows = 0;
         const composed = live((steadying && !ordering ? steadied(rows.concat(below), gaveWay)
             : rows.concat(below)).concat(ending));
         const listedRows = listedAs(composed);
         const puttingAt = KeyTimes.now();
         matches = listedRows;
+        // A list shown afresh at the top shows all it has, so nothing
+        // waits; a held step's own listing counts what it still leaves out.
+        // Said once the rows are in, so a source that throws before leaves
+        // the foot's count beside the rows it counts.
+        if (!steadying || ordering)
+            waitingRows = 0;
         const selectingAt = KeyTimes.now();
         const drawerPutting = drawerJoining;
         // An answer only started gives way to a name that starts the same,
@@ -5463,19 +5465,25 @@ Scope {
     // search finds hundreds, none of them waiting. seenHere gives what was
     // found as it's shown (Steady.searched). Plain, so keeping notifies
     // nothing, and let go as the launcher closes. Of no prototype, as its
-    // keys are row ids, one of which may be `__proto__`.
+    // keys are row ids, one of which may be `__proto__`. Each list is known
+    // by its steps' ids as JSON, since an id may hold the "/" stepsTaken
+    // joins them with, as a path does.
     property var seenFound: Object.create(null)
+    function seenAt() {
+        return JSON.stringify(held.map(step => steadyId(step.row)));
+    }
     function seenHere(rows) {
-        const here = seenFound[stepsTaken] ?? Object.create(null);
+        const at = seenAt();
+        const here = seenFound[at] ?? Object.create(null);
         for (const row of rows) {
             if (row.unseen === true)
                 here[steadyId(row)] = true;
         }
-        seenFound[stepsTaken] = here;
+        seenFound[at] = here;
         return Steady.searched(rows);
     }
     function seenSearched() {
-        return Object.keys(seenFound[stepsTaken] ?? Object.create(null));
+        return Object.keys(seenFound[seenAt()] ?? Object.create(null));
     }
 
     // Whether the step held last is a collection, whose members are things
@@ -7204,9 +7212,9 @@ Scope {
             // Listed as they stand, its members leave out those that wait
             // unseen, counted, as a held step's rows do, but for one what
             // was typed found, which has been seen (Steady.seenAmong).
-            const standing = words.length === 0 && (!steadying || ordering)
-                ? Steady.seen(Steady.seenAmong(offered, seenSearched(), steadyId))
-                : { rows: offered.slice(), waiting: 0 };
+            const standing = words.length === 0
+                ? Steady.listed(offered, seenSearched(), steadyId, steadying && !ordering)
+                : { rows: [], waiting: 0 };
             root.found = words.length === 0 ? standing.rows
                 : seenHere(inCategory(letters));
             const foundAt = Date.now();
@@ -7259,10 +7267,10 @@ Scope {
             // typed found has been seen, so it stays as what's typed is
             // taken away, the selection on it, and after (Steady.seenAmong).
             else if (words.length === 0 && !holdsWords) {
-                const standing = Steady.seen(Steady.seenAmong(offered, seenSearched(),
-                    steadyId));
-                found = steadying && !ordering ? offered.slice() : standing.rows;
-                unseen = standing.waiting;
+                const standing = Steady.listed(offered, seenSearched(), steadyId,
+                    steadying && !ordering);
+                found = standing.rows;
+                unseen = standing.waiting ?? 0;
             } else if (held[held.length - 1].row.finds)
                 found = seenHere(held[held.length - 1].row.finds(letters));
             else

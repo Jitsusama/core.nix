@@ -50,11 +50,29 @@ function refreshed(shown, now, id) {
 }
 
 // A held step's rows as kept lays them, listed as they stand, as a key
-// lists them: those that wait unseen left out, and how many still there:
-// { rows, waiting }.
-function seen(rows) {
-    return { rows: rows.filter(row => row.unseen !== true),
+// lists them: those that wait unseen left out, and how many still there,
+// while what's left ends under a heading, as laidAgain would withhold
+// them; once it doesn't, as a key forgetting the rows gone may leave it,
+// they come in where they stand, seen: { rows, waiting }.
+function seen(rows, id) {
+    const shown = rows.filter(row => row.unseen !== true);
+    if (endingHeading(shown, headingsUnder(shown, id).map(its => its === null)) === null) {
+        return { rows: rows.filter(row => !(row.unseen === true && row.went)).map(asSeen),
+            waiting: 0 };
+    }
+    return { rows: shown,
         waiting: rows.filter(row => row.unseen === true && row.went !== true).length };
+}
+
+// What a step lists of its rows, `offered`, with nothing typed, and how
+// many it leaves out unseen: { rows, waiting }. Steadied, as a refresh
+// lays them, it's every row, for the refresh to withhold and count, so
+// `waiting` is null, the refresh's to say (Launcher.qml's steadied); else
+// it's the rows as they stand (seen), one a search found this opening
+// (`found`) counted seen (seenAmong).
+function listed(offered, found, id, steadied) {
+    return steadied ? { rows: offered.slice(), waiting: null }
+        : seen(seenAmong(offered, found, id), id);
 }
 
 // What a search typed in a held step found, as it's shown: seen, so none
@@ -82,7 +100,8 @@ function seenAmong(rows, found, id) {
 // isn't the last above the end, dimmed or not, has it said again over it,
 // the same heading in the same words, `repeated`; a heading new to the
 // list comes in only so, over a new row. A new row of no heading there
-// waits, since at the end it would read as the last heading's, unless
+// waits while the end reads as under a heading, by where each row stands
+// (endingHeading), since there it would read as that heading's, unless
 // it's `pressing`, as Agents Asking's row and a critical notice's are,
 // since what's pressing never waits unseen; one that comes in ends the
 // heading above it, so a row after it has its own said again. A row shown
@@ -98,14 +117,24 @@ function seenAmong(rows, found, id) {
 // nothing, since it isn't shown, and once it's pressing, or has a heading
 // or none above it, it comes in as any row does.
 function laidAgain(shown, now, id, withholding) {
-    const owners = headingsUnder(now, id);
+    // A list with no heading, as most are, has nothing to wait or say
+    // again, so is spared the work of finding each row's.
+    const headless = !shown.some(row => row.heading === true)
+        && !now.some(row => row.heading === true);
+    const owners = headless ? now.map(() => null) : headingsUnder(now, id);
+    // Where each row shown stood: what the end reads as under goes by
+    // that, not by its heading now, so one whose cell went still reads as
+    // under the heading it stands under.
+    const placed = headless ? shown.map(() => null) : headingsUnder(shown, id);
     const fresh = now.filter(row => !row.repeated);
     const under = owners.filter((_, at) => !now[at].repeated);
     // Each row's heading by its place in `out` (`lit` is given only it or
     // its first rows), not a Map, which Qt 6.12 walks whole (Rank.js).
     const owner = [];
-    const lit = rows => rows.map((row, at) => row.repeated && !row.went
-        && !standsUnder(rows, at, owner, id) ? dimmed(row) : row);
+    // Whether each row in `out` reads as under none where it stands.
+    const none = [];
+    const lit = headless ? rows => rows : rows => rows.map((row, at) => row.repeated
+        && !row.went && !standsUnder(rows, at, owner, id) ? dimmed(row) : row);
     if (shown.length === 0) {
         return { rows: fresh.map(asSeen), late: 0, lit: rows => rows, putBack: 0 };
     }
@@ -113,13 +142,20 @@ function laidAgain(shown, now, id, withholding) {
     const waiting = Object.create(null);
     fresh.forEach((row, at) => {
         const said = id(row);
-        waiting[said] = (waiting[said] ?? []).concat([at]);
+        if (waiting[said] === undefined) {
+            waiting[said] = [];
+        }
+        waiting[said].push(at);
     });
     const taken = fresh.map(() => false);
     const out = [];
-    const put = (row, its) => { owner[out.length] = its; out.push(row); };
+    const put = (row, its, alone) => {
+        owner[out.length] = its;
+        none[out.length] = alone;
+        out.push(row);
+    };
     let late = 0;
-    for (const row of shown) {
+    for (const [place, row] of shown.entries()) {
         if (row.repeated) {
             const again = headingsNow.find(one => id(one) === id(row));
             out.push(again ? Object.assign({}, again, { repeated: true }) : dimmed(row));
@@ -132,7 +168,7 @@ function laidAgain(shown, now, id, withholding) {
         // to dim.
         if (row.unseen === true) {
             const at = left && left.length > 0 ? left[0] : -1;
-            if (at >= 0 && waits(fresh[at], under[at], headingsNow.length > 0)) {
+            if (at >= 0 && waits(fresh[at], under[at], endingHeading(out, none) !== null)) {
                 left.shift();
                 taken[at] = true;
                 late += withholding ? 1 : 0;
@@ -148,14 +184,13 @@ function laidAgain(shown, now, id, withholding) {
             const at = left.shift();
             const again = asSeen(fresh[at]);
             taken[at] = true;
-            put(again, under[at]);
+            put(again, under[at], placed[place] === null);
         } else {
-            out.push(dimmed(row));
+            put(dimmed(row), undefined, placed[place] === null);
         }
     }
     const putBack = out.length;
-    let headed = out.some(row => row.heading === true);
-    let last = endingHeading(out, owner);
+    let last = endingHeading(out, none);
     fresh.forEach((row, at) => {
         // One that left before it was ever shown, as a held step's rows
         // hand it back, has nothing to dim, and never waits to be shown.
@@ -163,31 +198,30 @@ function laidAgain(shown, now, id, withholding) {
             return;
         }
         const its = under[at];
-        if (waits(row, its, headed)) {
+        if (waits(row, its, last !== null)) {
             late += withholding ? 1 : 0;
             if (!withholding) {
                 out.push(asUnseen(row));
             }
             return;
         }
-        if (its === null && headed) {
+        if (its === null) {
             last = null;
         }
         if (its !== null && (last === null || id(last) !== id(its))) {
             last = Object.assign({}, its, { repeated: true });
             out.push(last);
-            headed = true;
         }
         const coming = asSeen(typeof row.ranked === "function" ? row.ranked() : row);
-        put(coming, its);
+        put(coming, its, its === null);
     });
     return { rows: out, late, lit, putBack };
 }
 
 // Whether a row new to a list waits unseen: one of no heading (`its`)
-// where a heading is said above the end (`headed`), and not pressing.
-function waits(row, its, headed) {
-    return its === null && headed && !pressing(row);
+// where the end reads as under one (`endsHeaded`), and not pressing.
+function waits(row, its, endsHeaded) {
+    return its === null && endsHeaded && !pressing(row);
 }
 
 // A row as it's shown, no longer marked as waiting unseen, or so marked:
@@ -206,14 +240,15 @@ function marked(row, laid) {
 }
 
 // The heading the end of `rows` reads as under: the last one, unless a row
-// of none (`owner`, each row's heading) stands after it, as a pressing one
-// that came in does, which ends it however long ago it came.
-function endingHeading(rows, owner) {
+// that reads as under none where it stands (`none`) comes after it, as a
+// pressing one that came in does, or To Look At after the cells, which
+// ends it however long ago it came.
+function endingHeading(rows, none) {
     let last = null;
     for (const [at, row] of rows.entries()) {
         if (row.heading === true) {
             last = row;
-        } else if (owner[at] === null) {
+        } else if (none[at] === true) {
             last = null;
         }
     }
@@ -255,7 +290,10 @@ function headingsUnder(rows, id) {
     const holderOf = Object.create(null);
     for (const one of rows.filter(row => row.heading === true && !row.repeated
         && Array.isArray(row.holding))) {
-        for (const key of one.holding) { holderOf[key] = holderOf[key] ?? one; }
+        // A row with no key holds no place, so no row of none is a cell's.
+        for (const key of one.holding.filter(key => typeof key === "string")) {
+            holderOf[key] = holderOf[key] ?? one;
+        }
     }
     let above = null;
     return rows.map(row => {

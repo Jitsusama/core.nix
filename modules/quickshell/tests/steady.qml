@@ -330,7 +330,8 @@ QtObject {
             ["a row under no heading waits", "#A=a1 a1", "#A=a1 a1 look later", "#A a1", 2],
             ["and one above every heading", "#A=a1 a1", "x #A=a1 a1", "#A a1", 1],
             ["but a pressing row comes in", "#A=a1 a1", "#A=a1 a1 asked!", "#A a1 asked", 0],
-            ["and one above every heading", "#A=a1 a1", "asked! #A=a1 a1", "#A a1 asked", 0],
+            ["and a pressing one above every heading", "#A=a1 a1", "asked! #A=a1 a1",
+                "#A a1 asked", 0],
             ["and a cell's row after it has its heading said", "#A=a1 a1",
                 "asked! #A=a1,a2 a1 a2", "#A a1 asked #A+ a2", 0],
             ["a cell's new row still gets its heading past the others", "#A=a1 a1 #B=b1 b1",
@@ -349,7 +350,15 @@ QtObject {
             ["a pressing row shown before ends the heading above it", "#A=a1 a1 #B=b1 b1 asked!",
                 "asked! #A=a1 a1 #B=b1,b2 b1 b2", "#A a1 #B b1 asked #B+ b2", 0],
             ["a row that left before it was shown is never counted", "#A=a1 a1",
-                "#A=a1 a1 look-", "#A a1", 0]
+                "#A=a1 a1 look-", "#A a1", 0],
+            ["a row of no cell after one of none comes in", "#A=a1 a1 look",
+                "#A=a1 a1 look try", "#A a1 look try", 0],
+            ["a cell's new row after To Look At gets its heading", "#A=a1 a1 #B=b1 b1 look",
+                "#A=a1 a1 #B=b1,b2 b1 b2 look", "#A a1 #B b1 look #B+ b2", 0],
+            ["a row of no cell after a dim one of none comes in", "#A=a1 a1 look",
+                "#A=a1 a1 try", "#A a1 look- try", 0],
+            ["a row of an object's own name is its cell's", "#A=a1 a1 #B=b1 b1",
+                "#A=a1,__proto__ a1 __proto__ #B=b1 b1", "#A a1 #B b1 #A+ __proto__", 0]
         ];
         for (const [what, shown, now, want, waiting] of shownAgain) {
             const got = Steady.refreshed(underHeadings(shown), underHeadings(now), id);
@@ -386,7 +395,7 @@ QtObject {
         const stepOwn = keptUnseen.find(row => row.key === "notices");
         const asSeenRead = row => row === undefined ? "none" : JSON.stringify([
             "unseen" in row, row.side, row.pressing === asking[2].pressing,
-            Steady.seen([row]).rows.length]);
+            Steady.seen([row], id).rows.length]);
         if (asSeenRead(cameIn) !== JSON.stringify([false, "", true, 1])
                 || stepOwn?.unseen !== true)
             failures.push(`a row kept unseen comes in as it was: ${asSeenRead(cameIn)}, `
@@ -437,29 +446,59 @@ QtObject {
                 + ` held "${readHeaded(typedHeld.rows)}", then`
                 + ` "${readHeaded(typedHeldThen.rows)}"`);
         // What's typed taken away, the row a search found has been seen, so
-        // the step's rows as they stand show it and count nothing new; one
-        // the search didn't find still waits.
-        const clearedSeen = Steady.seen(Steady.seenAmong(unheaded(lateStep),
-            typedFound.map(id), id));
-        const clearedUnfound = Steady.seen(Steady.seenAmong(unheaded(lateStep),
-            [id(lateStep[1])], id));
-        if (readHeaded(clearedSeen.rows) !== "a1 look" || clearedSeen.waiting !== 0
-                || readHeaded(clearedUnfound.rows) !== "a1" || clearedUnfound.waiting !== 1)
+        // the step's rows as they stand, headings and all, show it and count
+        // nothing new; one the search didn't find still waits.
+        const clearedSeen = Steady.seen(Steady.seenAmong(lateStep, typedFound.map(id), id), id);
+        const clearedUnfound = Steady.seen(Steady.seenAmong(lateStep, [id(lateStep[1])], id),
+            id);
+        if (readHeaded(clearedSeen.rows) !== "#A a1 look" || clearedSeen.waiting !== 0
+                || readHeaded(clearedUnfound.rows) !== "#A a1"
+                || clearedUnfound.waiting !== 1)
             failures.push(`a row found, then what's typed taken away: `
                 + `"${readHeaded(clearedSeen.rows)}" with ${clearedSeen.waiting} waiting, unfound `
                 + `"${readHeaded(clearedUnfound.rows)}" with ${clearedUnfound.waiting}`);
         // Found once, it stays seen as the step is made again, hands it back
         // marked and lists it after other lists were shown, as when Joel
         // searches again or steps into a row and back out: Joel found it by
-        // name, so it isn't hidden again. Where it stands is no part of
-        // this, since nothing yet ends a heading before the rows of none.
+        // name, so it isn't hidden again. It stands where the step keeps it,
+        // at the end, after every row shown, as each row that waited does.
         const madeAgain = Steady.kept(lateStep, underHeadings("#A=a1 a1 look"), id);
-        const clearedLater = Steady.seen(Steady.seenAmong(madeAgain, typedFound.map(id), id));
-        if (madeAgain[2]?.unseen !== true || !clearedLater.rows.some(row => row.key === "look")
+        const clearedLater = Steady.seen(Steady.seenAmong(madeAgain, typedFound.map(id), id),
+            id);
+        if (madeAgain[2]?.unseen !== true || readHeaded(clearedLater.rows) !== "#A a1 look"
                 || clearedLater.rows.some(row => row.unseen === true)
                 || clearedLater.waiting !== 0)
             failures.push(`a row found, then the step made again and listed: `
                 + `"${readHeaded(clearedLater.rows)}" with ${clearedLater.waiting} waiting`);
+        // A key that forgets the rows gone may leave no heading above the
+        // end, so a row that waited there comes in where it stands, as the
+        // refresh after would let it, rather than at a moment no key says.
+        const headingsGo = Steady.kept(underHeadings("#A=a1 a1 #Y=y1 y1"),
+            underHeadings("y1 look"), id);
+        const keptHeaded = Steady.seen(headingsGo, id);
+        const headingsForgot = Steady.seen(Steady.forgotten(headingsGo), id);
+        if (readHeaded(keptHeaded.rows) !== "#A- a1- #Y- y1" || keptHeaded.waiting !== 1
+                || readHeaded(headingsForgot.rows) !== "y1 look"
+                || headingsForgot.waiting !== 0)
+            failures.push(`a row waiting, its headings forgotten: `
+                + `"${readHeaded(keptHeaded.rows)}" with ${keptHeaded.waiting} waiting, then `
+                + `"${readHeaded(headingsForgot.rows)}" with ${headingsForgot.waiting}`);
+        // A step lists its rows with nothing typed (Launcher.qml's listings):
+        // steadied, every row, its count the refresh's; else as they stand,
+        // what waits counted, but for one a search found, though its id is
+        // an object's own.
+        const protoStep = Steady.kept(underHeadings("#A=a1 a1"),
+            underHeadings("#A=a1 a1 __proto__"), id);
+        const steadiedList = Steady.listed(protoStep, [], id, true);
+        const standingList = Steady.listed(protoStep, [], id, false);
+        const foundList = Steady.listed(protoStep, ["__proto__"], id, false);
+        if (readHeaded(steadiedList.rows) !== "#A a1 __proto__?" || steadiedList.waiting !== null
+                || readHeaded(standingList.rows) !== "#A a1" || standingList.waiting !== 1
+                || readHeaded(foundList.rows) !== "#A a1 __proto__" || foundList.waiting !== 0)
+            failures.push(`a step listed: steadied "${readHeaded(steadiedList.rows)}" with `
+                + `${steadiedList.waiting}, standing "${readHeaded(standingList.rows)}" with `
+                + `${standingList.waiting}, found "${readHeaded(foundList.rows)}" with `
+                + `${foundList.waiting}`);
         // Held still with a row shown that waits unseen, as one Return acted
         // on may be, the rows held are those the rows shown put back, so a
         // cell's new row waits too, rather than slip in among them.
@@ -528,7 +567,7 @@ QtObject {
         ]) {
             const stepRows = makings.reduce((rows, now) => Steady.kept(rows, underHeadings(now),
                 id), underHeadings(shown));
-            const listed = Steady.seen(Steady.forgotten(stepRows));
+            const listed = Steady.seen(Steady.forgotten(stepRows), id);
             const shownNow = Steady.refreshed(underHeadings(shown), stepRows, id);
             if (readHeaded(listed.rows) !== want || listed.waiting !== waiting)
                 failures.push(`${what}, listed by a key: "${readHeaded(listed.rows)}" with `
