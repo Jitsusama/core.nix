@@ -2772,11 +2772,9 @@ def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
     assert moved - made <= launcher_on_niri.LATELY_KEPT, (
         f"moving to the next group made {moved - made} rows: {shell.made_lately('emoji')}"
     )
-    made_moving = shell.made_since("emoji", before + made)
-    emoji = [key for key in made_moving if not key.startswith(EMOJI_GROUP_KEY)]
-    assert not emoji, (
-        f"moving to the next group made {len(emoji)} of its emoji: {shell.made_lately('emoji')}"
-    )
+    made_moving = shell.rows_made_since("emoji", before + made)
+    emoji = [row for row in made_moving if not row.startswith(EMOJI_GROUP_KEY)]
+    assert not emoji, f"moving to the next group made {len(emoji)} of its emoji: {', '.join(emoji)}"
     shell.send_chars("k")
     shell.launcher_until(lambda shown: (shown.get("selected") or {}).get("name") == FIRST_GROUP)
     shell.step_in()
@@ -2856,8 +2854,15 @@ def test_emoji_says_how_many_it_found_past_those_it_answers(shell: Shell) -> Non
     shown, found = (int(part) for part in counted.groups())
     # N and M are both counted from the launcher's own list, so each is held to the history's
     # answer instead: M past N is what it found past the keys it gave, every one made a row,
-    # and M past what it found is Emoji's groups matching, no more than it has.
-    past, groups = answer["all"] - answer["held"], found - answer["all"]
+    # and M past what it found is Emoji's groups matching, no more than it has. Read a moment
+    # after the head, the answer may have been let go since, which says so rather than a miscount.
+    assert answer is not None, f"Emoji had no search to say after the head said {said}"
+    assert answer["found"] == "f", (
+        f"the history's answer to f was let go before it was read, after the head said {said}:"
+        f" {answer}"
+    )
+    assert answer["keysHeld"] > 0, f"the history found {answer['foundAll']} for f but gave none"
+    past, groups = answer["foundAll"] - answer["keysHeld"], found - answer["foundAll"]
     assert found - shown == past, f"the head said {said}, the history {answer}"
     assert 0 <= groups <= EMOJI_MADE_MOST, f"the head said {said}, the history {answer}"
 

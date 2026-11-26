@@ -336,11 +336,15 @@ class Shell:
 
     def made_since(self, place: str, before: int) -> list[str]:
         """Give the keys of the rows the place made after it had made `before`, oldest first."""
+        return [row.split(" ")[0] for row in self.rows_made_since(place, before)]
+
+    def rows_made_since(self, place: str, before: int) -> list[str]:
+        """Give the rows the place made after it had made `before`, whole and marked as kept."""
         made = self.made()
         count = int(made["rows"][place]) - before
         lately = made["lately"][place]
         assert count <= LATELY_KEPT, f"{place} made {count} rows: {', '.join(lately)}"
-        return [key.split(" ")[0] for key in (lately[-count:] if count else [])]
+        return list(lately[-count:]) if count else []
 
     def made_settled(self, place: str) -> None:
         """Wait until the place has made no row for a while, the opening's work done."""
