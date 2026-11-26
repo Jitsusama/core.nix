@@ -1754,7 +1754,7 @@ mod tests {
         let roomy = free(ROOM + 12 * GROWS);
         let refuses = |_: &Path, act: Act| !matches!(act, Act::Rank { .. });
         assert_eq!(let_in(&door.look(work, roomy, longest, 1002, refuses)), 3);
-        assert!(door.rank_refused);
+        assert!(door.rank_refused, "the rank refused didn't end the rush");
         let gone = longest + Duration::from_secs(10);
         assert_eq!(door.look(&work[..3], roomy, gone, 1003, |_, _| true), []);
         assert!(
@@ -1934,7 +1934,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             "each of the rush's four ranked is lifted, and nothing else"
         );
-        assert!(door.capped.is_empty());
+        assert!(door.capped.is_empty(), "caps left after the lift: {:?}", door.capped);
     }
 
     // A scope's cap goes with it, so a later scope at the same path isn't
