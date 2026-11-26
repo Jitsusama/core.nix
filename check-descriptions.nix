@@ -6731,10 +6731,11 @@
     gives it back into the window it opened over, and the launcher forgets it all when asked; and a
     copy marked secret reaches Joel's own X11 client but never a command fenced as pi fences one,
     given the display: handed the cookie it reaches no socket, with the sockets open it holds no
-    cookie, and with both walls gone it reads it; and a password Passwords copies by its Return
-    pastes into a terminal and into a page, Super+V never lists it and the history keeps nothing
-    of it, a command whose wl-paste is the fence's shim is refused it by the clipboard door while
-    an ordinary copy after it reaches that command, and it's held till about 30 s and then gone
+    cookie, and with both walls gone it reads it; and a password Passwords copies by its Copy the
+    Password, each copy proven its own, pastes into a terminal and into a page, Super+V never
+    lists it and the history keeps nothing of it, a command whose wl-paste is the fence's shim is
+    refused it by the clipboard door while an ordinary copy after it reaches that command, and
+    it's held till about 30 s and then gone
   '';
   vm-desktop-keeps-pace = ''
     the launcher draws its keys, arrowed or typed, nearly as soon while every core is busy in
