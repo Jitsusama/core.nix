@@ -48,6 +48,7 @@ const CALM: Senses = Senses {
             full: 0.0,
             full_minute: 0.0,
         },
+        memory_room: None,
     },
 };
 

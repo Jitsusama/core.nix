@@ -54,18 +54,6 @@
     "test": "vm-the-connection-stays-quick"
   },
   {
-    "at": 1795247801,
-    "commit": "ced2abf32fe44848f77d1d74b14dc14c7f63869b",
-    "due": "2026-11-23",
-    "owner_pr": 5966,
-    "owner_session": "orchestrator",
-    "reason": "failed, then passed, at ced2abf32fe4",
-    "subtests": [
-      "test_joels_yes_releases_the_value_into_the_one_command"
-    ],
-    "test": "vm-desktop-answers-secret-asks"
-  },
-  {
     "at": 1795335524,
     "commit": "a60435126103b2901210023deae7a9bda4bfe616",
     "due": "2026-11-27",
