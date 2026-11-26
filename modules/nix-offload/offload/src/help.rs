@@ -489,7 +489,7 @@ fn busy() -> Help {
     Help::new(
         "busy",
         "says whether this Mac is past its room for more work, by its load alone, \
-         never its memory as work sent to it is judged",
+         as a person's own part is judged",
     )
     .example("nix-offload busy", "before rebuilding a Mac's system")
     .exit(Exit::Done, "it's past its room")

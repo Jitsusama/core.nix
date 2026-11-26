@@ -172,24 +172,13 @@ pub fn asks_for_room(asked: Option<&str>, here: &str, builds: bool) -> bool {
 /// waits. A Mac too busy to say its load has no room either, and nor has
 /// one that said nothing a load reads from: an ssh that couldn't finish
 /// its handshake says nothing, and a run sent on would only find the same
-/// Mac. Nor has one short of memory ([`Memory::short`]), or one that
-/// didn't say its memory: from 10:30 to 11:25 on 25 November the net
-/// found a Mac at loads of 35 to 262 on 12 processors, swapping, and
-/// velocity's line for a start there is 35% free with no swap-outs in the
-/// last minute.
+/// Mac.
 pub fn room(host: &str, load: Result<Option<Load>, String>) -> Result<String, String> {
-    let load = load?.ok_or_else(|| format!("{host} didn't say its load"))?;
-    if load.over() {
-        return Err(format!("{host} has no room, at {}", load.said()));
-    }
-    let memory = load
-        .memory
-        .ok_or_else(|| format!("{host} didn't say its free memory or its swapping"))?;
-    let at = format!("{} and {}", memory.said(), load.said());
-    if memory.short() {
-        Err(format!("{host} has no room, at {at}"))
-    } else {
-        Ok(format!("{host} has room, at {at}"))
+    match load {
+        Ok(Some(load)) if load.over() => Err(format!("{host} has no room, at {}", load.said())),
+        Ok(Some(load)) => Ok(format!("{host} has room, at {}", load.said())),
+        Ok(None) => Err(format!("{host} didn't say its load")),
+        Err(why) => Err(why),
     }
 }
 
@@ -215,18 +204,10 @@ pub fn room_alone(host: &str, load: Result<Option<Load>, String>) -> Result<Stri
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::there::Memory;
 
     fn words(text: &str) -> Vec<String> {
         text.split_whitespace().map(str::to_owned).collect()
     }
-
-    /// A Mac with memory to spare: half free, swapping nothing.
-    const SPARE: Option<Memory> = Some(Memory {
-        free: 50,
-        swapped: 0,
-        window: 60,
-    });
 
     #[test]
     fn a_run_for_a_mac_past_three_a_processor_waits_and_one_within_goes() {
@@ -236,7 +217,6 @@ mod tests {
                 five,
                 cores: 12,
                 building: 0,
-                memory: SPARE,
             }))
         };
         let busy = |why: &str| Err(why.to_owned());
@@ -257,8 +237,7 @@ mod tests {
         assert_eq!(
             room("skiff", at(36.0, 36.0)),
             Ok(
-                "skiff has room, at 50% free and 0 swap-outs over 60 s and load 36.0 \
-                 over a minute and 36.0 over five on 12 processors"
+                "skiff has room, at load 36.0 over a minute and 36.0 over five on 12 processors"
                     .into()
             ),
             "a run for a Mac at three a processor waited"
@@ -275,60 +254,6 @@ mod tests {
         );
     }
 
-    // From 10:30 to 11:25 on 25 November the net found a Mac swapping at
-    // loads of 35 to 262; velocity's line for a start there is 35% free
-    // and no swap-outs in the last minute.
-    #[test]
-    fn a_run_for_a_mac_short_of_memory_waits_however_light_its_load() {
-        let with = |memory: Option<Memory>| {
-            Ok(Some(Load {
-                minute: 6.0,
-                five: 6.0,
-                cores: 12,
-                building: 0,
-                memory,
-            }))
-        };
-        let memory = |free: u32, swapped: u64| {
-            Some(Memory {
-                free,
-                swapped,
-                window: 72,
-            })
-        };
-        assert_eq!(
-            room("skiff", with(memory(34, 0))),
-            Err(
-                "skiff has no room, at 34% free and 0 swap-outs over 72 s and load 6.0 \
-                 over a minute and 6.0 over five on 12 processors"
-                    .to_owned()
-            ),
-            "a run for a Mac just under 35% free went"
-        );
-        assert_eq!(
-            room("skiff", with(memory(80, 1))),
-            Err(
-                "skiff has no room, at 80% free and 1 swap-out over 72 s and load 6.0 \
-                 over a minute and 6.0 over five on 12 processors"
-                    .to_owned()
-            ),
-            "a run for a Mac that swapped out within its window went"
-        );
-        assert!(
-            room("skiff", with(memory(35, 0))).is_ok(),
-            "a run for a Mac at 35% free, swapping nothing, waited"
-        );
-        assert_eq!(
-            room("skiff", with(None)),
-            Err("skiff didn't say its free memory or its swapping".to_owned()),
-            "a Mac that didn't say its memory was taken to have room"
-        );
-        assert!(
-            room_alone("skiff", with(memory(20, 0))).is_err(),
-            "a gate's comparison went to a Mac short of memory"
-        );
-    }
-
     #[test]
     fn a_run_for_a_mac_waits_while_another_builds_there_however_light_its_load() {
         let building = |building: u32| {
@@ -337,7 +262,6 @@ mod tests {
                 five: 35.0,
                 cores: 12,
                 building,
-                memory: SPARE,
             }))
         };
         assert_eq!(
@@ -352,8 +276,7 @@ mod tests {
         assert_eq!(
             room_alone("skiff", building(0)),
             Ok(
-                "skiff has room, at 50% free and 0 swap-outs over 60 s and load 20.0 \
-                 over a minute and 35.0 over five on 12 processors"
+                "skiff has room, at load 20.0 over a minute and 35.0 over five on 12 processors"
                     .to_owned()
             ),
             "a run for a Mac building nothing waited"
@@ -361,8 +284,7 @@ mod tests {
         assert_eq!(
             room("skiff", building(1)),
             Ok(
-                "skiff has room, at 50% free and 0 swap-outs over 60 s and load 20.0 \
-                 over a minute and 35.0 over five on 12 processors"
+                "skiff has room, at load 20.0 over a minute and 35.0 over five on 12 processors"
                     .to_owned()
             ),
             "a person's own part for a Mac waited on another's build, which its turn bounds"
@@ -375,7 +297,6 @@ mod tests {
                     five: 60.0,
                     cores: 12,
                     building: 1,
-                    memory: SPARE,
                 }))
             ),
             Err(

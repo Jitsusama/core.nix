@@ -787,7 +787,7 @@ fn built_nearby(
 }
 
 /// Whether `machine`, a Mac, has no room for more, saying the load it
-/// goes or waits at, by its load and memory (`changed::mac::room`): a person's
+/// goes or waits at, by its load alone (`changed::mac::room`): a person's
 /// own part, which its turn there bounds beside another, never waits on
 /// another's build as a run for its system does (`held_for_a_mac`). A run
 /// whose caller asked already isn't asked again, nor is a machine that
