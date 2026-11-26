@@ -2926,8 +2926,9 @@ Singleton {
         delete again[named];
         askedAgainAt = again;
     }
-    // The press told each viewer's window may yet come (untaken), by its
-    // app id, and when, in ms, told it came if it does (viewerCame) within
+    // The press told each viewer's window may yet come (untaken), or told
+    // disowned of a refusal so kept (refusedUntaken), by its app id, and
+    // when, in ms, told it came if it does (viewerCame) within
     // comingPatience: a kitty that didn't answer may draw it any time it
     // can, and the launcher, shut meanwhile, keeps the words it was told
     // until it opens (tellOnOpen). The 15 minutes an asked place keeps
@@ -2951,8 +2952,14 @@ Singleton {
     // pid read wrong refuses its own, and is still listed: asked again,
     // each ask would open another window of the same session. Once it
     // closes, a stray listed before the ask is no reason to ask none, so
-    // Go To opens its own beside it, saying unowned.
+    // Go To opens its own beside it, saying unowned. One kept as the
+    // kitty didn't answer (refusedUntaken) holds only within
+    // comingPatience of that give-up, as its own may come no later: past
+    // it, a stray listed for good would hold the viewer unopened.
     function refusedOwn(named) {
+        const kept = refusalKeptAt[named];
+        if (kept !== undefined && Date.now() - kept >= comingPatience)
+            return false;
         return named in refusedAsks && listedAs(named)
             .some(window => String(window.id) === refusedAsks[named] && !drawnHere(window));
     }
@@ -2986,7 +2993,15 @@ Singleton {
     // When each ask refusedAsks holds was made, in ms, so the script's
     // give-up of that ask still reaches it (refusedUntaken).
     property var refusedAt: ({})
+    // When each refusal was kept past an unanswered give-up, in ms, by its
+    // app id, bounding it (refusedOwn).
+    property var refusalKeptAt: ({})
     function forgetRefusal(named) {
+        if (named in refusalKeptAt) {
+            const kept = Object.assign({}, refusalKeptAt);
+            delete kept[named];
+            refusalKeptAt = kept;
+        }
         if (named in disownedSaid) {
             const told = Object.assign({}, disownedSaid);
             delete told[named];
@@ -3008,8 +3023,9 @@ Singleton {
     // To says unowned), rather than none while it stays. A kitty that only
     // didn't answer in time (`cause`, "unanswered") may yet draw its own,
     // which is taken as come, and may have drawn the refused one under a
-    // pid read wrong, so its refusal stays: only one refused or with no
-    // kitty to ask, or a give-up that says no cause, ends it.
+    // pid read wrong, so its refusal stays, within comingPatience: only
+    // one refused or with no kitty to ask, or a give-up that says no
+    // cause, ends it sooner.
     // Only a give-up timed within answerPatience of the ask is that ask's,
     // as the script's always is, so a time outside it, as a stale or
     // malformed call gives, ends none (untaken says what one meant can).
@@ -3023,6 +3039,15 @@ Singleton {
         if (cause === "unanswered") {
             console.info(`sessions: the sessions kitty didn't answer for ${named}, so window `
                 + `${refusedAsks[named]}, come refused, may yet be its own`);
+            // Kept within comingPatience only (refusedOwn), and the press
+            // told disowned is told its own came within it too (viewerCame),
+            // as one drawn late comes past answerPatience, the give-up
+            // itself a minute after the ask.
+            refusalKeptAt = Object.assign({}, refusalKeptAt, { [named]: Date.now() });
+            const told = disownedSaid[named] ?? null;
+            if (told !== null)
+                stillSaid = Object.assign({}, stillSaid,
+                    { [named]: { said: told, at: Date.now() } });
             // A place viewKept let go for the ask is kept again under the
             // pid asked, as for any give-up, so a kitty come since asks for
             // it once the refused window closes (viewKept keeps it while
