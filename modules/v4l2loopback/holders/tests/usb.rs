@@ -479,6 +479,30 @@ fn the_file_goes_when_it_is_stopped() {
 }
 
 #[test]
+fn a_file_it_couldnt_write_is_written_once_it_can_be() {
+    // /dev/urandom stands in for the camera's node, so the test holding it
+    // is named; the other tests' watches hold /dev/zero and /dev/full.
+    let watch = Watch::on("unwritten", Some(Path::new("/dev/urandom")));
+    watch.until_there(true, "no file while the camera's there");
+    let folder = watch.file.parent().unwrap().to_owned();
+    fs::set_permissions(&folder, Permissions::from_mode(0o555)).unwrap();
+    assert!(
+        File::create(folder.join("probe")).is_err(),
+        "a privileged run may write in any folder, so no write here fails"
+    );
+    let _held = File::open(&watch.node).unwrap();
+    fs::write(&watch.streaming, " 1\n").unwrap();
+    // Time for two of the looks a streaming camera gets each second, each
+    // finding the test and failing to say so.
+    sleep(Duration::from_millis(2500));
+    let unwritten = fs::read_to_string(&watch.file).unwrap();
+    fs::set_permissions(&folder, Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(unwritten, "", "a folder it may not write in was written in");
+    // Nothing changes from here, so only a watch that tries again writes.
+    watch.until_named(true, "a file it couldn't write wasn't tried again");
+}
+
+#[test]
 fn a_file_that_cant_go_keeps_what_finds_it() {
     let mut watch = Watch::start("stuck");
     watch.until_there(true, "no file while the camera's there");

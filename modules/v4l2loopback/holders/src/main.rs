@@ -363,7 +363,8 @@ fn say(line: &str) {
     }
 }
 
-/// Says the run is ready, once its file is first written.
+/// Says the run is ready, the first time its file says who holds the
+/// camera as last seen.
 fn written(ready: &mut Ready) {
     if let Some(line) = ready.line() {
         say(&line);
@@ -395,24 +396,31 @@ fn watch(
     let mut said = None;
     let mut pids = HashSet::new();
     loop {
-        let names = match holders::holders(node, units, &pids) {
+        // A read that fails writes nobody, which is a guess, so only a
+        // read that worked counts toward the watch being ready.
+        let (names, seen) = match holders::holders(node, units, &pids) {
             Ok((names, now)) => {
                 pids = now;
-                names
+                (names, true)
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ended::Gone,
             Err(error) => {
                 complain(format_args!("{}: {error}", node.display()));
-                BTreeSet::new()
+                (BTreeSet::new(), false)
             }
         };
         let anyone = !names.is_empty();
         let shown = listed(names, sysfs, node);
-        if said.as_ref() != Some(&shown) {
-            match write(output, &shown) {
-                Ok(()) => written(ready),
-                Err(error) => complain(format_args!("{}: {error}", output.display())),
-            }
+        let right = said.as_ref() == Some(&shown)
+            || match write(output, &shown) {
+                Ok(()) => true,
+                Err(error) => {
+                    complain(format_args!("{}: {error}", output.display()));
+                    false
+                }
+            };
+        if seen && right {
+            written(ready);
         }
         // The record asks the camera itself, which a stalling camera can
         // keep waiting, so it comes after the file is right.
@@ -422,8 +430,10 @@ fn watch(
                 say(&line);
             }
         }
-        said = Some(shown);
-        match events.wait(anyone.then_some(every)) {
+        // A file that couldn't be written is tried again on the next look,
+        // which comes on a timer even while nobody holds the camera.
+        said = right.then_some(shown);
+        match events.wait((anyone || said.is_none()).then_some(every)) {
             Woken::Timeout | Woken::Changed => {}
             Woken::NodeGone => return Ended::Gone,
             Woken::Stopped => return Ended::Stopped,
