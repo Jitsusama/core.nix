@@ -344,6 +344,10 @@ fn a_node_file_it_couldnt_remove_as_its_camera_went_is_tried_again() {
     // so no look writes it again.
     let devices = watch.folder.join(".devices");
     fs::set_permissions(&devices, Permissions::from_mode(0o555)).unwrap();
+    assert!(
+        File::create(devices.join("probe")).is_err(),
+        "a locked folder still took a file, as it does for root"
+    );
     // Gone, then let go, so the look its closing wakes finds it gone.
     fs::remove_file(&camera).unwrap();
     drop(held);
@@ -402,5 +406,61 @@ fn a_loopback_with_no_camera_is_ready_only_once_its_node_file_is_gone() {
     watch.until(
         |watch| ready(&watch.read("log")) == 1,
         "a loopback whose node file went wasn't said ready",
+    );
+}
+
+#[test]
+fn a_node_file_stays_until_its_loopbacks_nobody_is_written() {
+    // A node file a killed run left, beside a holders file that can't be
+    // written: the folder's locked, the node files' folder isn't.
+    let watch = Watch::started("ordered", "", |folder| {
+        fs::create_dir(folder.join(".devices")).unwrap();
+        fs::write(folder.join(".devices/Stand-in"), "/dev/random\n").unwrap();
+        fs::set_permissions(folder, Permissions::from_mode(0o555)).unwrap();
+        assert!(
+            File::create(folder.join("probe")).is_err(),
+            "a locked folder still took a file, as it does for root"
+        );
+    });
+    watch.until(
+        |watch| complaints_of(watch, &watch.file()) == 1,
+        "a nobody it couldn't write went unsaid",
+    );
+    // Past two more of the one-second tries with no camera.
+    sleep(Duration::from_millis(2500));
+    assert!(
+        watch.device().exists(),
+        "a node file was removed before its loopback's nobody was written"
+    );
+    fs::set_permissions(&watch.folder, Permissions::from_mode(0o755)).unwrap();
+    watch.until(
+        |watch| !watch.device().exists(),
+        "a node file stayed once its loopback's nobody was written",
+    );
+    assert!(
+        fs::read_to_string(watch.file()).is_ok_and(|said| said.is_empty()),
+        "a node file went with its loopback's nobody unwritten"
+    );
+    watch.until(
+        |watch| ready(&watch.read("log")) == 1,
+        "a loopback whose files were right wasn't said ready",
+    );
+}
+
+#[test]
+fn a_loopback_with_no_camera_and_no_node_files_folder_is_ready() {
+    // A file where `.devices/` would be, so no node file can be there.
+    let watch = Watch::started("foldless", "", |folder| {
+        fs::write(folder.join(".devices"), "").unwrap();
+    });
+    watch.until(
+        |watch| ready(&watch.read("log")) == 1,
+        "a loopback with no node files' folder wasn't said ready",
+    );
+    assert_eq!(
+        complaints_of(&watch, &watch.device()),
+        0,
+        "a node file that can't be there was complained of: {:?}",
+        watch.read("complaints")
     );
 }

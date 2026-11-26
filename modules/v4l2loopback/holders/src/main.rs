@@ -712,18 +712,21 @@ fn loopback(events: &mut Events, options: &Options, run: &mut Run) {
             run,
         );
         // A camera gone is said no more, so a node that comes next, which
-        // may not be sayable yet, never leaves the last one said; its
-        // holders file first, and what fails is tried again with no camera.
-        if say_nobody(&options.output, run) && !node.exists() {
-            run.unname(&options.output);
-        }
+        // may not be sayable yet, never leaves the last one said. A gone
+        // node is unnamed by the pass with no camera, which tries until it
+        // can; a stop unnames it here, only once nobody is written.
+        let told = say_nobody(&options.output, run);
         if let Ended::Stopped = ended {
-            run.unname(&options.output);
+            if told {
+                run.unname(&options.output);
+            }
             return;
         }
         // So a node it can't watch is tried again, not spun on.
         if let Woken::Stopped = events.sleep(Duration::from_millis(500)) {
-            run.unname(&options.output);
+            if told {
+                run.unname(&options.output);
+            }
             return;
         }
     }
