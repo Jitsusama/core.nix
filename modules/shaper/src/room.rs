@@ -62,7 +62,11 @@ impl Room {
     /// one declaring the same line, or whose line changes, lets it go
     /// unless the download fills the new one, so a hold is never carried
     /// to a line it didn't fill (download hold round 2's F7 and F24, round
-    /// 3's F5). A link the recorder doesn't follow carries nothing known
+    /// 3's F5). The one exception is a hold `follow` gave a link while it
+    /// followed, unmeasured, which it keeps on the same network and line
+    /// as it leads for the rest of the call, at a tenth of its line, rather
+    /// than let a download it couldn't hear go a second (a link's own line
+    /// round 4's F2 and F12). A link the recorder doesn't follow carries nothing known
     /// and isn't cut, so it starts no hold, but keeps one it has, as it
     /// does through a second the recorder missed: a call held through a
     /// spell costs the download a tenth, where one let go a second costs
@@ -356,7 +360,11 @@ mod tests {
         assert_eq!((held, said), (None, None), "no call, no hold");
         let (held, said) = room.follow(wifi, HOME, true, Some(20_000));
         assert_eq!(held, Some(18_000), "held unmeasured, under its own line");
-        assert!(said.is_some(), "the journal says the hold began");
+        let said = said.expect("the journal says the hold began");
+        assert!(
+            said.contains("following eth1's, isn't measured") && said.contains("held to 18000"),
+            "for why, and following which: {said}"
+        );
         let (held, said) = room.follow(wifi, HOME, true, Some(20_000));
         assert_eq!((held, said), (Some(18_000), None), "said once");
         let (held, said) = room.step("wlan0", HOME, true, UNKNOWN, Some(20_000));

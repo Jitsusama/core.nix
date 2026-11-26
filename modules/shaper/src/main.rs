@@ -380,8 +380,9 @@ struct Shaped {
     /// The line its download is held under for a call, its own or its
     /// network's, as the last step read it (src/networks.rs).
     line: Option<u64>,
-    /// Whether the journal has been told the link's line (`line_said`).
-    line_told: bool,
+    /// Whether the journal has been told the link's line, and the line it
+    /// was told, kept through a step its network isn't known (`line_said`).
+    line_told: (bool, Option<u64>),
     /// What the controller held its download to at the last step, apart
     /// from a call's hold, and whether it left the download unlimited:
     /// what a follower takes (`hold_followers`).
@@ -747,7 +748,7 @@ fn start(
         download: Download::Turned,
         room: room::Room::default(),
         line: None,
-        line_told: false,
+        line_told: (false, None),
         asked_down: (down, true),
         sent_read: None,
         sent_told: None,
@@ -1902,14 +1903,17 @@ fn hold_followers(shaped: &mut BTreeMap<String, Shaped>) {
 /// `was`, so a link whose name its network's line doesn't match is seen
 /// to take none (a link's own line round 1's F14). A link named by itself
 /// waits for its router to answer, so its line isn't said to be none
-/// before its network is known (round 3's F2, F12 and F17).
+/// before its network is known (round 3's F2, F12 and F17), and what was
+/// told before it lost its router's name is kept, so a move through an
+/// unnamed step to a network declaring none is said (round 4's F1, F4,
+/// F5, F8 and F10). A link no router ever names says nothing of its line.
 fn line_said(
     (name, network): (&str, &str),
     (told, was): (bool, Option<u64>),
     now: Option<u64>,
-) -> (bool, Option<String>) {
+) -> ((bool, Option<u64>), Option<String>) {
     if pin::unnamed(network) {
-        return (told, None);
+        return ((told, was), None);
     }
     let said = (!told || was != now).then(|| match now {
         Some(line) => {
@@ -1917,7 +1921,7 @@ fn line_said(
         }
         None => format!("{name}: no line is declared for the download, so a call holds none"),
     });
-    (true, said)
+    ((true, now), said)
 }
 
 /// What a link's download is held to, and whether it goes straight in,
@@ -1990,19 +1994,21 @@ fn step_links(
         if s.agents_share >= 1.0 {
             s.let_agents_go();
         }
-        let own_line = networks::line_of(lines, &s.network, name);
-        let (told, said) = line_said((name, s.network.as_str()), (s.line_told, s.line), own_line);
+        // The line the link takes: its own, or its network's where it has
+        // none (a link's own line round 5's F1).
+        let taken_line = networks::line_of(lines, &s.network, name);
+        let (told, said) = line_said((name, s.network.as_str()), s.line_told, taken_line);
         if let Some(said) = said {
             eprintln!("{said}");
         }
-        (s.line, s.line_told) = (own_line, told);
+        (s.line, s.line_told) = (taken_line, told);
         if let Some(leader) = &s.follows {
             // A follower takes its leader's rates, and a call's room of
             // its own line, unmeasured (download hold round 1's F3; a
             // link's own line round 3's F1 and F4).
             if let (_, Some(said)) =
                 s.room
-                    .follow((name, leader.as_str()), &s.network, calling, own_line)
+                    .follow((name, leader.as_str()), &s.network, calling, taken_line)
             {
                 eprintln!("{said}");
             }
@@ -2737,20 +2743,27 @@ mod tests {
     fn the_journal_says_the_line_a_link_takes_as_it_changes() {
         let none = "wlan0: no line is declared for the download, so a call holds none";
         let line = "wlan0: the download's line is 20000 kbit/s, for a call to hold it under";
+        // A link coming up unnamed says its line once its router answers,
+        // a line of none too, and one roaming through an unnamed step
+        // says the line it comes to, none too, and only if it changed
+        // (a link's own line round 4's F1, F4, F5, F8 and F10).
         let steps = [
             ("link wlan0", None, None),
             ("link wlan0", None, None),
+            ("office", None, Some(none)),
             ("home", Some(20_000), Some(line)),
             ("home", Some(20_000), None),
+            ("link wlan0", None, None),
             ("home", Some(20_000), None),
+            ("link wlan0", None, None),
             ("hotel", None, Some(none)),
             ("hotel", None, None),
         ];
-        let (mut told, mut was) = (false, None);
+        let mut told = (false, None);
         for (network, now, expected) in steps {
-            let (said_now, said) = line_said(("wlan0", network), (told, was), now);
-            assert_eq!(said.as_deref(), expected, "on {network}, after {was:?}");
-            (told, was) = (said_now, now);
+            let (told_now, said) = line_said(("wlan0", network), told, now);
+            assert_eq!(said.as_deref(), expected, "on {network}, after {told:?}");
+            told = told_now;
         }
         assert_eq!(
             line_said(("wlan0", "home"), (false, None), None)
