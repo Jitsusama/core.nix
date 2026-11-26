@@ -10,8 +10,8 @@ renamed fails until its colour is chosen, and the launcher's onUnhosted must
 colour the foot by it (`viewedWhy(why)`, in its code), or the colour chosen
 would go unused. Each why Sessions says a session
 by (`unhosted(session, "why")`, a word or a choice of words, nested or not)
-and each key the launcher names to its foot (`elsewhere("key", ...)`)
-must have words in agents:machine's `said`: the launcher reads them there and
+and each key the launcher names to its foot (`elsewhere("key", ...)`, or a
+refused Go To's `refusedGoing(session, "key")`) must have words in agents:machine's `said`: the launcher reads them there and
 says nothing for a key it hasn't, so a press would be met with an empty foot
 (Joel, 2026-11-15: a press must never do nothing). Keys the launcher reads off
 agents:machine by name elsewhere, as SessionRow.js's unsteered does, aren't
@@ -44,6 +44,17 @@ UNHOSTED = re.compile(r"(?<!signal )\bunhosted\(")
 # The launcher saying a key of agents:machine's in its foot, not the
 # function's own declaration.
 ELSEWHERE = re.compile(r"(?<!function )\belsewhere\(")
+# The launcher saying why a Go To opened nothing, its key the second
+# argument, which it gives elsewhere by name, so read here as elsewhere's.
+REFUSED_GOING = re.compile(r"(?<!function )\brefusedGoing\(")
+# Each call the launcher names a key of agents:machine's to, and which of
+# its arguments the key is.
+KEYED = ((ELSEWHERE, 0), (REFUSED_GOING, 1))
+# refusedGoing's own declaration, whose second parameter holds the key
+# each call gives it, up to its body's opening brace.
+GOING = re.compile(r"\bfunction refusedGoing\(\s*\w+\s*,\s*(\w+)\s*\)[^{]*\{")
+# The name of the function a declaration's pattern finds, to say it by.
+NAMED = re.compile(r"function (\w+)")
 # The launcher's handler of the shell's unhosted, whose second parameter
 # holds the why the shell gave, up to its body's opening brace.
 HANDLER = re.compile(r"\bfunction onUnhosted\(\s*\w+\s*,\s*(\w+)\s*\)[^{]*\{")
@@ -186,12 +197,12 @@ def unread(source: str) -> list[str]:
 
 
 def keys(source: str) -> set[str]:
-    """Give each key the launcher's elsewhere is asked for by name, its first argument's.
+    """Give each key the launcher's elsewhere or refusedGoing is asked for by name.
 
     One passed on by name is a why the shell gave, so whys reads it there.
     """
     found: set[str] = set()
-    for first in argument(source, ELSEWHERE, 0):
+    for _, first in firsts(source):
         found.update(said for said in WORD.findall(first) if said)
     return found
 
@@ -223,8 +234,11 @@ def comment_end(source: str, at: int) -> int | None:
     return None
 
 
-def handler(source: str) -> Handler | str:
+def handler(source: str, function: re.Pattern[str] = HANDLER) -> Handler | str:
     """Give onUnhosted's name for the shell's why, its body, and the strings and comments there.
+
+    Given another `function`, as refusedGoing's, its name for the key it's
+    given and its body, read the same way.
 
     A brace inside a string or a comment is none of the body's, and a quote
     inside a comment opens no string, so neither moves where it ends. A body
@@ -233,9 +247,10 @@ def handler(source: str) -> Handler | str:
     and a regex can't be told from a division without parsing; so is one
     that never closes. Where there's none, it says why.
     """
-    found = HANDLER.search(source)
+    found = function.search(source)
+    called = "".join(NAMED.findall(function.pattern)[:1])
     if found is None:
-        return "has no onUnhosted taking the shell's why"
+        return f"has no {called} taking the shell's why"
     unread: list[tuple[int, int]] = []
     depth, quote, opened, at = 1, "", 0, found.end()
     while depth and at < len(source):
@@ -252,7 +267,7 @@ def handler(source: str) -> Handler | str:
         elif one == "/":
             line = source.count("\n", 0, at) + 1
             return (
-                f"has a / on line {line} of onUnhosted's code, a regex or a division,"
+                f"has a / on line {line} of {called}'s code, a regex or a division,"
                 " which the check can't tell apart, so it reads no handler there"
             )
         elif one in QUOTES:
@@ -261,23 +276,24 @@ def handler(source: str) -> Handler | str:
             depth += {"{": 1, "}": -1}.get(one, 0)
         at += 1
     if depth:
-        return "has an onUnhosted whose body never closes"
+        return f"has an {called} whose body never closes"
     return Handler(found.group(1), found.end(), at, tuple(unread))
 
 
-def held_in(source: str) -> Handler | None:
-    """Give onUnhosted where the check can read it, or None."""
-    found = handler(source)
+def held_in(source: str, function: re.Pattern[str] = HANDLER) -> Handler | None:
+    """Give onUnhosted, or another `function`, where the check can read it, or None."""
+    found = handler(source, function)
     return found if isinstance(found, Handler) else None
 
 
 def firsts(source: str) -> list[tuple[int, str]]:
-    """Give where each call of elsewhere stands, with its first argument."""
+    """Give where each call naming a key stands (KEYED), with the key's argument."""
     found: list[tuple[int, str]] = []
-    for one in ELSEWHERE.finditer(source):
-        given = given_to(source, one.end())
-        found.append((one.start(), given[0] if given else ""))
-    return found
+    for call, which in KEYED:
+        for one in call.finditer(source):
+            given = given_to(source, one.end())
+            found.append((one.start(), given[which] if len(given) > which else ""))
+    return sorted(found)
 
 
 def shells(held: Handler | None, at: int, first: str) -> bool:
@@ -289,14 +305,17 @@ def unkeyed(source: str) -> list[str]:
     """Give each key elsewhere is asked for that can come to anything but a word.
 
     A key held in the name onUnhosted keeps the shell's why in, inside that
-    handler, is read where the shell gives it (whys), so only it may be a
-    name.
+    handler, is read where the shell gives it (whys), and one held in the
+    name refusedGoing keeps its key in, inside it, where each call of it
+    gives it (firsts), so only they may be names.
     """
     held = held_in(source)
+    going = held_in(source, GOING)
     return [
         first
         for at, first in firsts(source)
         if not shells(held, at, first)
+        and not shells(going, at, first)
         and not all(WORD.fullmatch(outcome) for outcome in outcomes(first))
     ]
 
@@ -397,6 +416,29 @@ def refuses_what_it_should() -> list[str]:
             keys('provider.elsewhere("unopened", session), Theme.alert]]);'),
             {"unopened"},
             "a key the launcher names",
+        ),
+        (
+            keys('provider.refusedGoing(session, session.reachable ? "unheld" : "unreached");'),
+            {"unheld", "unreached"},
+            "a key a refused Go To names",
+        ),
+        (
+            keys("function refusedGoing(session, why) {"),
+            set(),
+            "refusedGoing's own declaration",
+        ),
+        (
+            unkeyed("refusedGoing(session, reason);"),
+            ["reason"],
+            "a refused Go To's key held in a name",
+        ),
+        (
+            unkeyed(
+                "function refusedGoing(session, why) { tell(elsewhere(why, session)); }\n"
+                "elsewhere(why, session);"
+            ),
+            ["why"],
+            "a key held in refusedGoing's name for it, but inside it",
         ),
         (
             unkeyed(
