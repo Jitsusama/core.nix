@@ -380,10 +380,16 @@ mod tests {
 
     #[test]
     fn a_position_is_asked_to_a_hundredth_of_a_degree() {
+        let place = place_url(hundredths(12.345_6), hundredths(-98.765_4));
         assert!(
-            place_url(hundredths(12.345_6), hundredths(-98.765_4)).contains("lat=12.35&lon=-98.77")
+            place.contains("lat=12.35&lon=-98.77"),
+            "a place was asked finer than a hundredth: {place}"
         );
-        assert!(zone_url(&[(1.0, 2.5)]).contains("latitude=1&longitude=2.5&timezone=auto"));
+        let zone = zone_url(&[(1.0, 2.5)]);
+        assert!(
+            zone.contains("latitude=1&longitude=2.5&timezone=auto"),
+            "a zone wasn't asked at its position: {zone}"
+        );
     }
 
     #[test]
