@@ -145,7 +145,7 @@ pub fn act(context: &Context, help: &Help) -> Result<(), Failure> {
         ["run"] => {
             let config = config(&path)?;
             running(&config)?;
-            crate::daemon::run(&config).map_err(broke)
+            crate::daemon::run(&config).map_err(stopped)
         }
         ["serve"] => crate::daemon::serve(&config(&path)?).map_err(broke),
         [word, ..] if help.command_names().contains(word) => Err(Failure::new(
@@ -169,14 +169,31 @@ fn config(path: &Path) -> Result<Config, Failure> {
         .map_err(|why| Failure::new(Exit::Config, "the config can't be read").because(why))
 }
 
-/// The history couldn't be read.
+/// The history couldn't be read: for now, while another connection
+/// writes it, or for good.
 fn unread(why: String) -> Failure {
+    if crate::daemon::busy(&why) {
+        return Failure::new(Exit::TryAgain, "the history is busy")
+            .because(why)
+            .try_this("the same again in a moment");
+    }
     Failure::new(Exit::Failed, "the history couldn't be read").because(why)
 }
 
 /// Something the daemon does couldn't be done.
 fn broke(why: String) -> Failure {
     Failure::new(Exit::Failed, "spend-watch couldn't carry on").because(why)
+}
+
+/// The watch stopped. A lock still held when its wait ran out is for a
+/// restart to try again, as it was before the watch waited.
+fn stopped(why: String) -> Failure {
+    if why.starts_with("another spend-watch holds") {
+        return Failure::new(Exit::TryAgain, "another spend-watch holds the history")
+            .because(why)
+            .try_this("systemctl --user status spend-watch");
+    }
+    broke(why)
 }
 
 /// The answer couldn't be written: its reader went, or the disk is full.

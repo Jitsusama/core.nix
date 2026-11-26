@@ -966,11 +966,12 @@ fn opened_in_turn(path: &Path, by: Instant) -> Result<History, String> {
 }
 
 /// Whether a history's error is another connection's write: SQLite's
-/// words for `SQLITE_BUSY`, as `history::sql` gives them, since the
-/// history's errors reach here only as words. A test holds a real write
-/// to pin them.
-fn busy(why: &str) -> bool {
-    why.contains("database is locked")
+/// words for `SQLITE_BUSY` and `SQLITE_LOCKED`, the two `History::open`
+/// keeps from setting a history aside, as `history::sql` gives them,
+/// since the history's errors reach here only as words. A test holds a
+/// real write to pin the first.
+pub(crate) fn busy(why: &str) -> bool {
+    why.contains("database is locked") || why.contains("database table is locked")
 }
 
 /// The history at `path`, said in the journal as it's brought up from an
@@ -1812,6 +1813,10 @@ mod tests {
         assert!(
             !busy("no such table: meta"),
             "a history that doesn't read was taken for a busy one"
+        );
+        assert!(
+            busy("database table is locked"),
+            "a locked table, which the history's open keeps too, didn't read as busy"
         );
     }
 }

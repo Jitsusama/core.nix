@@ -246,6 +246,27 @@ fn a_watch_beside_a_running_one_is_to_try_again_at_once() {
     );
 }
 
+// A watch whose wait for a held lock ran out, and a reader that met a
+// busy history, are each to try again rather than told they failed.
+#[test]
+fn a_held_lock_past_the_wait_and_a_busy_history_are_to_try_again() {
+    assert_eq!(
+        stopped("another spend-watch holds /teal/lock".to_owned()).exit,
+        Exit::TryAgain,
+        "a watch whose wait ran out on a held lock was told it failed"
+    );
+    assert_eq!(
+        unread("database is locked".to_owned()).exit,
+        Exit::TryAgain,
+        "a reader that met a busy history was told it can't be read"
+    );
+    assert_eq!(
+        unread("file is not a database".to_owned()).exit,
+        Exit::Failed,
+        "a history that doesn't read was taken for a busy one"
+    );
+}
+
 // The daemon brings an older history up to date as it starts, holding it
 // for minutes on a large one, so a read meanwhile is to try again: not an
 // unreadable history, and not a second move of it from under the daemon.
