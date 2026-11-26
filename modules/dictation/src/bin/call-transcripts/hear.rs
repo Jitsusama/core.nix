@@ -121,12 +121,14 @@ impl Writing {
             .into_iter()
             .filter(|cut| self.told.insert(cut.at))
             .map(|cut| {
+                let by = match cut.below {
+                    Some(below) => format!("{below:.0} dB below theirs"),
+                    None => format!("{} ms after theirs", cut.after * 1000 / rate),
+                };
                 format!(
-                    "call-transcripts: {} of Joel's words at {} cut as their echo, \
-                     {} ms after theirs",
+                    "call-transcripts: {} of Joel's words at {} cut as their echo, {by}",
                     cut.text.split_whitespace().count(),
                     transcript::clock(cut.at),
-                    cut.after * 1000 / rate,
                 )
             })
             .collect();

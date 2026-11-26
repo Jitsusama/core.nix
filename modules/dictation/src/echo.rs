@@ -227,7 +227,9 @@ fn drowned(mine: &[Word], theirs: &[Word], voice: Option<f32>) -> Vec<Option<usi
 
 /// Some of Joel's words cut from a line of his as the others' echo: the
 /// line's index, when the first was heard, how long after its word of
-/// theirs, in samples, and what they say.
+/// theirs, in samples, what they say, and, if they were cut for their
+/// level rather than their spelling, how far below the loudest of theirs
+/// around it the first was, in dB.
 #[derive(Debug, PartialEq)]
 pub struct Cut {
     pub line: usize,
@@ -272,10 +274,14 @@ pub fn cut_echoes<S: BuildHasher>(
         let Some(mine) = words.get(&index).filter(|_| line.side == Side::Mine) else {
             continue;
         };
-        let echoes: Vec<Option<usize>> = echoes_of(mine, &theirs)
+        let echoes: Vec<Option<(usize, Option<f32>)>> = echoes_of(mine, &theirs)
             .into_iter()
             .zip(drowned(mine, &theirs, his))
-            .map(|(by_spelling, by_level)| by_spelling.or(by_level))
+            .zip(mine)
+            .map(|((by_spelling, by_level), word)| {
+                let below = |j: usize| (j, Some(theirs[j].level - word.level));
+                by_spelling.map(|j| (j, None)).or(by_level.map(below))
+            })
             .collect();
         if echoes.iter().all(Option::is_none) {
             continue;
@@ -284,12 +290,18 @@ pub fn cut_echoes<S: BuildHasher>(
         let mut first = None;
         let mut run: Option<Cut> = None;
         for (word, echo) in mine.iter().zip(&echoes) {
-            let Some(j) = *echo else {
+            let Some((j, below)) = *echo else {
                 kept.push(word.text.as_str());
                 first = first.or(Some(word.at));
                 cuts.extend(run.take());
                 continue;
             };
+            if run
+                .as_ref()
+                .is_some_and(|cutting| cutting.below.is_some() != below.is_some())
+            {
+                cuts.extend(run.take());
+            }
             if let Some(cutting) = run.as_mut() {
                 cutting.text.push(' ');
                 cutting.text.push_str(&word.text);
@@ -299,7 +311,7 @@ pub fn cut_echoes<S: BuildHasher>(
                     at: word.at,
                     after: later(word.at, theirs[j].at),
                     text: word.text.clone(),
-                    below: None,
+                    below,
                 });
             }
         }
