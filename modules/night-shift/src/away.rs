@@ -382,27 +382,52 @@ mod tests {
             ("--away-stop", "app.slice=50"),
             ("--away-stop-machine", "12"),
         ]);
-        assert!((eased.slice_bar("app.slice", 1.0, false) - 1.0).abs() < f64::EPSILON);
-        assert!((eased.slice_bar("app.slice", 1.0, true) - 50.0).abs() < f64::EPSILON);
+        let here = eased.slice_bar("app.slice", 1.0, false);
+        assert!(
+            (here - 1.0).abs() < f64::EPSILON,
+            "with him here the slice's bar was {here}, not its own 1"
+        );
+        let gone = eased.slice_bar("app.slice", 1.0, true);
+        assert!(
+            (gone - 50.0).abs() < f64::EPSILON,
+            "with him away the slice's bar was {gone}, not the eased 50"
+        );
         assert!(
             (eased.slice_bar("session.slice", 1.0, true) - 1.0).abs() < f64::EPSILON,
             "a slice it doesn't ease eased"
         );
-        assert!((eased.machine_bar(25.0, false) - 25.0).abs() < f64::EPSILON);
-        assert!((eased.machine_bar(25.0, true) - 12.0).abs() < f64::EPSILON);
+        let here = eased.machine_bar(25.0, false);
+        assert!(
+            (here - 25.0).abs() < f64::EPSILON,
+            "with him here the machine's bar was {here}, not its own 25"
+        );
+        let gone = eased.machine_bar(25.0, true);
+        assert!(
+            (gone - 12.0).abs() < f64::EPSILON,
+            "with him away the machine's bar was {gone}, not the eased 12"
+        );
     }
 
     #[test]
     fn why_a_call_keeps_him_here_is_news_once_each_time_it_starts() {
         let mut watch = away(&[("--away-mark", "/run/here")]).watch();
         assert!(watch.last_answer(), "no answer yet didn't count as a call");
-        assert!(watch.answer(true, "a call".into()));
+        assert!(
+            watch.answer(true, "a call".into()),
+            "a call didn't keep him here"
+        );
         assert_eq!(watch.news().as_deref(), Some("a call"));
-        assert!(watch.answer(true, "a call".into()));
+        assert!(
+            watch.answer(true, "a call".into()),
+            "a call going on didn't keep him here"
+        );
         assert_eq!(watch.news(), None, "the same reason was said twice");
-        assert!(!watch.answer(false, String::new()));
+        assert!(!watch.answer(false, String::new()), "no call kept him here");
         assert!(!watch.last_answer(), "no call didn't hold until the next");
-        assert!(watch.answer(true, "a call".into()));
+        assert!(
+            watch.answer(true, "a call".into()),
+            "a call after none didn't keep him here"
+        );
         assert_eq!(
             watch.news().as_deref(),
             Some("a call"),
