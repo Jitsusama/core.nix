@@ -132,8 +132,8 @@ pub fn waited(schedstat: &str) -> Option<u64> {
 
 /// How long a thread has waited for a CPU in all, in ns, by the fair
 /// scheduler's own count in its `sched`: `wait_sum`, never the
-/// `iowait_sum` beside it, which the kernel prints in ms. None where it
-/// isn't kept, as when `kernel.sched_schedstats` is off.
+/// `iowait_sum` beside it. The kernel prints both in ms, and prints
+/// neither while `kernel.sched_schedstats` is off, when this is None.
 pub fn fair_waited(sched: &str) -> Option<u64> {
     let ms: f64 = sched.lines().find_map(|line| {
         let (key, value) = line.split_once(':')?;
@@ -890,6 +890,40 @@ mod tests {
             None,
             "a schedstat that went back read as a wait"
         );
+    }
+
+    #[test]
+    fn a_tick_reads_both_counts_from_each_thread_s_task_folder() {
+        let proc = std::env::temp_dir().join(format!("watch-reads-{}", std::process::id()));
+        let task = |pid: u32, tid: u32| {
+            let dir = proc.join(format!("{pid}/task/{tid}"));
+            fs::create_dir_all(&dir).unwrap();
+            dir
+        };
+        let both = task(7, 8);
+        fs::write(both.join("schedstat"), "1 4000000000 3\n").unwrap();
+        fs::write(both.join("sched"), "wait_sum : 2.000000\n").unwrap();
+        let alone = task(7, 9);
+        fs::write(alone.join("schedstat"), "1 5000000 3\n").unwrap();
+        task(7, 10);
+        let thread = |tid| Thread {
+            id: (7, tid),
+            name: format!("t{tid}"),
+        };
+        let read = reads(&proc, &[thread(8), thread(9), thread(10)]);
+        fs::remove_dir_all(&proc).unwrap();
+        let counts = |tid| read.get(&(7, tid)).map(|r| (r.counted, r.fair));
+        assert_eq!(
+            counts(8),
+            Some((4_000_000_000, Some(2_000_000))),
+            "the sched file beside the schedstat wasn't read"
+        );
+        assert_eq!(
+            counts(9),
+            Some((5_000_000, None)),
+            "a thread with no sched file wasn't read by its schedstat alone"
+        );
+        assert_eq!(counts(10), None, "a thread with no schedstat was read");
     }
 
     #[test]
