@@ -144,7 +144,10 @@ let
   # or 10 ms latency goal, and a goal held to the model. io.cost let the
   # writers run at two to two and a half times the model's write rate.
   # Those targets are gone since, for the reason above, so on such a disk
-  # the choice is now io.cost against no order inside the account. The VM
+  # the choice is now io.cost against no order inside the account. Naming
+  # a disk drops user.slice's target over the system's builds too, where
+  # io.cost shares the disk by user.slice's weight of 1000 against the
+  # system's 100 instead. The VM
   # runs measured a qos of 10 ms at the 95th percentile both ways, ranging
   # from 50 to 150% of the model; a max of 100 alone was never measured,
   # and would hold every read to the model. Whether it holds on a disk
@@ -415,7 +418,8 @@ in
       The disks shared by the slices' weights, by their names under
       /sys/class/block, each with the model io.cost measured on it. Naming
       any drops user.slice's latency target, so the disk behind /home belongs here,
-      and only once io.cost has measured better than the targets on it.
+      with a model measured on it and the qos the VM runs measured: 10 ms at
+      the 95th percentile both ways, from 50 to 150% of the model.
       The name is the kernel's, which follows the order disks are found in:
       on a machine with two of a kind, the model can land on the other one.
     '';
@@ -445,9 +449,11 @@ in
             default = { };
             example = {
               rpct = 95;
-              rlat = 5000;
+              rlat = 10000;
               wpct = 95;
-              wlat = 5000;
+              wlat = 10000;
+              min = 50;
+              max = 150;
             };
             description = "io.cost.qos's settings beside enable, the kernel's own where unset.";
           };
