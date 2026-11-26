@@ -197,10 +197,10 @@ fn args(args: &[String]) -> Result<Args, Failure> {
     })
 }
 
-/// What the daemon answers of its own, beside its records and what the
-/// node takes as Joel's ([`as_joel`]): what the shell says, handed `told`
-/// to the daemon's loop. Not Now puts off the one of `wants` its session
-/// asks.
+/// What the shell says for Joel, beside what the node takes as his
+/// ([`as_joel`]), each answered only for the shell, as it says what he
+/// sees and read: handed `told` to the daemon's loop, and Not Now puts
+/// off the one of `wants` its session asks.
 fn own(told: mpsc::Sender<Heard>, wants: Wants) -> Own {
     Box::new(move |said| {
         // The shell says whether the screen is shared, as Quiet.qml knows
@@ -317,11 +317,12 @@ fn as_joel(
 }
 
 /// Start New Work, where it can begin, Let Them Start, an answer to what
-/// a session asks and what else the node takes as Joel's (`as_joel`: a
-/// row's act, a line he tells, his feedback), asked of `node` only for
-/// the shell, told apart by the connection each came on, so no agent
-/// lifts the stop Joel put on their starts, reads his places, answers one
-/// of `wants`, nor steers, tells or talks to a session as him; what the
+/// a session asks and all Joel's (`as_joel`: a row's act, a line he
+/// tells, his feedback, and what the shell says he saw, read, put off or
+/// forgot), asked of `node` only for the shell, told apart by the
+/// connection each came on, so no agent lifts the stop Joel put on their
+/// starts, reads his places, answers one of `wants`, steers, tells or
+/// talks to a session as him, nor hides from him what he'd see; what the
 /// node says of the starts once they're let start is `stood` at once,
 /// rather than at the next poll. Each but which are kept asks the shell's
 /// systemd who the shell is, and most wait on the node besides, so they're
@@ -412,15 +413,34 @@ fn for_the_shell_alone(
     shared.slow(&SLOW);
 }
 
-/// What the node takes as Joel's that the daemon is asked: a row's act
-/// (acts.rs), a line he tells and his words on a landing (`as_joel`).
-const AS_JOEL: [&str; 8] = [
-    "pause", "resume", "stop", "close", "wake", "talk", "tell", "feedback",
+/// What the daemon is asked as Joel's: what the node takes as his, a
+/// row's act (acts.rs), a line he tells and his words on a landing; and
+/// what the shell says of him (`own`), a Not Now, a put-off or forgotten
+/// reopening, a landing read, a drawer opened, a shared screen and his
+/// windows' places. Said by an agent, the first would steer a session as
+/// him, and the rest would hide from him what he should see, or show a
+/// shared screen what he'd keep off it (ISXEG8, 26 November).
+const AS_JOEL: [&str; 15] = [
+    "pause",
+    "resume",
+    "stop",
+    "close",
+    "wake",
+    "talk",
+    "tell",
+    "feedback",
+    "not-now",
+    "put-off",
+    "forget",
+    "read",
+    "heard",
+    "sharing",
+    "keep-places",
 ];
 
 /// Every ask the daemon answers only as it's told who asked
 /// (`for_the_shell_alone`).
-const SHELLS_ALONE: [&str; 14] = [
+const SHELLS_ALONE: [&str; 21] = [
     sprout::ASK,
     places::ASK,
     starts::TOLD,
@@ -435,6 +455,13 @@ const SHELLS_ALONE: [&str; 14] = [
     "talk",
     "tell",
     "feedback",
+    "not-now",
+    "put-off",
+    "forget",
+    "read",
+    "heard",
+    "sharing",
+    "keep-places",
 ];
 
 /// Every one of [`SHELLS_ALONE`] but which are kept, which asks nothing of
@@ -442,7 +469,7 @@ const SHELLS_ALONE: [&str; 14] = [
 /// waits on the node up to acts.rs's PATIENCE besides, so queued behind
 /// the shell's other acts it could come back after the Talk lets a
 /// second go (TalkAnswers.js's SENT_STANDS_MS).
-const SLOW: [&str; 13] = [
+const SLOW: [&str; 20] = [
     sprout::ASK,
     places::ASK,
     starts::TOLD,
@@ -456,6 +483,13 @@ const SLOW: [&str; 13] = [
     "talk",
     "tell",
     "feedback",
+    "not-now",
+    "put-off",
+    "forget",
+    "read",
+    "heard",
+    "sharing",
+    "keep-places",
 ];
 
 /// What one of [`AS_JOEL`] is told where the shell's check refused it,
@@ -653,14 +687,18 @@ fn serve(args: Args) -> Result<(), Failure> {
     // Kept beside what Joel has read, never rewritten, for the daily loop
     // that reads on from where it left off (80ECO2, 2026-11-11).
     let kept = args.landed.with_file_name(FEEDBACK);
-    let as_joel = as_joel(
+    let acts = as_joel(
         to.clone(),
         args.node.clone(),
         routes.clone(),
         landings.clone(),
         kept,
     );
-    let shared = Shared::new(DOMAIN, own(to.clone(), wants.clone()));
+    let says = own(to.clone(), wants.clone());
+    let as_joel: Own = Box::new(move |said| says(said).or_else(|| acts(said)));
+    // Every ask of its own is Joel's, answered only for the shell
+    // (`for_the_shell_alone`), so none is left to answer anyone else.
+    let shared = Shared::new(DOMAIN, Box::new(|_| None));
     // Read before the socket listens, so a shell's first ask of which are
     // kept is answered from them, though no record is served yet.
     let keeping = Keeping::read(&args.kept.with_file_name(starts::FILE), clock::now_ms());

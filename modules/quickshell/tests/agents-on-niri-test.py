@@ -4503,25 +4503,75 @@ def no_words_come_back(shell: Shell, drawn: Callable[[Json], bool], why: str) ->
         time.sleep(0.1)
 
 
-# What the agents daemon says of an answer from anyone but the shell's own unit, as the shell
-# here runs outside it (modules/agents/src/main.rs's ONLY_THE_SHELL).
+# What the agents daemon says of an answer from anyone but the shell, as this test's own
+# process is (modules/agents/src/main.rs's ONLY_THE_SHELL, which the two must say alike).
 ONLY_THE_SHELL = (
     "the agents daemon takes an answer only from the launcher, and couldn't tell this came from it"
 )
 
 
-def test_a_talk_to_an_asking_cell_shows_its_question_and_why_its_answer_wasnt_taken(
+def answered_once(shell: Shell, inbox: Path, steered: set[Path]) -> list[Path]:
+    """Wait for Joel's answer to reach the asking cell's inbox, the Talk reading it answered.
+
+    It takes his first answer, so a second Return while it still asks goes nowhere. Gives the
+    answer's steer, alone in the inbox beside what was there before.
+    """
+    deadline = time.monotonic() + 10
+    while not (told := sorted(set(inbox.glob("*.json")) - steered)):
+        assert time.monotonic() < deadline, "no answer reached the asking cell's inbox"
+        time.sleep(0.1)
+    # The Talk says the choice his words picked, by its label, so he sees which it took.
+    shell.launcher_until(
+        lambda shown: any(
+            (one.get("line"), one.get("stands")) == ("Right", "answered")
+            for one in cast("list[Json]", shown["talks"] or [])
+        )
+    )
+    shell.launcher_until(lambda shown: shown["typed"] == "")
+    shell.send_chars("left")
+    shell.launcher_until(lambda shown: shown["typed"] == "left")
+    shell.send_key("ret")
+    shell.launcher_until(
+        lambda shown: "you answered this already" in shown["footer"].replace("\xa0", " ")
+    )
+    # Refused, nothing is kept, so the Talk still held shows his first answer and no other.
+    shown = shell.showing()
+    talks = [(one.get("line"), one.get("stands")) for one in shown["talks"] or []]
+    assert shown["asking"], shown
+    assert ("Right", "answered") in talks, talks
+    assert not [one for one in talks if one[0] == "Left"], talks
+    assert sorted(set(inbox.glob("*.json")) - steered) == told, sorted(inbox.glob("*.json"))
+    # And his words go: the field empties on any Return, so only a Talk opened again shows it.
+    shell.close_launcher()
+    did = followed(shell, "talkTo", inbox.name)
+    assert did["done"], did
+    no_words_come_back(
+        shell,
+        lambda shown: (
+            shown["asking"]
+            and any(
+                (one.get("line"), one.get("stands")) == ("Right", "answered")
+                for one in cast("list[Json]", shown["talks"] or [])
+            )
+        ),
+        "refused words came back",
+    )
+    return told
+
+
+def test_a_talk_to_an_asking_cell_shows_its_question_and_answers_it_from_return(
     shell: Shell,
 ) -> None:
-    """A Talk opened from a link on a cell asking Joel shows its ask and why an answer isn't taken.
+    """A Talk opened from a link on a cell asking Joel shows its ask and answers it from Return.
 
     Joel opened a Talk on a cell asking him from the realm's map and found nothing of its
     question there, and nothing said after he typed (13:15 on 2026-11-24: "no feedback at
     all"). The Talk now leads with what it asks and the choices it takes; words naming none
-    are let go, the foot saying what it takes, and a choice goes to the agents daemon as Joel's
-    answer to the want he was shown. The daemon takes an answer only from the shell's own unit,
-    so no agent answers as him; the shell here runs outside it, so the daemon refuses, and the
-    Talk and the foot say why. An answer delivered is the desktop VM's (answered_in_place).
+    are let go, the foot saying what it takes, and a choice reaches its inbox as Joel's answer
+    to the want he was shown, then reads answered. The agents daemon takes that answer only
+    from the shell, so the same answer asked by this test's own process is refused, and no
+    agent answers as him (the daemon here takes the shell by its program, as package.nix's
+    `walks` says).
     """
     # As the agents daemon writes a time (clock.rs's text_of), so the want it names is known.
     since = datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
@@ -4574,20 +4624,19 @@ def test_a_talk_to_an_asking_cell_shows_its_question_and_why_its_answer_wasnt_ta
             ),
             "words that answered nothing came back",
         )
+        # The same answer from a program other than the shell, as an agent's would be, is
+        # refused before anything is looked up, and reaches no inbox.
+        theirs = {"ask": "answer", "address": "CHOOSE", "want": f"question@{since}"}
+        refused = {"error": {"code": "refused", "message": ONLY_THE_SHELL}}
+        assert rows_answer({**theirs, "value": "left"}) == refused
+        assert set(inbox.glob("*.json")) == steered, sorted(inbox.glob("*.json"))
         shell.send_chars("right")
         shell.launcher_until(lambda shown: shown["typed"] == "right")
         shell.send_key("ret")
-        shell.launcher_until(
-            lambda shown: (
-                ONLY_THE_SHELL in shown["footer"].replace("\xa0", " ")
-                and any(
-                    (one.get("line"), one.get("stands"))
-                    == ("Right", f"not delivered \u00b7 {ONLY_THE_SHELL}")
-                    for one in cast("list[Json]", shown["talks"] or [])
-                )
-            )
-        )
-        assert set(inbox.glob("*.json")) == steered, sorted(inbox.glob("*.json"))
+        told = answered_once(shell, inbox, steered)
+        said = json.loads(told[0].read_text())
+        assert (said["act"], said["value"], said["from"]) == ("answer", "right", "joel"), said
+        assert said["want"] == f"question@{since}", said
     finally:
         (PRESENCE / "choose.json").unlink(missing_ok=True)
         for one in set(inbox.glob("*.json")) - steered:

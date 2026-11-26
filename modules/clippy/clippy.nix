@@ -44,8 +44,10 @@ rec {
 
   # A check that `package`, built with rustPlatform, passes clippy: its build
   # replaced by clippy, its tests and examples read too, and nothing
-  # installed. `settings` is the folder its clippy.toml is in, core's unless
-  # the repository has names of its own to teach it.
+  # installed, built with the features it builds with, so a build of it
+  # with others is read as it builds. `settings` is the folder its
+  # clippy.toml is in, core's unless the repository has names of its own
+  # to teach it.
   passes =
     {
       name,
@@ -56,9 +58,17 @@ rec {
       pname = name;
       nativeBuildInputs = old.nativeBuildInputs ++ [ clippy ];
       CLIPPY_CONF_DIR = settings;
-      buildPhase = ''
-        cargo clippy --all-targets --offline -- ${lib.escapeShellArgs lints}
-      '';
+      buildPhase =
+        let
+          features = old.cargoBuildFeatures or [ ];
+          given = lib.optionals (features != [ ]) [
+            "--features"
+            (lib.concatStringsSep "," features)
+          ];
+        in
+        ''
+          cargo clippy --all-targets --offline ${lib.escapeShellArgs given} -- ${lib.escapeShellArgs lints}
+        '';
       doCheck = false;
       installPhase = ''
         touch $out

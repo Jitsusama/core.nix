@@ -4,13 +4,19 @@
 # takes its shape from the terminal kit (../terminal-kit), so the source
 # is cut from the modules folder holding all four, and built from this
 # one.
+#
+# `walks` builds the niri checks' daemon, which takes the shell by its
+# program alone, as their sandbox can tell no more (src/asker.rs); no
+# installed daemon is built with it, and its tests are the default
+# build's.
 {
   git,
   lib,
   rustPlatform,
+  walks ? false,
 }:
 rustPlatform.buildRustPackage rec {
-  pname = "agents";
+  pname = if walks then "agents-walks" else "agents";
   version = "0.1.0";
   src = lib.fileset.toSource {
     root = ../.;
@@ -38,6 +44,8 @@ rustPlatform.buildRustPackage rec {
     cp ${(import ../quickshell/launcher/words.nix).file} ${src.name}/quickshell/launcher/words.json
   '';
   cargoLock.lockFile = ./Cargo.lock;
+  buildFeatures = lib.optionals walks [ "walks" ];
+  doCheck = !walks;
   # What a switch brought is read from real history in its tests.
   nativeCheckInputs = [ git ];
   meta = {

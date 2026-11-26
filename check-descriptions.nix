@@ -380,6 +380,10 @@
   agents-passes-clippy = ''
     clippy finds nothing in the agents daemon or its tests
   '';
+  agents-walks-passes-clippy = ''
+    clippy finds nothing in the niri checks' build of the agents daemon, whose judge takes the
+    shell by its program alone, or in its tests
+  '';
   agents-password-prompts-are-closed = ''
     the windows daemon closes a password prompt an agent's scope opens on niri within a second,
     says so in its journal and tells Joel the scope and folder it came from, once for a second

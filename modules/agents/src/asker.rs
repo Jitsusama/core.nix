@@ -23,6 +23,20 @@
 //! shell's.
 //! The read is jobs-broker's (../jobs-broker/src/peer.rs), which needs
 //! the pidfd for more than this does.
+//!
+//! The niri checks' daemon alone is built with the `walks` feature
+//! (package.nix's `walks`), whose judge takes the shell by its program
+//! alone: there the shell runs as a plain process in a build sandbox,
+//! with no manager, no unit and, on a kernel before 6.5, no pidfd peer.
+//! No installed daemon is built with it.
+
+#![cfg_attr(
+    feature = "walks",
+    expect(
+        dead_code,
+        reason = "the installed judge's reads go unused in the walks' build"
+    )
+)]
 
 use std::io::{self, Read};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
@@ -53,6 +67,7 @@ const SO_PEERPIDFD: libc::c_int = 77;
 ///
 /// Why: it isn't the shell's, it ended before its cgroup could be known
 /// to be its own, or the kernel names no peer by pidfd.
+#[cfg(not(feature = "walks"))]
 pub fn the_shell(stream: &UnixStream) -> Result<(), String> {
     let untold = |why: io::Error| format!("who asked can't be told: {why}");
     let (pidfd, seen) = peer_of(stream).map_err(untold)?;
@@ -78,6 +93,51 @@ pub fn the_shell(stream: &UnixStream) -> Result<(), String> {
         Ok(())
     } else {
         Err(untold(gone()))
+    }
+}
+
+/// Whether the process at the other end of `stream` runs quickshell's
+/// program, as the walks' shell does and their own test process doesn't:
+/// the kernel names it by the pid it gives the socket, read once, which
+/// is all a sandbox on a kernel before 6.5 can tell.
+///
+/// # Errors
+///
+/// Why: it isn't the shell's program, or it can't be read.
+#[cfg(feature = "walks")]
+pub fn the_shell(stream: &UnixStream) -> Result<(), String> {
+    let untold = |why: io::Error| format!("who asked can't be told: {why}");
+    let mut said = libc::ucred {
+        pid: 0,
+        uid: 0,
+        gid: 0,
+    };
+    let mut length = libc::socklen_t::try_from(size_of::<libc::ucred>())
+        .map_err(|_| untold(io::Error::from(io::ErrorKind::InvalidInput)))?;
+    // SAFETY: SO_PEERCRED writes one ucred into the struct of the size
+    // `length` gives, and the socket is open for the call.
+    let read = unsafe {
+        libc::getsockopt(
+            stream.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_PEERCRED,
+            (&raw mut said).cast(),
+            &raw mut length,
+        )
+    };
+    if read != 0 {
+        return Err(untold(io::Error::last_os_error()));
+    }
+    // 0 for a peer in no namespace of this daemon's.
+    let pid = said.pid;
+    if pid <= 0 {
+        return Err(untold(gone()));
+    }
+    let exe = std::fs::read_link(format!("/proc/{pid}/exe")).map_err(untold)?;
+    if the_shells_program(&exe.to_string_lossy()) {
+        Ok(())
+    } else {
+        Err(REFUSED.to_owned())
     }
 }
 

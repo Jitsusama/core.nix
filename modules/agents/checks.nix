@@ -28,6 +28,11 @@ onLinux {
   agents-makes-the-launchers-rows = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in the agents daemon, its tests included.
   agents-passes-clippy = passesClippy "agents-passes-clippy" (pkgs.callPackage ./package.nix { });
+  # And in the niri checks' build, whose judge takes the shell by its
+  # program alone (package.nix's `walks`).
+  agents-walks-passes-clippy = passesClippy "agents-walks-passes-clippy" (
+    pkgs.callPackage ./package.nix { walks = true; }
+  );
   # The daemon runs in each account of a machine in a realm, following
   # that realm's node and the to-do daemon and reading the launcher's own
   # words, its socket systemd's, and a switch restarts it; a machine in no

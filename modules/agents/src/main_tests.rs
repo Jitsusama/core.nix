@@ -338,11 +338,12 @@ fn the_daemons_socket_lists_no_places_for_anyone_but_the_shell() {
     let _ = std::fs::remove_dir_all(&folder);
 }
 
-/// Each of a row's acts, a line told and feedback on the daemon's own
-/// socket, from a connection that isn't the shell's (this test's), is
-/// refused without being done, since the node takes each as Joel's, so
-/// no agent steers, talks to or tells a session as him by asking the
-/// daemon (ISXEG8's R-agents-acts-as-joel).
+/// Each of a row's acts, a line told, feedback and what the shell says
+/// Joel saw, read, put off or forgot, on the daemon's own socket, from a
+/// connection that isn't the shell's (this test's), is refused without
+/// being done, so no agent steers, talks to or tells a session as him,
+/// nor hides from him what he'd see, by asking the daemon (ISXEG8's
+/// R-agents-acts-as-joel).
 #[test]
 fn the_daemons_socket_acts_as_joel_for_no_one_but_the_shell() {
     let folder = std::env::temp_dir().join(format!("agents-as-joel-{}", std::process::id()));
@@ -373,10 +374,14 @@ fn the_daemons_socket_acts_as_joel_for_no_one_but_the_shell() {
     serve::accept(shared, listener);
     let asking = UnixStream::connect(&socket).expect("the daemon takes a connection");
     let mut reading = BufReader::new(&asking);
-    for act in acts::ACTS.iter().chain(&["tell", "feedback"]) {
-        assert!(AS_JOEL.contains(act), "{act} is named as Joel's");
+    for act in acts::ACTS {
+        assert!(AS_JOEL.contains(&act), "{act} is named as Joel's");
+    }
+    for act in AS_JOEL {
         let ask = json!({"id": 1, "ask": act, "address": "P9R1KI", "text": "hi",
-            "quest": "QEST-1-SKIFF", "words": "hi", "landing": "landing:s-p:o#1"});
+            "quest": "QEST-1-SKIFF", "words": "hi", "landing": "landing:s-p:o#1",
+            "known": "may I?", "session": "s-1", "keys": ["k"], "sharing": false,
+            "places": []});
         writeln!(&asking, "{ask}").expect("the act is asked");
         let mut line = String::new();
         reading.read_line(&mut line).expect("an answer");

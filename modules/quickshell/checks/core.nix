@@ -146,11 +146,12 @@ in
             # is given, without which Emoji and Copies have no rows.
             # And the realm's node and the agents daemon, which serve
             # Agents' rows from the sessions LAB_AGENTS lays, as the
-            # account's units do.
+            # account's units do, built to take this shell, which runs
+            # outside any unit (modules/agents/package.nix's `walks`).
             given = given ++ [
               "QMLPROFILER=${lib.getExe' graphical.pkgs.qt6.qtdeclarative "qmlprofiler"}"
               "MYCELIUM=${lib.getExe self.inputs.mycelium.packages.x86_64-linux.default}"
-              "AGENTS=${lib.getExe (pkgs.callPackage ../../agents/package.nix { })}"
+              "AGENTS=${lib.getExe (pkgs.callPackage ../../agents/package.nix { walks = true; })}"
               "WORDS=${(import ../launcher/words.nix).file}"
             ];
             # Joel's caret rather than the checks' steady one, since what

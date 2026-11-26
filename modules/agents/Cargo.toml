@@ -25,3 +25,9 @@ libc = "0.2"
 ready-rows = { path = "../ready-rows" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+[features]
+# The niri checks' judge of who asks, which takes the shell by its program
+# alone, as a build sandbox can tell no more; no installed daemon has it
+# (src/asker.rs, package.nix's `walks`).
+walks = []
