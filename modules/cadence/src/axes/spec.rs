@@ -35,24 +35,9 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
         return Err(wrongly("axes", "--served takes the launcher's words alone"));
     };
     let started = Instant::now();
-    // Without the launcher's words it would serve ids rather than words.
-    let words = match fs::read_to_string(&vocabulary)
-        .map_err(|why| why.to_string())
-        .and_then(|text| serde_json::from_str::<Value>(&text).map_err(|why| why.to_string()))
-    {
-        Ok(vocabulary) => Words::new(&vocabulary),
-        Err(why) => {
-            return Err(Failure::new(
-                Exit::Failed,
-                format!("can't read the words {}", vocabulary.display()),
-            )
-            .because(why));
-        }
-    };
+    let words = launcher_words(&vocabulary)?;
     let (home, state_home, folder) = folders().map_err(failed)?;
-    let data_home =
-        std::env::var_os("XDG_DATA_HOME").map_or_else(|| home.join(".local/share"), PathBuf::from);
-    let quests = data_home.join("pi/agentic-harness.pi/quest-workflow/quests");
+    let quests = quests(&home);
     let axes = read(&gather(&folder, &state_home, now_ms() / 1000));
     let ended = if read_nothing(&axes) {
         Err(Failure::new(Exit::Failed, "the axes read nothing")
@@ -70,6 +55,29 @@ pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
         );
     }
     ended
+}
+
+/// The launcher's words at `vocabulary`, without which the rows would say
+/// ids rather than words.
+pub fn launcher_words(vocabulary: &Path) -> Result<Words, Failure> {
+    fs::read_to_string(vocabulary)
+        .map_err(|why| why.to_string())
+        .and_then(|text| serde_json::from_str::<Value>(&text).map_err(|why| why.to_string()))
+        .map(|vocabulary| Words::new(&vocabulary))
+        .map_err(|why| {
+            Failure::new(
+                Exit::Failed,
+                format!("can't read the words {}", vocabulary.display()),
+            )
+            .because(why)
+        })
+}
+
+/// Where the quests are, each in a folder ending in its owner's address.
+pub fn quests(home: &Path) -> PathBuf {
+    let data_home =
+        std::env::var_os("XDG_DATA_HOME").map_or_else(|| home.join(".local/share"), PathBuf::from);
+    data_home.join("pi/agentic-harness.pi/quest-workflow/quests")
 }
 
 /// Whether no reading of any axis found a figure.
@@ -99,6 +107,12 @@ fn titles(quests: &Path, axes: &[Axis]) -> BTreeMap<String, String> {
         .iter()
         .flat_map(|axis| axis.readings.iter().map(|r| r.owner))
         .collect();
+    titled(quests, &owners)
+}
+
+/// The title of each of `owners`' quests, by address, as `titles` reads
+/// them, for any rows that name an owner (asked.rs's among them).
+pub fn titled(quests: &Path, owners: &BTreeSet<&str>) -> BTreeMap<String, String> {
     let Ok(folders) = fs::read_dir(quests) else {
         return BTreeMap::new();
     };

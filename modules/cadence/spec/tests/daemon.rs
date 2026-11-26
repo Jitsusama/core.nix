@@ -1,7 +1,7 @@
 //! cadence-spec over its own socket, as the launcher's Spec asks it, with
 //! a stand-in for cadence: one printing a row and a headline, which a
 //! watch of Spec is served, and one failing, which leaves Spec with none
-//! and the daemon answering.
+//! and the daemon answering. Asked For is watched and served the same.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -39,13 +39,13 @@ fn started(name: &str, body: &str) -> Daemon {
     )
 }
 
-/// What a watch of Spec holds once its headline has come, by key.
-fn watched(daemon: &Daemon) -> BTreeMap<String, Value> {
+/// What a watch of `place` holds once its headline has come, by key.
+fn watched(daemon: &Daemon, place: &str) -> BTreeMap<String, Value> {
     let mut client = daemon.client();
     client.ask(&json!({"id": 1, "ask": "hello"}));
-    client.send(&json!({"id": 2, "ask": "watch", "kind": ["row", "head"], "place": "spec"}));
+    client.send(&json!({"id": 2, "ask": "watch", "kind": ["row", "head"], "place": place}));
     let mut held = BTreeMap::new();
-    while !held.contains_key("head:spec") {
+    while !held.contains_key(&format!("head:{place}")) {
         let said = client.heard();
         for record in said["records"]
             .as_array()
@@ -82,7 +82,7 @@ fn a_watch_of_spec_is_served_the_rows_cadence_makes() {
         "head": {"key": "head:spec", "place": "spec", "said": "1 reading out of spec"},
     });
     let daemon = started("served", &format!("echo '{printed}'"));
-    let held = watched(&daemon);
+    let held = watched(&daemon, "spec");
     assert_eq!(held["head:spec"]["kind"], "head", "{held:?}");
     assert_eq!(
         held["head:spec"]["head"]["said"], "1 reading out of spec",
@@ -90,6 +90,29 @@ fn a_watch_of_spec_is_served_the_rows_cadence_makes() {
     );
     assert_eq!(held["row:spec:scale"]["row"]["name"], "Scale", "{held:?}");
     assert_eq!(asked(daemon.folder()).trim(), "axes --served words.json");
+}
+
+#[test]
+fn a_watch_of_asked_for_is_served_the_rows_cadence_makes_for_it() {
+    let printed = json!({
+        "rows": [{"key": "row:asked:be66afc9", "place": "asked", "name": "the split"}],
+        "head": {"key": "head:asked", "place": "asked", "said": "1 late of 3"},
+    });
+    let daemon = started("asked", &format!("echo '{printed}'"));
+    let held = watched(&daemon, "asked");
+    assert_eq!(
+        held["head:asked"]["head"]["said"], "1 late of 3",
+        "{held:?}"
+    );
+    assert_eq!(
+        held["row:asked:be66afc9"]["row"]["name"], "the split",
+        "{held:?}"
+    );
+    assert_eq!(
+        asked(daemon.folder()).trim(),
+        "axes --asked words.json",
+        "only the place watched is asked for"
+    );
 }
 
 #[test]
