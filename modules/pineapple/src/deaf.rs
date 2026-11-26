@@ -92,8 +92,9 @@ pub enum Round {
     Unasked,
     /// One search answered while the other blinked, or one waits on a
     /// later page: too little read to count either way, though Slack, or
-    /// its gateway, was reached.
-    Partly,
+    /// its gateway, was reached. It names the search left unasked, if one
+    /// was and waits on no later page.
+    Partly(Option<Search>),
 }
 
 /// What changes in the file of what waits on Joel.
@@ -153,6 +154,9 @@ pub struct Deaf {
     gateway: bool,
     /// How many rounds in a row left Slack unasked.
     unasked: u32,
+    /// The search left unasked beside one answered, and how many rounds
+    /// in a row it was.
+    alone: Option<(Search, u32)>,
 }
 
 impl Default for Deaf {
@@ -176,6 +180,7 @@ impl Deaf {
             left: true,
             gateway: false,
             unasked: 0,
+            alone: None,
         }
     }
 
@@ -235,6 +240,7 @@ impl Deaf {
             Round::Heard => {
                 self.rounds = 0;
                 self.unasked = 0;
+                self.alone = None;
                 self.held = None;
                 self.phrase = Fared::default();
                 self.tag = Fared::default();
@@ -249,6 +255,7 @@ impl Deaf {
             Round::Deaf(why) => {
                 if why != Deafness::Unreached {
                     self.unasked = 0;
+                    self.alone = None;
                 }
                 self.rounds = self.rounds.saturating_add(1);
                 let held = match self.held {
@@ -296,14 +303,9 @@ impl Deaf {
                     waits(why, since, at)
                 })
             }
+            Round::Partly(alone) => self.partly(alone, at),
             // Through a gateway, a run of rounds unasked is deaf as any
             // cause is, since nothing else hears Slack while it lasts.
-            // A round that read anything ends the run, as the gateway
-            // answered it.
-            Round::Partly => {
-                self.unasked = 0;
-                Change::Keep
-            }
             Round::Unasked if self.gateway => {
                 self.unasked = self.unasked.saturating_add(1);
                 if self.unasked > UNREACHED {
@@ -314,6 +316,41 @@ impl Deaf {
             }
             Round::Unasked => Change::Keep,
         }
+    }
+
+    /// What a round read in part changes, `alone` the search it left
+    /// unasked, if one: it ends a run of rounds unasked, as the gateway
+    /// answered it. Through a gateway, one search left unasked more than
+    /// [`UNREACHED`] rounds in a row is deaf of its own, since a stop only
+    /// it finds goes unheard, so it's told as that search unread, or both
+    /// where the row says the other is, until the row says it.
+    fn partly(&mut self, alone: Option<Search>, at: u64) -> Change {
+        self.unasked = 0;
+        let run = match (alone, self.alone) {
+            (Some(search), Some((last, run))) if search == last => run.saturating_add(1),
+            _ => 1,
+        };
+        self.alone = alone.map(|search| (search, run));
+        let Some(search) = alone.filter(|search| self.gateway && !self.tells(*search)) else {
+            return Change::Keep;
+        };
+        if run <= UNREACHED {
+            return Change::Keep;
+        }
+        let other = match search {
+            Search::Phrase => Search::Tag,
+            Search::Tag => Search::Phrase,
+        };
+        let why = if self.tells(other) {
+            Deafness::Unreadable
+        } else {
+            Deafness::Unread(search)
+        };
+        // Told as a deaf round would be, its run kept for the next.
+        let kept = self.alone;
+        let change = self.heard(Round::Deaf(why), at);
+        self.alone = kept;
+        change
     }
 }
 

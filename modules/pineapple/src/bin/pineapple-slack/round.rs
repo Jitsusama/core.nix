@@ -87,19 +87,21 @@ pub(super) fn round(
     // read in part and counts neither way, but the other's stops are
     // heard as it read them, as is what the first read in part, and it has
     // read as far as they reach; when Slack was read whole stays as it was.
+    // The round names the search left unasked unless it waits on a later
+    // page, which its ears count.
     let alone = match (&phrase, &tagged) {
-        (Ok(read), Err(Round::Unasked)) => Some((PHRASE, read)),
-        (Err(Round::Unasked), Ok(read)) => Some((tag.as_str(), read)),
+        (Ok(read), Err(Round::Unasked)) => Some((PHRASE, read, Search::Tag, tag.as_str())),
+        (Err(Round::Unasked), Ok(read)) => Some((tag.as_str(), read, Search::Phrase, PHRASE)),
         _ => None,
     };
-    if let Some((query, read)) = alone {
+    if let Some((query, read, unasked, its)) = alone {
         let heard = read.iter().chain(&partly);
         judge_each(ears, reader, account, state, &joel, judged, heard);
         judged.reached(query, read.last());
         if let Err(error) = judged::write(state, judged, judged::read_at(state)) {
             eprintln!("<3>couldn't keep how far it has read: {error}");
         }
-        return Round::Partly;
+        return Round::Partly((!ears.waiting(its)).then_some(unasked));
     }
     let (phrase, tagged, deaf) = match (phrase, tagged) {
         (Ok(phrase), Ok(tagged)) => (phrase, tagged, None),
@@ -128,14 +130,19 @@ pub(super) fn round(
             // A refusal is said first, then a sign-in none could give.
             // One blinking beside the other unreadable, or waiting on a
             // later page, says nothing new, so only both unread are told
-            // as both. Only both unasked, neither waiting, is a round no
-            // search was answered in, which a gateway's reader counts.
+            // as both, though the round names the one blinking. Only both
+            // unasked, neither waiting, is a round no search was answered
+            // in, which a gateway's reader counts.
             let unasked = Some(Round::Unasked);
-            let waits = ears.waiting(PHRASE) || ears.waiting(&tag);
-            let blinked = if failed == [unasked, unasked] && !waits {
-                Round::Unasked
-            } else {
-                Round::Partly
+            let left = |search: Search, query: &str, answer: Option<Round>| {
+                (answer == unasked && !ears.waiting(query)).then_some(search)
+            };
+            let blinked = match (
+                left(Search::Phrase, PHRASE, failed[0]),
+                left(Search::Tag, &tag, failed[1]),
+            ) {
+                (Some(_), Some(_)) => Round::Unasked,
+                (one, other) => Round::Partly(one.or(other)),
             };
             return [
                 Round::Deaf(Deafness::Refused),
