@@ -1027,8 +1027,8 @@ mod tests {
         let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
         assert_eq!(
             owners,
-            ["APPS", "LAUNCHER", "RCTRF8"],
-            "each figure past its target and the misses weren't filed"
+            ["APPS", "LAUNCHER", "RCTRF8", "OWNER"],
+            "each figure past its target, the misses and the slips behind them weren't filed"
         );
         assert_eq!(ledger[2].axis, Class::Miss.name(), "filed as a miss");
     }
