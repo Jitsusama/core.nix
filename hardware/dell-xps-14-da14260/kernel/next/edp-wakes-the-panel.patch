@@ -9,9 +9,10 @@ and a panel left asleep at power on can fail those reads however often
 they are retried. Read DP_SET_POWER first, and when the read fails or
 says D3, set D0, wait 1 ms and set it again before reading the caps.
 
-7.3 lacks the forward declaration of intel_dp_detect_sdp_caps() the
-first hunk sits after, so the new function goes directly before
-intel_edp_init_dpcd().
+The new function goes directly before intel_edp_init_dpcd(), after the
+forward declaration of intel_dp_detect_sdp_caps() that 7.3 lacks and
+core's own edp-sdp-caps adds. The hunks are regenerated on top of that
+patch, so dropping it means regenerating this one.
 
 diff --git a/drivers/gpu/drm/i915/display/intel_dp.c b/drivers/gpu/drm/i915/display/intel_dp.c
 index 3152122..26c4535 100644
