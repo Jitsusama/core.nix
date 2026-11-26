@@ -429,6 +429,7 @@ const NAMES: [&str; 27] = [
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::stamp::tests::settled;
 
     /// A repository with no commits yet, made afresh under `name`.
     fn repository(name: &str) -> PathBuf {
@@ -493,7 +494,7 @@ mod tests {
         )
         .unwrap();
         std::fs::write(packs.join("pack-00.pack"), pack(&[0x51, 0])).unwrap();
-        crate::stamp::tests::ahead(3);
+        settled(&dir);
         let mut engine = Engine::default();
         let refused = engine.ask(&dir, &options(&[]), false).is_none();
         // Its refs, kept in a reftable that isn't there, refuse the next
@@ -607,7 +608,7 @@ mod tests {
         // which moves its folder's stamp; a write in place moves none.
         let file = loose.join(&hash::Oid(tag).hex()[2..]);
         std::fs::write(&file, b"not zlib").unwrap();
-        crate::stamp::tests::ahead(3);
+        settled(&dir);
         let mut engine = Engine::default();
         let mut tag_said = || {
             engine
@@ -635,7 +636,7 @@ mod tests {
         let (dir, loose, zlib) = tagged("missing", commit, tag);
         // No folder for it yet, which git makes as the object arrives.
         std::fs::remove_dir(&loose).unwrap();
-        crate::stamp::tests::ahead(3);
+        settled(&dir);
         let mut engine = Engine::default();
         let mut tag_said = || {
             engine
@@ -672,7 +673,7 @@ mod tests {
     fn a_tag_whose_object_is_missing_is_read_once_a_pack_brings_it() {
         let (commit, tag) = ([13; 20], [14; 20]);
         let (dir, _, _) = tagged("packed-in", commit, tag);
-        crate::stamp::tests::ahead(3);
+        settled(&dir);
         let mut engine = Engine::default();
         let mut tag_said = || {
             engine
