@@ -36,12 +36,14 @@ const CAUSES: usize = 8;
 /// every line.
 const BRIEF: usize = 200;
 
-/// `why`, cut to `BRIEF` characters.
+/// `why`, without its control characters, as a meeting's title is read,
+/// and cut to `BRIEF` characters.
 fn brief(why: &str) -> String {
-    if why.chars().count() <= BRIEF {
-        why.to_owned()
+    let plain: String = why.chars().filter(|c| !c.is_control()).collect();
+    if plain.chars().count() <= BRIEF {
+        plain
     } else {
-        format!("{}...", why.chars().take(BRIEF).collect::<String>())
+        format!("{}...", plain.chars().take(BRIEF).collect::<String>())
     }
 }
 
@@ -55,6 +57,9 @@ pub struct Keeping {
     /// What the last failed keep said. Apart from the start's read, so a
     /// keep failing as the read did is still said.
     failed: Option<String>,
+    /// Whether the start's read failed and no keep has worked since, so
+    /// the first that does is said.
+    unread: bool,
 }
 
 impl Keeping {
@@ -64,6 +69,7 @@ impl Keeping {
         Self {
             owed: true,
             failed: None,
+            unread: true,
         }
     }
 
@@ -77,9 +83,10 @@ impl Keeping {
         match how {
             Ok(()) => {
                 self.owed = false;
-                self.failed
-                    .take()
-                    .map(|_| "<5>the meetings are kept for the next run again".to_owned())
+                let was_failing = self.failed.take().is_some();
+                let was_unread = std::mem::take(&mut self.unread);
+                (was_failing || was_unread)
+                    .then(|| "<5>the meetings are kept for the next run again".to_owned())
             }
             Err(why) => {
                 self.owed = true;
@@ -125,8 +132,10 @@ impl Watch {
     /// still keeps the guard up. Why it can't is said when it starts and
     /// again for each new cause, so the journal never names only a cause
     /// that has passed, as a refusal followed by a stall would. A cause
-    /// already said this stretch isn't said again, and past `CAUSES` none
-    /// is, since a cause's text is the daemon's and may vary without end.
+    /// already said this stretch isn't said again, even when it comes back
+    /// after another, so a daemon cycling between causes is heard once for
+    /// each; and past `CAUSES` the journal says once that it stops, since a
+    /// cause's text is the daemon's and may vary without end.
     pub fn heard(&mut self, answer: Result<Vec<Meeting>, String>) -> (Vec<String>, bool) {
         let mut said = Vec::new();
         match answer {
@@ -148,10 +157,22 @@ impl Watch {
                          stand: {why}",
                         self.meetings.len()
                     ));
-                } else if causes.len() < CAUSES && !causes.contains(&why) {
-                    said.push(format!("<4>the calendar still can't be read, now: {why}"));
+                } else if !causes.contains(&why) {
+                    match causes.len() {
+                        n if n < CAUSES => {
+                            said.push(format!("<4>the calendar still can't be read, now: {why}"));
+                        }
+                        n if n == CAUSES => said.push(
+                            "<4>the calendar still can't be read, and its further causes go \
+                             unsaid until it answers"
+                                .to_owned(),
+                        ),
+                        _ => {}
+                    }
                 }
-                if causes.len() < CAUSES {
+                // One past `CAUSES` marks the stretch as muted, so the set stays
+                // bounded and the muting is said once.
+                if causes.len() <= CAUSES {
                     causes.insert(why);
                 }
                 (said, false)

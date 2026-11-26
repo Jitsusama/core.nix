@@ -5,27 +5,48 @@ use std::collections::BTreeSet;
 #[test]
 fn a_cause_s_text_is_cut_and_a_stretch_says_only_so_many() {
     let mut watch = Watch::default();
-    let long = "x".repeat(5000);
+    // Two-byte characters and a control character, so the cut counts
+    // characters and the journal gets none of the daemon's controls.
+    let long = format!("\u{1b}[2J{}", "\u{e9}".repeat(5000));
     let said = watch.heard(Err(long)).0;
     assert_eq!(said.len(), 1, "the first cause wasn't said once");
     assert!(
-        said[0].len() < 400 && said[0].ends_with("..."),
-        "a long cause reached the journal whole: {} bytes",
-        said[0].len()
+        said[0].ends_with(&format!(": [2J{}...", "\u{e9}".repeat(BRIEF - 3))),
+        "a long cause wasn't cut to its first {BRIEF} plain characters: {}",
+        said[0]
     );
-    let mut lines = 0;
+    let mut said = Vec::new();
     for n in 0..100 {
-        lines += watch.heard(Err(format!("refused at column {n}"))).0.len();
+        said.extend(watch.heard(Err(format!("refused at column {n}"))).0);
     }
     assert_eq!(
-        lines,
-        CAUSES - 1,
-        "causes that vary without end were each said"
+        said.len(),
+        CAUSES,
+        "causes that vary without end weren't stopped at {CAUSES}: {said:?}"
+    );
+    assert!(
+        said[CAUSES - 1].ends_with("its further causes go unsaid until it answers"),
+        "the journal wasn't told that further causes go unsaid: {said:?}"
     );
     assert_eq!(
         watch.heard(Ok(Vec::new())).0,
         vec!["<5>the calendar answers again"],
         "the calendar answering again went unsaid"
+    );
+    // A new stretch starts with nothing said, so its first cause is said
+    // even when an earlier stretch said it.
+    assert_eq!(
+        watch.heard(Err("refused at column 1".into())).0,
+        vec![
+            "<4>the calendar can't be read, so the 0 meetings it last said stand: \
+              refused at column 1"
+        ],
+        "a new stretch's first cause went unsaid"
+    );
+    assert_eq!(
+        watch.heard(Err("refused at column 2".into())).0,
+        vec!["<4>the calendar still can't be read, now: refused at column 2"],
+        "a cause said in an earlier stretch went unsaid in a new one"
     );
 }
 
@@ -64,6 +85,13 @@ fn each_failure_to_keep_is_said_once_and_keeping_again_is_said() {
         fresh.kept(Ok(())),
         None,
         "a first good keep was said as a recovery"
+    );
+    // A kept file the start couldn't read, written afresh at once.
+    let mut rewritten = Keeping::unread();
+    assert_eq!(
+        rewritten.kept(Ok(())),
+        Some("<5>the meetings are kept for the next run again".to_owned()),
+        "writing afresh a kept file the start couldn't read went unsaid"
     );
 }
 

@@ -171,12 +171,20 @@ fn an_answer_is_read_and_one_past_the_limit_is_refused() {
     );
     let longest = usize::try_from(LONGEST).unwrap();
     let (head, tail) = (b"{\"read\":1,\"records\":[],\"pad\":\"", b"\"}\n");
-    let mut full = head.to_vec();
-    full.resize(longest - tail.len(), b'x');
-    full.extend_from_slice(tail);
+    let padded = |length: usize| {
+        let mut answer = head.to_vec();
+        answer.resize(length - tail.len(), b'x');
+        answer.extend_from_slice(tail);
+        answer
+    };
     assert!(
-        asked("full", full).is_ok(),
+        asked("full", padded(longest)).is_ok(),
         "an answer of exactly the limit, newline included, was refused"
+    );
+    let refused = asked("over", padded(longest + 1)).unwrap_err();
+    assert!(
+        refused.ends_with(&format!("the answer ran past {LONGEST} bytes")),
+        "a whole answer one byte past the limit wasn't refused as too long: {refused}"
     );
     // Without the limit, the read would wait out its ten seconds for a
     // newline the stand-in never sends, and fail as a timeout.
