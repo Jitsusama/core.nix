@@ -2008,10 +2008,10 @@ fn step_links(
             }
             continue;
         }
-        let (most, steady_under) = upload_ceilings(
+        let upload = upload_ceilings(
             held,
             ceilings.get(&s.network).copied().map(rate::whole),
-            house.get(&s.network).map(|&(_, most)| most),
+            house.get(&s.network),
             controller_ceiling,
         );
         let (room, said) = s.room.step(
@@ -2030,7 +2030,7 @@ fn step_links(
         }
         let rates = led(rates, held, most);
         let why = if held { &why } else { &why::Judged::Nothing };
-        s.under = steady_under;
+        s.under = upload.queues;
         hold(s, rates, why, room);
     }
 }
@@ -2291,18 +2291,34 @@ fn hold(s: &mut Shaped, rates: replay::Rates, why: &why::Judged, room: Option<u6
     go_straight(s, straight);
 }
 
-/// The ceilings a link's upload is held under at a step, in kbit/s: the
-/// one its rate is held under, the lower of its network's `written` one
-/// and its house's of this second, `house`; and the steady one its queues
-/// are put exactly under (`under`), which leaves the house's of this
-/// second out (exact ceiling round 2's F1 and F4).
+/// The ceilings a link's upload is held under at a step, in kbit/s, each
+/// named, so the one meant for the rate can't be taken for the queues'
+/// (exact ceiling round 3's F3 and F12).
+#[derive(Debug, PartialEq, Eq)]
+struct UploadCeilings {
+    /// What its rate is held under: the lower of its network's written
+    /// one and its house's of this second.
+    rate: Option<u64>,
+    /// What its queues are put exactly under: its steady one (`under`).
+    queues: Option<u64>,
+}
+
+/// The ceilings a link's upload is held under at a step, from its
+/// network's `written` one, its house's hold of this second, `house`, as
+/// `HouseHolds` keeps it, and the controller's `steady` one: the house's
+/// reaches the rate and not the queues (exact ceiling round 2's F1 and
+/// F4). The house's comes as its own type, so it can't be handed over in
+/// the steady one's place (round 3's F6).
 fn upload_ceilings(
     held: bool,
     written: Option<u64>,
-    house: Option<u64>,
+    house: Option<&(u64, u64)>,
     steady: Option<u64>,
-) -> (Option<u64>, Option<u64>) {
-    (lower(written, house), under(held, written, steady))
+) -> UploadCeilings {
+    UploadCeilings {
+        rate: lower(written, house.map(|&(_, most)| most)),
+        queues: under(held, written, steady),
+    }
 }
 
 /// The steady ceiling a link's upload is held under, in kbit/s: its
@@ -2311,9 +2327,10 @@ fn upload_ceilings(
 /// controller holds it, `steady`. A house's ceiling of each second, which
 /// moves with the other machine's sawtooth, is left out (exact ceiling
 /// round 1's F1, F10 and F12). The rate still follows that ceiling, so
-/// the queues take it once it moves them by more than 1%, but not
-/// exactly: they may sit up to 1% over what the house leaves a second
-/// (exact ceiling round 2's F3, F5, F7 and F8).
+/// the queues take it once it moves them by more than a hundredth of what
+/// they hold, but not exactly: they may sit over what the house leaves a
+/// second by up to that hundredth, a little over 1% of the house's hold
+/// (exact ceiling round 2's F3, F5, F7 and F8, round 3's F4 and F11).
 fn under(held: bool, written: Option<u64>, steady: Option<u64>) -> Option<u64> {
     if held {
         lower(written, steady)
@@ -2327,7 +2344,8 @@ fn under(held: bool, written: Option<u64>, steady: Option<u64>) -> Option<u64> {
 /// that wavers doesn't change the queues each second, or when what they
 /// hold is over the steady ceiling the upload is held `under` and the rate
 /// isn't, so that ceiling holds exactly rather than up to 1% over; a
-/// house's hold of each second is kept only to within 1%. On 23 November
+/// house's hold of each second is kept only to within a hundredth of what
+/// the queues hold. On 23 November
 /// the call test read 6035 kbit/s held under a trial's 6000: the queues
 /// kept a rate 0.58% over it, a move under 1% being left alone.
 fn due(rate: u64, applied: u64, under: Option<u64>) -> bool {
@@ -2820,9 +2838,15 @@ mod tests {
             !due(6_040, 6_035, Some(6_000)),
             "a rate over the ceiling too leaves the queues, so it can't move them each second"
         );
+        // The band a house's hold of each second is kept within, a
+        // hundredth of what the queues hold (exact ceiling round 3's F2).
         assert!(
-            !due(5_960, 6_000, Some(6_000)),
-            "a house's hold of a second dipping under the queues by less than 1%"
+            !due(5_940, 6_000, Some(6_000)),
+            "a fall of a hundredth of what the queues hold is left"
+        );
+        assert!(
+            due(5_939, 6_000, Some(6_000)),
+            "past it the queues take the rate"
         );
         assert!(due(7_000, 6_000, Some(9_000)), "a move past 1%");
         assert!(due(5_000, 6_000, None), "a move past 1% down");
@@ -2856,28 +2880,36 @@ mod tests {
     // A house's hold of each second moves with the other machine's
     // sawtooth, so it reaches the rate but not the ceiling the queues are
     // put exactly under, which would rewrite them on most falling seconds
-    // (exact ceiling round 1's F1 and F12, round 2's F1 and F4).
+    // (exact ceiling round 1's F1 and F12, round 2's F1 and F4, round 3's
+    // F17).
     #[test]
     fn a_house_s_hold_of_each_second_reaches_the_rate_alone() {
+        let ceilings = |rate, queues| UploadCeilings { rate, queues };
+        let house = |most| (0, most);
         assert_eq!(
-            upload_ceilings(true, Some(9_000), Some(5_960), Some(6_000)),
-            (Some(5_960), Some(6_000)),
+            upload_ceilings(true, Some(9_000), Some(&house(5_960)), Some(6_000)),
+            ceilings(Some(5_960), Some(6_000)),
             "the rate under this second's, the queues under the steady one"
         );
         assert_eq!(
-            upload_ceilings(true, None, Some(5_200), Some(5_250)),
-            (Some(5_200), Some(5_250)),
+            upload_ceilings(true, None, Some(&house(5_200)), Some(5_250)),
+            ceilings(Some(5_200), Some(5_250)),
             "no ceiling written"
         );
         assert_eq!(
-            upload_ceilings(true, Some(5_000), Some(5_960), Some(6_000)),
-            (Some(5_000), Some(5_000)),
+            upload_ceilings(true, Some(5_000), Some(&house(5_960)), Some(6_000)),
+            ceilings(Some(5_000), Some(5_000)),
             "a written ceiling under both holds both"
         );
         assert_eq!(
             upload_ceilings(false, Some(9_000), None, Some(6_000)),
-            (Some(9_000), Some(9_000)),
+            ceilings(Some(9_000), Some(9_000)),
             "a link the controller doesn't hold"
+        );
+        assert_eq!(
+            upload_ceilings(false, Some(9_000), Some(&house(5_960)), Some(6_000)),
+            ceilings(Some(5_960), Some(9_000)),
+            "a link the controller doesn't hold, on a network a house holds"
         );
     }
 
