@@ -220,8 +220,16 @@ fn say_device(output: &Path, node: Option<&Path>) -> Result<(), String> {
                 .and_then(|()| fs::set_permissions(folder, fs::Permissions::from_mode(0o755)))
                 .and_then(|()| replace(&file, &said))
         }
+        // A folder that isn't there, or isn't a folder, holds no node file.
         None => match fs::remove_file(&file) {
-            Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
+            Err(error)
+                if !matches!(
+                    error.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+                ) =>
+            {
+                Err(error)
+            }
             _ => Ok(()),
         },
     };
@@ -640,10 +648,9 @@ fn forget(options: &Options) {
 }
 
 /// Writes that nobody holds a loopback, answering whether the file took it,
-/// so one it didn't is written again. Nobody said is the watch serving
-/// only where it's so, no camera or its node gone, which `so` says: one it
-/// couldn't watch is still there, and nobody is a guess until the watch
-/// is tried again, so it isn't ready.
+/// so one it didn't is written again. It says nothing of ready: that's for
+/// its caller, since nobody is so only with no camera and its node file
+/// gone, and a guess for one it couldn't watch, until it's tried again.
 fn say_nobody(output: &Path, run: &mut Run) -> bool {
     match write(output, &BTreeSet::new()) {
         Ok(()) => {

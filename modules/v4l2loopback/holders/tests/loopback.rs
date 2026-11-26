@@ -16,7 +16,7 @@ use std::time::Duration;
 
 /// Held by each watch while it runs, so the tests run one at a time: a
 /// test holding /dev/random would make another's watch look, and do for
-/// it what its timer should.
+/// it what its timer should. So a test holds one watch at a time.
 static TURN: Mutex<()> = Mutex::new(());
 
 /// A watch on a loopback, its file in a folder of its own, its log and
@@ -152,6 +152,7 @@ impl Drop for Watch {
         let _ = self.program.kill();
         let _ = self.program.wait();
         let _ = fs::set_permissions(&self.folder, Permissions::from_mode(0o755));
+        let _ = fs::set_permissions(self.folder.join(".devices"), Permissions::from_mode(0o755));
         let _ = fs::remove_dir_all(&self.root);
     }
 }
@@ -331,12 +332,18 @@ fn a_node_file_it_couldnt_remove_as_its_camera_went_is_tried_again() {
         |watch| ready(&watch.read("log")) == 1,
         "a camera whose files were written wasn't said ready",
     );
-    // A folder with a file in it where the node file was, so removing it
-    // fails; nothing is owed, so no look writes it again.
-    fs::remove_file(watch.device()).unwrap();
-    fs::create_dir(watch.device()).unwrap();
-    fs::write(watch.device().join("kept"), "").unwrap();
+    // Held as it goes, so the nobody said after is the watch's doing.
+    let held = File::open(&camera).unwrap();
+    watch.until(
+        |watch| fs::read_to_string(watch.file()).is_ok_and(|said| !said.is_empty()),
+        "a camera held wasn't said held",
+    );
+    // Its folder locked, so removing the node file fails; nothing is owed,
+    // so no look writes it again.
+    let devices = watch.folder.join(".devices");
+    fs::set_permissions(&devices, Permissions::from_mode(0o555)).unwrap();
     fs::remove_file(&camera).unwrap();
+    drop(held);
     watch.until(
         |watch| complaints_of(watch, &watch.device()) == 1,
         "a node file it couldn't remove went unsaid",
@@ -353,9 +360,44 @@ fn a_node_file_it_couldnt_remove_as_its_camera_went_is_tried_again() {
         "a node file it couldn't remove each try was complained of each try: {:?}",
         watch.read("complaints")
     );
-    fs::remove_dir_all(watch.device()).unwrap();
+    fs::set_permissions(&devices, Permissions::from_mode(0o755)).unwrap();
+    watch.until(
+        |watch| !watch.device().exists(),
+        "a node file it couldn't remove wasn't tried again",
+    );
     watch.until(
         |watch| right_again(watch, &watch.device()) == 1,
-        "a node file it couldn't remove wasn't tried again",
+        "a node file removed at last wasn't said right again",
+    );
+}
+
+#[test]
+fn a_loopback_with_no_camera_is_ready_only_once_its_node_file_is_gone() {
+    // A node file a killed run left, as a folder with a file in it, so
+    // removing it fails.
+    let watch = Watch::started("stale", "", |folder| {
+        let stale = folder.join(".devices/Stand-in");
+        fs::create_dir_all(&stale).unwrap();
+        fs::write(stale.join("kept"), "").unwrap();
+    });
+    watch.until(
+        |watch| complaints_of(watch, &watch.device()) == 1,
+        "a node file it couldn't remove went unsaid",
+    );
+    watch.until(
+        |watch| fs::read_to_string(watch.file()).is_ok_and(|said| said.is_empty()),
+        "a loopback with no camera wasn't said held by nobody",
+    );
+    // Past two more of the one-second tries with no camera.
+    sleep(Duration::from_millis(2500));
+    assert_eq!(
+        ready(&watch.read("log")),
+        0,
+        "a loopback whose node file stayed was said ready"
+    );
+    fs::remove_dir_all(watch.device()).unwrap();
+    watch.until(
+        |watch| ready(&watch.read("log")) == 1,
+        "a loopback whose node file went wasn't said ready",
     );
 }
