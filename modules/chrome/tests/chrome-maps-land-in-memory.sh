@@ -477,7 +477,8 @@ if grep -q 'starts over' run.log; then
   exit 1
 fi
 for line in 'as it quits, so this waits' 'still quitting, so this waits'; do
-  if [ "$(grep -c "$line" run.log)" != 1 ]; then
+  count=$(grep -c "$line" run.log || true)
+  if [ "$count" != 1 ]; then
     echo "the command didn't say once that it waits, as '$line', saying:"
     cat run.log
     exit 1
