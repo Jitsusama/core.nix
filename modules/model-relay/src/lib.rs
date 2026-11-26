@@ -55,9 +55,11 @@
 //! answer begins. After the machine sleeps, the connections it held are
 //! retired and opened afresh, since the network they ran on may be gone
 //! and pings would take their time to say so, and the kernel probes each
-//! one still carrying an answer, so one whose network has gone fails in
-//! about ten seconds, for pi to ask again, and one that survived carries
-//! on. One with data unacknowledged isn't probed and waits on its ping.
+//! one still carrying an answer, however it was retired, so one whose
+//! network has gone fails about ten seconds after its first probe, for pi
+//! to ask again, and one that survived carries on. One with data
+//! unacknowledged, an unanswered ping's included, isn't probed and waits
+//! on its ping.
 //! A ping is what finds a lost connection, and an unanswered one
 //! fails every request on it, so below
 //! h2 each layer holds little ahead of one: a body goes in short frames,
@@ -961,87 +963,122 @@ const PROBES_AFTER_A_SLEEP: u32 = 5;
 /// left to its pings again and a later lapse doesn't end it in seconds.
 const PROBED_FOR_AFTER_A_SLEEP: Duration = Duration::from_secs(15);
 
-/// The TCP connections to the origin a relay has opened, each by its name,
-/// held weakly so it still closes once hyper lets it go, to be probed once
-/// the machine has slept; and how many times it has slept, so probing a
-/// sleep ago stops only when it's the last.
+/// The TCP connections to the origin a relay has kept, each held weakly so
+/// it still closes once hyper lets it go, to be probed once the machine has
+/// slept; and how many times it has slept.
 #[derive(Default)]
 struct Probes {
-    opened: Held<Vec<(Named, Weak<TcpStream>)>>,
-    sleeps: Arc<AtomicU64>,
+    kept: Held<Vec<Watched>>,
+    sleeps: AtomicU64,
 }
 
-/// The connections probed after one sleep, to stop probing once it has
-/// done its work.
+/// A connection kept to be probed: its name, and the sleep that last had
+/// it probed, if one has.
+struct Watched {
+    named: Named,
+    tcp: Weak<TcpStream>,
+    probed_by: Option<u64>,
+}
+
+/// The connections one sleep had probed, to say which and to stop
+/// probing once it has done its work.
 struct Probing {
-    open: Vec<Weak<TcpStream>>,
+    named: Vec<Named>,
     sleep: u64,
-    sleeps: Arc<AtomicU64>,
 }
 
 impl Probes {
-    /// Keeps `tcp`, `named`, to be probed, forgetting those closed since.
-    fn keep(&self, named: Named, tcp: &Arc<TcpStream>) {
-        let mut opened = self.opened.lock().unwrap_or_else(PoisonError::into_inner);
-        opened.retain(|(_, tcp)| tcp.strong_count() > 0);
-        opened.push((named, Arc::downgrade(tcp)));
+    /// Keeps `tcp`, `named`, to be probed after a sleep, as `keeping` puts
+    /// it in its slot, forgetting those closed since. A sleep finds it
+    /// both kept here and in its slot, or neither.
+    fn keep<T>(&self, named: Named, tcp: &Arc<TcpStream>, keeping: impl FnOnce() -> T) -> T {
+        let mut kept = self.kept.lock().unwrap_or_else(PoisonError::into_inner);
+        kept.retain(|watched| watched.tcp.strong_count() > 0);
+        kept.push(Watched {
+            named,
+            tcp: Arc::downgrade(tcp),
+            probed_by: None,
+        });
+        keeping()
     }
 
-    /// Has the kernel probe each of `retired` still open, once it has gone
-    /// `PROBED_AFTER_A_SLEEP` unheard, so one whose network went while the
-    /// machine slept fails in seconds and one that survived carries on.
+    /// Has `retiring` retire every connection, then the kernel probe each
+    /// kept one still open, once it has gone `PROBED_AFTER_A_SLEEP` unheard,
+    /// so one whose network went while the machine slept fails in seconds
+    /// and one that survived carries on.
     ///
-    /// The kernel probes only while all that was sent has been
-    /// acknowledged, so one with data in flight, as an upload has, lasts
-    /// until its ping fails, as it did before. One opened since, or still
-    /// opening as the machine slept, isn't probed: it takes requests on.
-    fn probe(&self, retired: &[Named]) -> Probing {
+    /// Each still open carries an answer or soon closes, whether this
+    /// sleep retired it or a reset, a goodbye or a sleep before did. The
+    /// kernel probes only while all that was sent has been acknowledged,
+    /// so one with data in flight, as an upload or an unanswered ping has,
+    /// lasts until its ping fails, as it did before. One still opening as
+    /// the machine slept isn't kept yet, so isn't probed: it takes requests.
+    fn probe(&self, retiring: impl FnOnce()) -> Probing {
         let soon = socket2::TcpKeepalive::new()
             .with_time(PROBED_AFTER_A_SLEEP)
             .with_interval(PROBED_EVERY_AFTER_A_SLEEP)
             .with_retries(PROBES_AFTER_A_SLEEP);
-        let still: Vec<Arc<TcpStream>> = self
-            .opened
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .iter()
-            .filter(|(named, _)| retired.contains(named))
-            .filter_map(|(_, tcp)| tcp.upgrade())
-            .collect();
-        let mut open = Vec::new();
-        for tcp in &still {
-            match socket2::SockRef::from(&**tcp).set_tcp_keepalive(&soon) {
-                Ok(()) => open.push(Arc::downgrade(tcp)),
+        let mut kept = self.kept.lock().unwrap_or_else(PoisonError::into_inner);
+        retiring();
+        let sleep = self.sleeps.fetch_add(1, Ordering::SeqCst) + 1;
+        let mut named = Vec::new();
+        for watched in kept.iter_mut() {
+            let Some(tcp) = watched.tcp.upgrade() else {
+                continue;
+            };
+            match socket2::SockRef::from(&*tcp).set_tcp_keepalive(&soon) {
+                Ok(()) => {
+                    watched.probed_by = Some(sleep);
+                    named.push(watched.named);
+                }
                 // It then lasts until its ping fails, as it would have.
-                Err(why) => eprintln!("model-relay: a connection couldn't be probed: {why}"),
+                Err(why) => eprintln!("model-relay: {} couldn't be probed: {why}", watched.named),
             }
         }
-        Probing {
-            open,
-            sleep: self.sleeps.fetch_add(1, Ordering::SeqCst) + 1,
-            sleeps: Arc::clone(&self.sleeps),
+        Probing { named, sleep }
+    }
+
+    /// Has the kernel stop probing those still open that `probing` began
+    /// on, as a connection opened does, and says how many. One a later
+    /// sleep had probed again is left to that sleep's own end.
+    fn stop(&self, probing: &Probing) -> usize {
+        let mut kept = self.kept.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut stopped = 0;
+        for watched in kept
+            .iter_mut()
+            .filter(|watched| watched.probed_by == Some(probing.sleep))
+        {
+            watched.probed_by = None;
+            let Some(tcp) = watched.tcp.upgrade() else {
+                continue;
+            };
+            match socket2::SockRef::from(&*tcp).set_keepalive(false) {
+                Ok(()) => stopped += 1,
+                Err(why) => eprintln!(
+                    "model-relay: {}'s probes couldn't be stopped: {why}",
+                    watched.named
+                ),
+            }
         }
+        stopped
     }
 }
 
 impl Probing {
     /// How many connections are probed.
     fn len(&self) -> usize {
-        self.open.len()
+        self.named.len()
     }
+}
 
-    /// Has the kernel stop probing those still open, as a connection opened
-    /// does, unless the machine has slept again since and they're probed
-    /// for that.
-    fn stop(&self) {
-        if self.sleeps.load(Ordering::SeqCst) != self.sleep {
-            return;
+impl fmt::Display for Probing {
+    /// Which connections are probed, as the log names them.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (index, named) in self.named.iter().enumerate() {
+            let between = if index == 0 { "" } else { ", " };
+            write!(f, "{between}{named}")?;
         }
-        for tcp in self.open.iter().filter_map(Weak::upgrade) {
-            if let Err(why) = socket2::SockRef::from(&*tcp).set_keepalive(false) {
-                eprintln!("model-relay: a connection's probes couldn't be stopped: {why}");
-            }
-        }
+        Ok(())
     }
 }
 
@@ -1245,12 +1282,13 @@ pub struct Relay {
     next: AtomicUsize,
     /// When an attempt to open a connection last failed, and why.
     failed: Held<Option<(Instant, Unreachable)>>,
-    /// The relay's clock and the wall's when a request was last taken, or a
-    /// connection last asked for, to tell when the machine slept between.
+    /// The relay's clock and the wall's when a request was last taken, a
+    /// connection last asked for, or the machine last checked on for a
+    /// sleep, to tell when it slept between.
     asked_at: Held<(Instant, SystemTime)>,
-    /// The connections it has opened to the origin, to probe once the
+    /// The connections it has kept to the origin, to probe once the
     /// machine has slept.
-    probes: Probes,
+    probes: Arc<Probes>,
     /// Whether it has begun to leave, when a request is sent direct.
     leaving: AtomicBool,
     connections: Arc<Connections>,
@@ -1263,6 +1301,10 @@ pub struct Relay {
     counts: Arc<Counts>,
     busy: Arc<Busy>,
 }
+
+/// A connection just opened: what to send requests down, and the TCP
+/// connection beneath, to be probed after a sleep once it's kept.
+type Opened = (SendRequest<Sent>, Arc<TcpStream>);
 
 /// Which connection one opened is, as it's said: by its slot and its
 /// number there.
@@ -1316,7 +1358,7 @@ impl Relay {
             next: AtomicUsize::new(0),
             failed: Held::new(None),
             asked_at: Held::new((Instant::now(), SystemTime::now())),
-            probes: Probes::default(),
+            probes: Arc::new(Probes::default()),
             leaving: AtomicBool::new(false),
             connections: Arc::new(Connections::default()),
             kept: Arc::new(Connections::default()),
@@ -2040,8 +2082,8 @@ impl Relay {
     /// sleeps: the network they ran on may be gone, and their pings would
     /// take up to `PING_EVERY` and `PING_ANSWERED_WITHIN` to say so. An
     /// answer already streaming on one carries on, while the kernel probes
-    /// its connection for `PROBED_FOR_AFTER_A_SLEEP`, so it fails in about
-    /// ten seconds if that network has gone.
+    /// its connection for `PROBED_FOR_AFTER_A_SLEEP`, so it fails about ten
+    /// seconds after the first probe if that network has gone.
     fn retire_after_a_sleep(&self) {
         let now = (Instant::now(), SystemTime::now());
         let then = std::mem::replace(
@@ -2051,38 +2093,33 @@ impl Relay {
         if !slept(then, now) {
             return;
         }
-        let retired = self.retire_every();
-        let probing = self.probes.probe(&retired);
+        let probing = self.probes.probe(|| self.retire_every());
         eprintln!(
             "model-relay: the machine slept, so its connections are opened afresh, and the {} \
-             still open are probed",
+             still open are probed: {probing}",
             probing.len()
         );
+        let probes = Arc::clone(&self.probes);
         tokio::spawn(async move {
             tokio::time::sleep(PROBED_FOR_AFTER_A_SLEEP).await;
-            probing.stop();
+            let stopped = probes.stop(&probing);
+            if stopped > 0 {
+                eprintln!(
+                    "model-relay: the {stopped} probed after the sleep are left to their pings"
+                );
+            }
         });
     }
 
     /// Retires every connection, so each is opened afresh when next asked
-    /// for, and says which were open. An answer already streaming on one
-    /// carries on.
-    fn retire_every(&self) -> Vec<Named> {
-        let mut retired = Vec::new();
-        for (at, slot) in self.slots.iter().enumerate() {
-            let open = slot
-                .open
+    /// for. An answer already streaming on one carries on.
+    fn retire_every(&self) {
+        for slot in &self.slots {
+            slot.open
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
                 .take();
-            if let Some(kept) = open {
-                retired.push(Named {
-                    at,
-                    number: kept.number,
-                });
-            }
         }
-        retired
     }
 
     /// Opens connection `at` without anybody waiting on it, unless it's
@@ -2132,9 +2169,12 @@ impl Relay {
     async fn open_now(&self, at: usize) -> Result<Kept, Unreachable> {
         let number = self.slots[at].next_number();
         let tally = Arc::new(Tally::of(at, number));
-        match self.connect(Named { at, number }).await {
-            Ok(sender) => {
-                let kept = self.slots[at].keep(number, sender, tally);
+        let named = Named { at, number };
+        match self.connect(named).await {
+            Ok((sender, tcp)) => {
+                let kept = self
+                    .probes
+                    .keep(named, &tcp, || self.slots[at].keep(number, sender, tally));
                 // The origin is back, so others may be opened behind.
                 *self.failed.lock().unwrap_or_else(PoisonError::into_inner) = None;
                 Ok(kept)
@@ -2149,7 +2189,7 @@ impl Relay {
 
     /// Opens a connection to the origin, saying so as it's `named`, and
     /// says when it's retired, counting it as one taking requests.
-    async fn connect(&self, named: Named) -> Result<SendRequest<Sent>, Unreachable> {
+    async fn connect(&self, named: Named) -> Result<Opened, Unreachable> {
         let within = self.clocks.connect_within;
         let looked_up = AtomicBool::new(false);
         let opening = async {
@@ -2170,7 +2210,7 @@ impl Relay {
                 .await
                 .map(Arc::new)
                 .map_err(on_the_way)?;
-            self.probes.keep(named, &tcp);
+            let probed = Arc::clone(&tcp);
             let tcp = Probed(tcp);
             let name = ServerName::try_from(self.origin.host.clone())
                 .map_err(|why| (io::Error::other(why), Unreachable::Unfit))?;
@@ -2208,9 +2248,10 @@ impl Relay {
                 .initial_connection_window_size(CONNECTION_WINDOW)
                 .handshake(TokioIo::new(tls))
                 .await
+                .map(|(sender, connection)| (sender, connection, probed))
                 .map_err(|why| (io::Error::other(why), Unreachable::Refused))
         };
-        let (sender, connection) = match tokio::time::timeout(within, opening).await {
+        let (sender, connection, tcp) = match tokio::time::timeout(within, opening).await {
             Ok(Ok(opened)) => opened,
             Ok(Err((why, unreachable))) => {
                 eprintln!(
@@ -2245,7 +2286,7 @@ impl Relay {
                 }
             }
         });
-        Ok(sender)
+        Ok((sender, tcp))
     }
 }
 
@@ -2657,10 +2698,11 @@ mod tests {
     use hyper::body::Body as _;
 
     use super::{
-        BODY_WITHIN, Counts, HELD_AHEAD_AT_MOST, InPieces, Named, Origin, PROBED_AFTER_A_SLEEP,
-        PROBED_EVERY_AFTER_A_SLEEP, PROBES_AFTER_A_SLEEP, Probed, Probes, Retiring, SAID_AT_MOST,
-        SLEPT_AT_LEAST, Sender, Slot, Unnamed, Unreachable, Unread, fails_the_path, goes_again,
-        goes_direct, goes_once_more, reach, reach_any, read_whole, slept, unmade, with_causes,
+        BODY_WITHIN, Clocks, Counts, HELD_AHEAD_AT_MOST, InPieces, Named, Origin,
+        PROBED_AFTER_A_SLEEP, PROBED_EVERY_AFTER_A_SLEEP, PROBES_AFTER_A_SLEEP, Probed, Probes,
+        Relay, Retiring, Roots, SAID_AT_MOST, SLEPT_AT_LEAST, Sender, Slot, Unnamed, Unreachable,
+        Unread, fails_the_path, goes_again, goes_direct, goes_once_more, reach, reach_any,
+        read_whole, slept, unmade, with_causes,
     };
 
     /// How the origin ends a request it hasn't answered.
@@ -3235,7 +3277,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn a_connection_retired_by_a_sleep_is_probed_then_left_to_its_pings() {
+    async fn each_connection_still_open_after_a_sleep_is_probed_then_left_to_its_pings() {
         let origin = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("a port");
@@ -3244,17 +3286,16 @@ mod tests {
             .await
             .map(Arc::new)
             .expect("a connection");
-        let opened = tokio::net::TcpStream::connect(at)
+        let retired_before = tokio::net::TcpStream::connect(at)
             .await
             .map(Arc::new)
             .expect("a connection");
         let _far = (origin.accept().await, origin.accept().await);
         let kept = Probes::default();
-        let named = |number| Named { at: 0, number };
-        kept.keep(named(0), &retired);
-        kept.keep(named(1), &opened);
+        kept.keep(Named { at: 0, number: 0 }, &retired_before, || ());
+        kept.keep(Named { at: 1, number: 0 }, &retired, || ());
 
-        let probing = kept.probe(&[named(0)]);
+        let probing = kept.probe(|| ());
 
         let socket = socket2::SockRef::from(&*retired);
         let asked = (
@@ -3265,9 +3306,9 @@ mod tests {
             socket.tcp_user_timeout().ok(),
         );
         assert_eq!(
-            probing.len(),
-            1,
-            "the sleep didn't probe the one connection it retired alone"
+            probing.to_string(),
+            "connection 0.0, connection 1.0",
+            "the sleep didn't probe each connection still open, retired by it or before"
         );
         assert_eq!(
             asked,
@@ -3280,15 +3321,14 @@ mod tests {
             ),
             "the kernel wasn't asked to probe it as the relay means to, by count alone"
         );
+        let stopped = kept.stop(&probing);
         assert_eq!(
-            socket2::SockRef::from(&*opened).keepalive().ok(),
-            Some(false),
-            "a connection opened since the sleep, taking requests, was probed"
-        );
-        probing.stop();
-        assert_eq!(
-            socket.keepalive().ok(),
-            Some(false),
+            (
+                stopped,
+                socket.keepalive().ok(),
+                socket2::SockRef::from(&*retired_before).keepalive().ok()
+            ),
+            (2, Some(false), Some(false)),
             "the kernel went on probing once the sleep's probes were done"
         );
     }
@@ -3304,17 +3344,55 @@ mod tests {
             .expect("a connection");
         let _far = origin.accept().await.expect("the far end");
         let kept = Probes::default();
-        let named = Named { at: 0, number: 0 };
-        kept.keep(named, &tcp);
+        kept.keep(Named { at: 0, number: 0 }, &tcp, || ());
+        let socket = socket2::SockRef::from(&*tcp);
 
-        let first = kept.probe(&[named]);
-        let _second = kept.probe(&[named]);
-        first.stop();
+        let first = kept.probe(|| ());
+        let second = kept.probe(|| ());
+        let first_ended = (kept.stop(&first), socket.keepalive().ok());
+        let second_ended = (kept.stop(&second), socket.keepalive().ok());
+
+        assert_eq!(
+            first_ended,
+            (0, Some(true)),
+            "the first sleep's probes ending stopped the second's"
+        );
+        assert_eq!(
+            second_ended,
+            (1, Some(false)),
+            "the second sleep's probes went on past their own end"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_relay_that_finds_the_machine_slept_probes_what_it_kept() {
+        let relay = Relay::new(
+            Origin::parse("https://model-relay.invalid").expect("an origin"),
+            1,
+            Roots::public(),
+            Clocks::default(),
+        )
+        .expect("a relay");
+        let origin = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let tcp = tokio::net::TcpStream::connect(origin.local_addr().expect("its address"))
+            .await
+            .map(Arc::new)
+            .expect("a connection");
+        let _far = origin.accept().await.expect("the far end");
+        relay.probes.keep(Named { at: 0, number: 0 }, &tcp, || ());
+        let woke = SystemTime::now()
+            .checked_sub(SLEPT_AT_LEAST * 2)
+            .expect("a time before now");
+        *relay.asked_at.lock().expect("its clocks") = (Instant::now(), woke);
+
+        relay.retire_after_a_sleep();
 
         assert_eq!(
             socket2::SockRef::from(&*tcp).keepalive().ok(),
             Some(true),
-            "the first sleep's probes ending stopped the second's"
+            "a relay that found the machine slept didn't probe the connection it kept"
         );
     }
 
@@ -3332,16 +3410,14 @@ mod tests {
             .expect("a connection");
         let (mut far, _) = origin.accept().await.expect("the far end");
         let kept = Probes::default();
-        let named = Named { at: 0, number: 0 };
-        kept.keep(named, &tcp.0);
-        let probing = kept.probe(&[named]);
+        kept.keep(Named { at: 0, number: 0 }, &tcp.0, || ());
+        let probing = kept.probe(|| ());
 
         drop(tcp);
         let mut byte = [0; 1];
         // A close reaches the far end at once over loopback; the bound only
         // keeps a socket held open from hanging the test.
         let read = tokio::time::timeout(Duration::from_secs(5), far.read(&mut byte)).await;
-        probing.stop();
 
         assert_eq!(probing.len(), 1, "the connection wasn't probed");
         assert!(
@@ -3349,9 +3425,9 @@ mod tests {
             "the probes held a connection let go open: {read:?}"
         );
         assert_eq!(
-            kept.probe(&[named]).len(),
-            0,
-            "a connection let go was probed"
+            (kept.stop(&probing), kept.probe(|| ()).len()),
+            (0, 0),
+            "a connection let go was still probed"
         );
     }
 
