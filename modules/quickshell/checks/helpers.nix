@@ -126,10 +126,11 @@ let
   # import added to Reader.js comes with it, as it does when the account's
   # shell is made. An import the shell's folder doesn't hold as a file, nor
   # the program, fails the check instead, naming the file, the import as
-  # written and what to do for its kind: a missing file, a folder, or one
-  # above the shell's folder. So does an own file given above the shell's
-  # folder or by a path from the root. The table and the roots are given, so a check can give
-  # it others (core.nix's a-check-copies-what-each-file-imports).
+  # written and what to do for its kind: a missing file, a folder, one
+  # above the shell's folder, or one written from the root. So does an own
+  # file given by anything but its plain place there, which would be copied
+  # elsewhere. The table and the roots are given, so a check can give it
+  # others (core.nix's a-check-copies-what-each-file-imports).
   programStepWith =
     table: roots: own:
     let
@@ -139,10 +140,11 @@ let
       );
       shells = lib.filter (file: !(lib.elem file placed)) (lib.unique (map (one: one.placed) found));
       climbs = file: lib.elem ".." (lib.splitString "/" file);
-      above = "above modules/quickshell, where a check can't be given a file; move it in";
-      # The program's own files given by no place in the shell's folder, which
-      # would be copied out of the check's folder.
-      outside = lib.filter (file: climbs file || lib.hasPrefix "/" file) placed;
+      # The program's own files given by anything but their plain place in
+      # the shell's folder (none climbing, none from the root, no . or
+      # empty part), which would be copied elsewhere than where it is said.
+      outside = lib.filter (file: climbs file || under "." file != file) placed;
+      rooted = one: lib.hasPrefix "/" one.written;
       # Why the shell's folder can't give a check what an import names, and
       # what can be done instead, or null when it can. A file above the
       # shell's folder can't be given even as the program's own.
@@ -152,29 +154,37 @@ let
           path = ../. + "/${file}";
         in
         if climbs file then
-          above
+          "above modules/quickshell, where a check can't be given a file; move it in"
         else if !(builtins.pathExists path) then
           "not in modules/quickshell; add it to the program's own files as ${file}"
         else if builtins.readFileType path != "regular" then
-          "a folder; import a JavaScript file by name, or a type through qs with its file in the roots"
+          "a folder; import a JavaScript file by name, or a type through qs with its file in programRoots (modules/quickshell/checks/helpers.nix)"
         else
           null;
       strays = lib.filter (
-        one: climbs one.placed || !(lib.elem one.placed placed) && unheld one.placed != null
+        one: rooted one || climbs one.placed || !(lib.elem one.placed placed) && unheld one.placed != null
       ) found;
-      said = one: "the program's file at ${one.file} imports \"${one.written}\": ${unheld one.placed}";
-      saidOutside = file: "the program's own file given as \"${file}\": ${above}";
+      why =
+        one:
+        if rooted one then
+          "written from the root, where a check can't be given a file; write it from this file"
+        else
+          unheld one.placed;
+      said = one: "the program's file at ${one.file} imports \"${one.written}\": ${why one}";
+      saidOutside =
+        file:
+        "the program's own file given as \"${file}\": not its plain place in modules/quickshell; give it as that place, as launcher/Reader.js";
       folders = lib.unique (lib.filter (folder: folder != ".") (map dirOf placed));
     in
     if strays == [ ] && outside == [ ] then
       lib.concatStringsSep "\n" (
         [ (copiedWith table (lib.unique (roots ++ shells))) ]
-        ++ lib.optional (folders != [ ]) "mkdir -p ${lib.concatStringsSep " " folders}"
-        ++ lib.mapAttrsToList (file: source: "cp ${source} ${file}") own
+        ++ lib.optional (folders != [ ]) "mkdir -p ${lib.escapeShellArgs folders}"
+        ++ lib.mapAttrsToList (file: source: "cp ${source} ${lib.escapeShellArg file}") own
       )
     else
       ''
-        echo "A program's own files import what modules/quickshell doesn't hold as a file:" >&2
+        echo "A program's own files can't be given to the check as they are:" >&2
         ${lib.concatMapStrings (file: "echo ${lib.escapeShellArg (saidOutside file)} >&2\n") outside}
         ${lib.concatMapStrings (one: "echo ${lib.escapeShellArg (said one)} >&2\n") strays}
         exit 1

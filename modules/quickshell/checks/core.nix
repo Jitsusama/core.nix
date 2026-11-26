@@ -347,10 +347,12 @@ in
   # one file's imports moves a case rather than failing it. Today's rows are
   # all sorted, so only this sees the order case break. A program's own file,
   # placed in a folder of its own, is copied there and brings what copying the
-  # file it imports does, guarded as copying it is; one importing a file the
-  # shell's folder doesn't hold, a folder, or a file above the shell's folder
-  # is refused, each on its own escaped line naming the file, the import as
-  # written and what to do instead, and the step stops (programStepWith).
+  # file it imports does, guarded as copying it is, its name quoted; one
+  # importing a file the shell's folder doesn't hold, a folder, a file above
+  # the shell's folder or one written from the root is refused, each on its
+  # own escaped line naming the file, the import as written and what to do
+  # instead, and the step stops. So is an own file given by anything but its
+  # plain place, alone or beside those (programStepWith).
   a-check-copies-what-each-file-imports =
     let
       table = import ./imports.nix;
@@ -380,7 +382,9 @@ in
       lines = lib.splitString "\n";
       copyLines = script: lib.filter (lib.hasPrefix "cp ") (lines script);
       at = pred: script: lib.lists.findFirstIndex pred null (lines script);
-      making = folder: line: lib.hasPrefix "mkdir -p " line && lib.elem folder (lib.splitString " " line);
+      making =
+        folder: line:
+        lib.hasPrefix "mkdir -p " line && lib.elem (lib.escapeShellArg folder) (lib.splitString " " line);
       uncopiedBy = script: lib.filter (file: !(lib.any (lib.hasSuffix " ${file}") (copyLines script)));
       uncopied = uncopiedBy real reached;
       leftOut = lib.concatStringsSep ", " uncopied;
@@ -394,7 +398,15 @@ in
       planted = programStepWith table [ ] (ownImporting "../${picked}");
       unplanted = uncopiedBy planted ([ own ] ++ reach picked);
       madeAt = at (making ownFolder) planted;
-      ownCopiedAt = at (lib.hasSuffix " ${own}") planted;
+      ownCopiedAt = at (lib.hasSuffix " ${lib.escapeShellArg own}") planted;
+      # A program's own file whose folder and name the shell must take as
+      # they are.
+      spacedFolder = "Planted spaced";
+      spaced = "${spacedFolder}/Planted.js";
+      spacedStep = lines (programStepWith table [ ] { ${spaced} = builtins.toFile "Planted.js" ""; });
+      spacedUnquoted =
+        !(lib.elem "mkdir -p ${lib.escapeShellArg spacedFolder}" spacedStep)
+        || !(lib.any (lib.hasSuffix " ${lib.escapeShellArg spaced}") spacedStep);
       ownUnmade = madeAt == null || ownCopiedAt != null && madeAt > ownCopiedAt;
       ownHeld = builtins.pathExists (../. + "/${ownFolder}");
       stray = "Planted-nowhere.js";
@@ -406,20 +418,25 @@ in
       # why the step must say it can't: a missing file, one whose name the
       # shell must take as it is written, a file above the shell's folder
       # that is there (the flake's own), and a folder, named or as ".."
-      # alone, and a file above the folder even when given as the program's
-      # own. All are in one file, placed after the planted one, so each must
-      # be said, of the file that imports it. The program's own files given
-      # above the folder, or by a path from the root, imported or not, must
-      # each be refused too, or they'd be copied out of the check's folder.
+      # alone, a file above the folder even when given as the program's own,
+      # and one written from the root, which read beside its file names the
+      # planted one. All are in one file, placed after the
+      # planted one, so each must be said, of the file that imports it. The
+      # program's own files given by anything but their plain place (above
+      # the folder, from the root, through . or ..), imported or not, must
+      # each be refused too, or they'd be copied elsewhere than said.
       quoted = "it's-$(gone).js";
       missing = file: "not in modules/quickshell; add it to the program's own files as ${file}";
-      folder = "a folder; import a JavaScript file by name, or a type through qs with its file in the roots";
+      folder = "a folder; import a JavaScript file by name, or a type through qs with its file in programRoots (modules/quickshell/checks/helpers.nix)";
       above = "above modules/quickshell, where a check can't be given a file; move it in";
+      unplain = "not its plain place in modules/quickshell; give it as that place, as launcher/Reader.js";
       ownAbove = "../Planted-above.js";
       outside = [
         ownAbove
         "../Planted-unimported.js"
         "/Planted-rooted.js"
+        "./Planted-dotted.js"
+        "${ownFolder}/../Planted-climbed.js"
       ];
       strays = {
         "../${stray}" = missing stray;
@@ -428,6 +445,8 @@ in
         "../${ownAbove}" = above;
         "../launcher" = folder;
         ".." = folder;
+        "/${baseNameOf own}" =
+          "written from the root, where a check can't be given a file; write it from this file";
       };
       strayFile = "${ownFolder}/Strays.js";
       strayed = programStepWith table [ ] (
@@ -441,21 +460,19 @@ in
       );
       outsideGiven = lib.genAttrs outside (file: builtins.toFile "Planted-outside.js" "");
       # Given alone, with no import astray, they must still stop the step.
-      outsideCopied =
-        !(lib.elem "exit 1" (
-          lines (programStepWith table [ ] (ownImporting "../${picked}" // outsideGiven))
-        ));
+      outsideAlone = programStepWith table [ ] (ownImporting "../${picked}" // outsideGiven);
+      outsideCopied = !(lib.elem "exit 1" (lines outsideAlone));
       sayingOf =
         written: "the program's file at ${strayFile} imports \"${written}\": ${strays.${written}}";
       strayUnrefused = lib.filter (
         written: !(lib.elem "echo ${lib.escapeShellArg (sayingOf written)} >&2" (lines strayed))
       ) (lib.attrNames strays);
       strayUnended = !(lib.elem "exit 1" (lines strayed));
+      outsideLine =
+        file: "echo ${lib.escapeShellArg "the program's own file given as \"${file}\": ${unplain}"} >&2";
       outsideUnrefused = lib.filter (
         file:
-        !(lib.elem "echo ${lib.escapeShellArg "the program's own file given as \"${file}\": ${above}"} >&2" (
-          lines strayed
-        ))
+        !(lib.elem (outsideLine file) (lines strayed) && lib.elem (outsideLine file) (lines outsideAlone))
       ) outside;
       strayHeldSaid = "the shell's folder holds ${stray} or ${quoted}; give this check other names";
       ownHeldSaid = "the shell's folder holds ${ownFolder}; give this check another folder";
@@ -491,7 +508,8 @@ in
             "a program's own files given outside the shell's folder weren't refused: "
             + lib.concatStringsSep ", " outsideUnrefused
           )
-          ++ lib.optional outsideCopied "a program's own files given outside the shell's folder alone were copied";
+          ++ lib.optional outsideCopied "a program's own files given outside the shell's folder alone were copied"
+          ++ lib.optional spacedUnquoted "a program's own file at ${spaced} was made or copied unquoted";
     in
     pkgs.runCommandLocal "a-check-copies-what-each-file-imports" { } ''
       ${lib.concatMapStrings (failure: "echo ${lib.escapeShellArg failure} >&2\n") failures}
