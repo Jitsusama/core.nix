@@ -1,17 +1,18 @@
 //! Messages on the mesh that say Joel ruled or wants something with no
-//! word of his behind it. On 26 November a cell's caution about reaching
-//! a test machine was passed on as Joel's rule and held against the work,
-//! and of 92 messages claiming a rule or wish of his, only 22 carried his
-//! words or a dated source near the claim. A claim with neither binds no
-//! one, so each is asked of its sender: his dated words, or the claim
-//! dropped.
+//! word of his behind it. On 26 November two cells told the mesh they had
+//! broken Joel's rule by reaching a test machine, while the rule was an
+//! orchestrator's own pivot, and the work it held back was his. A claim
+//! with no word of his binds no one, so each is asked of its sender: his
+//! dated words, or the claim dropped.
 //!
-//! A message backs its claim when it quotes three words or more, as a
-//! quote of his is given, or names a date, as "26 Nov" or "2026-11-26" or
-//! "Thu 26", or a clock time beside Joel's name, as "Joel, 11:30" or
-//! "Joel's 10:05 ruling". A claim inside quotes or backticks is words
-//! about a claim, not one. Cadence's own messages, and answers to them,
-//! are left out, since its asks name the claim they're about.
+//! A claim is backed when its sentence, or the one before or after it,
+//! quotes three words or more in double quotes, as a quote of his is
+//! given, or names a date, as "26 Nov" or "2026-11-26" or "Thu 26", or a
+//! clock time beside Joel's name, as "Joel, 11:30". Code in backticks
+//! quotes no one, and a date elsewhere in a long message dates something
+//! else. A claim inside quotes or backticks is words about a claim, not
+//! one. Cadence's own messages, and answers to them, are left out, since
+//! its asks name the claim they're about.
 
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -105,6 +106,10 @@ const BESIDE: usize = 3;
 /// How many words a quote holds at least to be one given as his.
 const QUOTED: usize = 3;
 
+/// What stands in a message's sentences for a quote long enough to be
+/// his: a character of the private use area, which no message writes.
+const HIS_WORDS: char = '\u{e000}';
+
 /// The measure, from the mesh's messages of the last day under
 /// `state_home`'s harness folder. With no messages folder there, it's
 /// left unjudged, rather than reading no messages as none unsourced.
@@ -176,45 +181,77 @@ pub fn unsourced(sent: &[Message], now: i64) -> Measure {
 }
 
 /// The first sentence of `text` claiming a rule or wish of Joel's, when
-/// nothing in `text` backs it: no quote of three words or more, no date,
-/// and no clock time beside his name.
+/// nothing beside it backs it: neither it nor the sentence before or
+/// after it holds a quote of three words or more, and neither it nor one
+/// of those speaking of him holds a date or a clock time beside his name.
+/// A date in a sentence beside the claim that doesn't speak of him dates
+/// something else, as when a check was run.
 #[must_use]
 pub fn unbacked(text: &str) -> Option<String> {
-    let text = text.replace(['\u{2018}', '\u{2019}'], "'");
-    let (plain, quotes) = unquoted(&text);
-    let claim = sentences(&plain).into_iter().find(|s| claims(s))?;
-    let backed = quotes.iter().any(|quote| quote.split_whitespace().count() >= QUOTED)
-        || dated(&text)
-        || clocked(&text);
-    (!backed).then(|| claim.trim().to_owned())
+    let plain = unquoted(&text.replace(['\u{2018}', '\u{2019}'], "'"));
+    let said = sentences(&plain);
+    let at = said.iter().position(|sentence| claims(sentence))?;
+    let from = at.saturating_sub(1);
+    let near = &said[from..(at + 2).min(said.len())];
+    let quoted = near.iter().any(|sentence| sentence.contains(HIS_WORDS));
+    let of_him = near
+        .iter()
+        .enumerate()
+        .filter(|&(i, sentence)| from + i == at || speaks_of_him(sentence))
+        .map(|(_, sentence)| *sentence)
+        .collect::<Vec<_>>()
+        .join(" ");
+    let backed = quoted || dated(&of_him) || clocked(&of_him);
+    (!backed).then(|| said[at].to_owned())
 }
 
-/// `text` with every span in double quotes or backticks taken out, and
-/// the quoted spans, each a quote's words; a quote left open runs to the
-/// end, as it does as it's read.
-fn unquoted(text: &str) -> (String, Vec<String>) {
-    let (mut plain, mut quotes) = (String::new(), Vec::new());
+/// Whether `sentence` speaks of Joel, by his name or as he.
+fn speaks_of_him(sentence: &str) -> bool {
+    words(sentence)
+        .iter()
+        .any(|word| ["joel", "he", "his", "him"].contains(&word.to_lowercase().as_str()))
+}
+
+/// `text` with its bold and italic marks taken out, and every span in
+/// double quotes or backticks put by a stand-in,
+/// so no claim inside one is read and no stop inside one ends a sentence:
+/// a quote in double quotes of three words or more by the mark of his
+/// words, any other by its quotes around three dots. A quote left open
+/// runs to the end, as it does as it's read.
+fn unquoted(text: &str) -> String {
+    let mut plain = String::new();
     let mut open: Option<(char, String)> = None;
+    let stand_in = |close: char, quote: &str| {
+        let his = close != '`' && quote.split_whitespace().count() >= QUOTED;
+        if his {
+            HIS_WORDS.to_string()
+        } else {
+            format!("{close}...{close}")
+        }
+    };
     for c in text.chars() {
         match open.as_mut() {
             Some((close, quote)) if c == *close => {
-                quotes.push(std::mem::take(quote));
+                plain.push_str(&stand_in(*close, quote.as_str()));
                 open = None;
-                plain.push(' ');
             }
             Some((_, quote)) => quote.push(c),
             None => match c {
                 '"' => open = Some(('"', String::new())),
                 '\u{201c}' => open = Some(('\u{201d}', String::new())),
                 '`' => open = Some(('`', String::new())),
+                // Bold or italic marks stand between a stop and the space
+                // after it, as in "**I ran them.** That", and would join
+                // two sentences into one.
+                '*' => {}
                 _ => plain.push(c),
             },
         }
     }
-    if let Some((_, quote)) = open {
-        quotes.push(quote);
+    if let Some((close, quote)) = open {
+        plain.push_str(&stand_in(close, &quote));
     }
-    (plain, quotes)
+    plain
 }
 
 /// Whether `sentence` claims a rule or wish of Joel's: any of the words

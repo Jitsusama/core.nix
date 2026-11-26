@@ -24,8 +24,9 @@ fn sent(short: &str, ago: i64, from: &str, text: &str) -> Message {
     }
 }
 
-/// On 26 November two cells told the mesh a caution was Joel's rule, with
-/// no word of his behind it, while a third gave his words and when.
+/// On 26 November two cells told the mesh they had broken Joel's rule,
+/// with no word of his behind it, each in a message holding code and
+/// times of its own, while a third gave his words and when.
 #[test]
 fn a_claim_of_his_rule_with_nothing_behind_it_is_counted_and_its_sender_named() {
     let all = [
@@ -33,20 +34,24 @@ fn a_claim_of_his_rule_with_nothing_behind_it_is_counted_and_its_sender_named() 
             "0000000b",
             600,
             "5UTLKM",
-            "That breaks Joel's rule on test machines. I stopped.",
+            "5UTLKM, the raw record. I put down nothing; my last such call was Thu 00:43.\n\
+             **I ran 17 of these myself.** That breaks Joel's rule, and my 05:52 message \
+             undercounted it as 6. Checked by jq over every log since Wed 25 Nov.",
         ),
         sent(
             "0000000a",
             3000,
             "T6E7X6",
-            "Reached the box over ssh.\nI broke Joel's rule, so I stopped.",
+            "T6E7X6, 10:08: held and stopped. I have no grant, and I broke Joel's rule. \
+             (1) I reached the box through `tec run //delivery:lab -- ssh the box now`, from \
+             my tree at main b1cd33e5.",
         ),
         sent(
             "0000000c",
             900,
             "WCJQSG",
-            "Joel, 11:30 Thu 26 Nov, verbatim: \"we need to make sure we have various self \
-             improvement loops built in\"",
+            "Joel wants loops built. Joel, 11:30 Thu 26 Nov, verbatim: \"we need to make \
+             sure we have various self improvement loops built in\"",
         ),
     ];
     let m = unsourced(&all, NOW);
@@ -55,8 +60,8 @@ fn a_claim_of_his_rule_with_nothing_behind_it_is_counted_and_its_sender_named() 
     assert_eq!(
         m.behind,
         [
-            "[0000000a] I broke Joel's rule, so I stopped. · T6E7X6",
-            "[0000000b] That breaks Joel's rule on test machines. · 5UTLKM",
+            "[0000000a] I have no grant, and I broke Joel's rule. · T6E7X6",
+            "[0000000b] That breaks Joel's rule, and my 05:52 message undercounted ... · 5UTLKM",
         ],
         "the unbacked claims weren't named oldest first by id, sentence and sender"
     );
@@ -73,6 +78,8 @@ fn a_quote_a_date_or_a_clock_beside_his_name_backs_a_claim() {
         "Joel ruled it in 2026-11-22's thread.",
         "Joel said at 15:49 that security never blocks the work.",
         "Joel's rule from 10:05 stands.",
+        "Joel ruled it. He said so on 22 Nov.",
+        "Joel ruled it.\n\"Never block the work\", he said.",
     ];
     for text in backed {
         assert!(claims(text), "the case claims nothing, so tests nothing: {text}");
@@ -85,8 +92,10 @@ fn words_that_only_look_like_a_date_or_a_quote_back_nothing() {
     let unbacked_ones = [
         "Joel wants it declined for 3 days.",
         "Joel's rule says `no` here.",
+        "Joel's rule is `never reach the lab box at all`.",
         "Joel wants \"two words\" kept.",
         "At 15:49 the box fell over, and later on it was Joel's rule anyway.",
+        "Joel ruled it. The box fell. It came back. It was 22 Nov by then.",
     ];
     for text in unbacked_ones {
         assert!(unbacked(text).is_some(), "an unbacked claim went uncounted: {text}");
