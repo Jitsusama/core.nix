@@ -4,8 +4,9 @@
 # at the floor or over it, with nothing swapped out between; short from a
 # first reading, one too soon, too stale or from later than now, one under
 # the floor, any swap-out or a count started again; and can't tell, never
-# room, from a figure it can't read, a record it can't keep, a floor that
-# isn't a number or an argument left out. sysctl and
+# room, from a figure it can't read or one too long for bash to compare,
+# a record it can't keep, a floor that isn't a number or an argument left
+# out, which it names in its own words. sysctl and
 # vm_stat are stand-ins printing what the test sets, sysctl only for the
 # figure mac-room.sh must ask for. Time passing is the record set back.
 #
@@ -96,6 +97,12 @@ reading 60 40 100
 look "a share it can't read" fails 100 69 "couldn't read the Mac's room: its share of memory free"
 look "swap-outs it can't read" 40 fails 69 "its swap-outs"
 look "a share that isn't a number" "40%" 100 69 "its share of memory free"
+# A number past bash's integers fails its test inside an if, which would
+# fall through to room.
+reading 60 40 100
+look "a share too long to compare" 99999999999999999999 100 69 "its share of memory free"
+reading 60 99999999999999999999 100
+look "a record too long to compare" 40 100 0 "one reading of the Mac's room so far"
 # A record it can't keep can't tell, never room.
 rm -rf "${record%/*}"
 mkdir -p "${record%/*}"
@@ -112,9 +119,16 @@ if [ "${ended}" != 69 ] || ! grep -qF "isn't a whole number" "${PWD}/said"; then
   failures=$((failures + 1))
 fi
 ended=0
-"${BASH}" "${room}" "${bin}/sysctl" "${bin}/vm_stat" "${record}" 2>/dev/null || ended=$?
-if [ "${ended}" != 69 ]; then
-  echo "FAIL an argument left out: ended ${ended}, wanted 69" >&2
+"${BASH}" "${room}" "${bin}/sysctl" "${bin}/vm_stat" "${record}" 99999999999999999999 \
+  2>"${PWD}/said" || ended=$?
+if [ "${ended}" != 69 ] || ! grep -qF "isn't a whole number" "${PWD}/said"; then
+  echo "FAIL a floor too long to compare: ended ${ended}: $(<"${PWD}/said")" >&2
+  failures=$((failures + 1))
+fi
+ended=0
+"${BASH}" "${room}" "${bin}/sysctl" "${bin}/vm_stat" "${record}" 2>"${PWD}/said" || ended=$?
+if [ "${ended}" != 69 ] || ! grep -qF "mac-room: it takes 4 arguments, given 3" "${PWD}/said"; then
+  echo "FAIL an argument left out: ended ${ended}, wanted 69: $(<"${PWD}/said")" >&2
   failures=$((failures + 1))
 fi
 
