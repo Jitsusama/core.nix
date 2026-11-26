@@ -344,11 +344,9 @@ mod tests {
         assert_eq!(named(&idle, "firmware"), Some("release 2.03"));
     }
 
-    #[test]
-    fn a_usb_card_with_a_long_name_still_says_its_whole_speed() {
-        // The kernel cuts the stream file's first line at 79 characters,
-        // and the Pebble X Plus's name is long enough to cut its speed.
-        let sys = Sys::new("long-name");
+    /// The Pebble X Plus as card1, stopped.
+    fn pebble(name: &str) -> Sys {
+        let sys = Sys::new(name);
         put(&sys.0, "asound/card1/id", "Plus\n");
         put(&sys.0, "asound/card1/usbid", "041e:329a\n");
         put(
@@ -369,10 +367,42 @@ Playback:
         fs::create_dir_all(sys.0.join("class/sound/card1/device")).unwrap();
         put(&sys.0, "class/sound/card1/speed", "12\n");
         put(&sys.0, "class/sound/card1/bcdDevice", "1310\n");
+        sys
+    }
+
+    #[test]
+    fn a_usb_card_with_a_long_name_still_says_its_whole_speed() {
+        // The kernel cuts the stream file's first line at 79 characters,
+        // and the Pebble X Plus's name is long enough to cut its speed.
+        let sys = pebble("long-name");
         let all = sound(&sys.0.join("asound"), &sys.0, None, &|_| Control::default());
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].0, "Plus:out");
         assert_eq!(named(&all[0].1, "USB"), Some("12 Mbit/s"));
         assert_eq!(named(&all[0].1, "firmware"), Some("release 13.10"));
+    }
+
+    #[test]
+    fn the_pebble_says_its_lighting_first_as_its_file_has_it() {
+        let sys = pebble("lighting");
+        let lit = |said: Option<&str>| {
+            let all = sound(&sys.0.join("asound"), &sys.0, said, &|_| Control::default());
+            let first = all[0].1.first().cloned();
+            first
+                .filter(|(name, _)| name == "lighting")
+                .map(|(_, value)| value)
+        };
+        assert_eq!(lit(Some("on")).as_deref(), Some("on"));
+        assert_eq!(lit(Some("off")).as_deref(), Some("off while unused"));
+        assert_eq!(
+            lit(Some("off by hand")).as_deref(),
+            Some("off at its button")
+        );
+        assert_eq!(
+            lit(Some("dim")),
+            None,
+            "a word the file doesn't use was said"
+        );
+        assert_eq!(lit(None), None, "lighting was said with no file");
     }
 }

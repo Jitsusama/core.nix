@@ -190,7 +190,7 @@ pub(crate) fn usb_c(sys: &Path) -> Facts {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::tests::*;
 
@@ -214,7 +214,7 @@ mod tests {
 
     /// A monitor's partner on a USB-C port, as UCSI shows one, charging the
     /// machine through the port's supply when it's port1.
-    fn partner(root: &Path, port: &str) {
+    pub(crate) fn partner(root: &Path, port: &str) {
         let partner = format!("class/typec/{port}-partner");
         put(root, &format!("{partner}/{port}-partner.0/svid"), "ff01\n");
         put(root, &format!("{partner}/{port}-partner.0/active"), "yes\n");

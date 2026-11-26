@@ -46,16 +46,17 @@ fn c_text(bytes: &[u8]) -> String {
 /// Every element id a card's control device has.
 fn element_ids(control: &File) -> Vec<[u8; ELEMENT_ID]> {
     let mut list = [0u8; 80];
-    if !ask(control, SNDRV_CTL_IOCTL_ELEM_LIST, &mut list) {
+    // SAFETY: room for no ids, so the list's null pointer is never written.
+    if !unsafe { ask(control, SNDRV_CTL_IOCTL_ELEM_LIST, &mut list) } {
         return Vec::new();
     }
     let count = word(&list, 12);
     let mut ids = vec![[0u8; ELEMENT_ID]; count as usize];
     list[4..8].copy_from_slice(&count.to_ne_bytes());
     list[16..24].copy_from_slice(&(ids.as_mut_ptr() as usize as u64).to_ne_bytes());
-    // The ids are written where the list's pointer says, which is `ids`,
-    // as long as count says.
-    if !ask(control, SNDRV_CTL_IOCTL_ELEM_LIST, &mut list) {
+    // SAFETY: the ids are written where the list's pointer says, which is
+    // `ids`, as long as count says, and it lasts the call.
+    if !unsafe { ask(control, SNDRV_CTL_IOCTL_ELEM_LIST, &mut list) } {
         return Vec::new();
     }
     ids.truncate(word(&list, 8) as usize);
@@ -66,7 +67,8 @@ fn element_ids(control: &File) -> Vec<[u8; ELEMENT_ID]> {
 pub(crate) fn control(control: &File) -> Control {
     let mut said = Control::default();
     let mut info = [0u8; 376];
-    if ask(control, SNDRV_CTL_IOCTL_CARD_INFO, &mut info) {
+    // SAFETY: a card's info holds no pointer.
+    if unsafe { ask(control, SNDRV_CTL_IOCTL_CARD_INFO, &mut info) } {
         said.mixer = c_text(&info[168..248]);
         said.components = c_text(&info[248..376]);
     }
@@ -77,7 +79,8 @@ pub(crate) fn control(control: &File) -> Control {
         }
         let mut value = [0u8; ELEMENT_VALUE];
         value[..ELEMENT_ID].copy_from_slice(&id);
-        if ask(control, SNDRV_CTL_IOCTL_ELEM_READ, &mut value) {
+        // SAFETY: an element's value holds no pointer.
+        if unsafe { ask(control, SNDRV_CTL_IOCTL_ELEM_READ, &mut value) } {
             said.jacks.push((name, word(&value, 72) != 0));
         }
     }
@@ -330,7 +333,8 @@ pub(crate) fn open_control(dev: &Path, number: &str) -> Option<File> {
         .ok()?;
     let mut on = [0u8; 4];
     on.copy_from_slice(&1i32.to_ne_bytes());
-    ask(&control, SNDRV_CTL_IOCTL_SUBSCRIBE_EVENTS, &mut on).then_some(control)
+    // SAFETY: the request's argument is a plain int.
+    unsafe { ask(&control, SNDRV_CTL_IOCTL_SUBSCRIBE_EVENTS, &mut on) }.then_some(control)
 }
 
 /// Whether a control device's events say a jack changed: each is 72
@@ -484,9 +488,14 @@ mod tests {
                 "amplifiers: 4 \u{d7} Cirrus Logic CS35L57"
             ]
         );
-        // A card on USB is left to its own reading.
-        put(&sys.0, "asound/card1/id", "MV7\n");
-        put(&sys.0, "asound/card1/usbid", "14ed:1012\n");
+        // A card on USB is left to its own reading, though it has a device
+        // the built-in reading would find.
+        let usb = sys.0.join("asound/card1");
+        put(&usb, "id", "MV7\n");
+        put(&usb, "usbid", "14ed:1012\n");
+        put(&usb, "pcm0c/info", "card: 1\ndevice: 0\nid: USB Audio\n");
+        put(&usb, "pcm0c/sub0/status", "closed\n");
+        put(&usb, "pcm0c/sub0/hw_params", "closed\n");
         let all = sound(&sys.0.join("asound"), &sys.0, None, &|_| Control::default());
         assert_eq!(
             all.iter().map(|(key, _)| key.as_str()).collect::<Vec<_>>(),

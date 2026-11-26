@@ -83,10 +83,27 @@ fn word(bytes: &[u8], at: usize) -> u32 {
 }
 
 /// Asks a device a question by its ioctl, V4L2's, UVC's or ALSA's control
-/// device's, saying whether it answered.
-fn ask(node: &File, request: u64, buffer: &mut [u8]) -> bool {
-    // SAFETY: each request is given a buffer of the size its number says.
+/// device's, saying whether it answered. A buffer of another size than the
+/// request's number says is refused unasked.
+///
+/// # Safety
+///
+/// Where the request's struct holds a pointer, as ALSA's element list and
+/// UVC's control query do, the buffer must hold one to memory that lasts
+/// the call and is as long as the struct says.
+unsafe fn ask(node: &File, request: u64, buffer: &mut [u8]) -> bool {
+    if asks_for(request) != buffer.len() {
+        return false;
+    }
+    // SAFETY: the buffer is as long as the request says, and the caller
+    // vouches for any pointer it holds.
     unsafe { ioctl(node.as_raw_fd(), request, buffer.as_mut_ptr()) == 0 }
+}
+
+/// The size of the struct an ioctl's number says it reads and writes: the
+/// 14 bits above its type and number.
+fn asks_for(request: u64) -> usize {
+    (request >> 16 & 0x3FFF) as usize
 }
 
 /// A device's facts, in the order they're shown.
@@ -101,8 +118,10 @@ fn fact(facts: &mut Facts, name: &str, value: impl Into<String>) {
 
 // Each kind of device is read in a file of its own, and how changes are heard
 // in another. What several kinds read alike (USB descriptors, the input
-// layer's capabilities, inotify's events) has a file of its own too, so a file
-// imports the one that holds what it needs rather than a neighbour's.
+// layer's capabilities and buses, inotify's events) has a file of its own too,
+// so a file imports the one that holds what it needs rather than a neighbour's.
+// Sound is the one kind read in two files: a USB card's in sound.rs and a
+// built-in card's in own_sound.rs, which share how ALSA says a stream runs.
 
 mod bluetooth;
 mod cable;
@@ -235,5 +254,38 @@ Capture:
         event.extend_from_slice(&u32::try_from(padded.len()).unwrap().to_ne_bytes());
         event.extend_from_slice(&padded);
         event
+    }
+
+    #[test]
+    fn every_rust_file_beside_the_root_is_one_of_its_modules() {
+        // source.nix copies every .rs file here, so one left out of the
+        // list below would build into nothing, and its tests never run.
+        let root = include_str!("facts.rs");
+        let folder = Path::new(file!()).parent().unwrap();
+        let mut files = 0;
+        for entry in fs::read_dir(folder).unwrap().flatten() {
+            let path = entry.path();
+            let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
+                continue;
+            };
+            if path.extension().is_some_and(|ext| ext == "rs") && stem != "facts" {
+                files += 1;
+                assert!(
+                    root.lines().any(|line| line == format!("mod {stem};")),
+                    "{} isn't a module of facts.rs",
+                    path.display()
+                );
+            }
+        }
+        assert!(files > 0, "no modules were found beside {}", file!());
+    }
+
+    #[test]
+    fn an_ioctl_s_number_says_the_size_of_what_it_asks() {
+        // The largest the program asks, the smallest, and one between,
+        // each above the direction bits and below the type.
+        assert_eq!(asks_for(0xC4C8_5512), 1224, "ALSA's element value");
+        assert_eq!(asks_for(0xC0D0_5604), 208, "V4L2's format");
+        assert_eq!(asks_for(0xC004_5516), 4, "ALSA's subscribe");
     }
 }

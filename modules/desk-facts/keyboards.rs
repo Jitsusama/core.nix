@@ -3,8 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::bluetooth::BLUETOOTH_BUS;
-use crate::input::{FEWEST_KEYS, Heard, KEYBOARD_KEYS, MOUSE_BUTTONS, set_bits};
+use crate::input::{BLUETOOTH_BUS, FEWEST_KEYS, Heard, KEYBOARD_KEYS, MOUSE_BUTTONS, set_bits};
 use crate::usb::release;
 use crate::{Facts, fact};
 
@@ -251,26 +250,6 @@ mod tests {
             0,
             ["AT Translated Set 2 keyboard", "0011", keys, "0"],
         );
-        // Left out: one made by a program, one on Bluetooth and the
-        // touchpad's mouse, which isn't on USB.
-        input_at(
-            &sys.0,
-            "devices/virtual/input",
-            42,
-            ["keyd virtual keyboard", "0003", keys, "0"],
-        );
-        input_at(
-            &sys.0,
-            "devices/virtual/misc/uhid/0005:25A7:FAA0.0009",
-            43,
-            ["EM11", "0005", keys, "0"],
-        );
-        input_at(
-            &sys.0,
-            "devices/i2c-14/0018:2C2F:0034.0004",
-            44,
-            ["Touchpad Mouse", "0018", "1f0000 0 0 0 0", "3"],
-        );
         let found = keyboards(&sys.0);
         let said: Vec<(&str, Vec<String>)> = found
             .iter()
@@ -304,6 +283,44 @@ mod tests {
                     ]
                 ),
             ]
+        );
+    }
+
+    #[test]
+    fn a_keyboard_made_by_a_program_or_on_bluetooth_and_a_touchpad_are_left_out() {
+        let sys = Sys::new("left-out");
+        let keys = "10000 0 0 0 fffffffffffffffe";
+        input_at(
+            &sys.0,
+            "devices/virtual/input",
+            42,
+            ["keyd virtual keyboard", "0003", keys, "0"],
+        );
+        // On Bluetooth LE through uhid, then on Bluetooth Classic, which
+        // is in no virtual folder, so only its bus leaves it out.
+        input_at(
+            &sys.0,
+            "devices/virtual/misc/uhid/0005:25A7:FAA0.0009",
+            43,
+            ["EM11", "0005", keys, "0"],
+        );
+        input_at(
+            &sys.0,
+            "devices/pci0000:00/0000:00:14.7/bluetooth/hci0/hci0:3/0005:05AC:0255.0002",
+            45,
+            ["Magic Keyboard", "0005", keys, "0"],
+        );
+        // The touchpad's mouse, which isn't on USB.
+        input_at(
+            &sys.0,
+            "devices/i2c-14/0018:2C2F:0034.0004",
+            44,
+            ["Touchpad Mouse", "0018", "1f0000 0 0 0 0", "3"],
+        );
+        assert_eq!(
+            keyboards(&sys.0),
+            [] as [(String, Facts); 0],
+            "a device another reading tells, or none should, was told"
         );
     }
 

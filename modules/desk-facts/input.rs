@@ -3,6 +3,8 @@
 
 use crate::{Facts, fact};
 
+/// The Bluetooth bus, as the input and HID layers number it.
+pub(crate) const BLUETOOTH_BUS: &str = "0005";
 /// The kernel's mouse buttons, `BTN_LEFT` to `BTN_TASK`.
 pub(crate) const MOUSE_BUTTONS: std::ops::RangeInclusive<usize> = 0x110..=0x117;
 /// A keyboard's keys, `KEY_ESC` to the last of the first page's.
@@ -89,5 +91,48 @@ mod tests {
         assert_eq!(set_bits("1f0000 0 0 0 0"), vec![272, 273, 274, 275, 276]);
         assert_eq!(set_bits("0"), Vec::<usize>::new());
         assert_eq!(set_bits("not hex"), Vec::<usize>::new());
+    }
+
+    fn said(heard: Heard, name: &str) -> Option<String> {
+        heard
+            .facts()
+            .into_iter()
+            .find_map(|(fact, value)| (fact == name).then_some(value))
+    }
+
+    #[test]
+    fn each_wheel_is_said_alone_or_with_the_other() {
+        let wheel = |axes: &[usize]| {
+            said(
+                Heard {
+                    axes: axes.to_vec(),
+                    ..Heard::default()
+                },
+                "wheel",
+            )
+        };
+        assert_eq!(wheel(&[REL_HWHEEL]).as_deref(), Some("horizontal"));
+        assert_eq!(wheel(&[REL_WHEEL]).as_deref(), Some("vertical"));
+        assert_eq!(
+            wheel(&[REL_WHEEL, REL_HWHEEL]).as_deref(),
+            Some("vertical and horizontal")
+        );
+        assert_eq!(wheel(&[0, 1]), None, "a mouse that only moves has no wheel");
+    }
+
+    #[test]
+    fn keys_are_said_from_the_fewest_a_keyboard_has() {
+        let keys = |count: usize| {
+            said(
+                Heard {
+                    // Each twice, which counts once.
+                    keys: (1..=count).chain(1..=count).collect(),
+                    ..Heard::default()
+                },
+                "keys",
+            )
+        };
+        assert_eq!(keys(FEWEST_KEYS - 1), None, "a remote's keys were said");
+        assert_eq!(keys(FEWEST_KEYS), Some(FEWEST_KEYS.to_string()));
     }
 }
