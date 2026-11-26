@@ -614,6 +614,7 @@ gather {
     ./modules/disk-guard/checks.nix
     ./modules/disk-loss-panic/checks.nix
     ./modules/disko/checks.nix
+    ./modules/du/checks.nix
     ./modules/eero/checks.nix
     ./modules/elsewhere/checks.nix
     ./modules/ergodox/checks.nix
