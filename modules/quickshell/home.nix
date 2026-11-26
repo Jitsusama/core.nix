@@ -2450,7 +2450,18 @@ in
         # session's window among those niri lists by the pid drawing it
         # (Sessions.qml's kittyPid). It goes with the folder when the unit
         # stops; `$$` hands sh the variable systemd sets for the main pid.
-        ExecStartPost = "${pkgs.runtimeShell} -c 'echo \"$$MAINPID\" > %t/pi-sessions/kitty.pid'";
+        # A write that fails fails the start, as a kitty with no pid beside
+        # it would have every window it draws refused. Then the shell is
+        # told it started (Sessions.qml's kittyStarted), since its watch
+        # misses a file in a folder made anew and a kitty started again
+        # draws nothing till asked. A shell starting reads the file as it
+        # does; one that doesn't hear within 5 s, stalled, is journalled,
+        # and a kept viewer waits for a press.
+        ExecStartPost =
+          "${pkgs.runtimeShell} -c 'echo \"$$MAINPID\" > %t/pi-sessions/kitty.pid || exit 1"
+          + "; ${lib.getExe' pkgs.coreutils "timeout"} 5"
+          + " ${lib.getExe' pkgs.quickshell "qs"} ipc call sessions kittyStarted > /dev/null 2>&1"
+          + " || echo \"sessions-kitty: the shell did not hear it started\" >&2'";
         # The socket's folder, which only Joel's login may open.
         RuntimeDirectory = "pi-sessions";
         RuntimeDirectoryMode = "0700";

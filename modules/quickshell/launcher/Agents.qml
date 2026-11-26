@@ -868,10 +868,13 @@ Provider {
                 Theme.alert]]);
         }
 
-        // Said by why it held, in words of its own (Sessions' unhosted).
+        // Said by why it held, in words of its own (Sessions' unhosted),
+        // plainly where it tells of a viewer opening or viewed, the alert
+        // kept for a press that didn't view (SessionRow.viewedWhy).
         function onUnhosted(session, why) {
             provider.launcher?.tellOnOpen([[provider.footName(session),
-                provider.elsewhere(why, session), why === "opening" ? Theme.text : Theme.alert]]);
+                provider.elsewhere(why, session),
+                SessionRow.viewedWhy(why) ? Theme.text : Theme.alert]]);
         }
 
         function onUnopened(session) {
