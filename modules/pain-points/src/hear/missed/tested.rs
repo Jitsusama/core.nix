@@ -164,16 +164,24 @@ impl Saying<'_> {
 }
 
 /// Moves the miss on `line` to `owner`, adding whose it was to its
-/// `owned_before`, and says whether it was `owner`'s already.
+/// `owned_before`, and says whether it was `owner`'s already: a cell's
+/// address read whatever its case, as the mesh reads it, so a move to the
+/// same cell typed in small letters moves nothing.
 fn moved_to(line: &mut Value, owner: &str) -> bool {
     let was = line["owner"].as_str().map(str::to_owned);
-    if was.as_deref() == Some(owner) {
+    if was
+        .as_deref()
+        .is_some_and(|was| was.eq_ignore_ascii_case(owner))
+    {
         return true;
     }
     if let Some(was) = was {
-        match line.get_mut("owned_before").and_then(Value::as_array_mut) {
-            Some(before) => before.push(json!(was)),
-            None => line["owned_before"] = json!([was]),
+        // Whatever `owned_before` held that isn't a list is kept as its
+        // first, so no earlier owner is lost to a hand-written line.
+        match line.get_mut("owned_before") {
+            Some(Value::Array(before)) => before.push(json!(was)),
+            Some(Value::Null) | None => line["owned_before"] = json!([was]),
+            Some(other) => *other = json!([other.take(), was]),
         }
     }
     line["owner"] = json!(owner);
@@ -505,6 +513,33 @@ mod tests {
             (&line["owner"], &line["owned_before"], &line["test"]),
             (&json!("85PKB2"), &json!(["WCJQSG", "KP0L6A"]), &json!(test)),
             "a move with its test didn't take both, keeping each owner before: {line}"
+        );
+    }
+
+    #[test]
+    fn a_move_reads_a_cell_whatever_its_case_and_keeps_an_owner_before_not_listed() {
+        let heard = json!({"at": AT, "owner": "KP0L6A", "owned_before": "WCJQSG"});
+        let path = ledger("moved-cased", &format!("{heard}\n"));
+        let read = |path: &Path| -> Value {
+            let kept = fs::read_to_string(path).expect("the ledger");
+            serde_json::from_str(kept.trim()).expect("the miss's line")
+        };
+        let said = named(&flags(&path, &[("--owner", "kp0l6a")])).expect("moved");
+        assert!(
+            said.contains("already"),
+            "the same cell in small letters was read as another: {said}"
+        );
+        assert_eq!(
+            read(&path)["owner"],
+            json!("KP0L6A"),
+            "a move to the same cell wrote its owner again"
+        );
+        named(&flags(&path, &[("--owner", "85PKB2")])).expect("moved");
+        let line = read(&path);
+        assert_eq!(
+            (&line["owner"], &line["owned_before"]),
+            (&json!("85PKB2"), &json!(["WCJQSG", "KP0L6A"])),
+            "an owner before written as no list was lost: {line}"
         );
     }
 
