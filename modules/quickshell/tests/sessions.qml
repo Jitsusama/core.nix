@@ -1640,16 +1640,50 @@ ShellRoot {
             attach: keptOne("s-kept-came-late").waiting, here: true });
         kittyPidFile.setText("7272\n");
         Sessions.readKittyPid();
+        untell();
         Sessions.untaken(cameLate, String(Sessions.attaching[cameLate]));
+        const lateTold = heard();
         if ("askedAgainAt" in Sessions)
             Sessions.askedAgainAt = Object.assign({}, Sessions.askedAgainAt,
                 { [cameLate]: Date.now() - Sessions.answerPatience - 1000 });
         untell();
         Sessions.windowHeard({ id: 118, pid: 7272, opened: cameLate });
         expect("a press asked again whose viewer comes past the script's answer is left untold",
-            heard() === "  x0", heard());
+            lateTold === "CAMELATE askedAgain x1" && heard() === "  x0", `${lateTold} ${heard()}`);
         Sessions.goingTo = goingBeforeCameLate;
         Sessions.forgetAsk(cameLate);
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        // A re-ask whose window came refused is over: a fresh press once that
+        // window closes asks afresh, so its viewer coming isn't said to have
+        // come when asked for once more.
+        const cameFresh = "pi-hosted.s-kept-came-fresh";
+        Sessions.keepPlaces({ "s-kept-came-fresh": keptOne("s-kept-came-fresh") });
+        Sessions.viewKept();
+        const goingBeforeCameFresh = Sessions.goingTo;
+        const cameFreshRow = { address: "CAMEFRESH",
+            presence: { hosted: true, session: "s-kept-came-fresh" },
+            attach: keptOne("s-kept-came-fresh").waiting, here: true };
+        Sessions.goTo(cameFreshRow);
+        kittyPidFile.setText("7474\n");
+        Sessions.readKittyPid();
+        Sessions.untaken(cameFresh, String(Sessions.attaching[cameFresh]));
+        const cameFreshStray = { id: 120, pid: 880, opened: cameFresh };
+        const listedBeforeCameFresh = Niri.windows;
+        Niri.windows = Object.assign({}, listedBeforeCameFresh, { "120": cameFreshStray });
+        untell();
+        Sessions.windowHeard(cameFreshStray);
+        const cameFreshRefused = heard();
+        Niri.windows = listedBeforeCameFresh;
+        Sessions.goTo(Object.assign({}, cameFreshRow, { address: "CAMEFRESHTOO" }));
+        const cameFreshAsked = Sessions.pressedFor[cameFresh]?.address;
+        untell();
+        Sessions.windowHeard({ id: 121, pid: 7474, opened: cameFresh });
+        expect("a fresh press after a re-ask came refused isn't told its viewer came again",
+            cameFreshRefused === "CAMEFRESH disowned x1" && cameFreshAsked === "CAMEFRESHTOO"
+            && heard() === "  x0", `${cameFreshRefused} ${cameFreshAsked} ${heard()}`);
+        Sessions.goingTo = goingBeforeCameFresh;
+        Sessions.forgetAsk(cameFresh);
         kittyPidFile.setText("4242\n");
         Sessions.readKittyPid();
         // A press told disowned, as the walk's viewer came refused, is told
@@ -2424,10 +2458,12 @@ ShellRoot {
             root.unjoined = session.address;
         }
 
+        // Counted first, so a tell to no press is counted too (heard),
+        // rather than lost to the throw its address makes.
         function onUnhosted(session, why) {
+            root.unhostedTold += 1;
             root.unhosted = session.address;
             root.unhostedWhy = why ?? "";
-            root.unhostedTold += 1;
         }
 
         function onUnopened(session) {
