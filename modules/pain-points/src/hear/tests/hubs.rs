@@ -2,6 +2,8 @@
 //! a holder of that subject, kept as a need, and to the fallback only
 //! where no hub takes it.
 
+use subject_hubs::Hub;
+
 use super::*;
 
 /// The day's cells, with a holder and a hub besides, and a live cell the
@@ -13,16 +15,8 @@ const HELD: &str = r#"{"Ok":{"Sessions":[
     {"id":"s-fit","address":"FIT002","state":"idle"},
     {"id":"s-hub","address":"HUB001","state":"idle"}]}}"#;
 
-fn hub(subject: &str, cell: &str, fits: &[&str]) -> subject_hubs::Hub {
-    subject_hubs::Hub {
-        subject: subject.into(),
-        cell: cell.into(),
-        fits: fits.iter().map(|f| (*f).to_owned()).collect(),
-    }
-}
-
 /// This place's ears, hearing `hubs` from the node.
-fn ears_with(place: &Place, hubs: Vec<subject_hubs::Hub>) -> Ears {
+fn ears_with(place: &Place, hubs: Vec<Hub>) -> Ears {
     Ears {
         hubs,
         ..place.ears()
@@ -62,7 +56,11 @@ fn a_void_pain_goes_to_a_holder_of_its_words_subject_and_is_kept_as_a_need() {
     a_day(&place);
     let ears = ears_with(
         &place,
-        vec![hub("launcher", "HUB001", &["NEVER1", "VOID01", "FIT002"])],
+        vec![Hub::new(
+            "launcher",
+            "HUB001",
+            &["NEVER1", "VOID01", "FIT002"],
+        )],
     );
     let asked = asked_in(&ears, HELD, |_| Sent::Went);
     assert_eq!(
@@ -120,7 +118,7 @@ fn an_ended_sessions_pain_goes_to_a_holder_of_what_it_worked_on() {
         {"id":"s-live","address":"ABC123","state":"ended","working_on":"the dock's drawer"},
         {"id":"s-fit","address":"FIT002","state":"idle"},
         {"id":"s-hub","address":"HUB001","state":"idle"}]}}"#;
-    let ears = ears_with(&place, vec![hub("dock:drawer", "HUB001", &["FIT002"])]);
+    let ears = ears_with(&place, vec![Hub::new("dock:drawer", "HUB001", &["FIT002"])]);
     let asked = asked_in(&ears, cells, |_| Sent::Went);
     assert_eq!(
         owners_of(&asked, "broken again"),
@@ -138,14 +136,17 @@ fn one_no_hub_takes_goes_to_the_fallback_as_before() {
     for (hubs, why) in [
         (vec![], "no hub named"),
         (
-            vec![hub("switch", "HUB001", &["FIT002"])],
+            vec![Hub::new("switch", "HUB001", &["FIT002"])],
             "another subject's",
         ),
         (
-            vec![hub("launcher", "HUB001", &["VOID01", "NEVER1"])],
+            vec![Hub::new("launcher", "HUB001", &["VOID01", "NEVER1"])],
             "its only holders its own and a refused one",
         ),
-        (vec![hub("launcher", "GONE01", &["FIT002"])], "its hub gone"),
+        (
+            vec![Hub::new("launcher", "GONE01", &["FIT002"])],
+            "its hub gone",
+        ),
     ] {
         let place = Place::new("hub-none");
         place.routes();
@@ -170,7 +171,7 @@ fn only_a_send_to_a_holder_that_failed_spends_a_try() {
         let place = Place::new("hub-tries");
         place.routes();
         a_day(&place);
-        let ears = ears_with(&place, vec![hub("launcher", "HUB001", &["FIT002"])]);
+        let ears = ears_with(&place, vec![Hub::new("launcher", "HUB001", &["FIT002"])]);
         let _ = asked_in(&ears, HELD, |to| {
             if to == "FIT002" { answer } else { Sent::Went }
         });
@@ -198,7 +199,7 @@ fn a_need_that_couldnt_be_kept_is_a_trouble_and_the_pain_still_sent() {
     a_day(&place);
     // A file where the mesh's folder goes, so no needs folder can be made.
     fs::write(place.root.join("mesh"), "").expect("a file in the folder's place");
-    let ears = ears_with(&place, vec![hub("launcher", "HUB001", &["FIT002"])]);
+    let ears = ears_with(&place, vec![Hub::new("launcher", "HUB001", &["FIT002"])]);
     let hour = hear_putting(&ears, HELD, &mut |_, _, _| Sent::Went).expect("a run");
     assert!(
         hour.troubles

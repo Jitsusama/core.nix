@@ -3,14 +3,6 @@ use std::path::{Path, PathBuf};
 
 use super::*;
 
-fn hub(subject: &str, cell: &str, fits: &[&str]) -> Hub {
-    Hub {
-        subject: subject.to_owned(),
-        cell: cell.to_owned(),
-        fits: fits.iter().map(|f| (*f).to_owned()).collect(),
-    }
-}
-
 /// A folder of a test's own, taken away once it's dropped.
 struct Folder(PathBuf);
 
@@ -41,9 +33,9 @@ fn the_nodes_answer_names_one_hub_or_several_and_an_error_none() {
     assert_eq!(
         from_list(&answer.replace('\n', "")).expect("a list"),
         vec![
-            hub("cadence", "H1", &["F1", "F2"]),
-            hub("crashes:chrome", "H2", &["F3"]),
-            hub("crashes:chrome", "H3", &[]),
+            Hub::new("cadence", "H1", &["F1", "F2"]),
+            Hub::new("crashes:chrome", "H2", &["F3"]),
+            Hub::new("crashes:chrome", "H3", &[]),
         ],
         "a hub record was misread, a record of another kind taken for one, or a \
          subject that isn't a plain name taken, or a record that can't be \
@@ -90,11 +82,11 @@ fn a_subject_is_its_words() {
 #[test]
 fn the_narrowest_live_subject_said_takes_it_first() {
     let hubs = [
-        hub("crashes", "H1", &["B"]),
-        hub("zzz:chrome", "H8", &["B"]),
-        hub("crashes:chrome", "GONE", &["C"]),
-        hub("x.y:chrome", "H9", &["B"]),
-        hub("crashes:chrome", "H2", &["A"]),
+        Hub::new("crashes", "H1", &["B"]),
+        Hub::new("zzz:chrome", "H8", &["B"]),
+        Hub::new("crashes:chrome", "GONE", &["C"]),
+        Hub::new("x.y:chrome", "H9", &["B"]),
+        Hub::new("crashes:chrome", "H2", &["A"]),
     ];
     let said = words("crashes:chrome:gpu");
     let taken: Vec<(&str, Vec<String>)> = taking(&said, &hubs, &|a| a != "GONE")
@@ -252,7 +244,7 @@ fn the_list_is_read_from_the_line_with_its_id() {
     );
     assert_eq!(
         listed(&socket).expect("listed"),
-        [hub("cadence", "H1", &["F1"])],
+        [Hub::new("cadence", "H1", &["F1"])],
         "a line other than the list's answer was read as it"
     );
     let (_folder, socket) = node("unlisted", &[r#"{"id":1,"hello":"work"}"#]);

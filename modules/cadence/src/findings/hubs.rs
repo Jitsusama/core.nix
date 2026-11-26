@@ -140,14 +140,6 @@ mod tests {
     use crate::findings::tests::{day, found};
     use crate::findings::{tell, update};
 
-    fn hub(subject: &str, cell: &str, fits: &[&str]) -> Hub {
-        Hub {
-            subject: subject.to_owned(),
-            cell: cell.to_owned(),
-            fits: fits.iter().map(|f| (*f).to_owned()).collect(),
-        }
-    }
-
     fn owners() -> BTreeMap<String, String> {
         [("crashes".to_owned(), "A".to_owned())].into()
     }
@@ -173,10 +165,10 @@ mod tests {
         ledger[1].owner = Some("C".into());
         ledger[1].due = 10 * DAY;
         let hubs = [
-            hub("crashes", "H1", &["B"]),
-            hub("zzz:chrome", "H8", &["B"]),
-            hub("x.y:chrome", "H9", &["B"]),
-            hub("crashes:chrome", "H2", &["A", "E", "C", "D"]),
+            Hub::new("crashes", "H1", &["B"]),
+            Hub::new("zzz:chrome", "H8", &["B"]),
+            Hub::new("x.y:chrome", "H9", &["B"]),
+            Hub::new("crashes:chrome", "H2", &["A", "E", "C", "D"]),
         ];
         let live = |a: &str| a != "E";
         let (put, lines) = put_late(&mut ledger, &hubs, live, 2 * DAY + 1);
@@ -235,11 +227,14 @@ mod tests {
         for (hubs, why) in [
             (vec![], "no hub stands"),
             (
-                vec![hub("crashes:chrome", "H2", &["A"])],
+                vec![Hub::new("crashes:chrome", "H2", &["A"])],
                 "its owner the only holder",
             ),
-            (vec![hub("crashes", "GONE", &["B"])], "its hub gone"),
-            (vec![hub("switch", "H3", &["B"])], "another subject's hub"),
+            (vec![Hub::new("crashes", "GONE", &["B"])], "its hub gone"),
+            (
+                vec![Hub::new("switch", "H3", &["B"])],
+                "another subject's hub",
+            ),
         ] {
             let mut ledger = ledger("crashes:chrome");
             let (put, lines) = put_late(&mut ledger, &hubs, |a| a != "GONE", 2 * DAY + 1);
@@ -253,7 +248,7 @@ mod tests {
     fn a_must_is_never_put_to_a_hub() {
         let mut ledger = ledger("crashes:chrome");
         ledger[0].kind = Some("hole".into());
-        let hubs = [hub("crashes:chrome", "H2", &["D"])];
+        let hubs = [Hub::new("crashes:chrome", "H2", &["D"])];
         let (put, lines) = put_late(&mut ledger, &hubs, |_| true, 2 * DAY + 1);
         assert!(
             put.is_empty(),
@@ -265,7 +260,7 @@ mod tests {
     #[test]
     fn a_put_finding_stays_with_its_holder_until_it_reopens() {
         let mut ledger = ledger("crashes:chrome");
-        let hubs = [hub("crashes:chrome", "H2", &["D"])];
+        let hubs = [Hub::new("crashes:chrome", "H2", &["D"])];
         let _ = put_late(&mut ledger, &hubs, |_| true, 2 * DAY + 1);
         let found_again = [found("crashes:chrome")];
         update(
@@ -302,7 +297,7 @@ mod tests {
     #[test]
     fn one_whose_holder_went_goes_back_to_its_owner_and_names_no_flag() {
         let mut ledger = ledger("crashes:chrome");
-        let hubs = [hub("crashes:chrome", "H2", &["D", "E"])];
+        let hubs = [Hub::new("crashes:chrome", "H2", &["D", "E"])];
         let _ = put_late(&mut ledger, &hubs, |_| true, 2 * DAY + 1);
         let gone: BTreeSet<String> = ["D".to_owned()].into();
         assert_eq!(

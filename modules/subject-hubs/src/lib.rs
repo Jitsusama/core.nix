@@ -36,6 +36,19 @@ pub struct Hub {
     pub fits: Vec<String>,
 }
 
+impl Hub {
+    /// The hub `cell` for `subject`, naming `fits` as its holders, best
+    /// first: the one way to make one, so every crate's tests build it
+    /// alike.
+    pub fn new(subject: &str, cell: &str, fits: &[&str]) -> Self {
+        Self {
+            subject: subject.to_owned(),
+            cell: cell.to_owned(),
+            fits: fits.iter().map(|f| (*f).to_owned()).collect(),
+        }
+    }
+}
+
 /// A need as the mesh's day file keeps it, in the harness's shape.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Need {

@@ -531,14 +531,6 @@ mod tests {
         assert_eq!(owner("s-ended", false, &cells, &Routes::default()), None);
     }
 
-    fn hub(subject: &str, cell: &str, fits: &[&str]) -> subject_hubs::Hub {
-        subject_hubs::Hub {
-            subject: subject.into(),
-            cell: cell.into(),
-            fits: fits.iter().map(|f| (*f).to_owned()).collect(),
-        }
-    }
-
     #[test]
     fn a_pains_subject_is_its_sessions_purpose_else_his_words() {
         let cells = super::cells(
@@ -607,13 +599,13 @@ mod tests {
             .map(String::from)
             .collect();
         let hubs = [
-            hub("launcher", "HUB001", &["C00003"]),
-            hub(
+            subject_hubs::Hub::new("launcher", "HUB001", &["C00003"]),
+            subject_hubs::Hub::new(
                 "launcher:width",
                 "HUB002",
                 &["VOID01", "GONE01", "A00001", "B00002"],
             ),
-            hub("launcher:dock", "HUB001", &["C00003"]),
+            subject_hubs::Hub::new("launcher:dock", "HUB001", &["C00003"]),
         ];
         let held: BTreeMap<String, usize> =
             [("A00001".to_owned(), 2), ("B00002".to_owned(), 1)].into();
