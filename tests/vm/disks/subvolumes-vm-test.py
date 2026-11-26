@@ -10,6 +10,7 @@ with `-k`. The tests need no value from Nix.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 import pytest
@@ -219,24 +220,32 @@ def test_a_folder_moves_once_the_process_holding_it_quits(moved: BaseMachine) ->
     moved.succeed(f"grep -qx opened {HOME}/raced/f2")
 
 
-def test_a_waiter_finding_nothing_three_times_running_starts_the_move_no_more(
+def test_a_waiter_that_held_nothing_a_minute_three_times_running_starts_the_move_no_more(
     moved: BaseMachine,
 ) -> None:
-    """A waiter that finds nothing held after three such starts of the move leaves it be.
+    """A waiter that held nothing a minute, after three such starts of the move, leaves it be.
 
-    Its count is the move's to clear, so once a start lands the move, the count goes with it.
-    It runs before the second run, which moves the busy folder with the rest it frees.
+    A split beside the folder fails each move it starts, as a holder the waiter never finds
+    would leave each, so the count rises. Its count is the move's to clear, so once a start
+    lands the move, the count goes with it. It runs before the second run, which moves the busy
+    folder with the rest it frees.
     """
     count = f"/run/user/1000/own-subvolumes/{waiter('busy')}.idle"
     as_account(moved, "systemctl --user stop busy.service")
-    as_account(moved, f"mkdir -p /run/user/1000/own-subvolumes && echo 3 > {count}")
+    as_account(moved, "mkdir busy.split-1")
+    for _ in range(3):
+        as_account(moved, f"systemctl --user start --wait {waiter('busy')}")
+    assert moved.succeed(f"cat {count}").strip() == "3", "each start with nothing held counts"
     as_account(moved, f"systemctl --user start --wait {waiter('busy')}")
-    assert inode(moved, f"{HOME}/busy") != "256"
     told = waited(moved, "busy")
     assert "3 times in a row with nothing held a minute" in told, f"the waiter said: {told}"
+    as_account(moved, "rmdir busy.split-1")
+    # Only a start would move it now, and the bound starts none.
+    assert inode(moved, f"{HOME}/busy") != "256"
     moved.succeed(f"echo 2 > {count}")
+    as_account(moved, f"systemctl --user reset-failed {unit('busy')}")
     as_account(moved, f"systemctl --user start --wait {waiter('busy')}")
-    moved.wait_until_succeeds(f"! test -e {count}", timeout=60)
+    moved.wait_until_succeeds(f"! test -e {count}", timeout=timedelta(minutes=1))
     assert inode(moved, f"{HOME}/busy") == "256"
 
 

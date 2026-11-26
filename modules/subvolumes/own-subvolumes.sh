@@ -185,7 +185,8 @@ holds() {
 }
 
 # Where a folder's move keeps what it counted since the machine started,
-# a name for its `.copies` and its `.waits`, or nothing where the account
+# a name for its `.copies`, its `.waits` and its waiter's `.idle`, or
+# nothing where the account
 # has no runtime folder.
 counted() {
   if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -n "$waiter" ]; then
@@ -609,8 +610,8 @@ after_quit() {
     esac
     if [ "$idle" -ge 3 ]; then
       echo "nothing holds $folder as this looks, though its move found something" \
-        "$idle times in a row with nothing held a minute, so it waits for the account's" \
-        "manager next start"
+        "$idle times in a row with nothing held a minute, so it waits until the" \
+        "account's manager next starts"
       return 0
     fi
     mkdir -p -- "${base%/*}" && echo $((idle + 1)) > "$base.idle"

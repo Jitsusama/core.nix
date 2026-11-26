@@ -6794,7 +6794,7 @@
     copy, its unit failing and its writer starting all the same; a second run leaves a
     subvolume as it is; and a copy marked for its late writes, or a split, keeps its folder and
     fails each run, though a mark with nothing written since its copy began is cleared; and a
-    waiter that found nothing three times running starts the move no more, its count cleared
+    waiter that held nothing a minute three times running starts the move no more, its count cleared
     once a start lands the move
   '';
   vm-joel-comes-first = ''
