@@ -5509,6 +5509,13 @@
     right and a strip a reading a member, warning at 95%; graphs line up in one column, and a
     figure wears no glyph
   '';
+  the-launchers-line-says-which-keys-acted = ''
+    a modal launcher line's keys, sent through Qt to its own handlers, act exactly where they do
+    something: a letter typed, a caret's edit, Escape at rest, h, a modifier alone and a
+    register's keys acting on nothing, Tab alone asking where it goes, the drawer and gv acting
+    only where there's one out or something to take back, the operator again swallowed, and an
+    ask's answer, the operator again among them, acting where the ask takes it
+  '';
   the-launchers-rows-keep-their-words-apart = ''
     a launcher row and field keep their words apart and inside them, however long, ending what
     doesn't fit in an ellipsis, words that fit as Qt draws them said whole, hinted fully at 1

@@ -1,0 +1,263 @@
+// Keys pressed on a modal Prompt.qml through its own handlers, as Qt hands
+// them to the launcher's line, each held to saying it acted (keyActed,
+// KeyActs.acts) exactly where it did something: changed the mode, said a
+// signal the launcher acts on, or went where the line was told it could.
+// So the line's word for a key can't drift from what its handler does
+// with it, which tests/query-keys.qml can't see, holding KeyActs to the
+// table alone. Tab asks where it goes (intoHere) and no other key does,
+// gv takes back what there is and acts only then, an ask takes the
+// operator pressed again before the operator does, and a register's keys,
+// a modifier alone and a letter typed act on nothing. It runs in Qt's
+// test runner, which fails naming each case that doesn't hold.
+import QtQuick
+import QtTest
+
+Item {
+    id: root
+
+    width: 640
+    height: 48
+
+    // How often the line asked whether Tab goes in, and what it was told.
+    property int intoAsked: 0
+    property bool intoGoes: false
+
+    Prompt {
+        id: line
+
+        anchors.fill: parent
+        modal: true
+        intoHere: () => {
+            root.intoAsked += 1;
+            return root.intoGoes;
+        }
+    }
+
+    SignalSpy {
+        id: answered
+
+        target: line
+        signalName: "answered"
+    }
+    SignalSpy {
+        id: commanded
+
+        target: line
+        signalName: "commanded"
+    }
+    SignalSpy {
+        id: operated
+
+        target: line
+        signalName: "operated"
+    }
+    SignalSpy {
+        id: registered
+
+        target: line
+        signalName: "registered"
+    }
+    SignalSpy {
+        id: stepped
+
+        target: line
+        signalName: "stepped"
+    }
+
+    TestCase {
+        name: "PromptKeys"
+        when: windowShown
+
+        function init() {
+            line.confirming = false;
+            line.answerTaken = () => true;
+            line.drawerHere = false;
+            line.reselectable = false;
+            line.registers = false;
+            line.words = false;
+            line.visualOperated = null;
+            line.text = "";
+            root.intoAsked = 0;
+            root.intoGoes = false;
+            line.take();
+            answered.clear();
+            commanded.clear();
+            operated.clear();
+            registered.clear();
+            stepped.clear();
+        }
+
+        // The find's Escape, which leaves it for normal.
+        function toNormal() {
+            keyClick(Qt.Key_Escape);
+            compare(line.mode, "normal", "Escape leaves the find for normal");
+        }
+
+        function test_aLetterTypedActsOnNothing() {
+            keyClick("a");
+            compare(line.text, "a");
+            verify(!line.keyActed, "a letter typed on the find");
+        }
+
+        function test_backspaceActsOnlyOnAnEmptyFind() {
+            keyClick("a");
+            keyClick(Qt.Key_Backspace);
+            compare(line.text, "");
+            compare(line.mode, "find");
+            verify(!line.keyActed, "Backspace deleting a letter");
+            keyClick(Qt.Key_Backspace);
+            compare(line.mode, "normal");
+            verify(line.keyActed, "Backspace leaving an empty find for normal");
+        }
+
+        function test_escapeActsLeavingTheFindAndNotAtRest() {
+            toNormal();
+            verify(line.keyActed, "Escape leaving the find");
+            keyClick(Qt.Key_Escape);
+            compare(line.mode, "normal");
+            verify(!line.keyActed, "Escape at rest in normal");
+        }
+
+        function test_aMoveActs() {
+            toNormal();
+            keyClick("j");
+            compare(stepped.count, 1);
+            compare(stepped.signalArguments[0][0], "next");
+            verify(line.keyActed, "j moving down the rows");
+            verify(line.keyMoved, "j said as a move");
+        }
+
+        function test_hOnlySaysTheWayOut() {
+            toNormal();
+            keyClick("h");
+            verify(!line.keyActed, "h saying the way out");
+        }
+
+        function test_onlyTabAsksWhereItGoes() {
+            toNormal();
+            keyClick("j");
+            keyClick("k");
+            keyClick("h");
+            compare(root.intoAsked, 0, "no key but Tab asks where Tab goes");
+            keyClick(Qt.Key_Tab);
+            compare(root.intoAsked, 1, "Tab asks, once");
+            verify(!line.keyActed, "Tab with nothing to go into");
+            root.intoGoes = true;
+            keyClick(Qt.Key_Tab);
+            verify(line.keyActed, "Tab into a row with parts");
+        }
+
+        function test_theDrawerActsOnlyWhenOut() {
+            toNormal();
+            keyClick(Qt.Key_W, Qt.ControlModifier);
+            verify(!line.keyActed, "Ctrl+W begun");
+            keyClick("l");
+            compare(line.mode, "normal");
+            verify(!line.keyActed, "Ctrl+W l with no drawer out");
+            line.drawerHere = true;
+            keyClick(Qt.Key_W, Qt.ControlModifier);
+            keyClick("l");
+            compare(line.mode, "page");
+            verify(line.keyActed, "Ctrl+W l into the drawer");
+        }
+
+        function test_gvOnTheRowsActsOnlyWithASelection() {
+            toNormal();
+            keyClick("g");
+            verify(!line.keyActed, "g begun");
+            keyClick("v");
+            compare(line.mode, "normal");
+            verify(!line.keyActed, "gv with no selection to take back");
+            line.reselectable = true;
+            keyClick("g");
+            keyClick("v");
+            compare(line.mode, "visual");
+            verify(line.keyActed, "gv taking a selection back");
+        }
+
+        function test_gvInTheDrawerActsOnlyWithAChoice() {
+            line.drawerHere = true;
+            toNormal();
+            keyClick(Qt.Key_W, Qt.ControlModifier);
+            keyClick("l");
+            keyClick("g");
+            keyClick("v");
+            compare(line.mode, "page");
+            verify(!line.keyActed, "the drawer's gv with nothing chosen before");
+            keyClick("v");
+            compare(line.mode, "pageVisual");
+            keyClick(Qt.Key_Escape);
+            compare(line.mode, "page");
+            keyClick("g");
+            keyClick("v");
+            compare(line.mode, "pageVisual");
+            verify(line.keyActed, "the drawer's gv taking its choice back");
+        }
+
+        function test_aModifierAloneActsOnNothing() {
+            toNormal();
+            keyPress(Qt.Key_Shift);
+            verify(line.keyAlone, "Shift said as alone");
+            verify(!line.keyActed, "Shift alone");
+            keyRelease(Qt.Key_Shift);
+        }
+
+        function test_aColonOpeningTheCommandLineActs() {
+            toNormal();
+            keyClick(":");
+            compare(commanded.count, 1);
+            verify(line.keyActed, "a colon opening the command line");
+        }
+
+        function test_aRegistersKeysActOnNothing() {
+            line.registers = true;
+            line.words = true;
+            compare(line.mode, "insert");
+            keyClick(Qt.Key_R, Qt.ControlModifier);
+            verify(!line.keyActed, "Ctrl+R waiting for a register");
+            keyClick("a");
+            compare(registered.count, 1);
+            compare(registered.signalArguments[0][0], "a");
+            compare(line.text, "", "the register's letter typed nothing");
+            verify(!line.keyActed, "the register's letter");
+        }
+
+        function test_theOperatorAgainIsSwallowed() {
+            toNormal();
+            keyClick("V");
+            compare(line.mode, "visual");
+            keyClick("d");
+            compare(operated.count, 1);
+            compare(line.mode, "normal");
+            verify(line.keyActed, "visual's d taking the selection");
+            keyClick("d");
+            compare(operated.count, 1, "d again is taken with visual's");
+            compare(stepped.count, 0);
+            verify(!line.keyActed, "d again, swallowed");
+        }
+
+        function test_anAskActsWhereItTakesTheKey() {
+            toNormal();
+            line.confirming = true;
+            line.answerTaken = key => key === "Return";
+            keyClick("x");
+            compare(answered.count, 1);
+            verify(!line.keyActed, "a key the ask lets go");
+            keyClick(Qt.Key_Return);
+            compare(answered.count, 2);
+            compare(answered.signalArguments[1][0], "Return");
+            verify(line.keyActed, "Return answering the ask");
+        }
+
+        function test_anAskTakesTheOperatorAgainBeforeTheOperator() {
+            toNormal();
+            keyClick("V");
+            keyClick("d");
+            line.confirming = true;
+            keyClick("d");
+            compare(answered.count, 1, "the ask hears d again");
+            compare(operated.count, 1);
+            verify(line.keyActed, "d again, the ask's answer");
+        }
+    }
+}
