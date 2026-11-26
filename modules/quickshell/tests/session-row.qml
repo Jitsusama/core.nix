@@ -142,6 +142,44 @@ QtObject {
             if (SessionRow.known(key) !== want)
                 failures.push(`${what}: known "${SessionRow.known(key)}", not "${want}"`);
         }
+        // The shell's own acts: before a row's held, one standing "off"'s,
+        // with no Park; held with nothing the shell makes, Talk alone.
+        const fallbacks = [
+            ["unheld, its window here", false, true, true, "switch talk pause close"],
+            ["unheld, elsewhere", false, false, false, "talk pause"],
+            ["held, its window here", true, true, true, "talk"]
+        ];
+        for (const [what, held, windowed, here, want] of fallbacks) {
+            const got = SessionRow.fallbackOf(held, windowed, here).join(" ");
+            if (got !== want)
+                failures.push(`fallback ${what}: "${got}", not "${want}"`);
+        }
+        // A held row's Return does the act its drawer marks, whatever it serves.
+        const returnsOf = [
+            ["one paused", served(["switch", "talk", "resume"]), "verb:agent:resume", "resume"],
+            ["one the shell doesn't make", served(["talk", "pause"]), "verb:agent:hush",
+                "talk"],
+            ["one it doesn't list", served(["talk"]), "verb:agent:switch", "switch"],
+            ["nothing it makes", served(["hush"]), "verb:agent:hush", "talk"]
+        ];
+        for (const [what, acts, returns, want] of returnsOf) {
+            const got = SessionRow.returnOf(acts, returns);
+            const marked = SessionRow.offered(acts, returns, ["talk"]).marked;
+            if (got !== want || got !== marked)
+                failures.push(`Return of ${what}: ${got}, marked ${marked}, not ${want}`);
+        }
+        // Pressed, an act is steered only while its row still offers it.
+        const pressed = [
+            ["Park on one still live", { acts: served(["talk", "park"]) }, "park", true],
+            ["Park on one parked since", { acts: served(["wake", "talk"]) }, "park", false],
+            ["Pause on one paused since", { acts: served(["talk", "resume"]) }, "pause", false],
+            ["Park on a row not yet held", null, "park", true],
+            ["Park on a row serving no acts", {}, "park", true]
+        ];
+        for (const [what, row, id, want] of pressed) {
+            if (SessionRow.stillOffers(row, id) !== want)
+                failures.push(`${what}: ${want ? "refused" : "steered"}`);
+        }
         for (const [what, acts, returns, fallback, want, mark] of offers) {
             const { ids, marked } = SessionRow.offered(acts, returns, fallback);
             if (ids.join(" ") !== want || marked !== mark)

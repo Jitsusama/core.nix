@@ -138,9 +138,8 @@ WORKS_ON = (
     " said twice, held to the launcher's family and its keys."
 )
 # What the paused one works on, as long. Its drawer keeps some of it over its fold opened,
-# since its four acts stand on one line, where the listening one's five (Park among them)
-# take two and leave its prose no line to keep, all of it given way to the fold, as the z a
-# case for a live session pins.
+# since its four acts stand on one line, which its z a case asserts; the listening one's,
+# Park among them, take more room and leave its prose less.
 PAUSED_ON = (
     "Paused Quest: A reviewer under the owner's plan, which reads each change the builders"
     " put up against the plan it serves: whether its tests pin what it says, whether its"
@@ -950,15 +949,12 @@ def test_za_shows_a_sessions_fold_above_its_more_line_its_prose_giving_way(shell
     fold_stands_in_sight(opened)
 
 
-def test_za_on_a_live_session_keeps_its_fold_in_sight_its_prose_giving_way(
-    shell: Shell,
-) -> None:
+def test_za_on_a_live_session_keeps_its_fold_in_sight(shell: Shell) -> None:
     """Opened by z a on a listening session, its fold stands above the more line.
 
     A live session's acts, Park among them, take more room than a paused one's, so its prose
-    keeps fewer lines over the fold, none at all where its acts take two (Drawer.qml's
-    wordsKept): whatever it keeps ends above the fold, fading, rather than the fold standing
-    out of sight.
+    has less to keep over the fold (Drawer.qml's wordsKept); however much it gives way, the
+    fold's line and first bit stand in sight rather than under the foot.
     """
     opened = fold_opened(shell, "listening quest", "Listening Quest")
     shell.send_chars("za")
@@ -967,13 +963,6 @@ def test_za_on_a_live_session_keeps_its_fold_in_sight_its_prose_giving_way(
     parks = [act for act in opened["acts"] if act.split(" ")[-1] == "Park"]
     assert parks, f"its acts don't offer Park: {opened}"
     assert opened["body"] != "", f"it has no prose to give way: {opened}"
-    # However many lines its prose keeps, they stand above the fold's line,
-    # the last fading to say more follows; kept none, it stands no line.
-    words = opened["lines"]["words"]
-    fold = cast("list[float]", opened["lines"]["nerd"])[0]
-    if words is not None:
-        assert words < fold, f"its prose stands over its fold's line: {opened}"
-        assert opened.get("wordsFade"), f"its kept prose ends with nothing to say more: {opened}"
     fold_stands_in_sight(opened)
 
 

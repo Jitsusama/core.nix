@@ -123,6 +123,31 @@ function offered(rowActs, returns, fallback) {
     return { ids, marked: returning === "" ? ids[0] ?? "" : returning };
 }
 
+// The shell's own acts for a session's row, `offered`'s fallback: before
+// its row is held, those for one standing "off", which offer no Park;
+// held with no act the shell makes, as from a daemon newer than it, Talk
+// alone, which every session takes, rather than a guess at its state.
+function fallbackOf(held, windowed, here) {
+    return held ? ["talk"] : acts("off", windowed, here);
+}
+
+// The act a held row's Return does, read as its drawer marks it, so the
+// two never name different acts.
+function returnOf(rowActs, returns) {
+    return offered(rowActs, returns, fallbackOf(true, false, false)).marked;
+}
+
+// Whether a session's row offers `id` as it's served now, asked as one
+// is pressed: an act its drawer showed may be gone since, as Park is once
+// the session parks, and the node wakes a parked session for any steer.
+// A row not yet held is asked by the shell's own, so it's still offered.
+function stillOffers(row, id) {
+    if (row === null || row === undefined || !Array.isArray(row.acts)) {
+        return true;
+    }
+    return row.acts.some(one => known(one?.key) === id);
+}
+
 // The theme's role its glyph is drawn in: a program's, as a live one
 // is, and muted for one paused, parked or closed, which never looks live
 // (#2052; VKCF3Z, 2026-11-07), colour going on glyphs while its name

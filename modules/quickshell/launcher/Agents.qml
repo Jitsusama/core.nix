@@ -931,7 +931,7 @@ Provider {
             ? presence.owns.find(owned => /^QEST-/.test(owned)) ?? "" : "";
         const place = { depth: served.depth, orchestrates: !!held.orchestrates };
         const said = items => (items ?? []).map(item => item.said).join(" \u00b7 ");
-        const returning = SessionRow.known(held.returns);
+        const returning = SessionRow.returnOf(served.acts, held.returns);
         const row = member({
             thing: true,
             key: served.row,
@@ -1424,13 +1424,11 @@ Provider {
     // The acts a session's row offers and the one its Return does, as the
     // agents daemon serves its row (SessionRow.offered), so its drawer and
     // its step in list the same; while its row isn't held, SessionRow.js's
-    // own for one standing "off". A row served with no act the shell makes,
-    // as from a daemon newer than it, offers Talk alone, which every
-    // session takes, rather than the shell's guess at its served state.
+    // own (SessionRow.fallbackOf).
     function offeredOf(session) {
         const row = rowsKind?.held?.[`row:agents:${session.address}`]?.row ?? null;
-        return SessionRow.offered(row?.acts, row?.held?.returns, row ? ["talk"]
-            : SessionRow.acts("off", windowedOf(session), session.here));
+        return SessionRow.offered(row?.acts, row?.held?.returns,
+            SessionRow.fallbackOf(row !== null, windowedOf(session), session.here));
     }
 
     // A session's own acts, in the order its row offers them, each steering
@@ -1568,7 +1566,18 @@ Provider {
             glyph: Words.glyph(`verb:agent:${id}`),
             hue: "action"
         }, fields));
-        const steered = what => () => provider.actOn(current(), what);
+        // Pressed once its row no longer offers it, as Park once the session
+        // parked while its drawer stood open, it's refused, not steered
+        // (SessionRow.stillOffers).
+        const steered = what => () => {
+            const now = current();
+            const row = rowsKind?.held?.[`row:agents:${now.address}`]?.row ?? null;
+            if (SessionRow.stillOffers(row, what))
+                provider.actOn(now, what);
+            else
+                Sessions.steered(now.address,
+                    { error: { message: provider.elsewhere("moved", now) } }, what);
+        };
         const talked = () => {
             const talk = provider.talking(session.address, session.title);
             const talkWords = Words.of("verb:agent:talk");
@@ -1651,8 +1660,7 @@ Provider {
                 leaves: leaves(session), askedAs: session.address }, costly(session),
                 Words.ending("verb:agent:close")))
         };
-        const make = made[id];
-        return make ? make() : null;
+        return Object.prototype.hasOwnProperty.call(made, id) ? made[id]() : null;
     }
 
     // When a session started, as a clock says it, with its day when that
