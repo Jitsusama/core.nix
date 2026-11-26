@@ -14,13 +14,18 @@ use terminal_kit::layout::one_line;
 /// `line` as plain words: a terminal's escape sequences gone whole, as a
 /// coloured or linked complaint writes them; every other control character
 /// and each line or paragraph separator one space, however many stand
-/// together, so the words either side of a tab or a return stay apart; and
+/// together or beside a space, so the words either side of a tab or a
+/// return stay apart by one; and
 /// the format characters that turn, hide or break text gone, so a row reads
 /// as it's written.
 pub fn words(line: &str) -> String {
     let mut kept = String::new();
     let mut chars = line.chars().peekable();
+    let mut parted = false;
     while let Some(each) = chars.next() {
+        if !each.is_control() && each != ' ' {
+            parted = false;
+        }
         match each {
             '\u{1b}' => escape(&mut chars),
             // The one-character forms of a control sequence and a string,
@@ -33,10 +38,14 @@ pub fn words(line: &str) -> String {
                 }
             }
             each if each.is_control() || matches!(each, '\u{2028}' | '\u{2029}') => {
+                parted = true;
                 if !kept.is_empty() && !kept.ends_with(' ') {
                     kept.push(' ');
                 }
             }
+            // A space after one a control left is the same parting, so the
+            // words either side of "a\t b" stand one space apart.
+            ' ' if parted && kept.ends_with(' ') => {}
             each if hides(each) => {}
             each => kept.push(each),
         }
@@ -149,6 +158,19 @@ mod tests {
                 "a line separator parts words as a tab does",
             ),
             ("a;\t\tb", "a; b", "controls together leave one space"),
+            ("a\t b", "a b", "a space after a control leaves one"),
+            ("a \tb", "a b", "so does one before"),
+            (
+                "a  b",
+                "a  b",
+                "spaces no control parts are the owner's own",
+            ),
+            (
+                "\u{1b}(Bplain",
+                "plain",
+                "a character set chosen goes whole, through its intermediate",
+            ),
+            ("\u{1b}cafter", "after", "a reset takes its one character"),
             (
                 "\u{1b}]0;title\u{1b}[31mred",
                 "red",
