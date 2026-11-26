@@ -251,6 +251,7 @@
     "launcher/Notice.js"
   ];
   "launcher/Power.qml" = [ "launcher/Seen.js" ];
+  "launcher/Presented.js" = [ "launcher/KeysSaid.js" ];
   "launcher/Program.js" = [
     "FileFacts.js"
     "launcher/Numbers.js"
