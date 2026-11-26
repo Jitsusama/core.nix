@@ -595,6 +595,59 @@ fn an_app_s_processes_that_go_unwatched_are_counted_in_the_window() {
 }
 
 #[test]
+fn the_machine_s_stalls_and_memory_left_are_kept_but_make_no_trouble() {
+    let then = snapshot(
+        0.0,
+        &[("session", group(0, 0, 0)), (MACHINE, group(0, 0, 0))],
+        0,
+        0,
+    );
+    // The machine stalled 9 s of 10 on the CPU and its memory fully 1 s;
+    // the desktop not at all.
+    let mut now = snapshot(
+        10.0,
+        &[
+            ("session", group(0, 0, 0)),
+            (MACHINE, group(9_000_000, 1_000_000, 0)),
+        ],
+        0,
+        0,
+    );
+    now.available_mib = Some(12_288);
+    let w = between(&then, &now, quiet_niri(), 0, "gen");
+    let machine = w.stalls[MACHINE];
+    assert!(
+        (machine.cpu_some - 90.0).abs() < 1e-9 && (machine.memory_full - 10.0).abs() < 1e-9,
+        "the machine's stalls weren't kept as shares of the window: {machine:?}"
+    );
+    assert!(
+        !w.memory.contains_key(MACHINE),
+        "the machine was given a memory of its own: {:?}",
+        w.memory
+    );
+    assert!(
+        w.trouble.is_empty(),
+        "the machine's stalls made trouble: {:?}",
+        w.trouble
+    );
+    assert_eq!(w.available_mib, Some(12_288), "the memory left wasn't kept");
+    // Left unsaid, the memory left writes nothing, and an older window
+    // reads as unsaid.
+    now.available_mib = None;
+    let line = serde_json::to_string(&between(&then, &now, quiet_niri(), 0, "gen"))
+        .expect("a window serialises");
+    assert!(
+        !line.contains("available_mib"),
+        "unsaid memory was written: {line}"
+    );
+    let back: Window = serde_json::from_str(&line).expect("a window reads back");
+    assert_eq!(
+        back.available_mib, None,
+        "an older window read some memory left"
+    );
+}
+
+#[test]
 fn answers_give_their_quantiles() {
     let a = Answers::of(&[3.0, 1.0, 2.0], 0);
     assert_eq!((a.p50_ms, a.max_ms, a.asked), (2.0, 3.0, 3));

@@ -5,16 +5,17 @@
 //! feeling it, and by then nobody knew which change it was. lag-watch
 //! reads, every ten seconds and without privilege, what the kernel already
 //! counts: how long the desktop's and the apps' slices stalled on the CPU,
-//! memory and the disk; what their memory lost to swap; how long niri's
-//! main thread and PipeWire's data loops waited for a CPU each time they
-//! were ready, and in a call the worst of Tuple's and of Chrome's call
-//! threads, each apart; how long Chrome's and Slack's drawing threads
-//! waited, at all times, leaving out tabs the app lowered as hidden, for
-//! the hourly measure cadence judges to read; and, every two seconds,
-//! how long niri takes to answer on its socket, which it does from the
-//! same loop that reads input and draws. Each window is tagged with the
-//! system generation and how hard the work behind Joel was working, so
-//! like is compared with like.
+//! memory and the disk, and the agents', the work's and the machine's
+//! with its memory left, for cadence's hour; what their memory lost to
+//! swap; how long niri's main thread and PipeWire's data loops waited for
+//! a CPU each time they were ready, and in a call the worst of Tuple's
+//! and of Chrome's call threads, each apart; how long Chrome's and Slack's
+//! drawing threads waited, at all times, leaving out tabs the app lowered
+//! as hidden, for the hourly measure cadence judges to read; and, every
+//! two seconds, how long niri takes to answer on its socket, which it does
+//! from the same loop that reads input and draws. Each window is tagged
+//! with the system generation and how hard the work behind Joel was
+//! working, so like is compared with like.
 //!
 //! The latest window goes to $XDG_RUNTIME_DIR/lag-watch/status.json, for
 //! the shell to show: its `trouble` in sentences; `worst`, one word for
@@ -200,12 +201,17 @@ fn snapshot(
         ("session", account.join("session.slice")),
         ("app", account.join("app.slice")),
         ("jobs", account.join("jobs.slice")),
+        ("agents", account.join("agents.slice")),
         ("build", cgroups.join("build.slice")),
     ] {
         if let Some(g) = kernel::group(&dir) {
             s.groups.insert(name.to_string(), g);
         }
     }
+    let proc = Path::new("/proc");
+    let machine = kernel::machine(proc).map(|g| (window::MACHINE.to_string(), g));
+    s.groups.extend(machine);
+    s.available_mib = kernel::available_mib(&kernel::text(&proc.join("meminfo")));
     for entry in fs::read_dir(account.join("app.slice"))
         .into_iter()
         .flatten()

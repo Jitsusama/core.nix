@@ -125,6 +125,7 @@ mod tests {
             call: BTreeMap::new(),
             lowered: BTreeMap::new(),
             unwatched: BTreeMap::new(),
+            available_mib: None,
             niri: Answers {
                 p50_ms: 1.2,
                 p99_ms: 3.4,
