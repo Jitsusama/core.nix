@@ -774,14 +774,16 @@
     within that half minute, the run starting over if that Chrome quits during the run's last
     look, as it does when only a BrowserMetrics made again on the disk was kept, the caches
     already in memory, and ending within a minute, keeping it all, if it quits after; with
-    Chrome running, or started again as the old one quits, no cache is touched, so none is swapped under it, while BrowserMetrics, which Chrome
-    deletes itself as it runs, moves once nothing of Chrome's here maps or holds open a file in
-    it, a mapped or open file keeping it on the disk and a deleted one or a neighbour folder's
-    not, a Chrome on another host keeping it there and a quitting one waited for, named after
-    caches a held profile keeps it moves all the same, and what a session left in memory goes
-    unless it's mapped, even while another host's Chrome keeps the folder on the disk; the
-    unit starts with the account's manager, before the graphical session, and again on each change in the profile's folder, as when
-    Chrome quits and drops its lock, with no start limit for Chrome's writes to reach
+    Chrome running, or started again as the old one quits, no cache is touched, so none is
+    swapped under it, and a run ends without a last look's line, while BrowserMetrics, which
+    Chrome deletes itself as it runs, moves once nothing of Chrome's here maps or holds open a
+    file in it, a mapped or open file keeping it on the disk and a deleted one or a neighbour
+    folder's not, a Chrome on another host keeping it there and a quitting one waited for,
+    named after caches a held profile keeps it moves all the same, and what a session left in
+    memory goes unless it's mapped, even while another host's Chrome keeps the folder on the
+    disk; the unit starts with the account's manager, before the graphical session, and again
+    on each change in the profile's folder, as when Chrome quits and drops its lock, with no
+    start limit for Chrome's writes to reach
   '';
   chrome-open-tabs-passes-clippy = ''
     clippy finds nothing in the host that tells the launcher Chrome's open tabs, or its tests

@@ -243,6 +243,8 @@ while :; do
   deadline=$((SECONDS + 30))
   chrome=
   looked=
+  # A running Chrome that kept a marked folder, for the last look.
+  running=
   # The marked folders a quitting Chrome kept, for the last look.
   kept=()
   for marked in "$@"; do
@@ -276,8 +278,13 @@ while :; do
       fi
       if [ -n "$using" ]; then
         echo "$using, so $folder stays on the disk until nothing of Chrome's is open in it"
-        # A running Chrome keeps it until it next quits, which starts a run.
-        [ -n "$lock" ] || kept+=("$folder")
+        # A running Chrome keeps it until it next quits, which starts a
+        # run unless it lands while this one runs, so the last look asks.
+        if [ -n "$lock" ]; then
+          running=$lock
+        else
+          kept+=("$folder")
+        fi
         continue
       fi
       lock=$(holder)
@@ -320,12 +327,12 @@ while :; do
     ln -sT "$memory/$folder" "$profile/$folder"
     echo "$folder is in memory now"
   done
-  [ -n "$chrome" ] || [ "${#kept[@]}" != 0 ] || exit 0
+  [ -n "$chrome" ] || [ -n "$running" ] || [ "${#kept[@]}" != 0 ] || exit 0
   # The last look, with a half minute of its own, starts over once
   # anything that kept a folder where it was has gone.
   deadline=$((SECONDS + 30))
   gone=
-  if [ -n "$chrome" ]; then
+  if [ -n "$chrome" ] || [ -n "$running" ]; then
     chrome=$(held)
     [ -n "$chrome" ] || gone=yes
   fi
@@ -336,6 +343,12 @@ while :; do
     [ -n "$using" ] || gone=yes
   done
   if [ -z "$gone" ]; then
+    # A Chrome running still was said already, and the look waited on
+    # nothing, so only a wait it ends on is said.
+    case $chrome in
+    *", still quitting," | '') ;;
+    *) [ "${#kept[@]}" != 0 ] || exit 0 ;;
+    esac
     # Said, so a log that ends on a wait says how it ended.
     echo "Chrome still had what it kept after the last look, so that stays on the disk"
     echo "until Chrome next quits or the account's manager next starts"

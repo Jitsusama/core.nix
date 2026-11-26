@@ -546,6 +546,12 @@ run "holding Chrome's"
 metrics_kept "with a Chrome holding a file in it open"
 said "process $chrome, holds $profile/BrowserMetrics/index open" \
   "with a Chrome holding a file in it open"
+# A running Chrome was said already, and the last look waited on nothing.
+if grep -q 'still had what it kept' run.log; then
+  echo "a run while Chrome ran ended on a last look that looked at nothing, saying:"
+  cat run.log
+  exit 1
+fi
 
 # Once Chrome has deleted the folder, the file it holds open with it, the
 # descriptor names a deleted file, and the folder moves.
