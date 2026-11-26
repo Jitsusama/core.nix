@@ -282,9 +282,9 @@ fn plainly(gateway: &Gateway, called: &Called) -> bool {
 
 /// Whether a tool's failing says Slack's rate was spent, which did nothing:
 /// either of Slack's words for it, `ratelimited` and `rate_limited`, or
-/// HTTP's or a person's. It's asked only of a failing to send what nobody
-/// in Slack wrote, so nobody can hold an alert back by saying "rate
-/// limit" in words the gateway won't take.
+/// HTTP's or a person's. It's asked only of a failing to send the alert
+/// without its words, every line sent left out of it first, so nobody can
+/// hold an alert back by saying "rate limit" in words or a name it quotes.
 fn spent(why: &str) -> bool {
     let why = why.to_ascii_lowercase();
     why.split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
@@ -508,6 +508,28 @@ mod tests {
         }
         assert!(
             spent(&unquoted(&format!("rate_limited, for {json}"), &said)),
+            "the gateway's own word still counts"
+        );
+    }
+
+    #[test]
+    fn a_name_from_slack_quoted_in_a_failing_is_no_sign_in_refused() {
+        let said = text(Alert {
+            title: "A stop in owner/invalid_auth",
+            words: WORDS_NOT_TAKEN,
+            link: "https://x.slack.com/archives/C1/p1",
+        });
+        let why = format!("could not post {said}");
+        assert!(
+            refuses_the_sign_in(&why),
+            "quoted, the name reads as a refusal"
+        );
+        assert!(
+            !refuses_the_sign_in(&unquoted(&why, &said)),
+            "left out, it doesn't"
+        );
+        assert!(
+            refuses_the_sign_in(&unquoted(&format!("invalid_auth, for {said}"), &said)),
             "the gateway's own word still counts"
         );
     }
