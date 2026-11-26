@@ -238,6 +238,21 @@ fn quarantine(core: &Path) -> String {
     .unwrap_or_default()
 }
 
+/// The tick card's median minutes from a change's last commit to its merge,
+/// held to the card's own target, or none when the card has no such row.
+fn commit_to_merge(card_text: &str) -> Option<Measure> {
+    let (median, target) = measures::card_median(card_text, "Last commit to merge")?;
+    Some(Measure {
+        key: "commit-to-merge".to_owned(),
+        class: Class::Ship,
+        says: "median minutes from last commit to merge".to_owned(),
+        now: median,
+        target: Some(target),
+        owner: NET_RULES.to_owned(),
+        behind: Vec::new(),
+    })
+}
+
 /// Reads every measure from the machine: the orchestrator's misses and
 /// asks, the work system's findings on the mesh, the net's quarantine,
 /// reverts and results, the tick's card, the three mains, code health's
@@ -313,17 +328,7 @@ fn gather(
     all.extend(measures::merge_to_on(&card_text, NET_RULES));
     let fetched = &mut kept.fetched;
     all.extend(measures::unlocked(&core, checkouts, now, BUMPS, fetched));
-    if let Some((median, target)) = measures::card_median(&card_text, "Last commit to merge") {
-        all.push(Measure {
-            key: "commit-to-merge".to_owned(),
-            class: Class::Ship,
-            says: "median minutes from last commit to merge".to_owned(),
-            now: median,
-            target: Some(target),
-            owner: NET_RULES.to_owned(),
-            behind: Vec::new(),
-        });
-    }
+    all.extend(commit_to_merge(&card_text));
     all.extend(measures::clean(&text(
         &state_home.join("code-health/hour.json"),
     )));
