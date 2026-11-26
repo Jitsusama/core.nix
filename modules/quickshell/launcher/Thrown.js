@@ -27,9 +27,9 @@ function shown(error) {
 }
 
 // What waited on a frame, each run in turn, one that throws said in a line and the rest run
-// still: the list is let go before it runs, so a throw ending the loop dropped the rest for
-// good, as Quests' rows made ahead, whose callback alone clears its wait, would never be
-// made ahead again (core.nix#6524's F17).
+// still: the list is let go before it runs, so a throw ending the loop would drop every
+// callback after it for good, among them Quests' made-ahead one, which alone clears its
+// wait (launcher/ReadyRows.qml's aheadSoon), so its rows would never be made ahead again.
 function runEach(due, said) {
     for (const then of due) {
         try {
