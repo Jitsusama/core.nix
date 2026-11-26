@@ -578,8 +578,9 @@ lose() {{
 }}
 # A link put at the handover, a folder above it or its folder for
 # copies, or anything at a copy's name, as the files are listed or cross
-# would have the list begun, or each later file copied or cleared,
-# through it, so the rest stays and the list gets no end.
+# would have the list begun, the one crossing read or cleared, or each
+# later file copied, through it, so the rest stays and the list gets no
+# end.
 linked() {{
   [ -L "${{job%/*/*}}" ] || [ -L "${{job%/*}}" ] || [ -L "$job" ] || [ -L "$job/{BACK}" ]
 }}
@@ -631,8 +632,12 @@ LC_ALL=C sort -u "$names" > "$names.in" ||
     ! linked && [ ! -e "$job/{BACK}/$n" ] && [ ! -L "$job/{BACK}/$n" ] || {{ halted; exit 1; }}
     size=$(wc -c 2>/dev/null < "$file") || {{ missing; continue; }}
     past $size && {{ kept $size; continue; }}
-    cp "$file" "$job/{BACK}/$n" && copied=$(wc -c < "$job/{BACK}/$n") ||
-      {{ missing; continue; }}
+    cp "$file" "$job/{BACK}/$n"; crossed=$?
+    # A link put as it crossed took the copy through it, so neither its
+    # size nor a clearing of it is read through the link, and the file
+    # is left unlisted with the rest.
+    ! linked || {{ halted; exit 1; }}
+    [ $crossed -eq 0 ] && copied=$(wc -c < "$job/{BACK}/$n") || {{ missing; continue; }}
     # Only what crossed counts toward the totals, at the size it crossed.
     past $copied && {{ kept $copied; continue; }}
     files=$((files + 1)) bytes=$(($bytes + $copied))
