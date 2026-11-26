@@ -60,7 +60,7 @@ if [ "$goal" = kernel ]; then
   # which disk-order stands down if io.cost takes the disk later. A record
   # that isn't a number gives the default back too, rather than nothing,
   # and so does one past ten digits, longer than any goal is (ten digits
-  # of microseconds is hours), which the kernel would refuse at every stop.
+  # of microseconds is hours) and longer than a start records.
   before=-1
   if [ -e "$record" ]; then
     kept=$(< "$record")
@@ -71,11 +71,12 @@ if [ "$goal" = kernel ]; then
     fi
   fi
   # A throttle that won't take it back keeps the record, so a later giving
-  # back tries the disk's own again; the line says how, since a unit
-  # stopped for good brings no later stop.
+  # back tries the disk's own again; the line says how, by this script's
+  # own path, which no PATH holds, since a unit stopped for good brings no
+  # later stop.
   if ! echo "$before" > "$held"; then
     echo "writeback-goal: $disk's throttle won't take $before back;" \
-      "writeback-goal $disk kernel tries again" >&2
+      "$0 $disk kernel tries again" >&2
     exit 1
   fi
   rm -f "$record"
@@ -84,7 +85,9 @@ fi
 # Only the first goal's record is kept, so a goal set twice gives back
 # the disk's own, not the first goal. It's written whole, through a file
 # renamed into place, so a second goal can't be taken for the disk's own.
-# A throttle that reads as no number is recorded as the kernel's default.
+# A throttle that reads as no number, or one past ten digits, which the
+# giving back wouldn't take as the disk's own, is recorded as the kernel's
+# default.
 # One that can't be read is recorded as off: as the block layer reads, a
 # queue with no throttle set up refuses the read but takes a write, which
 # sets one up, so giving back the default would turn on a throttle the
@@ -96,7 +99,7 @@ if [ ! -e "$record" ]; then
   if ! now=$(cat "$held"); then
     echo "writeback-goal: $disk's throttle can't be read, so it's recorded as off" >&2
     now=0
-  elif [[ -z $now || $now == *[!0-9]* ]]; then
+  elif [[ ! $now =~ ^[0-9]{1,10}$ ]]; then
     echo "writeback-goal: $disk's throttle reads '$now', so the kernel's default is recorded" >&2
     now=-1
   fi

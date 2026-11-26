@@ -131,6 +131,18 @@ for kept in "" 20x 99999999999; do
     exit 1
   fi
 done
+# A record of ten digits, the longest a start records, is the disk's own.
+echo 0 > "$throttle"
+printf %s 9999999999 > "$WRITEBACK_GOAL_RUN/nvme0n1"
+exits 0 "$goal" nvme0n1 kernel
+reads "$throttle" 9999999999
+# A throttle read past ten digits is recorded as the kernel's default,
+# since the giving back wouldn't take that record as the disk's own.
+echo 99999999999 > "$throttle"
+says "throttle reads '99999999999', so the kernel's default is recorded" "$goal" nvme0n1 0
+reads "$WRITEBACK_GOAL_RUN/nvme0n1" -1
+exits 0 "$goal" nvme0n1 kernel
+reads "$throttle" -1
 # A throttle that reads as no number is recorded as the kernel's default,
 # so a second goal doesn't record the first and give that back.
 echo busy > "$throttle"
@@ -176,7 +188,7 @@ chmod a-w "$throttle"
 ends 1 "$goal" nvme0n1 75000
 holds "throttle won't take 75000"
 ends 1 "$goal" nvme0n1 kernel
-holds "throttle won't take 2000 back; writeback-goal nvme0n1 kernel tries again"
+holds "throttle won't take 2000 back; $goal nvme0n1 kernel tries again"
 chmod u+w "$throttle"
 reads "$WRITEBACK_GOAL_RUN/nvme0n1" 2000
 exits 0 "$goal" nvme0n1 kernel
