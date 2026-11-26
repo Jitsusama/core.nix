@@ -1,19 +1,23 @@
 """Tell a crate's own Rust code from what only its tests read, as rustc finds its modules.
 
 A file is read only by tests when a module declared under cfgs that hold only
-under test, such as `#[cfg(test)]` or `#[cfg(all(feature = "x", test))]`, is
-read from it, or a module such a file declares is, or when it lies in the
-folder of an inline test module, where what that module declares is read
-from. A file's name says nothing either way: a module named `x_tests` may be
-real code, and one named `golden` read by tests alone.
+under test, such as `#[cfg(test)]` or `#[cfg(all(feature = "x", test))]`, or
+inside an inline module declared so, is read from it, or a module such a file
+declares is, and no module of the crate's own code is read from it too. A
+module inside inline ones is looked for in their folders, as rustc looks. A
+file's name says nothing either way: a module named `x_tests` may be real
+code, and one named `golden` read by tests alone. A file no module declares
+isn't built, and is taken as the crate's own code, since nothing says else.
 
 Modules and their braces are read from a file's text with what its comments,
 strings and character literals hold blanked, as rustc's lexer passes over
 them, so a fixture's `}` or a doc line's `mod` is neither.
 """
 
+import os
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,9 +26,11 @@ if TYPE_CHECKING:
 
 # A module declared, with the attributes and doc lines above it, and whether
 # its body follows inline. An attribute may run over lines, as rustfmt wraps
-# a long one, and share one with another or with the module.
+# a long one, share one with another or with the module, and be parted from
+# the module by blank lines and comments, as rustc allows.
 MODULE = re.compile(
-    r"(?m)^[ \t]*((?:(?:#\[[^\]]*\][ \t]*\n?|///[^\n]*\n)[ \t]*)*)(?:pub\S* )?mod (\w+)[ \t]*([;{])"
+    r"(?m)^[ \t]*((?:(?:#\[[^\]]*\](?:\s*//[^\n]*\n)*\s*|///[^\n]*\n)[ \t]*)*)"
+    r"(?:pub\S* )?mod (\w+)[ \t]*([;{])"
 )
 
 # A cfg among a module's attributes, and what it asks.
@@ -231,87 +237,133 @@ def needs_its_file(asked: list[Predicate]) -> bool:
 
 
 def read(path: Path) -> tuple[str, str]:
-    """Give a file's text, and that text masked, naming the file if it can't be read."""
+    """Give a file's text, and that text masked."""
     text = path.read_text()
-    try:
-        return text, masked(text)
-    except RefusedError as error:
-        raise error.within(path) from error
+    return text, masked(text)
+
+
+@dataclass(frozen=True)
+class Declared:
+    """A module a file declares with a file of its own, as rustc finds it.
+
+    `file` is its file, resolved, or None where it has none, `looked` where
+    it was looked for, from the declaring file's folder, `given` whether a
+    path attribute named it, `test` whether it's built only under test, and
+    `needs` whether every build of the tests builds it, so it must have one.
+    """
+
+    name: str
+    file: Path | None
+    looked: str
+    given: bool
+    test: bool
+    needs: bool
+
+
+def declared(path: Path, here: Path, texts: tuple[str, str]) -> list[Declared]:
+    """Give the modules with files of their own that the file at `path` declares.
+
+    `here` is where its modules are found, and `texts` its text and that
+    text masked. One inside inline modules is found in their folders, and
+    asks their cfgs as well as its own.
+    """
+    text, blanked = texts
+    modules = list(MODULE.finditer(blanked))
+    inline = [
+        (module, block_end(blanked, module.end())) for module in modules if module.group(3) == "{"
+    ]
+    out: list[Declared] = []
+    for module in modules:
+        if module.group(3) == "{":
+            continue
+        outer = [each for each, end in inline if each.end() <= module.start() < end]
+        asked = [cfg for each in [*outer, module] for cfg in cfgs(each, text)]
+        folder = here.joinpath(*(each.group(2) for each in outer))
+        name = module.group(2)
+        given = path_given(module, text, blanked)
+        if given:
+            # Inside an inline module, rustc reads a path from its folder.
+            tried = [(folder if outer else path.parent) / given.group(1)]
+        else:
+            tried = [folder / f"{name}.rs", folder / name / "mod.rs"]
+        file = next((each.resolve() for each in tried if each.exists()), None)
+        looked = " or ".join(os.path.relpath(each, path.parent) for each in tried)
+        test, needs = only_under_test(asked), needs_its_file(asked)
+        out.append(Declared(name, file, looked, bool(given), test, needs))
+    return out
+
+
+def declarations(src: Path, beside: set[Path]) -> dict[Path, list[Declared]]:
+    """Give what each file of the crate under `src` declares, and each file those name.
+
+    A crate's roots, a mod.rs and a file named by a path attribute, one of
+    `beside`, find their modules beside them; any other file finds them in
+    the folder named as it is.
+    """
+    bins = (src / "bin").resolve()
+    out: dict[Path, list[Declared]] = {}
+    left = sorted(path.resolve() for path in src.rglob("*.rs"))
+    while left:
+        path = left.pop()
+        if path in out:
+            continue
+        root = path.name in ("main.rs", "lib.rs", "mod.rs") or path.parent == bins
+        here = path.parent if root or path in beside else path.with_suffix("")
+        try:
+            out[path] = declared(path, here, read(path))
+        except RefusedError as error:
+            raise error.within(path) from error
+        left.extend(each.file for each in out[path] if each.file and each.file not in out)
+    return out
+
+
+def reached(starts: list[Path], through: dict[Path, list[Path]], past: set[Path]) -> set[Path]:
+    """Give the files reached from `starts` through the files each names, none of `past`."""
+    found: set[Path] = set()
+    while starts:
+        path = starts.pop()
+        if path not in found and path not in past:
+            found.add(path)
+            starts.extend(through.get(path, []))
+    return found
 
 
 def read_by_tests_alone(src: Path) -> set[Path]:
     """Give each Rust file under a crate's src that only its tests read, resolved.
 
-    An inline module's folder is taken as though it lay at its file's top, so
-    the modules a test module nested in another inline module declares are
-    looked for a folder too high. A module tests always build whose file is
-    nowhere it could be is refused, since the reader has looked in the wrong
-    place.
+    The crate's own code is read from each file no module declares, its
+    roots among them, through the modules built outside tests; what's read
+    from it through modules built only under test, and on from there, and
+    isn't its own code too, is the tests'. A module tests always build whose
+    file is nowhere rustc would look is refused, naming where that is.
     """
     files = {path.resolve() for path in src.rglob("*.rs")}
-    texts = {path: read(path) for path in files}
-    bins = (src / "bin").resolve()
-    # A file read through a path attribute finds its modules beside it, as a
-    # mod.rs does, whether or not only tests read it.
-    beside = {
-        (path.parent / given.group(1)).resolve()
-        for path, (text, blanked) in texts.items()
-        for given in paths_given(text, blanked)
+    # Which files a path attribute names decides where theirs are found, so
+    # the files are read again till no more are named so.
+    beside: set[Path] = set()
+    while True:
+        known = declarations(src, beside)
+        named = {
+            each.file for found in known.values() for each in found if each.given and each.file
+        }
+        if named <= beside:
+            break
+        beside |= named
+    declared_files = {each.file for found in known.values() for each in found}
+    plainly = {
+        path: [each.file for each in found if each.file and not each.test]
+        for path, found in known.items()
     }
-    tests: set[Path] = set()
-    folders: set[Path] = set()
-    left = sorted(files)
-    while left:
-        path = left.pop()
-        # A crate's roots and a mod.rs find their modules beside them; any
-        # other file finds them in the folder named as it is.
-        root = path.name in ("main.rs", "lib.rs", "mod.rs") or path.parent == bins
-        here = path.parent if root or path in beside else path.with_suffix("")
-        text, blanked = texts[path] if path in texts else read(path)
-        try:
-            read_from, inline = test_modules(path, here, (text, blanked), all_test=path in tests)
-        except RefusedError as error:
-            raise error.within(path) from error
-        folders.update(inline)
-        for file in read_from:
-            if (file := file.resolve()) not in tests:
-                tests.add(file)
-                left.append(file)
-    return {
-        file for file in files if file in tests or any(folder in file.parents for folder in folders)
-    }
-
-
-def test_modules(
-    path: Path, here: Path, texts: tuple[str, str], *, all_test: bool
-) -> tuple[list[Path], list[Path]]:
-    """Give where a file's modules built only under test are: files, and folders if inline.
-
-    `here` is where its modules are found, `texts` its text and that text
-    masked, and `all_test` whether tests alone read it, so every module it
-    declares is theirs.
-    """
-    text, blanked = texts
-    files: list[Path] = []
-    folders: list[Path] = []
-    for module in MODULE.finditer(blanked):
-        asked = cfgs(module, text)
-        name, body = module.group(2), module.group(3)
-        if not (only_under_test(asked) or all_test):
-            continue
-        if body == "{":
-            folders.append(here / name)
-            continue
-        given = path_given(module, text, blanked)
-        file = path.parent / given.group(1) if given else here / f"{name}.rs"
-        if not given and not file.exists():
-            file = here / name / "mod.rs"
-        if file.exists():
-            files.append(file)
-        elif needs_its_file(asked):
-            why = f"mod {name} is built under test with no file"
-            raise RefusedError(why)
-    return files, folders
+    everything = {path: [each.file for each in found if each.file] for path, found in known.items()}
+    own = reached([path for path in sorted(known) if path not in declared_files], plainly, set())
+    under_test = [each.file for path in own for each in known[path] if each.file and each.test]
+    tests = reached(under_test, everything, own)
+    for path in sorted(known):
+        for each in known[path]:
+            if each.file is None and each.needs and (each.test or path in tests):
+                why = f"mod {each.name} is built under test with no file at {each.looked}"
+                raise RefusedError(why).within(path)
+    return tests & files
 
 
 def block_end(blanked: str, at: int) -> int:
@@ -321,7 +373,7 @@ def block_end(blanked: str, at: int) -> int:
         depth += 1 if brace.group() == "{" else -1
         if not depth:
             return at + brace.end()
-    why = "a test module's braces never close"
+    why = "an inline module's braces never close"
     raise RefusedError(why)
 
 
