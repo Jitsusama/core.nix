@@ -12,8 +12,9 @@
 //! council round it collects, as `{cause, change, run, severity}`. The
 //! mesh lets its messages go after about a week, so the lines read from
 //! it are kept in cadence's folder, and each hour opens only the messages
-//! written since the last. One class goes by several names, so each is
-//! folded to one: written plain, then by the aliases below.
+//! written since the last, dropping a line its sender withdrew. One class
+//! goes by many wordings, so each is folded to one by the patterns in
+//! `folds`.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -21,6 +22,10 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+mod folds;
+
+use folds::{MAIN_MOVES, PIN_LAGS, TEST_PASSES_UNDONE, TIMING, UNSENT, fold};
 
 use super::{Class, DAY, Measure, count, lines};
 use crate::mesh::{Mesh, Message, stamped_at};
@@ -52,40 +57,19 @@ const SLACK_MS: i64 = 3_600_000;
 /// mesh's week again.
 const VERSION: u32 = 1;
 
-/// Other names a class goes by, each written plain, and the one it is
-/// counted under, until the harness's shared list of classes names them.
-const ALIASES: &[(&str, &str)] = &[
-    (
-        "a fix with no test that fails when it is undone",
-        TEST_PASSES_UNDONE,
-    ),
-    (
-        "a test passes with the fix undone, or can't fail",
-        TEST_PASSES_UNDONE,
-    ),
-    ("a test can't fail", TEST_PASSES_UNDONE),
-    ("test passes with the fix undone", TEST_PASSES_UNDONE),
-];
-
-const TEST_PASSES_UNDONE: &str = "a test passes with the fix undone";
-
 /// Who owns fixing each class, by its counted name and the repository its
 /// change is in, or any repository where that is empty, as the keeper
 /// named them on 26 November. A class whose owner differs by repository is
 /// split by it, so each half goes to its own; one none owns goes to the
 /// keeper, who names one here.
 const OWNERS: &[(&str, &str, &str)] = &[
-    ("a result waited on isn't sent to the waiter", "", "80ECO2"),
+    (UNSENT, "", "80ECO2"),
     (TEST_PASSES_UNDONE, "core.nix", "80ECO2"),
     (TEST_PASSES_UNDONE, "agentic-harness.pi", "85PKB2"),
-    ("a pinned copy lags the tree", "", "16V6F4"),
-    (
-        "mac behaviour checked only with gnu or linux tools",
-        "",
-        "1OGSE7",
-    ),
-    ("a timing check fails under load", "", "A210E4CA"),
-    ("main moves under a passed gate or run", "", "80ECO2"),
+    (PIN_LAGS, "", "16V6F4"),
+    (folds::GNU_ONLY, "", "1OGSE7"),
+    (TIMING, "", "A210E4CA"),
+    (MAIN_MOVES, "", "80ECO2"),
 ];
 
 /// Short names a repository goes by, and the name it is counted under.
@@ -100,6 +84,10 @@ pub struct Case {
     pub change: String,
     /// When it was said, in seconds.
     pub at: i64,
+    /// The message that said it, so a line its sender withdraws later is
+    /// dropped; none for a review record.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub said_in: Option<String>,
 }
 
 /// What a reading keeps for the next: the cases read from the mesh, and
@@ -139,8 +127,18 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
         .filter(|kept: &Kept| kept.v == VERSION)
         .unwrap_or_default();
     let from_ms = (kept.through_ms - SLACK_MS).max((now - WITHIN) * 1000);
+    let sent = mesh.sent_since(from_ms);
+    let withdrawn: BTreeSet<&str> = sent
+        .iter()
+        .filter_map(|m| m.supersedes.as_deref())
+        .collect();
     let mut cases = kept.cases;
-    cases.extend(said(&mesh.sent_since(from_ms)));
+    cases.extend(said(&sent));
+    cases.retain(|case| {
+        case.said_in
+            .as_deref()
+            .is_none_or(|id| !withdrawn.contains(id))
+    });
     cases.sort();
     cases.dedup();
     cases.retain(|case| case.at > now - KEPT_FOR);
@@ -249,13 +247,20 @@ fn owner_of(class: &str, repo: &str) -> &'static str {
 }
 
 /// The cases the cells' cause lines in `sent` say, those sent to the
-/// keeper, each dated when its message was.
+/// keeper, each dated when its message was and naming it.
 fn said(sent: &[Message]) -> Vec<Case> {
     let heard = format!("@{KEEPER}");
     sent.iter()
         .filter(|m| m.to.iter().any(|to| *to == heard || to == KEEPER))
         .filter_map(|m| Some((stamped_at(&m.id)? / 1000, m)))
-        .flat_map(|(at, m)| m.text.lines().flat_map(move |line| cause_line(line, at)))
+        .flat_map(|(at, m)| {
+            m.text.lines().flat_map(move |line| {
+                cause_line(line, at).into_iter().map(|case| Case {
+                    said_in: Some(m.id.clone()),
+                    ..case
+                })
+            })
+        })
         .collect()
 }
 
@@ -285,6 +290,7 @@ fn cause_line(line: &str, at: i64) -> Vec<Case> {
             class: class.clone(),
             change,
             at,
+            said_in: None,
         })
         .collect()
 }
@@ -317,7 +323,9 @@ fn repo_named(said: &str) -> String {
 }
 
 /// A class written plain, lower case, quotes, a closing stop and extra
-/// spaces gone, then by the name its alias counts it under.
+/// spaces gone, a curled apostrophe straight and a colon a comma, since a
+/// colon ends the class on the measure's line; then folded by the class
+/// its words say. Nothing written folds to nothing.
 fn folded(class: &str) -> String {
     let plain = class
         .trim()
@@ -326,11 +334,13 @@ fn folded(class: &str) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
-        .to_lowercase();
-    ALIASES
-        .iter()
-        .find(|(alias, _)| *alias == plain)
-        .map_or(plain, |(_, counted)| (*counted).to_owned())
+        .to_lowercase()
+        .replace('\u{2019}', "'")
+        .replace(':', ",");
+    if plain.is_empty() {
+        return plain;
+    }
+    fold(&plain)
 }
 
 /// The cases the harness's `causes.jsonl` holds, each dated when its round
@@ -349,6 +359,7 @@ fn reviewed(text: &str) -> Vec<Case> {
                         class: class.clone(),
                         change,
                         at,
+                        said_in: None,
                     })
                     .collect::<Vec<_>>()
             })

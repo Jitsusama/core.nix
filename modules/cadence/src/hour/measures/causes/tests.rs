@@ -28,6 +28,7 @@ fn case(class: &str, change: &str, ago: i64) -> Case {
         class: class.to_owned(),
         change: change.to_owned(),
         at: NOW - ago,
+        said_in: None,
     }
 }
 
@@ -51,13 +52,16 @@ fn each_cause_line_sent_to_the_keeper_is_a_case_for_each_change_it_names() {
         [
             (TEST_PASSES_UNDONE, "core.nix#6310"),
             (TEST_PASSES_UNDONE, "core.nix#6311"),
-            ("docs claim more than the code", "agentic-harness.pi#2123"),
+            (folds::WORDS_DIFFER, "agentic-harness.pi#2123"),
         ],
         "a cause line wasn't read as a case per change, or a line that isn't one was"
     );
+    let id = format!("{}-SENDER-1-0000000a", (NOW - 60) * 1000);
     assert!(
-        cases.iter().all(|c| c.at == NOW - 60),
-        "a case isn't dated when its message was: {cases:?}"
+        cases
+            .iter()
+            .all(|c| c.at == NOW - 60 && c.said_in.as_deref() == Some(id.as_str())),
+        "a case isn't dated when its message was, or doesn't name it: {cases:?}"
     );
     assert!(
         said(&[sent(text, 60, "@SOMEONE")]).is_empty(),
@@ -137,16 +141,19 @@ fn a_class_owned_apart_by_repository_goes_to_each_repositorys_owner() {
         .filter_map(|line| line.rsplit_once(" · "))
         .map(|(line, owner)| (class_of(line), owner))
         .collect();
+    let half = |repo: &str| format!("{TEST_PASSES_UNDONE} in {repo}");
+    let (harness, core, mycelium) = (
+        half("agentic-harness.pi"),
+        half("core.nix"),
+        half("mycelium"),
+    );
     assert_eq!(
         owners,
         [
-            (
-                "a test passes with the fix undone in agentic-harness.pi",
-                "85PKB2"
-            ),
-            ("a test passes with the fix undone in core.nix", "80ECO2"),
-            ("a test passes with the fix undone in mycelium", "1JQPPC"),
-            ("a pinned copy lags the tree", "16V6F4"),
+            (harness.as_str(), "85PKB2"),
+            (core.as_str(), "80ECO2"),
+            (mycelium.as_str(), "1JQPPC"),
+            (PIN_LAGS, "16V6F4"),
         ],
         "a class wasn't split by repository to each owner, or one owned whole was split"
     );
@@ -177,14 +184,16 @@ fn a_review_record_is_dated_by_its_run() {
         cases,
         [
             Case {
-                class: "racy test".to_owned(),
+                class: "(unfolded) racy test".to_owned(),
                 change: "core.nix#7".to_owned(),
                 at: 1_795_530_369,
+                said_in: None,
             },
             Case {
-                class: "racy test".to_owned(),
+                class: "(unfolded) racy test".to_owned(),
                 change: "core.nix#8".to_owned(),
                 at: 1_795_532_400,
+                said_in: None,
             },
         ],
         "a record wasn't dated by its run's id, or one with no time was kept"
@@ -228,6 +237,16 @@ fn what_the_mesh_said_is_kept_for_the_next_hour_and_a_look_keeps_nothing() {
     assert_eq!(
         later.now, 1.0,
         "the cases read before were lost once the mesh let their messages go"
+    );
+    let mut withdraws = sent("no cause here after all", -3700, "@1JQPPC");
+    withdraws.supersedes = Some(format!("{}-SENDER-1-00000003", (NOW - 600) * 1000));
+    let body = serde_json::to_vec(&withdraws).expect("a message serialised");
+    fs::write(messages.join(format!("{}.json", withdraws.id)), body).expect("written");
+    let after = read(home.path(), folder.path(), NOW + 7200, true);
+    assert_eq!(
+        after.now, 0.0,
+        "a line its sender withdrew still counted: {:?}",
+        after.behind
     );
 }
 
