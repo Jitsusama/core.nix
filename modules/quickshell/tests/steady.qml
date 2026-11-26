@@ -531,12 +531,15 @@ QtObject {
                 + `${steadiedList.waiting}, standing "${readHeaded(standingList.rows)}" with `
                 + `${standingList.waiting}, found "${readHeaded(foundList.rows)}" with `
                 + `${foundList.waiting}`);
-        // Held still with a row shown that waits unseen, as one Return acted
-        // on may be, the rows held are those the rows shown put back, so a
-        // cell's new row waits too, rather than slip in among them.
-        const heldUnseen = Steady.held(lateStep, underHeadings("#A=a1,a2 a1 a2 look"), id);
+        // Held still while the step's rows carry one kept unseen, as visual
+        // meets them (Held.js's kept puts it there, never among the rows
+        // shown), the rows held are those shown, so it waits, and a cell's
+        // new row waits beside it rather than slip in among them.
+        const heldUnseen = Steady.held(underHeadings("#A=a1 a1"),
+            Steady.kept(underHeadings("#A=a1 a1"), underHeadings("#A=a1,a2 a1 a2 look"), id),
+            id);
         if (readHeaded(heldUnseen.rows) !== "#A a1" || heldUnseen.waiting !== 2)
-            failures.push(`held, a row shown that waits unseen: `
+            failures.push(`held, a row the step keeps unseen: `
                 + `"${readHeaded(heldUnseen.rows)}" with ${heldUnseen.waiting} waiting`);
         // A row's id may name what every object has, and is kept as any.
         const ownNames = Steady.refreshed(underHeadings("a1 constructor"),
