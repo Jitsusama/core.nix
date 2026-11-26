@@ -81,6 +81,33 @@ it("two ids too long for the room that clip alike are numbered apart", () => {
   );
 });
 
+it("two sets of ids that clip to one stem share its numbers, so none read alike", () => {
+  const name = "Rig the Skiff for the Season";
+  const stem = "orchestration.skiff-of-the-north-shore-and-the-w";
+  const keys = [`${stem}ab-bay`, `${stem}ab-cove`, `${stem}cd-bay`, `${stem}cd-cove`];
+  const labels = labelledApart(keys.map((key) => ({ key, name, carries: key })));
+  assert.deepEqual(
+    keys.map((key) => labels.get(key)),
+    [1, 2, 3, 4].map((place) => `(SKIFF-OF-THE-NORTH-SHORE-AND-THE-W... ${place}`),
+  );
+});
+
+it("a network keeps its number however the node lists the networks alike with it", () => {
+  const name = "Rig the Skiff for the Season";
+  const shore = "orchestration.skiff-of-the-north-shore-and-the-whole-bay";
+  const bay = "orchestration.skiff-of-the-north-shore-and-the-whole-cove";
+  const listed = [
+    { key: shore, name, carries: "Mend the north gauges" },
+    { key: bay, name, carries: "Mend the south gauges" },
+  ];
+  const forward = labelledApart(listed);
+  const backward = labelledApart(listed.toReversed());
+  assert.deepEqual(
+    [backward.get(shore), backward.get(bay)],
+    [forward.get(shore), forward.get(bay)],
+  );
+});
+
 it("a title written as another's id-hinted label takes its own id in turn", () => {
   const name = "Rig the Skiff for the Season";
   const labels = labelledApart([

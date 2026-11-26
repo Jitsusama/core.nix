@@ -454,9 +454,10 @@ export const labelsApart = (
 
 /**
  * Each label in `labels` still reading like another's clipped short enough
- * to end on its place among those alike, so within each set none read
- * alike; one pass per network bounds the rare number that reads like
- * another label in turn.
+ * to end on a number, the least that leaves it reading like no label
+ * already standing, so none read alike. Two sets clipped to one stem share
+ * its numbers, and each set is numbered in its networks' key order, so a
+ * network keeps its number while the networks alike with it stay the same.
  */
 const numberAlike = (
   networks: readonly Named[],
@@ -464,21 +465,33 @@ const numberAlike = (
   clip: (text: string, room: number) => string,
   room: number,
 ): void => {
-  for (let pass = 0; pass < networks.length; pass++) {
-    const seen = timesEach(labels.values());
-    const alike = networks.filter((n) => (seen.get(labels.get(n.key) ?? "") ?? 0) > 1);
-    if (alike.length === 0) {
-      return;
-    }
-    const counted = new Map<string, number>();
-    for (const n of alike) {
-      const was = labels.get(n.key) ?? "";
-      const place = (counted.get(was) ?? 0) + 1;
-      counted.set(was, place);
-      const mark = ` ${place}`;
-      labels.set(n.key, `${clip(was, room - mark.length)}${mark}`);
-    }
+  const seen = timesEach(labels.values());
+  const isAlike = (n: Named): boolean => (seen.get(labels.get(n.key) ?? "") ?? 0) > 1;
+  const alike = networks.filter(isAlike).toSorted((a, b) => byKey(a.key, b.key));
+  if (alike.length === 0) {
+    return;
   }
+  const taken = new Set(networks.filter((n) => !isAlike(n)).map((n) => labels.get(n.key)));
+  // No number passes the count of networks, so the widest is kept room for.
+  const stemRoom = room - ` ${networks.length}`.length;
+  for (const n of alike) {
+    const stem = clip(labels.get(n.key) ?? "", stemRoom);
+    let place = 1;
+    while (taken.has(`${stem} ${place}`)) {
+      place++;
+    }
+    const label = `${stem} ${place}`;
+    taken.add(label);
+    labels.set(n.key, label);
+  }
+};
+
+/** Two keys in the order their characters sort, the same in every locale. */
+const byKey = (a: string, b: string): number => {
+  if (a === b) {
+    return 0;
+  }
+  return a < b ? -1 : 1;
 };
 
 // The fewest characters of its name a label keeps beside its id, so a

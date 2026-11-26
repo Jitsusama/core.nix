@@ -943,6 +943,8 @@ WIDTHS = """[document.getElementById("world").ownerSVGElement.getBoundingClientR
 
 # How far the window narrows under a view moved by hand.
 NARROWED_PX = 80
+# How far Shift and an arrow pan the view (view.js's PAN).
+PANNED_PX = 80
 
 
 def fitted_about(view: tuple[float, float, float], wide: float) -> float:
@@ -983,8 +985,13 @@ def test_a_fit_takes_the_whole_width_until_the_drawer_opens(mycelium_opened: Ope
     # Moved by hand, the view keeps its middle through a resize by the map's own change in
     # width, the drawer open or not: measured by the room the drawer leaves, it would jump
     # half a drawer the first resize after the drawer opened.
+    # Unmoved, the view would follow the whole map and fit it afresh, which can shift it the same
+    # way, so the pan is checked to have landed.
     page.keyboard.press("Shift+ArrowLeft")
-    settled(page, "the map never stood still once moved")
+    moved = settled(page, "the map never stood still once moved")
+    assert moved == pytest.approx((shut[0] + PANNED_PX, shut[1], shut[2]), abs=0.05), (
+        f"Shift+Left didn't pan the map {PANNED_PX} px from {shut}: {moved}"
+    )
     page.keyboard.press(".")
     expect(page.locator("#now-control"), ". didn't open Now again").to_have_attribute(
         "aria-expanded", "true"
