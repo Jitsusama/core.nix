@@ -16,6 +16,11 @@
     a card's status line, as the launcher's is, gives its middle hints way first
     as room runs short, the keys list's and Return's staying
   '';
+  a-check-copies-what-each-file-imports = ''
+    the shell's checks copy a file with what imports.nix says it imports, and given a table
+    whose row for one file leaves out what it imports, refuse, naming the file and imports.nix
+    by its path, while a row listing a file's imports in another order copies the same files
+  '';
   a-claimed-chord-is-refused = ''
     a chord two layers claim, or one claims twice, is refused
   '';

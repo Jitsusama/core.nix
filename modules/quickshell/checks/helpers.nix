@@ -45,19 +45,20 @@ let
   # Options.qml, which the account's configuration writes, is a stand-in
   # holding only whether reports are on, and they're off, as on a machine
   # that hasn't chosen, for a check whose files say a line by it
-  # (Presented.rowShown).
-  copied =
-    files:
+  # (Presented.rowShown). The table is given, so a check can give it another
+  # (core.nix's a-check-copies-what-each-file-imports).
+  copiedWith =
+    table: files:
     let
       bring =
         seen: file:
-        if lib.elem file seen then seen else lib.foldl' bring (seen ++ [ file ]) (imports.${file} or [ ]);
+        if lib.elem file seen then seen else lib.foldl' bring (seen ++ [ file ]) (table.${file} or [ ]);
       every = lib.sort lib.lessThan (lib.foldl' bring [ ] files);
       wrong = lib.filter (
         file:
         (lib.hasSuffix ".qml" file || lib.hasSuffix ".js" file)
         && file != "Options.qml"
-        && lib.sort lib.lessThan (importing file) != lib.sort lib.lessThan (imports.${file} or [ ])
+        && lib.sort lib.lessThan (importing file) != lib.sort lib.lessThan (table.${file} or [ ])
       ) every;
       folders = lib.unique (lib.filter (folder: folder != ".") (map dirOf every));
       words = (import ../launcher/words.nix).file;
@@ -84,6 +85,7 @@ let
           "(under modules/quickshell; make each one's row there list what it imports)" >&2
         exit 1
       '';
+  copied = copiedWith imports;
   # The shell's files a program's step in the launcher is drawn from, as
   # Applications.qml holds it, copied for the reader's, mpv's and Inkscape's
   # checks. imports.nix sees only a file's import lines, so two kinds of
@@ -654,6 +656,7 @@ in
 {
   inherit
     copied
+    copiedWith
     programStep
     timedQml
     singleton

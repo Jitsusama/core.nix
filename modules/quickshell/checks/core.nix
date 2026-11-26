@@ -7,6 +7,7 @@
 {
   account,
   copied,
+  copiedWith,
   graphical,
   launcherOnNiri,
   lib,
@@ -335,6 +336,36 @@ in
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml held.qml
+      touch $out
+    '';
+
+  # copied's guard, by what it makes of a table given it, so nothing is
+  # built: a row leaving out what its file imports is refused, naming the
+  # file and imports.nix by its path, and a row in another order copies what
+  # imports.nix's own does. Today's rows are all sorted, so only this sees
+  # either break.
+  a-check-copies-what-each-file-imports =
+    let
+      table = import ./imports.nix;
+      roots = [ "launcher/ReadyRows.qml" ];
+      reversed = table // {
+        "launcher/ReadyRows.qml" = lib.reverseList table."launcher/ReadyRows.qml";
+      };
+      real = copiedWith table roots;
+      unlisted = copiedWith (table // { "launcher/Presented.js" = [ ]; }) roots;
+      refusal = "modules/quickshell/checks/imports.nix doesn't say";
+      ownRefused = lib.hasInfix refusal real;
+      sameAnyOrder = copiedWith reversed roots == real;
+      refusedByName =
+        lib.hasInfix refusal unlisted && lib.hasInfix "launcher/Presented.js" unlisted;
+      failures =
+        lib.optional ownRefused "imports.nix's own rows were refused"
+        ++ lib.optional (!sameAnyOrder) "a row in another order copied otherwise than its own"
+        ++ lib.optional (!refusedByName) "a row leaving out Presented.js's imports went unrefused";
+    in
+    pkgs.runCommandLocal "a-check-copies-what-each-file-imports" { } ''
+      ${lib.concatMapStrings (failure: "echo ${lib.escapeShellArg failure} >&2\n") failures}
+      ${lib.optionalString (failures != [ ]) "exit 1"}
       touch $out
     '';
 
