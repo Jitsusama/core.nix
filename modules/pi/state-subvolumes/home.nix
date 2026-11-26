@@ -15,8 +15,8 @@
 # ledgers' SQLite files, the work tool's records of the trees it cut, and
 # each further realm's own state. Some stay in the home's tree, since a
 # copy each boot must fit the wait every pi start gives it: the worktrees,
-# some 1,700 of them, and the mesh's messages, 135,907 files on optimus on
-# 26 November, where the largest folder moved here held 6,180. At the
+# some 1,700 of them, and the mesh's messages, 135,907 files on the
+# workstation measured on 26 November, where the largest folder moved here held 6,180. At the
 # 12,000 files in 25 s Chrome's copy took on a loaded disk, that is about
 # 13 s, and two minutes is the most any is given.
 #
