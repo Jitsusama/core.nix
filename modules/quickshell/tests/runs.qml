@@ -192,18 +192,34 @@ ShellRoot {
                 pool === "fleet-live, council on core.nix#380, fleet-new", pool);
             const since = names(runs.search("coun").rows);
             expect("found through an update", since === "council on core.nix#380", since);
+            // A run come since that the letters match is found as typing goes on,
+            // as the row the list now holds, never an earlier list's.
+            runs.records = runs.records.concat([{ key: "run:fleet.council-late", kind: "run",
+                id: "fleet.council-late", about: "council-late", parent: "s-gone",
+                state: "done" }]);
+            const late = runs.search("counc").rows;
+            expect("a run come since, found as typing goes on",
+                names(late).includes("council-late")
+                    && late.every(row => runs.all.includes(row)), names(late));
 
             // Typed on a letter at a time, with a session coming or going
             // between letters to make the one at work's row again, each
             // search matches what a search of every row matches, at every
             // grade, not only the finest shown.
+            // Each finds the rows the list holds now, and, typed on, looks
+            // through fewer than all of them at least once.
             const sessionsThen = Sessions.running;
+            let narrowedSteps = 0;
             for (const word of ["council", "2026", "fleet", "core"]) {
                 for (let end = 1; end <= word.length; end++) {
                     const soFar = word.slice(0, end);
                     Sessions.running = end % 2 === 0 ? [] : sessionsThen;
+                    if (end > 1 && runs.poolFor(runs.all, soFar).length < runs.all.length)
+                        narrowedSteps += 1;
                     runs.search(soFar);
                     const chain = runs.lastMatched;
+                    expect(`"${soFar}" finds the rows the list holds now`,
+                        chain.rows.every(row => runs.all.includes(row)), names(chain.rows));
                     const stepped = names(chain.rows);
                     runs.matchedIn(null, "", []);
                     runs.search(soFar);
@@ -214,6 +230,7 @@ ShellRoot {
                 }
             }
             Sessions.running = sessionsThen;
+            expect("typed on through updates, it narrowed", narrowedSteps > 0, narrowedSteps);
 
             // A run's own kind, where the harness wrote it beside the node's.
             runs.records = [{ key: "run:review.r7-1", kind: "run", "run.kind": "judge",
