@@ -3670,7 +3670,8 @@ fn follow_room(doorway: &mut Doorway, account: &Path, settings: &Settings) {
     doorway.unceiled = false;
     if !room.unread.is_empty() && !doorway.unspared {
         eprintln!(
-            "Can't read how long {} waited on memory, so {slice}'s ceiling doesn't rise.",
+            "Can't read how long {} waited on memory, so {slice}'s ceiling comes back to what \
+             it declares and doesn't rise.",
             room.unread.join(", ")
         );
     }
@@ -3705,15 +3706,18 @@ fn follow_room(doorway: &mut Doorway, account: &Path, settings: &Settings) {
             doorway.ceiling.set(high);
             eprintln!("Set {slice}'s memory ceiling to {} MiB, {why}.", high >> 20);
         }
+        // A failure is counted from when busctl gave up, not from the look,
+        // so a set that timed out waits its whole time before it's tried
+        // again rather than none of it.
         Ok(output) => {
-            doorway.ceiling.failed(now);
+            doorway.ceiling.failed(std::time::Instant::now());
             eprintln!(
                 "Couldn't set {slice}'s memory ceiling: {}",
                 String::from_utf8_lossy(&output.stderr).trim()
             );
         }
         Err(error) => {
-            doorway.ceiling.failed(now);
+            doorway.ceiling.failed(std::time::Instant::now());
             eprintln!("Couldn't run busctl to set {slice}'s memory ceiling: {error}");
         }
     }

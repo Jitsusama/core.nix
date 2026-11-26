@@ -303,9 +303,13 @@ def test_work_in_jobs_is_slowed_never_ended_past_a_ceiling_that_follows_room(
         machine.wait_until_succeeds(
             f"test $(cat {JOBS}/memory.high) -gt {declared}", timeout=RISING
         )
-        said = machine.succeed("journalctl -o cat _SYSTEMD_USER_UNIT=jobs-sorter.service")
-        assert "memory ceiling to" in said, said
-        assert "nothing it spares waiting on memory" in said, said
+        # The sorter says so once busctl has answered, after memory.high has moved, so its
+        # line is waited for rather than read once.
+        machine.wait_until_succeeds(
+            "journalctl -o cat _SYSTEMD_USER_UNIT=jobs-sorter.service"
+            " | grep -q 'memory ceiling to .*nothing it spares waiting on memory'",
+            timeout=RISING,
+        )
         # Still lifted as the sorter stops, so only its unit can have put it back.
         machine.succeed(
             f"test $(cat {JOBS}/memory.high) -gt {declared}"
