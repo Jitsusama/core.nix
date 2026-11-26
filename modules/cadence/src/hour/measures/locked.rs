@@ -189,6 +189,13 @@ pub fn read(
     // itself, leaving FETCH_HEAD to whoever works there. A link that
     // stalls gives up in half a minute rather than holding the card, and
     // git's own upkeep, which a fetch can start, is left to Joel's checkout.
+    // Over ssh too, it never asks anyone, reaches no agent and gives up as
+    // soon.
+    let ssh = format!(
+        "core.sshCommand={} -o ConnectTimeout=30 -o ServerAliveInterval=10 \
+         -o ServerAliveCountMax=3",
+        crate::unasked::SSH
+    );
     let took = remote
         && command(
             "git",
@@ -203,10 +210,8 @@ pub fn read(
                 "maintenance.auto=false",
                 "-c",
                 "gc.auto=0",
-                // Over ssh too, it never asks anyone and gives up as soon.
                 "-c",
-                "core.sshCommand=ssh -o BatchMode=yes -o ConnectTimeout=30 \
-                 -o ServerAliveInterval=10 -o ServerAliveCountMax=3",
+                &ssh,
                 "fetch",
                 "--quiet",
                 "--no-write-fetch-head",
