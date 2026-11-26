@@ -5066,7 +5066,9 @@ Scope {
     // level only stepped, as a board's lights, steps by it. The first word
     // it can't take says Vim's error and none of them changes. `sets` are
     // the options it sets, the machine's unless :setl gives each thing's.
-    function commandSet(arg, sets) {
+    // The line's key is timed as acting (`acting`) just before an option
+    // changes, since its source then changes; one only said changes none.
+    function commandSet(arg, sets, acting) {
         const unread = (Words.field.command ?? {}).unread ?? "";
         const planned = [];
         for (const options of sets ?? [setOptions]) {
@@ -5077,6 +5079,8 @@ Scope {
             }
             planned.push(plan);
         }
+        if (planned.some(plan => plan.steps.some(step => step.change.how !== "show")))
+            acting();
         const said = [];
         for (const { options, steps } of planned)
             said.push(...commandSetSteps(options, steps, unread));
@@ -5129,13 +5133,13 @@ Scope {
     // :setl's words, set on each thing the line's bound to, or on what the
     // cursor row is inside, as :set sets the machine's; one with no such
     // option says Vim's E518 and none changes.
-    function commandSetLocal(read, opened) {
+    function commandSetLocal(read, opened, acting) {
         const bound = commandBound(read, opened);
         if (bound.error !== undefined) {
             commandSay(bound.error, true);
             return;
         }
-        commandSet(read.arg, localOptions(bound.things));
+        commandSet(read.arg, localOptions(bound.things), acting);
     }
 
     // Return on the line: exactly what's typed, as Commands.ran read it.
@@ -5148,12 +5152,16 @@ Scope {
             return;
         // The command line's own Return, which the prompt never reads, runs
         // what's typed, or says why not, as E492, closing the line either
-        // way, as its Escape does, so it's timed as acting before it's
-        // known which, and as a move where it goes to a row, as Down does;
-        // @: comes with no key of its own (`from`), since the prompt timed
-        // it as commandAgain.
-        if (from !== "")
-            keyActs(from, read.error === undefined && read.go !== undefined);
+        // way. It's timed first as a move, as Down is, since closing the
+        // line, a row gone to, an error or :help changes no source: a
+        // share's change beside it is then no act of Joel's, and the
+        // Return after it is held where that change moved his step
+        // (Held.changeDoes). Just before it acts on a source, a player's
+        // time, an option set or a row's act, it's timed again as acting
+        // (`acting`), so the change it makes is his. An act that asks
+        // first is timed by the key that answers.
+        lineKeyActs(from, true);
+        const acting = () => lineKeyActs(from, false);
         const opened = commanding;
         commandEarlier = Commands.remembered(commandEarlier, read.typed ?? "");
         // What went wrong is said where the line was, over a viewer too,
@@ -5172,6 +5180,7 @@ Scope {
             return;
         }
         if (read.go !== undefined && opened.go) {
+            acting();
             opened.go(read.go);
             return;
         }
@@ -5195,10 +5204,10 @@ Scope {
             listing = true;
             return;
         case "set":
-            commandSet(read.arg);
+            commandSet(read.arg, undefined, acting);
             return;
         case "setlocal":
-            commandSetLocal(read, opened);
+            commandSetLocal(read, opened, acting);
             return;
         case "history":
             commandLine({ earlier: true });
@@ -5210,12 +5219,13 @@ Scope {
             return;
         }
         if (entry.kind === "surface") {
+            acting();
             entry.own.run({ name: entry.command, bang: read.bang, arg: read.arg,
                 things: bound.things, count: bound.things.length });
             return;
         }
         if (bound.things.length !== 1 || bound.things[0] !== opened.things[0]) {
-            commandAcross(entry, read, bound.things);
+            commandAcross(entry, read, bound.things, acting);
             return;
         }
         // An act that asks for a target or for words is stepped into, as
@@ -5229,10 +5239,22 @@ Scope {
         const inThing = !!top && !!thing && (top === thing || steadyId(top) === steadyId(thing));
         if ((act.targets || act.given) && act !== thing && (inThing || enter(thing))) {
             const step = held[held.length - 1];
+            acting();
             run(step.rows.find(one => one.key === act.key) ?? act, false);
             return;
         }
-        commandAsked(entry, [{ act, thing }], 1, read.bang);
+        commandAsked(entry, [{ act, thing }], 1, read.bang, acting);
+    }
+
+    // Times the command line's key, `from`, as keyActs does an outside
+    // key, saying whether it only `moved`. @: comes with no key of its own,
+    // since the prompt timed it as commandAgain, so for it only the move
+    // is said.
+    function lineKeyActs(from, moved) {
+        if (from !== "")
+            keyActs(from, moved);
+        else
+            keyHeardMoved = moved;
     }
 
     // Runs a line's acts on what it's bound to, `found` each act with its
@@ -5240,7 +5262,9 @@ Scope {
     // rule, through the one ask (askOnce), in d's words for one thing or
     // many (Confirm.question), the rows it covers tinted: Return runs them
     // past their own confirm, as a ! does; any other key leaves them be.
-    function commandAsked(entry, found, all, bang) {
+    // The line's key is timed as acting (`acting`) only where they run at
+    // once: a line that finds none, arms a row or asks changes no source.
+    function commandAsked(entry, found, all, bang, acting) {
         const words = Words.field.command ?? {};
         const acts = found.map(one => one.act);
         const asked = CommandBinding.asking(entry, acts, { all, bang }, Options.commands ?? {});
@@ -5282,6 +5306,7 @@ Scope {
                 .filter(at => at >= 0));
             return;
         }
+        acting();
         if (bang) {
             sure();
             return;
@@ -5333,11 +5358,11 @@ Scope {
 
     // A line run on several things, or on one a range or :g found: each
     // thing's own act (CommandBinding.actFor), asked first where it asks.
-    function commandAcross(entry, read, things) {
+    function commandAcross(entry, read, things, acting) {
         const found = things.map(thing => ({ act: CommandBinding.actFor(entry, actsOf(thing),
             commandWords), thing }))
             .filter(one => one.act !== undefined);
-        commandAsked(entry, found, things.length, read.bang);
+        commandAsked(entry, found, things.length, read.bang, acting);
     }
 
     // Where the launcher is now, kept on a way back: the line a page offered keeps none of its
@@ -7783,7 +7808,9 @@ Scope {
 
     // What the ask standing makes of `key` (Confirm.answer), or "" with none
     // standing: answerAsk answers by it, and the prompt times a key as
-    // acting by it (answerTaken), so the two can't disagree.
+    // acting by it (answerTaken). Each reads the clock, so only a key on
+    // the millisecond the guard runs out can be timed one way and
+    // answered the other.
     function askSaid(key) {
         return asked === null ? "" : Confirm.answer(asked, key, Date.now(), askReady.interval);
     }
@@ -14828,10 +14855,11 @@ Scope {
                             // its page however it was let go, choosing
                             // nothing, as Vim's visual ends at its : line.
                             // The key that let it go, which the prompt
-                            // never reads, closes the line, so it's timed
-                            // as acting, as the line's Return is.
+                            // never reads, closes the line, changing no
+                            // source, so it's timed as a move, as the
+                            // line's Return is until it acts.
                             onLetGo: (how, key) => {
-                                root.keyActs(key);
+                                root.keyActs(key, true);
                                 root.commandLeft(
                                     QueryKeys.paged(root.commanding?.from ?? "") ? "page"
                                     : how === "dropped" ? root.commanding?.from ?? "normal"
