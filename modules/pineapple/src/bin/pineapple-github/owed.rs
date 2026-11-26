@@ -5,10 +5,9 @@
 //! often each time, so a broken thread costs his shared limit little, and
 //! after [`TRIES`] failed asks it's let go, the journal and a row in For
 //! You naming the span nobody read, with its link, so he can look there
-//! himself. One his search or the watch lists again is asked early, and
-//! both list one for an hour after it changed, so for that hour it's
-//! asked each round: early asks cost no try, and a round's
-//! [`super::FAILS`] bound what they cost.
+//! himself. One his search or his notifications list again, as it
+//! changed, is asked early at no try; one the watch lists again waits its
+//! turn, as the watch lists it each round until his words there are read.
 
 use pineapple::github::{self, Thread};
 use pineapple::progress::Owed;
