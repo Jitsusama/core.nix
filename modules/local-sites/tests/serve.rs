@@ -736,6 +736,17 @@ fn a_browser_is_swept_once_by_the_first_page_of_the_sites_own() {
         None,
         "a browser was swept twice"
     );
+    assert_eq!(
+        header(&headers, "set-cookie"),
+        Some(cookie),
+        "a swept browser's mark would lapse after its year"
+    );
+    let (_, picture, _) = asked(served.port, &host, "GET /kit/theme.css", &after);
+    assert_eq!(
+        header(&picture, "set-cookie"),
+        None,
+        "a page's part marked the browser"
+    );
     let documents = format!("{DOCUMENTS}:{}", served.port);
     for (host, path) in [(&host, "/mycelium/"), (&documents, "/mycelium/")] {
         let (_, document, _) = asked(served.port, host, &format!("GET {path}"), "");

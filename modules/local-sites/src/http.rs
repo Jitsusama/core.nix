@@ -369,10 +369,15 @@ fn told_for(head: &Head, made: files::Made, side: Side, kind: &str) -> Guarded {
                 site: head.fetch_site.as_deref(),
                 dest: head.fetch_dest.as_deref(),
             };
-            if kind.starts_with("text/html") && sweep::due(&asked) {
+            let page = kind.starts_with("text/html");
+            if page && sweep::due(&asked) {
                 headers.push(("Clear-Site-Data", "\"storage\"".to_owned()));
                 headers.push(("Set-Cookie", sweep::SWEEPING.to_owned()));
                 whole = true;
+            } else if page && sweep::marked_again(&asked) {
+                // A browser keeps a cookie from a copy it's told is current,
+                // so the mark needn't send the page whole.
+                headers.push(("Set-Cookie", sweep::SWEEPING.to_owned()));
             }
         }
     }
