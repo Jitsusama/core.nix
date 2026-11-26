@@ -6312,7 +6312,8 @@
     file the watch couldn't write, a camera's streaming or idle or a loopback's, is written once
     it can be, its trouble said once as it begins and once as it clears, even when the loopback's
     nobody met it and its camera's watch clears it, and so is the node a camera's watch couldn't
-    say beside it; and a loopback's file is said ready only once it's written
+    say beside it, its trouble said once too; and a loopback's file is said ready only once it and
+    its node are written
   '';
   usb-camera-holders-forget-a-killed-run = ''
     each USB camera watch's unit, the relayed one's too, forgets what says its node in the folder it

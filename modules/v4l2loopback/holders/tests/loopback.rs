@@ -3,17 +3,17 @@
 //! only then is the run ready; a trouble is the run's, not the step's, so
 //! it's said once whether the nobody or the watch of a camera met it; and
 //! the node a camera's watch couldn't say in `.devices/` is said once it
-//! can be.
+//! can be, its trouble said once, and only then is the run ready.
 
 use std::fs::{self, File, Permissions};
 use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::thread::sleep;
 use std::time::Duration;
 
-/// A watch on a loopback whose source names no node, its file in a folder
-/// of its own, its log and complaints in files beside it.
+/// A watch on a loopback, its file in a folder of its own, its log and
+/// complaints in files beside it.
 struct Watch {
     root: PathBuf,
     folder: PathBuf,
@@ -21,21 +21,36 @@ struct Watch {
 }
 
 impl Watch {
-    /// Starts the watch with its folder locked, so its first write fails.
+    /// Starts the watch on a source with no node in it, as a relay that has
+    /// none says, with its folder locked, so its first write fails.
     fn locked(name: &str) -> Self {
+        Self::started(name, "", |folder| {
+            fs::set_permissions(folder, Permissions::from_mode(0o555)).unwrap();
+            assert!(
+                File::create(folder.join("probe")).is_err(),
+                "a locked folder still took a file, as it does for root"
+            );
+        })
+    }
+
+    /// Starts the watch on a camera nothing on the machine holds, with a
+    /// file where `.devices/` would be made, so its node can't be said;
+    /// a folder there would only be widened.
+    fn unnamed(name: &str) -> Self {
+        Self::started(name, "/dev/random", |folder| {
+            fs::write(folder.join(".devices"), "").unwrap();
+        })
+    }
+
+    fn started(name: &str, node: &str, before: impl FnOnce(&Path)) -> Self {
         let root =
             std::env::temp_dir().join(format!("holders-loopback-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         let folder = root.join("camera-holders");
         fs::create_dir_all(&folder).unwrap();
-        // A source with no node in it, as a relay that has none says.
         let source = root.join("source");
-        fs::write(&source, "").unwrap();
-        fs::set_permissions(&folder, Permissions::from_mode(0o555)).unwrap();
-        assert!(
-            File::create(folder.join("probe")).is_err(),
-            "a locked folder still took a file, as it does for root"
-        );
+        fs::write(&source, node).unwrap();
+        before(&folder);
         let program = Command::new(env!("CARGO_BIN_EXE_loopback-holders"))
             .arg("--sysfs")
             .arg(root.join("sys"))
@@ -54,6 +69,31 @@ impl Watch {
 
     fn file(&self) -> PathBuf {
         self.folder.join("Stand-in")
+    }
+
+    fn device(&self) -> PathBuf {
+        self.folder.join(".devices/Stand-in")
+    }
+
+    /// Whether `.devices/` says the camera is the node it watches.
+    fn named(&self) -> bool {
+        let node = fs::canonicalize("/dev/random").unwrap();
+        fs::read_to_string(self.device()).is_ok_and(|said| said == format!("{}\n", node.display()))
+    }
+
+    /// Holds the camera until the watch says so, then lets it go until the
+    /// watch says nobody: two looks it surely made.
+    fn looked_twice(&self) {
+        let held = File::open("/dev/random").unwrap();
+        self.until(
+            |watch| fs::read_to_string(watch.file()).is_ok_and(|said| !said.is_empty()),
+            "a camera held wasn't said held",
+        );
+        drop(held);
+        self.until(
+            |watch| fs::read_to_string(watch.file()).is_ok_and(|said| said.is_empty()),
+            "a camera let go wasn't said held by nobody",
+        );
     }
 
     fn read(&self, name: &str) -> String {
@@ -81,20 +121,20 @@ impl Drop for Watch {
     }
 }
 
-/// How often the watch complained of its file itself, not the device file
-/// beside it, whose complaints end the same way.
-fn complaints_of_its_file(watch: &Watch) -> usize {
-    let file = format!("{}: ", watch.file().display());
+/// How often the watch complained of one file, not the other, whose
+/// complaints end the same way.
+fn complaints_of(watch: &Watch, file: &Path) -> usize {
+    let file = format!("{}: ", file.display());
     watch
         .read("complaints")
         .lines()
-        .filter(|line| line.starts_with(&file))
+        .filter(|line| line.starts_with(&file) && !line.ends_with(": right again"))
         .count()
 }
 
-/// How often the watch said its file itself was right again.
-fn right_again(watch: &Watch) -> usize {
-    let said = format!("{}: right again", watch.file().display());
+/// How often the watch said one file was right again.
+fn right_again(watch: &Watch, file: &Path) -> usize {
+    let said = format!("{}: right again", file.display());
     watch
         .read("complaints")
         .lines()
@@ -140,7 +180,7 @@ fn a_loopbacks_nobody_it_couldnt_write_is_written_once_it_can_be() {
         "a nobody written at last wasn't said ready",
     );
     watch.until(
-        |watch| right_again(watch) > 0,
+        |watch| right_again(watch, &watch.file()) > 0,
         "a write that worked again went unsaid",
     );
     assert_eq!(
@@ -155,7 +195,7 @@ fn a_loopbacks_nobody_it_couldnt_write_is_written_once_it_can_be() {
 fn a_trouble_the_nobody_met_is_the_cameras_watch_to_clear() {
     let watch = Watch::locked("handed");
     watch.until(
-        |watch| complaints_of_its_file(watch) == 1,
+        |watch| complaints_of(watch, &watch.file()) == 1,
         "a nobody it couldn't write went unsaid",
     );
     // A camera nothing on the machine holds comes while the folder is still
@@ -168,43 +208,78 @@ fn a_trouble_the_nobody_met_is_the_cameras_watch_to_clear() {
     // Past the watch's next look, two seconds on, which writes again.
     sleep(Duration::from_millis(2500));
     assert_eq!(
-        complaints_of_its_file(&watch),
+        complaints_of(&watch, &watch.file()),
         1,
         "the camera's watch complained again of what the nobody had: {:?}",
         watch.read("complaints")
     );
     fs::set_permissions(&watch.folder, Permissions::from_mode(0o755)).unwrap();
     watch.until(
-        |watch| right_again(watch) == 1,
+        |watch| right_again(watch, &watch.file()) == 1,
         "the camera's watch didn't say right again what the nobody met",
     );
-    let node = fs::canonicalize("/dev/random").unwrap();
     watch.until(
-        |watch| {
-            fs::read_to_string(watch.folder.join(".devices/Stand-in"))
-                .is_ok_and(|said| said == format!("{}\n", node.display()))
-        },
+        Watch::named,
         "the node the camera's watch couldn't say wasn't said once it could be",
     );
-    // A watch with its files right and nobody holding the camera looks only
-    // as the camera is opened or closed, so it's opened twice, the look each
-    // makes finding its files right.
-    for _ in 0..2 {
-        drop(File::open("/dev/random").unwrap());
-        sleep(Duration::from_millis(300));
-    }
     watch.until(
         |watch| ready(&watch.read("log")) == 1,
         "a camera's file written at last wasn't said ready",
     );
-    watch.until(
-        |watch| fs::read_to_string(watch.file()).is_ok_and(|said| said.is_empty()),
-        "a camera nothing holds was said held",
-    );
+    // A watch with its files right and nobody holding the camera looks only
+    // as the camera is opened or closed, so it's made to look, each look
+    // finding its files right.
+    watch.looked_twice();
     assert_eq!(
-        right_again(&watch),
+        right_again(&watch, &watch.file()),
         1,
         "a file right on each look was said right again each look: {:?}",
+        watch.read("complaints")
+    );
+}
+
+#[test]
+fn a_camera_is_ready_only_once_its_node_is_said() {
+    let watch = Watch::unnamed("unnamed");
+    watch.until(
+        |watch| complaints_of(watch, &watch.device()) == 1,
+        "a node it couldn't say went unsaid",
+    );
+    watch.until(
+        |watch| fs::read_to_string(watch.file()).is_ok_and(|said| said.is_empty()),
+        "a camera nothing holds wasn't said held by nobody",
+    );
+    // Past the watch's next look, two seconds on, which tries the node again.
+    sleep(Duration::from_millis(2500));
+    assert_eq!(
+        ready(&watch.read("log")),
+        0,
+        "a camera whose node went unsaid was said ready"
+    );
+    assert_eq!(
+        complaints_of(&watch, &watch.device()),
+        1,
+        "a node it couldn't say each look was complained of each look: {:?}",
+        watch.read("complaints")
+    );
+    fs::remove_file(watch.folder.join(".devices")).unwrap();
+    watch.until(
+        Watch::named,
+        "a node it couldn't say wasn't said once it could be",
+    );
+    watch.until(
+        |watch| ready(&watch.read("log")) == 1,
+        "a camera whose node was said at last wasn't said ready",
+    );
+    watch.until(
+        |watch| right_again(watch, &watch.device()) == 1,
+        "a node said at last wasn't said right again",
+    );
+    watch.looked_twice();
+    assert_eq!(
+        right_again(&watch, &watch.device()),
+        1,
+        "a node right on each look was said right again each look: {:?}",
         watch.read("complaints")
     );
 }

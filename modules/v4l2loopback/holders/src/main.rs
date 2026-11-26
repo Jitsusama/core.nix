@@ -435,11 +435,15 @@ impl Run {
     }
 
     /// Removes what says the node, as the camera goes or the run ends, so
-    /// nothing owed is said after.
+    /// nothing owed is said after, and a trouble the file had clears.
     fn unname(&mut self, output: &Path) {
         self.owed = None;
-        if let Err(trouble) = say_device(output, None) {
-            complain(format_args!("{trouble}"));
+        let Some(file) = device_file(output) else {
+            return;
+        };
+        match say_device(output, None) {
+            Ok(()) => self.device.now(&file, &[]),
+            Err(trouble) => self.device.now(&file, &[trouble]),
         }
     }
 
@@ -494,6 +498,10 @@ fn watch(
         };
         let anyone = !names.is_empty();
         let shown = listed(names, sysfs, node);
+        // The node first, so a reader that finds a holder can find the
+        // camera by it, and a run killed between the two leaves the node
+        // file that finds the holders file, as the removals keep it.
+        let found = run.name(output);
         let right = said.as_ref() == Some(&shown)
             || match write(output, &shown) {
                 Ok(()) => true,
@@ -503,7 +511,6 @@ fn watch(
                 }
             };
         run.trouble.now(output, &troubles);
-        let found = run.name(output);
         let settled = seen && right && found;
         if settled {
             run.written();
@@ -684,7 +691,13 @@ fn loopback(events: &mut Events, options: &Options, run: &mut Run) {
             None,
             run,
         );
-        say_nobody(&options.output, run, !node.exists());
+        let gone_now = !node.exists();
+        // A camera gone is said no more, so a node that comes next, which
+        // may not be sayable yet, never leaves the last one said.
+        if gone_now {
+            run.unname(&options.output);
+        }
+        say_nobody(&options.output, run, gone_now);
         if let Ended::Stopped = ended {
             run.unname(&options.output);
             return;
