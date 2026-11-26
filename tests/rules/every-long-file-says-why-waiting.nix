@@ -32,8 +32,6 @@
   "modules/quickshell/launcher/Now.qml"
   "modules/quickshell/launcher/Sound.qml"
   "modules/quickshell/timekeeping/src/candm.rs"
-  "modules/quickshell/timers/src/lib.rs"
-  "modules/quickshell/timers/src/main.rs"
   "modules/shaper/src/main.rs"
   "modules/shaper/src/oneway.rs"
   "modules/shaper/src/replay.rs"
