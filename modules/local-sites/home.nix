@@ -67,9 +67,11 @@ let
   # runtime folder: a fenced session neither sees nor writes it, so the
   # server serves them as the sites' own rather than sandboxed as a document
   # is (src/http.rs says why), and the home can read Joel's feeds and answer
-  # what he's asked. A reboot empties it, which costs nothing, since the
-  # home is built whole from its record before the server serves.
-  homeFolder = "local-sites/home";
+  # what he's asked. A reboot empties it, and the home is built whole from
+  # its record before the server serves; a record that won't read then
+  # builds it from the declared rows alone until a session mends it, since
+  # the last build went with the reboot.
+  homeFolder = cfg.homeFolder;
   # Loopback, under the names a browser sends there by itself.
   served = pkgs.writeText "local-sites.json" (
     builtins.toJSON {
@@ -299,7 +301,19 @@ in
     default = { };
     description = ''
       Folders Nix built, each served at /<name>/ ahead of the documents,
-      as a live site's pages are.
+      as a live site's pages are. A page there runs only scripts served
+      beside it (script-src 'self'): one written into the page, an
+      onclick-like attribute or a javascript: link does nothing.
+    '';
+  };
+
+  options.jitsusama.local-sites.homeFolder = lib.mkOption {
+    type = lib.types.str;
+    default = "local-sites/home";
+    readOnly = true;
+    description = ''
+      The folder under the runtime folder the home is built into, where
+      it lists its rows, so what reads them reads where they're written.
     '';
   };
 

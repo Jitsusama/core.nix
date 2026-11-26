@@ -19,10 +19,9 @@
 //! which Nix or the home's builder made, run only the scripts Nix served
 //! beside them, never one written into the page or left among the
 //! documents. Each origin is kept to a process of its own, so neither can
-//! loosen `document.domain` to reach the other. No page may install a
-//! worker, which would stand between every later page and the server, and
-//! one a document installed before is swept out once by the first page of
-//! the sites' own that a browser is served.
+//! loosen `document.domain` to reach the other. No page keeps a worker, and
+//! what a document left from when the two shared an origin is swept
+//! (sweep.rs).
 
 use std::fs::{File, Metadata};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -31,7 +30,7 @@ use std::net::{Shutdown, TcpStream};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tungstenite::handshake::server::{ErrorResponse, Request, Response};
 
@@ -39,6 +38,7 @@ use crate::config::{Config, Feed};
 use crate::door::{Door, Side};
 use crate::files::{self, Found};
 use crate::page;
+use crate::sweep::{self, Asked};
 use crate::upstream::Upstreams;
 
 /// The most a request's head may hold.
@@ -50,9 +50,9 @@ const NOT_MODIFIED: u16 = 304;
 /// How long a request may take to arrive whole.
 const PATIENCE: Duration = Duration::from_secs(10);
 
-/// How much an answered client may still send, and for how long, before
-/// its connection is let go of whatever is left.
-const LINGERING: (u64, Duration) = (16 * 1024, Duration::from_secs(1));
+/// How much an answered client may still send, and for how long in all,
+/// before its connection is let go of whatever is left.
+const LINGERING: (usize, Duration) = (16 * 1024, Duration::from_secs(1));
 
 /// The sandbox a session's file runs in under the sites' names: its
 /// scripts, its forms and the windows it opens, each in an origin of no
@@ -71,17 +71,6 @@ const DOCUMENTS: &str =
 /// plugin, no base moving its links, and no frame around it to press its
 /// buttons through.
 const OWN: &str = "script-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
-
-/// The cookie saying a browser's storage was swept of what a document could
-/// have left there, so it's swept once.
-const SWEPT: &str = "sites-swept=1";
-
-/// The sweep's cookie as it's set: for this name alone, every path, a
-/// year, read by no script. Lax rather than Strict, since a navigation from
-/// a sandboxed file carries no Strict cookie, and the sweep would then
-/// recur, wiping the theme and Code's room each time; the cookie only marks
-/// the sweep done, so another site sending it gains nothing.
-const SWEEPING: &str = "sites-swept=1; Path=/; Max-Age=31536000; SameSite=Lax; HttpOnly";
 
 /// What the answers a file is sent with are, by version, hashed into its
 /// tag, so a copy a browser holds from before the answers it was sent with
@@ -108,6 +97,10 @@ struct Head {
     cookies: Option<String>,
     /// Whether the browser asks for a worker's script, as `Service-Worker` says.
     worker: bool,
+    /// Where the browser says the request came from, as `Sec-Fetch-Site` says.
+    fetch_site: Option<String>,
+    /// What the browser says the request is for, as `Sec-Fetch-Dest` says.
+    fetch_dest: Option<String>,
 }
 
 /// Answers one connection.
@@ -154,12 +147,13 @@ pub fn answer(server: &Server, mut stream: TcpStream) {
         );
     };
     if head.worker {
+        // Refused, an old worker would keep standing; this one lets go.
         send(
             &mut stream,
-            403,
-            "Forbidden",
-            "text/plain",
-            b"no page installs a worker here\n",
+            200,
+            "OK",
+            "text/javascript; charset=utf-8",
+            sweep::LETTING_GO,
         );
     } else if head.upgrade {
         send(
@@ -254,12 +248,16 @@ fn serve_file(server: &Server, stream: &mut TcpStream, head: &Head, side: Side) 
             "text/plain",
             b"that path is refused\n",
         ),
-        Found::Unready => send(
+        Found::Unready => write_answer(
             stream,
-            503,
-            "Service Unavailable",
-            "text/plain",
-            b"the home is still being written\n",
+            (503, "Service Unavailable"),
+            &Told {
+                kind: "text/plain",
+                body: b"the home isn't built yet; if it stays so, its builder says why: \
+                    journalctl --user -u local-sites-home\n",
+                sent: true,
+            },
+            &[("Retry-After", "2")],
         ),
     }
 }
@@ -305,6 +303,8 @@ fn placed(side: Side, made: files::Made, kind: &str) -> Placed {
 /// Sends `head`'s path on to the other origin from `side`, for a while,
 /// since a document's place may move back with the server.
 fn across(door: &Door, stream: &mut TcpStream, head: &Head, side: Side) {
+    // `answer` refused a path not from `/` before this, so the refusal here
+    // is the door's own, kept should another way in ever reach it.
     let Some(to) = door.across(side, &head.path) else {
         return send(
             stream,
@@ -341,21 +341,19 @@ fn told_for(head: &Head, made: files::Made, side: Side, kind: &str) -> Guarded {
         }
         (Side::Sites, files::Made::Built) => {
             headers.push(("Content-Security-Policy", OWN.to_owned()));
-            if kind.starts_with("text/html") && !swept(head) {
+            let asked = Asked {
+                cookies: head.cookies.as_deref(),
+                site: head.fetch_site.as_deref(),
+                dest: head.fetch_dest.as_deref(),
+            };
+            if kind.starts_with("text/html") && sweep::due(&asked) {
                 headers.push(("Clear-Site-Data", "\"storage\"".to_owned()));
-                headers.push(("Set-Cookie", SWEEPING.to_owned()));
+                headers.push(("Set-Cookie", sweep::SWEEPING.to_owned()));
                 whole = true;
             }
         }
     }
     Guarded { headers, whole }
-}
-
-/// Whether the browser asking has been swept already, by its cookie.
-fn swept(head: &Head) -> bool {
-    head.cookies
-        .as_deref()
-        .is_some_and(|cookies| cookies.split(';').any(|cookie| cookie.trim() == SWEPT))
 }
 
 /// Sends `file`, or says it hasn't changed where the browser holds its tag.
@@ -464,6 +462,8 @@ fn head(stream: &TcpStream) -> io::Result<Option<Head>> {
                     held: header("if-none-match").map(str::to_owned),
                     cookies: header("cookie").map(str::to_owned),
                     worker: header("service-worker").is_some(),
+                    fetch_site: header("sec-fetch-site").map(str::to_owned),
+                    fetch_dest: header("sec-fetch-dest").map(str::to_owned),
                 }));
             }
             Ok(httparse::Status::Partial) if peeked < HEAD => {
@@ -530,9 +530,28 @@ fn write_answer(
     });
     // What it still sends is read and dropped, so a request refused before
     // its body was read isn't reset, and its answer lost, as it closes.
+    if stream.shutdown(Shutdown::Write).is_ok() {
+        linger(stream);
+    }
+}
+
+/// Reads and drops what a client still sends, as much and for as long in
+/// all as `LINGERING` lets, so one sending a byte at a time holds its
+/// thread no longer than one sending all at once.
+fn linger(stream: &mut TcpStream) {
     let (most, wait) = LINGERING;
-    if stream.shutdown(Shutdown::Write).is_ok() && stream.set_read_timeout(Some(wait)).is_ok() {
-        let _ = io::copy(&mut (&*stream).take(most), &mut io::sink());
+    let until = Instant::now() + wait;
+    let mut dropped = vec![0; most];
+    let mut read = 0;
+    while read < most {
+        let left = until.saturating_duration_since(Instant::now());
+        if left.is_zero() || stream.set_read_timeout(Some(left)).is_err() {
+            return;
+        }
+        match stream.read(&mut dropped[read..]) {
+            Ok(0) | Err(_) => return,
+            Ok(more) => read += more,
+        }
     }
 }
 

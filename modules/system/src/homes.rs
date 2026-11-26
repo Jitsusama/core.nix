@@ -43,23 +43,23 @@ const NAME: &str = "{name}";
 impl Homes {
     /// The homes the sites under `root` say they hold, by the rows the home
     /// lists in its `rows.json`, in `home`, the folder of its own it's
-    /// built into, when it's given and holds one. A home built into `root`
-    /// itself, as before it had a folder of its own, keeps its rows file
-    /// there, and one from before it listed rows apart keeps every row in
-    /// its record, `sites.json`, so each is read only where the one before
-    /// is missing; rows that can't be read hold none, rather than an older
-    /// place's, which no longer keeps the live rows. A site's record that
-    /// can't be read holds none, and the other sites' still count.
+    /// built into, where it's given: there alone, so rows not yet built
+    /// there, as after a reboot, hold none rather than a session's, since
+    /// what's under `root` only a session writes then. A home built into
+    /// `root` itself keeps its rows file there, and one from before it
+    /// listed rows apart keeps every row in its record, `sites.json`, read
+    /// only where the rows file is missing. Rows that can't be read hold
+    /// none, rather than an older place's, which no longer keeps the live
+    /// rows. A site's record that can't be read holds none, and the other
+    /// sites' still count.
     pub fn read(root: &Path, home: Option<&Path>) -> Self {
         let parsed = |said: String| serde_json::from_str::<Value>(&said).ok();
-        let places = [
-            home.map(|home| home.join("rows.json")),
-            Some(root.join("rows.json")),
-            Some(root.join("sites.json")),
-        ];
+        let places = match home {
+            Some(home) => vec![home.join("rows.json")],
+            None => vec![root.join("rows.json"), root.join("sites.json")],
+        };
         let rows = places
             .into_iter()
-            .flatten()
             .map(std::fs::read_to_string)
             .find(|read| !matches!(read, Err(error) if error.kind() == ErrorKind::NotFound))
             .and_then(Result::ok);
@@ -877,7 +877,8 @@ mod tests {
             ],
         );
         let homes = Homes::read(&root, Some(&root.join("home")));
-        let without = Homes::read(&root, Some(&root.join("nowhere")));
+        let unbuilt = Homes::read(&root, Some(&root.join("nowhere")));
+        let before = Homes::read(&root, None);
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(
             homes.address("repository", "core"),
@@ -890,9 +891,14 @@ mod tests {
             "the rows a build before left in the sites' folder aren't read beside them"
         );
         assert_eq!(
-            without.address("repository", "other"),
+            unbuilt,
+            Homes::default(),
+            "a session's rows in the sites' folder stood in for a home not yet built"
+        );
+        assert_eq!(
+            before.address("repository", "other"),
             Some("old/#repo=other".into()),
-            "a home with no folder of its own yet is read from the sites' folder"
+            "a home built into the sites' folder is read there"
         );
     }
 

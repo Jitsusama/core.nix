@@ -27,6 +27,7 @@ mod files;
 mod gate;
 mod http;
 mod page;
+mod sweep;
 mod upstream;
 
 use std::net::TcpListener;

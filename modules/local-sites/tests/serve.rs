@@ -302,6 +302,19 @@ fn it_serves_the_documents_and_a_mount_at_its_own_path() {
 }
 
 #[test]
+fn a_folder_asked_without_its_slash_is_sent_on_from_this_server_alone() {
+    let served = served("folder");
+    let documents = format!("{DOCUMENTS}:{}", served.port);
+    for (path, to) in [("/mycelium", "/mycelium/"), ("//mycelium", "/mycelium/")] {
+        let (status, headers, _) = asked(served.port, &documents, &format!("GET {path}"), "");
+        assert_eq!(status, "HTTP/1.1 301 Moved Permanently", "{path}");
+        let location = header(&headers, "location");
+        // `//mycelium/` would send the browser to the host `mycelium`.
+        assert_eq!(location, Some(to), "{path} was sent to another host");
+    }
+}
+
+#[test]
 fn a_file_unchanged_since_its_last_visit_is_not_sent_again() {
     let served = served("unchanged");
     let sites = format!("localhost:{}", served.port);
@@ -487,6 +500,8 @@ fn a_page_goes_to_the_origin_of_whoever_made_it_and_nowhere_else() {
         let location = header(&headers, "location");
         assert_eq!(location, Some(to.as_str()), "{path} at {host} went astray");
     }
+    // A path not from `/` is refused by the answer before any redirect, so
+    // these show that refusal; the door's own is pinned in door.rs.
     for whole in ["http://evil.example/mycelium/", "evil.example/mycelium/"] {
         let (status, headers, _) = asked(served.port, &sites, &format!("GET {whole}"), "");
         assert_eq!(status, "HTTP/1.1 400 Bad Request", "{whole} was taken");
@@ -531,19 +546,28 @@ fn the_documents_origin_reads_nothing_of_the_sites() {
     assert!(opened.is_err(), "a feed opened under the documents' name");
     let sites = format!("localhost:{}", served.port);
     let from = format!("Origin: {documents}\r\nSec-Fetch-Site: same-site\r\n");
-    // A form's body the server never reads, nine bytes and the two `asked`
-    // ends with: refused unread, its answer must still arrive, not a reset.
-    let form = format!("{from}Content-Length: 11\r\n\r\nvalue=yes");
-    let (status, _, _) = asked(served.port, &sites, "POST /", &form);
-    assert_eq!(
-        status, "HTTP/1.1 405 Method Not Allowed",
-        "a document's form changed something"
-    );
+    // Nothing here shares anything yet; this keeps it so.
     let (_, headers, _) = asked(served.port, &sites, "GET /kit/theme.css", &from);
     let shared = header(&headers, "access-control-allow-origin");
     assert_eq!(
         shared, None,
         "a page of the sites' own was shared with a document"
+    );
+}
+
+#[test]
+fn a_refusal_sent_before_its_body_is_read_still_arrives() {
+    let served = served("unread");
+    let sites = format!("localhost:{}", served.port);
+    // A body of several segments the server never reads, and the two ends
+    // `asked` writes after it: refused unread, closing with it waiting would
+    // reset the connection under its answer.
+    let body = "v".repeat(12 * 1024);
+    let form = format!("Content-Length: {}\r\n\r\n{body}", body.len() + 2);
+    let (status, _, _) = asked(served.port, &sites, "POST /", &form);
+    assert_eq!(
+        status, "HTTP/1.1 405 Method Not Allowed",
+        "a refusal sent unread never arrived"
     );
 }
 
@@ -573,7 +597,7 @@ fn every_answer_keeps_its_origin_to_a_process_of_its_own() {
 fn the_sites_own_pages_run_only_their_own_scripts_and_share_nothing() {
     let served = served("own");
     let host = format!("localhost:{}", served.port);
-    let swept = "Cookie: sites-swept=1\r\n";
+    let swept = "Cookie: __Host-sites-swept=1\r\n";
     for path in ["/kit/", "/kit/theme.css", "/"] {
         let (status, headers, _) = asked(served.port, &host, &format!("GET {path}"), swept);
         assert_eq!(status, "HTTP/1.1 200 OK", "{path}");
@@ -584,10 +608,15 @@ fn the_sites_own_pages_run_only_their_own_scripts_and_share_nothing() {
     assert_eq!(home, "<h1>home</h1>", "the home's own folder comes first");
     let strip = served.folder.join("sites/strip.css");
     std::fs::write(strip, "h1 { display: none }").expect("a session's sheet");
-    let (status, _) = get(served.port, &host, "/strip.css");
+    let (status, headers, body) = asked(served.port, &host, "GET /strip.css", "");
     assert_eq!(
         status, "HTTP/1.1 503 Service Unavailable",
         "a session's sheet stood in for one the home's builder hasn't written"
+    );
+    assert_eq!(header(&headers, "retry-after"), Some("2"), "no later");
+    assert!(
+        body.contains("journalctl --user -u local-sites-home"),
+        "it didn't say where to look: {body}"
     );
     for path in ["/kit/theme.css", "/kit/", "/"] {
         let (_, headers, _) = asked(served.port, &host, &format!("GET {path}"), swept);
@@ -603,9 +632,10 @@ fn a_browser_is_swept_once_by_the_first_page_of_the_sites_own() {
     let (_, first, _) = asked(served.port, &host, "GET /kit/", "");
     assert_eq!(header(&first, "clear-site-data"), Some("\"storage\""));
     let cookie = header(&first, "set-cookie").expect("the sweep is kept");
-    assert!(cookie.starts_with("sites-swept=1;"), "{cookie}");
+    // `__Host-` and `Secure`, so no other host can set it for this one.
+    assert!(cookie.starts_with("__Host-sites-swept=1;"), "{cookie}");
     assert!(
-        cookie.contains("HttpOnly") && cookie.contains("SameSite=Lax"),
+        cookie.contains("Secure") && cookie.contains("HttpOnly") && cookie.contains("SameSite=Lax"),
         "{cookie}"
     );
     assert!(
@@ -619,7 +649,22 @@ fn a_browser_is_swept_once_by_the_first_page_of_the_sites_own() {
         status, "HTTP/1.1 200 OK",
         "a sweep went in an answer a browser may skip"
     );
-    let after = format!("{held}Cookie: theme=dark; sites-swept=1\r\n");
+    let planted = "Cookie: sites-swept=1\r\n";
+    let (_, headers, _) = asked(served.port, &host, "GET /kit/", planted);
+    let swept = header(&headers, "clear-site-data");
+    assert_eq!(
+        swept,
+        Some("\"storage\""),
+        "a plain cookie kept the sweep off"
+    );
+    let pictured = "Sec-Fetch-Site: cross-site\r\nSec-Fetch-Dest: image\r\n";
+    let (_, headers, _) = asked(served.port, &host, "GET /kit/", pictured);
+    let swept = header(&headers, "clear-site-data");
+    assert_eq!(
+        swept, None,
+        "another site's picture of a page swept the browser"
+    );
+    let after = format!("{held}Cookie: theme=dark; __Host-sites-swept=1\r\n");
     let (status, headers, _) = asked(served.port, &host, "GET /kit/", &after);
     assert_eq!(
         status, "HTTP/1.1 304 Not Modified",
@@ -639,7 +684,7 @@ fn a_browser_is_swept_once_by_the_first_page_of_the_sites_own() {
 }
 
 #[test]
-fn no_page_installs_a_worker() {
+fn no_page_keeps_a_worker() {
     let served = served("worker");
     let sites = format!("localhost:{}", served.port);
     let documents = format!("{DOCUMENTS}:{}", served.port);
@@ -651,10 +696,13 @@ fn no_page_installs_a_worker() {
         (&sites, "/kit/theme.css"),
     ] {
         let ask = format!("GET {path}");
-        let (status, _, _) = asked(served.port, host, &ask, "Service-Worker: script\r\n");
-        assert_eq!(
-            status, "HTTP/1.1 403 Forbidden",
-            "a page at {host} could install {path} as a worker"
+        let (status, _, body) = asked(served.port, host, &ask, "Service-Worker: script\r\n");
+        // Answered with a worker that lets go of itself, since a refusal
+        // would keep one a document installed before standing.
+        assert_eq!(status, "HTTP/1.1 200 OK", "{path} at {host}");
+        assert!(
+            body.contains("self.registration.unregister()"),
+            "a page at {host} could keep {path} as a worker: {body}"
         );
     }
     let (status, _) = get(served.port, &documents, "/mycelium/worker.js");

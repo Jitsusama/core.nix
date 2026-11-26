@@ -35,7 +35,8 @@ function fetched(fetching: Fetching, address: string): Promise<Response> {
  * The rows the home lists, as it writes them beside its record, the declared ones as declared;
  * a home from before it listed them apart keeps every row in the record itself, so only a
  * home with no rows file falls back. One failing otherwise rejects, rather than reading the
- * record whose live rows it no longer keeps.
+ * record whose live rows it no longer keeps; so does a home its builder hasn't written yet,
+ * which the server answers 503, asked again as this file's opening says.
  */
 async function readRows(fetching: Fetching): Promise<unknown> {
   const rows = await fetched(fetching, "../rows.json");

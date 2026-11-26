@@ -95,7 +95,9 @@ pub fn find(config: &Config, path: &str) -> Found {
     let mut file = root.join(named);
     if file.is_dir() {
         if !decoded.ends_with('/') {
-            return Found::Folder(format!("{path}/"));
+            // From one slash, since a path from two (`//elsewhere`) would
+            // send the browser to another host.
+            return Found::Folder(format!("/{}/", path.trim_start_matches('/')));
         }
         file.push("index.html");
     }

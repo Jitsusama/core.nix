@@ -24,6 +24,9 @@ let
   # node for more than one realm has mycelium ask which, and refuse with
   # nothing named, so every part read from it said not read.
   realm = config.home.sessionVariables.MYCELIUM_REALM or null;
+  # The folder the sites' home lists its rows in, under the runtime folder,
+  # as local-sites declares it, where it's on the machine.
+  sitesHome = config.jitsusama.local-sites.homeFolder or null;
 in
 {
   home.packages = [ system ];
@@ -61,7 +64,8 @@ in
             ]
           }"
         ]
-        ++ lib.optional (realm != null) "MYCELIUM_REALM=${toString realm}";
+        ++ lib.optional (realm != null) "MYCELIUM_REALM=${toString realm}"
+        ++ lib.optional (sitesHome != null) "LOCAL_SITES_HOME=%t/${sitesHome}";
         Restart = "on-failure";
         RestartSec = 5;
         Slice = "background.slice";

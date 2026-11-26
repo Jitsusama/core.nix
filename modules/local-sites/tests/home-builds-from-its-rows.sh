@@ -14,10 +14,11 @@
 # so; a theme that isn't a stylesheet fails the build; a look with no tint
 # takes the other's, and a tint or ground that isn't a colour is left out and
 # said, never written in; a second run changes no file; a broken record keeps
-# the last build, or, with none to keep, builds from the declared rows; a root with no sites.json is left alone; a row Nix declares
-# stands in for the record's, or goes first, and rows.json says every row
-# listed as it was written, in the home's order, but for a recorded row's
-# claim on a kind a declared row is home to, left out and said; a recorded
+# the last build, in the home's own folder as among the documents, or, with
+# none to keep, builds from the declared rows; a root with no sites.json is
+# left alone; a row Nix declares stands in for the record's, or goes first,
+# and rows.json says every row listed as it was written, in the home's order,
+# but for a recorded row's claim on a kind a declared row is home to, left out and said; a recorded
 # row whose path leads off the sites is left out and said, and a declared one
 # fails the build; told a folder of its own, its own files go there and none
 # stays among the documents; and a document loading a script file of its own is named, on any of
@@ -444,3 +445,17 @@ grep -q '<span class="name">The grove</span>' "$work/rebooted/index.html" ||
   fail "a reboot's broken record left the declared rows unlisted"
 grep -q '"name": "The grove"' "$work/rebooted/rows.json" ||
   fail "a reboot's broken record left rows.json without the declared rows"
+
+# As the home is always built, into a folder of its own that holds a build,
+# a broken record keeps that build: the one in its own folder, not one among
+# the documents, which a build into its own folder takes away.
+rm "$index"
+cp "$work/own/index.html" "$work/own-last.html"
+said=$("$python" "$sources/home.py" "--into=$work/own" "$sources" "$root" \
+  "$root/kit/theme.css" "$work/declared.json") || fail "a broken record failed its own build"
+case $said in
+  "home: sites.json can't be read ("*"), so the last build stays") ;;
+  *) fail "a broken record beside its own build said: $said" ;;
+esac
+cmp -s "$work/own-last.html" "$work/own/index.html" ||
+  fail "a broken record changed the home's own build"
