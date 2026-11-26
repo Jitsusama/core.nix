@@ -225,13 +225,13 @@ QtObject {
         // viewed nothing, in the alert's colour, as is one it has no tone
         // for, a name every object answers included.
         const plainWhys = typeof SessionRow.viewedWhy !== "function" ? "none read"
-            : ["opening", "startedOpening", "cameAfter", "startedCameAfter", "ownAfterAll",
-                "startedOwnAfterAll", "disowned", "startedDisowned", "untaken",
+            : ["opening", "startedOpening", "askedAgain", "startedAskedAgain", "cameAfter",
+                "startedCameAfter", "ownAfterAll", "startedOwnAfterAll", "disowned", "startedDisowned", "untaken",
                 "startedUntaken", "unowned", "hosted", "hostless", "unnamed", "unviewable",
                 "unviewableHost", "bogus", "toString", "", undefined]
                 .filter(why => SessionRow.viewedWhy(why)).join(" ");
-        if (plainWhys !== "opening startedOpening cameAfter startedCameAfter ownAfterAll "
-            + "startedOwnAfterAll")
+        if (plainWhys !== "opening startedOpening askedAgain startedAskedAgain cameAfter "
+            + "startedCameAfter ownAfterAll startedOwnAfterAll")
             failures.push(`the whys said plainly: "${plainWhys}"`);
 
         // Past 80% of its window its row says how full, in whole percent,

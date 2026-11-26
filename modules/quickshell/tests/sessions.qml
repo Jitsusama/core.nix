@@ -1511,8 +1511,9 @@ ShellRoot {
             `${staleUnder} ${spawnsOf(staleNamed, staleFrom)}`);
         Sessions.forgetAsk(staleNamed);
         // A press holding the ask (heldBack), asked again of a kitty come
-        // since, is told it's opening and keeps its focus, as its viewer is
-        // on its way, rather than told that ask is over.
+        // since, is told its viewer was asked for again and keeps its own
+        // focus, as its viewer is on its way, rather than told that ask is
+        // over, or that it wasn't asked again.
         const pressedNamed = "pi-hosted.s-kept-pressed";
         kittyPidFile.setText("4242\n");
         Sessions.readKittyPid();
@@ -1523,21 +1524,87 @@ ShellRoot {
         Sessions.goTo({ address: "PRESSED",
             presence: { hosted: true, session: "s-kept-pressed" },
             attach: keptOne("s-kept-pressed").waiting, here: true });
+        const pressedGoing = Sessions.goingTo;
         kittyPidFile.setText("6666\n");
         Sessions.readKittyPid();
         root.unhosted = "";
         root.unhostedWhy = "";
         Sessions.untaken(pressedNamed, String(Sessions.attaching[pressedNamed]));
-        expect("a press asked again of a kitty come since is told it's opening, focus kept",
+        expect("a press asked again of a kitty come since is told so, its own focus kept",
             spawnsOf(pressedNamed, pressedFrom) === 2
-            && `${root.unhosted} ${root.unhostedWhy}` === "PRESSED opening"
-            && Sessions.goingTo?.app === pressedNamed
+            && `${root.unhosted} ${root.unhostedWhy}` === "PRESSED askedAgain"
+            && pressedGoing?.app === pressedNamed && Sessions.goingTo === pressedGoing
             && Sessions.pressedFor[pressedNamed]?.address === "PRESSED",
             `${spawnsOf(pressedNamed, pressedFrom)} ${root.unhosted} ${root.unhostedWhy} `
                 + `${JSON.stringify(Sessions.goingTo)}`);
         Sessions.goingTo = goingBeforePressed;
         Sessions.untaken(pressedNamed, String(Sessions.attaching[pressedNamed]));
         Sessions.forgetAsk(pressedNamed);
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        // A press told disowned, as the walk's viewer came refused, is told
+        // the same once the refusal ends with no kitty taking the ask and
+        // it's asked again of a kitty come since (refusedUntaken), its own
+        // focus kept.
+        const disownedNamed = "pi-hosted.s-kept-disowned";
+        Sessions.keepPlaces({ "s-kept-disowned": keptOne("s-kept-disowned") });
+        const disownedFrom = Niri.spawns.length;
+        Sessions.viewKept();
+        const disownedStray = { id: 114, pid: 880, opened: disownedNamed };
+        const listedBeforeDisowned = Niri.windows;
+        Niri.windows = Object.assign({}, listedBeforeDisowned, { "114": disownedStray });
+        Sessions.windowHeard(disownedStray);
+        const goingBeforeDisowned = Sessions.goingTo;
+        root.unhostedWhy = "";
+        Sessions.goTo({ address: "DISOWNED",
+            presence: { hosted: true, session: "s-kept-disowned" },
+            attach: keptOne("s-kept-disowned").waiting, here: true });
+        const disownedGoing = Sessions.goingTo;
+        const disownedTold = root.unhostedWhy;
+        kittyPidFile.setText("6767\n");
+        Sessions.readKittyPid();
+        root.unhosted = "";
+        root.unhostedWhy = "";
+        Sessions.untaken(disownedNamed, String(Sessions.refusedAt[disownedNamed]));
+        expect("a press told disowned, asked again of a kitty come since, is told so, focus kept",
+            disownedTold === "disowned" && spawnsOf(disownedNamed, disownedFrom) === 2
+            && `${root.unhosted} ${root.unhostedWhy}` === "DISOWNED askedAgain"
+            && disownedGoing?.app === disownedNamed && Sessions.goingTo === disownedGoing
+            && Sessions.pressedFor[disownedNamed]?.address === "DISOWNED",
+            `${disownedTold} ${spawnsOf(disownedNamed, disownedFrom)} ${root.unhosted} `
+                + `${root.unhostedWhy} ${JSON.stringify(Sessions.goingTo)}`);
+        Niri.windows = listedBeforeDisowned;
+        Sessions.goingTo = goingBeforeDisowned;
+        Sessions.untaken(disownedNamed, String(Sessions.attaching[disownedNamed]));
+        Sessions.forgetAsk(disownedNamed);
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        // A start held back as the walk's viewer comes, asked again of a
+        // kitty come since, is told so as started, its own focus kept.
+        const startedNamed = "pi-hosted.s-kept-started";
+        Sessions.keepPlaces({ "s-kept-started": keptOne("s-kept-started") });
+        const startedFrom = Niri.spawns.length;
+        Sessions.viewKept();
+        const goingBeforeStarted = Sessions.goingTo;
+        root.unhostedWhy = "";
+        Sessions.viewStarted("harbour-attended", "s-kept-started", startedNamed, "Reef", "/tmp",
+            { address: "STARTED" });
+        const startedGoing = Sessions.goingTo;
+        const startedTold = root.unhostedWhy;
+        kittyPidFile.setText("6868\n");
+        Sessions.readKittyPid();
+        root.unhosted = "";
+        root.unhostedWhy = "";
+        Sessions.untaken(startedNamed, String(Sessions.attaching[startedNamed]));
+        expect("a start held back, asked again of a kitty come since, is told so as started",
+            startedTold === "startedOpening" && spawnsOf(startedNamed, startedFrom) === 2
+            && `${root.unhosted} ${root.unhostedWhy}` === "STARTED startedAskedAgain"
+            && startedGoing?.app === startedNamed && Sessions.goingTo === startedGoing,
+            `${startedTold} ${spawnsOf(startedNamed, startedFrom)} ${root.unhosted} `
+                + `${root.unhostedWhy} ${JSON.stringify(Sessions.goingTo)}`);
+        Sessions.goingTo = goingBeforeStarted;
+        Sessions.untaken(startedNamed, String(Sessions.attaching[startedNamed]));
+        Sessions.forgetAsk(startedNamed);
         kittyPidFile.setText("4242\n");
         Sessions.readKittyPid();
         // With no kitty's pid ever read, a kitty come again can't be told
