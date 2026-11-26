@@ -5,11 +5,14 @@
 # from outside with a pass after it, under a guard of a minute by the clock, so a loaded builder
 # slowing the spinning case never makes it a hang; then, under a guard of
 # three seconds, a hang that stops the run and one that ignores the guard's
-# signal until its kill, each with a case left unrun after it; a case whose
-# limits the system refuses, failed unrun with the limit in force said,
-# wherever this user can't raise a hard limit; and limits and guards that aren't
-# whole seconds, refused.
+# signal until its kill, each with a case left unrun after it; a builder
+# holding the run below a case's hard limit, every case left unrun with the
+# limit in force said once, wherever this user can't raise a hard limit; and
+# limits and guards that aren't whole seconds, refused.
 # usage: runs-every-case-test.sh <runs-every-case.sh>
+# CAPPED_MUST_RUN, set by the check, fails the run where the capped case
+# can't be shown, rather than leaving it out, so a build passes only having
+# shown it.
 set -euo pipefail
 
 runner=$1
@@ -137,20 +140,38 @@ holds "CASE_LIMIT and CASE_GUARD must be whole seconds, not '0' and '60'"
 never "a-passes.qml took"
 
 # Its hard limit of 11 s is past the 5 s already in force, so it's refused,
-# and the case fails without running rather than running with no limit. Only
+# once for the run, and no case runs rather than running with no limit. Only
 # a user who can't raise a hard limit is refused, so where this one can, as
-# root can, the case can't be shown and says so rather than failing.
+# root can, the case can't be shown: outside the check it says so, and in
+# it that fails.
 if (ulimit -t 5 && ulimit -Ht 11) 2>/dev/null; then
-  echo "left out the capped case: this user may raise a hard limit"
+  if [ -n "${CAPPED_MUST_RUN:-}" ]; then
+    failing "the capped case can't be shown: this user may raise a hard limit"
+  else
+    echo "left out the capped case: this user may raise a hard limit"
+  fi
 else
   cap=5
-  runs capped 1 60 a-marks:mark
+  runs capped 6 60 a-marks:mark b-marks:mark
   cap=
   ends 1
-  holds "a-marks.qml's limits of 1 and 11 s were refused, the builder holding it to 5 s"
-  holds "a-marks.qml never ran: its limits couldn't be set"
-  never "a-marks.qml failed"
+  hold="the builder holds each case to 5 s of its own time, short of the 16 s each needs,"
+  grep -qF -- "$hold so no CASE_LIMIT fits; ulimit said: " <<<"$said" ||
+    failing "it never said the builder's hold once, with its figure and what fits"
+  [ "$(grep -c 'the builder holds' <<<"$said")" = 1 ] || failing "it said the hold more than once"
+  holds "left every case unrun"
+  never "a-marks.qml"
   [ ! -e "$here/capped/a-marks.qml.ran" ] || failing "a-marks.qml ran"
+  [ ! -e "$here/capped/b-marks.qml.ran" ] || failing "b-marks.qml ran"
+  # A hold that leaves room names the largest limit that fits.
+  cap=40
+  runs capped-room 35 60 a-marks:mark
+  cap=
+  ends 1
+  room="short of the 45 s each needs, so CASE_LIMIT must be at most 30; ulimit said: "
+  grep -qF -- "$room" <<<"$said" ||
+    failing "it never named the largest limit that fits"
+  [ ! -e "$here/capped-room/a-marks.qml.ran" ] || failing "a-marks.qml ran under room"
 fi
 
 [ "$fails" = 0 ]

@@ -37,7 +37,23 @@ hard=$((limit + 10))
 # What the shell's `time` says of each case: its own seconds, then the clock's.
 TIMEFORMAT='%U %S %R'
 used=$(mktemp)
-trap 'rm -f "$used"' EXIT
+why=$(mktemp)
+trap 'rm -f "$used" "$why"' EXIT
+# A builder that holds the run below the hard limit a case needs refuses it
+# for every case alike, since each inherits the runner's, so it's said once,
+# before any case, with the figure, what would fit and ulimit's own reason,
+# rather than as each case fails unrun.
+if ! (ulimit -St "$limit" && ulimit -Ht "$hard") 2>"$why"; then
+  held=$(ulimit -Ht)
+  fits="no CASE_LIMIT fits"
+  if [[ $held =~ ^[0-9]+$ ]] && [ "$held" -gt 10 ]; then
+    fits="CASE_LIMIT must be at most $((held - 10))"
+  fi
+  echo "the builder holds each case to $held s of its own time, short of the $hard s" \
+    "each needs, so $fits; ulimit said: $(sed -n '1{s/^.*: ulimit: //;p}' "$why")" >&2
+  echo "left every case unrun" >&2
+  exit 1
+fi
 # A case run under its limits. It isn't exec'd, since bash's `time` says
 # nothing of a subshell that execs. The soft limit is set first, as a hard
 # one below the soft one in force is refused. A case its limit signals leaves
@@ -45,16 +61,11 @@ trap 'rm -f "$used"' EXIT
 # collector is still handed one.
 run() {
   ulimit -c 0
-  # A limit the builder refuses fails the case unrun, rather than letting it
-  # run with none, saying the hard limit the builder holds it to. It ends by
-  # 125, the code timeout gives for a failure of its own rather than of the
-  # command it runs, so it reads as the runner's and not the case's.
-  local held
-  held=$(ulimit -Ht)
-  if ! { ulimit -St "$limit" && ulimit -Ht "$hard"; } 2>/dev/null; then
-    echo "$1's limits of $limit and $hard s were refused, the builder holding it to $held s" >&2
-    return 125
-  fi
+  # The limits were shown to fit before any case, so a refusal here is
+  # past foreseeing; the case still fails unrun rather than running with
+  # none. It ends by 125, the code timeout gives for a failure of its own,
+  # so it reads as the runner's and not the case's.
+  ulimit -St "$limit" && ulimit -Ht "$hard" || return 125
   timeout -k 10 "$guard" "$qml" "$1"
 }
 # Whether the guard ended a case, given its exit code and its seconds by the
@@ -76,7 +87,7 @@ ended() {
   elif [ "$code" = 152 ]; then
     echo "$case ran past its $limit s of its own time"
   elif [ "$code" = 125 ]; then
-    echo "$case never ran: its limits couldn't be set"
+    echo "$case never ran: its limits couldn't be set, or timeout itself failed (125)"
   else
     echo "$case failed, exit code $code"
   fi
@@ -113,6 +124,10 @@ for case in "${cases[@]}"; do
     if hung "$code" "$seconds"; then
       stopped=$case
     fi
+  fi
+  # A case that never ran took nothing worth saying.
+  if [ "$code" = 125 ]; then
+    continue
   fi
   if [ -z "$seconds" ]; then
     echo "$case's time couldn't be read: '$timing'" >&2
