@@ -412,7 +412,9 @@ in
   # those by `//`, `/./` or `/../`; and the ear holds each address to one
   # key, so two houses naming one address, spelled alike, must name the
   # same key. A link into those folders still passes, for the journal to
-  # say.
+  # say. A link's line can't be above its network's: held over the line, a
+  # call's hold leaves the router's queue to fill, and does nothing (a
+  # link's own line round 7's F6).
   config.assertions =
     let
       keyed = lib.filter (house: house.keyFile != null) houses;
@@ -439,6 +441,14 @@ in
       shared = lib.filter (address: lib.length (keysOf address) > 1) (
         lib.unique (lib.concatMap (house: house.from) keyed)
       );
+      overOf =
+        name: network:
+        lib.mapAttrsToList (link: _: "${name}.links.${link}") (
+          lib.filterAttrs (
+            _: link: network.down != null && link.down != null && link.down > network.down
+          ) network.links
+        );
+      over = lib.concatLists (lib.mapAttrsToList overOf networks);
     in
     [
       {
@@ -461,6 +471,13 @@ in
           "jitsusama.shaper.networks: houses naming one address must name one "
           + "keyFile: "
           + lib.concatStringsSep ", " shared;
+      }
+      {
+        assertion = over == [ ];
+        message =
+          "jitsusama.shaper.networks: a link's down can't be above its network's, "
+          + "which would hold it over the line: "
+          + lib.concatStringsSep ", " over;
       }
     ];
 
