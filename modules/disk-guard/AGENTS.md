@@ -602,6 +602,7 @@ or launchd, and [`home.nix`][2] the account's.
 | `src/daemon.rs`, `serve.rs` | a daemon's step and its loop                           |
 | `src/socket.rs`, `vouch.rs` | what the two daemons say to each other                 |
 | `src/garbage.rs`, `generations.rs`, `dedupe.rs` | Nix's garbage, generations and linking |
+| `src/garbage/`            | running Nix's commands, its refused nix.conf lines left out |
 | `src/replaced.rs`, `opens.rs`, `unwatched.rs` | older builds, and the watch that dates them, or a Mac's lack of one |
 | `src/writers.rs`, `freeze.rs`, `freezer.rs` | who writes most, and freezing them through systemd |
 | `src/desktop.rs`, `notifier.rs` | notices and power saving over D-Bus, or on a Mac |

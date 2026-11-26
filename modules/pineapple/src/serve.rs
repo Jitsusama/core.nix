@@ -510,6 +510,9 @@ fn notice(notify: &Path, row: &Value) -> Knock {
             "--category=pineapple.stop",
             "--app-name=pineapple",
             "--print-id",
+            // Ends the options, so words said that open with `--` are shown
+            // rather than taken as one.
+            "--",
             title,
             &body,
         ])

@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use serde_json::{Value, json};
@@ -250,6 +250,19 @@ fn github_answers_once_a_refresh_has_asked_it_saying_what_it_couldnt_see() {
     );
 }
 
+/// Every folder `record()` holds, as a reading that placed processes in
+/// each knows them.
+fn placed() -> BTreeSet<PathBuf> {
+    [
+        "/home/joel/src/core.nix",
+        "/home/joel/trees/say-trees",
+        "/home/joel/trees/pinned",
+    ]
+    .into_iter()
+    .map(PathBuf::from)
+    .collect()
+}
+
 fn used(processes: usize, memory: u64, cpu: f64) -> Use {
     Use {
         processes,
@@ -272,7 +285,7 @@ fn what_works_in_a_repository_is_summed_over_its_checkouts_and_trees() {
         // A folder no repository holds counts for none.
         (PathBuf::from("/home/joel/elsewhere"), used(9, 9_000, 9.0)),
     ]);
-    let said = using(&record(), &used, true);
+    let said = using(&record(), &used, true, &placed());
     assert_eq!(
         said,
         [json!({
@@ -308,7 +321,7 @@ fn what_works_unread_is_said_unknown_rather_than_none() {
 
 #[test]
 fn a_repository_nothing_works_in_says_so_and_its_processor_waits_for_a_second_reading() {
-    let idle = &using(&record(), &BTreeMap::new(), true)[0];
+    let idle = &using(&record(), &BTreeMap::new(), true, &placed())[0];
     assert_eq!(
         (
             &idle["processes"],
@@ -318,10 +331,81 @@ fn a_repository_nothing_works_in_says_so_and_its_processor_waits_for_a_second_re
         ),
         (&json!(0), &json!(0), &json!(0.0), &json!([]))
     );
-    let first = &using(&record(), &BTreeMap::new(), false)[0];
+    let first = &using(&record(), &BTreeMap::new(), false, &placed())[0];
     assert_eq!(
         first["cpu"],
         Value::Null,
         "one reading can't say a share of time"
+    );
+}
+
+#[test]
+fn a_tree_newer_than_the_reading_is_said_unread_and_its_repository_as_read() {
+    // The reading placed processes in the folders the disk held before the
+    // tree say-trees was made, so whatever works there wasn't looked for,
+    // and what works in the rest was, though its share would read as the
+    // whole repository's.
+    let mut before = placed();
+    before.remove(&PathBuf::from("/home/joel/trees/say-trees"));
+    let used = BTreeMap::from([(
+        PathBuf::from("/home/joel/src/core.nix"),
+        used(2, 3_000, 0.25),
+    )]);
+    let said = &using(&record(), &used, true, &before)[0];
+    assert_eq!(
+        (&said["processes"], &said["memory"], &said["cpu"]),
+        (&json!(2), &json!(3_000), &Value::Null),
+        "a new tree blanked what was read of the rest, or a share left it out: {said}"
+    );
+    let new = said["folders"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|folder| folder["path"] == "/home/joel/trees/say-trees");
+    assert_eq!(
+        new.map(|folder| &folder["processes"]),
+        Some(&Value::Null),
+        "a tree the reading never looked in reads as idle: {said}"
+    );
+}
+
+#[test]
+fn a_folder_whose_share_went_untold_says_none_and_its_repository_too() {
+    // As for a tree only one reading has looked in: a share of some of
+    // what works in a repository would read as all of it.
+    let used = BTreeMap::from([
+        (
+            PathBuf::from("/home/joel/src/core.nix"),
+            used(2, 3_000, 0.25),
+        ),
+        (
+            PathBuf::from("/home/joel/trees/say-trees"),
+            Use {
+                processes: 1,
+                memory: 1_000,
+                cpu: None,
+            },
+        ),
+    ]);
+    let said = &using(&record(), &used, true, &placed())[0];
+    assert_eq!(
+        (&said["processes"], &said["memory"], &said["cpu"]),
+        (&json!(3), &json!(4_000), &Value::Null),
+        "a share of part of a repository was said as its whole: {said}"
+    );
+    assert_eq!(
+        said["folders"][1],
+        json!({"path": "/home/joel/trees/say-trees", "processes": 1, "memory": 1_000, "cpu": null}),
+        "a folder with no share told said one"
+    );
+}
+
+#[test]
+fn a_repository_none_of_whose_folders_the_reading_looked_in_is_unread_whole() {
+    let said = &using(&record(), &BTreeMap::new(), true, &BTreeSet::new())[0];
+    assert_eq!(
+        said,
+        &unread(&record())[0],
+        "a repository the reading never looked in reads as idle"
     );
 }

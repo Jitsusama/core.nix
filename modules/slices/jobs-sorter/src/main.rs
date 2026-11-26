@@ -3625,6 +3625,15 @@ fn watch_door(doorway: &mut Doorway, root: &Path, cgroup: Option<&str>, uptime: 
                 );
             }
             door::Done::LetIn(pid) => eprintln!("Let {pid} in."),
+            door::Done::Unranked(pid) => eprintln!(
+                "Let {pid} in unranked, as its rank couldn't be set, so the rest that waited as \
+                 long come in one each {} s.",
+                door::SPACED.as_secs()
+            ),
+            door::Done::Lifted(scope) => eprintln!(
+                "Lifted the memory cap on {}, as it has ramped with room and no call on.",
+                scope.display()
+            ),
             door::Done::Ranked(pid, high) => eprintln!(
                 "Let {pid} in behind other work, its memory held under {high} bytes, with \
                  {free} bytes available."

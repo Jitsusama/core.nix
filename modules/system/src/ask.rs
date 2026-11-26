@@ -4,7 +4,6 @@
 //! the clock each leave an answer saying why, never a hang.
 
 use std::io::{self, Read};
-use std::iter::Peekable;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
@@ -12,6 +11,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use system::parts::Answer;
+use system::plain;
 
 /// How long an owner may take. Each answers from what it holds in well
 /// under a second; `repos` reads every checkout's git files, about two
@@ -187,7 +187,7 @@ fn failed(said: &str, code: Option<i32>, complaint: &[u8]) -> String {
     let complaint = String::from_utf8_lossy(complaint);
     let line = complaint
         .lines()
-        .map(|line| plain(&reason(line)))
+        .map(|line| plain::words(&reason(line)))
         .find(|line| !line.is_empty());
     match line {
         Some(line) => {
@@ -216,80 +216,6 @@ fn reason(line: &str) -> String {
         Some(why) => format!("{what}: {why}"),
         None => what.to_owned(),
     }
-}
-
-/// `line` as plain words: a terminal's escape sequences gone whole, as a
-/// coloured or linked complaint writes them, and with them every control
-/// character and the format characters that turn, hide or break text, so a
-/// row reads as it's written.
-fn plain(line: &str) -> String {
-    let mut kept = String::new();
-    let mut chars = line.chars().peekable();
-    while let Some(each) = chars.next() {
-        match each {
-            '\u{1b}' => escape(&mut chars),
-            // The one-character forms of a control sequence and a string,
-            // as characters; written as raw bytes, they were never UTF-8
-            // and reach here as a replacement character, which is harmless.
-            '\u{9b}' => control_sequence(&mut chars),
-            '\u{90}' | '\u{98}' | '\u{9d}' | '\u{9e}' | '\u{9f}' => string(&mut chars),
-            each if hides(each) || each.is_control() => {}
-            each => kept.push(each),
-        }
-    }
-    kept.trim().to_owned()
-}
-
-/// Passes over an escape sequence's rest, its escape already taken: a
-/// control sequence such as a colour, a string such as a title or a link,
-/// or one that runs through intermediates to its final character, such as
-/// a character set chosen; any other takes the one character after it.
-fn escape(chars: &mut Peekable<std::str::Chars>) {
-    match chars.next() {
-        Some('[') => control_sequence(chars),
-        Some(']' | 'P' | 'X' | '^' | '_') => string(chars),
-        Some(' '..='/') => {
-            chars.find(|end| ('0'..='~').contains(end));
-        }
-        _ => {}
-    }
-}
-
-/// Passes over a control sequence's rest, to its final character.
-fn control_sequence(chars: &mut Peekable<std::str::Chars>) {
-    chars.find(|end| ('@'..='~').contains(end));
-}
-
-/// Passes over a string's rest, to the bell or string terminator ending it.
-fn string(chars: &mut Peekable<std::str::Chars>) {
-    while let Some(each) = chars.next() {
-        match each {
-            '\u{7}' | '\u{9c}' => return,
-            '\u{1b}' => {
-                chars.next_if_eq(&'\\');
-                return;
-            }
-            _ => {}
-        }
-    }
-}
-
-/// Whether `each` is a format character that turns, hides or breaks text:
-/// a soft hyphen, direction marks and overrides, joiners and invisible
-/// operators, a line or paragraph separator, annotation marks, and tags.
-fn hides(each: char) -> bool {
-    matches!(
-        each,
-        '\u{ad}'
-            | '\u{61c}'
-            | '\u{180e}'
-            | '\u{200b}'..='\u{200f}'
-            | '\u{2028}'..='\u{202e}'
-            | '\u{2060}'..='\u{206f}'
-            | '\u{feff}'
-            | '\u{fff9}'..='\u{fffb}'
-            | '\u{e0000}'..='\u{e007f}'
-    )
 }
 
 /// The document an owner's answer opens with. An owner may say more on

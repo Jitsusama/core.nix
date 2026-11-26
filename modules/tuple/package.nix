@@ -1,10 +1,11 @@
-# Tuple's Linux alpha, newer than nixpkgs' v2026_09_16.1: v2026_11_19.0,
+# Tuple's Linux alpha, newer than nixpkgs' v2026_09_16.1: v2026_11_25.0,
 # whose command is the one Tuple's docs describe (tuple call, contacts,
-# state), and the first to share a webcam from Linux. Every command
-# v2026_11_16.0 had answers its help the same; tuple webcam is new, and
-# lists the cameras, opens the app's camera picker on the call and stops
-# sharing it. The log lines and stream keys tuple-call reads, and the
-# contacts' keys and status words tuple-people reads, are in both builds.
+# state, webcam). v2026_11_19.0 was the first to share a webcam from
+# Linux; this one's new words, read from the build itself, say when
+# Tuple can't take a camera's colour space. The log lines and stream keys
+# tuple-call reads, the contacts' keys and status words tuple-people
+# reads, and the window titles niri's rules match are in this build as
+# they were in v2026_11_19.0, by a comparison of the two builds' strings.
 # Screen sharing through the portal was last seen working here on
 # v2026_10_21.0. Webcam sharing is yet to be seen here: the build reads
 # cameras through PipeWire, where the IR camera is hidden, and until the
@@ -23,15 +24,15 @@
   tuple,
 }:
 let
-  release = "v2026_11_19.0";
+  release = "v2026_11_25.0";
   builds = {
     x86_64-linux = {
       arch = "x86_64";
-      hash = "sha256-OGZl/cbpEsYa7wm1nDuZN8WAKJ1lGsvKXCVtkuXqS2o=";
+      hash = "sha256-HkQfchyjUtQvxfKfCN0rqiijO/U89SHuob1bn2dBveg=";
     };
     aarch64-linux = {
       arch = "arm64";
-      hash = "sha256-iS6Fv0S/hPnhS0PmFH2lFEoOenKHS7CzmpZhgl92Gt4=";
+      hash = "sha256-mmrhx5ECwoYtVbHevmVyKgBytAXGvjxD3Vo0g3RQcvY=";
     };
   };
   build = builds.${stdenv.hostPlatform.system} or null;
@@ -40,7 +41,7 @@ if build == null then
   tuple
 else
   tuple.overrideAttrs {
-    version = "0-unstable-2026-11-19";
+    version = "0-unstable-2026-11-25";
     src = fetchurl {
       url = "https://tuple-client-releases.s3.amazonaws.com/linux/${release}/${build.arch}/tuple";
       inherit (build) hash;

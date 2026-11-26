@@ -4,7 +4,7 @@
 
 use std::path::Path;
 use std::process::Command;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use super::hub::Hub;
 use super::{Merging, RECUTS, cut};
@@ -108,6 +108,45 @@ const PAUSE: Duration = if cfg!(test) {
 /// train's merges.
 const MERGE_TRIES: usize = 5;
 
+/// How many more times GitHub is asked whether a merge landed when one of
+/// its answers stated no refusal, the pauses between summing to five
+/// minutes. A server error, or a call that timed out or lost its link,
+/// says nothing of the merge, which GitHub may finish after it: at 11:15
+/// on 25 November it answered each of the train's merges of #6398 with an
+/// HTTP 502, the train turned #6398 away after half a minute, and GitHub
+/// read it merged at 11:19, so the 17 riders left aboard ran their checks
+/// again.
+const SETTLE_ASKS: usize = 20;
+
+/// How long the train waits between those asks; none in tests.
+const SETTLE_PAUSE: Duration = if cfg!(test) {
+    Duration::ZERO
+} else {
+    Duration::from_secs(15)
+};
+
+/// How long the train goes on starting those asks: twenty reads that each
+/// time out three times would otherwise hold the train for about two
+/// hours. Six minutes leaves room for the five of pauses and the reads
+/// between. A read started inside it still runs to its end, at most
+/// three of `gh`'s two-minute calls and the pauses between, so the wait
+/// as a whole ends within about twelve minutes.
+const SETTLE_FOR: Duration = Duration::from_mins(6);
+
+/// What `gh` adds to an answer in which GitHub refused the merge, as
+/// `gh: Pull Request is still a draft (HTTP 405)`; any other failure,
+/// a server error, a timeout or a lost link, states no refusal.
+const STATED_REFUSAL: &str = "(HTTP 4";
+
+/// The answers in the 400s that ask the train to slow down, a secondary
+/// rate limit's 403 and a 429, and say nothing of the merge itself.
+const SLOW_DOWN: [&str; 2] = ["(HTTP 403)", "(HTTP 429)"];
+
+/// Whether `why`, a merge's failed answer, says GitHub refused it.
+fn states_refusal(why: &str) -> bool {
+    why.contains(STATED_REFUSAL) && !SLOW_DOWN.iter().any(|slow| why.contains(slow))
+}
+
 /// How a merge GitHub was asked for went.
 enum Merge {
     /// It merged as this commit.
@@ -124,16 +163,30 @@ enum Merge {
 /// reads it merged, and asked again while it reads unmerged.
 fn merge(hub: &dyn Hub, merging: &Merging) -> Merge {
     let mut pause = PAUSE;
+    // The first answer that stated no refusal, which put the merge in
+    // doubt and is what a wait on it quotes.
+    let mut doubt: Option<String> = None;
     for tried in 1..=MERGE_TRIES {
         let why = match hub.merge(merging) {
             Ok(made) => return Merge::Made(made),
             Err(why) => why,
         };
-        match merged(hub, merging.number) {
-            Ok(Some(made)) => return Merge::Made(made),
-            Ok(None) if tried == MERGE_TRIES => return Merge::Refused(why),
-            Ok(None) => {}
-            Err(error) => {
+        // GitHub may refuse a merge it is still finishing, so one answer
+        // stating no refusal leaves the merge in doubt however the later
+        // ones read.
+        if doubt.is_none() && !states_refusal(&why) {
+            doubt = Some(why.clone());
+        }
+        match (merged(hub, merging.number), &doubt) {
+            (Ok(Some(made)), _) => return Merge::Made(made),
+            (Ok(None) | Err(_), Some(doubt)) if tried == MERGE_TRIES => {
+                return settled(hub, merging.number, doubt, why);
+            }
+            (Ok(None), None) if tried == MERGE_TRIES => return Merge::Refused(why),
+            // A merge already in doubt is asked for again past a failed
+            // read too, rather than stopping the whole train at once.
+            (Ok(None), _) | (Err(_), Some(_)) => {}
+            (Err(error), None) => {
                 return Merge::Unknown(format!("{why}, and GitHub couldn't say after: {error}"));
             }
         }
@@ -141,6 +194,61 @@ fn merge(hub: &dyn Hub, merging: &Merging) -> Merge {
         pause *= 2;
     }
     Merge::Refused("it was never asked".to_owned())
+}
+
+/// How a merge in doubt went, `why` the answer that put it there and
+/// `last` GitHub's last: made once GitHub reads pull request `number`
+/// merged, refused, saying both answers, when its last read of
+/// `SETTLE_ASKS`, or the last within `SETTLE_FOR`, still says unmerged,
+/// and unknown when that last read failed. A read failing between is
+/// asked past, as one failed read says nothing, and an unknown merge
+/// stops the whole train.
+fn settled(hub: &dyn Hub, number: u64, why: &str, last: String) -> Merge {
+    println!(
+        "merge-net: an answer to #{number}'s merge stated no refusal, so the train asks \
+         for about five minutes whether it landed; the answer: {}",
+        one_line(why)
+    );
+    let until = Instant::now() + SETTLE_FOR;
+    let mut read = Ok(None);
+    for _ in 0..SETTLE_ASKS {
+        std::thread::sleep(SETTLE_PAUSE);
+        read = merged(hub, number);
+        if let Ok(Some(made)) = read {
+            println!(
+                "merge-net: GitHub reads #{number} merged, as {}",
+                short(&made)
+            );
+            return Merge::Made(made);
+        }
+        if Instant::now() >= until {
+            break;
+        }
+    }
+    if let Err(error) = read {
+        println!(
+            "merge-net: GitHub still couldn't say whether #{number} merged: {}",
+            one_line(&error)
+        );
+        Merge::Unknown(format!("{why}, and GitHub couldn't say after: {error}"))
+    } else {
+        println!("merge-net: GitHub still reads #{number} unmerged, so it leaves the train");
+        if last == why {
+            Merge::Refused(last)
+        } else {
+            Merge::Refused(format!("{last}, after {why}"))
+        }
+    }
+}
+
+/// `text` as one line of at most 300 characters, for train.log: gh's
+/// errors can run long and over several lines.
+fn one_line(text: &str) -> String {
+    let joined = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    match joined.char_indices().nth(300) {
+        Some((at, _)) => format!("{} ...", &joined[..at]),
+        None => joined,
+    }
 }
 
 /// Whether GitHub reads pull request `number` merged, asked three times

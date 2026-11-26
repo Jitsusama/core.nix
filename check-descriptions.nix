@@ -262,7 +262,9 @@
   a-shut-launcher-makes-no-document-rows = ''
     the launcher's Documents make no row while it's shut, as the clock's minute passes or the
     google daemon tells a row, then hold every document once it opens, made once in the daemon's
-    order, and keep them, making none, once it's shut again
+    order, and keep them, making none, once it's shut again; and a search, or what's typed inside
+    a row, lost as the daemon goes while drawn is asked again once it says hello, still timed from
+    its key, lost again left for the next key
   '';
   a-sign-in-notice-is-taken-back-even-late = ''
     a network wanting a sign-in is told of once, its notice staying while it wants one and taken
@@ -785,15 +787,22 @@
     Chrome already filled, its old files gone and the rest left alone; a second run changes
     nothing, a boot's empty runtime folder is filled again, a lock left by a Chrome that's gone
     doesn't stop it, a Chrome still quitting is waited for, as is one whose maps can't be read,
-    one still quitting after half a minute is given up on, the run starting over if that Chrome
-    quits during the run's last look, and with Chrome running, or started again as the old one
-    quits, no cache is touched, so none is swapped under it, while BrowserMetrics, which Chrome
-    deletes itself as it runs, moves once nothing of Chrome's here maps or holds open a file in
-    it, a mapped or open file keeping it on the disk and a deleted one or a neighbour folder's
-    not, a Chrome on another host keeping it there and a quitting one waited for, and what a
-    session left in memory goes unless it's mapped; the unit starts with the account's manager,
-    before the graphical session, and again on each change in the profile's folder, as when
-    Chrome quits and drops its lock, with no start limit for Chrome's writes to reach
+    one still quitting after half a minute, a histogram mapped, is given up on for every folder
+    within that half minute, the run starting over if that Chrome quits during the run's last
+    look, as it does when only a BrowserMetrics made again on the disk was kept, the caches
+    already in memory, and ending within a minute, keeping it all, if it quits after, or all
+    but BrowserMetrics, saying so, if it maps only a cache; with Chrome running, or started
+    again as the old one quits, no cache is touched, so none is swapped under it, and a run
+    ends without a last look's line, as it does when only a running Chrome's BrowserMetrics
+    brought that look, the caches in memory, while BrowserMetrics, which
+    Chrome deletes itself as it runs, moves once nothing of Chrome's here maps or holds open a
+    file in it, a mapped or open file keeping it on the disk and a deleted one or a neighbour
+    folder's not, a Chrome on another host keeping it there and a quitting one waited for,
+    and, named after caches a held profile keeps, it moves all the same, and what a session left in
+    memory goes unless it's mapped, even while another host's Chrome keeps the folder on the
+    disk; the unit starts with the account's manager, before the graphical session, and again
+    on each change in the profile's folder, as when Chrome quits and drops its lock, with no
+    start limit for Chrome's writes to reach
   '';
   chrome-open-tabs-passes-clippy = ''
     clippy finds nothing in the host that tells the launcher Chrome's open tabs, or its tests
@@ -1247,6 +1256,12 @@
     program its kind doesn't allow is refused before anything runs, and a command asked wrongly
     says what it takes
   '';
+  emoji-keeps-a-lost-search-only-open = ''
+    with nothing at the clipboard history's socket, Emoji's rows are drawn only while the launcher
+    is open: shut, a search and one typed inside a group that went unanswered are let go; open,
+    each is kept, and asked again at the history's hello, the answer to what was typed in the
+    group not taken as its key's own a while after the key, so Emoji's rows stay where they are
+  '';
   ergodox-on-every-workstation = ''
     every workstation can flash the ErgoDox, a Mac as much as Linux
   '';
@@ -1283,9 +1298,11 @@
     through a guarded folder, named, by a glob's list, in capitals, with ./, // or /., through
     .., by a link, a file through a link, by the data volume's name, or through a home named by
     one, is judged before it's opened, left out and said, du not run when none is left, and a
-    start after it like an option reaches du as a path; a link -H or -L follows to Documents
-    is left out, and one reaching no folder or a folder that can't be entered is left out
-    and said apart; a start named - is that folder and CDPATH
+    start after it like an option reaches du as a path; a link -H, -L or a / after it
+    follows is judged by where its links lead, each read as written from the folder really
+    holding it, left out when one leads into Documents and left out and said apart past 32
+    links or through a folder that can't be entered or isn't there, as is a start typed below
+    one; a start named - is that folder and CDPATH
     moves none; only a home's own guarded folders are left out by name; -L is taken out and
     said unless -H or -P follows; du's own nonzero end is kept; a working folder gone still
     counts a whole path, and no home found is said; a count above none runs as given and ends
@@ -1524,14 +1541,15 @@
   '';
   find-leaves-guarded-folders-alone = ''
     a Mac's account has its own find, running macOS's with the ignore file and the data volume, and
-    a search from the home folder, from Library or from above it and the data volume's name for it
-    never opens the folders ripgrep's ignore file guards, yet lists them where they match, once, as
-    the expression's own action prints, says it left them unsearched and finds the rest, a
-    project's folder named like a guarded one included, keeping -empty and an -exec, which would
-    open them, off them and saying it left them out, reading the file's last line unended, searching
-    a guarded folder named, started in or named beside its parent; a search find can't prune runs
-    as given, with no note; every line of the ignore file names a folder find can guard; Linux's
-    account gets no such find
+    with GNU find standing in for macOS's, a search from the home folder, from Library or from above
+    it and the data volume's name for it never opens the folders ripgrep's ignore file guards, yet
+    lists them where they match, once, as the expression's own action prints, says it left them
+    unsearched and finds the rest, a project's folder named like a guarded one included, keeping
+    -empty, -exec and -execdir, which would open them, off them and saying it left them out,
+    reading a primary's operand as no primary, reading the file's last line unended, searching a
+    guarded folder named, started in or named beside its parent; one a -maxdepth keeps find out of
+    runs as given, with no note, as does a search find can't prune, -delete's among them; every
+    line of the ignore file names a folder find can guard; Linux's account gets no such find
   '';
   firmware-errors-passes-clippy = ''
     clippy finds nothing in firmware-errors or its tests
@@ -2095,9 +2113,10 @@
     the Mac's Nix reads its builders from the room job's file, which a job every 15 seconds,
     given the set floor and hold in order, keeps clear of the builder below the floor, as at 34%
     free, on a page swapped out, on a swap-out count that started again, with the room or its
-    own record unread or that record from later than now, or when a step fails, and gives the
-    line back only after the hold, at 35% and 600 s exactly but not 595 s, saying each change
-    once, opening with its UTC time
+    own record unread or that record from later than now, or when a step fails, each starting
+    the hold, a shortage a failed write couldn't record among them, and saying why and where its
+    log says when; it gives the line back only after the hold, at 35% and 600 s but not 595 s,
+    saying each change once in one line opening with its UTC time, and a failure once
   '';
   linux-builder-gives-up-on-a-guest-that-stops-answering = ''
     the Mac's ssh to the Linux VM waits five minutes for a guest to greet it and, once in, gives
@@ -2404,8 +2423,10 @@
     relay and off a file or a link that isn't a socket, and logs nothing of a header or a body, a
     failure included; and its own cases hold a ping from behind an upload, with little held
     unsent in its sockets and short frames, retire a connection by its number alone, sparing one
-    opened since, and at most once a minute for a reset, and say an error with its causes, cut to
-    a line
+    opened since, and at most once a minute for a reset, have the kernel probe a connection a
+    sleep retired by count alone and stop once done, but not one opened since nor one let go,
+    nor hold that one open, nor stop a later sleep's probes, and say an error with its causes,
+    cut to a line
   '';
   model-relay-passes-clippy = ''
     clippy finds nothing in model-relay or its tests
@@ -4381,7 +4402,9 @@
     going, broken while the daemon is away and live once it's back, stale once the server goes, the
     web-design skill's page checks passing at a phone's width and a desk's in both looks, a look
     for a machine with a spot machine's long name leaving its words at least two fifths of the
-    list at both widths and none past the window, a good part read from its owner's kept answer
+    list at both widths and none past the window, a machine's look saying the daemon's why under
+    its words with its one act opening that machine's launcher row on a thumb-sized target at both
+    widths, a good part read from its owner's kept answer
     never listed as worth a look and its note said where it belongs, a first visit within its
     budget of files, bytes and elements, both visits reaching only the sites' server and the second
     answered unchanged, and nothing logged
@@ -4446,13 +4469,18 @@
     any spelling and repeats left out; it says why when it asks nothing, hears both streams before
     saying it started on the node's machine, else the node's or sprout's why; and the words a
     mycelium: link offers are read again as one plain line of at most 1000 characters, its session
-    kept only where one here has that address, named by its quest, the foot saying a page offered it
+    kept only where one here has that address, named by its quest, the foot saying a page offered
+    it; and a slow start is said still coming up a minute after its answer, then told by name when
+    it's up or lost within a quarter hour, in the foot only while Joel still waits on its act
   '';
   start-new-work-finds-places = ''
     Start New Work lists the open quests' folders, then the places the realm's node names, each
     folder once and only in plain words, what the node calls a zone started by its name, a quest's
     folder that is one included, and the rest by their folder, as is a zone two checkouts share;
-    and a place the node says isn't checked out started by name all the same
+    and a place the node says isn't checked out started by name all the same; and Wheres.startAt
+    gives a row picked before the places land the start it says once they have, found by its own
+    folder alone, else the start it was made with; and a node's 2000 places, as long as Joel's,
+    are read and weighed in under 50 ms of the shell's thread
   '';
   starts-stopped-lifts-only-on-joels-return = ''
     Starts Stopped's Return steps in among its acts wherever the launcher drops its drawer's step,
@@ -4594,6 +4622,11 @@
   the-cat-keeps-joels-words = ''
     every design Joel stated for the margin cat, dated, is held by a phrase one of its cases says
     outside a comment, or owed since a date, and the owed ones are listed
+  '';
+  the-cat-runner-names-how-each-case-ended = ''
+    the margin cat's case runner fails a run with a case that failed, ran past its own processor
+    time, was killed from outside or hung past the clock's guard, names each by how it ended and
+    says every case's time, and stops at a hang, naming the cases it left unrun
   '';
   the-cats-walk-is-read-only-from-its-lists = ''
     the cat's code is read as no walk, by the rule it breaks, when WALKS holds anything but
@@ -4806,7 +4839,7 @@
   the-sessions-kitty-is-asked-only-its-own-way = ''
     a session's window is asked of the sessions kitty over its socket, or of the unit's own kitty
     from before it listened, waiting up to 20 s for one starting again, and nothing opens with
-    neither
+    neither; and the packaged kitten says an unanswered launch in the words the script reads
   '';
   the-sessions-kitty-says-its-pid = ''
     the kitty every session's window is drawn by writes its pid beside its socket, which names
@@ -6864,9 +6897,14 @@
     on a machine whose /home is Btrfs, each of an account's folders named by its modules is
     moved by a unit of its own as the account's manager starts, before the units that write in
     it: a free one becomes a subvolume's root with its files, hard links and links, the folder as
-    it was kept beside it; one a process of the account's holds open stays and says so; a missing
-    one passes; one that can't be copied is left whole with no half copy, its unit failing and
-    its writer starting all the same; and a second run leaves a subvolume as it is
+    it was kept beside it; one a process of the account's holds open stays and says so; one a
+    program opens as it's copied stays whole; each a process held moves by itself once that
+    process quits; a missing one passes; one that can't be copied is left whole with no half
+    copy, its unit failing and its writer starting all the same; a second run leaves a
+    subvolume as it is; and a copy marked for its late writes, or a split, keeps its folder and
+    fails each run, though a mark with nothing written since its copy began is cleared; and a
+    waiter that held nothing a minute three times running starts the move no more, its count cleared
+    once a start lands the move
   '';
   vm-joel-comes-first = ''
     on an eighth of the laptop's memory, with agents' sessions, their work and shared work each under
