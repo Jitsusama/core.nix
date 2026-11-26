@@ -215,7 +215,6 @@
   "modules/shaper/src/oneway.rs" = 5;
   "modules/shaper/src/qdisc.rs" = 10;
   "modules/shaper/src/replay.rs" = 14;
-  "modules/slack/src/lib.rs" = 4;
   "modules/slack/src/messages.rs" = 4;
   "modules/slack/src/search.rs" = 1;
   "modules/slack/src/unreads.rs" = 1;
