@@ -7,29 +7,30 @@ session_start handlers reading shared state off a stalled disk, and the
 person's window stayed blank the whole time: nothing on it said which
 conversation it was or what had been said.
 
-A hosted screen now starts its bind as a reload already does, with pi's
-own renderBeforeBind: it draws the conversation and subscribes to the
-agent first, then binds, and skips the draw startup would make after. The
+A hosted screen now draws the conversation's messages first, then binds,
+and skips the draw startup would make after. Nothing already on the
+screen is cleared, so the notices startup made before the bind stay; the
 resources pi lists once its extensions bind still land above the
-conversation, in their own container; the startup notices a bind adds
-come below it, as after a reload. A plain pi starts as before.
+conversation, in their own container. It hears the agent only once the
+bind ends, as before, so nothing reaches an extension before its hooks
+are live. A plain pi starts as before.
 
 Apply only to the host's private pi build; ordinary interactive pi stays
 unchanged.
 
 --- a/packages/coding-agent/src/modes/interactive/interactive-mode.ts
 +++ b/packages/coding-agent/src/modes/interactive/interactive-mode.ts
-@@ -1185,12 +1185,15 @@ export class InteractiveMode {
+@@ -1185,12 +1185,16 @@ export class InteractiveMode {
  		this.setupEditorSubmitHandler();
  		this.ui.requestRender();
  
 -		// Initialize extensions first so resources are shown before messages
--		await this.rebindCurrentSession();
 +		// Initialize extensions first so resources are shown before messages. A hosted screen draws its
-+		// conversation before extensions bind, as a reload does, so a slow session_start leaves it readable;
-+		// the resources still land above it, in their own container.
++		// messages before extensions bind, so a slow session_start leaves it readable; the resources
++		// still land above them, in their own container.
 +		const hosted = this.options.hosted !== undefined;
-+		await this.rebindCurrentSession({ renderBeforeBind: hosted });
++		if (hosted) this.renderInitialMessages();
+ 		await this.rebindCurrentSession();
  		if (this.hostedStartupEnded()) return;
  
  		// Render initial messages AFTER showing loaded resources

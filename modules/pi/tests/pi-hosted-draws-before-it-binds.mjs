@@ -6,7 +6,6 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { afterEach, mock, test as it } from "node:test";
-import { setTimeout as wait } from "node:timers/promises";
 
 const [
   ,
@@ -23,11 +22,6 @@ const jiti = source.endsWith(".ts")
   : undefined;
 const { InteractiveMode } = await (jiti ? jiti.import(source) : import(source));
 
-/** How long a window may stay blank while its extensions bind. */
-const DRAWN_WITHIN_MS = 1000;
-/** How often the check looks at what the screen drew. */
-const LOOK_MS = 10;
-
 const path = process.env.PATH;
 afterEach(() => {
   process.env.PATH = path;
@@ -35,11 +29,16 @@ afterEach(() => {
 });
 
 // A screen whose startup runs for real, with its extensions' bind held
-// until `bound` is called, as a session_start on a stalled disk holds it.
+// until `bound` is called, as a session_start on a stalled disk holds it;
+// `binding` settles once startup has reached the bind.
 function startingScreen(hosted) {
   let bound;
-  const binding = new Promise((resolve) => {
+  const held = new Promise((resolve) => {
     bound = resolve;
+  });
+  let reached;
+  const binding = new Promise((resolve) => {
+    reached = resolve;
   });
   const container = () => ({ clear: mock.fn(), addChild: mock.fn(), children: [] });
   const mode = Object.create(InteractiveMode.prototype);
@@ -69,7 +68,10 @@ function startingScreen(hosted) {
     setupKeyHandlers: mock.fn(),
     setupEditorSubmitHandler: mock.fn(),
     applyRuntimeSettings: mock.fn(),
-    bindCurrentSessionExtensions: mock.fn(() => binding),
+    bindCurrentSessionExtensions: mock.fn(() => {
+      reached();
+      return held;
+    }),
     subscribeToAgent: mock.fn(),
     updateAvailableProviderCount: () => Promise.resolve(),
     updateEditorBorderColor: mock.fn(),
@@ -111,20 +113,7 @@ function startingScreen(hosted) {
   ]) {
     mode[part] = container();
   }
-  return { mode, bound };
-}
-
-/** Waits until the screen has drawn its conversation, or the time is up. */
-async function drawnWithin(mode, ms) {
-  const until = Date.now() + ms;
-  while (Date.now() < until) {
-    if (mode.renderInitialMessages.mock.callCount() > 0) {
-      return true;
-    }
-    // Polled, since the draw it waits for comes from startup's own chain.
-    await wait(LOOK_MS);
-  }
-  return mode.renderInitialMessages.mock.callCount() > 0;
+  return { mode, bound, binding };
 }
 
 /** Starts the screen with fd and rg on no path, offline, so it downloads nothing. */
@@ -135,14 +124,17 @@ function starting(mode) {
 }
 
 it("a hosted screen draws its conversation while its extensions still bind", async () => {
-  const { mode, bound } = startingScreen(true);
+  const { mode, bound, binding } = startingScreen(true);
   const started = starting(mode);
-  assert.ok(
-    await drawnWithin(mode, DRAWN_WITHIN_MS),
-    `the window was blank ${DRAWN_WITHIN_MS} ms into a bind that never settles`,
+  // Once the bind has begun, and while it is held, the window shows the
+  // conversation; it hears the agent only once its extensions are live.
+  await binding;
+  assert.equal(
+    mode.renderInitialMessages.mock.callCount(),
+    1,
+    "the window was blank while its extensions bound",
   );
-  assert.equal(mode.bindCurrentSessionExtensions.mock.callCount(), 1, "bind had begun");
-  assert.equal(mode.subscribeToAgent.mock.callCount(), 1, "it hears the agent while binding");
+  assert.equal(mode.subscribeToAgent.mock.callCount(), 0, "it heard the agent before it bound");
   bound();
   await started;
   // Drawn once: startup's own draw after the bind is the one it replaced.
@@ -152,11 +144,17 @@ it("a hosted screen draws its conversation while its extensions still bind", asy
 });
 
 it("a plain pi still draws its conversation after its extensions bind", async () => {
-  const { mode, bound } = startingScreen(false);
+  const { mode, bound, binding } = startingScreen(false);
   const started = starting(mode);
-  // The bind is held: a plain pi has drawn nothing of the conversation.
-  await wait(5 * LOOK_MS);
-  assert.equal(mode.renderInitialMessages.mock.callCount(), 0);
+  // The bind has begun and is held: a plain pi has drawn nothing of the
+  // conversation and hears nothing yet.
+  await binding;
+  assert.equal(mode.renderInitialMessages.mock.callCount(), 0, "a plain pi drew before it bound");
+  assert.equal(
+    mode.subscribeToAgent.mock.callCount(),
+    0,
+    "a plain pi heard the agent before it bound",
+  );
   bound();
   await started;
   assert.equal(mode.renderInitialMessages.mock.callCount(), 1);

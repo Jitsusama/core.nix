@@ -146,8 +146,6 @@ function startingScreen(quitAt) {
     setupEditorSubmitHandler: mock.fn(),
     applyRuntimeSettings: mock.fn(),
     bindCurrentSessionExtensions: () => quit("extensions"),
-    // Drawn before the bind (pi-host-draws-before-it-binds.patch).
-    renderCurrentSessionState: mock.fn(),
     subscribeToAgent: mock.fn(),
     updateAvailableProviderCount: () => {
       providerCounts += 1;
@@ -198,10 +196,12 @@ for (const quitAt of ["colors", "tools", "extensions", "providers"]) {
     // No theme listener outlives it in the host's one theme: its stop has
     // run, so one still held here would never be released.
     assert.equal(mode.themeChangeUnsubscribe, undefined, "a theme listener was left behind");
-    // A subscription made before the quit, as a hosted bind's first step, is
-    // the screen's stop to release; none is made after, nor anything drawn.
-    const subscribed = quitAt === "extensions" || quitAt === "providers" ? 1 : 0;
-    assert.equal(mode.subscribeToAgent.mock.callCount(), subscribed);
+    // Drawn just before the bind (pi-host-draws-before-it-binds.patch), once.
+    const drawn = quitAt === "extensions" || quitAt === "providers" ? 1 : 0;
+    assert.equal(mode.renderInitialMessages.mock.callCount(), drawn);
+    // A subscription made before the quit is the screen's stop to release;
+    // none is made after, and nothing is prompted or rendered.
+    assert.equal(mode.subscribeToAgent.mock.callCount(), quitAt === "providers" ? 1 : 0);
     assert.equal(mode.runtimeHost.session.prompt.mock.callCount(), 0);
     assert.equal(mode.ui.renderNow.mock.callCount(), 0);
     // A late event never starts it again.
