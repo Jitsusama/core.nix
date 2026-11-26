@@ -4918,7 +4918,7 @@
   the-screens-go-off-on-niri = ''
     on niri, Turn Every Screen Off closes the launcher and then asks niri to power its monitors
     off, and :set noscreens asks it too, as read on the way to niri's socket; a :setl scale
-    niri refuses says niri's words for why on the : line; and Screens, inside Desktop, says
+    niri refuses says niri's words for why on the : line; and Screens, inside Machine, says
     how many screens there are as the windows daemon counts them
   '';
   the-newest-surface-takes-the-keys-on-niri = ''
