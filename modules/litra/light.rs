@@ -31,7 +31,16 @@ const COOLEST: u16 = 6500;
 
 const O_NONBLOCK: c_int = 0o4000;
 const LOCK_EX: c_int = 2;
+const LOCK_NB: c_int = 4;
 const LOCK_UN: c_int = 8;
+/// How long a light's turn is waited for. A litra holds it while it sends
+/// and waits up to a second for the reply, so one held longer is held by a
+/// program that won't let go, which every litra would otherwise wait on
+/// for good, following the cameras included.
+const TURN: Duration = Duration::from_secs(3);
+/// How far apart the turn is tried for while another holds it: flock can't
+/// wait with a bound, so it's asked without waiting, again and again.
+const TRYING: Duration = Duration::from_millis(10);
 
 unsafe extern "C" {
     fn flock(fd: c_int, operation: c_int) -> c_int;
@@ -71,19 +80,23 @@ pub(crate) fn kelvin(asked: u16) -> u16 {
     (asked.clamp(WARMEST, COOLEST) + 50) / 100 * 100
 }
 
-/// A light's node, open. What's sent goes through `exchange`, which takes
-/// the light's turn first: an flock on the node, which every litra holds
-/// while it asks, whichever process it runs in. The file is private to this
-/// module, so nothing outside it can send around the turn; code in this
-/// file is trusted to send through `exchange` alone. A program that writes
-/// the node without the lock isn't stopped by any of this.
+/// A light's node, open. What's sent, asked or told, goes through
+/// `exchange`, which takes the light's turn first: an flock on the node,
+/// which every litra holds while it sends, whichever process it runs in,
+/// waited for no longer than `turn`. The file is private to this module,
+/// so nothing outside it can send around the turn through this descriptor;
+/// code in this file is trusted to send through `exchange` alone. The node
+/// opened again, by its path or through /proc, isn't held to the turn, nor
+/// is a program that writes it without the lock.
 pub(crate) struct Light {
     file: File,
+    turn: Duration,
 }
 
 /// A raw descriptor, for poll, rather than `AsFd`: a borrowed descriptor
 /// clones into an owned file without `unsafe`, which could then write
-/// around the turn, while a raw one can't be written through without it.
+/// around the turn, while a raw one is written through only by `unsafe`
+/// code. Neither stops the node being opened again.
 impl AsRawFd for Light {
     fn as_raw_fd(&self) -> RawFd {
         self.file.as_raw_fd()
@@ -103,7 +116,32 @@ impl Light {
             .write(true)
             .custom_flags(O_NONBLOCK)
             .open(node)?;
-        Ok(Self { file })
+        Ok(Self { file, turn: TURN })
+    }
+
+    /// Takes the light's turn once another lets go of it, or fails once
+    /// it has waited `turn`, rather than wait on a holder that won't.
+    fn take_turn(&self) -> io::Result<()> {
+        let fd = self.file.as_raw_fd();
+        let deadline = Instant::now() + self.turn;
+        loop {
+            // SAFETY: a plain call on a descriptor of our own.
+            if unsafe { flock(fd, LOCK_EX | LOCK_NB) } == 0 {
+                return Ok(());
+            }
+            let error = io::Error::last_os_error();
+            match error.kind() {
+                ErrorKind::Interrupted => {}
+                ErrorKind::WouldBlock if Instant::now() < deadline => {
+                    std::thread::sleep(TRYING);
+                }
+                ErrorKind::WouldBlock => {
+                    let held = format!("the light's turn was held for {:?}", self.turn);
+                    return Err(io::Error::new(ErrorKind::TimedOut, held));
+                }
+                _ => return Err(error),
+            }
+        }
     }
 
     /// Sends a report and waits up to a second for the light's reply to it,
@@ -118,19 +156,14 @@ impl Light {
         values: &[u8],
         other: &mut dyn FnMut(&[u8]),
     ) -> io::Result<Vec<u8>> {
+        self.take_turn()?;
         let fd = self.file.as_raw_fd();
-        // SAFETY: a plain call on a descriptor of our own.
-        while unsafe { flock(fd, LOCK_EX) } != 0 {
-            let error = io::Error::last_os_error();
-            if error.kind() != ErrorKind::Interrupted {
-                return Err(error);
-            }
-        }
         let replied = self
             .file
             .write_all(&report(command, values))
             .and_then(|()| self.reply(command, other));
-        // SAFETY: as above; closing the file would let go of it too.
+        // SAFETY: a plain call on a descriptor of our own; closing the
+        // file would let go of it too.
         unsafe { flock(fd, LOCK_UN) };
         replied
     }
@@ -269,6 +302,56 @@ pub(crate) fn find_out(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::*;
+    use std::fs;
+
+    /// Whether `file` was given the flock `operation` asks.
+    fn locked(file: &File, operation: c_int) -> bool {
+        // SAFETY: a plain call on a descriptor the file holds open.
+        unsafe { flock(file.as_raw_fd(), operation) == 0 }
+    }
+
+    #[test]
+    fn a_turn_held_elsewhere_keeps_back_what_is_sent_no_longer_than_its_bound() {
+        let root = root("turn");
+        let node = root.join("node");
+        fs::write(&node, "").expect("a stand-in node is made");
+        let holder = File::open(&node).expect("the stand-in node opens");
+        assert!(
+            locked(&holder, LOCK_EX | LOCK_NB),
+            "another litra's turn wasn't taken"
+        );
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&node)
+            .expect("the stand-in node opens to be written");
+        let turn = Duration::from_millis(50);
+        let mut light = Light { file, turn };
+        let started = Instant::now();
+        let held = light.tell(POWER, &[1]).map_err(|error| error.kind());
+        let waited = started.elapsed();
+        let written = fs::read(&node).expect("the stand-in node reads").len();
+        assert!(
+            locked(&holder, LOCK_UN),
+            "another litra's turn wasn't let go of"
+        );
+        let taken = light.take_turn().map_err(|error| error.kind());
+        let kept_out = locked(&holder, LOCK_EX | LOCK_NB);
+        assert_eq!(
+            (
+                held,
+                written,
+                waited >= turn,
+                waited < TURN,
+                taken,
+                kept_out
+            ),
+            (Err(ErrorKind::TimedOut), 0, true, true, Ok(()), false),
+            "a report was sent around a turn held elsewhere, or the turn was waited for \
+             other than its bound ({waited:?}), or not taken once let go of"
+        );
+    }
 
     #[test]
     fn a_report_is_twenty_bytes_behind_its_header() {
