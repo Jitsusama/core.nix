@@ -1,6 +1,6 @@
 # shellcheck shell=bash
-# Runs every QML case in the folder it starts in, each for at most a minute
-# of its own time on the processor, and names each that fails or runs past
+# Runs every QML case in the folder it starts in, each for at most two
+# minutes of its own time on the processor, and names each that fails or runs past
 # it, as it ends and again at the close, since the build's log otherwise
 # says only the exit code of the first, not which case, nor any after it,
 # and its tail may lose an early case's name under a later one's output.
@@ -10,7 +10,10 @@
 # builder's load stretches the clock and not the work: the journeys, which
 # step through 150 journeys a millisecond at a time in about 25 s, ran past
 # three minutes by the clock on a builder whose every case ran slow (22
-# November, the games 51 s of their 60), with nothing wrong. A case
+# November, the games 51 s of their 60), with nothing wrong. A busy
+# builder's shared cores stretch a case's own time too, if less: the
+# journeys took from 24 s to past 60 s of it (26 November), so the limit
+# is twice the slowest seen whole, still ending a case that spins. A case
 # waiting on nothing forever uses none of its own time, so the clock still
 # ends one after ten minutes, and the run stops there, since what hangs one
 # case most often hangs every case after it.
@@ -22,7 +25,7 @@ set -uo pipefail
 shopt -s nullglob
 
 qml=$1
-limit=${CASE_LIMIT:-60}
+limit=${CASE_LIMIT:-120}
 guard=${CASE_GUARD:-600}
 # A limit that isn't whole seconds is refused once, for the whole run,
 # rather than by ulimit as each case is run.
