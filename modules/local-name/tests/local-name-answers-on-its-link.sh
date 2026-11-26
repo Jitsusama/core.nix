@@ -51,15 +51,30 @@ trap 'kill "\$!" 2> /dev/null; sleep 0.2; exit 0' TERM
 echo "\$*" >> "$work/answers"
 echo "\$\$" > "$work/answering"
 if [ -e "$work/ends" ]; then
-  # Said at once, so only a job that says it's offered before it starts
-  # dns-sd has that line first in its log.
   echo "07:00:00.000 Got a reply for record its-own-name.local: Name in use, please choose another"
+  touch "$work/replied"
   exit 3
 fi
 sleep infinity &
 wait
 EOF
-chmod +x "$work/bin/scutil" "$work/bin/dns-sd"
+# The job stamps what it says with date. When the answer is to end, the
+# stamp waits for dns-sd's reply, bounded at a second, so a job that starts
+# dns-sd before it says the name is offered always has the reply first in
+# its log, and one that says it first, with no dns-sd yet to reply, waits
+# out the second and still has its line first.
+cat > "$work/bin/date" <<EOF
+#!${bash}
+if [ -e "$work/ends" ]; then
+  tries=0
+  while [ ! -e "$work/replied" ] && [ "\${tries}" -lt 10 ]; do
+    sleep 0.1
+    tries=\$((tries + 1))
+  done
+fi
+echo 2026-01-01T07:00:00Z
+EOF
+chmod +x "$work/bin/scutil" "$work/bin/dns-sd" "$work/bin/date"
 export PATH="$work/bin:$PATH"
 
 fail() {
@@ -100,7 +115,7 @@ nwi() {
 # Starts a case afresh.
 fresh() {
   rm -f "$work"/nwi.* "$work"/links.* "$work/linked" "$work/answers" "$work/answering" \
-    "$work/ends" "$work/said"
+    "$work/ends" "$work/replied" "$work/said"
   echo 0 > "$work/reads"
 }
 # Runs the job, reading every 0 seconds, its exit in ended, what it said,

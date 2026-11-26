@@ -247,8 +247,8 @@ let
       "sharing"
     ];
   # keep.sh names none of them; answer.sh names only dns-sd, which it runs
-  # in one line alone, answering the name as a host of its own (-P), so no
-  # service names the Mac's own host, on one link (-i). dns-sd -R, or any
+  # in one line alone, answering the name as a host of its own (-P), on one
+  # link (-i); darwin.nix says what that leaves to macOS. dns-sd -R, or any
   # service without a host of its own, would bring the Mac's records back on
   # every interface. Its reports go to the log, since dns-sd says a name in
   # use on its stdout. Its lines are read with its comments left out.

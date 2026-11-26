@@ -18,8 +18,11 @@
 # its cable came out, the service spun a core on their conflicts. So the
 # job registers one address record of its own instead, naming a host of
 # its own, on the one link the network reaches the Mac by (answer.sh says
-# how), and nothing names the Mac's own host. Any service advertised for
-# the host, Remote Login's included, would still bring the records back.
+# how). That host is spelled as the Mac's own name, so whether macOS's name
+# service keeps the record apart from its own, rather than bringing them
+# back or renaming the Mac, is its to decide, and not yet seen on a Mac.
+# Any service advertised for the host, Remote Login's included, would
+# bring the records back.
 {
   config,
   lib,
