@@ -347,7 +347,7 @@ fn dated_by_him(sentence: &str) -> bool {
         .any(|him| {
             let after = (him + 1..tokens.len()).take(BESIDE + 1);
             let before = (0..him).rev().take(BESIDE + 1);
-            reaches(after, &starts, &saying) || reaches(before, &ends, &saying)
+            reaches(after, starts, saying) || reaches(before, ends, saying)
         })
 }
 

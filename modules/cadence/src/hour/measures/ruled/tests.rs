@@ -139,13 +139,15 @@ fn a_relayed_ruling_is_backed_by_the_words_it_carries_not_by_its_id_alone() {
     );
 }
 
-/// A message with a backed claim and an unbacked one is counted for the
-/// unbacked one, and a stray quote mark hides no claim after it.
+/// A message with a backed claim and an unbacked one further on is
+/// counted for the unbacked one, and a stray quote mark hides no claim
+/// after it. A claim next to a backed one shares its backing, as a cite
+/// may follow the claim it backs.
 #[test]
 fn every_claim_in_a_message_is_judged_past_a_backed_one_or_a_stray_quote() {
     assert_eq!(
-        unbacked("Per Joel on 22 Nov, security never blocks. Joel wants the lab shut."),
-        Some("Joel wants the lab shut.".to_owned()),
+        unbacked("Per Joel on 22 Nov, security never blocks. The lab is open. Joel wants it shut."),
+        Some("Joel wants it shut.".to_owned()),
         "a backed claim hid an unbacked one after it"
     );
     assert_eq!(
