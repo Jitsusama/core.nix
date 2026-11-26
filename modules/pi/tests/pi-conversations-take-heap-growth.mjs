@@ -14,18 +14,24 @@ if (node === undefined || word === undefined || factor === undefined) {
 // holding it.
 const ENDS_WITHIN_MS = 30_000;
 
+// How much of a trace is read, far past the few hundred kilobytes one run
+// traces, so a longer trace from another node is read rather than ending
+// the run at node's own one-megabyte limit.
+const TRACE_BYTES = 64 * 1024 * 1024;
+
 // A conversation's heap limit, which decides the factor V8 picks itself.
 const HEAP = "--max-old-space-size=4096";
 
 // Keeps some memory live and churns more, then collects in full, so V8 sets
-// a limit at least once from what is live.
+// a limit at least once from what is live. It says its answer on stderr, so
+// that it can't land inside the trace, which V8 writes to stdout.
 const program = `
 const kept = [];
 for (let i = 0; i < 40; i++) kept.push(new Array(1e5).fill(i));
 let churned = 0;
 for (let i = 0; i < 400; i++) churned += new Array(1e5).fill(i).length;
 gc();
-process.stdout.write(String(kept.length + churned > 0));
+process.stderr.write(String(kept.length + churned > 0));
 `;
 
 // The factor V8 traced before setting a limit.
@@ -83,6 +89,7 @@ function factorsOf(flags) {
     [...flags, HEAP, "--trace-gc-verbose", "--expose-gc", "-e", program],
     {
       encoding: "utf8",
+      maxBuffer: TRACE_BYTES,
       timeout: ENDS_WITHIN_MS,
     },
   );

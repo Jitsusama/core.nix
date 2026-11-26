@@ -28,6 +28,7 @@ let
   launch = import ./host-launch.nix { inherit lib; };
   inherit (launch) kinds loadsCode stopSeconds;
   entry = launch.entry config;
+  growthTakenBy = import ./heap-growth-taken.nix { inherit lib pkgs; };
 
   # Whether pi's SSH agent proxy runs here, as home.nix decides it, so a
   # host is pointed at its socket only where there is one. Hosts are Linux
@@ -272,6 +273,7 @@ let
     realm: host: kind:
     let
       key = "${realm}-${kind}";
+      growthTaken = growthTakenBy realm host.node host.conversationHeapGrowingPercent;
     in
     {
       name = "pi-conversation-${key}@";
@@ -291,6 +293,12 @@ let
           # instance that failed is forgotten rather than listed for good.
           # A [Unit] setting: systemd ignores it under [Service].
           CollectMode = "inactive-or-failed";
+        }
+        // lib.optionalAttrs (host.conversationHeapGrowingPercent != null) {
+          # Unread by systemd: it ties the generation to a build that runs the
+          # realm's node with the percent, so a node that refuses it fails the
+          # switch by name rather than ending each conversation as it starts.
+          X-HeapGrowthTakenBy = "${growthTaken}";
         };
         Service = {
           # It says nothing to systemd: its host follows it on its socket.
@@ -527,7 +535,7 @@ in
             '';
           };
           conversationHeapGrowingPercent = lib.mkOption {
-            type = lib.types.nullOr (lib.types.ints.between 1 100);
+            type = lib.types.nullOr (lib.types.ints.between 10 100);
             default = null;
             description = ''
               How far each conversation's own process lets its heap grow past
@@ -544,12 +552,14 @@ in
               memory between collections, but grows by a tenth after a
               collection that gives memory back. Set, the percent stands in for
               both. A lower percent collects more often, keeping less resident
-              for more collection time; it stops at 100, since more would grow
+              for more collection time; it starts at 10, the tenth V8 itself
+              grows by at its lowest, and stops at 100, since more would grow
               past V8's own choice more often. It reaches only conversations in
               a unit of their own, on Linux: hosts, and a Mac's pi, keep V8's
               own growth. A node that doesn't know the flag refuses it as a bad
-              option, so each of the realm's conversations would end as it
-              starts until the percent is unset.
+              option, which would end each conversation as it starts, so the
+              generation builds the realm's node running with it first, and a
+              node that refuses it fails the switch by name.
             '';
           };
           asyncContextFrame = lib.mkOption {

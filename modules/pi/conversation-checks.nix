@@ -36,8 +36,19 @@ let
         ) hosts;
       }
     ])).systemd.user.services;
+  # One workstation's units for every percent that is taken, so one
+  # evaluation serves them all: a percent that is refused fails the whole
+  # evaluation, so only those need one of their own.
+  growing = growingServicesOf {
+    set = 30;
+    plain = null;
+    least = 10;
+    most = 100;
+    traced = 70;
+  };
   # The command a unit starts with, or nothing where there's no such unit.
   startOf = services: unit: lib.head (lib.toList (services.${unit}.Service.ExecStart or ""));
+  growthTakenBy = import ./heap-growth-taken.nix { inherit lib pkgs; };
 in
 {
   # Each realm-kind host gets a template its conversations' own processes
@@ -242,44 +253,43 @@ in
   # A realm may set how far each of its conversations' heaps grows past what
   # it holds live before V8 collects it in full. Its hosts, and every process
   # of a realm that names no percent, keep V8's own growth, and a percent
-  # outside 1 to 100 is refused, while both ends are taken.
+  # outside 10 to 100 is refused, while both ends are taken. Only a
+  # conversation given a percent names the build proving its node takes it.
   pi-conversations-set-heap-growth =
     let
-      services = growingServicesOf {
-        set = 30;
-        plain = null;
-      };
       set =
         kind:
         let
-          start = startOf services "pi-conversation-set-${kind}@";
+          start = startOf growing "pi-conversation-set-${kind}@";
+          proven = growing."pi-conversation-set-${kind}@".Unit.X-HeapGrowthTakenBy or "";
         in
         lib.hasInfix " '--max-old-space-size=4096' '--heap-growing-percent=30' /" start
-        && lib.hasSuffix "/scripts/pi-host.ts --child" start;
-      # Whether a unit is there and its command leaves V8 its own growth.
+        && lib.hasSuffix "/scripts/pi-host.ts --child" start
+        && lib.hasSuffix "-pi-conversation-set-takes-heap-growth" proven;
+      # Whether a unit is there, its command leaves V8 its own growth and it
+      # names no build proving a percent.
       keepsOwnGrowth =
-        unit: services ? ${unit} && !lib.hasInfix "--heap-growing-percent" (startOf services unit);
-      # How a realm naming this percent evaluates its conversation's command.
-      tried =
+        unit:
+        growing ? ${unit}
+        && !lib.hasInfix "--heap-growing-percent" (startOf growing unit)
+        && !(growing.${unit}.Unit ? X-HeapGrowthTakenBy);
+      # Taken when the realm's conversation holds the percent's word.
+      taken =
+        realm: percent:
+        lib.hasInfix " '--heap-growing-percent=${toString percent}' /" (
+          startOf growing "pi-conversation-${realm}-attended@"
+        );
+      # Refused when a realm naming it doesn't evaluate at all: each is a
+      # whole workstation's evaluation of its own.
+      refused =
         percent:
         let
           start = startOf (growingServicesOf { one = percent; }) "pi-conversation-one-attended@";
         in
-        builtins.tryEval (builtins.deepSeq start start);
-      # Taken when the command evaluates and holds the percent's word. Nix
-      # doesn't keep a function's answer, so each try is held once: each is
-      # a whole workstation's evaluation.
-      taken =
-        percent:
-        let
-          try = tried percent;
-        in
-        try.success && lib.hasInfix " '--heap-growing-percent=${toString percent}' /" try.value;
-      # Refused when the command doesn't evaluate at all.
-      refused = percent: !(tried percent).success;
+        !(builtins.tryEval (builtins.deepSeq start start)).success;
     in
     holds "pi-conversations-set-heap-growth"
-      "A realm's percent of heap growth for its conversations doesn't reach their own processes as V8's growing percent, before the harness's program, or it reaches its hosts or a realm that names none, or 1 or 100 percent isn't taken, or 0 or 101 isn't refused."
+      "A realm's percent of heap growth for its conversations doesn't reach their own processes as V8's growing percent, before the harness's program, with the build proving its node takes it, or it reaches its hosts or a realm that names none, or 10 or 100 percent isn't taken, or 9 or 101 isn't refused."
       (
         lib.all
           (
@@ -293,11 +303,38 @@ in
             "attended"
             "background"
           ]
-        && taken 1
-        && taken 100
-        && refused 0
+        && taken "least" 10
+        && taken "most" 100
+        && refused 9
         && refused 101
       );
+
+  # A realm whose node refuses the growing percent fails the generation's
+  # build, naming the realm, the percent and the node, rather than ending
+  # each conversation as it starts; node 22, which pi is built with, takes it.
+  pi-conversations-refuse-a-node-without-growth =
+    let
+      # Refuses the word as node refuses an option it doesn't know.
+      refusing = pkgs.writeShellScript "node" ''
+        echo "$0: bad option: $1" >&2
+        exit 9
+      '';
+      failed = pkgs.testers.testBuildFailure (growthTakenBy "one" "${refusing}" 70);
+      said = lib.concatStrings [
+        "jitsusama.pi.hosts.one.conversationHeapGrowingPercent is 70, "
+        "but ${refusing} refuses --heap-growing-percent=70, so each"
+      ];
+      taken = growthTakenBy "one" (lib.getExe pkgs.nodejs_22) 70;
+    in
+    pkgs.runCommandLocal "pi-conversations-refuse-a-node-without-growth" { } ''
+      if ! grep -qF ${lib.escapeShellArg said} ${failed}/testBuildFailure.log; then
+        echo "a node refusing the percent failed without naming it; its log:"
+        cat ${failed}/testBuildFailure.log
+        exit 1
+      fi
+      test -e ${taken}
+      touch $out
+    '';
 
   # The word a realm's conversation is given for a growth of 70 percent, run
   # on node 22, which pi is built with, and on this tree's own node, which
@@ -306,7 +343,7 @@ in
   # most V8 grows by in its own slow modes, so V8 could give it unasked.
   pi-conversations-take-heap-growth =
     let
-      start = startOf (growingServicesOf { one = 70; }) "pi-conversation-one-attended@";
+      start = startOf growing "pi-conversation-traced-attended@";
       # The one word between the heap and the program.
       words = builtins.match ".* '--max-old-space-size=4096' '([^']*)' /.*" (
         builtins.unsafeDiscardStringContext start

@@ -91,7 +91,8 @@
         && lib.sort lib.lessThan said == lib.sort lib.lessThan given
         && lib.all (name: lib.hasInfix " ${name}" explained) loadsCode
         && lib.hasInfix (if one then " Drop it. " else " Drop each one. ") refused
-        && lib.hasInfix " set with conversationHeapMb and conversationHeapGrowingPercent. " refused
+        && lib.hasInfix "conversationHeapMb" refused
+        && lib.hasInfix "conversationHeapGrowingPercent" refused
         && lib.hasSuffix " a command that needs one sets it itself." refused;
     in
     holds "pi-hosts-refuse-code-loading-variables"

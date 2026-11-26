@@ -3607,8 +3607,14 @@
   pi-conversations-set-heap-growth = ''
     a realm's conversationHeapGrowingPercent reaches each of its conversations' own processes,
     attended and background, as V8's --heap-growing-percent after their heap and before the
-    harness's program, while its hosts and every process of a realm that names none keep V8's
-    own growth, and 1 and 100 percent are taken while 0 and 101 are refused outright
+    harness's program, with the build proving the realm's node takes it, while its hosts and
+    every process of a realm that names none keep V8's own growth, and 10 and 100 percent are
+    taken while 9 and 101 are refused outright
+  '';
+  pi-conversations-refuse-a-node-without-growth = ''
+    a realm whose node refuses --heap-growing-percent as a bad option fails the build its
+    conversations' unit names, saying the realm, the percent and the node, while node 22, which
+    pi is built with, takes it
   '';
   pi-conversations-take-heap-growth = ''
     node 22, which pi is built with, and the tree's own node, each started with the word a realm's
