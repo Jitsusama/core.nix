@@ -375,8 +375,8 @@ mod tests {
         assert_eq!(held, None, "a follower with no line");
         assert!(said.is_some(), "is said to be let go");
         let (held, said) = room.follow(wifi, HOME, true, Some(20_000));
-        assert_eq!(held, Some(18_000));
-        assert!(said.is_some());
+        assert_eq!(held, Some(18_000), "a line declared again is held under");
+        assert!(said.is_some(), "the hold taken again is said");
         let (held, said) = room.follow(wifi, HOME, false, Some(20_000));
         assert_eq!(held, None, "the call's end lets it go");
         assert_eq!(

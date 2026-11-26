@@ -1950,19 +1950,19 @@ fn step_links(
         if s.agents_share >= 1.0 {
             s.let_agents_go();
         }
-        let line = networks::line_of(lines, &s.network, name);
-        let (told, said) = line_said((name, s.network.as_str()), (s.line_told, s.line), line);
+        let own_line = networks::line_of(lines, &s.network, name);
+        let (told, said) = line_said((name, s.network.as_str()), (s.line_told, s.line), own_line);
         if let Some(said) = said {
             eprintln!("{said}");
         }
-        (s.line, s.line_told) = (line, told);
+        (s.line, s.line_told) = (own_line, told);
         if let Some(leader) = &s.follows {
             // A follower takes its leader's rates, and a call's room of
             // its own line, unmeasured (download hold round 1's F3; a
             // link's own line round 3's F1 and F4).
             if let (_, Some(said)) =
                 s.room
-                    .follow((name, leader.as_str()), &s.network, calling, line)
+                    .follow((name, leader.as_str()), &s.network, calling, own_line)
             {
                 eprintln!("{said}");
             }
