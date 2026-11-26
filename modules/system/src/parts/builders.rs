@@ -75,7 +75,17 @@ fn builder(said: &Value) -> Option<(Thing, Vec<String>)> {
         Some(why) => format!("{words} ({why})"),
         None => words.to_owned(),
     };
-    let (health, says, look) = match word("state").unwrap_or("unknown") {
+    // A state there but unreadable, not a string or nothing once plain, is no
+    // state this build knows, so it fails closed as one; only a state the node
+    // left out is unheard.
+    let state = match said.get("state") {
+        None | Some(Value::Null) => "unknown",
+        Some(state) => state
+            .as_str()
+            .filter(|state| plain(state).is_some())
+            .unwrap_or("unreadable"),
+    };
+    let (health, says, look) = match state {
         "answering" => (Health::Good, format!("answers and {takes}"), None),
         "running" => match &why {
             Some(why) => unknown(format!("runs, its lender saying {why}")),
@@ -133,7 +143,7 @@ fn matters(side: &str) -> &'static str {
             "nix-offload sends it no builds until its store has room again, so the \
              builders left share them."
         }
-        _ => "Its lender says a state this page doesn't know, so it may not be taking builds.",
+        _ => "It stands in a state this daemon doesn't know, so it may not be taking builds.",
     }
 }
 
@@ -324,6 +334,28 @@ mod tests {
              a proof's word is no reason, and a state or a lender's word this build doesn't \
              know is a look"
         );
+    }
+
+    #[test]
+    fn a_state_there_but_unreadable_is_worth_a_look() {
+        for state in [
+            json!(7),
+            json!(""),
+            json!("\u{7}"),
+            json!({ "Running": {} }),
+        ] {
+            let said = read(&json!([{ "name": "kite", "state": state }]));
+            assert_eq!(
+                said[0].1,
+                Health::Watch,
+                "{state} is no state this build reads"
+            );
+            assert_eq!(
+                said[0].3,
+                vec!["is unreadable".to_owned()],
+                "{state} is a look"
+            );
+        }
     }
 
     #[test]

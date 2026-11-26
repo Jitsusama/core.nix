@@ -45,9 +45,9 @@ COUNTED = "Two machines, both worth a look."
 # and since no comment is sent, its styles' included; about 445 KB since machines
 # out of reach are named apart, a cost worth the page reading well with many down;
 # 403 elements since each machine's look carries its act, opening it in the launcher;
-# about 490 KB and 413 elements since the builders' code and card, ten elements, which
-# the fixture's one good builder always draws.
-BUDGET = Budget(files=25, kilobytes=495, elements=416)
+# 413 elements since the builders' card, which the fixture's one good builder always
+# draws, and its code, about 4.4 KB of source on main's.
+BUDGET = Budget(files=25, kilobytes=455, elements=416)
 
 
 @pytest.fixture

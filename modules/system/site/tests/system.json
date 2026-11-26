@@ -138,7 +138,7 @@
         "kind": "builder",
         "name": "heron",
         "health": "good",
-        "says": "answers and takes 4 jobs at once",
+        "says": "answers and takes 4 builds at once",
         "side": [],
         "ties": null
       }
