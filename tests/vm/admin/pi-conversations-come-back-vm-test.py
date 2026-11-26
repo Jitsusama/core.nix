@@ -72,6 +72,7 @@ class Host:
         self.ids: dict[str, str] = {}
         self.files: dict[str, str] = {}
         self.records: dict[str, bytes] = {}
+        self.sent = 0
 
     def run(self, command: str) -> str:
         """Run a command as alice and give what it printed."""
@@ -91,7 +92,11 @@ class Host:
 
     def asked(self, request: dict[str, Any]) -> str:
         """Give the command that sends the host one request through its socket."""
-        return f"{self.asking} {shlex.quote(json.dumps({'v': 1, 'id': request['op'], **request}))}"
+        # A host answers a start asked again under its id with the first answer, and refuses
+        # an id used for another start, so each request has an id of its own.
+        self.sent += 1
+        sent = {"v": 1, "id": f"{request['op']}-{self.sent}", **request}
+        return f"{self.asking} {shlex.quote(json.dumps(sent))}"
 
     def ask(self, request: dict[str, Any]) -> dict[str, Any]:
         """Send the host one request through its socket and give its answer's result."""
