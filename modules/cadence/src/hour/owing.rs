@@ -434,17 +434,13 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
 /// Files the hour's drag in the loop's ledger as a must of kind `drag`,
 /// due a day on, unless it's open there already, and closes each drag
 /// filed before that is back in. Says what to tell the owner of each one
-/// newly filed. His apps under load lead the drag, but they came in ahead
-/// of every class that was filed before them, so while they lead it each
-/// of his apps' figures past its target goes to its own owner, as each
-/// miss does, and the drag the rest of the hour would have is filed too:
-/// his misses still reach their owners whatever his apps read. So does a
-/// merge whose rounds past five caught nothing, which WCJQSG asked be filed
-/// to whoever landed it, whatever else leads, each owner's findings in
-/// the work system's group open past a day, which WCJQSG ruled count
-/// against them as Joel's misses do, and the worst queue, once a day.
-/// Every other measure past its target is filed with its owner beside
-/// them, each owed once while it stays open.
+/// newly filed. The drag leads, then every measure past its target is
+/// filed with its owner, as Joel asked of the loops (26 November): a red
+/// line only the card shows steers nothing. That takes in the ones the
+/// drag passes over, as a merge whose rounds past five caught nothing,
+/// which WCJQSG asked be filed to whoever landed it. A queue is asked
+/// instead once a day, its worst alone, and a pain by its hearer. Each is
+/// owed once while open, and asked at most once in the day it was given.
 pub fn file(
     ledger: &mut Vec<Entry>,
     measures: &[Measure],
@@ -463,44 +459,19 @@ pub fn file(
     for key in closing {
         owe::settle(ledger, &key);
     }
-    let rest: Vec<Measure> = measures
-        .iter()
-        .filter(|m| m.class != Class::Apps)
-        .cloned()
-        .collect();
     let mut dragging: Vec<&Measure> = drag(measures).into_iter().collect();
-    if let Some(lead) = dragging.first().copied().filter(|m| m.class == Class::Apps) {
-        dragging.extend(
-            measures
-                .iter()
-                .filter(|m| m.class == Class::Apps && m.key != lead.key && m.past().is_some()),
-        );
-        dragging.extend(drag(&rest));
-    }
-    // Never the lead, which passes them over, so filed whatever leads; a
-    // measure filed twice is owed once, as the ledger holds it open. A
-    // miss with no test that runs is asked of its owner the same way.
-    dragging.extend(measures.iter().filter(|m| {
-        let beside = [FINDINGS, UNTESTED].contains(&m.key.as_str());
-        let apart = m.key.starts_with(rounds::FRUITLESS) || m.key.starts_with(told_late::KEY);
-        (apart || beside) && m.past().is_some()
-    }));
-    // Nor do the queues; the worst is asked for its next change once a
-    // day, as Joel asked of them, whatever else leads.
+    // A measure filed twice is owed once, as the ledger holds it open.
+    dragging.extend(
+        measures
+            .iter()
+            .filter(|m| !matches!(m.class, Class::Queues | Class::Pains) && m.past().is_some()),
+    );
+    // The worst queue is asked for its next change once a day, as Joel
+    // asked of them, whatever else leads.
     let asked_today = ledger
         .iter()
         .any(|e| e.key.starts_with(&format!("hour:{QUEUE}")) && e.first == date);
     dragging.extend(queues::worst(measures).filter(|_| !asked_today));
-    // Every other measure past its target goes to its owner too, as Joel
-    // asked of the loops (26 November): a red line only the card shows
-    // steers nothing. A queue is still asked once a day, and a pain by
-    // its hearer.
-    dragging.extend(measures.iter().filter(|m| {
-        !matches!(m.class, Class::Queues | Class::Pains)
-            && !m.key.starts_with(rounds::FRUITLESS)
-            && !m.key.starts_with(told_late::KEY)
-            && m.past().is_some()
-    }));
     let lead = drag(measures).map(|m| m.key.clone());
     let mut told = Vec::new();
     for (m, one) in dragging.into_iter().flat_map(|m| {

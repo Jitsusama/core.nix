@@ -277,10 +277,13 @@ fn collaboration(s: &Sources) -> Axis {
     let fyi = s.messages.iter().filter(|m| m.intent == "fyi").count();
     let answered: BTreeSet<&str> = s.messages.iter().filter_map(|m| m.re.as_deref()).collect();
     let asked_by = (s.now - 30 * 60) * 1000;
+    // Cadence's own hourly questions give their owners a day, and the loop
+    // asks again of each one past it, so they aren't held to half an hour.
     let unanswered = s
         .messages
         .iter()
         .filter(|m| m.intent == "question" && !answered.contains(m.id.as_str()))
+        .filter(|m| m.from != crate::FROM)
         .filter(|m| mesh::stamped_at(&m.id).is_some_and(|at| at < asked_by))
         .count();
     let read = all > 0;
@@ -748,15 +751,22 @@ The net tests 6f8501688 (9 merges behind main), merged 28 min ago.
                 note(format!("{old}-B-1-bb"), "question", None),
                 note(format!("{}-C-1-cc", 9_999_000), "question", None),
                 note(format!("{old}-D-1-dd"), "fyi", Some(&asked)),
+                // Since 26 November the hour asks each red line's owner as
+                // a question giving them a day, not half an hour.
+                Note {
+                    from: crate::FROM.into(),
+                    ..note(format!("{old}-CADENCE-1-ee"), "question", None)
+                },
             ],
             ..Sources::default()
         };
         // The agents he corrected come first, from health; the mesh's two
         // follow.
         let readings = collaboration(&s).readings;
-        assert_eq!(readings[1].now, Some(25.0));
-        // B alone: A was answered, and C was asked under 30 min ago.
-        assert_eq!(readings[2].now, Some(1.0));
+        assert_eq!(readings[1].now, Some(20.0), "one fyi of five");
+        // B alone: A was answered, C was asked under 30 min ago, and the
+        // hour's own gives a day.
+        assert_eq!(readings[2].now, Some(1.0), "B alone is unanswered");
     }
 
     #[test]
