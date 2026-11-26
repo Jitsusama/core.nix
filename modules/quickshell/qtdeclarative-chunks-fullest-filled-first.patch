@@ -1,0 +1,65 @@
+From: Joel Gerber <Jitsusama@users.noreply.github.com>
+Subject: [PATCH] Fill the fullest chunks first after a sweep
+
+A sweep sorted each chunk's free runs onto the front of the bins in the
+order the chunks happened to lie, so the chunks sorted in last supplied
+allocation first whatever they held. What lived long was scattered over
+chunks that were nearly empty, and none of them emptied enough to be
+freed. In five hours the shell's heap went from 83 MB held around 41
+live to 284 MB around 72, and of that 284, 135 MB was free slots on
+pages still holding something live. The chunks a sweep keeps are now
+sorted in by the slots they use, the fullest last, so what's made next
+fills them, and the chunks using little are left to empty for a later
+sweep to free.
+
+That holds in every bin. A small request that no smaller run can serve
+takes the head of the first large bin holding a run and bumps through
+the rest, so the head should be the fullest chunk there, not the
+emptiest. A request for a long run passes at most a few runs in the
+last bin and may take a new chunk, but it fills at least half of it.
+The kept chunks are put in that order where they lie, which the
+partition before it already shuffles each sweep. The list the sort
+uses is the allocator's, kept from sweep to sweep, so a sweep allocates
+nothing once it's grown, and ties go by address, so the order is the
+same each time.
+
+---
+--- a/src/qml/memory/qv4mm.cpp
++++ b/src/qml/memory/qv4mm.cpp
+@@ -546,6 +546,24 @@ void BlockAllocator::sweep()
+         return chunks.at(i)->sweep(engine);
+     });
+     const auto firstEmptyChunk = chunks.begin() + firstEmptyChunkPos;
++    // The kept chunks' runs go on the front of their bins in the order the chunks lie, so the
++    // chunk last in line is the one allocation fills first. Put in line by what they use, the
++    // fullest last, what's made next fills the chunks nearly full already, and the chunks using
++    // little are left to empty, for a later sweep to free, rather than each keeping a few of
++    // what's made and none ever freed. That holds in every bin: a small request no smaller run
++    // can serve takes the head of the first large bin holding a run and bumps through what's
++    // left of it, which should be the fullest chunk there, not the emptiest. A request of a
++    // long run passes at most a few runs too short for it in the last bin, and may take a new
++    // chunk, which it fills at least half of. The partition above already shuffles the chunks
++    // each sweep, so nothing counts on the order they lay in. The list is the allocator's, kept
++    // from sweep to sweep, so a sweep allocates nothing once it has grown, and ties go by
++    // address, so the order is the same each time.
++    byUse.clear();
++    for (auto kept = chunks.begin(); kept != firstEmptyChunk; ++kept)
++        byUse.emplace_back((*kept)->nUsedSlots(), *kept);
++    std::sort(byUse.begin(), byUse.end());
++    std::transform(byUse.begin(), byUse.end(), chunks.begin(),
++                   [](const auto &byItsUse) { return byItsUse.second; });
+ 
+     nextFree = nullptr;
+     nFree = 0;
+--- a/src/qml/memory/qv4mm_p.h
++++ b/src/qml/memory/qv4mm_p.h
+@@ -230,6 +230,9 @@ struct BlockAllocator {
+     ChunkAllocator *chunkAllocator;
+     ExecutionEngine *engine;
+     std::vector<Chunk *> chunks;
++    // The chunks a sweep keeps, by the slots each uses, kept between sweeps so sorting them
++    // allocates nothing once it has grown.
++    std::vector<std::pair<std::size_t, Chunk *>> byUse;
+     uint *allocationStats = nullptr;
+ };
+ 
