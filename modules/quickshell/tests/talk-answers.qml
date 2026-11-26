@@ -36,26 +36,34 @@ QtObject {
             Expect.same("what it asks is the talk's first exchange, whole, with what it takes",
                 Answers.question(asks(want, true), "Sign the Commits", words, dayOf), {
                     line: "Sign the Commits asks you", answers: [asked], waiting: "",
-                    stands: "Yes \u00b7 No \u00b7 Partly, or your own words", by: "",
-                    side: "13:09" });
-            // A long question is elided at eight lines (TalkSpoken.qml), the line under it
-            // never, so what it takes can't be cut off with Return still answering it.
+                    stands: "", by: "",
+                    takes: "Yes \u00b7 No \u00b7 Partly, or your own words", side: "13:09" });
+            // A long question is elided at eight lines (TalkSpoken.qml); what it takes is a
+            // field of its own, which TalkSpoken draws whole under it, so a long question
+            // never pushes it out of the elided answers.
             const long = Array.from({ length: 12 }, (_, at) => `line ${at}`).join("\n");
-            Expect.same("what it takes stands apart from a long question",
-                Answers.question(asks(Object.assign({}, want, { whole: long }), true), "S",
-                    words, dayOf).answers, [long]);
+            const longAsked = Answers.question(asks(Object.assign({}, want, { whole: long }),
+                true), "S", words, dayOf);
+            Expect.same("a long question keeps what it takes in a field of its own",
+                [longAsked.answers, longAsked.takes],
+                [[long], "Yes \u00b7 No \u00b7 Partly, or your own words"]);
+            const untitled = { line: "S asks you", answers: [], waiting: "", stands: "",
+                by: "", takes: "Yes \u00b7 No \u00b7 Partly, or your own words", side: "13:09" };
             Expect.same("one saying nothing of what it asks still says what it takes",
                 Answers.question(asks(Object.assign({}, want, { asked: "Sign the Commits",
-                    said: "" }), true), "S", words, dayOf), {
-                    line: "S asks you", answers: [], waiting: "",
-                    stands: "Yes \u00b7 No \u00b7 Partly, or your own words", by: "",
-                    side: "13:09" });
+                    said: "" }), true), "S", words, dayOf), untitled);
+            Expect.same("one whose short line is only spaces still says what it takes",
+                Answers.question(asks(Object.assign({}, want, { asked: "  ", said: "  " }),
+                    true), "S", words, dayOf), untitled);
+            Expect.same("one blank, offering no answers, shows nothing",
+                Answers.question(asks(Object.assign({}, want, { asked: " ", said: "",
+                    answers: null }), true), "S", words, dayOf), null);
             Expect.same("one taking only its choices says only them",
                 Answers.question(asks(Object.assign({}, want, { answers: Object.assign({},
-                    want.answers, { own: false }) }), true), "S", words, dayOf).stands,
+                    want.answers, { own: false }) }), true), "S", words, dayOf).takes,
                 "Yes \u00b7 No \u00b7 Partly");
             Expect.same("one offering no answers still shows what it asks, and no takes",
-                ["answers", "stands"].map(key => Answers.question(asks(Object.assign({}, want,
+                ["answers", "takes"].map(key => Answers.question(asks(Object.assign({}, want,
                     { answers: null }), true), "S", words, dayOf)[key]), [[asked], ""]);
             // Its whole question, as the harness keeps it beside the short line (85PKB2,
             // 2026-11-24): its lines and indentation kept, its blank lines before and spaces

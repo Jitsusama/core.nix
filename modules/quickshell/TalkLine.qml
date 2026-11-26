@@ -758,12 +758,13 @@ Scope {
         }
     }
 
-    // How a talk reads under his words, for the launcher's showing: its answers, or else
-    // whom it waits on, or how it stands.
+    // How a talk reads under his words, for the launcher's showing: its answers and what a
+    // question takes, or else whom it waits on, or how it stands.
     function standingOf(shown) {
         if (shown === null)
             return "";
-        return shown.answers.length > 0 ? shown.answers.join("\n")
+        const said = shown.answers.concat((shown.takes ?? "") === "" ? [] : [shown.takes]);
+        return said.length > 0 ? said.join("\n")
             : shown.waiting !== "" ? shown.waiting : shown.stands;
     }
 

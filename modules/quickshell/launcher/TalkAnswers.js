@@ -86,7 +86,8 @@ function whole(want) {
 // muted, with since when at its right, then what it asks, whole where the want says more than
 // its short line, and what it takes where it offers answers, from `now`'s want while it's
 // `asking` (Agents.qml's answersOf). Null while it asks nothing, or says nothing of what nor
-// offers answers: the daemon's `asked` is then the session's title, which says nothing it asks.
+// offers answers: the daemon's `asked` is then the session's title, or blank, which says
+// nothing it asks.
 function question(now, name, words, dayOf) {
     const want = now?.want ?? null;
     const asking = now?.asking === true;
@@ -94,15 +95,16 @@ function question(now, name, words, dayOf) {
     const untold = whole(want) === "" && String(want?.said ?? "").trim() === ""
         && what === String(want?.title ?? "");
     const answers = asked(want, asking);
-    if (!asking || what === "" || (untold && answers === null)) {
+    const unsaid = untold || what === "";
+    if (!asking || (unsaid && answers === null)) {
         return null;
     }
-    // What it takes goes on the line under the question, which no long question elides,
-    // so his Return never answers choices he can't see; one that says nothing of what it
-    // asks still says what it takes.
+    // What it takes goes in `takes`, apart from the question, which TalkSpoken.qml draws
+    // whole under it, wrapped and never elided, so his Return never answers choices he
+    // can't see; one that says nothing of what it asks still says what it takes.
     return { line: filled(words.asks, { name: String(name ?? "") }),
-        answers: untold ? [] : [what], waiting: "",
-        stands: answers === null ? "" : takes(answers, words), by: "",
+        answers: unsaid ? [] : [what], waiting: "", stands: "", by: "",
+        takes: answers === null ? "" : takes(answers, words),
         side: sideOf(want?.since, dayOf) };
 }
 
