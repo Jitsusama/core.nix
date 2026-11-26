@@ -121,13 +121,13 @@ function offeredNow(at, offers, unoffered) {
 }
 
 // What a start Returned to the cloud is given as offered (offeredNow): it
-// asks first where asksNow says, `ask()`, then reads what's kept, `read()`
+// asks first where asksNow says, `askOffers()`, then reads what's kept, `read()`
 // giving `{ asking, at, offers, unoffered }` as it stands, so a daemon
 // that answers at once, as one missing does (Daemon.qml's sent), is said
 // by that answer on this Return rather than the next.
-function returning(read, ask, now) {
+function returning(read, askOffers, now) {
     if (asksNow(read(), now, true)) {
-        ask();
+        askOffers();
     }
     const kept = read();
     return offeredNow(kept.at, kept.offers, kept.unoffered);
