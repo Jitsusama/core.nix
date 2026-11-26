@@ -17,7 +17,7 @@
 
 use serde_json::Value;
 
-use crate::record::{Health, Thing};
+use crate::record::{Health, Look, Thing};
 
 /// The most of a node's reason a builder's line carries, in characters:
 /// a reason is one plain clause, and past this it's cut at a word.
@@ -102,11 +102,39 @@ fn builder(said: &Value) -> Option<(Thing, Vec<String>)> {
         name: name.to_owned(),
         health,
         says,
+        looks: look
+            .iter()
+            .map(|side| Look {
+                side: side.clone(),
+                matters: matters(side).to_owned(),
+            })
+            .collect(),
         side: look.into_iter().collect(),
         address: None,
         ties: Value::Null,
     };
     Some((thing, looks))
+}
+
+/// Why a builder's look matters: each is a builder the machines can't send
+/// builds to, which leaves the rest fewer to share them; a state this build
+/// doesn't know may be one.
+fn matters(side: &str) -> &'static str {
+    match side {
+        "not answering" => {
+            "The machines can't send it builds until it answers, so the builders left \
+             share them."
+        }
+        "left out, its proofs failing" => {
+            "nix-offload sends it no builds until its proofs pass again, so the builders \
+             left share them."
+        }
+        "left out, its store full" => {
+            "nix-offload sends it no builds until its store has room again, so the \
+             builders left share them."
+        }
+        _ => "Its lender says a state this page doesn't know, so it may not be taking builds.",
+    }
 }
 
 /// A builder its lender runs: it takes builds unless nix-offload's proofs
@@ -182,6 +210,11 @@ mod tests {
                     thing.side.len(),
                     "each look has its side's words"
                 );
+                let sides: Vec<&str> = thing.looks.iter().map(|look| look.side.as_str()).collect();
+                assert_eq!(sides, thing.side, "the looks say the side's looks");
+                for look in &thing.looks {
+                    assert!(look.matters.ends_with('.'), "{look:?} says why it matters");
+                }
                 (thing.name, thing.health, thing.says, thing.side)
             })
             .collect()
