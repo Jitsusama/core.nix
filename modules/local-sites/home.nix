@@ -172,13 +172,21 @@ let
   # refuses, says nothing of a word, so it goes.
   asRead = words: builtins.fromJSON (builtins.unsafeDiscardStringContext (builtins.toJSON words));
   coreWords = asRead (import ../quickshell/launcher/words.nix).value;
+  # Where Words.qml reads the launcher's words, under the config folder.
+  wordsAt = "quickshell/launcher/words.json";
   # The file Words.qml reads, as this machine writes it; none where it has
   # no launcher, whose words are then no one's.
-  wordsFile = config.xdg.configFile."quickshell/launcher/words.json" or null;
+  wordsFile = config.xdg.configFile.${wordsAt} or null;
+  # Whether the file is written where Words.qml reads it: one switched off
+  # or moved leaves that place to a file written some other way, which
+  # local-sites can't see, so it's refused below. No other entry can write
+  # there while this one does, since home-manager refuses two at one place.
+  inPlace = wordsFile.enable && wordsFile.target == wordsAt;
   # Whether the file is made from its text, as the launcher writes it: a
   # source given in its place wins over the text, which then says words
-  # the launcher never reads. Such a source isn't read, since reading it
-  # would build it while the machine is evaluated, so it's refused below.
+  # the launcher never reads. Whether it is shows only in the source's own
+  # text, an attribute a source needn't build, so every other source is
+  # refused below, even one whose words could be read without building it.
   # Home-manager makes a text's source with writeTextFile, which carries the
   # text; were it not to, every machine with the launcher's words would be
   # refused, not let through, which local-sites-refuses-renamed-look-acts
@@ -187,12 +195,17 @@ let
     wordsFile.text or null != null
     && lib.isAttrs wordsFile.source
     && (wordsFile.source.text or null) == wordsFile.text;
-  unreadWords = wordsFile != null && !fromText;
+  readWords = wordsFile != null && inPlace && fromText;
+  unreadWords = wordsFile != null && !readWords;
   # The machine's words as the file holds them, even where a machine writes
-  # that text itself.
+  # that text itself; a text that isn't JSON stops the machine here, saying
+  # which file and why it likely isn't.
   machineWords =
-    if fromText then
-      builtins.fromJSON (builtins.unsafeDiscardStringContext wordsFile.text)
+    if readWords then
+      builtins.addErrorContext (lib.concatStrings [
+        "while reading xdg.configFile.\"${wordsAt}\".text as JSON, which a machine "
+        "writing it sets with lib.mkForce, since a second definition may be joined to core's"
+      ]) (builtins.fromJSON (builtins.unsafeDiscardStringContext wordsFile.text))
     else
       coreWords;
   # A thing's id as Words.qml keys it, made a string: a list of one id is
@@ -606,8 +619,10 @@ in
     {
       assertion = !unreadWords;
       message = lib.concatStrings [
-        "the launcher's words.json is given as a source, which local-sites can't read "
-        "to hold the launcher's acts on a look to core's names: write it as text"
+        "the launcher's words, xdg.configFile.\"${wordsAt}\", are switched off, moved "
+        "or given as a source, which local-sites can't read "
+        "to hold the launcher's acts on a look to core's names: write it in place as text, "
+        "setting its text with lib.mkForce, or set jitsusama.quickshell.launcher.words"
       ];
     }
     {

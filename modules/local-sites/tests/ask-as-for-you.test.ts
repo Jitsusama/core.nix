@@ -4,11 +4,12 @@
 // `quieted` and `asksNothing` and Now.qml's own lookOffers and followsOf
 // decide, over looks at each boundary and of every kind and state, which a
 // page reads, which wait, what each offers and what follows each, and when
-// it stops; LookForm.js's wordsOf, what the second form leads with; Now.qml's
-// lookDrawer, which kinds it links, at a web address only, the page's own
-// rule; LookForm.js's actOf decides its act, beside the launcher's act
-// names as Now.qml's lookActNames and the joined words Words.qml reads name
-// them, the last of an id's winning, and the ids local-sites' home module
+// it stops; Looks.js's askOf and ifNothingOf, what one asks and says follows
+// doing nothing, only while it waits; LookForm.js's wordsOf, what the second
+// form leads with; Now.qml's lookDrawer, which kinds it links, at a web
+// address only, the page's own rule; LookForm.js's actOf decides its act,
+// beside the launcher's act names as Now.qml's lookActNames and the joined
+// words Words.qml reads name them, the last of an id's winning, and the ids local-sites' home module
 // guards as Now.qml lists them. A side saying nothing (no lapse, no link)
 // agrees only where the other has nothing to say. The launcher's scripts
 // run in Node, not in Qt's engine, which tests/for-you.qml holds them in;
@@ -320,15 +321,14 @@ function parted(ask: Ask | null, read: Read | null, now: number, shell: ForYou):
   const second = form.secondForm(read as never) === true;
   const leads = !second || ask.said.join(" ") === read.words;
   // What For You's row asks and its drawer says follows doing nothing,
-  // while the row, stricter, asks, each as For You reads it.
-  const question = second ? "" : String(looks.askOf(read as never));
-  const ifNothing = String(looks.ifNothingOf(held as never));
+  // only while it waits, each as For You reads it, so a row saying either
+  // on a look that doesn't wait parts from it too.
+  const question = waits && !second ? String(looks.askOf(read as never)) : "";
+  const ifNothing = waits ? String(looks.ifNothingOf(held as never)) : "";
   return [
     leads ? "" : `leads with ${ask.said.join(" ")}, not ${read.words}`,
-    !ask.asks || ask.question === question ? "" : `asks ${ask.question}, not ${question}`,
-    !ask.asks || ask.ifNothing === ifNothing
-      ? ""
-      : `says ${ask.ifNothing} if nothing, not ${ifNothing}`,
+    ask.question === question ? "" : `asks ${ask.question}, not ${question}`,
+    ask.ifNothing === ifNothing ? "" : `says ${ask.ifNothing} if nothing, not ${ifNothing}`,
     ask.asks === waits ? "" : "waits otherwise",
     ask.choices.map(sent).join(" | ") === offered.join(" | ") ? "" : "offers otherwise",
     ask.opens === opens ? "" : `opens ${ask.opens}, not ${opens}`,
@@ -341,7 +341,7 @@ function parted(ask: Ask | null, read: Read | null, now: number, shell: ForYou):
   ].filter((one) => one !== "");
 }
 
-it("reads, holds waiting, offers, acts and lapses as Looks.js, LookForm.js and lookOffers do", () => {
+it("reads, holds waiting, asks, offers, acts and lapses as Looks.js, LookForm.js and lookOffers do", () => {
   const shell = forYou();
   for (const [name, look] of Object.entries(LOOKS)) {
     const text = JSON.stringify(look);

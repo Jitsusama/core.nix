@@ -96,7 +96,9 @@ in
           (sites user).assertions;
       # The refusal of renamed acts, and of a words file it can't read.
       refusedBy = failing "renames the launcher's acts";
-      unreadBy = failing "is given as a source";
+      unreadBy = failing (
+        "are switched off, moved or given as a source, " + "which local-sites can't read"
+      );
       # The same, the launcher saying `said`.
       refused = said: refusedBy { jitsusama.quickshell.launcher.words = said; };
       # A word core has that's no act on a look, renamed beside one.
@@ -220,12 +222,22 @@ in
           pkgs.writeText "words.json" (builtins.toJSON inPlace)
         );
       };
+      # One giving it as a path, the likeliest a machine would, and one
+      # switching core's entry off or moving it, which leaves the place
+      # Words.qml reads to a file written some other way.
+      unread = map unreadBy [
+        {
+          xdg.configFile."quickshell/launcher/words.json".source = lib.mkForce ./look-acts.nix;
+        }
+        { xdg.configFile."quickshell/launcher/words.json".enable = lib.mkForce false; }
+        { xdg.configFile."quickshell/launcher/words.json".target = lib.mkForce "words.json"; }
+      ];
       readable = unreadBy { } == null && unreadBy writing == null;
       says = name: refusal: refusals.${name} != null && lib.hasInfix refusal refusals.${name}.message;
       lookActs = import ./look-acts.nix;
     in
     holds "local-sites-refuses-renamed-look-acts"
-      "local-sites' home module lets a machine rename one of the launcher's acts on a look (in place, by a later entry keyed by a list of one or a set words.json writes as the id, by a whole entry so written, or to no name, or in the file the launcher reads), lets that file be given as a source it can't read or refuses it made from its text, refuses core's own words or ids Words.qml keys as no act (objects, lists of several or none, a stored path), or doesn't name only the act's old and new word."
+      "local-sites' home module lets a machine rename one of the launcher's acts on a look (in place, by a later entry keyed by a list of one or a set words.json writes as the id, by a whole entry so written, or to no name, or in the file the launcher reads), lets that file be given as a source it can't read (a path among them), or switched off or moved, or refuses it made from its text, or refuses it without saying its option and lib.mkForce, refuses core's own words or ids Words.qml keys as no act (objects, lists of several or none, a stored path), or doesn't name only the act's old and new word."
       (
         refusals.core == null
         && refusals.odd == null
@@ -236,6 +248,8 @@ in
         && forced != null
         && lib.hasInfix "acts on a look (${clear} from Clear It to Drop It)," forced.message
         && sourced != null
+        && lib.hasInfix "lib.mkForce, or set jitsusama.quickshell.launcher.words" sourced.message
+        && lib.all (refusal: refusal != null) unread
         && readable
       );
 }
