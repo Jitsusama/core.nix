@@ -175,7 +175,9 @@ function fits(asked, beside) {
 
 // What an act explained shows at `now`, from how it stands, `one` ({ stage,
 // message, at, beside }), and its pi (`ask`: posed, said, stage), in the act's
-// words `said`: { name, reads, note, hue }, or null where it's the act as
+// words `said`: { name, reads, note, hue }, its name `pending` while its pi
+// has said nothing yet and each stage's hue `hues`'s, one with none an alert
+// (Y2YBTS on #5357: the words file says them, not this), or null where it's the act as
 // it was: never asked, stale, of another question, or stopped as the
 // launcher closed, so Return asks again. One asked with other acts on its
 // row is the act again too, as Explainer.qml's shown holds by fits.
@@ -184,26 +186,23 @@ function shown(one, ask, said, now) {
         return null;
     }
     const words = key => String(said?.[key] ?? "");
+    const hue = named => String(said?.hues?.[named] ?? "alert");
     if (one.stage !== "asking") {
-        return {
-            name: words(one.stage),
-            reads: "",
-            note: "",
-            hue: one.stage === "reading" ? "voice" : "alert"
-        };
+        return { name: words(one.stage), reads: "", note: "", hue: hue(one.stage) };
     }
     if (ask?.posed !== one.message || ask.stage === "stopped" || ask.stage === "") {
         return null;
     }
     if (ask.stage === "failed") {
-        return { name: words("failed"), reads: "", note: "", hue: "alert" };
+        return { name: words("failed"), reads: "", note: "", hue: hue("failed") };
     }
     const whole = String(ask.said ?? "").trim();
     const first = OnSelection.firstSentence(whole);
+    const stage = ask.stage === "answered" ? "answered" : "asking";
     return {
-        name: whole === "" ? "\u2026" : first,
+        name: whole === "" ? words("pending") : first,
         reads: first === whole ? "" : whole,
-        note: words(ask.stage === "answered" ? "answered" : "asking"),
-        hue: "voice"
+        note: words(stage),
+        hue: hue(stage)
     };
 }
