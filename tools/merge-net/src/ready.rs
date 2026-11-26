@@ -424,7 +424,10 @@ mod tests {
         let record = "{\"check\":\"checks.x86_64-linux.b\",\"dir\":null}\n\
                       {\"dir\":null,\"printed\":\"changed  b\\n\",\
                       \"run\":[\"--system\",\"x86_64-linux\"]}\n";
-        assert!(built_there(record, &on_main));
+        assert!(
+            built_there(record, &on_main),
+            "a run that built the check it named wasn't taken as ready"
+        );
     }
 
     #[test]
@@ -434,7 +437,10 @@ mod tests {
                      {\"dir\":null,\"printed\":\"\",\
                      \"run\":[\"--keep-base\",\"--system\",\"x86_64-linux\"]}\n\
                      {\"check\":\"checks.x86_64-linux.b\",\"dir\":null}\n";
-        assert!(!built_there(named, &on_main));
+        assert!(
+            !built_there(named, &on_main),
+            "a run that only named checks or kept a base was taken as ready"
+        );
         assert!(!built_there("", &on_main), "nothing passed there");
     }
 
@@ -446,7 +452,10 @@ mod tests {
                  \"--system\",\"x86_64-linux\"]}}\n"
             )
         };
-        assert!(built_there(&run(MAIN), &on_main));
+        assert!(
+            built_there(&run(MAIN), &on_main),
+            "a run against main's own commit wasn't taken as ready"
+        );
         assert!(
             !built_there(&run("bbbb"), &on_main),
             "a base on the branch skips what came before it"
@@ -765,6 +774,9 @@ mod tests {
     #[test]
     fn a_run_in_another_folder_of_the_repository_is_not() {
         let record = "{\"dir\":\"sub\",\"printed\":\"\",\"run\":[\"--system\",\"x86_64-linux\"]}\n";
-        assert!(!built_there(record, &on_main));
+        assert!(
+            !built_there(record, &on_main),
+            "a run in another folder of the repository was taken as ready"
+        );
     }
 }

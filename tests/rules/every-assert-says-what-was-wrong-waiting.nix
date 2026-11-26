@@ -304,10 +304,7 @@
   "tests/vm/devices/usb-wake-vm-test.py" = 3;
   "tests/vm/guide/guide-install-vm-test.py" = 1;
   "tests/vm/network/wifi/wifi-joins-when-asked-vm-test.py" = 1;
-  "tools/merge-net/src/ready.rs" = 4;
-  "tools/merge-net/src/rules/mod.rs" = 17;
   "tools/merge-net/src/watch.rs" = 24;
-  "tools/merge-net/src/world.rs" = 11;
   "tools/shell-preview/src/desktop.rs" = 3;
   "tools/shell-preview/src/layout.rs" = 3;
   "tools/shell-preview/tests/shell_preview.rs" = 1;
