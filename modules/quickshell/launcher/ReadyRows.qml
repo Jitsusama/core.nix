@@ -913,7 +913,7 @@ Scope {
         };
         const items = itemsOf(row);
         return maker.member(Object.assign({
-            key: row.thing ?? key,
+            key: Presented.keyMade(row, key),
             thing: !!row.drawer,
             name: row.name ?? "",
             // A heading names the rows under it and is never one: no move
@@ -1251,7 +1251,7 @@ Scope {
     // was done, so nothing else it asks is sent.
     function notOpened(key, one, why) {
         const row = served(key);
-        const shown = row?.thing ?? key;
+        const shown = Presented.keyMade(row ?? {}, key);
         const gone = Presented.quoted(Ready.openedIn(one)).slice(1, -1);
         console.info(`launcher: ${actSaid(one)} opened nothing, its ${gone} gone`);
         maker?.becomes(shown, rowAt(key), row?.name ?? "", verbOf(one), { done: () => false });
@@ -1442,7 +1442,7 @@ Scope {
         // becomes the limit's own row, so that row is the one held.
         const into = one.becomes ?? null;
         const becomesKey = into?.key ?? key;
-        const shown = into ? (into.thing ?? becomesKey) : (row.thing ?? key);
+        const shown = into ? Presented.keyMade(into, becomesKey) : Presented.keyMade(row, key);
         let answered = false;
         const becomes = into ? ready.make(into, becomesKey) : rowAt(key);
         const how = one.becomes ? undefined : { done: () => answered };

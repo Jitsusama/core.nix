@@ -483,8 +483,8 @@ fn tell_missed(file: &Path, search: Search, skipped: Skipped) -> bool {
     let row = deaf::missed(search, from, to, at);
     let why = row["why"].as_str().unwrap_or_default().to_owned();
     match deaf::keep_missed(file, row, at) {
-        Ok(()) => {
-            eprintln!("<5>wrote Joel's row in {}: {why}", file.display());
+        Ok(written) => {
+            eprintln!("<5>wrote Joel's row in {}: {written}", file.display());
             true
         }
         Err(error) => {

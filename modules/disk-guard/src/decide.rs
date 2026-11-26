@@ -4,7 +4,7 @@
 
 use crate::band::{Band, Thresholds};
 use crate::clock::Awake;
-use crate::moments::{Power, Pressure};
+use crate::moments::{MemoryLevel, Power, Pressure};
 use crate::units::float;
 
 /// What a filesystem's trend says comes next, in seconds: it's full, or it
@@ -305,11 +305,16 @@ pub fn powered(power: Power, saver: bool) -> bool {
 
 /// Whether tasks stall on anything most of the time, so routine work, a
 /// listing of the store or upkeep, waits for the machine to recover unless
-/// a disk is past healthy and needs it.
+/// a disk is past healthy and needs it. On a Mac, that's its kernel telling
+/// apps memory is critical.
 pub fn overloaded(pressure: Pressure) -> bool {
-    [pressure.io.some, pressure.memory.some, pressure.cpu.some]
-        .iter()
-        .any(|&stall| stall >= OVERLOAD)
+    let critical = pressure
+        .memory_room
+        .is_some_and(|room| room.level == MemoryLevel::Critical);
+    critical
+        || [pressure.io.some, pressure.memory.some, pressure.cpu.some]
+            .iter()
+            .any(|&stall| stall >= OVERLOAD)
 }
 
 /// The share of the last minute, in percent, all tasks may stall at once
@@ -320,15 +325,28 @@ pub fn overloaded(pressure: Pressure) -> bool {
 const ROOMY_MEMORY: f64 = 5.0;
 const ROOMY_IO: f64 = 10.0;
 
+/// The share of memory a Mac's kernel must count free for a listing that
+/// can wait, the bar the Mac's other heavy work starts under.
+const ROOMY_MAC_FREE: u8 = 35;
+
 /// Whether the machine has room for a listing of the store that can wait:
 /// all tasks stalled at once over the last minute no more than
-/// `ROOMY_MEMORY` on memory and `ROOMY_IO` on the disk.
+/// `ROOMY_MEMORY` on memory and `ROOMY_IO` on the disk. A Mac keeps no
+/// stall averages, so there it's memory its kernel calls normal with
+/// `ROOMY_MAC_FREE` free, and the disk goes unjudged.
 pub fn roomy(pressure: Pressure) -> bool {
-    pressure.memory.full_minute <= ROOMY_MEMORY && pressure.io.full_minute <= ROOMY_IO
+    match pressure.memory_room {
+        Some(room) => room.level == MemoryLevel::Normal && room.free_percent >= ROOMY_MAC_FREE,
+        None => pressure.memory.full_minute <= ROOMY_MEMORY && pressure.io.full_minute <= ROOMY_IO,
+    }
 }
 
 /// Whether tasks stall on the disk and on memory little enough for work
-/// that can be skipped altogether, such as deduplicating the store.
+/// that can be skipped altogether, such as deduplicating the store, and on
+/// a Mac memory its kernel calls normal.
 pub fn calm(pressure: Pressure) -> bool {
-    pressure.io.some < STALL_CEILING && pressure.memory.some < STALL_CEILING
+    let normal = pressure
+        .memory_room
+        .is_none_or(|room| room.level == MemoryLevel::Normal);
+    normal && pressure.io.some < STALL_CEILING && pressure.memory.some < STALL_CEILING
 }
