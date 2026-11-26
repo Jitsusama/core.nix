@@ -8,11 +8,11 @@
 //! other end by pidfd (`SO_PEERPIDFD`), never a pid an ask says, and its
 //! cgroup says which unit runs it: only the shell's unit, under this
 //! daemon's own account, and only the unit's main process, as its manager
-//! names it, running quickshell's own program. Other programs run in that unit too (pi-ask while Super+S
-//! talks, the shell's helpers, their children and orphans), and any of
-//! them could run a program named quickshell, so the program alone is a
-//! second line, as pineapple's peer.rs holds it (ISXEG8 on #5456).
-//! The shell in turn starts new work and answers only from Joel's own
+//! names it, running quickshell's own program. Other programs run in that
+//! unit too (pi-ask while Super+S talks, the shell's helpers, their
+//! children and orphans), and any of them could run a program named
+//! quickshell, so the program alone is a second line, as pineapple's
+//! peer.rs holds it (ISXEG8 on #5456). The shell in turn starts new work and answers only from Joel's own
 //! Return, never a walk from outside (Agents.qml's sprout and
 //! answerKept, Now.qml's answerLook).
 //!
