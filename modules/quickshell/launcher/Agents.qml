@@ -1993,6 +1993,7 @@ Provider {
         sprouts += 1;
         sproutGiven = { words: String(said), letters: launcher.lettersAt };
         sproutCarried = "";
+        sproutOn = elsewhere;
         const sprout = sprouts;
         // Marked again once the Return that gave the words is through (Launcher.qml's
         // give), so only a key after it counts.
@@ -2200,6 +2201,9 @@ Provider {
     // carries to the folder Joel picks next, "" when none does.
     property var sproutGiven: ({ words: "", letters: 0 })
     property string sproutCarried: ""
+    // Where the start running was asked to run: "" where the node picks,
+    // "cloud", or a machine by its name (sprout's `on`).
+    property string sproutOn: ""
     // Steps Joel out of the act `key`, whose start wanted a repository, back
     // onto Start New Work's folders, its words carried to whichever he picks
     // (Sprouting.asksWhere), only while he's still in its field to be
@@ -2212,8 +2216,12 @@ Provider {
         // A link's From a Link (newWorkFor) opens over Agents' rows, not Start New Work's, so
         // stepping out of it steps into Start New Work too.
         // In the Cloud's acts step back to its own rows, so the words then
-        // start in the cloud as he meant, not here.
+        // start in the cloud as he meant, not here. A link's act asked to
+        // run elsewhere has no rows of its own there, so it stays where it
+        // is, its refusal told, rather than handing his words to a local row.
         const under = launcher.held[launcher.held.length - 2]?.row?.key ?? "";
+        if (provider.sproutOn !== "" && under !== "agents:start-new-work:cloud")
+            return false;
         launcher.back();
         if (under !== "agents:start-new-work" && under !== "agents:start-new-work:cloud")
             launcher.enter(startNewWorkMade());
