@@ -220,9 +220,12 @@ fn run(args: &[String]) -> Result<(), Failure> {
     }
 }
 
+/// Each followed input an ask names, with the commit it's built at.
+type Pins<'a> = Vec<(&'a str, &'a str)>;
+
 /// Where `ask` asks, and the input and commit each of its `--at`s names,
 /// from the words after it. A socket is named at most once.
-fn ask_args<'a>(mut rest: &[&'a str]) -> Result<(&'a Path, Vec<(&'a str, &'a str)>), Failure> {
+fn ask_args<'a>(mut rest: &[&'a str]) -> Result<(&'a Path, Pins<'a>), Failure> {
     let (mut socket, mut at) = (None, Vec::new());
     loop {
         match rest {
