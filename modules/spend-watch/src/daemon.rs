@@ -20,6 +20,7 @@ use crate::notices::{self, Buses, Desk};
 use crate::picture::Picture;
 use crate::status::{self, Writer};
 use crate::time::{self, Zone};
+use std::fmt::Write as _;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
@@ -643,19 +644,23 @@ fn heard(findings: &[Finding], watched: Option<&str>) -> Vec<Finding> {
 
 /// One whole pass: how things stand, what's found, what the shell shows
 /// and what's said. `kept` carries what the last pass read that can't
-/// have moved since.
+/// have moved since, `told` is where it says what it found, and `steps`
+/// hears as each part of it ends.
 pub fn pass(
     history: &History,
     config: &Config,
-    writer: &mut Writer,
-    desk: &mut dyn Desk,
+    told: Told<'_>,
     kept: &mut crate::picture::Kept,
-    hub: &Hub,
     now: f64,
+    steps: &mut Steps,
 ) -> Result<status::Status, String> {
+    let Told { writer, desk, hub } = told;
     let mut picture = Picture::read_keeping(history, config, now, kept)?;
+    steps.ended("picture");
     let raised = crate::detect::all_keeping(&picture, history, config, &mut kept.minutes)?;
+    steps.ended("detect");
     let findings = crate::findings::settle(history, &raised, now)?;
+    steps.ended("findings");
     let standing = crate::standing::standing(&picture, config, None);
     // Keeping what was said over an allowance is best effort too: the
     // figures are written whether or not it could be.
@@ -663,6 +668,7 @@ pub fn pass(
         Ok(crossings) => picture.crossings = crossings,
         Err(error) => eprintln!("keeping what was said over an allowance: {error}"),
     }
+    steps.ended("allowances");
     let live = crate::tokens::Rate::Live;
     let inputs = crate::tokens::read(history, &picture.budgets, now, live)?.map(|mut inputs| {
         if let Some(feed) = config
@@ -678,6 +684,7 @@ pub fn pass(
         .as_ref()
         .and_then(|inputs| crate::tokens::outlook(inputs, writer.tokens, &picture.zone, now));
     writer.tokens = tokens.as_ref().map(|tokens| tokens.level);
+    steps.ended("tokens");
     let watched = inputs.as_ref().map(crate::tokens::key);
     let said = heard(&findings, watched.as_deref());
     let mut shown = status::status(&picture, &said);
@@ -686,6 +693,7 @@ pub fn pass(
     writer.write(&config.runtime()?, &shown, &collection, Some(&standing))?;
     hub.publish(&collection, Some(&standing));
     hub.offer(&shown.actions);
+    steps.ended("written");
     // Telling is best effort: the shell has its figures whether or not a
     // notice could be given, as with no notification server yet at login.
     if config.notices.enable
@@ -693,12 +701,25 @@ pub fn pass(
     {
         eprintln!("giving notices: {error}");
     }
+    steps.ended("notices");
     if config.weekly_report
         && let Err(error) = weekly(config, &picture, &findings)
     {
         eprintln!("writing the weekly report: {error}");
     }
+    steps.ended("report");
     Ok(shown)
+}
+
+/// Where a pass says what it found: the shell's files, the socket's
+/// listeners and the desktop's notices.
+pub struct Told<'a> {
+    /// The shell's files.
+    pub writer: &'a mut Writer,
+    /// The desktop's notices.
+    pub desk: &'a mut dyn Desk,
+    /// The socket's listeners.
+    pub hub: &'a Hub,
 }
 
 fn tell(
@@ -1047,22 +1068,20 @@ pub fn run(config: &Config) -> Result<(), String> {
         let due = until_pass(dirty, took, last_pass.elapsed()).is_zero()
             || (!refresh.waiting.is_empty() && answered);
         if due {
-            let began = Instant::now();
+            let mut steps = Steps::begun();
             read_logs(&history, config, &mut walks, watches.as_deref());
-            match pass(
-                &history,
-                config,
-                &mut writer,
-                &mut desk,
-                &mut kept,
-                &hub,
-                now,
-            ) {
+            steps.ended("logs");
+            let told = Told {
+                writer: &mut writer,
+                desk: &mut desk,
+                hub: &hub,
+            };
+            match pass(&history, config, told, &mut kept, now, &mut steps) {
                 Ok(shown) => last_status = Some((shown, Instant::now(), Instant::now())),
                 Err(error) => eprintln!("a pass failed: {error}"),
             }
             last_pass = Instant::now();
-            took = timed(began);
+            took = timed(&steps);
             dirty = false;
             refresh.owed.clear();
             for reply in refresh.waiting.drain(..) {
@@ -1184,19 +1203,147 @@ fn repace(history: &History, feeds: &mut [Feed], pace: Pace, now: f64) -> Pace {
     paced
 }
 
-/// How long the pass that `began` took, journalled when it ran past the
-/// busiest wait, the most the pacing promises a warning is late by.
-fn timed(began: Instant) -> Duration {
-    let took = began.elapsed();
+/// How long the pass `steps` followed took, journalled when it ran past
+/// the busiest wait, the most the pacing promises a warning is late by,
+/// with what each of its steps cost.
+fn timed(steps: &Steps) -> Duration {
+    let took = steps.began.elapsed();
     if took > BUSIEST {
         eprintln!(
-            "a pass took {:.1} s, past the {} s a busy wait is capped at, so its warnings came late",
+            "a pass took {:.1} s, past the {} s a busy wait is capped at, so its warnings came \
+             late: {}",
             took.as_secs_f64(),
-            BUSIEST.as_secs()
+            BUSIEST.as_secs(),
+            steps.said()
         );
     }
     took
 }
+
+/// The steps of one pass as it goes, each with what it cost: its time, the
+/// bytes the process read from the disk, and the pages it brought back
+/// from swap or a file. On 26 November passes took 136 to 1,284 s at a
+/// load near 200 while spending under 4 minutes of processor time in 100,
+/// and between passes the kernel moved most of the daemon's 560 MB to swap.
+/// A slow pass's journal line alone couldn't say whether it waited on its
+/// reads or on its own memory, nor in which step; this says both.
+pub struct Steps {
+    began: Instant,
+    last: Mark,
+    spent: Vec<Spent>,
+}
+
+/// What the process had used up at one moment.
+#[derive(Clone, Copy)]
+struct Mark {
+    at: Instant,
+    read: Option<u64>,
+    faults: Option<u64>,
+}
+
+/// What one step cost.
+struct Spent {
+    name: &'static str,
+    took: Duration,
+    read: Option<u64>,
+    faults: Option<u64>,
+}
+
+impl Steps {
+    /// A pass beginning now.
+    #[must_use]
+    pub fn begun() -> Self {
+        let last = Mark::now();
+        Self {
+            began: last.at,
+            last,
+            spent: Vec::new(),
+        }
+    }
+
+    /// The step `name` ended now.
+    pub fn ended(&mut self, name: &'static str) {
+        let now = Mark::now();
+        self.spent.push(Spent {
+            name,
+            took: now.at.duration_since(self.last.at),
+            read: now
+                .read
+                .zip(self.last.read)
+                .map(|(to, from)| to.saturating_sub(from)),
+            faults: now
+                .faults
+                .zip(self.last.faults)
+                .map(|(to, from)| to.saturating_sub(from)),
+        });
+        self.last = now;
+    }
+
+    /// Each step and what it cost, for the journal.
+    fn said(&self) -> String {
+        self.spent
+            .iter()
+            .map(Spent::said)
+            .collect::<Vec<_>>()
+            .join("; ")
+    }
+}
+
+impl Spent {
+    /// The step, its time, and what it read and brought back where the
+    /// process can say.
+    fn said(&self) -> String {
+        let mut said = format!("{} {:.1} s", self.name, self.took.as_secs_f64());
+        if let Some(read) = self.read {
+            let _ = write!(said, ", {} MB read", read / BYTES_IN_MB);
+        }
+        if let Some(faults) = self.faults {
+            let _ = write!(said, ", {faults} pages brought back");
+        }
+        said
+    }
+}
+
+/// Bytes in the megabyte a step's reads are said in.
+const BYTES_IN_MB: u64 = 1_000_000;
+
+impl Mark {
+    /// What the process has used up so far, as `/proc` says it; neither
+    /// count where there's no `/proc` to ask.
+    fn now() -> Self {
+        Self {
+            at: Instant::now(),
+            read: std::fs::read_to_string("/proc/self/io")
+                .ok()
+                .and_then(|io| read_bytes(&io)),
+            faults: std::fs::read_to_string("/proc/self/stat")
+                .ok()
+                .and_then(|stat| major_faults(&stat)),
+        }
+    }
+}
+
+/// The bytes a process read from the disk, from its `/proc/<pid>/io`.
+fn read_bytes(io: &str) -> Option<u64> {
+    io.lines()
+        .find_map(|line| line.strip_prefix("read_bytes:"))
+        .and_then(|bytes| bytes.trim().parse().ok())
+}
+
+/// The faults a process took that read a page back from swap or a file,
+/// from its `/proc/<pid>/stat`: the tenth field after its name, which is
+/// read past its last parenthesis since a name may hold spaces.
+fn major_faults(stat: &str) -> Option<u64> {
+    let (_, after_name) = stat.rsplit_once(')')?;
+    after_name
+        .split_whitespace()
+        .nth(MAJOR_FAULTS)?
+        .parse()
+        .ok()
+}
+
+/// Where the major faults sit among the fields after a process's name.
+const MAJOR_FAULTS: usize = 9;
 
 /// How long until the next pass is due, `since` the last one ended after
 /// taking `took`: while the logs grow, the busy pace or `PACE` times as
@@ -1818,6 +1965,90 @@ mod tests {
         assert!(
             busy("database table is locked"),
             "a locked table, which the history's open keeps too, didn't read as busy"
+        );
+    }
+
+    // A step's reads and faults come from the kernel's own words for them,
+    // and a name holding a space or a parenthesis doesn't move the field.
+    #[test]
+    fn a_steps_reads_and_faults_are_read_from_proc() {
+        let io = "rchar: 2312455854\nwchar: 244598386\nsyscr: 562419\nsyscw: 102128\n\
+                  read_bytes: 4420079616\nwrite_bytes: 374550528\ncancelled_write_bytes: 0\n";
+        assert_eq!(
+            read_bytes(io),
+            Some(4_420_079_616),
+            "read_bytes wasn't found"
+        );
+        assert_eq!(
+            read_bytes("rchar: 1\n"),
+            None,
+            "a missing read_bytes read as some"
+        );
+        let stat = "1090778 (spend (watch)) S 2110 1090778 1090778 0 -1 4194560 120 0 \
+                    656306 0 42 7 0 0 20 0 19 0";
+        assert_eq!(
+            major_faults(stat),
+            Some(656_306),
+            "the major faults weren't found"
+        );
+        assert_eq!(
+            major_faults("1090778 (spend-watch) S"),
+            None,
+            "a short stat read as some"
+        );
+    }
+
+    // Each step is said with its time, then what it read and brought back
+    // where the process could say, in the order the pass took them.
+    #[test]
+    fn a_slow_pass_says_what_each_step_cost() {
+        let begun = Instant::now();
+        let steps = Steps {
+            began: begun,
+            last: Mark {
+                at: begun,
+                read: None,
+                faults: None,
+            },
+            spent: vec![
+                Spent {
+                    name: "logs",
+                    took: Duration::from_millis(2_100),
+                    read: Some(12_400_000),
+                    faults: Some(40),
+                },
+                Spent {
+                    name: "picture",
+                    took: Duration::from_secs(300),
+                    read: None,
+                    faults: None,
+                },
+            ],
+        };
+        assert_eq!(
+            steps.said(),
+            "logs 2.1 s, 12 MB read, 40 pages brought back; picture 300.0 s",
+            "a step's costs weren't said as they were spent"
+        );
+    }
+
+    // A step that ends takes what was used since the step before it, so
+    // the steps' times add up to the pass's.
+    #[test]
+    fn a_step_takes_only_what_was_used_since_the_last() {
+        let mut steps = Steps::begun();
+        steps.ended("logs");
+        steps.ended("picture");
+        let names: Vec<&str> = steps.spent.iter().map(|spent| spent.name).collect();
+        assert_eq!(
+            names,
+            ["logs", "picture"],
+            "the steps weren't kept in order"
+        );
+        let summed: Duration = steps.spent.iter().map(|spent| spent.took).sum();
+        assert!(
+            summed <= steps.began.elapsed(),
+            "the steps took longer than the pass"
         );
     }
 }

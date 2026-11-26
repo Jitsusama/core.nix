@@ -286,7 +286,9 @@ feed speaks.
   40 seconds, 1.3 to 3.6 MB a second at the busy pace; the half second above
   is a pass whose hours are still in memory. The two-minute cap bounds how
   late a warning comes and keeps `budgets.json` within the eleven minutes
-  below, and a pass longer than it says so in the journal. The heartbeat
+  below, and a pass longer than it says so in the journal, with each of
+  its steps' time, the megabytes it read from the disk and the pages it
+  brought back from swap, so the step it waited in is named. The heartbeat
   alone is written every 30 seconds between passes, so the shell can tell
   a stopped daemon from a quiet one; not during one, so a pass longer
   than the shell's two minutes of silence shows the watch as stopped
