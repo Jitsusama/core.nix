@@ -220,16 +220,8 @@ QtObject {
                 Answers.answering(undefined, "ASKS", { ASKS: first }, second), second);
             Expect.same("as does one while another's Talk is held",
                 Answers.answering("OTHER", "ASKS", { ASKS: first }, second), second);
-            Expect.same("and one whose Talk drew nothing yet",
-                Answers.answering("ASKS", "ASKS", {}, second), second);
-
-            // What a Talk drew its Return answering (Agents.qml's answerTalks).
-            Expect.same("a Talk that drew the question answers it",
-                Answers.drawn({ by: "them" }, first), first);
-            Expect.same("one that drew no question answers nothing, though it asks",
-                Answers.drawn(null, first), null);
-            Expect.same("as does one asking nothing",
-                Answers.drawn({ by: "them" }, undefined), null);
+            Expect.same("a held Talk that drew nothing yet answers nothing, though it asks",
+                Answers.answering("ASKS", "ASKS", {}, second), null);
 
             // What his Return does (Agents.qml's given).
             Expect.same("his own Return answers what the Talk drew",
@@ -247,7 +239,12 @@ QtObject {
             Expect.same("as is one with it put in the session's inbox",
                 Answers.answeredAlready([put], answers.want, at + 60 * 60 * 1000), true);
             Expect.same("one with his answer not delivered is his to answer again",
-                Answers.answeredAlready([refused, unheard], answers.want, at + 1000), false);
+                Answers.answeredAlready([refused], answers.want, at + 1000), false);
+            // One not known to have arrived may have, so it holds as one sent does.
+            Expect.same("one not known to have it holds a second as long as one sent",
+                [at + 30000 - 1, at + 30000].map(nowMs =>
+                    Answers.answeredAlready([refused, unheard], answers.want, nowMs)),
+                [true, false]);
             Expect.same("as is one whose only answers are to another ask",
                 Answers.answeredAlready(three, answers.want, at + 1000), false);
             Expect.same("and one he never answered",
@@ -289,7 +286,11 @@ QtObject {
             // What the agents daemon's reply says of an answer (Agents.qml's answerWant).
             Expect.same("no reply where it was sent is unheard", Answers.unheard(true, null), true);
             Expect.same("as is the node sent it but never answering (acts.rs)",
-                Answers.unheard(true, { error: { code: "unheard", message: "hung up" } }), true);
+                Answers.unheard(true, { error: { code: "unanswered", message: "hung up" } }),
+                true);
+            Expect.same("never a tell's unheard, which says nothing was sent (tell.rs)",
+                Answers.unheard(true, { error: { code: "unheard", message: "no session" } }),
+                false);
             Expect.same("a refusal is heard",
                 Answers.unheard(true, { error: { code: "unsteered", message: "no node" } }),
                 false);

@@ -13,9 +13,10 @@
 // opened later doesn't lead with an answer long done; and how many are kept for a session.
 const SHOWN_AFTER_MS = 900000;
 const KEPT = 3;
-// How long an answer may stand sent before a second Return is let go again: the agents
-// daemon gives the node 5 seconds (acts.rs's PATIENCE), so one still sent after this never
-// heard back, and shouldn't hold every later answer.
+// How long an answer may stand sent, or not known to have arrived, before a second Return is
+// let go again: the agents daemon gives the node 5 seconds (acts.rs's PATIENCE), each answer
+// on a thread of its own (main.rs's slow), so one still sent after this never heard back, and
+// shouldn't hold every later answer; one not known may have gone, so it holds as long.
 const SENT_STANDS_MS = 30000;
 
 // What a session asks that Joel's words to it answer: its want's answers as the agents
@@ -156,19 +157,11 @@ function shownWant(now, answers) {
 
 // What Joel's Return in the Talk kept as `draft` answers: what that Talk last drew it asking
 // (`drawnBy`, by draft) while it's the Talk held (`heldDraft`), so he answers what he was shown
-// rather than what's held by the time he presses it; else, a walk from a terminal drawing
-// none, what it asks `now`. Null where it asks nothing he can answer, and his words go as a
-// talk.
+// rather than what's held by the time he presses it, and nothing where it drew nothing yet,
+// as he was shown no question; else, a walk from a terminal drawing none, what it asks `now`.
+// Null where it asks nothing he can answer, and his words go as a talk.
 function answering(heldDraft, draft, drawnBy, now) {
-    const held = heldDraft === draft && draft in (drawnBy ?? {});
-    return held ? drawnBy[draft] : now;
-}
-
-// What a Talk drew its Return answering: `answers` (asked's) where it drew the question
-// (`drawnQuestion`, question's), null where it drew none, so he never answers a question he
-// wasn't shown, and his words go as a talk.
-function drawn(drawnQuestion, answers) {
-    return drawnQuestion === null || drawnQuestion === undefined ? null : answers ?? null;
+    return heldDraft === draft ? drawnBy?.[draft] ?? null : now;
 }
 
 // What Joel's Return in a Talk does with his words, given what they answer (`answering`'s):
@@ -185,19 +178,20 @@ function onReturn(answers, fromJoel) {
 
 // Whether a session's answers (`list`) hold one of his to `want` sent or answered, so a second
 // Return isn't shown as going: the session takes the first answer to an ask, and one after it
-// finds the ask gone (the harness's answerSteered). One not delivered, or not known to be,
-// leaves it his to answer again.
-// One sent SENT_STANDS_MS before `nowMs` and never heard of since is let be.
+// finds the ask gone (the harness's answerSteered). One not known to be delivered may have
+// been, so it holds as one sent does; one not delivered leaves it his to answer again.
+// One sent SENT_STANDS_MS before `nowMs` and never heard of since, or not known, is let be.
 function answeredAlready(list, want, nowMs) {
-    const standsSent = one => one.stage === "sent"
+    const standsSent = one => (one.stage === "sent" || one.stage === "unheard")
         && !(nowMs - Date.parse(one.at) >= SENT_STANDS_MS);
     return (list ?? []).some(one => one.want === String(want ?? "")
         && (standsSent(one) || one.stage === "answered"));
 }
 
 // Whether his words to `answers` stay to be given back once the node has said of them: only
-// where they didn't go (`went`) and the session still asks what they answer (`now`, asked's),
-// so given back they never answer a newer ask.
+// where they didn't go (`went`, false for one put or not known to have arrived, which may
+// have gone, so given back they'd invite a second answer) and the session still asks what
+// they answer (`now`, asked's), so given back they never answer a newer ask.
 function keepsWords(went, now, answers) {
     return went !== true && now !== null && now !== undefined && now.want === answers?.want;
 }
@@ -223,10 +217,10 @@ function letGo(list, want) {
 
 // Whether the agents daemon's `reply` to an answer sent (`sent`, a wire there to send it on)
 // says nothing of whether it went: none at all, the daemon gone while asked, or the node sent
-// it but never answered (acts.rs's "unheard"), so it may have gone and isn't said not to.
+// it but never answered (acts.rs's "unanswered"), so it may have gone and isn't said not to.
 function unheard(sent, reply) {
     return sent === true && (reply === null || reply === undefined
-        || reply?.error?.code === "unheard");
+        || reply?.error?.code === "unanswered");
 }
 
 // Why an answer from a walk (`fromJoel` false, Sprouting.js's) is refused, `template` filled

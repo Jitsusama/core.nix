@@ -1226,16 +1226,19 @@ Provider {
         const now = answersOf(session);
         const asked = TalkAnswers.question(now, session.title, words, dayOf);
         const answers = TalkAnswers.asked(now.want, now.asking);
-        // His Return answers only a question the Talk drew; where it drew none, his words go
-        // as a talk.
-        answersShown[to] = TalkAnswers.drawn(asked, answers);
+        // His Return answers what the Talk drew (TalkAnswers.answering), which question draws
+        // whenever it asks him something he can answer here, if only what it takes.
+        answersShown[to] = answers;
         // While it asks, only answers to what it asks show, and those not delivered in the last
         // quarter hour.
         const want = TalkAnswers.shownWant(now, answers);
         // Words given back for an ask it no longer asks go, as the refusal may have come before
-        // the want that replaced it; later, since this runs as the Talk draws.
+        // the want that replaced it; later, since this runs as the Talk draws. While it asks
+        // and its want isn't held, as for a moment after the daemon restarts, which want it
+        // asks isn't known, so none go.
         const standsFor = answers?.want ?? "";
-        const stale = TalkAnswers.stale(answeredTo[to], standsFor);
+        const stale = now.asking === true && answers === null ? []
+            : TalkAnswers.stale(answeredTo[to], standsFor);
         if (stale.length > 0)
             Qt.callLater(() => {
                 launcher?.drafts?.settle({ [to]: stale
@@ -1283,9 +1286,11 @@ Provider {
             }
             // His words stay only for the ask they were meant for: once it asks something else,
             // given back they'd answer the new ask with words for the old one, so they show
-            // only as not delivered, and the foot says why.
+            // only as not delivered, and the foot says why. Words not known to have arrived
+            // go too, as they may have, so a second Return isn't laid out for him.
             const now = answersOf(sessionAt(session.address) ?? session);
-            if (!TalkAnswers.keepsWords(put, TalkAnswers.asked(now.want, now.asking), answers))
+            if (!TalkAnswers.keepsWords(put || unheard === true,
+                TalkAnswers.asked(now.want, now.asking), answers))
                 launcher?.drafts?.settle({ [to]: [{ words: text.trim(), stage: "answered" }] });
             if (unheard)
                 told = TalkAnswers.filled(said.unheardWhy ?? "", { name: session.title });

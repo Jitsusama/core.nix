@@ -245,11 +245,13 @@ ShellRoot {
         function afterFrame(then) {
             then();
         }
-        // What the foot was last told.
+        // What the foot was last told, and whether it was told it loose.
         property var said: []
+        property bool saidLoose: false
 
-        function say(keys) {
+        function say(keys, loose) {
             said = keys;
+            saidLoose = loose === true;
         }
         // What it was told failed, as toldThat's what and why, the place it
         // was last asked to open into, and how often it was asked to say a
@@ -2930,10 +2932,10 @@ ShellRoot {
         agents.unheard = true;
         inside[0].run();
         expect("an answer nothing said of says it may not have arrived",
-            agents.answered.length === 2 && theLauncher.said.length === 1
-                && String(theLauncher.said[0]?.[0] ?? "").endsWith(
-                    "may not have your answer: nothing said whether it arrived"),
-            JSON.stringify([agents.answered, theLauncher.said]));
+            agents.answered.length === 2 && !theLauncher.saidLoose
+                && JSON.stringify(theLauncher.said) === JSON.stringify([[
+                    "Session E may not have your answer: nothing said whether it arrived", ""]]),
+            JSON.stringify([agents.answered, theLauncher.said, theLauncher.saidLoose]));
         agents.unheard = false;
         agents.answered = agents.answered.slice(0, 1);
         theLauncher.said = [];
@@ -2941,9 +2943,10 @@ ShellRoot {
         agents.refuses = "Wanting has your answer already";
         inside[0].run();
         expect("a choice answerKept refuses sends nothing and says why on the foot",
-            agents.answered.length === 1 && JSON.stringify(theLauncher.said)
-                === JSON.stringify([["Wanting has your answer already", ""]]),
-            JSON.stringify([agents.answered, theLauncher.said]));
+            agents.answered.length === 1 && theLauncher.saidLoose
+                && JSON.stringify(theLauncher.said)
+                    === JSON.stringify([["Wanting has your answer already", ""]]),
+            JSON.stringify([agents.answered, theLauncher.said, theLauncher.saidLoose]));
         agents.refuses = "";
         theLauncher.said = [];
         agents.puts = true;

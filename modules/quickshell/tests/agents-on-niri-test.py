@@ -4481,6 +4481,19 @@ def test_an_asking_sessions_return_goes_to_it_with_its_question_in_sight(shell: 
         left_the_node("s-asking")
 
 
+def no_words_come_back(shell: Shell, drawn: Callable[[Json], bool], why: str) -> None:
+    """Hold that the field stays empty once the Talk opened again has drawn what it held.
+
+    Words kept are put back as the Talk lays out, so the wait is first for `drawn`, what
+    that Talk shows, and only then is the field read empty, on every read for a second.
+    """
+    shell.launcher_until(drawn)
+    deadline = time.monotonic() + 1
+    while time.monotonic() < deadline:
+        assert shell.showing()["typed"] == "", why
+        time.sleep(0.1)
+
+
 def answered_once(shell: Shell, inbox: Path, steered: set[Path]) -> list[Path]:
     """Wait for Joel's answer to reach the asking cell's inbox, the Talk reading it answered.
 
@@ -4516,10 +4529,17 @@ def answered_once(shell: Shell, inbox: Path, steered: set[Path]) -> list[Path]:
     shell.close_launcher()
     did = followed(shell, "talkTo", inbox.name)
     assert did["done"], did
-    shell.launcher_until(lambda shown: shown["asking"])
-    # Words kept would be put back as the Talk lays out; a second lets that pass first.
-    time.sleep(1)
-    assert shell.showing()["typed"] == "", "refused words came back"
+    no_words_come_back(
+        shell,
+        lambda shown: (
+            shown["asking"]
+            and any(
+                (one.get("line"), one.get("stands")) == ("Right", "answered")
+                for one in cast("list[Json]", shown["talks"] or [])
+            )
+        ),
+        "refused words came back",
+    )
     return told
 
 
@@ -4559,7 +4579,8 @@ def test_a_talk_to_an_asking_cell_shows_its_question_and_answers_it_from_return(
                 shown["asking"]
                 and first(shown).get("line") == "Choosing Quest asks you"
                 and "Which way?" in "".join(first(shown).get("answers") or [])
-                and first(shown).get("stands") == "Left \u00b7 Right"
+                and first(shown).get("takes") == "Left \u00b7 Right"
+                and first(shown).get("stands") == ""
             )
         )
         # Words naming none of its choices answer nothing, and aren't kept to answer a later ask.
@@ -4575,12 +4596,15 @@ def test_a_talk_to_an_asking_cell_shows_its_question_and_answers_it_from_return(
         shell.close_launcher()
         did = followed(shell, "talkTo", "CHOOSE")
         assert did["done"], did
-        shell.launcher_until(
-            lambda shown: shown["asking"] and first(shown).get("line") == "Choosing Quest asks you"
+        no_words_come_back(
+            shell,
+            lambda shown: (
+                shown["asking"]
+                and first(shown).get("line") == "Choosing Quest asks you"
+                and first(shown).get("takes") == "Left \u00b7 Right"
+            ),
+            "words that answered nothing came back",
         )
-        # Words kept would be put back as the Talk lays out; a second lets that pass first.
-        time.sleep(1)
-        assert shell.showing()["typed"] == "", "words that answered nothing came back"
         shell.send_chars("right")
         shell.launcher_until(lambda shown: shown["typed"] == "right")
         shell.send_key("ret")
