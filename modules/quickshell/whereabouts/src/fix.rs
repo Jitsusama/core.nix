@@ -242,23 +242,32 @@ mod tests {
             Some("America/Toronto".into()),
         );
         let text = serde_json::to_string(&named).unwrap();
-        assert!(text.ends_with(r#""place":"Kelpwater, Westmark","zone":"America/Toronto"}"#));
+        assert!(
+            text.ends_with(r#""place":"Kelpwater, Westmark","zone":"America/Toronto"}"#),
+            "a named fix didn't end with its place and zone: {text}"
+        );
         assert_eq!(Fix::read(&text), Some(named));
     }
 
     #[test]
     fn a_name_asked_again_keeps_what_the_last_asking_found() {
         let fix = at(1.0, 2.0, 3.0).named(Some("Cove".into()), None);
-        assert!(fix.unnamed());
+        assert!(fix.unnamed(), "a fix with no zone was taken as named");
         let fix = fix.named(None, Some("America/Halifax".into()));
         assert_eq!(fix.place.as_deref(), Some("Cove"));
         assert_eq!(fix.zone.as_deref(), Some("America/Halifax"));
         assert!(fix.unnamed(), "its country isn't known yet");
         let fix = fix.countried(Some("Canada".into())).countried(None);
         assert_eq!(fix.country.as_deref(), Some("Canada"));
-        assert!(!fix.unnamed());
+        assert!(
+            !fix.unnamed(),
+            "a fix with its place, zone and country was taken as unnamed"
+        );
         let text = serde_json::to_string(&fix).unwrap();
-        assert!(text.ends_with(r#""zone":"America/Halifax","country":"Canada"}"#));
+        assert!(
+            text.ends_with(r#""zone":"America/Halifax","country":"Canada"}"#),
+            "a fix asked again didn't keep its zone and country: {text}"
+        );
     }
 
     #[test]
@@ -301,7 +310,10 @@ mod tests {
             Fix::read(r#"{"latitude":1,"longitude":2,"accuracy":3,"when":4}"#),
             None
         );
-        assert!(Fix::read(r#"{"v":2,"latitude":1,"longitude":2,"accuracy":3,"when":4}"#).is_some());
+        assert!(
+            Fix::read(r#"{"v":2,"latitude":1,"longitude":2,"accuracy":3,"when":4}"#).is_some(),
+            "a second version's file naming no place wasn't read as a fix"
+        );
     }
 
     #[test]
@@ -311,7 +323,10 @@ mod tests {
         assert_eq!(Fix::new(f64::NAN, 0.0, 1.0, 0), None);
         assert_eq!(Fix::new(0.0, 0.0, -1.0, 0), None);
         assert_eq!(Fix::new(0.0, 0.0, f64::INFINITY, 0), None);
-        assert!(Fix::new(-90.0, 180.0, 0.0, 0).is_some());
+        assert!(
+            Fix::new(-90.0, 180.0, 0.0, 0).is_some(),
+            "a fix at the earth's very edge, known exactly, was refused"
+        );
     }
 
     #[test]
@@ -322,46 +337,74 @@ mod tests {
         assert!((degree - 111_195.0).abs() < 10.0, "{degree}");
         let north = at(60.0, 0.0, 0.0).distance(&at(60.0, 1.0, 0.0));
         assert!((north - degree / 2.0).abs() < 100.0, "{north}");
-        assert!(at(5.0, 5.0, 0.0).distance(&at(5.0, 5.0, 0.0)).abs() < f64::EPSILON);
+        let none = at(5.0, 5.0, 0.0).distance(&at(5.0, 5.0, 0.0));
+        assert!(none.abs() < f64::EPSILON, "a place is {none} m from itself");
     }
 
     #[test]
     fn the_first_fix_is_always_said() {
-        assert!(moved(None, &at(0.0, 0.0, 100_000.0)));
+        assert!(
+            moved(None, &at(0.0, 0.0, 100_000.0)),
+            "a first fix, however vague, wasn't said"
+        );
     }
 
     #[test]
     fn a_fix_said_by_hand_says_so_and_one_found_doesnt() {
         let found = serde_json::to_string(&at(1.0, 2.0, 3.0)).unwrap();
-        assert!(!found.contains("hand"));
+        assert!(
+            !found.contains("hand"),
+            "a found fix spoke of a hand: {found}"
+        );
         let said = serde_json::to_string(&at(1.0, 2.0, 3.0).by_hand()).unwrap();
-        assert!(said.ends_with(r#""hand":true}"#));
-        assert!(Fix::read(&said).is_some_and(|fix| fix.hand));
+        assert!(
+            said.ends_with(r#""hand":true}"#),
+            "a fix said by hand didn't say so: {said}"
+        );
+        assert!(
+            Fix::read(&said).is_some_and(|fix| fix.hand),
+            "a fix said by hand wasn't read back as one"
+        );
     }
 
     #[test]
     fn a_small_move_is_not_said() {
         // About 3.3 km north, with a sharp fix.
-        assert!(!moved(Some(&at(0.0, 0.0, 100.0)), &at(0.03, 0.0, 100.0)));
+        assert!(
+            !moved(Some(&at(0.0, 0.0, 100.0)), &at(0.03, 0.0, 100.0)),
+            "a 3.3 km move was said"
+        );
     }
 
     #[test]
     fn a_move_past_the_least_that_matters_is_said() {
         // About 5.6 km north.
-        assert!(moved(Some(&at(0.0, 0.0, 100.0)), &at(0.05, 0.0, 100.0)));
+        assert!(
+            moved(Some(&at(0.0, 0.0, 100.0)), &at(0.05, 0.0, 100.0)),
+            "a 5.6 km move wasn't said"
+        );
     }
 
     #[test]
     fn a_vague_fix_inside_its_own_doubt_is_not_said() {
         // About 11 km away, but only known to within 25 km.
-        assert!(!moved(Some(&at(0.0, 0.0, 100.0)), &at(0.1, 0.0, 25_000.0)));
+        assert!(
+            !moved(Some(&at(0.0, 0.0, 100.0)), &at(0.1, 0.0, 25_000.0)),
+            "an 11 km move known only to 25 km was said"
+        );
         // About 111 km away, so further than its doubt.
-        assert!(moved(Some(&at(0.0, 0.0, 100.0)), &at(1.0, 0.0, 25_000.0)));
+        assert!(
+            moved(Some(&at(0.0, 0.0, 100.0)), &at(1.0, 0.0, 25_000.0)),
+            "a 111 km move known to 25 km wasn't said"
+        );
     }
 
     #[test]
     fn a_sharp_fix_moves_here_off_a_vague_one() {
-        assert!(moved(Some(&at(0.0, 0.0, 25_000.0)), &at(0.1, 0.0, 500.0)));
+        assert!(
+            moved(Some(&at(0.0, 0.0, 25_000.0)), &at(0.1, 0.0, 500.0)),
+            "a sharp fix inside a vague one's doubt wasn't said"
+        );
     }
 
     #[test]
