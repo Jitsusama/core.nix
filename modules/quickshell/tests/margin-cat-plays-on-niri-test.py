@@ -435,9 +435,10 @@ def went_behind(frames: list[Json], size: float) -> Json | None:
     puppy: Json = last["puppy"]
     if behind_its_edge(puppy, size):
         return None
-    if len(shown) < 2 or last["t"] == shown[-2]["t"]:
+    before = shown[-2] if len(shown) > 1 else last
+    if last["t"] == before["t"]:
         return puppy
-    pace = (puppy["x"] - shown[-2]["puppy"]["x"]) / (last["t"] - shown[-2]["t"])
+    pace = (puppy["x"] - before["puppy"]["x"]) / (last["t"] - before["t"])
     there = {**puppy, "x": puppy["x"] + pace * (last["ends"] - last["t"])}
     return None if behind_its_edge(there, size) else puppy
 

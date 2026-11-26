@@ -139,7 +139,11 @@ QtObject {
         const arrivals = [];
         const sides = width => [Seated.sat({ column: { left: 92, top: 30, width } }),
             Seated.sat({ seat: { x: 892, y: 20 }, column: { left: 908 - width, top: 30, width } })];
-        for (const inward of [200, 201, 202, 203, 204, 205].flatMap(sides).map(Puppy.visit)) {
+        // Both sides of each width, joined by hand, since Quickshell's
+        // JavaScript has no flatMap.
+        const inwards = [200, 201, 202, 203, 204, 205].map(sides)
+            .reduce((all, pair) => all.concat(pair), []).map(Puppy.visit);
+        for (const inward of inwards) {
             const trotted = Array.from({ length: Math.ceil(inward.beats[0].ends) },
                 (_, t) => Puppy.frame(inward, t));
             const arrives = trotted[trotted.length - 1].pose;
