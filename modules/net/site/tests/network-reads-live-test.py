@@ -13,8 +13,10 @@ devices read again, when it's back, say stale when the server goes and keep
 what it drew, draw every device and wire within a phone's width with its zoom
 buttons a finger's reach, stack a bigger house with switches and a full floor
 within a phone's width and a laptop's, draw the other way as a window narrows
-to a phone's and widens back, stack in a window just too narrow for the map
-across once its floors' names are counted, keep to its budget,
+to a phone's and widens back, scroll the device the keys are on into view as
+the map narrows to a phone's and widens to a short desk's, stack in a window
+just too narrow for the map across once its floors' names are counted, keep to
+its budget,
 and pass the web-design skill's page checks at a phone's width and a desk's in
 both looks.
 Anything the page logs fails it, but for the browser's own lines once the test
@@ -286,25 +288,34 @@ LOWEST = """() => {
   boxes.sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom);
   return boxes[0]?.dataset.id ?? null;
 }"""
-# How far the device the keys are on stands outside the map's room, and whether the map
-# overflows it, so standing in view is something the view had to do.
+# How far the device the keys are on stands outside the map's room, inside its border and
+# scrollbars as PAST_THE_ROOM measures it, whether the map overflows the room, and whether the
+# view has scrolled from its corner, so standing in view is something the view had to do.
 HERE_PAST = """() => {
   const view = document.querySelector("#map-view");
   const here = document.querySelector("#map-draw [data-here]");
   if (view === null || here === null) return null;
-  const room = view.getBoundingClientRect();
+  const frame = view.getBoundingClientRect();
+  const left = frame.left + view.clientLeft;
+  const top = frame.top + view.clientTop;
   const box = here.getBoundingClientRect();
   return {
-    past: Math.max(room.top - box.top, box.bottom - room.bottom, room.left - box.left,
-      box.right - room.right),
+    past: Math.max(top - box.top, box.bottom - top - view.clientHeight, left - box.left,
+      box.right - left - view.clientWidth),
     overflows: view.scrollHeight > view.clientHeight || view.scrollWidth > view.clientWidth,
+    moved: view.scrollTop > 0 || view.scrollLeft > 0,
   };
 }"""
+# A desk's width, drawn across, too short for the whole map at its smallest zoom, so the
+# lowest device stands past the room's first sight once the window widens.
+SHORT_DESK = (SIZES[-1][0], 360)
 
 
 def the_keys_device_stands_in_view(page: Page, where: str) -> None:
     here = page.evaluate(HERE_PAST)
     assert here is not None, f"{where}'s map marks no device the keys are on"
+    assert here["overflows"], f"{where}'s map fits whole, so its view proves nothing"
+    assert here["moved"], f"{where}'s view never scrolled, so its first sight held the device"
     assert here["past"] <= 1, f"the keys' device stands {here['past']} px out of {where}'s map"
 
 
@@ -327,11 +338,8 @@ def test_the_keys_device_stays_in_view_as_the_map_draws_the_other_way(
         page.set_viewport_size({"width": phone[0], "height": phone[1]})
         stacked = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === false"
         page.wait_for_function(stacked, arg=KESTREL, timeout=PACE_MS)
-        here = page.evaluate(HERE_PAST)
-        assert here is not None, "the narrowed map lost the keys' device"
-        assert here["overflows"], "the narrowed map fits whole, so its view proves nothing"
         the_keys_device_stands_in_view(page, "a narrowed window")
-        page.set_viewport_size({"width": desk[0], "height": desk[1]})
+        page.set_viewport_size({"width": SHORT_DESK[0], "height": SHORT_DESK[1]})
         across = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === true"
         page.wait_for_function(across, arg=KESTREL, timeout=PACE_MS)
         the_keys_device_stands_in_view(page, "a widened window")
