@@ -205,6 +205,42 @@ fn a_link_pinned_at_the_handover_as_it_brings_back_gets_no_end_written_through_i
 }
 
 #[test]
+fn a_link_pinned_at_the_handover_of_a_kind_bringing_nothing_back_gets_no_end_through_it() {
+    let mut nothing = kind("");
+    nothing.brings_back = Vec::new();
+    // A mkdir that, once the handover's folder for copies is made new,
+    // moves the handover aside for a link the far line isn't allowed to
+    // clear: the list's end, written after, would go through it.
+    let swapping = format!(
+        "PATH=${{PATH#*:}} mkdir \"$@\" || exit\n\
+         case \" $* \" in *\"/1/{BACK} \"*) {} ;; esac",
+        linking_its_handover()
+    );
+    let (rm, refused) = pinning();
+    let programs = [("mkdir", swapping.as_str()), (rm, refused.as_str())];
+    let (code, err, home) = far_line(
+        Left::Whole,
+        &[("x", "x")],
+        "true",
+        &nothing,
+        None,
+        &programs,
+    );
+    assert!(
+        home.join("moved").exists() && kept_beyond(&home),
+        "the far line wrote its list's end, or cleared, through a link pinned at the \
+         handover of a kind bringing nothing back ({code:?}): {err}"
+    );
+    assert!(
+        code == Some(0)
+            && err.contains("a link at the job's handover couldn't be cleared, so its tree stays")
+            && !err.contains("handover wasn't cleared"),
+        "the far line didn't say only that the link stays ({code:?}): {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
 fn a_handover_whose_folder_for_copies_cant_be_made_new_ends_its_list_cut() {
     let mut kind = kind("");
     kind.brings_back = vec!["out".into()];

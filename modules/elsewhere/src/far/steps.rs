@@ -639,9 +639,9 @@ fn ended() -> String {
 # on a disk that filled, these are the room its end needs. Where a link
 # at the handover couldn't be cleared, as `freed` says, the list's end
 # and its cut aren't written through it, and the near side waits out a
-# list with no end, as this line says, so its wait isn't read as a slow
-# crossing. One put there while the files were copied isn't looked for
-# between them.
+# list with no end; this line's words say why, where the near side's
+# own read as a slow crossing. One put there while the files were copied
+# isn't looked for between them.
 ! copies || rm -f "$names" "$names".*
 {freed}if [ -z "$handed" ]; then wrote=1
   {UNENDED}
