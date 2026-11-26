@@ -79,7 +79,6 @@ function startingScreen(hosted, entries = ["said", "answered"]) {
     updateTerminalTitle: mock.fn(),
     renderInitialMessages: mock.fn(),
     renderSessionEntries: mock.fn(),
-    sessionManager: { buildContextEntries: () => [...entries] },
     footerDataProvider: { onBranchChange: mock.fn() },
     themeController: {
       applyFromSettings: mock.fn(),
@@ -89,7 +88,7 @@ function startingScreen(hosted, entries = ["said", "answered"]) {
     editor: { getText: () => "", setText: mock.fn() },
     runtimeHost: {
       session: {
-        sessionManager: { isPersisted: () => false },
+        sessionManager: { isPersisted: () => false, buildContextEntries: () => [...entries] },
         settingsManager: { getFullscreenScrollbar: () => "auto" },
       },
     },

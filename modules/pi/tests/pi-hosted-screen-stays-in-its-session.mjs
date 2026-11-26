@@ -49,7 +49,7 @@ function screen() {
     runtimeHost: {
       dispose: mock.fn(),
       session: {
-        sessionManager: { isPersisted: () => false },
+        sessionManager: { isPersisted: () => false, buildContextEntries: () => [] },
         modelRuntime: { getError: () => undefined },
         settingsManager: {
           getExternalEditorCommand: () => "false",
@@ -155,6 +155,7 @@ function startingScreen(quitAt) {
     updateEditorBorderColor: mock.fn(),
     updateTerminalTitle: mock.fn(),
     renderInitialMessages: mock.fn(),
+    renderSessionEntries: mock.fn(),
     footerDataProvider: { onBranchChange: mock.fn() },
   });
   for (const part of [
@@ -199,8 +200,7 @@ for (const quitAt of ["colors", "tools", "extensions", "providers"]) {
     // Drawn just before the bind (pi-host-draws-before-it-binds.patch), once.
     const drawn = quitAt === "extensions" || quitAt === "providers" ? 1 : 0;
     assert.equal(mode.renderInitialMessages.mock.callCount(), drawn);
-    // A subscription made before the quit is the screen's stop to release;
-    // none is made after, and nothing is prompted or rendered.
+    // None is subscribed, prompted or rendered after the quit; one before is its stop's to release.
     assert.equal(mode.subscribeToAgent.mock.callCount(), quitAt === "providers" ? 1 : 0);
     assert.equal(mode.runtimeHost.session.prompt.mock.callCount(), 0);
     assert.equal(mode.ui.renderNow.mock.callCount(), 0);
