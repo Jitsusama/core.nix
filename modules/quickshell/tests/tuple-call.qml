@@ -116,13 +116,16 @@ ShellRoot {
 
     Timer {
         // Reads again a while after each case asks, as notices are sent
-        // and Tuple is run.
+        // and Tuple is run. A tick while a read is still under way starts
+        // none, so it mustn't say when that read began.
         interval: 200
         repeat: true
         running: /^(told|asked|closed)/.test(root.waiting)
         onTriggered: {
-            root.readBegan = Date.now();
-            reading.running = true;
+            if (!reading.running) {
+                root.readBegan = Date.now();
+                reading.running = true;
+            }
         }
     }
 
