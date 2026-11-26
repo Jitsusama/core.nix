@@ -39,6 +39,7 @@ fn run() -> Help {
         .option("--start-under PCT", "starts under this pressure; 3")
         .option("--stop SLICE=PCT", "stops past a slice's pressure")
         .option("--stop-machine PCT", "stops past the machine's; 25")
+        .option("--stop-io PCT", "starts under and stops past its io")
         .option("--rests HOURS", "does nothing this long after; 12")
         .option("--wait-at-most SECONDS", "waits this long for the turn")
         .option("--every SECONDS", "how often it looks; 5")

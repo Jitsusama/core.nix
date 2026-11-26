@@ -148,6 +148,10 @@ let
         "--rests"
         (number job.restsHours)
       ]
+      ++ lib.optionals (job.stopIo != null) [
+        "--stop-io"
+        (number job.stopIo)
+      ]
       ++ lib.optionals (job.waitsAtMost != null) [
         "--wait-at-most"
         (number job.waitsAtMost)
@@ -263,6 +267,15 @@ let
           "app.slice" = 10;
           "session.slice" = 10;
         };
+      };
+      stopIo = lib.mkOption {
+        description = ''
+          The machine's full io pressure over the last minute, in percent,
+          that the job starts only under and is stopped once past; null
+          leaves the disk unwatched.
+        '';
+        type = lib.types.nullOr lib.types.number;
+        default = null;
       };
       stopMachineWhileAway = lib.mkOption {
         description = ''

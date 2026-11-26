@@ -18,6 +18,14 @@
 //! with the job's own cgroup's, goes to `<state>/night-shift/NAME.samples`,
 //! so a stop says whose stall it was.
 //!
+//! With `--stop-io PCT`, the disk counts too: the job starts only while
+//! the machine's full io pressure over the last minute is under PCT, and
+//! is stopped once it passes it. On 26 November a roll of the same
+//! repository's packs read 86 GB in 24 minutes, holding that figure at
+//! 21.9%, and nothing watched it. The minute's figure is read, not ten
+//! seconds', so a burst of written pages flushing doesn't stop a job
+//! alone.
+//!
 //! A stopped job is sent TERM in its own process group first, so git and
 //! the like give back their locks, and is killed once `--grace` passes.
 //! A success leaves `<state>/night-shift/NAME.done`, and for `--rests`
@@ -95,6 +103,7 @@ struct Job {
     start_under: f64,
     stops: Vec<(String, f64)>,
     stop_machine: f64,
+    stop_io: Option<f64>,
     rests: Duration,
     wait_at_most: Option<Duration>,
     runs_at_most: Option<Duration>,
@@ -134,6 +143,7 @@ fn parse(args: &[String]) -> Result<Job, String> {
         start_under: 3.0,
         stops: Vec::new(),
         stop_machine: 25.0,
+        stop_io: None,
         rests: Duration::from_hours(12),
         wait_at_most: None,
         runs_at_most: None,
@@ -158,6 +168,7 @@ fn parse(args: &[String]) -> Result<Job, String> {
             "--hours" => job.hours = Some(Hours::read(value)?),
             "--start-under" => job.start_under = number(value)?,
             "--stop-machine" => job.stop_machine = number(value)?,
+            "--stop-io" => job.stop_io = Some(number(value)?),
             "--rests" => job.rests = Duration::from_secs_f64(number(value)? * 3600.0),
             "--wait-at-most" => {
                 job.wait_at_most = Some(Duration::from_secs_f64(number(value)?));
@@ -264,6 +275,15 @@ fn run(job: &Job) -> Result<(), Failure> {
         .iter()
         .map(|(slice, bar)| (slice.clone(), pressures.slice_file(slice), *bar))
         .collect();
+    if job.stop_io.is_some() && pressure::read(&pressures.machine_io()).is_none() {
+        say(
+            job,
+            &format!(
+                "the machine has no io pressure to read at {}, so io can't stop the job",
+                pressures.machine_io().display()
+            ),
+        );
+    }
     for (slice, file, _) in &watched {
         if pressure::read(file).is_none() {
             say(
@@ -480,7 +500,8 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
         );
     }
 
-    let now = pressure::read(&Places::of_this_machine().machine()).unwrap_or_default();
+    let pressures = Places::of_this_machine();
+    let now = pressure::read(&pressures.machine()).unwrap_or_default();
     if now.avg60 >= job.start_under {
         say(
             job,
@@ -490,6 +511,19 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
             ),
         );
         return Ok(None);
+    }
+    if let Some(bar) = job.stop_io {
+        let io = pressure::read(&pressures.machine_io()).unwrap_or_default();
+        if io.avg60 >= bar {
+            say(
+                job,
+                &format!(
+                    "not started: io full avg60 is {:.2}%, not under {bar}%; a later try goes on",
+                    io.avg60
+                ),
+            );
+            return Ok(None);
+        }
     }
     Ok(Some((lock, now.avg60)))
 }
@@ -598,6 +632,13 @@ fn watch(
                 "memory full avg10 is {:.2}%, past {machine_bar}%",
                 machine.avg10
             ));
+        }
+        if let Some(bar) = job.stop_io {
+            let io = pressure::read(&pressures.machine_io()).unwrap_or_default();
+            let _ = write!(line, " io {:.2}", io.avg60);
+            if past.is_none() && io.avg60 > bar {
+                past = Some(format!("io full avg60 is {:.2}%, past {bar}%", io.avg60));
+            }
         }
         let paused = if sharing.is_paused() { " paused" } else { "" };
         let away_mark = if away { " away" } else { "" };
@@ -747,7 +788,14 @@ mod tests {
             job.stop_machine
         );
         assert_eq!(job.rests, Duration::from_hours(6));
+        assert_eq!(job.stop_io, None, "an io bar it wasn't given was taken");
         assert_eq!(job.command, args("git maintenance run"));
+        let io = parse(&args("run repack --stop-io 5 -- git gc")).unwrap();
+        assert_eq!(io.stop_io, Some(5.0), "--stop-io 5 wasn't taken as 5");
+        assert!(
+            parse(&args("run repack --stop-io lots -- git gc")).is_err(),
+            "an io bar of words was taken"
+        );
     }
 
     #[test]

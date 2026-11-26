@@ -57,6 +57,7 @@ onLinux {
             command = [ "true" ];
             waitsAtMost = 1800;
             runsAtMost = 5400;
+            stopIo = 5;
             # Well above the window and the wait, as its doc asks.
             longest = "3h";
           };
@@ -104,7 +105,7 @@ onLinux {
         );
     in
     holds "night-shift-runs-only-at-night"
-      "A night job is tried by day or caught up on after a night slept through, runs by day when a switch starts it, keeps hours its own tries didn't name, drops hours it named, takes hours that hold no minute, runs outside background.slice or ahead of the account's work, drops a limit it names or puts it on its watcher too, is restarted by a switch, doesn't stop for the apps', the desktop's or agents' slices, passes its command's % to systemd unescaped, waits for the turn unasked, fails its unit for a wait it was let, names a window of running it wasn't given, loses its unit's limit set beside that window, eases a bar while Joel is away though it was given none to ease, or an account declaring no job gets one."
+      "A night job is tried by day or caught up on after a night slept through, runs by day when a switch starts it, keeps hours its own tries didn't name, drops hours it named, takes hours that hold no minute, runs outside background.slice or ahead of the account's work, drops a limit it names or puts it on its watcher too, is restarted by a switch, doesn't stop for the apps', the desktop's or agents' slices, watches the disk unasked or not at the io bar it was given, passes its command's % to systemd unescaped, waits for the turn unasked, fails its unit for a wait it was let, names a window of running it wasn't given, loses its unit's limit set beside that window, eases a bar while Joel is away though it was given none to ease, or an account declaring no job gets one."
       (
         timer.OnCalendar == [
           "*-*-* 01:30/15"
@@ -138,6 +139,8 @@ onLinux {
         && !(says "--wait-at-most")
         && !(says "--runs-at-most")
         && pkgs.lib.hasInfix "--runs-at-most 5400 " (toString waits.ExecStart)
+        && pkgs.lib.hasInfix "--stop-io 5 " (toString waits.ExecStart)
+        && !(says "--stop-io")
         && waits.RuntimeMaxSec == "3h"
         && !(service ? SuccessExitStatus)
         && pkgs.lib.hasInfix "--wait-at-most 1800 " (toString waits.ExecStart)
