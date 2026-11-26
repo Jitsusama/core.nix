@@ -2842,7 +2842,7 @@ def test_emoji_says_how_many_it_found_past_those_it_answers(shell: Shell) -> Non
 
     def says_found(shown: Json) -> bool:
         heads.append(shown)
-        return shown["found"] != ""
+        return cast("str", shown["found"]) != ""
 
     shell.launcher_until(says_found)
     said, listed = cast("str", heads[-1]["found"]), int(heads[-1]["count"])
