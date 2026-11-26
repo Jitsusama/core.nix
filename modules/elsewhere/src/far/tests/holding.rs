@@ -525,11 +525,12 @@ fn a_link_at_the_copies_folder_after_the_finds_cuts_the_list_and_sorts_nothing_t
 }
 
 #[test]
-fn a_link_put_at_the_job_s_folder_in_its_copy_before_it_s_entered_leaves_it_untaken() {
+fn a_link_put_above_the_job_s_folder_in_its_copy_before_it_s_entered_leaves_it_untaken() {
     // A find of what isn't a file or a folder that, once it has looked,
-    // moves the job's folder in the copy aside and puts a link to it at
-    // its name, as a job of the quest may meanwhile: the copy stays in
-    // its place, so only where the cd landed tells.
+    // moves the folder above the job's in the copy aside and puts a link
+    // to it at its name, as a job of the quest may meanwhile: the copy
+    // stays in its place and the job's folder is no link, so only where
+    // the cd landed tells.
     let finding = refusing(
         "find",
         "*\" -type l -o -type p \"*",
@@ -537,16 +538,16 @@ fn a_link_put_at_the_job_s_folder_in_its_copy_before_it_s_entered_leaves_it_unta
          { mv \"$1/sub\" \"$HOME/aside\" && ln -s \"$HOME/aside\" \"$1/sub\"; }; exit $found",
     );
     let (code, err, home) = far_line_in(
-        Path::new("sub"),
+        Path::new("sub/deep"),
         Left::Whole,
-        &[("sub/x", "x")],
+        &[("sub/deep/x", "x")],
         "touch ran",
         &kind(""),
         None,
         &[(finding.0, finding.1.as_str())],
     );
     assert!(
-        home.join("aside").join("x").exists() && !home.join("aside").join("ran").exists(),
+        home.join("aside/deep/x").exists() && !home.join("aside/deep/ran").exists(),
         "the job ran through a link put at its folder in the copy ({code:?}): {err}"
     );
     assert!(
