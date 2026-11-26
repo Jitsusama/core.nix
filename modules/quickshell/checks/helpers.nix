@@ -24,9 +24,10 @@ let
         lib.filter (part: part != "" && part != ".") (lib.splitString "/" "${folder}/${path}")
       )
     );
-  # What a QML or JavaScript file imports of the shell's own, as it says.
-  importing =
-    file:
+  # What a QML or JavaScript file placed at file in the shell's folder
+  # imports of the shell's own, as its source says.
+  importingFrom =
+    source: file:
     lib.unique (
       lib.concatMap (
         line:
@@ -34,8 +35,10 @@ let
           named = builtins.match "[[:space:]]*[.]?import[[:space:]]+\"([^\"]+)\".*" line;
         in
         if named == null then [ ] else [ (under (dirOf file) (lib.head named)) ]
-      ) (lib.splitString "\n" (builtins.readFile (../. + "/${file}")))
+      ) (lib.splitString "\n" (builtins.readFile source))
     );
+  # What one of the shell's own files imports of the shell's own.
+  importing = file: importingFrom (../. + "/${file}") file;
   # Copies each file a check names into the folder it runs in, where the
   # shell's folder holds it, with everything it imports, once each. A file
   # whose imports aren't what imports.nix says, in whatever order its row
@@ -87,18 +90,14 @@ let
       '';
   copied = copiedWith imports;
   # The shell's files a program's step in the launcher is drawn from, as
-  # Applications.qml holds it, copied for the reader's, mpv's and Inkscape's
-  # checks. imports.nix sees only a file's import lines, so two kinds of
-  # file are named here as roots by hand: a type taken from its own folder
-  # or through `import qs`, as Applications.qml takes Provider and
-  # ReadyRows, and a program's own file takes Listed and Words; and a shell
-  # file a program's own file imports, as Reader.js does FileFacts.js, since
-  # those are copied apart. What each root imports comes with it, guarded.
-  programStep = copied [
-    "Copied.js"
+  # Applications.qml holds it, for the reader's, mpv's and Inkscape's
+  # checks. imports.nix sees only a file's import lines, so a type taken
+  # from its own folder or through `import qs` is named here by hand, as
+  # Applications.qml takes Provider and ReadyRows, and a program's own file
+  # takes Listed and Words. What each imports comes with it, guarded.
+  programRoots = [
     "Copied.qml"
     "Daemon.qml"
-    "FileFacts.js"
     "Files.qml"
     "Options.qml"
     "Words.qml"
@@ -109,6 +108,39 @@ let
     "launcher/Recents.qml"
     "launcher/words.json"
   ];
+  # Copies a program's step in the launcher: the roots, then the program's
+  # own files, by where the shell's folder holds each, with every shell file
+  # they import and what that imports, guarded as copied guards it, so an
+  # import added to Reader.js comes with it, as it does when the account's
+  # shell is made. An import the shell's folder doesn't hold, nor the
+  # program, fails the check instead, naming it. The table and the roots are
+  # given, so a check can give it others (core.nix's
+  # a-check-copies-what-each-file-imports).
+  programStepWith =
+    table: roots: own:
+    let
+      placed = lib.attrNames own;
+      imported = lib.unique (
+        lib.concatLists (lib.mapAttrsToList (file: source: importingFrom source file) own)
+      );
+      shells = lib.filter (file: !(lib.elem file placed)) imported;
+      strays = lib.filter (file: !(builtins.pathExists (../. + "/${file}"))) shells;
+      folders = lib.unique (lib.filter (folder: folder != ".") (map dirOf placed));
+    in
+    if strays == [ ] then
+      lib.concatStringsSep "\n" (
+        [ (copiedWith table (lib.unique (roots ++ shells))) ]
+        ++ lib.optional (folders != [ ]) "mkdir -p ${lib.concatStringsSep " " folders}"
+        ++ lib.mapAttrsToList (file: source: "cp ${source} ${file}") own
+      )
+    else
+      ''
+        echo "A program's own files import what modules/quickshell doesn't hold:" \
+          "${lib.concatStringsSep ", " strays}" \
+          "(each as the shell's folder would place it; give the check that file)" >&2
+        exit 1
+      '';
+  programStep = programStepWith imports programRoots;
   # Runs a test that times itself in Qt's engine, in a fresh process each
   # time, until one is fast enough. How fast the engine runs the same code
   # differs from one process to the next by as much as half, while a
@@ -657,7 +689,9 @@ in
   inherit
     copied
     copiedWith
+    programRoots
     programStep
+    programStepWith
     timedQml
     singleton
     qs

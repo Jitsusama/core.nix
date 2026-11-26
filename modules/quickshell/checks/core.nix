@@ -8,6 +8,7 @@
   account,
   copied,
   copiedWith,
+  programStepWith,
   graphical,
   launcherOnNiri,
   lib,
@@ -344,7 +345,9 @@ in
   # a row in another order copies the same; and a row left empty is refused,
   # naming its file. Each case takes its file from imports.nix, so an edit to
   # one file's imports moves a case rather than failing it. Today's rows are
-  # all sorted, so only this sees the order case break.
+  # all sorted, so only this sees the order case break. A program's own file
+  # importing that file brings what copying it does, and one importing a file
+  # the shell's folder doesn't hold is refused, naming it (programStepWith).
   a-check-copies-what-each-file-imports =
     let
       table = import ./imports.nix;
@@ -353,11 +356,15 @@ in
       entries = map (key: {
         inherit key;
       });
-      walked = lib.genericClosure {
-        startSet = entries [ root ];
-        operator = entry: entries (rowOf entry.key);
-      };
-      reached = map (entry: entry.key) walked;
+      reach =
+        file:
+        map (entry: entry.key) (
+          lib.genericClosure {
+            startSet = entries [ file ];
+            operator = entry: entries (rowOf entry.key);
+          }
+        );
+      reached = reach root;
       several = lib.filter (file: lib.length (rowOf file) > 1) reached;
       picked = lib.head several;
       withTurned = table // {
@@ -367,9 +374,24 @@ in
         ${picked} = [ ];
       };
       real = copiedWith table [ root ];
-      copyLines = lib.filter (lib.hasPrefix "cp ") (lib.splitString "\n" real);
-      uncopied = lib.filter (file: !(lib.any (lib.hasSuffix " ${file}") copyLines)) reached;
+      copyLines = script: lib.filter (lib.hasPrefix "cp ") (lib.splitString "\n" script);
+      uncopiedBy = script: lib.filter (file: !(lib.any (lib.hasSuffix " ${file}") (copyLines script)));
+      uncopied = uncopiedBy real reached;
       leftOut = lib.concatStringsSep ", " uncopied;
+      # A program's own file at the top of the shell's folder, importing one.
+      ownImporting = file: {
+        "Planted.js" = builtins.toFile "Planted.js" ".import \"${file}\" as Planted\n";
+      };
+      planted = programStepWith table [ ] (ownImporting picked);
+      unplanted = uncopiedBy planted ([ "Planted.js" ] ++ reach picked);
+      stray = "Planted-nowhere.js";
+      strayed = programStepWith table [ ] (ownImporting stray);
+      strayHeld = builtins.pathExists (../. + "/${stray}");
+      strayRefusal = "modules/quickshell doesn't hold";
+      strayRefused = lib.hasInfix strayRefusal strayed && lib.hasInfix stray strayed;
+      strayHeldSaid = "the shell's folder holds ${stray}; give this check another name";
+      plantedLeftOut = lib.concatStringsSep ", " unplanted;
+      unplantedSaid = "a program's file importing ${picked} left out ${plantedLeftOut}";
       refusal = "modules/quickshell/checks/imports.nix doesn't say";
       refused = file: script: lib.hasInfix refusal script && lib.hasInfix file script;
       sameTurned = copiedWith withTurned [ root ] == real;
@@ -382,7 +404,10 @@ in
         else
           lib.optional (uncopied != [ ]) "copying ${root} left out ${leftOut}"
           ++ lib.optional (!sameTurned) "${picked}'s row, reversed, copied otherwise"
-          ++ lib.optional (!emptiedRefused) "${picked}'s row, emptied, went unrefused";
+          ++ lib.optional (!emptiedRefused) "${picked}'s row, emptied, went unrefused"
+          ++ lib.optional (unplanted != [ ]) unplantedSaid
+          ++ lib.optional strayHeld strayHeldSaid
+          ++ lib.optional (!strayRefused) "a program's file importing ${stray} went unrefused";
     in
     pkgs.runCommandLocal "a-check-copies-what-each-file-imports" { } ''
       ${lib.concatMapStrings (failure: "echo ${lib.escapeShellArg failure} >&2\n") failures}
