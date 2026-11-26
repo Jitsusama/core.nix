@@ -314,7 +314,7 @@ left() {
     *)
       if [ -n "$holder" ]; then
         echo "$why, and $holder, so $folder stays in the home's tree until that quits"
-      elif [ -n "$writer" ]; then
+      elif [ -n "$writer" ] && [[ $why != *"$writer"* ]]; then
         echo "$why, and $writer, so $folder stays in the home's tree until that stops"
       else
         echo "$why, so $folder stays in the home's tree until that stops"
@@ -354,7 +354,12 @@ own() {
     # folder as it was, a walk says whether anything reached it since; a
     # run stopped as it looked is resolved here when nothing did.
     why=$(holding "$new")
-    [ -n "$why" ] || why=$(changed "$new" "$new.keep")
+    if [ -n "$why" ]; then
+      echo "✕ $folder is a subvolume, but the folder as it was, at $new, is held ($why)," \
+        "so it may yet be written in, and it's kept until a run finds it let go" >&2
+      return 1
+    fi
+    why=$(changed "$new" "$new.keep")
     if [ -n "$why" ]; then
       echo "✕ $folder is a subvolume, but the folder as it was, at $new, changed as it" \
         "moved ($why); once what's wanted is out of it, removing it and $new.keep" \
@@ -374,7 +379,8 @@ own() {
   new=$(making "$real")
   if [ -e "$new.keep" ]; then
     echo "✕ a copy with writes in it is kept at $new, so $folder stays as it is;" \
-      "once what's wanted is out of it, removing it and $new.keep lets it move" >&2
+      "once what's wanted is out of it, removing it and $new.keep lets it move as the" \
+      "account's manager next starts" >&2
     return 1
   fi
   beside=$(dirname -- "$real")
@@ -382,7 +388,8 @@ own() {
   aside=$(find "$beside" -maxdepth 1 -name "$name.split-*" -print -quit 2> /dev/null) || true
   if [ -n "$aside" ]; then
     echo "✕ what was written in $folder as it last moved is at $aside, so it stays as it" \
-      "is; once what's wanted is out of it, removing it lets the folder move" >&2
+      "is; once what's wanted is out of it, removing it lets the folder move as the" \
+      "account's manager next starts" >&2
     return 1
   fi
   why=$(running)
@@ -511,7 +518,7 @@ own() {
   fi
   rm -f -- "$new.keep"
   base=$(counted)
-  [ -z "$base" ] || rm -f -- "$base.copies" "$base.waits"
+  [ -z "$base" ] || rm -f -- "$base.copies" "$base.waits" "$base.idle"
   echo "$folder is a subvolume of its own now, the folder as it was kept at $aside"
 }
 
@@ -520,7 +527,7 @@ own() {
 # go, as its folder's move would find it, so Chrome's many processes are
 # waited for one at a time, though they mostly quit together.
 after_quit() {
-  local folder=$1 real inode why pid held state last='' waited='' base idle=0
+  local folder=$1 real inode why pid held state last='' waited='' base='' idle=0
   while :; do
     if [ ! -d "$folder" ] || [ -L "$folder" ]; then
       echo "$folder isn't a folder here, so there's nothing to wait for"
@@ -582,10 +589,16 @@ after_quit() {
   done
   # A holder the move saw and this never finds, as a program that opens
   # a file now and then, would have the two start each other without end,
-  # so a start of the move with nothing waited for is counted, and after
-  # three since the machine started, the move waits for the manager.
-  if [ -z "$waited" ] && [ -n "${XDG_RUNTIME_DIR:-}" ]; then
-    base="$XDG_RUNTIME_DIR/own-subvolumes/$move"
+  # so starts of the move with nothing waited for are counted, and after
+  # three in a row, the move waits for the manager. The count is kept
+  # under this unit's name, as home.nix gives it, so a move that lands
+  # clears it with the copies it counts, and a wait here clears it too.
+  if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+    base="$XDG_RUNTIME_DIR/own-subvolumes/${move%.service}-after-quit.service"
+  fi
+  if [ -n "$waited" ] && [ -n "$base" ]; then
+    rm -f -- "$base.idle"
+  elif [ -n "$base" ]; then
     if [ -f "$base.idle" ]; then
       idle=$(cat -- "$base.idle")
     fi
@@ -595,8 +608,7 @@ after_quit() {
     esac
     if [ "$idle" -ge 3 ]; then
       echo "nothing holds $folder as this looks, though its move found something" \
-        "$idle times since the machine started, so it waits for the account's manager" \
-        "next start"
+        "$idle times in a row, so it waits for the account's manager next start"
       return 0
     fi
     mkdir -p -- "${base%/*}" && echo $((idle + 1)) > "$base.idle"

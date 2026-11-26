@@ -276,7 +276,7 @@ def test_a_marked_copy_beside_a_subvolume_goes_only_once_nothing_reached_it(
     as_account(moved, restart, succeed=False)
     moved.succeed(f"test -e {HOME}/moved.subvolume-new.keep")
     told = said(moved, "moved")
-    assert "changed as it moved (/proc/" in told, f"the held run said: {told}"
+    assert "is held (/proc/" in told, f"the held run said: {told}"
     as_account(moved, "systemctl --user stop lingerer")
     as_account(moved, restart)
     moved.fail(f"test -e {HOME}/moved.subvolume-new")
@@ -292,6 +292,7 @@ def test_a_marked_copy_beside_a_subvolume_goes_only_once_nothing_reached_it(
         moved.succeed(f"grep -qx late {HOME}/moved.subvolume-new/file")
         moved.succeed(f"test -e {HOME}/moved.subvolume-new.keep")
     told = said(moved, "moved")
+    # The held run said it was held, so only these runs say what changed.
     assert "changed as it moved" in told, f"the run didn't say what changed: {told}"
     as_account(moved, "rm -r moved.subvolume-new moved.subvolume-new.keep")
     as_account(moved, restart)
