@@ -4811,7 +4811,7 @@
   the-sessions-kitty-is-asked-only-its-own-way = ''
     a session's window is asked of the sessions kitty over its socket, or of the unit's own kitty
     from before it listened, waiting up to 20 s for one starting again, and nothing opens with
-    neither
+    neither; and the packaged kitten says an unanswered launch in the words the script reads
   '';
   the-sessions-kitty-says-its-pid = ''
     the kitty every session's window is drawn by writes its pid beside its socket, which names
