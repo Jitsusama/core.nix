@@ -230,11 +230,13 @@ Item {
     // key as its answer, Return doing it and any other letting it go
     // (Confirm.answer), so none reaches the line while it stands.
     property bool confirming: false
-    // Whether the ask standing takes a key as its answer, by its name,
-    // as it answers it (Launcher.qml's answerAsk, by Confirm.answer): one
-    // pressed before the ask is ready is let go doing nothing.
-    property var answerTaken: key => true
-    signal answered(string key)
+    // Whether the ask standing takes a key as its answer, by its name and
+    // when it came, as it answers it (Launcher.qml's answerAsk, by
+    // Confirm.answer): one pressed before the ask is ready is let go doing
+    // nothing. Both are told the same time, read once as the key comes, so
+    // a key on the ask's ready edge can't be timed idle and still answer.
+    property var answerTaken: (key, at) => true
+    signal answered(string key, real at)
     // How soon after visual's operator the same key again is taken with
     // it (Operators.takenWith), as his Neovim's timeoutlen
     // (modules/keys/language.toml); a sequence begun never times out.
@@ -736,12 +738,13 @@ Item {
         // step below reads it as it stands here.
         const after = visualOperated;
         const read = QueryKeys.read(standing, key, mode, editsWords);
-        const operated = Operators.takenWith(after, key, Date.now(), wait);
+        const now = Date.now();
+        const operated = Operators.takenWith(after, key, now, wait);
         keyActed = KeyActs.acts(read, {
             alone: keyAlone,
             registering: takesRegister(event, key),
             answering: confirming,
-            answerTaken: confirming && answerTaken(key),
+            answerTaken: confirming && answerTaken(key, now),
             repeated: event.isAutoRepeat,
             operated,
             commands: QueryKeys.opensCommands(key, mode, input.text),
@@ -764,7 +767,7 @@ Item {
         if (confirming) {
             event.accepted = true;
             if (!event.isAutoRepeat)
-                prompt.answered(key);
+                prompt.answered(key, now);
             return;
         }
         // The operator pressed again just after visual's is taken with it;

@@ -8,7 +8,8 @@
 // the find's Tab going on to the next row is a move, Ctrl+Y acts only
 // where it leaves a place (fillLeaves),
 // gv takes back what there is and acts only then, an ask takes the
-// operator pressed again before the operator does, and a register's keys,
+// operator pressed again before the operator does and is asked and
+// answered at the one time the key came, and a register's keys,
 // a modifier alone and a letter typed act on nothing. A secret, which has
 // no modes, names Escape or Ctrl+C giving it up and says its Return, the
 // keys the launcher times there. It runs in Qt's test runner, which fails
@@ -342,6 +343,23 @@ Item {
             compare(answered.count, 2);
             compare(answered.signalArguments[1][0], "Return");
             verify(line.keyActed, "Return answering the ask");
+        }
+
+        // Whether the ask takes a key and its answer are read at one time,
+        // so a key on the ask's ready edge can't be timed idle and answer.
+        function test_anAskIsAskedAndAnsweredAtOneTime() {
+            toNormal();
+            line.confirming = true;
+            const asked = [];
+            line.answerTaken = (key, at) => {
+                asked.push(at);
+                return true;
+            };
+            keyClick(Qt.Key_Return);
+            compare(asked.length, 1, "the ask asked once");
+            compare(answered.count, 1);
+            verify(asked[0] > 0, "asked with when the key came");
+            compare(answered.signalArguments[0][1], asked[0], "answered at that time");
         }
 
         function test_anAskTakesTheOperatorAgainBeforeTheOperator() {
