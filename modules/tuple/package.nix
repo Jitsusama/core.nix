@@ -2,9 +2,9 @@
 # tuple-completes-in-zsh fails unless Tab offers each command core runs
 # against it, and each flag tuple-call and tuple-people pass as they
 # follow it. That shows they're there, not that they do as before, and no
-# check reads the arguments they take. This build calls new and share deprecated, which tuple-call
-# runs to open Joel's room and share his screen, so a later one may drop
-# them.
+# check reads the arguments they take. This build calls new and share
+# deprecated, which tuple-call runs to open Joel's room and share his
+# screen, so a later one may drop them.
 # New strings say a camera's or a video's colour space isn't handled, one
 # adding that it's converted as BT.601 limited; nobody has yet seen Tuple
 # say them. The log lines and stream keys tuple-call reads, the contacts'
