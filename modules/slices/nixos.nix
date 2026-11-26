@@ -529,11 +529,21 @@ in
     # it is, and warned of where it can't.
     environment.systemPackages = [ systemdRun ];
 
+    # What Joel's programs and the desktop swap out stays compressed in
+    # memory rather than going to disk, so a program he comes back to faults
+    # back from memory. On 2026-11-26, 22 hours after a boot, zswap had
+    # written 97% of what app.slice swapped on to the disk, and 97.5% of its
+    # swap-ins read the disk, against about a fifth for agents' sessions and
+    # for builds, which looks like zswap's shrinker reaching the pages idle
+    # longest first. Compressed, they take about a third of the memory, and
+    # nothing else is capped for it. The kernel reads the setting up the
+    # tree, so it holds for every program's scope inside.
     systemd.user.slices.session.sliceConfig = {
       CPUWeight = 1000;
       IOWeight = 1000;
       MemoryMin = session;
       MemoryLow = session;
+      MemoryZSwapWriteback = false;
     };
 
     # Ten times the weight of what sits beside it in the account, agents'
@@ -547,6 +557,7 @@ in
       CPUWeight = 1000;
       MemoryMin = apps;
       MemoryLow = appsSoft;
+      MemoryZSwapWriteback = false;
     };
 
     # Agents' sessions, pi in a window of kitty's each, beside the apps

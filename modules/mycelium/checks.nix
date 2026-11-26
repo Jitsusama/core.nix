@@ -1206,12 +1206,18 @@ in
 
   mycelium-runs-among-the-sessions =
     holds "mycelium-runs-among-the-sessions"
-      "A mycelium node runs outside agents.slice, where its wakeups preempt Joel's programs."
+      "A mycelium node runs outside agents.slice, where its wakeups preempt Joel's programs, or writes its swapped memory out to disk, where a wake waits to read it back."
       (
-        lib.all (node: (node.Service.Slice or null) == "agents.slice") [
-          bothLinux.mycelium
-          bothLinux.mycelium-other
-        ]
+        lib.all
+          (
+            node:
+            (node.Service.Slice or null) == "agents.slice"
+            && (node.Service.MemoryZSwapWriteback or true) == false
+          )
+          [
+            bothLinux.mycelium
+            bothLinux.mycelium-other
+          ]
       );
 
   mycelium-serves-the-harness-files =
