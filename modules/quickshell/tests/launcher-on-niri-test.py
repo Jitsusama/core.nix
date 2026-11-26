@@ -2645,6 +2645,12 @@ DRAWER_SWAPPED = re.compile(r"from its frame's start \((\d+) to its swap and (\d
 DRAWERS_SAID = re.compile(r"launcher: \d+ drawers? in \S+ presented a median \d+ ms from the key")
 
 
+# The first drawer line after Foot's drawer follows, which says how it came.
+FOOT_CAME = re.compile(
+    r"drawer follows program:foot[\s\S]*?(launcher: drawer for \"[^\n]* presented [^\n]*)"
+)
+
+
 def came_in_its_keys_frame(line: str) -> bool:
     """Say whether a drawer's line says it came in its key's frame, before the screen it names."""
     return line.rsplit("; on ", 1)[0].endswith("in the key's frame")
@@ -3114,14 +3120,22 @@ def taught(shell: Shell, makings: dict[str, list[int]]) -> Iterator[None]:
 
     def teach() -> None:
         before.append(path.read_text())
-        kept = cast("dict[str, Json]", json.loads(before[0] or "{}"))
+        # The shell writes the file off its thread as the launcher shuts, so a stop can land
+        # mid-write, and it reads what it couldn't finish as nothing (Makings.js); so does this.
+        try:
+            kept = cast("dict[str, Json]", json.loads(before[0] or "{}"))
+        except json.JSONDecodeError:
+            kept = {}
         path.write_text(json.dumps({**kept, **makings}))
 
     def put_back() -> None:
-        path.write_text(before[0])
+        if before:
+            path.write_text(before[0])
 
-    shell.restart(teach)
+    # Put back however the teaching ended, so a failed start leaves no kind taught for the
+    # cases after, and the shell is started again for them.
     try:
+        shell.restart(teach)
         yield
     finally:
         shell.restart(put_back)
@@ -5027,8 +5041,9 @@ def test_a_drawer_resting_for_the_letters_names_the_row_selected(
     Calendar for the whole word (VKCF3Z, c842849d). Typing a program's name from home moves
     the selection from Now, whose drawer is out, to the program, whose drawer never comes in its
     letter's frame, and before that drawer follows the drawer out must say the program's name.
-    One cheap enough to follow its letter rather than rest names it by being made, in the
-    frame after the letter's, so the first showing after it is judged instead. A program's
+    One cheap enough to follow its letter rather than rest names it by being made, so the first
+    showing after it is judged instead, and it never rests: in the frame after its letter, or
+    in its key's frame once a loaded builder has spaced the letters past the rest. A program's
     makes in 4 to 14 ms here, either side of the line by the builder's load, so home's programs
     are taught each way in turn.
     """
@@ -5040,18 +5055,19 @@ def test_a_drawer_resting_for_the_letters_names_the_row_selected(
 
     with taught(shell, {"home program": CHEAP if cheap else DEAR}):
         said = typed_from_home(shell, "foot", footed)
-        # How each drawer came (in its key's frame, the frame after its letter or after
-        # resting) is said only in the shell's log, so a failure quotes it.
-        came = [
-            line
-            for line in said_once(shell, marks[0], DRAWER_SAID).splitlines()
-            if DRAWER_SAID.search(line)
-        ]
+        # How Foot's drawer came (in its key's frame, the frame after its letter or after
+        # resting) is said only in the shell's log, in the first drawer line after it follows.
+        log = said_once(shell, marks[0], FOOT_CAME)
+        came = one.group(1) if (one := FOOT_CAME.search(log)) else ""
     follow = said.index("drawer follows program:foot")
+    # Taught dear, it's never judged cheap after its letter. Taught cheap, it's said cheap only
+    # while letters still come, which a loaded builder's spacing can end first, joining its
+    # key's frame unsaid, so it's judged by never resting for them (#6737's council, 2026-11-26).
     judged_cheap = f"{CHEAP_AFTER_LETTER}program:foot" in said[:follow]
-    assert judged_cheap == cheap, (
+    rested = "after resting" in came
+    assert (bool(came) and not rested) if cheap else not judged_cheap, (
         f"Foot's drawer, taught {'cheap' if cheap else 'dear'}, was judged otherwise: "
-        f"{drawer_trace(said)}; {came}"
+        f"{drawer_trace(said)}; came {came!r}"
     )
     judged = said[follow:] if cheap else said[:follow]
     shown = [json.loads(one[len("showing ") :]) for one in judged if one.startswith("showing ")]
