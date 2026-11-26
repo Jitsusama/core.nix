@@ -2354,16 +2354,9 @@ Singleton {
     // whoever saw it leave, since a reopen notes one minutes after.
     property var awayFrom: ({})
     function noteAway(away, id) {
-        if (!away || id === null || id === undefined)
-            return;
-        // Own keys alone: a place kept on a prototype's name is noted too.
-        const kept = Object.keys(awayFrom).includes(away.screen) ? awayFrom[away.screen] : [];
-        if (kept.some(one => one.id === id))
-            return;
-        const next = Object.assign({}, awayFrom);
-        next[away.screen] = kept.concat([{ id, workspace: away.workspace, output: away.output,
-            others: away.others ?? {} }]);
-        awayFrom = next;
+        const next = Reopening.notedAway(awayFrom, away, id);
+        if (next !== null)
+            awayFrom = next;
     }
     // Each workspace's screen and number as last seen with that screen
     // connected, by niri's id. A screen going, as at an undock, sends its

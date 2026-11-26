@@ -75,7 +75,7 @@ function awayOf(at, output, moment, screens) {
     }
     const said = Object.keys(screens).filter(name => screens[name]);
     const lefts = twinsOf(at, moment).filter(one => !said.includes(one));
-    const heard = Object.assign({}, screens, ...lefts.map(one => ({ [one]: at.screen })));
+    const heard = byName(screens, ...lefts.map(one => ({ [one]: at.screen })));
     const others = othersAt(at.output, said, lefts, heard);
     return { screen: at.screen || at.output, workspace: at.workspace, output: at.output, others };
 }
@@ -107,7 +107,7 @@ function placed(places, screens, inUse, moments) {
     }
     const goneScreens = [...new Set(found.map(one => one?.gone))]
         .filter(gone => gone !== undefined).sort();
-    const after = {};
+    const after = byName();
     for (const gone of goneScreens) {
         after[gone] = last;
         for (const one of found) {
@@ -146,21 +146,23 @@ function connected(screens, workspaces) {
         .reduce((there, name) => Object.assign(there, { [name]: screens[name] ?? "" }), {});
 }
 
-// The moves that take workspaces given in place of a gone screen to it once
-// it's connected again. `away` holds, by each screen's description (or its
-// connector, for a place kept before screens were named so), the workspaces
-// given in its place, by niri's id, each with the number it was kept at
-// there, the connector it left (`output`), if known, and the other screens
-// as it left (`others`, of othersAt). Each decides on its own, by wayBack,
-// lowest kept number first, and the moves go so; their order there is the
-// windows daemon's to put back. One gone already is dropped; one on its
-// screen already is marked (`there`) and left. A twin, a sibling that was
-// another screen as one left or the other way, never takes the other's
-// connector or one given it, and `waiting` is `away` with those still
-// waiting, each knowing those as another screen's for later calls.
+// `maps` merged with no prototype, so a name from data, even __proto__, is a key like any other.
+function byName(...maps) {
+    return Object.assign(Object.create(null), ...maps);
+}
+
+// The moves that take workspaces given in place of a gone screen to it once it's connected again.
+// `away` holds, by each screen's description (or its connector, for a place kept before screens
+// were named so), the workspaces given in its place, by niri's id, each with the number it was
+// kept at there, the connector it left (`output`), if known, and the other screens as it left
+// (`others`, of othersAt). Each decides on its own, by wayBack, lowest kept number first, and the
+// moves go so; their order there is the windows daemon's to put back. One gone already is dropped;
+// one on its screen already is marked (`there`) and left. A twin, a sibling that was another
+// screen as one left or the other way, never takes the other's connector or one given it, and
+// `waiting` is `away` with those still waiting, each knowing those as another screen's for later.
 function homeward(away, screens, workspaces) {
     const moves = [];
-    const waiting = {};
+    const waiting = byName();
     const there = connected(screens, workspaces);
     for (const screen of Object.keys(away ?? {}).sort()) {
         const given = [];
@@ -174,7 +176,7 @@ function homeward(away, screens, workspaces) {
                 .concat(live.filter(was => was !== one && was.output && twins(one, was)).map(was => was.output)))];
             const output = wayBack(one, screen, there, claimed);
             if (output === null) {
-                const others = Object.assign({}, one.others, ...claimed.map(name => ({ [name]: screen })));
+                const others = byName(one.others, ...claimed.map(name => ({ [name]: screen })));
                 held.push(claimed.length > 0 ? Object.assign({}, one, { others }) : one);
                 continue;
             }
@@ -189,17 +191,15 @@ function homeward(away, screens, workspaces) {
     return { moves, waiting };
 }
 
-// Where a workspace noted away from `screen` goes now, of `screens` by
-// connector, or null while it waits. The connector it left, once that's the
-// screen again, is home. Else any screen alike is, but one that was another
-// screen alike it as it left, or one not heard yet then, which may have
-// been: two monitors of one model without serials, or a VM's two, describe
-// themselves the same, and taking the one it was sent to for home dropped
-// its note before the one it left came back (vm-screens-keep-places,
-// 2026-11-18). `claimed` are those taken just now by a sibling that was
-// another screen as it left, so two alike back on new connectors take one
-// each. Where it sits now doesn't count, so one Joel moves while it waits
-// stays where he put it. One noted for no screen ("") has none to go to.
+// Where a workspace noted away from `screen` goes now, of `screens` by connector, or null while it
+// waits. The connector it left, once that's the screen again, is home. Else any screen alike is,
+// but one that was another screen alike it as it left, or one not heard yet then, which may have
+// been: two monitors of one model without serials, or a VM's two, describe themselves the same,
+// and taking the one it was sent to for home dropped its note before the one it left came back
+// (vm-screens-keep-places, 2026-11-18). `claimed` are those taken just now by a sibling that was
+// another screen as it left, so two alike back on new connectors take one each. Where it sits now
+// doesn't count, so one Joel moves while it waits stays where he put it. One noted for no screen
+// ("") has none to go to.
 function wayBack(one, screen, screens, claimed) {
     const alike = Object.keys(screens ?? {})
         .filter(name => screen !== "" && (screens[name] === screen || name === screen))
@@ -216,7 +216,7 @@ function wayBack(one, screen, screens, claimed) {
 // descriptions of them, "" for one not heard yet: those connected
 // (`outputs`) and those gone in the same moment (`lefts`), each once.
 function othersAt(left, outputs, lefts, screens) {
-    const others = {};
+    const others = byName();
     for (const name of outputs.concat(lefts)) {
         if (name !== left && !Object.keys(others).includes(name)) {
             others[name] = screens?.[name] ?? "";

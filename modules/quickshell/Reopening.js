@@ -262,6 +262,24 @@ function keptBack(at, moment, screens, given, inUse) {
     return { kept, gives: { at, output: givenOn(at.screen, kept, screens) } };
 }
 
+// The workspaces noted away (Sessions.qml's awayFrom, by screen) once workspace `id` is noted
+// away as `away` (a place's, of Places.js's awayOf) says, or null when there's nothing to note:
+// no note, no id, or that id noted from that screen already. In a map with no prototype
+// (Places.js's byName), so a place kept on a prototype's name, even __proto__, is noted as any.
+function notedAway(awayFrom, away, id) {
+    if (!away || id === null || id === undefined) {
+        return null;
+    }
+    const next = Places.byName(awayFrom);
+    const kept = next[away.screen] ?? [];
+    if (kept.some(one => one.id === id)) {
+        return null;
+    }
+    next[away.screen] = kept.concat([{ id, workspace: away.workspace, output: away.output,
+        others: away.others ?? {} }]);
+    return next;
+}
+
 // Reopen Them All's queue with `more` joined at its end, but for each one
 // it holds already or has `begun`, by id: an orchestrator handing over its
 // own sessions as it comes back, while the queue still holds them, would
