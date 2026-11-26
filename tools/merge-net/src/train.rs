@@ -554,6 +554,7 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                 continue;
             }
         }
+        right_of_way::landing_begins(&root, began);
         let hub = GitHub { slug: slug.clone() };
         let landing = land(
             &checkout,

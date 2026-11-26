@@ -21,7 +21,9 @@
 //! `train/runs` says from when it began, and for `RIGHT_OF_WAY` of the
 //! run at most: a change boarding a red's search could fall for a red not
 //! its own, and a run that hangs lets changes merge alone again once that
-//! time is up. Each run begins its time afresh, so a train that keeps
+//! time is up. A run that passed holds main through its landing too,
+//! however long the run took and whether or not it was clear, as `train/runs`
+//! then says it lands. Each run begins its time afresh, so a train that keeps
 //! running clear holds main for as long as it keeps running; that's what
 //! keeps main still under it, since a miss happens only when main moves.
 //! Beside either, a change still merges alone when the train can't take
@@ -194,23 +196,36 @@ pub fn run_begins(root: &Path, began: u64) {
     let _ = crate::whole::write(&runs_file(root), &format!("{began}\n"));
 }
 
-/// Say that the train under `root` runs nothing clear.
+/// Say that the train under `root`, its run begun at `began`, lands it,
+/// whole, whether or not the run was clear: a change merged alone between
+/// the train's merges leaves main a tree the train never tested, and on
+/// 25 November that reverted all three of a run's merges. A landing is
+/// held however long the run took before it, since a run past
+/// `RIGHT_OF_WAY` lands as surely as a quick one; a train that was killed
+/// holds nothing, as `why` asks whether its unit is going.
+pub fn landing_begins(root: &Path, began: u64) {
+    let _ = crate::whole::write(&runs_file(root), &format!("{began} {LANDS}\n"));
+}
+
+/// What `train/runs` adds after a run's start while the run lands.
+const LANDS: &str = "lands";
+
+/// Say that the train under `root` runs nothing clear, and lands nothing.
 pub fn run_ends(root: &Path) {
     let _ = fs::remove_file(runs_file(root));
 }
 
 /// Since when the train under `root` has run a clear candidate, at `now`,
-/// if it began less than `RIGHT_OF_WAY` ago: one said to begin after
-/// `now` isn't running, as for the right of way.
+/// if it began less than `RIGHT_OF_WAY` ago or lands it: one said to
+/// begin after `now` isn't running, as for the right of way.
 #[must_use]
 pub fn runs(root: &Path, now: u64) -> Option<u64> {
-    let began: u64 = fs::read_to_string(runs_file(root))
-        .ok()?
-        .trim()
-        .parse()
-        .ok()?;
+    let said = fs::read_to_string(runs_file(root)).ok()?;
+    let mut words = said.split_whitespace();
+    let began: u64 = words.next()?.parse().ok()?;
+    let lands = words.next() == Some(LANDS);
     let running = now.checked_sub(began)?;
-    (running < RIGHT_OF_WAY).then_some(began)
+    (lands || running < RIGHT_OF_WAY).then_some(began)
 }
 
 /// Since when the train under `root` has held the right of way, at `now`,
@@ -381,6 +396,46 @@ mod tests {
             Some(Yields::Runs(18)),
             "a change would merge alone beside a clear run with riders, once the right of way \
              ran out"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_landing_holds_main_however_long_its_run_took() {
+        // A run past its time still lands, and a change merged alone
+        // between its merges leaves main a tree nobody tested.
+        let root = root("lands");
+        let now = 100 + RIGHT_OF_WAY + 600;
+        landing_begins(&root, 100);
+        aboard(&root, 3);
+        assert_eq!(
+            why(&root, now, true),
+            Some(Yields::Runs(3)),
+            "a change would merge alone beside a landing whose run outlasted the right of way"
+        );
+        assert_eq!(
+            why(&root, now, false),
+            None,
+            "a landing marked by a train that was killed held main"
+        );
+        run_ends(&root);
+        assert_eq!(
+            why(&root, now, true),
+            None,
+            "a landing that ended still held main"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_run_past_its_time_that_isnt_landing_holds_main_no_longer() {
+        let root = root("past");
+        run_begins(&root, 100);
+        aboard(&root, 3);
+        assert_eq!(
+            why(&root, 100 + RIGHT_OF_WAY, true),
+            None,
+            "a clear run that ran out its time, not landing, still held main"
         );
         let _ = fs::remove_dir_all(&root);
     }
