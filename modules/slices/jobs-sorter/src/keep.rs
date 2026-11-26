@@ -279,7 +279,8 @@ impl Keeping {
     /// the user manager's runtime properties, so they outlive it, and a
     /// sorter that took up none would fit its first looks as though nothing
     /// kept them. Each is changed, as any kept window is, once what it holds
-    /// wants another floor.
+    /// wants another floor: one that holds no pi is given back, whoever set
+    /// its floor at that height.
     pub fn left(
         scopes: impl IntoIterator<Item = std::path::PathBuf>,
         floor: impl Fn(&Path) -> Option<u64>,
@@ -302,8 +303,8 @@ impl Keeping {
     }
 
     /// The windows to change, each with its floor, from each window's unit
-    /// and the floor it wants. One never kept and holding none is left as
-    /// it is.
+    /// and the floor it wants. One not kept, nor taken up as kept by
+    /// [`Keeping::left`], and holding none is left as it is.
     pub fn changes(&self, windows: &[(String, Floor)]) -> Vec<(String, Floor)> {
         windows
             .iter()

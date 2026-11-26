@@ -1992,8 +1992,8 @@ impl Fitting {
             .map(|(name, claim)| {
                 let scope = Path::new(slice).join(name);
                 // A kept window nothing holds claims within the cap no more than the floor
-                // keep.rs set it, and only while the cap has room for it, so what it claims past
-                // the cap is that floor once the cap is full, or something raising its floor.
+                // keep.rs set it, and no more than the cap has left, so what it claims past the
+                // cap is the rest of that floor once the cap fills, or something raising it.
                 // A held one is bounded by a window's floor too, so what it claims past the
                 // cap is the same: the cap full, or something raising its floor.
                 let whose = if self.floored.held.contains(&scope) {
@@ -2066,10 +2066,12 @@ fn claims(
     // peaked at.
     //
     // Within what keep.rs keeps, an orchestrator's window, kept at a gigabyte and oomd's avoid,
-    // comes before a plain pi's half gigabyte, so the windows Joel most leans on keep theirs.
-    // Each claims no more than the floor keep.rs set it (Floored::bound).
+    // comes before a plain pi's half gigabyte. Each claims no more than the floor keep.rs set
+    // it (Floored::bound).
     //
-    // The order only decides how far the units' floors are trimmed. The windows keep the
+    // The order decides only which windows claim within the cap and which past it, where
+    // Fitting::overran names them: the units' floors are trimmed by the cap or by what the
+    // windows claim, whichever is less, in any order. The windows keep the
     // floors they were set, so once the children together are protected past the slice's own
     // floor, the kernel shares that floor among them by their protected usage, whatever this
     // order says. Fitting::overran says when what the others claim passes what the units Joel
