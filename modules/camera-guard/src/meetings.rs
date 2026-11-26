@@ -8,7 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::time::Duration;
@@ -20,6 +20,13 @@ pub const AHEAD_MS: u64 = 15 * 60 * 1000;
 
 /// How long the daemon is given to answer.
 const ANSWER: Duration = Duration::from_secs(10);
+
+/// The longest answer read, about two hundred times the 17.5 kB the
+/// daemon gave for 13 meetings on 25 Nov. The guard runs as root, outside
+/// the agents' memory limits, and anything of the account's could answer on
+/// its socket, so an endless line ends the ask rather than filling memory.
+/// What it parses into is several times this, but bounded as well.
+const LONGEST: u64 = 4 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Meeting {
@@ -87,9 +94,9 @@ pub fn near(meetings: &[Meeting], now: u64) -> Option<&Meeting> {
 /// # Errors
 ///
 /// The socket can't be reached, a read or write waits past ten seconds,
-/// or its answer isn't one line of JSON. Only each read and write has that
-/// bound, not the connect or the whole answer, so its caller bounds the
-/// ask (main.rs's watch).
+/// or its answer isn't one line of JSON within `LONGEST` bytes. Only each
+/// read and write has the ten seconds' bound, not the connect or the whole
+/// answer, so its caller bounds the ask (main.rs's watch).
 pub fn ask(socket: &Path) -> Result<Value, String> {
     let seen = |error: std::io::Error| format!("{}: {error}", socket.display());
     let mut stream = UnixStream::connect(socket).map_err(seen)?;
@@ -98,9 +105,19 @@ pub fn ask(socket: &Path) -> Result<Value, String> {
     stream
         .write_all(b"{\"id\":1,\"ask\":\"list\",\"kind\":\"meeting\"}\n")
         .map_err(seen)?;
-    let mut line = String::new();
-    BufReader::new(stream).read_line(&mut line).map_err(seen)?;
-    serde_json::from_str(&line).map_err(|error| format!("{}: {error}", socket.display()))
+    // Read as bytes, so an answer cut at the limit inside a character is
+    // still told as too long rather than as broken text.
+    let mut line = Vec::new();
+    BufReader::new(stream.take(LONGEST))
+        .read_until(b'\n', &mut line)
+        .map_err(seen)?;
+    if line.last() != Some(&b'\n') && u64::try_from(line.len()).unwrap_or(u64::MAX) >= LONGEST {
+        return Err(format!(
+            "{}: the answer ran past {LONGEST} bytes",
+            socket.display()
+        ));
+    }
+    serde_json::from_slice(&line).map_err(|error| format!("{}: {error}", socket.display()))
 }
 
 /// The meetings kept at `file` by an earlier run, none if it has none.
