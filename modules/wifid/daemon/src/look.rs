@@ -19,8 +19,11 @@
 //!
 //! A look begun may never be said to end: wpa_supplicant drops one whose
 //! random address it can't set without a word (`wpas_trigger_scan_cb`).
-//! So a card waits on a look `LOOK_AT_MOST`, and a point's next warning
-//! after that is heeded afresh.
+//! So a card looks for what one warning names `LOOK_AT_MOST`, counted
+//! from that warning's first look through every look a newer ask has it
+//! take again, and is let go once that's past (`Looks::lapsed`), as it is
+//! once a look hears none of the points named. A point warning anew each
+//! time over a channel not yet looked at can't keep it looking longer.
 
 use std::collections::HashMap;
 
@@ -102,13 +105,18 @@ pub enum Ended {
     /// It's no longer on the point that asked, so what that point asked
     /// is past.
     Moved(Option<String>),
-    /// Its look is over, so the request is heeded again, this far looked.
-    Heed(Request, Looked),
+    /// It looked `LOOK_AT_MOST` without an end said in time, so it's let
+    /// go, as `Looks::lapsed` lets go of one whose end never comes.
+    Lapsed,
+    /// Its look is over, so the request is heeded again, this far looked,
+    /// and when the card first looked for what it names.
+    Heed(Request, Looked, Instant),
 }
 
 impl Looks {
     /// Has a card on `from` wait on its look for what `request` names,
-    /// begun by wpa_supplicant's answer numbered `after`, at `since`.
+    /// begun by wpa_supplicant's answer numbered `after`, `since` it
+    /// first looked for what that warning names.
     pub fn wait(
         &mut self,
         card: &str,
@@ -154,7 +162,7 @@ impl Looks {
             self.0.remove(card);
             return Again::Fresh;
         }
-        if now.saturating_duration_since(waiting.since) >= LOOK_AT_MOST {
+        if waiting.lapsed(now) {
             self.0.remove(card);
             return Again::Lapsed;
         }
@@ -178,16 +186,33 @@ impl Looks {
         Again::Taken
     }
 
-    /// Takes the end of a card's look, as wpa_supplicant says one ended:
-    /// the number of its signal, the point the card is on now, and whether
-    /// the look that ended `succeeded`. A signal numbered before the
-    /// answer that began the card's look ended another; the number wraps
-    /// only past four billion messages.
-    pub fn ended(&mut self, card: &str, serial: u32, on: Option<&str>, succeeded: bool) -> Ended {
-        match self.0.get(card) {
+    /// Takes the end of a card's look, as wpa_supplicant says one ended
+    /// at `now`: the number of its signal, the point the card is on now,
+    /// and whether the look that ended `succeeded`. A signal numbered
+    /// before the answer that began the card's look ended another; the
+    /// number wraps only past four billion messages. One said after the
+    /// card looked `LOOK_AT_MOST` is too late to heed what was asked.
+    pub fn ended(
+        &mut self,
+        card: &str,
+        (serial, now): (u32, Instant),
+        on: Option<&str>,
+        succeeded: bool,
+    ) -> Ended {
+        let lapsed = match self.0.get(card) {
             None => return Ended::Unwaited,
-            Some(waiting) if serial <= waiting.after => return Ended::Earlier,
-            Some(_) => {}
+            Some(waiting) => waiting.lapsed(now),
+        };
+        if lapsed {
+            self.0.remove(card);
+            return Ended::Lapsed;
+        }
+        if self
+            .0
+            .get(card)
+            .is_some_and(|waiting| serial <= waiting.after)
+        {
+            return Ended::Earlier;
         }
         let Some(waiting) = self.0.remove(card) else {
             return Ended::Unwaited;
@@ -199,7 +224,33 @@ impl Looks {
             Looked::Done if !succeeded => Looked::Failed,
             looked => looked,
         };
-        Ended::Heed(waiting.request, looked)
+        Ended::Heed(waiting.request, looked, waiting.since)
+    }
+
+    /// When the next card to wait on a look has looked `LOOK_AT_MOST`, if
+    /// any waits.
+    pub fn due(&self) -> Option<Instant> {
+        self.0
+            .values()
+            .map(|waiting| waiting.since + LOOK_AT_MOST)
+            .min()
+    }
+
+    /// Takes back every card that has looked `LOOK_AT_MOST` by `now` with
+    /// no end of its look said, for each to be let go: held to the point
+    /// that warned it, it would otherwise wait there until it's dropped,
+    /// the journal saying nothing of why.
+    pub fn lapsed(&mut self, now: Instant) -> Vec<String> {
+        let lapsed: Vec<String> = self
+            .0
+            .iter()
+            .filter(|(_, waiting)| waiting.lapsed(now))
+            .map(|(card, _)| card.clone())
+            .collect();
+        for card in &lapsed {
+            self.0.remove(card);
+        }
+        lapsed
     }
 
     /// Forgets a card's look, as the card came off its network or went.
@@ -213,6 +264,14 @@ impl Looks {
     /// said before the card's own.
     pub fn clear(&mut self) {
         self.0.clear();
+    }
+}
+
+impl Waiting {
+    /// Whether the card has looked for what its warning names as long as
+    /// it may by `now`.
+    fn lapsed(&self, now: Instant) -> bool {
+        now.saturating_duration_since(self.since) >= LOOK_AT_MOST
     }
 }
 
@@ -282,42 +341,54 @@ mod tests {
         looks.asked_again("wlan2", request, Some(ON), false, soon())
     }
 
+    /// A look of the card's ending a second into its own, by a signal
+    /// numbered `serial`, as the card is `on` that point.
+    fn end(looks: &mut Looks, serial: u32, on: &str, succeeded: bool) -> Ended {
+        looks.ended("wlan2", (serial, soon()), Some(on), succeeded)
+    }
+
+    /// What a look ending a second into the card's own heeds, of a card
+    /// that first looked at `start`.
+    fn heeds(request: Request, looked: Looked) -> Ended {
+        Ended::Heed(request, looked, start())
+    }
+
     #[test]
     fn a_look_s_end_said_before_the_card_s_own_began_is_another_s() {
         let request = warning(NEAR);
         let mut looks = waiting(&request, Looked::Done);
         assert_eq!(
-            looks.ended("wlan2", 9, Some(ON), true),
+            end(&mut looks, 9, ON, true),
             Ended::Earlier,
             "a look that ended as the card asked for its own is said before the answer",
         );
         assert_eq!(
-            looks.ended("wlan2", 10, Some(ON), true),
+            end(&mut looks, 10, ON, true),
             Ended::Earlier,
             "nor is the answer itself the look's end",
         );
         assert!(looks.waits("wlan2"), "the card still waits on its own");
         assert_eq!(
-            looks.ended("wlan2", 11, Some(ON), true),
-            Ended::Heed(request, Looked::Done),
+            end(&mut looks, 11, ON, true),
+            heeds(request, Looked::Done),
             "its own look's end has the request heeded again",
         );
         assert!(!looks.waits("wlan2"), "and it waits no longer");
-        assert_eq!(looks.ended("wlan2", 12, Some(ON), true), Ended::Unwaited);
+        assert_eq!(end(&mut looks, 12, ON, true), Ended::Unwaited);
     }
 
     #[test]
     fn a_look_that_failed_is_said_so_and_a_stopped_one_looks_again() {
         let request = warning(NEAR);
         assert_eq!(
-            waiting(&request, Looked::Done).ended("wlan2", 11, Some(ON), false),
-            Ended::Heed(request.clone(), Looked::Failed),
+            end(&mut waiting(&request, Looked::Done), 11, ON, false),
+            heeds(request.clone(), Looked::Failed),
             "a look that failed says nothing of whether the points are there",
         );
         assert!(Looked::Failed.over(), "but it was the card's one look");
         assert_eq!(
-            waiting(&request, Looked::Stopped).ended("wlan2", 11, Some(ON), false),
-            Ended::Heed(request, Looked::Stopped),
+            end(&mut waiting(&request, Looked::Stopped), 11, ON, false),
+            heeds(request, Looked::Stopped),
             "the stopped look ending, however, is the card's turn to look",
         );
         assert!(
@@ -331,7 +402,7 @@ mod tests {
         let request = warning(NEAR);
         let mut looks = waiting(&request, Looked::Done);
         assert_eq!(
-            looks.ended("wlan2", 11, Some(FAR), true),
+            end(&mut looks, 11, FAR, true),
             Ended::Moved(Some(ON.to_owned())),
             "a card moved by its chooser mid-look isn't the one that was warned",
         );
@@ -339,7 +410,7 @@ mod tests {
         let mut looks = waiting(&request, Looked::Done);
         assert!(
             matches!(
-                looks.ended("wlan2", 11, Some(&ON.to_uppercase()), true),
+                end(&mut looks, 11, &ON.to_uppercase(), true),
                 Ended::Heed(..)
             ),
             "its own point however written is the one it was on"
@@ -356,8 +427,8 @@ mod tests {
         let mut looks = waiting(&first, Looked::Done);
         assert_eq!(again(&mut looks, &plain), Again::Kept);
         assert_eq!(
-            looks.ended("wlan2", 11, Some(ON), true),
-            Ended::Heed(first.clone(), Looked::Done),
+            end(&mut looks, 11, ON, true),
+            heeds(first.clone(), Looked::Done),
             "a plain ask between warnings doesn't keep a warned card on a point that drops it",
         );
 
@@ -368,8 +439,8 @@ mod tests {
         let mut looks = waiting(&first, Looked::Done);
         assert_eq!(again(&mut looks, &sooner), Again::Taken);
         assert_eq!(
-            looks.ended("wlan2", 11, Some(ON), true),
-            Ended::Heed(sooner, Looked::Done),
+            end(&mut looks, 11, ON, true),
+            heeds(sooner, Looked::Done),
             "a warning said again over the channels looked is heeded with that look",
         );
 
@@ -378,8 +449,8 @@ mod tests {
         let mut looks = waiting(&first, Looked::Done);
         assert_eq!(again(&mut looks, &revised), Again::Taken);
         assert_eq!(
-            looks.ended("wlan2", 11, Some(ON), true),
-            Ended::Heed(revised, Looked::Stopped),
+            end(&mut looks, 11, ON, true),
+            heeds(revised, Looked::Stopped),
             "a point named on a channel the look didn't cover is looked for",
         );
     }
@@ -447,10 +518,64 @@ mod tests {
         let mut looks = waiting(&request, Looked::Done);
         looks.clear();
         assert_eq!(
-            looks.ended("wlan2", 3, Some(ON), true),
+            end(&mut looks, 3, ON, true),
             Ended::Unwaited,
             "a new wpa_supplicant's first ends were taken for ones before the card's look",
         );
         assert_eq!(again(&mut looks, &request), Again::Fresh);
+    }
+
+    #[test]
+    fn a_look_whose_end_never_comes_lets_the_card_go_in_time() {
+        let request = warning(NEAR);
+        let mut looks = waiting(&request, Looked::Done);
+        let lapsed = start() + LOOK_AT_MOST;
+        assert_eq!(looks.due(), Some(lapsed), "the look was never timed");
+        assert!(
+            looks.lapsed(lapsed - Duration::from_millis(1)).is_empty(),
+            "a card was let go before it looked as long as it may"
+        );
+        assert_eq!(
+            looks.lapsed(lapsed),
+            vec!["wlan2".to_owned()],
+            "a card held to the point that warned it waited there to be dropped",
+        );
+        assert_eq!(looks.due(), None, "and nothing more is timed");
+
+        let mut looks = waiting(&request, Looked::Done);
+        assert_eq!(
+            looks.ended("wlan2", (11, lapsed), Some(ON), true),
+            Ended::Lapsed,
+            "anyone's look ending long after heeded a warning hours old",
+        );
+        assert!(!looks.waits("wlan2"), "and the look is past");
+    }
+
+    #[test]
+    fn a_point_warning_anew_over_new_channels_cant_keep_the_card_looking() {
+        let mut asked = warning(NEAR);
+        let mut looks = waiting(&asked, Looked::Done);
+        let mut now = start();
+        for (serial, frequency) in (11..).step_by(2).zip([5180, 2412, 5180, 2412]) {
+            now += Duration::from_secs(3);
+            asked.candidates[0].frequency = Some(frequency);
+            assert_eq!(
+                looks.asked_again("wlan2", &asked, Some(ON), false, now),
+                Again::Taken
+            );
+            let Ended::Heed(request, looked, since) =
+                looks.ended("wlan2", (serial, now), Some(ON), true)
+            else {
+                panic!("a look ending within its time wasn't heeded");
+            };
+            assert_eq!(since, start(), "a look asked again started its time over");
+            let begun = (looked, serial + 1);
+            looks.wait("wlan2", request, Some(ON.to_owned()), begun, since);
+        }
+        assert_eq!(
+            looks.lapsed(start() + LOOK_AT_MOST),
+            vec!["wlan2".to_owned()],
+            "warnings over channel after channel kept the card looking past its time",
+        );
     }
 }

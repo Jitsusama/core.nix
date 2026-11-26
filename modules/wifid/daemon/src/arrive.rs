@@ -119,6 +119,9 @@ const LOOK_ENDS: Duration = Duration::from_secs(8);
 #[derive(Default)]
 pub struct Arrivals {
     moves: HashMap<String, Move>,
+    /// The point that last warned each card it drops it, until when no
+    /// move of the card's goes back there, by the card's name.
+    dropping: HashMap<String, (String, Instant)>,
 }
 
 /// A card's move as it stood, to put back with `Arrivals::resume` where an
@@ -343,6 +346,28 @@ impl Arrivals {
         }
     }
 
+    /// Takes in that the point a card is on warned it drops the card, and
+    /// that the card left it or looks to, so neither the move it's on now
+    /// (`wont_return`) nor one asked of it later, by its chooser or Joel,
+    /// goes back there should it miss, `until` then (`Arrivals::drops`).
+    /// A card warned waits on its look or is let go with no move to mark,
+    /// and a move asked meanwhile would otherwise hold it back to a point
+    /// that drops it.
+    pub fn warned(&mut self, card: &str, from: &str, until: Instant) {
+        self.wont_return(card, from);
+        let dropping = (from.to_owned(), until);
+        self.dropping.insert(card.to_owned(), dropping);
+    }
+
+    /// Whether the point a card would move from warned it drops the card,
+    /// still at `now`, so a move from there is let join what it hears
+    /// rather than go back.
+    pub fn drops(&self, card: &str, from: &str, now: Instant) -> bool {
+        self.dropping
+            .get(card)
+            .is_some_and(|(point, until)| point.eq_ignore_ascii_case(from) && now < *until)
+    }
+
     /// Whether the card is on a move away from a point that warned it
     /// drops the card, so isn't to be moved elsewhere until it lands: a
     /// move asked meanwhile would take its time, or hold it back to the
@@ -555,10 +580,11 @@ impl Arrivals {
         self.moves.remove(card);
     }
 
-    /// Forgets every card's move, as the wpa_supplicant making them has
-    /// gone.
+    /// Forgets every card's move, and every point that warned one, as the
+    /// wpa_supplicant making them has gone.
     pub fn clear(&mut self) {
         self.moves.clear();
+        self.dropping.clear();
     }
 
     /// Takes in a step wpa_supplicant says the card is at, short of joined,
@@ -1068,6 +1094,49 @@ mod tests {
                 returns: false,
             }],
             "handed back with no way back to the point that drops it"
+        );
+    }
+
+    #[test]
+    fn a_move_asked_after_a_warning_from_its_point_has_no_way_back_there() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        let until = now + Duration::from_secs(600);
+        arrivals.warned("wlan0", DESK, until);
+
+        assert!(
+            arrivals.drops("wlan0", &DESK.to_uppercase(), now),
+            "a chooser's move from the point that warned would go back there"
+        );
+        assert!(
+            !arrivals.drops("wlan0", HALL, now),
+            "a move from another point lost its way back"
+        );
+        assert!(
+            !arrivals.drops("wlan1", DESK, now),
+            "another card's warning took this one's way back"
+        );
+        assert!(
+            !arrivals.drops("wlan0", DESK, until),
+            "a warning held past its time"
+        );
+        arrivals.clear();
+        assert!(
+            !arrivals.drops("wlan0", DESK, now),
+            "a warning outlived the wpa_supplicant it came through"
+        );
+    }
+
+    #[test]
+    fn a_warning_mid_move_from_its_point_takes_that_move_s_way_back() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.asked("wlan0", Some(DESK), FAR, now);
+        arrivals.warned("wlan0", DESK, now + Duration::from_secs(600));
+
+        assert!(
+            arrivals.leaves_a_drop("wlan0"),
+            "the move under way still goes back to the point that warned"
         );
     }
 

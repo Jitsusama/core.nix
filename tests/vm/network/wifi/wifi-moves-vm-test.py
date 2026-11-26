@@ -330,6 +330,26 @@ def warning(machine: BaseMachine, wifid: Wifid, *, warns: bool = True) -> str:
     return f"{ask} disassoc_imminent=1 disassoc_timer=50" if warns else ask
 
 
+def looking(machine: BaseMachine, *, now: bool) -> None:
+    """Wait until wpa_supplicant says the card is looking, or isn't, as `now` says.
+
+    A point heard by a look still under way would outlast a flush before it, and a warning sent
+    before a look asked has begun wouldn't find one under way to stop.
+    """
+    card = machine.succeed(
+        "busctl call fi.w1.wpa_supplicant1 /fi/w1/wpa_supplicant1"
+        " fi.w1.wpa_supplicant1 GetInterface s wlan2"
+    ).split('"')[1]
+    scanning = "b true" if now else "b false"
+    # Read every 50 ms, a small part of the 5 s a warning gives, so a look that has begun is
+    # still under way once it's seen, and an ended one isn't waited on longer than it must be.
+    machine.succeed(
+        "timeout 30 sh -c 'until busctl get-property fi.w1.wpa_supplicant1"
+        f' {card} fi.w1.wpa_supplicant1.Interface Scanning | grep -qx "{scanning}";'
+        " do sleep 0.05; done'"
+    )
+
+
 def reached_in_time(machine: BaseMachine, since: str, *said: str) -> None:
     """Check wifid said each line in order and the card reached the first before its drop."""
     reached = f"^wlan2 reached {FIRST} [0-9]+ ms after it was asked"
@@ -393,12 +413,18 @@ def test_a_held_card_says_its_points_asks_and_moves_when_one_warns_it_drops_it(
         # Gone before the time it was warned of, the card was never the point's to drop, and
         # its chooser keeps off the point that warned for as long as a move settles, as the
         # ask's 20 s of candidates is shorter.
+        warned = f"{asked}, warning it drops the card in {DROPS_IN_MS} ms"
         reached_in_time(
             machine,
             since,
-            f"{asked}, warning it drops the card in {DROPS_IN_MS} ms",
+            warned,
             f"wlan2's chooser keeps off {SECOND} for 10 minutes, as it warned",
             f"wlan2 moves to {FIRST} before it's dropped",
+        )
+        # Lantern's second protects its frames, so its warning is said with nothing after it:
+        # one said unprotected would be held only as long as a move settles.
+        machine.succeed(
+            f"journalctl -o cat -u wifid --after-cursor='{since}' | grep -qxF '{warned}'"
         )
     finally:
         machine.log(machine.succeed(f"journalctl -o short-precise --after-cursor='{since}'"))
@@ -418,7 +444,8 @@ def test_a_warned_card_that_hears_none_of_the_points_named_looks_on_their_channe
     try:
         ask = warning(machine, wifid)
         # Forgets every point but the one the card is on, and says so to wifid ahead of the
-        # warning, on the same bus.
+        # warning, on the same bus, once the look that found the second has ended.
+        looking(machine, now=False)
         machine.succeed("wpa_cli -i wlan2 bss_flush 0 | grep -qx OK")
         assert FIRST not in machine.succeed("wpa_cli -i wlan2 scan_results"), "still heard"
         since = wifid.journal_now()
@@ -446,7 +473,9 @@ def test_a_warned_card_stops_looking_to_move_before_it_s_dropped(
     try:
         ask = warning(machine, wifid)
         since = wifid.journal_now()
-        machine.succeed(f"wpa_cli -i wlan2 scan | grep -qx OK && {ask} | grep -qx OK")
+        machine.succeed("wpa_cli -i wlan2 scan | grep -qx OK")
+        looking(machine, now=True)
+        machine.succeed(f"{ask} | grep -qx OK")
         reached_in_time(
             machine,
             since,
@@ -482,12 +511,13 @@ def test_a_warned_card_hearing_none_named_stops_a_look_under_way_to_look_for_the
     since = wifid.journal_now()
     try:
         ask = warning(machine, wifid)
+        looking(machine, now=False)
         machine.succeed("wpa_cli -i wlan2 bss_flush 0 | grep -qx OK")
         assert FIRST not in machine.succeed("wpa_cli -i wlan2 scan_results"), "still heard"
         since = wifid.journal_now()
-        machine.succeed(
-            f"wpa_cli -i wlan2 scan freq={UNDER_WAY} | grep -qx OK && {ask} | grep -qx OK"
-        )
+        machine.succeed(f"wpa_cli -i wlan2 scan freq={UNDER_WAY} | grep -qx OK")
+        looking(machine, now=True)
+        machine.succeed(f"{ask} | grep -qx OK")
         reached_in_time(
             machine,
             since,

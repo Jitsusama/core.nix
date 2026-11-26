@@ -57,8 +57,10 @@ use crate::state::Security;
 
 /// The longest a card that left a point asking keeps its chooser off it.
 /// A real point's candidates hold 26 s at most, 255 beacons of 100 TU, so
-/// a request holding longer has a beacon interval no point sends, maybe
-/// forged on a link that doesn't protect its frames.
+/// a request holding longer has a beacon interval no point sends. Even a
+/// protected request can say one: wpa_supplicant times it by the beacon
+/// interval its point's beacons last said (`wnm_sta.c`), and beacons go
+/// unprotected, so anyone in range can forge a longer one.
 const KEEPS_OFF_AT_MOST: Duration = Duration::from_hours(1);
 
 /// One request, as wpa_supplicant said it.
@@ -71,7 +73,9 @@ pub struct Request {
     /// Whether the card's link protects management frames. It says how
     /// the link was joined, not how this frame came: only the kernel's
     /// dropping an unprotected one on such a link, as mac80211 does, means
-    /// only the point could have sent it.
+    /// only the point could have sent it. Every card core.nix's machines
+    /// carry runs on mac80211 (iwlwifi); one whose driver does its own
+    /// management frames would need that checked before this is trusted.
     pub protected: bool,
     /// In how many milliseconds, where it warns; 0 where the point sets no
     /// timer, which says nothing of when rather than at once.
@@ -267,6 +271,23 @@ impl Request {
             return Some(SETTLE);
         }
         Some(Duration::from_millis(self.valid_ms.into()).clamp(SETTLE, KEEPS_OFF_AT_MOST))
+    }
+
+    /// Whether a card on `from`, hearing `heard` over a link of `link`'s
+    /// security, would look before it heeded this: taken as held and not
+    /// leaving, the most that would move the card. One that doesn't, as
+    /// its whole network drops the card or it names a point heard, is
+    /// heeded at once even as the card waits on a look (`Looks`).
+    pub fn needs_look(
+        &self,
+        from: Option<&str>,
+        heard: &[(String, i16, Security)],
+        link: Security,
+    ) -> bool {
+        matches!(
+            self.heed(from, heard, true, false, false, link),
+            Heed::Look(_)
+        )
     }
 
     /// Whether it warns of a drop, of its point or its whole network.
@@ -607,6 +628,15 @@ mod tests {
             Some(KEEPS_OFF_AT_MOST),
             "a request holding past any real point's can't keep the point off for days"
         );
+        let half = Request {
+            valid_ms: 1_800_000,
+            ..long.clone()
+        };
+        assert_eq!(
+            half.keeps_off(&moved),
+            Some(Duration::from_secs(1800)),
+            "a hold between a move's settling and the most wasn't the request's own"
+        );
         let forged = Request {
             protected: false,
             ..long
@@ -616,32 +646,48 @@ mod tests {
             Some(SETTLE),
             "an unprotected frame set how long its point was kept off"
         );
+        assert_eq!(
+            half.keeps_off(&Heed::Leaving),
+            None,
+            "a card heeding no new warning kept its point off"
+        );
     }
 
     #[test]
-    fn only_a_card_leaving_the_point_that_warned_it_keeps_off_that_point() {
-        let request = warning(Vec::new());
-        let leaving = [
-            Heed::Move(NEAR.to_owned()),
-            Heed::Look(vec![2437]),
-            Heed::LetGo,
-            Heed::NetworkDrops,
-        ];
-        for heeded in &leaving {
-            assert_eq!(
-                request.keeps_off(heeded),
-                Some(SETTLE),
-                "a card leaving as {heeded:?} could go back to the point that drops it"
-            );
-        }
-        let staying = [Heed::Stay, Heed::Unheld, Heed::Leaving, Heed::Unproven];
-        for heeded in &staying {
-            assert_eq!(
-                request.keeps_off(heeded),
-                None,
-                "a card heeding as {heeded:?} kept a point off"
-            );
-        }
+    fn a_warning_needs_a_look_only_when_it_names_no_point_heard() {
+        let asked = warning(vec![named(NEAR, Some(255))]);
+        assert!(
+            asked.needs_look(Some(ON), &[], PASSWORD),
+            "a card hearing none of the points named was moved without a look"
+        );
+        assert!(
+            !asked.needs_look(Some(ON), &heard(&[(NEAR, -50)]), PASSWORD),
+            "a warning naming a point heard waited on a look it doesn't need"
+        );
+        let whole = Request {
+            leaves_network: true,
+            ..asked.clone()
+        };
+        assert!(
+            !whole.needs_look(Some(ON), &[], PASSWORD),
+            "a whole network dropping the card waited on a look"
+        );
+        let nowhere = warning(vec![Candidate {
+            frequency: None,
+            ..named(NEAR, Some(255))
+        }]);
+        assert!(
+            !nowhere.needs_look(Some(ON), &[], PASSWORD),
+            "a warning naming a point on no channel waited on a look that can't find it"
+        );
+        let forged = Request {
+            protected: false,
+            ..asked
+        };
+        assert!(
+            !forged.needs_look(Some(ON), &[], Security::Open),
+            "an unprotected warning on an open network looked for a forger's points"
+        );
     }
 
     #[test]
