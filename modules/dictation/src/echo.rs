@@ -640,6 +640,64 @@ mod tests {
         );
     }
 
+    /// Joel's line saying `own` alone at `voice` dB, then `heard` within
+    /// their "Lunch at noon on Thursday then." at -20 dB, as written once
+    /// their echo is cut.
+    fn heard_under_their_lunch(voice: f32, heard: &[Vec<Word>]) -> Vec<String> {
+        let theirs = at_level(timed("Lunch at noon on Thursday then.", 5_000), -20.0);
+        let mut mine = at_level(
+            timed("Fine by me, I'll book the room for us.", 1_000),
+            voice,
+        );
+        mine.extend(heard.iter().flatten().cloned());
+        cut_from(&[theirs], &[mine])
+    }
+
+    #[test]
+    fn a_word_is_drowned_from_fifteen_db_below_theirs() {
+        let own = "Fine by me, I'll book the room for us.";
+        for (level, written) in [
+            (-35.0, own.to_owned()),
+            (-34.5, format!("{own} Bunch had moon")),
+        ] {
+            let heard = at_level(timed("Bunch had moon", 5_050), level);
+            assert_eq!(
+                heard_under_their_lunch(-20.0, &[heard]),
+                [written],
+                "a word {level} dB to their -20 was judged wrongly"
+            );
+        }
+    }
+
+    #[test]
+    fn a_word_is_drowned_only_from_twelve_db_below_his_voice() {
+        let own = "Fine by me, I'll book the room for us.";
+        for (level, written) in [
+            (-42.0, own.to_owned()),
+            (-41.0, format!("{own} Bunch had moon")),
+        ] {
+            let heard = at_level(timed("Bunch had moon", 5_050), level);
+            assert_eq!(
+                heard_under_their_lunch(-30.0, &[heard]),
+                [written],
+                "a word {level} dB to his voice's -30 was judged wrongly"
+            );
+        }
+    }
+
+    #[test]
+    fn the_echo_of_their_last_words_reaches_under_a_second_past_his_last_cut() {
+        // Their last word is within a second of his "Right.", but the echo
+        // cut before it ended over a second earlier, so it's his answer.
+        let echo = at_level(timed("Bunch had moon in Tuesday", 5_050), -42.0);
+        let right = at_level(timed("Right.", 7_300), -42.0);
+        assert_eq!(
+            heard_under_their_lunch(-20.0, &[echo, right]),
+            ["Fine by me, I'll book the room for us. Right."],
+            "a word over a second past the echo's end was cut as its echo"
+        );
+    }
+
     #[test]
     fn a_word_only_joels_microphone_heard_doesnt_break_their_echo() {
         // Echo comes in quiet over his room, so his side may hear a word
