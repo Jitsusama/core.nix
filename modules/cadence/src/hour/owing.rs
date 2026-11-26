@@ -106,6 +106,22 @@ fn findings_filed(m: &Measure) -> Vec<Filed> {
         .collect()
 }
 
+/// How a line opens: the `lead` as the hour's biggest drag, any other as
+/// past its target, for a line naming its owner's files and one not.
+const fn told_as(lead: bool) -> (&'static str, &'static str) {
+    if lead {
+        (
+            "the biggest drag this hour is",
+            "the biggest drag this hour is yours",
+        )
+    } else {
+        (
+            "a measure is past its target,",
+            "a measure past its target is yours",
+        )
+    }
+}
+
 /// What the drag files: one entry for its measure, or, for Joel's misses,
 /// one for each miss with that miss's own owner, since each owner names
 /// the check its own miss needs. The `lead`, the hour's biggest drag, is
@@ -176,17 +192,7 @@ fn filed(m: &Measure, lead: bool) -> Vec<Filed> {
         return untested_asked(m, &says);
     }
     let owners = by_owner(m);
-    let (is, yours) = if lead {
-        (
-            "the biggest drag this hour is",
-            "the biggest drag this hour is yours",
-        )
-    } else {
-        (
-            "a measure is past its target,",
-            "a measure past its target is yours",
-        )
-    };
+    let (is, yours) = told_as(lead);
     if !owners.is_empty() {
         return owners
             .into_iter()
