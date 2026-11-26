@@ -282,9 +282,14 @@ def test_narrowing_a_desk_to_a_phone_draws_the_map_the_other_way(
         opened.close()
 
 
-# The device drawn lowest on the map, which a narrowed window stacks out of its first sight.
-LOWEST = """() => {
-  const boxes = [...document.querySelectorAll("#map-draw [data-level=device]")];
+# The devices net.json names worth a look, which a first fit may bring into view by itself.
+CONCERNED = ["modem", "eero:2"]
+# The device drawn lowest on the map of those no concern names, which a narrowed window stacks
+# out of its first sight, and which a flip that jumped back to the first concern would leave out.
+LOWEST = """(concerned) => {
+  const boxes = [...document.querySelectorAll("#map-draw [data-level=device]")].filter(
+    (box) => !concerned.includes(box.dataset.id),
+  );
   boxes.sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom);
   return boxes[0]?.dataset.id ?? null;
 }"""
@@ -353,7 +358,7 @@ def test_the_keys_device_stays_in_view_as_the_map_draws_the_other_way(
         says_it_stands(page, "live")
         every_device_drawn(page)
         desk_short = short_desk(page)
-        lowest = page.evaluate(LOWEST)
+        lowest = page.evaluate(LOWEST, CONCERNED)
         assert lowest is not None, "the map drew no device"
         opened_on(page, lowest)
         expect(placed(page, lowest), "opening a device put no keys on it").to_have_attribute(
