@@ -122,11 +122,31 @@ fn words_of(low: &str) -> Vec<&str> {
         .collect()
 }
 
-/// Whether words swear: a swear not before a word of praise.
+/// The swears that close a list as "and the rest", as in "consider the
+/// tax brackets and shit": three of his asks heard as hurt were this,
+/// each an ask for more, and no owner found a fault in them.
+const FILLERS: [&str; 2] = ["shit", "crap"];
+
+/// The words a filler swear follows, read back to the "and" or "or"
+/// that joins it, so "and some shit" and "or other crap" are fillers too.
+const FILLER_JOINS: [&str; 2] = ["and", "or"];
+
+/// Whether the swear at `at` closes a list rather than swearing at it.
+fn filler(each: &[&str], at: usize) -> bool {
+    let before = |back: usize| at.checked_sub(back).map(|i| each[i]);
+    FILLERS.contains(&each[at])
+        && (before(1).is_some_and(|w| FILLER_JOINS.contains(&w))
+            || before(1).is_some_and(|w| ["some", "other"].contains(&w))
+                && before(2).is_some_and(|w| FILLER_JOINS.contains(&w)))
+}
+
+/// Whether words swear: a swear not before a word of praise, nor one
+/// closing a list.
 fn swore(each: &[&str]) -> bool {
     each.iter().enumerate().any(|(at, w)| {
         (SWEARS.iter().any(|s| w.starts_with(s)) || *w == "ass")
             && !each.get(at + 1).is_some_and(|next| PRAISE.contains(next))
+            && !filler(each, at)
     })
 }
 
@@ -346,6 +366,27 @@ mod tests {
             "ease spares the swear, not the fault said with it"
         );
         assert_eq!(kinds("now do the backlight", AT, &[]), none);
+        for filler in [
+            "consider canadian tax brackets and shit. help me understand the take home",
+            "track the work, sizes or some shit, so people can use it",
+            "add the costs and crap to the page",
+        ] {
+            assert_eq!(
+                kinds(filler, AT, &[]),
+                none,
+                "a swear closing a list: {filler}"
+            );
+        }
+        assert_eq!(
+            kinds("this and shit is broken", AT, &[]),
+            vec!["corrected"],
+            "a filler spares the swear, not the fault said with it"
+        );
+        assert_eq!(
+            kinds("the page and fucking bar", AT, &[]),
+            vec!["swore"],
+            "only a list's closing noun is a filler"
+        );
         assert_eq!(kinds("waiting room design looks good", AT, &[]), none);
         assert!(
             kinds(
