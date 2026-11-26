@@ -79,6 +79,10 @@ Provider {
     id: provider
 
     what: "file"
+    // Never kept to draw at the launcher's next opening (Arming.keepsPlace),
+    // as Asks isn't: it opens only on an ask, deep in that ask's folder,
+    // and kept it would hold an old ask's folders and files to draw again.
+    readonly property bool keptNever: true
 
     // Who's waiting, oldest first: { reply, request }, and, for an ask from
     // inside the shell, picked, called with the paths in place of a socket.
@@ -1300,12 +1304,11 @@ Provider {
         previewNext = "";
         places = placesFor();
         listing.running = (settings.recent ?? []).length > 0;
-        launcher.into(settings.name);
-        for (const path of onTheWay(start))
-            launcher.enter(folderRow(path));
-        // The folder it opens in is where it opened: the folders on the
-        // way were never shown, so Ctrl+O has none of them to go back to.
-        launcher.openedHere();
+        // Walked inside its opening, the folders on the way passed through,
+        // so only the one it opens in is searched and drawn. That one is
+        // where it opened (walkInto): the folders on the way were never
+        // shown, so Ctrl+O has none of them to go back to.
+        launcher.into(settings.name, onTheWay(start).map(path => folderRow(path)));
     }
 
     // One answer: connected, said, then gone.
@@ -1633,11 +1636,8 @@ Provider {
     function goTo(folder) {
         if (asking === null || !folder.startsWith("/"))
             return;
-        launcher.oneJump(() => {
-            launcher.into(settings.name);
-            for (const each of onTheWay(folder))
-                launcher.enter(folderRow(each));
-        });
+        launcher.oneJump(() =>
+            launcher.into(settings.name, onTheWay(folder).map(each => folderRow(each))));
     }
 
     // :e a folder goes there, as :e on a directory opens his oil; a file
