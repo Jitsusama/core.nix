@@ -75,8 +75,7 @@ const CROSSES_AT: u64 = 256 << 10;
 /// says it is waiting: past a few looks, so a share keeping pace is quiet.
 const SAYS_IT_WAITS: u64 = 10;
 
-/// What marks a name in the far list that isn't UTF-8, in place of its
-/// size.
+/// What marks a name in the far list that isn't UTF-8, for its size.
 const UNREADABLE: &str = "?";
 
 /// How many of a kind of miss are named, before the rest are counted.
@@ -274,9 +273,10 @@ pub fn script(
     let job = format!("{scratches}/{HANDOVER}/{id}");
     let work = format!("{scratches}/{}", quoted(&format!("{scratch}/{id}")));
     let inside = quoted(&within.to_string_lossy());
-    let folder = match inside.as_str() {
-        "''" => "\"$work\"".to_owned(), // an empty path, the only one quoted so
-        inside => format!("\"$work\"/{inside}"),
+    let folder = if within.as_os_str().is_empty() {
+        "\"$work\"".to_owned()
+    } else {
+        format!("\"$work\"/{inside}")
     };
     let program = Path::new(&command[0]).file_name().map_or_else(
         || command[0].clone(),

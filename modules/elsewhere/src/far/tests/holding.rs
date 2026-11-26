@@ -555,3 +555,24 @@ fn a_link_put_at_the_job_s_folder_in_its_copy_before_it_s_entered_leaves_it_unta
     );
     let _ = std::fs::remove_dir_all(&home);
 }
+
+#[test]
+fn a_job_in_a_folder_below_its_tree_s_top_runs_there_in_its_copy() {
+    // Where nothing is moved, a job started below the top, in a folder
+    // whose name needs quoting, is entered and runs in the copy's own.
+    let (code, err, home) = far_line_in(
+        Path::new("a b/c"),
+        Left::Whole,
+        &[("a b/c/x", "x")],
+        "pwd -P > \"$HOME/where\"",
+        &kind(""),
+        None,
+        &[],
+    );
+    let at = std::fs::read_to_string(home.join("where")).unwrap_or_default();
+    assert!(
+        code == Some(0) && at.trim_end().ends_with("/1/a b/c"),
+        "the job wasn't entered in its folder in the copy ({code:?}): {at:?} {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}

@@ -222,7 +222,9 @@ fn a_link_pinned_at_the_handover_between_two_files_gets_neither_copy_through_it(
     let (code, err, home) = far_line(Left::Whole, &[("x", "x")], job, &kind, None, &programs);
     let listed = std::fs::read_to_string(home.join("moved").join(BROUGHT)).unwrap_or_default();
     assert!(
-        home.join("swapped").exists() && kept_beyond(&home),
+        home.join("swapped").exists()
+            && kept_beyond(&home)
+            && left_in(&home.join("beyond").join(BACK)) == ["0"],
         "the far line copied the second file, or ended its list, through a link pinned \
          between them ({code:?}): {err}"
     );
