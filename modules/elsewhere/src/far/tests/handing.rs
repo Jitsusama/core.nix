@@ -205,6 +205,39 @@ fn a_link_pinned_at_the_handover_as_it_brings_back_gets_no_end_written_through_i
 }
 
 #[test]
+fn a_link_pinned_at_the_handover_between_two_files_gets_neither_copy_through_it() {
+    let mut kind = kind("");
+    kind.brings_back = vec!["out".into()];
+    // As above, but with a second file to copy once the handover is
+    // swapped: its copy, and the size read from it, would go through the
+    // link, as would the end and the cut after.
+    let swapping = format!(
+        "PATH=${{PATH#*:}} cp \"$@\" || exit\n\
+         [ -e \"$HOME/swapped\" ] || {{ {} && : > \"$HOME/swapped\"; }}",
+        linking_its_handover()
+    );
+    let (rm, refused) = pinning();
+    let programs = [("cp", swapping.as_str()), (rm, refused.as_str())];
+    let job = "mkdir out && printf a > out/a && printf b > out/b";
+    let (code, err, home) = far_line(Left::Whole, &[("x", "x")], job, &kind, None, &programs);
+    let listed = std::fs::read_to_string(home.join("moved").join(BROUGHT)).unwrap_or_default();
+    assert!(
+        home.join("swapped").exists() && kept_beyond(&home),
+        "the far line copied the second file, or ended its list, through a link pinned \
+         between them ({code:?}): {err}"
+    );
+    assert!(
+        code == Some(0)
+            && err.contains("a link was put at its handover as it brought back, so the rest stays")
+            && listed.contains("\tout/a\n")
+            && !listed.contains("out/b"),
+        "the far line didn't say the rest stays, or listed the file it never copied \
+         ({code:?}): {listed:?} {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
 fn a_link_pinned_at_the_handover_of_a_kind_bringing_nothing_back_gets_no_end_through_it() {
     let mut nothing = kind("");
     nothing.brings_back = Vec::new();

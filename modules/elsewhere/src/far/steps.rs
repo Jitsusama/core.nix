@@ -294,6 +294,13 @@ copies() {
 placed() {
   copies && [ -d "$work" ] && [ ! -L "$work" ]
 }
+# True once the copy is `placed` and the working folder is the very one
+# the copy holds at `$1` within it, by where the cd landed, not by names:
+# a link put at a folder of the copy, or above it and taken down again,
+# around the cd would otherwise have the job run where it points.
+entered() {
+  placed && [ "$(pwd -P)" = "$(cd -P "$work" && pwd -P)${{1:+/$1}}" ]
+}
 # Says the copy isn't the folder it was where `placed` no longer holds.
 moved() {
   printf "elsewhere: the job's copy was moved or linked from its place\n" >&2
@@ -601,9 +608,19 @@ LC_ALL=C sort -u "$names" > "$names.in" ||
     printf '>%s\t%s\n' $(($1)) "$file" || exit 1
     n=$((n + 1))
   }}
+  # A link put at the handover, a folder above it or its folder for
+  # copies as the files cross would have each later file copied through
+  # it, so the rest stays and the list gets no end.
+  linked() {{
+    [ -L "${{job%/*/*}}" ] || [ -L "${{job%/*}}" ] || [ -L "$job" ] || [ -L "$job/{BACK}" ]
+  }}
   while IFS= read -r file; do
     size=$(wc -c 2>/dev/null < "$file") || {{ missing; continue; }}
     past $size && {{ kept $size; continue; }}
+    ! linked || {{
+      printf "elsewhere: a link was put at its handover as it brought back, so the rest stays\n" >&2
+      exit 1
+    }}
     cp "$file" "$job/{BACK}/$n" && copied=$(wc -c < "$job/{BACK}/$n") ||
       {{ missing; continue; }}
     # Only what crossed counts toward the totals, at the size it crossed.
@@ -641,7 +658,7 @@ fn ended() -> String {
 # and its cut aren't written through it, and the near side waits out a
 # list with no end; this line's words say why, where the near side's
 # own read as a slow crossing. One put there while the files were copied
-# isn't looked for between them.
+# is looked for before each copy, which leaves the rest and the end.
 ! copies || rm -f "$names" "$names".*
 {freed}if [ -z "$handed" ]; then wrote=1
   {UNENDED}

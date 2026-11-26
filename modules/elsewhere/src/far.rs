@@ -260,8 +260,7 @@ fn leave<'a>(
 /// strict fence lets it write, runs the kind's setup and then the job,
 /// its program found on the far path by its name, in the job's folder
 /// `within` the tree, then leaves what the kind brings back in the
-/// handover and takes its copy away. First it clears the copies of runs
-/// here that are gone.
+/// handover and takes its copy away, first clearing gone runs' copies here.
 pub fn script(
     quest: &str,
     id: &str,
@@ -274,9 +273,10 @@ pub fn script(
     let scratches = format!("\"${{XDG_CACHE_HOME:-$HOME/.cache}}\"/{WORKSPACE}/{quest}");
     let job = format!("{scratches}/{HANDOVER}/{id}");
     let work = format!("{scratches}/{}", quoted(&format!("{scratch}/{id}")));
-    let folder = match within.to_string_lossy() {
-        within if within.is_empty() => "\"$work\"".to_owned(),
-        within => format!("\"$work\"/{}", quoted(&within)),
+    let inside = quoted(&within.to_string_lossy());
+    let folder = match inside.as_str() {
+        "''" => "\"$work\"".to_owned(), // an empty path, the only one quoted so
+        inside => format!("\"$work\"/{inside}"),
     };
     let program = Path::new(&command[0]).file_name().map_or_else(
         || command[0].clone(),
@@ -349,7 +349,7 @@ cd {folder} || {{
   say {untaken}
   exit {UNTAKEN}
 }}
-placed || {{ moved; {freed}  say {untaken}; exit {UNTAKEN}; }}
+entered {inside} || {{ moved; {freed}  say {untaken}; exit {UNTAKEN}; }}
 say {started}
 (
   {{ {setup}
