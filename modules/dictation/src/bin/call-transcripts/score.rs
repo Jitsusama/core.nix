@@ -175,12 +175,27 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
     if total.words == 0 {
         return Err(format!("{} has no words to hear", set.display()));
     }
-    let rate = ceiling.map(|most| verdict(total.tenths(), most));
-    let (held, failed) = say_each([Some(all_times.verdict(times::INSIDE)), rate]);
+    let [rate, joels] = rated(&all, ceiling, None);
+    let (held, failed) = say_each([Some(all_times.verdict(times::INSIDE)), rate, joels]);
     for passed in held {
         println!("{passed}");
     }
     failed
+}
+
+/// Whether what `all` wrote down passes `most`, both sides together, and
+/// whether Joel's side alone passes `joels`, none for a ceiling not given.
+/// A rule that cuts his words with their echo can lower the whole rate
+/// while losing his own, so his side is held to a ceiling of its own.
+fn rated(
+    all: &Scored,
+    most: Option<usize>,
+    joels: Option<usize>,
+) -> [Option<Result<String, String>>; 2] {
+    let mut total = all.written[0];
+    total += all.written[1];
+    let _ = joels;
+    [most.map(|most| verdict(total.tenths(), most)), None]
 }
 
 /// Of the verdicts given, each that passed, and every one that failed in
@@ -731,6 +746,42 @@ mod tests {
         assert_eq!(
             verdict(200, 199),
             Err("it misheard 20.0% of the words, above the 19.9% it may".to_owned())
+        );
+    }
+
+    #[test]
+    fn joels_side_is_held_to_its_own_ceiling_however_well_the_whole_is_heard() {
+        let scored = Scored {
+            written: [
+                Errors {
+                    words: 1000,
+                    deleted: 130,
+                    ..Errors::default()
+                },
+                Errors {
+                    words: 3000,
+                    substituted: 300,
+                    ..Errors::default()
+                },
+            ],
+            ..Scored::default()
+        };
+        assert_eq!(
+            rated(&scored, Some(199), Some(119)),
+            [
+                Some(Ok(
+                    "it misheard 10.8% of the words, within the 19.9% it may".to_owned()
+                )),
+                Some(Err(
+                    "it misheard 13.0% of Joel's words, above the 11.9% it may".to_owned()
+                )),
+            ],
+            "Joel's side wasn't held to its own ceiling, or the whole was held to it"
+        );
+        assert_eq!(
+            rated(&scored, Some(199), None)[1],
+            None,
+            "Joel's side was held to a ceiling it wasn't given"
         );
     }
 
