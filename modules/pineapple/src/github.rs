@@ -119,11 +119,6 @@ pub struct Said {
     pub text: String,
     /// When it was said, in seconds since the epoch.
     pub at: u64,
-    /// Whether `at` is when its words were first shown as they are: not
-    /// for an opening, whose time is when it began, one edited since, or a
-    /// comment on a line of a change, which a pending review can hold
-    /// unshown past its time.
-    pub timed: bool,
 }
 
 /// The pull requests and issues a page of notifications names, each once,
@@ -250,7 +245,6 @@ fn opening(answer: &Value, thread: &Thread) -> Option<Said> {
         own: own(answer),
         text: format!("{title}\n\n{body}"),
         at: seconds(answer["created_at"].as_str()?)?,
-        timed: false,
     })
 }
 
@@ -265,9 +259,6 @@ fn one_said(one: &Value, thread: &Thread, kind: Kind) -> Option<Said> {
         "created_at"
     };
     let at = seconds(one[when].as_str()?)?;
-    let unedited = one["updated_at"]
-        .as_str()
-        .is_none_or(|updated| Some(updated) == one[when].as_str());
     Some(Said {
         key: format!("{}:{}:{}", thread.key(), kind.name(), one["id"].as_u64()?),
         link: one["html_url"].as_str()?.to_owned(),
@@ -276,7 +267,6 @@ fn one_said(one: &Value, thread: &Thread, kind: Kind) -> Option<Said> {
         own: own(one),
         text: text.to_owned(),
         at,
-        timed: kind != Kind::ReviewComment && unedited,
     })
 }
 

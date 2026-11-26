@@ -87,7 +87,7 @@ pub fn press(state: &Path, said: &Value, now: u64, words: &Words) -> Result<Valu
     let done = match verb {
         "resume" => {
             let stop = row["stop"].as_str().unwrap_or_default();
-            json!({"resumed": resume::resume(&stops, stop, now, BY).map_err(failed)?})
+            json!({"resumed": ended(resume::resume(&stops, stop, now, BY).map_err(failed)?)})
         }
         "widen" => {
             let stop = row["stop"].as_str().unwrap_or_default();
@@ -138,9 +138,18 @@ fn approve(stops: &Path, row: &Value, now: u64) -> io::Result<Vec<String>> {
             "everything" => "all",
             reach => reach,
         };
-        resumed.extend(resume::resume(stops, scope, now, BY)?);
+        resumed.extend(ended(resume::resume(stops, scope, now, BY)?));
     }
     Ok(resumed)
+}
+
+/// The stops a press resumed, its journal saying when the resume couldn't
+/// be kept for a stop heard late.
+fn ended(resumed: resume::Resumed) -> Vec<String> {
+    if let Some(why) = &resumed.unkept {
+        eprintln!("<3>{why}");
+    }
+    resumed.ended
 }
 
 /// Makes the stop `id` reach everything, keeping what it reached before

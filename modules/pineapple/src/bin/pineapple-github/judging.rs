@@ -67,22 +67,11 @@ pub(super) fn judge(
         eprintln!("<3>couldn't write a decision down: {error}");
     }
     if decision.stops() {
-        let folder = state.join("stops");
-        // Joel's own, said just before a resume of his that names it and
-        // heard only after, it's kept as he left it: ended. One whose time
-        // isn't when its words were shown stands.
+        // Never kept as an earlier resume of Joel's left it, however late
+        // it's heard: his account here is his agents' too, and a comment's
+        // time isn't always when its words were shown (src/resume.rs).
         let stop = record::stop(&source, &decision, now, shadow);
-        let stop = if said.timed {
-            resume::as_left(&folder, stop)
-        } else {
-            stop
-        };
-        let in_shadow = if shadow { ", in shadow" } else { "" };
-        match record::keep(&folder, &said.key, &stop) {
-            Ok(true) if resume::ended(&stop) => eprintln!(
-                "<5>a stop{in_shadow}, said before Joel resumed it, kept as resumed: {}",
-                said.link
-            ),
+        match record::keep(&state.join("stops"), &said.key, &stop) {
             Ok(true) if shadow => eprintln!("<5>a stop, in shadow: {}", said.link),
             Ok(true) => eprintln!("<5>a stop: {}", said.link),
             Ok(false) => {}

@@ -13,7 +13,9 @@
 //! search indexes only after he resumed is kept as resumed when he said it
 //! shortly before a resume that names it: what he ended stays ended. A
 //! stop anyone else said stands however late it's heard, as Joel may
-//! never have seen it.
+//! never have seen it. Only Slack's reader weighs one: on GitHub Joel's
+//! account is his agents' too, so a stop from it stands however late.
+//! Where in doubt a stop stands, which costs Joel one more press.
 
 use std::fs;
 use std::io;
@@ -117,54 +119,53 @@ pub fn names(stop: &Standing, scope: &str) -> bool {
             .any(|reach| reach.eq_ignore_ascii_case(scope))
 }
 
+/// What one of Joel's resumes did.
+#[derive(Debug)]
+pub struct Resumed {
+    /// The ids of the stops it ended.
+    pub ended: Vec<String>,
+    /// Why it couldn't be kept for a stop heard late, which then stands;
+    /// none once it's kept.
+    pub unkept: Option<String>,
+}
+
 /// Marks each stop `scope` names resumed at `at` (milliseconds since the
 /// epoch) by `by`, written whole and renamed into place, and answers the
 /// ids it resumed; none when the scope names none standing. Once they're
-/// all marked, the resume is kept beside them, with what each stop it
-/// ended reached, so a resume of one stop also ends a stop of Joel's said
-/// there before it and heard late.
+/// all marked, the resume is kept beside them as the scope it named, so a
+/// stop of Joel's that scope names, said before it and heard late, is
+/// ended too. A resume of one stop by its id names no stop heard after,
+/// as it leaves standing any other stop said where it was.
 ///
 /// # Errors
 ///
 /// Why a record couldn't be rewritten; those before it stay resumed, and
 /// the resume isn't kept, so a stop heard late stands.
-pub fn resume(folder: &Path, scope: &str, at: u64, by: &str) -> io::Result<Vec<String>> {
-    let named: Vec<Standing> = standing(folder)
-        .into_iter()
-        .filter(|stop| names(stop, scope))
-        .collect();
-    let resumed = resume_only(folder, scope, at, by, |_| true)?;
-    let mut noted = vec![scope.to_owned()];
-    for stop in named.iter().filter(|stop| resumed.contains(&stop.id)) {
-        for reach in reaches(&stop.record) {
-            if !noted.iter().any(|kept| kept.eq_ignore_ascii_case(reach)) {
-                noted.push(reach.to_owned());
-            }
-        }
-    }
-    note(folder, &noted, at, by);
-    Ok(resumed)
+pub fn resume(folder: &Path, scope: &str, at: u64, by: &str) -> io::Result<Resumed> {
+    let ended = resume_only(folder, scope, at, by, |_| true)?;
+    let unkept = note(folder, scope, at, by);
+    Ok(Resumed { ended, unkept })
 }
 
-/// Keeps one of Joel's resumes, of each of `named` at `at` in
-/// milliseconds, in the resumes beside `folder`. One that can't be kept
-/// is said and let go, as it only keeps a stop heard late from standing:
-/// his resume still ends what it named.
-fn note(folder: &Path, named: &[String], at: u64, by: &str) {
-    for one in named {
-        let line = json!({ "at": at, "by": by, "scope": one });
-        if let Err(error) = crate::record::append(&resumes(folder), &line) {
-            eprintln!(
-                "<3>couldn't keep a resume in {}, so a stop said before it and heard \
-                 late stands: {error}",
+/// Keeps one of Joel's resumes, of `scope` at `at` in milliseconds, in
+/// the resumes beside `folder`, and answers why it couldn't be when it
+/// couldn't. One unkept only lets a stop heard late stand: his resume
+/// still ends what it named.
+fn note(folder: &Path, scope: &str, at: u64, by: &str) -> Option<String> {
+    let line = json!({ "at": at, "by": by, "scope": scope });
+    crate::record::append(&resumes(folder), &line)
+        .err()
+        .map(|error| {
+            format!(
+                "couldn't keep a resume in {}, so a stop said before it and heard late \
+                 stands: {error}",
                 resumes(folder).display()
-            );
-        }
-    }
+            )
+        })
 }
 
 /// Whether a resume at `at` ends a stop said at `said` and heard at
-/// `heard`, all in microseconds: it came more than [`SKEW`] after the stop
+/// `heard`, all in microseconds: it came at least [`SKEW`] after the stop
 /// was said, and at most [`LATE_AT_MOST`], and no later than the stop was
 /// heard, so a resume dated ahead ends nothing still to be said.
 fn ends(said: u128, at: u128, heard: u128) -> bool {
@@ -278,7 +279,9 @@ pub fn as_joel(
         // Kept as when it was said, which is what a stop said is
         // weighed against.
         let when = u64::try_from(said / MICROS_A_MILLI).unwrap_or(u64::MAX);
-        note(folder, &[scope.to_owned()], when, "joel");
+        if let Some(why) = note(folder, scope, when, "joel") {
+            eprintln!("<3>{why}");
+        }
     }
     Ok(resumed)
 }
@@ -358,7 +361,9 @@ mod tests {
                 stop("slack:C1:2.0", &["quest:QEST-A"]),
             ],
         );
-        let resumed = resume(&dir, "PR:example/shop#12", 7, "joel").expect("resumes");
+        let resumed = resume(&dir, "PR:example/shop#12", 7, "joel")
+            .expect("resumes")
+            .ended;
         assert_eq!(resumed, ["slack:C1:1.0"], "only the stop its reach names");
         let left: Vec<String> = standing(&dir).into_iter().map(|stop| stop.id).collect();
         assert_eq!(left, ["slack:C1:2.0"], "the other still stands");
@@ -439,6 +444,7 @@ mod tests {
         assert!(
             resume(&dir, "pr:example/shop#12", at, "joel")
                 .expect("resumes")
+                .ended
                 .is_empty(),
             "nothing stood to end"
         );
@@ -486,11 +492,12 @@ mod tests {
         );
         let mut heard = stop("heard", &pr);
         heard["by_joel"] = json!(true);
-        heard["heard_at"] = json!(1_700_000_049_000_u64);
+        heard["heard_at"] = json!(1_700_000_100_000_u64);
         assert_eq!(
             resumed_since(&dir, &heard),
             None,
-            "one saying only when it was heard stands"
+            "one heard after the resume but saying only when it was heard stands, as \
+             nothing says it was said before"
         );
         resume(&dir, "all", at + 20_000, "launcher").expect("resumes");
         assert_eq!(
@@ -510,11 +517,11 @@ mod tests {
     }
 
     #[test]
-    fn a_resume_of_one_stop_keeps_what_it_reached_for_a_stop_heard_late() {
+    fn a_resume_of_one_stop_by_its_id_leaves_a_stop_heard_late_standing() {
         let dir = folder("reached", &[stop("one", &["pr:example/shop#12"])]);
         let at = 1_700_000_050_000;
         assert_eq!(
-            resume(&dir, "one", at, "joel").expect("resumes"),
+            resume(&dir, "one", at, "joel").expect("resumes").ended,
             ["one"],
             "the stop it names"
         );
@@ -523,17 +530,26 @@ mod tests {
                 &dir,
                 &joels("there", &["pr:example/shop#12"], "1700000040.000000")
             ),
-            Some(json!({ "at": at, "by": "joel" })),
-            "one of Joel's said where it reached, before it, is kept resumed"
-        );
-        assert_eq!(
-            resumed_since(
-                &dir,
-                &joels("elsewhere", &["quest:QEST-A"], "1700000040.000000")
-            ),
             None,
-            "one said somewhere else stands"
+            "one of Joel's said where it reached, before it, stands, as it would have \
+             had it been heard before the press"
         );
+    }
+
+    #[test]
+    fn a_resume_that_cant_be_kept_still_ends_what_it_names() {
+        let dir = folder("unkept", &[stop("one", &["everything"])]);
+        fs::create_dir_all(resumes(&dir)).expect("a folder where the resumes go");
+        let resumed = resume(&dir, "all", 1, "joel").expect("resumes");
+        assert_eq!(resumed.ended, ["one"], "it ends what it names");
+        assert!(
+            resumed
+                .unkept
+                .as_deref()
+                .is_some_and(|why| why.starts_with("couldn't keep a resume in ")),
+            "and says it couldn't be kept: {resumed:?}"
+        );
+        assert!(standing(&dir).is_empty(), "nothing stands after");
     }
 
     #[test]
@@ -567,12 +583,14 @@ mod tests {
             &[stop("a", &["everything"]), stop("b", &["realm:work"])],
         );
         assert_eq!(
-            resume(&dir, "repo:example/x", 1, "joel").expect("resumes"),
+            resume(&dir, "repo:example/x", 1, "joel")
+                .expect("resumes")
+                .ended,
             Vec::<String>::new(),
             "none named"
         );
         assert_eq!(
-            resume(&dir, "all", 1, "joel").expect("resumes"),
+            resume(&dir, "all", 1, "joel").expect("resumes").ended,
             ["a", "b"],
             "every one"
         );

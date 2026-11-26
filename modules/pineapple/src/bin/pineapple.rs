@@ -437,9 +437,15 @@ fn resume(context: &terminal_kit::Context, scope: &str) -> Result<(), Failure> {
         Err(_) => None,
     };
     let at = now();
-    let resumed = resume::resume(&folder(), scope, at, "joel").map_err(|error| {
+    let resume::Resumed {
+        ended: resumed,
+        unkept,
+    } = resume::resume(&folder(), scope, at, "joel").map_err(|error| {
         Failure::new(Exit::Failed, "couldn't mark a stop resumed").because(error.to_string())
     })?;
+    let unkept_said = unkept
+        .as_deref()
+        .map_or_else(String::new, |why| format!("; {why}"));
     // Undone after the records, so what a stop paused is undone even when
     // its record was resumed some other way and its pause left standing.
     let undone = match plan {
@@ -457,19 +463,20 @@ fn resume(context: &terminal_kit::Context, scope: &str) -> Result<(), Failure> {
             Exit::NotFound,
             format!("no stop standing is named by {scope}"),
         )
-        .because(
-            "the resume is still kept, so a stop of yours said there just before it \
-             and heard late stays resumed",
-        )
+        .because(unkept.unwrap_or_else(|| {
+            "the resume is still kept, so a stop of yours it names, said in Slack just \
+             before it and heard late, stays resumed"
+                .to_owned()
+        }))
         .try_this("pineapple stops"));
     }
     let written = match context.format() {
         Format::Text if resumed.is_empty() => context.say(&format!(
-            "{}; agents carry on within a minute\n",
+            "{}{unkept_said}; agents carry on within a minute\n",
             pause::said("resuming", &undone, None),
         )),
         Format::Text if !undone.is_empty() => context.say(&format!(
-            "resumed {}; {}; agents carry on within a minute\n",
+            "resumed {}; {}{unkept_said}; agents carry on within a minute\n",
             resumed.join(", "),
             pause::said("resuming", &undone, None),
         )),
@@ -482,11 +489,15 @@ fn resume(context: &terminal_kit::Context, scope: &str) -> Result<(), Failure> {
                 format!("; still {}, tried again each minute", left.join(", "))
             };
             context.say(&format!(
-                "resumed {}{still}; agents carry on within a minute\n",
+                "resumed {}{still}{unkept_said}; agents carry on within a minute\n",
                 resumed.join(", ")
             ))
         }
-        _ => context.answer(&json!({ "schema": "pineapple.resumed/1", "resumed": resumed })),
+        _ => context.answer(&json!({
+            "schema": "pineapple.resumed/1",
+            "resumed": resumed,
+            "unkept": unkept,
+        })),
     };
     written.map_err(|error| couldnt_write(&error))
 }
