@@ -206,7 +206,8 @@ function footNameOf(served, session, titleOf) {
 // to the whys the shell gives, both ways, so a why added or renamed there
 // fails until its tone is chosen here, rather than meeting the alert's.
 const WHY_TONES = {
-    opening: "plain", startedOpening: "plain", cameAfter: "plain",
+    opening: "plain", startedOpening: "plain", askedAgain: "plain",
+    startedAskedAgain: "plain", cameAfter: "plain",
     startedCameAfter: "plain", ownAfterAll: "plain", startedOwnAfterAll: "plain",
     disowned: "alert", startedDisowned: "alert", untaken: "alert",
     startedUntaken: "alert", unowned: "alert", hosted: "alert", hostless: "alert",

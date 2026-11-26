@@ -2969,15 +2969,16 @@ Singleton {
     }
     // A press whose viewer keepAgain asked for again, of a kitty come
     // since, takes the new ask over, focus and all, as heldBack would:
-    // told it's opening, as its viewer is on its way, rather than that the
-    // ask is over. Its focus keeps the patience it had (focusOpened).
+    // told it was asked for again, as its viewer is on its way, rather
+    // than that the ask is over, or opening, whose words say it wasn't
+    // asked again. Its focus keeps the patience it had (focusOpened).
     function pressedAgain(named, said, going) {
         if (said === null)
             return;
         pressedFor = Object.assign({}, pressedFor, { [named]: said });
         if (going !== null)
             goingTo = going;
-        unhosted(said, said.startedInHost ? "startedOpening" : "opening");
+        unhosted(said, said.startedInHost ? "startedAskedAgain" : "askedAgain");
     }
     // A window no sessions kitty took, as opens-in-sessions.sh says when
     // it gives up, by the app id it was asked under: no longer opening,
