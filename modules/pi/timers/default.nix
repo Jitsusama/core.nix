@@ -215,10 +215,12 @@ in
         # What would have node run code nobody gave it, as a pi host's unit
         # clears (host.nix's loadsCode), since this sweep runs git in every
         # session's trees as a host's would, and the TPM agent's socket, which
-        # a host hides from its conversations too. And what bash reads as
-        # it starts a script, as the room check is one: a file to run, its
-        # options, its shell options, and the trace prompt those options
-        # can expand.
+        # a host hides from its conversations too. And the variables bash
+        # reads as it starts a script, as the room check is one: a file to
+        # run, its options, its shell options, and the trace prompt those
+        # options can expand. Exported functions, whose names vary, can't
+        # be cleared by name; whatever sets the account manager's
+        # environment could set these too.
         UnsetEnvironment = [
           "BASHOPTS"
           "BASH_ENV"

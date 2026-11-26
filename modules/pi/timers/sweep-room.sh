@@ -15,7 +15,9 @@
 # for a wait to end before the hosts take over, and on a reading it can't
 # make. It reads the stamp again on every pass, since a machine that
 # sleeps through a wait wakes with the stamp older than the wait counted,
-# and it ends a wait two minutes and one pass short of the hosts' two
+# and sleeps between passes a second at a time by the wall clock, since
+# `sleep` doesn't count a suspend, so a pass ends within a second of
+# waking. It ends a wait two minutes and one pass short of the hosts' two
 # hours, so its last sleep and the sweep's own start to its lock end
 # before them. The stall marks, 3.5% and 1.4%, are 70% of the
 # 5% and 2% at which an agent's heavy work stops, held over five minutes
@@ -153,5 +155,8 @@ while :; do
     echo "pi-sweep waits for room: $said (it starts at 3.5%, 1.4% and 25%)"
     waited=true
   fi
-  sleep "$apart"
+  slept=$SECONDS
+  until [ $((SECONDS - slept)) -ge "$apart" ]; do
+    sleep 1
+  done
 done

@@ -86,6 +86,13 @@ judge "$said" "$?" "pi-sweep starts: the last sweep ended 104 minutes ago, too l
 said=$("$program" "$here" "$here/meminfo" 900 1 "$here/none")
 judge "$said" "$?" "pi-sweep starts: no sweep has left a stamp, so the hosts sweep meanwhile" \
   "no stamp"
+# A stamp an hour old, as each hourly run finds it, still waits.
+touch -d '60 minutes ago' "$here/stamp"
+said=$("$program" "$here" "$here/meminfo" 2 1 "$here/stamp")
+status=$?
+said=${said//"waiting 3 s"/"waiting 2 s"}
+judge "$said" "$status" "pi-sweep waits for room: $memory $marks
+pi-sweep starts without room after waiting 2 s: $memory" "a stamp an hour old"
 
 # A stall that clears two seconds into a wait of up to a minute starts the
 # sweep then, not when the wait runs out.
@@ -100,11 +107,13 @@ wait "$waiting"
 status=$?
 said=$(cat "$here/said")
 waited="pi-sweep waits for room: $memory $marks"$'\n'"pi-sweep starts after waiting "
+# Bash counts its seconds by the wall clock's, so a wait read a moment
+# past its third reading may count a second more.
 case $said in
-"$waited"[23]" s for room: $quiet")
+"$waited"[234]" s for room: $quiet")
   judge "$said" "$status" "$said" "a stall that clears"
   ;;
-*) judge "$said" "$status" "a wait of 2 or 3 s, then a start on the quiet reading" \
+*) judge "$said" "$status" "a wait of 2 to 4 s, then a start on the quiet reading" \
   "a stall that clears" ;;
 esac
 if [ "$SECONDS" -gt 10 ]; then
@@ -129,6 +138,24 @@ pi-sweep starts without room: the last sweep ended 118 minutes ago, too long to 
 $memory" "a stamp that ages during a wait"
 if [ "$SECONDS" -gt 10 ]; then
   echo "a stamp too old to wait for still held the sweep $SECONDS more seconds" >&2
+  failed=1
+fi
+
+# A stamp that goes during a wait starts the sweep at the next reading.
+touch -d '1 minute ago' "$here/stamp"
+"$program" "$here" "$here/meminfo" 60 1 "$here/stamp" > "$here/said" &
+waiting=$!
+sleep 2
+rm "$here/stamp"
+SECONDS=0
+wait "$waiting"
+status=$?
+said=$(cat "$here/said")
+judge "$said" "$status" "pi-sweep waits for room: $memory $marks
+pi-sweep starts without room: the last sweep's stamp is gone: $memory" \
+  "a stamp that goes during a wait"
+if [ "$SECONDS" -gt 10 ]; then
+  echo "a stamp that went still held the sweep $SECONDS more seconds" >&2
   failed=1
 fi
 
