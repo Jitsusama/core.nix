@@ -74,12 +74,12 @@
   };
 
   // Nothing else can be judged on a map that never drew, so this one
-  // answers alone. A draw that failed says so in the words and leaves the
-  // state alone.
+  // answers alone. A draw that failed says so as broken, until a drawing
+  // after it succeeds.
   const standingLine = document.getElementById("asof");
   const asof = standingLine?.textContent.trim() || "";
   const state = standingLine?.dataset.state;
-  const drew = ["live", "stale"].includes(state) && !asof.startsWith("The map couldn't draw");
+  const drew = ["live", "stale"].includes(state);
   if (!drew) {
     return [`drawn: the standing line reads "${asof}"${state ? ` (${state})` : ""}; the map didn't draw its reading (see the console)`];
   }
