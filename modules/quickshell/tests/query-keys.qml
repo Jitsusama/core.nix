@@ -1981,7 +1981,13 @@ QtObject {
             ["gv in the drawer with nothing chosen", ["g", "v"], "page",
                 { reselectHere: KeyActs.reselectHere("page", true, "") }],
             ["l moving the caret on a prompt's words", ["l"], "normal", { words: true }],
+            // On words h is idle only as an edit (letterBack), not by the
+            // rows' outSaid, so it's held here apart from h on a row.
+            ["or h", ["h"], "normal", { words: true }],
+            ["or Backspace, as h", ["Backspace"], "normal", { words: true }],
             ["or w", ["w"], "normal", { words: true }],
+            ["or b", ["b"], "normal", { words: true }],
+            ["or e", ["e"], "normal", { words: true }],
             ["or 0", ["0"], "normal", { words: true }],
             ["or $", ["$"], "normal", { words: true }],
             ["x deleting a letter of them", ["x"], "normal", { words: true }],
