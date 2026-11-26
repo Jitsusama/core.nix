@@ -134,18 +134,19 @@ impl Node {
             .arg(format!("peer.{}", to.to_lowercase()));
         match answer_within(&mut sending, self.limit) {
             Ok(answer) if answer.as_deref().is_some_and(node_took) => Sent::Went,
-            Ok(_) => Sent::Failed,
+            // Refused by the node, or refused for what it was given rather
+            // than for the mycelium, a text that won't start a send on any
+            // run: each spends its try, and the pain is given up after its
+            // last.
+            Ok(_)
+            | Err(Unanswered::Unstarted(
+                ErrorKind::InvalidInput | ErrorKind::ArgumentListTooLong,
+            )) => Sent::Failed,
             // It was tried, so it spends a try as any failed send does.
             Err(Unanswered::Late) => {
                 self.silent = Some(Silence::Late);
                 Sent::Failed
             }
-            // Refused for what it was given, not for the mycelium: this
-            // text won't start a send on any run, so it spends its tries
-            // and is given up, as a send the node refuses is.
-            Err(Unanswered::Unstarted(
-                ErrorKind::InvalidInput | ErrorKind::ArgumentListTooLong,
-            )) => Sent::Failed,
             // Never sent, so it spends no try; one the machine won't start
             // now won't start for the rest of the run either.
             Err(Unanswered::Unstarted(kind)) => {
