@@ -156,7 +156,7 @@ let
         if climbs file then
           "above modules/quickshell, where a check can't be given a file; move it in"
         else if !(builtins.pathExists path) then
-          "not in modules/quickshell; add it to the program's own files as ${file}"
+          "not in modules/quickshell; fix the import, or add it to the program's own files as ${file}"
         else if builtins.readFileType path != "regular" then
           "a folder; import a JavaScript file by name, or a type through qs with its file in programRoots (modules/quickshell/checks/helpers.nix)"
         else

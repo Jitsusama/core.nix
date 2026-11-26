@@ -426,7 +426,8 @@ in
       # the folder, from the root, through . or ..), imported or not, must
       # each be refused too, or they'd be copied elsewhere than said.
       quoted = "it's-$(gone).js";
-      missing = file: "not in modules/quickshell; add it to the program's own files as ${file}";
+      missing =
+        file: "not in modules/quickshell; fix the import, or add it to the program's own files as ${file}";
       folder = "a folder; import a JavaScript file by name, or a type through qs with its file in programRoots (modules/quickshell/checks/helpers.nix)";
       above = "above modules/quickshell, where a check can't be given a file; move it in";
       unplain = "not its plain place in modules/quickshell; give it as that place, as launcher/Reader.js";
@@ -449,15 +450,23 @@ in
           "written from the root, where a check can't be given a file; write it from this file";
       };
       strayFile = "${ownFolder}/Strays.js";
-      strayed = programStepWith table [ ] (
-        ownImporting "../${picked}"
-        // {
-          ${strayFile} = builtins.toFile "Strays.js" (
-            lib.concatMapStrings (written: ".import \"${written}\" as Stray\n") (lib.attrNames strays)
-          );
-        }
-        // outsideGiven
-      );
+      # The strays alone, and beside the outside files, must each be said.
+      strayedWith =
+        given:
+        lines (
+          programStepWith table [ ] (
+            ownImporting "../${picked}"
+            // {
+              ${strayFile} = builtins.toFile "Strays.js" (
+                lib.concatMapStrings (written: ".import \"${written}\" as Stray\n") (lib.attrNames strays)
+              );
+            }
+            // given
+          )
+        );
+      strayedAlone = strayedWith { };
+      strayed = strayedWith outsideGiven;
+      bothSay = line: lib.elem line strayedAlone && lib.elem line strayed;
       outsideGiven = lib.genAttrs outside (file: builtins.toFile "Planted-outside.js" "");
       # Given alone, with no import astray, they must still stop the step.
       outsideAlone = programStepWith table [ ] (ownImporting "../${picked}" // outsideGiven);
@@ -465,14 +474,13 @@ in
       sayingOf =
         written: "the program's file at ${strayFile} imports \"${written}\": ${strays.${written}}";
       strayUnrefused = lib.filter (
-        written: !(lib.elem "echo ${lib.escapeShellArg (sayingOf written)} >&2" (lines strayed))
+        written: !(bothSay "echo ${lib.escapeShellArg (sayingOf written)} >&2")
       ) (lib.attrNames strays);
-      strayUnended = !(lib.elem "exit 1" (lines strayed));
+      strayUnended = !(bothSay "exit 1");
       outsideLine =
         file: "echo ${lib.escapeShellArg "the program's own file given as \"${file}\": ${unplain}"} >&2";
       outsideUnrefused = lib.filter (
-        file:
-        !(lib.elem (outsideLine file) (lines strayed) && lib.elem (outsideLine file) (lines outsideAlone))
+        file: !(lib.elem (outsideLine file) strayed && lib.elem (outsideLine file) (lines outsideAlone))
       ) outside;
       strayHeldSaid = "the shell's folder holds ${stray} or ${quoted}; give this check other names";
       ownHeldSaid = "the shell's folder holds ${ownFolder}; give this check another folder";
