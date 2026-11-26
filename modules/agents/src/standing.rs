@@ -96,14 +96,23 @@ fn truthy(value: Option<&Value>) -> bool {
 /// to, paused, resumed and stopped; one with no window offers no Go To,
 /// and only one under way can be stopped. One parked has no process to
 /// pause or stop and no window known to go to: it can be woken, or talked
-/// to, which wakes it too. Only one here can be closed, last, since the
-/// harness ends a session on a close Joel steers it from this machine and
-/// drops one a node relays (harness #1023).
+/// to, which wakes it too. One known to run and not paused can be parked,
+/// freeing what it holds until it's woken: the harness parks one idle at
+/// once and one at work once its turn settles, and refuses one under
+/// another hold, so a paused one isn't offered it (agentic-harness.pi
+/// #2159). One off has no presence to say it runs, so it isn't offered
+/// Park, though its Pause and Close go as they did; one the node says is
+/// parked never stands off, but parked (`Session::stands`). A Park relays to another
+/// machine's session as any steer of Joel's does, the node there checking
+/// it as the harness reads it (mycelium's steer.rs). Only one here
+/// can be closed, last, since the harness ends a session on a close Joel
+/// steers it from this machine and drops one a node relays (harness
+/// #1023).
 pub fn acts(stands: Stands, windowed: bool, here: bool) -> Vec<&'static str> {
     if stands == Stands::Parked {
         return vec!["wake", "talk"];
     }
-    let mut ids = Vec::with_capacity(5);
+    let mut ids = Vec::with_capacity(6);
     if windowed {
         ids.push("switch");
     }
@@ -113,6 +122,12 @@ pub fn acts(stands: Stands, windowed: bool, here: bool) -> Vec<&'static str> {
     } else {
         "pause"
     });
+    if matches!(
+        stands,
+        Stands::Needs | Stands::Working | Stands::InLine | Stands::Listening
+    ) {
+        ids.push("park");
+    }
     if matches!(stands, Stands::Working | Stands::InLine) {
         ids.push("stop");
     }
@@ -338,13 +353,24 @@ mod tests {
     #[test]
     fn a_sessions_acts_follow_how_it_stands() {
         let cases = [
-            (Stands::Working, true, true, "switch talk pause stop close"),
-            (Stands::Working, true, false, "switch talk pause stop"),
-            (Stands::InLine, false, true, "talk pause stop close"),
-            (Stands::Listening, true, true, "switch talk pause close"),
-            (Stands::Needs, true, false, "switch talk pause"),
+            (
+                Stands::Working,
+                true,
+                true,
+                "switch talk pause park stop close",
+            ),
+            (Stands::Working, true, false, "switch talk pause park stop"),
+            (Stands::InLine, false, true, "talk pause park stop close"),
+            (
+                Stands::Listening,
+                true,
+                true,
+                "switch talk pause park close",
+            ),
+            (Stands::Needs, true, false, "switch talk pause park"),
             (Stands::Paused, true, true, "switch talk resume close"),
             (Stands::Parked, false, true, "wake talk"),
+            (Stands::Off, false, true, "talk pause close"),
         ];
         for (stands, windowed, here, want) in cases {
             let got = acts(stands, windowed, here).join(" ");

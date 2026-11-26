@@ -375,6 +375,9 @@
         "unopened": "not opened \u00b7 it runs in a terminal the launcher can't reach",
         "untold": "not told, {why}",
         "refused": "{act} refused, {why}",
+        "unsent": "{act} not sent, its row doesn't offer it now",
+        "unsentParked": "{act} not sent, it's parked now, and that would wake it",
+        "unsentUnheld": "{act} not sent, how it stands isn't known yet",
         "unanswered": "the node didn't answer, so it may not have been told",
         "unansweredTo": "{act} had no answer from the node, so it may not be done",
         "unfenced": "not woken, it might come back outside its sandbox",
@@ -709,6 +712,14 @@
       "term": "Machine/wake",
       "verb": "wake",
       "glyph": "resume"
+    },
+    {
+      "id": "verb:agent:park",
+      "command": "park",
+      "in": "agents",
+      "name": "Park",
+      "verb": "park",
+      "glyph": "suspend"
     },
     {
       "id": "verb:agent:stop",

@@ -92,10 +92,11 @@ by = "KP0L6A"
 due = "2026-11-26 18:00"
 why = "it hands talk to the launcher, and shows nothing back"
 
-[act.launcher.owed]
-by = "42P0R4"
-due = "2026-11-24 20:00"
-why = "talk to an asking cell goes to an inbox it doesn't read"
+# Talk to a cell asking him shows its question and answers it (core.nix#6387),
+# read by the words that change brought, never the verb that came before it.
+[act.launcher.has]
+file = "modules/quickshell/launcher/TalkAnswers.js"
+holds = "function asked"
 
 [[act]]
 name = "asked"
@@ -118,8 +119,8 @@ holds = "It Asks You"
 
 [act.launcher.owed]
 by = "42P0R4"
-due = "2026-11-24 20:30"
-why = "For You shows a question's last line"
+due = "2026-11-25 15:00"
+why = "Talk and For You show a question whole on core.nix#6395, still unmerged"
 
 [[act]]
 name = "answer"
@@ -140,10 +141,10 @@ by = "KP0L6A"
 due = "2026-11-26 18:00"
 why = "it hands an answer to the launcher's talk"
 
-[act.launcher.owed]
-by = "42P0R4"
-due = "2026-11-24 20:00"
-why = "an answer goes to an inbox an asking cell doesn't read"
+# Return in a Talk, or a For You answer row, answers the ask he was shown.
+[act.launcher.has]
+file = "modules/quickshell/launcher/TalkAnswers.js"
+holds = "function answerOf"
 
 [[act]]
 name = "sprout"
@@ -164,8 +165,8 @@ holds = "mycelium:sprout?words="
 
 [act.launcher.owed]
 by = "42P0R4"
-due = "2026-11-25 12:00"
-why = "a link with no folder, and a zone by name, wait on core.nix#6373 and #6378"
+due = "2026-11-25 14:00"
+why = "a zone by name waits on core.nix#6378"
 
 [[act]]
 name = "forage"
@@ -187,8 +188,8 @@ holds = 'forage: "See What It Is For, and Its Plans"'
 
 [act.launcher.owed]
 by = "42P0R4"
-due = "2026-11-25 12:00"
-why = "its drawer says what a cell is for, and none of its plans"
+due = "2026-11-26 12:00"
+why = "its drawer says what a cell is for; its plans wait on core.nix#6392"
 
 [[act]]
 name = "hold"
@@ -262,27 +263,29 @@ holds = '"id": "verb:agent:close"'
 [[act]]
 name = "park"
 says = "park a cell, its program ended, to wake when it's spoken to"
-through = "the harness's parking steer, which 5HJZ8Z is bringing"
+through = "a steer of act park, dated, which the harness's parking steer takes (harness #2159)"
 
 [act.cli.owed]
 by = "KP0L6A"
-due = "2026-11-24 21:00"
-why = "mycelium steer takes act park on mycelium's train 53, then core's pin of it"
+due = "2026-11-26 18:00"
+why = "mycelium steer --help names no park, though the node relays one the launcher asks"
 
 [act.session.owed]
 by = "85PKB2"
 due = "2026-11-26 12:00"
-why = "no tool parks a cell until the harness's steer does"
+why = "the harness takes a Park steered to it, but no tool of a session's asks one"
 
 [act.map.owed]
 by = "KP0L6A"
 due = "2026-11-26 18:00"
 why = "a cell's drawer offers no park"
 
-[act.launcher.owed]
-by = "42P0R4"
-due = "2026-11-26 12:00"
-why = "it wakes a parked cell, and parks none until the harness can"
+# Read by its wiring, not its words alone, so it fails if the shell can no
+# longer make the act; whether a row offers it is the daemon's (standing.rs)
+# and SessionRow.js's KNOWN, which the Rust and Qt cases pin.
+[act.launcher.has]
+file = "modules/quickshell/launcher/Agents.qml"
+holds = ['park: () => act("park"', 'wake: () => act("wake"']
 
 [[act]]
 name = "looks"
@@ -324,6 +327,7 @@ talk = "talk"
 pause = "hold"
 resume = "hold"
 wake = "park"
+park = "park"
 stop = "stop"
 close = "close"
 

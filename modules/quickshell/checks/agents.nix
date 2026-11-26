@@ -316,9 +316,22 @@
       cp ${../launcher/ReopenTally.js} ReopenTally.js
       cp ${../launcher/SessionDrawer.js} SessionDrawer.js
       ${copied [ "Reading.js" ]}
+      cp ${(import ../launcher/words.nix).places.agents} words.json
+      export QML_XHR_ALLOW_FILE_READ=1
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
+      # The acts the shell takes from a served row (SessionRow.js's KNOWN) are
+      # those Agents.qml's sessionAct makes (its made), each way, so no drawer
+      # names one it can't do, and none it makes is left off every row.
+      known=$(sed -n 's/^const KNOWN = \[\(.*\)\];$/\1/p' SessionRow.js \
+        | tr -d '" ' | tr , '\n' | sort)
+      made=$(sed -n '/const made = {/,/hasOwnProperty.call(made/p' ${../launcher/Agents.qml} \
+        | sed -n 's/^ *\([a-z]*\): () =>.*/\1/p' | sort)
+      if [ -z "$known" ] || [ "$known" != "$made" ]; then
+        echo "SessionRow.js's KNOWN, on one line, is ["$known"], Agents.qml's made ["$made"]"
+        exit 1
+      fi
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml session-row.qml
       touch $out
     '';

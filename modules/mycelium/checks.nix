@@ -977,6 +977,7 @@ in
             [act.launcher.owed]
             by = "soon"
             due = "2026-11-24 17:00"
+            why = "soon"
           '';
           says = "go on the launcher is owed by no cell's address";
         }
@@ -1029,6 +1030,7 @@ in
             wake = "go"
             stop = "go"
             close = "go"
+            park = "go"
           '';
           says = "what the launcher lists: talk is no act of the table, nor set apart";
         }
@@ -1051,6 +1053,7 @@ in
             wake = "go"
             stop = "go"
             close = "go"
+            park = "go"
             gone = "go"
           '';
           says = "launcher/words/agents.json no longer lists gone";
@@ -1074,6 +1077,7 @@ in
             wake = "go"
             stop = "go"
             close = "go"
+            park = "go"
           '';
           says = "switch is said to be went, no act of the table";
         }
@@ -1178,6 +1182,13 @@ in
         fi
         if ! grep -qF -- "$2" said; then
           echo "On $1 the surfaces check didn't say: $2"
+          cat said
+          exit 1
+        fi
+        # Its own fault alone, so a second can't hide that the first went unseen.
+        faults=$(grep -c '^- ' said || true)
+        if [ "$faults" != 1 ]; then
+          echo "On $1 the surfaces check listed $faults faults, not its own alone: $2"
           cat said
           exit 1
         fi

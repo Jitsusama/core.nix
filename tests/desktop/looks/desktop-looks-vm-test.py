@@ -862,7 +862,7 @@ def into_orchestration(desktop: Desktop, shot: str) -> None:
     desktop.launcher_until(
         lambda shown: (
             shown["held"] == ["agents", title]
-            and shown["rows"][:4] == ["Talk", "Go To", "Pause", "Close"]
+            and shown["rows"][:5] == ["Talk", "Go To", "Pause", "Park", "Close"]
         )
     )
     desktop.shoot(f"launcher-agents-acts-at-{shot}")

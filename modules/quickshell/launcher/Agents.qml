@@ -119,7 +119,7 @@ Provider {
             Object.assign(provider.topReopens(row), provider.topDrawer(row),
                 provider.topNetwork(row))), row)
         actMade: (key, one, row) => provider.topTalk(key, one, row)
-            ?? provider.topGoTo(one)
+            ?? provider.topSessionAct(one)
             ?? provider.topCarryBack(one, row)
             ?? provider.topLetStart(key, one)
         maker: provider
@@ -304,12 +304,27 @@ Provider {
     // Go To on a served orchestration is the shell's, as a session's own is
     // (sessionAct), since only the shell moves niri's focus (acts.rs): asked
     // of the daemon, it answered nothing and said it couldn't
-    // (moves-keep-their-window, 2026-11-13). Close is the daemon's, served
-    // saying what stays (ReadyRows.js's asking). Null for any other act, or
-    // a session not here.
-    function topGoTo(one) {
-        const session = one.key === "verb:agent:switch" ? sessionAt(one.ask?.address) : null;
-        return session ? sessionAct(session, "switch") : null;
+    // (moves-keep-their-window, 2026-11-13). Its steers are the shell's too,
+    // Park, Pause, Resume and Stop, so a press on a row gone stale is kept
+    // back as a session's own is (SessionRow.withheld), not sent to wake one
+    // parked since; one Sessions doesn't hold yet is asked by its address,
+    // so its steers are kept back until its row is held. Close is the
+    // daemon's, served saying what stays (ReadyRows.js's asking), asked
+    // before it's sent, and meant to end the session either way. Null for
+    // any other act (SessionRow.topActOf), and Go To on a session Sessions
+    // doesn't hold. A steer keeps the launcher open on the row, as the
+    // daemon's ask it stands in for did (ReadyRows.js's leaving; #4138), so
+    // Joel sees what it became.
+    function topSessionAct(one) {
+        const id = SessionRow.topActOf(one.key);
+        const address = one.ask?.address;
+        if (!id || !address)
+            return null;
+        const session = sessionAt(address);
+        if (id === "switch")
+            return session ? sessionAct(session, id) : null;
+        const made = sessionAct(session ?? { address }, id);
+        return made ? Object.assign(made, { stays: true }) : null;
     }
 
     // A served row naming its session's drawer, "drawer:agents-top:<address>",
@@ -526,6 +541,22 @@ Provider {
     function wrapSign(served) {
         return served ? JSON.stringify(Object.assign({}, served, { order: 0 })) : "";
     }
+    // Whether the shell held each session parked as its row was wrapped,
+    // which its Return reads (SessionRow.drawn), so a park or wake the
+    // daemon hasn't served yet wraps it again (rowOf).
+    readonly property var wrappedParked: ({})
+    // The sessions the shell holds parked, by each one's own address where
+    // no running one owns it (Sessions.parkedAs's rule), so every row laid
+    // out asks in one lookup (SessionRow.parkedSet), not by walking the
+    // parked. Said first as a string, which notifies only when it differs,
+    // so a running session's step, which moves Sessions.running, makes the
+    // set and lays Agents out again only when who's parked has changed.
+    readonly property string parkedKeys: Array.from(
+        SessionRow.parkedSet(Sessions.parked, Sessions.running)).sort().join("\n")
+    readonly property var parkedHere: new Set(parkedKeys.split("\n").filter(key => key !== ""))
+    function shellParked(address) {
+        return parkedHere.has(String(address).toUpperCase());
+    }
     property int placings: 0
     // Says Recent's records moved, so only Recent is made again.
     property int recentMoves: 0
@@ -567,6 +598,7 @@ Provider {
             if (wrappedFrom[key] !== wrapSign(held[key]?.row)) {
                 delete wrapped[key];
                 delete wrappedFrom[key];
+                delete wrappedParked[key];
             }
             const at = placedKeys.indexOf(key);
             if (at >= 0)
@@ -711,12 +743,19 @@ Provider {
             wrappedFrom[key] = wrapSign(served);
             return row;
         }
-        if (!(key in wrapped)) {
-            const session = sessionAt(String(served.row).replace(/^agent:/, ""));
+        const address = String(served.row).replace(/^agent:/, "");
+        // A park or wake the shell hears wraps its row again, as it moves
+        // the row's Return (wrappedParked); between a wake's two lists, as
+        // Sessions.relive sets them, the session is in neither for a moment,
+        // so its row keeps its wrap until it's found, not dropped.
+        const parked = shellParked(address);
+        if (!(key in wrapped) || wrappedParked[key] !== parked) {
+            const session = sessionAt(address);
             if (session === null)
-                return null;
+                return wrapped[key] ?? null;
             wrapped[key] = sessionRow(session, served);
             wrappedFrom[key] = wrapSign(served);
+            wrappedParked[key] = parked;
         }
         return wrapped[key];
     }
@@ -938,7 +977,8 @@ Provider {
             ? presence.owns.find(owned => /^QEST-/.test(owned)) ?? "" : "";
         const place = { depth: served.depth, orchestrates: !!held.orchestrates };
         const said = items => (items ?? []).map(item => item.said).join(" \u00b7 ");
-        const returning = String(held.returns ?? "").replace(/^verb:agent:/, "");
+        const returning = SessionRow.drawn(served, windowedOf(session),
+            shellParked(session.address), SessionRow.standsAtTop(presence)).marked;
         const row = member({
             thing: true,
             key: served.row,
@@ -1192,7 +1232,7 @@ Provider {
     // What the session `session` asks Joel that its Talk answers (TalkAnswers.js's asked): its
     // want's answers while it asks and isn't parked, as Now's rows read it (Now.qml's asking).
     function answersOf(session) {
-        const asking = SessionRow.asks(session.presence) && !Sessions.parkedAs(session.address);
+        const asking = SessionRow.asks(session.presence) && !shellParked(session.address);
         return { want: wantOf(session.address), asking };
     }
 
@@ -1272,7 +1312,7 @@ Provider {
     // [ae5dfdb6]); null while none stands there.
     function voidOf() {
         const top = Sessions.running.concat(Sessions.parked)
-            .find(one => !!one.presence?.standsAtTop?.name);
+            .find(one => SessionRow.standsAtTop(one.presence));
         return top ? { to: String(top.address), name: String(top.presence.standsAtTop.name) }
             : null;
     }
@@ -1429,20 +1469,21 @@ Provider {
     }
 
     // The acts a session's row offers and the one its Return does, as the
-    // agents daemon serves its row (SessionRow.offered), so its drawer and
-    // its step in list the same; while its row isn't held, SessionRow.js's
-    // own for how it stands.
+    // agents daemon serves its row, so its drawer, its step in and its Return
+    // (sessionRow) agree; while its row isn't held, or while the shell holds
+    // it parked, SessionRow.js's own (SessionRow.drawn).
     function offeredOf(session) {
         const row = rowsKind?.held?.[`row:agents:${session.address}`]?.row ?? null;
-        return SessionRow.offered(row?.acts, row?.held?.returns,
-            SessionRow.acts(stateOf(session), windowedOf(session), session.here));
+        return SessionRow.drawn(row, windowedOf(session), shellParked(session.address),
+            SessionRow.standsAtTop(session.presence));
     }
 
     // A session's own acts, in the order its row offers them, each steering
     // it through its inbox but Go To; an orchestrator's row is its
     // session's, with its talks after them.
     function sessionActs(session) {
-        return offeredOf(session).ids.map(id => sessionAct(session, id));
+        return offeredOf(session).ids.map(id => sessionAct(session, id))
+            .filter(act => act !== null);
     }
 
     // What Close leaves of a session, its worktree or folder and its quest's
@@ -1561,7 +1602,8 @@ Provider {
     // One of a session's acts, by its id in SessionRow.js's acts. Go To
     // and Wake take the session as it stands when pressed, since its row
     // is kept while its window moves, and Switch would otherwise go to
-    // the old one (Y2YBTS's review of #2521).
+    // the old one (Y2YBTS's review of #2521). An id it doesn't make is
+    // null, so a row served one by a newer daemon still builds.
     function sessionAct(session, id) {
         const current = () => provider.sessionAt(session.address) ?? session;
         const act = (id, fields) => thing(Object.assign({
@@ -1571,7 +1613,22 @@ Provider {
             glyph: Words.glyph(`verb:agent:${id}`),
             hue: "action"
         }, fields));
-        const steered = what => () => provider.actOn(current(), what);
+        // Pressed once it would wake what it meant to steer, as Park once the
+        // session parked while its drawer stood open, it's kept back and said
+        // so plainly, not sent (SessionRow.withheld).
+        const steered = what => () => {
+            const now = current();
+            const row = rowsKind?.held?.[`row:agents:${now.address}`]?.row ?? null;
+            const why = SessionRow.withheld(row, what, shellParked(now.address));
+            if (why === "") {
+                provider.actOn(now, what);
+                return;
+            }
+            Report.say(`unsent ${String(now.address).toUpperCase()}: ${what}, ${why}`);
+            provider.launcher?.tellOnOpen([[provider.footName(now),
+                SessionRow.unsent(Words.of("agents:machine").said, why,
+                    SessionRow.actName(what, Words.name)), Theme.text]]);
+        };
         const talked = () => {
             const talk = provider.talking(session.address, session.title);
             const talkWords = Words.of("verb:agent:talk");
@@ -1633,6 +1690,13 @@ Provider {
             wake: () => act("wake", { stays: true, run: () => provider.wakeNow(current()) }),
             pause: () => act("pause", { run: steered("pause") }),
             resume: () => act("resume", { run: steered("resume") }),
+            // Park frees what it holds until it's woken: the harness parks
+            // one idle at once and one at work once its turn settles. Only
+            // the node's refusal comes back to the foot, as Pause's does;
+            // the harness says a Park it waits on, drops or refuses in the
+            // session's own window and journal, and the row shows it
+            // parked once it is.
+            park: () => act("park", { run: steered("park") }),
             // Stop ends the turn under way, which nothing puts back, so it's
             // an ending: Return writes :interrupt and a second runs it, as d
             // does. It doesn't ask, as :interrupt is guarded, since the turn
@@ -1647,7 +1711,7 @@ Provider {
                 leaves: leaves(session), askedAs: session.address }, costly(session),
                 Words.ending("verb:agent:close")))
         };
-        return made[id]();
+        return Object.prototype.hasOwnProperty.call(made, id) ? made[id]() : null;
     }
 
     // When a session started, as a clock says it, with its day when that

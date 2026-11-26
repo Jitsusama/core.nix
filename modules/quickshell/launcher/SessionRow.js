@@ -26,34 +26,13 @@ function rankOf(row) {
     return Number.isFinite(rank) ? rank : UNRANKED;
 }
 
-// The acts a running session offers, by their vocabulary's ids, in the
-// order every kind keeps (docs/design.md, the order of actions): what
-// leaves it as it is before what changes it, and what ends it last. Every
-// session on the mesh reads its steer inbox, so each can be talked to,
-// paused, resumed and stopped; one with no window offers no Go To, and
-// only one under way can be stopped. One parked has no process to pause
-// or stop and no window known to go to: it can be woken, or talked to,
-// which wakes it too. Only one here can be closed, last, since the
-// harness ends a session on a close Joel steers it from this machine and
-// drops one a node relays (harness #1023).
-function acts(standing, windowed, here) {
-    if (standing === "parked") {
-        return ["wake", "talk"];
-    }
-    const ids = windowed ? ["switch"] : [];
-    ids.push("talk");
-    ids.push(standing === "paused" ? "resume" : "pause");
-    if (standing === "working" || standing === "inLine") {
-        ids.push("stop");
-    }
-    if (here) {
-        ids.push("close");
-    }
-    return ids;
-}
+// Which acts a session's own row offers, and in what order, is the agents
+// daemon's (standing.rs's acts, served on its row by row.rs), so nothing
+// here says it a second way: before its row is held, the shell offers
+// only what can't wake one parked already (fallbackOf).
 
 // The acts a session offers from a row it's behind but isn't its own, as
-// a landing's in For You: Talk and Go To of its own acts, in their order,
+// a landing's in For You: Go To, then Talk, in the order of its own acts,
 // so Joel reaches whoever made the thing from the thing (Joel,
 // 2026-11-16: "i have no way to go from the thing it shows to engaging
 // with the thing working on it"). None steers or ends it, since that row
@@ -61,11 +40,15 @@ function acts(standing, windowed, here) {
 // Close weighs, never changes them. One `asking` a question or a yes has
 // no Talk, as What Needs Me gives none (Now.qml's talkTo): its ask runs
 // until he answers, so words said to it would come after the answer they
-// were meant to shape. Parked, it runs no ask, so Talk stays.
+// were meant to shape. Parked, it runs no ask, so Talk stays, and it has
+// no window known to go to, so no Go To.
 function behindActs(standing, windowed, asking) {
-    const talks = !asking || standing === "parked";
-    return acts(standing, windowed, false)
-        .filter(id => id === "switch" || (id === "talk" && talks));
+    const parked = standing === "parked";
+    const ids = windowed && !parked ? ["switch"] : [];
+    if (!asking || parked) {
+        ids.push("talk");
+    }
+    return ids;
 }
 
 // Whether a session's presence holds an ask open, a question or a yes,
@@ -76,25 +59,159 @@ function asks(presence) {
     return kind === "question" || kind === "approval";
 }
 
-// The acts a session's row offers, by their ids, and `marked`, the one its
-// Return does: those its row serves (`rowActs`), in their order, and its `returns`
-// (modules/agents/src/row.rs), else `fallback`, the shell's own list, with
-// Return on its first, while its row isn't held. An act Return does that
-// the row doesn't list leads it, so nothing marks an act Return won't do.
-// Its drawer and its step in read the same list.
+// The acts a session's own row can do, as Agents.qml's sessionAct makes
+// each. Only these are taken from what the daemon serves: a switch
+// restarts the daemon at once but leaves the running shell alone until its
+// handover, so a daemon serving an act newer than the shell would
+// otherwise offer what the shell can't do.
 const AGENT = "verb:agent:";
+const KNOWN = ["switch", "talk", "wake", "pause", "resume", "park", "stop", "close"];
+
+// The id of a session's act its key names, as "verb:agent:park" names
+// park, or "" for a key that isn't one the shell makes, which is how a
+// row's Return (Agents.qml's sessionRow) and its acts are both read.
+function known(key) {
+    const said = String(key ?? "");
+    const id = said.startsWith(AGENT) ? said.slice(AGENT.length) : "";
+    return KNOWN.includes(id) ? id : "";
+}
+
+// The acts Return may fall to when the row names none it lists: those
+// that leave a session as it is, or wake it, as Wake is Return for a
+// parked one, whose list holds it.
+const HARMLESS = ["switch", "talk", "wake"];
+
+// The acts a session's row offers, by their ids, and `marked`, the one its
+// Return does: those its row serves (`rowActs`) that the shell makes, in
+// their order, and its `returns` (modules/agents/src/row.rs), else
+// `fallback`, the shell's own list. A Return it doesn't list, which only
+// a daemon out of step with the shell serves (standing.rs gives each
+// Return in its acts), isn't trusted, as Go To on a row with no window or
+// Wake on one running would be: Return is then, as with no Return the
+// shell makes, the first act that leaves the session as it is, else Talk,
+// put first, never one that steers or ends it, whatever order a newer
+// daemon serves. Its drawer and its step in read the same list.
 function offered(rowActs, returns, fallback) {
     const served = (Array.isArray(rowActs) ? rowActs : [])
-        .map(one => String(one?.key ?? ""))
-        .filter(key => key.startsWith(AGENT))
-        .map(key => key.slice(AGENT.length));
+        .map(one => known(one?.key))
+        .filter(id => id !== "");
     const ids = served.length > 0 ? served : fallback.slice();
-    const said = String(returns ?? "");
-    const returning = said.startsWith(AGENT) ? said.slice(AGENT.length) : "";
-    if (returning !== "" && !ids.includes(returning)) {
+    const named = known(returns);
+    const returning = ids.includes(named) ? named
+        : ids.find(id => HARMLESS.includes(id)) ?? "talk";
+    if (!ids.includes(returning)) {
         ids.unshift(returning);
     }
-    return { ids, marked: returning === "" ? ids[0] ?? "" : returning };
+    return { ids, marked: returning };
+}
+
+// What a session's drawer offers and its Return does, from its `row` as
+// the agents daemon serves it, or null before it's held, whether it's
+// `windowed`, whether the shell holds it `parked`, and whether it stands
+// at the `top`, as the void does (standsAtTop). Parked by the shell's
+// word, it offers a parked one's acts whatever its row still serves,
+// since `withheld` keeps back every other act then, so what's offered and
+// what goes agree; its Return is Wake, but Talk for one at the top, which
+// is gone to to be told something however it stands, as row.rs serves it,
+// held, unheld or parked.
+function drawn(row, windowed, parked, top) {
+    const fallback = fallbackOf(windowed, parked);
+    const talks = top ? `${AGENT}talk` : "";
+    return parked ? offered([], talks, fallback)
+        : offered(row?.acts, talks || row?.held?.returns, fallback);
+}
+
+// Whether a session stands at the top, gone to by name as the void is,
+// from its `presence` as session.rs's at_top reads it: a name it says, as
+// a string and not empty.
+function standsAtTop(presence) {
+    const name = presence?.standsAtTop?.name;
+    return typeof name === "string" && name !== "";
+}
+
+// The shell's own acts for a session's row, `offered`'s fallback: for one
+// the shell holds `parked`, a parked one's, Wake and Talk, as Wake works
+// with no daemon to serve its row; else Go To where it has a window, and
+// Talk, which every session takes, and none that steers or ends it, since
+// how it stands isn't known: before its row is held it may be parked
+// already, and the node wakes a parked session for any steer; held with
+// no act the shell makes, as from a daemon newer than it, it's no better
+// known, so it gets the same. `withheld` keeps back the rest.
+function fallbackOf(windowed, parked) {
+    if (parked) {
+        return ["wake", "talk"];
+    }
+    return windowed ? ["switch", "talk"] : ["talk"];
+}
+
+// Who goes by `address` among the shell's `parked` (Sessions.parked),
+// beside its `running`, whatever its case, or null. Owners come before
+// listers, as in the agents daemon's cells.rs; unlike there, a running
+// session comes before a parked one at each rank, so where it's unsure it
+// fails open on a live session's Stop: a running owner, then a parked
+// owner, then a running lister, then a parked lister, as a link may name
+// an address a session went by once. cells.rs's quest guard on listers
+// isn't kept: the callers give a row's own address or a cell the cells
+// daemon has already chosen. Sessions.parkedAs.
+function parkedOf(parked, running, address) {
+    const upper = String(address ?? "").toUpperCase();
+    const owns = one => String(one?.address ?? "").toUpperCase() === upper;
+    const lists = one => (one?.presence?.addresses ?? []).some(each =>
+        String(each ?? "").toUpperCase() === upper);
+    const resting = Array.isArray(parked) ? parked : [];
+    const live = Array.isArray(running) ? running : [];
+    if (upper === "" || live.some(owns)) {
+        return null;
+    }
+    return resting.find(owns) ?? (live.some(lists) ? null : resting.find(lists) ?? null);
+}
+
+// The own addresses, upper-cased, of the `parked` that parkedOf finds by
+// them, those no running one owns, so a row, keyed by its session's own
+// address, asks whether it's parked in one lookup, by parkedOf's rule.
+function parkedSet(parked, running) {
+    const own = list => (Array.isArray(list) ? list : [])
+        .map(one => String(one?.address ?? "").toUpperCase()).filter(address => address !== "");
+    const live = new Set(own(running));
+    return new Set(own(parked).filter(address => !live.has(address)));
+}
+
+// The act a served orchestration's row names by `key` that the shell
+// makes itself, as a session's own (Agents.qml's topSessionAct), or ""
+// for one the daemon does, Close among them, which asks before it's sent.
+const TOP = ["switch", "park", "pause", "resume", "stop"];
+function topActOf(key) {
+    const id = known(key);
+    return TOP.includes(id) ? id : "";
+}
+
+
+// Why an act pressed on a session's row isn't steered, asked of the row
+// as it's served at the press, and whether the shell holds it `parked`,
+// or "" when it is: one parked since (the shell holds it parked, or its
+// row offers Wake) takes only Wake and Talk, since the node wakes a
+// parked session for any steer. One whose row isn't held, or serves no
+// act the shell makes, takes only Go To, Wake and Talk, as it may be
+// parked already. Park goes only while its row offers it. Any other act
+// goes for the node or the harness to answer, so a Stop pressed as its
+// turn comes to ask Joel still stops it.
+function withheld(row, id, parked) {
+    const served = (Array.isArray(row?.acts) ? row.acts : [])
+        .map(one => known(one?.key))
+        .filter(one => one !== "");
+    if (parked || served.includes("wake")) {
+        return id === "wake" || id === "talk" ? "" : "unsentParked";
+    }
+    if (served.length === 0) {
+        return ["switch", "wake", "talk"].includes(id) ? "" : "unsentUnheld";
+    }
+    return id !== "park" || served.includes("park") ? "" : "unsent";
+}
+
+// What the foot says of an act `withheld` kept back, by its word's key,
+// in the act's own name: said plainly, as nothing failed.
+function unsent(said, why, act) {
+    return String(said?.[why] ?? "").replace("{act}", () => act);
 }
 
 // The theme's role its glyph is drawn in: a program's, as a live one

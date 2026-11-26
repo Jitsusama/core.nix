@@ -2,8 +2,8 @@
 // JavaScript engine, the one the shell runs it in. The
 // `the-launcher-says-how-each-session-stands` check copies
 // modules/quickshell/launcher/SessionRow.js, SessionDrawer.js, Holders.js,
-// Landed.js and ReopenTally.js beside this file and runs
-// `qml -platform offscreen session-row.qml`. How each session stands, in
+// Landed.js and ReopenTally.js beside this file, with the launcher's
+// words.json, and runs `qml -platform offscreen session-row.qml`. How each session stands, in
 // the one order every list keeps (needs you, working, in line, listening,
 // paused, parked), is the agents daemon's (modules/agents/src/standing.rs),
 // as is how Agents lays them out, each under the one orchestrating it
@@ -19,6 +19,14 @@ import "ReopenTally.js" as ReopenTally
 import "Reading.js" as Reading
 
 QtObject {
+    // The words a thing has in words.json, by its id, as the shell reads them.
+    function said(id) {
+        const request = new XMLHttpRequest();
+        request.open("GET", Qt.resolvedUrl("words.json"), false);
+        request.send();
+        return JSON.parse(request.responseText).things.find(one => one.id === id)?.said ?? {};
+    }
+
     // A test that throws ends as a failure, rather than leaving qml running.
     Component.onCompleted: {
         try {
@@ -36,25 +44,8 @@ QtObject {
         // the agents daemon's alone (modules/agents/src/standing.rs), its
         // cases there.
 
-        // A session's acts follow how it stands: one at work or in line can
-        // be stopped, one paused resumed, one parked only woken or talked
-        // to, with no window known to go to. One here closes, last; one
-        // elsewhere can't, since its node's relay of a close is dropped.
-        const acts = [
-            ["working", true, true, "switch talk pause stop close"],
-            ["working", true, false, "switch talk pause stop"],
-            ["inLine", false, true, "talk pause stop close"],
-            ["listening", true, true, "switch talk pause close"],
-            ["needs", true, false, "switch talk pause"],
-            ["paused", true, true, "switch talk resume close"],
-            ["parked", false, true, "wake talk"]
-        ];
-        for (const [state, windowed, here, want] of acts) {
-            const got = SessionRow.acts(state, windowed, here).join(" ");
-            if (got !== want)
-                failures.push(`the acts of one ${state}${here ? " here" : ""}: "${got}", `
-                    + `not "${want}"`);
-        }
+        // Which acts a session's own row offers is the daemon's, its cases
+        // in standing.rs (a_sessions_acts_follow_how_it_stands).
 
         // A row a session is behind but isn't its own, as a landing's,
         // offers Talk and Go To of its acts, in their order, and none that
@@ -95,26 +86,254 @@ QtObject {
         }
         // A row offers the acts the daemon serves, in their order, and marks
         // the one its Return does, which for one paused is Resume, not its
-        // first; one it doesn't list leads, and with nothing served, the
-        // shell's own list, Return on its first.
+        // first; one it doesn't list isn't trusted, and with nothing served,
+        // the shell's own list, Return on its first harmless act.
         const served = ids => ids.map(id => ({ key: `verb:agent:${id}` }));
         const offers = [
             ["one paused marks Resume", served(["switch", "talk", "resume", "close"]),
                 "verb:agent:resume", ["talk"], "switch talk resume close", "resume"],
             ["one listening marks Talk after Go To", served(["switch", "talk", "pause"]),
                 "verb:agent:talk", ["talk"], "switch talk pause", "talk"],
+            ["one live offers Park as served",
+                served(["switch", "talk", "pause", "park", "stop", "close"]),
+                "verb:agent:talk", [], "switch talk pause park stop close", "talk"],
             ["one parked marks Wake", served(["wake", "talk"]), "verb:agent:wake", ["talk"],
                 "wake talk", "wake"],
             ["its order is the daemon's, not the shell's", served(["talk", "pause"]),
                 "verb:agent:talk", ["switch", "talk", "pause"], "talk pause", "talk"],
-            ["what Return does leads when the row doesn't list it", served(["talk", "pause"]),
-                "verb:agent:switch", ["talk"], "switch talk pause", "switch"],
+            // A Return it doesn't list comes only from a daemon out of step,
+            // so it isn't trusted: Go To on a row with no window, or Wake on
+            // one running, isn't marked, nor anything kept back at the press.
+            ["a Go To Return the row doesn't list isn't marked", served(["talk", "pause"]),
+                "verb:agent:switch", ["talk"], "talk pause", "talk"],
+            ["a Wake Return on a live row isn't marked", served(["switch", "talk", "pause"]),
+                "verb:agent:wake", [], "switch talk pause", "switch"],
             ["its other keys aren't a session's acts",
                 [{ key: "verb:agents:landed:try" }, ...served(["talk"])], "verb:agent:talk", [],
                 "talk", "talk"],
-            ["nothing served, the shell's own, Return on its first", undefined, undefined,
-                ["switch", "talk", "pause"], "switch talk pause", "switch"]
+            ["nothing served, the shell's own, Return on its first harmless", undefined,
+                undefined, ["switch", "talk", "pause"], "switch talk pause", "switch"],
+            ["nothing served, Return passes over a steer leading", undefined, undefined,
+                ["pause", "talk"], "pause talk", "talk"],
+            ["a Park Return the row doesn't list isn't marked", served(["talk", "pause"]),
+                "verb:agent:park", [], "talk pause", "talk"],
+            ["a Pause Return on a row serving nothing it makes isn't marked",
+                served(["hush"]), "verb:agent:pause", ["talk"], "talk", "talk"],
+            // A daemon newer than the shell, as through a switch, serves acts
+            // the shell can't make: they're left out, Return's too.
+            ["an act the shell doesn't make is left out", served(["talk", "hush", "pause"]),
+                "verb:agent:talk", [], "talk pause", "talk"],
+            ["a Return the shell doesn't make marks its first harmless",
+                served(["pause", "talk"]), "verb:agent:hush", [], "pause talk", "talk"],
+            // Return never falls to an act that steers or ends it, whatever
+            // order a newer daemon serves.
+            ["a Return it doesn't make passes over Park", served(["park", "stop", "talk"]),
+                "verb:agent:hush", [], "park stop talk", "talk"],
+            ["no harmless act served puts Talk first", served(["park", "stop"]), undefined, [],
+                "talk park stop", "talk"],
+            ["only acts it can't make served, the shell's own", served(["hush"]),
+                "verb:agent:hush", ["talk"], "talk", "talk"]
         ];
+        // A row's own Return is read as its acts are, so an act the shell
+        // doesn't make is none, rather than one sessionAct can't make.
+        const keys = [
+            ["park", "verb:agent:park", "park"], ["stop", "verb:agent:stop", "stop"],
+            ["one the shell doesn't make", "verb:agent:hush", ""],
+            ["another kind's", "verb:agents:park", ""], ["none", undefined, ""]
+        ];
+        for (const [what, key, want] of keys) {
+            if (SessionRow.known(key) !== want)
+                failures.push(`${what}: known "${SessionRow.known(key)}", not "${want}"`);
+        }
+        // An orchestration's row hands the shell its session's Go To and steers,
+        // so each is checked at the press, and leaves the daemon its Close,
+        // which asks first, and Wake and Talk, which wake nothing it didn't mean.
+        const tops = [["verb:agent:switch", "switch"], ["verb:agent:park", "park"],
+            ["verb:agent:pause", "pause"], ["verb:agent:resume", "resume"],
+            ["verb:agent:stop", "stop"], ["verb:agent:close", ""], ["verb:agent:wake", ""],
+            ["verb:agent:talk", ""], ["verb:agent:hush", ""], ["verb:agents:park", ""]];
+        for (const [key, want] of tops) {
+            if (SessionRow.topActOf(key) !== want)
+                failures.push(`top ${key}: "${SessionRow.topActOf(key)}", not "${want}"`);
+        }
+        // Who goes by an address among the parked, beside the running,
+        // whatever its case: owners before listers, and at each a running one
+        // before a parked one, so a live session's Stop fails open. A row asks
+        // the set by its own address, upper-cased as Agents' shellParked asks
+        // it, and the set holds only parked owners, never a mere lister.
+        const resting = [
+            { address: "ab12cd", presence: { addresses: ["ab12cd", "LIVE01", "OLD001",
+                "NEXT01", "BOTH01"] } },
+            { address: "NEXT01", presence: { addresses: ["NEXT01"] } },
+            { address: "SHARED", presence: { addresses: ["SHARED"] } },
+            { address: "OWNED1", presence: { addresses: ["OWNED1"] } }, { address: "" }, {}
+        ];
+        const runningOnes = [{ address: "live01" }, { address: "shared" },
+            { address: "run001", presence: { addresses: ["run001", "both01", "owned1"] } }];
+        const parkedHere = SessionRow.parkedSet(resting, runningOnes);
+        const parkings = [["its own, upper-cased", "AB12CD", true, "ab12cd"],
+            ["its own, one before listing it", "NEXT01", true, "NEXT01"],
+            ["a running one's it lists", "LIVE01", false, null],
+            ["one it only lists, none owning it", "old001", false, "ab12cd"],
+            ["one a running one lists too", "BOTH01", false, null],
+            ["its own, a running one's too", "SHARED", false, null],
+            ["its own, a running one lists it", "OWNED1", true, "OWNED1"],
+            ["one none goes by", "NONE01", false, null], ["none", "", false, null]];
+        for (const [what, address, want, whose] of parkings) {
+            const found = SessionRow.parkedOf(resting, runningOnes, address)?.address ?? null;
+            const here = parkedHere.has(address.toUpperCase());
+            if (here !== want || found !== whose)
+                failures.push(`parked, ${what}: ${here} by ${found}, `
+                    + `not ${want} by ${whose}`);
+        }
+        if (SessionRow.parkedSet(undefined, undefined).size !== 0
+                || SessionRow.parkedOf(undefined, undefined, "AB12CD") !== null)
+            failures.push("parked of nothing: not none");
+        // The shell's own acts: Go To where it has a window, and Talk, none that
+        // steers or ends it, as how it stands isn't known; one the shell holds
+        // parked, Wake and Talk.
+        const fallbacks = [
+            ["with a window", true, false, "switch talk"],
+            ["with none", false, false, "talk"],
+            ["parked by the shell, with a window", true, true, "wake talk"],
+            ["parked by the shell, with none", false, true, "wake talk"]
+        ];
+        for (const [what, windowed, parked, want] of fallbacks) {
+            const got = SessionRow.fallbackOf(windowed, parked).join(" ");
+            if (got !== want)
+                failures.push(`fallback ${what}: "${got}", not "${want}"`);
+        }
+        // What a drawer offers and its Return does, from its row, whether it has
+        // a window, and whether the shell holds it parked: the shell's parked
+        // word wins over a row still served live, and nothing it offers is
+        // kept back at the press (withheld, below).
+        const rowOf = (acts, returns) => ({ acts: served(acts), held: { returns } });
+        const live = rowOf(["switch", "talk", "pause", "park", "close"], "verb:agent:talk");
+        const draws = [
+            ["held live", live, true, false, "switch talk pause park close", "talk"],
+            ["held live, parked by the shell", live, true, true, "wake talk", "wake"],
+            ["held paused", rowOf(["switch", "talk", "resume"], "verb:agent:resume"), true,
+                false, "switch talk resume", "resume"],
+            ["held with nothing it makes, parked by the shell",
+                rowOf(["hush"], "verb:agent:hush"), false, true, "wake talk", "wake"],
+            ["held with nothing it makes", rowOf(["hush"], "verb:agent:hush"), true, false,
+                "switch talk", "switch"],
+            ["held, a Park Return it doesn't list", rowOf(["talk", "pause"], "verb:agent:park"),
+                false, false, "talk pause", "talk"],
+            ["unheld, with a window", null, true, false, "switch talk", "switch"],
+            ["unheld, parked by the shell", null, true, true, "wake talk", "wake"]
+        ];
+        // One at the top, as the void, is gone to to be told something however
+        // it stands, so Return talks to it, held, unheld or parked, by its row's
+        // word or the shell's; and what it offers is never kept back.
+        const voids = [
+            ["the void parked by its row alone", rowOf(["wake", "talk"], "verb:agent:talk"),
+                false, false, true, "wake talk", "talk"],
+            ["the void held parked, and by the shell", rowOf(["wake", "talk"], "verb:agent:wake"),
+                false, true, true, "wake talk", "talk"],
+            ["the void unheld", null, true, false, true, "switch talk", "talk"],
+            ["the void served Go To as Return", rowOf(["switch", "talk", "pause"],
+                "verb:agent:switch"), true, false, true, "switch talk pause", "talk"],
+            ["the void held live, parked by the shell", live, true, true, true, "wake talk",
+                "talk"],
+            ["the void unheld, parked by the shell", null, false, true, true, "wake talk",
+                "talk"],
+            ["the void held live", live, true, false, true, "switch talk pause park close",
+                "talk"]
+        ];
+        for (const [what, row, windowed, parked, top, want, mark] of voids) {
+            const { ids, marked } = SessionRow.drawn(row, windowed, parked, top);
+            if (ids.join(" ") !== want || marked !== mark)
+                failures.push(`drawn ${what}: "${ids.join(" ")}" marking ${marked}, `
+                    + `not "${want}" marking ${mark}`);
+            const kept = ids.filter(id => SessionRow.withheld(row, id, parked) !== "");
+            if (kept.length > 0)
+                failures.push(`drawn ${what}: offers ${kept.join(" ")}, which it keeps back`);
+        }
+        const atTop = [[{ standsAtTop: { name: "Void" } }, true],
+            [{ standsAtTop: { name: "" } }, false], [{ standsAtTop: { name: true } }, false],
+            [{ standsAtTop: { name: 1 } }, false], [{}, false], [undefined, false]];
+        for (const [presence, want] of atTop) {
+            if (SessionRow.standsAtTop(presence) !== want)
+                failures.push(`standsAtTop of ${JSON.stringify(presence)}: not ${want}`);
+        }
+        for (const [what, row, windowed, parked, want, mark] of draws) {
+            const { ids, marked } = SessionRow.drawn(row, windowed, parked, false);
+            if (ids.join(" ") !== want || marked !== mark)
+                failures.push(`drawn ${what}: "${ids.join(" ")}" marking ${marked}, `
+                    + `not "${want}" marking ${mark}`);
+            const kept = ids.filter(id => SessionRow.withheld(row, id, parked) !== "");
+            if (kept.length > 0)
+                failures.push(`drawn ${what}: offers ${kept.join(" ")}, which it keeps back`);
+        }
+        // Pressed, an act is kept back only where it would wake what it meant to
+        // steer: anything but Wake and Talk once parked, by its row or by the
+        // shell's word; anything but Go To, Wake and Talk before its row's held,
+        // as it may be parked already; and Park wherever its row doesn't offer
+        // it. Any other goes for the node to answer.
+        const liveRow = { acts: served(["switch", "talk", "pause", "park", "close"]) };
+        const parkedRow = { acts: served(["wake", "talk"]) };
+        const pausedRow = { acts: served(["switch", "talk", "resume", "close"]) };
+        const newerRow = { acts: served(["hush"]) };
+        const pressed = [
+            ["Park on one still live", liveRow, "park", false, ""],
+            ["Park on one parked since", parkedRow, "park", false, "unsentParked"],
+            ["Pause on one parked since", parkedRow, "pause", false, "unsentParked"],
+            ["Stop on one parked since", parkedRow, "stop", false, "unsentParked"],
+            ["Close on one parked since", parkedRow, "close", false, "unsentParked"],
+            ["Resume on one parked since", parkedRow, "resume", false, "unsentParked"],
+            ["Wake on one parked", parkedRow, "wake", false, ""],
+            ["Talk on one parked", parkedRow, "talk", false, ""],
+            ["Park on one paused since", pausedRow, "park", false, "unsent"],
+            ["Stop on one paused since", pausedRow, "stop", false, ""],
+            ["Resume on one unpaused since", liveRow, "resume", false, ""],
+            ["Pause on one the shell holds parked", liveRow, "pause", true, "unsentParked"],
+            ["Talk on one the shell holds parked", liveRow, "talk", true, ""],
+            // Its row still serving Park, Stop or Close, the shell's word wins.
+            ["Park on a live row the shell holds parked", liveRow, "park", true,
+                "unsentParked"],
+            ["Close on a live row the shell holds parked", liveRow, "close", true,
+                "unsentParked"],
+            ["Stop on a working row the shell holds parked",
+                { acts: served(["talk", "pause", "park", "stop"]) }, "stop", true, "unsentParked"],
+            ["Pause on an unheld row the shell holds parked", null, "pause", true,
+                "unsentParked"],
+            ["Park on a row not yet held", null, "park", false, "unsentUnheld"],
+            ["Park on a row serving no acts", {}, "park", false, "unsentUnheld"],
+            ["Pause on a row not yet held", null, "pause", false, "unsentUnheld"],
+            ["Close on a row not yet held", null, "close", false, "unsentUnheld"],
+            ["Stop on a row serving only newer acts", newerRow, "stop", false, "unsentUnheld"],
+            ["Go To on a row not yet held", null, "switch", false, ""],
+            ["Talk on a row not yet held", null, "talk", false, ""],
+            ["Wake on a row not yet held", null, "wake", false, ""]
+        ];
+        // Each kept back is said in the words the shell reads, so a key
+        // withheld gives that words.json has none of fails here.
+        const keptSaid = said("agents:machine");
+        for (const [what, row, id, parked, want] of pressed) {
+            const got = SessionRow.withheld(row, id, parked);
+            if (got !== want)
+                failures.push(`${what}: withheld "${got}", not "${want}"`);
+            if (got !== "" && !String(keptSaid[got] ?? "").includes("{act}"))
+                failures.push(`${what}: words.json says nothing of "${got}" naming the act`);
+        }
+        // What the foot says of one kept back, in the act's own name, plainly.
+        // The act's name goes where its words say {act}, taken as it is; the
+        // words are a stand-in, so rewording the foot fails nothing here.
+        const keptWords = { unsent: "{act} held", unsentParked: "{act}: parked",
+            unsentUnheld: "unknown, so {act} stays" };
+        const unsents = [
+            ["unsent", "Park", "Park held"],
+            ["unsentParked", "Stop", "Stop: parked"],
+            ["unsentUnheld", "Pause", "unknown, so Pause stays"],
+            ["unsent", "$& {act}", "$& {act} held"],
+            ["unknown", "Park", ""]
+        ];
+        for (const [why, act, want] of unsents) {
+            const got = SessionRow.unsent(keptWords, why, act);
+            if (got !== want)
+                failures.push(`unsent ${why} of ${act}: "${got}", not "${want}"`);
+        }
         for (const [what, acts, returns, fallback, want, mark] of offers) {
             const { ids, marked } = SessionRow.offered(acts, returns, fallback);
             if (ids.join(" ") !== want || marked !== mark)

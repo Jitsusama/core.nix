@@ -111,6 +111,18 @@ ShellRoot {
         act: (piece, tokens) => tokens.actions[1].run(),
         holds: piece => Sessions.steered === "ADDR1 pause"
     }, {
+        // Parked since the notice came, it isn't steered, as the node would wake it.
+        what: "pausing the session that spends most, parked since",
+        status: status({ tokens: root.running }),
+        act: (piece, tokens) => {
+            Sessions.steered = "";
+            Sessions.parked = [{ address: "ADDR1" }];
+            tokens.actions[1].run();
+            Sessions.parked = [];
+        },
+        holds: piece => Sessions.steered === ""
+            && Report.said.includes("unsent pause ADDR1: parked")
+    }, {
         what: "tokens running out, while sharing",
         status: status({ tokens: root.running }),
         sharing: true,

@@ -394,7 +394,7 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         } else {
             standing::returns(stands, windowed)
         },
-        acts: standing::acts(stands, windowed, session.here()),
+        acts: standing::acts(acting(session, stands, known), windowed, session.here()),
         leaves: leaves(session, known, words),
         talk: None,
         ranked: Ranked {
@@ -460,6 +460,21 @@ impl Row {
     pub fn waits(&mut self, said: &str, talk: &str, stage: &str) {
         self.says_first(said);
         self.talk = Some(serde_json::json!({"id": talk, "stage": stage}));
+    }
+}
+
+/// How it stands to what it can be asked to do: one paused that wants
+/// Joel needs him, but its acts stay a paused one's, Resume and no Park,
+/// since the harness parks none under another hold (agentic-harness.pi
+/// #2159), as a parked one's stay a parked one's
+/// (`Session::stands_to_joel`), one the node says is parked among them
+/// (`Session::stands`).
+fn acting(session: Session, stands: Stands, known: &Known) -> Stands {
+    match stands {
+        Stands::Needs if session.stands_wanting_nothing(known.jobs) == Stands::Paused => {
+            Stands::Paused
+        }
+        stands => stands,
     }
 }
 
@@ -711,6 +726,79 @@ mod tests {
     }
 
     #[test]
+    fn a_paused_session_wanting_joel_keeps_a_paused_ones_acts() {
+        let asking = |state: &str| {
+            json!({"presence": {"addresses": ["P"], "session": "s-lead", "state": state,
+                "wants": {"kind": "approval", "said": "May I push?"}}})
+        };
+        let row = made(&asking("paused"), Place::default(), &given());
+        assert_eq!(row.state, "needs", "it needs Joel, so it's marked as his");
+        assert_eq!(
+            row.acts.join(" "),
+            "switch talk resume close",
+            "it's offered Resume, and neither a Pause nor a Park the harness refuses under \
+             its hold"
+        );
+        let listening = made(&asking("listening"), Place::default(), &given());
+        assert_eq!(
+            listening.state, "needs",
+            "one listening that wants him needs him"
+        );
+        assert_eq!(
+            listening.acts.join(" "),
+            "switch talk pause park close",
+            "one listening that wants him can still be paused or parked"
+        );
+    }
+
+    #[test]
+    fn a_session_the_node_says_is_parked_is_offered_only_wake_and_talk() {
+        let parked = |presence: Value| json!({"standing": "parked", "presence": presence});
+        let unsaid = parked(json!({"addresses": ["P"], "session": "s-lead"}));
+        let listening = parked(json!({"addresses": ["P"], "session": "s-lead",
+            "state": "listening"}));
+        let asking = parked(json!({"addresses": ["P"], "session": "s-lead",
+            "wants": {"kind": "question", "said": "Which tree?"}}));
+        for (what, record) in [
+            ("its presence saying no state", unsaid),
+            ("its presence last listening", listening),
+            ("its presence asking Joel", asking),
+        ] {
+            let row = made(&record, Place::default(), &given());
+            assert_eq!(
+                row.acts.join(" "),
+                "wake talk",
+                "parked by the node, {what}, it's offered no steer that would wake it"
+            );
+            assert_eq!(
+                (row.state, row.returns),
+                ("parked", "wake"),
+                "parked by the node, {what}, it reads parked and its Return wakes it"
+            );
+            let mut said_parked = record.clone();
+            said_parked["standing"] = json!("running");
+            said_parked["presence"]["state"] = json!("parked");
+            let twin = made(&said_parked, Place::default(), &given());
+            assert_eq!(
+                (row.hue, row.mark_hue, &row.doing),
+                (twin.hue, twin.mark_hue, &twin.doing),
+                "parked by the node, {what}, it wears and says what one its presence parks does"
+            );
+        }
+        // One standing at the top, the void, is gone to to be told something
+        // however it stands, parked by the node too, as the shell's drawn
+        // reads it (SessionRow.js).
+        let void = parked(json!({"addresses": ["V"], "session": "s-void",
+            "standsAtTop": {"name": "The Void"}}));
+        let row = made(&void, Place::default(), &given());
+        assert_eq!(
+            (row.state, row.returns, row.acts.join(" ")),
+            ("parked", "talk", "wake talk".to_owned()),
+            "parked by the node and standing at the top, its Return talks to it"
+        );
+    }
+
+    #[test]
     fn a_session_waiting_on_joel_is_told_from_one_working_by_its_mark_alone() {
         let asking = json!({"presence": {"addresses": ["P"], "session": "s-lead",
             "busy": true, "wants": {"kind": "approval", "said": "May I push?"},
@@ -811,6 +899,13 @@ mod tests {
             marks(&record("parked")),
             "waitsOnJoel:muted:muted:false:true",
             "one parked keeps a parked one's muted hue, as its mark does, not a listening one's"
+        );
+        let mut node_parked = record("listening");
+        node_parked["standing"] = json!("parked");
+        assert_eq!(
+            marks(&node_parked),
+            "waitsOnJoel:muted:muted:false:true",
+            "one the node parks keeps a parked one's muted hue though its presence last listened"
         );
         let nearing = json!({"presence": {"addresses": ["P"], "session": "s-1",
             "wants": {"kind": "approval", "said": "May I push?"},

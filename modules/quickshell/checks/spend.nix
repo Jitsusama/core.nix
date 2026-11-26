@@ -41,6 +41,15 @@
         }]
         property string steered: ""
         function steer(address, fields) { steered = address + " " + fields.act; }
+        // Those parked, none unless a case parks one, so its Pause goes.
+        property var parked: []
+        function parkedAs(address) {
+          return parked.find(one => one.address === address) ?? null;
+        }
+      '';
+      report = singleton "Report.qml" ''
+        property var said: []
+        function say(line) { said = said.concat([line]); }
       '';
       shortcuts = singleton "Shortcuts.qml" ''
         property var actions: [{ opens: "spend", chord: [{ text: "Super" }, { text: "U" }] }]
@@ -71,6 +80,7 @@
       cp ${../pieces/Spend.qml} Spend.qml
       cp ${../pieces/Tokens.qml} Tokens.qml
       cp ${sessions} Sessions.qml
+      cp ${report} Report.qml
       cp ${../pieces/StatusFile.qml} StatusFile.qml
       ${copied [
         "Daemon.qml"
