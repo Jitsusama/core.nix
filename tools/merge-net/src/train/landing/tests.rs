@@ -820,6 +820,48 @@ fn a_merge_refused_after_a_server_error_is_waited_out() {
 }
 
 #[test]
+fn a_merge_refused_after_a_server_error_that_never_lands_says_both() {
+    // The 502 put the merge in doubt, and the refusals after it are what
+    // its owner can act on, so the rider falls saying both.
+    let landed = landed_by("github-error-then-refused-for-good", |place, origin| Fake {
+        merges_late: Cell::new(Some((2, usize::MAX))),
+        refuses_after_error: true,
+        ..Fake::of(place, origin)
+    });
+    assert!(
+        matches!(
+            &landed.landing,
+            Landing::Partly { refused, why, .. }
+                if *refused == landed.two
+                    && why.contains("(HTTP 405)")
+                    && why.contains("(HTTP 502)")
+        ),
+        "a rider refused after a server error didn't fall saying both answers: {:?}",
+        landed.landing
+    );
+}
+
+#[test]
+fn a_read_failing_after_a_stated_refusal_stops_the_train() {
+    // Nothing put the merge in doubt, but GitHub can't say after whether
+    // it merged, so main may hold it.
+    let landed = landed_by("github-refused-then-cant-say", |place, origin| Fake {
+        refuses: Some(2),
+        read_fails: Cell::new(Some((1, 3))),
+        ..Fake::of(place, origin)
+    });
+    assert!(
+        matches!(
+            &landed.landing,
+            Landing::Reverted { reverted, why, .. }
+                if reverted.is_empty() && why.contains("#2")
+        ),
+        "a refused merge GitHub couldn't read after didn't stop the train: {:?}",
+        landed.landing
+    );
+}
+
+#[test]
 fn a_read_failing_while_a_merge_is_waited_out_is_asked_past() {
     let landed = landed_by("github-read-fails", |place, origin| Fake {
         merges_late: Cell::new(Some((2, MERGE_TRIES + 3))),
@@ -942,6 +984,8 @@ fn gh_s_own_answers_split_refusals_from_doubt() {
         "gh api: gh: Server Error (HTTP 502)",
         "gh api: ",
         "running gh: No such file or directory (os error 2)",
+        "gh api: gh: You have exceeded a secondary rate limit (HTTP 403)",
+        "gh api: gh: Too Many Requests (HTTP 429)",
     ] {
         assert!(!states_refusal(doubt), "{doubt} read as a refusal");
     }

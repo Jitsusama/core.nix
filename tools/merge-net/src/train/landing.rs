@@ -138,9 +138,13 @@ const SETTLE_FOR: Duration = Duration::from_mins(6);
 /// a server error, a timeout or a lost link, states no refusal.
 const STATED_REFUSAL: &str = "(HTTP 4";
 
+/// The answers in the 400s that ask the train to slow down, a secondary
+/// rate limit's 403 and a 429, and say nothing of the merge itself.
+const SLOW_DOWN: [&str; 2] = ["(HTTP 403)", "(HTTP 429)"];
+
 /// Whether `why`, a merge's failed answer, says GitHub refused it.
 fn states_refusal(why: &str) -> bool {
-    why.contains(STATED_REFUSAL)
+    why.contains(STATED_REFUSAL) && !SLOW_DOWN.iter().any(|slow| why.contains(slow))
 }
 
 /// How a merge GitHub was asked for went.
@@ -175,14 +179,13 @@ fn merge(hub: &dyn Hub, merging: &Merging) -> Merge {
         }
         match (merged(hub, merging.number), &doubt) {
             (Ok(Some(made)), _) => return Merge::Made(made),
-            (Ok(None), Some(doubt)) if tried == MERGE_TRIES => {
-                return settled(hub, merging.number, doubt.clone());
+            (Ok(None) | Err(_), Some(doubt)) if tried == MERGE_TRIES => {
+                return settled(hub, merging.number, doubt, why);
             }
             (Ok(None), None) if tried == MERGE_TRIES => return Merge::Refused(why),
-            (Ok(None), _) => {}
-            // A merge already in doubt is waited out past a failed read
-            // too, rather than stopping the whole train at once.
-            (Err(_), Some(doubt)) => return settled(hub, merging.number, doubt.clone()),
+            // A merge already in doubt is asked for again past a failed
+            // read too, rather than stopping the whole train at once.
+            (Ok(None), _) | (Err(_), Some(_)) => {}
             (Err(error), None) => {
                 return Merge::Unknown(format!("{why}, and GitHub couldn't say after: {error}"));
             }
@@ -193,17 +196,18 @@ fn merge(hub: &dyn Hub, merging: &Merging) -> Merge {
     Merge::Refused("it was never asked".to_owned())
 }
 
-/// How a merge in doubt, `why` the answer that put it there, went: made once
-/// GitHub reads pull request `number` merged, refused when its last read
-/// of `SETTLE_ASKS`, or the last within `SETTLE_FOR`, still says
-/// unmerged, and unknown when that last read failed. A read failing
-/// between is asked past, as one failed read says nothing, and an unknown
-/// merge stops the whole train.
-fn settled(hub: &dyn Hub, number: u64, why: String) -> Merge {
+/// How a merge in doubt went, `why` the answer that put it there and
+/// `last` GitHub's last: made once GitHub reads pull request `number`
+/// merged, refused, saying both answers, when its last read of
+/// `SETTLE_ASKS`, or the last within `SETTLE_FOR`, still says unmerged,
+/// and unknown when that last read failed. A read failing between is
+/// asked past, as one failed read says nothing, and an unknown merge
+/// stops the whole train.
+fn settled(hub: &dyn Hub, number: u64, why: &str, last: String) -> Merge {
     println!(
         "merge-net: an answer to #{number}'s merge stated no refusal, so the train asks \
          for about five minutes whether it landed; the answer: {}",
-        one_line(&why)
+        one_line(why)
     );
     let until = Instant::now() + SETTLE_FOR;
     let mut read = Ok(None);
@@ -229,7 +233,11 @@ fn settled(hub: &dyn Hub, number: u64, why: String) -> Merge {
         Merge::Unknown(format!("{why}, and GitHub couldn't say after: {error}"))
     } else {
         println!("merge-net: GitHub still reads #{number} unmerged, so it leaves the train");
-        Merge::Refused(why)
+        if last == why {
+            Merge::Refused(last)
+        } else {
+            Merge::Refused(format!("{last}, after {why}"))
+        }
     }
 }
 
