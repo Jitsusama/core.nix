@@ -3079,9 +3079,9 @@ def test_a_key_is_timed_on_its_swap_before_the_drawer_it_brings(shell: Shell) ->
 
     A drawer whose kind made in under 13 ms of late is made in the key's own handler instead,
     to come in the key's frame, so it's said first by design. A program's makes in 4 to 6 ms
-    here, under the line on a quick builder and over it on a loaded one, and it was said first on
-    five unrelated changes' runs on 2026-11-14 and 15 even under the old 3. So the order
-    asserted is the one the way it came promises.
+    here, so its drawer nearly always joins, and it was said first on five unrelated changes'
+    runs on 2026-11-14 and 15 even under the old 3. So the order asserted is the one the way
+    it came promises, and the key timed first is judged only where a builder made it dear.
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
@@ -4931,8 +4931,8 @@ def test_letters_typed_quicker_than_the_rest_make_no_dear_drawer(shell: Shell) -
     Joel types letters 100 to 150 ms apart, and each letter that moved the selection had its
     drawer made right after its frame, so the next letter waited behind it: "ca" 198 ms behind
     Chrome's drawer, "calend" 272 ms behind Google Calendar's first (2026-11-13, 06:14).
-    A program's drawer, made in 4 to 14 ms here, never joins its key's frame, so typing onto
-    one shows it; each letter makes its row again, and its drawer was made again each time.
+    No drawer comes in its letter's own frame, however cheap, so typing onto a program shows
+    it; each letter makes its row again, and its drawer was made again each time.
     Only a dear kind, or one not yet made, rests: a cheap one follows its letter.
     Only the drawers followed before the last letter are judged: once the letters rest, a
     loaded builder can list Foot's row again, and its drawer rightly follows the new row
@@ -4961,8 +4961,8 @@ def test_a_drawer_resting_for_the_letters_names_the_row_selected(shell: Shell) -
     The drawer waits for the letters before it's made, and kept the row before's facts beside
     the new highlight all the while, so typing "calend" would show Chrome's drawer by Google
     Calendar for the whole word (VKCF3Z, c842849d). Typing a program's name from home moves
-    the selection from Now, whose drawer is out, to the program, whose drawer never joins its
-    key's frame, and before that drawer follows the drawer out must say the program's name.
+    the selection from Now, whose drawer is out, to the program, whose drawer never comes in its
+    letter's frame, and before that drawer follows the drawer out must say the program's name.
     One cheap enough to follow its letter rather than rest names it by being made, in the
     frame after the letter's, so the first showing after it is judged instead.
     """

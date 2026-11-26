@@ -1681,7 +1681,7 @@ QtObject {
             false);
         check(failures, "a row with no key is its place's",
             Pacing.drawerKind("home", {}), "home");
-        for (const making of [19, 23, 19, 22])
+        for (const making of [13, 14, 13, 15])
             made = Pacing.drawerMade(made, "home", making);
         check(failures, "one whose kind's median reaches 13 ms comes the frame after",
             Pacing.drawerJoinsKey(made, "home", false), false);
@@ -1768,6 +1768,8 @@ QtObject {
             Pacing.drawerRestsForLetters({ program: [134, 12] }, "program"), true);
         check(failures, "while a cheap one follows its letter",
             Pacing.drawerRestsForLetters({ agent: [4, 3, 5] }, "agent"), false);
+        check(failures, "as does one made in 8 ms, as on's drawers are, rather than resting",
+            Pacing.drawerRestsForLetters({ on: [7, 8, 9] }, "on"), false);
         check(failures, "and one at the line a drawer joins its key's frame under rests",
             Pacing.drawerRestsForLetters({ agent: [13, 13, 13] }, "agent"), true);
         check(failures, "its line says it followed its letter",
