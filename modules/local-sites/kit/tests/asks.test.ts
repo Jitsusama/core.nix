@@ -109,6 +109,7 @@ const NOTHING_SENT = /nothing was sent/u;
 const flush = (): Promise<void> => new Promise((then) => setImmediate(then));
 const COME_BACK = /come back once this page is live/u;
 const ANSWERED = /Answered Merge It/u;
+const AS_TEXT = /<img src=x onerror=alert\(1\)> Its checks passed\./u;
 
 /** A look waiting on him, left by the cell at `address` `ago` before now. */
 function look(id: string, address: string, ago = HOUR): object {
@@ -167,7 +168,7 @@ it("every word a session wrote is set as text, so markup in a title shows as wri
   const row = drawAsk(make, { key: "look:l1", look: null, ask }, view, NOW);
   const [title] = row.all("h3");
   assert.equal(title?.words(), "<b>Merge</b> it?");
-  assert.match(row.words(), /<img src=x onerror=alert\(1\)> Its checks passed\./u);
+  assert.match(row.words(), AS_TEXT);
   assert.equal(
     row.all("a")[0]?.getAttribute("href"),
     "https://github.com/Jitsusama/core.nix/pull/1",
@@ -366,19 +367,19 @@ it("a page asks again whether its answers are taken once its feed comes back", a
   const sockets: StandIn[] = [];
   const holder = new Element("div");
   const near = reaching(sockets);
-  let asked = 0;
+  let timesAsked = 0;
   const asking = (): Promise<Posted> => {
-    asked += 1;
+    timesAsked += 1;
     return takes();
   };
   followAsks({ holder, make, reaching: { ...near, ready: asking } });
   telling(sockets[0], look("l1", "abc"));
   await flush();
-  assert.equal(asked, 1);
+  assert.equal(timesAsked, 1);
   sockets[0]?.onclose?.();
   near.clock.pass(60_000);
   telling(sockets[1], look("l1", "abc"));
-  assert.equal(asked, 2, "a server that may have restarted wasn't asked again");
+  assert.equal(timesAsked, 2, "a server that may have restarted wasn't asked again");
   assert.equal(holder.all("button").length, 0, "answers showed before it said again");
   await flush();
   assert.equal(holder.all("button").length, 2, "answers didn't come back once it said");

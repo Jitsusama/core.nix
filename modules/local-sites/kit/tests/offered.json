@@ -10,10 +10,7 @@
     "state": "waiting",
     "at": "2026-11-24T22:00:00Z",
     "address": "abc123",
-    "choices": [
-      { "value": "yes", "label": "Merge It" },
-      { "value": "no", "label": "Leave It" }
-    ]
+    "choices": [{ "value": "yes", "label": "Merge It" }, { "value": "no", "label": "Leave It" }]
   },
   "cases": [
     { "why": "a value it offers", "with": {}, "value": "yes", "offered": true },
@@ -22,18 +19,64 @@
     { "why": "a look resolved", "with": { "state": "resolved" }, "value": "yes", "offered": false },
     { "why": "a look asking nothing", "with": { "asks": false }, "value": "yes", "offered": false },
     { "why": "a look of another version", "with": { "v": 2 }, "value": "yes", "offered": false },
-    { "why": "a look of no kind read", "with": { "kind": "video" }, "value": "yes", "offered": false },
-    { "why": "a look past its expiry", "with": { "expiresAt": "2026-11-24T22:30:00Z" }, "value": "yes", "offered": false },
-    { "why": "a look before its expiry", "with": { "expiresAt": "2026-11-25T00:00:00Z" }, "value": "yes", "offered": true },
-    { "why": "an expiry by an offset", "with": { "expiresAt": "2026-11-24T17:30:00-05:00" }, "value": "yes", "offered": false },
-    { "why": "an expiry without seconds", "with": { "expiresAt": "2026-11-24T22:30Z" }, "value": "yes", "offered": false },
-    { "why": "an expiry of a day alone, its midnight in UTC", "with": { "expiresAt": "2026-11-24" }, "value": "yes", "offered": false },
-    { "why": "an expiry in milliseconds", "with": { "expiresAt": 1795559400000 }, "value": "yes", "offered": false },
-    { "why": "a look gone quiet three days on", "with": { "at": "2026-11-21T22:59:00Z" }, "value": "yes", "offered": false },
+    {
+      "why": "a look of no kind read",
+      "with": { "kind": "video" },
+      "value": "yes",
+      "offered": false
+    },
+    {
+      "why": "a look past its expiry",
+      "with": { "expiresAt": "2026-11-24T22:30:00Z" },
+      "value": "yes",
+      "offered": false
+    },
+    {
+      "why": "a look before its expiry",
+      "with": { "expiresAt": "2026-11-25T00:00:00Z" },
+      "value": "yes",
+      "offered": true
+    },
+    {
+      "why": "an expiry by an offset",
+      "with": { "expiresAt": "2026-11-24T17:30:00-05:00" },
+      "value": "yes",
+      "offered": false
+    },
+    {
+      "why": "an expiry without seconds",
+      "with": { "expiresAt": "2026-11-24T22:30Z" },
+      "value": "yes",
+      "offered": false
+    },
+    {
+      "why": "an expiry of a day alone, its midnight in UTC",
+      "with": { "expiresAt": "2026-11-24" },
+      "value": "yes",
+      "offered": false
+    },
+    {
+      "why": "an expiry in milliseconds",
+      "with": { "expiresAt": 1795559400000 },
+      "value": "yes",
+      "offered": false
+    },
+    {
+      "why": "a look gone quiet three days on",
+      "with": { "at": "2026-11-21T22:59:00Z" },
+      "value": "yes",
+      "offered": false
+    },
     {
       "why": "a fifth choice is offered nowhere",
       "with": {
-        "choices": [{ "value": "a" }, { "value": "b" }, { "value": "c" }, { "value": "d" }, { "value": "e" }]
+        "choices": [
+          { "value": "a" },
+          { "value": "b" },
+          { "value": "c" },
+          { "value": "d" },
+          { "value": "e" }
+        ]
       },
       "value": "e",
       "offered": false
@@ -41,14 +84,25 @@
     {
       "why": "a choice of no value takes no place among the four",
       "with": {
-        "choices": [{ "value": "" }, { "value": "a" }, { "value": "b" }, { "value": "c" }, { "value": "d" }]
+        "choices": [
+          { "value": "" },
+          { "value": "a" },
+          { "value": "b" },
+          { "value": "c" },
+          { "value": "d" }
+        ]
       },
       "value": "d",
       "offered": true
     },
     {
       "why": "a choice whose label passes for the launcher's Clear It",
-      "with": { "choices": [{ "value": "clear", "label": "Clear It" }, { "value": "no", "label": "Leave It" }] },
+      "with": {
+        "choices": [
+          { "value": "clear", "label": "Clear It" },
+          { "value": "no", "label": "Leave It" }
+        ]
+      },
       "value": "clear",
       "offered": false
     },
@@ -73,7 +127,13 @@
     {
       "why": "a choice posing doesn't take the place of one after it",
       "with": {
-        "choices": [{ "value": "a" }, { "value": "open", "label": "Open" }, { "value": "b" }, { "value": "c" }, { "value": "d" }]
+        "choices": [
+          { "value": "a" },
+          { "value": "open", "label": "Open" },
+          { "value": "b" },
+          { "value": "c" },
+          { "value": "d" }
+        ]
       },
       "value": "d",
       "offered": false
