@@ -5478,61 +5478,13 @@ pub fn fetches(machine: &Nearby, asked: &Asked, scratch: &Path, ssh: &str) -> bo
 /// November the net's comparison went to a Mac at 35 over five, under its
 /// room, while a session's darwin build already ran there, and the two
 /// took it to 60. So it counts the runs sent to it that build there now
-/// too, by the turns they hold ([`in_turn_nearby`]), and its memory
-/// ([`Memory`]), which a Mac asked by `nix-offload busy` doesn't say.
+/// too, by the turns they hold ([`in_turn_nearby`]).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Load {
     pub minute: f64,
     pub five: f64,
     pub cores: u32,
     pub building: u32,
-    pub memory: Option<Memory>,
-}
-
-/// How much memory a Mac has to spare: the share its kernel says is
-/// free (`kern.memorystatus_level`), and the swap-outs `vm_stat` counted
-/// over the last `window` seconds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Memory {
-    pub free: u32,
-    pub swapped: u64,
-    pub window: u32,
-}
-
-/// The share of a Mac's memory free below which it has no room, by
-/// velocity's line for a start there.
-const FREE_AT_LEAST: u32 = 35;
-
-impl Memory {
-    /// Whether the Mac is short of memory: under [`FREE_AT_LEAST`] free,
-    /// or swapping out within its window.
-    pub fn short(self) -> bool {
-        self.free < FREE_AT_LEAST || self.swapped > 0
-    }
-
-    /// The memory as a person reads it, as `41% free and 0 swap-outs over
-    /// 72 s`.
-    pub fn said(self) -> String {
-        format!(
-            "{}% free and {} swap-out{} over {} s",
-            self.free,
-            self.swapped,
-            if self.swapped == 1 { "" } else { "s" },
-            self.window
-        )
-    }
-
-    /// Read from [`MEMORY_READ`]'s line, as `41 0 72`, or none when it
-    /// says anything else.
-    fn parse(line: &str) -> Option<Memory> {
-        let mut words = line.split_whitespace();
-        let memory = Memory {
-            free: words.next()?.parse().ok().filter(|free| *free <= 100)?,
-            swapped: words.next()?.parse().ok()?,
-            window: words.next()?.parse().ok().filter(|window| *window > 0)?,
-        };
-        words.next().is_none().then_some(memory)
-    }
 }
 
 /// Runnable work for each processor past which a Mac has no room. On 16
@@ -5552,10 +5504,7 @@ impl Load {
     /// or one too many, or one that isn't a load, so it's never read from
     /// the wrong place. A line after the processors, as [`building_read`]
     /// says, is how many runs sent to it build there now, and none is read
-    /// as none, as a Mac's own `sysctl` says it to `nix-offload busy`. A
-    /// line after that is its memory ([`MEMORY_READ`]), read as none when
-    /// it says anything else, so a Mac whose `vm_stat` failed has a load
-    /// still, and no room.
+    /// as none, as a Mac's own `sysctl` says it to `nix-offload busy`.
     pub fn parse(said: &str) -> Option<Load> {
         let mut lines = said.lines();
         let averages = lines.next()?.trim();
@@ -5579,7 +5528,6 @@ impl Load {
             Some(line) => line.trim().parse::<u32>().ok()?,
             None => 0,
         };
-        let memory = lines.next().and_then(Memory::parse);
         if lines.next().is_some() {
             return None;
         }
@@ -5588,7 +5536,6 @@ impl Load {
             five,
             cores,
             building,
-            memory,
         })
     }
 
@@ -5626,53 +5573,11 @@ pub fn building_read() -> String {
     )
 }
 
-/// What a Mac runs to say its memory ([`Memory::parse`]): the share free,
-/// then the swap-outs since the newest reading it kept at least a minute
-/// and at most ten minutes ago, and how long ago that was. It keeps a
-/// reading at each ask, in `~/.cache/nix-offload/swapouts`, whoever asks.
-/// With none kept in that span it reads again ten seconds on, so a Mac
-/// asked rarely is judged on a shorter window rather than none. A reading
-/// past the newest count is an older boot's, which a restart reset. It
-/// says nothing when either figure can't be read. Each figure is matched
-/// as digits rather than tested with `-ge`, which zsh, a Mac's login
-/// shell, answers true for an empty string.
-const MEMORY_READ: &str = r#"free=$(sysctl -n kern.memorystatus_level 2>/dev/null)
-swaps() { vm_stat 2>/dev/null | awk '/^Swapouts:/ { gsub(/\./, "", $2); print $2 }'; }
-number() { case "$1" in ''|*[!0-9]*) return 1;; esac; }
-out=$(swaps)
-now=$(date +%s)
-kept="${HOME:-/tmp}/.cache/nix-offload/swapouts"
-if number "$free" && number "$out"; then
-  base=$(awk -v now="$now" -v out="$out" '
-    $1 <= now - 60 && $1 >= now - 600 && $2 <= out + 0 { at = $1; was = $2 }
-    END { if (at != "") print now - at, was }' "$kept" 2>/dev/null)
-  mkdir -p "${kept%/*}" && echo "$now $out" >> "$kept"
-  if [ -n "$base" ]; then
-    window=${base%% *}; was=${base#* }
-  else
-    was=$out; sleep 10; out=$(swaps); now=$((now + 10)); window=10
-    number "$out" && echo "$now $out" >> "$kept"
-  fi
-  tail -n 200 "$kept" > "$kept.$$" 2>/dev/null && mv "$kept.$$" "$kept"
-  number "$out" && number "$was" && [ "$out" -ge "$was" ] &&
-    echo "$free $((out - was)) $window"
-fi"#;
-
-/// [`MEMORY_READ`], for a test to run.
-#[cfg(test)]
-pub fn memory_read() -> &'static str {
-    MEMORY_READ
-}
-
 /// What a Mac runs to say its load ([`Load::parse`]): its load and
 /// processors, then the runs it builds ([`building_read`]), counted only
-/// once the load was said, so a Mac whose `sysctl` fails says nothing,
-/// then its memory ([`MEMORY_READ`]).
+/// once the load was said, so a Mac whose `sysctl` fails says nothing.
 pub fn load_read() -> String {
-    format!(
-        "sysctl -n vm.loadavg hw.ncpu && {{ {}; }} && {{ {MEMORY_READ}\n}}",
-        building_read()
-    )
+    format!("sysctl -n vm.loadavg hw.ncpu && {{ {}; }}", building_read())
 }
 
 /// A Mac nearby's load, `Err` saying why when it couldn't be asked here or
@@ -6127,34 +6032,9 @@ mod tests {
                 five: 88.31,
                 cores: 12,
                 building: 0,
-                memory: None,
             }),
             "a Mac's sysctl wasn't read as its minute's and five minutes' loads"
         );
-        assert_eq!(
-            Load::parse("{ 20.00 35.00 40.00 }\n12\n0\n41 3 72\n").and_then(|load| load.memory),
-            Some(Memory {
-                free: 41,
-                swapped: 3,
-                window: 72,
-            }),
-            "a Mac's memory wasn't read from the line after its builds"
-        );
-        for unread in [
-            "41 3",
-            "41 -3 72",
-            "141 0 72",
-            "41 0 0",
-            "41 0 72 9",
-            "free",
-        ] {
-            assert_eq!(
-                Load::parse(&format!("{{ 20.00 35.00 40.00 }}\n12\n0\n{unread}\n"))
-                    .map(|load| load.memory),
-                Some(None),
-                "{unread:?} was read as a Mac's memory, or lost its load"
-            );
-        }
         assert_eq!(
             Load::parse("{ 20.00 35.00 40.00 }\n12\n1\n").map(|load| load.building),
             Some(1),
@@ -6181,7 +6061,7 @@ mod tests {
             "{ 20.00 60.00 }\n12\n",
             "{ 20.00 60.00 80.00 90.00 }\n12\n",
             "{ 20.00 60.00 80.00 }\n12\nmany\n",
-            "{ 20.00 60.00 80.00 }\n12\n1\n41 0 60\n2\n",
+            "{ 20.00 60.00 80.00 }\n12\n1\n2\n",
         ] {
             assert_eq!(
                 Load::parse(unread),
@@ -6303,174 +6183,6 @@ mod tests {
         }
     }
 
-    /// A Mac's own `sysctl`, `vm_stat` and `sleep`, stood in for in a folder
-    /// of their own: its `sysctl` says the share free kept in `free`, its `vm_stat`
-    /// the swap-outs kept in `out`, failing with none, and its sleep takes
-    /// the count to `after`'s, as swapping in those ten seconds.
-    struct MacStandIn {
-        folder: tempfile::TempDir,
-        bin: PathBuf,
-        fake: PathBuf,
-        kept: PathBuf,
-    }
-
-    impl MacStandIn {
-        fn new() -> Self {
-            use std::os::unix::fs::PermissionsExt;
-            let folder = tempfile::tempdir().unwrap();
-            let (bin, fake) = (folder.path().join("bin"), folder.path().join("fake"));
-            fs::create_dir_all(&bin).unwrap();
-            fs::create_dir_all(&fake).unwrap();
-            for (name, script) in [
-                (
-                    "sysctl",
-                    "case \"$*\" in *memorystatus*) cat \"$FAKE/free\";; \
-                     *) printf '{ 20.00 35.00 30.00 }\\n12\\n';; esac",
-                ),
-                (
-                    "vm_stat",
-                    "[ -s \"$FAKE/out\" ] || exit 1; \
-                     printf 'Pages free: 9.\\nSwapouts: %s.\\n' \"$(cat \"$FAKE/out\")\"",
-                ),
-                (
-                    "sleep",
-                    "[ -f \"$FAKE/after\" ] && cp \"$FAKE/after\" \"$FAKE/out\"; :",
-                ),
-            ] {
-                let path = bin.join(name);
-                fs::write(&path, format!("#!/bin/sh\n{script}\n")).unwrap();
-                fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
-            }
-            let kept = folder.path().join(".cache/nix-offload/swapouts");
-            Self {
-                folder,
-                bin,
-                fake,
-                kept,
-            }
-        }
-
-        /// What `script` says under `shell`, with these figures and these
-        /// readings kept.
-        fn read(&self, shell: &str, script: &str, figures: [&str; 3], history: &str) -> String {
-            let [free, out, after] = figures;
-            fs::create_dir_all(self.kept.parent().unwrap()).unwrap();
-            fs::write(&self.kept, history).unwrap();
-            fs::write(self.fake.join("free"), free).unwrap();
-            fs::write(self.fake.join("out"), out).unwrap();
-            fs::write(self.fake.join("after"), after).unwrap();
-            let said = Command::new(shell)
-                .args(["-c", &first_on_path(&self.bin, script)])
-                .env("FAKE", &self.fake)
-                .env("HOME", self.folder.path())
-                .env("NIX_OFFLOAD_TURNS", self.folder.path().join("none"))
-                .output()
-                .unwrap();
-            String::from_utf8(said.stdout).unwrap()
-        }
-    }
-
-    #[test]
-    fn a_macs_memory_is_read_over_a_minute_it_kept_or_ten_seconds_it_waits() {
-        let mac = MacStandIn::new();
-        let memory = |said: &str| Memory::parse(said.trim());
-        for shell in ["dash", "zsh"] {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs();
-
-            let said = mac.read(shell, memory_read(), ["41", "100", "100"], "");
-            assert_eq!(
-                memory(&said),
-                Some(Memory {
-                    free: 41,
-                    swapped: 0,
-                    window: 10
-                }),
-                "{shell}: a Mac with no reading kept wasn't read over ten seconds: {said:?}"
-            );
-            let kept_lines = fs::read_to_string(&mac.kept).unwrap();
-            assert_eq!(
-                kept_lines.lines().count(),
-                2,
-                "{shell}: a Mac didn't keep its two readings: {kept_lines:?}"
-            );
-
-            // Kept as each ask appends them: past ten minutes, two in the
-            // span, the newer last, and one too new.
-            let minutes_ago = format!(
-                "{} 40\n{} 80\n{} 90\n{} 95\n",
-                now - 900,
-                now - 300,
-                now - 120,
-                now - 10
-            );
-            let said = mac.read(shell, memory_read(), ["41", "100", "200"], &minutes_ago);
-            let read_over = memory(&said);
-            assert!(
-                read_over.is_some_and(
-                    |memory| memory.swapped == 10 && (119..=125).contains(&memory.window)
-                ),
-                "{shell}: a Mac wasn't read from its newest reading a minute old: {said:?}"
-            );
-            assert!(
-                read_over.is_some_and(Memory::short),
-                "{shell}: a Mac swapping within its window had memory to spare"
-            );
-
-            let rebooted = format!("{} 5000\n", now - 120);
-            let said = mac.read(shell, memory_read(), ["41", "100", "103"], &rebooted);
-            assert_eq!(
-                memory(&said).map(|memory| (memory.swapped, memory.window)),
-                Some((3, 10)),
-                "{shell}: a reading from before a restart was read as a baseline: {said:?}"
-            );
-
-            let said = mac.read(shell, memory_read(), ["30", "100", "100"], "");
-            assert!(
-                memory(&said).is_some_and(|memory| memory.free == 30 && memory.short()),
-                "{shell}: a Mac 30% free had memory to spare: {said:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn a_mac_that_cant_say_its_memory_says_none_and_its_load_ends_with_it() {
-        // zsh, a Mac's login shell, takes an empty figure for 0 in `-ge`,
-        // which once read a failed vm_stat as no swapping.
-        let mac = MacStandIn::new();
-        for shell in ["dash", "zsh"] {
-            assert_eq!(
-                mac.read(shell, memory_read(), ["41", "", ""], ""),
-                "",
-                "{shell}: a Mac whose vm_stat failed said its memory"
-            );
-            // From 0, so zsh's empty-as-0 in `-ge` would pass it.
-            assert_eq!(
-                mac.read(shell, memory_read(), ["41", "0", ""], ""),
-                "",
-                "{shell}: a Mac whose vm_stat failed after its wait said its memory"
-            );
-            assert_eq!(
-                mac.read(shell, memory_read(), ["no", "100", "100"], ""),
-                "",
-                "{shell}: a Mac whose sysctl failed said its memory"
-            );
-
-            let said = mac.read(shell, &load_read(), ["41", "100", "100"], "");
-            assert_eq!(
-                Load::parse(&said).and_then(|load| load.memory),
-                Some(Memory {
-                    free: 41,
-                    swapped: 0,
-                    window: 10
-                }),
-                "{shell}: a Mac's whole answer didn't end with its memory: {said:?}"
-            );
-        }
-    }
-
     #[test]
     fn a_mac_has_no_room_once_either_load_is_past_three_a_processor() {
         let at = |minute: f64, five: f64| Load {
@@ -6478,7 +6190,6 @@ mod tests {
             five,
             cores: 12,
             building: 0,
-            memory: None,
         };
         assert!(
             at(20.0, 60.0).over(),

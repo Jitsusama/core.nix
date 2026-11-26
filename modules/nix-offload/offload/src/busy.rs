@@ -1,8 +1,7 @@
 //! `nix-offload busy`: whether this Mac is past its room for more work,
-//! by its load alone ([`there::Load::over`]), the half of the rule a
-//! gate's comparisons keep to before sending it any that its own work
-//! needs: rebuilding its system after each merge is the Mac's own, and a
-//! gate's memory rule ([`there::Memory`]) waits only on work sent to it.
+//! by the rule a gate's comparisons keep to before sending it any
+//! ([`there::Load::over`]), so work it starts for itself, such as
+//! rebuilding its system after each merge, can wait on the same rule.
 //!
 //! A question, so it answers as `test` does: 0 while the Mac is past its
 //! room, 1 while it has room, and 69 when it can't say its load, which a
