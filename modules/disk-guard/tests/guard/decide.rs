@@ -506,16 +506,34 @@ fn a_mac_has_room_with_35_percent_free_and_memory_its_kernel_calls_normal() {
 
 #[test]
 fn a_mac_is_calm_only_while_its_kernel_calls_memory_normal() {
-    assert!(calm(mac(20, MemoryLevel::Normal)));
-    assert!(!calm(mac(60, MemoryLevel::Warning)));
-    assert!(!calm(mac(60, MemoryLevel::Critical)));
+    assert!(
+        calm(mac(20, MemoryLevel::Normal)),
+        "a normal Mac wasn't calm"
+    );
+    assert!(
+        !calm(mac(60, MemoryLevel::Warning)),
+        "a warned Mac was calm"
+    );
+    assert!(
+        !calm(mac(60, MemoryLevel::Critical)),
+        "a critical Mac was calm"
+    );
 }
 
 #[test]
 fn a_mac_whose_kernel_calls_memory_critical_is_overloaded() {
-    assert!(overloaded(mac(5, MemoryLevel::Critical)));
-    assert!(!overloaded(mac(5, MemoryLevel::Warning)));
-    assert!(!overloaded(mac(5, MemoryLevel::Normal)));
+    assert!(
+        overloaded(mac(5, MemoryLevel::Critical)),
+        "a critical Mac wasn't overloaded"
+    );
+    assert!(
+        !overloaded(mac(5, MemoryLevel::Warning)),
+        "a warned Mac was overloaded"
+    );
+    assert!(
+        !overloaded(mac(5, MemoryLevel::Normal)),
+        "a normal Mac was overloaded"
+    );
 }
 
 #[test]
