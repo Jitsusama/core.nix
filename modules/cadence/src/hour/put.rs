@@ -37,7 +37,7 @@ pub fn asks(told: Vec<(String, String)>) -> Vec<(String, String)> {
                     })
                     .collect();
                 format!(
-                    "{OPENS}{} lines past their targets are yours. Answer with re set to this \
+                    "{OPENS}{} lines are yours. Answer with re set to this \
                      question, line by line by number. {ANSWERS_GO}\n\n{}",
                     texts.len(),
                     lines.join("\n\n")
@@ -48,15 +48,16 @@ pub fn asks(told: Vec<(String, String)>) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Marks each drag first told to `owner` on `date` and not yet asked as
-/// asked in the question `id`.
-pub fn mark_asked(ledger: &mut [Entry], owner: &str, date: &str, id: &str) {
+/// Marks each drag filed for `owner` by the hour run at `now`, in seconds,
+/// as asked in the question `id`: those its question holds, and none
+/// filed an hour before whose question never went.
+pub fn mark_asked(ledger: &mut [Entry], owner: &str, now: i64, id: &str) {
     for entry in ledger.iter_mut().filter(|e| {
         e.open
             && e.asked.is_none()
             && e.kind.as_deref() == Some("drag")
             && e.owner.as_deref() == Some(owner)
-            && e.told.as_deref() == Some(date)
+            && e.last_to == now
     }) {
         entry.asked = Some(id.to_owned());
     }
@@ -89,7 +90,7 @@ mod tests {
         );
         let (_, both) = &asked[0];
         assert!(
-            both.starts_with("cadence hour: 2 lines past their targets are yours")
+            both.starts_with("cadence hour: 2 lines are yours.")
                 && both.contains("1. the first is yours.")
                 && both.contains("2. the second is yours.")
                 && both.contains("re set to this question"),
@@ -104,27 +105,31 @@ mod tests {
         );
     }
 
-    fn entry(key: &str, owner: &str, told: &str, kind: &str) -> Entry {
+    const NOW: i64 = 1_800_000_000;
+
+    fn entry(key: &str, owner: &str, filed: i64, kind: &str) -> Entry {
         serde_json::from_str(&format!(
-            r#"{{"key":"{key}","owner":"{owner}","first":"{told}","last":"{told}","last_to":0,
-            "due":0,"words":"","axis":"slips","evidence":"","fell_when":"","open":true,
-            "told":"{told}","late":false,"kind":"{kind}"}}"#
+            r#"{{"key":"{key}","owner":"{owner}","first":"2026-11-26","last":"2026-11-26",
+            "last_to":{filed},"due":0,"words":"","axis":"slips","evidence":"",
+            "fell_when":"","open":true,"told":"2026-11-26","late":false,"kind":"{kind}"}}"#
         ))
         .expect("an entry parses")
     }
 
     #[test]
-    fn only_the_drags_told_to_that_owner_today_carry_the_question_s_id() {
+    fn only_the_drags_filed_for_that_owner_this_hour_carry_the_question_s_id() {
+        // hour:b was filed the same day an hour before, and its question
+        // never went, so this one doesn't hold it.
         let mut ledger = vec![
-            entry("hour:a", "ABC123", "2026-11-26", "drag"),
-            entry("hour:b", "ABC123", "2026-11-25", "drag"),
-            entry("hour:c", "DEF456", "2026-11-26", "drag"),
-            entry("security:d", "ABC123", "2026-11-26", "must"),
+            entry("hour:a", "ABC123", NOW, "drag"),
+            entry("hour:b", "ABC123", NOW - 3600, "drag"),
+            entry("hour:c", "DEF456", NOW, "drag"),
+            entry("security:d", "ABC123", NOW, "must"),
         ];
-        let mut earlier = entry("hour:e", "ABC123", "2026-11-26", "drag");
+        let mut earlier = entry("hour:e", "ABC123", NOW, "drag");
         earlier.asked = Some("first-question".to_owned());
         ledger.push(earlier);
-        mark_asked(&mut ledger, "ABC123", "2026-11-26", "the-question");
+        mark_asked(&mut ledger, "ABC123", NOW, "the-question");
         let asked: Vec<Option<&str>> = ledger.iter().map(|e| e.asked.as_deref()).collect();
         assert_eq!(
             asked,
@@ -135,7 +140,7 @@ mod tests {
                 None,
                 Some("first-question")
             ],
-            "a line not told to that owner today, not a drag, or asked before took the id"
+            "a line not filed for that owner this hour, not a drag, or asked before took the id"
         );
     }
 }

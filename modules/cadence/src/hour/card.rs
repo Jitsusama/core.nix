@@ -12,6 +12,7 @@ use std::{fs, io};
 
 use serde::{Deserialize, Serialize};
 
+use super::falling::Hour;
 use super::ledger::Seen;
 use super::lines::{figure, shown_lines};
 use super::measures::{Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, drag};
@@ -49,10 +50,10 @@ pub struct Kept {
     /// read as unread rather than as none of his asks.
     #[serde(default)]
     pub asks: Seen,
-    /// How many measures were past their targets each hour of the last
-    /// week, as when and how many, so the loop is judged by them falling.
+    /// How many measures were past their targets, and how many unjudged,
+    /// each hour of the last week, so the loop is judged by them falling.
     #[serde(default)]
-    pub red: Vec<(i64, usize)>,
+    pub red: Vec<Hour>,
     /// Why what the last hour kept couldn't be read, so this hour says the
     /// asks list unread rather than read against nothing seen of it. Never
     /// kept: the hour after reads what this one saw.

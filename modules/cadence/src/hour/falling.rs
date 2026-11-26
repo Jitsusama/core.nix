@@ -6,6 +6,7 @@
 //! when they haven't.
 
 use jiff::Timestamp;
+use serde::{Deserialize, Serialize};
 
 use super::measures::{Class, Measure};
 use crate::DAY;
@@ -26,33 +27,62 @@ const NEAR: i64 = 90 * 60;
 /// How long a kept hour is kept: a week, and the slack beside it.
 const KEPT_FOR: i64 = WEEK + NEAR;
 
-/// How many measures are past their targets among `measures`, this one
-/// left out, since it can't count itself.
-#[must_use]
-pub fn red(measures: &[Measure]) -> usize {
-    measures
-        .iter()
-        .filter(|m| m.key != KEY && m.past().is_some())
-        .count()
+/// One hour's count, kept a week so a later hour is held against it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Hour {
+    /// When, in seconds.
+    pub at: i64,
+    /// How many measures were past their targets.
+    pub red: usize,
+    /// How many were unjudged, as one whose figure couldn't be read is,
+    /// so a line gone unread isn't taken for a line fixed.
+    pub unjudged: usize,
 }
 
-/// The measure at `now`, in seconds, with `red` lines this hour and the
-/// hours `kept`, each as when and how many. It must be fewer than the hour
-/// nearest a week back, or none where none were; with no hour kept near
-/// enough a week back, it's shown unjudged until one is.
+/// This hour's count at `now`, in seconds, of `measures`, this one left
+/// out, since it can't count itself.
 #[must_use]
-pub fn falling(kept: &[(i64, usize)], red: usize, now: i64) -> Measure {
+pub fn hour(measures: &[Measure], now: i64) -> Hour {
+    let others = || measures.iter().filter(|m| m.key != KEY);
+    Hour {
+        at: now,
+        red: others().filter(|m| m.past().is_some()).count(),
+        unjudged: others().filter(|m| m.target.is_none()).count(),
+    }
+}
+
+/// The measure for `this` hour, against the hours `kept`. It must hold
+/// fewer red lines than the hour nearest a week back, or none where none
+/// were. With no hour kept near enough a week back it's shown unjudged
+/// until one is, and so it is while more measures go unjudged than then,
+/// since a line that couldn't be read leaves the red ones and would read
+/// as falling while nothing was looked at.
+#[must_use]
+pub fn falling(kept: &[Hour], this: Hour) -> Measure {
+    let now = this.at;
     let then = kept
         .iter()
-        .filter(|&&(at, _)| (at - (now - WEEK)).abs() <= NEAR)
-        .min_by_key(|&&(at, _)| (at - (now - WEEK)).abs());
-    let since = kept.iter().map(|&(at, _)| at).min();
+        .filter(|h| (h.at - (now - WEEK)).abs() <= NEAR)
+        .min_by_key(|h| (h.at - (now - WEEK)).abs());
+    let since = kept.iter().map(|h| h.at).min();
     let (target, behind) = match (then, since) {
-        (Some(&(at, was)), _) => (
-            Some(count(was.saturating_sub(1))),
+        (Some(then), _) if this.unjudged > then.unjudged => (
+            None,
             vec![format!(
-                "a week back, at {}: {was}; this hour: {red}",
-                when(at)
+                "unjudged while more measures go unjudged than a week back, at {}: {} then, \
+                 {} this hour",
+                when(then.at),
+                then.unjudged,
+                this.unjudged
+            )],
+        ),
+        (Some(then), _) => (
+            Some(count(then.red.saturating_sub(1))),
+            vec![format!(
+                "a week back, at {}: {}; this hour: {}",
+                when(then.at),
+                then.red,
+                this.red
             )],
         ),
         (None, Some(since)) => (
@@ -69,7 +99,7 @@ pub fn falling(kept: &[(i64, usize)], red: usize, now: i64) -> Measure {
         class: Class::Functional,
         says: "measures past their targets this hour, which must be fewer than a week back"
             .to_owned(),
-        now: count(red),
+        now: count(this.red),
         target,
         owner: KEEPER.to_owned(),
         behind,
@@ -86,16 +116,16 @@ const fn count(n: usize) -> f64 {
     n as f64
 }
 
-/// The hours to keep after `now`'s: those `kept` within a week and its
-/// slack, and this one.
+/// The hours to keep after `this` one: those `kept` within a week and its
+/// slack before it, and this one.
 #[must_use]
-pub fn kept(kept: &[(i64, usize)], red: usize, now: i64) -> Vec<(i64, usize)> {
-    let mut next: Vec<(i64, usize)> = kept
+pub fn kept(kept: &[Hour], this: Hour) -> Vec<Hour> {
+    let mut next: Vec<Hour> = kept
         .iter()
         .copied()
-        .filter(|&(at, _)| at > now - KEPT_FOR && at < now)
+        .filter(|h| h.at > this.at - KEPT_FOR && h.at < this.at)
         .collect();
-    next.push((now, red));
+    next.push(this);
     next
 }
 
@@ -117,21 +147,29 @@ mod tests {
         }
     }
 
+    const fn at(at: i64, red: usize) -> Hour {
+        Hour {
+            at,
+            red,
+            unjudged: 0,
+        }
+    }
+
     #[test]
     fn the_lines_must_fall_below_the_hour_a_week_back_or_their_keeper_is_asked() {
-        let week = [(NOW - WEEK - 600, 5), (NOW - DAY, 9)];
-        let same = falling(&week, 5, NOW);
+        let week = [at(NOW - WEEK - 600, 5), at(NOW - DAY, 9)];
+        let same = falling(&week, at(NOW, 5));
         assert!(
             same.past().is_some() && same.owner == KEEPER,
             "as many red lines as a week back read as falling: {same:?}"
         );
-        let fewer = falling(&week, 4, NOW);
+        let fewer = falling(&week, at(NOW, 4));
         assert_eq!(
             fewer.past(),
             None,
             "fewer red lines than a week back read as not falling"
         );
-        let none = falling(&[(NOW - WEEK, 0)], 0, NOW);
+        let none = falling(&[at(NOW - WEEK, 0)], at(NOW, 0));
         assert_eq!(
             none.past(),
             None,
@@ -140,13 +178,34 @@ mod tests {
     }
 
     #[test]
+    fn the_hour_nearest_a_week_back_stands_for_it_within_its_slack() {
+        let hours = [
+            at(NOW - WEEK - NEAR, 1),
+            at(NOW - WEEK + 300, 9),
+            at(NOW - WEEK + NEAR, 1),
+        ];
+        let judged = falling(&hours, at(NOW, 5));
+        assert_eq!(
+            judged.target,
+            Some(8.0),
+            "an hour further from a week back stood for it: {judged:?}"
+        );
+        let edge = falling(&[at(NOW - WEEK - NEAR, 2)], at(NOW, 5));
+        assert_eq!(
+            edge.target,
+            Some(1.0),
+            "an hour at the edge of the slack didn't stand for a week back"
+        );
+    }
+
+    #[test]
     fn with_no_hour_kept_near_a_week_back_it_is_shown_unjudged() {
-        let young = falling(&[(NOW - DAY, 3)], 7, NOW);
+        let young = falling(&[at(NOW - DAY, 3)], at(NOW, 7));
         assert!(
             young.target.is_none() && young.behind[0].contains("kept since"),
             "a measure with no week kept was judged: {young:?}"
         );
-        let far = falling(&[(NOW - WEEK - 3 * 3600, 3)], 7, NOW);
+        let far = falling(&[at(NOW - WEEK - 3 * 3600, 3)], at(NOW, 7));
         assert!(
             far.target.is_none(),
             "an hour three hours off a week back stood for it"
@@ -154,17 +213,48 @@ mod tests {
     }
 
     #[test]
-    fn it_counts_every_measure_past_but_itself_and_keeps_a_week_of_hours() {
-        let measures = [past("a"), past("b"), past(KEY)];
-        assert_eq!(
-            red(&measures),
-            2,
-            "the measure counted itself, or missed one past"
+    fn lines_gone_unread_since_a_week_back_leave_it_unjudged_not_falling() {
+        let then = Hour {
+            at: NOW - WEEK,
+            red: 9,
+            unjudged: 2,
+        };
+        let unread = Hour {
+            at: NOW,
+            red: 3,
+            unjudged: 8,
+        };
+        let judged = falling(&[then], unread);
+        assert!(
+            judged.target.is_none() && judged.behind[0].contains("more measures go unjudged"),
+            "red lines gone unread read as falling: {judged:?}"
         );
-        let old = [(NOW - KEPT_FOR - 1, 1), (NOW - DAY, 2), (NOW + 60, 3)];
+        let read = Hour {
+            unjudged: 2,
+            ..unread
+        };
         assert_eq!(
-            kept(&old, 4, NOW),
-            [(NOW - DAY, 2), (NOW, 4)],
+            falling(&[then], read).target,
+            Some(8.0),
+            "as many unjudged as a week back left it unjudged"
+        );
+    }
+
+    #[test]
+    fn it_counts_every_measure_but_itself_and_keeps_a_week_of_hours() {
+        let mut unjudged = past("c");
+        unjudged.target = None;
+        let measures = [past("a"), past("b"), past(KEY), unjudged];
+        let this = hour(&measures, NOW);
+        assert_eq!(
+            (this.red, this.unjudged),
+            (2, 1),
+            "the measure counted itself, or missed one past or unjudged"
+        );
+        let old = [at(NOW - KEPT_FOR - 1, 1), at(NOW - DAY, 2), at(NOW + 60, 3)];
+        assert_eq!(
+            kept(&old, at(NOW, 4)),
+            [at(NOW - DAY, 2), at(NOW, 4)],
             "an hour past a week and its slack, or one after now, was kept"
         );
     }

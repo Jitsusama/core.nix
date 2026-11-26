@@ -108,8 +108,9 @@ fn findings_filed(m: &Measure) -> Vec<Filed> {
 
 /// What the drag files: one entry for its measure, or, for Joel's misses,
 /// one for each miss with that miss's own owner, since each owner names
-/// the check its own miss needs.
-fn filed(m: &Measure) -> Vec<Filed> {
+/// the check its own miss needs. The `lead`, the hour's biggest drag, is
+/// told so; any other measure only that it's past its target.
+fn filed(m: &Measure, lead: bool) -> Vec<Filed> {
     if m.class == Class::Miss {
         return m
             .behind
@@ -175,6 +176,17 @@ fn filed(m: &Measure) -> Vec<Filed> {
         return untested_asked(m, &says);
     }
     let owners = by_owner(m);
+    let (is, yours) = if lead {
+        (
+            "the biggest drag this hour is",
+            "the biggest drag this hour is yours",
+        )
+    } else {
+        (
+            "a measure is past its target,",
+            "a measure past its target is yours",
+        )
+    };
     if !owners.is_empty() {
         return owners
             .into_iter()
@@ -189,7 +201,7 @@ fn filed(m: &Measure) -> Vec<Filed> {
                     key: format!("hour:{}:{owner}", m.key),
                     says: format!("{says}, yours: {files}"),
                     text: format!(
-                        "cadence hour: a measure is past its target, {says}, and these of \
+                        "cadence hour: {is} {says}, and these of \
                          its {things} are yours: {files}. Please reply with their cause and fix \
                          within a day, or why they can't move. It closes by itself once \
                          {closes}."
@@ -203,7 +215,7 @@ fn filed(m: &Measure) -> Vec<Filed> {
         key: format!("hour:{}", m.key),
         owner: m.owner.clone(),
         text: format!(
-            "cadence hour: a measure past its target is yours, {says}. Please reply with \
+            "cadence hour: {yours}, {says}. Please reply with \
              its cause and fix within a day, or why it can't move. It closes by itself once \
              its figure is back in."
         ),
@@ -483,12 +495,20 @@ pub fn file(
             && !m.key.starts_with(told_late::KEY)
             && m.past().is_some()
     }));
+    let lead = drag(measures).map(|m| m.key.clone());
     let mut told = Vec::new();
-    for (m, one) in dragging
-        .into_iter()
-        .flat_map(|m| filed(m).into_iter().map(move |f| (m, f)))
-    {
-        if ledger.iter().any(|e| e.open && e.key == one.key) {
+    for (m, one) in dragging.into_iter().flat_map(|m| {
+        filed(m, lead.as_deref() == Some(m.key.as_str()))
+            .into_iter()
+            .map(move |f| (m, f))
+    }) {
+        // Owed once while open, and asked at most once in the day it was
+        // given to answer: a measure hovering at its line, back in one
+        // hour and out the next, would otherwise ask its owner hourly.
+        if ledger
+            .iter()
+            .any(|e| e.key == one.key && (e.open || e.due > now))
+        {
             continue;
         }
         owe::owe(
@@ -528,7 +548,7 @@ mod tests {
             "the host crashed · OSPHT4{HELD}core #5800{UNRUN}cadence can't see what runs here"
         )];
         assert!(
-            filed(&m).is_empty(),
+            filed(&m, true).is_empty(),
             "the owner was asked about what only the hour can mend"
         );
     }
@@ -539,7 +559,7 @@ mod tests {
         m.behind = vec![format!(
             "the host crashed · OSPHT4{HELD}core #5800{UNRUN}the pi hosts don't load it yet"
         )];
-        let filed = filed(&m);
+        let filed = filed(&m, true);
         assert_eq!(filed.len(), 1, "the miss wasn't put to its owner");
         assert_eq!(filed[0].owner, "OSPHT4");
         assert_eq!(filed[0].key, "hour:miss-held:the host crashed");
@@ -692,20 +712,52 @@ mod tests {
             "a red measure that doesn't lead went to no one, or one in its target was told: \
              {owners:?}"
         );
-        let ship_told = told
-            .iter()
-            .find(|(to, _)| to == "SHIP01")
-            .map(|(_, t)| t.as_str());
+        let told_to = |owner: &str| {
+            told.iter()
+                .find(|(to, _)| to == owner)
+                .map(|(_, t)| t.as_str())
+        };
+        let ship_told = told_to("SHIP01");
         assert!(
             ship_told.is_some_and(
                 |t| t.contains("past its target is yours") && !t.contains("biggest drag")
             ),
             "a measure that doesn't lead was told it's the biggest drag: {ship_told:?}"
         );
+        let lead_told = told_to("OWNER");
+        assert!(
+            lead_told.is_some_and(|t| t.contains("the biggest drag this hour is yours")),
+            "the lead wasn't told it's the biggest drag: {lead_told:?}"
+        );
+        // The lead is both the drag and a measure past its target, so it
+        // would be told twice were it not owed once.
         assert_eq!(
-            owners.iter().filter(|o| **o == "SHIP01").count(),
+            owners.iter().filter(|o| **o == "OWNER").count(),
             1,
-            "a red measure was filed twice in one hour: {owners:?}"
+            "the lead was told twice in one hour: {owners:?}"
+        );
+    }
+
+    #[test]
+    fn a_measure_hovering_at_its_line_is_asked_once_in_the_day_it_was_given() {
+        let mut ledger = Vec::new();
+        let out = measure("ship", Class::Ship, 9.0, Some(4.0));
+        let back = measure("ship", Class::Ship, 1.0, Some(4.0));
+        let asked = |ledger: &mut Vec<Entry>, m: &Measure, at: i64| {
+            file(ledger, std::slice::from_ref(m), "2026-11-26", at).len()
+        };
+        assert_eq!(asked(&mut ledger, &out, 1000), 1, "a red line wasn't asked");
+        asked(&mut ledger, &back, 4600);
+        assert!(!ledger[0].open, "back in didn't close it");
+        assert_eq!(
+            asked(&mut ledger, &out, 8200),
+            0,
+            "a line out again within its day was asked again"
+        );
+        assert_eq!(
+            asked(&mut ledger, &out, 1000 + DAY + 1),
+            1,
+            "a line out again after its day wasn't asked"
         );
     }
 
@@ -955,7 +1007,7 @@ mod tests {
         ] {
             found.behind = vec![format!("cd34 from CIJMZQ: the hosts{blind} · A2VLJN")];
             assert!(
-                filed(&found).is_empty()
+                filed(&found, true).is_empty()
                     && file(&mut ledger, &[found.clone()], "2026-11-21", at).is_empty()
                     && ledger.iter().filter(|e| e.open).count() == 1,
                 "a finding held by {blind:?} was put to its owner, or its drag closed"

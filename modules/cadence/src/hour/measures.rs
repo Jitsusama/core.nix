@@ -132,11 +132,14 @@ impl Measure {
 /// can a date already told late, which stays on the card for its day and
 /// is filed to each owner apart, but never leads, since asking its owner
 /// to steer it each hour moves nothing; nor do the queues, whose worst is asked apart once a day.
+/// Nor does the loop's own count of red lines, which only sums the others:
+/// leading, it would hide the line that moves it.
 #[must_use]
 pub fn drag(measures: &[Measure]) -> Option<&Measure> {
     measures
         .iter()
         .filter(|m| !m.key.starts_with(rounds::FRUITLESS) && !m.key.starts_with(told_late::KEY))
+        .filter(|m| m.key != super::falling::KEY)
         .filter(|m| m.class != Class::Queues)
         .filter_map(|m| m.past().map(|past| (m, past)))
         .min_by(|(a, pa), (b, pb)| a.class.cmp(&b.class).then(pb.total_cmp(pa)))
@@ -533,6 +536,24 @@ mod tests {
             drag(&measures).map(|m| m.key.as_str()),
             Some("far"),
             "a date told late, which no one can move now, led the hour"
+        );
+    }
+
+    #[test]
+    fn the_count_of_red_lines_never_leads_over_the_lines_it_counts() {
+        let measures = [
+            measure(
+                super::super::falling::KEY,
+                Class::Functional,
+                9.0,
+                Some(4.0),
+            ),
+            measure("far", Class::Clean, 30.0, Some(10.0)),
+        ];
+        assert_eq!(
+            drag(&measures).map(|m| m.key.as_str()),
+            Some("far"),
+            "the loop's own count of red lines led the hour over a line it counts"
         );
     }
 
