@@ -127,16 +127,20 @@ def serving(
 ) -> Iterator[Served]:
     """Run the sites' server on `mounts` and `feeds`, giving its root and its process.
 
-    The home's own folder is `home` where it's given, which the server serves
-    ahead of the documents as the sites' own, as a machine's serves it.
+    The home's own folder, which the server serves ahead of the documents as the
+    sites' own, as every machine's serves one, is `home` where it's given, and
+    otherwise `folder`'s home, holding what a page's strip and checks ask of it.
     """
     port = a_free_port()
     documents = folder / "documents"
     documents.mkdir()
-    # The home, among the documents, styles the strip over a mounted page and
-    # says what the sites hold, which a page's checks ask of its root.
-    (documents / "strip.css").write_text(Path(os.environ["STRIP"]).read_text())
-    (documents / "llms.txt").write_text("# Sites\n\nThe sites on this machine.\n")
+    if home is None:
+        home = folder / "home"
+        home.mkdir(exist_ok=True)
+        # The home styles the strip over a mounted page and says what the sites
+        # hold, which a page's checks ask of its root.
+        (home / "strip.css").write_text(Path(os.environ["STRIP"]).read_text())
+        (home / "llms.txt").write_text("# Sites\n\nThe sites on this machine.\n")
     config = {
         "listen": f"127.0.0.1:{port}",
         "names": ["sites.localhost"],
@@ -144,7 +148,7 @@ def serving(
         "documents": str(documents),
         "mounts": {**mounts, "local-sites": os.environ["LOCAL_SITES_SHARED"]},
         "feeds": feeds,
-        "home": None if home is None else str(home),
+        "home": str(home),
     }
     (folder / "config.json").write_text(json.dumps(config))
     server = subprocess.Popen([os.environ["LOCAL_SITES"], "--config", str(folder / "config.json")])

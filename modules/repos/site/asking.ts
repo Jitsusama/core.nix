@@ -32,19 +32,17 @@ function fetched(fetching: Fetching, address: string): Promise<Response> {
 }
 
 /**
- * The rows the home lists, as it writes them beside its record, the declared ones as declared;
- * a home from before it listed them apart keeps every row in the record itself, so only a
- * home with no rows file falls back. One failing otherwise rejects, rather than reading the
- * record whose live rows it no longer keeps; so does a home its builder hasn't written yet,
- * which the server answers 503, asked again as this file's opening says.
+ * The rows the home lists, as it builds them into its own folder, the declared ones as
+ * declared. One failing rejects, never reading the record a session writes, whose live rows the
+ * home no longer keeps; so does a home its builder hasn't written yet, which the server answers
+ * 503, asked again as this file's opening says.
  */
 async function readRows(fetching: Fetching): Promise<unknown> {
   const rows = await fetched(fetching, "../rows.json");
-  const read = rows.status === NOT_FOUND ? await fetched(fetching, "../sites.json") : rows;
-  if (!read.ok) {
-    throw new Error(`the home's rows answered ${read.status}`);
+  if (!rows.ok) {
+    throw new Error(`the home's rows answered ${rows.status}`);
   }
-  return read.json();
+  return rows.json();
 }
 
 /**

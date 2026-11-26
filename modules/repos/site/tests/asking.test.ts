@@ -111,15 +111,16 @@ function serving(answers: Record<string, [number, unknown]>): Fetching & { asked
   return Object.assign(fetching, { asked });
 }
 
-it("reads the rows the home lists, and the record only when there's no rows file", async () => {
+it("reads the rows the home lists, and never the record a session writes", async () => {
   const listed = { sites: [{ path: "rows/" }] };
   const kept = { sites: [{ path: "record/" }] };
   const both = serving({ "../rows.json": [200, listed], "../sites.json": [200, kept] });
   assert.deepEqual(await readRows(both), listed);
-  assert.deepEqual(await readRows(serving({ "../sites.json": [200, kept] })), kept);
-  const failing = serving({ "../rows.json": [500, undefined], "../sites.json": [200, kept] });
-  await assert.rejects(readRows(failing));
-  assert.deepEqual(failing.asked, ["../rows.json"]);
+  for (const status of [404, 503]) {
+    const failing = serving({ "../rows.json": [status, undefined], "../sites.json": [200, kept] });
+    await assert.rejects(readRows(failing));
+    assert.deepEqual(failing.asked, ["../rows.json"]);
+  }
 });
 
 it("reads a site's record, nothing where it keeps none, failing where unread", async () => {
