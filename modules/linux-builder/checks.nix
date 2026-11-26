@@ -120,6 +120,7 @@ in
         "/var/lib/linux-builder-vz"
         "40"
         "900"
+        job.StandardErrorPath
       ];
     in
     assert lib.assertMsg (lib.hasInfix "builders = @/var/lib/linux-builder-vz/offered"
@@ -129,7 +130,8 @@ in
       job.StartInterval == 15
       && lib.drop 2 job.ProgramArguments == given
       && lib.hasSuffix "room.sh" (builtins.elemAt job.ProgramArguments 1)
-    ) "The room job doesn't run room.sh each 15 s with its line, file, floor and hold.";
+      && job.StandardErrorPath == "/var/log/linux-builder-room.log"
+    ) "The room job doesn't run room.sh each 15 s with its line, file, floor, hold and log.";
     pkgs.runCommandLocal "linux-builder-is-offered-only-with-room" { } ''
       $BASH ${./room-test.sh} ${./room.sh}
       touch $out

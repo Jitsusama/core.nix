@@ -3,7 +3,8 @@
 # while the Mac has room: under the floor, swapping, unread or with its own
 # record gone or from later than now it holds no builder at once, and
 # gives the line back only after the hold, at its edge; a step that fails
-# leaves no builder offered; each change is said once, with when. sysctl and vm_stat
+# leaves no builder offered, and the look after it says it no longer fails;
+# each change is said once, with when, and the file names the log. sysctl and vm_stat
 # are stand-ins that print what the test sets, sysctl only for the figure
 # room.sh must ask for, and either may fail. Time passing is the job's own
 # record of when the Mac was last short of room, set back.
@@ -31,6 +32,7 @@ chmod +x "${bin}/sysctl" "${bin}/vm_stat"
 key=/etc/nix/builder_ed25519
 echo "ssh-ng://linux-builder x86_64-linux,aarch64-linux ${key} 4 1 big-parallel -" >"${PWD}/line"
 offered=${PWD}/offered
+log=${PWD}/room.log
 
 # Looks once at the Mac given its share free and swap-outs so far, with 35%
 # as the floor and 600 s as the hold, keeping what it said, how it ended
@@ -41,14 +43,14 @@ look() {
   echo "$2" >"${PWD}/swapouts"
   ended=0
   "${BASH}" "${room}" "${bin}/sysctl" "${bin}/vm_stat" "${PWD}/line" "${offered}" "${state}" \
-    35 600 2>"${PWD}/said" || ended=$?
+    35 600 "${log}" 2>"${PWD}/said" || ended=$?
   said=$(<"${PWD}/said")
   offer=something-else
   if cmp -s "${offered}" "${PWD}/line"; then
     offer=offered
   elif [[ -s ${offered} ]] && ! grep -qv '^# ' "${offered}" &&
     head -n 1 "${offered}" | grep -qx '# withheld by linux-builder-room: ..*' &&
-    grep -qxF "# linux-builder-room's log says when, as launchd's job names it" "${offered}"; then
+    grep -qxF "# linux-builder-room's log, ${log}, says when" "${offered}"; then
     offer=withheld
   fi
 }
@@ -177,7 +179,10 @@ look 50 3
   fail "a second look that couldn't write left the builder offered, or said it again"
 chmod 755 "${state}"
 look 50 3
-holds withheld "" "a shortage a look couldn't write down was forgotten, skipping the hold"
+# The record emptied as it failed, so the look that no longer fails finds
+# none and runs the hold, saying the failure has cleared.
+holds withheld "*it no longer fails, and the builder isn't offered: it had no record*" \
+  "a shortage a look couldn't write down was forgotten, or its failing clearing unsaid"
 # Failing while withheld for want of room says so, so the file's reason
 # isn't left as a shortage while the job keeps failing.
 chmod 555 "${state}"
@@ -189,6 +194,9 @@ if [[ ${offer} != withheld || ${ended} == 0 || ${said} != *"isn't offered: ${fai
   fail "a look that failed while withheld for want of room left the old reason"
 fi
 chmod 755 "${state}"
+look 50 3
+holds withheld "*it no longer fails, and the builder isn't offered: it had no record*" \
+  "a look that no longer failed left the failure standing in the log"
 
 # A move into place that fails says only that it failed, never the offer
 # it couldn't make. The stand-in mv refuses only the file Nix reads.
@@ -202,8 +210,10 @@ EOF
 chmod +x "${bin}/stuck/mv"
 pressed_ago 601
 PATH=${bin}/stuck:${PATH} look 50 3
-[[ ${offer} == withheld && ${ended} != 0 && ${said} != *"offered again"* ]] ||
-  fail "a move that failed was said as the builder offered again"
+# Withheld for want of a record before it, so the failure is said anew.
+[[ ${offer} == withheld && ${ended} != 0 && ${said} != *"offered again"* &&
+  ${said} == *"isn't offered: it failed, ending ${ended}" ]] ||
+  fail "a move that failed was said as the builder offered again, or not said as failing"
 
 pressed_ago 601
 look 50 3
