@@ -49,6 +49,43 @@ QtObject {
                     name: "~/big/reef" }]), places).map(one => one.folder))
                 .map(folders => folders.length === new Set(folders).size
                     && folders.includes(unchecked.folder)), [true, true, true, true]);
+        // An In row's field entered before the places landed starts at Return as its
+        // row now says (Agents.qml's newWorkAct).
+        // Rows picked by their own folder, the one holding the rest listed first so a
+        // match by prefix shows, and made as other than they start, so keeping the
+        // made start or falling back to the folder shows.
+        const system = { folder: "/home/j/big/src/areas/system", name: "~/big/system" };
+        const reefQuest = [system, { folder: unchecked.folder, name: "~/big/reef" },
+            { folder: pond.folder, name: "~/big/pond" }];
+        const madeAs = Wheres.wheres(reefQuest, []).find(one => one.folder === unchecked.folder)
+            .start;
+        Expect.same("before the places land, a quest's folder starts by its folder", madeAs,
+            unchecked.folder);
+        const landed = Wheres.wheres(reefQuest, [unchecked, pond]);
+        Expect.same("a field entered before places land starts as its row says after",
+            Wheres.startAt(landed, unchecked.folder, madeAs), "//system/reef");
+        Expect.same("and the other row as its own says",
+            Wheres.startAt(landed, pond.folder, "made"), "//system/pond");
+        Expect.same("and the folder holding them as its own",
+            Wheres.startAt(landed, system.folder, "made"), system.folder);
+        Expect.same("and as its own where a row under it is listed first",
+            Wheres.startAt(Wheres.wheres(reefQuest.slice(1).concat([system]), [unchecked]),
+                system.folder, "made"), system.folder);
+        // Listed around it but not at it, none starting as it was made: the folder
+        // holding it, one under it, one sharing its last parts, one ending in its whole
+        // folder, one its folder ends in, one named as it was made, and a zone last.
+        const around = Wheres.wheres([system,
+            { folder: unchecked.folder + "/deep", name: "~/big/reef/deep" },
+            { folder: "/home/j/big2/src/areas/system/reef", name: "~/big2/reef" },
+            { folder: `/mnt${unchecked.folder}`, name: "/mnt/reef" },
+            { folder: "/areas/system/reef", name: "/areas/reef" },
+            { folder: "/home/j/big/src/areas/system/lake", name: "//made/start" }], [pond]);
+        Expect.same("none near it starts as it was made",
+            around.filter(one => one.start === "//made/start"), []);
+        Expect.same("and as made where its folder is no longer listed, whatever is near it",
+            Wheres.startAt(around, unchecked.folder, "//made/start"), "//made/start");
+        Expect.same("and its own folder's start where another row starts as it was made",
+            Wheres.startAt(landed, pond.folder, "//system/reef"), "//system/pond");
         Expect.same("what the node calls it decides, not how its name opens",
             Wheres.wheres([], [Object.assign({}, pond, { kind: "checkout" }),
                 Object.assign({}, harness, { kind: "zone" })])
@@ -66,6 +103,17 @@ QtObject {
                 ["~/big/src/areas/system/pond", pond.folder],
                 ["~/big2/src/areas/system/pond", otherPond.folder]
             ]);
+        // A row made to start by a zone's name starts by its folder once a second
+        // checkout of that zone lands, so the node can't pick the other.
+        const madeByName = Wheres.wheres([], [big, pond]).find(one => one.folder === pond.folder)
+            .start;
+        Expect.same("one checkout's zone starts by its name", madeByName, "//system/pond");
+        Expect.same("and by its folder at Return once another checkout holds it too",
+            Wheres.startAt(Wheres.wheres([], [big, pond, big2, otherPond]), pond.folder,
+                madeByName), pond.folder);
+        Expect.same("and the other checkout's by its own folder",
+            Wheres.startAt(Wheres.wheres([], [big, pond, big2, otherPond]), otherPond.folder,
+                madeByName), otherPond.folder);
         Expect.same("one no checkout holds is named by its folder",
             Wheres.wheres([], [pond, otherPond]).map(one => one.name),
             [pond.folder, otherPond.folder]);

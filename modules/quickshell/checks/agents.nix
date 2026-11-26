@@ -131,7 +131,9 @@
 
   # Start New Work's In rows list his quests' folders, then the places the
   # realm's node names, each folder once and only in plain words, a zone
-  # started by its name, as modules/quickshell/tests/start-new-work-places.qml
+  # started by its name, and Wheres.startAt giving a row picked before the
+  # places land the start it says after, as
+  # modules/quickshell/tests/start-new-work-places.qml
   # holds launcher/Wheres.js to it in Qt's own engine.
   start-new-work-finds-places =
     let
