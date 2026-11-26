@@ -6,23 +6,106 @@
 //! hold overflowed the 8 MiB a process's first thread has.
 
 use super::{
-    CHAIN_LIMIT, Kind, Mark, Object, Odb, Place, Stored, apply_delta, delta_base_size, inflate_at,
-    invalid,
+    BASE_BUDGET, CHAIN_LIMIT, Kind, Mark, Object, Odb, Place, Stored, apply_delta, delta_base_size,
+    inflate_at, invalid,
 };
 use crate::hash::Oid;
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::os::unix::fs::FileExt;
 
-/// The copies passed over for the rest of a find, and why each was.
-type Skipped = HashMap<Place, (io::ErrorKind, String)>;
+/// The copies passed over in a find, each with what refused it and what
+/// passed it over, which passes it over again only while it holds.
+type Skipped = HashMap<Place, (io::ErrorKind, String, Hold)>;
 
-/// The bases a find spent every copy of, each with whether one was passed
-/// over and what refused it. Copies stay marked bad, and passed over, for
-/// the rest of the find, so a base spent once would be spent again just
-/// as it was: a copy naming it again ends as the first did, without its
-/// copies looked up again.
-type Spent = HashMap<Oid, (bool, io::ErrorKind, String)>;
+/// The bases a find spent every copy of, each with what refused it and,
+/// where a copy was passed over, what passed it over. Copies stay marked
+/// bad for the rest of the find, so a base spent with none passed over
+/// would be spent again just as it was, and one spent with a copy passed
+/// over would be again while what passed it over holds: a copy naming it
+/// then ends as the first did, without its copies looked up again.
+type Spent = HashMap<Oid, (io::ErrorKind, String, Option<Hold>)>;
+
+/// What passed a copy over, or a search's copies: a chain under it that
+/// ran past `CHAIN_LIMIT` from the depth it was entered at, and the names
+/// a chain under it came round to while each was being found. Reached no
+/// nearer the top, a chain runs as far again; and while a name is being
+/// found, a chain reaching it comes round again. Either way it reads no
+/// better, so it's passed over again. Reached nearer the top, or once a
+/// name it came round to is found or spent, it may read, so it's read.
+#[derive(Clone, Default)]
+struct Hold {
+    /// The depth the copy was entered at, where a chain under it ran too
+    /// long.
+    from: Option<usize>,
+    /// The names a chain under it came round to.
+    round: Vec<Oid>,
+}
+
+impl Hold {
+    /// Whether a copy entered at `depth` would be passed over as before.
+    fn holds(&self, depth: usize, searching: &HashSet<Oid>) -> bool {
+        self.from.is_none_or(|from| depth >= from)
+            && self.round.iter().all(|name| searching.contains(name))
+    }
+
+    /// The same, said of a copy entered at `depth`, over whose chain it
+    /// held: what ran too long under a base the copy names runs too long
+    /// under the copy wherever it's entered no nearer the top.
+    fn under(&self, depth: usize) -> Hold {
+        Hold {
+            from: self.from.map(|_| depth),
+            round: self.round.clone(),
+        }
+    }
+
+    /// Adds what passed over another copy of the same search, so the
+    /// search's copies are passed over again only where every one's would
+    /// be: from the deepest of their depths, with all their names.
+    fn join(&mut self, other: &Hold) {
+        self.from = self.from.max(other.from);
+        for name in &other.round {
+            if !self.round.contains(name) {
+                self.round.push(*name);
+            }
+        }
+    }
+}
+
+/// The bases a find found by name, kept for the rest of it, so a base
+/// named again by the next copy of a delta over it is handed down rather
+/// than found again, as git's delta base cache keeps one. They're kept up
+/// to `BASE_BUDGET` bytes a find, whatever their kind, and dropped as the
+/// find ends.
+#[derive(Default)]
+struct Resolved {
+    objects: HashMap<Oid, Object>,
+    bytes: usize,
+}
+
+impl Resolved {
+    fn get(&self, oid: &Oid) -> Option<Object> {
+        self.objects.get(oid).map(|object| Object {
+            kind: object.kind,
+            data: object.data.clone(),
+        })
+    }
+
+    /// Keeps `object`, found as `oid`, should there be room for it.
+    fn keep(&mut self, oid: Oid, object: &Object) {
+        if self.bytes + object.data.len() > BASE_BUDGET {
+            return;
+        }
+        self.bytes += object.data.len();
+        self.objects.insert(
+            oid,
+            Object {
+                kind: object.kind,
+                data: object.data.clone(),
+            },
+        );
+    }
+}
 
 #[cfg(test)]
 thread_local! {
@@ -44,8 +127,10 @@ struct Search {
     /// The first refusal met, which stands should no copy read.
     refused: Option<io::Error>,
     /// Whether a copy was passed over for this find alone, its chain
-    /// coming round or running too long, rather than refused.
+    /// coming round or running too long, rather than refused, and what
+    /// passed over each.
     skipped: bool,
+    hold: Hold,
     /// The copy being read, and the deltas read down from it toward its
     /// base so far, nearest the copy first.
     copy: Option<Place>,
@@ -73,6 +158,7 @@ impl Search {
             loose: 0,
             refused: None,
             skipped: false,
+            hold: Hold::default(),
             copy: None,
             deltas: Vec::new(),
             above,
@@ -101,8 +187,9 @@ enum Reached {
     /// Past `CHAIN_LIMIT` deltas from the object asked for.
     TooLong,
     /// A named base whose copies were spent with one passed over, which
-    /// says nothing of the copy whose delta named it.
-    Skipped(io::Error),
+    /// says nothing of the copy whose delta named it, and what passed
+    /// them over.
+    Skipped(io::Error, Hold),
     /// A named base whose copies were spent, each refused, or which no
     /// store holds: the copy whose delta named it reads no better this
     /// answer, though the base may be written, or read once memory is
@@ -125,16 +212,21 @@ impl Odb {
     /// an object already being found, or runs past `CHAIN_LIMIT`, may be
     /// sound under another copy of a base on the way, so it's only passed
     /// over, for this find alone, and the next copy read; a base spent with
-    /// a copy passed over passes over the copy that named it in turn. Each
-    /// copy is passed over at most once a find, so a find ends after
-    /// reading each copy at most once, and a base spent ends each copy
-    /// naming it after as it ended the first, so its copies are looked up
-    /// once a find, however many copies name it.
+    /// a copy passed over passes over the copy that named it in turn. A
+    /// copy passed over is passed over again only while what passed it
+    /// over holds, as `Hold` says, and read again where it no longer does,
+    /// since reached nearer the top, or with the name it came round to
+    /// found, it may read; so which copy is read first changes what's
+    /// found only by what it costs. A base found by name is kept for the
+    /// rest of the find, up to `BASE_BUDGET` bytes, and a base spent is
+    /// kept while what spent it holds, so a copy naming either after the
+    /// first ends as the first did, without its copies looked up again.
     pub(super) fn find(&mut self, oid: &Oid) -> io::Result<Option<Object>> {
         let mut searches = vec![Search::new(*oid, 0)];
         let mut searching = HashSet::from([*oid]);
         let mut skipped = Skipped::new();
         let mut spent = Spent::new();
+        let mut resolved = Resolved::default();
         // The base a search above handed down, or a tree already read.
         let mut handed = None;
         loop {
@@ -144,7 +236,7 @@ impl Odb {
             let reached = if let Some(base) = handed.take() {
                 Ok(Reached::Base(base))
             } else {
-                match self.next_copy(&mut searches[at], &skipped) {
+                match self.next_copy(&mut searches[at], &skipped, &searching) {
                     Next::Packed(place) => self.read_down(&mut searches[at], place),
                     Next::Loose(object) => Ok(Reached::Base(object)),
                     // A base no store holds ends the copy of the delta that
@@ -159,12 +251,13 @@ impl Odb {
                         let refused = ended.refused.unwrap_or_else(|| {
                             io::Error::new(io::ErrorKind::NotFound, "delta base missing")
                         });
+                        let hold = ended.skipped.then_some(ended.hold);
                         spent.insert(
                             ended.oid,
-                            (ended.skipped, refused.kind(), refused.to_string()),
+                            (refused.kind(), refused.to_string(), hold.clone()),
                         );
-                        if ended.skipped {
-                            Ok(Reached::Skipped(refused))
+                        if let Some(hold) = hold {
+                            Ok(Reached::Skipped(refused, hold))
                         } else {
                             Ok(Reached::Unbased(refused))
                         }
@@ -176,32 +269,49 @@ impl Odb {
                 Err(error) => self.fail(&mut searches[at], &error, true),
                 Ok(Reached::Unbased(error)) => self.fail(&mut searches[at], &error, false),
                 Ok(Reached::TooLong) => {
-                    skip(
-                        &mut searches[at],
-                        &mut skipped,
-                        &invalid("delta chain too long"),
-                    );
+                    let hold = Hold {
+                        from: Some(searches[at].above),
+                        round: Vec::new(),
+                    };
+                    let error = invalid("delta chain too long");
+                    skip(&mut searches[at], &mut skipped, &error, hold);
                 }
-                Ok(Reached::Skipped(error)) => skip(&mut searches[at], &mut skipped, &error),
+                Ok(Reached::Skipped(error, hold)) => {
+                    let hold = hold.under(searches[at].above);
+                    skip(&mut searches[at], &mut skipped, &error, hold);
+                }
                 Ok(Reached::Named(base)) => {
+                    let depth = searches[at].depth();
+                    // A base spent with a copy passed over, where what
+                    // passed it over no longer holds, is found again.
+                    let stale = matches!(
+                        spent.get(&base),
+                        Some((.., Some(hold))) if !hold.holds(depth, &searching)
+                    );
+                    if stale {
+                        spent.remove(&base);
+                    }
                     if let Some(tree) = self.tree(&base) {
                         handed = Some(tree);
-                    } else if let Some((passed_over, kind, said)) = spent.get(&base) {
+                    } else if let Some(found) = resolved.get(&base) {
+                        handed = Some(found);
+                    } else if let Some((kind, said, hold)) = spent.get(&base) {
                         let error = io::Error::new(*kind, said.clone());
-                        if *passed_over {
-                            skip(&mut searches[at], &mut skipped, &error);
+                        if let Some(hold) = hold {
+                            let hold = hold.under(searches[at].above);
+                            skip(&mut searches[at], &mut skipped, &error, hold);
                         } else {
                             self.fail(&mut searches[at], &error, false);
                         }
                     } else if searching.insert(base) {
-                        let above = searches[at].depth();
-                        searches.push(Search::new(base, above));
+                        searches.push(Search::new(base, depth));
                     } else {
-                        skip(
-                            &mut searches[at],
-                            &mut skipped,
-                            &invalid("delta base cycle"),
-                        );
+                        let hold = Hold {
+                            from: None,
+                            round: vec![base],
+                        };
+                        let error = invalid("delta base cycle");
+                        skip(&mut searches[at], &mut skipped, &error, hold);
                     }
                 }
                 Ok(Reached::Base(base)) => match self.apply(&mut searches[at], base, named) {
@@ -212,6 +322,7 @@ impl Odb {
                         if searches.is_empty() {
                             return Ok(Some(object));
                         }
+                        resolved.keep(found.oid, &object);
                         handed = Some(object);
                     }
                 },
@@ -222,9 +333,10 @@ impl Odb {
     /// The next copy of `search`'s object neither marked bad nor passed
     /// over in this find, in the packs of each store and then in its loose
     /// objects, keeping the first refusal met on the way. A copy passed
-    /// over before passes over this search too, should it find nothing,
-    /// since its base may be sound under another copy of a base on the way.
-    fn next_copy(&self, search: &mut Search, skipped: &Skipped) -> Next {
+    /// over before, where what passed it over still holds, passes over
+    /// this search too, should it find nothing, since its base may be
+    /// sound under another copy of a base on the way.
+    fn next_copy(&self, search: &mut Search, skipped: &Skipped, searching: &HashSet<Oid>) -> Next {
         while let Some(store) = self.stores.get(search.store) {
             #[cfg(test)]
             LOOKUPS.with(|lookups| lookups.set(lookups.get() + 1));
@@ -241,8 +353,12 @@ impl Odb {
                 search
                     .refused
                     .get_or_insert_with(|| io::Error::new(mark.kind, mark.said.clone()));
-            } else if let Some((kind, said)) = skipped.get(&place) {
+            } else if let Some((kind, said, hold)) = skipped
+                .get(&place)
+                .filter(|(.., hold)| hold.holds(search.above, searching))
+            {
                 search.skipped = true;
+                search.hold.join(hold);
                 search
                     .refused
                     .get_or_insert_with(|| io::Error::new(*kind, said.clone()));
@@ -420,12 +536,13 @@ pub(super) fn base_distance(head: &[u8]) -> io::Result<(u64, usize)> {
     Ok((back, at))
 }
 
-/// Passes over the copy `search` was reading for the rest of this find,
-/// marking nothing: its chain came round to an object being found, or ran
-/// too long, which may not be the copy's own doing.
-fn skip(search: &mut Search, skipped: &mut Skipped, error: &io::Error) {
+/// Passes over the copy `search` was reading while what passed it over,
+/// `hold`, holds, marking nothing: its chain came round to an object being
+/// found, or ran too long, which may not be the copy's own doing.
+fn skip(search: &mut Search, skipped: &mut Skipped, error: &io::Error, hold: Hold) {
+    search.hold.join(&hold);
     if let Some(copy) = search.copy.take() {
-        skipped.insert(copy, (error.kind(), error.to_string()));
+        skipped.insert(copy, (error.kind(), error.to_string(), hold));
     }
     search.skipped = true;
     refuse(search, error);

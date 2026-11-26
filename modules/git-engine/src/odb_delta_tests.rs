@@ -28,12 +28,12 @@ pub(super) fn blob(data: &[u8]) -> Vec<u8> {
 
 /// A delta naming its base, `base`, as a pack's entry: type 7, of 4
 /// bytes, over a base of one byte to a result of one, inserting "x".
-fn over(base: [u8; 20]) -> Vec<u8> {
+pub(super) fn over(base: [u8; 20]) -> Vec<u8> {
     delta_over(base, 1)
 }
 
 /// The same delta, saying its base is of `base_size` bytes.
-fn delta_over(base: [u8; 20], base_size: u8) -> Vec<u8> {
+pub(super) fn delta_over(base: [u8; 20], base_size: u8) -> Vec<u8> {
     let mut entry = vec![0x70 | 4];
     entry.extend(base);
     entry.extend(miniz_oxide::deflate::compress_to_vec_zlib(
@@ -113,13 +113,13 @@ pub(super) fn packed(names: &[[u8; 20]], packs: &[Vec<Vec<u8>>]) -> Removed {
 }
 
 /// A pack's entries, and the name of each.
-type Pack = (Vec<[u8; 20]>, Vec<Vec<u8>>);
+pub(super) type Pack = (Vec<[u8; 20]>, Vec<Vec<u8>>);
 
 /// What reading an object answers: its data, or what refused it.
 pub(super) type Read = Result<Option<Vec<u8>>, String>;
 
 /// The same, each pack's entries named by the names beside them.
-fn packed_as(packs: &[Pack]) -> Removed {
+pub(super) fn packed_as(packs: &[Pack]) -> Removed {
     let mut indexed = Vec::new();
     let mut bytes = Vec::new();
     for (at, (names, entries)) in packs.iter().enumerate() {
@@ -236,11 +236,17 @@ fn a_base_found_or_missed_for_one_copy_answers_the_same_for_the_next() {
     let names = names(2);
     // names[0] twice a delta over names[1]: first where nothing holds
     // names[1], then where the first copy says its base is of 2 bytes,
-    // so it won't apply over the sound names[1] beside it.
-    for (packs, found, what) in [
+    // so it won't apply over the sound names[1] beside it. A miss is
+    // spent and a base found is kept for the rest of the find, so the
+    // next copy looks neither up again. A lookup asks the store for a
+    // name's next copy: a miss takes 4, names[0]'s two copies, the ask
+    // finding no third, and names[1]'s finding none; a base found takes
+    // 3, names[0]'s two copies and names[1]'s first.
+    for (packs, found, lookups_taken, what) in [
         (
             vec![vec![over(names[1])], vec![over(names[1])]],
             Err("delta base missing".to_string()),
+            4,
             "missed",
         ),
         (
@@ -249,6 +255,7 @@ fn a_base_found_or_missed_for_one_copy_answers_the_same_for_the_next() {
                 vec![over(names[1])],
             ],
             Ok(Some(b"x".to_vec())),
+            3,
             "found",
         ),
     ] {
@@ -260,7 +267,7 @@ fn a_base_found_or_missed_for_one_copy_answers_the_same_for_the_next() {
         let lookups = super::chain::LOOKUPS.with(std::cell::Cell::get);
         assert_eq!(
             (read, lookups),
-            (found, 4),
+            (found, lookups_taken),
             "a base {what} for one copy didn't answer the same for the next"
         );
     }
@@ -358,6 +365,7 @@ fn a_copy_that_wont_unpack_is_unpacked_once_however_many_deltas_lie_over_it() {
     let folders = packed(&names, &[entries.clone(), entries.clone(), entries]);
     let objects = folders.0[0].clone();
     let read = within(20, move || {
+        super::chain::LOOKUPS.with(|lookups| lookups.set(0));
         let mut odb = Odb::open(&objects);
         let read = odb
             .read(&Oid(names[0]))
@@ -368,15 +376,18 @@ fn a_copy_that_wont_unpack_is_unpacked_once_however_many_deltas_lie_over_it() {
             .values()
             .filter(|mark| mark.lasts == Lasts::WhileThePacksHold)
             .count();
-        (read, odb.bad.len(), lasting)
+        let lookups = super::chain::LOOKUPS.with(std::cell::Cell::get);
+        (read, odb.bad.len(), lasting, lookups)
     });
     // Only the three entries of no kind are wrong in themselves; the
-    // deltas over them may yet read over a base written elsewhere.
+    // deltas over them may yet read over a base written elsewhere. Each
+    // name asks the store for its copies 4 times, a copy in each pack and
+    // then none, so a copy asked for again would show in the lookups.
     assert_eq!(
         read,
-        Ok((Err("pack entry kind".into()), 3 * 17, 3)),
+        Ok((Err("pack entry kind".into()), 3 * 17, 3, 4 * 17)),
         "a chain of copies that won't unpack didn't end in its first refusal, each copy \
-         once, or a delta was marked for good for its base's fault"
+         looked up and marked once, or a delta was marked for good for its base's fault"
     );
 }
 

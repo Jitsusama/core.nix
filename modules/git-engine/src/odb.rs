@@ -770,3 +770,7 @@ mod delta_tests;
 #[cfg(test)]
 #[path = "odb_bound_tests.rs"]
 mod bound_tests;
+
+#[cfg(test)]
+#[path = "odb_find_tests.rs"]
+mod find_tests;
