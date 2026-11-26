@@ -325,6 +325,7 @@
     "launcher/SpendNow.js"
   ];
   "launcher/StartsStopped.js" = [ "launcher/Sprouting.js" ];
+  "launcher/Steady.js" = [ "launcher/LaidAgain.js" ];
   "launcher/Stepped.js" = [ "launcher/Order.js" ];
   "launcher/Subnets.js" = [
     "launcher/Addresses.js"

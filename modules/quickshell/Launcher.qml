@@ -411,8 +411,8 @@ Scope {
         keysWeighing = 0;
         drawerJoining = 0;
         readingBegun();
-        const composed = live((steadying && !ordering ? steadied(rows.concat(below), gaveWay)
-            : rows.concat(below)).concat(ending));
+        const steady = steadying && !ordering ? steadied(rows.concat(below), gaveWay) : null;
+        const composed = live((steady?.rows ?? rows.concat(below)).concat(ending));
         const listedRows = listedAs(composed);
         const puttingAt = KeyTimes.now();
         matches = listedRows;
@@ -420,8 +420,7 @@ Scope {
         // waits; a held step's own listing counts what it still leaves out.
         // Said once the rows are in, so a source that throws before leaves
         // the foot's count beside the rows it counts.
-        if (!steadying || ordering)
-            waitingRows = 0;
+        waitingRows = steady?.waiting ?? 0;
         const selectingAt = KeyTimes.now();
         const drawerPutting = drawerJoining;
         // An answer only started gives way to a name that starts the same,
@@ -5427,18 +5426,15 @@ Scope {
 
     // Given `gaveWay`, an answer there only while nothing else was has given
     // way to what was found since, and goes (Steady.js's standing).
+    // { rows, waiting }: how many wait is the caller's to say once the rows
+    // are in, so a source that throws first leaves the count beside the
+    // rows it counts.
     function steadied(found, gaveWay) {
         const shown = Steady.standing(matches, gaveWay === true);
         const renamed = shown.filter(row => !row.gone && onOffer(row.key)
             && !found.some(one => one.key === row.key)).map(row => onOffer(row.key));
-        if (!holdingRows) {
-            const again = Steady.refreshed(shown, found.concat(renamed), pairedId);
-            waitingRows = again.waiting;
-            return again.rows;
-        }
-        const still = Steady.held(shown, found.concat(renamed), pairedId);
-        waitingRows = still.waiting;
-        return still.rows;
+        return holdingRows ? Steady.held(shown, found.concat(renamed), pairedId)
+            : Steady.refreshed(shown, found.concat(renamed), pairedId);
     }
 
     // While visual, a pending operator or the command line acts on the
@@ -7289,14 +7285,13 @@ Scope {
             // list in its own order shows all it has, but for what waits
             // unseen.
             if (steadying) {
-                if (ordering)
-                    waitingRows = unseen;
-                matches = unheaded(live(ordering ? found : steadied(unheaded(found))));
+                const steady = ordering ? null : steadied(unheaded(found));
+                matches = unheaded(live(steady?.rows ?? found));
+                waitingRows = steady?.waiting ?? unseen;
                 if (current === -1 && !lined)
                     current = 0;
                 return;
             }
-            waitingRows = unseen;
             const foundAt = Date.now();
             const lived = live(found);
             const livedAt = Date.now();
@@ -7310,6 +7305,7 @@ Scope {
             const listedRows = listedAs(lived);
             const puttingAt = KeyTimes.now();
             matches = listedRows;
+            waitingRows = unseen;
             const selectingAt = KeyTimes.now();
             const drawerPutting = drawerJoining;
             // What's typed taken away whole leaves the selection on the row

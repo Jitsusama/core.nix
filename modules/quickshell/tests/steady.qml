@@ -325,19 +325,27 @@ QtObject {
             failures.push(`a heading whose rows went, made afresh: "${madeAfresh}"`);
         // [what, the rows shown, the rows now, how they're shown after, how
         // many wait]: as shown, a new row of no heading waits unseen, counted
-        // in the foot, unless it's pressing.
+        // in the foot, unless it's pressing, when it comes in first, above
+        // every heading, as For You gathers Agents Asking there
+        // (ForYouCells.js's laidOut), since at the end it would read as the
+        // last cell's.
         const shownAgain = [
             ["a row under no heading waits", "#A=a1 a1", "#A=a1 a1 look later", "#A a1", 2],
             ["and one above every heading", "#A=a1 a1", "x #A=a1 a1", "#A a1", 1],
-            ["but a pressing row comes in", "#A=a1 a1", "#A=a1 a1 asked!", "#A a1 asked", 0],
+            ["but a pressing row comes in first", "#A=a1 a1", "#A=a1 a1 asked!", "asked #A a1",
+                0],
             ["and a pressing one above every heading", "#A=a1 a1", "asked! #A=a1 a1",
-                "#A a1 asked", 0],
-            ["and a cell's row after it has its heading said", "#A=a1 a1",
-                "asked! #A=a1,a2 a1 a2", "#A a1 asked #A+ a2", 0],
+                "asked #A a1", 0],
+            ["and a cell's row after it comes in under its own heading", "#A=a1 a1",
+                "asked! #A=a1,a2 a1 a2", "asked #A a1 a2", 0],
+            ["and a row of no cell beside it still waits", "#A=a1 a1",
+                "asked! #A=a1 a1 look", "asked #A a1", 1],
+            ["where the end reads as under none, a pressing row comes in at the end",
+                "#A=a1 a1 look", "#A=a1 a1 look asked!", "#A a1 look asked", 0],
             ["a cell's new row still gets its heading past the others", "#A=a1 a1 #B=b1 b1",
                 "#A=a1,a2 a1 a2 #B=b1 b1 look", "#A a1 #B b1 #A+ a2", 1],
             ["a pressing row keeps no dim heading said again lit", "#A a1 #B b1 #A+ a2",
-                "asked! #A a1 #B b1", "#A a1 #B b1 #A+- a2- asked", 0],
+                "asked! #A a1 #B b1", "asked #A a1 #B b1 #A+- a2-", 0],
             ["a new row past a dim cell gets its heading", "#A=a1 a1 #B=b1 b1",
                 "#A=a1,a2 a1 a2", "#A a1 #B- b1- #A+ a2", 0],
             ["with headings shown and none now, a new row waits", "#A=a1 a1 #Y=y1 y1",
@@ -374,7 +382,7 @@ QtObject {
             pressing: () => critical.now }]);
         for (const [what, now, want, waiting] of [
             ["a row whose pressing says no waits", false, "#A a1", 1],
-            ["and comes in once it says yes", true, "#A a1 notices", 0]
+            ["and comes in once it says yes", true, "notices #A a1", 0]
         ]) {
             critical.now = now;
             const got = Steady.refreshed(underHeadings("#A=a1 a1"), asking, id);
@@ -404,6 +412,22 @@ QtObject {
             .find(row => row.key === "notices");
         if (asSeenRead(laidAfresh) !== JSON.stringify([false, "", true, 1]))
             failures.push(`a row kept unseen, laid afresh: ${asSeenRead(laidAfresh)}`);
+        // Listed by a key as it stands (Steady.seen), one kept unseen that
+        // has become pressing since comes in first, as a refresh lays it,
+        // not counted new and hidden.
+        const pressedListed = Steady.seen(keptUnseen, id);
+        if (readHeaded(pressedListed.rows) !== "notices #A a1" || pressedListed.waiting !== 0)
+            failures.push(`a row kept unseen, pressing, listed: `
+                + `"${readHeaded(pressedListed.rows)}" with ${pressedListed.waiting} waiting`);
+        // Once the end reads as under none, what waited comes in at the end,
+        // after the row that ends the heading, not where it stands right
+        // after a cell's rows, where it would read as that cell's.
+        const waitedMid = underHeadings("#A=a1 a1 look try");
+        waitedMid[2].unseen = true;
+        const letIn = Steady.seen(waitedMid, id);
+        if (readHeaded(letIn.rows) !== "#A a1 try look" || letIn.waiting !== 0)
+            failures.push(`rows waiting let in once the end reads as under none: `
+                + `"${readHeaded(letIn.rows)}" with ${letIn.waiting} waiting`);
         // A row marked unseen, then seen, hands on a getter it holds unread,
         // as Member.js's copied does, so it's neither read at its cost nor
         // frozen as it read then.
@@ -531,7 +555,9 @@ QtObject {
             ["and a row of no cell, counted", "#A=a1 a1 #B=b1 b1", "#A=a1 a1 #B=b1 b1 look",
                 "#A a1 #B b1", 1],
             ["and a pressing row, come in", "#A=a1 a1 #B=b1 b1", "asked! #A=a1 a1 #B=b1 b1",
-                "#A a1 #B b1 asked", 0],
+                "asked #A a1 #B b1", 0],
+            ["a new cell's row, its heading said again alone in the step's rows", "#A=a1 a1",
+                "#A=a1 a1 #C=c1 c1", "#A a1 #C+ c1", 0],
             ["and Networks' headings, which name no rows", "#R r1 #P p1", "#R r1 r2 #P p1",
                 "#R r1 #P p1 #R+ r2", 0]
         ]) {
@@ -561,7 +587,7 @@ QtObject {
                 ["#A=a1 a1 #B=b1 b1 look", "#A=a1,a2 a1 a2 #B=b1 b1 look"],
                 "#A a1 #B b1 #A+ a2", 1],
             ["and comes in once it's pressing", "#A=a1 a1 #B=b1 b1",
-                ["#A=a1 a1 #B=b1 b1 look", "#A=a1 a1 #B=b1 b1 look!"], "#A a1 #B b1 look", 0],
+                ["#A=a1 a1 #B=b1 b1 look", "#A=a1 a1 #B=b1 b1 look!"], "look #A a1 #B b1", 0],
             ["and leaves with nothing to dim", "#A=a1 a1 #B=b1 b1",
                 ["#A=a1 a1 #B=b1 b1 look", "#A=a1 a1 #B=b1 b1"], "#A a1 #B b1", 0]
         ]) {
@@ -584,12 +610,20 @@ QtObject {
             ["with a heading said again shown, a row under it", "#A a1 #B b1 #A+ a2",
                 "#A a1 a2 a3 #B b1", 1],
             ["and another cell's", "#A a1 #B b1 #A+ a2", "#A a1 a2 #B b1 b2", 1],
-            ["and a row under no heading", "#A=a1 a1", "#A=a1,a2 a1 a2 look", 2]
+            ["and a row under no heading", "#A=a1 a1", "#A=a1,a2 a1 a2 look", 2],
+            ["and a pressing one, though it would come in first", "#A=a1 a1",
+                "asked! #A=a1 a1", 1]
         ]) {
             const got = Steady.held(underHeadings(shown), underHeadings(now), id).waiting;
             if (got !== waiting)
                 failures.push(`${what}: ${got} waiting, not ${waiting}`);
         }
+        // Held, the rows held are those shown, with nothing come in first.
+        const heldRaised = Steady.held(underHeadings("#A=a1 a1 #B=b1 b1"),
+            underHeadings("asked! #A=a1 a1 #B=b1 b1"), id);
+        if (readHeaded(heldRaised.rows) !== "#A a1 #B b1" || heldRaised.waiting !== 1)
+            failures.push(`held, a pressing row come: "${readHeaded(heldRaised.rows)}" with `
+                + `${heldRaised.waiting} waiting`);
         // Held, a heading said again goes dim by the rows held, not by one
         // that waits.
         const heldDim = Steady.held(underHeadings("#A a1 #B b1 #A+ a2"),

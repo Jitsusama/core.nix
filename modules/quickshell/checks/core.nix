@@ -296,6 +296,7 @@ in
     pkgs.runCommandLocal "the-launcher-holds-still-as-it-refreshes" { } ''
       cp ${../tests/steady.qml} steady.qml
       cp ${../launcher/Steady.js} Steady.js
+      cp ${../launcher/LaidAgain.js} LaidAgain.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
