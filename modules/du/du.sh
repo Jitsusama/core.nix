@@ -24,10 +24,10 @@
 # real path. A guarded folder reached through a link in a start's path is
 # resolved by bash, which looks inside it once; a file is judged by its
 # folder's real path, as is a start that is a link, which macOS's du counts
-# as the link alone unless -H follows it. A link -H follows that reaches no
-# folder, to a file or to nothing, or a folder that can't be entered, can't
-# be judged, since bash alone can't say where such a link leads, so it's
-# left out and said apart.
+# as the link alone unless -H follows it. One -H follows is judged by where
+# its links lead, each read as written and judged as typed before it's
+# touched. A folder that can't be entered, or a link whose end can't be
+# read, can't be judged, so it's left out and said apart.
 # Another du ahead of this one on PATH, as a dev shell's is, isn't reached,
 # and folders outside the home folder, as on /Volumes, aren't guarded.
 # usage: du.sh <du> <ignore file> <data volume> <home> [du's arguments...]
@@ -274,6 +274,39 @@ by_folder() {
   [ -z "${real}" ] || real=${real%/}/${path##*/}
   [ -n "${real}" ] || judged=""
 }
+# Sets real to the real path of a start -H follows, by the links it leads
+# through: each is read as written, from the real folder holding it, and
+# judged as typed, as `inside`, before anything goes to where it leads, so
+# a link into a guarded folder is left out without a look inside. It
+# clears judged when a folder on the way can't be entered, or after 32
+# links, where macOS gives up. Its own `path`, which by_folder reads, steps
+# along the links, leaving the start's as typed for what's said of it.
+by_end() {
+  local path=${path} to links=0
+  while :; do
+    by_folder
+    [ -n "${judged}" ] || return 0
+    plain "" "${real}"
+    [ -z "${inside}" ] || return 0
+    [ -L "${real}" ] || break
+    links=$((links + 1))
+    if [ "${links}" -gt 32 ] || ! to=$(readlink -- "${real}"); then
+      judged=""
+      return 0
+    fi
+    [[ ${to} == /* ]] || to=${real%/*}/${to}
+    plain "" "${to}"
+    if [ -n "${inside}" ]; then
+      real=${plain}
+      return 0
+    fi
+    path=${to}
+  done
+  if [ -d "${real}" ]; then
+    real "${real}"
+    [ -n "${real}" ] || judged=""
+  fi
+}
 for path in "${starts[@]}"; do
   if [[ ${path} == /* ]]; then
     plain "" "${path}"
@@ -288,18 +321,19 @@ for path in "${starts[@]}"; do
   fi
   # Then by its real path: a folder's own, and a file's by its folder's
   # with its name, as is a link's that -H doesn't follow, since du counts
-  # the link alone. A folder that can't be entered, or a link -H follows
-  # that isn't a folder's, can't be judged, so it's left out too, said
-  # apart; one that isn't there is du's to say.
+  # the link alone, and one -H follows by where it leads. A link is told
+  # before a folder, since asking whether it's a folder goes where it
+  # leads. One that can't be judged is left out too, said apart; one that
+  # isn't there is du's to say.
   real=""
   judged=yes
   if [ -L "${path}" ] && [ -z "${heads}" ]; then
     by_folder
+  elif [ -L "${path}" ]; then
+    by_end
   elif [ -d "${path}" ]; then
     real "${path}"
     [ -n "${real}" ] || judged=""
-  elif [ -L "${path}" ]; then
-    judged=""
   elif [ -e "${path}" ]; then
     by_folder
   fi
@@ -344,8 +378,8 @@ if [ ${#left[@]} -gt 0 ]; then
 fi
 if [ ${#unjudged[@]} -gt 0 ]; then
   listed "${unjudged[@]}"
-  echo "note: du left out ${#unjudged[@]} start(s) it couldn't judge, a link -H follows" \
-    "that reaches no folder or a folder it can't enter, uncounted: ${all}" >&2
+  echo "note: du left out ${#unjudged[@]} start(s) it couldn't judge, a folder it" \
+    "can't enter or a link whose end it can't read, uncounted: ${all}" >&2
   short=yes
 fi
 if [ ${#kept[@]} -eq 0 ]; then

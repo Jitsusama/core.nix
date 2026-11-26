@@ -327,10 +327,12 @@ rm "${home}/src/notes"
 count "${work}" -sh "${data}${home}/Documents"
 runs_nothing "a count of Documents by the data volume's name" "${data}${home}/Documents"
 
-# A start that can't be judged, a link -H follows that reaches no folder,
-# to a file or to nothing, or a folder that can't be entered, is left out
-# and said apart. Root enters any
-# folder, so the test needs an account that can't.
+# A link -H follows is judged by where its links lead, read as written
+# before anything goes there: to a file in Documents, even by a second
+# link or one whose file is gone, it's left out; to a file elsewhere it's
+# counted. A start that can't be judged, a folder that can't be entered or
+# a link that leads round to itself, is left out and said apart. Root
+# enters any folder, so the test needs an account that can't.
 mkdir "${home}/src/locked"
 chmod 000 "${home}/src/locked"
 if (cd "${home}/src/locked" 2>/dev/null); then
@@ -339,17 +341,34 @@ if (cd "${home}/src/locked" 2>/dev/null); then
 fi
 chmod 755 "${home}/src/locked"
 ln -s "${home}/Documents/inside/file" "${home}/src/note"
-unjudged="note: du left out 1 start(s) it couldn't judge, a link -H follows that reaches no"
-unjudged+=" folder or a folder it can't enter, uncounted:"
+unjudged="note: du left out 1 start(s) it couldn't judge, a folder it can't enter or a"
+unjudged+=" link whose end it can't read, uncounted:"
 count "${home}" -sh src/note src
 gives "a count of a link to a file in Documents" "" -sh src/note src
-count "${home}" -shH src/note src
-gives "a count of a link to a file in Documents that -H follows" "${unjudged} src/note" \
-  -shH src
+count "${home}" -shH src/note
+runs_nothing "a count of a link to a file in Documents that -H follows" src/note
+# Locked, Documents' folder can't be gone into, so a judgement that went
+# there before reading where a link leads would be told as unjudged.
+ln -s note "${home}/src/again"
+chmod 000 "${home}/Documents/inside"
+count "${home}" -shH src/again
+runs_nothing "a count of a link to a link to a file in Documents that -H follows" src/again
+chmod 755 "${home}/Documents/inside"
 rm "${home}/Documents/inside/file"
-count "${home}" -shH src/note src
-gives "a count of a link to nothing that -H follows" "${unjudged} src/note" -shH src
-rm "${home}/src/note"
+chmod 000 "${home}/Documents/inside"
+count "${home}" -shH src/note
+runs_nothing "a count of a link to a gone file in Documents that -H follows" src/note
+chmod 755 "${home}/Documents/inside"
+rm "${home}/src/note" "${home}/src/again"
+: >"${home}/src/file"
+ln -s file "${home}/src/near"
+count "${home}" -shH src/near
+gives "a count of a link to a file elsewhere that -H follows" "" -shH src/near
+rm "${home}/src/near" "${home}/src/file"
+ln -s round "${home}/src/round"
+count "${home}" -shH src/round src
+gives "a count of a link that leads round to itself" "${unjudged} src/round" -shH src
+rm "${home}/src/round"
 chmod 000 "${home}/src/locked"
 count "${home}" -sh src/locked src
 gives "a count of a folder that can't be entered" "${unjudged} src/locked" -sh src
