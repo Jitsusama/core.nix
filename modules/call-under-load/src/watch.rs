@@ -6,7 +6,7 @@
 //! So `call-under-load watch` asks `a-call-is-on --here` every 30 s, and
 //! while a call is on reads, every 5 s, the run-queue wait of each thread
 //! that sends his picture, in the apps he calls from (Chrome, Slack,
-//! Tuple, Zoom), from `/proc`'s schedstat. When the call ends it adds the
+//! Tuple, Zoom), from `/proc`'s schedstat and sched. When the call ends it adds the
 //! call's line to the history, marked real, which the next hour's figures
 //! carry for cadence. It reads thread timings only, never what a call
 //! says or shows. Each time it asks, it says when it last could tell,
@@ -130,6 +130,24 @@ pub fn waited(schedstat: &str) -> Option<u64> {
     schedstat.split_whitespace().nth(1)?.parse().ok()
 }
 
+/// How long a thread has waited for a CPU in all, in ns, by the fair
+/// scheduler's own count in its `sched`: `wait_sum`, never the
+/// `iowait_sum` beside it, which the kernel prints in ms. None where it
+/// isn't kept, as when `kernel.sched_schedstats` is off.
+pub fn fair_waited(sched: &str) -> Option<u64> {
+    let ms: f64 = sched.lines().find_map(|line| {
+        let (key, value) = line.split_once(':')?;
+        let key = key.trim();
+        (key == "wait_sum" || key.ends_with(".wait_sum")).then(|| value.trim().parse().ok())?
+    })?;
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "ms a thread has waited, held at zero or more, are far below u64's ns"
+    )]
+    Some((ms.max(0.0) * 1e6).round() as u64)
+}
+
 /// The pid a scope is named for, `app-<name>-<pid>.scope`, as Chrome names
 /// the scope it moves itself into.
 fn named_pid(unit: &str) -> Option<u32> {
@@ -228,8 +246,32 @@ pub struct Thread {
     pub name: String,
 }
 
-/// A thread's wait in ns, and when it was read.
-type Read = (u64, Instant);
+/// A thread's wait for a CPU in ns by both of the kernel's counts, the
+/// schedstat's and the fair scheduler's where it keeps one, and when they
+/// were read.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Read {
+    pub counted: u64,
+    pub fair: Option<u64>,
+    pub at: Instant,
+}
+
+impl Read {
+    /// How long the thread waited for a CPU since `old`: the lesser of
+    /// what each count grew by, where both were read, as lag-watch takes
+    /// it. Each counts every real wait, and each counts some sleeps the
+    /// other doesn't: the schedstat a delayed sleeper's move between CPUs,
+    /// up to seconds; the fair count a sleeper's time still queued before
+    /// it leaves, 310 ms against 125 ms over 30 s for Chrome's main thread
+    /// on 26 November. None when the schedstat's count went back.
+    pub fn waited_since(&self, old: &Read) -> Option<u64> {
+        let counted = self.counted.checked_sub(old.counted)?;
+        Some(match (self.fair, old.fair) {
+            (Some(now), Some(then)) => now.checked_sub(then).map_or(counted, |f| counted.min(f)),
+            _ => counted,
+        })
+    }
+}
 
 /// The tick's worst sending wait, in ms per second, and whose it was,
 /// from each thread's read now and its read before, each over its own
@@ -243,9 +285,9 @@ pub fn worst(
     threads
         .iter()
         .filter_map(|t| {
-            let (ns, at) = now.get(&t.id)?;
-            let (was, then) = before.get(&t.id)?;
-            let span = at.checked_duration_since(*then)?.as_secs_f64();
+            let read = now.get(&t.id)?;
+            let was = before.get(&t.id)?;
+            let span = read.at.checked_duration_since(was.at)?.as_secs_f64();
             if span <= 0.0 {
                 return None;
             }
@@ -253,7 +295,7 @@ pub fn worst(
                 clippy::cast_precision_loss,
                 reason = "a tick's wait in ns is far below f64's exact range"
             )]
-            let ms = ns.checked_sub(*was)? as f64 / 1e6 / span;
+            let ms = read.waited_since(was)? as f64 / 1e6 / span;
             Some((ms, t.name.clone()))
         })
         .max_by(|a, b| a.0.total_cmp(&b.0))
@@ -387,9 +429,19 @@ fn reads(proc: &Path, threads: &[Thread]) -> HashMap<(u32, u32), Read> {
         .iter()
         .filter_map(|t| {
             let (pid, task) = t.id;
-            let text =
-                fs::read_to_string(proc.join(format!("{pid}/task/{task}/schedstat"))).ok()?;
-            Some((t.id, (waited(&text)?, Instant::now())))
+            let dir = proc.join(format!("{pid}/task/{task}"));
+            let counted = waited(&fs::read_to_string(dir.join("schedstat")).ok()?)?;
+            let fair = fs::read_to_string(dir.join("sched"))
+                .ok()
+                .and_then(|text| fair_waited(&text));
+            Some((
+                t.id,
+                Read {
+                    counted,
+                    fair,
+                    at: Instant::now(),
+                },
+            ))
         })
         .collect()
 }
@@ -784,6 +836,63 @@ mod tests {
     }
 
     #[test]
+    fn a_thread_s_fair_wait_is_its_sched_s_wait_sum_in_ns() {
+        let sched = "se.sum_exec_runtime   :   1.463270\n\
+                     iowait_sum            : 900.000000\n\
+                     wait_sum              :  12.250000\n";
+        assert_eq!(
+            fair_waited(sched),
+            Some(12_250_000),
+            "the wait_sum line, in ms, wasn't read as ns"
+        );
+        assert_eq!(
+            fair_waited("se.statistics.wait_sum : 2.000000\n"),
+            Some(2_000_000),
+            "an older kernel's keyed wait_sum wasn't read"
+        );
+        assert_eq!(
+            fair_waited("iowait_sum : 900.000000\n"),
+            None,
+            "the io wait was read as a wait for a CPU"
+        );
+    }
+
+    #[test]
+    fn a_wait_is_the_lesser_of_what_both_counts_grew_by() {
+        let then = Instant::now();
+        let read = |counted, fair| Read {
+            counted,
+            fair,
+            at: then,
+        };
+        assert_eq!(
+            read(4_000_000_000, Some(2_000_000)).waited_since(&read(0, Some(0))),
+            Some(2_000_000),
+            "a sleeper's move the schedstat counted read as a wait"
+        );
+        assert_eq!(
+            read(125_000_000, Some(310_000_000)).waited_since(&read(0, Some(0))),
+            Some(125_000_000),
+            "a sleeper's queued time the fair count kept read as a wait"
+        );
+        assert_eq!(
+            read(5_000_000, None).waited_since(&read(0, Some(0))),
+            Some(5_000_000),
+            "with no fair count the schedstat's wasn't taken alone"
+        );
+        assert_eq!(
+            read(5_000_000, Some(1)).waited_since(&read(0, Some(9))),
+            Some(5_000_000),
+            "a fair count that went back cut the wait"
+        );
+        assert_eq!(
+            read(0, Some(9)).waited_since(&read(5, Some(0))),
+            None,
+            "a schedstat that went back read as a wait"
+        );
+    }
+
+    #[test]
     fn a_scope_is_his_when_his_manager_session_or_apps_started_it() {
         let root = std::env::temp_dir().join(format!("watch-parent-{}", std::process::id()));
         let transient = root.join("transient");
@@ -957,11 +1066,16 @@ mod tests {
         ];
         let then = Instant::now();
         let at = |s: u64| then + Duration::from_secs(s);
-        let before = HashMap::from([((1, 1), (0, at(0))), ((1, 3), (1_000_000_000, at(4)))]);
+        let read = |counted, s| Read {
+            counted,
+            fair: None,
+            at: at(s),
+        };
+        let before = HashMap::from([((1, 1), read(0, 0)), ((1, 3), read(1_000_000_000, 4))]);
         let now = HashMap::from([
-            ((1, 1), (1_500_000_000, at(5))),
-            ((1, 3), (1_250_000_000, at(5))),
-            ((1, 4), (9_000_000_000, at(5))),
+            ((1, 1), read(1_500_000_000, 5)),
+            ((1, 3), read(1_250_000_000, 5)),
+            ((1, 4), read(9_000_000_000, 5)),
         ]);
         let (ms, who) = worst(&threads, &now, &before).unwrap();
         assert!(
@@ -972,7 +1086,7 @@ mod tests {
             who, "chrome:renderer:CodecWorker",
             "a thread first seen this tick was judged"
         );
-        let late = HashMap::from([((1, 3), (1_000_000_000, at(1)))]);
+        let late = HashMap::from([((1, 3), read(1_000_000_000, 1))]);
         let (ms, _) = worst(&threads[1..2], &now, &late).unwrap();
         assert!(
             (ms - 62.5).abs() < 1e-9,
