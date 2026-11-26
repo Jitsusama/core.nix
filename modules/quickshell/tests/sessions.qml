@@ -1441,13 +1441,14 @@ ShellRoot {
         const keptUnderOf = id => Sessions.keptPlaces[id]?.keptUnder
             ?? Sessions.keptAsks[`pi-hosted.${id}`]?.place?.keptUnder;
         // Who was told what since untell, and how many times, as a press
-        // told twice in one give-up would flash its foot.
+        // told twice in one give-up would flash its foot: named apart from
+        // the root's told(id), which reads what a boot told a session.
         const untell = () => {
             root.unhosted = "";
             root.unhostedWhy = "";
             root.unhostedTold = 0;
         };
-        const told = () => `${root.unhosted} ${root.unhostedWhy} x${root.unhostedTold}`;
+        const heard = () => `${root.unhosted} ${root.unhostedWhy} x${root.unhostedTold}`;
         const downNamed = "pi-hosted.s-kept-down";
         Sessions.keepPlaces({ "s-kept-down": keptOne("s-kept-down") });
         const downFrom = Niri.spawns.length;
@@ -1478,11 +1479,12 @@ ShellRoot {
         Sessions.viewKept();
         kittyPidFile.setText("6363\n");
         Sessions.readKittyPid();
+        untell();
         Sessions.untaken(lateNamed, String(Sessions.attaching[lateNamed]));
         const lateUnder = keptUnderOf("s-kept-late");
         expect("a kitty started again before the give-up is heard is asked, as not the one asked",
-            lateUnder === "4242" && spawnsOf(lateNamed, lateFrom) === 2,
-            `${lateUnder} ${spawnsOf(lateNamed, lateFrom)}`);
+            lateUnder === "4242" && spawnsOf(lateNamed, lateFrom) === 2 && heard() === "  x0",
+            `${lateUnder} ${spawnsOf(lateNamed, lateFrom)} ${heard()}`);
         Sessions.untaken(lateNamed, String(Sessions.attaching[lateNamed]));
         Sessions.forgetAsk(lateNamed);
         // A kitty down as it's asked, come back while the script waits up
@@ -1538,10 +1540,10 @@ ShellRoot {
         untell();
         Sessions.untaken(pressedNamed, String(Sessions.attaching[pressedNamed]));
         expect("a press asked again of a kitty come since is told so, its own focus kept",
-            spawnsOf(pressedNamed, pressedFrom) === 2 && told() === "PRESSED askedAgain x1"
+            spawnsOf(pressedNamed, pressedFrom) === 2 && heard() === "PRESSED askedAgain x1"
             && pressedGoing?.app === pressedNamed && Sessions.goingTo === pressedGoing
             && Sessions.pressedFor[pressedNamed]?.address === "PRESSED",
-            `${spawnsOf(pressedNamed, pressedFrom)} ${told()} `
+            `${spawnsOf(pressedNamed, pressedFrom)} ${heard()} `
                 + `${JSON.stringify(Sessions.goingTo)}`);
         // Given up on again, under the kitty come since, it's asked no
         // more: its press is told untaken and the focus it took let go, so
@@ -1549,16 +1551,17 @@ ShellRoot {
         untell();
         Sessions.untaken(pressedNamed, String(Sessions.attaching[pressedNamed]));
         expect("a press asked again and given up on again is told untaken, its focus let go",
-            told() === "PRESSED untaken x1" && Sessions.goingTo === null
+            heard() === "PRESSED untaken x1" && Sessions.goingTo === null
             && spawnsOf(pressedNamed, pressedFrom) === 2,
-            `${told()} ${JSON.stringify(Sessions.goingTo)} `
+            `${heard()} ${JSON.stringify(Sessions.goingTo)} `
                 + `${spawnsOf(pressedNamed, pressedFrom)}`);
         Sessions.goingTo = goingBeforePressed;
         Sessions.forgetAsk(pressedNamed);
         kittyPidFile.setText("4242\n");
         Sessions.readKittyPid();
         // A press whose focus another Go To took before its give-up is told
-        // it was asked for again, and leaves that other press's focus be.
+        // it was asked for again, and keeps the ask, so its next give-up
+        // tells it untaken; neither touches that other press's focus.
         const elsewhereNamed = "pi-hosted.s-kept-elsewhere";
         Sessions.keepPlaces({ "s-kept-elsewhere": keptOne("s-kept-elsewhere") });
         const elsewhereFrom = Niri.spawns.length;
@@ -1575,18 +1578,23 @@ ShellRoot {
         Sessions.untaken(elsewhereNamed, String(Sessions.attaching[elsewhereNamed]));
         expect("a press asked again after another took the focus leaves that focus be",
             spawnsOf(elsewhereNamed, elsewhereFrom) === 2
-            && told() === "ELSEWHERE askedAgain x1" && Sessions.goingTo === otherGoing,
-            `${spawnsOf(elsewhereNamed, elsewhereFrom)} ${told()} `
+            && heard() === "ELSEWHERE askedAgain x1" && Sessions.goingTo === otherGoing
+            && Sessions.pressedFor[elsewhereNamed]?.address === "ELSEWHERE",
+            `${spawnsOf(elsewhereNamed, elsewhereFrom)} ${heard()} `
                 + `${JSON.stringify(Sessions.goingTo)}`);
+        untell();
         Sessions.untaken(elsewhereNamed, String(Sessions.attaching[elsewhereNamed]));
+        expect("a press asked again, its focus taken, given up on again, is told untaken",
+            heard() === "ELSEWHERE untaken x1" && Sessions.goingTo === otherGoing,
+            `${heard()} ${JSON.stringify(Sessions.goingTo)}`);
         Sessions.goingTo = goingBeforeElsewhere;
         Sessions.forgetAsk(elsewhereNamed);
         kittyPidFile.setText("4242\n");
         Sessions.readKittyPid();
         // A press told disowned, as the walk's viewer came refused, is told
-        // the same once the refusal ends with no kitty taking the ask and
-        // it's asked again of a kitty come since (refusedUntaken), its own
-        // focus kept.
+        // it was asked for again, as a held-back press is, once the refusal
+        // ends with no kitty taking the ask and it's asked again of a kitty
+        // come since (refusedUntaken), its own focus kept.
         const disownedNamed = "pi-hosted.s-kept-disowned";
         Sessions.keepPlaces({ "s-kept-disowned": keptOne("s-kept-disowned") });
         const disownedFrom = Niri.spawns.length;
@@ -1608,18 +1616,18 @@ ShellRoot {
         Sessions.untaken(disownedNamed, String(Sessions.refusedAt[disownedNamed]));
         expect("a press told disowned, asked again of a kitty come since, is told so, focus kept",
             disownedTold === "disowned" && spawnsOf(disownedNamed, disownedFrom) === 2
-            && told() === "DISOWNED askedAgain x1"
+            && heard() === "DISOWNED askedAgain x1"
             && disownedGoing?.app === disownedNamed && Sessions.goingTo === disownedGoing
             && Sessions.pressedFor[disownedNamed]?.address === "DISOWNED",
-            `${disownedTold} ${spawnsOf(disownedNamed, disownedFrom)} ${told()} `
+            `${disownedTold} ${spawnsOf(disownedNamed, disownedFrom)} ${heard()} `
                 + `${JSON.stringify(Sessions.goingTo)}`);
         Niri.windows = listedBeforeDisowned;
         untell();
         Sessions.untaken(disownedNamed, String(Sessions.attaching[disownedNamed]));
         expect("a press told disowned, asked again, given up on again, is told untaken",
-            told() === "DISOWNED untaken x1" && Sessions.goingTo === null
+            heard() === "DISOWNED untaken x1" && Sessions.goingTo === null
             && spawnsOf(disownedNamed, disownedFrom) === 2,
-            `${told()} ${JSON.stringify(Sessions.goingTo)} `
+            `${heard()} ${JSON.stringify(Sessions.goingTo)} `
                 + `${spawnsOf(disownedNamed, disownedFrom)}`);
         Sessions.goingTo = goingBeforeKeptDisowned;
         Sessions.forgetAsk(disownedNamed);
@@ -1643,18 +1651,18 @@ ShellRoot {
         Sessions.untaken(heldNamed, String(Sessions.attaching[heldNamed]));
         expect("a start held back, asked again of a kitty come since, is told so as started",
             startedTold === "startedOpening" && spawnsOf(heldNamed, heldFrom) === 2
-            && told() === "STARTED startedAskedAgain x1"
+            && heard() === "STARTED startedAskedAgain x1"
             && startedGoing?.app === heldNamed && Sessions.goingTo === startedGoing
             && Sessions.pressedFor[heldNamed]?.address === "STARTED"
             && Sessions.pressedFor[heldNamed]?.startedInHost === true,
-            `${startedTold} ${spawnsOf(heldNamed, heldFrom)} ${told()} `
+            `${startedTold} ${spawnsOf(heldNamed, heldFrom)} ${heard()} `
                 + `${JSON.stringify(Sessions.goingTo)}`);
         untell();
         Sessions.untaken(heldNamed, String(Sessions.attaching[heldNamed]));
         expect("a start asked again and given up on again is told so as started, focus let go",
-            told() === "STARTED startedUntaken x1" && Sessions.goingTo === null
+            heard() === "STARTED startedUntaken x1" && Sessions.goingTo === null
             && spawnsOf(heldNamed, heldFrom) === 2,
-            `${told()} ${JSON.stringify(Sessions.goingTo)} ${spawnsOf(heldNamed, heldFrom)}`);
+            `${heard()} ${JSON.stringify(Sessions.goingTo)} ${spawnsOf(heldNamed, heldFrom)}`);
         Sessions.goingTo = goingBeforeStarted;
         Sessions.forgetAsk(heldNamed);
         kittyPidFile.setText("4242\n");
@@ -1721,13 +1729,15 @@ ShellRoot {
         Niri.windows = Object.assign({}, listedBeforeRefusedKept, { "110": refusedKeptStray });
         Sessions.windowHeard(refusedKeptStray);
         const refusedKeptAt = Sessions.refusedAt[refusedKept];
+        untell();
         Sessions.untaken(refusedKept, String(refusedKeptAt));
         const refusedKeptBack = JSON.stringify(Sessions.keptPlaces["s-kept-refused"]);
         expect("a walk's viewer come refused, no kitty taking it, keeps the walk's place",
             refusedKeptAsk && refusedKeptAt !== undefined && !Sessions.refusedOwn(refusedKept)
             && refusedKeptBack
-                === JSON.stringify(Object.assign({}, refusedKeptPlace, { keptUnder: "4242" })),
-            `${refusedKeptAsk} ${refusedKeptAt} ${refusedKeptBack}`);
+                === JSON.stringify(Object.assign({}, refusedKeptPlace, { keptUnder: "4242" }))
+            && heard() === "  x0",
+            `${refusedKeptAsk} ${refusedKeptAt} ${refusedKeptBack} ${heard()}`);
         Niri.windows = listedBeforeRefusedKept;
         Sessions.forgetAsk(refusedKept);
         Sessions.keepPlaces(keptBeforeUntaken);
