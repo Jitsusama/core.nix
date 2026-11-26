@@ -339,29 +339,44 @@ in
       touch $out
     '';
 
-  # copied's guard, by what it makes of a table given it, so nothing is
-  # built: a row leaving out what its file imports is refused, naming the
-  # file and imports.nix by its path, and a row in another order copies what
-  # imports.nix's own does. Today's rows are all sorted, so only this sees
-  # either break.
+  # copied's walk and guard, by what it makes of tables given it, so nothing
+  # is built: it copies every file a root reaches, walked here apart from it;
+  # a row in another order copies the same; and a row left empty is refused,
+  # naming its file. Each case takes its file from imports.nix, so an edit to
+  # one file's imports moves a case rather than failing it. Today's rows are
+  # all sorted, so only this sees the order case break.
   a-check-copies-what-each-file-imports =
     let
       table = import ./imports.nix;
-      roots = [ "launcher/ReadyRows.qml" ];
-      reversed = table // {
-        "launcher/ReadyRows.qml" = lib.reverseList table."launcher/ReadyRows.qml";
+      root = "launcher/ReadyRows.qml";
+      rowOf = file: table.${file} or [ ];
+      entries = map (key: { inherit key; });
+      walked = lib.genericClosure {
+        startSet = entries [ root ];
+        operator = entry: entries (rowOf entry.key);
       };
-      real = copiedWith table roots;
-      unlisted = copiedWith (table // { "launcher/Presented.js" = [ ]; }) roots;
+      reached = map (entry: entry.key) walked;
+      several = lib.filter (file: lib.length (rowOf file) > 1) reached;
+      picked = lib.head several;
+      withTurned = table // { ${picked} = lib.reverseList (rowOf picked); };
+      withEmptied = table // { ${picked} = [ ]; };
+      real = copiedWith table [ root ];
+      copyLines = lib.filter (lib.hasPrefix "cp ") (lib.splitString "\n" real);
+      uncopied = lib.filter (file: !(lib.any (lib.hasSuffix " ${file}") copyLines)) reached;
+      leftOut = lib.concatStringsSep ", " uncopied;
       refusal = "modules/quickshell/checks/imports.nix doesn't say";
-      ownRefused = lib.hasInfix refusal real;
-      sameAnyOrder = copiedWith reversed roots == real;
-      refusedByName =
-        lib.hasInfix refusal unlisted && lib.hasInfix "launcher/Presented.js" unlisted;
+      refused = file: script: lib.hasInfix refusal script && lib.hasInfix file script;
+      sameTurned = copiedWith withTurned [ root ] == real;
+      emptiedRefused = refused picked (copiedWith withEmptied [ root ]);
       failures =
-        lib.optional ownRefused "imports.nix's own rows were refused"
-        ++ lib.optional (!sameAnyOrder) "a row in another order copied otherwise than its own"
-        ++ lib.optional (!refusedByName) "a row leaving out Presented.js's imports went unrefused";
+        if refused "" real then
+          [ "imports.nix's rows don't match the files; the shell's checks name which" ]
+        else if several == [ ] then
+          [ "nothing ${root} reaches imports two files; give this check another root" ]
+        else
+          lib.optional (uncopied != [ ]) "copying ${root} left out ${leftOut}"
+          ++ lib.optional (!sameTurned) "${picked}'s row, reversed, copied otherwise"
+          ++ lib.optional (!emptiedRefused) "${picked}'s row, emptied, went unrefused";
     in
     pkgs.runCommandLocal "a-check-copies-what-each-file-imports" { } ''
       ${lib.concatMapStrings (failure: "echo ${lib.escapeShellArg failure} >&2\n") failures}

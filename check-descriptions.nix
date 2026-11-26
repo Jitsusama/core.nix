@@ -17,9 +17,9 @@
     as room runs short, the keys list's and Return's staying
   '';
   a-check-copies-what-each-file-imports = ''
-    the shell's checks copy a file with what imports.nix says it imports, and given a table
-    whose row for one file leaves out what it imports, refuse, naming the file and imports.nix
-    by its path, while a row listing a file's imports in another order copies the same files
+    the shell's checks copy every file a root reaches through imports.nix, a row listing its
+    imports in another order copies the same files, and a row left empty is refused, naming
+    its file and imports.nix by its path, each case taking its file from imports.nix as it is
   '';
   a-claimed-chord-is-refused = ''
     a chord two layers claim, or one claims twice, is refused
