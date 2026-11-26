@@ -109,7 +109,10 @@ DELETE = 0x7F
 
 
 def css_character(each: str) -> str:
-    """Return `each` as a CSS string holds it: a quote or backslash escaped, a control by code."""
+    """Return `each` as a CSS string holds it: a quote or backslash escaped, a control by code.
+
+    A NUL comes back as U+FFFD, as CSS reads an escaped zero, so no selector finds an id with one.
+    """
     if each in '\\"':
         return "\\" + each
     if ord(each) <= LAST_C0 or ord(each) == DELETE:
@@ -335,7 +338,8 @@ FARTHEST = """(from) => {
   boxes.sort((a, b) => far(b) - far(a));
   return boxes[0] === origin ? null : boxes[0].dataset.id;
 }"""
-# The view scrolled from its corner just far enough to show `id`, as a jump to it would.
+# The view scrolled down from its top, across where it stands, just far enough to show `id`, with
+# none of a jump's padding, so it loses the keys' device no more than a jump to `id` would.
 TO_SHOW = """(id) => {
   const view = document.querySelector("#map-view");
   view.scrollTo(view.scrollLeft, 0);
