@@ -170,9 +170,7 @@ def test_a_persons_own_unit_named_as_the_relays_is_named(camera: Camera) -> None
         assert camera.holders() == ["sleep"]
     finally:
         # A unit that never started can't be stopped, and the file naming nobody says it's gone.
-        camera.machine.succeed(
-            "systemctl --user --machine=someone@ stop stand-in.service || true"
-        )
+        camera.machine.succeed("systemctl --user --machine=someone@ stop stand-in.service || true")
     camera.nobody()
 
 
