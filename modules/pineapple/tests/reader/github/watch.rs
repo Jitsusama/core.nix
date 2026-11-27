@@ -4,11 +4,12 @@
 //! list it after, even where a repository before it is refused, and
 //! owed where its read fails, though nothing lists it again, and waiting
 //! its turn while owed, though the watch lists it every round. A list
-//! failing is listed last the round after. The watch rests while little
-//! of Joel's rate limit is left, a fifth of the limit GitHub says, on a
-//! 304 too, leaving the round's other lists unlisted, until a reset an
-//! hour on at most and never one already past; and as long as a refusal
-//! asks it to wait.
+//! failing is listed last the round after, behind every list not failing,
+//! two failing as well as one, and through a rest begun on the events
+//! feed. The watch rests while little of Joel's rate limit is left, a
+//! fifth of the limit GitHub says, on a 304 too, leaving the round's
+//! other lists unlisted, until a reset an hour on at most and never one
+//! already past; and as long as a refusal asks it to wait.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
@@ -291,8 +292,85 @@ fn github_a_list_that_fails_lists_no_more_that_round_and_comes_last_the_next() {
         "the round lists no more once one list fails, so a slow site costs one wait, and the \
          next lists the one that failed last, so it can't keep the others unlisted: {asked:?}"
     );
+    let (shop, other) = (
+        listed_at(&asked, "example/shop")[0],
+        listed_at(&asked, "example/other")[0],
+    );
+    assert_eq!(
+        count(&asked[shop..other], &format!(" /users/{LOGIN}/events?")),
+        1,
+        "the one listed after the failing is the next round's, not the failing one's: {asked:?}"
+    );
     drop(asked);
     std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn github_two_lists_failing_every_round_cant_keep_a_third_unlisted() {
+    let (asked, _) = asked_until(
+        |line, now| {
+            let failing = ["example/shop", "example/broken"]
+                .iter()
+                .any(|repo| line.contains(&format!(" /repos/{repo}/issues/comments?")));
+            if failing {
+                return Answered {
+                    status: 502,
+                    ..Answered::ok(json!({"message": "bad gateway"}))
+                };
+            }
+            if line.contains(&format!(" /users/{LOGIN}/events?")) {
+                let repos = ["example/shop", "example/broken", "example/other"];
+                return Answered::ok(feed(&repos, now));
+            }
+            Answered::ok(unindexed(line, now))
+        },
+        |asked| listings(asked).len() >= 4,
+    );
+    assert_eq!(
+        listings(&asked)[..4],
+        [
+            "example/shop",
+            "example/broken",
+            "example/other",
+            "example/shop"
+        ],
+        "each that failed is listed after those that didn't, in the order they failed, so two \
+         failing can't take turns ahead of the third: {asked:?}"
+    );
+}
+
+#[test]
+fn github_a_list_that_failed_stays_last_through_a_rest_begun_on_the_feed() {
+    // The second feed asked begins a rest, before any list is asked.
+    let feeds = AtomicUsize::new(0);
+    let (asked, _) = asked_until(
+        move |line, now| {
+            if line.contains(" /repos/example/shop/issues/comments?") {
+                return Answered {
+                    status: 502,
+                    ..Answered::ok(json!({"message": "bad gateway"}))
+                };
+            }
+            if !line.contains(&format!(" /users/{LOGIN}/events?")) {
+                return Answered::ok(unindexed(line, now));
+            }
+            let listed = Answered::ok(feed(&["example/shop", "example/other"], now));
+            if feeds.fetch_add(1, Ordering::SeqCst) != 1 {
+                return listed;
+            }
+            Answered {
+                headers: left("999", 3),
+                ..listed
+            }
+        },
+        |asked| listings(asked).len() >= 2,
+    );
+    assert_eq!(
+        listings(&asked)[..2],
+        ["example/shop", "example/other"],
+        "the list that failed is still listed last once a rest that listed nothing ends: \
+         {asked:?}"
+    );
 }
 
 #[test]

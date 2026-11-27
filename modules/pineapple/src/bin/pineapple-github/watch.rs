@@ -14,9 +14,10 @@
 //! until the limit's hour starts again, or as long as a refusal asks, an
 //! hour at most, and his words wait on the search (own.rs). Where GitHub
 //! can't be asked, the round lists no more, so a slow GitHub costs one
-//! wait, and the repository it failed on is listed last the next round,
-//! so one failing every round can't keep the others unlisted. A
-//! repository gone, or not his sign-in's to read, is passed by.
+//! wait, and each repository a list failed on is listed last, in the
+//! order they failed, until it's listed again, so those failing every
+//! round can't keep the others unlisted. A repository gone, or not his
+//! sign-in's to read, is passed by.
 
 use std::collections::HashMap;
 
@@ -54,14 +55,15 @@ const LONGEST_REST: u64 = 60 * 60;
 
 /// Where Joel's account was last active, and the answers GitHub gave each
 /// list asked, by what was asked, with the tag it gave each; the
-/// repository whose list last failed, listed last; and when, in seconds
-/// since the epoch, the watch may ask again, once little of its rate
-/// limit was left or GitHub asked it to wait.
+/// repositories whose lists failed, in the order they last failed, each
+/// listed last until it's listed again; and when, in seconds since the
+/// epoch, the watch may ask again, once little of its rate limit was left
+/// or GitHub asked it to wait.
 #[derive(Default)]
 pub(super) struct Watched {
     repos: Vec<String>,
     kept: HashMap<String, (String, Value)>,
-    failed: Option<String>,
+    failed: Vec<String>,
     rests_until: u64,
 }
 
@@ -89,12 +91,12 @@ impl Watched {
             }
         };
         self.repos = active_in(&events);
-        if let Some(failed) = self.failed.take()
-            && let Some(at) = self.repos.iter().position(|repo| *repo == failed)
-        {
-            let last = self.repos.remove(at);
-            self.repos.push(last);
-        }
+        // Only what's still watched is remembered as failed; those not
+        // failed keep the feed's order, since the sort is stable, and
+        // those failed follow in the order they failed.
+        self.failed.retain(|failed| self.repos.contains(failed));
+        self.repos
+            .sort_by_key(|repo| self.failed.iter().position(|failed| failed == repo));
         // Only what's still watched is kept, so the lists kept stay few.
         let watched: Vec<String> = self.repos.iter().map(String::as_str).map(&newest).collect();
         self.kept
@@ -104,7 +106,9 @@ impl Watched {
             if self.resting() {
                 break;
             }
-            let comments = match self.ask(github, &newest(&repo)) {
+            let asked = self.ask(github, &newest(&repo));
+            self.failed.retain(|failed| *failed != repo);
+            let comments = match asked {
                 Ok(comments) => comments,
                 Err(Unread::Gone(why)) => {
                     eprintln!("<4>{why}; it's passed by, {WAITS}");
@@ -112,7 +116,7 @@ impl Watched {
                 }
                 Err(Unread::Failed(why) | Unread::Limited(why)) => {
                     eprintln!("<4>{why}, {WAITS}");
-                    self.failed = Some(repo);
+                    self.failed.push(repo);
                     break;
                 }
             };
