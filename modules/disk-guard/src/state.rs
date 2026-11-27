@@ -27,6 +27,15 @@ pub struct Memory {
     /// When routine upkeep last ran, in wall seconds.
     #[serde(default)]
     pub upkept: Option<f64>,
+    /// Whether the last upkeep kept what only the system daemon could
+    /// vouch for and went unheard, so it was due again in minutes; a
+    /// second such upkeep in a row counts as done.
+    #[serde(default)]
+    pub upkeep_unheard: bool,
+    /// When the last whole survey ended, in wall seconds, and how long it
+    /// walked, which spaces the next on disks no worse than filling.
+    #[serde(default)]
+    pub surveyed: Option<(f64, f64)>,
     /// How long a pass reaching for the target takes, in seconds,
     /// averaged over recent passes.
     #[serde(default)]
@@ -71,6 +80,8 @@ impl Default for Memory {
             awake: Awake::default(),
             learned: Learned::default(),
             upkept: None,
+            upkeep_unheard: false,
+            surveyed: None,
             pass_seconds: None,
             ran: std::collections::BTreeMap::new(),
             said: std::collections::BTreeMap::new(),

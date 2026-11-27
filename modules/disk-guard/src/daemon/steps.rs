@@ -299,6 +299,9 @@ impl Guard {
         self.measure_holders(tick.wall);
         self.watch_roots();
         self.list_garbage(tick.wall, spare_moment, overload, roomy(senses.pressure));
+        // Before the garbage's own pass is weighed, which needs no survey
+        // and so may go while the others wait.
+        self.space_surveys(tick.wall, &mut due);
         self.collect_garbage(tick.wall, &mut due);
         // Deduplicating reads every file not yet linked and relinks its
         // twins, and nothing is lost by putting it off, so it alone still

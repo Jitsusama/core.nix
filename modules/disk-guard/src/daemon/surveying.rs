@@ -23,8 +23,9 @@ pub(super) const PASS_WEIGHT: f64 = 0.3;
 /// How soon upkeep comes again when it kept something only the system
 /// daemon could have vouched for, and couldn't be asked. A switch restarts
 /// both daemons, so the user's upkeep can begin while the system's is down;
-/// ten minutes lets it come back, and costs a daemon that stays down one
-/// walk in ten minutes rather than one a minute.
+/// ten minutes lets it come back. Only once in a row: on 27 November the
+/// system daemon, busy with its own passes, went unheard upkeep after
+/// upkeep, and each came back for another walk of 15 GB.
 pub(super) const UNHEARD_AGAIN: f64 = 600.0;
 
 /// The trees whose builds are spent: every tree a finished quest lists,
@@ -412,7 +413,9 @@ impl Guard {
         } else if goal == Goal::Upkeep && !matches!(report.end, End::Unfinished | End::Stopped) {
             // Only a pass that got through what was due counts as upkeep:
             // one cut short by its length or a stop leaves the rest due.
-            self.memory.upkept = Some(if self.kept_unvouched(scan, report) {
+            let again = self.kept_unvouched(scan, report) && !self.memory.upkeep_unheard;
+            self.memory.upkeep_unheard = again;
+            self.memory.upkept = Some(if again {
                 tick.wall - crate::decide::UPKEEP_EVERY + UNHEARD_AGAIN
             } else {
                 tick.wall

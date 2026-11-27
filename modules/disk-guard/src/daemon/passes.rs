@@ -7,7 +7,7 @@ use crate::band::{Band, Thresholds};
 use crate::clock::Tick;
 use crate::config::Source;
 use crate::decide::{Decision, Fill};
-use crate::disk_reads::Walk;
+use crate::disk_reads::{Walk, Walked};
 use crate::host::{FRESH, Filesystem, Reclaim, Scan};
 use crate::journal::{Journaled, Line};
 use crate::pace::{Monotonic, Pacer, Probe};
@@ -37,6 +37,22 @@ pub(super) const FIRST_REST: f64 = 60.0;
 /// ended leaves garbage only the next can take. A filling disk has a tenth
 /// of its room or more, and a worse band ends the rest at once.
 pub(super) const EMPTY_REST: f64 = 3600.0;
+
+/// How many times its own length a whole survey waits before the next,
+/// while no disk is worse than filling, and the longest that wait may be.
+/// On 27 November surveys reading 15 GB apiece walked for 32 of 50 minutes,
+/// each for a reach that ended waiting or an upkeep that freed nothing,
+/// and kept the disk busy beside everything Joel ran. A survey slowed by a
+/// busy disk waits the longer for it, and a worse band waits for none.
+pub(super) const SURVEY_SPACING: f64 = 3.0;
+
+pub(super) const SURVEY_SPACING_LONGEST: f64 = 1800.0;
+
+/// How long after a whole survey that walked `seconds` the next waits, as
+/// `SURVEY_SPACING` says.
+pub(super) fn survey_spacing(seconds: f64) -> f64 {
+    (SURVEY_SPACING * seconds).min(SURVEY_SPACING_LONGEST)
+}
 
 pub(super) fn longest_rest(band: Band) -> f64 {
     match band {
@@ -156,7 +172,7 @@ impl Guard {
     /// set back would make it, is none.
     fn emptied_before(&self, tick: &Tick, path: &Path) -> Option<Rest> {
         let left = self.memory.emptied.get(path)? - tick.wall;
-        (left > 0.0 && left <= EMPTY_REST).then(|| Rest {
+        (left > 0.0 && left <= EMPTY_REST).then_some(Rest {
             until: tick.monotonic + left,
             seconds: EMPTY_REST,
             band: Band::Filling,
@@ -164,6 +180,28 @@ impl Guard {
             exhausted: true,
             emptied: true,
         })
+    }
+
+    /// Puts off, at `now`, every pass `due` that walks every source while
+    /// the last whole survey's spacing lasts, unless a disk is worse than
+    /// filling, whose pass walks for them all. Each is due again at the
+    /// next step. The spacing is kept across restarts, as a switch
+    /// restarts the guard, and a wall clock set back ends it.
+    pub(super) fn space_surveys(&self, now: f64, due: &mut Vec<(u64, Decision, Thresholds)>) {
+        let Some((ended, seconds)) = self.memory.surveyed else {
+            return;
+        };
+        if !(0.0..survey_spacing(seconds)).contains(&(now - ended)) {
+            return;
+        }
+        let pressed = due.iter().any(|(device, ..)| {
+            self.watched
+                .get(device)
+                .is_some_and(|watched| watched.band > Band::Filling)
+        });
+        if !pressed {
+            due.retain(|&(_, decision, _)| decision == Decision::Collect);
+        }
     }
 
     /// Whether what's freed on the watched filesystem `on` is freed on
@@ -206,6 +244,23 @@ impl Guard {
         }
     }
 
+    /// Walks every source, keeping when the walk ended and how long it
+    /// took, for the next one's spacing, and the survey for a plan to read.
+    fn survey_whole(&mut self, tick: &Tick) -> io::Result<(Scan, Vec<Offer>, Walked)> {
+        let (scan, offers, walked) = self
+            .offers(tick, None)
+            .inspect_err(|_| self.end_passing())?;
+        let ended = tick.wall + self.stepped.elapsed().as_secs_f64();
+        self.memory.surveyed = Some((ended, walked.seconds));
+        // Kept for a plan to read; one that can't be kept only means the
+        // next plan surveys for itself.
+        let kept = crate::surveyed::Surveyed::new(tick.wall, &offers);
+        if let Err(error) = crate::surveyed::save(self.state(), &kept) {
+            say!("disk-guard: keeping the survey: {error}");
+        }
+        Ok((scan, offers, walked))
+    }
+
     /// Surveys once and runs each filesystem's pass over what lies on it.
     pub(super) fn passes(
         &mut self,
@@ -231,15 +286,7 @@ impl Guard {
             if let Some((path, aimed)) = first {
                 self.tell_passing(tick, &path, aimed.band, aimed.why);
             }
-            let (scan, offers, walked) = self
-                .offers(tick, None)
-                .inspect_err(|_| self.end_passing())?;
-            // Kept for a plan to read; one that can't be kept only means
-            // the next plan surveys for itself.
-            let kept = crate::surveyed::Surveyed::new(tick.wall, &offers);
-            if let Err(error) = crate::surveyed::save(self.state(), &kept) {
-                say!("disk-guard: keeping the survey: {error}");
-            }
+            let (scan, offers, walked) = self.survey_whole(tick)?;
             (scan, offers, Some(walked))
         };
         for &(device, decision, thresholds) in due {

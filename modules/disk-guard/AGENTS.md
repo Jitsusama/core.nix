@@ -57,7 +57,17 @@ or launchd, and [`home.nix`][2] the account's.
   schedule, as a cache gaining a version ends an older one's use. Upkeep
   that kept something only the system daemon could have vouched for,
   while it couldn't be asked, as when a switch restarts both daemons,
-  comes again ten minutes later.
+  comes again ten minutes later, once: a second such in a row counts as
+  done, since on 27 November a system daemon busy with its own passes
+  went unheard upkeep after upkeep, and each came back for a walk of
+  15 GB.
+- **Spacing.** A pass that walks every source waits after the last one
+  ended three times as long as that one walked, at most half an hour,
+  kept across restarts, so a survey slowed by a busy disk waits the
+  longer for it. On 27 November surveys of 15 GB apiece walked for 32 of
+  50 minutes, each for a reach that ended waiting or an upkeep that freed
+  nothing. A disk worse than filling never waits, and nor does the
+  store's garbage, which needs no survey.
 - **Windows.** How long a thing has to sit idle before it goes narrows with
   each band, and counts only time the machine was awake. Even while healthy,
   waste goes, and so does what nobody has used for long: a build after a
@@ -301,7 +311,7 @@ or launchd, and [`home.nix`][2] the account's.
   set a pass going; `--json` gives the counts and its survey's seconds.
   `upkeep` covers every trigger of the routine, among them its own
   retries: ten minutes after one that kept what only an unheard system
-  daemon could vouch for, and at the next spare step after one left
+  daemon could vouch for, though not after a second in a row, and at the next spare step after one left
   unfinished. A producers' or clear's survey that offers nothing makes no
   pass, so its walk leaves no seconds. Any account may pass
   through the machine's state folder to its journal but not list it, and

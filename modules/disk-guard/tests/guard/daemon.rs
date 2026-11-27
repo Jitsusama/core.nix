@@ -1005,6 +1005,141 @@ fn a_guard_started_within_an_emptied_disk_s_hour_rests_it_for_what_is_left() {
     );
 }
 
+/// Has the guard remember a whole survey that ended at `ended` and walked
+/// `seconds`, as an earlier guard's would.
+fn surveyed_before(home: &Home, ended: f64, seconds: f64) {
+    let memory = disk_guard::state::Memory {
+        surveyed: Some((ended, seconds)),
+        ..Default::default()
+    };
+    disk_guard::state::save(&home.root.join("state/memory.json"), &memory).unwrap();
+}
+
+#[test]
+fn a_filling_disk_waits_three_times_the_last_survey_s_walk_even_across_a_restart() {
+    // On 27 November surveys reading 15 GB apiece walked for 32 of 50
+    // minutes, one of them minutes after a switch restarted the guard.
+    let home = Home::new();
+    fs::create_dir_all(home.root.join("scratch")).unwrap();
+    let begun = wall();
+    surveyed_before(&home, begun - 100.0, 500.0);
+    let passes = || {
+        home.journal()
+            .iter()
+            .filter(|line| line["event"] == "pass")
+            .count()
+    };
+    let mut guard = home.guard(home.config("100%", "100%"));
+    let mut seen = Vec::new();
+    for (wall, monotonic) in [(0.0, 3600.0), (1300.0, 4900.0), (1500.0, 5100.0)] {
+        let at = Tick {
+            wall: begun + wall,
+            monotonic,
+            ..tick()
+        };
+        guard.step(&at, &CALM).unwrap();
+        seen.push(passes());
+    }
+    assert_eq!(
+        seen,
+        [0, 0, 1],
+        "a filling disk didn't wait 1,500 s after a survey that walked 500 s"
+    );
+    let kept = home.memory()["surveyed"].clone();
+    assert!(
+        kept[0].as_f64() >= Some(begun + 1500.0),
+        "the survey wasn't kept as ended: {kept}"
+    );
+}
+
+#[test]
+fn a_survey_s_spacing_lasts_half_an_hour_at_most() {
+    let home = Home::new();
+    fs::create_dir_all(home.root.join("scratch")).unwrap();
+    let begun = wall();
+    surveyed_before(&home, begun - 100.0, 5000.0);
+    let mut guard = home.guard(home.config("100%", "100%"));
+    let mut seen = Vec::new();
+    for (wall, monotonic) in [(1650.0, 3600.0), (1750.0, 3700.0)] {
+        let at = Tick {
+            wall: begun + wall,
+            monotonic,
+            ..tick()
+        };
+        guard.step(&at, &CALM).unwrap();
+        seen.push(home.journal().iter().any(|line| line["event"] == "pass"));
+    }
+    assert_eq!(
+        seen,
+        [false, true],
+        "a survey that walked 5,000 s spaced the next other than 1,800 s"
+    );
+}
+
+#[test]
+fn a_nearly_full_disk_never_waits_for_a_survey_s_spacing() {
+    let home = Home::new();
+    fs::create_dir_all(home.root.join("scratch")).unwrap();
+    let begun = wall();
+    surveyed_before(&home, begun - 100.0, 500.0);
+    let mut guard = home.guard(held_by(&home, &home.root.join("no-hold"), "100%"));
+    let at = Tick {
+        wall: begun,
+        monotonic: 3600.0,
+        ..tick()
+    };
+    guard.step(&at, &CALM).unwrap();
+    assert!(
+        home.journal().iter().any(|line| line["event"] == "pass"),
+        "a nearly full disk waited out a survey's spacing"
+    );
+}
+
+#[test]
+fn an_upkeep_unheard_twice_in_a_row_is_done_until_the_next() {
+    // On 27 November the system daemon, busy with its own passes, went
+    // unheard upkeep after upkeep, and each came back ten minutes on for
+    // another walk. A healthy disk's upkeep keeps a build whose holder it
+    // can't tell from root's unseen process.
+    let home = Home::new();
+    let built = held_tree(&home, 400);
+    fs::remove_dir_all(home.root.join("proc/400")).unwrap();
+    home.hidden(300, 77);
+    let sockets = socket_dir();
+    let socket = sockets.path().join("system.socket");
+    let places = Places {
+        system: Some(socket.clone()),
+        ..home.places()
+    };
+    let mut guard = Guard::new(crate::unpaced(owned_trees(&home)), &places).unwrap();
+    let _heard = fake_system_vouching_nothing(&socket);
+    let begun = wall();
+    let mut seen = Vec::new();
+    for (wall, monotonic) in [(0.0, 3600.0), (610.0, 4210.0), (1220.0, 4820.0)] {
+        let at = Tick {
+            wall: begun + wall,
+            monotonic,
+            ..tick()
+        };
+        guard.step(&at, &CALM).unwrap();
+        seen.push(
+            home.journal()
+                .iter()
+                .filter(|line| line["event"] == "pass" && line["why"] == "upkeep")
+                .count(),
+        );
+    }
+    assert!(
+        built.exists(),
+        "what only the system daemon could vouch for went"
+    );
+    assert_eq!(
+        seen,
+        [1, 2, 2],
+        "an unheard upkeep didn't come back once, and only once"
+    );
+}
+
 #[test]
 fn passes_kept_short_by_an_unheard_system_daemon_never_rest_a_filling_disk_an_hour() {
     // What they kept wanted only the system daemon's word, which a restart
