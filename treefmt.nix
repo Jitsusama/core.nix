@@ -131,6 +131,10 @@ in
   # so its kind isn't in its name.
   settings.formatter.shellcheck.includes = [ "modules/quickshell/in-a-terminal/tests/qs" ];
 
+  # Rust planted for a rule's own test to read, named .rs.in so the rules
+  # over the tree pass it by, and formatted as any Rust is.
+  settings.formatter.rustfmt.includes = [ "tests/rules/every-fixed-wait-says-why-planted.rs.in" ];
+
   # The libraries core's own Python imports.
   jitsusama.mypy.packages =
     python:
