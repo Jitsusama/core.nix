@@ -880,7 +880,11 @@ mod tests {
     #[test]
     fn an_idle_usb_camera_names_nobody() {
         let camera = Camera::new("listed-idle", "MX Brio 705 for Business");
-        assert!(listed(named(&["firefox"]), Some(&camera.sysfs), &camera.node).is_empty());
+        assert_eq!(
+            listed(named(&["firefox"]), Some(&camera.sysfs), &camera.node),
+            BTreeSet::new(),
+            "an idle USB camera was said held"
+        );
     }
 
     #[test]
@@ -892,7 +896,11 @@ mod tests {
             named(&["firefox"])
         );
         camera.alternate("2-1:1.1", 0);
-        assert!(listed(named(&["firefox"]), Some(&camera.sysfs), &camera.node).is_empty());
+        assert_eq!(
+            listed(named(&["firefox"]), Some(&camera.sysfs), &camera.node),
+            BTreeSet::new(),
+            "a USB camera that stopped streaming was still said held"
+        );
     }
 
     #[test]
@@ -1018,14 +1026,17 @@ mod tests {
                 .unwrap();
         assert_eq!(read.card.as_deref(), Some("Stand-in"));
         assert_eq!(read.units, ["a.service", "b.service"]);
-        assert!(!read.usb);
+        assert!(!read.usb, "a start without --usb was read as a USB camera's");
         assert_eq!(read.sysfs, Path::new("/sys"));
         assert_eq!(read.debugfs, Path::new("/sys/kernel/debug"));
         assert_eq!(
             (read.source.as_path(), read.output.as_path()),
             (Path::new("/run/d"), Path::new("/run/o"))
         );
-        assert!(given("--usb /dev/video0 /run/camera-holders").unwrap().usb);
+        assert!(
+            given("--usb /dev/video0 /run/camera-holders").unwrap().usb,
+            "--usb wasn't read as a USB camera's"
+        );
         let forgetting = given("--usb --forget /dev/video0 /run/camera-holders").unwrap();
         assert!(
             forgetting.usb && forgetting.forget,
