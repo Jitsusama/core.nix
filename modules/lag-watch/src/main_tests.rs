@@ -388,10 +388,10 @@ fn a_wait_one_count_booked_before_the_read_and_one_after_is_counted_once_in_the_
 }
 
 // The minute's look takes a fresh snapshot, owed nothing, as the next
-// window's start: a thread still read keeps what the window that ended
-// was owed, and the next window counts it.
+// window's start: a thread still read, and one hidden since, keep what
+// the window that ended was owed, and the next window counts it.
 #[test]
-fn what_is_owed_survives_the_minute_s_look() {
+fn what_is_owed_survives_the_minute_s_look_read_or_resting() {
     let start = reading(0.0, 0, 0, 0);
     let mut ended = reading(10.0, 5_000_000, 0, 1000);
     closed(&start, &mut ended);
@@ -408,6 +408,20 @@ fn what_is_owed_survives_the_minute_s_look() {
         (slack_waited(&read) - 5.0).abs() < 1e-9,
         "a thread still read lost its wait to the minute's look: {:?}",
         read.waits
+    );
+    // Hidden between the window's read and the look, shown again by the next.
+    let mut fresh = Snapshot {
+        at: 10.0,
+        resting: reading(10.0, 5_000_000, 0, 1000).threads,
+        ..Snapshot::default()
+    };
+    look_again(&mut fresh, &ended);
+    let mut next = reading(20.0, 5_000_000, 5_000_000, 2000);
+    let shown = closed(&fresh, &mut next);
+    assert!(
+        (slack_waited(&shown) - 5.0).abs() < 1e-9,
+        "a thread resting at the look lost its wait: {:?}",
+        shown.waits
     );
 }
 

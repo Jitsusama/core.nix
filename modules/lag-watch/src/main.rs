@@ -513,11 +513,13 @@ fn close_window(
 
 /// Carries into `fresh`, the snapshot the minute's look takes again, what
 /// each count of a thread still watched was owed at `was`, the window's
-/// end, so the minute's look loses no wait `close_window` left owed. What
-/// grew between the two reads is left out, and nothing is read, so its
-/// tests reach it.
+/// end, so the minute's look loses no wait `close_window` left owed. A
+/// thread hidden since keeps it too, in `resting`, since a tab shown again
+/// starts from where it rested. One resting at `was` is owed nothing, as
+/// `window::credit` credits only the threads read. What grew between the
+/// two reads is left out, and nothing is read, so its tests reach it.
 fn look_again(fresh: &mut Snapshot, was: &Snapshot) {
-    for (key, s) in &mut fresh.threads {
+    for (key, s) in fresh.threads.iter_mut().chain(fresh.resting.iter_mut()) {
         if let Some(old) = was.threads.get(key) {
             s.owed = old.owed;
         }
