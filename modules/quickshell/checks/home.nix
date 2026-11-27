@@ -50,6 +50,8 @@
     let
       qt = pkgs.qt6.qtdeclarative;
     in
+    # Kept in Nix because each line copies a file Nix gives it beside the
+    # cases, or sets what the shell runs them with.
     pkgs.runCommandLocal "for-you-weighs-what-needs-joel" { } ''
       cp ${../tests/for-you.qml} for-you.qml
       cp ${../launcher/ForYou.js} ForYou.js
