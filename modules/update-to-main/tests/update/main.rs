@@ -403,11 +403,13 @@ impl World {
                      if [ -e \"$here/unit-fails\" ]; then echo 'warning: the following units \
                      failed: home-manager-joel.service' >&2; exit 4; fi\n\
                      echo \"$1\" >> {modes}\n\
-                     case \"$1\" in switch|boot) ln -sfn \"$here\" {boots};; esac\n\
+                     case \"$1\" in switch|boot)\n\
+                     ln -sfn \"$(readlink -f {profile})\" {boots};; esac\n\
                      case \"$1\" in switch|test) ln -sfn \"$here\" {running}\n\
                      echo \"restarting the following units: sshd.service\";; esac\n",
                     head = stand_in_head(),
                     modes = self.root.join("modes").display(),
+                    profile = self.config.profile.display(),
                     boots = self.root.join("boots").display(),
                     running = self.root.join("running").display()
                 ),
@@ -443,7 +445,9 @@ impl World {
     }
 
     /// The system the boot loader starts next, which only
-    /// switch-to-configuration's `switch` and `boot` set.
+    /// switch-to-configuration's `switch` and `boot` set, to what the
+    /// profile names then rather than to the system they were run from, as
+    /// lanzaboote's loader starts the profile's newest generation.
     fn boots(&self) -> PathBuf {
         fs::read_link(self.root.join("boots")).unwrap()
     }
@@ -1753,6 +1757,11 @@ fn going_back_unchecked_puts_back_what_the_machine_booted_before() {
         world.modes().last().map(String::as_str),
         Some("boot"),
         "what the machine booted before wasn't made the boot default again"
+    );
+    assert_eq!(
+        fs::canonicalize(&world.config.profile).unwrap(),
+        fs::canonicalize(&zero).unwrap(),
+        "the profile, which a loader boots the newest of, didn't name what it booted before"
     );
 }
 
