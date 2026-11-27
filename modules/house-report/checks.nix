@@ -143,6 +143,27 @@ let
     "  houseReportDo=$houseReportKnown"
     "fi"
   ];
+  # The job's own lines deciding the advice, as its text sets them, with
+  # the words they join, its Mac tools renamed to the stand-ins
+  # advice-test.sh gives them; with none, should the job hold them other
+  # than once, so the test advises nothing and fails (keys said plainly
+  # round 4's F1, F2 and F7).
+  advisedRun =
+    let
+      words = lib.filter (
+        line: lib.hasPrefix "houseReportKnown=" line || lib.hasPrefix "houseReportKnowing=" line
+      ) (lib.splitString "\n" watched);
+      parts = lib.splitString "\nhouseReportSeen=" watched;
+      lines =
+        if lib.length parts == 2 then
+          "houseReportSeen=" + lib.head (lib.splitString "\nfi\n" (lib.last parts)) + "\nfi\n"
+        else
+          "";
+    in
+    lib.replaceStrings
+      [ "/usr/bin/readlink " "/usr/bin/stat " "/usr/bin/find " "/bin/ls " "/usr/bin/grep " ]
+      [ "stand_in_readlink " "stand_in_stat " "stand_in_find " "stand_in_ls " "grep " ]
+      (lib.concatLines words + lines);
   # What a refusal does, whole: a switch says it each time and forgets
   # `said`, kept beside the copy's folder; the job says it once until it
   # changes, and forgets it once a copy is made; and the `said` kept in
@@ -406,6 +427,25 @@ in
       }
       ''
         "$BASH" ${./lists-test.sh} "$pattern" "$leakingPath" "$lesserPath"
+        touch "$out"
+      '';
+
+  # A Mac's key job, run over sample keys with its Mac tools stood in for,
+  # says to make a key anew whichever refusal it says, by the owner, mode
+  # and access list of the file the key's name comes to, and for any key
+  # its folder refused, and says it of no key others may only run or
+  # reach by lesser rights, of one refused only for a second name, of one
+  # it copied, or where the name comes to no file and no folder refused
+  # it (keys said plainly round 4's F1, F2 and F7; round 6's F4; round
+  # 7's F1).
+  house-report-advises-by-the-file-its-key-names =
+    pkgs.runCommandLocal "house-report-advises-by-the-file-its-key-names"
+      {
+        advice = advisedRun;
+        passAsFile = [ "advice" ];
+      }
+      ''
+        "$BASH" ${./advice-test.sh} "$advicePath"
         touch "$out"
       '';
 

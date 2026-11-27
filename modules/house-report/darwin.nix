@@ -77,16 +77,16 @@ let
   # link, which outlasts the folder's fix (keys said plainly round 6's
   # F4). A key with a second name is refused saying only that, since a
   # second name doesn't show that an account knows or changed it (round
-  # 7's F1).
-  # Following every link takes readlink's -f, which macOS has from 12.3
-  # (round 6's F1, F2, F5 and F6). Each
-  # run copies through a name of its own, so two runs
-  # can't move the same file (round 4's F21), though a failing run may
+  # 7's F1). The Mac's readlink has followed every link with -f since
+  # macOS 12.3; one without it gives no advice, never a wrong one (keys
+  # said plainly round 4's F3 and F6; round 6's F1, F2, F5 and F6). Each
+  # run copies through a name of its own, so two runs can't move the
+  # same file (house signing round 4's F21), though a failing run may
   # take away the copy one beside it just made, or a slower one put back
   # a key just swapped; the watch job runs again each minute too, so
   # either, or an event launchd missed, lasts a minute at most (round
-  # 5's F2, F11, F12 and F16). The Mac's own tools are named,
-  # since GNU's stat, which a PATH may name first, reads -f otherwise.
+  # 5's F2, F11, F12 and F16). The Mac's own tools are named, since
+  # GNU's stat, which a PATH may name first, reads -f otherwise.
   # nobody is an account other daemons may share, so any of them could
   # read the copy (round 4's F26). A switch, which sets
   # houseReportAtSwitch, says a refusal on its own terminal each time and
