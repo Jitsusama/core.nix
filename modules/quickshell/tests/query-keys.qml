@@ -1143,15 +1143,34 @@ QtObject {
             `Drawing 2026-${washing("11-09<br>10")}.12.03.svg`);
         holds("though another text's break still ends what's washed",
             Search.washed("line 14\nline 15", "14 line", wash, false), "line 14<br>line 15");
-        // Every break of a title is its space, two or more as one, and so is a line or
-        // paragraph separator its name holds, which titleBreaks keeps in a word too wide
-        // for a line, as the drawer's search reads it (DrawerLines.runsOn).
+        // Every break of a title is a space of its own, two together two spaces, and so is
+        // each line or paragraph separator its name holds, which titleBreaks keeps in a
+        // word too wide for a line, as the drawer's search reads it (DrawerLines.runsOn).
         holds("a title's every break is washed across",
             Search.washed("one\ntwo\nthree", "one two three", wash, true),
             washing("one<br>two<br>three"));
         holds("and so is a separator its name holds",
             Search.washed("a\u2028b\u2029c", "a b c", wash, true), washing("a\u2028b\u2029c"));
         // How fast a drawer's search runs is drawer-search-pace.qml's.
+    }
+
+    // A piece of `words` laid on a line as Drawer.qml lays it, its `text`
+    // and what it wrapped at, `on`, which the search runs on with into its
+    // words' next piece, or null where its text ends.
+    function part(words, text, on) {
+        return { words, text, length: text.length, on };
+    }
+
+    // A piece that ends its paragraph or its text, with the spaces it ends
+    // with, its `trailing`.
+    function ending(words, text, trailing) {
+        return { words, text, length: text.length, on: null, trailing };
+    }
+
+    // A line of pieces, left to right, as DrawerLines.linesOf lays them.
+    function laid(...parts) {
+        const text = parts.map(each => each.text).join("");
+        return { text, length: text.length, parts };
     }
 
     function drawerSearch(holds) {
@@ -1273,11 +1292,6 @@ QtObject {
         // on across its wrap, with what its piece broke at between them: a
         // space, or nothing at a zero-width space or inside a word. Its end,
         // null, stops it, as Vim's does, as the wash reads each text whole.
-        const part = (words, text, on) => ({ words, text, length: text.length, on });
-        const laid = (...parts) => {
-            const text = parts.map(each => each.text).join("");
-            return { text, length: text.length, parts };
-        };
         const [server, sparkling, plain, pairs] = [{}, {}, {}, {}];
         const wrapped = [
             laid(part(server, "Server time.\u200b", "")),
@@ -1334,8 +1348,6 @@ QtObject {
         // is, so only the break stops the search between them; a text of
         // only spaces, and a wrapped one ending in them, land on the
         // nearest letter there is.
-        const ending = (words, text, trailing) =>
-            ({ words, text, length: text.length, on: null, trailing });
         const [ends, blank, wraps] = [{}, {}, {}];
         const ended = [
             laid(ending(ends, "Ends here", "  ")),
@@ -2295,6 +2307,15 @@ QtObject {
         titleReader.text = Search.readerText("Drawing 2026-11-09\n10.12.03.svg");
         holds("a title's reader gives its break back as a line separator",
             titleReader.getText(0, 19), "Drawing 2026-11-09\u2028");
+        // A space before a break stays before the separator it's given back
+        // as, and separators a title's name holds come back as they're held,
+        // as the search reads them (DrawerLines.runsOn).
+        titleReader.text = Search.readerText("a \nb");
+        holds("a title's reader keeps the space before its break",
+            titleReader.getText(0, titleReader.length), "a \u2028b");
+        titleReader.text = Search.readerText("a\u2028b\u2029c");
+        holds("and gives back the separators its name holds",
+            titleReader.getText(0, titleReader.length), "a\u2028b\u2029c");
         titleReader.destroy();
         holds("a reader's text keeps its spaces at its leading",
             Search.readerText("a  <b>", { leading: 20 }), "<div style=\"white-space:pre-wrap;"
@@ -2302,6 +2323,17 @@ QtObject {
         holds("and a styled one's links in its ink, unwashed",
             Search.readerText("<a href=\"x\">y</a>", { styled: true, ink: "#fff", sought: "y" }),
             "<div style=\"white-space:pre-wrap\"><a style=\"color:#fff\" href=\"x\">y</a></div>");
+        // Every title's reader is given it washed where it's sought, each
+        // break read as the space it stood for, as Drawer.qml gives it
+        // (`spaced`); another text's break ends what's washed.
+        const readerWash = { ink: "ink", ground: "ground" };
+        holds("a title's reader is washed across its break",
+            Search.readerText("a\nb", { sought: "a b", wash: readerWash, spaced: true }),
+            "<div style=\"white-space:pre-wrap\">"
+                + "<span style=\"color:ink;background-color:ground\">a<br>b</span></div>");
+        holds("and another text's reader is not",
+            Search.readerText("a\nb", { sought: "a b", wash: readerWash, spaced: false }),
+            "<div style=\"white-space:pre-wrap\">a<br>b</div>");
         const runsOn = [
             ["a space wrapped at", "Sparkling ", 9, " "],
             ["nothing at a zero-width space", "Server time.\u200b", 13, ""],
@@ -2327,30 +2359,36 @@ QtObject {
             holds(`a laid line ends with ${what}`, Lines.trailing(raw, kept), want);
         // The search and the wash read a title alike: all the search reads of it, its laid
         // lines' letters each run on as runsOn says, and its last with what trails it, as
-        // Drawer.qml's pieces give them, sought, washes the whole title.
+        // Drawer.qml's pieces give them, joined as DrawerPage.textsOf joins them for the
+        // search, sought, washes the whole title.
         const titleInk = { ink: "ink", ground: "ground" };
         const titleWash = words =>
             `<span style="color:ink;background-color:ground">${words}</span>`;
         const searchRead = title => {
-            let read = "";
+            const words = {};
+            const lines = [];
             let from = 0;
             for (let at = 0; at <= title.length; at++) {
                 if (at < title.length && !/[\n\u2028\u2029]/.test(title[at]))
                     continue;
                 const raw = title.slice(from, at + 1);
                 const kept = raw.replace(/\s+$/, "").length;
-                const on = at < title.length ? Lines.runsOn(raw, kept, true)
-                    : Lines.trailing(raw, kept);
-                read += raw.slice(0, kept) + on;
+                const letters = raw.slice(0, kept);
+                lines.push(laid(at < title.length
+                    ? part(words, letters, Lines.runsOn(raw, kept, true))
+                    : ending(words, letters, Lines.trailing(raw, kept))));
                 from = at + 1;
             }
-            return read;
+            return Page.textsOf(lines)[0].text;
         };
         const titles = [
             ["one at its balanced break", "Drawing 2026-11-09\n10.12.03.svg"],
             ["one with a space before its break", "a \nb"],
             ["one with separators its name holds", "a\u2028b\u2029c"],
-            ["one ending in spaces", "a\nb  "]
+            ["one ending in spaces", "a\nb  "],
+            ["one with a space after its break", "a\n b"],
+            ["one with spaces on both sides of its break", "a \n b"],
+            ["one with two breaks together", "a\n\nb"]
         ];
         for (const [what, title] of titles)
             holds(`the search reads a title as its wash does: ${what}`,
@@ -2703,9 +2741,10 @@ QtObject {
 
     function run() {
         // A value as a failure says it, with the separators JSON leaves
-        // bare spelt out, so a line separator never reads as a paragraph's.
+        // bare spelt out, so a line separator never reads as a paragraph's,
+        // nor a no-break space as a space.
         function spelt(value) {
-            return String(JSON.stringify(value)).replace(/[\u2028\u2029\u200b\u2060]/g,
+            return String(JSON.stringify(value)).replace(/[\u00a0\u2028\u2029\u200b\u2060]/g,
                 letter => `\\u${letter.charCodeAt(0).toString(16).padStart(4, "0")}`);
         }
 

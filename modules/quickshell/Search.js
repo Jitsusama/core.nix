@@ -189,6 +189,9 @@ function washed(text, pattern, wash, spaced) {
 // set. A `styled` text is markup already, its links in its `ink` rather
 // than rich text's blue, and isn't washed, since washing inside markup
 // isn't done; any other is escaped, or washed where a pattern is `sought`.
+// A styled text goes in unescaped, so it must be markup the shell or the
+// notices daemon made, never a file's name or another program's words.
+// A `wash` comes with `sought`, since washed reads its ink and ground.
 // Drawer.qml's reader and tests/query-keys.qml both build it here, so the
 // break a test reads back is the one the drawer's reader gives.
 function readerText(text, { leading, styled, ink, sought, wash, spaced } = {}) {
