@@ -69,8 +69,10 @@ What holds it together:
   server beside a stand-in daemon. It holds a first visit to a number of
   files, kilobytes and elements, and a second to every file answered
   unchanged. A change worth more raises the budget in the same change.
-  The failure says which measure passed its budget, and for elements,
-  which tags grew.
+  The map, which many changes grow at once, holds room above what it last
+  measured, so most never touch its line; one that would pass it sets it
+  again to the gate's measure plus that room. The failure says which
+  measure passed its budget, and for elements, which tags grew.
 
 ## Adding a Live Page
 
