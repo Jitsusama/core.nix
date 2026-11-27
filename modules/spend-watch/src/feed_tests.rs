@@ -61,8 +61,10 @@ fn a_window_is_named_as_the_contract_says() {
 
 #[test]
 fn a_line_without_a_version_is_refused() {
-    assert!(parse(r#"{"kind":"said","severity":"info","text":"x"}"#).is_err());
-    assert!(parse(r#"{"v":2,"kind":"said","severity":"info","text":"x"}"#).is_err());
+    parse(r#"{"kind":"said","severity":"info","text":"x"}"#)
+        .expect_err("a line with no version was read");
+    parse(r#"{"v":2,"kind":"said","severity":"info","text":"x"}"#)
+        .expect_err("a line of a version to come was read");
 }
 
 #[test]
@@ -71,7 +73,8 @@ fn an_hour_must_start_an_hour() {
         r#"{"v":1,"kind":"billed","source":"meter","hour":"2026-10-14T05:30:00Z","#,
         r#""tool":"all","model":"m","dollars":1}"#
     );
-    assert!(parse(line).unwrap_err().contains("doesn't start an hour"));
+    let refused = parse(line).unwrap_err();
+    assert!(refused.contains("doesn't start an hour"), "{refused}");
 }
 
 #[test]
@@ -81,11 +84,8 @@ fn a_cap_of_nothing_is_refused() {
         "allowance": 0, "windowHours": 168, "spent": 1, "warn": 0.9,
         "state": "refused", "at": "2026-10-14T05:00:00Z",
     });
-    assert!(
-        parse(&line.to_string())
-            .unwrap_err()
-            .contains("more than nothing")
-    );
+    let refused = parse(&line.to_string()).unwrap_err();
+    assert!(refused.contains("more than nothing"), "{refused}");
 }
 
 // A day's cap that resets at the next midnight is kept with its reset;
@@ -100,11 +100,8 @@ fn a_period_s_reset_is_kept_after_it_was_read() {
         })
         .to_string()
     };
-    assert!(
-        parse(&day("2026-10-14T05:00:00Z"))
-            .unwrap_err()
-            .contains("isn't after")
-    );
+    let refused = parse(&day("2026-10-14T05:00:00Z")).unwrap_err();
+    assert!(refused.contains("isn't after"), "{refused}");
     let history = History::memory();
     store(
         &history,
@@ -134,23 +131,27 @@ fn a_share_says_what_is_used_and_when_it_resets() {
     };
     let resets = serde_json::json!("2026-11-07T14:20:00Z");
     let read = share(serde_json::json!({"used": 0.62, "resets": resets})).unwrap();
-    assert!(matches!(
-        read,
-        Record::Cap(Cap {
-            used: Some(0.62),
-            ..
-        })
-    ));
-    assert!(share(serde_json::json!({"used": 1.2, "resets": resets})).is_err());
-    assert!(share(serde_json::json!({"used": 0.62})).is_err());
+    assert!(
+        matches!(
+            read,
+            Record::Cap(Cap {
+                used: Some(0.62),
+                ..
+            })
+        ),
+        "a share used 0.62 read as {read:?}"
+    );
+    share(serde_json::json!({"used": 1.2, "resets": resets}))
+        .expect_err("a share used past the whole of its window was read");
+    share(serde_json::json!({"used": 0.62})).expect_err("a share that never resets was read");
     let priced = serde_json::json!({"used": 0.6, "resets": resets, "allowance": 20});
-    assert!(share(priced).is_err());
+    share(priced).expect_err("a share that names an amount was read");
     let unspent = serde_json::json!({
         "v": 1, "kind": "cap", "name": "weekly", "label": "Week",
         "allowance": 15000, "windowHours": 168, "warn": 0.9, "state": "ok",
         "at": "2026-11-07T10:00:00Z",
     });
-    assert!(parse(&unspent.to_string()).is_err());
+    parse(&unspent.to_string()).expect_err("a cap in dollars that says nothing spent was read");
 }
 
 // Two budgets' bills alike from one feed are two figures, not one
@@ -179,7 +180,7 @@ fn a_bill_for_another_budget_is_its_own() {
 #[test]
 fn an_unknown_field_is_refused_rather_than_ignored() {
     let line = r#"{"v":1,"kind":"said","severity":"info","text":"x","colour":"red"}"#;
-    assert!(parse(line).is_err());
+    parse(line).expect_err("a line with a field the contract lacks was read");
 }
 
 fn cap(allowance: Option<f64>, at: &str, state: &str) -> Record {

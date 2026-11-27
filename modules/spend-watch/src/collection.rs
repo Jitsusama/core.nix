@@ -1284,7 +1284,11 @@ mod tests {
         assert_eq!(held.now, [] as [crate::collection::Line; 0]);
         let ids: Vec<_> = held.reports.keys().collect();
         assert_eq!(ids, ["summary"]);
-        assert!(!held.reports["summary"].headline.contains('$'));
+        let headline = &held.reports["summary"].headline;
+        assert!(
+            !headline.contains('$'),
+            "a held watch gave a figure: {headline}"
+        );
     }
 
     fn config() -> crate::config::Config {
@@ -1504,15 +1508,27 @@ mod tests {
         // A period's cuts are behind it, after a day's caps, each standing
         // for its report.
         let today = &collected.now[0];
-        assert!(today.rows.iter().any(|row| row.name == "By model"));
+        let names: Vec<&str> = today.rows.iter().map(|row| row.name.as_str()).collect();
         assert!(
-            today
-                .rows
-                .iter()
-                .filter(|row| !row.key.starts_with("cap:"))
-                .all(|row| collected.reports.contains_key(&row.report))
+            names.contains(&"By model"),
+            "today has no cut by model: {names:?}"
         );
-        assert!(!today.rows.iter().any(|row| row.name == "By day"));
+        let unreported: Vec<&str> = today
+            .rows
+            .iter()
+            .filter(|row| !row.key.starts_with("cap:"))
+            .filter(|row| !collected.reports.contains_key(&row.report))
+            .map(|row| row.report.as_str())
+            .collect();
+        assert_eq!(
+            unreported,
+            [] as [&str; 0],
+            "cuts stand for reports not made"
+        );
+        assert!(
+            !names.contains(&"By day"),
+            "a single day was cut by day: {names:?}"
+        );
         // No row says where its figures came from beside them.
         for line in every(&collected.now) {
             assert!(!line.side.contains("billed"), "{line:?}");
@@ -1533,7 +1549,11 @@ mod tests {
         assert_eq!(down.side, "since 13:30");
         assert_eq!(down.note, "the warehouse couldn't be reached");
         assert_eq!(down.role, "found");
-        assert!(down.copy.contains("Name or service not known"));
+        assert!(
+            down.copy.contains("Name or service not known"),
+            "the copy lost the warehouse's error: {}",
+            down.copy
+        );
     }
 
     // Each pi session that spent today is there by its whole id, even two
@@ -1613,7 +1633,11 @@ mod tests {
         let picture = Picture::read(&History::memory(), &config, NOW).unwrap();
         let collected = collection(&picture, &[], &config);
         assert_eq!(collected.agents_today, "");
-        assert!(collected.sessions_today.is_empty());
+        assert!(
+            collected.sessions_today.is_empty(),
+            "a day with no spending named sessions: {:?}",
+            collected.sessions_today
+        );
     }
 
     // Each session's day is a spark of its hours since midnight, each over
@@ -1982,13 +2006,18 @@ mod tests {
             .collect();
         // A window no feed reads yet is named for its length.
         assert_eq!(windows, [("Five Hours", "85%"), ("Week", "not read yet")]);
-        assert!(plan.rows[1].copy.contains("nothing to copy"));
+        assert!(
+            plan.rows[1].copy.contains("nothing to copy"),
+            "a window not read yet gave copy: {}",
+            plan.rows[1].copy
+        );
         assert_eq!(plan.rows[0].note, "");
         // The budget's drawer and each window's come with their rows.
         let titled = |row: &Line| row.drawn.as_ref().map(|drawn| drawn.title.clone());
         assert_eq!(titled(plan).as_deref(), Some("Claude Pro"));
         assert_eq!(titled(&plan.rows[0]).as_deref(), Some("Five Hours"));
-        assert!(depth(&collected.now) <= 3);
+        let deep = depth(&collected.now);
+        assert!(deep <= 3, "rows nest {deep} deep, deeper than three");
     }
 
     // Each budget's row wears AI spend's mark and each window a clock, and
@@ -2084,7 +2113,9 @@ mod tests {
         assert!(
             days.facts
                 .iter()
-                .any(|fact| fact.id == "most-day" && fact.words)
+                .any(|fact| fact.id == "most-day" && fact.words),
+            "the week's drawer has no most-day fact in words: {:?}",
+            days.facts
         );
         let cap = every(&collected.now)
             .into_iter()
@@ -2290,6 +2321,6 @@ mod tests {
         cut.rows = vec![row("Build the shell", 0.31), row("Another", 0.2)];
         let quest = most(Cut::Quest, &cut).unwrap();
         assert_eq!(quest.value, "Build the shell \u{b7} 31%");
-        assert!(quest.words && quest.id == "most-quest");
+        assert_eq!((quest.id.as_str(), quest.words), ("most-quest", true));
     }
 }

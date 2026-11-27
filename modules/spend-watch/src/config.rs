@@ -660,7 +660,7 @@ mod tests {
             (budgets[0].name.as_str(), budgets[0].label.as_str()),
             (IMPLICIT, "pi")
         );
-        assert!(budgets[0].default);
+        assert!(budgets[0].default, "the one budget isn't the default");
         let own = &budgets[0].allowances[0];
         assert_eq!(
             (own.allowance, own.window_hours, own.stands_in),
@@ -695,17 +695,11 @@ mod tests {
     #[test]
     fn exactly_one_budget_is_the_default() {
         let none = serde_json::json!([budget("a", false, &[]), budget("b", false, &[])]);
-        assert!(
-            with(none, serde_json::json!([]))
-                .unwrap_err()
-                .contains("exactly one")
-        );
+        let refused = with(none, serde_json::json!([])).unwrap_err();
+        assert!(refused.contains("exactly one"), "no default: {refused}");
         let two = serde_json::json!([budget("a", true, &[]), budget("b", true, &[])]);
-        assert!(
-            with(two, serde_json::json!([]))
-                .unwrap_err()
-                .contains("exactly one")
-        );
+        let refused = with(two, serde_json::json!([])).unwrap_err();
+        assert!(refused.contains("exactly one"), "two defaults: {refused}");
     }
 
     #[test]
@@ -723,10 +717,11 @@ mod tests {
         let feed = serde_json::json!([
             {"name": "proxy", "label": "p", "command": ["f"], "budget": "nowhere"},
         ]);
-        let refused = with(serde_json::json!([budget("a", true, &[])]), feed.clone());
-        assert!(refused.unwrap_err().contains("nowhere"));
+        let refused = with(serde_json::json!([budget("a", true, &[])]), feed.clone()).unwrap_err();
+        assert!(refused.contains("nowhere"), "{refused}");
         // With none declared, there's only the implicit one to name.
-        assert!(with(serde_json::json!([]), feed).is_err());
+        with(serde_json::json!([]), feed)
+            .expect_err("a feed named a budget though none was declared");
     }
 
     #[test]
@@ -736,17 +731,18 @@ mod tests {
             budget["allowances"] = serde_json::json!([allowance]);
             with(serde_json::json!([budget]), serde_json::json!([]))
         };
-        let refused = declared(serde_json::json!({"name": "w", "windowHours": 168, "warn": 0.9}));
-        assert!(refused.unwrap_err().contains("says how many"));
+        let refused = declared(serde_json::json!({"name": "w", "windowHours": 168, "warn": 0.9}))
+            .unwrap_err();
+        assert!(refused.contains("says how many"), "{refused}");
         let share = serde_json::json!({
             "name": "w", "unit": "share", "allowance": 5, "windowHours": 5, "warn": 0.9,
         });
-        assert!(declared(share).is_err());
+        declared(share).expect_err("a share's allowance named dollars and was taken");
         let held = serde_json::json!({
             "name": "w", "allowance": 400, "windowHours": 168, "warn": 0.9,
             "resets": "2026-11-09T05:00:00Z",
         });
-        assert!(declared(held).is_ok());
+        declared(held).expect("an allowance with its own reset was refused");
     }
 
     fn with_machines(machines: &serde_json::Value) -> Result<(), String> {
@@ -903,10 +899,11 @@ mod tests {
     // agents' logs never walks a tree, and a kind is one word.
     #[test]
     fn agents_logs_are_named_by_a_whole_path() {
-        assert!(with_agents("/w/*/agents/*/session/*.jsonl", "swarm").is_ok());
-        assert!(with_agents("w/*/session/*.jsonl", "swarm").is_err());
-        assert!(with_agents("/w/**/*.jsonl", "swarm").is_err());
-        assert!(with_agents("/w/*.jsonl", "").is_err());
-        assert!(with_agents("/w/*.jsonl", "two words").is_err());
+        with_agents("/w/*/agents/*/session/*.jsonl", "swarm")
+            .expect("a whole path with one name to each star was refused");
+        with_agents("w/*/session/*.jsonl", "swarm").expect_err("a relative pattern was taken");
+        with_agents("/w/**/*.jsonl", "swarm").expect_err("a pattern that walks a tree was taken");
+        with_agents("/w/*.jsonl", "").expect_err("an empty kind was taken");
+        with_agents("/w/*.jsonl", "two words").expect_err("a kind of two words was taken");
     }
 }

@@ -1543,9 +1543,13 @@ mod tests {
         assert!(
             pieces
                 .iter()
-                .any(|piece| piece.session == "elsewhere" && piece.dollars == 3.0)
+                .any(|piece| piece.session == "elsewhere" && piece.dollars == 3.0),
+            "a gone session's $3 isn't elsewhere: {pieces:?}"
         );
-        assert!(!estimated(&pieces));
+        assert!(
+            !estimated(&pieces),
+            "a settled hour's bill was called estimated: {pieces:?}"
+        );
     }
 
     #[test]
@@ -1638,7 +1642,8 @@ mod tests {
         turn(&history, "me", H, "opus", 10.0, Some("Q1"));
         run(&history, "fleet", "me", H, 5.0, &["f1"]);
         let pieces = read(&history, H, H + 1).unwrap().pieces(&Ratios::default());
-        assert!((total(&pieces) - 15.0).abs() < 1e-9);
+        let sum = total(&pieces);
+        assert!((sum - 15.0).abs() < 1e-9, "the hour came to {sum}, not 15");
         let fleet = by(&pieces, |piece| piece.kind.clone());
         assert!(fleet.contains(&("subagent:fleet".into(), 5.0)), "{fleet:?}");
         let quests = by(&pieces, |piece| piece.quest.clone().unwrap_or_default());
@@ -1687,8 +1692,13 @@ mod tests {
             ),
             ("subagent:swarm", "acp@team", Some("Q2"))
         );
-        assert!((agent.dollars - 15.0).abs() < 1e-9);
-        assert!((total(&pieces) - 20.0).abs() < 1e-9);
+        let spent = agent.dollars;
+        assert!(
+            (spent - 15.0).abs() < 1e-9,
+            "the agent spent {spent}, not 15"
+        );
+        let sum = total(&pieces);
+        assert!((sum - 20.0).abs() < 1e-9, "the hour came to {sum}, not 20");
     }
 
     // A bill without a split goes to the pieces on its own model, since
@@ -1714,9 +1724,12 @@ mod tests {
         billed(&history, "meter", H, "all", "opus", None, 12.0);
         let ratios = Ratios::fixed(&[("opus", 0.85)]);
         let pieces = read(&history, H, H + 1).unwrap().pieces(&ratios);
-        assert!((total(&pieces) - 12.0).abs() < 1e-9);
+        let sum = total(&pieces);
+        assert!((sum - 12.0).abs() < 1e-9, "the hour came to {sum}, not 12");
         let tools = by(&pieces, |piece| piece.tool.clone());
-        assert!((tools[0].1 - 8.5).abs() < 1e-9 && tools[0].0 == "pi");
+        assert_eq!(tools[0].0, "pi");
+        let pi = tools[0].1;
+        assert!((pi - 8.5).abs() < 1e-9, "pi was given {pi}, not 8.5");
         assert_eq!(weakest(&pieces), Some(Source::Meter));
     }
 
@@ -1736,7 +1749,8 @@ mod tests {
         billed(&history, "meter", H, "all", "gemini", None, 5.0);
         let ratios = Ratios::fixed(&[("opus", 0.85), ("sonnet", 1.0)]);
         let pieces = read(&history, H, H + 1).unwrap().pieces(&ratios);
-        assert!((total(&pieces) - 17.0).abs() < 1e-9);
+        let sum = total(&pieces);
+        assert!((sum - 17.0).abs() < 1e-9, "the hour came to {sum}, not 17");
         let mut models = by(&pieces, |piece| format!("{} {}", piece.tool, piece.model));
         models.sort_by(|one, other| one.0.cmp(&other.0));
         let rounded: Vec<(String, i64)> = models
@@ -1763,7 +1777,8 @@ mod tests {
         settle(&history, H - 9);
         let ratios = Ratios::fixed(&[("opus", 0.8)]);
         let pieces = read(&history, H, H + 1).unwrap().pieces(&ratios);
-        assert!((total(&pieces) - 8.0).abs() < 1e-9);
+        let sum = total(&pieces);
+        assert!((sum - 8.0).abs() < 1e-9, "the hour came to {sum}, not 8");
         assert_eq!(weakest(&pieces), Some(Source::Estimated));
     }
 }
