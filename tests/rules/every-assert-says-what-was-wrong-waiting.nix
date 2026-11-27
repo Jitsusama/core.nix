@@ -151,15 +151,7 @@
   "modules/mic-mute-light/mic-mute-light.rs" = 13;
   "modules/network-revive/src/config.rs" = 1;
   "modules/nix-daemon/vm-first/src/main.rs" = 14;
-  "modules/nix-offload/offload/src/decide.rs" = 12;
-  "modules/nix-offload/offload/src/held.rs" = 3;
   "modules/nix-offload/offload/src/main.rs" = 14;
-  "modules/nix-offload/offload/src/passed.rs" = 2;
-  "modules/nix-offload/offload/src/progress.rs" = 2;
-  "modules/nix-offload/offload/src/proof.rs" = 18;
-  "modules/nix-offload/offload/src/queue.rs" = 6;
-  "modules/nix-offload/offload/src/relay.rs" = 3;
-  "modules/nix-offload/offload/src/sleep.rs" = 8;
   "modules/nix-offload/offload/src/there.rs" = 12;
   "modules/nix-offload/offload/tests/there.rs" = 11;
   "modules/onepassword/manager/src/lib.rs" = 1;

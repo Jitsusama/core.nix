@@ -676,13 +676,17 @@ mod tests {
     #[test]
     fn a_name_is_listened_on_at_every_address_it_gives() {
         let bound = listening("localhost:0");
-        assert!(!bound.is_empty());
+        assert!(!bound.is_empty(), "localhost binds at least one address");
         let addresses: Vec<_> = "localhost:0"
             .to_socket_addrs()
             .expect("localhost")
             .collect();
-        assert!(bound.len() <= addresses.len());
-        assert!(listening("no.such.name.invalid:0").is_empty());
+        assert!(
+            bound.len() <= addresses.len(),
+            "more listeners than addresses: {bound:?} for {addresses:?}"
+        );
+        let unknown = listening("no.such.name.invalid:0");
+        assert!(unknown.is_empty(), "unresolved, no listener: {unknown:?}");
     }
 
     #[test]
