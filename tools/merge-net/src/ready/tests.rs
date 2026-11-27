@@ -522,6 +522,21 @@ fn lists_of_modules_given_a_line_each_stand_apart() {
 }
 
 #[test]
+fn a_run_for_another_system_is_not() {
+    let mac = "{\"dir\":null,\"printed\":\"\",\"run\":[\"--build\",\"--base\",\"aaaa\",\
+               \"--system\",\"aarch64-darwin\"]}\n";
+    assert!(
+        !built_there(mac, &on_main),
+        "a Mac's comparison spoke for this machine's gate"
+    );
+    let plain = "{\"dir\":null,\"printed\":\"\",\"run\":[\"--build\",\"--base\",\"aaaa\"]}\n";
+    assert!(
+        built_there(plain, &on_main),
+        "a run given no system, built for this machine's own, wasn't taken as built"
+    );
+}
+
+#[test]
 fn a_run_in_another_folder_of_the_repository_is_not() {
     let record = "{\"dir\":\"sub\",\"printed\":\"\",\"run\":[\"--system\",\"x86_64-linux\"]}\n";
     assert!(
