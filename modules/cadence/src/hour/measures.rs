@@ -17,6 +17,7 @@ mod balanced;
 mod broken;
 mod card;
 mod carried;
+pub mod causes;
 mod cells;
 pub mod cited;
 pub mod holds;
@@ -42,7 +43,7 @@ pub mod wifi;
 
 pub use balanced::balanced;
 pub use broken::{Main, broken, failed_in};
-pub use card::{card_if_fresh, card_median, merge_to_on};
+pub use card::{card_if_fresh, commit_to_merge, merge_to_on};
 pub use carried::carried;
 pub use cells::{Quest, cells, mapped, mid_resume, quest};
 pub use locked::read as unlocked;
@@ -141,12 +142,14 @@ pub fn unread(mut measure: Measure, why: &str) -> Measure {
 /// can't move, so they are filed to its owner apart and never lead; nor
 /// can a date already told late, which stays on the card for its day and
 /// is filed to each owner apart, but never leads, since asking its owner
-/// to steer it each hour moves nothing; nor do the queues, whose worst is asked apart once a day.
+/// to steer it each hour moves nothing; nor do the queues, whose worst is asked apart once a day,
+/// nor a cause found again and again, each class of which is filed with its own owner apart.
 #[must_use]
 pub fn drag(measures: &[Measure]) -> Option<&Measure> {
     measures
         .iter()
         .filter(|m| !m.key.starts_with(rounds::FRUITLESS) && !m.key.starts_with(told_late::KEY))
+        .filter(|m| m.key != causes::KEY)
         .filter(|m| m.class != Class::Queues)
         .filter_map(|m| m.past().map(|past| (m, past)))
         .min_by(|(a, pa), (b, pb)| a.class.cmp(&b.class).then(pb.total_cmp(pa)))
@@ -449,7 +452,7 @@ fn strings(list: &Value) -> impl Iterator<Item = &str> {
 
 #[cfg(test)]
 mod tests {
-    use super::card::CARD_FRESH_FOR;
+    use super::card::{CARD_FRESH_FOR, card_median};
     use super::*;
 
     const NOW: i64 = 1_794_700_000;
