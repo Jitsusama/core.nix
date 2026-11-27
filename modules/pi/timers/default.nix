@@ -177,20 +177,25 @@ in
       Service = {
         Type = "oneshot";
         # A sweep waits up to 15 minutes for a machine stalled on memory or
-        # I/O, reading it every 30 s, and never skips the hour, as two
-        # skipped hours hand sweeping to the hosts (sweep-room.sh). The
+        # I/O, reading it every 30 s, and skips the hour if the stall
+        # outlasts the wait, but never two, as two skipped hours hand
+        # sweeping to the hosts (sweep-room.sh). The
         # hosts take over two hours after the last whole sweep ended, by
         # the stamp the harness's pi-sweep.ts dates as each run ends
         # (markSweptOutside), and only while no sweep holds the lock, which
         # the sweep takes as it starts and the wait doesn't. So the wait
         # ends two minutes and a reading short of those two hours, reading
         # the stamp on every pass, as a sleep ages it, and one whose stamp
-        # it would outlast starts at once. The dash starts the sweep anyway
-        # if the wait itself fails.
-        ExecStartPre = lib.concatStringsSep " " [
-          "-${lib.getExe sweepRoom} /proc/pressure /proc/meminfo 900 30"
+        # it would outlast starts at once. A condition, so its skip leaves
+        # the unit unfailed; the wait starts the sweep if it fails itself.
+        ExecCondition = lib.concatStringsSep " " [
+          "${lib.getExe sweepRoom} /proc/pressure /proc/meminfo 900 30"
           "%S/pi/agentic-harness.pi/work/sweep.lock.outside"
         ];
+        # Below agents' own commands for the disk, since a sweep walks
+        # thousands of trees and none of it is waited on; 10 passes BFQ
+        # unscaled, as a weight at or under 100 does.
+        IOWeight = 10;
         ExecStart = "${lib.getExe pkgs.nodejs} --disable-warning=MODULE_TYPELESS_PACKAGE_JSON ${sweepScript}";
         # Where agents' own commands run, beneath everything Joel uses, and
         # a place the polkit rules and the TPM agent's gate both take as an

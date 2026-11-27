@@ -188,7 +188,7 @@ onLinux {
       ];
     in
     holds "pi-sweeps-work-trees-in-a-unit-of-its-own"
-      "pi's tree sweep doesn't run only at the top of each hour by the wall clock, catching up an hour missed while off, runs outside jobs-work.slice or a node off the PATH, isn't one run to its end, runs a script other than the one it checks for, logs node's module-type warning, fails where the harness isn't installed, is stopped by a switch or by its own clock before two hours, starts without waiting for the machine to have room, or fails if that wait does, waits for room past 15 minutes or without reading when the last sweep ended, isn't made to give back memory past 6 GiB, or has a hard limit, its own, its slices' or its account manager's, to kill it at, has a PATH other than the account's git, its hosts' folders and the account's own, names provider modules other than a machine gave it, has an SSH agent other than the agents' proxy its hosts get, leaves a variable that loads code that a pi host's unit clears, or a variable bash reads as it starts, or reaches a Mac."
+      "pi's tree sweep doesn't run only at the top of each hour by the wall clock, catching up an hour missed while off, runs outside jobs-work.slice or a node off the PATH, isn't one run to its end, runs a script other than the one it checks for, logs node's module-type warning, fails where the harness isn't installed, is stopped by a switch or by its own clock before two hours, starts without waiting for the machine to have room, fails when that wait skips the hour, has disk weight other than 10, waits for room past 15 minutes or without reading when the last sweep ended, isn't made to give back memory past 6 GiB, or has a hard limit, its own, its slices' or its account manager's, to kill it at, has a PATH other than the account's git, its hosts' folders and the account's own, names provider modules other than a machine gave it, has an SSH agent other than the agents' proxy its hosts get, leaves a variable that loads code that a pi host's unit clears, or a variable bash reads as it starts, or reaches a Mac."
       (
         lib.elem "timers.target" timer.Install.WantedBy
         &&
@@ -200,12 +200,13 @@ onLinux {
         && service.Service.Slice == "jobs-work.slice"
         && service.Service.TimeoutStartSec == "2h"
         && service.Service.MemoryHigh == "6G"
-        && !(service.Service ? ExecCondition)
-        && lib.hasPrefix "-/nix/store/" (first service.Service.ExecStartPre)
+        && !(service.Service ? ExecStartPre)
+        && lib.hasPrefix "/nix/store/" (first service.Service.ExecCondition)
         && lib.hasSuffix (
           "/bin/pi-sweep-room /proc/pressure /proc/meminfo 900 30"
           + " %S/pi/agentic-harness.pi/work/sweep.lock.outside"
-        ) (first service.Service.ExecStartPre)
+        ) (first service.Service.ExecCondition)
+        && service.Service.IOWeight == 10
         && !(service.Service ? MemoryMax)
         && noHardLimit "jobs"
         && noHardLimit "jobs-work"
@@ -243,7 +244,7 @@ onLinux {
   pi-sweep-waits-for-room =
     let
       service = (account workstation).systemd.user.services.pi-sweep;
-      waits = lib.removePrefix "-" (lib.head (lib.toList service.Service.ExecStartPre));
+      waits = lib.head (lib.toList service.Service.ExecCondition);
       program = lib.head (lib.splitString " " waits);
     in
     pkgs.runCommandLocal "pi-sweep-waits-for-room" { } ''

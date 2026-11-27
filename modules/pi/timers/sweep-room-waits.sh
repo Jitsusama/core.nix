@@ -3,7 +3,9 @@
 # the machine written here, and passes when it lets a sweep start at once
 # on a quiet machine or one it can't read, and on one stalled on memory or
 # I/O or short of memory waits, then lets it start as soon as the stall
-# clears or its wait runs out, each time ending 0 and saying why.
+# clears, each time ending 0 and saying why. A wait that runs out skips
+# the hour, ending 1, unless the next hour's might find the last sweep too
+# long ago to wait on, when it starts as before.
 set -u
 program=$1
 here=$(mktemp -d)
@@ -23,11 +25,11 @@ machine() {
 }
 
 # Judge what the check said, `$1`, and how it ended, `$2`, against `$3`,
-# as `$4`.
+# as `$4`, and against ending `$5`, 0 if none is given.
 judge() {
   echo "$4: $1 (ended $2)"
-  if [ "$2" -ne 0 ]; then
-    echo "on $4 the room check ended $2, not 0" >&2
+  if [ "$2" -ne "${5:-0}" ]; then
+    echo "on $4 the room check ended $2, not ${5:-0}" >&2
     failed=1
   fi
   if [ "$1" != "$3" ]; then
@@ -36,16 +38,16 @@ judge() {
   fi
 }
 
-# Expect the check, waiting at most `$1` seconds, a second apart, to end 0
-# and say `$2`, as `$3`, with a sweep that ended a minute ago. A wait
-# its clock ticks past during its last reading says a second more.
+# Expect the check, waiting at most `$1` seconds, a second apart, to end
+# `$4`, or 0, and say `$2`, as `$3`, with a sweep that ended a minute ago.
+# A wait its clock ticks past during its last reading says a second more.
 expect() {
   local said status
   touch -d '1 minute ago' "$here/stamp"
   said=$("$program" "$here" "$here/meminfo" "$1" 1 "$here/stamp")
   status=$?
   said=${said//"waiting $(($1 + 1)) s"/"waiting $1 s"}
-  judge "$said" "$status" "$2" "$3"
+  judge "$said" "$status" "$2" "$3" "${4:-0}"
 }
 
 quiet="memory stalled 0.00%, I/O stalled 0.00% over five minutes, 62% of memory free"
@@ -59,20 +61,24 @@ expect 0 "pi-sweep starts: memory stalled 3.50%, I/O stalled 1.40% over five min
 
 memory="memory stalled 3.51%, I/O stalled 0.00% over five minutes, 62% of memory free"
 machine 3.51 0.00 40000000 64000000
-expect 0 "pi-sweep starts without room after waiting 0 s: $memory" \
-  "memory stalled past its mark"
+expect 0 "pi-sweep skips this hour without room after waiting 0 s: $memory" \
+  "memory stalled past its mark" 1
 io="memory stalled 0.00%, I/O stalled 1.41% over five minutes, 62% of memory free"
 machine 0.00 1.41 40000000 64000000
-expect 0 "pi-sweep starts without room after waiting 0 s: $io" "I/O stalled past its mark"
+expect 0 "pi-sweep skips this hour without room after waiting 0 s: $io" \
+  "I/O stalled past its mark" 1
 short="memory stalled 0.00%, I/O stalled 0.00% over five minutes, 24% of memory free"
 machine 0.00 0.00 15990000 64000000
-expect 0 "pi-sweep starts without room after waiting 0 s: $short" "memory a point short"
+expect 0 "pi-sweep skips this hour without room after waiting 0 s: $short" \
+  "memory a point short" 1
 none="memory stalled 0.00%, I/O stalled 0.00% over five minutes, 0% of memory free"
 machine 0.00 0.00 0 64000000
-expect 0 "pi-sweep starts without room after waiting 0 s: $none" "no memory available"
+expect 0 "pi-sweep skips this hour without room after waiting 0 s: $none" \
+  "no memory available" 1
 machine 3.51 0.00 40000000 64000000
 expect 2 "pi-sweep waits for room: $memory $marks
-pi-sweep starts without room after waiting 2 s: $memory" "a stall that outlasts the wait"
+pi-sweep skips this hour without room after waiting 2 s: $memory" \
+  "a stall that outlasts the wait" 1
 
 # A stalled machine whose last sweep ended too long ago for a wait, or
 # that has no stamp, starts the sweep at once. A wait of 15 minutes a
@@ -93,7 +99,14 @@ touch -d '6995 seconds ago' "$here/stamp"
 said=$("$program" "$here" "$here/meminfo" 60 30 "$here/stamp")
 judge "$said" "$?" "pi-sweep starts: the last sweep ended 116 minutes ago, too long to wait" \
   "a stamp its last pass would outlast"
-# A stamp an hour old, as each hourly run finds it, still waits.
+# A stamp 56 minutes old whose wait runs out skips the hour, since the
+# next hour's run finds it under 118 minutes old and still waits.
+touch -d '56 minutes ago' "$here/stamp"
+said=$("$program" "$here" "$here/meminfo" 0 1 "$here/stamp")
+judge "$said" "$?" "pi-sweep skips this hour without room after waiting 0 s: $memory" \
+  "a stamp 56 minutes old" 1
+# A stamp an hour old, as each hourly run finds it, still waits, then
+# starts rather than skip, as the next hour's might find it too old.
 touch -d '60 minutes ago' "$here/stamp"
 said=$("$program" "$here" "$here/meminfo" 2 1 "$here/stamp")
 status=$?

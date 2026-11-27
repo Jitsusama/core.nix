@@ -1,17 +1,20 @@
 # shellcheck shell=bash
 # Waits, before the hourly sweep of ended sessions' work trees, for the
-# machine to have room for it, run as the unit's ExecStartPre. The sweep
+# machine to have room for it, run as the unit's ExecCondition. The sweep
 # walks thousands of trees, and on 26 November one run that started while
 # the disk was already contended held the whole machine's I/O stalled a
 # fifth of its time for half an hour. So it waits while the kernel's
 # five-minute averages of memory and I/O stalls are high or under a
 # quarter of memory is free, and starts the sweep once they fall back.
 # Those averages trail a stall that ends by minutes, so a wait often runs
-# most of its length. It never skips the hour: a host's own sweep takes
+# most of its length. A wait that runs out skips the hour, since a sweep
+# started without room on 27 November read 367 MB/s for ten minutes on a
+# disk already saturated. It skips only one: a host's own sweep takes
 # over once the last whole sweep ended two hours ago, on the host's one
 # thread and with no limits, and two skipped hours on 26 November did
 # just that. So past its wait it lets the sweep start however the machine
-# stands; it lets it start at once when the last sweep's stamp is too old
+# stands when the next hour's run might find the stamp too old to wait
+# on; it lets it start at once when the last sweep's stamp is too old
 # for a wait to end before the hosts take over, and on a reading it can't
 # make. It reads the stamp again on every pass, since a machine that
 # sleeps through a wait wakes with the stamp older than the wait counted,
@@ -25,6 +28,10 @@
 # as a start is judged; a quarter free is the jobs door's own room.
 # Its help takes the shape every command of ours does (docs/commands.md),
 # by hand.
+
+# A condition that fails skips the hour, so a wait that fails itself lets
+# the sweep start rather than skip, as it did when this ran before it.
+trap 'exit 0' ERR
 
 say_help() {
   cat << 'EOF'
@@ -44,6 +51,7 @@ EXAMPLES
 
 EXIT
   0   the sweep may start
+  1   the sweep skips this hour
   64  asked wrongly
 EOF
 }
@@ -139,6 +147,10 @@ while :; do
     exit 0
   fi
   if [ "$SECONDS" -ge "$most" ]; then
+    if [ $((ago + 3600)) -lt "$latest" ]; then
+      echo "pi-sweep skips this hour without room after waiting $SECONDS s: $said"
+      exit 1
+    fi
     echo "pi-sweep starts without room after waiting $SECONDS s: $said"
     exit 0
   fi
