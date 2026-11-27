@@ -341,7 +341,10 @@ const PRESS_TELLS_MS = 15000;
 // after Joel shut it. A press whose Go To went (`goneTo.went`), as one to
 // a terminal on the machine a session is parked on, holds its wake's late
 // refusal too, since Joel is typing where it took him, perhaps a password
-// (#6519's F166).
+// (#6519's F166). One refused while its press still decides
+// (`goneTo.deciding`, a node out of reach refusing inside the wake) is
+// held as well, and opened for only once that press didn't go
+// (Sessions' wakeRefusedAtOnce).
 function refusalTold(address, going, now) {
     const said = String(address ?? "");
     if (said !== "" && going?.waking === said) {
@@ -349,7 +352,7 @@ function refusalTold(address, going, now) {
     }
     const gone = going?.goneTo;
     if (said !== "" && gone?.address === said && now - Number(gone.at) < PRESS_TELLS_MS
-        && gone.went !== true && going?.opened !== gone.at) {
+        && gone.went !== true && gone.deciding !== true && going?.opened !== gone.at) {
         return "opens";
     }
     return "held";

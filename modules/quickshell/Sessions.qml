@@ -4241,8 +4241,12 @@ Singleton {
         const pressed = woke ? { address: String(session.address ?? ""), at: Date.now() }
             : undefined;
         const refusedBefore = root.wakesRefused;
+        // While the wake is asked the press is still deciding, so a refusal
+        // told inside it is held (SessionRow.refusalTold) until goTo says
+        // whether this press went (#6519's twelfth round); goTo's own stamp
+        // ends it.
         if (woke) {
-            root.goneTo = pressed;
+            root.goneTo = Object.assign({ deciding: true }, pressed);
             wake(resting);
         }
         // One refused at once, by a node out of reach, was said as it was refused, so
@@ -4259,8 +4263,15 @@ Singleton {
             root.goneTo = Object.assign({ went: true }, pressed);
         const wakes = root.waking !== "" && !refusedAtOnce;
         root.waking = "";
+        // One refused at once that didn't go is this press's to answer, now
+        // that goTo has had its say.
+        if (woke && refusedAtOnce && !went)
+            wakeRefusedAtOnce(session);
         return went || wakes;
     }
+    // A Go To's wake refused while its press decided, which then didn't go,
+    // so Agents opens the launcher on the why it held, once for that press.
+    signal wakeRefusedAtOnce(var session)
     // How many wakes the node has refused, counted as each is told
     // (steered), so wakeToGo knows one refused before its wake() returned.
     property int wakesRefused: 0

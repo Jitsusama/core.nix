@@ -303,6 +303,7 @@ ShellRoot {
         expect("one parked elsewhere and out of reach, woken, still says it didn't go",
             outWoke === false && root.unjoined === "OUTRCH",
             JSON.stringify([outWoke, root.unjoined]));
+        decides(outParked, out);
         hosts();
         Sessions.steer("farawy", { act: "pause" }, (put, answer, sent) => {
             root.farawyTold = [put, answer?.error?.message ?? null, sent];
@@ -311,6 +312,45 @@ ShellRoot {
     // What the refused steer's caller was told: not put, the node's
     // refusal, and sent, so a caller tells it from one never sent.
     property var farawyTold: null
+
+    // A node out of reach refuses a wake at once, inside wake(), so that
+    // refusal comes while its press decides and is held (SessionRow's
+    // refusalTold); a press that then didn't go is opened for once goTo has
+    // had its say, and one that went is marked went, by its own stamp, for
+    // that press alone (#6519's twelfth round).
+    function decides(outParked, out) {
+        root.atOnce = [];
+        root.refuseAtOnce = "OUTRCH";
+        const outRefused = Sessions.wakeToGo(outParked, out);
+        root.refuseAtOnce = "";
+        expect("a wake refused at once comes while its press decides, opened for once it didn't go",
+            outRefused === false
+            && JSON.stringify(root.atOnce) === '["deciding","opened for OUTRCH"]'
+            && Sessions.goneTo.deciding === undefined,
+            JSON.stringify([outRefused, root.atOnce, Sessions.goneTo]));
+        const unseen = find("NOWIN6");
+        const napping = Object.assign({}, unseen, { presence: Object.assign({}, unseen.presence,
+            { state: "parked" }) });
+        root.atOnce = [];
+        root.refuseAtOnce = "NOWIN6";
+        const before = Date.now();
+        const nappingWent = Sessions.wakeToGo(napping, unseen);
+        root.refuseAtOnce = "";
+        expect("one that went holds it, never opened for, its press marked went as stamped",
+            nappingWent === true && JSON.stringify(root.atOnce) === '["deciding"]'
+            && Sessions.goneTo.went === true && Sessions.goneTo.deciding === undefined
+            && Sessions.goneTo.address === "NOWIN6" && Sessions.goneTo.at >= before,
+            JSON.stringify([nappingWent, root.atOnce, Sessions.goneTo]));
+        Sessions.goTo(unseen);
+        expect("and the next press to it isn't marked went",
+            Sessions.goneTo.went === undefined && Sessions.goneTo.address === "NOWIN6",
+            JSON.stringify(Sessions.goneTo));
+    }
+    // The session whose wake the node refuses at once, while its press decides.
+    property string refuseAtOnce: ""
+    // What became of that refusal: whether it came while its press decided,
+    // and whom a press that didn't go was opened for.
+    property var atOnce: []
 
     // One pi's host runs, with no window: Go To views it by its node's
     // words, in a window named for it, once; niri's window by that name is
@@ -2257,6 +2297,20 @@ ShellRoot {
             root.unjoined = session.address;
         }
 
+        // A node out of reach refuses a wake as it's asked, before wake()
+        // returns, as PiSource's steer does with no node.
+        function onGoneToChanged() {
+            const gone = Sessions.goneTo;
+            if (root.refuseAtOnce !== "" && gone?.deciding === true
+                && gone.address === root.refuseAtOnce)
+                Sessions.steered(root.refuseAtOnce, { error: { message: "out of reach" } },
+                    "wake");
+        }
+
+        function onWakeRefusedAtOnce(session) {
+            root.atOnce = root.atOnce.concat([`opened for ${session.address}`]);
+        }
+
         function onUnhosted(session, why) {
             root.unhosted = session.address;
             root.unhostedWhy = why ?? "";
@@ -2280,6 +2334,12 @@ ShellRoot {
                 if (session.address === "STRAY") {
                     root.strayed = why;
                     root.strayedAct = act;
+                    return;
+                }
+                // One refused at once, inside its wake: whether its press still decided.
+                if (session.address === root.refuseAtOnce) {
+                    root.atOnce = root.atOnce.concat([Sessions.goneTo?.deciding === true
+                        ? "deciding" : "decided"]);
                     return;
                 }
                 // One with no session file to reopen is said so too.

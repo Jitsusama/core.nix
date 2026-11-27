@@ -952,6 +952,12 @@ Provider {
             }
         }
 
+        // A Go To's wake refused while its press decided, held then, is
+        // answered once that press didn't go (Sessions' wakeRefusedAtOnce).
+        function onWakeRefusedAtOnce(session) {
+            provider.openedForPress(provider.refusalTold(session));
+        }
+
         // A parked session Wake would reopen with no fence it can say,
         // which might bring it back looser than it ran, is left asleep and
         // said so, rather than as the node's refusal, which blames its
