@@ -43,7 +43,7 @@ pub mod wifi;
 
 pub use balanced::balanced;
 pub use broken::{Main, broken, failed_in};
-pub use card::{card_if_fresh, card_median, merge_to_on};
+pub use card::{card_if_fresh, commit_to_merge, merge_to_on};
 pub use carried::carried;
 pub use cells::{Quest, cells, mapped, mid_resume, quest};
 pub use locked::read as unlocked;
@@ -434,7 +434,7 @@ fn strings(list: &Value) -> impl Iterator<Item = &str> {
 
 #[cfg(test)]
 mod tests {
-    use super::card::CARD_FRESH_FOR;
+    use super::card::{CARD_FRESH_FOR, card_median};
     use super::*;
 
     const NOW: i64 = 1_794_700_000;
