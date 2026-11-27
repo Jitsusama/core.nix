@@ -32,6 +32,25 @@ function carriedBy(landed, sat) {
     return landed === null ? sat : landed.id ?? null;
 }
 
+// Where the cat goes as niri carries its window away and ends the puppy's
+// visit (MarginCatScreen.qml's follow), and how: to its seat `home` on that
+// window, or, with none, the window scrolled wholly off the screen, from
+// its `place` as far as niri carried it, `by`; none from nowhere. It
+// "rides" there on niri's spring while niri scrolls the strip
+// (`at.scrolling`), or to wholly off the screen, where only a scroll
+// leaves it; and "sits" there at once as a floating window dragged or a
+// column moved beside it carries it, which niri doesn't animate, as
+// backOn has it. Its place cut mid-hop is a leap's frame above its seat, so
+// it goes to that seat rather than keeping the leap.
+function visitCut(home, place, by, at) {
+    const to = home ?? (place === null ? null : { x: place.x + by.x, y: place.y + by.y });
+    if (to === null) {
+        return null;
+    }
+    const off = to.x + at.wide <= 0 || to.x >= at.across;
+    return { to, how: at.scrolling || off ? "rides" : "sits" };
+}
+
 // How the cat goes back to its seat `there` on the column it sat on, as
 // niri's layout has it, from its `place` (MarginCatScreen.qml's follow):
 // "walks" there as its column was grown or shrunk across (`at.reshaped`),

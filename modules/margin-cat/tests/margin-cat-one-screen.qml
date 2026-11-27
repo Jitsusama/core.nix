@@ -36,6 +36,7 @@ QtObject {
         scrolled(expect);
         movedOff(expect);
         backOnIt(expect);
+        visitCutIt(expect);
         standsIt(expect);
         floorsIt(expect);
         for (const failure of failures)
@@ -545,6 +546,31 @@ QtObject {
         ];
         for (const [name, place, told, want] of cases)
             expect(`back on its column, ${name}`, Carried.backOn(place, seat, told), want);
+    }
+
+    // The puppy's visit ended as niri carries the cat's window away
+    // (MarginCatCarried.js's visitCut): to its seat on that window, from a
+    // hop's air too, riding only niri's scroll or to wholly off the screen,
+    // and with no seat, as far as niri carried it.
+    function visitCutIt(expect) {
+        const at = { wide: 8, across: 1248, scrolling: false };
+        const scrolls = Object.assign({}, at, { scrolling: true });
+        const home = { x: 900, y: 7 };
+        const hopping = { x: 312, y: 2 };
+        const by = { x: 588, y: 0 };
+        const cases = [
+            ["its window scrolled away, it rides to its seat", home, hopping, scrolls,
+                { to: home, how: "rides" }],
+            ["cut mid-hop as a drag carries it, it sits on its seat at once", home, hopping, at,
+                { to: home, how: "sits" }],
+            ["its window scrolled wholly off the right, it rides as far as niri carried it",
+                null, { x: 1000, y: 7 }, at, { to: { x: 1588, y: 7 }, how: "rides" }],
+            ["no seat, still on the screen as a drag carries it, it sits there", null,
+                hopping, at, { to: { x: 900, y: 2 }, how: "sits" }],
+            ["nowhere before, with no seat, it goes nowhere", null, null, scrolls, null]
+        ];
+        for (const [name, seated, place, told, want] of cases)
+            expect(`a visit cut, ${name}`, Carried.visitCut(seated, place, by, told), want);
     }
 
     // Caught mid-walk as the window it walks to moves, it rides that

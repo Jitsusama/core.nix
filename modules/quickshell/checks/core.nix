@@ -867,8 +867,9 @@ in
   # flash, and an opening the collector stalled says where the heap stood
   # as it was asked, as modules/quickshell/tests/pacing.qml holds in Qt's own
   # engine. The copy lines below are the list of launcher files its cases
-  # read, kept nowhere else: one left out fails the run at its import, while
-  # a list in a comment would drift unseen.
+  # read, kept nowhere else: one left out fails the run, in the folder's lint
+  # or in qml, while a list in a comment would drift unseen. Only that way is
+  # held: a line for a file nothing reads any more still passes.
   the-launcher-paces-its-refreshes =
     let
       qt = pkgs.qt6.qtdeclarative;
