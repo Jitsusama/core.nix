@@ -552,7 +552,7 @@ QtObject {
     // The puppy's visit ended as niri carries the cat's window away
     // (MarginCatCarried.js's visitCut): to its seat on that window, from a
     // hop's air too, riding only niri's scroll or to wholly off the screen,
-    // and with no seat, as far as niri carried it.
+    // past either edge, and with no seat, as far as niri carried it.
     function visitCutIt(expect) {
         const at = { wide: 8, across: 1248, scrolling: false };
         const scrolls = Object.assign({}, at, { scrolling: true });
@@ -568,7 +568,17 @@ QtObject {
                 null, { x: 1000, y: 7 }, at, { to: { x: 1588, y: 7 }, how: "rides" }],
             ["no seat, still on the screen as a drag carries it, it sits there", null,
                 hopping, at, { to: { x: 900, y: 2 }, how: "sits" }],
-            ["nowhere before, with no seat, it goes nowhere", null, null, scrolls, null]
+            ["nowhere before, with no seat, it goes nowhere", null, null, scrolls, null],
+            ["nowhere before, as niri scrolls, it sits on its seat at once", home, null, scrolls,
+                { to: home, how: "sits" }],
+            ["no seat, carried wholly off the left, it rides as far", null, { x: -596, y: 7 },
+                at, { to: { x: -8, y: 7 }, how: "rides" }],
+            ["no seat, carried to a pixel on from the left, it sits there", null,
+                { x: -595, y: 7 }, at, { to: { x: -7, y: 7 }, how: "sits" }],
+            ["no seat, carried just wholly off the right, it rides as far", null,
+                { x: 660, y: 7 }, at, { to: { x: 1248, y: 7 }, how: "rides" }],
+            ["no seat, carried to a pixel on from the right, it sits there", null,
+                { x: 659, y: 7 }, at, { to: { x: 1247, y: 7 }, how: "sits" }]
         ];
         for (const [name, seated, place, told, want] of cases)
             expect(`a visit cut, ${name}`, Carried.visitCut(seated, place, by, told), want);

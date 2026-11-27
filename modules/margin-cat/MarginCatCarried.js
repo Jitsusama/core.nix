@@ -61,14 +61,16 @@ function scrolledOff(before, after) {
 // leaves it; and "sits" there at once as a floating window dragged or a
 // column moved beside it carries it, which niri doesn't animate, as
 // backOn has it. Its place cut mid-hop is a leap's frame above its seat, so
-// it goes to that seat rather than keeping the leap.
+// it goes to that seat rather than keeping the leap. Nowhere before, it
+// sits on its seat at once, as backOn has it, since a ride sets off from
+// where it's drawn (rides).
 function visitCut(home, place, by, at) {
     const to = home ?? (place === null ? null : { x: place.x + by.x, y: place.y + by.y });
     if (to === null) {
         return null;
     }
     const off = to.x + at.wide <= 0 || to.x >= at.across;
-    return { to, how: at.scrolling || off ? "rides" : "sits" };
+    return { to, how: place !== null && (at.scrolling || off) ? "rides" : "sits" };
 }
 
 // How the cat goes back to its seat `there` on the column it sat on, as

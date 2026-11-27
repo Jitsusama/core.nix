@@ -65,7 +65,9 @@ RESTS = 2.0
 # shell to hear them on a loaded builder.
 SPARE = 0.5
 # How far, in ms, the shell's date of a scroll may fall before the keys that set it off were
-# sent, both read from the one wall clock: niri's whole milliseconds of how long ago it began.
+# sent, both read from the one wall clock. niri says how long ago it began to a fraction of a
+# millisecond, but the shell's clock, which it takes that from, reads in whole ones, up to one
+# short; the other is room for the clocks' reads on either side.
 CLOCKED = 2
 # The shortest of a walk's beats, its crouch, in ms: a frame of the nested niri's longer than
 # it may hide it.
