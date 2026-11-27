@@ -335,6 +335,32 @@ import ./host-checks.nix args
         touch $out
       '';
 
+  # A hosted pi evaluates a keyed package's modules once for all its
+  # extensions, in a cache of the package's own, while an unkeyed package's
+  # extensions keep a copy each; a reload or a moved link lets go of it,
+  # and a turn held too long lets loads go on without it. Only finished
+  # modules are shared, so a failed load or an import made as an extension
+  # runs leaves nothing part-way for another, which the second test drives.
+  # Both import the loader they drive from the helper beside them.
+  pi-hosted-shares-keyed-modules =
+    let
+      tests = lib.fileset.toSource {
+        root = ./tests;
+        fileset = lib.fileset.unions [
+          ./tests/hosted-keyed-packages.mjs
+          ./tests/pi-hosted-keyed-late-imports.mjs
+          ./tests/pi-hosted-shares-keyed-modules.mjs
+        ];
+      };
+    in
+    pkgs.runCommandLocal "pi-hosted-shares-keyed-modules" { } ''
+      HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+        ${tests}/pi-hosted-shares-keyed-modules.mjs ${hostedPi}/lib/node_modules/pi-monorepo
+      HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+        ${tests}/pi-hosted-keyed-late-imports.mjs ${hostedPi}/lib/node_modules/pi-monorepo
+      touch $out
+    '';
+
   # A hosted pi's conversations each read their keys and headers from their
   # own auth context and never from the process, while a pi given none
   # reads the process as ordinary pi does.

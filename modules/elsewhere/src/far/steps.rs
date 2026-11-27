@@ -246,6 +246,11 @@ fi"#
 /// and process space the run was in and its number there.
 pub(super) const RUN: &str = ".run";
 
+/// The far line's first step, finding the cache its scratches lie in as
+/// `scratches` does here: a relative one, as the XDG spec says, is none.
+pub(super) const CACHE: &str =
+    "cache=${XDG_CACHE_HOME:-}; case $cache in /*) ;; *) cache=$HOME/.cache ;; esac";
+
 /// The far line's step defining `cleared`, which takes each path it is
 /// given away whole, its folders made the far line's own to enter and
 /// write first, since a job may close one so that nothing under it can be
