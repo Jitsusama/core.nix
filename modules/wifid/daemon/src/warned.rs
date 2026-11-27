@@ -138,23 +138,23 @@ mod tests {
     fn a_warning_is_kept_for_the_next_wifid_as_the_time_it_has_left() {
         let folder = tempfile::tempdir().expect("a folder");
         let file = folder.path().join("warned");
-        let (then, now) = (Instant::now(), Instant::now() + Duration::from_secs(3));
+        let (warned_at, read_at) = (Instant::now(), Instant::now() + Duration::from_secs(3));
         let start = wall(1_795_700_000);
         let ten = Duration::from_secs(600);
         Warned::kept_in(&file)
-            .warned("wlan2", DESK, then + ten, (then, start))
+            .warned("wlan2", DESK, warned_at + ten, (warned_at, start))
             .expect("kept");
 
         // The next wifid starts 4 s on by the wall clock, its own clock
         // begun anew.
-        let lasting = Warned::kept_in(&file).lasting(now, start + Duration::from_secs(4));
+        let lasting = Warned::kept_in(&file).lasting(read_at, start + Duration::from_secs(4));
 
         assert_eq!(
             lasting,
             vec![(
                 "wlan2".to_owned(),
                 DESK.to_owned(),
-                now + ten - Duration::from_secs(4)
+                read_at + ten - Duration::from_secs(4)
             )],
             "a warning wasn't read back as the time it had left"
         );

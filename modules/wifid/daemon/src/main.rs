@@ -271,15 +271,7 @@ async fn serve(
     // to the point it's on, so each warning still lasting is taken in
     // first: one forgotten held the card to a point about to drop it.
     let warned = RefCell::new(Warned::kept_in(&Path::new(KEPT).join("warned")));
-    for (card, point, until) in warned.borrow().lasting(Instant::now(), SystemTime::now()) {
-        arrivals.borrow_mut().warned(&card, &point, until);
-        change(&state, |state| state.kept_off(&card, &point, until));
-        let minutes = until
-            .saturating_duration_since(Instant::now())
-            .as_secs()
-            .div_ceil(60);
-        println!("<6>{card} keeps off {point} for {minutes} more minutes, as it warned before");
-    }
+    take_in_warnings(&warned.borrow(), &arrivals, &state);
     let wifid = Wifid {
         bus: &bus,
         supplicant: &supplicant,
@@ -1671,6 +1663,18 @@ async fn station(
             *kernel = None;
             (None, None)
         }
+    }
+}
+
+/// Takes in each warning a wifid before kept that still lasts, so the
+/// moves and the chooser keep off its point as they did then.
+fn take_in_warnings(warned: &Warned, arrivals: &RefCell<Arrivals>, state: &watch::Sender<State>) {
+    for (card, point, until) in warned.lasting(Instant::now(), SystemTime::now()) {
+        arrivals.borrow_mut().warned(&card, &point, until);
+        change(state, |state| state.kept_off(&card, &point, until));
+        let left = until.saturating_duration_since(Instant::now());
+        let minutes = left.as_secs().div_ceil(60);
+        println!("<6>{card} keeps off {point} for {minutes} more minutes, as it warned before");
     }
 }
 
