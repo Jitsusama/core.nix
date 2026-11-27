@@ -73,6 +73,42 @@ impl Watch {
         })
     }
 
+    /// Starts the watch on a camera of the test's own, as `owned` does, but
+    /// with its link in a folder of its own, which `shut` closes so the
+    /// watch's reads of who holds it fail while its files can still be
+    /// written; and with a file where `.devices/` would be made, so the run
+    /// isn't ready until the test removes it.
+    pub fn apart(name: &str) -> Self {
+        let camera = Self::root(name).join("apart/camera");
+        Self::started(name, camera.to_str().unwrap(), |folder| {
+            let apart = folder.parent().unwrap().join("apart");
+            fs::create_dir(&apart).unwrap();
+            symlink("/dev/random", apart.join("camera")).unwrap();
+            fs::write(folder.join(".devices"), "").unwrap();
+        })
+    }
+
+    /// The camera an `apart` watch watches.
+    pub fn camera(&self) -> PathBuf {
+        self.root.join("apart/camera")
+    }
+
+    /// Closes an `apart` camera's folder, so nothing can look the camera up
+    /// by its link, checking it took: root looks in any folder, which would
+    /// pass the tests of a read that fails.
+    pub fn shut(&self) {
+        fs::set_permissions(self.root.join("apart"), Permissions::from_mode(0o000)).unwrap();
+        assert!(
+            fs::metadata(self.camera()).is_err(),
+            "a shut folder still let its camera be looked up, as it does for root"
+        );
+    }
+
+    /// Opens an `apart` camera's folder again.
+    pub fn open(&self) {
+        fs::set_permissions(self.root.join("apart"), Permissions::from_mode(0o755)).unwrap();
+    }
+
     fn root(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!("holders-loopback-{name}-{}", std::process::id()))
     }
@@ -191,6 +227,7 @@ impl Drop for Watch {
         let _ = self.program.wait();
         let _ = fs::set_permissions(&self.folder, Permissions::from_mode(0o755));
         let _ = fs::set_permissions(self.folder.join(".devices"), Permissions::from_mode(0o755));
+        let _ = fs::set_permissions(self.root.join("apart"), Permissions::from_mode(0o755));
         let _ = fs::remove_dir_all(&self.root);
     }
 }
