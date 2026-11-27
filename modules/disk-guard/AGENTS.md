@@ -190,7 +190,10 @@ or launchd, and [`home.nix`][2] the account's.
   ending leaves garbage only the next pass can take, and one that couldn't
   ask the system daemon never counts, having lacked only its word. Its status
   says it has cleared all it may for that hour. A worse band ends any
-  rest, and a restart forgets it. One
+  rest. A restart forgets every rest but that hour, which the guard saves
+  by where the disk is mounted, so a guard started within it rests the
+  disk for what's left: one restarted by a switch on 27 November walked
+  every source again, reading 40 GB to find the same nothing. One
   that kept things only for want of the system guard's word ends its rest
   as soon as the system guard answers again, once in a row. A survey counts the
   blocks its candidates share once, for the first it measures, as trees
