@@ -63,7 +63,9 @@ onLinux {
   # holds, each with its last error and owner; and of the axes, each reading
   # is parsed from the card, the measure, the mesh, the notices and niri, a
   # figure past its bar marks its axis with its owner, a reading nothing
-  # measures says so, and an axis is found by the start of its name.
+  # measures says so, and an axis is found by the start of its name; and of
+  # its code, a file it keeps is named in one of its files outside its
+  # tests, or waits on a list with the files naming it, which only shrinks.
   cadence-asks-when-a-target-slips = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in cadence, its tests included.
   cadence-passes-clippy = passesClippy "cadence-passes-clippy" (pkgs.callPackage ./package.nix { });
