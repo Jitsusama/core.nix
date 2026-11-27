@@ -135,8 +135,27 @@ const FILLERS: [&str; 2] = ["shit", "crap"];
 /// that joins it, so "and some shit" and "or other crap" are fillers too.
 const FILLER_JOINS: [&str; 2] = ["and", "or"];
 
-/// The words that may stand between a filler's join and its swear.
-const FILLER_BETWEEN: [&str; 2] = ["some", "other"];
+/// The words that may stand between a filler's join and its swear, two
+/// at most, as in "and all that crap".
+const FILLER_BETWEEN: [&str; 4] = ["some", "other", "all", "that"];
+
+/// The words that may close a filler's clause after it, as in "and shit
+/// like that"; each ends the clause, so "and shit like this keeps
+/// breaking" still swears.
+const FILLER_TAILS: [&[&str]; 5] = [
+    &["like", "that"],
+    &["like", "this"],
+    &["too"],
+    &["as", "well"],
+    &["etc"],
+];
+
+/// The marks that close a clause without ending its sentence: a list runs
+/// across them, bulleted or bracketed, but a filler before one ends there.
+const CLAUSE_ENDS: [char; 5] = [',', '\n', ':', '(', ')'];
+
+/// Words shortened with a stop that ends no sentence.
+const SHORTENED: [&str; 4] = ["etc", "e.g", "i.e", "vs"];
 
 /// The words a filler may run on into, as "the costs and crap to the
 /// page" does; any other word after it makes the swear a subject, as in
@@ -150,10 +169,13 @@ const INTERJECTIONS: [&str; 19] = [
     "wow", "dude", "right", "wait", "huh", "oops",
 ];
 
-/// A sentence of lowered text: whether it exclaims, its words, and for
-/// each word whether a comma or the sentence's end follows it.
+/// A sentence of lowered text: whether it exclaims or asks, its words,
+/// and for each word whether its clause or the sentence ends after it.
+/// Every reading of a message goes through one split into these, so no
+/// two of them disagree on where a sentence ends or what it asks.
 struct Sentence<'a> {
     exclaims: bool,
+    asks: bool,
     words: Vec<&'a str>,
     closes: Vec<bool>,
 }
@@ -165,31 +187,63 @@ struct Sentence<'a> {
 /// wiped my branch" swears.
 fn filler(sentence: &Sentence, at: usize) -> bool {
     let words = &sentence.words;
-    let before = at.checked_sub(1).map(|i| words[i]);
-    let join = if before.is_some_and(|w| FILLER_BETWEEN.contains(&w)) {
-        at.checked_sub(2)
-    } else {
-        at.checked_sub(1)
-    };
+    let between = words[..at]
+        .iter()
+        .rev()
+        .take(2)
+        .take_while(|w| FILLER_BETWEEN.contains(w))
+        .count();
+    let join = at.checked_sub(between + 1);
     let listed = join.is_some_and(|j| {
         FILLER_JOINS.contains(&words[j]) && words[..j].iter().any(|w| !INTERJECTIONS.contains(w))
     });
-    let ends = sentence.closes[at] || words.get(at + 1).is_some_and(|n| FILLER_ONTO.contains(n));
+    let tail = FILLER_TAILS.iter().any(|tail| {
+        words.get(at + 1..=at + tail.len()) == Some(tail) && sentence.closes[at + tail.len()]
+    });
+    let ends =
+        sentence.closes[at] || tail || words.get(at + 1).is_some_and(|n| FILLER_ONTO.contains(n));
     FILLERS.contains(&words[at]) && listed && ends
 }
 
 /// The pieces of lowered text, each ending after a run of the marks that
-/// end a sentence, so "?!" ends one sentence, not two.
+/// end a sentence, spaces between them taken in, so "?!" and "? !" end
+/// one sentence, not two. A stop that runs on into a letter ("e.g",
+/// "core.nix"), one of several ("..."), or one after a word shortened
+/// ("etc.") ends none, as a list runs across them.
 fn pieces(low: &str) -> Vec<&str> {
     let mut out = Vec::new();
     let mut start = 0;
-    let mut chars = low.char_indices().peekable();
-    while let Some((at, c)) = chars.next() {
-        if ENDS.contains(&c) && !chars.peek().is_some_and(|(_, next)| ENDS.contains(next)) {
-            let end = at + c.len_utf8();
-            out.push(&low[start..end]);
-            start = end;
+    let mut run = None;
+    for (at, c) in low.char_indices() {
+        if !ENDS.contains(&c) {
+            if !(c == ' ' && run.is_some()) {
+                run = None;
+            }
+            continue;
         }
+        let from = *run.get_or_insert(at);
+        let end = at + c.len_utf8();
+        let rest = &low[end..];
+        if rest
+            .trim_start_matches(' ')
+            .starts_with(|n| ENDS.contains(&n))
+        {
+            continue;
+        }
+        let marks = low[from..end].replace(' ', "");
+        let stops_only = marks.chars().all(|m| m == '.');
+        let shortened = low[..from]
+            .rsplit(|w: char| w.is_whitespace())
+            .next()
+            .is_some_and(|w| SHORTENED.contains(&w));
+        let runs_on = rest.starts_with(char::is_alphanumeric);
+        if stops_only && (marks.len() > 1 || shortened || runs_on) {
+            run = None;
+            continue;
+        }
+        out.push(&low[start..end]);
+        start = end;
+        run = None;
     }
     if start < low.len() {
         out.push(&low[start..]);
@@ -197,20 +251,27 @@ fn pieces(low: &str) -> Vec<&str> {
     out
 }
 
-/// The sentences of lowered text, split after stops; neither a comma nor
-/// a line end ends one, since a list runs across them, bulleted or not.
+/// The sentences of lowered text, split after stops; no mark of
+/// `CLAUSE_ENDS` ends one, since a list runs across them, but each closes
+/// the clause before it.
 fn sentences(low: &str) -> Vec<Sentence<'_>> {
     pieces(low)
         .into_iter()
         .map(|piece| {
             let (mut words, mut closes) = (Vec::new(), Vec::new());
-            for clause in piece.split(',') {
+            for clause in piece.split(CLAUSE_ENDS) {
                 let each = words_of(clause);
                 closes.extend((0..each.len()).map(|n| n + 1 == each.len()));
                 words.extend(each);
             }
+            let mut marks = piece
+                .trim_end()
+                .chars()
+                .rev()
+                .take_while(|c| ENDS.contains(c) || *c == ' ');
             Sentence {
                 exclaims: piece.contains(EXCLAIMS),
+                asks: marks.any(|c| ASKS.contains(&c)),
                 words,
                 closes,
             }
@@ -218,58 +279,48 @@ fn sentences(low: &str) -> Vec<Sentence<'_>> {
         .collect()
 }
 
-/// Whether lowered text swears: a swear not before a word of praise, the
-/// next sentence's first word for one ending its own, nor one closing a
-/// list in a sentence that doesn't exclaim, since "it broke and shit!"
-/// is said in anger.
-fn swore(low: &str) -> bool {
-    let said = sentences(low);
-    said.iter().enumerate().any(|(n, sentence)| {
-        let words = &sentence.words;
-        words.iter().enumerate().any(|(at, w)| {
-            let next = words
-                .get(at + 1)
-                .or_else(|| said[n + 1..].iter().find_map(|later| later.words.first()));
-            (SWEARS.iter().any(|s| w.starts_with(s)) || *w == "ass")
-                && !next.is_some_and(|next| PRAISE.contains(next))
-                && (sentence.exclaims || !filler(sentence, at))
+/// For each of a message's sentences, whether it swears: a swear not
+/// before a word of praise, the next sentence's first word for one ending
+/// its own, nor one closing a list in a sentence that doesn't exclaim,
+/// since "it broke and shit!" is said in anger.
+fn swearing(said: &[Sentence]) -> Vec<bool> {
+    said.iter()
+        .enumerate()
+        .map(|(n, sentence)| {
+            let words = &sentence.words;
+            words.iter().enumerate().any(|(at, w)| {
+                let next = words
+                    .get(at + 1)
+                    .or_else(|| said[n + 1..].iter().find_map(|later| later.words.first()));
+                (SWEARS.iter().any(|s| w.starts_with(s)) || *w == "ass")
+                    && !next.is_some_and(|next| PRAISE.contains(next))
+                    && (sentence.exclaims || !filler(sentence, at))
+            })
         })
-    })
+        .collect()
 }
 
 /// Whether a message swears at what it's about: a swear, in a message
 /// that doesn't put the agent at ease by a sentence not asked, nor asks
-/// with a swear, nor gives up on the agent.
+/// with a swear, nor gives up on the agent. Each is read from the one
+/// split of its sentences, so an asked swear is judged with the praise
+/// after it as every swear is.
 fn swears(low: &str) -> bool {
-    let each = words_of(low);
-    if !swore(low) {
+    let told = sentences(low);
+    let swearing = swearing(&told);
+    if !swearing.contains(&true) {
         return false;
     }
-    // Split as swore() splits, so "shit?!" is one sentence that asks and
-    // exclaims, not an ask spared as a filler and a bare "!".
-    let sentences: Vec<(bool, &str, Vec<&str>)> = pieces(low)
-        .into_iter()
-        .map(|sentence| {
-            let mut marks = sentence
-                .trim_end()
-                .chars()
-                .rev()
-                .take_while(|c| ENDS.contains(c));
-            (
-                marks.any(|c| ASKS.contains(&c)),
-                sentence,
-                words_of(sentence),
-            )
-        })
-        .collect();
-    let eased = sentences
+    let eased = told
         .iter()
-        .any(|(asked, _, words)| !asked && REASSURING.iter().any(|ease| said(words, ease)));
-    let asked_swearing = sentences
+        .any(|s| !s.asks && REASSURING.iter().any(|ease| said(&s.words, ease)));
+    let asked_swearing = told
         .iter()
-        .any(|(asked, sentence, _)| *asked && swore(sentence));
-    let gave_up = GIVING_UP.iter().any(|up| said(&each, up))
-        || sentences.iter().any(|(_, _, words)| whatever_then(words));
+        .zip(&swearing)
+        .any(|(s, swears)| s.asks && *swears);
+    let each = words_of(low);
+    let gave_up =
+        GIVING_UP.iter().any(|up| said(&each, up)) || told.iter().any(|s| whatever_then(&s.words));
     !eased || asked_swearing || gave_up
 }
 
@@ -490,6 +541,11 @@ mod tests {
         assert_eq!(
             kinds("the page and fucking bar", AT, &[]),
             vec!["swore"],
+            "a swear not of the fillers' words was taken for one"
+        );
+        assert_eq!(
+            kinds("the page and shit bar", AT, &[]),
+            vec!["swore"],
             "only a list's closing noun is a filler"
         );
         assert_eq!(kinds("waiting room design looks good", AT, &[]), none);
@@ -524,6 +580,10 @@ mod tests {
             "a wait is a word"
         );
         assert_eq!(kinds("make it snowy", AT, &[]), none);
+    }
+
+    #[test]
+    fn a_wait_or_a_fault_said_still_hurts() {
         assert_eq!(kinds("it opens slowly", AT, &[]), vec!["waited"]);
         for waited in [
             "the tab is hanging",
@@ -557,14 +617,37 @@ mod tests {
             "consider:\n- brackets\n- deductions\n- and shit",
             "great! add the costs and shit",
             "great\u{ff01} add the costs and shit",
+            // A line end, a colon or a bracket closes the filler's clause.
+            "consider:\n- tax brackets and shit\n- take home pay",
+            "consider the tax brackets and shit\nhelp me understand the take home",
+            "the costs (brackets and shit) too",
+            // A tail closing the clause, or two words between.
+            "add the costs and shit like that",
+            "brackets and shit too",
+            "the brackets and crap as well",
+            "the deductions and all that crap",
+            // A stop that ends no sentence.
+            "the brackets, rates... and shit",
+            "consider tax brackets, deductions, etc. and shit",
+            "update core.nix and shit",
             // Accepted: a hurt said only as a list's filler, with no fault
-            // word and no "!", is unheard, as a false pain costs a turn.
+            // word and no "!", is unheard, as a false pain costs a turn;
+            // so is one said after the filler's comma, in words of no fault.
             "it wiped my branch and shit",
+            "i merged it and shit, it wiped my branch",
         ] {
             assert_eq!(
                 kinds(filler, AT, &[]),
                 none,
-                "a list's filler, or a swear before praise, swore: {filler}"
+                "a list's filler swore: {filler}"
+            );
+        }
+        for tail in FILLER_TAILS {
+            let filler = format!("add the costs and shit {}", tail.join(" "));
+            assert_eq!(
+                kinds(&filler, AT, &[]),
+                none,
+                "a filler's tail swore: {filler}"
             );
         }
         for hurt in [
@@ -578,7 +661,9 @@ mod tests {
             "the build failed and shit hit the fan",
             "it wiped my branch and shit?!",
             "it wiped my branch and shit\u{ff01}",
+            "it wiped my branch and shit? !",
             "it wiped my notes and wtf",
+            "the costs and shit like this hit the page",
         ] {
             assert!(
                 kinds(hurt, AT, &[]).contains(&"swore"),
@@ -617,6 +702,8 @@ mod tests {
             "shit, that's fine\u{ff1f}",
             "that's fine. why the fuck is it slow?",
             "it's fine. how'd it wipe my branch and shit?!",
+            "it's fine. how'd it wipe my branch and shit!?",
+            "it's fine. how'd it wipe my branch and shit\u{ff1f}\u{ff01}",
             "it's fine, i'll do it myself, fuck this",
             "shit, it's fine. whatever.",
             "shit, it's fine, whatever",
@@ -649,6 +736,8 @@ mod tests {
             "shit, that's fine, whatever works for you",
             "shit, no worries, i'll take whatever",
             "shit, it's fine, you choose whatever",
+            // An asked swear before praise is read with it, as any is.
+            "damn, it's fine. what the fuck? amazing work",
         ] {
             assert_eq!(
                 kinds(eased, AT, &[]),
