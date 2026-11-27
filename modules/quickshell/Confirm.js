@@ -101,8 +101,9 @@ function letBy(ask, key, now, guard) {
 }
 
 // Whether an ask takes a key, by what `answer` said of it, or "" where no
-// ask stands: a yes or a no, never an early key. The launcher's field and
-// its test both ask this, so they can't read an answer otherwise.
+// ask stands: a yes or a no, never an early key. Launcher.qml's answerAsk
+// and its field's answerTaken both ask this of askSaid, so they can't read
+// an answer otherwise.
 function takes(said) {
     return said === "yes" || said === "no";
 }
@@ -114,8 +115,9 @@ function said(ask, key, now, guard) {
 }
 
 // Whether the ask standing takes `key` come `now`, by what it says of it:
-// the launcher's field times a key as acting by it, and the field's test
-// stands in for the launcher with it, so the two can't time a key apart.
+// what the launcher's field reads, takes of askSaid, made whole for a test
+// with no launcher to ask, so the test times a key by the launcher's rule.
+// It covers the rule only: the launcher's own binding isn't read by it.
 function taken(ask, key, now, guard) {
     return takes(said(ask, key, now, guard));
 }
