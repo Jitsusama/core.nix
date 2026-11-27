@@ -6359,10 +6359,12 @@
   '';
   the-wifi-cases-fail-on-a-throw = ''
     the guard every Wi-Fi case runs over what the shell said fails a run holding a file's line that
-    threw any Error as Quickshell says one, a TypeError, ReferenceError, RangeError or SyntaxError
-    however it's said, or a value Qt couldn't assign; passes one holding only the launcher's own
-    lines, an Error: in no file's line among them; and stops the build when what was said can't be
-    read. Each of the four Wi-Fi cases runs the shell and then that guard, whatever the run ended in
+    threw any Error as Quickshell says one, a TypeError, ReferenceError, RangeError, SyntaxError,
+    EvalError or URIError however it's said, or a value Qt couldn't assign; fails a run that failed
+    or timed out though it said nothing; passes one holding only the launcher's own lines, an
+    Error: in no file's line among them; and stops the build when what was said can't be read. The
+    network joined ahead's case, whose script wifiCase writes as every case's, runs the shell and
+    then that guard, whatever the run ended in, and then ends failed on what it found
   '';
   the-window-buffers-stay-under-load = ''
     the XPS 14's udev sets xe's `shrinker_non_purgeable_seeks` to 64, so reclaim under a build
