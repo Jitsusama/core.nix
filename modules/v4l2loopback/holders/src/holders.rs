@@ -234,8 +234,9 @@ mod tests {
             maps(maps_text, Path::new("/dev/video0"), 812),
             "a mapping of the node by its path and inode wasn't counted"
         );
+        // An inode no line has, so only a lost inode check can count it.
         assert!(
-            !maps(maps_text, Path::new("/dev/video0"), 55),
+            !maps(maps_text, Path::new("/dev/video0"), 99),
             "a mapping with the node's path but another inode was counted"
         );
         assert!(
@@ -247,10 +248,11 @@ mod tests {
     #[test]
     fn this_process_is_named_by_its_own_program() {
         let named = program(Path::new("/proc/self")).unwrap();
-        assert_ne!(named, "");
+        // The test binary's name is longer than the kernel keeps, so this
+        // is the name read from the executable, not the cut one.
         assert!(
-            !named.contains('\n'),
-            "the program's name kept its newline: {named:?}"
+            named.starts_with("loopback_holders"),
+            "this test binary wasn't named by its own program: {named:?}"
         );
     }
 

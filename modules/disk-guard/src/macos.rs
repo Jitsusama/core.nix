@@ -262,7 +262,7 @@ struct ProcRegionWithPathInfo {
 // that drifted from xnu's fails here rather than reading nothing.
 const _: () = assert!(
     size_of::<libc::proc_bsdinfo>() == 136,
-    "proc_bsdinfo isn't xnu's 136 bytes"
+    "the libc crate's proc_bsdinfo isn't xnu's 136 bytes"
 );
 const _: () = assert!(
     size_of::<ProcFileInfo>() == 24,
