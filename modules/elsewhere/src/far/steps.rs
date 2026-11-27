@@ -604,13 +604,16 @@ lose() {{
     printf '%s\t%s\n' - "$path" || return 1
   done
 }}
-# A link put at the handover, a folder above it or its folder for
-# copies, or anything at a copy's name, as the files are listed or cross
-# would have the list begun, the one crossing read or cleared, or each
-# later file copied, through it, so nothing more is brought back and
-# the list gets no end of its own.
+# A link put at the handover, a folder above it, the quest's scratch or
+# its folder for copies, or anything at a copy's name, as the files are
+# listed or cross would have the list begun, the one crossing read or
+# cleared, or each later file copied, through it, so nothing more is
+# brought back and the list gets no end of its own. The quest's scratch
+# is asked too, since a job of the quest may move it aside for a link as
+# it may any folder below it.
 linked() {{
-  [ -L "${{job%/*/*}}" ] || [ -L "${{job%/*}}" ] || [ -L "$job" ] || [ -L "$job/{BACK}" ]
+  [ -L "${{job%/*/*/*}}" ] || [ -L "${{job%/*/*}}" ] || [ -L "${{job%/*}}" ] ||
+    [ -L "$job" ] || [ -L "$job/{BACK}" ]
 }}
 halted() {{
   {HALTING}
@@ -666,10 +669,12 @@ LC_ALL=C sort -u "$names" > "$names.in" ||
     size=$(wc -c 2>/dev/null < "$file") || {{ missing; continue; }}
     past $size && {{ kept $size; continue; }}
     cp "$file" "$job/{BACK}/$n"; crossed=$?
-    # A link put as it crossed took the copy through it, so neither its
-    # size nor a clearing of it is read through the link, and the file
+    # A link put as it crossed, at the handover or at the copy's own
+    # name, took the copy through it, so neither its size nor a clearing
+    # of it is read through the link, which at a pipe would hold the far
+    # line and at a file would list it at that file's size, and the file
     # is left unlisted with the rest.
-    ! linked || {{ halted; exit 1; }}
+    ! linked && [ ! -L "$job/{BACK}/$n" ] || {{ halted; exit 1; }}
     [ $crossed -eq 0 ] && copied=$(wc -c < "$job/{BACK}/$n") || {{ missing; continue; }}
     # Only what crossed counts toward the totals, at the size it crossed.
     past $copied && {{ kept $copied; continue; }}
@@ -713,6 +718,13 @@ back, so nothing more is brought back\\n\" >&2";
 const RELINKED: &str = "printf \"elsewhere: a link was put back at its handover once cleared, so \
 its list isn't cut and nothing is brought back\\n\" >&2";
 
+/// What the far line says where a link stands at the handover, or at the
+/// list's name, as it would cut the list, though `unlinked` cleared none
+/// there, so it was put there since rather than put back, and the list
+/// isn't cut through it and the near side waits it out.
+const LINKED: &str = "printf \"elsewhere: a link stands at its handover, so its list isn't cut \
+and nothing is brought back\\n\" >&2";
+
 /// What the far line says where a list that couldn't be written whole
 /// couldn't be cut either, so the near side waits it out.
 const UNCUT: &str = "printf \"elsewhere: couldn't cut the list of what it brings back, so \
@@ -746,17 +758,19 @@ fi
 # only the levels `unlinked` clears, each where no folder stands, one
 # another far line of the quest made meanwhile kept as its own, and the
 # cut written only where none of them, nor the list's name, is a link as
-# it looks, which it says in words of its own. Each mkdir, and the
-# write, goes by name, so that narrows a link put back meanwhile to the
-# span from that look to them rather than closing it. A quest's scratch
-# that went is never made again.
+# it looks, which it says in words of its own: put back where `unlinked`
+# cleared one, as `relinked` notes, and otherwise only standing there.
+# Each mkdir, and the write, goes by name, so that narrows a link put
+# there meanwhile to the span from that look to them rather than closing
+# it. A quest's scratch that went is never made again.
 if [ $wrote -ne 0 ] && [ -n "$handed" ]; then
   for at in "${{job%/*/*}}" "${{job%/*}}" "$job"; do
     {{ [ -d "$at" ] || mkdir "$at" 2>/dev/null || [ -d "$at" ]; }} && [ ! -L "$at" ] || break
   done
   if [ -L "${{job%/*/*}}" ] || [ -L "${{job%/*}}" ] || [ -L "$job" ] ||
     [ -L "$job/{BROUGHT}" ]; then
-    {RELINKED}
+    if [ -n "$relinked" ]; then {RELINKED}
+    else {LINKED}; fi
   else
     {{ printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"; }} 2>/dev/null || {UNCUT}
   fi
