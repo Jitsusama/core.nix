@@ -145,6 +145,73 @@ pub fn reach(
     (to.to_owned(), passed)
 }
 
+/// The cell orchestrating the session going by `address`, by its newest
+/// presence, when it names one.
+#[must_use]
+pub fn orchestrator_of(presences: &[Presence], address: &str) -> Option<String> {
+    newest(presences, address)
+        .and_then(|p| p.orchestrated_by.clone())
+        .filter(|o| !o.is_empty())
+}
+
+/// One question the hour sends: whom it goes to, the owners whose lines
+/// it asks, and what it says.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Sending {
+    pub to: String,
+    pub owners: Vec<String>,
+    pub text: String,
+}
+
+/// The hour's `asks`, one per owner, as the questions sent: each to whom
+/// `reach` says, by the owner's orchestrator in `presences`, else
+/// `fallback`; and those going to one session joined as one, in the order
+/// first sent to. So when many owners are gone at once, after a restart
+/// or a batch of cells ending, the cell they fall back to is woken once
+/// and answers once, not once for each.
+#[must_use]
+pub fn sendings(
+    asks: &[(String, String)],
+    presences: &[Presence],
+    reached: impl Fn(&str) -> bool,
+    fallback: &str,
+) -> Vec<Sending> {
+    let mut sendings: Vec<Sending> = Vec::new();
+    for (owner, text) in asks {
+        let over = orchestrator_of(presences, owner);
+        let (to, text) = reach(owner, text, &reached, over.as_deref(), fallback);
+        match sendings.iter_mut().find(|s| s.to == to) {
+            Some(sending) => {
+                sending.owners.push(owner.clone());
+                sending.text.push_str("\n\n");
+                sending.text.push_str(&text);
+            }
+            None => sendings.push(Sending {
+                to,
+                owners: vec![owner.clone()],
+                text,
+            }),
+        }
+    }
+    for sending in sendings.iter_mut().filter(|s| s.owners.len() > 1) {
+        sending.text = format!(
+            "{OPENS}{} questions are yours, each answered as it says, by the owner it \
+             names.\n\n{}",
+            sending.owners.len(),
+            sending.text
+        );
+    }
+    sendings
+}
+
+/// The keeper the card is asked of, while the mesh reaches it: a keeper
+/// gone leaves the card to the orchestrator alone, rather than a question
+/// waiting on no one.
+#[must_use]
+pub fn keeper_reached(keeper: Option<String>, reached: impl Fn(&str) -> bool) -> Option<String> {
+    keeper.filter(|k| reached(k.as_str()))
+}
+
 /// Marks each drag filed for `owner` by the hour run at `now`, in seconds,
 /// as asked in the question `id`: those its question holds, a line come
 /// back among them, and none filed an hour before whose question never
@@ -500,6 +567,70 @@ mod tests {
                  didn't go to the hour's orchestrator"
             );
         }
+    }
+
+    #[test]
+    fn the_hour_s_questions_reach_each_owner_or_its_orchestrator_one_message_each() {
+        let presences = [
+            presence("GONE01", "ended", Some("laptop")),
+            presence("GONE02", "ended", Some("laptop")),
+            presence("GONE03", "ended", Some("laptop")),
+            presence("OWNER1", "busy", Some("laptop")),
+        ];
+        // The gone owners' presences name "ended-ORCH"; only the third's
+        // orchestrator is reached, and so is the live owner.
+        let live = |a: &str| ["OWNER1", "ended-ORCH"].contains(&a);
+        let asks = told(&[
+            ("GONE01", "first"),
+            ("OWNER1", "own"),
+            ("GONE02", "second"),
+            ("NOBODY", "third"),
+        ]);
+        let sent = sendings(&asks, &presences, live, "WCJQSG");
+        let shape: Vec<(&str, Vec<&str>)> = sent
+            .iter()
+            .map(|s| (s.to.as_str(), s.owners.iter().map(String::as_str).collect()))
+            .collect();
+        assert_eq!(
+            shape,
+            [
+                ("ended-ORCH", vec!["GONE01", "GONE02"]),
+                ("OWNER1", vec!["OWNER1"]),
+                ("WCJQSG", vec!["NOBODY"]),
+            ],
+            "a gone owner's question didn't go to its orchestrator, a live one's went \
+             elsewhere, or two going to one session went apart"
+        );
+        let joined = &sent[0].text;
+        assert!(
+            joined.starts_with("cadence hour: 2 questions are yours")
+                && joined.contains("For GONE01, whose session")
+                && joined.contains("For GONE02, whose session")
+                && joined.find("first") < joined.find("second"),
+            "the joined question didn't hold each owner's, in order: {joined}"
+        );
+        assert_eq!(
+            (
+                sent[1].text.as_str(),
+                sent[2].text.starts_with("For NOBODY,")
+            ),
+            ("own", true),
+            "a single question was reworded, or one passed on didn't say whose"
+        );
+    }
+
+    #[test]
+    fn a_keeper_gone_is_asked_no_card_question() {
+        let live = |a: &str| a == "KEEP01";
+        assert_eq!(
+            (
+                keeper_reached(Some("KEEP01".to_owned()), live),
+                keeper_reached(Some("GONE01".to_owned()), live),
+                keeper_reached(None, live),
+            ),
+            (Some("KEEP01".to_owned()), None, None),
+            "a live keeper wasn't asked, or a gone one was"
+        );
     }
 
     #[test]

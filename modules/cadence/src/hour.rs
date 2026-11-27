@@ -208,19 +208,14 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     // though a send fails or the run is stopped: asked again, each would
     // wake its owner a second time and count against collaboration as a
     // question of nobody's. Every other line waits on the card.
-    // Each goes to a session the mesh reaches, a gone owner's passed on.
+    // Each goes to a session the mesh reaches, a gone owner's passed on,
+    // and those to one session as one.
     let presences = mesh.all();
     let reached = reaching(&mesh, &presences, now);
-    let whom = |owner: &str, text: &str| {
-        let over = orchestrator_of(&presences, owner);
-        put::reach(owner, text, &reached, over.as_deref(), to)
-    };
-    let asks = put::asks(told);
-    ask_and_keep(&mesh, whom, &asks, &mut ledger, &before, &ledger_at, now)?;
+    let sendings = put::sendings(&put::asks(told), &presences, &reached, to);
+    ask_and_keep(&mesh, sendings, &mut ledger, &before, &ledger_at, now)?;
     let routes = fs::read_to_string(state_home.join("pain-points/routes.json")).ok();
-    // A keeper gone leaves the card to the orchestrator alone, rather than
-    // a question waiting on no one.
-    let keeper = measures::keeper(routes.as_deref()).filter(|k| reached(k.as_str()));
+    let keeper = put::keeper_reached(measures::keeper(routes.as_deref()), &reached);
     for (whom, intent) in card_to(to, keeper.as_deref()) {
         mesh.send(&message(whom, intent, card.clone()))?;
     }
@@ -231,26 +226,29 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     Ok(())
 }
 
-/// Asks each owner its lines, sent to whom `whom` says reaches it, marks
-/// the lines of each question gone with its id, and keeps the lines of
-/// every owner asked so far, as the hour left them, before the next send.
-/// So a send that fails, or a run stopped between two, leaves the ids of
-/// the questions gone before it standing, and a failure is then said.
+/// Sends each of the hour's questions, marks the lines of each owner it
+/// asks with its id, and keeps the lines of every owner asked so far, as
+/// the hour left them, before the next send. So a send that fails, or a
+/// run stopped between two, leaves the ids of the questions gone before
+/// it standing, and a failure is then said.
 fn ask_and_keep(
     mesh: &Mesh,
-    whom: impl Fn(&str, &str) -> (String, String),
-    asks: &[(String, String)],
+    sendings: impl IntoIterator<Item = put::Sending>,
     ledger: &mut [findings::Entry],
     before: &[findings::Entry],
     at: &Path,
     now: i64,
 ) -> io::Result<()> {
-    for (n, (owner, text)) in asks.iter().enumerate() {
-        let (to, text) = whom(owner, text);
-        let ask = message(&to, "question", text);
+    let mut asked: Vec<String> = Vec::new();
+    for sending in sendings {
+        let ask = message(&sending.to, "question", sending.text);
         mesh.send(&ask)?;
-        put::mark_asked(ledger, owner, now, &ask.id);
-        keep_asked(at, ledger, before, &asks[..=n])?;
+        for owner in sending.owners {
+            put::mark_asked(ledger, &owner, now, &ask.id);
+            asked.push(owner);
+        }
+        let owners: Vec<&str> = asked.iter().map(String::as_str).collect();
+        keep_asked(at, ledger, before, &owners)?;
     }
     Ok(())
 }
@@ -262,13 +260,12 @@ fn keep_asked(
     at: &Path,
     ledger: &[findings::Entry],
     before: &[findings::Entry],
-    asked: &[(String, String)],
+    asked: &[&str],
 ) -> io::Result<()> {
     if asked.is_empty() {
         return Ok(());
     }
-    let owners: Vec<&str> = asked.iter().map(|(owner, _)| owner.as_str()).collect();
-    findings::keep(at, &put::asked_only(ledger, before, &owners))
+    findings::keep(at, &put::asked_only(ledger, before, asked))
 }
 
 /// The misses measured from a ledger not read whole, left unjudged, and
@@ -737,14 +734,6 @@ fn reaching<'a>(mesh: &Mesh, presences: &'a [Presence], now: i64) -> impl Fn(&st
     }
 }
 
-/// The cell orchestrating the session going by `address`, by its newest
-/// presence, when it names one.
-fn orchestrator_of(presences: &[Presence], address: &str) -> Option<String> {
-    put::newest(presences, address)
-        .and_then(|p| p.orchestrated_by.clone())
-        .filter(|o| !o.is_empty())
-}
-
 /// Whether the session `presence` describes can still be told of a merge's
 /// rounds: running in this `boot` and held by its host, as `running` says,
 /// since a pid from another boot may name some other process now; or
@@ -887,22 +876,24 @@ mod tests {
             }
             ledger
         };
-        let asks: Vec<(String, String)> = ["ABC123", "DEF456"]
-            .iter()
-            .map(|owner| ((*owner).to_owned(), format!("cadence hour: {owner}'s.")))
-            .collect();
+        let asks = || {
+            ["ABC123", "DEF456"].map(|owner| put::Sending {
+                to: owner.to_owned(),
+                owners: vec![owner.to_owned()],
+                text: format!("cadence hour: {owner}'s."),
+            })
+        };
         let dir = tempfile::tempdir().expect("a folder for the test");
         let mesh = Mesh {
             root: dir.path().to_owned(),
         };
         let folder = dir.path().join("mesh-workflow/messages");
         let at = dir.path().join("findings.jsonl");
-        let to = |owner: &str, text: &str| (owner.to_owned(), text.to_owned());
         let kept = || findings::read(&at);
 
         // With nowhere to send, no question goes and nothing is kept.
         let mut ledger = filed();
-        ask_and_keep(&mesh, to, &asks, &mut ledger, &before, &at, now)
+        ask_and_keep(&mesh, asks(), &mut ledger, &before, &at, now)
             .expect_err("a question went with no folder to go to");
         assert!(
             ledger.iter().all(|e| e.asked.is_empty()) && !at.exists(),
@@ -912,14 +903,13 @@ mod tests {
         // The second send fails: the first owner's line is kept with its
         // question's id and as filed, the second's as it was read.
         fs::create_dir_all(&folder).expect("the messages folder");
-        let second_fails = |owner: &str, text: &str| {
-            if owner == "DEF456" {
+        let second_fails = asks().into_iter().inspect(|sending| {
+            if sending.to == "DEF456" {
                 fs::remove_dir_all(&folder).expect("the folder taken away");
             }
-            to(owner, text)
-        };
+        });
         let mut ledger = filed();
-        ask_and_keep(&mesh, second_fails, &asks, &mut ledger, &before, &at, now)
+        ask_and_keep(&mesh, second_fails, &mut ledger, &before, &at, now)
             .expect_err("the second send went with its folder gone");
         let after = kept();
         assert_eq!(
@@ -936,8 +926,7 @@ mod tests {
         // Both go, and both lines are kept with their questions' ids.
         fs::create_dir_all(&folder).expect("the messages folder again");
         let mut ledger = filed();
-        ask_and_keep(&mesh, to, &asks, &mut ledger, &before, &at, now)
-            .expect("both questions went");
+        ask_and_keep(&mesh, asks(), &mut ledger, &before, &at, now).expect("both questions went");
         for entry in kept() {
             let [id] = entry.asked.as_slice() else {
                 panic!(
