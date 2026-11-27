@@ -33,11 +33,11 @@ pub struct Hold {
     heard: u32,
     /// Whether the last judgement found no wait, so the share climbs.
     clear: bool,
-    /// The wait's mean before the last cut, while a run of cuts lasts.
-    before_ms: Option<f64>,
+    /// The lowest the wait's mean has come to while a run of cuts lasts.
+    lowest_ms: Option<f64>,
     /// The wait's mean that set the last cut, for saying.
     waited_ms: f64,
-    /// Cuts in a row after which the wait was no lower.
+    /// Cuts in a row after which the wait came to no new low.
     futile: u32,
     unheeded_until: f64,
     unheeded_for: f64,
@@ -51,7 +51,7 @@ impl Default for Hold {
             sum_ms: 0.0,
             heard: 0,
             clear: true,
-            before_ms: None,
+            lowest_ms: None,
             waited_ms: 0.0,
             futile: 0,
             unheeded_until: f64::NEG_INFINITY,
@@ -80,8 +80,8 @@ impl Hold {
     /// Steps the hold `dt` seconds on to `at`, with the VPN's wait past
     /// the line in ms when it's the tunnel's, or none, and the wait past
     /// which a queue counts as standing. A wait cuts the share every
-    /// `ELSEWHERE_S` it averages past `late_ms`; a cut after which it was
-    /// no lower is futile, and `FAR_CUTS` of those in a row show a far
+    /// `ELSEWHERE_S` it averages past `late_ms`; a cut after which it came
+    /// to no new low is futile, and `FAR_CUTS` of those in a row show a far
     /// path no hold drains, which goes unheeded a while, as the
     /// controller's own far rule does.
     pub fn step(&mut self, at: f64, dt: f64, waiting: Option<f64>, late_ms: f64) {
@@ -102,15 +102,21 @@ impl Hold {
         if !standing {
             // Drained, or never there: a run of cuts ends, and a far path
             // found again later is unheeded for the first while again.
-            if self.before_ms.take().is_some() {
+            if self.lowest_ms.take().is_some() {
                 self.unheeded_for = 0.0;
             }
             self.futile = 0;
             self.rise(dt);
             return;
         }
-        match self.before_ms {
-            Some(before) if mean >= before - VPN_MARGIN_MS => self.futile += 1,
+        // A cut works only if it takes the wait to a new low: a far path's
+        // wait wavers, and one window's dip under the last would otherwise
+        // count as one drained, so a run of futile cuts may never come to
+        // `FAR_CUTS`. On 26 November a 68 ms wait held the VPN's queue at
+        // 37% of its lane, while the link carried about 8 of its 10.8 Mb/s
+        // and the agents inside the VPN waited three seconds on average.
+        match self.lowest_ms {
+            Some(lowest) if mean >= lowest - VPN_MARGIN_MS => self.futile += 1,
             Some(_) => {
                 self.futile = 0;
                 self.unheeded_for = 0.0;
@@ -120,11 +126,12 @@ impl Hold {
         if self.futile >= FAR_CUTS {
             self.unheeded_for = (self.unheeded_for * 2.0).clamp(FAR_S, FAR_MOST_S);
             self.unheeded_until = at + self.unheeded_for;
-            (self.share, self.before_ms, self.futile) = (1.0, None, 0);
+            (self.share, self.lowest_ms, self.futile) = (1.0, None, 0);
             self.clear = true;
             return;
         }
-        (self.before_ms, self.waited_ms) = (Some(mean), mean);
+        self.lowest_ms = Some(self.lowest_ms.map_or(mean, |lowest| lowest.min(mean)));
+        self.waited_ms = mean;
         self.share = (self.share * CUT).max(LEAST);
     }
 
@@ -189,6 +196,40 @@ mod tests {
         assert!(
             (hold.share() - 1.0).abs() < f64::EPSILON,
             "an unheeded far path cut the share to {:.3}",
+            hold.share()
+        );
+    }
+
+    // A far path's wait wavers from one judgement to the next: a dip under
+    // the last judgement's isn't a drain, so the cuts come to no new low
+    // and are let go, rather than taking the share to its least.
+    #[test]
+    fn a_wavering_wait_no_cut_lowers_lets_the_share_go() {
+        let mut hold = Hold::default();
+        let mut least = hold.share();
+        let mut at = 0.0;
+        while at < 30.0 {
+            // Each judgement's two seconds read 68, 60 or 74 ms in turn.
+            let window = (at / ELSEWHERE_S).floor() % 3.0;
+            let ms = 68.0
+                + if window < 1.0 {
+                    0.0
+                } else if window < 2.0 {
+                    -8.0
+                } else {
+                    6.0
+                };
+            hold.step(at, DT, Some(ms), LATE_MS);
+            least = least.min(hold.share());
+            at += DT;
+        }
+        assert!(
+            least >= 0.5,
+            "a wavering far path's wait cut the share to {least:.3}"
+        );
+        assert!(
+            (hold.share() - 1.0).abs() < f64::EPSILON,
+            "a wavering far path's wait held the share at {:.3}",
             hold.share()
         );
     }
