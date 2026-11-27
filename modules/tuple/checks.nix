@@ -69,8 +69,10 @@ onLinux {
       sed -n '\|^run .*${lib.escapeRegex data}/tuple/|{s|^run ||;s|${data}|'"$PWD"'/data|g;p}' \
         ${home.home.activationPackage}/activate > steps
       sh -e steps
-      tuple settings > said 2>&1 || true
-      tuple stop > /dev/null 2>&1 || true
+      # Any tuple command may start Tuple's daemon, so each is held to a
+      # time, as tests/tuple-ends-its-flags.sh says.
+      timeout -k 5 10 tuple settings > said 2>&1 < /dev/null || true
+      timeout -k 5 10 tuple stop > /dev/null 2>&1 || true
       if ! grep -q '^capture | portal |' said; then cat said; exit 1; fi
       touch $out
     '';
@@ -174,8 +176,12 @@ onLinux {
       ''
         export HOME=$PWD XDG_DATA_HOME=$PWD/data XDG_RUNTIME_DIR=$PWD/run
         mkdir -m 700 run
-        zsh -f ${./tests/tuple-completion.zsh} ${tuple}/share/zsh/site-functions/_tuple
-        tuple stop > /dev/null 2>&1 || true
+        # Tab runs the real tuple, which may start its daemon, so the dozen
+        # or so editors are held to five minutes together, room for a
+        # loaded builder, and stopping the daemon to ten seconds.
+        timeout -k 5 300 zsh -f ${./tests/tuple-completion.zsh} \
+          ${tuple}/share/zsh/site-functions/_tuple
+        timeout -k 5 10 tuple stop > /dev/null 2>&1 || true
         touch $out
       '';
 
