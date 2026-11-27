@@ -132,7 +132,7 @@ def test_the_tuning_starts_with_pipewire(session: Session) -> None:
 
 def test_without_the_tuning_the_speakers_hear_what_was_played(played: dict[int, float]) -> None:
     """Without the tuning, the speakers hear what was played."""
-    assert all(value > HEARD for value in played.values())
+    assert all(value > HEARD for value in played.values()), f"a tone went unheard: {played}"
 
 
 def test_the_speakers_hear_the_tuning(session: Session, played: dict[int, float]) -> None:
@@ -163,7 +163,7 @@ def test_plugged_back_in_the_speakers_hear_the_tuning_again(
         timeout=LINKING,
     )
     heard = session.levels("pebble")
-    assert all(value > HEARD for value in heard.values())
+    assert all(value > HEARD for value in heard.values()), f"a tone went unheard: {heard}"
     assert abs(decibels(heard[KEPT_TONE], played[KEPT_TONE])) < UNCHANGED
     assert decibels(heard[CUT_TONE], played[CUT_TONE]) < CUT
 
@@ -174,4 +174,4 @@ def test_the_headphones_hear_what_was_played(session: Session, played: dict[int,
     heard = session.levels("headphones")
     assert all(
         abs(decibels(heard[frequency], played[frequency])) < UNCHANGED for frequency in TONES
-    )
+    ), f"the headphones changed a tone: heard {heard}, played {played}"
