@@ -59,30 +59,49 @@ NEWEST = (
     "Gulls are back on the breakwater, a week before the almanac said they would be, and "
     "they're nesting low on the seaward side where the spring tides reach the rocks."
 )
-# Every other headline the page writes, as site.ts writes it, which must take the lines the
-# one it opens on does: a node never reached, nothing said, all settled, none settled, and
-# counts past ten, which are said in numerals.
-HEADLINES = [
-    "Not hearing the mycelium node.",
-    "Nothing murmured, <em>nothing in the air.</em>",
-    '<a href="#all">Seven murmured,</a> <em>all come to roost.</em>',
-    '<a href="#all">110 murmured,</a> <em>all come to roost.</em>',
-    '<a href="#all">Seven murmured,</a> <em>all still in the air.</em>',
-    '<a href="#all">110 murmured,</a> <em><a href="#air">seven still in the air.</a></em>',
-    '<a href="#all">1204 murmured,</a> <em><a href="#air">117 still in the air.</a></em>',
-]
-# The longest ledes the model writes, a quest's name cut at its 48 characters and a murmur's
-# words at their 84, which must fit the four lines the lede's box holds.
-LEDES = [
-    (
-        "Newest in the air, from Keep Mycelia Fast and Whole Through Every Switch: the forage "
-        "page's title now holds the lines its count takes on a phone, so nothing..."
-    ),
-    (
-        "Newest in the air, from Make the nightly audit find everything in order...: Gulls are "
-        "back on the breakwater, a week before the almanac said they would be, and..."
-    ),
-]
+# Every other headline and lede the page writes, by its own model, which must take the lines
+# the ones it opens on do. The headlines: a node never reached (site.ts's own words), nothing
+# said, all settled, none settled, and counts past ten, said in numerals, in site.ts's markup.
+# The ledes: nothing said, all settled, and the longest the model writes, a quest's name in
+# Title Case or lower case cut at its 48 characters and a murmur's prose at its 84, which must
+# fit the four lines the lede's box holds.
+HEAD_FORMS = """async () => {
+  const { headline, lede } = await import("./model.js");
+  const said = (count, open, quest = "Watch the shore", words = "The tide turned.") =>
+    Array.from({ length: count }, (_, at) => ({
+      key: `murmur:SHORES:${at}`, writer: "SHORES", quest, words, ties: [],
+      settled: at < open ? null : "Done.", at: count - at }));
+  const markup = (murmurs) => {
+    const { lead, turn, said: count, open } = headline(murmurs);
+    if (count === 0) {
+      return `${lead} <em>${turn}</em>`;
+    }
+    const all = `<a href="#all" data-show="all">${lead}</a>`;
+    if (open === 0 || open === count) {
+      return `${all} <em>${turn}</em>`;
+    }
+    return `${all} <em><a href="#air" data-show="air">${turn}</a></em>`;
+  };
+  const text = (words) => {
+    const held = document.createElement("p");
+    held.textContent = words;
+    return held.innerHTML;
+  };
+  const prose = "Gulls are back on the breakwater, a week before the almanac said they " +
+    "would be, and they're nesting low on the seaward side.";
+  return {
+    headline: [
+      "Not hearing the mycelium node.",
+      ...[[0, 0], [7, 0], [110, 0], [7, 7], [110, 7], [1204, 117]].map(
+        ([count, open]) => markup(said(count, open))),
+    ],
+    lede: [
+      said(0, 0), said(3, 0),
+      said(1, 1, "Keep Mycelia Fast and Whole Through Every Switch, Every Night", prose),
+      said(1, 1, "make the nightly audit find everything in order, every morning", prose),
+    ].map((murmurs) => text(lede(murmurs))),
+  };
+}"""
 # The lines the lede's box holds, which every lede the model writes fits.
 LEDE_LINES = 4
 
@@ -597,9 +616,8 @@ def test_the_head_keeps_the_lines_it_opens_on(
     opened = Opened(browser, f"{root}web/", size, "light")
     try:
         opened.first(drawn)
-        heights = opened.page.evaluate(
-            HEAD_HEIGHTS, [["headline", "lede"], {"headline": HEADLINES, "lede": LEDES}]
-        )
+        forms = opened.page.evaluate(HEAD_FORMS)
+        heights = opened.page.evaluate(HEAD_HEIGHTS, [["headline", "lede"], forms])
         for part, said in heights.items():
             taken = [said["live"], *said["forms"]]
             assert all(each == said["opening"] for each in taken), (
