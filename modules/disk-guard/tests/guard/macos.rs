@@ -1,5 +1,5 @@
-//! How the guard reads a process on macOS, through libproc: the one it
-//! knows best is itself.
+//! How the guard reads macOS: a process through libproc, the one it knows
+//! best being itself, and memory's room through the kernel's sysctls.
 
 use disk_guard::macos::processes;
 use std::fs;
@@ -11,11 +11,10 @@ use std::ptr;
 
 #[test]
 fn this_mac_s_kernel_says_its_memory_s_room() {
-    let read = disk_guard::macos::pressure(Path::new("/proc/pressure"))
-        .expect("the kernel refused its memory reading");
+    let read = disk_guard::macos::pressure(Path::new("/proc/pressure"));
     assert!(
-        read.memory_room.is_some(),
-        "the kernel's reading gave no room"
+        matches!(&read, Ok(read) if read.memory_room.is_some()),
+        "the kernel refused its memory reading, or answered a value it never gives: {read:?}"
     );
 }
 

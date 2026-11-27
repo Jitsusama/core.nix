@@ -3,9 +3,10 @@
 Here the card moves between the access points of one network: on from one that doesn't answer, to
 another when an account asks, keeping its neighbours, to another when its point warns it drops the
 card, looking first for one it doesn't hear and ending a look under way, free of its point when
-the whole network drops it, and free of both when that other doesn't answer, back to the one it
-left when the one it was asked to has gone, and free to join any network when it can't get back
-either; a network of another name forgets those neighbours.
+the whole network drops it, and free of both when that other doesn't answer, to another at once
+when its echoes are lost during a call, back to the one it left when the one it was asked to has
+gone, and free to join any network when it can't get back either; a network of another name
+forgets those neighbours.
 tests/vm/network/wifi.nix runs this through pytest inside the driver (tests/lib/vm_pytest.py), and
 its opening comment says what the test proves. The tests run in the order written, each taking the
 machine on from where the one before left it, so one run alone with -k starts from Lantern joined
@@ -60,6 +61,10 @@ def first_line(said: list[str], words: str, after: int = -1) -> int:
     found = next((i for i, line in enumerate(said) if i > after and words in line), None)
     assert found is not None, f"no line says {words!r}"
     return found
+
+
+# How near, in dB, Lantern's two are heard when set alike, as hwsim gives the same air.
+ALIKE = 3
 
 
 def knows_a_neighbour(machine: BaseMachine) -> None:
@@ -279,6 +284,123 @@ def test_a_card_moves_to_another_access_point_of_its_network_when_asked(
         ' && echo "$s" | grep -qx bssid=02:00:00:00:00:00',
         timeout=timedelta(seconds=60),
     )
+
+
+# On 17 Nov 2026 a call's link faded for four minutes before the card
+# moved, once a minute had lost over a quarter of its echoes. During a
+# call wifid now gives way as soon as ten seconds lose two echoes.
+# It runs before the subtests where Lantern's second warns it drops the
+# card, as each warning keeps the chooser off the second for 10 minutes,
+# and a call means to give way to no point that warned.
+def test_a_card_losing_its_echoes_during_a_call_gives_way_to_another_at_once(
+    machine: BaseMachine, wifid: Wifid
+) -> None:
+    """A card losing its echoes during a call gives way to another of its network at once."""
+    machine.succeed("systemctl start lantern-two")
+    # Both heard alike, since a lossy link gives way to none heard over 6 dB fainter, and put
+    # back after, as the subtests after this one go by what the card hears.
+    radios = ("wlan0", "wlan5")
+    for radio in radios:
+        machine.succeed(f"ip netns exec air iw dev {radio} set txpower fixed 2000")
+    try:
+        gives_way_as_it_loses(machine, wifid)
+        wifid.holds_address("10.42.0.")
+        machine.succeed("ping -c 1 -W 2 10.42.0.1")
+    finally:
+        # The first's loss, both radios' power, the call and the second are each undone whether
+        # or not the one before fails, and judged together, so the subtests after this one
+        # aren't left a lossy first, a call on for its lapse or a second up. The call is over
+        # before the second goes, so its going isn't given way from.
+        lossless = (
+            "! ip netns exec air tc qdisc show dev wlan0 | grep -q netem"
+            " || ip netns exec air tc qdisc del dev wlan0 root"
+        )
+        steps = [
+            lossless,
+            *(f"ip netns exec air iw dev {radio} set txpower auto" for radio in radios),
+        ]
+        cleaned = {step: machine.execute(step)[0] for step in steps}
+        try:
+            over = wifid.acting({"act": "calling", "on": False})
+        finally:
+            stop = "systemctl stop lantern-two"
+            cleaned[stop] = machine.execute(stop)[0]
+        failed = [step for step, status in cleaned.items() if status != 0]
+        assert over == {"id": 1, "done": True}, f"the call wasn't said over: {over}"
+        assert not failed, f"the clean-up failed at: {failed}"
+    machine.wait_until_succeeds(
+        "s=$(wpa_cli -i wlan2 status)"
+        ' && echo "$s" | grep -qx wpa_state=COMPLETED'
+        ' && echo "$s" | grep -qx bssid=02:00:00:00:00:00',
+        timeout=timedelta(seconds=60),
+    )
+
+
+def gives_way_as_it_loses(machine: BaseMachine, wifid: Wifid) -> None:
+    """Have a call begin with the second heard alike, and its link lose every frame."""
+
+    def hears_both_alike(_: bool) -> bool:
+        """Have the cards look, and say whether the look heard the second as loud."""
+        # The second is kept from the subtest before, heard then at -45 dBm, so only a look
+        # since its power went up says it's near enough: on 20 Nov 2026 the card gave way
+        # only once a look that ended 16 s into the loss heard it at -30.
+        levels: dict[str, int] = {}
+        for line in machine.succeed("wpa_cli -i wlan2 scan_results").splitlines():
+            fields = line.split("\t")
+            if len(fields) == SCAN_COLUMNS and fields[4] == "Lantern":
+                levels[fields[0]] = int(fields[2])
+        first, second = levels.get("02:00:00:00:00:00"), levels.get("02:00:00:00:05:00")
+        alike = first is not None and second is not None and abs(first - second) <= ALIKE
+        if not alike:
+            wifid.ask("Scan")
+        return alike
+
+    retry(hears_both_alike, timeout=timedelta(seconds=90))
+    # A look wpa_supplicant begins of its own is waited out too: one under way as the call
+    # began ran 19 s as the link lost every frame.
+    interface = machine.succeed(
+        "busctl call fi.w1.wpa_supplicant1 /fi/w1/wpa_supplicant1 fi.w1.wpa_supplicant1"
+        " GetInterface s wlan2 | cut -d'\"' -f2"
+    ).strip()
+    machine.wait_until_succeeds(
+        f"busctl get-property fi.w1.wpa_supplicant1 {interface}"
+        " fi.w1.wpa_supplicant1.Interface Scanning | grep -qx 'b false'",
+        timeout=timedelta(seconds=30),
+    )
+    machine.log(machine.succeed("wpa_cli -i wlan2 scan_results | grep Lantern"))
+    machine.succeed("wpa_cli -i wlan2 status | grep -qx bssid=02:00:00:00:00:00")
+    # The looks just asked lost echoes as they took the card off its channel. wifid leaves
+    # out a look's first 6 s, a whole look on a real card, but one here ran 16 s on a quiet
+    # link (2026-11-23), and its later losses moved the card as the call began. The call
+    # waits out its 10 s window, so what moves it is the loss below alone.
+    machine.sleep(timedelta(seconds=10))
+    quiet = wifid.journal_now()
+    answer = wifid.acting({"act": "calling", "on": True})
+    assert answer == {"id": 1, "done": True}, answer
+    # Begun on a quiet link, the call holds where it is; 5 s, five echoes, shows it.
+    machine.sleep(timedelta(seconds=5))
+    machine.fail(f"journalctl -o cat -u wifid --after-cursor='{quiet}' | grep -q 'gives way'")
+    # Nothing the first sends the card arrives, its echoes' answers among it, while what
+    # manages the link passes beside the queue.
+    since = wifid.journal_now()
+    machine.succeed("ip netns exec air tc qdisc add dev wlan0 root netem loss 100%")
+    try:
+        # Two lost come within about three seconds, an echo waited on a second, where the
+        # minute's choice would hold the card until two minutes had lost a tenth.
+        machine.wait_until_succeeds(
+            f"journalctl -o cat -u wifid --after-cursor='{since}'"
+            " | grep -qE '^wlan2 gives way to 02:00:00:00:05:00, heard at -[0-9]+ dBm,"
+            " during a call, as 02:00:00:00:00:00 lost [0-9]+ echoes in 10 s$'",
+            timeout=timedelta(seconds=20),
+        )
+        machine.wait_until_succeeds(
+            f"journalctl -o cat -u wifid --after-cursor='{since}'"
+            " | grep -qE '^wlan2 reached 02:00:00:00:05:00 [0-9]+ ms after it was asked'",
+            timeout=timedelta(seconds=30),
+        )
+    finally:
+        # Its caller undoes the loss and the call, whatever fails here.
+        machine.log(machine.succeed(f"journalctl -o short-precise --after-cursor='{quiet}'"))
 
 
 # The eero asked the laptop to move 27 times from 15 to 20 Nov 2026, and wpa_supplicant said what

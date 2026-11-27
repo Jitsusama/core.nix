@@ -38,11 +38,14 @@ EOF
 
 zmodload zsh/zpty
 integer failed=0
-# What typing the words and Tab offers, one match to a line.
+# What typing the words and Tab offers, one match to a line. Each editor
+# gets the home, runtime and data folders of tuple-completes-in-zsh.sh's
+# folder of its own, so a daemon its tuple starts keeps everything where
+# that script's stop finds it.
 offered() {
   local line said
   zpty z env -i HOME=$here TERM=xterm ZDOTDIR=$here/dot PATH=$PATH \
-    XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR zsh -d -i
+    XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR XDG_DATA_HOME=$XDG_DATA_HOME zsh -d -i
   zpty -r z line '*ready*'
   zpty -w -n z "$1"$'\t'
   while zpty -r z line; do said+=$line; done
@@ -55,6 +58,9 @@ expect() {
   local typed=$1 wanted
   local -a got
   shift
+  # Named first, so a run cut off for time says which editor hung
+  # (tuple-completes-in-zsh.sh).
+  print -ru2 -- "typing \"$typed\""
   got=("${(@f)$(offered $typed)}")
   for wanted in "$@"; do
     if (( ! ${got[(Ie)$wanted]} )); then

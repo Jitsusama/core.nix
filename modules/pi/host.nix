@@ -29,6 +29,9 @@ let
   inherit (launch) kinds loadsCode stopSeconds;
   entry = launch.entry config;
   growthTakenBy = import ./heap-growth-taken { inherit lib pkgs; };
+  # The build proving a realm's node takes its conversations' growing
+  # percent, which each of its conversations' units names.
+  growthTakenOf = realm: host: growthTakenBy realm host.node host.conversationHeapGrowingPercent;
 
   # Whether pi's SSH agent proxy runs here, as home.nix decides it, so a
   # host is pointed at its socket only where there is one. Hosts are Linux
@@ -273,7 +276,7 @@ let
     realm: host: kind:
     let
       key = "${realm}-${kind}";
-      growthTaken = growthTakenBy realm host.node host.conversationHeapGrowingPercent;
+      growthTaken = growthTakenOf realm host;
     in
     {
       name = "pi-conversation-${key}@";
@@ -559,10 +562,27 @@ in
               own growth. A node that doesn't know the flag refuses it as a bad
               option, which would end each conversation as it starts, so the
               generation builds the realm's node running with it first, and a
-              node that refuses it fails the switch by name. So the realm's
-              node must be one its build can reach, from the store and with
-              its context, as lib.getExe gives one. A machine built elsewhere,
-              whose builder can't run its programs, goes without that proof.
+              node that refuses it, fails another way or doesn't end within a
+              minute fails the switch by name. So the realm's node must be a
+              program its build can run, from the store and with its context,
+              as lib.getExe gives one. A machine built on another platform,
+              whose builder can't run its programs, goes without that proof,
+              and warns of it unless conversationHeapGrowthMayGoUnproven is
+              set.
+            '';
+          };
+          conversationHeapGrowthMayGoUnproven = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = ''
+              Whether a machine built on another platform may go without the
+              proof that the realm's node takes conversationHeapGrowingPercent,
+              saying nothing. Its builder can't run the node, so the proof
+              stands unproven, and the machine warns of it, which a check that
+              a machine evaluates without warnings refuses. Set it once the
+              node is known to take the percent, as one built the same way on
+              the machine's own platform shows. A machine built on its own
+              platform is proven either way.
             '';
           };
           asyncContextFrame = lib.mkOption {
@@ -724,6 +744,24 @@ in
         } A host's node takes no option from a realm but its heap, set with heapMb, and V8's async context frame, set with asyncContextFrame; a conversation's own node takes its heap and its growth too, set with conversationHeapMb and conversationHeapGrowingPercent. The conversations' commands share the host's environment, so they get none of these from it: a command that needs one sets it itself.";
       }
     ) cfg;
+
+  # A realm whose proof stands unproven, as on a machine built on another
+  # platform, says so here, since its switch can't.
+  config.warnings = lib.mkIf pkgs.stdenv.hostPlatform.isLinux (
+    lib.concatLists (
+      lib.mapAttrsToList (
+        realm: host:
+        let
+          growthTaken = growthTakenOf realm host;
+        in
+        lib.optional (
+          host.conversationHeapGrowingPercent != null
+          && growthTaken ? unproven
+          && !host.conversationHeapGrowthMayGoUnproven
+        ) growthTaken.unproven
+      ) cfg
+    )
+  );
 
   config.systemd.user.services = lib.mkIf pkgs.stdenv.hostPlatform.isLinux (
     lib.listToAttrs (

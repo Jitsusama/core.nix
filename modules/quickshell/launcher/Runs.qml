@@ -63,6 +63,8 @@ Provider {
         const round = bare.replace(/-.*$/, "");
         return {
             id: bare,
+            // A string, as Launcher.qml's startsWith on a found row's key
+            // needs: Daemon.qml's took() holds no record whose key isn't.
             key: record.key ?? `run:${id}`,
             kind: record["run.kind"]
                 ?? (id.startsWith("fleet.") ? "fleet" : kinds[round] ? round : "review"),
@@ -311,8 +313,9 @@ Provider {
     // (Provider.qml's poolFor), as Applications does: a day holds hundreds
     // of runs, each matched by its name and by its id, and the first letters
     // pass nearly every row's mask, so one letter's search of them took up
-    // to 62 ms on Joel's shell (2026-11-25). A run coming makes `all` anew,
-    // which is looked through whole.
+    // to 62 ms on Joel's shell (2026-11-25). A run, a session or the
+    // screen's sharing changing makes `all` anew, but a finished run's row
+    // is kept (`kept`), so only the rows made again are looked at besides.
     function search(typed) {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);

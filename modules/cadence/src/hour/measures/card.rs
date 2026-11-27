@@ -31,6 +31,23 @@ pub fn card_median(card: &str, label: &str) -> Option<(f64, f64)> {
     ))
 }
 
+/// The card's median minutes from a change's last commit to its merge,
+/// held to the card's own target and owned by `owner`, or none when the
+/// card has no such row.
+#[must_use]
+pub fn commit_to_merge(card: &str, owner: &str) -> Option<Measure> {
+    let (median, target) = card_median(card, "Last commit to merge")?;
+    Some(Measure {
+        key: "commit-to-merge".to_owned(),
+        class: Class::Ship,
+        says: "median minutes from last commit to merge".to_owned(),
+        now: median,
+        target: Some(target),
+        owner: owner.to_owned(),
+        behind: Vec::new(),
+    })
+}
+
 /// The number a card's `line` prints right after `after`.
 fn card_number(line: &str, after: &str) -> Option<f64> {
     let rest = &line[line.find(after)? + after.len()..];

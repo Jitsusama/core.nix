@@ -472,6 +472,7 @@ import ./ask-checks.nix args
         env = {
           LOCAL_SITES = lib.getExe' (pkgs.callPackage ./package.nix { }) "local-sites";
           SYSTEM_SITE = "${page}";
+          SYSTEM_KINDS = builtins.toJSON inRealm.jitsusama.local-sites.feeds.system.kinds;
           LOCAL_SITES_SHARED = "${shared}";
           STRIP = "${./home/strip.css}";
           WEB_SKILL = "${../theme/web/skill}";

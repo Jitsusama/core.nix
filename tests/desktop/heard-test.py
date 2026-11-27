@@ -14,7 +14,19 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from heard import CUT_SHORT, TIMED_OUT, diagnosed, ended, said_by, shown, until_heard
+from heard import (
+    CUT_SHORT,
+    MOVED_NAMED,
+    TIMED_OUT,
+    diagnosed,
+    ended,
+    flattened,
+    moved_over,
+    said_by,
+    shown,
+    until_heard,
+    whole,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -423,3 +435,41 @@ def test_a_state_that_isnt_an_object_is_given_back_as_it_came() -> None:
     # Only an object can name a throw; any other JSON is the state, for the test to judge.
     state = shown("[1, 2]", journal, ANSWERED)
     assert state == [1, 2], f"a list answered gave {state}"
+
+
+def test_a_read_is_whole_only_as_json_that_threw_nothing() -> None:
+    # A throw, an empty read and one cut short are none of them a reading of the screen, so
+    # each is passed over rather than kept as a read whose every path moved.
+    reads = [whole(said) for said in ('{"rows": [1]}', json.dumps({"threw": THREW}), "", '{"ro')]
+    assert reads == [{"rows": [1]}, {}, {}, {}], f"reads gave {reads}"
+
+
+def test_a_value_is_flattened_to_each_leaf_by_its_path() -> None:
+    leaves = flattened({"rows": [{"text": "Now"}, {"text": None}], "open": True}, "laidOut")
+    wanted = {"laidOut.rows[0].text": "Now", "laidOut.rows[1].text": None, "laidOut.open": True}
+    assert leaves == wanted, f"flattened gave {leaves}"
+
+
+def test_what_moved_names_each_path_whose_value_changed_in_the_order_read() -> None:
+    seen: list[dict[str, object]] = [{"a": 1, "b": "x"}, {"a": 2, "b": "x"}, {"a": 1, "b": "x"}]
+    said = moved_over(seen)
+    assert said == "the launcher's laid-out words that moved over 3 reads: a: 1 / 2", said
+
+
+def test_what_moved_tells_a_path_gone_from_one_that_is_null() -> None:
+    said = moved_over([{"a": None, "b": 1}, {"b": 1}])
+    assert said == "the launcher's laid-out words that moved over 2 reads: a: None / absent", said
+
+
+def test_what_moved_says_when_nothing_moved_or_it_had_too_few_reads() -> None:
+    still = moved_over([{"a": 1}, {"a": 1}])
+    assert still == "none of the launcher's laid-out words moved over 2 reads", still
+    once = moved_over([{"a": 1}])
+    assert once == "the launcher's laidOut couldn't be read twice to say what moved", once
+
+
+def test_what_moved_names_so_many_and_counts_the_rest() -> None:
+    many = MOVED_NAMED + 3
+    said = moved_over([{f"p{n:02}": 0 for n in range(many)}, {f"p{n:02}": 1 for n in range(many)}])
+    assert said.endswith(" and 3 more"), said
+    assert said.count(": 0 / 1") == MOVED_NAMED, said
