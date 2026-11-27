@@ -3076,12 +3076,14 @@ Singleton {
             // Kept within answerPatience only (refusedOwn), while the press
             // told disowned is told its own came within comingPatience
             // (viewerCame), as one drawn late comes past answerPatience, the
-            // give-up itself a minute after the ask.
+            // give-up itself a minute after the ask. It's held as untaken's
+            // give-up is (stillHeld), a press told disowned or none, since
+            // the refusal holds only while its stray is listed: once that
+            // closes, a press would ask the quiet kitty again.
             refusalKeptAt = Object.assign({}, refusalKeptAt, { [named]: Date.now() });
             const told = disownedSaid[named] ?? null;
-            if (told !== null)
-                stillSaid = Object.assign({}, stillSaid,
-                    { [named]: { said: told, at: Date.now(), under: sessionsKittyPid } });
+            stillSaid = Object.assign({}, stillSaid,
+                { [named]: { said: told, at: Date.now(), under: sessionsKittyPid } });
             // A place viewKept let go for the ask is kept again under the
             // pid asked, as for any give-up, so a kitty come since asks for
             // it once the refused window closes (viewKept keeps it while
