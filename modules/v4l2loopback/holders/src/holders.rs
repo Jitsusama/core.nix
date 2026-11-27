@@ -185,11 +185,22 @@ pub fn holders(
     units: &[String],
     before: &HashSet<u32>,
 ) -> io::Result<(BTreeSet<String>, HashSet<u32>)> {
+    holders_in(Path::new("/proc"), node, units, before)
+}
+
+/// The programs holding the node, and their processes, as the process
+/// folder given has them, so a test can walk a folder it made.
+fn holders_in(
+    proc_root: &Path,
+    node: &Path,
+    units: &[String],
+    before: &HashSet<u32>,
+) -> io::Result<(BTreeSet<String>, HashSet<u32>)> {
     let status = fs::metadata(node)?;
     let own = std::process::id();
     let mut names = BTreeSet::new();
     let mut pids = HashSet::new();
-    for entry in fs::read_dir("/proc")?.flatten() {
+    for entry in fs::read_dir(proc_root)?.flatten() {
         let Some(pid) = entry
             .file_name()
             .to_str()
@@ -368,5 +379,108 @@ mod tests {
             assert_eq!(program(&proc).unwrap(), "?", "a comm of {comm:?}");
         }
         fs::remove_dir_all(&proc).unwrap();
+    }
+
+    /// An empty process folder of the test's own, named by its case, so
+    /// tests that run at once never share one. One a failed run left is
+    /// cleared first.
+    fn fake_proc(case: &str) -> std::path::PathBuf {
+        let name = format!("holders-{case}-{}", std::process::id());
+        let root = std::env::temp_dir().join(name);
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    /// A process named reader in the fake folder, whose descriptor 3 links
+    /// to what it holds, and whose cgroup file holds the bytes given, or is
+    /// missing when there are none.
+    fn fake_process(root: &Path, pid: u32, held: &Path, cgroup: Option<&[u8]>) {
+        let proc = root.join(pid.to_string());
+        fs::create_dir_all(proc.join("fd")).unwrap();
+        fs::write(proc.join("comm"), "reader\n").unwrap();
+        fs::write(proc.join("cmdline"), "").unwrap();
+        std::os::unix::fs::symlink(held, proc.join("fd/3")).unwrap();
+        if let Some(cgroup) = cgroup {
+            fs::write(proc.join("cgroup"), cgroup).unwrap();
+        }
+    }
+
+    /// What a walk of the fake folder names as holding /dev/null, with the
+    /// stand-in unit the one left out. The folder is removed after, even
+    /// when the walk fails. The walk follows descriptor links and compares
+    /// devices, so /dev/null stands in for a camera and none is ever opened.
+    fn walked(root: &Path) -> (BTreeSet<String>, HashSet<u32>) {
+        let units = ["stand-in.service".to_owned()];
+        let found = holders_in(root, Path::new("/dev/null"), &units, &HashSet::new());
+        fs::remove_dir_all(root).unwrap();
+        found.unwrap()
+    }
+
+    #[test]
+    fn a_process_whose_cgroup_file_isnt_text_is_named() {
+        // A person can name a cgroup of their own with a byte that isn't
+        // text, and skipping its reader would show a camera in use as off.
+        let root = fake_proc("not-text");
+        let user = b"0::/user.slice/user-1000.slice/user@1000.service";
+        let cgroup = [&user[..], b"/\xff/stand-in.service\n"].concat();
+        fake_process(&root, 4_000_001, Path::new("/dev/null"), Some(&cgroup));
+        let (names, pids) = walked(&root);
+        assert_eq!(
+            names,
+            BTreeSet::from(["reader".to_owned()]),
+            "a reader whose cgroup file isn't text is named"
+        );
+        assert_eq!(pids, HashSet::from([4_000_001]), "its process is seen");
+    }
+
+    #[test]
+    fn a_process_with_no_cgroup_file_is_named() {
+        let root = fake_proc("no-cgroup");
+        fake_process(&root, 4_000_001, Path::new("/dev/null"), None);
+        let (names, pids) = walked(&root);
+        assert_eq!(
+            names,
+            BTreeSet::from(["reader".to_owned()]),
+            "a reader whose cgroup file can't be read is named"
+        );
+        assert_eq!(pids, HashSet::from([4_000_001]), "its process is seen");
+    }
+
+    #[test]
+    fn a_process_in_a_left_out_unit_is_not_named() {
+        // A reader beside it shows the walk saw the folder, so the relay's
+        // absence is its unit's doing.
+        let root = fake_proc("left-out");
+        let null = Path::new("/dev/null");
+        let relay = b"0::/system.slice/stand-in.service\n";
+        let reader = b"0::/user.slice/user-1000.slice\n";
+        fake_process(&root, 4_000_001, null, Some(relay));
+        fake_process(&root, 4_000_002, null, Some(reader));
+        let (_, pids) = walked(&root);
+        assert_eq!(
+            pids,
+            HashSet::from([4_000_002]),
+            "only the process outside the stand-in unit is seen"
+        );
+    }
+
+    #[test]
+    fn a_process_that_holds_nothing_under_dev_is_not_named() {
+        // The link leads to /dev/null by way of a file outside /dev, so the
+        // device alone would match; only the walk's filter on /dev leaves
+        // it out. A reader beside it shows the walk saw the folder.
+        let root = fake_proc("outside-dev");
+        let outside = root.join("null");
+        std::os::unix::fs::symlink("/dev/null", &outside).unwrap();
+        let cgroup = b"0::/user.slice/user-1000.slice\n";
+        fake_process(&root, 4_000_001, &outside, Some(cgroup));
+        fake_process(&root, 4_000_002, Path::new("/dev/null"), Some(cgroup));
+        let (_, pids) = walked(&root);
+        assert_eq!(
+            pids,
+            HashSet::from([4_000_002]),
+            "only the process whose link is under /dev is seen"
+        );
     }
 }
