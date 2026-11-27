@@ -44,6 +44,7 @@ import "../Fuzzy.js" as Fuzzy
 import "../Places.js" as Places
 import "../SessionTalks.js" as Said
 import "../When.js" as When
+import "ActsSaid.js" as ActsSaid
 import "CarryBack.js" as CarryBack
 import "Cloud.js" as Cloud
 import "Landed.js" as Landed
@@ -51,7 +52,6 @@ import "Moment.js" as Moment
 import "Numbers.js" as Numbers
 import "Openings.js" as Openings
 import "Order.js" as Order
-import "Presented.js" as Presented
 import "ReopenTally.js" as ReopenTally
 import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
@@ -2262,7 +2262,7 @@ Provider {
             // The daemon's words can name a session, so they're said as errorShown
             // says a daemon's error.
             const why = answer?.error === undefined ? "no daemon answered"
-                : Presented.errorShown(answer.error, Options.reports);
+                : ActsSaid.errorShown(answer.error, Options.reports);
             console.info(`launcher: a start's told wasn't taken: ${why}`);
             tokens.filter(token => sproutTokens[token] === "told").forEach(token => {
                 sproutTokens[token] = "ended";

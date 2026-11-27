@@ -38,6 +38,7 @@ import "NeedsYou.js" as NeedsYou
 import "Here.js" as Here
 import "Keeping.js" as Keeping
 import "PlaceRow.js" as PlaceRow
+import "ActsSaid.js" as ActsSaid
 import "Presented.js" as Presented
 import "SessionRow.js" as SessionRow
 import "TalkAnswers.js" as TalkAnswers
@@ -1164,7 +1165,7 @@ Provider {
         // A look's file is named for what Joel wrote, and the daemon's words
         // may quote it, so they're said by letters and as errorShown says them.
         const why = answer?.error === undefined ? "not there to ask"
-            : Presented.errorShown(answer.error, Options.reports);
+            : ActsSaid.errorShown(answer.error, Options.reports);
         const named = Presented.typedShown(file, Options.reports);
         console.warn(`Now: the to-do daemon didn't settle ${named} (${why}),`
             + " so its look stands as it was");

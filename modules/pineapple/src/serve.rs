@@ -23,6 +23,9 @@
 //! the daemon serves none of them and sends no notice: it writes each row
 //! it would have shown, once, to would-tell.jsonl, with the message it
 //! would send to Joel's own Slack, which nothing sends yet either.
+//!
+//! Long because the cases of a notice tried again drive its private look
+//! with a clock of their own, so they live beside it.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -575,8 +578,8 @@ fn notice(notify: &Path, row: &Value) -> Result<Option<u32>, String> {
     let title = row["title"].as_str().unwrap_or_default();
     let body = format!(
         "{}\n{}",
-        row["words"].as_str().unwrap_or_default(),
-        row["link"].as_str().unwrap_or_default()
+        unmarked(row["words"].as_str().unwrap_or_default()),
+        unmarked(row["link"].as_str().unwrap_or_default())
     );
     let args: Vec<String> = [
         "--urgency=critical",
@@ -595,6 +598,15 @@ fn notice(notify: &Path, row: &Value) -> Result<Option<u32>, String> {
     let mut runs = pause::System { limit: KNOCK_LIMIT };
     runs.run(notify, &args)
         .map(|printed| printed.trim().parse().ok())
+}
+
+/// Text a notice's body shows as it was said: the notices server reads a
+/// body as markup, so a comment's own tags or entities would otherwise be
+/// drawn as links and styles, or read as other characters.
+fn unmarked(said: &str) -> String {
+    said.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 /// The notices server's name on the bus now, which changes whenever it

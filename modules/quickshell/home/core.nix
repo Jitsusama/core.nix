@@ -64,6 +64,7 @@
   "launcher/Makings.js"
   "launcher/Presented.js"
   "launcher/KeysSaid.js"
+  "launcher/ActsSaid.js"
   "launcher/ChangesPresented.js"
   "launcher/Spots.js"
   "launcher/Wanted.js"

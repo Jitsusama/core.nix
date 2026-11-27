@@ -80,9 +80,10 @@ CELLS = 8
 # once a cloud machine says it's kept, a little more once a long lease counts
 # days, about 0.4 KB more once every label is kept apart and in its room,
 # about 2.4 KB more once a machine's drawer starts new work on it, 686.0 KB
-# once what each cell split from is read, and about 0.9 KB more once new
-# work keeps to the machine chosen, under the 689 KB allowed; new work's line
-# and its hidden controls draw about 20 elements of the 611.
+# once what each cell split from is read, about 0.9 KB more once new work
+# keeps to the machine chosen, and a little more once the kit draws a field's
+# placeholder in muted, under the 689 KB allowed; new work's line and its
+# hidden controls draw about 20 elements of the 611.
 BUDGET = Budget(files=33, kilobytes=689, elements=620)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
@@ -2477,6 +2478,36 @@ def test_a_machines_drawer_opens_its_row_in_the_launcher(mycelium_opened: Opened
     )
 
 
+# The skiff's network as two machines feed it in node.json, each cell
+# counted where it is drawn: TERN01 is listed in the skiff and in its
+# branch but drawn in the branch, so the skiff draws SKIFF1, TERN02 and
+# GULL01 as its own. kestrel runs two of those and both of the branch's,
+# osprey runs GULL01.
+FED_NETWORK = "orchestration.skiff1"
+FED_BY = ["kestrel", "feeds it 4 cells", "osprey", "feeds it 1 cell"]
+
+
+def test_a_network_fed_by_two_machines_lists_each_with_its_cells(
+    mycelium_opened: Opened,
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(f"location.hash = '#net={FED_NETWORK}'")
+    body = page.locator("#panel-body")
+    expect(body, "the skiff's drawer miscounted its cells or machines").to_contain_text(
+        "A network of 3 cells, with 2 more in 1 branch, fed by 2 machines.", timeout=PACE_MS
+    )
+    # A network belongs to no machine, so its drawer lists every one that
+    # feeds it, its branch's cells counted in.
+    rows = body.locator("h3:text-is('Its Machines') + ul.rows li")
+    expect(rows, "the skiff's drawer didn't list both machines").to_have_count(2)
+    lines = [line for row in rows.all_inner_texts() for line in row.splitlines() if line]
+    assert lines == FED_BY, f"Its Machines read {lines}, not {FED_BY}"
+    # Each opens that machine's own drawer.
+    rows.nth(1).get_by_role("button").click()
+    expect(page.locator("#panel-title"), "osprey's row didn't open osprey").to_have_text("osprey")
+
+
 def test_a_kept_cloud_machine_says_so_and_opens_its_row(
     browser: Browser, lent_served: Served
 ) -> None:
@@ -2964,6 +2995,42 @@ def test_the_map_keeps_to_its_budget(browser: Browser, mycelium_served: Served) 
         the_map_counts(opened.page, COUNTED, "the map didn't draw")
         opened.keeps_to(BUDGET)
         the_map_stands(opened.page, "live")
+    finally:
+        opened.close()
+
+
+# Every raster the page fetched, shows as an image or paints from a style, by
+# its address: a file of a raster kind, or a raster's data written inline.
+RASTERS = r"""() => {
+  const raster = /\.(png|jpe?g|gif|webp|avif|bmp|ico)([?#]|$)|^data:image\/(?!svg)/iu;
+  const fetched = performance.getEntriesByType("resource").map((each) => each.name);
+  const shown = [...document.querySelectorAll("img, picture source, image, input[type=image]")]
+    .map((each) => each.currentSrc || each.src || each.getAttribute("href") || each.srcset || "");
+  const url = /url\("?([^")]*)"?\)/gu;
+  const painted = [...document.querySelectorAll("*")].flatMap((each) =>
+    [...getComputedStyle(each).backgroundImage.matchAll(url)].map((found) => found[1])
+  );
+  return {
+    fetched: fetched.filter((each) => raster.test(each)),
+    shown: shown.filter((each) => raster.test(each)),
+    painted: painted.filter((each) => raster.test(each)),
+  };
+}"""
+
+
+def test_the_map_is_drawn_as_vectors_with_no_raster_picture(
+    browser: Browser, mycelium_served: Served
+) -> None:
+    """The map is drawn from shapes, never a picture (Joel, 14 November: "stick to svgs")."""
+    root, _ = mycelium_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    try:
+        the_map_stands(opened.page, "live")
+        the_map_counts(opened.page, COUNTED, "the map didn't draw")
+        found = opened.page.evaluate(RASTERS)
+        assert found == {"fetched": [], "shown": [], "painted": []}, (
+            f"the map fetched, showed or painted a raster picture: {found}"
+        )
     finally:
         opened.close()
 
