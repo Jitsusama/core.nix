@@ -319,6 +319,14 @@ const LOOKS: Record<string, object> = {
       `Talk ${"x".repeat(18)}\u{e0001}`,
     ]),
   },
+  "choices weighed by ASCII's wide marks and digits": {
+    ...LOOK,
+    choices: labelled(["#", "&", "=", "0"].map((one) => `Talk ${one.repeat(19)}`)),
+  },
+  "choices of digits and wide marks short enough to draw whole": {
+    ...LOOK,
+    choices: labelled(["Open PR 7282", "Talk Sam & Kim", `Talk ${"#".repeat(9)}`]),
+  },
   "choices spaced wider than one": {
     ...LOOK,
     choices: labelled([`Talk x\t${"y".repeat(15)}`, `Talk\u2003${"x".repeat(19)}`]),
@@ -339,6 +347,10 @@ const LOOKS: Record<string, object> = {
   "choices borrowing another script's letters that draw as an act's": {
     ...LOOK,
     choices: labelled(["\u0421lear It", "\u03a4alk", "\uff34alk", "\u0414\u0430"]),
+  },
+  "choices holding a mark no list names inside or after their act": {
+    ...LOOK,
+    choices: labelled(["Ta\u0485lk", "Tal\u064bk", "T\u3099alk", "Ta\u0485lk now"]),
   },
   "choices holding letters beyond Latin no list names": {
     ...LOOK,

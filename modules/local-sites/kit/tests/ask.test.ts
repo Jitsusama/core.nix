@@ -215,6 +215,30 @@ it("a choice posing as the launcher's own act is neither offered nor sent", () =
   assert.equal(asked(asDropped, NOW)?.act, OPEN, "an act reading as a dropped choice showed");
 });
 
+/** The labels a look offering `labels`, four at most, offers of them. */
+function offeredOf(labels: readonly string[]): string[] {
+  const choices = labels.map((label, at) => ({ value: `choice-${at}`, label }));
+  return asked({ ...second, choices }, NOW)?.choices.map((one) => one.label) ?? [];
+}
+
+// A mark MARKS doesn't name draws on the letter before it all the same, so
+// one between an act's letters hides nothing from Joel's eye (#6562, 211).
+it("a choice whose act holds a mark no list names poses as it", () => {
+  assert.deepEqual(offeredOf(["Ta\u0485lk", "Tal\u064bk", "T\u3099alk", "Ta\u0485lk now"]), []);
+  assert.deepEqual(offeredOf(["\u0414\u0430"]), ["\u0414\u0430"]);
+});
+
+// ASCII's wide marks draw about as wide as an m, and a digit as a capital,
+// so a run of them after a one-word act draws cut to it (#6562, 212).
+it("a one-word act's choice weighs ASCII's wide marks and its digits as drawn", () => {
+  const rests = ["#", "&", "=", "0"].map((one) => `Talk ${one.repeat(19)}`);
+  assert.deepEqual(offeredOf(rests), []);
+  assert.deepEqual(offeredOf(["Open PR 7282", "Talk Sam & Kim"]), [
+    "Open PR 7282",
+    "Talk Sam & Kim",
+  ]);
+});
+
 it("a look of the first form reads from its why, with its question and an act for its kind", () => {
   const ask = asked(first, NOW);
   assert.deepEqual(ask?.said, [first.why]);

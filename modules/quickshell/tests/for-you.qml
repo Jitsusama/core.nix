@@ -564,6 +564,17 @@ QtObject {
                 LookForm.poses("Clear at", ["Clear It"]),
                 LookForm.poses("Close It", ["Clear It"])],
             [true, true, true, true, true, true, true, true, false, false]);
+        // A mark MARKS doesn't name, Cyrillic's, Arabic's or kana's, draws on
+        // the letter before it all the same, so it may stand for nothing
+        // between an act's letters as well as for one of them (#6562, 211);
+        // a choice wholly in another script, shorter than an act, is its own.
+        expect("a mark no list names, inside an act, can't pass for nothing",
+            [LookForm.poses("Ta\u0485lk", ["Talk"]),
+                LookForm.poses("Tal\u064bk", ["Talk"]),
+                LookForm.poses("T\u3099alk", ["Talk"]),
+                LookForm.poses("Ta\u0485lk now", ["Talk"]),
+                LookForm.poses("\u0414\u0430", ["Talk"])],
+            [true, true, true, true, false]);
         // A verb cut short where it runs out of room shows only its first
         // words, so one opening with an act's words poses as it, however
         // short what follows: the line's room isn't known where it's judged
@@ -614,6 +625,18 @@ QtObject {
                 LookForm.actOf(second({ act: "Review\u009cIt" })),
                 LookForm.poses("Open a PR", ["Open"])],
             [true, true, true, true, true, true, "", false]);
+        // ASCII's wide marks draw about as wide as an m, and a digit as wide
+        // as a capital, so 19 of them after a one-word act draw cut to it,
+        // where a PR's number or an ampersand among words still fits (#6562,
+        // 212).
+        expect("a one-word act's choice weighs ASCII's wide marks and digits as drawn",
+            [LookForm.poses(`Talk ${"#".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"&".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"=".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Talk ${"0".repeat(19)}`, ["Talk"]),
+                LookForm.poses("Open PR 7282", ["Open"]),
+                LookForm.poses("Talk Sam & Kim", ["Talk"])],
+            [true, true, true, true, false, false]);
         // A one-word act's choice is measured as it's drawn, not as it reads:
         // its closing stops, which reading leaves out, and its wide letters
         // count, so 19 capital W's or 200 stops after it draw as the act and

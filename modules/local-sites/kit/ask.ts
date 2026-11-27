@@ -64,7 +64,7 @@
 // Every word here is free text a session wrote, so a page draws each as
 // text, never as markup.
 
-import { drawsLike, MARKS, pointsIn } from "./borrowed.ts";
+import { endsOf, MARKS, pointsIn } from "./borrowed.ts";
 import { type Fields, isObject } from "./records.ts";
 
 /** How many of a look's choices are offered, as Looks.js's OFFERED. */
@@ -274,8 +274,10 @@ const CUTS = /[\n\r\v\f\u0085\u2028\u2029]|\s{2,}/u;
  * draws as Talk; and what may follow a one-word act and still be judged
  * by its count (PLAIN), so "Talk\u2024\u2024" or a wide glyph's run poses;
  * what of it draws wider than a small letter, as LookForm.js weighs it
- * (WIDEST about twice, a capital half as wide again); and a space the read
- * folds that draws wider than one (SPACED), as a tab.
+ * (WIDEST about twice, ASCII's wide marks among them, so "Talk " and 19
+ * #'s aren't weighed as small letters and offered, #6562, 212; a capital
+ * or a digit half as wide again); and a space the read folds that draws
+ * wider than one (SPACED), as a tab.
  */
 const SPACES = /\s+/gu;
 const STOPS = /[\s.!?,;:\u2026]+$/u;
@@ -288,7 +290,8 @@ const TURNS = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
 const VARIANTS = /\u009c/u;
 const PLAIN =
   /^[\x20-\x7e\u00c0-\u017f\u0386-\u03ce\u0400-\u045f\u2013\u2014\u2018\u2019\u201c\u201d]*$/u;
-const WIDEST = /[MWmw@%\u2014\u00c6\u00e6\u0152\u0153\u0174\u0175\u0386-\u03ce\u0400-\u045f]/u;
+const WIDEST =
+  /[MWmw@%#&=+~<>\u2014\u00c6\u00e6\u0152\u0153\u0174\u0175\u0386-\u03ce\u0400-\u045f]/u;
 const SPACED = /[^\S \u00a0]/u;
 const DANGLING = /(?:[\s\u00b7,;:]|\s[-|\u2013])+$/u;
 
@@ -304,14 +307,23 @@ function actWeighed(face: string, length: number): number {
 
 /**
  * How wide `text` draws, in small letters, as LookForm.js's weighed: each
- * character one, by code point, a capital one and a half, WIDEST two.
+ * character one, by code point, a capital or a digit one and a half,
+ * WIDEST two.
  */
 function weighed(text: string): number {
   let width = 0;
   for (const each of text) {
-    width += WIDEST.test(each) ? 2 : each === each.toLowerCase() ? 1 : 1.5;
+    width += widthOf(each);
   }
   return width;
+}
+
+/** How wide one character draws, as weighed counts it, as LookForm.js's widthOf. */
+function widthOf(each: string): number {
+  if (WIDEST.test(each)) {
+    return 2;
+  }
+  return each === each.toLowerCase() && !DIGIT.test(each) ? 1 : 1.5;
 }
 
 /**
@@ -352,20 +364,23 @@ function headOf(name: string): string {
 /**
  * Whether `read` opens with the words `each` and then a break between
  * words, as LookForm.js's opensWith: "clear it, now" opens with "clear
- * it", where "clearance" doesn't open with "clear".
+ * it", where "clearance" doesn't open with "clear"; by any drawing of it
+ * (endsOf), so "talk\u0485 now" opens with talk.
  */
 function opensWith(read: string, each: string): boolean {
-  const length = pointsIn(each);
-  if (pointsIn(read) === length || !drawsLike(read, each)) {
-    return false;
-  }
-  const next = Array.from(read)[length] ?? "";
-  return next.toLowerCase() === next.toUpperCase() && !DIGIT.test(next);
+  const ours = Array.from(read);
+  return endsOf(read, each).some((end) => {
+    const next = ours[end];
+    return next !== undefined && next.toLowerCase() === next.toUpperCase() && !DIGIT.test(next);
+  });
 }
 
-/** Whether `read` may draw as `each` whole, as LookForm.js's reads. */
+/**
+ * Whether `read` may draw as `each` whole, as LookForm.js's reads: a
+ * drawing ends where it does.
+ */
 function reads(read: string, each: string): boolean {
-  return pointsIn(read) === pointsIn(each) && drawsLike(read, each);
+  return endsOf(read, each).includes(pointsIn(read));
 }
 
 /**
