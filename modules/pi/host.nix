@@ -576,25 +576,21 @@ in
             default = null;
             description = ''
               The node known to take conversationHeapGrowingPercent, which a
-              machine built on another platform may run without the proof,
-              saying nothing, while it is the realm's node. Its builder can't
-              run the node, so the proof stands unproven, and the machine
-              warns of it, which a check that a machine evaluates without
-              warnings refuses. Name the node once it is known to take the
-              percent, as one built the same way on the machine's own platform
-              shows. Given another node, the realm warns again, so a node
+              machine built on another platform may run unproven, saying
+              nothing, while it is the realm's node. Its builder can't run the
+              node, so the machine warns, which a check that a machine
+              evaluates without warnings refuses. Name the node once one built
+              the same way on the machine's own platform shows it takes the
+              percent. Given another node, the realm warns again, so a node
               changed later doesn't go unproven unsaid. A machine built on its
               own platform is proven either way.
             '';
           };
-          # The bare yes conversationHeapGrowthVouchedNode replaced, kept
-          # unlisted so a machine still setting it is told what to set,
-          # rather than that no such option exists.
           conversationHeapGrowthMayGoUnproven = lib.mkOption {
             type = lib.types.bool;
             default = false;
             visible = false;
-            description = "Gone: name the node in conversationHeapGrowthVouchedNode.";
+            description = "Gone, but kept so a machine setting it is told to name the node in conversationHeapGrowthVouchedNode.";
           };
           asyncContextFrame = lib.mkOption {
             type = lib.types.bool;
