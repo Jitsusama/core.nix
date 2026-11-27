@@ -11,7 +11,7 @@
 # with the limit in force said once, wherever this user can't raise a hard
 # limit; limits and guards that aren't whole seconds, refused; and a second
 # scratch file that can't be made, every case left unrun and the first let go.
-# A run that makes both lets both go as it ends, too.
+# A run whose cases fail lets both go as it ends, each seen made there first.
 # usage: runs-every-case-test.sh <runs-every-case.sh>
 # CAPPED_MUST_RUN, set by the check, fails the run where the capped case
 # can't be shown, rather than leaving it out, so a build passes only having
@@ -63,13 +63,29 @@ EOF
 # read from BASH_ENV as the refusing ulimit is. Each is made in a subshell,
 # so the first leaves a mark in the scratch folder for the second to see,
 # naming the file it made, so a case can tell one let go from one never made.
+# mktemp's own failure is passed on, whatever the runner's shell options.
 cat >"$here/making-one" <<'EOF'
 mktemp() {
+  local made
   if [ -e "$TMPDIR/.made" ]; then
     echo "mktemp: refused the second" >&2
     return 1
   fi
-  command mktemp "$@" | tee "$TMPDIR/.made"
+  made=$(command mktemp "$@") || return
+  echo "$made" >"$TMPDIR/.made"
+  echo "$made"
+}
+EOF
+
+# A mktemp naming each file it makes in a list outside the scratch folder,
+# so a run that leaves that folder empty is seen to have made its files
+# there rather than nowhere.
+cat >"$here/recording" <<EOF
+mktemp() {
+  local made
+  made=\$(command mktemp "\$@") || return
+  echo "\$made" >>"$here/made-ends"
+  echo "\$made"
 }
 EOF
 
@@ -123,12 +139,21 @@ took() {
     failing "$1.qml never said its time as $2 of its own and $3 by the clock"
 }
 
-# Its scratch files are made in a folder of its own, which it leaves empty.
+# Its two scratch files are made in a folder of its own, which it leaves
+# empty.
 scratch=$here/scratch-ends
 mkdir "$scratch"
+start=$here/recording
 runs ends 1 60 a-passes:pass b-fails:fail c-spins:spin d-dies:die e-after:pass
+start=
 scratch=
 ends 1
+made=()
+[ ! -e "$here/made-ends" ] || mapfile -t made <"$here/made-ends"
+[ "${#made[@]}" = 2 ] || failing "the run made ${#made[@]} scratch files, not 2: ${made[*]}"
+for each in "${made[@]}"; do
+  [[ $each == "$here/scratch-ends/"?* ]] || failing "a scratch file was made elsewhere: $each"
+done
 left=$(ls -A "$here/scratch-ends")
 [ -z "$left" ] || failing "the run left its scratch folder holding: $left"
 holds "b-fails.qml failed, exit code 2"
@@ -196,7 +221,9 @@ holds "the runner couldn't make its scratch files"
 holds "mktemp: refused the second"
 never "a-marks.qml"
 [ ! -e "$here/one-scratch-file/a-marks.qml.ran" ] || failing "a-marks.qml ran"
-made=$(<"$here/scratch/.made")
+# A mark never made is said as a failure, rather than ending this run here.
+made=
+[ ! -e "$here/scratch/.made" ] || made=$(<"$here/scratch/.made")
 [[ $made == "$here/scratch/"?* ]] || failing "the stand-in made no first scratch file: '$made'"
 left=$(ls -A "$here/scratch")
 [ "$left" = .made ] || failing "the runner left its scratch folder holding: $left"

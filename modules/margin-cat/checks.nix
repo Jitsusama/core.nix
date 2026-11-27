@@ -99,8 +99,9 @@ onLinux {
 
   # What the cat's case runner says of each way a case ends, past its own
   # time, killed, hung, failed or unrun under a builder's hold, and of limits
-  # that aren't whole seconds, and that it lets go its scratch files however
-  # it ends, even when only the first could be made, over stand-ins in about
+  # that aren't whole seconds, and that it lets go both scratch files as a
+  # run with failed cases ends, and the first where only it could be made,
+  # each seen made in its folder first, over stand-ins in about
   # 20 s by the clock, most of it a hang's wait for its guard, as
   # tests/runs-every-case-test.sh holds it.
   the-cat-runner-names-how-each-case-ended =
