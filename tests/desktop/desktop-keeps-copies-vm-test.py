@@ -495,7 +495,9 @@ PAGE = (
 
 
 def copy_a_password(desktop: Desktop) -> float:
-    """Copy the console's password from Passwords by its Return, and give when, monotonic.
+    """Copy the console's password from Passwords, and give when it pasted.
+
+    When is monotonic, once the copy first pastes, a moment after it began.
 
     The first step in asks 1Password, through op, and leads with it locked until it's
     answered, so the place is opened again once it has, to stand as Joel finds it then. Its
@@ -516,14 +518,13 @@ def copy_a_password(desktop: Desktop) -> float:
     desktop.follow()
     desktop.launcher_until(lambda shown: "Copy the Password" in shown["rows"])
     desktop.down_to("Copy the Password")
-    copied = time.monotonic()
     machine.send_key("ret")
     desktop.launcher_until(lambda shown: not shown["open"])
     machine.wait_until_succeeds(
         desktop.in_session(f"wl-paste --no-newline | grep -qx {STAND_IN}"),
         timeout=timedelta(seconds=10),
     )
-    return copied
+    return time.monotonic()
 
 
 def focused(desktop: Desktop, title: str) -> None:
@@ -579,29 +580,35 @@ def test_a_password_copied_pastes_is_never_kept_or_fenced_and_clears(desktop: De
         desktop.in_session("niri msg windows | grep -q pasted:"), timeout=timedelta(seconds=30)
     )
 
-    # Never kept: Super+V leads with the copy before it and lists no row of it, which is where
-    # a kept text copy would show, since the history keeps text in memory alone; and no
-    # picture it writes to its folder holds it either.
-    with desktop.told("heard copy before the password"):
-        desktop.as_account("echo -n 'before the password' | wl-copy > /dev/null 2>&1")
-    copied = copy_a_password(desktop)
+    # Never kept: Super+V lists no row of it, which is where a kept text copy would show, since
+    # the history keeps text in memory alone; and no picture it writes to its folder holds it
+    # either. A secret's copy says nothing as it's heard, so a copy after it is waited on: the
+    # history hears copies in turn, so by then it has heard the password's too.
+    copy_a_password(desktop)
+    with desktop.told("heard copy after the password"):
+        desktop.as_account("echo -n 'after the password' | wl-copy > /dev/null 2>&1")
     machine.send_key("meta_l-v")
     desktop.launcher_ready()
     desktop.launcher_until(
-        lambda shown: (shown["selected"] or {}).get("reads") == "before the password"
+        lambda shown: (shown["selected"] or {}).get("reads") == "after the password"
     )
     assert STAND_IN not in json.dumps(desktop.showing()), desktop.showing()["rows"]
     desktop.close_launcher()
     machine.fail(desktop.in_session(f"grep -rqF {STAND_IN} $XDG_RUNTIME_DIR/clipboard-history"))
 
     # Gone once its time is up, and held till then.
+    copied = copy_a_password(desktop)
+
     def cleared(_: bool) -> bool:
         """Say whether the clipboard no longer holds the password."""
         return desktop.as_account("wl-paste --no-newline 2>/dev/null || true") != STAND_IN
 
+    # Timed from the paste first seen, after the copy began, so a clear come early can't pass
+    # for one held, and bounded above too, as retry's wait grows on a busy host.
     retry(cleared, timeout=CLEARS + timedelta(seconds=15))
     held = timedelta(seconds=time.monotonic() - copied)
     assert held >= CLEARS - timedelta(seconds=5), f"the copy went after only {held}"
+    assert held <= CLEARS + timedelta(seconds=15), f"the copy was held {held}"
 
     # A fenced command can't read it while it's held (modules/passwords/tests); this area
     # alone has the script.
