@@ -27,6 +27,7 @@ if [[ -d $XDG_RUNTIME_DIR ]]; then echo made >> "$seen"; fi
 echo "desktop:${DBUS_SESSION_BUS_ADDRESS-}${DISPLAY-}${WAYLAND_DISPLAY-}" >> "$seen"
 case $(< "$does") in
   fail) exit 1 ;;
+  # Longer than the library's ten seconds for a stop, so it's cut off.
   hang) exec sleep 60 ;;
 esac
 EOF
@@ -51,9 +52,10 @@ fi
 # A mkdir that can't make a runtime folder, writing down which it was
 # asked for, and making every other folder as the real one does.
 mkdir -p "$here/no-runtime"
+real_mkdir=$(command -v mkdir)
 {
   printf '#!%s\n' "$BASH"
-  printf 'asked=%q mkdir=%q\n' "$here/asked" "$(command -v mkdir)"
+  printf 'asked=%q mkdir=%q\n' "$here/asked" "$real_mkdir"
   cat << 'EOF'
 for last; do :; done
 if [[ $last == */run ]]; then
@@ -125,9 +127,11 @@ fi
 run "" 0 "$here/no-runtime"
 asked=$(< "$here/asked")
 if [[ $status -ne 1 || -e $here/seen || -e ${asked%/run} ]]; then
+  sent="not sent" kept=removed
+  if [[ -e $here/seen ]]; then sent=sent; fi
+  if [[ -e ${asked%/run} ]]; then kept=kept; fi
   echo "a script whose runtime folder couldn't be made ended $status, its stop" \
-    "$([[ -e $here/seen ]] && echo sent || echo not sent), ${asked%/run}" \
-    "$([[ -e ${asked%/run} ]] && echo kept || echo removed)" >&2
+    "$sent, ${asked%/run} $kept" >&2
   exit 1
 fi
 # Cut off, the stop may have left a daemon that finds its folder there.
