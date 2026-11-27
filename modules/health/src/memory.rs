@@ -236,8 +236,10 @@ pub struct Memory {
     /// The day's looks that counted every copy they saw by its Pss, so
     /// the typical and heavy copy, means over the looks, say how much of
     /// them was by shares: fewer than `looks` on the day a machine moved
-    /// to shares, or where some copy's share couldn't be read.
-    pub looks_by_pss: u64,
+    /// to shares, or where some copy's share couldn't be read. None for a
+    /// day kept with looks before this count was, whose looks' measure
+    /// isn't known, rather than 0, which would say they were all by Rss.
+    pub looks_by_pss: Option<u64>,
 }
 
 /// The copies of an age, and what they held in memory and swap, in KiB.
@@ -267,12 +269,18 @@ impl Memory {
         each.sort_unstable();
         self.median_kib = ranked(&each, 50);
         self.p95_kib = ranked(&each, 95);
+        // A day with no looks yet has none uncounted, so its count starts.
+        if self.looks == 0 && self.looks_by_pss.is_none() {
+            self.looks_by_pss = Some(0);
+        }
         if !each.is_empty() {
             self.looks += 1;
             self.median_sum_kib += self.median_kib;
             self.p95_sum_kib += self.p95_kib;
-            if self.by_pss == self.copies {
-                self.looks_by_pss += 1;
+            if let Some(counted) = self.looks_by_pss.as_mut()
+                && self.by_pss == self.copies
+            {
+                *counted += 1;
             }
         }
         self.by_age = vec![Aged::default(); AGES.len() + 1];
@@ -640,7 +648,7 @@ mod tests {
     }
 
     #[test]
-    fn each_look_says_how_many_copies_it_counted_by_pss() {
+    fn the_last_look_counts_its_copies_by_pss_and_the_day_its_looks() {
         let copy = |by_rss| Held {
             kib: 10,
             swap_kib: 0,
@@ -667,8 +675,16 @@ mod tests {
         assert_eq!(measure(&memory), "by Pss (1 by Rss)");
         assert_eq!(
             (memory.looks, memory.looks_by_pss),
-            (4, 1),
+            (4, Some(1)),
             "only the look whose one copy was by Pss counted every copy by it"
+        );
+        let mut resumed: Memory =
+            serde_json::from_str(r#"{"copies": 1, "by_pss": 1, "looks": 3}"#).expect("a day");
+        resumed.saw(5, &[copy(false)]);
+        assert_eq!(
+            (resumed.looks, resumed.looks_by_pss),
+            (4, None),
+            "a day kept with looks before the count can't say how many were by Pss"
         );
         let overcounted: Memory =
             serde_json::from_str(r#"{"copies": 2, "by_pss": 5}"#).expect("a day");
