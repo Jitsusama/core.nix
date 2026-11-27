@@ -1163,6 +1163,11 @@ def test_a_sessions_close_asks_saying_what_stays_and_return_steers_it_closed(
 
     The ask is answered as an armed row is (Joel, 2026-11-13): a Return more does it, its foot
     saying so, and any other key, y among them, lets it go without reaching the line.
+
+    It pins the ask and its keys to one clock: askOnce puts the ask on the field's keyNow,
+    KeyTimes' monotonic clock, which times the Return too. Were the ask put on the wall clock
+    while its keys kept KeyTimes', that Return would read as early for as long as the ask
+    stands, and nothing would be steered.
     """
     into_orchestration(shell)
     rows = shell.showing()["rows"]
@@ -1171,14 +1176,15 @@ def test_a_sessions_close_asks_saying_what_stays_and_return_steers_it_closed(
     inbox = STEER / "BOSSES"
 
     def asked_to_close() -> None:
-        """Return writes the line Close is, and a second runs it, which asks."""
+        """Return writes the line Close is, and a second runs it, which asks until ready."""
         shell.send_key("ret")
         shell.launcher_until(
             lambda shown: (
                 (shown["command"] or {}).get("line") == "close" and not shown["linedFresh"]
             )
         )
-        shell.send_key("ret")
+        with shell.told("ask ready"):
+            shell.send_key("ret")
         shell.launcher_until(lambda shown: shown["takesAnswer"])
 
     asked_to_close()
