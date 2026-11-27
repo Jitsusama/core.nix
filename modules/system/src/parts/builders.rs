@@ -428,4 +428,44 @@ mod tests {
             "no padded known word is worth a look: {said:?}"
         );
     }
+
+    #[test]
+    fn a_known_word_with_hidden_characters_in_it_is_still_that_word() {
+        let said = read(&json!([
+            { "name": "osprey", "state": "\u{200b}answer\u{1b}[0ming" },
+            { "name": "kite", "state": "run\u{200b}ning", "lent": true,
+              "said": "pass\u{2060}ing" },
+        ]));
+        let named: Vec<(&str, Health, &str)> = said
+            .iter()
+            .map(|(name, health, says, _)| (name.as_str(), *health, says.as_str()))
+            .collect();
+        assert_eq!(
+            named,
+            vec![
+                ("kite", Health::Good, "is lent and takes builds"),
+                ("osprey", Health::Good, "answers and takes builds"),
+            ],
+            "a state or lender's word is matched as it reads, its hidden characters gone"
+        );
+    }
+
+    #[test]
+    fn builders_whose_names_read_alike_are_one_said_at_its_worst() {
+        let failing = json!({ "name": "kite\u{200b}", "state": "not answering" });
+        let fine = json!({ "name": "kite", "state": "answering" });
+        for builders in [json!([failing, fine]), json!([fine, failing])] {
+            let said = read(&builders);
+            let named: Vec<(&str, Health)> = said
+                .iter()
+                .map(|(name, health, _, _)| (name.as_str(), *health))
+                .collect();
+            assert_eq!(
+                named,
+                vec![("kite", Health::Watch)],
+                "two builders drawn as one name are one, and a fine one never hides a failing \
+                 one: {builders}"
+            );
+        }
+    }
 }
