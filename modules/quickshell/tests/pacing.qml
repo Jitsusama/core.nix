@@ -805,15 +805,20 @@ QtObject {
         check(failures, "and is said once, in one line, by its kind and where it was thrown",
             [said.length, /^TypeError: thrown at \S*pacing\.qml:\d+(:\d+)?$/.test(said[0] ?? ""),
                 said[0]?.includes("secret")].join(), "1,true,false");
-        // A value thrown with no prototype to say it by is said by its type
-        // alone.
+        // An Error that throws again as its stack is read is said bare, the
+        // rest run still: shown's own catch says it, as one throwing out of
+        // shown would stop the run.
         const unsaid = [];
+        // Made from Error's prototype, since the engine's own Errors hold a
+        // stack that can't be redefined.
+        const unreadable = Object.create(Error.prototype, { stack: { get: () => {
+            throw new Error("joel's secret");
+        } } });
         Thrown.runEach([() => {
-            throw Object.create(null);
+            throw unreadable;
         }, () => ran.push("after")], line => unsaid.push(line));
-        check(failures, "one thrown with no prototype is said by its type, the rest run still",
-            [unsaid.join(), ran[ran.length - 1]].join(" / "),
-            "Error: object thrown / after");
+        check(failures, "one whose stack throws as it's read is said bare, the rest run still",
+            [unsaid.join(), ran[ran.length - 1]].join(" / "), "Error: thrown / after");
         // Drained, each list is taken and set empty before any runs, then
         // run in turn, so a throw in the first list still runs the second,
         // and one queued as they run waits for the next drain, as Launcher.qml's
