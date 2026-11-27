@@ -1283,6 +1283,52 @@ bool sortsEachBinFullestFirst() {
     return tried && intact && ordered;
 }
 
+// How many stores of 1024 values, 260 slots each, about seven to a chunk,
+// the case of the sort list keeps, so its sweep keeps a few dozen chunks,
+// and how many slots a chunk uses at least once it holds one.
+constexpr int SORTED_STORES = 200;
+constexpr uint STORE_SLOTS = 200;
+
+// Whether a sweep leaves empty the list it sorts the kept chunks by, in
+// both allocators, read straight after a collection that kept chunks
+// holding what's made. The list keeps its room from sweep to sweep, so one
+// left holding what it sorted holds chunks a later sweep may free, which
+// nothing reads now but the next change to the sweep could. It holds only
+// if the objects' allocator kept chunks for the sort to put in line, so a
+// heap that kept none fails it rather than passing with nothing sorted.
+bool emptiesTheSortList() {
+    QJSEngine engine;
+    Heap heap(&engine);
+    heap.leaveRoom(ROOM_MB);
+    const QJSValue kept = engine.evaluate(
+        QStringLiteral("(() => { const kept = []; for (let i = 0; i < %1; i++) "
+                       "kept.push(new Array(1024)); return kept; })()")
+            .arg(SORTED_STORES));
+    engine.collectGarbage();
+    const QV4::MemoryManager *manager = engine.handle()->memoryManager;
+    std::size_t keptChunks = 0;
+    for (const QV4::Chunk *chunk : manager->blockAllocator.chunks)
+        keptChunks += chunk->nUsedSlots() >= STORE_SLOTS ? 1 : 0;
+    const std::size_t left = manager->blockAllocator.byUse.size();
+    const std::size_t shapesLeft = manager->icAllocator.byUse.size();
+    // Seven stores to a chunk keep about 29 of them.
+    const bool tried =
+        !kept.isError() && keptChunks >= static_cast<std::size_t>(SORTED_STORES / 10);
+    const bool emptied = left == 0 && shapesLeft == 0;
+    if (!tried)
+        std::fprintf(stderr,
+                     "FAIL chunks holding what's made were kept by a sweep: %zu of %zu "
+                     "chunks used %u slots or more%s\n",
+                     keptChunks, manager->blockAllocator.chunks.size(), STORE_SLOTS,
+                     kept.isError() ? qPrintable(QStringLiteral(", ") + kept.toString()) : "");
+    else if (!emptied)
+        std::fprintf(stderr,
+                     "FAIL a sweep leaves the list it sorts kept chunks by empty: the objects' "
+                     "list held %zu beside %zu chunks kept, and the shapes' %zu\n",
+                     left, keptChunks, shapesLeft);
+    return tried && emptied;
+}
+
 bool expect(const char *what, bool holds, const Weight &before, const Weight &after) {
     if (!holds)
         std::fprintf(stderr,
@@ -2342,6 +2388,7 @@ int main(int argc, char **argv) {
     const bool whole = leavesLargeRunsWhole();
     const bool fullest = fillsTheFullestFirst();
     const bool inOrder = sortsEachBinFullestFirst();
+    const bool emptied = emptiesTheSortList();
     const bool census = namesWhatsKept();
     const bool covered = residentCoversWhatsLive();
     const bool placed = placesWhatMadeIt();
@@ -2356,9 +2403,9 @@ int main(int argc, char **argv) {
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
                    roomyOutside && lasting && lastingOutside && stillCollectsOutside &&
                    reckoned && ownLimits && burstPaced && litterPaced && capped && follows &&
-                   given && lent && fits && whole && fullest && inOrder && census && covered &&
-                   placed && stands && underWay && holdsIt && waitsItOut && stray && alone &&
-                   swept && chained
+                   given && lent && fits && whole && fullest && inOrder && emptied && census &&
+                   covered && placed && stands && underWay && holdsIt && waitsItOut && stray &&
+                   alone && swept && chained
                ? 0
                : 1;
 }
