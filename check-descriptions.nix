@@ -4663,10 +4663,10 @@
   carry-back-asks-the-node-only-a-carry = ''
     Carry Back asks the realm's node only a carry of a quest's id to a machine's name, rebuilt from
     the act's parts so nothing else it holds is sent, and says it done once the carry ended
-    carried, else the node's own why, that its why couldn't be read, or that no answer came; a
-    carried row reads as carrying back until then, and has a refusal said on it, under the key
-    ReadyRows made it with, its thing or else its record's key, kept under row: where its thing
-    claims a kind of the launcher's own
+    carried, else the node's own why, that its why couldn't be read, or that no answer came; an
+    ask that is no carry is never sent, and is refused on its row; a carried row reads as carrying
+    back until then, and has a refusal said on it, under the key ReadyRows made it with, its thing
+    or else its record's key, kept under row: where its thing claims a kind of the launcher's own
   '';
   talk-to-opens-only-on-whom-it-names = ''
     the launcher's talkTo opens a talk on the first word it's given alone: a session's address in
@@ -6359,10 +6359,12 @@
   '';
   the-wifi-cases-fail-on-a-throw = ''
     the guard every Wi-Fi case runs over what the shell said fails a run holding a file's line that
-    threw any Error as Quickshell says one, a TypeError, ReferenceError, RangeError or SyntaxError
-    however it's said, or a value Qt couldn't assign; passes one holding only the launcher's own
-    lines, an Error: in no file's line among them; and stops the build when what was said can't be
-    read. Each of the four Wi-Fi cases runs the shell and then that guard, whatever the run ended in
+    threw any Error as Quickshell says one, a TypeError, ReferenceError, RangeError, SyntaxError,
+    EvalError or URIError however it's said, or a value Qt couldn't assign; fails a run that failed
+    or timed out though it said nothing; passes one holding only the launcher's own lines, an
+    Error: in no file's line among them; and stops the build when what was said can't be read. The
+    network joined ahead's case, whose script wifiCase writes as every case's, runs the shell and
+    then that guard, whatever the run ended in, and then ends failed on what it found
   '';
   the-window-buffers-stay-under-load = ''
     the XPS 14's udev sets xe's `shrinker_non_purgeable_seeks` to 64, so reclaim under a build

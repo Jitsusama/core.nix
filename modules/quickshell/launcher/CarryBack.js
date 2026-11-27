@@ -25,19 +25,26 @@ function keyed(row, key) {
 
 // Carry Back as `served` holds it, its `row` served under `key` with the
 // node's `ask`: the row, keyed as keyed says, reads as carrying back in
-// `said`'s words until the
-// node says the carry has ended, and a refusal is said on it in the node's
-// own words. All of it is here, where carry-back.qml reaches it, so Agents.qml
+// `said`'s words until the node says the carry has ended, and a refusal is
+// said on it in the node's own words. Only the ask asked rebuilds is sent;
+// one that isn't a carry is never sent, and is refused on the row in
+// `said`'s words, since only a row carrying back has a refusal said on it.
+// All of it is here, where carry-back.qml reaches it, so Agents.qml
 // only hands over the provider's becomes and refused and the node's find;
 // left in Agents.qml, the key it chose went unchecked (core.nix#7099's round).
 function carry(served, said, shell) {
-    const { row, key, ask } = served;
+    const { row, key } = served;
     const shown = keyed(row, key);
+    const ask = asked(served.ask);
     let answered = false;
     shell.becomes(shown, {
         side: said.carrying ?? "",
         sideItems: [{ said: said.carrying ?? "", keep: 4 }]
     }, row.name ?? "", "carry back", { done: () => answered });
+    if (ask === null) {
+        shell.refused(shown, said.unasked ?? "");
+        return;
+    }
     shell.find(ask, answer => {
         const end = ended(answer, said);
         if (end.done) {

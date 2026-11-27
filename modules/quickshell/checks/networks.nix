@@ -27,6 +27,8 @@ let
     "ReferenceError"
     "RangeError"
     "SyntaxError"
+    "EvalError"
+    "URIError"
     "Unable to assign"
   ];
 
@@ -78,6 +80,15 @@ let
       failed=1
     fi
     ${judged}
+  '';
+
+  # How a Wi-Fi case ends once ranJudged and any script reading what was said
+  # have judged it: failed where either found something. Kept whole, so the
+  # throw guard's check finds it after ranJudged in every case's build.
+  verdict = ''
+    if [ "$failed" -ne 0 ]; then
+      exit 1
+    fi
   '';
 
   # A Wi-Fi case run through the real Wireless.qml, ReadyRows.qml and
@@ -138,9 +149,7 @@ let
       ${shellFolderLint}
       ${ranJudged qs}
       ${reading}
-      if [ "$failed" -ne 0 ]; then
-        exit 1
-      fi
+      ${verdict}
       touch $out
     '';
 
@@ -149,10 +158,15 @@ let
   joinedAhead = wifiCase "wifi-holds-the-network-joined-ahead" ../tests/wifi-ahead.qml null;
 
   # Whether a case's build runs the shell and then the guard as ranJudged does
-  # with qs. hasInfix makes a pattern of the sequence, and a pattern may name no
-  # store path, so its qs is matched as text alone.
+  # with qs, and then ends on the verdict. hasInfix makes a pattern of the
+  # sequence, and a pattern may name no store path, so its qs is matched as
+  # text alone; the verdict is looked for only in what follows the run.
   judgedText = builtins.unsafeDiscardStringContext (ranJudged qs);
-  casesRunJudged = pkgs.lib.hasInfix judgedText joinedAhead.buildCommand;
+  caseScript = builtins.unsafeDiscardStringContext joinedAhead.buildCommand;
+  afterJudged = pkgs.lib.tail (pkgs.lib.splitString judgedText caseScript);
+  casesRunJudged = afterJudged != [ ];
+  afterTheRun = pkgs.lib.concatStringsSep judgedText afterJudged;
+  casesEndOnTheVerdict = pkgs.lib.hasInfix verdict afterTheRun;
 in
 {
   # The Home Network is offered wherever eero's module brings its daemon,
@@ -360,14 +374,19 @@ in
   # The Wi-Fi cases' throw guard fails a run whose shell said a line threw, in
   # each shape it names, passes one saying only the launcher's own lines, and
   # stops the build where what was said can't be read, so an edit that broke
-  # its pattern can't switch it off while the cases stay green. Every case runs
-  # the shell and then the guard as ranJudged does, whatever the run ended in,
-  # which is run here with stand-in shells, so neither can be dropped or ended
-  # early by an edit to how a case runs either. Kept in Nix because it runs the
-  # very guard and run the cases are built with.
+  # its pattern can't switch it off while the cases stay green. ranJudged is
+  # run here with stand-in shells, so a run that failed or timed out fails
+  # though it said nothing, and one that threw fails though it passed. The
+  # network joined ahead's script, which wifiCase writes as every case's, is
+  # read for ranJudged with qs and then the verdict, so a case can't drop
+  # either; what a case built some other way runs isn't read. Kept in Nix
+  # because it runs the very guard and run the cases are built with.
   the-wifi-cases-fail-on-a-throw = pkgs.runCommandLocal "the-wifi-cases-fail-on-a-throw" { } ''
     ${pkgs.lib.optionalString (!casesRunJudged) (
       throw "a Wi-Fi case no longer runs its shell and then the throw guard as ranJudged does"
+    )}
+    ${pkgs.lib.optionalString (casesRunJudged && !casesEndOnTheVerdict) (
+      throw "a Wi-Fi case no longer ends failed on the verdict after ranJudged's run"
     )}
     ran_judged() {
       if [ "$failed" -ne "$1" ]; then
@@ -381,6 +400,10 @@ in
     ran_judged 1 "that threw and passed"
     ${ranJudged (saying "passes-quietly" quiet 0)}
     ran_judged 0 "that passed saying only the launcher's own lines"
+    ${ranJudged (saying "fails-quietly" quiet 1)}
+    ran_judged 1 "that failed saying only the launcher's own lines"
+    ${ranJudged (saying "times-out-quietly" quiet 124)}
+    ran_judged 1 "that timed out saying only the launcher's own lines"
 
     judge() {
       printf '%s\n' "$2" > said
@@ -399,6 +422,8 @@ in
     judge 1 "file:///build/launcher/ReadyRows.qml:917: ReferenceError: Presented is not defined"
     judge 1 "<Unknown File>: RangeError: Maximum call stack size exceeded"
     judge 1 "file:///build/launcher/Presented.js:42: SyntaxError: Unexpected token"
+    judge 1 "file:///build/launcher/Presented.js:42: EvalError: evaluation refused"
+    judge 1 "file:///build/launcher/Wireless.qml:131: URIError: malformed URI sequence"
     judge 0 "INFO launcher: took 12 ms to draw down, heard 3 ms after its press"
     judge 0 "INFO launcher: a join refused by its code, and an Error: in no file's line"
 
