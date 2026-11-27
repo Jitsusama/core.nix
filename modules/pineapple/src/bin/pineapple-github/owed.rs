@@ -81,12 +81,14 @@ pub(super) fn list(hits: Vec<Listed>, notified: Vec<Listed>, owed: &[Owed]) -> V
 /// they're searched, and only what's fresh is read, so they're read first,
 /// and owed like the search's. They come before its hits, which anyone's
 /// words may list, so others flooding his rate limit can't spend it
-/// before what only his own words list is read. One already `owed` isn't
-/// listed but owed from no later than the `reach`, so it waits its turn
-/// yet is read from as far back as his words: the watch lists it each
-/// round until they're judged, where the search lists one again only once
-/// it changes, so listed it would be asked every round, and three failing
-/// would spend each round's failures before what notified him is read.
+/// before what only his own words list is read. That's only for threads
+/// not yet owed: one already `owed` isn't listed but owed from no later
+/// than the `reach`, so it takes its turn among what's owed, after the
+/// search's hits, yet is read from as far back as his words: the watch
+/// lists it each round until they're judged, where the search lists one
+/// again only once it changes, so listed it would be asked every round,
+/// and three failing would spend each round's failures before what
+/// notified him is read.
 pub(super) fn with_spoken(
     found: Vec<Listed>,
     spoke: Option<Vec<Thread>>,
