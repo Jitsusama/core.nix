@@ -621,10 +621,11 @@
   cadence-outlasts-a-switch = ''
     a switch is told to leave each cadence run an installed timer starts be rather than restarting
     it and waiting on its start, which under load outlasts home-manager's wait and sends the whole
-    switch back, and each is a oneshot with a start timeout systemd reads that ends a hang now that
-    no switch does; the tick, day, review and hour must each be among the runs found, a failure
-    names each run and what it lacks, stand-in units each wrong one way must each be refused, and
-    ones right in each way allowed must each pass
+    switch back, and each is a oneshot setting a start timeout of its own systemd reads that ends a
+    hang now that no switch does; each timer's run is found as the base module finds it, the tick,
+    day, review and hour must each be among the runs found, a failure names each run and what it
+    lacks, stand-in units each wrong one way must each be refused, and ones right in each way
+    allowed must each pass
   '';
   cadence-passes-clippy = ''
     clippy finds nothing in cadence or its tests
@@ -3475,6 +3476,15 @@
     every five minutes the harness notes which windows here are joined to a session another machine
     holds, so the next boot can offer them back, in background.slice with the store's node, skipped
     where the harness isn't installed, and never on a Mac
+  '';
+  pi-state-moves-before-any-pi-starts = ''
+    the harness's state that every pi reads as it starts, the mesh's presence, leases and runs, the
+    quests' session records, the run ledgers, the work tool's records of its trees and a further
+    realm's own presence, leases, runs and session records, is each given a subvolume of its own
+    as the account's manager starts, before every pi host of every realm, the node, a further
+    realm's own node and the folder's other writers, each by name, and with no host named too,
+    while nothing else of the harness's moves, its worktrees and every realm's mesh messages
+    included
   '';
   pi-sweeps-work-trees-in-a-unit-of-its-own = ''
     ended pi sessions' work trees are swept by one oneshot unit of their own at the top of each

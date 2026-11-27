@@ -186,15 +186,15 @@ import ./host-checks.nix args
       '';
       # The plan's model as an account has it.
       inherit (home.jitsusama.pi.claude) model;
-      program = lib.getExe (import ./claude.nix { inherit pkgs claude model; });
+      program = lib.getExe (import ./claude { inherit pkgs claude model; });
       onOwnLogin = lib.getExe (
-        import ./claude.nix {
+        import ./claude {
           inherit pkgs claude model;
           ownLogin = true;
         }
       );
       inOther = lib.getExe (
-        import ./claude.nix {
+        import ./claude {
           inherit pkgs claude model;
           realm = "other";
           homeRealm = "home";
@@ -239,7 +239,7 @@ import ./host-checks.nix args
   # usage, in words pi never retries.
   pi-says-when-the-plan-runs-out = pkgs.runCommandLocal "pi-says-when-the-plan-runs-out" { } ''
     ${lib.getExe pkgs.nodejs} --experimental-strip-types --no-warnings \
-      ${./tests/pi-says-when-the-plan-runs-out.mjs} ${import ./claude-provider.nix { inherit pkgs; }}
+      ${./tests/pi-says-when-the-plan-runs-out.mjs} ${import ./claude/provider.nix { inherit pkgs; }}
     touch $out
   '';
 
@@ -477,7 +477,7 @@ import ./host-checks.nix args
       ''
         ${lib.getExe pkgs.nodejs} --experimental-transform-types --no-warnings \
           ${./tests/pi-asks-claude-code-its-login-once.mjs} ${
-            import ./claude-provider.nix { inherit pkgs; }
+            import ./claude/provider.nix { inherit pkgs; }
           }
         touch $out
       '';
@@ -490,7 +490,7 @@ import ./host-checks.nix args
       ''
         ${lib.getExe pkgs.nodejs} --experimental-transform-types --no-warnings \
           ${./tests/pi-answers-a-tool-it-has-not-loaded.mjs} ${
-            import ./claude-provider.nix { inherit pkgs; }
+            import ./claude/provider.nix { inherit pkgs; }
           }
         touch $out
       '';
