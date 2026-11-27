@@ -14,6 +14,7 @@ layout for it. The scripts work out everything it does, so the Qt cases in
 | `MarginCatLedges.js` | where it can stand or hang on the columns, and its paces |
 | `MarginCatRoutes.js` | the stops a way goes by: tops, sides, gaps and the floor |
 | `MarginCatStacked.js` | a move down a workspace walked as one screen             |
+| `MarginCatCarried.js` | riding its window as niri moves it, or walking on        |
 | `MarginCatWays.js`   | a way's legs as beats in time, and where it is at a time |
 | `MarginCatFalls.js`  | what it does as the window under it moves or goes        |
 | `MarginCatFloats.js` | floating windows' tops as stops                          |
@@ -173,7 +174,7 @@ edge along the floor.
   view's `still`, `play()` and `stroll()` each check `carry`, which nothing pins.
 - Owed since 2026-11-27: a case of the view's own wiring, that follow() gives backOn
   `held` only for the seat a scroll held it short of, and `heldShortOn` is cleared once it
-  plays; the choices are pinned in MarginCatStacked.js, not what the view passes them.
+  plays; the choices are pinned in MarginCatCarried.js, not what the view passes them.
 - Owed since 2026-11-27: a case that a column moved before its tile record keeps a
   scroll's date; a layout object made afresh from the stale tile reads as a scroll begun.
 - Owed since 2026-11-25: a word cached before the tiles watch goes live is dated as begun

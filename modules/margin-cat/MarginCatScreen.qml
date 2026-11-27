@@ -15,6 +15,7 @@ import Quickshell.Wayland
 import QtQuick
 import KeyTimes
 import "MarginCat.js" as MarginCat
+import "MarginCatCarried.js" as Carried
 import "MarginCatFloats.js" as Floats
 import "MarginCatGames.js" as Games
 import "MarginCatPaths.js" as Paths
@@ -408,8 +409,8 @@ PanelWindow {
             // or held short of its seat as a scroll caught its walk
             // (heldShortOn), rides with its window from where it's drawn,
             // sits there at once, or lets a ride under way run on
-            // (Stacked.backOn).
-            const back = Stacked.backOn(place, there, {
+            // (Carried.backOn).
+            const back = Carried.backOn(place, there, {
                 wide: size,
                 across: modelData.width,
                 riding: carry !== null,
@@ -438,7 +439,7 @@ PanelWindow {
             // a scroll, it walks on to that window where niri moved it
             // instead, riding what moved, never held in the air until the
             // keys rest; with no seat left on the screen, it rides that
-            // window from where it's drawn (walkOnTo, Stacked.caught). A
+            // window from where it's drawn (walkOnTo, Carried.caught). A
             // play plays on, as before: a key ends one (stroll), and a
             // dozing puppy's visit is his being away, which a window
             // taking the keys doesn't end.
@@ -446,7 +447,7 @@ PanelWindow {
                 && MarginCat.carries(saw, tilesOf(space?.id), goingTo) !== null) {
                 const was = goingTo;
                 const top = (saw ?? []).find(one => one.id === was);
-                const caught = Stacked.caught(drawnAt(), top,
+                const caught = Carried.caught(drawnAt(), top,
                     { wide: size, tall: size, air: cell, scrolling: scrolling() });
                 if (caught === "holds") {
                     halt();
@@ -479,7 +480,7 @@ PanelWindow {
     // in at that edge (MarginCatStacked.js's walk). Let go, it's carried
     // by the window it landed on, never by `sat`'s (carriedBy).
     function carried(saw: var): void {
-        const on = Stacked.carriedBy(landedOn, sat);
+        const on = Carried.carriedBy(landedOn, sat);
         const by = on === null ? null : MarginCat.carries(saw, tilesOf(space?.id), on);
         if (by === null || place === null)
             return;
@@ -520,7 +521,7 @@ PanelWindow {
     readonly property int slideMs: MarginCat.slides(spring)
     // Its place set to `to` as niri's scroll sets off, drawn where it was
     // as niri set it off and closing on `to` on niri's spring
-    // (MarginCatStacked.js's rides).
+    // (MarginCatCarried.js's rides).
     // Under the launcher's card it's put there at once, as nothing moves
     // under the card (stilled), so the ride draws no frames beside his keys.
     function rideTo(to: var): void {
@@ -537,7 +538,7 @@ PanelWindow {
         // ended.
         const behind = MarginCat.behindTold(frameMs, "slide", scrolling()
             ? now - scrollHeard.at : null);
-        carry = Stacked.rides(carry, place, to, { at: now - behind, spring });
+        carry = Carried.rides(carry, place, to, { at: now - behind, spring });
         lag = MarginCat.lags(carry.from, now - carry.at, spring);
         place = to;
     }

@@ -1,10 +1,12 @@
 // The cat between workspaces, walked as if they were all on one screen
-// (MarginCatStacked.js's moves()), in Qt's own JavaScript engine, the one the
-// shell runs it in. The `the-margin-cat-sits-above-its-column` check copies
+// (MarginCatStacked.js's moves()), and carried by its window as niri moves it
+// (MarginCatCarried.js), in Qt's own JavaScript engine, the one the shell runs
+// it in. The `the-margin-cat-sits-above-its-column` check copies
 // modules/margin-cat's scripts beside this file and runs `qml -platform
 // offscreen margin-cat-one-screen.qml`.
 import QtQuick
 import "MarginCat.js" as MarginCat
+import "MarginCatCarried.js" as Carried
 import "MarginCatPaths.js" as Paths
 import "MarginCatStacked.js" as Stacked
 
@@ -462,22 +464,22 @@ QtObject {
             [1240, true, true]);
         // Set off 20 ms before it's heard, and turned back 10 ms before it's
         // heard 120 ms on, so 110 ms into the first ride.
-        const first = Stacked.rides(null, { x: 100, y: 7 }, { x: -1140, y: 7 },
+        const first = Carried.rides(null, { x: 100, y: 7 }, { x: -1140, y: 7 },
             { at: 1000 - 20, spring });
         expect("set off at rest, from where it sat, as far into the scroll as niri says",
             [first.from, first.at, first.ends], [{ x: 1240, y: 0 }, 980, ends]);
-        const turned = Stacked.rides(first, { x: -1140, y: 7 }, { x: 100, y: 7 },
+        const turned = Carried.rides(first, { x: -1140, y: 7 }, { x: 100, y: 7 },
             { at: 1100 - 10, spring });
         expect("turned back mid-way, from where it was drawn as niri turned it, not now",
             [turned.from.x, turned.at], [-1240 + MarginCat.lags(first.from, 110, spring).x, 1090]);
-        const after = Stacked.rides(first, { x: -1140, y: 7 }, { x: 100, y: 7 },
+        const after = Carried.rides(first, { x: -1140, y: 7 }, { x: 100, y: 7 },
             { at: 9000, spring });
         expect("set off again once the first has settled, from its place",
             [Math.abs(after.from.x + 1240) < 1240 * 0.01, after.from.y], [true, 0]);
         // Let go, it rides the window it landed on, never the one it sat on.
         expect("carried by its seat's window, a window it was let go on, or on the floor none",
-            [Stacked.carriedBy(null, 2), Stacked.carriedBy({ floats: false, id: 7 }, 2),
-                Stacked.carriedBy({ floats: false, id: null }, 2)], [2, 7, null]);
+            [Carried.carriedBy(null, 2), Carried.carriedBy({ floats: false, id: 7 }, 2),
+                Carried.carriedBy({ floats: false, id: null }, 2)], [2, 7, null]);
     }
 
     // Carried off the screen's side, then moved to the workspace below, it's
@@ -510,7 +512,7 @@ QtObject {
     }
 
     // How it goes back to its seat as the keys come back to its column
-    // (MarginCatStacked.js's backOn): a ride on niri's spring only while one
+    // (MarginCatCarried.js's backOn): a ride on niri's spring only while one
     // runs or from wholly off the screen, never for a drag, and a ride under
     // way left to run on where it's placed there already.
     function backOnIt(expect) {
@@ -542,7 +544,7 @@ QtObject {
                 given({ held: false, scrolling: true }), "rides"]
         ];
         for (const [name, place, told, want] of cases)
-            expect(`back on its column, ${name}`, Stacked.backOn(place, seat, told), want);
+            expect(`back on its column, ${name}`, Carried.backOn(place, seat, told), want);
     }
 
     // Caught mid-walk as the window it walks to moves, it rides that
@@ -561,9 +563,9 @@ QtObject {
             ["on another window's top at its height", { x: 300, y: 31 }, false]
         ];
         for (const [name, at, want] of cases)
-            expect(`caught mid-walk, ${name}`, Stacked.standsOnTop(at, tile, size), want);
+            expect(`caught mid-walk, ${name}`, Carried.standsOnTop(at, tile, size), want);
         expect("caught mid-walk, with no tile for it, it doesn't stand",
-            Stacked.standsOnTop(standing, undefined, size), false);
+            Carried.standsOnTop(standing, undefined, size), false);
         // It holds and rides that window only as niri scrolls the strip;
         // a drag or a column moved beside it, which no scroll draws, walks
         // it on, as does a leap's air, scrolled or not.
@@ -577,9 +579,9 @@ QtObject {
                 "walks on"]
         ];
         for (const [name, at, given, want] of caughtCases)
-            expect(`caught mid-walk, ${name}`, Stacked.caught(at, tile, given), want);
+            expect(`caught mid-walk, ${name}`, Carried.caught(at, tile, given), want);
         expect("caught mid-walk, with no tile for it, it walks on",
-            Stacked.caught(standing, undefined, told({ scrolling: true })), "walks on");
+            Carried.caught(standing, undefined, told({ scrolling: true })), "walks on");
     }
 
     // Its windows gone, it comes to the floor: from off the screen's side,
