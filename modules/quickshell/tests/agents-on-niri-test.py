@@ -2830,6 +2830,12 @@ def test_a_shut_launcher_makes_no_agents_rows_as_a_session_comes_and_lands(shell
     # Warming wraps every session's row shut, a new one's too, so it fell inside this count as
     # an arrival's rows (`agent:ARRIVE shut` made from warmNext, 2026-11-13).
     launcher_on_niri.warmed(shell)
+    # Until the launcher first opens, a landing told late is kept as the warm's are, so the first
+    # step into Landed finds it kept (Agents.qml's onLandedMovesChanged); past it, shut, none is.
+    shell.as_account(shell.ipc("collection", "agents"))
+    shell.launcher_ready()
+    shell.close_launcher()
+    shell.launcher_closed()
     made_settled(shell)
     before = made_by_agents(shell)
     landing = {"at": datetime.now(UTC).isoformat(), "ref": "core.nix#2141", "what": "Arrived"}

@@ -160,8 +160,11 @@ Provider {
     // the shell starts tells them, are kept the same way, so the first
     // step finds those kept too. It goes through them all again from the
     // newest, where a new one is put; each kept already is found alike.
+    // Only until the launcher first opens: past it, a landing is made as
+    // it's wanted, as a shut launcher makes none of Agents' rows that
+    // nobody sees (312 in 240 s on Joel's, 2026-11-10).
     onLandedMovesChanged: {
-        if (!landedWarming.begun)
+        if (!landedWarming.begun || landedWarming.opened)
             return;
         landedWarming.from = 0;
         landedWarming.start();
@@ -179,6 +182,9 @@ Provider {
 
         property int from: 0
         property bool begun: false
+        // Whether the launcher has opened since the shell started, which
+        // ends keeping landings told late.
+        property bool opened: false
         // How many it said it kept last, so a warm again that kept no
         // more says nothing.
         property int said: -1
@@ -2842,6 +2848,8 @@ Provider {
         target: provider.launcher
 
         function onOpenChanged() {
+            if (provider.launcher.open)
+                landedWarming.opened = true;
             provider.wrapAhead();
             provider.wrapForTyping();
             // Offers are a provider or two, asked at most every ten minutes
