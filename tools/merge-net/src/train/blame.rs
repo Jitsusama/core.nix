@@ -151,6 +151,7 @@ pub fn flaky(failed: &BTreeSet<String>, listed: &[String]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Write as _;
 
     fn set(names: &[&str]) -> BTreeSet<String> {
         names.iter().map(|name| (*name).to_owned()).collect()
@@ -159,10 +160,10 @@ mod tests {
     /// A gate's words: `said`, then changed-checks' verdict over a table
     /// of `checks`.
     fn gate(said: &str, checks: &[&str]) -> String {
-        let table: String = checks
-            .iter()
-            .map(|check| format!("changed  {check}\n"))
-            .collect();
+        let table = checks.iter().fold(String::new(), |mut table, check| {
+            let _ = writeln!(table, "changed  {check}");
+            table
+        });
         format!("{said}\u{2715} a check the change touched failed\nKIND     CHECK\n{table}")
     }
 
