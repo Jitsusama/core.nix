@@ -347,11 +347,15 @@ class Shell:
         """Give what the launcher shows, from its showing call, failing as a read that threw.
 
         A read that throws in the shell answers what threw (launcher/Held.js's answered) at exit
-        0, and an answer once came empty (vm-desktop-looks, 2026-11-22). Either fails as
-        ShowingError naming it, which no wait presses past and the wrappers that add what they
-        saw carry, rather than as a missing field's KeyError or a bare JSON error.
+        0, an answer once came empty (vm-desktop-looks, 2026-11-22), and a call the shell never
+        took exits other than 0. Each fails as ShowingError naming it, which no wait presses
+        past and the wrappers that add what they saw carry, rather than as a missing field's
+        KeyError, a bare JSON error or the AssertionError a failed command gives.
         """
-        said = self.as_account(self.ipc("showing"))
+        status, said = self.execute(self.ipc("showing"))
+        if status != 0:
+            message = f"the launcher's showing exited {status}: {said!r}"
+            raise ShowingError(message)
         if not said.strip():
             message = "the launcher's showing answered nothing"
             raise ShowingError(message)
