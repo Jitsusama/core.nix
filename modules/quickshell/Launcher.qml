@@ -7817,10 +7817,11 @@ Scope {
         Report.say(`asked ${asked.question}`);
     }
 
-    // A key while the ask stands, as Prompt.qml hands it over.
-    function answerAsk(key) {
+    // A key while the ask stands, as Prompt.qml hands it over, with when
+    // it came.
+    function answerAsk(key, at) {
         const ask = asked;
-        const said = askSaid(key);
+        const said = askSaid(key, at);
         if (ask === null || said === "early")
             return;
         asked = null;
@@ -7831,13 +7832,12 @@ Scope {
             ask.no();
     }
 
-    // What the ask standing makes of `key` (Confirm.answer), or "" with none
-    // standing: answerAsk answers by it, and the prompt times a key as
-    // acting by it (answerTaken). Each reads the clock, so only a key on
-    // the millisecond the guard runs out can be timed one way and
-    // answered the other.
-    function askSaid(key) {
-        return asked === null ? "" : Confirm.answer(asked, key, Date.now(), askReady.interval);
+    // What the ask standing makes of `key` come `at` (Confirm.answer), or ""
+    // with none standing: answerAsk answers by it, and the prompt times a
+    // key as acting by it (answerTaken), each told the one time the prompt
+    // read as the key came, so the two can't disagree.
+    function askSaid(key, at) {
+        return asked === null ? "" : Confirm.answer(asked, key, at, askReady.interval);
     }
 
     // When the ask can be answered, the same 300 ms as the key language's
@@ -14698,7 +14698,7 @@ Scope {
                         confirming: root.asked !== null
                         asking: root.asked?.question ?? ""
                         askingParts: root.asked?.parts ?? null
-                        onAnswered: key => root.answerAsk(key)
+                        onAnswered: (key, at) => root.answerAsk(key, at)
                         // There's a drawer to go into while it's out with
                         // words to sit on.
                         drawerHere: root.drawerOut && drawerCard.lined
@@ -14720,7 +14720,7 @@ Scope {
                         }
                         upHere: root.canGoUp
                         // The ask takes a key as answerAsk does.
-                        answerTaken: key => !["", "early"].includes(root.askSaid(key))
+                        answerTaken: (key, at) => !["", "early"].includes(root.askSaid(key, at))
                         // A search run in the drawer puts its cursor on
                         // the match.
                         onSought: (pattern, forward, count) => {
