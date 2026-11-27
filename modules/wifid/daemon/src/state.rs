@@ -1574,7 +1574,7 @@ mod tests {
             "a warning from before a restart was said to have its heed under way"
         );
 
-        state.at("wlan2", Some("/Interfaces/0/BSSs/1".into()));
+        state.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
 
         assert_eq!(
             state.warned_from("wlan2", now),
