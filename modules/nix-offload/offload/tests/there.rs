@@ -4440,7 +4440,8 @@ fn a_build_for_a_mac_with_room_says_the_load_it_went_at() {
     assert!(
         String::from_utf8_lossy(&ran.stderr).contains(
             "mac has room, at 50% free and 0 swap-outs over 60 s and load 20.0 over a minute \
-             and 30.0 over five on 12 processors, so a run for its system goes"
+             and 30.0 over five on 12 processors, held over 0 seconds, so a run for its \
+             system goes"
         ),
         "it never said the load it went at: {ran:?}"
     );
