@@ -428,6 +428,30 @@ def said_quiet(page: Page, why: str) -> None:
     )
 
 
+# The kit's italic code face, 66 KB, which a quiet day's line once sent for the
+# two words of the command it names.
+ITALIC_CODE = "monaspace-italic"
+
+
+def test_a_quiet_day_sends_no_italic_code_face(
+    browser: Browser, tmp_path: Path, quiet_node: StandIn
+) -> None:
+    """A quiet day's line names a command, set upright, so no italic code face is sent."""
+    feed = {"socket": str(quiet_node.path), "kinds": json.loads(os.environ["NODE_KINDS"])}
+    with serving(tmp_path, {"web": os.environ["MURMURS_SITE"]}, {"node": feed}) as served:
+        root, _ = served
+        opened = Opened(browser, f"{root}web/", SIZES[-1], "dark")
+        try:
+            opened.first(heard_nothing)
+            said_quiet(opened.page, "the quiet day wasn't said")
+            opened.page.wait_for_load_state("networkidle")
+            faces = [request.url for request in opened.asked if ITALIC_CODE in request.url]
+            assert faces == [], f"a quiet day's line sent the italic code face: {faces}"
+            opened.keeps_to(BUDGET)
+        finally:
+            opened.close()
+
+
 def test_a_quiet_node_is_said_in_a_line_with_no_empty_list_or_bare_sky(
     browser: Browser, tmp_path: Path, quiet_node: StandIn
 ) -> None:

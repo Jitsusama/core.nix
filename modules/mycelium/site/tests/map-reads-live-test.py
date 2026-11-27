@@ -595,7 +595,14 @@ HERONS_TITLE = "Chart the Harbour"
 # .focused .far is 0.22), with room either side for a mark's own opacity.
 STRONG_ALPHA = 0.9
 STEPPED_BACK_ALPHA = 0.5
-RECT = "(e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; }"
+# The view's box, the drawer's and each named cell's, read in one task. A cell
+# found in one call and measured in the next can be redrawn between the two,
+# and a circle taken out of the page measures all zeros, as on 27 November.
+BOXES = """(keys) => [document.getElementById('map-view'), document.getElementById('panel'),
+  ...keys.map((key) => document.querySelector(`#world circle.cell[data-key="c:${key}"]`))]
+  .map((e) => { if (!e || !e.isConnected) return null; const r = e.getBoundingClientRect();
+    return [r.left, r.top, r.right, r.bottom]; })"""
+DRAWN = f"(keys) => ({BOXES})(keys).every((box) => box !== null && box[2] > box[0])"
 
 
 def strongest(page: Page, cell: str) -> float:
@@ -619,12 +626,13 @@ def test_a_network_opened_is_put_into_view_whole_and_what_it_joins_stands_out(
         SKIFF_TITLE
     )
     settled(page, "the skiff's network never stood still once opened")
-    view = page.locator("#map-view").evaluate(RECT)
-    drawer = page.locator("#panel").evaluate(RECT)
-    for cell in SKIFF_JOINS:
-        left, top, right, bottom = page.locator(
-            f'#world circle.cell[data-key="c:{cell}"]'
-        ).evaluate(RECT)
+    try:
+        page.wait_for_function(DRAWN, arg=list(SKIFF_JOINS), timeout=PACE_MS)
+    except PlaywrightTimeoutError as undrawn:
+        message = f"opening the skiff left one of {SKIFF_JOINS} undrawn"
+        raise AssertionError(message) from undrawn
+    view, drawer, *boxes = page.evaluate(BOXES, list(SKIFF_JOINS))
+    for cell, (left, top, right, bottom) in zip(SKIFF_JOINS, boxes, strict=True):
         inside = view[0] <= left and right <= view[2] and view[1] <= top and bottom <= view[3]
         assert inside, f"opening the skiff left {cell} at {left, top, right, bottom} outside {view}"
         under = left < drawer[2] and drawer[0] < right and top < drawer[3] and drawer[1] < bottom

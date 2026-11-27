@@ -539,6 +539,43 @@ fn a_stop_with_no_camera_tries_its_nobody_and_node_file_once_more() {
         !watch.device().exists(),
         "a stop with no camera didn't try its node file once more"
     );
+    // A try of the run's own would have said it ready, as the stop's
+    // doesn't, so on a slow machine this shows which one wrote them.
+    assert_eq!(
+        ready(&watch.read("log")),
+        0,
+        "the run's own try wrote them before the stop could"
+    );
+}
+
+#[test]
+fn a_stop_whose_nobody_still_cant_be_written_keeps_its_node_file() {
+    // A node file a killed run left, beside a holders file that can't be
+    // written, as in the test of their order.
+    let mut watch = Watch::started("kept", "", |folder| {
+        fs::create_dir(folder.join(".devices")).unwrap();
+        fs::write(folder.join(".devices/Stand-in"), "/dev/random\n").unwrap();
+        fs::set_permissions(folder, Permissions::from_mode(0o555)).unwrap();
+        assert!(
+            File::create(folder.join("probe")).is_err(),
+            "a locked folder still took a file, as it does for root"
+        );
+    });
+    watch.until(
+        |watch| complaints_of(watch, &watch.file()) == 1,
+        "a nobody it couldn't write went unsaid",
+    );
+    // Stopped still locked, so the stop's own try at its nobody fails too,
+    // and the node file that finds its holders file must stay.
+    watch.stop();
+    assert!(
+        !watch.file().exists(),
+        "a holders file was written in a locked folder"
+    );
+    assert!(
+        watch.named(),
+        "a stop removed its node file while its nobody still couldn't be written"
+    );
 }
 
 #[test]

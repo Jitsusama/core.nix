@@ -651,6 +651,48 @@ def test_the_find_says_what_it_takes_in_words_that_read(
         opened.close()
 
 
+# The find's placeholder beside the page's text and its typed words, as the
+# browser computes them once the reader has picked a look on the page.
+PLACEHOLDER_PICKED = """(look) => {
+  document.documentElement.dataset.theme = look;
+  const find = document.querySelector("#find");
+  const said = getComputedStyle(find, "::placeholder");
+  const probe = document.createElement("span");
+  probe.style.color = "var(--text)";
+  document.body.append(probe);
+  const text = getComputedStyle(probe).color;
+  probe.remove();
+  const typed = getComputedStyle(find).fontStyle;
+  return { colour: said.color, style: said.fontStyle, typed, text };
+}"""
+
+
+@pytest.mark.parametrize("look", LOOKS)
+def test_more_contrast_raises_the_finds_words_in_a_look_picked_on_the_page(
+    browser: Browser, network_served: Served, look: str
+) -> None:
+    """A reader asking for more contrast gets it in a look picked on the page too.
+
+    The theme's colours for a picked look stood above the kit's more-contrast
+    rule, so muted words stayed faint for whoever had chosen a look. Raised to
+    the text's colour, a placeholder is told from typed words by its slant.
+    """
+    root, _ = network_served
+    opened = Opened(browser, f"{root}network/", SIZES[0], look)
+    try:
+        says_it_stands(opened.page, "live")
+        opened.page.emulate_media(contrast="more")
+        said = opened.page.evaluate(PLACEHOLDER_PICKED, look)
+        assert said["colour"] == said["text"], (
+            f"more contrast left the find's placeholder muted in the picked {look} look: {said}"
+        )
+        assert said["style"] != said["typed"], (
+            f"more contrast drew the find's placeholder as typed words in the {look} look: {said}"
+        )
+    finally:
+        opened.close()
+
+
 @pytest.mark.parametrize("look", LOOKS)
 @pytest.mark.parametrize("size", SIZES)
 def test_the_network_page_passes_the_skills_page_checks(

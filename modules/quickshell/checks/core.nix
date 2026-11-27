@@ -285,7 +285,7 @@ in
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      QML_IMPORT_PATH=${qt}/lib/qt-6/qml ${qt}/bin/qml ranking.qml
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 120 ${qt}/bin/qml ranking.qml
       touch $out
     '';
 
@@ -865,12 +865,10 @@ in
   # with where their time went, and a closing makes again only the spots of
   # things whose stamp moved, and only the newest yank's frame starts its
   # flash, and an opening the collector stalled says where the heap stood
-  # as it was asked, as modules/quickshell/tests/pacing.qml holds
-  # launcher/ActsSaid.js, launcher/ChangesPresented.js, launcher/Collector.js,
-  # launcher/Flash.js, launcher/Pacing.js and launcher/Presented.js, with what
-  # they read (launcher/KeysSaid.js, launcher/Makings.js, launcher/Order.js,
-  # launcher/Spots.js, launcher/Thread.js and launcher/Wanted.js), to it in
-  # Qt's own engine.
+  # as it was asked, as modules/quickshell/tests/pacing.qml holds in Qt's own
+  # engine. The copy lines below are the list of launcher files its cases
+  # read, kept nowhere else: one left out fails the run at its import, while
+  # a list in a comment would drift unseen.
   the-launcher-paces-its-refreshes =
     let
       qt = pkgs.qt6.qtdeclarative;

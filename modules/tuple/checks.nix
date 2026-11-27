@@ -65,8 +65,12 @@ onLinux {
       data = home.xdg.dataHome;
     in
     pkgs.runCommandLocal "tuple-shares-through-the-portal" { nativeBuildInputs = [ tuple ]; } ''
-      ${lib.getExe pkgs.bash} ${./tests/tuple-shares-through-the-portal.sh} \
-        ${home.home.activationPackage}/activate ${data}
+      ${lib.getExe pkgs.bash} ${./tests/tuple-shares-through-the-portal.sh} ${
+        lib.escapeShellArgs [
+          "${home.home.activationPackage}/activate"
+          data
+        ]
+      }
       touch $out
     '';
 
@@ -179,8 +183,9 @@ onLinux {
   # asked with one name too many, which the real tuple refuses by counting,
   # in a sandbox with no network or account, so it reaches nobody
   # (tests/tuple-ends-its-flags.sh). It stops Tuple's daemon, so it's run
-  # first from the shells a person would run it from, each of which it
-  # must refuse (tests/tuple-ends-its-flags-outside.sh). To see what a
+  # first from the shells a person would run it from, and as the build with
+  # each of its signs moved, each of which it must refuse, and as the build
+  # is, which it must let through (tests/tuple-ends-its-flags-outside.sh). To see what a
   # command takes by hand, `tuple help <cmd>` prints it without running it,
   # as package.nix says.
   tuple-ends-its-flags =

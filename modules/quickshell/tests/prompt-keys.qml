@@ -24,8 +24,10 @@ Item {
     width: 640
     height: 48
 
-    // How often the line asked whether Tab goes in, and what it was told.
+    // How often the line asked whether Tab goes in, in which mode, and
+    // what it was told: the launcher reads the mode to know which row.
     property int intoAsked: 0
+    property string intoMode: ""
     property bool intoGoes: false
     // How often it asked whether Ctrl+Y leaves a place, and what it was told.
     property int fillAsked: 0
@@ -36,8 +38,9 @@ Item {
 
         anchors.fill: parent
         modal: true
-        intoHere: () => {
+        intoHere: mode => {
             root.intoAsked += 1;
+            root.intoMode = mode;
             return root.intoGoes;
         }
         fillLeaves: () => {
@@ -89,8 +92,10 @@ Item {
             line.registers = false;
             line.words = false;
             line.visualOperated = null;
+            line.wait = 300;
             line.text = "";
             root.intoAsked = 0;
+            root.intoMode = "";
             root.intoGoes = false;
             root.fillAsked = 0;
             root.leaving = false;
@@ -169,6 +174,7 @@ Item {
             keyClick(Qt.Key_Tab);
             verify(line.keyActed, "Tab on the find");
             verify(line.keyMoved, "Tab going on to the next row, said as a move");
+            compare(root.intoMode, "find", "the find's Tab asks of the find");
             root.intoGoes = true;
             keyClick(Qt.Key_Tab);
             verify(line.keyActed, "Tab into a row");
@@ -238,6 +244,7 @@ Item {
             compare(root.fillAsked, 0, "nor where Ctrl+Y goes");
             keyClick(Qt.Key_Tab);
             compare(root.intoAsked, 1, "Tab asks, once");
+            compare(root.intoMode, "normal", "and of the mode it's pressed in");
             verify(!line.keyActed, "Tab with nothing to go into");
             root.intoGoes = true;
             keyClick(Qt.Key_Tab);
@@ -327,6 +334,12 @@ Item {
             compare(registered.signalArguments[0][0], "a");
             compare(line.text, "", "the register's letter typed nothing");
             verify(!line.keyActed, "the register's letter");
+            // Return, which acts in insert, is held idle only by the
+            // register's guard once Ctrl+R waits for a name.
+            keyClick(Qt.Key_R, Qt.ControlModifier);
+            keyClick(Qt.Key_Return);
+            compare(registered.count, 2, "Return names a register after Ctrl+R");
+            verify(!line.keyActed, "Return naming a register");
         }
 
         // Under an ask taking every key, so only the register's own guard
@@ -339,8 +352,9 @@ Item {
             verify(!line.keyActed, "Ctrl+R waiting for a register, though the ask takes it");
             keyClick("a");
             compare(registered.count, 1);
-            // Control, pressed alone before R, is the ask's to hear, as a
-            // key with no name, which Confirm.answer says is early.
+            // Control, pressed alone before R, is the ask's to hear as a key
+            // with no name (init's ask takes even that; the launcher's says
+            // it's early), so only named keys are held to the register.
             const heard = [];
             for (let i = 0; i < answered.count; ++i)
                 heard.push(answered.signalArguments[i][0]);
@@ -349,7 +363,12 @@ Item {
             verify(!line.keyActed, "the register's letter, though the ask takes it");
         }
 
+        // Each operator-again case waits as long as it takes for the second
+        // d. Here that keeps a slow runner from failing it, as a late d
+        // begins an operator j would end; in the ask's case below it keeps
+        // a slow runner from passing it whichever of the two heard d first.
         function test_theOperatorAgainIsSwallowed() {
+            line.wait = 60000;
             toNormal();
             keyClick("V");
             compare(line.mode, "visual");
@@ -377,8 +396,7 @@ Item {
             line.confirming = true;
             const ask = { at: Date.now() };
             let guard = 0;
-            line.answerTaken = (key, at) => !["", "early"].includes(
-                Confirm.answer(ask, key, at, guard));
+            line.answerTaken = (key, at) => Confirm.takes(Confirm.answer(ask, key, at, guard));
             keyClick("x");
             compare(answered.count, 1);
             verify(line.keyActed, "x past the guard, answering no");
@@ -399,18 +417,29 @@ Item {
             toNormal();
             line.confirming = true;
             const asked = [];
+            // The ask takes a few milliseconds, so a clock read again after
+            // it, rather than the key's own time, would answer later.
             line.answerTaken = (key, at) => {
                 asked.push(at);
+                // Its turns are capped too, so a clock stepped back fails
+                // the case by name rather than spinning to the check's end.
+                const until = Date.now() + 3;
+                for (let turn = 0; turn < 1e7 && Date.now() < until; turn += 1) {}
                 return true;
             };
+            const before = Date.now();
             keyClick(Qt.Key_Return);
+            const after = Date.now();
             compare(asked.length, 1, "the ask asked once");
             compare(answered.count, 1);
-            verify(asked[0] > 0, "asked with when the key came");
+            verify(asked[0] >= before && asked[0] <= after, "asked with when the key came");
             compare(answered.signalArguments[0][1], asked[0], "answered at that time");
         }
 
+        // Unhurried, the ask hears d again only if it's asked before the
+        // operator is, so this fails were the two asked the other way.
         function test_anAskTakesTheOperatorAgainBeforeTheOperator() {
+            line.wait = 60000;
             toNormal();
             keyClick("V");
             keyClick("d");

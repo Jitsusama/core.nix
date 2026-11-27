@@ -3610,8 +3610,9 @@ Scope {
         if (left.quiet)
             say([]);
         heldSaying = [];
-        // Said in the journal, never the row's name, which a source served.
-        if (Arming.stood(armed, prompt.keysTaken))
+        // Said in the journal, never the row's name, which a source served;
+        // only while open, as closing runs this too, no share having turned.
+        if (open && Arming.stood(armed, prompt.keysTaken))
             console.info("launcher: let go of an arm, as a screen share turned");
         armed = left.armed;
         forgetLetGo();
@@ -5114,7 +5115,7 @@ Scope {
             }
             planned.push(plan);
         }
-        if (planned.some(plan => plan.steps.some(step => step.change.how !== "show")))
+        if (SetWords.changes(planned))
             acting();
         const said = [];
         for (const { options, steps } of planned)
@@ -5274,8 +5275,13 @@ Scope {
         const inThing = !!top && !!thing && (top === thing || steadyId(top) === steadyId(thing));
         if ((act.targets || act.given) && act !== thing && (inThing || enter(thing))) {
             const step = held[held.length - 1];
-            acting();
-            run(step.rows.find(one => one.key === act.key) ?? act, false);
+            const chosen = step.rows.find(one => one.key === act.key) ?? act;
+            // Timed as acting only where run acts at once: one that only
+            // asks is timed by the key that answers, as commandRan says.
+            const still = heldWhyOf([chosen], chosen.returns) !== null;
+            if (!Arming.changesNone(chosen, held.length > 0, still))
+                acting();
+            run(chosen, false);
             return;
         }
         commandAsked(entry, [{ act, thing }], 1, read.bang, acting);
@@ -5372,6 +5378,9 @@ Scope {
     function commandAgain() {
         const last = commandEarlier[commandEarlier.length - 1];
         if (last === undefined) {
+            // Saying so changes no source, so the key is a move, as
+            // commandRan times E492: a share's change beside it isn't his.
+            lineKeyActs("", true);
             commandSay("E30: No previous command line", true);
             return;
         }
@@ -7837,11 +7846,18 @@ Scope {
     }
 
     // A key while the ask stands, as Prompt.qml hands it over, with when
-    // it came.
+    // it came. It answers only as the field times it (Confirm.takes). A
+    // key that came with no time, or an ask that can't be timed, is
+    // journalled whether or not reports are on, as neither can answer yes.
     function answerAsk(key, at) {
         const ask = asked;
         const said = askSaid(key, at);
-        if (ask === null || said === "early")
+        const untimed = ask === null ? null : Confirm.untimed(ask, askReady.interval);
+        if (ask !== null && !Number.isFinite(at))
+            console.info("launcher: a key came to the ask with no time, so it was let by");
+        else if (untimed !== null)
+            console.info(`launcher: the ask can't be timed, as ${untimed}, so Return is let by`);
+        if (ask === null || !Confirm.takes(said))
             return;
         asked = null;
         Report.say(`answered ${said}`);
@@ -8427,18 +8443,18 @@ Scope {
             // a sync still open said up to now (Awaited.frameOpen).
             waited.timedOut = true;
             waited.firedAt = KeyTimes.now();
-            // A wait ended after its closing lists nothing, so it marks
-            // nothing late and says no key listed (onOpenChanged); the
-            // held key is let go as searchAwaited lets one go shut. No case
-            // pins it: closing doesn't stop the wait, so it ends here only
-            // when a closing lands inside its answersWaitedFor, a timer's
-            // least, which no test times.
-            if (!root.open) {
+            // A wait ended after its closing marks nothing late and says no
+            // key listed (Awaited.lateOf); the held key is let go as
+            // searchAwaited lets one go shut. Only lateOf's choice is pinned
+            // (tests/awaited.qml); this call, given root.open, isn't: closing
+            // doesn't stop the wait, so it ends here only when a closing
+            // lands inside its answersWaitedFor, a timer's least, which no
+            // test times.
+            root.answersLate = Awaited.lateOf(waited, root.open);
+            if (root.answersLate === null) {
                 root.searchAwaited();
                 return;
             }
-            root.answersLate = { text: waited.text, sources: waited.sources,
-                began: waited.began };
             // The words as Trials's slow key says them (Presented.typedShown).
             const places = waited.sources.map(one => one.settings?.name ?? "");
             console.info(`launcher: ${Presented.listedWithoutSaid(waited.text, places,
@@ -8605,6 +8621,9 @@ Scope {
             picks.picked(Rank.stepped(step.key, typed), choice.key, null);
     }
 
+    // Arming.changesNone reads this order up to the words asked for, to
+    // time a line's key as acting, so a step added or moved there is said
+    // there too, with its case in tests/arming.qml.
     function run(choice, below) {
         if (!choice) {
             open = false;
@@ -14739,7 +14758,7 @@ Scope {
                         }
                         upHere: root.canGoUp
                         // The ask takes a key as answerAsk does.
-                        answerTaken: (key, at) => !["", "early"].includes(root.askSaid(key, at))
+                        answerTaken: (key, at) => Confirm.takes(root.askSaid(key, at))
                         // A search run in the drawer puts its cursor on
                         // the match.
                         onSought: (pattern, forward, count) => {
