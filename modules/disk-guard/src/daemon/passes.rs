@@ -51,11 +51,20 @@ pub(super) const EMPTY_REST: f64 = 3600.0;
 /// forecast of one, waits for none.
 pub(super) const SURVEY_SPACING: f64 = 12.0;
 
+/// The longest a survey waits for the one before, however long it walked.
 pub(super) const SURVEY_SPACING_LONGEST: f64 = 3.0 * 3600.0;
+
+/// The shortest walk that spaces the next survey at all: one shorter read
+/// too little to be worth a wait, and twelve times it is within the minute
+/// a guard looks again anyway.
+pub(super) const SURVEY_SPACED_FROM: f64 = 5.0;
 
 /// How long after a whole survey that walked `seconds` the next waits, as
 /// `SURVEY_SPACING` says.
 pub(super) fn survey_spacing(seconds: f64) -> f64 {
+    if seconds < SURVEY_SPACED_FROM {
+        return 0.0;
+    }
     (SURVEY_SPACING * seconds).min(SURVEY_SPACING_LONGEST)
 }
 

@@ -498,8 +498,22 @@ fn ending(end: &End) -> String {
 #[cfg(test)]
 mod tests {
     use super::nix_garbage::min_free_again;
-    use super::passes::pressed;
+    use super::passes::{pressed, survey_spacing};
     use super::surveying::upkept_after;
+
+    #[test]
+    fn a_survey_shorter_than_five_seconds_spaces_nothing() {
+        let spaced: Vec<f64> = [4.9, 5.0, 600.0, 1800.0]
+            .into_iter()
+            .map(survey_spacing)
+            .collect();
+        assert_eq!(
+            spaced,
+            [0.0, 60.0, 7200.0, 10800.0],
+            "a survey was spaced other than not at all under five seconds, then twelve \
+             times its walk up to three hours"
+        );
+    }
     use super::{Band, Decision, Goal, Walked, Why, aim};
 
     #[test]
