@@ -1019,30 +1019,32 @@ pub fn now() -> u64 {
 }
 
 /// The longest a wait for a clock sleeps before it reads the clocks again.
-pub const LOOKS: Duration = Duration::from_millis(250);
+const LOOK_EVERY: Duration = Duration::from_millis(250);
 
 /// Waits until the wall clock reads `until`, milliseconds since the epoch as
 /// `now` gives them and the foot and margin show a copy's clearing by, or
 /// until `longest` has passed `awake`, whichever comes first, sleeping by
-/// `sleep` at most LOOKS at a time. A sleep stops while the machine is
+/// `sleep` at most LOOK_EVERY at a time. A sleep stops while the machine is
 /// suspended and the wall clock doesn't, so a time that ran out while the lid
-/// was closed ends the wait within LOOKS of waking, rather than as long
+/// was closed ends the wait within LOOK_EVERY of waking, rather than as long
 /// after as was left; `longest` ends it as meant when the wall clock is set
-/// back meanwhile.
+/// back meanwhile. It ends too at the first look where `wanted` says it
+/// isn't, as a copy something else replaced has nothing left to clear.
 pub fn waited_until(
     until: u64,
     longest: Duration,
     clock: impl Fn() -> u64,
     awake: impl Fn() -> Duration,
+    wanted: impl Fn() -> bool,
     sleep: impl Fn(Duration),
 ) {
     loop {
         let by_clock = Duration::from_millis(until.saturating_sub(clock()));
         let left = by_clock.min(longest.saturating_sub(awake()));
-        if left.is_zero() {
+        if left.is_zero() || !wanted() {
             return;
         }
-        sleep(left.min(LOOKS));
+        sleep(left.min(LOOK_EVERY));
     }
 }
 
@@ -1505,12 +1507,24 @@ mod tests {
     /// in turn, over clocks that `slept` moves on by each sleep given: the
     /// wall clock's milliseconds and the awake time.
     fn sleeps(slept: impl Fn(Duration, &mut u64, &mut Duration)) -> Vec<Duration> {
-        let clocks = std::cell::RefCell::new((10_000_000_u64, Duration::ZERO, Vec::new()));
+        sleeps_from(10_000_000, Duration::from_secs(30), |_| true, slept)
+    }
+
+    /// As [`sleeps`], from `wall` on the wall clock and for at most `longest`
+    /// awake, while `wanted` says so of the sleeps so far.
+    fn sleeps_from(
+        wall: u64,
+        longest: Duration,
+        wanted: impl Fn(usize) -> bool,
+        slept: impl Fn(Duration, &mut u64, &mut Duration),
+    ) -> Vec<Duration> {
+        let clocks = std::cell::RefCell::new((wall, Duration::ZERO, Vec::new()));
         waited_until(
             10_030_000,
-            Duration::from_secs(30),
+            longest,
             || clocks.borrow().0,
             || clocks.borrow().1,
+            || wanted(clocks.borrow().2.len()),
             |given| {
                 let (wall, awake, sleeps) = &mut *clocks.borrow_mut();
                 sleeps.push(given);
@@ -1531,7 +1545,7 @@ mod tests {
             *awake += given;
         });
         assert_eq!(slept.iter().sum::<Duration>(), Duration::from_secs(30));
-        assert!(slept.iter().all(|sleep| *sleep <= LOOKS), "{slept:?}");
+        assert!(slept.iter().all(|sleep| *sleep <= LOOK_EVERY), "{slept:?}");
     }
 
     #[test]
@@ -1542,7 +1556,7 @@ mod tests {
             *wall += ms(given) + if *awake == Duration::ZERO { 40_000 } else { 0 };
             *awake += given;
         });
-        assert_eq!(slept, vec![LOOKS], "slept past waking");
+        assert_eq!(slept, vec![LOOK_EVERY], "slept past waking");
     }
 
     #[test]
@@ -1556,5 +1570,33 @@ mod tests {
             *awake += given;
         });
         assert_eq!(slept.iter().sum::<Duration>(), Duration::from_secs(30));
+    }
+
+    fn moved(given: Duration, wall: &mut u64, awake: &mut Duration) {
+        *wall += ms(given);
+        *awake += given;
+    }
+
+    #[test]
+    fn a_wait_already_over_sleeps_none() {
+        let past = sleeps_from(10_030_000, Duration::from_secs(30), |_| true, moved);
+        assert_eq!(
+            past,
+            Vec::<Duration>::new(),
+            "slept for a time already past"
+        );
+        let none = sleeps_from(10_000_000, Duration::ZERO, |_| true, moved);
+        assert_eq!(
+            none,
+            Vec::<Duration>::new(),
+            "slept with no time awake left"
+        );
+    }
+
+    #[test]
+    fn a_wait_no_longer_wanted_ends_at_its_next_look() {
+        // Wanted for the first sleep only, as a copy replaced during it.
+        let slept = sleeps_from(10_000_000, Duration::from_secs(30), |done| done < 1, moved);
+        assert_eq!(slept, vec![LOOK_EVERY], "slept on once it wasn't wanted");
     }
 }
