@@ -437,7 +437,7 @@ pub async fn follow(
                 }
             }
             Some(answer) = came.recv() => {
-                let Some(card) = took_back(&mut choosers, answer) else {
+                let Some(card) = took_back(&mut choosers, answer, Instant::now()) else {
                     continue;
                 };
                 let (now, hour) = (Instant::now(), learn::hour_here());
@@ -476,9 +476,13 @@ fn chooser_of<'a>(choosers: &'a mut HashMap<String, Chooser>, on: &Joined) -> &'
 /// Hands what came back of a move to its card's chooser, and gives back
 /// the card whose look ended, which is chosen for again at once. A refusal
 /// that undoes nothing was of an earlier move than the chooser's last, or
-/// one the card is on already, and is said so it isn't lost unseen.
-fn took_back(choosers: &mut HashMap<String, Chooser>, answer: Back) -> Option<String> {
-    let now = Instant::now();
+/// one the card is on already, and is said so it isn't lost unseen. `now`
+/// is when it came back.
+fn took_back(
+    choosers: &mut HashMap<String, Chooser>,
+    answer: Back,
+    now: Instant,
+) -> Option<String> {
     match answer {
         Back::Looked(card) => Some(card),
         Back::Answered { card, to, asked } => {
@@ -1860,6 +1864,36 @@ pub(crate) mod tests {
             (measured.failed - 0.2).abs() < 1e-9,
             "2 lost of 1,000: {}",
             measured.failed
+        );
+    }
+
+    #[test]
+    fn a_move_refused_is_taken_back_by_its_card_s_chooser_as_never_asked() {
+        let start = Instant::now();
+        let mut gave = Chooser::default();
+        gave.gave_way(start, (DESK, HALL), fading::Why::Lossy(2));
+        let mut choosers = HashMap::from([("wlan2".to_owned(), gave)]);
+        let refused = Back::Refused {
+            card: "wlan2".into(),
+            to: HALL.into(),
+            asked: start,
+        };
+
+        let chosen = took_back(&mut choosers, refused, start + Duration::from_secs(1));
+        let looked = took_back(&mut choosers, Back::Looked("wlan2".into()), start);
+        let later = start + fading::BETWEEN;
+        let chooser = choosers.get_mut("wlan2").expect("a chooser was dropped");
+        chooser.followed(later, DESK);
+
+        assert_eq!(chosen, None, "a card was chosen for on a move refused");
+        assert_eq!(
+            looked.as_deref(),
+            Some("wlan2"),
+            "a card whose look ended wasn't chosen for again"
+        );
+        assert!(
+            !chooser.keeps_off(HALL, later),
+            "a give-way refused was followed as one never reached, keeping the hall off"
         );
     }
 
