@@ -774,17 +774,17 @@ mod tests {
 
     #[test]
     fn a_word_far_below_theirs_is_their_echo_only_while_they_go_on_speaking() {
-        // Their words run 5,000 to 6,200 ms. At 5,300 ms more of theirs
-        // follows within a second, so it's their echo; at 6,500 ms their
-        // line has ended with none of his cut before, so it may be his
-        // answer, however far below them.
+        // Their words run 5,000 to 6,500 ms. At 5,300 ms more of theirs
+        // follows within a second, so it's their echo; at 6,500 ms, on
+        // their last word, none follows and none of his was cut before,
+        // so it may be his answer, however far below them.
         let own = "Fine by me, I'll book the room for us.";
         for (from_ms, written) in [(5_300, own.to_owned()), (6_500, format!("{own} Right."))] {
             let right = at_level(timed("Right.", from_ms), -42.0);
             assert_eq!(
                 heard_under_their_lunch(-20.0, &[right]),
                 [written],
-                "a word {from_ms} ms in, against their line ending at 6200 ms, was judged wrongly"
+                "a word {from_ms} ms in, against their last word at 6500 ms, was judged wrongly"
             );
         }
     }
@@ -938,6 +938,76 @@ mod tests {
                 "the cut of {heard:?} didn't say how far below theirs it was by level alone"
             );
         }
+    }
+
+    #[test]
+    fn a_run_of_cuts_splits_where_the_rule_cutting_it_changes() {
+        // "Lunch at noon" is cut for its spelling, then "in Tuesday" for
+        // its level: each cut says what it was cut by.
+        let theirs = at_level(timed("Lunch at noon on Thursday then.", 5_000), -20.0);
+        let mut mine = at_level(
+            timed("Fine by me, I'll book the room for us.", 1_000),
+            -20.0,
+        );
+        mine.extend(at_level(timed("Lunch at noon in Tuesday", 5_050), -42.0));
+        let lines = [worded(Side::Theirs, &theirs), worded(Side::Mine, &mine)];
+        let words = HashMap::from([(0, theirs), (1, mine)]);
+        let (_, cuts) = cut_echoes(&lines, &words, |left| Some(left.to_owned()));
+        let told: Vec<(&str, Option<f32>)> = cuts
+            .iter()
+            .map(|cut| (cut.text.as_str(), cut.below))
+            .collect();
+        assert_eq!(
+            told,
+            [("Lunch at noon", None), ("in Tuesday", Some(22.0))],
+            "a run cut by spelling, then by level, was told as cut by one rule"
+        );
+    }
+
+    /// What's written of Joel's line when he says `headset` alone at -20
+    /// dB from the call's start, `laptop` alone at -40 dB from `laptop_ms`,
+    /// and "Hang on, wait." at -40 dB over their -20 dB line at `over_ms`.
+    fn over_them_after(laptop: &str, laptop_ms: usize, over_ms: usize) -> Vec<String> {
+        let headset = "Morning all, I'm on my headset for now, so let me know if the \
+                       sound drops out at any point.";
+        let mut mine = at_level(timed(headset, 0), -20.0);
+        mine.extend(at_level(timed(laptop, laptop_ms), -40.0));
+        mine.extend(at_level(timed("Hang on, wait.", over_ms), -40.0));
+        mine.sort_by_key(|word| word.at);
+        let theirs = at_level(
+            timed("We could meet next week if that suits", over_ms - 100),
+            -20.0,
+        );
+        cut_from(&[theirs], &[mine])
+    }
+
+    #[test]
+    fn his_voice_follows_a_new_microphone_from_six_of_his_words_heard_alone_on_it() {
+        // Of the eleven words alone nearest his words over theirs, six on
+        // the laptop are the middle of them, five aren't.
+        for (laptop, kept) in [
+            ("Can you hear me now?", false),
+            ("Can you all hear me now?", true),
+        ] {
+            let written = over_them_after(laptop, 60_000, 70_100);
+            assert_eq!(
+                written[0].ends_with("Hang on, wait."),
+                kept,
+                "Joel over them after {laptop:?} on a quieter microphone was judged wrongly"
+            );
+        }
+    }
+
+    #[test]
+    fn his_voice_is_taken_from_his_words_alone_just_after_as_well_as_before() {
+        // He talks over them on the laptop, says eight words alone on it
+        // just after, and was on a headset long before: his voice is the
+        // laptop's, nearest in time, though every earlier word is louder.
+        let written = over_them_after("Sorry, I've moved to my laptop just now.", 34_000, 30_100);
+        assert!(
+            written[0].contains("Hang on, wait."),
+            "Joel over them was judged by his headset long before, not his laptop just after"
+        );
     }
 
     #[test]
