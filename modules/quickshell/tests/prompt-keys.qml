@@ -5,8 +5,11 @@
 // So the line's word for a key can't drift from what its handler does
 // with it, which tests/query-keys.qml can't see, holding KeyActs to the
 // table alone. Tab asks where it goes (intoHere) and no other key does,
+// the find's Tab going on to the next row is a move, Ctrl+Y acts only
+// where it leaves a place (fillLeaves),
 // gv takes back what there is and acts only then, an ask takes the
-// operator pressed again before the operator does, and a register's keys,
+// operator pressed again before the operator does and is asked and
+// answered at the one time the key came, and a register's keys,
 // a modifier alone and a letter typed act on nothing. A secret, which has
 // no modes, names Escape or Ctrl+C giving it up and says its Return, the
 // keys the launcher times there. It runs in Qt's test runner, which fails
@@ -23,6 +26,9 @@ Item {
     // How often the line asked whether Tab goes in, and what it was told.
     property int intoAsked: 0
     property bool intoGoes: false
+    // How often it asked whether Ctrl+Y leaves a place, and what it was told.
+    property int fillAsked: 0
+    property bool leaving: false
 
     Prompt {
         id: line
@@ -32,6 +38,10 @@ Item {
         intoHere: () => {
             root.intoAsked += 1;
             return root.intoGoes;
+        }
+        fillLeaves: () => {
+            root.fillAsked += 1;
+            return root.leaving;
         }
     }
 
@@ -81,6 +91,8 @@ Item {
             line.text = "";
             root.intoAsked = 0;
             root.intoGoes = false;
+            root.fillAsked = 0;
+            root.leaving = false;
             line.take();
             answered.clear();
             commanded.clear();
@@ -140,6 +152,26 @@ Item {
             compare(line.text, "", "Ctrl+U takes the line");
             verify(!line.keyActed, "Ctrl+U");
             compare(line.mode, "find", "the find stays a find");
+        }
+
+        function test_ctrlYActsOnlyLeavingAPlace() {
+            keyClick("a");
+            keyClick(Qt.Key_Y, Qt.ControlModifier);
+            compare(root.fillAsked, 1, "Ctrl+Y asks whether it leaves a place");
+            verify(!line.keyActed, "Ctrl+Y finishing what's typed");
+            root.leaving = true;
+            keyClick(Qt.Key_Y, Qt.ControlModifier);
+            verify(line.keyActed, "Ctrl+Y putting a command's start out at the top");
+        }
+
+        function test_theFindsTabOnToTheNextRowIsAMove() {
+            keyClick(Qt.Key_Tab);
+            verify(line.keyActed, "Tab on the find");
+            verify(line.keyMoved, "Tab going on to the next row, said as a move");
+            root.intoGoes = true;
+            keyClick(Qt.Key_Tab);
+            verify(line.keyActed, "Tab into a row");
+            verify(!line.keyMoved, "Tab into a row, more than a move");
         }
 
         // Each of KeyActs.js's editing names, by its key on a prompt's words
@@ -202,6 +234,7 @@ Item {
             keyClick("k");
             keyClick("h");
             compare(root.intoAsked, 0, "no key but Tab asks where Tab goes");
+            compare(root.fillAsked, 0, "nor where Ctrl+Y goes");
             keyClick(Qt.Key_Tab);
             compare(root.intoAsked, 1, "Tab asks, once");
             verify(!line.keyActed, "Tab with nothing to go into");
@@ -310,6 +343,23 @@ Item {
             compare(answered.count, 2);
             compare(answered.signalArguments[1][0], "Return");
             verify(line.keyActed, "Return answering the ask");
+        }
+
+        // Whether the ask takes a key and its answer are read at one time,
+        // so a key on the ask's ready edge can't be timed idle and answer.
+        function test_anAskIsAskedAndAnsweredAtOneTime() {
+            toNormal();
+            line.confirming = true;
+            const asked = [];
+            line.answerTaken = (key, at) => {
+                asked.push(at);
+                return true;
+            };
+            keyClick(Qt.Key_Return);
+            compare(asked.length, 1, "the ask asked once");
+            compare(answered.count, 1);
+            verify(asked[0] > 0, "asked with when the key came");
+            compare(answered.signalArguments[0][1], asked[0], "answered at that time");
         }
 
         function test_anAskTakesTheOperatorAgainBeforeTheOperator() {
