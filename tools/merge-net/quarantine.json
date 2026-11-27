@@ -209,5 +209,17 @@
       "test_a_detail_inside_a_thing_is_found_from_the_root_and_return_goes_there"
     ],
     "test": "vm-desktop-launcher-goes-places"
+  },
+  {
+    "at": 1795778846,
+    "commit": "eef3a9fda1c7a4cebba7bdc28debb923eac47dd6",
+    "due": "2026-11-29",
+    "owner_pr": 6841,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at eef3a9fda1c7",
+    "subtests": [
+      "test_openings_are_soon_ready_to_draw_through_a_storm_of_windows_changing"
+    ],
+    "test": "vm-desktop-keeps-pace"
   }
 ]
