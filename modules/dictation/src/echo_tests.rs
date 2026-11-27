@@ -542,8 +542,11 @@ fn what_was_cut_for_its_level_says_how_far_below_theirs_it_was() {
     // A word cut for its level echoes none of theirs in particular,
     // so how late it came says nothing; how far below them it was
     // does, where the margin is judged on a live call. Their words
-    // spelled alike are cut for that, as before.
-    let theirs = at_level(timed("Lunch at noon on Thursday then.", 5_000), -20.0);
+    // spelled alike are cut for that, as before. It's from the loudest
+    // of theirs around the first word cut, -20 dB beside -25, to that
+    // word, -42 dB, before quieter ones at -45.
+    let mut theirs = at_level(timed("Lunch at noon on Thursday then.", 5_000), -20.0);
+    theirs[0].level = -25.0;
     let own = at_level(
         timed("Fine by me, I'll book the room for us.", 1_000),
         -20.0,
@@ -553,7 +556,9 @@ fn what_was_cut_for_its_level_says_how_far_below_theirs_it_was() {
         ("Lunch at noon on Thursday then.", None),
     ] {
         let mut mine = own.clone();
-        mine.extend(at_level(timed(heard, 5_050), -42.0));
+        let mut run = at_level(timed(heard, 5_050), -45.0);
+        run[0].level = -42.0;
+        mine.extend(run);
         let lines = [worded(Side::Theirs, &theirs), worded(Side::Mine, &mine)];
         let words = HashMap::from([(0, theirs.clone()), (1, mine)]);
         let (_, cuts) = cut_echoes(&lines, &words, |left| Some(left.to_owned()));
