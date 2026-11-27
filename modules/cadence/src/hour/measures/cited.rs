@@ -679,9 +679,9 @@ fn shown(said: &str) -> String {
 /// The sentences of `text`, by its lines and the stops ending them, a
 /// stop ending one only before a space or the line's end, so a name such
 /// as `core.nix` stays whole. The stop after a half of the day, as in
-/// "p.m." or "pm.", ends its sentence only where the next word opens
-/// with a capital: before a word in lower case or a digit, it closes
-/// the half alone.
+/// "p.m." or "pm.", closes the half alone before a word in lower case
+/// or a digit, and ends its sentence before anything else: a capital, a
+/// quote, a bracket or a dash.
 fn sentences(text: &str) -> Vec<&str> {
     let mut found = Vec::new();
     for line in text.lines() {
@@ -694,7 +694,7 @@ fn sentences(text: &str) -> Vec<&str> {
             }
             let runs_on = c == '.' && ends_half(&line[..at]) && {
                 let next = line[at + 1..].trim_start().chars().next();
-                next.is_some_and(|next| !next.is_uppercase())
+                next.is_some_and(|next| next.is_lowercase() || next.is_ascii_digit())
             };
             if !runs_on {
                 found.push(line[start..=at].trim());

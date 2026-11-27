@@ -209,19 +209,20 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     // Each goes to a session the mesh reaches, a gone owner's passed on.
     let presences = mesh.all();
     let reached = reaching(&mesh, &presences, now);
-    let asks = put::asks(told);
-    for (n, (owner, text)) in asks.iter().enumerate() {
+    let whom = |owner: &str, text: &str| {
         let over = orchestrator_of(&presences, owner);
-        let (whom, text) = put::reach(owner, text, &reached, over.as_deref(), to);
-        let ask = message(&whom, "question", text);
-        if let Err(err) = mesh.send(&ask) {
-            let unsent: Vec<&str> = asks[n..].iter().map(|(o, _)| o.as_str()).collect();
-            put::unfile(&mut ledger, &before, &unsent);
-            findings::keep(&ledger_at, &ledger)?;
-            return Err(err);
-        }
-        put::mark_asked(&mut ledger, owner, now, &ask.id);
+        put::reach(owner, text, &reached, over.as_deref(), to)
+    };
+    if let Err(err) = ask_owners(&mesh, whom, &put::asks(told), &mut ledger, &before, now) {
+        findings::keep(&ledger_at, &ledger)?;
+        return Err(err);
     }
+    // Kept once the questions have gone and before the card, so their ids
+    // stand though the card's send fails or the run is stopped: asked
+    // again, each would wake its owner a second time and count against
+    // collaboration as a question of nobody's. A card that fails costs
+    // only the card.
+    findings::keep(&ledger_at, &ledger)?;
     let routes = fs::read_to_string(state_home.join("pain-points/routes.json")).ok();
     // A keeper gone leaves the card to the orchestrator alone, rather than
     // a question waiting on no one.
@@ -229,10 +230,6 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     for (whom, intent) in card_to(to, keeper.as_deref()) {
         mesh.send(&message(whom, intent, card.clone()))?;
     }
-    // Kept once the card has gone, so a send that fails tells its findings
-    // and "fixed" lines again next hour rather than never: an owner told
-    // twice is cheaper than one never told.
-    findings::keep(&ledger_at, &ledger)?;
     write_whole(&kept_at, &serde_json::to_string(&next)?)?;
     Ok(())
 }
@@ -706,6 +703,31 @@ fn reaching<'a>(mesh: &Mesh, presences: &'a [Presence], now: i64) -> impl Fn(&st
 
 /// The cell orchestrating the session going by `address`, by its newest
 /// presence, when it names one.
+/// Asks each owner its lines, sent to whom `whom` says reaches it, and
+/// marks the lines of each question gone with its id. When a send fails,
+/// the hour's filing is undone for that owner and those after, as
+/// `before` holds it, and the failure is said.
+fn ask_owners(
+    mesh: &Mesh,
+    whom: impl Fn(&str, &str) -> (String, String),
+    asks: &[(String, String)],
+    ledger: &mut Vec<findings::Entry>,
+    before: &[findings::Entry],
+    now: i64,
+) -> io::Result<()> {
+    for (n, (owner, text)) in asks.iter().enumerate() {
+        let (to, text) = whom(owner, text);
+        let ask = message(&to, "question", text);
+        if let Err(err) = mesh.send(&ask) {
+            let unsent: Vec<&str> = asks[n..].iter().map(|(o, _)| o.as_str()).collect();
+            put::unfile(ledger, before, &unsent);
+            return Err(err);
+        }
+        put::mark_asked(ledger, owner, now, &ask.id);
+    }
+    Ok(())
+}
+
 fn orchestrator_of(presences: &[Presence], address: &str) -> Option<String> {
     presences
         .iter()

@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 
 use crate::ANSWERS_GO;
-use crate::findings::{ASKED_KEPT, Entry};
+use crate::findings::{ASKED_AT_MOST, ASKED_FOR, Entry};
 use crate::mesh::Presence;
 
 /// How each of cadence's asks opens, said once at the top of a question
@@ -113,8 +113,8 @@ pub fn reach(
 /// Marks each drag filed for `owner` by the hour run at `now`, in seconds,
 /// as asked in the question `id`: those its question holds, a line come
 /// back among them, and none filed an hour before whose question never
-/// went. Each keeps the questions it was asked in before, the latest
-/// `ASKED_KEPT`.
+/// went. Each keeps the questions it was asked in within `ASKED_FOR`
+/// before, by the moment stamped on each id, at most `ASKED_AT_MOST`.
 pub fn mark_asked(ledger: &mut [Entry], owner: &str, now: i64, id: &str) {
     for entry in ledger.iter_mut().filter(|e| {
         e.open && super::owing::is_asked(e) && e.owner.as_deref() == Some(owner) && e.last_to == now
@@ -122,7 +122,11 @@ pub fn mark_asked(ledger: &mut [Entry], owner: &str, now: i64, id: &str) {
         if !entry.asked.iter().any(|asked| asked == id) {
             entry.asked.push(id.to_owned());
         }
-        let over = entry.asked.len().saturating_sub(ASKED_KEPT);
+        let since = (now - ASKED_FOR) * 1000;
+        entry
+            .asked
+            .retain(|asked| crate::mesh::stamped_at(asked).is_none_or(|ms| ms >= since));
+        let over = entry.asked.len().saturating_sub(ASKED_AT_MOST);
         entry.asked.drain(..over);
     }
 }
@@ -208,7 +212,8 @@ mod tests {
     fn only_the_lines_filed_for_that_owner_this_hour_carry_the_question_s_id() {
         // hour:b was filed the same day an hour before, and its question
         // never went, so this one doesn't hold it. hour:e came back, asked
-        // in questions before, and keeps the latest of them beside this.
+        // in questions before, and keeps those of the last two days beside
+        // this, however many: a line is asked again for each new name.
         let mut ledger = vec![
             entry("hour:a", "ABC123", NOW, "drag"),
             entry("hour:b", "ABC123", NOW - 3600, "drag"),
@@ -219,7 +224,15 @@ mod tests {
         red.red = true;
         ledger.push(red);
         let mut back = entry("hour:e", "ABC123", NOW, "drag");
-        back.asked = ["q1", "q2", "q3", "q4"].map(str::to_owned).to_vec();
+        let stamped = |at: i64| format!("{}-CADENCE-1-a", at * 1000);
+        back.asked = vec![
+            stamped(NOW - 2 * crate::DAY - 1),
+            stamped(NOW - crate::DAY),
+            stamped(NOW - 7200),
+            stamped(NOW - 3600),
+            stamped(NOW - 1800),
+            "unstamped".to_owned(),
+        ];
         ledger.push(back);
         mark_asked(&mut ledger, "ABC123", NOW, "the-question");
         mark_asked(&mut ledger, "ABC123", NOW, "the-question");
@@ -236,10 +249,18 @@ mod tests {
                 none.clone(),
                 none,
                 vec!["the-question"],
-                vec!["q2", "q3", "q4", "the-question"]
+                vec![
+                    "1799913600000-CADENCE-1-a",
+                    "1799992800000-CADENCE-1-a",
+                    "1799996400000-CADENCE-1-a",
+                    "1799998200000-CADENCE-1-a",
+                    "unstamped",
+                    "the-question"
+                ]
             ],
             "a line not filed for that owner this hour or not a drag took the id, a red \
-             line or one come back didn't, or one kept more than its latest four"
+             line or one come back didn't, or one kept an id past two days or dropped a \
+             younger one"
         );
     }
 

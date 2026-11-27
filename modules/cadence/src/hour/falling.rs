@@ -8,7 +8,7 @@
 use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
-use super::measures::{Class, Measure};
+use super::measures::{Class, Measure, rounds};
 use crate::DAY;
 
 /// The measure's key, from one hour to the next.
@@ -39,10 +39,15 @@ pub struct Hour {
     pub unjudged: usize,
     /// How many measures there were at all, so a source that made none
     /// this hour, as code health's file unread, isn't taken for its red
-    /// lines fixed. An hour kept before this was counted reads nought.
+    /// lines fixed. Those made only while red, one for each merge whose
+    /// rounds past five caught nothing, aren't counted, since one gone is
+    /// one fixed. An hour kept before this was counted reads nought.
     #[serde(default)]
     pub seen: usize,
 }
+
+/// The measures made only while they are red, so their going is a fall.
+const ONLY_RED: [&str; 1] = [rounds::FRUITLESS];
 
 /// This hour's count at `now`, in seconds, of `measures`, this one left
 /// out, since it can't count itself.
@@ -53,7 +58,9 @@ pub fn hour(measures: &[Measure], now: i64) -> Hour {
         at: now,
         red: others().filter(|m| m.past().is_some()).count(),
         unjudged: others().filter(|m| m.target.is_none()).count(),
-        seen: others().count(),
+        seen: others()
+            .filter(|m| !ONLY_RED.iter().any(|key| m.key.starts_with(key)))
+            .count(),
     }
 }
 
@@ -272,12 +279,27 @@ mod tests {
     fn it_counts_every_measure_but_itself_and_keeps_a_week_of_hours() {
         let mut unjudged = past("c");
         unjudged.target = None;
-        let measures = [past("a"), past("b"), past(KEY), unjudged];
+        let fruitless = past(&format!("{}core.nix#1", rounds::FRUITLESS));
+        let measures = [past("a"), past("b"), past(KEY), unjudged, fruitless];
         let this = hour(&measures, NOW);
         assert_eq!(
             (this.red, this.unjudged, this.seen),
-            (2, 1, 3),
-            "the measure counted itself, or missed one past, unjudged or made"
+            (3, 1, 3),
+            "the measure counted itself, missed one past or unjudged, or counted one made \
+             only while red as made"
+        );
+        // Three such lines a week back, all fixed and so gone: a fall.
+        let then = Hour {
+            at: NOW - WEEK,
+            red: 5,
+            unjudged: 1,
+            seen: 3,
+        };
+        let fixed = hour(&measures[..4], NOW);
+        assert_eq!(
+            falling(&[then], fixed).target,
+            Some(4.0),
+            "red lines made only while red, gone once fixed, left the fall unjudged"
         );
         let old = [at(NOW - KEPT_FOR - 1, 1), at(NOW - DAY, 2), at(NOW + 60, 3)];
         assert_eq!(

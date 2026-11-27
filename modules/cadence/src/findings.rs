@@ -78,8 +78,8 @@ pub struct Entry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fixed: Option<String>,
     /// The ids of the questions its owner was asked it in, the latest
-    /// last and the last `ASKED_KEPT` kept, so each question of the two
-    /// days the mesh is read over is known as the hour's. Nothing reads a
+    /// last, each kept for `ASKED_FOR`, so each question of the two days
+    /// the mesh is read over is known as the hour's. Nothing reads a
     /// reply against them yet: a line closes when its measure is back in.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub asked: Vec<String>,
@@ -111,10 +111,15 @@ fn is_zero(count: &u32) -> bool {
     *count == 0
 }
 
-/// How many of the questions a line was asked in it keeps: a line asked
-/// at most once a day, back and gone again, is asked in at most three
-/// over the two days the mesh is read over.
-pub const ASKED_KEPT: usize = 4;
+/// How long a line keeps the id of a question it was asked in, by the
+/// moment the id is stamped with: the two days the mesh is read over, so
+/// a line asked again for each new cell or file of its owner's keeps
+/// every one of them. By count, the younger ones fell out within a day.
+pub const ASKED_FOR: i64 = 2 * DAY;
+
+/// How many ids a line keeps at most, one an hour over those two days,
+/// so an id with no stamp can't grow it without end.
+pub const ASKED_AT_MOST: usize = 48;
 
 /// The ids of the questions the hour asked its lines in, from the ledger
 /// as `text`, a line an entry; a line that isn't one names none. Only
