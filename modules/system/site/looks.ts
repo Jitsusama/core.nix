@@ -153,10 +153,16 @@ function thingLooks(part: Part, drawn: number): readonly Look[] {
   const own = (thing: Thing): readonly Look[] => {
     const looks = lookedOf(thing);
     return keyed(looks.map((look) => look.side))
-      .map((keyedLook, at) => ({ ...keyedLook, matters: looks[at]?.matters ?? "" }))
+      .map((keyedLook, at) => ({
+        ...keyedLook,
+        matters: looks[at]?.matters ?? "",
+        health: looks[at]?.health ?? thing.health,
+      }))
       .filter(({ words }) => thing.ties.reached || words !== OUT_OF_REACH)
-      .map(({ words, key, matters }) => ({
-        health: thing.health,
+      .map(({ words, key, matters, health }) => ({
+        // Each look ranks by its own health, so a bad machine's lesser
+        // look stands with its peers rather than beside the fault.
+        health,
         whose: thing.name,
         machine: true,
         words: capital(words),
