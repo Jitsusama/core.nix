@@ -278,8 +278,9 @@ const DROPPED_REACHED: f64 = 0.5;
 /// stayed under the anchor would otherwise have its drops taken up again
 /// for three minutes in every fourteen (drops past the anchor round 2's
 /// F22 and F37). A probe that finds room, a return that finds no drops
-/// in `DROPS_LOOK_S`, or a stand that lapses with the hold at or over
-/// the guard's share, starts it over.
+/// in `DROPS_LOOK_S`, a return from a stand that wasn't quiet
+/// (`QUIET_STAND`), or a stand that lapses with the hold at or over the
+/// guard's share, starts it over.
 const DROPPED_STANDS_S: f64 = 600.0;
 const DROPPED_STANDS_MOST_S: f64 = 1_800.0;
 /// How long a return from a hold found by drops is judged over: drops for
@@ -290,6 +291,14 @@ const DROPPED_STANDS_MOST_S: f64 = 1_800.0;
 /// stand's own probes drop past the hold (drops stand longer round 1's
 /// F6, F43, F45 and F47).
 const DROPS_AGAIN_S: f64 = 30.0;
+/// The share of the stand's last `DROPS_LOOK_S` under which a router's
+/// drops leave it quiet, so a return from it is judged over
+/// `DROPS_AGAIN_S`. Its probes drop for about 3 s a minute. Drops that
+/// go on under the hold don't follow the rate, as weak air's: holding
+/// lower drained nothing, so the return is judged afresh over
+/// `DROPS_LOOK_S`, and the next stand starts over (drops stand longer
+/// round 2's F51).
+const QUIET_STAND: f64 = 0.2;
 
 /// How the upload tells a queue and finds its line, which a trial may set
 /// in place of the constants above to learn how near the line it may hold.
@@ -559,12 +568,10 @@ pub struct Way {
     dropped_s: f64,
     dropped_at: Option<f64>,
     vpn_held: bool,
-    /// How long a hold found by drops stands (`DROPPED_STANDS_S`), when
-    /// the guard last sent one back to the anchor's hold, and how long a
-    /// router dropped since.
+    /// How long a hold found by drops stands (`DROPPED_STANDS_S`), and
+    /// when the guard last sent one back to the anchor's hold.
     dropped_stands_s: f64,
     returned_at: Option<f64>,
-    dropped_since_s: f64,
     /// What got through when the queue was last found past our CAKE, which
     /// the rate is held under, and when it next looks for more room, or
     /// until when it is looking.
@@ -623,7 +630,6 @@ impl Way {
             vpn_held: false,
             dropped_stands_s: DROPPED_STANDS_S,
             returned_at: None,
-            dropped_since_s: 0.0,
             plateau: None,
             next_probe: 0.0,
             probing_until: None,
@@ -740,7 +746,6 @@ impl Way {
             let moment = dt.min(1.0);
             self.drops.push_back((at, moment));
             self.dropped_s += moment;
-            self.dropped_since_s += moment;
         }
         while let Some(&(when, moment)) = self.drops.front()
             && when <= at - DROPS_LOOK_S
@@ -752,7 +757,7 @@ impl Way {
             if at - returned >= DROPS_LOOK_S {
                 self.forget_the_stand();
             } else if at - returned <= DROPS_AGAIN_S
-                && self.dropped_since_s >= DROPS_AGAIN_S * DROPS_SHARE - 0.05
+                && self.dropped_s >= DROPS_AGAIN_S * DROPS_SHARE - 0.05
             {
                 return true;
             }
@@ -797,12 +802,21 @@ impl Way {
             .is_some_and(|dropped| at - dropped < self.dropped_stands_s)
     }
 
-    /// Takes the guard's return to the anchor's hold at `at`: one from a
-    /// hold found by drops is judged over `DROPS_AGAIN_S`.
+    /// Takes the guard's return to the anchor's hold at `at`: the drops
+    /// are counted afresh from it, and one from a quiet hold found by
+    /// drops is judged over `DROPS_AGAIN_S` (`QUIET_STAND`), while one
+    /// from a hold its drops went on under starts the stand over.
     fn returned(&mut self, at: f64) {
-        if self.dropped_at.take().is_some() {
-            self.returned_at = Some(at);
-            self.dropped_since_s = 0.0;
+        if let Some(dropped) = self.dropped_at.take() {
+            let looked = (at - dropped).min(DROPS_LOOK_S);
+            let quiet = self.dropped_s < looked * QUIET_STAND;
+            self.drops.clear();
+            self.dropped_s = 0.0;
+            if quiet {
+                self.returned_at = Some(at);
+            } else {
+                self.forget_the_stand();
+            }
         }
     }
 
@@ -6078,6 +6092,43 @@ mod tests {
             found.is_some_and(|after| after >= again - 0.2),
             "found again {found:?} s after the return, not after {again} s of its own drops"
         );
+    }
+
+    // Drops that went on under a stand, as weak air's, don't follow the
+    // rate: the return from it is judged afresh over `DROPS_LOOK_S`, not
+    // over `DROPS_AGAIN_S`, and the next stand starts over, rather than
+    // the hold being found again within seconds of each return and
+    // standing longer each time (drops stand longer round 2's F51).
+    #[test]
+    fn a_return_from_a_stand_its_drops_went_on_under_is_judged_afresh() {
+        let mut c = anchored(12_000.0);
+        let up = &mut c.up;
+        up.found_by_drops(0.0);
+        up.dropped_stands_s = 2.0 * DROPPED_STANDS_S;
+        let returned = up.dropped_stands_s;
+        let mut at = returned - DROPS_LOOK_S;
+        while at < returned {
+            up.count_drops(at, 0.1, true);
+            at += 0.1;
+        }
+        up.returned(returned);
+        assert!(
+            up.returned_at.is_none(),
+            "a return from a stand dropping throughout was judged over {DROPS_AGAIN_S} s"
+        );
+        assert!(
+            (up.dropped_stands_s - DROPPED_STANDS_S).abs() < 1e-9,
+            "a return from a stand dropping throughout left the next at {} s",
+            up.dropped_stands_s
+        );
+        while at < returned + DROPS_AGAIN_S {
+            assert!(
+                !up.count_drops(at, 0.1, true),
+                "found again {} s after a return from a stand dropping throughout",
+                at - returned
+            );
+            at += 0.1;
+        }
     }
 
     // A stand that lapses with the upload back at the guard's share ended
