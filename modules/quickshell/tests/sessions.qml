@@ -2504,6 +2504,27 @@ ShellRoot {
         expect("a window come past comingPatience, or for a press since, is told nothing",
             pastComing === "  x0" && heard() === "  x0", `${pastComing} / ${heard()}`);
         Sessions.forgetAsk(unansweredNamed);
+        // A kitty started again can't draw what the one before was asked,
+        // so a press told its window may yet come of that one is told it
+        // didn't, and a window come since is told nothing. A word that the
+        // same kitty started, as a repeat of it says, ends nothing.
+        Sessions.goTo(unansweredRow);
+        Sessions.untaken(unansweredNamed, String(Date.now()), "unanswered");
+        untell();
+        Sessions.kittyStarted?.();
+        const sameKitty = heard();
+        kittyPidFile.setText("6161\n");
+        untell();
+        Sessions.kittyStarted?.();
+        const anotherKitty = heard();
+        untell();
+        Sessions.windowHeard({ id: 132, pid: 6161, opened: unansweredNamed });
+        expect("a press told its window may yet come is told it didn't, its kitty started again",
+            sameKitty === "  x0" && anotherKitty === "UNANSWERED untaken x1" && heard() === "  x0",
+            `${sameKitty} / ${anotherKitty} / ${heard()}`);
+        Sessions.forgetAsk(unansweredNamed);
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
         const unansweredStart = "pi-hosted.s-unanswered-start";
         Sessions.viewStarted("harbour-attended", "s-unanswered-start", unansweredStart, "Reef",
             "/tmp", footedStart);
