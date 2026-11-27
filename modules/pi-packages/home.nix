@@ -7,7 +7,8 @@
 # It installs a package with no version yet at a switch, before pi's
 # settings are written. On Linux it updates only at a switch, which
 # starts a run in the background without waiting on it, so a new
-# version rides the switch. Through 27 November a timer every fifteen
+# version rides the switch, swapped in at once whatever the hour's pace
+# says, since no run comes between switches. Through 27 November a timer every fifteen
 # minutes swapped versions in between switches, and every swap that
 # day pushed the next switch back (A210E4CA). A Mac, whose switch starts
 # no run once each package has a version, still updates every fifteen
@@ -95,6 +96,12 @@ let
     }
   );
   command = "${lib.getExe package} update --config ${configFile}";
+  # A Linux switch's own run swaps in at once: with no timer, the switch is
+  # the only moment a version moves, so the hour's wait would leave one that
+  # merged inside the hour waiting a whole switch more. On 27 November
+  # switch 1420 came inside the hour, its run swapped nothing, and the
+  # timer then swapped at 16:28, restarting both hosts between switches.
+  atASwitch = "${command} --now";
   # The command, told its settings, for the account to run. It reads its
   # own line, help included, wherever `--help` stands (src/ask.rs).
   configured = pkgs.writeShellScriptBin "pi-packages" ''
@@ -182,7 +189,7 @@ in
       };
       Service = {
         Type = "oneshot";
-        ExecStart = command;
+        ExecStart = atASwitch;
         Slice = "background.slice";
       };
     };
