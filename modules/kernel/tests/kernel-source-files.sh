@@ -20,22 +20,32 @@ patch_name() {
 
 # A file some patch creates may be missing from the source: that patch
 # makes it. One the source has too is refused, naming the patch, since the
-# build refuses a patch creating a file that's already there; and a file
-# missing that no patch creates is refused, as a check would read nothing.
+# build refuses a patch creating a file that's already there, unless a patch
+# before it deletes the file, as the build then lets it be made again; and a
+# file missing that no patch creates is refused, as a check would read
+# nothing. The patches are read in the order the build applies them.
 take_kernel_files() {
   local source=$1 patches=$2 out=$3
   shift 3
-  local -A creates=()
-  local patch statuses created file name said=""
+  # Every file a patch creates, and the first patch that creates one no
+  # patch before it deletes, which needs the file not to be there yet.
+  local -A creates=() deletes=() first_creates=()
+  local patch statuses status file name said=""
   while IFS= read -r patch; do
     [ -n "$patch" ] || continue
     statuses=$(lsdiff --status --strip=1 --no-filename "$patch")
-    created=$(sed -n 's/^+ //p' <<<"$statuses")
-    while IFS= read -r file; do
-      if [ -n "$file" ]; then
-        creates[$file]=$patch
-      fi
-    done <<<"$created"
+    while read -r status file; do
+      case $status in
+        +)
+          creates[$file]=$patch
+          if [ -z "${deletes[$file]:-}" ] && [ -z "${first_creates[$file]:-}" ]; then
+            first_creates[$file]=$patch
+          fi
+          ;;
+        -) deletes[$file]=$patch ;;
+        *) ;;
+      esac
+    done <<<"$statuses"
   done <"$patches"
 
   mkdir -p "$out"
@@ -53,8 +63,8 @@ take_kernel_files() {
     said=$(tar xf "$source" -C "$out" --strip-components=1 --wildcards "${wanted[@]}" 2>&1) || true
   fi
   for file in "$@"; do
-    if [ -e "$out/$file" ] && [ -n "${creates[$file]:-}" ]; then
-      name=$(patch_name "${creates[$file]}")
+    if [ -e "$out/$file" ] && [ -n "${first_creates[$file]:-}" ]; then
+      name=$(patch_name "${first_creates[$file]}")
       echo "$name creates $file, which the kernel's source already has."
       return 1
     fi

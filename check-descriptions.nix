@@ -2001,7 +2001,7 @@
   kernel-source-files-are-taken-as-built = ''
     a few files of a kernel's source are taken from a folder or its tarball, one missing that a
     patch creates let be, one missing that none creates refused, and one the source has that a
-    patch would create refused, naming that patch
+    patch would create refused, naming that patch, unless a patch before it deletes the file
   '';
   kernel-trouble-is-named = ''
     `device-check` names a kernel that oopsed, locked up, saw a hardware fault or held a task stuck,

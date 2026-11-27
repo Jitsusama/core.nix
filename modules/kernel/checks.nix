@@ -108,9 +108,10 @@ in
   # patch creating one a newer kernel has too fails the build, and failed
   # the check only as patch's own refusal, which names no patch. So taking
   # them names the patch, refuses a file no patch creates rather than let a
-  # check read nothing, and lets a file a patch creates be missing
-  # (tests/kernel-source-files.sh). A tiny source and a patch creating one
-  # file stand in for a kernel's, in a folder and in a tarball alike.
+  # check read nothing, and lets a file a patch creates be missing, or be
+  # there where a patch before deletes it (tests/kernel-source-files.sh). A
+  # tiny source, a patch creating one file and one deleting it stand in for
+  # a kernel's, in a folder and in a tarball alike.
   kernel-source-files-are-taken-as-built =
     pkgs.runCommandLocal "kernel-source-files-are-taken-as-built"
       { nativeBuildInputs = [ pkgs.patchutils ]; }

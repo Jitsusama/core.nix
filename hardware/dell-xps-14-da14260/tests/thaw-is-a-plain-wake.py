@@ -6,7 +6,8 @@ SOURCE is drivers/bluetooth/btintel_pcie.c, as the machine's kernel builds it. A
 hibernation's thaw that resets the chip leaves it in its bootloader, and the power-off
 after refuses it, rolling the hibernation back with the laptop left on. So the thaw must
 wake the chip as a thaw and reset nothing itself, and each reset in the wake it shares
-must sit under a test a thaw can't meet.
+must sit under a test a thaw can't meet. What the reader can't model, a goto, a label or
+a preprocessor conditional, it refuses rather than guess at.
 """
 
 import re
@@ -16,7 +17,9 @@ from pathlib import Path
 
 # Comments, string and character literals, and preprocessor lines with any line a
 # backslash carries one on to. None of them runs as the function's own code, and each may
-# hold any word, a reset's name, a return or a brace, so the reader reads past them.
+# hold any word, a reset's name, a return or a brace, so the reader reads past them. A
+# conditional's line is the one kind kept, as a mark the reader refuses: it decides which
+# of the lines around it a kernel builds, and the reader can't tell which.
 UNREAD = re.compile(
     r"/\*.*?\*/|//[^\n]*"
     r'|"(?:\\.|[^"\\\n])*"'
@@ -24,21 +27,32 @@ UNREAD = re.compile(
     r"|^[ \t]*#(?:/\*.*?\*/|\\\n|[^\n])*",
     re.DOTALL | re.MULTILINE,
 )
+CONDITIONAL = re.compile(r"[ \t]*#[ \t]*(if|ifdef|ifndef|elif|else)\b")
+MARK = "#"
 
-# A call resets the chip where a word of its name, the words parted by underscores, is
-# reset or flr: the driver's own request, its Bluetooth and IA cores, the ACPI method,
-# PCI's, or one the check doesn't know by name, such as reset_chip() or flr(), which is
-# still judged. One whose name asks after a reset or cancels one resets nothing, and
-# skb_reset_*() sets a packet's headers back, never the chip.
-RESETS = frozenset({"reset", "flr"})
+# A call resets the chip where a word of its name, the words parted by underscores and
+# read in lower case, so a macro's as well, holds reset or is flr: the driver's own
+# request, its Bluetooth and IA cores, the ACPI method, PCI's, or one the check doesn't
+# know by name, such as reset_chip(), hwreset() or flr(), which is still judged. One whose
+# name asks after a reset or cancels one resets nothing, but only where it reads as a
+# question: a word of asking just before its first reset word, as in_reset or cancel_reset
+# have, or as its last, as reset_pending has. Anywhere else such a word may say how a
+# reset is done, as reset_in_band's does. And skb_reset_*() sets a packet's headers back,
+# never the chip.
+RESET = "reset"
+FLR = "flr"
 ASKING = frozenset({"cancel", "cancelled", "done", "has", "in", "is", "pending", "status", "was"})
 NOT_THE_CHIP = frozenset({"skb"})
-# The reset work resets the chip only where it's queued, by any of the workqueue's calls
-# that queue a work, now, later or on a given processor; cancelling it, flushing it or
-# asking whether it's pending resets nothing.
-QUEUEING = re.compile(r"(?:schedule|queue)(?:_delayed)?_work(?:_on)?|mod_delayed_work(?:_on)?")
+# The reset work resets the chip under any call it is handed to, the workqueue's, a kernel
+# thread's or the driver's own helper, but those that cancel it, flush it, stop it or ask
+# after it. So a call the check doesn't know is counted, rather than let a new way of
+# queueing it pass.
+CALM = re.compile(
+    r"(?:cancel|flush|disable)_\w*work\w*|work_pending|delayed_work_pending|work_busy"
+)
 RESET_WORK = re.compile(r"\breset_work\b")
 TOKEN = re.compile(r"[A-Za-z_]\w*|\S")
+NAME = re.compile(r"[A-Za-z_]\w*")
 
 # What a test may compare and still never hold on a sound thaw: the wake's own event
 # when it is a restore or a resume, or anything but a thaw, a resume's target sleep,
@@ -66,6 +80,11 @@ SWITCH = "(a switch)"
 DEFAULT = "(default)"
 # The words that leave a statement's block where it stands.
 LEAVING = frozenset({"return", "break"})
+# What an early return leaves held over the rest of its block, which says only what got
+# past it, never what the statements past it test themselves.
+GUARD = "guard"
+# The words that open a test's parentheses and hold it over what follows.
+OPENERS = frozenset({"if", "for", "while", "switch"})
 
 
 def blank(found: re.Match[str]) -> str:
@@ -73,11 +92,17 @@ def blank(found: re.Match[str]) -> str:
     text = found.group()
     if text[0] in "\"'":
         return text[0] * 2
-    return " " + "\n" * text.count("\n")
+    lines = "\n" * text.count("\n")
+    if conditional := CONDITIONAL.match(text):
+        return MARK + conditional.group(1) + lines
+    return " " + lines
 
 
 def unread(source: str) -> str:
-    """Take out a source's comments, literals and preprocessor lines, keeping its lines."""
+    """Take out a source's comments, literals and preprocessor lines, keeping its lines.
+
+    A conditional's line is left as its mark and its word, such as #ifdef.
+    """
     return UNREAD.sub(blank, source)
 
 
@@ -89,9 +114,12 @@ def body(source: str, name: str) -> str:
 
 def resetting(name: str) -> bool:
     """Tell whether a call by this name resets the chip, by the words of its name."""
-    words = name.strip("_").split("_")
-    resets_by_name = not RESETS.isdisjoint(words)
-    return resets_by_name and ASKING.isdisjoint(words) and words[0] not in NOT_THE_CHIP
+    words = name.lower().strip("_").split("_")
+    first = next((at for at, word in enumerate(words) if RESET in word or word == FLR), None)
+    if first is None or words[0] in NOT_THE_CHIP:
+        return False
+    asks = (first > 0 and words[first - 1] in ASKING) or words[-1] in ASKING
+    return not asks
 
 
 def unwrapped(test: str) -> str:
@@ -179,23 +207,12 @@ def joined(said: list[bool | None], *, settles: bool) -> bool | None:
     return not settles
 
 
-def restores(tests: list[str]) -> bool:
-    """Tell whether a reset under these tests runs on a restore.
-
-    A test of its own must say it holds on one, since a guard left by an early return only
-    says what got past it, and none of the tests may say it fails on one.
-    """
-    said = [on_restore(test) for test in tests]
-    return False not in said and any(
-        held is True and not test.startswith(NOT) for test, held in zip(tests, said, strict=True)
-    )
-
-
 @dataclass(frozen=True)
 class Held:
     """A test that holds over a statement or a block, the word that opened it, and its value.
 
-    The opener is if, else, loop or switch; only a switch has a value, what it switches on.
+    The opener is if, else, loop, switch or case, or guard for what an early return left;
+    only a switch has a value, what it switches on.
     """
 
     test: str
@@ -219,66 +236,109 @@ def last_if(held: list[Held]) -> tuple[list[Held], str] | None:
     return None
 
 
+def restores(held: list[Held]) -> bool:
+    """Tell whether a reset under what holds runs on a restore.
+
+    None of its tests may say it fails on one, and a test of its own must say it holds on
+    one, a negation as well, such as an else past a thaw's test. A guard left by an early
+    return only says what got past it, so it speaks for the reset only where the reset has
+    no test of its own.
+    """
+    said = [(each.opener, on_restore(each.test)) for each in held]
+    if any(says is False for _, says in said):
+        return False
+    own = [says for opener, says in said if opener != GUARD]
+    return True in (own or [says for _, says in said])
+
+
 @dataclass
 class Block:
-    """One pair of braces: what it runs under, and the early returns before a word.
+    """One pair of braces: what it runs under, the early returns before a word, and what left.
 
-    A switch's block also keeps what it switches on and the cases that reach where the
-    reader is, which fall through until a break or a return ends them.
+    A block is left by the return or the break that ends it where it stands. A switch's
+    block also keeps what it switches on, the cases that reach where the reader is, which
+    fall through until a break or a return ends them, those of them no break has passed
+    since their label, and those that returned with none passed.
     """
 
     held: list[Held]
     guards: list[str] = field(default_factory=list)
-    returns: bool = False
+    left_by: str = ""
     switch: str | None = None
     cases: list[str] = field(default_factory=list)
+    unbroken: list[str] = field(default_factory=list)
+    returned: list[str] = field(default_factory=list)
 
 
 class Reader:
     """Walks one C function, keeping the tests that hold where it has reached.
 
-    Comments, literals and preprocessor lines are read past, since they say nothing of what
-    runs and may name any event or call.
+    The function comes with its comments, literals and preprocessor lines taken out, since
+    they say nothing of what runs and may name any event or call. What the reader can't
+    follow, it refuses: a goto or a label, whose jump skips what the reader reads as
+    running, and a preprocessor conditional, which decides which of the lines a kernel has.
     """
 
     def __init__(self, function: str) -> None:
-        """Start at the function's first word."""
-        self.text = unread(function)
+        """Start at the function's first brace, past its name and parameters.
+
+        Its name and parameters, followed by its brace, would read as a loop's macro.
+        """
+        self.text = function
         self.tokens = list(TOKEN.finditer(self.text))
-        self.at = 0
+        self.at = next((at for at, token in enumerate(self.tokens) if token.group() == "{"), 0)
         # Each open brace's block; what a braceless if, else, loop or switch holds over
         # the statement after it; the if an else would be the else of; which word leaves
-        # the statement being read, if one does.
+        # the statement being read, if one does; how many of its question marks wait for
+        # their colons, so that a colon past them is read as no label's.
         self.blocks: list[Block] = []
         self.pending: list[Held] = []
         self.closed: tuple[list[Held], str] | None = None
         self.leaving = ""
-        self.found: list[list[str]] = []
+        self.asking = 0
+        self.found: list[list[Held]] = []
 
     def word(self, ahead: int = 0) -> str:
         """Give the word this many past where the reader is, or nothing past the end."""
         at = self.at + ahead
         return self.tokens[at].group() if at < len(self.tokens) else ""
 
-    def holding(self) -> list[str]:
-        """Give every test that holds where the reader is, outermost first."""
-        holds: list[str] = []
+    def holding(self) -> list[Held]:
+        """Give everything that holds where the reader is, outermost first."""
+        holds: list[Held] = []
         for block in self.blocks:
-            holds += tests(block.held)
+            holds += block.held
             if block.cases:
-                holds.append(" || ".join(block.cases))
-            holds += block.guards
-        return holds + tests(self.pending)
+                holds.append(Held(" || ".join(block.cases), "case"))
+            holds += [Held(guard, GUARD) for guard in block.guards]
+        return holds + self.pending
 
     def resets_at(self, at: int) -> bool:
         """Tell whether the word at a place calls what resets the chip."""
         word = self.tokens[at].group()
-        if at + 1 >= len(self.tokens) or self.tokens[at + 1].group() != "(":
+        calls = at + 1 < len(self.tokens) and self.tokens[at + 1].group() == "("
+        if not (calls and NAME.fullmatch(word)):
             return False
-        if QUEUEING.fullmatch(word):
-            opening = self.tokens[at + 1].start()
-            return RESET_WORK.search(self.text, opening, closing(self.text, opening)) is not None
-        return resetting(word)
+        opening = self.tokens[at + 1].start()
+        handed = RESET_WORK.search(self.text, opening, closing(self.text, opening))
+        return (handed is not None and not CALM.fullmatch(word)) or resetting(word)
+
+    def refused(self, word: str, following: str) -> str:
+        """Give why the reader can't read on from a word, or nothing where it can."""
+        cannot = "Bluetooth's wake now has"
+        if word == "goto":
+            return f"{cannot} a goto this check can't read, so it can't tell what the jump passes."
+        if word == MARK:
+            return (
+                f"{cannot} a preprocessor conditional, #{following}, this check can't read, so "
+                "it can't tell which of its lines a kernel builds."
+            )
+        if following == ":" and not self.asking and NAME.fullmatch(word):
+            return (
+                f"{cannot} a label, {word}, this check can't read, so it can't tell what jumps "
+                "to it."
+            )
+        return ""
 
     def test(self) -> str:
         """Read the parentheses opening at the next word, and give what they hold.
@@ -305,6 +365,18 @@ class Reader:
         else:
             self.pending.append(Held(LOOP, "loop"))
 
+    def called(self) -> None:
+        """Read a call, and hold a loop over what follows it where the call is a loop's macro.
+
+        A call followed straight by a brace or a word, as list_for_each_entry(...) { or
+        for_each_set_bit(...) is, opens a body that may run any number of times, or none.
+        """
+        if self.resets_at(self.at):
+            self.found.append(self.holding())
+        self.test()
+        if self.word() == "{" or NAME.fullmatch(self.word()):
+            self.pending.append(Held(LOOP, "loop"))
+
     def otherwise(self) -> None:
         """Read an else, which holds where its if's surroundings did and the if's test failed."""
         self.at += 1
@@ -328,7 +400,9 @@ class Reader:
         label = self.text[self.tokens[start].end() : self.tokens[self.at].start()].strip()
         self.at += 1
         is_default = self.tokens[start].group() == "default"
-        block.cases.append(DEFAULT if is_default else f"{block.switch} == {label}")
+        case = DEFAULT if is_default else f"{block.switch} == {label}"
+        block.cases.append(case)
+        block.unbroken.append(case)
         # A case jumped to never passed the early returns before it.
         block.guards = []
 
@@ -346,28 +420,50 @@ class Reader:
 
         Past a return, the rest of a block that isn't a switch's runs nowhere. A switch's
         return or break ends only the cases that reached it, never the switch: what follows
-        runs from the next case.
+        runs from the next case. But a case that returned with no break passed since its
+        label keeps its value from what follows the switch, as a thaw's case may.
         """
         if block.switch is None:
-            block.returns = block.returns or word == "return"
-        else:
-            block.cases = []
-            block.guards = []
+            block.left_by = block.left_by or word
+            return
+        if word == "return":
+            block.returned += [case for case in block.unbroken if case != DEFAULT]
+        block.cases = []
+        block.guards = []
+        block.unbroken = []
+
+    def broke(self) -> None:
+        """Read a break, which takes a switch's cases past it, unless a loop holds it."""
+        if any(each.opener in {"loop", "switch"} for each in self.pending):
+            return
+        for block in reversed(self.blocks):
+            if block.switch is not None:
+                block.unbroken = []
+                return
+            if any(each.opener == "loop" for each in block.held):
+                return
 
     def shut(self) -> None:
-        """Close a block; past one that always returns, its tests have failed."""
+        """Close a block; past one that always returns, its tests have failed.
+
+        Past a switch, so has each case that returned with no break passed.
+        """
         self.at += 1
         if not self.blocks:
             return
         block = self.blocks.pop()
         self.closed = last_if(block.held)
-        if not (block.returns and self.blocks):
+        if not self.blocks:
             return
-        if block.held:
-            self.blocks[-1].guards.append(negated(tests(block.held)))
-        else:
-            # A block under no test returns from where it stands in the block around it.
-            self.left(self.blocks[-1], "return")
+        around = self.blocks[-1]
+        around.guards += [negated([*tests(block.held), case]) for case in block.returned]
+        if not block.left_by:
+            return
+        if not block.held:
+            # A block under no test leaves the block around it where it stands in it.
+            self.left(around, block.left_by)
+        elif block.left_by == "return":
+            around.guards.append(negated(tests(block.held)))
 
     def ended(self) -> None:
         """End a statement; past a return under a braceless if, its tests have failed."""
@@ -380,33 +476,43 @@ class Reader:
         self.closed = last_if(self.pending)
         self.pending = []
         self.leaving = ""
+        self.asking = 0
+
+    def went(self, word: str) -> None:
+        """Read a word that opens nothing: a return, a break, a question's marks or another."""
+        self.at += 1
+        if word in LEAVING and not self.leaving:
+            self.leaving = word
+        if word == "break":
+            self.broke()
+        elif word == "?":
+            self.asking += 1
+        elif word == ":" and self.asking:
+            self.asking -= 1
 
     def step(self) -> None:
-        """Read one word, or one test with the word that opens it."""
+        """Read one word, or one test or call with the word that opens it."""
         word, following = self.word(), self.word(1)
-        if word == "else":
-            self.otherwise()
-        elif word in {"if", "for", "while", "switch"} and following == "(":
-            self.opener(word)
+        marks = {"else": self.otherwise, "{": self.opened, "}": self.shut, ";": self.ended}
+        if word in marks:
+            marks[word]()
         elif word in {"case", "default"}:
             self.labelled()
-        elif self.resets_at(self.at):
-            self.found.append(self.holding())
-            self.test()
-        elif word == "{":
-            self.opened()
-        elif word == "}":
-            self.shut()
-        elif word == ";":
-            self.ended()
+        elif why := self.refused(word, following):
+            sys.exit(why)
+        elif word in OPENERS and following == "(":
+            self.opener(word)
+        elif following == "(" and word not in LEAVING and NAME.fullmatch(word):
+            self.called()
         else:
-            if word in LEAVING and not self.leaving:
-                self.leaving = word
-            self.at += 1
+            self.went(word)
 
 
-def resets(function: str) -> list[list[str]]:
-    """Give each reset of the chip in a function as the tests it sits under, outermost first."""
+def resets(function: str) -> list[list[Held]]:
+    """Give each reset of the chip in a function as what it sits under, outermost first.
+
+    The function comes with its comments, literals and preprocessor lines taken out.
+    """
     reader = Reader(function)
     while reader.at < len(reader.tokens):
         reader.step()
@@ -436,8 +542,8 @@ def main(argv: list[str]) -> None:
     for held in waking:
         if not held:
             sys.exit(f"Bluetooth's wake resets its chip on every wake, so on a thaw, {refused}")
-        if not any(holds_back(test) for test in held):
-            when = " and ".join(" ".join(test.split()) for test in held)
+        if not any(holds_back(test) for test in tests(held)):
+            when = " and ".join(" ".join(test.split()) for test in tests(held))
             sys.exit(f"Bluetooth's wake resets its chip when {when}, as a thaw can, {refused}")
     if not any(restores(held) for held in waking):
         sys.exit(

@@ -42,6 +42,42 @@ def at_start(lines: str) -> tuple[str, str]:
 # saying, whether it sits under no test ("on every wake") or that guard ("when not ...").
 REACHED = "Bluetooth's wake resets its chip "
 NO_RESTORE = "no longer resets its chip for a restore"
+# What the reader can't follow, it refuses, naming it.
+CANNOT = "Bluetooth's wake now has a"
+# Names that ask after a reset, by each word of asking, and names that reset the chip
+# with reset glued into a word, or a word of asking only saying how.
+ASKING = (
+    "btintel_pcie_cancel_reset",
+    "btintel_pcie_reset_cancelled",
+    "btintel_pcie_reset_done",
+    "btintel_pcie_has_reset",
+    "btintel_pcie_in_reset",
+    "btintel_pcie_is_reset",
+    "btintel_pcie_reset_status",
+    "btintel_pcie_was_reset",
+)
+RESETTING = (
+    "btintel_pcie_softreset",
+    "btintel_pcie_hardreset",
+    "btintel_pcie_hwreset",
+    "btintel_pcie_btreset",
+    "btintel_pcie_reset_in_band",
+)
+# Calls that hand the reset work on, and so queue it, and calls that only cancel it,
+# flush it, stop it or ask after it.
+QUEUED = (
+    ("queue_work_node", "0, system_wq, &data->reset_work"),
+    ("enable_and_queue_work", "system_wq, &data->reset_work"),
+    ("kthread_queue_work", "data->worker, &data->reset_work"),
+    ("btintel_pcie_kick", "&data->reset_work"),
+)
+CALM = (
+    "cancel_delayed_work_sync",
+    "flush_delayed_work",
+    "disable_work_sync",
+    "delayed_work_pending",
+    "work_busy",
+)
 
 
 def switching(cases: str) -> str:
@@ -77,6 +113,18 @@ CASES: list[tuple[str, tuple[str, str], str | None]] = [
         at_start("\tschedule_work_on(0, &data->reset_work);"),
         REACHED,
     ),
+    *(
+        (f"the reset work handed to {name}", at_start(f"\t{name}({handed});"), REACHED)
+        for name, handed in QUEUED
+    ),
+    *(
+        (
+            f"the reset work in {name}",
+            at_start(f"\tif ({name}(&data->reset_work))\n\t\treturn 0;"),
+            None,
+        )
+        for name in CALM
+    ),
     ("the reset work cancelled", at_start("\tcancel_work_sync(&data->reset_work);"), None),
     ("the reset work flushed", at_start("\tflush_work(&data->reset_work);"), None),
     (
@@ -89,6 +137,15 @@ CASES: list[tuple[str, tuple[str, str], str | None]] = [
         at_start("\tif (btintel_pcie_reset_pending(data))\n\t\treturn -EBUSY;"),
         None,
     ),
+    *(
+        (
+            f"a reset asked after by {name}",
+            at_start(f"\tif ({name}(data))\n\t\treturn -EBUSY;"),
+            None,
+        )
+        for name in ASKING
+    ),
+    *((f"a reset named {name}", at_start(f"\t{name}(data);"), REACHED) for name in RESETTING),
     ("a packet's headers set back", at_start("\tskb_reset_tail_pointer(data->skb);"), None),
     (
         "a reset named in a log",
@@ -269,6 +326,159 @@ CASES: list[tuple[str, tuple[str, str], str | None]] = [
             f"\tdefault:\n\t\t{RESET}\n\t\tbreak;\n\t}}"
         ),
         "(default)",
+    ),
+    # A jump past a thaw's early return reaches the reset after it.
+    (
+        "a goto past a thaw's early return",
+        at_start(
+            "\tif (data->kept)\n\t\tgoto reset;\n\tif (mesg.event == PM_EVENT_THAW)\n"
+            f"\t\treturn 0;\nreset:\n\t{RESET}"
+        ),
+        f"{CANNOT} goto",
+    ),
+    (
+        "a label past a thaw's early return",
+        at_start(f"\tif (mesg.event == PM_EVENT_THAW)\n\t\treturn 0;\nreset:\n\t{RESET}"),
+        f"{CANNOT} label, reset,",
+    ),
+    (
+        "a question's colon",
+        at_start("\tdata->kept = data->kept ? data->kept : 0;"),
+        None,
+    ),
+    # A kernel built without the option resets every thaw.
+    (
+        "a guard only some kernels build",
+        at_start(
+            "#ifdef CONFIG_PM_SLEEP\n\tif (mesg.event == PM_EVENT_THAW)\n\t\treturn 0;\n"
+            f"#endif\n\t{RESET}"
+        ),
+        f"{CANNOT} preprocessor conditional, #ifdef,",
+    ),
+    (
+        "a reset only some kernels build",
+        at_start(f"#if IS_ENABLED(CONFIG_PM_SLEEP)\n\tdata->kept = 1;\n#else\n\t{RESET}\n#endif"),
+        f"{CANNOT} preprocessor conditional, #if,",
+    ),
+    (
+        "a return only a loop's macro reaches",
+        at_start(
+            "\tif (mesg.event == PM_EVENT_THAW)\n"
+            "\t\tlist_for_each_entry(entry, &data->list, node) {\n\t\t\treturn 0;\n\t\t}\n"
+            f"\t{RESET}"
+        ),
+        "not ((mesg.event == PM_EVENT_THAW) && ((a loop)))",
+    ),
+    (
+        "a return only a braceless loop's macro reaches",
+        at_start(
+            "\tif (mesg.event == PM_EVENT_THAW)\n"
+            f"\t\tfor_each_set_bit(bit, &data->flags, 8)\n\t\t\treturn 0;\n\t{RESET}"
+        ),
+        "not ((mesg.event == PM_EVENT_THAW) && ((a loop)))",
+    ),
+    # Each is the wake's only restore reset.
+    (
+        "a restore reset in the else of a thaw",
+        (WAKE_TEST, "if (mesg.event == PM_EVENT_THAW) {\n\t\tdata->kept = 1;\n\t} else {"),
+        None,
+    ),
+    (
+        "a restore reset past a thaw's early return",
+        (WAKE_TEST, "if (mesg.event == PM_EVENT_THAW)\n\t\treturn 0;\n\t{"),
+        None,
+    ),
+    (
+        "a restore reset past a thaw's early return under a test it can't say of a restore",
+        (WAKE_TEST, "if (mesg.event == PM_EVENT_THAW)\n\t\treturn 0;\n\tif (data->kept) {"),
+        NO_RESTORE,
+    ),
+    (
+        "a wake switched on its event, a thaw's case returning",
+        at_start(switching("\tcase PM_EVENT_THAW:\n\t\treturn 0;\n") + f"\n\t{RESET}"),
+        None,
+    ),
+    (
+        "a wake switched on its event, a thaw's case falling through to a return",
+        at_start(
+            switching(
+                "\tcase PM_EVENT_THAW:\n\t\tdata->kept = 1;\n\t\tfallthrough;\n"
+                "\tcase PM_EVENT_FREEZE:\n\t\treturn 0;\n"
+            )
+            + f"\n\t{RESET}"
+        ),
+        None,
+    ),
+    (
+        "a wake switched on its event, a thaw's case breaking before falling through to a return",
+        at_start(
+            switching(
+                "\tcase PM_EVENT_THAW:\n\t\tif (data->kept)\n\t\t\tbreak;\n\t\tfallthrough;\n"
+                "\tcase PM_EVENT_FREEZE:\n\t\treturn 0;\n"
+            )
+            + f"\n\t{RESET}"
+        ),
+        REACHED,
+    ),
+    (
+        "a wake switched on its event, a thaw's case breaking before its return",
+        at_start(
+            switching(
+                "\tcase PM_EVENT_THAW:\n\t\tif (data->kept) {\n\t\t\tbreak;\n\t\t}\n\t\treturn 0;\n"
+            )
+            + f"\n\t{RESET}"
+        ),
+        REACHED,
+    ),
+    (
+        "a wake switched on another value, its thaw's case returning",
+        at_start(
+            "\tswitch (data->state) {\n\tcase PM_EVENT_THAW:\n\t\treturn 0;\n"
+            f"\tdefault:\n\t\tbreak;\n\t}}\n\t{RESET}"
+        ),
+        REACHED,
+    ),
+    # Unless a return or a break ends the cases before it, the restore's case is reached
+    # by the case above it, which a thaw meets.
+    (
+        "a case past a thaw's case that returned",
+        at_start(
+            switching(
+                "\tcase PM_EVENT_THAW:\n\t\treturn 0;\n"
+                f"\tcase PM_EVENT_RESTORE:\n\t\t{RESET}\n\t\tbreak;\n"
+            )
+        ),
+        None,
+    ),
+    (
+        "a case past a freeze's case that broke",
+        at_start(
+            switching(
+                "\tcase PM_EVENT_FREEZE:\n\t\tdata->kept = 1;\n\t\tbreak;\n"
+                f"\tcase PM_EVENT_RESTORE:\n\t\t{RESET}\n\t\tbreak;\n"
+            )
+        ),
+        None,
+    ),
+    (
+        "a case past a freeze's case that broke in its braces",
+        at_start(
+            switching(
+                "\tcase PM_EVENT_FREEZE: {\n\t\tdata->kept = 1;\n\t\tbreak;\n\t}\n"
+                f"\tcase PM_EVENT_RESTORE:\n\t\t{RESET}\n\t\tbreak;\n"
+            )
+        ),
+        None,
+    ),
+    (
+        "a case past a loop's break in a freeze's case",
+        at_start(
+            switching(
+                "\tcase PM_EVENT_FREEZE:\n\t\twhile (data->busy) {\n\t\t\tbreak;\n\t\t}\n"
+                f"\tcase PM_EVENT_RESTORE:\n\t\t{RESET}\n\t\tbreak;\n"
+            )
+        ),
+        "mesg.event == PM_EVENT_FREEZE || mesg.event == PM_EVENT_RESTORE",
     ),
 ]
 

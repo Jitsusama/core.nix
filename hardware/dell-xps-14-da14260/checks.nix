@@ -274,11 +274,12 @@ in
   # wake it shares must sit under a test a thaw can't meet. The driver's C
   # is read as tests and blocks, not as words, past its comments, strings
   # and preprocessor lines, so an else, a second reset, a braceless if, a
-  # loop, a switch's case or an early return is judged too, and a call
-  # asking after a reset or cancelling one is not a reset
-  # (tests/thaw-is-a-plain-wake.py). Its cases edit this driver as a later
-  # kernel might, so a reader that stops seeing one fails here
-  # (tests/thaw-is-a-plain-wake-cases.py).
+  # loop or a loop's macro, a switch's case or an early return is judged
+  # too, and a call asking after a reset or cancelling one is not a reset.
+  # What it can't follow, a goto, a label or a preprocessor conditional, it
+  # refuses rather than guess at (tests/thaw-is-a-plain-wake.py). Its cases
+  # edit this driver as a later kernel might, so a reader that stops seeing
+  # one fails here (tests/thaw-is-a-plain-wake-cases.py).
   bluetooth-lets-a-hibernation-power-off =
     let
       driver = "drivers/bluetooth/btintel_pcie.c";
@@ -342,7 +343,8 @@ in
   # come from vmalloc (wifi-reorder-buffer-falls-back-to-vmalloc), and as
   # kfree() or kfree_sensitive() on vmalloc's memory corrupts the slab, no
   # file that handles the session frees it that way, however the call is
-  # spaced, cast or broken over lines
+  # spaced, cast, put in parentheses or broken over lines, and whatever
+  # line a declaration names the session data on
   # (tests/every-reorder-buffer-may-be-vmalloc.sh).
   wifi-sessions-survive-fragmented-memory =
     let
