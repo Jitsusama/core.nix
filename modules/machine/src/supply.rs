@@ -2,7 +2,7 @@
 //! charger and each USB-C port, with every figure its folder in
 //! `/sys/class/power_supply` has, a USB-C port's roles from its folder in
 //! `/sys/class/typec`, and what `UPower` works out of the battery, its time
-//! to empty or full, as main.rs last asked it.
+//! to empty or full, as bin/machine/bus.rs last asked it.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};

@@ -2,7 +2,7 @@
 # disks, boot and the programs using it most, held ready over
 # $XDG_RUNTIME_DIR/daemons/machine.sock in the shell's daemon interface,
 # for the launcher's Machine place and anything else that asks
-# (src/main.rs says how). The shell imports it, since what Machine shows
+# (src/bin/machine/main.rs says how). The shell imports it, since what Machine shows
 # is what it holds.
 {
   config,

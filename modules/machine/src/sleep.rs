@@ -1,7 +1,7 @@
 //! How the machine sleeps (`sleep:main`): the ways it can, the one it
 //! takes, and how each sleep since it started went as the kernel counts
 //! them in `/sys/power/suspend_stats`. And what keeps it awake
-//! (`awake:main`), as main.rs last asked logind: whether the session is
+//! (`awake:main`), as bin/machine/bus.rs last asked logind: whether the session is
 //! idle and since when, what holds sleep or idling off, and when the last
 //! sleep began and ended. They're kinds apart, since logind is asked every
 //! two seconds while its kind is watched and the kernel's counts only

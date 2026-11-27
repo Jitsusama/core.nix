@@ -2,7 +2,7 @@
 //! device it names, its versions and what it can do, the update it
 //! offers, or in fwupd's own words why it offers none; and the machine's
 //! own (`firmware:host`), its security level as fwupd rates it and each
-//! attribute that level is made of. main.rs
+//! attribute that level is made of. bin/machine/bus.rs
 //! asks fwupd over the system bus and hands its answers here as plain
 //! JSON, so a record is a function of what fwupd said.
 
