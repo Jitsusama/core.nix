@@ -185,15 +185,10 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
     let mesh = Mesh {
         root: state_home.join("pi/agentic-harness.pi"),
     };
-    let answers = there(&mesh, now);
-    for (owner, text) in told.into_iter().filter(|(owner, _)| !owner.is_empty()) {
-        let (whom, text) = told::told_to(&owner, text, to, &answers);
-        mesh.send(&message(&whom, "finding", text))?;
-    }
     let routes = fs::read_to_string(state_home.join("pain-points/routes.json")).ok();
     // A keeper no session answers as isn't asked; the orchestrator still
     // has the card.
-    let keeper = measures::keeper(routes.as_deref()).filter(|k| answers(k));
+    let keeper = told::send(&mesh, told, measures::keeper(routes.as_deref()), to, now)?;
     for (whom, intent) in card_to(to, keeper.as_deref()) {
         mesh.send(&message(whom, intent, card.clone()))?;
     }
