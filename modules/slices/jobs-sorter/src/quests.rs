@@ -15,7 +15,10 @@
 //! The disk's share acts only where the disk is shared by io.cost or the
 //! BFQ scheduler. A disk run on io.latency targets with no scheduler, such
 //! as an NVMe drive, orders whole slices by latency but not one quest over
-//! another, so there the weight waits for io.cost.
+//! another, so there the weight waits for io.cost. Under BFQ, systemd
+//! scales a weight above 100 down first, so a quest at 400 gets about 127
+//! against one at 100, and priority orders quests far less than io.cost
+//! would.
 //!
 //! Work naming no quest, or one the file doesn't list, stays where it
 //! went before. The file is read again whenever it changes, and a quest

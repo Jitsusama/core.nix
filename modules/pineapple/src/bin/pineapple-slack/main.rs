@@ -521,7 +521,9 @@ fn run(how: &Run) -> Result<(), Failure> {
     // A locked keyring doesn't end a sign-in, so stops are still heard.
     let mut last = LastSignIn::new();
     let mut deaf = Deaf::new();
+    let let_go_from = alerts::let_go_from(&state);
     loop {
+        phone.give_up(&state, let_go_from);
         let now = Instant::now();
         let signed = Account::signed(&credentials, patience, rest);
         match &signed {
@@ -618,7 +620,12 @@ fn hear_through(how: &Run, url: &str, program: &OsStr) -> Result<(), Failure> {
     let mut through = Through::new(Gateway::new(url, program), Box::new(record));
     let mut me: Option<String> = None;
     let mut deaf = Deaf::through_gateway();
+    let let_go_from = alerts::let_go_from(&state);
     loop {
+        // In shadow it tells no phone, so lets no alert go.
+        if !how.shadow {
+            alerts::give_up_through(&state, let_go_from);
+        }
         let heard = match me.clone().map_or_else(|| through.me(), Ok) {
             Ok(user) => {
                 let heard = round(&mut through, &reader, (&user, None), &state, &mut judged);

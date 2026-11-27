@@ -380,6 +380,9 @@ let
 
   # Checks for Linux alone, which a Mac neither builds nor evaluates.
   onLinux = lib.optionalAttrs (pkgs.stdenv.hostPlatform.system == "x86_64-linux");
+  # Checks for a Mac alone, as what runs macOS's own tools through macosTools.
+  onMacos = lib.optionalAttrs (pkgs.stdenv.hostPlatform.system == "aarch64-darwin");
+  macosTools = pkgs.callPackage ./tests/lib/macos-tools.nix { };
 
   # What every folder's checks.nix is given, this file's arguments and the
   # helpers here, of which each takes what it uses.
@@ -405,6 +408,8 @@ let
       passesClippy
       compilesForMacos
       onLinux
+      onMacos
+      macosTools
       vmHostPkgs
       ;
   };
@@ -731,6 +736,7 @@ gather {
     ./modules/sudo/checks.nix
     ./modules/spotify/checks.nix
     ./modules/ssh-tpm-agent/checks.nix
+    ./modules/subject-hubs/checks.nix
     ./modules/sun/checks.nix
     ./modules/swayidle/checks.nix
     ./modules/swayimg/checks.nix
