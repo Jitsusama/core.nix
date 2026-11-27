@@ -28,6 +28,12 @@ const RISE: f64 = 0.02;
 /// height within them, short enough that one spike is forgotten.
 const HEIGHTS: usize = 6;
 
+/// How long back the waits judged with the share at `LEAST` are held
+/// against one another, across runs: a tunnel paced over `LEAST` drains
+/// there within a judgement or two and stands no more, while a wait no
+/// cut lowers stands there again between clear judgements.
+const AT_LEAST_S: f64 = 30.0;
+
 /// The VPN's own queue's hold: the share of its lane it's held to, and
 /// what its cuts found.
 #[derive(Clone, Debug)]
@@ -45,6 +51,10 @@ pub struct Hold {
     heights: VecDeque<f64>,
     /// Cuts while a run lasts.
     cuts: u32,
+    /// The waits' means that stood with the share at `LEAST` in the last
+    /// `AT_LEAST_S`, when, and whether each was lower than any before it
+    /// there.
+    at_least: VecDeque<(f64, f64, bool)>,
     /// The wait's mean that set the last cut, for saying.
     waited_ms: f64,
     unheeded_until: f64,
@@ -61,6 +71,7 @@ impl Default for Hold {
             clear: true,
             heights: VecDeque::new(),
             cuts: 0,
+            at_least: VecDeque::new(),
             waited_ms: 0.0,
             unheeded_until: f64::NEG_INFINITY,
             unheeded_for: 0.0,
@@ -91,7 +102,9 @@ impl Hold {
     /// `ELSEWHERE_S` it averages past `late_ms`. Once `FAR_CUTS` cuts
     /// have passed, a wait back within the margin of the highest of the
     /// last `HEIGHTS` shows a far path no hold drains, which goes unheeded
-    /// a while, as the controller's own far rule does.
+    /// a while, as the controller's own far rule does. So does a wait
+    /// standing `FAR_CUTS` times in `AT_LEAST_S` with the share at `LEAST`,
+    /// which no cut takes lower, each time finding no new low.
     pub fn step(&mut self, at: f64, dt: f64, waiting: Option<f64>, late_ms: f64) {
         let waiting = waiting.filter(|_| at >= self.unheeded_until);
         if let Some(ms) = waiting {
@@ -131,10 +144,20 @@ impl Hold {
             .iter()
             .copied()
             .fold(f64::NEG_INFINITY, f64::max);
-        if self.cuts >= FAR_CUTS && mean >= height - VPN_MARGIN_MS {
+        // At its least no cut is left to drain a wait, and one that keeps
+        // standing there, finding no new low, isn't the tunnel's: from
+        // 05:07 on 27 November, by air, the VPN's round trip spiked to 100
+        // to 230 ms every 6 to 10 s, at a share of 0.99 as at 0.25, and
+        // stood 13 to 26 ms over its least between. Each spike started a
+        // run that a clear judgement ended before it was found far, so the
+        // share sawed between its least and 0.41 for a minute, the VPN's
+        // CAKE at 1 to 1.4 Mbit/s, under what bulk uploads got.
+        let floored = self.share <= LEAST && self.unlowered_at_least(at, mean);
+        if floored || (self.cuts >= FAR_CUTS && mean >= height - VPN_MARGIN_MS) {
             self.unheeded_for = (self.unheeded_for * 2.0).clamp(FAR_S, FAR_MOST_S);
             self.unheeded_until = at + self.unheeded_for;
             self.end_run();
+            self.at_least.clear();
             (self.share, self.clear) = (1.0, true);
             return;
         }
@@ -150,6 +173,33 @@ impl Hold {
     fn end_run(&mut self) {
         self.heights.clear();
         self.cuts = 0;
+    }
+
+    /// Takes in a wait standing at `at` with the share at `LEAST`, held
+    /// against those there in the last `AT_LEAST_S`: it's a new low when
+    /// under all of them by `VPN_MARGIN_MS`. Answers whether `FAR_CUTS` of
+    /// them found none.
+    fn unlowered_at_least(&mut self, at: f64, mean: f64) -> bool {
+        while self
+            .at_least
+            .front()
+            .is_some_and(|&(when, _, _)| at - when > AT_LEAST_S)
+        {
+            self.at_least.pop_front();
+        }
+        let lowest = self
+            .at_least
+            .iter()
+            .map(|&(_, ms, _)| ms)
+            .fold(f64::INFINITY, f64::min);
+        self.at_least
+            .push_back((at, mean, mean < lowest - VPN_MARGIN_MS));
+        let unlowered: u32 = self
+            .at_least
+            .iter()
+            .map(|&(_, _, lower)| u32::from(!lower))
+            .sum();
+        unlowered >= FAR_CUTS
     }
 
     fn rise(&mut self, dt: f64) {
@@ -292,6 +342,32 @@ mod tests {
             (hold.share() - 1.0).abs() < f64::EPSILON,
             "a far wait with one spike held the share at {:.3}, from a least of {least:.3}",
             hold.share()
+        );
+    }
+
+    // By air a wait that spikes and falls away by itself, as on 27
+    // November, ends each run with a clear judgement before it's found
+    // far, and the cuts outrun the climbs between. At the least share,
+    // where no cut is left, it stands again and finds no new low, so the
+    // cuts are let go rather than holding the VPN's CAKE at its least.
+    #[test]
+    fn a_spiking_wait_no_cut_lowers_is_let_go_at_the_least() {
+        let cycle = [150.0, 60.0, 40.0, 30.0, 10.0, 10.0];
+        let waits: Vec<f64> = (0..48).map(|window| cycle[window % cycle.len()]).collect();
+        let mut hold = Hold::default();
+        let least = judged(&mut hold, 0.0, &waits);
+        assert!(
+            (least - LEAST).abs() < f64::EPSILON,
+            "the spiking wait's cuts came only to {least:.3}, never to the least"
+        );
+        assert!(
+            (hold.share() - 1.0).abs() < f64::EPSILON,
+            "a spiking wait no cut lowered held the share at {:.3}",
+            hold.share()
+        );
+        assert!(
+            !hold.heeding(48.0 * ELSEWHERE_S),
+            "the spiking wait let go was heeded again at once"
         );
     }
 
