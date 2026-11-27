@@ -56,7 +56,6 @@ mod aboard;
 mod answers;
 mod apart;
 mod boarding;
-mod built;
 mod candidates;
 mod command;
 mod comments;
@@ -93,6 +92,7 @@ use std::process::{Command, ExitCode, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use command::Asked;
+use ready::built;
 use state::{State, short};
 use watch::Round;
 use world::Real;
@@ -396,7 +396,7 @@ fn may_merge(commit: &str, main: &str, passes: &[&str], files: &[String], said: 
 
 /// Why `commit` waits for a machine's system built with it, when a pass
 /// speaking for it, its own or one of `passes`', moved a build that takes a
-/// builder past half an hour (`built.rs`). A system built at an earlier
+/// builder past half an hour (`ready/built.rs`). A system built at an earlier
 /// commit of the same change speaks for it, as its pass does.
 fn long_builds_wait(commit: &str, main: &str, passes: &[&str], files: &[String]) -> Option<String> {
     let mut commits: Vec<String> = passes.iter().map(|&at| at.to_owned()).collect();
