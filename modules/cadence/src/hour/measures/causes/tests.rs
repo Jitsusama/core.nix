@@ -124,6 +124,37 @@ fn an_unfolded_class_keeps_only_its_senders_first_hundred_letters() {
     );
 }
 
+/// One line can't keep a cause of any length, nor count changes without
+/// end: a case keeps its first `SAID_AT_MOST` letters, and a line its
+/// first `CHANGES_PER_LINE` changes.
+#[test]
+fn a_line_keeps_only_so_much_of_its_cause_and_so_many_changes() {
+    let named: Vec<String> = (1..=CHANGES_PER_LINE + 5)
+        .map(|n| format!("core.nix#{n}"))
+        .collect();
+    let line = format!(
+        "cause: {} | change: {}",
+        "word ".repeat(SAID_AT_MOST),
+        named.join(", ")
+    );
+    let cases = cause_line(&line, NOW);
+    assert_eq!(
+        cases
+            .iter()
+            .map(|case| case.change.as_str())
+            .collect::<Vec<_>>(),
+        named[..CHANGES_PER_LINE],
+        "a line counted changes past its cap, or not its first ones"
+    );
+    assert!(
+        cases
+            .iter()
+            .all(|case| case.said.chars().count() <= SAID_AT_MOST),
+        "a case kept its cause at any length: {} letters",
+        cases[0].said.chars().count()
+    );
+}
+
 #[test]
 fn a_change_is_read_by_its_repository_however_it_is_written() {
     assert_eq!(
@@ -297,8 +328,12 @@ fn a_class_owned_apart_by_repository_goes_to_each_repositorys_owner() {
     let cases = [
         case(TEST_PASSES_UNDONE, "core.nix#1", 100),
         case(TEST_PASSES_UNDONE, "core.nix#2", 100),
+        case(TEST_PASSES_UNDONE, "core.nix#8", 100),
         case(TEST_PASSES_UNDONE, "agentic-harness.pi#3", 100),
+        case(TEST_PASSES_UNDONE, "agentic-harness.pi#9", 100),
+        case(TEST_PASSES_UNDONE, "agentic-harness.pi#10", 100),
         case(TEST_PASSES_UNDONE, "mycelium#4", 100),
+        case(TEST_PASSES_UNDONE, "world#11", 100),
         case("a pinned copy lags the tree", "core.nix#5", 100),
         case("a pinned copy lags the tree", "core.nix#6", 100),
         case("a pinned copy lags the tree", "mycelium#7", 100),
@@ -315,25 +350,57 @@ fn a_class_owned_apart_by_repository_goes_to_each_repositorys_owner() {
         .map(|(line, owner)| (class_of(line), owner))
         .collect();
     let half = |repo: &str| format!("{TEST_PASSES_UNDONE} in {repo}");
-    let (harness, core, mycelium) = (
+    let (harness, core, rest) = (
         half("agentic-harness.pi"),
         half("core.nix"),
-        half("mycelium"),
+        half("other repositories"),
     );
     assert_eq!(
         owners,
         [
             (harness.as_str(), "85PKB2"),
             (core.as_str(), "80ECO2"),
-            (mycelium.as_str(), "1JQPPC"),
+            (rest.as_str(), "1JQPPC"),
             (PIN_LAGS, "16V6F4"),
         ],
-        "a class wasn't split by repository to each owner, or one owned whole was split"
+        "a class wasn't split by repository to each owner over its bar, the rest to the \
+         class's owner, or one owned whole was split"
     );
     assert!(
-        m.behind[1].contains("on 2 of its 4 changes in a week, core.nix#1, core.nix#2 ·"),
-        "a repository's half didn't name its own changes: {}",
         m.behind[1]
+            .contains("on 3 of its 8 changes in a week, core.nix#1, core.nix#2, core.nix#8 ·"),
+        "a repository's part didn't name its own changes: {}",
+        m.behind[1]
+    );
+    assert!(
+        m.behind[2].contains("on 2 of its 8 changes in a week, mycelium#4, world#11 ·"),
+        "the repositories under the bar weren't named together: {}",
+        m.behind[2]
+    );
+}
+
+/// On 27 November world was asked apart on 1 of a class's 55 changes. A
+/// repository under the bar is asked of only with the rest, and a class
+/// none of whose repositories is over it is asked of whole, so three
+/// repositories on two changes each still reach the class's owner.
+#[test]
+fn a_repository_under_the_bar_is_asked_of_with_the_rest_not_apart() {
+    let cases = [
+        case(TEST_PASSES_UNDONE, "core.nix#1", 100),
+        case(TEST_PASSES_UNDONE, "core.nix#2", 100),
+        case(TEST_PASSES_UNDONE, "agentic-harness.pi#3", 100),
+        case(TEST_PASSES_UNDONE, "agentic-harness.pi#4", 100),
+        case(TEST_PASSES_UNDONE, "world#5", 100),
+        case(TEST_PASSES_UNDONE, "world#6", 100),
+    ];
+    let m = recurring(&cases, NOW);
+    assert_eq!(
+        m.behind,
+        [format!(
+            "{TEST_PASSES_UNDONE}: on 6 changes in a week, agentic-harness.pi#3, \
+             agentic-harness.pi#4, core.nix#1, core.nix#2, world#5, world#6 · 1JQPPC"
+        )],
+        "a class none of whose repositories is over the bar wasn't asked of whole"
     );
 }
 
@@ -678,11 +745,31 @@ fn a_kept_reading_that_doesnt_parse_is_unread_and_another_version_is_read_anew()
         "a kept reading that doesn't parse passed as none: {:?}",
         torn.behind
     );
-    fs::write(&kept_at, r#"{"v":1,"through_ms":1,"cases":[]}"#).expect("an old reading");
+    assert!(
+        torn.behind[0].contains("moved aside, the week would be read anew, forgetting"),
+        "a torn reading didn't say what moving it aside would cost: {}",
+        torn.behind[0]
+    );
+    // An old reading over the bar on its own, so one read as kept would
+    // count it; read anew, the empty mesh counts nothing.
+    let old_cases: Vec<String> = (1..=AT_LEAST)
+        .map(|n| {
+            format!(
+                r#"{{"class":"stale docs","said":"stale docs","change":"core.nix#{n}","at":{}}}"#,
+                NOW - 100
+            )
+        })
+        .collect();
+    let old_reading = format!(
+        r#"{{"v":1,"through_ms":{},"cases":[{}]}}"#,
+        (NOW - 100) * 1000,
+        old_cases.join(",")
+    );
+    fs::write(&kept_at, old_reading).expect("an old reading");
     let old = read(home.path(), folder.path(), NOW, true);
     assert!(
         old.past().is_none() && old.behind.is_empty(),
-        "a kept reading of another version wasn't read anew: {:?}",
+        "a kept reading of another version was counted rather than read anew: {:?}",
         old.behind
     );
 }

@@ -65,6 +65,16 @@ const VERSION: u32 = 2;
 /// line sent makes a key or an ask of any length.
 const UNFOLDED_AT_MOST: usize = 100;
 
+/// The most letters a case keeps of the cause as said, which it is folded
+/// from again on every read. The longest a cell sent by 27 November ran
+/// about 250; past this a line's words make the kept file grow, not its
+/// fold surer.
+const SAID_AT_MOST: usize = 500;
+
+/// The most changes one line or record counts, so one naming hundreds
+/// can't keep a file of them, nor stand for a pattern alone.
+const CHANGES_PER_LINE: usize = 10;
+
 /// The most unfolded classes one message counts, so a message of many
 /// junk wordings can't put each over the bar; the folded classes are few
 /// by their making.
@@ -180,8 +190,11 @@ fn kept_reading(at: &Path) -> Result<Kept, String> {
             );
             Ok(Kept::default())
         }
+        // It says what moving it aside would cost, as symbiosis's does, so
+        // whoever mends it knows the cases only it holds go with it.
         Err(error) => Err(format!(
-            "the reading kept in {} doesn't parse ({error})",
+            "the reading kept in {} doesn't parse ({error}); moved aside, the week would be \
+             read anew, forgetting what only it held",
             at.display()
         )),
     }
@@ -232,11 +245,7 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
     };
     let heard: Vec<(Message, i64)> = listed
         .into_iter()
-        .filter_map(|(path, name, written)| {
-            let json = symbiosis::opened_at_most(&path).ok()?;
-            let message: Message = serde_json::from_slice(&json).ok()?;
-            genuine(&message, &name).then_some((message, written))
-        })
+        .filter_map(|(path, name, written)| Some((message_in(&path, &name)?, written)))
         .collect();
     let withdrawn = withdrawals(kept.withdrawn, &heard);
     let mut cases: Vec<Case> = kept
@@ -315,8 +324,9 @@ pub fn names_no_class(line: &str) -> bool {
 /// before `now`, the vetted before the unfolded and most changes first,
 /// each with its owner after ` · `, so
 /// each is filed with its own. A class whose owner differs by repository
-/// has a line for each repository it was found in, named after the class,
-/// since the class recurs though one half of it may not.
+/// has a line for each repository it was found in over the bar, named
+/// after the class, and one for the rest, since the class recurs though
+/// one part of it may not.
 #[must_use]
 pub fn recurring(cases: &[Case], now: i64) -> Measure {
     let mut changes: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
@@ -380,13 +390,25 @@ pub fn class_of(line: &str) -> &str {
 
 /// The lines one class over its bar gives, found on the changes `on`: one
 /// naming them all, or, where its owner differs by repository, one for
-/// each repository, naming that one's changes and its owner.
+/// each repository found on `AT_LEAST` changes of its own, naming those
+/// and its owner, and one for the rest. A repository under the bar isn't
+/// asked apart: on 27 November world was asked on 1 of 55 changes. Its
+/// changes still count in the rest's line, so three repositories on two
+/// each are asked of as the class is, not of nobody.
 fn lines_of(class: &str, on: &BTreeSet<&str>) -> Vec<String> {
+    let all: Vec<&str> = on.iter().copied().collect();
     let split = OWNERS
         .iter()
         .any(|&(named, repo, _)| named == class && !repo.is_empty());
-    if !split {
-        let all: Vec<&str> = on.iter().copied().collect();
+    let mut by_repo: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for &change in on {
+        let repo = change.split_once('#').map_or(change, |(repo, _)| repo);
+        by_repo.entry(repo).or_default().push(change);
+    }
+    let (apart, rest): (Vec<_>, Vec<_>) = by_repo
+        .into_iter()
+        .partition(|(_, changes)| split && changes.len() >= AT_LEAST);
+    if apart.is_empty() {
         return vec![format!(
             "{class}: on {} changes in a week, {} · {}",
             all.len(),
@@ -394,12 +416,7 @@ fn lines_of(class: &str, on: &BTreeSet<&str>) -> Vec<String> {
             owner_of(class, "")
         )];
     }
-    let mut by_repo: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
-    for &change in on {
-        let repo = change.split_once('#').map_or(change, |(repo, _)| repo);
-        by_repo.entry(repo).or_default().push(change);
-    }
-    by_repo
+    let mut lines: Vec<String> = apart
         .into_iter()
         .map(|(repo, changes)| {
             format!(
@@ -410,7 +427,18 @@ fn lines_of(class: &str, on: &BTreeSet<&str>) -> Vec<String> {
                 owner_of(class, repo)
             )
         })
-        .collect()
+        .collect();
+    let rest: Vec<&str> = rest.into_iter().flat_map(|(_, changes)| changes).collect();
+    if !rest.is_empty() {
+        lines.push(format!(
+            "{class} in other repositories: on {} of its {} changes in a week, {} · {}",
+            rest.len(),
+            on.len(),
+            rest.join(", "),
+            owner_of(class, "")
+        ));
+    }
+    lines
 }
 
 /// Who owns fixing `class` in `repo`: its owner there, else its owner in
@@ -466,6 +494,28 @@ fn kept_withdrawals(withdrawn: &BTreeSet<String>, now: i64) -> BTreeSet<String> 
         })
         .cloned()
         .collect()
+}
+
+/// The message the mesh's file at `path`, named `name`, holds, when it is
+/// genuine. One that can't be read, or doesn't parse, is said on stderr
+/// and left out: the next hour reads it again within `SLACK_MS`, so one
+/// caught as it was written still counts, and one that stays torn is seen.
+fn message_in(path: &Path, name: &str) -> Option<Message> {
+    let parsed = symbiosis::opened_at_most(path)
+        .map_err(|error| error.to_string())
+        .and_then(|json| {
+            serde_json::from_slice::<Message>(&json).map_err(|error| error.to_string())
+        });
+    match parsed {
+        Ok(message) => genuine(&message, name).then_some(message),
+        Err(why) => {
+            eprintln!(
+                "cadence: the mesh's {} was left out of the causes read ({why})",
+                path.display()
+            );
+            None
+        }
+    }
 }
 
 /// Who sent the message `id` names, as `<ms>-<from>-<pid>-<short id>`.
@@ -569,6 +619,9 @@ fn changes(named: &str) -> Vec<String> {
         }
         if !repo.is_empty() {
             found.push(format!("{repo}#{number}"));
+            if found.len() == CHANGES_PER_LINE {
+                break;
+            }
         }
     }
     found
@@ -625,7 +678,7 @@ fn class_named(said: &str) -> String {
 /// spaces gone, a curled apostrophe straight and a colon a comma, since a
 /// colon ends the class on the measure's line. A double quote or backtick
 /// within is an apostrophe, so a sender's words can't close the quotes
-/// the ask puts them in.
+/// the ask puts them in. Only its first `SAID_AT_MOST` letters are kept.
 fn plain(class: &str) -> String {
     class
         .trim()
@@ -637,6 +690,11 @@ fn plain(class: &str) -> String {
         .to_lowercase()
         .replace(['\u{2019}', '"', '`'], "'")
         .replace(':', ",")
+        .chars()
+        .take(SAID_AT_MOST)
+        .collect::<String>()
+        .trim_end()
+        .to_owned()
 }
 
 /// `word` quoted for a POSIX shell: in single quotes, each of its own
