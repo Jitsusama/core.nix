@@ -231,6 +231,17 @@ pub(crate) fn done(
             "cadence: {key} was closed already, as its line went, so nothing is held"
         ));
     }
+    // A bare close of one its cell holds changes nothing, and says so.
+    if fix.is_none()
+        && let Some(held) = settled
+            .as_ref()
+            .filter(|e| e.key.starts_with(UNPROVEN))
+            .and_then(|e| e.fixed.as_deref())
+    {
+        return Ok(format!(
+            "cadence: {key} is held by {held}; give a why after its key to restate it"
+        ));
+    }
     if let (Some(entry), Some(fix)) = (settled, fix) {
         entry.closed = Some(now);
         entry.fixed = Some(fix.to_owned());

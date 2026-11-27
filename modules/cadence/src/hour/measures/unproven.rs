@@ -27,6 +27,9 @@ pub const KEY: &str = "asks-unproven";
 /// is that runner's to hold, as a cell is asked to run the probe itself.
 pub const PROBES: &str = "mission/probes.jsonl";
 
+/// Where the machine's switches are kept, under the state folder.
+const SWITCHES: &str = "integration/switches.jsonl";
+
 /// Why the probe runs are unread when none has been written yet, which
 /// is no tear to mend.
 const NONE_KEPT: &str = "none kept";
@@ -47,23 +50,29 @@ const GRACE: i64 = 2 * 3600;
 /// of questions at once.
 const SINCE: i64 = 7 * DAY;
 
-/// The measure, from the asks list `asks`, the switches `switches` and the
-/// probe runs kept under `state_home` at `now`. A record that can't be read
-/// is unread, never none passed, and so is one that's gone or emptied: its
+/// The measure, from the asks list `asks`, and the switches and probe runs
+/// kept under `state_home`, at `now`. A probe record that can't be read is
+/// unread, never none passed, and so is one that's gone or emptied: its
 /// keeper writes it, so a lost one would otherwise ask again of every ask
-/// proven.
+/// proven. A switch record that's gone is none, as on a machine never
+/// switched, but one that can't be read is unread, or every pass would
+/// count as though no switch had come.
 #[must_use]
-pub fn read(state_home: &Path, asks: &str, switches: &str, now: i64) -> Measure {
+pub fn read(state_home: &Path, asks: &str, now: i64) -> Measure {
     let probes = match fs::read_to_string(state_home.join(PROBES)) {
         Ok(text) if text.trim().is_empty() => Err(NONE_KEPT.to_owned()),
         Ok(text) => Ok(text),
         Err(err) if err.kind() == io::ErrorKind::NotFound => Err(NONE_KEPT.to_owned()),
         Err(err) => Err(err.to_string()),
     };
+    let switches = match fs::read_to_string(state_home.join(SWITCHES)) {
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(String::new()),
+        read => read.map_err(|err| err.to_string()),
+    };
     unproven(
         asks,
         probes.as_deref().map_err(String::as_str),
-        switches,
+        switches.as_deref().map_err(String::as_str),
         now,
     )
 }
@@ -98,7 +107,12 @@ type Unproven = (i64, String, String);
 /// and goes unjudged, so no ask is asked for a probe its keeper hasn't
 /// written yet and an unread record never reads as none passed.
 #[must_use]
-pub fn unproven(text: &str, probes: Result<&str, &str>, switches: &str, now: i64) -> Measure {
+pub fn unproven(
+    text: &str,
+    probes: Result<&str, &str>,
+    switches: Result<&str, &str>,
+    now: i64,
+) -> Measure {
     let mut latest: BTreeMap<String, Value> = BTreeMap::new();
     for ask in lines(text) {
         // A twin the keeper folded into a kept record carries the record's
@@ -129,11 +143,17 @@ pub fn unproven(text: &str, probes: Result<&str, &str>, switches: &str, now: i64
         Ok(_) => {}
     }
     let by_ask = runs.as_ref().ok();
-    let switch_times: Vec<i64> = lines(switches).filter_map(|s| seconds(&s["at"])).collect();
+    let record = switches.unwrap_or_default();
+    let switch_times: Vec<i64> = lines(record).filter_map(|s| seconds(&s["at"])).collect();
     // A record holding lines but no time read is one in another shape, not
     // none, so no pass is taken on it as if no switch had come.
-    let switches_unread =
-        switch_times.is_empty() && switches.lines().any(|line| !line.trim().is_empty());
+    let switches_unread = match switches {
+        Err(why) => Some(format!("the switch record unread: {}", clean(why))),
+        Ok(_) if switch_times.is_empty() && record.lines().any(|l| !l.trim().is_empty()) => {
+            Some("the switch record unread: no line names when it ran".to_owned())
+        }
+        Ok(_) => None,
+    };
     let (older, week): (Vec<_>, Vec<_>) = latest
         .values()
         .filter_map(|ask| Some((ask, unproven_ask(ask, by_ask, &switch_times, now)?)))
@@ -160,8 +180,7 @@ pub fn unproven(text: &str, probes: Result<&str, &str>, switches: &str, now: i64
     let unjudged = match (&runs, named) {
         (Err(why), _) => Some(format!("the probe runs unread: {}", clean(why))),
         (Ok(_), false) => Some("no ask names a probe yet".to_owned()),
-        (Ok(_), true) if switches_unread => Some("the switch record unread".to_owned()),
-        (Ok(_), true) => None,
+        (Ok(_), true) => switches_unread,
     };
     Measure {
         key: KEY.to_owned(),
@@ -287,7 +306,11 @@ fn unproven_ask(
         .unwrap_or_else(|| KEEPER.to_owned());
     // Cleaned once shortened, as shortening turns any space into a plain one.
     let words = clean(&short(ask["words"].as_str().unwrap_or_default()));
-    let at = clean(ask["at"].as_str().unwrap_or_default());
+    // Only a time the list wrote as one, so `at` carries no other text.
+    let at = match ask["at"].as_str() {
+        Some(at) if seconds(&ask["at"]).is_some() => clean(at),
+        _ => "?".to_owned(),
+    };
     let line = format!("{words}, asked {at}; {state}{unswitched} · {owner}");
     Some((landed, line, owner))
 }
@@ -298,7 +321,14 @@ fn unproven_ask(
 fn clean(text: &str) -> String {
     // Nor can a backtick or double quote close the span the cell's close
     // command is given in.
-    let mut text = text.replace(char::is_control, "?").replace(['`', '"'], "'");
+    // Nor can a character that reorders or hides text make the key a
+    // terminal shows differ from the one pasted.
+    let hides = |c: char| {
+        c.is_control()
+            || matches!(c, '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}')
+            || matches!(c, '\u{2060}'..='\u{2069}' | '\u{feff}')
+    };
+    let mut text = text.replace(hides, "?").replace(['`', '"'], "'");
     // Until none is left, as a replaced separator can close another.
     while text.contains("; ") || text.contains(" · ") {
         text = text.replace("; ", ";?").replace(" · ", " ? ");
@@ -307,10 +337,14 @@ fn clean(text: &str) -> String {
 }
 
 /// Whether every change `ask`'s `pr` names is the harness's, which reaches
-/// the machine by its install rather than a switch.
+/// the machine by its install rather than a switch. A part naming no change
+/// that can be found might name one a switch carries, so it waits on one.
 fn installed(ask: &Value) -> bool {
-    let named = at_risk::changes(ask["pr"].as_str().unwrap_or_default());
-    !named.is_empty() && named.iter().all(|(repo, _)| *repo == Repo::Harness)
+    let pr = ask["pr"].as_str().unwrap_or_default();
+    let named = at_risk::changes(pr);
+    at_risk::unfound(pr).is_none()
+        && !named.is_empty()
+        && named.iter().all(|(repo, _)| *repo == Repo::Harness)
 }
 
 /// Whether an ask names a probe: a field missing, null, false, blank or an
