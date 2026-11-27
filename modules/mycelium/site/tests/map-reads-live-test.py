@@ -2054,17 +2054,25 @@ def test_a_reading_that_fails_to_draw_is_said_though_a_feeds_standing_moves(
 ) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
+    # Only once the first reading is drawn can none but the next clear the failure.
+    the_map_counts(page, COUNTED, "the map miscounted the realm")
     mycelium_opened.expecting("mycelium: a reading failed to draw")
     page.evaluate(UNDRAWABLE)
     the_map_stands(page, "broken")
-    # Every watch goes stale once the server goes, which the line would say over the failure.
+    asof = page.locator("#asof")
+    expect(asof, "the map didn't say it tries again").to_contain_text("It tries again")
+    # Every watch goes stale once the server goes, and no change can come: the
+    # line says both, and stays broken.
     _, server = mycelium_served
     mycelium_opened.loses(server)
-    page.wait_for_timeout(REDRAWN_MS)
+    expect(asof, "the failure hid that the server went").to_contain_text(
+        "the sites' server can't be reached", timeout=PACE_MS
+    )
     the_map_stands(page, "broken")
-    expect(
-        page.locator("#asof"), "a feed's standing hid that the map couldn't draw"
-    ).to_contain_text("The map couldn't draw")
+    expect(asof, "a feed's standing hid that the map couldn't draw").to_contain_text(
+        "The map couldn't draw"
+    )
+    expect(asof, "the map promised a change that can't come").not_to_contain_text("It tries again")
 
 
 def test_a_server_that_goes_is_said_stale(mycelium_opened: Opened, mycelium_served: Served) -> None:

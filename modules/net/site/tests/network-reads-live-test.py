@@ -62,10 +62,10 @@ KESTREL = "mac:00:00:5e:00:53:20"
 # head.css, the head every live page shares, is one of the files and a few of the kilobytes,
 # within the room the budget held before it.
 BUDGET = Budget(files=36, kilobytes=505, elements=335)
-# The lede once net has answered, counting what stands, and while it never has. No eero or no
-# floor would be an empty net read as an all-clear, so a count of either starts at one.
+# The lede while net answers, counting what stands, and while it isn't answering. No eero or
+# no floor would be an empty net read as an all-clear, so a count of either starts at one.
 COUNTED = re.compile(r"^\d+ devices? on [1-9]\d* eeros? across [1-9]\d* floors?, and .+\.$")
-UNANSWERED = "Net hasn't answered, so no device is drawn."
+UNANSWERED = "Net isn't answering, so no device is drawn."
 
 
 @pytest.fixture

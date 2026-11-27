@@ -201,35 +201,43 @@ function users(context: Context): number {
   return network.devices.length - shape.points.length - (shape.modem === undefined ? 0 : 1);
 }
 
-/** What stands now, in one sentence: the head's lede. */
-function standsNow(context: Context): string {
-  const { network, shape } = context;
+/** What net last told of the house, and what of it is worth a look, unless it's gone. */
+function asksOf(network: Network, told: boolean): string {
+  if (!told) {
+    // A feed that stopped keeps its last records, each source still answering
+    // as it last said, so what they ask would read as an all-clear.
+    return "as net last told them";
+  }
   const { worth, quiet } = worthOf(network);
   const looks = worth.length + quiet.length;
-  const asks = looks === 0 ? "nothing needs a look" : `${plural(looks, "thing")} worth a look`;
-  return `${plural(users(context), "device")} on ${plural(shape.points.length, "eero")} across ${plural(shape.floors.length, "floor")}, and ${asks}.`;
+  return looks === 0 ? "and nothing needs a look" : `and ${plural(looks, "thing")} worth a look`;
 }
 
-/** The lede while net has never answered and the server says it can't reach it. */
-const UNANSWERED = "Net hasn't answered, so no device is drawn.";
+/**
+ * What stands now, in one sentence: the head's lede. While net's feed is told,
+ * it says what is worth a look; once the feed is stale or broken, it says the
+ * counts are as net last told them.
+ */
+function standsNow(context: Context, told = true): string {
+  const { network, shape } = context;
+  return `${plural(users(context), "device")} on ${plural(shape.points.length, "eero")} across ${plural(shape.floors.length, "floor")}, ${asksOf(network, told)}.`;
+}
 
-/** The lede while net answered once, and the server now says it can't reach it. */
-const STOPPED = "Net stopped answering, so no device is drawn.";
+/**
+ * The lede while the server says it can't reach net and nothing is drawn,
+ * whether net never answered or answered once and stopped, since a page
+ * opened after can't tell the two apart.
+ */
+const UNANSWERED = "Net isn't answering, so no device is drawn.";
 
 /** The lede while nothing is drawn and the page can't reach the sites' server. */
 const UNREACHED = "The sites' server can't be reached, so no device is drawn.";
 
-/** The lede while net answers and has named no device, as on its first reading. */
+/** The lede while net answers and its records, all read, name no device. */
 const NAMELESS = "Net is answering, but has named no device yet.";
 
 /** The lede while net is being reached, as the page first says it. */
 const REACHING = "Reaching net for every device on it.";
-
-/** How net's feeds stand for the lede: whether any was ever live, and the worst now. */
-interface Answering {
-  readonly answered: boolean;
-  readonly worst: string | undefined;
-}
 
 /** The worst standing first, the one the page says. */
 const WORST_FIRST = ["broken", "stale", "connecting", "live"];
@@ -237,12 +245,10 @@ const WORST_FIRST = ["broken", "stale", "connecting", "live"];
 /** Each of net's watches' standing, as its feed last said it. */
 class Standings {
   readonly #each = new Map<string, Standing>();
-  #answered = false;
 
   /** Takes how the watch of `kind` stands now. */
   set(kind: string, stands: Standing): void {
     this.#each.set(kind, stands);
-    this.#answered ||= stands.state === "live";
   }
 
   /** How the worst of net's feeds stands, or undefined before any has said. */
@@ -251,40 +257,43 @@ class Standings {
       (one, other) => WORST_FIRST.indexOf(one.state) - WORST_FIRST.indexOf(other.state),
     )[0];
   }
-
-  /** How net's feeds stand, for the lede. */
-  answering(): Answering {
-    return { answered: this.#answered, worst: this.worst()?.state };
-  }
 }
 
 /**
- * What the lede says: what stands now while the map draws a device, and
- * otherwise how net's feeds stand, so words said of an earlier standing
- * never outlast it. A page opened while net is down is given the records
- * the server still holds, and draws them, so the lede counts them too
- * rather than saying none is drawn. With none drawn, the counts are never
- * said: a page joining a watch the server holds as broken is told every
- * kind empty, net serves every kind empty until its first reading is done,
- * and "0 devices, and nothing needs a look" would read as an all-clear.
+ * What the lede says, from the worst of net's feeds and the network read so
+ * far, so words said of an earlier standing never outlast it. While the map
+ * draws a device it counts them, saying what's worth a look only while the
+ * feeds are told. A page opened while net is down is given the records the
+ * server still holds, and draws them, so the lede counts them too rather
+ * than saying none is drawn. With none drawn, the counts are never said: a
+ * page joining a watch the server holds as broken is told every kind empty,
+ * net serves every kind empty until its first reading is done, and "0
+ * devices, and nothing needs a look" would read as an all-clear. Until
+ * every kind is read, there is no network yet, so even live feeds are still
+ * being reached.
  */
-function ledeOf(answering: Answering, context: Context | undefined): string {
-  if (context !== undefined && context.network.devices.length > 0) {
-    return standsNow(context);
-  }
+function ledeOf(worst: string | undefined, context: Context | undefined): string {
   // A feed is stale while the sites' server can't be reached, and broken while
   // the server is reached and says net isn't (the kit's feed.ts).
+  const told = worst !== "stale" && worst !== "broken";
+  if (context !== undefined && context.network.devices.length > 0) {
+    return standsNow(context, told);
+  }
   const stands: Record<string, string> = {
-    broken: answering.answered ? STOPPED : UNANSWERED,
-    live: NAMELESS,
+    broken: UNANSWERED,
+    live: context === undefined ? REACHING : NAMELESS,
     stale: UNREACHED,
   };
-  return stands[answering.worst ?? ""] ?? REACHING;
+  return stands[worst ?? ""] ?? REACHING;
 }
 
 /** Says what stands now in the head's lede, writing only when it changes. */
-function sayStandsNow(lede: HTMLElement, answering: Answering, context: Context | undefined): void {
-  const words = ledeOf(answering, context);
+function sayStandsNow(
+  lede: HTMLElement,
+  worst: string | undefined,
+  context: Context | undefined,
+): void {
+  const words = ledeOf(worst, context);
   if (lede.textContent !== words) {
     lede.textContent = words;
   }
@@ -361,7 +370,7 @@ function found(context: Context, query: string): Child[] {
   ];
 }
 
-export type { Answering, Context };
+export type { Context };
 export {
   concernRows,
   found,
@@ -370,7 +379,6 @@ export {
   overview,
   REACHING,
   row,
-  STOPPED,
   sayStandsNow,
   Standings,
   standsNow,

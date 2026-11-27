@@ -16,12 +16,3 @@ it("says the worst of the feeds, whichever said it last", () => {
   standings.set("internet", { state: "broken", since: 5 });
   assert.equal(standings.worst()?.state, "broken");
 });
-
-it("counts net as answered once any feed was live, and after it falls", () => {
-  const standings = new Standings();
-  standings.set("device", { state: "connecting", since: 1 });
-  assert.deepEqual(standings.answering(), { answered: false, worst: "connecting" });
-  standings.set("device", { state: "live", since: 2 });
-  standings.set("device", { state: "broken", since: 3 });
-  assert.deepEqual(standings.answering(), { answered: true, worst: "broken" });
-});

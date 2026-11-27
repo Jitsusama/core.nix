@@ -4935,12 +4935,14 @@ import {
       if (first) {
         judgeChanged();
         firstLives();
-        first = false;
         apply(false);
         hear(false);
         // A talk opened from the address was written before the ties were
         // heard, so it is written again now that they are.
         if (tieOf.size) panel();
+        // Only once the first reading is drawn whole, so one that fails part
+        // way is drawn as a first again by the next, and never left half set.
+        first = false;
       } else {
         if (chosen && !knows(chosen)) chosen = null;
         const was = spots;

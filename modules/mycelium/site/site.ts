@@ -85,15 +85,27 @@ function sayStanding(now: Standing | undefined): string {
   return said(now);
 }
 
+/**
+ * What follows a failed drawing on the line: how the feeds stand once no
+ * change can come, as when the server or the node is gone, and otherwise
+ * that the next change is tried.
+ */
+function afterUndrawn(now: Standing | undefined): string {
+  return now !== undefined && (now.state === "stale" || now.state === "broken")
+    ? said(now)
+    : "It tries again with the next change.";
+}
+
 /** Says how the map stands, and what it couldn't read. */
 function sayHow(): void {
-  if (undrawn !== undefined) {
-    tell(asof, `The map couldn't draw: ${undrawn}. It tries again with the next change.`, "broken");
-    return;
-  }
   const now = standing();
   const problems = [...unread.values()];
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
+  if (undrawn !== undefined) {
+    const words = `The map couldn't draw: ${undrawn}. ${afterUndrawn(now)}${trouble}`;
+    tell(asof, words, "broken");
+    return;
+  }
   tell(asof, `${sayStanding(now)}${trouble}`, now?.state ?? "connecting");
 }
 

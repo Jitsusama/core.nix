@@ -155,11 +155,11 @@ function render(): void {
   network = networkOf(watched, told);
   sayWhen();
   if (network === undefined) {
-    sayStandsNow(lede, standings.answering(), undefined);
+    sayStandsNow(lede, standings.worst()?.state, undefined);
     return;
   }
   shape = study(network);
-  sayStandsNow(lede, standings.answering(), context());
+  sayStandsNow(lede, standings.worst()?.state, context());
   const stacked = map.narrowerThan(ACROSS_LEAST);
   const flipped = drawn !== undefined && drawn.stacked !== stacked;
   drawn = drawMap(draw, network, shape, { now: now(), stacked });
@@ -469,7 +469,7 @@ function watch(kind: (typeof KINDS)[number]): Held {
       stands: (stands) => {
         standings.set(kind, stands);
         sayWhen();
-        sayStandsNow(lede, standings.answering(), context());
+        sayStandsNow(lede, standings.worst()?.state, context());
       },
       problem: (what) => {
         heard.set(kind, `${kind}: ${what}`);

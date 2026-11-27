@@ -46,8 +46,9 @@ COUNTED = "Two machines, both worth a look."
 # 403 elements since each machine's look carries its act, opening it in the launcher. One file
 # is the kit's head.css, the head every live page shares; its parts are four elements more in
 # the markup, within the budget's room. 451 KB since each look also says why it matters, which
-# with the head came to 450.6 KB.
-BUDGET = Budget(files=26, kilobytes=451, elements=410)
+# with the head came to 450.6 KB; 452 KB since the kit's head and main moved on, which the
+# gate measured at 451.0 KB.
+BUDGET = Budget(files=26, kilobytes=452, elements=410)
 
 
 @pytest.fixture
