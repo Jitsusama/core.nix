@@ -65,6 +65,11 @@ pub const REFUSED: &str = "only the launcher starts new work here";
 /// machines run, which the libc crate names only in its newer layout.
 const SO_PEERPIDFD: libc::c_int = 77;
 
+/// What judges whether the process at the other end of a connection is
+/// the shell's, as [`the_shell`] does, handed to the daemon's socket so a
+/// case stands in one that waits as a slow manager does (#6918, F103).
+pub type Judge = Box<dyn Fn(&UnixStream) -> Result<(), String> + Send + Sync>;
+
 /// Whether the process at the other end of `stream` is the shell's, or
 /// why it can't be taken for it, in words the shell says.
 ///
@@ -85,8 +90,8 @@ pub fn the_shell(stream: &UnixStream) -> Result<(), String> {
 /// The manager's last failure to name the shell's main process, and when
 /// it ended. Each as-Joel ask on a connection is answered in turn, so a
 /// slow manager's `MANAGER_PATIENCE` was paid again for each one the shell
-/// sent together, and whatever it asked after them waited behind them
-/// (round 000038 on #6796, F91).
+/// sent together, each waiting behind the one before (round 000038 on
+/// #6796, F91).
 static UNTOLD: Mutex<Option<Untold>> = Mutex::new(None);
 
 /// How long a manager's failure answers for it: well under the launcher's

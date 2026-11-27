@@ -32,7 +32,7 @@ fn the_daemons_socket_takes_no_sprout_from_anyone_but_the_shell() {
         keeping,
         told,
         (stood, Said::default()),
-        Box::new(|_| None),
+        (Box::new(|_| None), Box::new(asker::the_shell)),
     );
     let socket = folder.join("agents.sock");
     let listener = serve::listen(&socket).expect("the daemon's socket");
@@ -111,7 +111,7 @@ fn the_daemons_socket_lets_no_one_but_the_shell_lift_the_stop() {
         keeping,
         told,
         (stood, words.starts),
-        Box::new(|_| None),
+        (Box::new(|_| None), Box::new(asker::the_shell)),
     );
     let socket = folder.join("agents.sock");
     let listener = serve::listen(&socket).expect("the daemon's socket");
@@ -174,7 +174,7 @@ fn the_daemons_socket_takes_no_answer_from_anyone_but_the_shell() {
         keeping,
         told,
         (stood, Said::default()),
-        Box::new(|_| None),
+        (Box::new(|_| None), Box::new(asker::the_shell)),
     );
     let socket = folder.join("agents.sock");
     let listener = serve::listen(&socket).expect("the daemon's socket");
@@ -311,7 +311,7 @@ fn the_daemons_socket_lists_no_places_for_anyone_but_the_shell() {
         keeping,
         told,
         (stood, Said::default()),
-        Box::new(|_| None),
+        (Box::new(|_| None), Box::new(asker::the_shell)),
     );
     let socket = folder.join("agents.sock");
     let listener = serve::listen(&socket).expect("the daemon's socket");
@@ -362,13 +362,16 @@ fn the_daemons_socket_acts_as_joel_for_no_one_but_the_shell() {
         keeping,
         told,
         (stood, Said::default()),
-        Box::new(move |said| {
-            let _ = done
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .send(said["ask"].clone());
-            Some(json!({"done": true}))
-        }),
+        (
+            Box::new(move |said| {
+                let _ = done
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .send(said["ask"].clone());
+                Some(json!({"done": true}))
+            }),
+            Box::new(asker::the_shell),
+        ),
     );
     let socket = folder.join("agents.sock");
     let listener = serve::listen(&socket).expect("the daemon's socket");
@@ -423,12 +426,111 @@ fn the_daemons_socket_acts_as_joel_for_no_one_but_the_shell() {
     let _ = std::fs::remove_dir_all(&folder);
 }
 
+/// Joel's acts are answered off their connection's reading thread, yet in
+/// the order sent: with the shell's check held on the first, as a slow
+/// user manager holds it after a restart, a get sent after two of them is
+/// answered first, and the two after it in turn (#6918, F103 and F131).
+#[test]
+fn joels_acts_wait_their_turn_on_the_shells_check_and_hold_up_no_get() {
+    let folder = std::env::temp_dir().join(format!("agents-in-turn-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(&folder).expect("a folder for the socket");
+    let shared = Shared::new(DOMAIN, Box::new(|_| None));
+    let (told, _heard) = mpsc::channel();
+    let stood = Arc::new(starts_stopped::Told::new(told.clone()));
+    let keeping = Keeping::read(&folder.join(starts::FILE), clock::now_ms());
+    let (done, asked) = mpsc::channel();
+    let done = std::sync::Mutex::new(done);
+    let (letting, held) = mpsc::channel::<()>();
+    let held = std::sync::Mutex::new(Some(held));
+    let judge: asker::Judge = Box::new(move |_| {
+        // The first check waits until it's let go, as one waits on a slow
+        // manager, past the read's patience below, so a get held behind it
+        // fails the case rather than passing late; the rest pass at once.
+        let first = held
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(held) = first {
+            let _ = held.recv_timeout(Duration::from_secs(30));
+        }
+        Ok(())
+    });
+    for_the_shell_alone(
+        &shared,
+        (None, Wants::default()),
+        keeping,
+        told,
+        (stood, Said::default()),
+        (
+            Box::new(move |said| {
+                let _ = done
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .send(said["ask"].clone());
+                Some(json!({"done": true}))
+            }),
+            judge,
+        ),
+    );
+    let socket = folder.join("agents.sock");
+    let listener = serve::listen(&socket).expect("the daemon's socket");
+    serve::accept(shared, listener);
+    let asking = UnixStream::connect(&socket).expect("the daemon takes a connection");
+    asking
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .expect("a timeout is set");
+    for ask in [
+        json!({"id": 1, "ask": "sharing", "sharing": false}),
+        json!({"id": 2, "ask": "keep-places", "places": []}),
+        json!({"id": 3, "ask": "get", "keys": ["row:agents:P9R1KI"]}),
+    ] {
+        writeln!(&asking, "{ask}").expect("it's asked");
+    }
+    let mut reading = BufReader::new(&asking);
+    let mut answer = || {
+        let mut line = String::new();
+        reading
+            .read_line(&mut line)
+            .expect("an answer within the read's patience");
+        serde_json::from_str::<Value>(&line).expect("one line of JSON")
+    };
+    assert_eq!(
+        answer(),
+        json!({"id": 3, "records": []}),
+        "the get is answered while the check waits"
+    );
+    assert!(
+        asked.try_recv().is_err(),
+        "neither act was done before its check"
+    );
+    letting.send(()).expect("the check is let go");
+    let (first, second) = (answer(), answer());
+    assert_eq!(
+        (&first["id"], &second["id"]),
+        (&json!(1), &json!(2)),
+        "answered in the order sent: {first} then {second}"
+    );
+    assert_eq!(
+        asked.try_recv().ok(),
+        Some(json!("sharing")),
+        "the share's end done first"
+    );
+    assert_eq!(
+        asked.try_recv().ok(),
+        Some(json!("keep-places")),
+        "and the places after it"
+    );
+    let _ = std::fs::remove_dir_all(&folder);
+}
+
 /// Every one of Joel's acts is the shell's alone, and none but feedback is
 /// among [`SLOW`], which daemon-serve answers on threads of their own: the
-/// rest it answers on their connection as they come (serve.rs), so a
-/// share's end can't land before its start, nor an older set of his places
-/// after a newer one. Each answered apart is the shell's alone too. That
-/// order is serve.rs's to prove; this holds only who is in which list.
+/// rest it answers in turn (serve.rs's `in_turn`), so a share's end can't
+/// land before its start, nor an older set of his places after a newer
+/// one. Each answered apart is the shell's alone too. That order is
+/// daemon-serve's to prove, and the case above's; this holds only who is
+/// in which list.
 #[test]
 fn joels_acts_are_the_shells_alone_and_only_feedback_goes_apart() {
     for act in AS_JOEL {
