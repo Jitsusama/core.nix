@@ -369,6 +369,10 @@ def gives_way_as_it_loses(machine: BaseMachine, wifid: Wifid) -> None:
     )
     machine.log(machine.succeed("wpa_cli -i wlan2 scan_results | grep Lantern"))
     machine.succeed("wpa_cli -i wlan2 status | grep -qx bssid=02:00:00:00:00:00")
+    # On trial, not yet shown: the give-way below now and then fails with status 53, or an auth
+    # timeout to the second, as the card offers it a PMKSA kept from a subtest before. Flushed
+    # here, the card keys there afresh, as one new to it would.
+    machine.succeed("wpa_cli -i wlan2 pmksa_flush | grep -qx OK")
     # The looks just asked lost echoes as they took the card off its channel. wifid leaves
     # out a look's first 6 s, a whole look on a real card, but one here ran 16 s on a quiet
     # link (2026-11-23), and its later losses moved the card as the call began. The call
