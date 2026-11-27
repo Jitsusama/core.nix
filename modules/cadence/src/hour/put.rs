@@ -240,7 +240,10 @@ pub fn mark_asked(ledger: &mut [Entry], owner: &str, now: i64, id: &str) {
 /// questions' ids stand whatever the card does, while a line never asked
 /// or told is filed and told again next hour, rather than held open as
 /// asked by a question nobody had. A filing only changes lines in place
-/// or adds them after, so a line keeps its place.
+/// or adds them after, so a line keeps its place. Whose a line is now
+/// decides: one come back under an owner asked keeps the hour's copy, and
+/// its question's id, whoever had it closed before, since a key is filed
+/// again only once its line is closed, so they had nothing open to lose.
 #[must_use]
 pub fn asked_only(ledger: &[Entry], before: &[Entry], asked: &[&str]) -> Vec<Entry> {
     let theirs = |e: &Entry| e.owner.as_deref().is_some_and(|o| asked.contains(&o));
@@ -251,7 +254,7 @@ pub fn asked_only(ledger: &[Entry], before: &[Entry], asked: &[&str]) -> Vec<Ent
         .map(|(_, e)| e.clone())
         .collect();
     for (line, was) in kept.iter_mut().zip(before) {
-        if !theirs(&*line) || !theirs(was) {
+        if !theirs(&*line) {
             line.clone_from(was);
         }
     }
@@ -656,9 +659,24 @@ mod tests {
         ledger.push(entry("hour:d", "DEF456", NOW, "drag"));
         assert_eq!(
             asked_only(&ledger, &before, &["ABC123"]),
-            [ledger[0].clone(), closed, finding, ledger[3].clone()],
+            [
+                ledger[0].clone(),
+                closed.clone(),
+                finding,
+                ledger[3].clone()
+            ],
             "an owner never asked, or a line only the card tells, kept the hour's filing, \
              or an owner asked lost theirs"
+        );
+        // DEF456's closed line came back as ABC123's, who was asked: it
+        // keeps the hour's copy and its question's id.
+        let mut moved = ledger.clone();
+        moved[1].owner = Some("ABC123".to_owned());
+        moved[1].asked = vec!["the-question".to_owned()];
+        assert_eq!(
+            asked_only(&moved, &before, &["ABC123"])[1],
+            moved[1],
+            "a line come back under an owner asked lost its question to its closed owner"
         );
     }
 }
