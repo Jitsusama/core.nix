@@ -1,8 +1,8 @@
 # What more than one of the folder's checks uses: stand-ins, the shell as the
 # account gets it, and the harnesses that run the shell offscreen or on niri.
 # Each place's file takes what it needs of these by name, as do the reader's,
-# mpv's and Inkscape's launcher checks, which import it with the arguments
-# every folder's checks get.
+# mpv's, Inkscape's and Spotify's launcher checks, which import it with the
+# arguments every folder's checks get.
 {
   account,
   bareNixos,
@@ -51,6 +51,29 @@ let
   importingFrom = source: file: lib.unique (map (named: named.placed) (importsOf source file));
   # What one of the shell's own files imports of the shell's own.
   importing = file: importingFrom (../. + "/${file}") file;
+  # Every file the walk from files reaches through the table, each once,
+  # sorted.
+  everyWith =
+    table: files:
+    let
+      bring =
+        seen: file:
+        if lib.elem file seen then seen else lib.foldl' bring (seen ++ [ file ]) (table.${file} or [ ]);
+    in
+    lib.sort lib.lessThan (lib.foldl' bring [ ] files);
+  # Of the files a walk reached, those whose imports aren't what the table
+  # says, in whatever order its row lists them.
+  wrongIn =
+    table:
+    lib.filter (
+      file:
+      (lib.hasSuffix ".qml" file || lib.hasSuffix ".js" file)
+      && file != "Options.qml"
+      && lib.sort lib.lessThan (importing file) != lib.sort lib.lessThan (table.${file} or [ ])
+    );
+  # The files the walk from files reaches whose imports aren't what the
+  # table says, which copiedWith refuses.
+  wrongWith = table: files: wrongIn table (everyWith table files);
   # Copies each file a check names into the folder it runs in, where the
   # shell's folder holds it, with everything it imports, once each. A file
   # whose imports aren't what imports.nix says, in whatever order its row
@@ -65,16 +88,8 @@ let
   copiedWith =
     table: files:
     let
-      bring =
-        seen: file:
-        if lib.elem file seen then seen else lib.foldl' bring (seen ++ [ file ]) (table.${file} or [ ]);
-      every = lib.sort lib.lessThan (lib.foldl' bring [ ] files);
-      wrong = lib.filter (
-        file:
-        (lib.hasSuffix ".qml" file || lib.hasSuffix ".js" file)
-        && file != "Options.qml"
-        && lib.sort lib.lessThan (importing file) != lib.sort lib.lessThan (table.${file} or [ ])
-      ) every;
+      every = everyWith table files;
+      wrong = wrongIn table every;
       folders = lib.unique (lib.filter (folder: folder != ".") (map dirOf every));
       words = (import ../launcher/words.nix).file;
       options = singleton "Options.qml" "readonly property bool reports: false";
@@ -130,7 +145,8 @@ let
   # above the shell's folder, or one written from the root. So does an own
   # file given by anything but its plain place there, which would be copied
   # elsewhere. The table and the roots are given, so a check can give it
-  # others (core.nix's a-check-copies-what-each-file-imports).
+  # others: Spotify's, whose files nothing reaches through Applications.qml,
+  # and core.nix's a-check-copies-what-each-file-imports.
   programStepWith =
     table: roots: own:
     let
@@ -738,6 +754,7 @@ in
   inherit
     copied
     copiedWith
+    wrongWith
     programRoots
     programStep
     programStepWith

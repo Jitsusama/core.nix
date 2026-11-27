@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
 
-use super::{Class, DAY, Measure, count, first_owner, lines, parked, seconds, short};
+use super::{Class, DAY, Measure, asks, count, first_owner, lines, parked, seconds, short};
 use crate::tracking::{self, Tracking};
 
 /// The key of Joel's dates at risk; the list's own add their kind to it.
@@ -49,7 +49,7 @@ pub fn at_risk(
     world: &dyn Fn(&str) -> Shared,
 ) -> Measure {
     let mut latest: BTreeMap<[String; 2], Value> = BTreeMap::new();
-    for ask in lines(text) {
+    for ask in asks(text) {
         latest.insert([ask["at"].to_string(), ask["words"].to_string()], ask);
     }
     let mut risks: Vec<Risk> = Vec::new();

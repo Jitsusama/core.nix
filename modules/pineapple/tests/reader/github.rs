@@ -19,6 +19,7 @@
 
 mod late;
 mod standing;
+mod watch;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};

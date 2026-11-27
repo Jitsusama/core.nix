@@ -1024,9 +1024,13 @@ pub fn current(config: &Config) -> Option<PathBuf> {
 /// Whether the machine runs `built`, or one of its specialisations, which
 /// NixOS runs in its stead when the machine was switched to one.
 pub fn runs(config: &Config, built: &Path) -> bool {
-    let Some(current) = current(config) else {
-        return false;
-    };
+    current(config).is_some_and(|current| is_or_specialises(&current, built))
+}
+
+/// Whether `current`, a canonical path, is `built` or one of its
+/// specialisations, which NixOS runs or boots in its stead when the
+/// machine was switched to one.
+pub fn is_or_specialises(current: &Path, built: &Path) -> bool {
     fs::canonicalize(built).is_ok_and(|built| built == current)
         || fs::read_dir(built.join("specialisation")).is_ok_and(|mut specialisations| {
             specialisations.any(|entry| {
@@ -1151,14 +1155,19 @@ fn failed_units(lines: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// Switches back to `system`, the one the machine left.
-pub fn go_back(config: &Config, system: &Path) -> Result<(), Failure> {
+/// Switches back to `system`, the one the machine left. One `unchecked`,
+/// whose boot check failed or never ended, is only activated, as `switch`
+/// activates it: going back with `switch` made it the boot default that
+/// nothing had checked. Whether a system waits on its boot check can't
+/// say so, since the booted system may be many switches old, and a system
+/// that passed its check since would be left off the boot default.
+pub fn go_back(config: &Config, system: &Path, unchecked: bool) -> Result<(), Failure> {
     set_profile(config, system)?;
     match config.kind {
         Kind::Nixos => run::output(
             run::command(&system.join("bin/switch-to-configuration"), &config.state),
             "switching back",
-            ["switch"],
+            [if unchecked { "test" } else { "switch" }],
         ),
         Kind::Darwin => run::logged(
             run::command(&system.join("activate"), &config.state),

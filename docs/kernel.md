@@ -19,7 +19,7 @@ x86-64 machine as `packages.x86_64-linux.kernel`.
 
 ## What It Is
 
-- **The series:** 7.3, at 7.3.4, the release `package.nix` names in
+- **The series:** 7.3, at 7.3.6, the release `package.nix` names in
   `stable`. nixpkgs's 7.3 package builds it, and `stable` applies only
   while nixpkgs's release is older, so a newer point release reaches the
   machines before nixpkgs takes it. 7.3 holds every fix the XPS 14 took
@@ -49,7 +49,6 @@ are fixes written here, kept until the kernel has its own:
 | `bore.patch`              | the BORE scheduler             | [BORE's author][1] |
 | `irq-resend-nested.patch` | no bad IRQ trap on resume      | written here       |
 | `edp-sdp-caps.patch`      | a single eDP modeset at boot   | written here       |
-| `cfg80211-ssid-without-country.patch` | the joined network's name | written here; [linux-next][3] since |
 | `iwlwifi-txq-entries-kvzalloc.patch` | a join that survives fragmented memory | written here |
 | `vb2-dma-sg-orders.patch` | a camera that opens in fragmented memory | written here |
 | `hibernate-progress.patch` | a hibernation's image read, on screen | written here |
@@ -86,7 +85,8 @@ with Display Stream Compression, and the driver forces a modeset over any
 firmware state that uses it, a FIXME it keeps until it can read that state
 back.
 
-The Wi-Fi fix is for networkd not knowing which network a card joined.
+A Wi-Fi fix written here is the kernel's own since 7.3.6, so it's no
+longer carried. It was for networkd not knowing which network a card joined.
 wpa_supplicant joins through its own authentication and association steps
 rather than the kernel's connect command, and for that kind of join the
 kernel only records the network's name at the end of the function that
@@ -94,10 +94,13 @@ finishes it, after passing the access point's country to the regulatory
 code. That part returns early when the access point names no country, so
 the name was never recorded, and networkd couldn't match a saved network's
 file on it, or tell it had moved to another network and needed a new
-address. The patch records the name first. Most access points name their
-country, but hostapd doesn't unless it's told to.
+address. The patch recorded the name first. Most access points name their
+country, but hostapd doesn't unless it's told to. Upstream took it as
+[577f690ce5dc][3], which reached the stable series in 7.3.6. The XPS
+14's `wifi-names-a-network-without-a-country` reads the kernel's source
+to hold it there.
 
-The second Wi-Fi fix is for a card that couldn't join an access point
+The Wi-Fi fix still carried is for a card that couldn't join an access point
 while memory was fragmented. Intel's driver adds a send queue as it joins,
 and it allocated that queue's bookkeeping, one entry for each of its
 slots, as a single block of 64 to 128 KiB. The kernel doesn't try hard
@@ -108,7 +111,7 @@ third of its 64 GB free lost half a second and fell back to another radio. Only
 the processor reads those entries, so the patch lets them come from
 scattered pages when no single block is free. The rings the card itself
 reads are left as they were; the IOMMU already lets them be scattered.
-Neither 7.3.4 nor mainline changes it.
+Neither 7.3.6 nor mainline changes it.
 
 The camera fix is for a built-in camera that took 40 seconds to open
 while memory was fragmented. Its capture buffers come from videobuf2's
@@ -129,7 +132,7 @@ no more. A buffer still gets single pages when
 nothing larger is free. The XPS 14's checks read the patched source for
 each of the patch's lines, each once and where it sits, since no test can
 fragment memory on cue to run them.
-Neither 7.3.4 nor mainline changes it.
+Neither 7.3.6 nor mainline changes it.
 
 The hibernation fix is for a hibernated machine that showed nothing while it
 read its image back. The kernel freezes every process before it reads the
