@@ -245,13 +245,14 @@ impl Stack {
     pub fn read(dir: &Path) -> io::Result<Stack> {
         let list = dir.join("tables.list");
         let stamps = vec![(list.clone(), Stamp::of(&list))];
-        let names = std::fs::read_to_string(&list)?;
+        let names = String::from_utf8(crate::regular_file::read_present(&list)?)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "tables.list isn't text"))?;
         let mut refs: HashMap<String, Option<Value>> = HashMap::new();
         let mut log: HashMap<Vec<u8>, bool> = HashMap::new();
         // Newest last in the list; a newer table's record wins, a deletion
         // included.
         for name in names.lines().rev().filter(|line| !line.is_empty()) {
-            let data = std::fs::read(dir.join(name))?;
+            let data = crate::regular_file::read_present(&dir.join(name))?;
             let (records, entries) = read_table(&data)?;
             for (name, value) in records {
                 refs.entry(name).or_insert(value);

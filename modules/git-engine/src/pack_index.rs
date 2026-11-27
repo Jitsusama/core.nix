@@ -160,7 +160,7 @@ pub struct Index {
 
 impl Index {
     pub fn open(path: &Path) -> io::Result<Index> {
-        let file = File::open(path)?;
+        let file = crate::regular_file::present(path)?;
         let mut head = [0; 8];
         file.read_exact_at(&mut head, 0)?;
         if head[..4] == *b"\xfftOc" {
@@ -281,7 +281,7 @@ pub struct Midx {
 
 impl Midx {
     pub fn open(path: &Path) -> io::Result<Midx> {
-        let file = File::open(path)?;
+        let file = crate::regular_file::present(path)?;
         let head = read_exact_at(&file, 12, 0)?;
         if head[..4] != *b"MIDX" || head[5] != 1 || head[7] != 0 {
             return Err(invalid("multi-pack-index header"));

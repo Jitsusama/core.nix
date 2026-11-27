@@ -50,7 +50,7 @@ pub(super) fn appending(base_size: u8, c: u8) -> [u8; 6] {
 }
 
 /// A delta naming its base, `base`, as a pack's entry over `delta`.
-fn named(base: [u8; 20], delta: &[u8]) -> Vec<u8> {
+pub(super) fn named(base: [u8; 20], delta: &[u8]) -> Vec<u8> {
     let mut entry = vec![0x70 | u8::try_from(delta.len()).expect("a short delta")];
     entry.extend(base);
     entry.extend(miniz_oxide::deflate::compress_to_vec_zlib(delta, 1));
@@ -232,7 +232,7 @@ fn a_delta_over_itself_leaves_a_sound_copy_in_another_pack_read() {
 }
 
 #[test]
-fn a_base_found_or_missed_for_one_copy_is_found_again_for_the_next() {
+fn a_base_found_or_missed_for_one_copy_answers_the_same_for_the_next() {
     let names = names(2);
     // names[0] twice a delta over names[1]: first where nothing holds
     // names[1], then where the first copy says its base is of 2 bytes,
@@ -253,10 +253,15 @@ fn a_base_found_or_missed_for_one_copy_is_found_again_for_the_next() {
         ),
     ] {
         let folders = packed(&names, &packs);
+        // A miss reads the same however often it's looked for, so the
+        // lookups say whether the next copy looked for it again.
+        super::chain::LOOKUPS.with(|lookups| lookups.set(0));
+        let read = read_from(&folders.0[0], names[0]);
+        let lookups = super::chain::LOOKUPS.with(std::cell::Cell::get);
         assert_eq!(
-            read_from(&folders.0[0], names[0]),
-            found,
-            "a base {what} for one copy wasn't searched for again for the next"
+            (read, lookups),
+            (found, 4),
+            "a base {what} for one copy didn't answer the same for the next"
         );
     }
 }
@@ -358,23 +363,32 @@ fn a_copy_that_wont_unpack_is_unpacked_once_however_many_deltas_lie_over_it() {
             .read(&Oid(names[0]))
             .map(|object| object.map(|object| object.data))
             .map_err(|error| error.to_string());
-        (read, odb.bad.len())
+        let lasting = odb
+            .bad
+            .values()
+            .filter(|mark| mark.lasts == Lasts::WhileThePacksHold)
+            .count();
+        (read, odb.bad.len(), lasting)
     });
+    // Only the three entries of no kind are wrong in themselves; the
+    // deltas over them may yet read over a base written elsewhere.
     assert_eq!(
         read,
-        Ok((Err("pack entry kind".into()), 3 * 17)),
-        "a chain of copies that won't unpack didn't end in its first refusal, each copy once"
+        Ok((Err("pack entry kind".into()), 3 * 17, 3)),
+        "a chain of copies that won't unpack didn't end in its first refusal, each copy \
+         once, or a delta was marked for good for its base's fault"
     );
 }
 
 #[test]
-fn a_copy_marked_bad_stays_bad_while_the_store_is_open() {
+fn a_copy_marked_for_a_missing_base_stays_marked_until_its_answer_ends() {
     let names = names(2);
     // names[0] a delta over names[1], which nothing holds yet.
     let folders = packed(&names[..1], &[vec![over(names[1])]]);
     let objects = &folders.0[0];
     let mut odb = Odb::open(objects);
-    let before = odb.read(&Oid(names[0])).map_err(|error| error.to_string());
+    let read = |odb: &mut Odb| odb.read(&Oid(names[0])).map_err(|error| error.to_string());
+    let before = read(&mut odb);
     let hex = Oid(names[1]).hex();
     std::fs::create_dir_all(objects.join(&hex[..2])).expect("the temp folder takes a folder");
     std::fs::write(
@@ -382,17 +396,142 @@ fn a_copy_marked_bad_stays_bad_while_the_store_is_open() {
         miniz_oxide::deflate::compress_to_vec_zlib(b"blob 1\0a", 1),
     )
     .expect("the temp folder takes a file");
-    let after = odb.read(&Oid(names[0])).map_err(|error| error.to_string());
-    let reopened = read_from(objects, names[0]);
+    let within = read(&mut odb);
+    odb.forget_passing_marks();
+    let next = read(&mut odb).map(|object| object.map(|object| object.data));
     assert_eq!(
-        (before.err(), after.err(), reopened),
+        (before.err(), within.err(), next),
         (
             Some("delta base missing".into()),
             Some("delta base missing".into()),
             Ok(Some(b"x".to_vec()))
         ),
-        "a copy marked bad was unpacked again before its store was opened again, \
-         or stayed bad past it"
+        "a copy marked for a missing base was unpacked again within its answer, \
+         or stayed marked past it"
+    );
+}
+
+#[test]
+fn a_copy_stays_marked_while_the_packs_hold_only_for_its_own_bytes() {
+    let names = names(7);
+    // The blob "a"; a delta placing it, saying its base is of two bytes;
+    // the same delta naming it instead, found elsewhere; a delta naming it
+    // whose data won't inflate; a sound delta naming it; a delta placing
+    // that one, saying its base is of three bytes, which is its own fault,
+    // being a hop past the base found by name; and a delta naming it, of
+    // the one byte it holds, copying past that byte, its own fault over
+    // any base of the size it says.
+    let mut entries = Entries::new();
+    entries.push(blob(b"a"));
+    entries.place_over(0, &appending(2, b'b'));
+    entries.push(named(names[0], &appending(2, b'c')));
+    let mut broken = vec![0x70 | 4];
+    broken.extend(names[0]);
+    broken.extend([0xff; 8]);
+    entries.push(broken);
+    entries.push(named(names[0], &appending(1, b'd')));
+    entries.place_over(4, &appending(3, b'e'));
+    entries.push(named(names[0], &[1, 1, 0x91, 5, 1]));
+    let at: Vec<u64> = entries.starts.iter().map(|start| 12 + start).collect();
+    let folders = packed(&names, &[entries.entries]);
+    let mut odb = Odb::open(&folders.0[0]);
+    let marks = |odb: &Odb| {
+        let mut marks: Vec<_> = odb
+            .bad
+            .iter()
+            .map(|(&(_, _, offset), mark)| (offset, mark.lasts))
+            .collect();
+        marks.sort_unstable_by_key(|&(offset, _)| offset);
+        marks
+    };
+    for name in &names[1..] {
+        let _ = odb.read(&Oid(*name));
+    }
+    let made = marks(&odb);
+    odb.forget_passing_marks();
+    assert_eq!(
+        (made, marks(&odb)),
+        (
+            vec![
+                (at[1], Lasts::WhileThePacksHold),
+                (at[2], Lasts::ThisAnswer),
+                (at[3], Lasts::WhileThePacksHold),
+                (at[5], Lasts::WhileThePacksHold),
+                (at[6], Lasts::WhileThePacksHold),
+            ],
+            vec![
+                (at[1], Lasts::WhileThePacksHold),
+                (at[3], Lasts::WhileThePacksHold),
+                (at[5], Lasts::WhileThePacksHold),
+                (at[6], Lasts::WhileThePacksHold),
+            ],
+        ),
+        "a delta's own corrupt bytes weren't marked while the packs hold, one applied \
+         over a base found by name of another size than it says was, for what may be \
+         the base's fault, or one a hop past that base, or over a base of its size, was \
+         taken for the base's fault"
+    );
+}
+
+#[test]
+fn a_store_kept_keeps_the_marks_that_last_while_what_it_reads_holds() {
+    let names = names(3);
+    // names[0] a delta over names[1], which nothing holds yet, and
+    // names[2] an entry of a kind git has none of; and another folder
+    // whose names[0] is a blob.
+    let folders = packed(
+        &[names[0], names[2]],
+        &[vec![over(names[1]), vec![0x50 | 1, 0]]],
+    );
+    let other = packed(&names[..1], &[vec![blob(b"y")]]);
+    let objects = &folders.0[0];
+    // Settled stamps, so only a change to what the store reads moves them.
+    crate::stamp::tests::ahead(3);
+    let read = |odb: &mut Odb, name| {
+        odb.read(&Oid(name))
+            .map(|object| object.map(|object| object.data))
+            .map_err(|error| error.to_string())
+    };
+    let marked = || {
+        let mut odb = Odb::open(objects);
+        let _ = read(&mut odb, names[0]);
+        let _ = read(&mut odb, names[2]);
+        odb
+    };
+    let said = |odb: &Odb| {
+        let mut said: Vec<_> = odb.bad.values().map(|mark| mark.said.clone()).collect();
+        said.sort_unstable();
+        said
+    };
+    // Each store marks both copies before the base names[0] lacks is
+    // written loose, which the next answer then reads.
+    let (kept, elsewhere, changed) = (marked(), marked(), marked());
+    let hex = Oid(names[1]).hex();
+    std::fs::create_dir_all(objects.join(&hex[..2])).expect("the temp folder takes a folder");
+    std::fs::write(
+        objects.join(&hex[..2]).join(&hex[2..]),
+        miniz_oxide::deflate::compress_to_vec_zlib(b"blob 1\0a", 1),
+    )
+    .expect("the temp folder takes a file");
+    let mut kept = Odb::reopen(Some(kept), objects);
+    let held = said(&kept);
+    kept.forget_passing_marks();
+    let kept = (said(&kept), read(&mut kept, names[0]));
+    let elsewhere = read(&mut Odb::reopen(Some(elsewhere), &other.0[0]), names[0]);
+    std::fs::create_dir_all(objects.join("info")).expect("the temp folder takes a folder");
+    std::fs::write(objects.join("info/alternates"), b"").expect("the temp folder takes a file");
+    let changed = said(&Odb::reopen(Some(changed), objects));
+    assert_eq!(
+        (held, kept, elsewhere, changed),
+        (
+            vec!["delta base missing".into(), "pack entry kind".into()],
+            (vec!["pack entry kind".into()], Ok(Some(b"x".to_vec()))),
+            Ok(Some(b"y".to_vec())),
+            vec![]
+        ),
+        "a store kept lost its marks while what it reads held, kept a base's refusal past \
+         the next answer, answered for another folder, or kept marks once what it reads \
+         changed"
     );
 }
 
@@ -492,14 +631,17 @@ fn a_base_spent_is_looked_up_once_a_find_however_many_copies_name_it() {
     .expect("the read ended");
     // Once a find, each name's copies take one lookup each and one more
     // to find there are no more; looked up again for each copy naming it,
-    // they'd take as many again for each of the packs.
+    // they'd take as many again for each of the packs. Fewer is no fault.
     assert_eq!(
-        (read, lookups),
-        (
-            Err("delta base cycle".into()),
-            (rungs - 1) * (packs + 1) + 2
-        ),
-        "a base spent was looked up again for a copy naming it"
+        read,
+        Err("delta base cycle".into()),
+        "a chain coming round wasn't refused for coming round"
+    );
+    // Each name is looked up at least once, so fewer than that is a
+    // count that stopped counting.
+    assert!(
+        (rungs..=(rungs - 1) * (packs + 1) + 2).contains(&lookups),
+        "a base spent was looked up again for a copy naming it: {lookups} lookups"
     );
 }
 

@@ -5,7 +5,10 @@
 //! into, each base took more than 2 KiB of stack, so a chain a pack may
 //! hold overflowed the 8 MiB a process's first thread has.
 
-use super::{CHAIN_LIMIT, Kind, Object, Odb, Place, apply_delta, inflate_at, invalid};
+use super::{
+    CHAIN_LIMIT, Kind, Mark, Object, Odb, Place, Stored, apply_delta, delta_base_size, inflate_at,
+    invalid,
+};
 use crate::hash::Oid;
 use std::collections::{HashMap, HashSet};
 use std::io;
@@ -100,6 +103,11 @@ enum Reached {
     /// A named base whose copies were spent with one passed over, which
     /// says nothing of the copy whose delta named it.
     Skipped(io::Error),
+    /// A named base whose copies were spent, each refused, or which no
+    /// store holds: the copy whose delta named it reads no better this
+    /// answer, though the base may be written, or read once memory is
+    /// there, by the next.
+    Unbased(io::Error),
 }
 
 impl Odb {
@@ -108,17 +116,20 @@ impl Odb {
     ///
     /// What a store's indexes, packs or loose objects refuse stands only
     /// once every other place the object may lie has been read. A copy that
-    /// won't read is marked bad for as long as the store is open, as git
-    /// marks a copy bad and looks again, so a sound copy in another pack is
-    /// read and no copy is unpacked to its failure twice. A copy whose
-    /// chain comes round to an object already being found, or runs past
-    /// `CHAIN_LIMIT`, may be sound under another copy of a base on the
-    /// way, so it's only passed over, for this find alone, and the next
-    /// copy read; a base spent with a copy passed over passes over the
-    /// copy that named it in turn. Each copy is passed over at most once a
-    /// find, so a find ends after reading each copy at most once, and a
-    /// base spent ends each copy naming it after as it ended the first, so
-    /// its copies are looked up once a find, however many copies name it.
+    /// won't read is marked bad, as git marks a copy bad and looks again,
+    /// so a sound copy in another pack is read and no copy is unpacked to
+    /// its failure twice an answer. A copy refused memory is marked too,
+    /// since only a stream truly inflating that far is refused it, and
+    /// unpacking it on every find would cost the same each time. How long
+    /// a mark lasts is `Lasts`'s to say. A copy whose chain comes round to
+    /// an object already being found, or runs past `CHAIN_LIMIT`, may be
+    /// sound under another copy of a base on the way, so it's only passed
+    /// over, for this find alone, and the next copy read; a base spent with
+    /// a copy passed over passes over the copy that named it in turn. Each
+    /// copy is passed over at most once a find, so a find ends after
+    /// reading each copy at most once, and a base spent ends each copy
+    /// naming it after as it ended the first, so its copies are looked up
+    /// once a find, however many copies name it.
     pub(super) fn find(&mut self, oid: &Oid) -> io::Result<Option<Object>> {
         let mut searches = vec![Search::new(*oid, 0)];
         let mut searching = HashSet::from([*oid]);
@@ -128,6 +139,8 @@ impl Odb {
         let mut handed = None;
         loop {
             let at = searches.len() - 1;
+            // Whether the base this copy reaches is one, found by name.
+            let named = handed.is_some();
             let reached = if let Some(base) = handed.take() {
                 Ok(Reached::Base(base))
             } else {
@@ -141,9 +154,11 @@ impl Odb {
                         if searches.is_empty() {
                             return ended.refused.map_or(Ok(None), Err);
                         }
-                        let refused = ended
-                            .refused
-                            .unwrap_or_else(|| invalid("delta base missing"));
+                        // Not found rather than wrong, as the next answer
+                        // may find the base written loose or in a new pack.
+                        let refused = ended.refused.unwrap_or_else(|| {
+                            io::Error::new(io::ErrorKind::NotFound, "delta base missing")
+                        });
                         spent.insert(
                             ended.oid,
                             (ended.skipped, refused.kind(), refused.to_string()),
@@ -151,14 +166,15 @@ impl Odb {
                         if ended.skipped {
                             Ok(Reached::Skipped(refused))
                         } else {
-                            Err(refused)
+                            Ok(Reached::Unbased(refused))
                         }
                     }
                 }
             };
             let at = searches.len() - 1;
             match reached {
-                Err(error) => self.fail(&mut searches[at], &error),
+                Err(error) => self.fail(&mut searches[at], &error, true),
+                Ok(Reached::Unbased(error)) => self.fail(&mut searches[at], &error, false),
                 Ok(Reached::TooLong) => {
                     skip(
                         &mut searches[at],
@@ -175,7 +191,7 @@ impl Odb {
                         if *passed_over {
                             skip(&mut searches[at], &mut skipped, &error);
                         } else {
-                            self.fail(&mut searches[at], &error);
+                            self.fail(&mut searches[at], &error, false);
                         }
                     } else if searching.insert(base) {
                         let above = searches[at].depth();
@@ -188,8 +204,8 @@ impl Odb {
                         );
                     }
                 }
-                Ok(Reached::Base(base)) => match self.apply(&mut searches[at], base) {
-                    Err(error) => self.fail(&mut searches[at], &error),
+                Ok(Reached::Base(base)) => match self.apply(&mut searches[at], base, named) {
+                    Err((error, own)) => self.fail(&mut searches[at], &error, own),
                     Ok(object) => {
                         let found = end(&mut searches, &mut searching);
                         self.keep_tree(&found.oid, &object);
@@ -221,10 +237,10 @@ impl Odb {
             };
             search.passed.push(pack);
             let place = (search.store, pack, offset);
-            if let Some((kind, said)) = self.bad.get(&place) {
+            if let Some(mark) = self.bad.get(&place) {
                 search
                     .refused
-                    .get_or_insert_with(|| io::Error::new(*kind, said.clone()));
+                    .get_or_insert_with(|| io::Error::new(mark.kind, mark.said.clone()));
             } else if let Some((kind, said)) = skipped.get(&place) {
                 search.skipped = true;
                 search
@@ -304,7 +320,7 @@ impl Odb {
                     let kind = Kind::from_pack(code).ok_or_else(|| invalid("pack entry kind"))?;
                     let object = Object {
                         kind,
-                        data: inflate_at(file, offset + at as u64, size)?,
+                        data: inflate_at(file, offset + at as u64, size, Stored::Packed)?,
                     };
                     if search.depth() > 0 {
                         self.keep_base((store, pack, offset), &object);
@@ -317,13 +333,30 @@ impl Odb {
 
     /// `base` with every delta `search` read applied over it, from the one
     /// nearest it up, each inflated as it's applied and each result below
-    /// the object asked for kept as a base for the reads to come.
-    fn apply(&mut self, search: &mut Search, base: Object) -> io::Result<Object> {
+    /// the object asked for kept as a base for the reads to come; or what
+    /// refused it, and whether that's the copy's own fault. Applied over a
+    /// base found by `name` elsewhere, the first delta fails for the base's
+    /// fault only where the base isn't the size the delta says, which a
+    /// loose base no stamp watches can mend; anything else it refuses, a
+    /// delta's own bytes refuse over any base of that size.
+    fn apply(
+        &mut self,
+        search: &mut Search,
+        base: Object,
+        named: bool,
+    ) -> Result<Object, (io::Error, bool)> {
         let mut object = base;
+        let mut over_named = named;
         while let Some(hop) = search.deltas.pop() {
             let (store, pack, _) = hop.place;
-            let delta = inflate_at(&self.stores[store].packs[pack].data, hop.data, hop.size)?;
-            object.data = apply_delta(&object.data, &delta)?;
+            let file = &self.stores[store].packs[pack].data;
+            let delta = inflate_at(file, hop.data, hop.size, Stored::Packed)
+                .map_err(|error| (error, true))?;
+            let base_blamed =
+                over_named && delta_base_size(&delta).is_some_and(|size| size != object.data.len());
+            object.data =
+                apply_delta(&object.data, &delta).map_err(|error| (error, !base_blamed))?;
+            over_named = false;
             if search.depth() > 0 {
                 self.keep_base(hop.place, &object);
             }
@@ -333,10 +366,12 @@ impl Odb {
 
     /// Ends the copy `search` was reading, which won't read for `error`:
     /// marks it bad, keeps the refusal should it be the first, and leaves
-    /// the next copy to be read.
-    fn fail(&mut self, search: &mut Search, error: &io::Error) {
+    /// the next copy to be read. The mark keeps the error's kind, so a copy
+    /// refused memory is never taken for a corrupt one, and lasts as
+    /// `Mark::of` says for an error that's the copy's `own` fault or not.
+    fn fail(&mut self, search: &mut Search, error: &io::Error, own: bool) {
         if let Some(copy) = search.copy.take() {
-            self.bad.insert(copy, (error.kind(), error.to_string()));
+            self.bad.insert(copy, Mark::of(error, own));
         }
         refuse(search, error);
     }
@@ -346,7 +381,7 @@ impl Odb {
 /// `head`'s bytes its header takes, refused as git's
 /// `unpack_object_header_buffer` refuses one whose size runs past a word:
 /// once a byte's seven bits would shift past it, before any are dropped.
-fn entry_header(head: &[u8]) -> io::Result<(u8, usize, usize)> {
+pub(super) fn entry_header(head: &[u8]) -> io::Result<(u8, usize, usize)> {
     let byte = *head.first().ok_or_else(|| invalid("pack entry"))?;
     let code = (byte >> 4) & 7;
     let mut size = usize::from(byte & 15);
@@ -369,7 +404,7 @@ fn entry_header(head: &[u8]) -> io::Result<(u8, usize, usize)> {
 /// How far back an offset delta places its base, and how many of `head`'s
 /// bytes say so, refused as git's `get_delta_base` refuses a distance
 /// past 64 bits.
-fn base_distance(head: &[u8]) -> io::Result<(u64, usize)> {
+pub(super) fn base_distance(head: &[u8]) -> io::Result<(u64, usize)> {
     let mut byte = *head.first().ok_or_else(|| invalid("delta offset"))?;
     let mut back = u64::from(byte & 0x7f);
     let mut at = 1;

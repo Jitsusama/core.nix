@@ -244,67 +244,185 @@ impl Store {
             Some((at, offset))
         })
     }
+}
 
-    fn loose(&self, oid: &Oid) -> io::Result<Option<Object>> {
-        let hex = oid.hex();
-        let path = self.dir.join(&hex[..2]).join(&hex[2..]);
-        let raw = match std::fs::read(path) {
-            Ok(raw) => raw,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(e),
-        };
-        let data = miniz_oxide::inflate::decompress_to_vec_zlib(&raw)
-            .map_err(|_| invalid("loose object"))?;
-        let nul = data
-            .iter()
-            .position(|&b| b == 0)
-            .ok_or_else(|| invalid("loose header"))?;
-        let space = data[..nul]
-            .iter()
-            .position(|&b| b == b' ')
-            .ok_or_else(|| invalid("loose header"))?;
-        let kind = Kind::from_name(&data[..space]).ok_or_else(|| invalid("loose kind"))?;
-        Ok(Some(Object {
-            kind,
-            data: data[nul + 1..].to_vec(),
-        }))
+#[cfg(test)]
+thread_local! {
+    /// How many bytes this thread's objects and deltas may hold at once,
+    /// what a growth held and what it grows to both, as an allocator moving
+    /// it would hold them, before more is refused, as an allocator out of
+    /// memory would refuse it, which the tests set since nothing here asks
+    /// for more than they can give.
+    static STARVED: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+}
+
+/// Holds this thread's objects and deltas to `cap` bytes, or frees them,
+/// for tests beyond the store's own.
+#[cfg(test)]
+pub(crate) fn starve(cap: Option<usize>) {
+    STARVED.with(|starved| starved.set(cap));
+}
+
+/// The memory an object or delta was refused: what was growing, the bytes
+/// it held and those it would have held, which a mark it leaves waits for.
+#[derive(Debug)]
+struct Starved {
+    what: &'static str,
+    held: usize,
+    total: usize,
+}
+
+impl std::fmt::Display for Starved {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "no memory to grow {} to {} bytes", self.what, self.total)
     }
 }
 
-/// Inflates the zlib stream at `offset`, which inflates to `size` bytes.
+impl std::error::Error for Starved {}
+
+/// Makes room for `more` bytes past what `out` holds, refused as `what`
+/// and the bytes it would then hold should the memory not be there.
+fn reserve(out: &mut Vec<u8>, more: usize, what: &'static str) -> io::Result<()> {
+    let total = out.len().saturating_add(more);
+    let held = out.capacity();
+    let refused = || io::Error::new(io::ErrorKind::OutOfMemory, Starved { what, held, total });
+    #[cfg(test)]
+    if total > held
+        && STARVED
+            .with(std::cell::Cell::get)
+            .is_some_and(|cap| held.saturating_add(total) > cap)
+    {
+        return Err(refused());
+    }
+    out.try_reserve_exact(more).map_err(|_| refused())
+}
+
+/// Whether what holds `held` bytes could grow to `total` now: the climb a
+/// copy was refused, asked again as it was refused, since growing what's
+/// held can be refused where as much from nothing is given. Nothing is
+/// written, so nothing is touched but what the allocator lends.
+fn room_for(held: usize, total: usize) -> bool {
+    let mut probe = Vec::new();
+    reserve(&mut probe, held, "room").is_ok() && reserve(&mut probe, total, "room").is_ok()
+}
+
+/// Where an object inflated is stored, which its refusals name.
+#[derive(Clone, Copy)]
+enum Stored {
+    Packed,
+    Loose,
+}
+
+impl Stored {
+    fn name(self) -> &'static str {
+        match self {
+            Stored::Packed => "pack object",
+            Stored::Loose => "loose object",
+        }
+    }
+
+    /// What its memory refused is said to have been growing.
+    fn growing(self) -> &'static str {
+        match self {
+            Stored::Packed => "a pack object",
+            Stored::Loose => "a loose object",
+        }
+    }
+}
+
+/// Inflates the zlib stream at `offset`, which inflates to `size` bytes,
+/// its refusals naming where the object is `stored`.
 ///
-/// What it inflates to is grown as the stream inflates rather than made
+/// What it inflates to is grown as the stream fills it rather than made
 /// at the size its header says, so a size no stream fills, however large,
-/// takes no more memory than the stream gives before it ends.
-fn inflate_at(file: &File, mut offset: u64, size: usize) -> io::Result<Vec<u8>> {
+/// takes at most twice what the stream gives, or 64 KiB, before it ends.
+/// Memory the allocator won't give for it fails the read rather than
+/// ending the program, and the copy is marked until it can be had. As git's
+/// `unpack_compressed_entry` does, it makes room for one byte past the
+/// size, and takes the object only where its stream ends there, so a
+/// stream giving more, or ending wrongly, is refused.
+fn inflate_at(file: &File, offset: u64, size: usize, stored: Stored) -> io::Result<Vec<u8>> {
+    inflate_ending(file, offset, size, stored).map(|(data, _)| data)
+}
+
+/// The same, and the offset just past the stream's end.
+fn inflate_ending(
+    file: &File,
+    mut offset: u64,
+    size: usize,
+    stored: Stored,
+) -> io::Result<(Vec<u8>, u64)> {
+    let wrong = |part: &str| invalid(&format!("{}'s {part}", stored.name()));
     let mut state = InflateState::new_boxed(DataFormat::Zlib);
-    let mut out = Vec::with_capacity(size.min(TRUSTED_SIZE));
-    let mut window = vec![0; size.min(1 << 16)];
+    let room = size.checked_add(1).ok_or_else(|| wrong("size"))?;
+    let mut out = Vec::new();
+    let mut filled = 0;
     let mut chunk = vec![0; size.saturating_add(64).clamp(256, 1 << 16)];
     loop {
         let got = file.read_at(&mut chunk, offset)?;
         if got == 0 {
-            return Err(invalid("pack ends inside an object"));
+            return Err(wrong("stream ends early"));
         }
         let mut input = &chunk[..got];
         // Read on past the chunk's end too, while the stream still holds
-        // what it inflated past the window's.
+        // what it inflated past the room made for it.
         loop {
-            let room = (size - out.len()).min(window.len());
-            let result = inflate(&mut state, input, &mut window[..room], MZFlush::None);
-            out.extend_from_slice(&window[..result.bytes_written]);
+            if filled == out.len() {
+                grow_toward(&mut out, room, stored.growing())?;
+            }
+            let result = inflate(&mut state, input, &mut out[filled..], MZFlush::None);
+            filled += result.bytes_written;
             input = &input[result.bytes_consumed..];
             offset += result.bytes_consumed as u64;
             match result.status {
-                Ok(MZStatus::StreamEnd) if out.len() == size => return Ok(out),
-                Ok(MZStatus::StreamEnd) => return Err(invalid("pack object's size")),
-                _ if out.len() == size => return Ok(out),
+                Ok(MZStatus::StreamEnd) if filled == size => {
+                    out.truncate(size);
+                    return Ok((out, offset));
+                }
+                Ok(MZStatus::StreamEnd) => return Err(wrong("size")),
+                _ if filled > size => return Err(wrong("size")),
                 Ok(_) | Err(MZError::Buf) => {}
-                Err(_) => return Err(invalid("pack object's stream")),
+                Err(_) => return Err(wrong("stream")),
             }
             if result.bytes_consumed == 0 && result.bytes_written == 0 {
                 break;
             }
+        }
+    }
+}
+
+/// Makes more room at the end of `out`, which is to hold `size` bytes:
+/// twice what it holds, or 64 KiB more while it holds less, never past
+/// `size`, and refused as `what` should the memory not be there.
+fn grow_toward(out: &mut Vec<u8>, size: usize, what: &'static str) -> io::Result<()> {
+    let len = out.len();
+    let to = size.min(len.saturating_mul(2).max(len.saturating_add(1 << 16)));
+    reserve(out, to - len, what)?;
+    out.resize(to, 0);
+    Ok(())
+}
+
+/// The size a delta says its base holds, or None where it can't be read,
+/// which is the delta's own fault.
+pub fn delta_base_size(delta: &[u8]) -> Option<usize> {
+    delta_size(delta, &mut 0).ok()
+}
+
+/// The size in `delta` at `at`, read past, refused once it would run past
+/// a word.
+fn delta_size(delta: &[u8], at: &mut usize) -> io::Result<usize> {
+    let mut value = 0usize;
+    let mut shift = 0;
+    loop {
+        let byte = *delta.get(*at).ok_or_else(|| invalid("delta size"))?;
+        if shift > usize::BITS - 7 {
+            return Err(invalid("delta size"));
+        }
+        *at += 1;
+        value |= usize::from(byte & 0x7f) << shift;
+        shift += 7;
+        if byte & 0x80 == 0 {
+            return Ok(value);
         }
     }
 }
@@ -317,28 +435,13 @@ fn inflate_at(file: &File, mut offset: u64, size: usize) -> io::Result<Vec<u8>> 
 /// than the size it says, and the bytes its commands give.
 pub fn apply_delta(base: &[u8], delta: &[u8]) -> io::Result<Vec<u8>> {
     let mut at = 0;
-    let mut size = || -> io::Result<usize> {
-        let mut value = 0usize;
-        let mut shift = 0;
-        loop {
-            let byte = *delta.get(at).ok_or_else(|| invalid("delta size"))?;
-            if shift > usize::BITS - 7 {
-                return Err(invalid("delta size"));
-            }
-            at += 1;
-            value |= usize::from(byte & 0x7f) << shift;
-            shift += 7;
-            if byte & 0x80 == 0 {
-                return Ok(value);
-            }
-        }
-    };
-    let base_size = size()?;
-    let out_size = size()?;
+    let base_size = delta_size(delta, &mut at)?;
+    let out_size = delta_size(delta, &mut at)?;
     if base_size != base.len() {
         return Err(invalid("delta's base size"));
     }
-    let mut out = Vec::with_capacity(out_size.min(TRUSTED_SIZE));
+    let mut out = Vec::new();
+    reserve(&mut out, out_size.min(TRUSTED_SIZE), "a delta")?;
     while at < delta.len() {
         let cmd = delta[at];
         at += 1;
@@ -384,10 +487,17 @@ pub fn apply_delta(base: &[u8], delta: &[u8]) -> io::Result<Vec<u8>> {
 }
 
 /// Writes a delta's `piece` to `out`, refused should it run `out` past the
-/// size the delta says it makes.
+/// size the delta says it makes, or need memory that isn't there: copies
+/// from a small base can still claim far more than a pack holds.
 fn write_within(out: &mut Vec<u8>, piece: &[u8], size: usize) -> io::Result<()> {
     if piece.len() > size - out.len() {
         return Err(invalid("delta's result size"));
+    }
+    if out.capacity() - out.len() < piece.len() {
+        // Twice what it holds, never past `size`, as `grow_toward` grows,
+        // rather than the doubling of what it was made with.
+        let more = piece.len().max(out.len()).min(size - out.len());
+        reserve(out, more, "a delta")?;
     }
     out.extend_from_slice(piece);
     Ok(())
@@ -406,12 +516,62 @@ pub struct Odb {
     /// they hold.
     trees: HashMap<Oid, Vec<u8>>,
     tree_bytes: usize,
-    /// The copies that wouldn't unpack, and what each said, passed over
-    /// from then on as git passes over a copy it has marked bad for as
-    /// long as it runs. Each copy is unpacked to its failure once, so a
-    /// chain of failing deltas, each with several copies, costs one
-    /// unpacking a copy rather than one for every path down to it.
-    bad: HashMap<Place, (io::ErrorKind, String)>,
+    /// The copies that wouldn't unpack, and why, passed over from then on
+    /// as git passes over a copy it has marked bad for as long as it runs.
+    /// Each copy is unpacked to its failure once an answer, so a chain of
+    /// failing deltas, each with several copies, costs one unpacking a
+    /// copy rather than one for every path down to it.
+    bad: HashMap<Place, Mark>,
+}
+
+/// Why a copy is marked bad, and how long the mark lasts.
+struct Mark {
+    kind: io::ErrorKind,
+    said: String,
+    lasts: Lasts,
+}
+
+/// How long a copy's mark lasts, each answer asking again what it waits on.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Lasts {
+    /// While the packs hold: the copy's own bytes won't read, its data
+    /// corrupt or its deltas running past their sizes, through a
+    /// repository started afresh after an error too, which keeps its store.
+    WhileThePacksHold,
+    /// Until what held `held` bytes can grow to `total`, the memory the copy
+    /// was refused. Climbing back to a refusal costs what the climb cost
+    /// the first time, as much as a stream will inflate, so a copy that
+    /// inflates toward all the memory there is costs that once, not every
+    /// answer.
+    UntilThereIsRoom { held: usize, total: usize },
+    /// That answer alone: an I/O error, or a fault that may be a base's
+    /// found by name, which the next answer may find written or rewritten.
+    ThisAnswer,
+}
+
+impl Mark {
+    /// The mark a copy leaves that won't read for `error`, which is its
+    /// `own` bytes' fault, rather than a base's found elsewhere, or not.
+    fn of(error: &io::Error, own: bool) -> Mark {
+        let starved = error
+            .get_ref()
+            .and_then(|cause| cause.downcast_ref::<Starved>());
+        let lasts = if let Some(starved) = starved {
+            Lasts::UntilThereIsRoom {
+                held: starved.held,
+                total: starved.total,
+            }
+        } else if own && error.kind() == io::ErrorKind::InvalidData {
+            Lasts::WhileThePacksHold
+        } else {
+            Lasts::ThisAnswer
+        };
+        Mark {
+            kind: error.kind(),
+            said: error.to_string(),
+            lasts,
+        }
+    }
 }
 
 /// The most deltas a chain may run through to its base, its bases named
@@ -427,8 +587,8 @@ const TREE_BUDGET: usize = 32 << 20;
 /// `core.deltaBaseCacheLimit` by default.
 const BASE_BUDGET: usize = 96 << 20;
 
-/// How much of a size a pack's header or a delta says is made room for
-/// before anything is written: past it, room grows only as bytes come.
+/// How much of the size a delta says it makes is made room for before
+/// anything is written: past it, room grows only as bytes come.
 const TRUSTED_SIZE: usize = 1 << 20;
 
 /// Where an object sits in a pack: the store, the pack and its offset.
@@ -473,6 +633,54 @@ impl Odb {
             tree_bytes: 0,
             bad: HashMap::new(),
         }
+    }
+
+    /// The store `kept` from a repository started afresh, while it reads
+    /// `objects` and its packs are as it read them, so the copies whose
+    /// marks last stay marked and its caches stay warm; else `objects`
+    /// opened again.
+    pub fn reopen(kept: Option<Odb>, objects: &Path) -> Odb {
+        match kept {
+            Some(odb)
+                if odb.stores.first().is_some_and(|store| store.dir == objects)
+                    && crate::stamp::still(&odb.stamps) =>
+            {
+                odb
+            }
+            _ => Odb::open(objects),
+        }
+    }
+
+    /// Forgets the marks that last one answer, and those refused memory
+    /// that can now be had, as the next answer begins, so the copies they
+    /// marked are read again.
+    pub fn forget_passing_marks(&mut self) {
+        self.bad.retain(|_, mark| match mark.lasts {
+            Lasts::WhileThePacksHold => true,
+            Lasts::UntilThereIsRoom { held, total } => !room_for(held, total),
+            Lasts::ThisAnswer => false,
+        });
+    }
+
+    /// The stamps of the packs every store watches, which move once one is
+    /// added or taken away.
+    pub fn pack_stamps(&self) -> Stamps {
+        self.stamps.clone()
+    }
+
+    /// The stamps that move once `oid` may be written loose: the folder each
+    /// store's loose copy of it would lie in, which git makes if it must
+    /// and renames a new object into. With `pack_stamps`, they move once it
+    /// may be found.
+    pub fn folders_of(&self, oid: &Oid) -> Stamps {
+        let hex = oid.hex();
+        let mut stamps = Stamps::new();
+        for store in &self.stores {
+            let folder = store.dir.join(&hex[..2]);
+            let stamp = Stamp::of(&folder);
+            stamps.push((folder, stamp));
+        }
+        stamps
     }
 
     /// The object, or None when no store here has it (a partial clone's
@@ -537,97 +745,12 @@ impl Odb {
     }
 }
 
-/// A tree's entries, in its own order.
-pub struct TreeEntry<'a> {
-    pub mode: u32,
-    pub name: &'a [u8],
-    pub oid: Oid,
-}
-
-pub fn tree_entries(data: &[u8]) -> io::Result<Vec<TreeEntry<'_>>> {
-    let mut out = Vec::new();
-    let mut at = 0;
-    while at < data.len() {
-        let space = data[at..]
-            .iter()
-            .position(|&b| b == b' ')
-            .ok_or_else(|| invalid("tree entry"))?;
-        let mode = std::str::from_utf8(&data[at..at + space])
-            .ok()
-            .and_then(|m| u32::from_str_radix(m, 8).ok())
-            .ok_or_else(|| invalid("tree mode"))?;
-        at += space + 1;
-        let nul = data[at..]
-            .iter()
-            .position(|&b| b == 0)
-            .ok_or_else(|| invalid("tree name"))?;
-        let name = &data[at..at + nul];
-        at += nul + 1;
-        let oid = Oid::from_slice(data.get(at..at + 20).ok_or_else(|| invalid("tree oid"))?)
-            .ok_or_else(|| invalid("tree oid"))?;
-        at += 20;
-        out.push(TreeEntry { mode, name, oid });
-    }
-    Ok(out)
-}
-
-/// What the engine reads from a commit.
-pub struct Commit {
-    pub tree: Oid,
-    pub parents: Vec<Oid>,
-    pub time: i64,
-    pub encoding: String,
-    pub summary: String,
-}
-
-pub fn parse_commit(data: &[u8]) -> io::Result<Commit> {
-    let mut tree = None;
-    let mut parents = Vec::new();
-    let mut time = 0;
-    let mut encoding = String::new();
-    let mut lines = data.split(|&b| b == b'\n');
-    let mut at = 0;
-    for line in lines.by_ref() {
-        at += line.len() + 1;
-        if line.is_empty() {
-            break;
-        }
-        if let Some(hex) = line.strip_prefix(b"tree ") {
-            tree = Oid::from_hex(hex);
-        } else if let Some(hex) = line.strip_prefix(b"parent ") {
-            parents.push(Oid::from_hex(hex).ok_or_else(|| invalid("commit parent"))?);
-        } else if let Some(who) = line.strip_prefix(b"committer ") {
-            // "Name <mail> 1700000000 +0000"
-            let close = who.iter().rposition(|&b| b == b'>').unwrap_or(0);
-            time = std::str::from_utf8(&who[close + 1..])
-                .ok()
-                .and_then(|rest| rest.split_whitespace().next())
-                .and_then(|t| t.parse().ok())
-                .unwrap_or(0);
-        } else if let Some(name) = line.strip_prefix(b"encoding ") {
-            encoding = String::from_utf8_lossy(name).into_owned();
-        }
-    }
-    let message = data.get(at.min(data.len())..).unwrap_or_default();
-    // libgit2's summary: the first paragraph, its lines joined by spaces.
-    let text = String::from_utf8_lossy(message);
-    let summary = text
-        .lines()
-        .map(str::trim)
-        .skip_while(|line| line.is_empty())
-        .take_while(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ");
-    Ok(Commit {
-        tree: tree.ok_or_else(|| invalid("commit without a tree"))?,
-        parents,
-        time,
-        encoding,
-        summary,
-    })
-}
-
 mod chain;
+mod kind;
+mod loose;
+mod parse;
+
+pub use parse::{TreeEntry, parse_commit, tree_entries};
 
 #[cfg(test)]
 #[path = "odb_tests.rs"]

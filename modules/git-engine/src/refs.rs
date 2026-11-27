@@ -47,7 +47,7 @@ impl Refs {
         }
         let path = shared.join("packed-refs");
         let mut packed = HashMap::new();
-        if let Ok(text) = std::fs::read(&path) {
+        if let Ok(Some(text)) = crate::regular_file::read(&path) {
             for line in text.split(|&b| b == b'\n') {
                 if line.first().is_none_or(|&c| c == b'#' || c == b'^') || line.len() < 42 {
                     continue;
@@ -88,7 +88,9 @@ impl Refs {
                 ..
             } => {
                 let dir = if is_own(name) { own } else { shared };
-                if let Ok(text) = std::fs::read(dir.join(name)) {
+                // Anything but a file there, a folder or a FIFO, is passed
+                // over for the packed ref, as git passes over a folder.
+                if let Ok(Some(text)) = crate::regular_file::read(&dir.join(name)) {
                     let text = text.trim_ascii_end();
                     if let Some(target) = text.strip_prefix(b"ref:") {
                         return Some(Value::Symbolic(
@@ -127,11 +129,14 @@ impl Refs {
         }
         match self {
             Refs::Files { shared, .. } => {
-                std::fs::read(shared.join("logs/refs/stash")).map_or(0, |log| {
-                    log.split(|&b| b == b'\n')
-                        .filter(|line| !line.is_empty())
-                        .count()
-                })
+                crate::regular_file::read(&shared.join("logs/refs/stash"))
+                    .ok()
+                    .flatten()
+                    .map_or(0, |log| {
+                        log.split(|&b| b == b'\n')
+                            .filter(|line| !line.is_empty())
+                            .count()
+                    })
             }
             Refs::Reftable { shared, .. } => shared.stashes,
         }

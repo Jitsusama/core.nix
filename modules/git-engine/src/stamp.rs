@@ -89,6 +89,36 @@ pub mod tests {
         AHEAD.set(seconds);
     }
 
+    /// Settles the repository at `dir` as if long untouched, for a test
+    /// whose next change must move a stamp: its clock run ahead, so no
+    /// stamp counts as recent, and everything under .git dated ten seconds
+    /// back, so the change moves its folder's stamp even where the file
+    /// clock ticks coarsely, as Linux's does, rather than within the tick
+    /// the test's own setup left.
+    pub fn settled(dir: &Path) {
+        ahead(3);
+        let then = std::time::SystemTime::now() - std::time::Duration::from_secs(10);
+        let backdate = |path: &Path| {
+            std::fs::File::open(path)
+                .and_then(|file| file.set_times(std::fs::FileTimes::new().set_modified(then)))
+                .unwrap_or_else(|error| panic!("{} can't be dated back: {error}", path.display()));
+        };
+        let mut folders = vec![dir.join(".git")];
+        while let Some(folder) = folders.pop() {
+            let entries = std::fs::read_dir(&folder)
+                .unwrap_or_else(|error| panic!("{} won't list: {error}", folder.display()));
+            for entry in entries {
+                let path = entry.expect("a listed folder's entry reads").path();
+                if path.is_dir() {
+                    folders.push(path);
+                } else {
+                    backdate(&path);
+                }
+            }
+            backdate(&folder);
+        }
+    }
+
     fn file(name: &str) -> std::path::PathBuf {
         let file =
             std::env::temp_dir().join(format!("git-engine-stamp-{name}-{}", std::process::id()));

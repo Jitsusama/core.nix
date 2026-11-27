@@ -32,7 +32,7 @@ struct Layer {
 
 impl Layer {
     fn open(path: &Path) -> io::Result<Layer> {
-        let file = File::open(path)?;
+        let file = crate::regular_file::present(path)?;
         let mut head = [0; 8];
         file.read_exact_at(&mut head, 0)?;
         if head[..4] != *b"CGPH" || head[4] != 1 || head[5] != 1 {
@@ -89,13 +89,19 @@ impl Graph {
             (single.clone(), Stamp::of(&single)),
             (chain.clone(), Stamp::of(&chain)),
         ];
-        let paths: Vec<_> = match std::fs::read_to_string(&chain) {
-            Ok(text) => text
+        // A chain that isn't a file, or isn't text, is passed over as a
+        // missing one is, for the single file.
+        let chained = crate::regular_file::read(&chain)
+            .ok()
+            .flatten()
+            .and_then(|bytes| String::from_utf8(bytes).ok());
+        let paths: Vec<_> = match chained {
+            Some(text) => text
                 .lines()
                 .filter(|line| !line.is_empty())
                 .map(|hash| objects.join(format!("info/commit-graphs/graph-{hash}.graph")))
                 .collect(),
-            Err(_) => vec![single],
+            None => vec![single],
         };
         let mut layers = Vec::new();
         for path in paths {

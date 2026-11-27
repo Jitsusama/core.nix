@@ -12,6 +12,7 @@ use crate::refs::Refs;
 use crate::reftable::Value;
 use crate::stamp::{Stamp, Stamps};
 use crate::status::{self, Counts, Limits, Paths, Settings};
+use crate::tags::Tags;
 use crate::walks::Walks;
 use std::collections::HashMap;
 use std::io;
@@ -108,9 +109,8 @@ pub struct Repo {
     walks: Walks,
     /// HEAD's commit as last read: its name, tree, encoding and summary.
     head_commit: Option<(Oid, Oid, String, String)>,
-    /// Every tag by name with the commit it comes to, and what they were
-    /// read from.
-    tags: Option<(Stamps, Vec<(String, Oid)>)>,
+    /// Every tag, once read.
+    tags: Option<Tags>,
     /// git's file system monitor for this worktree, when it's asked to run
     /// one.
     monitor: Option<Monitor>,
@@ -194,12 +194,16 @@ fn map_refspec(refspec: &str, name: &str) -> Option<String> {
 }
 
 impl Repo {
-    pub fn open(location: Location) -> io::Result<Repo> {
+    /// The repository at `location`, reading its objects through the store
+    /// `kept` from one started afresh, while that store still holds. The
+    /// store is taken only once nothing else can refuse the opening, so a
+    /// refusal leaves it, and its marks, in `kept` for the next try.
+    pub fn open(location: Location, kept: &mut Option<Odb>) -> io::Result<Repo> {
         let home = std::env::var_os("HOME").map(PathBuf::from);
         let config = load_config(&location, home.as_deref(), None);
         let refs = Refs::open(&location.git_dir, &location.common, is_reftable(&config))?;
         let objects = location.common.join("objects");
-        let odb = Odb::open(&objects);
+        let odb = Odb::reopen(kept.take(), &objects);
         let graph = Graph::open(&objects);
         let walks = Walks::new(Walks::folder(home.as_deref()), &location.common);
         Ok(Repo {
@@ -217,6 +221,11 @@ impl Repo {
             tags: None,
             monitor: None,
         })
+    }
+
+    /// Its object store, kept while the rest is started afresh.
+    pub fn into_odb(self) -> Odb {
+        self.odb
     }
 
     /// Whether the packs or commit-graph it holds open have changed on disk
@@ -380,23 +389,18 @@ impl Repo {
 
     /// A tag pointing at `commit`, the first by name.
     fn tag(&mut self, commit: Oid) -> String {
-        if self
-            .tags
-            .as_ref()
-            .is_none_or(|(stamps, _)| !crate::stamp::still(stamps))
-        {
-            self.tags = Some(self.read_tags());
-        }
-        self.tags
-            .as_ref()
-            .and_then(|(_, tags)| tags.iter().find(|(_, peeled)| *peeled == commit))
-            .map(|(name, _)| name.clone())
-            .unwrap_or_default()
+        let mut tags = match self.tags.take() {
+            Some(tags) if crate::stamp::still(&tags.stamps) => tags,
+            _ => self.read_tags(),
+        };
+        let name = tags.naming(commit, &mut self.odb);
+        self.tags = Some(tags);
+        name
     }
 
-    /// Every tag, sorted by name, with the commit it comes to once an
-    /// annotated tag is peeled, and the stamps of what they were read from.
-    fn read_tags(&mut self) -> (Stamps, Vec<(String, Oid)>) {
+    /// Every tag, with what a packed annotated tag peels to, and the stamps
+    /// of what they were read from.
+    fn read_tags(&self) -> Tags {
         let mut stamps = Stamps::new();
         let mut peeled: HashMap<String, Oid> = HashMap::new();
         let mut names: Vec<(String, Oid)> = match &self.refs {
@@ -416,83 +420,13 @@ impl Repo {
             stamps.clone_from(&shared.stamps);
         }
         if let Refs::Files { shared, .. } = &self.refs {
-            let mut found = std::collections::BTreeMap::new();
-            let packed = shared.join("packed-refs");
-            stamps.push((packed.clone(), Stamp::of(&packed)));
-            if let Ok(text) = std::fs::read_to_string(&packed) {
-                let mut last: Option<String> = None;
-                for line in text.lines() {
-                    // A `^` line gives the commit the tag above it peels to.
-                    if let Some(hex) = line.strip_prefix('^')
-                        && let Some(oid) = Oid::from_hex(hex.as_bytes())
-                        && let Some(tag) = last.take()
-                    {
-                        peeled.insert(tag, oid);
-                    } else if let Some((hex, name)) = line.split_once(' ')
-                        && let Some(tag) = name.strip_prefix("refs/tags/")
-                        && let Some(oid) = Oid::from_hex(hex.as_bytes())
-                    {
-                        found.insert(tag.to_string(), oid);
-                        last = Some(tag.to_string());
-                    } else {
-                        last = None;
-                    }
-                }
-            }
-            let mut stack = vec![shared.join("refs/tags")];
-            while let Some(dir) = stack.pop() {
-                // A tag is written beside the others and renamed into place,
-                // so its folder's stamp moves with every tag made or moved.
-                stamps.push((dir.clone(), Stamp::of(&dir)));
-                let Ok(entries) = std::fs::read_dir(&dir) else {
-                    continue;
-                };
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if entry.file_type().is_ok_and(|t| t.is_dir()) {
-                        stack.push(path);
-                    } else if let Ok(rel) = path.strip_prefix(shared.join("refs/tags"))
-                        && let Ok(text) = std::fs::read(&path)
-                        && let Some(oid) = Oid::from_hex(text.trim_ascii())
-                    {
-                        // A loose tag is newer than its packed line, and
-                        // so is what it peels to.
-                        let name = rel.to_string_lossy().into_owned();
-                        peeled.remove(&name);
-                        found.insert(name, oid);
-                    }
-                }
-            }
-            names = found.into_iter().collect();
+            names = crate::tags::files(shared, &mut stamps, &mut peeled);
         }
-        names.sort();
-        let mut tags = Vec::with_capacity(names.len());
-        for (name, mut oid) in names {
-            if let Some(target) = peeled.get(&name) {
-                tags.push((name, *target));
-                continue;
-            }
-            // An annotated tag points at a tag object; peel it.
-            for _ in 0..8 {
-                let Ok(Some(object)) = self.odb.read(&oid) else {
-                    break;
-                };
-                if object.kind != Kind::Tag {
-                    break;
-                }
-                let target = object
-                    .data
-                    .strip_prefix(b"object ")
-                    .and_then(|rest| Oid::from_hex(rest.get(..40)?));
-                let Some(target) = target else { break };
-                oid = target;
-            }
-            tags.push((name, oid));
-        }
-        (stamps, tags)
+        Tags::new(stamps, names, &peeled)
     }
 
     pub fn answer(&mut self, options: &Options, diff: bool) -> io::Result<Answer> {
+        self.odb.forget_passing_marks();
         self.refresh()?;
         let reftable = is_reftable(&self.config);
         let head = head(&self.location, &self.refs, reftable);

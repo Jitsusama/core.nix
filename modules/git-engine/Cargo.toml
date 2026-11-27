@@ -9,6 +9,9 @@ license = "MIT"
 publish = false
 
 [dependencies]
+# Opening a file without waiting on a writer, so a FIFO or a device where
+# a ref or an object should be is refused rather than hanging the prompt.
+libc = "0.2"
 # zlib, for objects and packs: pure Rust, so it builds anywhere the prompt
 # runs.
 miniz_oxide = "0.9"
