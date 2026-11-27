@@ -28,10 +28,8 @@ pub fn pass(commit: &str, main: &str) -> Option<String> {
             .status()
             .is_ok_and(|status| status.success())
     };
-    let ready::Before::Clean(checked) = judged(commit, main, &on_main).ok()?.before else {
-        return None;
-    };
-    Some(ready::record(&checked))
+    let before = judged(commit, main, &on_main).ok()?.before;
+    Some(ready::record(before.speaker()?))
 }
 
 /// What `ready` knows of a head's change from its earlier commits: where

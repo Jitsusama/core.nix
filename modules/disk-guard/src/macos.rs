@@ -104,7 +104,10 @@ pub fn tick() -> io::Result<crate::clock::Tick> {
 }
 
 /// macOS keeps no stall averages, so memory is read as its kernel judges
-/// it, which any user may read, and the rest as no stall.
+/// it, which any user may read, and the rest as no stall. A read the
+/// kernel refuses is an error, which `serve::senses` takes as room, as it
+/// takes every reading it can't make: a guard waiting on a reading it may
+/// never get would leave the store to fill.
 pub fn pressure(_proc_pressure: &Path) -> io::Result<crate::moments::Pressure> {
     let free = sysctl_value::<i32>(c"kern.memorystatus_level")?;
     let level = sysctl_value::<i32>(c"kern.memorystatus_vm_pressure_level")?;
