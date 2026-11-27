@@ -415,6 +415,12 @@ impl Config {
         self.state.join("boots")
     }
 
+    /// The file holding the system update-to-main last left the boot
+    /// default, beside where the profile pointed then.
+    pub fn boot_default_file(&self) -> PathBuf {
+        self.state.join("boot-default")
+    }
+
     /// The link that keeps the system being built from being collected.
     pub fn building_link(&self) -> PathBuf {
         self.state.join("building")

@@ -165,10 +165,17 @@ pub fn git_in(tree: &std::path::Path, args: &[&str]) {
 /// read cut short so the pipe stays as `cat` expects it; `COPIER_SILENT`
 /// has it never say it's ready, leaving a child of its own behind that
 /// holds its standard error; `COPIER_REFUSES` has it refuse the copy for
-/// that reason, as Passwords' wl-copy refuses one it can't hold whole;
-/// `COPIER_UNHELD` has it read the copy and never say it holds it; and
-/// `COPIER_DEAF` has it say it's ready and never read at all.
+/// that reason, as Passwords' wl-copy refuses one it can't hold whole,
+/// `COPIER_REFUSES_EARLY` before it's ready, as one that can't go
+/// undumpable does, and `COPIER_REFUSES_PART` with a byte of it read, as
+/// one past its cap does with the rest unread; `COPIER_UNHELD` has it read
+/// the copy and never say it holds it; and `COPIER_DEAF` has it say it's
+/// ready and never read at all.
 const COPIER: &str = r#"
+if [ -n "$COPIER_REFUSES_EARLY" ]; then
+  echo "wl-copy: refused a sensitive copy: $COPIER_REFUSES_EARLY" >&2
+  exit 1
+fi
 if [ -n "$COPIER_WAITS" ]; then
   sleep 1
   timeout 0.3 dd bs=1 count=1 of="$COPIED.early" 2>/dev/null
@@ -180,6 +187,11 @@ else
 fi
 if [ -n "$COPIER_DEAF" ]; then
   while :; do sleep 1; done
+fi
+if [ -n "$COPIER_REFUSES_PART" ]; then
+  dd bs=1 count=1 of=/dev/null 2>/dev/null
+  echo "wl-copy: refused a sensitive copy: $COPIER_REFUSES_PART" >&2
+  exit 1
 fi
 cat > "$COPIED"
 printf '%s\n' "$*" > "$COPIED.flags"

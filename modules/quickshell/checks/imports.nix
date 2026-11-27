@@ -92,7 +92,7 @@
   ];
   "SetWords.js" = [
     "Commands.js"
-    "launcher/Presented.js"
+    "launcher/ActsSaid.js"
   ];
   "SpendWatch.qml" = [ "SpendWatch.js" ];
   "StatusLine.qml" = [ "Bands.js" ];
@@ -115,6 +115,10 @@
     "launcher/Links.js"
     "launcher/Nearby.js"
     "launcher/Order.js"
+  ];
+  "launcher/ActsSaid.js" = [
+    "launcher/KeysSaid.js"
+    "launcher/Presented.js"
   ];
   "launcher/AgentsFold.qml" = [ "launcher/AgentWindows.js" ];
   "launcher/Applications.qml" = [
@@ -150,6 +154,7 @@
     "When.js"
     "launcher/Recent.js"
   ];
+  "launcher/CarryBack.js" = [ "launcher/Presented.js" ];
   "launcher/ChangesPresented.js" = [ "launcher/Presented.js" ];
   "launcher/Characters.qml" = [ "launcher/Characters.js" ];
   "launcher/Clocks.qml" = [
@@ -163,8 +168,8 @@
   "launcher/Displays.qml" = [
     "Fuzzy.js"
     "Hearing.js"
+    "launcher/ActsSaid.js"
     "launcher/Order.js"
-    "launcher/Presented.js"
     "launcher/Seen.js"
   ];
   "launcher/Emoji.qml" = [
@@ -233,6 +238,7 @@
     "Hearing.js"
     "Marks.js"
     "When.js"
+    "launcher/ActsSaid.js"
     "launcher/Ago.js"
     "launcher/ForYou.js"
     "launcher/ForYouCells.js"
@@ -300,6 +306,7 @@
     "Confirm.js"
     "Fuzzy.js"
     "launcher/ActForms.js"
+    "launcher/ActsSaid.js"
     "launcher/Beneath.js"
     "launcher/Found.js"
     "launcher/Moved.js"
@@ -376,6 +383,7 @@
   "launcher/Wireless.qml" = [
     "Fuzzy.js"
     "launcher/ActForms.js"
+    "launcher/ActsSaid.js"
     "launcher/Order.js"
     "launcher/Presented.js"
     "launcher/ReadyRows.js"

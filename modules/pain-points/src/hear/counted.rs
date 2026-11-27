@@ -51,6 +51,8 @@ pub(super) fn hour_of(kept: &[Heard], at: i64) -> Hour {
         closed: said.iter().filter(closed_today).count(),
         troubles: Vec::new(),
         cellless_since: None,
+        hubless_since: None,
         unclosed: None,
+        unkept: None,
     }
 }

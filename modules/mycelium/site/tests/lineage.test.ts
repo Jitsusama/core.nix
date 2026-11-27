@@ -234,6 +234,19 @@ it("a cell's forage says what it split from, else the first forage listing it sp
   );
 });
 
+it("a cell whose own split names itself or a blank takes its lister's word", () => {
+  const these = [
+    forage("KESTRL", { split_into: ["SELF01", "BLANK1"] }),
+    forage("SELF01", { split_from: "SELF01" }),
+    forage("BLANK1", { split_from: "" }),
+  ];
+  const split = nowOf(told(these), AT).split;
+  assert.deepEqual(Object.fromEntries(split.map((each) => [each.cell, each.from])), {
+    SELF01: "KESTRL",
+    BLANK1: "KESTRL",
+  });
+});
+
 it("a split naming the cell itself, a blank or anything but words names nothing", () => {
   const these = [
     forage("SELF01", { split_from: "SELF01", split_into: ["SELF01", "", 7] }),
