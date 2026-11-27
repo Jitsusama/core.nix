@@ -630,8 +630,10 @@ LEDE_FORMS = """async () => {
   return [grove(39, 113), grove(2, 2)].map((each) => text(lede(each)));
 }"""
 # The lines the lede's box holds at each width, which every lede the model writes fits: a
-# phone's four, and a desk's three, where the lede is as wide as it grows.
+# phone's four, and a desk's three, where the lede is as wide as it grows, within a pixel,
+# since the page rounds the height it lays out.
 LEDE_LINES = {SIZES[0]: 4, SIZES[1]: 3, WIDE_DESK: 3}
+LAID_WITHIN = 1
 
 
 @pytest.mark.parametrize("size", [*SIZES, WIDE_DESK])
@@ -648,12 +650,16 @@ def test_the_lede_keeps_the_lines_it_opens_on(
         every_cell_drawn(page)
         forms = page.evaluate(LEDE_FORMS)
         said = page.evaluate(HEAD_HEIGHTS, [["lede"], {"lede": forms}])["lede"]
-        taken = [said["live"], *said["forms"]]
-        assert all(each == said["opening"] for each in taken), (
-            f"at {size} the lede opens {said['opening']} px tall, then takes {taken}"
+        assert said["live"] == said["opening"], (
+            f"at {size} the live lede is {said['live']} px, not {said['opening']}"
         )
-        box = round(LEDE_LINES[size] * said["line"])
-        assert said["opening"] == box, (
+        grew = {
+            words: px
+            for words, px in zip(forms, said["forms"], strict=True)
+            if px != said["opening"]
+        }
+        assert not grew, f"at {size} these ledes leave {said['opening']} px: {grew}"
+        assert abs(said["opening"] - LEDE_LINES[size] * said["line"]) < LAID_WITHIN, (
             f"at {size} the lede's box is {said['opening']} px, not {LEDE_LINES[size]} lines"
         )
     finally:
