@@ -50,11 +50,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
-use serde_json::{Value, json};
+use serde_json::json;
 
-use super::gated::{Gated, RUNS_AGAIN, gated, words_of};
+pub(super) use self::lent::{Lenders, Lent};
+use super::gated::{Gated, RUNS_AGAIN, gated};
 use crate::state::{State, now, short};
 
 /// Whose a failed check's red is. Only a flake's and main's land; each
@@ -125,44 +125,6 @@ impl Declined {
             Self::Unplaced => "a failed derivation is no check its gate built",
             Self::WholeRed => "the checks its gate built didn't all build again",
         }
-    }
-}
-
-/// What the train asks of lent builders to judge a red: the real ones are
-/// `Lenders`, and a test's record what each build asks for.
-pub(super) trait Lent {
-    /// Build `checks` of `flake`, at `commit`, from `checkout`, their
-    /// words in `log`: the exit code and the words.
-    fn build(
-        &mut self,
-        checkout: &Path,
-        flake: &str,
-        log: &Path,
-        checks: &[&str],
-        commit: &str,
-    ) -> (Option<i32>, String);
-
-    /// The check each derivation name of `checks` builds at `flake`.
-    fn named(&self, checkout: &Path, flake: &str, checks: &[String]) -> BTreeMap<String, String>;
-}
-
-/// The lent builders, through nix-offload.
-pub(super) struct Lenders;
-
-impl Lent for Lenders {
-    fn build(
-        &mut self,
-        checkout: &Path,
-        flake: &str,
-        log: &Path,
-        checks: &[&str],
-        commit: &str,
-    ) -> (Option<i32>, String) {
-        build(checkout, flake, log, checks, commit)
-    }
-
-    fn named(&self, checkout: &Path, flake: &str, checks: &[String]) -> BTreeMap<String, String> {
-        named_at(checkout, flake, checks)
     }
 }
 
@@ -763,46 +725,6 @@ fn built_log(root: &Path, candidate: &str, check: &str, how: &str) -> PathBuf {
     super::folder(root).join(format!("{candidate}-{check}-{how}.log"))
 }
 
-/// Build `checks` of `flake`, at `commit`, from the train's `checkout`, on
-/// a lent builder only, their words in `log`: its exit code and its words.
-fn build(
-    checkout: &Path,
-    flake: &str,
-    log: &Path,
-    checks: &[&str],
-    commit: &str,
-) -> (Option<i32>, String) {
-    let Ok(words) = fs::File::create(log) else {
-        return (None, String::new());
-    };
-    let Ok(errors) = words.try_clone() else {
-        return (None, String::new());
-    };
-    let named = match checks {
-        [one] => (*one).to_owned(),
-        many => format!("its {} checks", many.len()),
-    };
-    println!(
-        "merge-net: the train builds {named} again at {}, its words in {}",
-        short(commit),
-        log.display()
-    );
-    let ran = Command::new("nix-offload")
-        .args(["there", "--lent-only", "-L", flake])
-        .args(
-            checks
-                .iter()
-                .map(|check| format!("checks.{}.{check}", crate::SYSTEM)),
-        )
-        .current_dir(checkout)
-        .env_remove("SSH_AUTH_SOCK")
-        .stdout(words)
-        .stderr(errors)
-        .status();
-    let code = ran.ok().and_then(|status| status.code());
-    (code, words_of(log))
-}
-
 /// How a check built at the base ended, from its exit `code` and `words`:
 /// red only where a builder failed, since then main itself fails it. Any
 /// other failure, an evaluation's or a fetch's, says nothing of main's
@@ -825,35 +747,8 @@ fn plainly_named(check: &str) -> bool {
             .all(|character| character.is_ascii_alphanumeric() || "-_'".contains(character))
 }
 
-/// The check each derivation name of `checks` builds at `flake`, read on
-/// a lent builder; nothing where it can't be read, or a check isn't
-/// plainly named.
-fn named_at(checkout: &Path, flake: &str, checks: &[String]) -> BTreeMap<String, String> {
-    if !checks.iter().all(|check| plainly_named(check)) {
-        return BTreeMap::new();
-    }
-    let names: Vec<String> = checks
-        .iter()
-        .map(|check| Value::from(check.as_str()).to_string())
-        .collect();
-    let apply = format!(
-        "checks: builtins.listToAttrs (map (check: \
-         {{ name = checks.${{check}}.name; value = check; }}) [ {} ])",
-        names.join(" ")
-    );
-    let attribute = format!("{flake}#checks.{}", crate::SYSTEM);
-    Command::new("nix-offload")
-        .args(crate::world::eval_args(
-            &attribute,
-            &["--json", "--apply", &apply],
-        ))
-        .current_dir(checkout)
-        .output()
-        .ok()
-        .filter(|ran| ran.status.success())
-        .and_then(|ran| serde_json::from_slice::<BTreeMap<String, String>>(&ran.stdout).ok())
-        .unwrap_or_default()
-}
+#[path = "flaky/lent.rs"]
+mod lent;
 
 #[cfg(test)]
 #[path = "flaky/tests.rs"]

@@ -1,5 +1,7 @@
 //! Whose a red candidate's failed checks are, read from its gate's words.
 
+use serde_json::Value;
+
 use super::*;
 
 /// What a builder says when `name` fails, as nix's `-L` prefixes it.
