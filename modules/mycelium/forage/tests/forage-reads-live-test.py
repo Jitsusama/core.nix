@@ -604,18 +604,31 @@ def test_a_first_visit_holds_still_and_a_long_link_never_widens_the_page(
         opened.close()
 
 
-# The longest ledes the model writes, with things counted past a thousand, a cell named and the
-# rest counted, two cells named, and a plan's steps past a hundred.
-LEDES = [
-    (
-        "1,204 things wait on you, from KESTR2 and 38 more. OSPREY and 112 more have no purpose "
-        "written yet. MERLIN has furthest to go, 112 of 141 steps done."
-    ),
-    (
-        "1,204 things wait on you, from KESTR2 and KESTRL. OSPREY and MERLIN have no purpose "
-        "written yet. SKIFFS has furthest to go, 112 of 141 steps done."
-    ),
-]
+# The longest ledes the page's own model writes, built of only the fields its lede reads: things
+# counted past a thousand, the cells waiting and those without purpose each one named and the
+# rest counted or two named, and a plan's steps past a hundred. Every cell is named by six of
+# an address's widest letters and figures.
+LEDE_FORMS = """async () => {
+  const { lede } = await import("./model.js");
+  const cell = (at, { waits = 0, purpose = "Keeps the shore.", ticked = 0, open = 0 } = {}) => ({
+    cell: `MWM${String(at).padStart(3, "W")}`, quest: `QEST-${at}`, purpose,
+    documents: [{ id: `p${at}`, kind: "plan", title: "", stage: "build", ticked, open }],
+    waits: Array.from({ length: waits }, (_, each) => ({
+      id: `w${each}`, title: "", why: "", minutes: undefined, when: undefined, ready: true })),
+  });
+  const grove = (waiting, hollow) => [
+    cell(0, { waits: 1204 - (waiting - 1) }),
+    ...Array.from({ length: waiting - 1 }, (_, at) => cell(at + 1, { waits: 1 })),
+    ...Array.from({ length: hollow }, (_, at) => cell(waiting + at, { purpose: "" })),
+    cell(waiting + hollow, { ticked: 112, open: 29 }),
+  ];
+  const text = (words) => {
+    const held = document.createElement("p");
+    held.textContent = words;
+    return held.innerHTML;
+  };
+  return [grove(39, 113), grove(2, 2)].map((each) => text(lede(each)));
+}"""
 # The lines the lede's box holds at each width, which every lede the model writes fits: a
 # phone's four, and a desk's three, where the lede is as wide as it grows.
 LEDE_LINES = {SIZES[0]: 4, SIZES[1]: 3, WIDE_DESK: 3}
@@ -633,7 +646,8 @@ def test_the_lede_keeps_the_lines_it_opens_on(
         page = opened.page
         says_it_stands(page, "live")
         every_cell_drawn(page)
-        said = page.evaluate(HEAD_HEIGHTS, [["lede"], {"lede": LEDES}])["lede"]
+        forms = page.evaluate(LEDE_FORMS)
+        said = page.evaluate(HEAD_HEIGHTS, [["lede"], {"lede": forms}])["lede"]
         taken = [said["live"], *said["forms"]]
         assert all(each == said["opening"] for each in taken), (
             f"at {size} the lede opens {said['opening']} px tall, then takes {taken}"
