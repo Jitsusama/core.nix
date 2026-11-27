@@ -2729,9 +2729,10 @@ QtObject {
 
     function run() {
         // A value as a failure says it, with the separators JSON leaves
-        // bare spelt out, so a line separator never reads as a paragraph's.
+        // bare spelt out, so a line separator never reads as a paragraph's,
+        // nor a no-break space as a space.
         function spelt(value) {
-            return String(JSON.stringify(value)).replace(/[\u2028\u2029\u200b\u2060]/g,
+            return String(JSON.stringify(value)).replace(/[\u00a0\u2028\u2029\u200b\u2060]/g,
                 letter => `\\u${letter.charCodeAt(0).toString(16).padStart(4, "0")}`);
         }
 
