@@ -4,9 +4,9 @@
 //! Parakeet is loaded with a call's first take, at the NPU's background
 //! priority, and let go once no call has needed it for a while, so it
 //! holds no memory between calls. A take's sound is let go once it's
-//! heard; of theirs, only how loud each 50 ms was is kept
-//! (`dictation::loudness`), so Joel's words far under it are cut as
-//! their echo.
+//! heard; of theirs Parakeet heard, words or none, only how loud each
+//! 50 ms was is kept (`dictation::loudness`), so Joel's words far under
+//! it are cut as their echo.
 //!
 //! A new OpenVINO or driver means compiling Parakeet again, about a
 //! minute on the NPU, which a call's first take used to wait for: on 12
@@ -91,8 +91,8 @@ pub enum Job {
 /// and `left` the lines of his already journaled as left out whole, by
 /// the sample each starts at: splitting their takes by voice moves his
 /// lines' indices on but never their times, so what's told stays told
-/// across a rejoin. Its `sound` is how loud every take of theirs was,
-/// worded or not, so his words far under it are cut as their echo; one
+/// across a rejoin. Its `sound` is how loud each take of theirs heard
+/// was, words or none, so his words far under it are cut as their echo; one
 /// taken up from its file starts with none, since sound is never kept.
 #[derive(Default)]
 struct Writing {
@@ -173,8 +173,8 @@ impl Writing {
 
     /// What the daemon goes on with from a take of `side`'s, `start` samples
     /// into the call, `heard` from its `samples` (`heard_or_left_out`),
-    /// keeping how loud it was when it's theirs, worded or not, since its
-    /// sound reaches Joel's microphone all the same.
+    /// keeping how loud it was when it's theirs and heard, words or none,
+    /// since its sound reaches Joel's microphone all the same.
     fn take_heard(
         &mut self,
         side: Side,
@@ -182,7 +182,7 @@ impl Writing {
         samples: &[f32],
         heard: dictation::openvino::Result<(Option<String>, Vec<Word>)>,
     ) -> (Option<String>, Vec<Word>) {
-        if side == Side::Theirs {
+        if side == Side::Theirs && heard.is_ok() {
             self.sound.hear(start, samples);
         }
         heard_or_left_out(heard)
