@@ -733,7 +733,7 @@ mod tests {
             !settled(Some(10_000), 10_000 + SETTLING - 1),
             "sessions are still being reopened"
         );
-        assert!(settled(Some(10_000), 10_000 + SETTLING));
+        assert!(settled(Some(10_000), 10_000 + SETTLING), "once it settles");
     }
 
     fn seen(address: &str, by: Option<&str>, running: bool, at: &str) -> Seen {

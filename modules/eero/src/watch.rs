@@ -270,8 +270,14 @@ mod tests {
                 "cabin · firmware · read 1 m 7 s ago"
             ]
         );
-        assert!(out.starts_with("eero: waiting for eero-daemon's first reading\n"));
-        assert!(out.ends_with("eero: eero-daemon stopped; waiting for it to start\n"));
+        assert!(
+            out.starts_with("eero: waiting for eero-daemon's first reading\n"),
+            "the watch didn't open waiting for a reading: {out}"
+        );
+        assert!(
+            out.ends_with("eero: eero-daemon stopped; waiting for it to start\n"),
+            "the watch didn't end waiting for the daemon: {out}"
+        );
     }
 
     #[test]

@@ -18,8 +18,6 @@
   "modules/bluetooth-links/src/main.rs" = 1;
   "modules/bluetooth-links/src/reply.rs" = 1;
   "modules/cadence/src/mesh.rs" = 7;
-  "modules/cadence/src/records.rs" = 5;
-  "modules/cadence/src/revive.rs" = 1;
   "modules/chrome/open-tabs/host/src/main.rs" = 1;
   "modules/chrome/pack-extension/src/main.rs" = 1;
   "modules/console/font/src/main.rs" = 10;
@@ -86,13 +84,7 @@
   "modules/disk-guard/tests/guard/variants.rs" = 1;
   "modules/disk-guard/tests/guard/vouch.rs" = 10;
   "modules/disk-loss-panic/disk-loss-panic.rs" = 9;
-  "modules/eero/src/api.rs" = 8;
-  "modules/eero/src/cloud.rs" = 2;
-  "modules/eero/src/probe.rs" = 13;
-  "modules/eero/src/schedule.rs" = 5;
   "modules/eero/src/views/golden.rs" = 1;
-  "modules/eero/src/waiting.rs" = 1;
-  "modules/eero/src/watch.rs" = 2;
   "modules/ergodox/ergodox-watch.rs" = 1;
   "modules/firmware-notice/src/main.rs" = 6;
   "modules/git-engine/src/fsmonitor.rs" = 19;
@@ -159,8 +151,6 @@
   "modules/open-with/src/open.rs" = 1;
   "modules/passwords/src/audit.rs" = 2;
   "modules/passwords/src/lib.rs" = 17;
-  "modules/passwords/tests/daemon.rs" = 3;
-  "modules/passwords/tests/keys.rs" = 3;
   "modules/people/src/lib.rs" = 12;
   "modules/people/tests/daemon.rs" = 3;
   "modules/processor-telemetry/src/layout.rs" = 3;
