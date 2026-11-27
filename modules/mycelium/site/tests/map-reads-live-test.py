@@ -523,6 +523,54 @@ def test_the_map_draws_the_realm_live(mycelium_opened: Opened) -> None:
     the_map_counts(page, COUNTED, "the map miscounted the realm")
 
 
+# On 26 November Joel asked why the map wasn't working, then said "oh, it's
+# just really, really slow": the node took 14 s to first answer its watch of
+# messages, 12,179 of them, and the map drew nothing until it had. Where the
+# node serves the ties the map draws talk from, it draws without them, and
+# says it is still reading them.
+READING_TALK = "Reading what passed between cells."
+
+
+@pytest.fixture
+def slow_talk_node(tmp_path: Path) -> Iterator[StandIn]:
+    reading = json.loads((HERE / "node.json").read_text())["kinds"]
+    heard = int(datetime.now(UTC).timestamp() * 1000)
+    tie = {"key": "tie:SKIFF1~TERN01", "heard": heard, "strength": 1, "today": [1, 0]}
+    stand_in = StandIn(tmp_path / "slow.sock", "node", {**reading, "tie": [tie]}).start()
+    stand_in.withhold("message")
+    yield stand_in
+    stand_in.leave()
+
+
+@pytest.fixture
+def slow_talk_served(tmp_path: Path, slow_talk_node: StandIn) -> Iterator[Served]:
+    yield from serve(tmp_path, slow_talk_node)
+
+
+def test_the_map_draws_before_the_node_says_what_passed(
+    browser: Browser, slow_talk_served: Served, slow_talk_node: StandIn
+) -> None:
+    root, _ = slow_talk_served
+    opened = Opened(browser, f"{root}mycelium/", SIZES[-1], "dark")
+    page = opened.page
+    the_map_stands(page, "live")
+    the_map_counts(page, COUNTED, "the map waited for the messages to draw the realm")
+    expect(page.locator("#asof"), "the map didn't say it was reading what passed").to_contain_text(
+        READING_TALK
+    )
+    box = page.locator('#world circle.cell[data-key="c:TERN01"]').bounding_box()
+    assert box, "the map drew no TERN01 to open"
+    page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    expect(
+        page.locator("#panel-body"), "a cell's drawer said nothing passed before it was heard"
+    ).to_contain_text("Still reading")
+    slow_talk_node.answer("message")
+    expect(
+        page.locator("#asof"), "the map still said it was reading what passed"
+    ).not_to_contain_text(READING_TALK, timeout=PACE_MS)
+    opened.close()
+
+
 # The networks node.json's realm leads, each drawn as a hub, and the one
 # branching from another, as a mind map branches.
 NETWORKS = ("orchestration.skiff1", "orchestration.tern01", "orchestration.heron1")

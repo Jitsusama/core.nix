@@ -6,7 +6,8 @@ daemon or its machine. It answers hello, list, watch and health on a unix
 socket from records it is handed by kind, and the test moves it as a real
 daemon moves: `tell` sends a change to every watch of a kind, `leave` closes
 every connection and the socket, as a daemon stopping does, and `start` opens
-it again. docs/daemons.md says what each answer holds.
+it again. `withhold` keeps a kind's first answer back until `answer`, as a
+node slow to read one kind is. docs/daemons.md says what each answer holds.
 """
 
 import json
@@ -38,6 +39,8 @@ class StandIn:
         self.records = {kind: {str(r["key"]): r for r in rs} for kind, rs in records.items()}
         self.lock = threading.Lock()
         self.watches: list[tuple[socket.socket, object, str]] = []
+        # The watches of each kind held back, waiting for their first answer.
+        self.withheld: dict[str, list[tuple[socket.socket, object]]] = {}
         self.connections: list[socket.socket] = []
         self.server: socket.socket | None = None
 
@@ -84,6 +87,20 @@ class StandIn:
                 if watched == kind:
                     self._send(conn, {"id": ask, "changed": changed, "gone": gone})
 
+    def withhold(self, kind: str) -> None:
+        """Keep each watch of `kind` from its first answer until `answer` sends it."""
+        with self.lock:
+            self.withheld.setdefault(kind, [])
+
+    def answer(self, kind: str) -> None:
+        """Send each watch of `kind` held back its first answer, and answer the rest at once."""
+        with self.lock:
+            waiting = self.withheld.pop(kind, [])
+            records = list(self.records.get(kind, {}).values())
+            for conn, ask in waiting:
+                self.watches.append((conn, ask, kind))
+                self._send(conn, {"id": ask, "records": records})
+
     def _accept(self, server: socket.socket) -> None:
         while True:
             try:
@@ -117,6 +134,9 @@ class StandIn:
         elif verb in {"list", "watch"} and kind in self.records:
             with self.lock:
                 records = list(self.records[kind].values())
+                if verb == "watch" and kind in self.withheld:
+                    self.withheld[kind].append((conn, ask_id))
+                    return
                 if verb == "watch":
                     self.watches.append((conn, ask_id, kind))
             self._send(conn, {"id": ask_id, "records": records})
