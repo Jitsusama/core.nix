@@ -5992,20 +5992,37 @@ mod tests {
     // what it delivered, 7 to 9 Mbit/s under a line with room, and the
     // queue formed past the VPN's CAKE, where Joel's upload inside the VPN
     // got 2 to 3% of the link. Held under the tunnel, the queue is the
-    // CAKE's, where his packets go first.
+    // CAKE's, where his packets go first. The wait is the median second's
+    // over the last minute, not its mean: each look past the upload's hold
+    // lifts the VPN's CAKE with it, past the tunnel, and one at 63 s made
+    // two thirds or more of that minute's wait, so where it fell in the
+    // share's climb decided the mean: from 12 to 64 ms over tunnels of 7
+    // to 9 Mbit/s. Unheld, the median second waits tens of seconds.
     #[test]
     fn a_wait_inside_the_tunnel_holds_the_vpn_s_own_queue_not_the_upload() {
         let mut c = anchored(12_000.0);
         let mut queued = 0.0;
-        let (lowest, waited) =
-            filling_a_tunnel(&mut c, (0.0, 120.0), |_| 7_500.0, false, &mut queued);
+        let (mut lowest, mut waits) = (f64::INFINITY, Vec::new());
+        let mut at = 0.0;
+        while at < 120.0 {
+            // Just under a second, so each call makes ten steps.
+            let (low, wait) = filling_a_tunnel(&mut c, (at, 0.95), |_| 7_500.0, false, &mut queued);
+            lowest = lowest.min(low);
+            if at >= 60.0 {
+                waits.push(wait);
+            }
+            at += 1.0;
+        }
+        waits.sort_by(f64::total_cmp);
+        let waited = waits[waits.len() / 2];
         assert!(
             lowest >= 10_799.0,
             "the upload was cut to {lowest} for the tunnel's own queue"
         );
         assert!(
             waited < 30.0,
-            "the tunnel held {waited:.0} ms on average past the VPN's CAKE, at a share of {:.2}",
+            "the tunnel held {waited:.0} ms in the median second past the VPN's CAKE, at a \
+             share of {:.2}",
             c.tunnel_share()
         );
         assert!(c.why().contains("inside its tunnel"), "{}", c.why());
