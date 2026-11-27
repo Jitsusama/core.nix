@@ -50,6 +50,29 @@ pub(super) const SURVEY_SPACING_LONGEST: f64 = 1800.0;
 
 /// How long after a whole survey that walked `seconds` the next waits, as
 /// `SURVEY_SPACING` says.
+/// Ends `watched`'s rest once it reads healthy, and forgets the emptied
+/// hour kept for it in `emptied`, so a restart can't bring back a rest
+/// the guard that kept it had already ended; whether it forgot one, so
+/// the forgetting is saved before a restart reads it.
+pub(super) fn healthy_ends_rest(
+    watched: &mut Watched,
+    emptied: &mut BTreeMap<PathBuf, f64>,
+) -> bool {
+    if watched.band != Band::Healthy {
+        return false;
+    }
+    watched.rest = None;
+    emptied.remove(&watched.path).is_some()
+}
+
+/// Whether a pass due as `decision` on a disk in `band` goes past a
+/// survey's spacing: one for a disk worse than filling, or forecast to
+/// be, as a forecast's pass starts early so it's done before the band
+/// arrives.
+pub(super) fn pressed(decision: Decision, band: Band) -> bool {
+    band > Band::Filling || matches!(decision, Decision::Reach(reach) if reach > Band::Filling)
+}
+
 pub(super) fn survey_spacing(seconds: f64) -> f64 {
     (SURVEY_SPACING * seconds).min(SURVEY_SPACING_LONGEST)
 }
@@ -184,9 +207,11 @@ impl Guard {
 
     /// Puts off, at `now`, every pass `due` that walks every source while
     /// the last whole survey's spacing lasts, unless a disk is worse than
-    /// filling, whose pass walks for them all. Each is due again at the
-    /// next step. The spacing is kept across restarts, as a switch
-    /// restarts the guard, and a wall clock set back ends it.
+    /// filling, or forecast to be within a pass, whose pass walks for them
+    /// all: a forecast's pass starts early so it's done before the band
+    /// arrives, which a wait would undo. Each is due again at the next
+    /// step. The spacing is kept across restarts, as a switch restarts the
+    /// guard, and a wall clock set back ends it.
     pub(super) fn space_surveys(&self, now: f64, due: &mut Vec<(u64, Decision, Thresholds)>) {
         let Some((ended, seconds)) = self.memory.surveyed else {
             return;
@@ -194,12 +219,12 @@ impl Guard {
         if !(0.0..survey_spacing(seconds)).contains(&(now - ended)) {
             return;
         }
-        let pressed = due.iter().any(|(device, ..)| {
+        let pressing = due.iter().any(|&(device, decision, _)| {
             self.watched
-                .get(device)
-                .is_some_and(|watched| watched.band > Band::Filling)
+                .get(&device)
+                .is_some_and(|watched| pressed(decision, watched.band))
         });
-        if !pressed {
+        if !pressing {
             due.retain(|&(_, decision, _)| decision == Decision::Collect);
         }
     }

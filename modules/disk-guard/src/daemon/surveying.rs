@@ -393,6 +393,14 @@ impl Guard {
                     .any(|(_, outcome)| matches!(outcome, Outcome::Kept(_))))
     }
 
+    /// Makes upkeep due at the next spare moment, for a reason of its own,
+    /// so the one it brings gets its own retry if it goes unheard, however
+    /// the upkeep before it went.
+    pub(super) fn upkeep_due(&mut self) {
+        self.memory.upkept = None;
+        self.memory.upkeep_unheard = false;
+    }
+
     /// Learns what a pass that `started` teaches: how long a pass takes,
     /// from a reach that reclaimed, or when upkeep was last done, from an
     /// upkeep pass that got through what was due.
@@ -413,13 +421,16 @@ impl Guard {
         } else if goal == Goal::Upkeep && !matches!(report.end, End::Unfinished | End::Stopped) {
             // Only a pass that got through what was due counts as upkeep:
             // one cut short by its length or a stop leaves the rest due.
+            let retry = tick.wall - crate::decide::UPKEEP_EVERY + UNHEARD_AGAIN;
+            // Every disk's upkeep in a step shares its scan, so the first
+            // to end judges for them all: another judging the same step
+            // would take back the retry it set, or retry the retry it ended.
+            if self.memory.upkept == Some(tick.wall) || self.memory.upkept == Some(retry) {
+                return;
+            }
             let again = self.kept_unvouched(scan, report) && !self.memory.upkeep_unheard;
             self.memory.upkeep_unheard = again;
-            self.memory.upkept = Some(if again {
-                tick.wall - crate::decide::UPKEEP_EVERY + UNHEARD_AGAIN
-            } else {
-                tick.wall
-            });
+            self.memory.upkept = Some(if again { retry } else { tick.wall });
         }
     }
 

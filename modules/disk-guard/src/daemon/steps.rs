@@ -2,6 +2,7 @@
 //! it asks the rest, and what it resumes after a sleep.
 
 use super::hearing::spoken_for;
+use super::passes::healthy_ends_rest;
 use super::{Explained, Guard, Places, Senses, held_off, loaded, predicates};
 use crate::anchor::Dir;
 use crate::band::{Band, Thresholds};
@@ -243,6 +244,7 @@ impl Guard {
         let spare_moment =
             spare(senses.power, senses.saver, &self.memory.awake, tick.wall) && !overload;
         let mut due = Vec::new();
+        let mut forgot = false;
         let heard = self.system_heard;
         let writers_held = self.writers_held;
         for (&device, watched) in &mut self.watched {
@@ -254,9 +256,7 @@ impl Guard {
             watched.band = thresholds.band(&space, watched.band);
             watched.fill.observe(tick.monotonic, space.free);
             watched.space = Some(space);
-            if watched.band == Band::Healthy {
-                watched.rest = None;
-            }
+            forgot |= healthy_ends_rest(watched, &mut self.memory.emptied);
             let decision = decide(&Situation {
                 band: watched.band,
                 free: space.free,
@@ -324,7 +324,7 @@ impl Guard {
         let frozen = self.memory.frozen.len();
         self.runaways(tick)?;
         let passed = passed || frozen != self.memory.frozen.len();
-        if passed || self.saved_at.is_none_or(|at| tick.wall - at >= SAVE_EVERY) {
+        if passed || forgot || self.saved_at.is_none_or(|at| tick.wall - at >= SAVE_EVERY) {
             if self.damaged {
                 let aside = self.memory_path.with_file_name("memory.json.damaged");
                 fs::rename(&self.memory_path, aside)?;

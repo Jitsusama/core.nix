@@ -988,20 +988,104 @@ fn a_guard_started_within_an_emptied_disk_s_hour_rests_it_for_what_is_left() {
     }
     assert_eq!(passes(), 2, "the first guard didn't pass twice");
     let mut next = home.guard(home.config("100%", "100%"));
-    let mut seen = Vec::new();
-    for (wall, monotonic) in [(130.0, 3730.0), (3000.0, 6600.0), (3800.0, 7400.0)] {
+    next.step(&at(130.0, 3730.0), &CALM).unwrap();
+    // Read before the next guard passes, so only the rest it restored
+    // can say so.
+    assert_eq!(
+        home.status()["filesystems"][0]["exhausted"],
+        true,
+        "the next guard didn't say the disk has cleared all it may"
+    );
+    let mut seen = vec![passes()];
+    // The hour left ends about 3,540 s on, at 7,270, and an hour from the
+    // restart would end at 7,330, so a step at 7,300 tells them apart.
+    for (wall, monotonic) in [(3000.0, 6600.0), (3700.0, 7300.0)] {
         next.step(&at(wall, monotonic), &CALM).unwrap();
         seen.push(passes());
     }
     assert_eq!(
         seen,
         [2, 2, 3],
-        "a guard started within the hour an emptied disk rests didn't rest it until the hour ended"
+        "a guard started within the hour an emptied disk rests didn't rest it for what was left"
     );
+}
+
+#[test]
+fn a_disk_that_read_healthy_since_it_emptied_rests_no_more_after_a_restart() {
+    // A running guard ends an emptied disk's rest once it reads healthy,
+    // so a restart mustn't bring that rest back once the disk fills again.
+    let home = Home::new();
+    fs::create_dir_all(home.root.join("scratch")).unwrap();
+    let reaches = || {
+        home.journal()
+            .iter()
+            .filter(|line| line["event"] == "pass" && line["why"] != "upkeep")
+            .count()
+    };
+    let begun = wall();
+    let at = |wall: f64, monotonic: f64| Tick {
+        wall: begun + wall,
+        monotonic,
+        ..tick()
+    };
+    {
+        let mut first = home.guard(home.config("100%", "100%"));
+        first.step(&at(0.0, 3600.0), &CALM).unwrap();
+        first.step(&at(70.0, 3670.0), &CALM).unwrap();
+    }
+    assert_eq!(reaches(), 2, "the first guard didn't pass twice");
+    {
+        let mut healthy = home.guard(home.config("0%", "0%"));
+        healthy.step(&at(130.0, 3730.0), &CALM).unwrap();
+    }
+    let mut filling = home.guard(home.config("100%", "100%"));
+    filling.step(&at(190.0, 3790.0), &CALM).unwrap();
     assert_eq!(
-        home.status()["filesystems"][0]["exhausted"],
-        true,
-        "the next guard didn't say the disk has cleared all it may"
+        reaches(),
+        3,
+        "a guard restarted on a disk filling again rested it for an hour that ended once it \
+         read healthy"
+    );
+}
+
+#[test]
+fn a_kept_hour_or_spacing_dated_ahead_of_the_clock_holds_nothing() {
+    // A wall clock set back leaves what was kept ahead of it, and neither
+    // may hold a filling disk past what it would have held.
+    let home = Home::new();
+    fs::create_dir_all(home.root.join("scratch")).unwrap();
+    let passes = || {
+        home.journal()
+            .iter()
+            .filter(|line| line["event"] == "pass")
+            .count()
+    };
+    let begun = wall();
+    let at = |wall: f64, monotonic: f64| Tick {
+        wall: begun + wall,
+        monotonic,
+        ..tick()
+    };
+    {
+        let mut first = home.guard(home.config("100%", "100%"));
+        first.step(&at(0.0, 3600.0), &CALM).unwrap();
+        first.step(&at(70.0, 3670.0), &CALM).unwrap();
+    }
+    assert_eq!(passes(), 2, "the first guard didn't pass twice");
+    let mut kept = home.memory();
+    let emptied = kept["emptied"].as_object_mut().unwrap();
+    assert!(!emptied.is_empty(), "the first guard kept no emptied hour");
+    for until in emptied.values_mut() {
+        *until = serde_json::json!(begun + 7200.0);
+    }
+    kept["surveyed"] = serde_json::json!([begun + 7200.0, 500.0]);
+    fs::write(home.root.join("state/memory.json"), kept.to_string()).unwrap();
+    let mut next = home.guard(home.config("100%", "100%"));
+    next.step(&at(130.0, 3730.0), &CALM).unwrap();
+    assert_eq!(
+        passes(),
+        3,
+        "a kept hour or survey dated ahead of the clock held a filling disk"
     );
 }
 
@@ -1115,7 +1199,14 @@ fn an_upkeep_unheard_twice_in_a_row_is_done_until_the_next() {
     let _heard = fake_system_vouching_nothing(&socket);
     let begun = wall();
     let mut seen = Vec::new();
-    for (wall, monotonic) in [(0.0, 3600.0), (610.0, 4210.0), (1220.0, 4820.0)] {
+    // The six-hourly upkeep after the second gets its own retry.
+    for (wall, monotonic) in [
+        (0.0, 3600.0),
+        (610.0, 4210.0),
+        (1220.0, 4820.0),
+        (22210.0, 25810.0),
+        (22820.0, 26420.0),
+    ] {
         let at = Tick {
             wall: begun + wall,
             monotonic,
@@ -1135,8 +1226,57 @@ fn an_upkeep_unheard_twice_in_a_row_is_done_until_the_next() {
     );
     assert_eq!(
         seen,
-        [1, 2, 2],
-        "an unheard upkeep didn't come back once, and only once"
+        [1, 2, 2, 3, 4],
+        "an unheard upkeep didn't come back once, and only once, each time"
+    );
+}
+
+#[test]
+fn an_upkeep_made_due_anew_after_an_unheard_one_comes_back_too() {
+    // A new boot, a switch or a spent snapshot makes upkeep due for a
+    // reason of its own, so the upkeep it brings isn't the unheard one's
+    // retry.
+    let home = Home::new();
+    let built = held_tree(&home, 400);
+    fs::remove_dir_all(home.root.join("proc/400")).unwrap();
+    home.hidden(300, 77);
+    let sockets = socket_dir();
+    let socket = sockets.path().join("system.socket");
+    let places = Places {
+        system: Some(socket.clone()),
+        ..home.places()
+    };
+    let mut guard = Guard::new(crate::unpaced(owned_trees(&home)), &places).unwrap();
+    let _heard = fake_system_vouching_nothing(&socket);
+    let begun = wall();
+    let mut seen = Vec::new();
+    for (wall, monotonic, boot) in [
+        (0.0, 3600.0, tick().boot),
+        (100.0, 3700.0, "another".to_string()),
+        (710.0, 4310.0, "another".to_string()),
+    ] {
+        let at = Tick {
+            wall: begun + wall,
+            monotonic,
+            boot,
+            ..tick()
+        };
+        guard.step(&at, &CALM).unwrap();
+        seen.push(
+            home.journal()
+                .iter()
+                .filter(|line| line["event"] == "pass" && line["why"] == "upkeep")
+                .count(),
+        );
+    }
+    assert!(
+        built.exists(),
+        "what only the system daemon could vouch for went"
+    );
+    assert_eq!(
+        seen,
+        [1, 2, 3],
+        "an upkeep a new boot made due, unheard, didn't come back ten minutes on"
     );
 }
 

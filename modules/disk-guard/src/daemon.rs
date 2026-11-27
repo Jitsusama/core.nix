@@ -490,7 +490,30 @@ fn ending(end: &End) -> String {
 #[cfg(test)]
 mod tests {
     use super::nix_garbage::min_free_again;
+    use super::passes::pressed;
     use super::{Band, Decision, Goal, Walked, Why, aim};
+
+    #[test]
+    fn a_disk_worse_than_filling_or_forecast_to_be_goes_past_a_survey_s_spacing() {
+        let cases = [
+            (Decision::Reach(Band::NearlyFull), Band::Filling),
+            (Decision::Reach(Band::CriticallyFull), Band::NearlyFull),
+            (Decision::Reach(Band::NearlyFull), Band::NearlyFull),
+            (Decision::Reach(Band::Filling), Band::Filling),
+            (Decision::Reach(Band::Filling), Band::Healthy),
+            (Decision::Upkeep, Band::Healthy),
+        ];
+        let went: Vec<bool> = cases
+            .iter()
+            .map(|&(decision, band)| pressed(decision, band))
+            .collect();
+        assert_eq!(
+            went,
+            [true, true, true, false, false, false],
+            "a pass went past a survey's spacing other than for a disk worse than filling \
+             or forecast to be"
+        );
+    }
 
     #[test]
     fn a_failing_min_free_read_waits_twice_as_long_each_time_up_to_an_hour() {

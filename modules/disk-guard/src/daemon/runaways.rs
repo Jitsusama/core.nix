@@ -366,7 +366,7 @@ impl Guard {
         let snapshot_spent = self.snapshot_spends.is_some_and(|at| tick.wall >= at);
         if snapshot_spent {
             self.snapshot_spends = None;
-            self.memory.upkept = None;
+            self.upkeep_due();
         }
         // A builds disk passing its budget changes no holder, and on a
         // healthy root nothing else would bring upkeep for six hours.
@@ -375,7 +375,7 @@ impl Guard {
             .is_some_and(|at| tick.wall - at < crate::survey::BUDGET_LOOKS_EVERY);
         if !looked && crate::survey::past_budget(&self.config) {
             self.budget_looked = Some(tick.wall);
-            self.memory.upkept = None;
+            self.upkeep_due();
         }
         let ended = self.memory.owners.as_ref().is_none_or(|before| {
             before.boot != seen.boot
@@ -383,7 +383,7 @@ impl Guard {
                 || seen.spent.iter().any(|tree| !before.spent.contains(tree))
         });
         if ended {
-            self.memory.upkept = None;
+            self.upkeep_due();
         }
         self.memory.owners = Some(seen);
     }
