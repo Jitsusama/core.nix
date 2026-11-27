@@ -1235,7 +1235,8 @@ fn an_upkeep_unheard_twice_in_a_row_is_done_until_the_next() {
 fn an_upkeep_made_due_anew_after_an_unheard_one_comes_back_too() {
     // A new boot, a switch or a spent snapshot makes upkeep due for a
     // reason of its own, so the upkeep it brings isn't the unheard one's
-    // retry.
+    // retry. A boot restarts the guard, which keeps what it last heard,
+    // and comes settled ten minutes after the last guard's last step.
     let home = Home::new();
     let built = held_tree(&home, 400);
     fs::remove_dir_all(home.root.join("proc/400")).unwrap();
@@ -1250,11 +1251,15 @@ fn an_upkeep_made_due_anew_after_an_unheard_one_comes_back_too() {
     let _heard = fake_system_vouching_nothing(&socket);
     let begun = wall();
     let mut seen = Vec::new();
-    for (wall, monotonic, boot) in [
-        (0.0, 3600.0, tick().boot),
-        (100.0, 3700.0, "another".to_string()),
-        (710.0, 4310.0, "another".to_string()),
+    for (wall, monotonic, boot, restarted) in [
+        (0.0, 3600.0, tick().boot, false),
+        (610.0, 4210.0, tick().boot, false),
+        (1300.0, 650.0, "another".to_string(), true),
+        (1910.0, 1260.0, "another".to_string(), false),
     ] {
+        if restarted {
+            guard = Guard::new(crate::unpaced(owned_trees(&home)), &places).unwrap();
+        }
         let at = Tick {
             wall: begun + wall,
             monotonic,
@@ -1283,7 +1288,7 @@ fn an_upkeep_made_due_anew_after_an_unheard_one_comes_back_too() {
         .collect();
     assert_eq!(
         seen,
-        [1, 2, 3],
+        [1, 2, 3, 4],
         "an upkeep a new boot made due, unheard, didn't come back ten minutes on: {heard:#?}"
     );
 }
