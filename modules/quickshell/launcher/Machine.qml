@@ -57,6 +57,10 @@
 // now as soon as it can; each answer here is asked again as they come.
 // With the daemon down, each thing stays, dimmed, saying it isn't
 // answering.
+//
+// Long because the disk guard's Space and What's Filling It, with each
+// holder's acts, are still made here until the guards serve their rows,
+// and they read the same guard and sessions as the answers above.
 import qs
 import Quickshell
 import QtQuick
