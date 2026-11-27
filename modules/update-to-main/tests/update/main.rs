@@ -3275,13 +3275,14 @@ fn an_input_asked_for_moves_only_when_asked_and_stays_till_the_lock_passes_it() 
         "the build wasn't given core's mycelium at the commit asked for: {overridden}"
     );
     world.commit_in("mycelium", "newer", true);
-    assert_eq!(
-        world.update().1,
-        Line::Unchanged {
-            commit: head.clone(),
-            followed: BTreeMap::from([(NESTED.to_owned(), wanted.clone())]),
-        },
-        "a plain ask didn't keep mycelium where it was asked, past the lock's pin"
+    // Matched on what it judges, so a field the line gains elsewhere doesn't
+    // change what this case asks.
+    let kept = BTreeMap::from([(NESTED.to_owned(), wanted.clone())]);
+    let ending = world.update().1;
+    assert!(
+        matches!(&ending, Line::Unchanged { commit, followed, .. }
+            if *commit == head && *followed == kept),
+        "a plain ask didn't keep mycelium where it was asked, past the lock's pin: {ending:?}"
     );
     // A lock gone off the line of what was asked rules again, rather than
     // refusing every update with no ask able to clear it.
