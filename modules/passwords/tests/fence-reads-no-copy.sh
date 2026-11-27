@@ -2,9 +2,8 @@
 # Runs as Joel in his session on the desktop's VM (vm-desktop-keeps-copies),
 # while Passwords holds a password it copied from the launcher, to show the
 # clipboard door refuses it to a fenced command. A fenced command's
-# wl-paste is the
-# fence's own shim, which asks pi's clipboard door outside the fence
-# (modules/pi/clipboard-door); niri tells the door a copy is a secret by
+# wl-paste is the fence's own shim, which asks pi's clipboard door outside
+# the fence (modules/pi/clipboard-door); niri tells the door a copy is a secret by
 # the mark Passwords gives it, and the door refuses it. Joel's own paste
 # reads it first, so it's held as the fenced read is tried, and an
 # ordinary copy after it reaches the same fenced reader, so the refusal

@@ -3,6 +3,7 @@ use crate::settings::{Copies, Kind};
 use std::path::{Path, PathBuf};
 
 mod crossing;
+mod cutting;
 mod handing;
 mod heard;
 mod holding;

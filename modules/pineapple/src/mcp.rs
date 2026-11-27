@@ -122,7 +122,8 @@ pub struct Gateway {
     /// The tool the last call put to the gateway, once its `tools/call`
     /// went out, so a caller can tell a tool's failing from one before.
     put: Option<String>,
-    /// Each tool the last call put to the gateway, on any of its passes.
+    /// Each tool the last call put to the gateway, on any of its passes
+    /// but one refused or forgotten, which asked nothing.
     asked_of: Vec<String>,
 }
 

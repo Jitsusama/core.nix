@@ -14,8 +14,9 @@ run alone may fail. Each file's opening docstring says its area in full.
   leave, sign in and save, the radios going off and on, and a card stuck or
   unanswered moving on to another network.
 - [`wifi-moves-vm-test.py`][moves]: the card moving between the access points
-  of one network, keeping its neighbours, and back to the one it left when the
-  one it was asked to has gone.
+  of one network, keeping its neighbours, giving way at once when a call's
+  echoes are lost, and back to the one it left when the one it was asked to
+  has gone.
 - [`wifi-holds-on-vm-test.py`][holds]: nothing that should leave the card on its
   network taking it off, and what's forgotten going from everywhere.
 - [`wifi_session.py`][session]: wifid on the test's machine, as the shell and

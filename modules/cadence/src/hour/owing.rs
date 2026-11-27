@@ -15,6 +15,7 @@ use crate::owe::{self, Owed};
 
 use super::lines::figure;
 use super::measures::queues::{self, QUEUE};
+use super::measures::way_out::{calls, path, relay};
 use super::measures::{
     BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, UNTESTED, apps, causes, drag,
     held_for_good, held_unseen, rounds, ruled, told_late,
@@ -184,6 +185,9 @@ fn filed(m: &Measure) -> Vec<Filed> {
     if m.key == UNTESTED {
         return untested_asked(m, &says);
     }
+    if let Some(what) = on_the_way(&m.key) {
+        return vec![on_the_way_asked(m, &what, says)];
+    }
     let owners = by_owner(m);
     if !owners.is_empty() {
         return owners
@@ -219,6 +223,49 @@ fn filed(m: &Measure) -> Vec<Filed> {
         ),
         says,
     }]
+}
+
+/// What a measure of the way the sessions' calls go out names, by its
+/// key: the model relay, pi's calls themselves, or the path to an origin;
+/// none for any other.
+fn on_the_way(key: &str) -> Option<String> {
+    if key.starts_with(relay::PREFIX) {
+        return Some("the model relay".to_owned());
+    }
+    if key.starts_with(calls::PREFIX) {
+        return Some("the sessions' model calls".to_owned());
+    }
+    key.strip_prefix(path::PREFIX)
+        .map(|origin| format!("the path to {origin}"))
+}
+
+/// The ask to the keeper of the way out about one of its counts past its
+/// ceiling, with what is behind it (its commonest causes, and the path
+/// beside the calls), so the cause comes back tested.
+fn on_the_way_asked(m: &Measure, what: &str, says: String) -> Filed {
+    let causes = if m.behind.is_empty() {
+        String::new()
+    } else {
+        // Each is quoted, kept to one line and rid of its own quotes, since
+        // a cause is the relay's, the origin's or pi's error text, so it
+        // never reads as cadence's words to the agent it reaches.
+        let quoted: Vec<String> = m
+            .behind
+            .iter()
+            .map(|cause| format!("\"{}\"", cause.replace(['"', '\n', '\r'], " ")))
+            .collect();
+        format!(" Most of them: {}.", quoted.join("; "))
+    };
+    Filed {
+        key: format!("hour:{}", m.key),
+        owner: m.owner.clone(),
+        text: format!(
+            "cadence hour: {what} is past its ceiling, {says}.{causes} Please reply \
+             with its tested cause, its fix and when it lands. It closes by itself once its \
+             figure is back in."
+        ),
+        says,
+    }
 }
 
 /// The ask about a merge's rounds past five that caught nothing. Its
@@ -406,6 +453,31 @@ fn routed(class: Class) -> bool {
     matches!(class, Class::Clean | Class::Cells)
 }
 
+/// Whether the ask about a claim of his rule filed as `key`, an hour's
+/// key with its `hour:` taken off, is back in, or none when `key` is no
+/// such ask. A claim is its sender's until its message's line is gone
+/// from the measure, read; with the mesh unread it says nothing, so it
+/// stays open.
+fn claim_back_in(key: &str, measures: &[Measure]) -> Option<bool> {
+    let (owner, id) = key
+        .strip_prefix(ruled::KEY)?
+        .strip_prefix(':')?
+        .rsplit_once(':')?;
+    let (opens, ends) = (format!("[{id}] "), format!(" · {owner}"));
+    Some(
+        measures
+            .iter()
+            .find(|m| m.key == ruled::KEY)
+            .is_some_and(|m| {
+                m.target.is_some()
+                    && !m
+                        .behind
+                        .iter()
+                        .any(|line| line.starts_with(&opens) && line.ends_with(&ends))
+            }),
+    )
+}
+
 /// Whether the drag filed as `key` is back in: its miss no longer open,
 /// or its measure read and within its target; a drag filed for each line's
 /// owner carries that owner after its measure's key, and a cells one is
@@ -451,25 +523,14 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
             .map(|(owner, date)| format!("{date} · {owner}"));
         return m.target.is_some() && line.is_none_or(|line| !m.behind.contains(&line));
     }
-    // A claim of his rule is its sender's until its message's line is gone
-    // from the measure, read; with the mesh unread it says nothing, so
-    // stays open.
-    let claimed = key
-        .strip_prefix(ruled::KEY)
-        .and_then(|rest| rest.strip_prefix(':'))
-        .and_then(|rest| rest.rsplit_once(':'));
-    if let Some((owner, id)) = claimed {
-        let (opens, ends) = (format!("[{id}] "), format!(" · {owner}"));
-        return measures
-            .iter()
-            .find(|m| m.key == ruled::KEY)
-            .is_some_and(|m| {
-                m.target.is_some()
-                    && !m
-                        .behind
-                        .iter()
-                        .any(|line| line.starts_with(&opens) && line.ends_with(&ends))
-            });
+    if let Some(back) = claim_back_in(key, measures) {
+        return back;
+    }
+    // A path is measured for a day after its origin was last sampled, so a
+    // path gone from the hour is an origin no longer named, and its ask is
+    // settled as the queues' are, rather than held open for good.
+    if key.starts_with(path::PREFIX) && !measures.iter().any(|m| m.key == key) {
+        return true;
     }
     // An unread file leaves only its one line, never a figure, so a drag
     // isn't closed while its figure can't be seen; a figure written with no
@@ -598,9 +659,12 @@ pub fn file(
     }
     // Never the lead, which passes them over, so filed whatever leads; a
     // measure filed twice is owed once, as the ledger holds it open. A
-    // miss with no test that runs is asked of its owner the same way.
+    // miss with no test that runs is asked of its owner the same way, and
+    // so is each count past its ceiling of the way the calls go out (the
+    // relay, pi's calls and the path), since every session's turns wait on
+    // it whatever else drags.
     dragging.extend(measures.iter().filter(|m| {
-        let beside = [FINDINGS, UNTESTED].contains(&m.key.as_str());
+        let beside = [FINDINGS, UNTESTED].contains(&m.key.as_str()) || on_the_way(&m.key).is_some();
         let apart = m.key.starts_with(rounds::FRUITLESS)
             || m.key.starts_with(told_late::KEY)
             || m.key == ruled::KEY
@@ -1007,6 +1071,111 @@ mod tests {
         assert!(
             ledger.iter().all(|e| !e.open),
             "back in closes every owner's"
+        );
+    }
+
+    #[test]
+    fn failing_calls_and_a_slow_path_are_each_asked_naming_the_path() {
+        let lead = measure("misses", Class::Miss, 1.0, Some(0.0));
+        let mut failing = measure(calls::SHARE, Class::Functional, 33.0, Some(2.0));
+        failing.owner = "OXUW1Y".to_owned();
+        failing.behind = vec![
+            "176 on Request timed out.".to_owned(),
+            "TLS to model.example via tunnel0: median 7.20 s".to_owned(),
+        ];
+        let mut slow = measure("path:tls:model.example", Class::Functional, 7.2, Some(1.0));
+        slow.owner = "OXUW1Y".to_owned();
+        let told = file(&mut Vec::new(), &[lead, failing, slow], "2026-11-26", 1000);
+        let asked: Vec<&str> = told
+            .iter()
+            .filter(|(to, _)| to == "OXUW1Y")
+            .map(|(_, text)| text.as_str())
+            .collect();
+        assert_eq!(asked.len(), 2, "each is asked apart: {told:?}");
+        assert!(
+            asked
+                .iter()
+                .any(|text| text.contains("Most of them: \"176 on Request timed out.\"; ")),
+            "a cause isn't quoted: {asked:?}"
+        );
+        assert!(
+            asked
+                .iter()
+                .any(|text| text.contains("the sessions' model calls is past")
+                    && text.contains("via tunnel0")),
+            "the calls' ask doesn't name the path: {asked:?}"
+        );
+        assert!(
+            asked
+                .iter()
+                .any(|text| text.contains("the path to model.example is past")),
+            "the path isn't asked: {asked:?}"
+        );
+    }
+
+    #[test]
+    fn each_relay_count_past_its_ceiling_is_asked_of_its_keeper_whatever_leads() {
+        let lead = measure("misses", Class::Miss, 1.0, Some(0.0));
+        let mut past = measure(relay::ANSWERED_502, Class::Functional, 704.0, Some(50.0));
+        past.owner = "OXUW1Y".to_owned();
+        past.behind = vec!["700 on http2 error: keep-alive timed out".to_owned()];
+        let mut within = measure(relay::RESETS, Class::Functional, 12.0, Some(400.0));
+        within.owner = "OXUW1Y".to_owned();
+        let mut ledger = Vec::new();
+        let hour = [lead, past.clone(), within];
+        let told = file(&mut ledger, &hour, "2026-11-26", 1000);
+        let asked: Vec<&(String, String)> = told.iter().filter(|(to, _)| to == "OXUW1Y").collect();
+        assert_eq!(asked.len(), 1, "only the count past its ceiling: {told:?}");
+        assert!(
+            asked[0].1.contains("tested cause") && asked[0].1.contains("keep-alive timed out"),
+            "the ask names neither its causes nor what it wants: {}",
+            asked[0].1
+        );
+        assert!(
+            file(&mut ledger, &hour, "2026-11-26", 4600)
+                .iter()
+                .all(|(to, _)| to != "OXUW1Y"),
+            "an open ask was told again"
+        );
+        let mut unread = past.clone();
+        unread.target = None;
+        file(&mut ledger, &[unread], "2026-11-26", 6400);
+        assert!(
+            ledger
+                .iter()
+                .any(|e| e.open && e.key.starts_with("hour:relay:")),
+            "an hour its journal went unread closed the ask"
+        );
+        past.now = 10.0;
+        file(&mut ledger, &[past], "2026-11-26", 8200);
+        assert!(
+            !ledger
+                .iter()
+                .any(|e| e.open && e.key.starts_with("hour:relay:")),
+            "a count back in left its ask open"
+        );
+    }
+
+    #[test]
+    fn a_path_ask_closes_once_its_origin_is_no_longer_sampled() {
+        let mut slow = measure("path:tls:forge.example", Class::Functional, 7.2, Some(1.0));
+        slow.owner = "OXUW1Y".to_owned();
+        let mut ledger = Vec::new();
+        file(&mut ledger, &[slow], "2026-11-26", 1000);
+        assert!(
+            ledger
+                .iter()
+                .any(|e| e.open && e.key == "hour:path:tls:forge.example"),
+            "a slow path wasn't asked: {ledger:?}"
+        );
+        let mut other = measure("path:tls:model.example", Class::Functional, 0.2, Some(1.0));
+        other.owner = "OXUW1Y".to_owned();
+        file(&mut ledger, &[other], "2026-11-27", 1000 + DAY);
+        assert!(
+            !ledger
+                .iter()
+                .any(|e| e.open && e.key == "hour:path:tls:forge.example"),
+            "an origin gone from the hour held its ask open: {ledger:?}"
         );
     }
 

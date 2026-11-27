@@ -167,6 +167,7 @@ racedGate.open();
 assert.equal(await within(lateRace, "a late import beside a load never ended"), "whole");
 const raced = await within(racingLoad, "a load beside a late import never ended");
 assert.equal(await raced("raced-loads"), "whole", "a load raced by a late import saw nothing");
+assert.equal(evaluations().raced, 2, "a late import racing a load didn't evaluate its own");
 
 // Nor is a load given a module that an import made as an extension runs is
 // still evaluating: it evaluates its own.
