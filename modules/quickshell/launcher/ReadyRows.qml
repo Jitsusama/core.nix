@@ -32,6 +32,11 @@ Scope {
     // The daemon's socket, and the place its rows are watched for.
     required property string socket
     required property string place
+    // Which daemon serves them, by its socket below the runtime folder (Presented.servedBy), so
+    // every key it serves comes in as Presented.keyServed keys it: a `program:` key whole only
+    // from the programs daemon.
+    readonly property string servedBy: Presented.servedBy(ready.socket,
+        Quickshell.env("XDG_RUNTIME_DIR") ?? "")
     // The kinds of record watched beside the rows, as `summary`.
     property var beside: []
     // What else narrows the watch, as the daemon reads it.
@@ -938,7 +943,7 @@ Scope {
         };
         const items = itemsOf(row);
         return maker.member(Object.assign({
-            key: Presented.keyMade(row, key, ready.socket),
+            key: Presented.keyMade(row, key, ready.servedBy),
             thing: !!row.drawer,
             name: row.name ?? "",
             // A heading names the rows under it and is never one: no move
@@ -1180,7 +1185,7 @@ Scope {
             : fieldOf(key, one, 0, one.ask, served(key)?.name ?? "");
         const stands = sayingOf(key, [one], undefined, worded.note ?? "");
         return maker.thing(Object.assign({
-            key: kept ?? one.key,
+            key: Presented.keyServed(kept ?? one.key, ready.servedBy),
             wordsId: one.key,
             wordState: state,
             state: stands,
@@ -1276,7 +1281,7 @@ Scope {
     // was done, so nothing else it asks is sent.
     function notOpened(key, one, why) {
         const row = served(key);
-        const shown = Presented.keyMade(row ?? {}, key, ready.socket);
+        const shown = Presented.keyMade(row ?? {}, key, ready.servedBy);
         const gone = Presented.quoted(Ready.openedIn(one)).slice(1, -1);
         console.info(`launcher: ${actSaid(one)} opened nothing, its ${gone} gone`);
         maker?.becomes(shown, rowAt(key), row?.name ?? "", verbOf(one), { done: () => false });
@@ -1467,8 +1472,8 @@ Scope {
         // becomes the limit's own row, so that row is the one held.
         const into = one.becomes ?? null;
         const becomesKey = into?.key ?? key;
-        const shown = into ? Presented.keyMade(into, becomesKey, ready.socket)
-            : Presented.keyMade(row, key, ready.socket);
+        const shown = into ? Presented.keyMade(into, becomesKey, ready.servedBy)
+            : Presented.keyMade(row, key, ready.servedBy);
         let answered = false;
         const becomes = into ? ready.make(into, becomesKey) : rowAt(key);
         const how = one.becomes ? undefined : { done: () => answered };

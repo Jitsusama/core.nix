@@ -722,12 +722,38 @@ QtObject {
         // daemon's row claiming a program says only its kind.
         Expect.same("another daemon's row keyed as a program is said by its kind alone",
             Presented.keyShown(Presented.keyMade({ thing: "program:firefox" }, "k",
-                "/run/user/1000/daemons/agents.sock"), false), "program");
+                "daemons/agents.sock"), false), "program");
         Expect.same("as is one whose daemon isn't named",
             Presented.keyShown(Presented.keyMade({}, "program:firefox"), false), "program");
         Expect.same("but the programs daemon's is said whole",
             Presented.keyShown(Presented.keyMade({ thing: "program:firefox" }, "k",
-                "/run/user/1000/daemons/programs.sock"), false), "program:firefox");
+                "daemons/programs.sock"), false), "program:firefox");
+        // Every served key comes in by keyServed, rows a daemon is read for without ReadyRows,
+        // as Timers' and Runs', and acts among them, so none claims a program or an own kind.
+        Expect.same("a served key claiming a program is kept under row:",
+            Presented.keyServed("program:firefox"), "row:program:firefox");
+        Expect.same("and said by its kind alone",
+            Presented.keyShown(Presented.keyServed("program:firefox"), false), "program");
+        Expect.same("as is one claiming a place", Presented.keyServed("place:x", ""),
+            "row:place:x");
+        Expect.same("but a daemon's own key is kept as served",
+            Presented.keyServed("verb:agent:talk", "daemons/agents.sock"), "verb:agent:talk");
+        Expect.same("as is the programs daemon's program",
+            Presented.keyServed("program:firefox", "daemons/programs.sock"), "program:firefox");
+        // Which daemon served a row is its socket below the runtime folder, matched whole.
+        Expect.same("the programs daemon is named by its socket below the runtime folder",
+            Presented.servedBy("/run/user/1000/daemons/programs.sock", "/run/user/1000"),
+            "daemons/programs.sock");
+        Expect.same("not one ending as its socket does elsewhere",
+            Presented.servedBy("/elsewhere/daemons/programs.sock", "/run/user/1000"), "");
+        Expect.same("nor one in a folder only starting as the runtime folder does",
+            Presented.servedBy("/run/user/10000/daemons/programs.sock", "/run/user/1000"), "");
+        Expect.same("nor any with no runtime folder",
+            Presented.servedBy("/daemons/programs.sock", ""), "");
+        Expect.same("so such a daemon's program is said by its kind alone",
+            Presented.keyShown(Presented.keyMade({ thing: "program:firefox" }, "k",
+                Presented.servedBy("/elsewhere/daemons/programs.sock", "/run/user/1000")),
+                false), "program");
         Expect.same("an ask is read by its act's words in the key language",
             Ready.wordsOf({ key: "verb:firmware:install", ask: { ask: "install" } }),
             "verb:firmware:install");

@@ -206,7 +206,7 @@ Provider {
         const fields = {
             // As ready.thing keys a served row, so one claiming the
             // launcher's own kind is kept under `row:`.
-            key: Presented.keyMade(row, key),
+            key: Presented.keyMade(row, key, ready.servedBy),
             name: row.name ?? "",
             side: ready.sideOf(row),
             copy: copied ? copied.copy : "",

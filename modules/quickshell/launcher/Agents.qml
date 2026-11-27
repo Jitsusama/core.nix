@@ -52,6 +52,7 @@ import "Moment.js" as Moment
 import "Numbers.js" as Numbers
 import "Openings.js" as Openings
 import "Order.js" as Order
+import "Presented.js" as Presented
 import "ReopenTally.js" as ReopenTally
 import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
@@ -201,12 +202,12 @@ Provider {
         const act = TalkAnswers.topTalkAct(provider.isVoid(one.ask.address),
             !!asking && provider.answerable(asking));
         if (act === "line")
-            return provider.lineOpened(one.key);
+            return provider.lineOpened(Presented.keyServed(one.key, top.servedBy));
         if (act === "answer")
             return provider.sessionAct(asking, "talk");
         const talk = provider.talking(one.ask.address, row.name ?? "");
         return thing({
-            key: one.key,
+            key: Presented.keyServed(one.key, top.servedBy),
             verb: Words.verb(one.key),
             name: Words.name(one.key),
             glyph: Words.glyph(one.key),
@@ -249,7 +250,7 @@ Provider {
         if (!StartsStopped.lifts(one))
             return null;
         return thing({
-            key: one.key,
+            key: Presented.keyServed(one.key, top.servedBy),
             verb: Words.verb(one.key),
             name: Words.name(one.key),
             glyph: Words.glyph(one.key),
@@ -282,7 +283,7 @@ Provider {
         if (ask === null)
             return null;
         return thing({
-            key: one.key,
+            key: Presented.keyServed(one.key, top.servedBy),
             verb: Words.verb(one.key),
             name: Words.name(one.key),
             glyph: Words.glyph(one.key),
@@ -294,7 +295,7 @@ Provider {
 
     function carryBack(key, row, ask) {
         const said = Words.of("verb:carry:back").said ?? {};
-        const shown = CarryBack.keyed(row, key);
+        const shown = CarryBack.keyed(row, key, top.servedBy);
         let answered = false;
         provider.becomes(shown, {
             side: said.carrying ?? "",

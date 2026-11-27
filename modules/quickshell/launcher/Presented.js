@@ -265,23 +265,34 @@ function ownKind(key) {
     return KeysSaid.keysOwn.find(kind => text.startsWith(kind));
 }
 
-// The key a row a daemon serves is made with, from the key it wrote: kept as written, unless it
-// claims a kind of the launcher's own, as `place:`, which is kept under `row:` as a daemon's
-// record is, since keyShown says a key of those kinds whole as the launcher's id, and a daemon's
-// may hold a name. Timers', Runs' and OnSelection's rows are made with it; the daemon is still
-// asked by its own key. Kept here beside ownKind, as ReadyRows.js is at biome's length.
-function keyServed(key) {
-    return ownKind(key) === undefined ? key : `row:${key}`;
+// The key a row a daemon serves is made with, from the key it wrote: the one door every served
+// key comes in by. Kept as written, unless it claims a kind of the launcher's own, as `place:`,
+// which is kept under `row:` as a daemon's record is, since keyShown says a key of those kinds
+// whole as the launcher's id, and a daemon's may hold a name; so is a `program:` key from any
+// daemon but the programs daemon, since keyShown says a program's id whole as that daemon's
+// alone. `daemon` is the socket it came over as servedBy names it, left out for a daemon read
+// another way, as Timers' is. Timers', Runs' and OnSelection's rows are made with it; the daemon
+// is still asked by its own key. Kept here beside ownKind, as ReadyRows.js is at biome's length.
+function keyServed(key, daemon) {
+    const text = String(key);
+    const programs = daemon === KeysSaid.programsSocket;
+    const claims = ownKind(text) !== undefined || (!programs && text.startsWith("program:"));
+    return claims ? `row:${text}` : key;
 }
 
 // The key a served row is made with (ReadyRows.qml): its thing, else its key, as its daemon
-// wrote them, from the daemon serving on `socket`, where that's given, made as keyServed makes
-// one; but a `program:` key from any daemon but the programs daemon is kept under `row:` too,
-// since keyShown says a program's id whole as that daemon's alone.
-function keyMade(row, key, socket) {
-    const made = row.thing ?? key;
-    const programs = String(socket ?? "").endsWith(KeysSaid.programsSocket);
-    return !programs && String(made).startsWith("program:") ? `row:${made}` : keyServed(made);
+// wrote them, made as keyServed makes one.
+function keyMade(row, key, daemon) {
+    return keyServed(row.thing ?? key, daemon);
+}
+
+// The socket a place's rows come over, as keyServed reads it: its path below the runtime folder,
+// as `daemons/programs.sock`, or "" for one elsewhere, as wifid's `/run/wifid/rows`, or with no
+// runtime folder, so a socket that only ends as the programs daemon's isn't taken for it.
+function servedBy(socket, runtime) {
+    const path = String(socket ?? "");
+    const folder = String(runtime ?? "");
+    return folder !== "" && path.startsWith(`${folder}/`) ? path.slice(folder.length + 1) : "";
 }
 
 // A program's own id, as a power profile's hold names it: whole where `whole`, else where it's
@@ -307,12 +318,12 @@ function kindsLed(parts, kinds) {
 // launcher's own ids are whole, and an own kind's key holding more than an id is said by that kind
 // alone. `window:<app>:<title>` is `window:<app>`, and the programs daemon's `program:<id>` whole,
 // so each program's drawer is timed apart (RTOIMQ, 2026-11-24), only where its id is shaped as an
-// app's and else by its kind; another daemon's so keyed is made `row:program:` (keyMade), so it's
-// said by its kind. A `verb:` key, its daemon's own words,
-// goes to its kind, and its act where that's one of KeysSaid's actWords: `verb:agent:close` whole,
-// `verb:disk:nvme0:/home` as `verb:disk`, `verb:notice:offer:<id>` as `verb:notice:offer`. A new
-// kind says nothing more until it's named here, and a first part that isn't a kind's word, as a
-// name with a colon in it, nothing at all. A number is read as text.
+// app's and else by its kind; another daemon's so keyed comes as `row:program:` (keyServed), so
+// it's said by its kind. A `verb:` key, its daemon's own words, goes to its kind, and its act
+// where that's one of KeysSaid's actWords: `verb:agent:close` whole, `verb:disk:nvme0:/home` as
+// `verb:disk`, `verb:notice:offer:<id>` as `verb:notice:offer`. A new kind says nothing more
+// until it's named here, and a first part that isn't a kind's word, as a name with a colon in it,
+// nothing at all. A number is read as text.
 function keyShown(key, whole) {
     const text = String(key);
     if (whole) {
