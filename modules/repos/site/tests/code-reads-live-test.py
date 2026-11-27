@@ -798,17 +798,28 @@ def test_a_reload_holds_no_room_for_a_season_only_z_opened(code_page: Page) -> N
     assert held["open"] == "", f"the reload held {held['open']} for trees it folds again"
 
 
+# The room a last visit at this width kept, as page.ts writes it as the page is left.
+KEPT_ROOM = """localStorage.setItem(
+  "code-room",
+  JSON.stringify({ width: innerWidth, heights: { title: 120, list: 480 } }),
+);"""
+
+
 def test_a_resize_before_the_feeds_arrive_lets_the_room_go(code_page: Page) -> None:
     says_it_stands(code_page, "live")
-    # The page keeps room only for a list it drew, and live can come before the rows do on a
-    # busy builder, so the reload is left until there's a list whose room it keeps.
-    expect(row(code_page, "github:owl/core"), "Code drew no row for core").to_be_visible()
     # Every feed answered by a socket that never speaks, so nothing draws and the room stays
     # held for its while, as on a slow start; the server answers from what it holds otherwise.
     code_page.route_web_socket("**", lambda _socket: None)
+    # The room is kept for the reload before the page's own script reads it, as the last visit
+    # left it, rather than by leaving this one: on a busy builder the room this visit kept was
+    # once gone by the reload's first paint, and the reloads above prove what's kept. So the
+    # case is about the resize alone, and if no room is held, it says what was kept.
+    code_page.add_init_script(KEPT_ROOM)
     code_page.add_init_script(HELD_ROOM)
     code_page.reload(wait_until="domcontentloaded")
-    assert code_page.evaluate("() => globalThis.held.list") != "", "the reload held no room"
+    held = code_page.evaluate("() => globalThis.held.list")
+    kept = code_page.evaluate("() => localStorage.getItem('code-room')")
+    assert held != "", f"the reload held no room, from {kept}"
     size = code_page.viewport_size or {"width": 1280, "height": 800}
     code_page.set_viewport_size({"width": size["width"] - 200, "height": size["height"]})
     # Well inside the 3 seconds the room is held for anyway, so only the resize can let it go.
