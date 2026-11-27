@@ -411,9 +411,7 @@ fn tell_units(
     now: i64,
 ) -> io::Result<()> {
     let path = folder.join("units.json");
-    // A record torn or barred is refused and kept as it is, rather than
-    // read as none told and every spell under way told again.
-    let mut told: units::Told = whole::read_kept(&path)?;
+    let mut told = units_told(&path)?;
     let runtime = env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from);
     let mut read = units::read(now, true, runtime.as_deref());
     let mut failed = None;
@@ -733,6 +731,26 @@ fn fetch_or_keep(fetch: impl Fn() -> io::Result<String>) -> bool {
     }
 }
 
+/// The record of broken units told, at `path`. One barred is refused, as
+/// it can't be written either. One torn, or of another shape, is moved
+/// aside to `units.json.torn`, said on stderr, and read as none told: each
+/// spell under way is told once more, rather than none ever again while
+/// the record stays refused.
+fn units_told(path: &Path) -> io::Result<units::Told> {
+    match whole::read_kept(path) {
+        Err(err) if err.kind() == io::ErrorKind::InvalidData => {
+            let aside = path.with_extension("json.torn");
+            fs::rename(path, &aside)?;
+            eprintln!(
+                "cadence: {err}; moved to {}, and each spell under way is told again",
+                aside.display()
+            );
+            Ok(units::Told::default())
+        }
+        read => read,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
@@ -775,6 +793,30 @@ mod tests {
             fs::read_to_string(&path).expect("the record is still there"),
             torn,
             "the tick wrote over a record it couldn't read"
+        );
+    }
+
+    #[test]
+    fn a_torn_record_of_units_told_is_moved_aside_and_read_as_none_told() {
+        let root = tempfile::tempdir().expect("a scratch folder");
+        let path = root.path().join("units.json");
+        for torn in ["{\"spells\":{\"a\":", "{\"spells\":5}"] {
+            fs::write(&path, torn).expect("a torn record");
+            let told = units_told(&path).expect("a torn record read as none told");
+            assert!(told.spells.is_empty(), "a torn record was read: {torn}");
+            assert_eq!(
+                (
+                    path.exists(),
+                    fs::read_to_string(path.with_extension("json.torn")).ok()
+                ),
+                (false, Some(torn.to_owned())),
+                "a torn record wasn't moved aside whole, so the tick would refuse it for good"
+            );
+        }
+        fs::create_dir(&path).expect("a barred record");
+        assert!(
+            units_told(&path).is_err(),
+            "a barred record of units told was read as none told"
         );
     }
 
