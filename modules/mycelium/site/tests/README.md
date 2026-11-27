@@ -18,8 +18,8 @@ how wide a line is drawn at each zoom, `motion.test.ts` how the map's motion is
 timed, `layout.test.ts` where everything stands and that it stays there,
 `canvas.test.ts` what the ground layer says and which line a pointer touches,
 `shape.test.ts` when a reading draws the whole map again, and `sprout.test.ts`
-the link new work hands the Launcher, judging addresses by `addresses.txt` and
-machines' names by `machines.txt`, and
+the link new work hands the Launcher and the cell and machine its line offers,
+judging addresses by `addresses.txt` and machines' names by `machines.txt`, and
 `acts.test.ts` what a cell's drawer offers, Go to It first, and its question
 said whole; all twenty-two run as the site builds (`mycelium-site-holds`). `map-reads-live-test.py`
 proves the built page reads live through the sites' server in Chromium, from
