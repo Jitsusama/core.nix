@@ -265,7 +265,10 @@ fn told_late_asked(m: &Measure, says: &str) -> Vec<Filed> {
 /// is gone: when its sender answers, or a day after it was sent. Each
 /// sender is asked about its oldest one at a time, as [`RULED_EACH`] says,
 /// and the next once that one closes, so a day's backlog never wakes a
-/// cell for every message in it; the card still names them all.
+/// cell for every message in it; the card names the same one and counts
+/// the rest. Only [`back_in`] closes these, by this measure's key, so a
+/// revert of the measure must first settle every open
+/// `hour:rulings-unsourced:` entry, or each goes late and stays open.
 fn ruled_asked(m: &Measure) -> Vec<Filed> {
     let mut asked: BTreeMap<&str, usize> = BTreeMap::new();
     m.behind
@@ -1393,7 +1396,7 @@ mod tests {
         let told = file(&mut ledger, &both, "2026-11-26", 1000);
         let asked: Vec<&(String, String)> = told
             .iter()
-            .filter(|(_, text)| text.contains("Joel ruled"))
+            .filter(|(_, text)| text.contains("a rule or wish of Joel's"))
             .collect();
         let mut senders: Vec<&str> = asked.iter().map(|(to, _)| to.as_str()).collect();
         senders.sort_unstable();

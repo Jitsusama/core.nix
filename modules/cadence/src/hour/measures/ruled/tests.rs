@@ -93,6 +93,8 @@ fn a_date_or_a_clock_given_as_when_he_said_it_backs_a_claim() {
         "On 22 Nov, Joel ruled it.",
         "Joel ruled it. He said so on 22 Nov.",
         "He said so on 22 Nov. Joel ruled it.",
+        "On 22 Nov he said Joel wants it.",
+        "Joel wants it, his words of 10:05.",
     ];
     for text in backed {
         assert!(
@@ -121,6 +123,16 @@ fn words_that_only_look_like_a_date_or_a_quote_back_nothing() {
         "I broke Joel's rule, \"never reach the lab box\".",
         "Joel ruled it.\n\"Never block the work\", he said.",
         "T6E7X6, 10:08: Joel wants the lab shut.",
+        // A time leading his name or he is when the rule was broken or he
+        // was seen, unless a word of his saying follows.
+        "At 10:08, Joel's rule was broken by me.",
+        "On 26 Nov Joel's rule was broken twice.",
+        "I broke Joel's rule. At 10:08 he saw it.",
+        // A time after him with no word of his saying is a cell's own.
+        "I broke Joel's rule. I told him at 10:08.",
+        "Joel wants the lab shut; I'll tell him at 14:00.",
+        // What he said, told with no date, is a claim of his words too.
+        "Joel said the launcher hangs.",
     ];
     for text in unbacked_ones {
         assert!(
@@ -220,6 +232,10 @@ fn a_claim_with_a_word_inside_joelish_isnt_one() {
         unbacked("Those were Joel's calls.").is_some(),
         "a claim in the plural went uncounted"
     );
+    assert!(
+        unbacked("Those were Joel's wishes.").is_some(),
+        "a claim in the plural in es went uncounted"
+    );
 }
 
 /// A denial of his rule is the correction the measure wants, not a claim,
@@ -264,13 +280,20 @@ fn the_cards_lines_passed_on_claim_nothing() {
 }
 
 /// The ask's text is written by [`ask`] and read back by [`about`], so
-/// rewording one can't leave the other reading no ask at all.
+/// rewording one can't leave the other reading no ask at all; and it
+/// claims nothing itself, so a cell passing it on isn't asked in turn.
 #[test]
-fn an_asks_text_names_the_claim_it_asks_about() {
+fn an_asks_text_names_the_claim_it_asks_about_and_claims_nothing() {
+    let asked = ask("0000000a", "I broke Joel's rule.");
     assert_eq!(
-        about(&ask("0000000a", "I broke Joel's rule.")),
+        about(&asked),
         Some("0000000a"),
         "the ask's own text didn't read back as about its claim"
+    );
+    assert_eq!(
+        unbacked(&format!("Passing this on: {asked}")),
+        None,
+        "the ask's own words, passed on, were counted as a claim"
     );
 }
 
@@ -427,11 +450,12 @@ fn put(folder: &Path, m: &Message) {
     fs::write(folder.join(format!("{}.json", m.id)), body).expect("the message wasn't written");
 }
 
-/// The measure reads the last day's messages, and cadence's own over the
-/// day before too, so an answer to an ask sent late in its claim's day is
-/// still read as one; nothing else older than a day is opened.
+/// The measure reads two days of messages, so an answer to an ask sent
+/// late in its claim's day is still read as one, and a reply re the ask
+/// after the first answer is still a re-claim once that answer is more
+/// than a day old.
 #[test]
-fn the_measure_reads_cadences_asks_over_two_days_and_the_rest_over_one() {
+fn the_measure_reads_two_days_so_late_answers_and_late_re_claims_are_judged() {
     let dir = tempfile::tempdir().expect("the test's folder couldn't be made");
     let messages = dir
         .path()
@@ -446,13 +470,30 @@ fn the_measure_reads_cadences_asks_over_two_days_and_the_rest_over_one() {
     answer.re = Some(ask.id.clone());
     put(&messages, &ask);
     put(&messages, &answer);
-    let old = format!("{}-T6E7X6-1-0000000f", (NOW - DAY - 600) * 1000);
-    fs::write(messages.join(format!("{old}.json")), "{").expect("the old file wasn't written");
     let m = read(dir.path(), NOW);
     assert_eq!(
         (m.behind.as_slice(), m.says.as_str()),
         ([].as_slice(), SAYS),
-        "an answer to an ask over a day old was counted, or an old message was opened"
+        "an answer to an ask over a day old was counted"
+    );
+    let later = asked("00000011", DAY + 600, "0000000b", "5UTLKM");
+    let mut first = sent(
+        "00000012",
+        DAY + 300,
+        "5UTLKM",
+        "Dropped: it was my caution.",
+    );
+    first.re = Some(later.id.clone());
+    let mut again = sent("00000013", 60, "5UTLKM", "I stand by it: Joel wants it.");
+    again.re = Some(later.id.clone());
+    for m in [&later, &first, &again] {
+        put(&messages, m);
+    }
+    let m = read(dir.path(), NOW);
+    assert_eq!(
+        m.behind,
+        ["[00000013] I stand by it: Joel wants it. · 5UTLKM".to_owned()],
+        "a re-claim after a first answer over a day old was read as the answer"
     );
 }
 

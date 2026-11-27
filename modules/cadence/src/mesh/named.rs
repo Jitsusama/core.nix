@@ -8,7 +8,7 @@
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::fs;
-use std::io;
+use std::io::{self, Read as _};
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
@@ -20,9 +20,14 @@ use super::{Mesh, Message, stamped_at};
 /// first wanted may still hold one.
 const DAY_MS: i64 = 24 * 3600 * 1000;
 
+/// The most bytes a message is read to: the harness writes messages of a
+/// few kilobytes, and a file past this, as one made sparse and huge, is
+/// named rather than loaded whole.
+const LARGEST: u64 = 1 << 20;
+
 impl Mesh {
-    /// Every message stamped from `from_ms` to `to_ms` whose file's stem
-    /// is `wanted` and whose body names the id its file is named by, and
+    /// Every message stamped from `from_ms` to `to_ms` whose body names
+    /// the id its file is named by, and
     /// the ids of the files there that aren't messages. As
     /// [`Mesh::senders`] holds, a body naming another id is no one's, and
     /// a measure that asks its sender would ask the wrong cell.
@@ -35,31 +40,33 @@ impl Mesh {
     /// gone is one with nothing in it. A file that isn't a message, as one
     /// torn in writing, is named rather than read, so one bad file never
     /// blinds the rest; `to_ms` keeps a file stamped in the future from
-    /// being named every hour for good. Only plain files are opened, so a
-    /// pipe or a link to a device can't hold the read for ever.
+    /// being named every hour for good. Only plain files are listed, and
+    /// each is read only when what was opened is still one, and only to
+    /// [`LARGEST`], so a link to a device or a huge file can't hold the
+    /// read for ever. A pipe put in a message's place between its listing
+    /// and its opening still can: that takes a cell writing the mesh's
+    /// files by hand, which the measures reading this can't guard against.
     pub fn sent_as_named(
         &self,
         from_ms: i64,
         to_ms: i64,
-        wanted: impl Fn(&str) -> bool,
     ) -> Result<(Vec<Message>, Vec<String>), String> {
         let messages = self.messages();
-        read_listed(|| files(&messages, from_ms), from_ms, to_ms, wanted)
+        read_listed(|| files(&messages, from_ms), from_ms, to_ms)
     }
 }
 
 /// The messages and torn files among those `listing` gives, stamped from
-/// `from_ms` to `to_ms` and `wanted`, listing again to find any that moved
-/// between a listing and their reading.
+/// `from_ms` to `to_ms`, listing again to find any that moved between a
+/// listing and their reading.
 fn read_listed(
     listing: impl Fn() -> Result<Vec<PathBuf>, String>,
     from_ms: i64,
     to_ms: i64,
-    wanted: impl Fn(&str) -> bool,
 ) -> Result<(Vec<Message>, Vec<String>), String> {
     let stamped = |p: &&PathBuf| {
         let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or_default();
-        stamped_at(stem).is_some_and(|at| (from_ms..=to_ms).contains(&at)) && wanted(stem)
+        stamped_at(stem).is_some_and(|at| (from_ms..=to_ms).contains(&at))
     };
     let (mut read, mut moved) = (Read::default(), BTreeSet::<Option<OsString>>::new());
     for path in listing()?.iter().filter(stamped) {
@@ -147,16 +154,32 @@ struct Read {
 
 impl Read {
     /// Reads the message at `path`, saying false when its file has moved
-    /// away and why when it can't be read for any other reason.
+    /// away and why when it can't be read for any other reason. What was
+    /// opened is judged, not what was listed, since a link may have taken
+    /// the file's place between the two; one that isn't a plain file, or
+    /// is past [`LARGEST`], is named as no message.
     fn file(&mut self, path: &Path) -> Result<bool, String> {
         let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
             return Ok(true);
         };
-        let bytes = match fs::read(path) {
-            Ok(bytes) => bytes,
+        let why = |e: io::Error| format!("{stem} can't be read: {e}");
+        let file = match fs::File::open(path) {
+            Ok(file) => file,
             Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(false),
-            Err(e) => return Err(format!("{stem} can't be read: {e}")),
+            Err(e) => return Err(why(e)),
         };
+        if !file.metadata().map_err(why)?.is_file() {
+            self.torn.push(stem.to_owned());
+            return Ok(true);
+        }
+        let mut bytes = Vec::new();
+        file.take(LARGEST + 1)
+            .read_to_end(&mut bytes)
+            .map_err(why)?;
+        if bytes.len() as u64 > LARGEST {
+            self.torn.push(stem.to_owned());
+            return Ok(true);
+        }
         match serde_json::from_slice::<Loose>(&bytes) {
             Ok(loose) if loose.id == stem => self.sent.push(loose.into()),
             Ok(_) => {}
@@ -255,9 +278,7 @@ mod tests {
             mesh.messages().join("12-B-1-cc.json"),
         )
         .expect("the message couldn't be renamed");
-        let (sent, _) = mesh
-            .sent_as_named(0, 100, |_| true)
-            .expect("the messages were read");
+        let (sent, _) = mesh.sent_as_named(0, 100).expect("the messages were read");
         assert_eq!(
             ids(&sent),
             ["10-A-1-aa"],
@@ -275,31 +296,26 @@ mod tests {
         put(&mesh, "", "10-A-1-aa", "A");
         fs::write(mesh.messages().join("11-A-1-bb.json"), "{")
             .expect("the torn file couldn't be written");
-        let (sent, torn) = mesh
-            .sent_as_named(0, 100, |_| true)
-            .expect("the messages were read");
+        let (sent, torn) = mesh.sent_as_named(0, 100).expect("the messages were read");
         assert_eq!(ids(&sent), ["10-A-1-aa"], "one torn file hid the others");
         assert_eq!(torn, ["11-A-1-bb"], "a torn file wasn't named");
         fs::remove_dir_all(dir.path().join("mesh-workflow")).expect("the mesh couldn't be removed");
         assert!(
-            mesh.sent_as_named(0, 100, |_| true).is_err(),
+            mesh.sent_as_named(0, 100).is_err(),
             "a messages folder that can't be listed was read as no messages"
         );
     }
 
     /// A message missing what cadence never reads of it, as its version,
-    /// time or process, is still read; one stamped past `to_ms`, or whose
-    /// stem isn't wanted, is neither read nor named.
+    /// time or process, is still read; one stamped past `to_ms` is neither
+    /// read nor named.
     #[test]
-    fn a_spare_shape_is_read_and_the_future_and_the_unwanted_left_alone() {
+    fn a_spare_shape_is_read_and_the_future_left_alone() {
         let (_dir, mesh) = mesh();
         put(&mesh, "", "10-A-1-aa", "A");
-        put(&mesh, "", "20-B-1-bb", "B");
         fs::write(mesh.messages().join("900-A-1-zz.json"), "{")
             .expect("the future file couldn't be written");
-        let (sent, torn) = mesh
-            .sent_as_named(0, 100, |stem| !stem.contains("-B-"))
-            .expect("the messages were read");
+        let (sent, torn) = mesh.sent_as_named(0, 100).expect("the messages were read");
         let read: Vec<(&str, &[String])> = sent
             .iter()
             .map(|m| (m.id.as_str(), m.to.as_slice()))
@@ -307,7 +323,7 @@ mod tests {
         assert_eq!(
             read,
             [("10-A-1-aa", ["@B".to_owned()].as_slice())],
-            "a message missing fields cadence doesn't read was read past, or an unwanted one read"
+            "a message missing fields cadence doesn't read was read past"
         );
         assert!(
             torn.is_empty(),
@@ -317,8 +333,10 @@ mod tests {
 
     /// Messages filed into the day's folders are read from the day before
     /// the first wanted on, and nothing in a folder named for no day, nor
-    /// anything but a plain file, as a link to a device that would never
-    /// stop being read.
+    /// anything but a plain file: neither a link to a message outside the
+    /// mesh, which a reader following links would read, nor one to a
+    /// device. The device is /dev/null, so a reader that opened it would
+    /// read it empty and fail here rather than read for ever.
     #[test]
     fn days_folders_are_read_by_their_dates_and_only_plain_files_opened() {
         let (_dir, mesh) = mesh();
@@ -335,14 +353,25 @@ mod tests {
         put(&mesh, "2026-11-24", &old, "A");
         put(&mesh, "kept-aside", &odd, "A");
         #[cfg(unix)]
-        std::os::unix::fs::symlink(
-            "/dev/zero",
-            mesh.messages()
-                .join(format!("{}-A-1-ff.json", NOON + 360_000)),
-        )
-        .expect("the link couldn't be made");
+        {
+            let outside = format!("{}-A-1-gg", NOON + 420_000);
+            put(&mesh, "../elsewhere", &outside, "A");
+            for (to, name) in [
+                (
+                    mesh.messages().join(format!("../elsewhere/{outside}.json")),
+                    outside,
+                ),
+                (
+                    PathBuf::from("/dev/null"),
+                    format!("{}-A-1-ff", NOON + 360_000),
+                ),
+            ] {
+                std::os::unix::fs::symlink(to, mesh.messages().join(format!("{name}.json")))
+                    .expect("the link couldn't be made");
+            }
+        }
         let (sent, torn) = mesh
-            .sent_as_named(NOON, NOON + DAY_MS, |_| true)
+            .sent_as_named(NOON, NOON + DAY_MS)
             .expect("the messages were read");
         assert_eq!(
             ids(&sent),
@@ -377,8 +406,7 @@ mod tests {
                 went.clone()
             }])
         };
-        let (sent, torn) =
-            read_listed(listing, 0, 100, |_| true).expect("the moved message was read");
+        let (sent, torn) = read_listed(listing, 0, 100).expect("the moved message was read");
         assert_eq!(
             (ids(&sent), torn.len(), listings.get()),
             (vec![id], 0, 2),
@@ -408,7 +436,7 @@ mod tests {
         fs::set_permissions(&day, fs::Permissions::from_mode(0o000))
             .expect("the day's folder couldn't be shut");
         let shut = fs::read_dir(&day).is_err();
-        let read = mesh.sent_as_named(NOON, NOON + DAY_MS, |_| true);
+        let read = mesh.sent_as_named(NOON, NOON + DAY_MS);
         fs::set_permissions(&day, fs::Permissions::from_mode(0o755))
             .expect("the day's folder couldn't be opened again");
         // Run as root, a shut folder still lists, so there's nothing to see.
@@ -418,5 +446,48 @@ mod tests {
                 "a day's folder that can't be listed was read as none"
             );
         }
+    }
+
+    /// A message that can't be opened is said why, not read past: a measure
+    /// reading past it would close the ask of a claim it never read.
+    #[cfg(unix)]
+    #[test]
+    fn a_message_that_cant_be_opened_is_said() {
+        use std::os::unix::fs::PermissionsExt;
+        let (_dir, mesh) = mesh();
+        let id = format!("{}-A-1-aa", NOON + 60_000);
+        put(&mesh, "", &id, "A");
+        let file = mesh.messages().join(format!("{id}.json"));
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o000))
+            .expect("the message couldn't be shut");
+        let shut = fs::File::open(&file).is_err();
+        let read = mesh.sent_as_named(NOON, NOON + DAY_MS);
+        // Run as root, a shut file still opens, so there's nothing to see.
+        if shut {
+            assert!(
+                read.is_err(),
+                "a message that can't be opened was read past"
+            );
+        }
+    }
+
+    /// A file past the largest message is named as no message, not loaded
+    /// whole.
+    #[test]
+    fn a_file_past_the_largest_message_is_named_not_loaded() {
+        let (_dir, mesh) = mesh();
+        let id = format!("{}-A-1-aa", NOON + 60_000);
+        let file = fs::File::create(mesh.messages().join(format!("{id}.json")))
+            .expect("the huge file couldn't be made");
+        file.set_len(LARGEST + 1)
+            .expect("the huge file couldn't be grown");
+        let (sent, torn) = mesh
+            .sent_as_named(NOON, NOON + DAY_MS)
+            .expect("the messages were read");
+        assert_eq!(
+            (sent.len(), torn),
+            (0, vec![id]),
+            "a file past the largest message was read, or not named"
+        );
     }
 }

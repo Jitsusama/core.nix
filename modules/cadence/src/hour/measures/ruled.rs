@@ -7,11 +7,13 @@
 //!
 //! A claim is backed when its sentence, or the one before or after it,
 //! says when he said it: a date, as "26 Nov" or "2026-11-26" or "Thu
-//! 26", or a clock time, following or leading his name, or he or his,
-//! with only words of saying between, as "Joel, 11:30" or "he said on 22
-//! Nov". A date anywhere else in a sentence dates something else, as a
-//! deadline or the hour a rule was broken, and a quote with no date may
-//! be the claimer's own words for the rule. A claim inside quotes or
+//! 26", or a clock time, tied to his saying. It follows his name with
+//! only words of saying between, as "Joel, 11:30"; or follows he, his or
+//! him past a word of his saying, as "he said on 22 Nov"; or leads his
+//! name or he with a word of his saying next, as "On 22 Nov, Joel ruled
+//! it". A date anywhere else dates something else, as a deadline, the
+//! hour a rule was broken, or when a cell told him, and a quote with no
+//! date may be the claimer's own words for the rule. A claim inside quotes or
 //! backticks is words about a claim, not one. Each claim in a message is
 //! judged, so one backed claim hides no other.
 //!
@@ -125,6 +127,13 @@ const SAYING: [&str; 17] = [
     "words", "message", "verbatim", "it", "so",
 ];
 
+/// The words of his saying, lower case: a date by he, his or him, or one
+/// leading his name, is when he said it only beside one of these, since
+/// "I told him at 10:08" or "At 10:08 he saw it" is someone else's hour.
+const SAID: [&str; 9] = [
+    "said", "says", "wrote", "asked", "ruled", "told", "words", "message", "verbatim",
+];
+
 /// The names of a rule, which stand between his name and its date only
 /// as "Joel's rule of 22 Nov": "Joel's rule at 10:08" dates its breaking.
 const RULES: [&str; 5] = ["rule", "ruling", "wish", "call", "orders"];
@@ -145,10 +154,15 @@ const AHEAD: i64 = 300;
 /// How many torn files the card names by id, the rest counted.
 const TORN_NAMED: usize = 3;
 
-/// The measure, from the mesh's messages of the last day under
-/// `state_home`'s harness folder, and cadence's own over the day before
-/// too, since an ask sent late in a claim's day may be answered after
-/// it. With no messages folder there, or one that can't be listed or
+/// The most characters of a torn file's name the card gives: the
+/// harness's own names are some forty long.
+const TORN_LONGEST: usize = 48;
+
+/// The measure, from the mesh's messages of the last two days under
+/// `state_home`'s harness folder. Only the last day's are judged, but an
+/// ask sent late in a claim's day may be answered after it, and a later
+/// reply to an ask is a re-claim only while the first answer is still
+/// read, so both days are read. With no messages folder there, or one that can't be listed or
 /// read, it's left unjudged, rather than reading the messages it missed
 /// as none unsourced and closing their asks. A file that isn't a message
 /// is named in what it says and read past.
@@ -160,14 +174,14 @@ pub fn read(state_home: &Path, now: i64) -> Measure {
     if !mesh.root.join("mesh-workflow/messages").is_dir() {
         return unread("no mesh messages folder here");
     }
-    let day = (now - DAY) * 1000;
-    let wanted = |stem: &str| {
-        stamped_at(stem).is_some_and(|at| at >= day) || stem.split('-').nth(1) == Some(CADENCE)
-    };
-    match mesh.sent_as_named((now - 2 * DAY) * 1000, (now + AHEAD) * 1000, wanted) {
+    match mesh.sent_as_named((now - 2 * DAY) * 1000, (now + AHEAD) * 1000) {
         Ok((sent, torn)) if torn.is_empty() => unsourced(&sent, now),
         Ok((sent, torn)) => {
-            let mut named: Vec<String> = torn.iter().take(TORN_NAMED).map(|t| clean(t)).collect();
+            let mut named: Vec<String> = torn
+                .iter()
+                .take(TORN_NAMED)
+                .map(|t| clean(t).chars().take(TORN_LONGEST).collect())
+                .collect();
             if torn.len() > TORN_NAMED {
                 named.push(format!("and {} more", torn.len() - TORN_NAMED));
             }
@@ -189,19 +203,30 @@ pub fn unread(why: &str) -> Measure {
     }
 }
 
-/// `text` with no control character in it, so a file's name or a
-/// sender's words can't write a line of the card that reads as cadence's.
+/// `text` with no control character in it, nor any mark that turns text
+/// round or breaks a line unseen, so a file's name or a sender's words
+/// can't write a line of the card that reads as cadence's, or seem to
+/// name another sender.
 fn clean(text: &str) -> String {
-    text.replace(char::is_control, " ")
+    let unseen = |c: char| {
+        c.is_control()
+            || matches!(
+                c,
+                '\u{200b}'..='\u{200f}' | '\u{2028}'..='\u{202e}' | '\u{2060}'..='\u{2069}'
+                    | '\u{feff}'
+            )
+    };
+    text.replace(unseen, " ")
 }
 
 /// The ask to the sender of message `id` claiming his rule in `said`.
 /// [`about`] reads the claim's id back from its opening words, so the two
-/// are kept here together.
+/// are kept here together. Its own words claim nothing, as
+/// [`unbacked`] reads them, so a cell passing it on isn't asked in turn.
 #[must_use]
 pub fn ask(id: &str, said: &str) -> String {
     format!(
-        "{ASKS}{id} {ASKED} or wants something, with no word of when he said it: \"{said}\". \
+        "{ASKS}{id} {ASKED}, with no word of when he said it: \"{said}\". \
          Only his own words bind a cell. Please answer on the mesh, re this ask or re {id}, \
          with his words and when he said them, or say the claim is dropped and whose caution \
          it was. Your answer closes this ask; unanswered, it closes a day after the message."
@@ -212,7 +237,7 @@ pub fn ask(id: &str, said: &str) -> String {
 const ASKS: &str = "cadence hour: your message ";
 
 /// The words that follow the claim's id in an ask.
-const ASKED: &str = "says Joel ruled";
+const ASKED: &str = "claims a rule or wish of Joel's";
 
 /// The messages in `sent` from the day before `now` that claim a rule or
 /// wish of Joel's with nothing behind it and no answer from their sender,
@@ -413,14 +438,16 @@ fn claims(sentence: &str) -> bool {
     names || (joel && HIS.iter().any(|claim| at_word(&said, claim)))
 }
 
-/// Whether `words` holds `phrase` as whole words, or with a plural "s",
-/// so "Joel's calls" claims and "Joel's calendar" doesn't, and with no
-/// denial just before it, as [`denied`] reads one.
+/// Whether `words` holds `phrase` as whole words, or with a plural "s"
+/// or "es", so "Joel's calls" and "Joel's wishes" claim and "Joel's
+/// calendar" doesn't, and with no denial just before it, as [`denied`]
+/// reads one.
 fn at_word(words: &str, phrase: &str) -> bool {
     words.match_indices(phrase).any(|(at, _)| {
         let before = words[..at].chars().next_back();
         let rest = &words[at + phrase.len()..];
-        let after = rest.strip_prefix('s').unwrap_or(rest).chars().next();
+        let plural = rest.strip_prefix("es").or_else(|| rest.strip_prefix('s'));
+        let after = plural.unwrap_or(rest).chars().next();
         before.is_none_or(|c| !c.is_alphanumeric())
             && after.is_none_or(|c| !c.is_alphanumeric())
             && !denied(&words[..at])
@@ -438,10 +465,12 @@ fn denied(before: &str) -> bool {
 }
 
 /// Whether `sentence` says when he said something: a date or a clock
-/// time following or leading a word naming him, with no more than a few
-/// words of saying between, as "Joel, 11:30", "he said on 22 Nov" or
-/// "22 Nov, Joel". Any other word between makes it the date of something
-/// else, as "Joel wants it by 26 Nov" or "I broke Joel's rule at 10:08".
+/// time beside a word naming him, with no more than a few words of saying
+/// between, and tied to his saying as the module's doc says. Any other
+/// word between makes it the date of something else, as "Joel wants it
+/// by 26 Nov" or "I broke Joel's rule at 10:08", and so does a word that
+/// isn't his saying, as "At 10:08, Joel's rule was broken" or "I told him
+/// at 10:08".
 fn dated_by_him(sentence: &str) -> bool {
     let tokens: Vec<&str> = sentence.split_whitespace().collect();
     let lower: Vec<String> = tokens.iter().map(|token| bare(token)).collect();
@@ -459,25 +488,39 @@ fn dated_by_him(sentence: &str) -> bool {
     let heads = |at: usize| tokens[at].ends_with(':');
     let ends =
         |at: usize| !heads(at) && (timed(at) || (at > 0 && dated(&lower[at - 1], &lower[at])));
+    let said = |at: usize| {
+        lower
+            .get(at)
+            .is_some_and(|word| SAID.contains(&word.as_str()))
+    };
+    // The word after him, past a "has" or "had", as "Joel has said".
+    let says_next = |him: usize| {
+        let next = lower.get(him + 1).map(String::as_str);
+        said(him + 1 + usize::from(matches!(next, Some("has" | "had"))))
+    };
     (0..tokens.len())
         .filter(|&at| HIM.contains(&lower[at].as_str()))
         .any(|him| {
+            let named = lower[him].starts_with("joel");
             let after = (him + 1..tokens.len()).take(BESIDE + 1);
             let before = (0..him).rev().take(BESIDE + 1);
-            reaches(after, starts, saying) || reaches(before, ends, saying)
+            let follows = reached(after, starts, saying)
+                .is_some_and(|date| named || (him + 1..date).any(said));
+            let leads = reached(before, ends, saying).is_some() && says_next(him);
+            follows || leads
         })
 }
 
-/// Whether, walking `path` away from his name, a word where `date` holds
+/// Where, walking `path` away from his name, a word where `date` holds
 /// comes before any word that isn't one of `saying`.
-fn reaches(
+fn reached(
     path: impl IntoIterator<Item = usize>,
     date: impl Fn(usize) -> bool,
     saying: impl Fn(usize) -> bool,
-) -> bool {
+) -> Option<usize> {
     path.into_iter()
         .find(|&at| date(at) || !saying(at))
-        .is_some_and(date)
+        .filter(|&at| date(at))
 }
 
 /// `token` lower case, with what isn't a letter or digit taken off either
