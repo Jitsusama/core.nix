@@ -43,10 +43,17 @@ pub(super) const AS_JOEL: [&str; 15] = [
 /// end, at that opening (round 000035 on #6796, F20).
 pub(super) fn held_to_the_shell(said: &Value) -> bool {
     let starts_a_share = said["ask"] == "sharing" && said["sharing"] == true;
+    joels(said) && !starts_a_share
+}
+
+/// Whether `said` is one of [`AS_JOEL`], held to the shell or not: each is
+/// answered as Joel's act, so one the check doesn't hold still goes to
+/// his acts rather than on to the asks after them, where a share's start
+/// was answered as a sprout, unsprouted (OSPHT4's lent run at 68bb3415).
+pub(super) fn joels(said: &Value) -> bool {
     said["ask"]
         .as_str()
         .is_some_and(|ask| AS_JOEL.contains(&ask))
-        && !starts_a_share
 }
 
 /// What one of [`AS_JOEL`] is told where the shell's check refused it,

@@ -76,7 +76,7 @@ use serde_json::{Value, json};
 // Which asks are Joel's acts, which the shell's check holds and what a
 // refused one is told, in a file of their own beside this one.
 mod joels_acts;
-use joels_acts::{answered, held_to_the_shell, not_as_joel};
+use joels_acts::{answered, held_to_the_shell, joels, not_as_joel};
 
 /// The daemon as the launcher knows it: Agents' ready rows, how its
 /// sessions stand together, each session's drawer, and the sessions
@@ -358,6 +358,9 @@ fn for_the_shell_alone(
                     Ok(()) => as_joel(said),
                     Err(why) => Some(not_as_joel(&why, said)),
                 };
+            }
+            if joels(said) {
+                return as_joel(said);
             }
             if said["ask"] == places::ASK {
                 return Some(places::answer(|| asker::the_shell(stream), node.as_deref()));
