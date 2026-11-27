@@ -89,6 +89,12 @@ pub struct Entry {
     /// the next hour from the cases the fix came after.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub closed: Option<i64>,
+    /// The fields a cadence newer or older than this one kept that this
+    /// one doesn't read, as they stood, so its keep writes them back
+    /// rather than dropping them: rolled back a day, it would otherwise
+    /// lose what the newer one asked, named and marked red.
+    #[serde(flatten)]
+    pub rest: serde_json::Map<String, serde_json::Value>,
 }
 
 /// Whether a count is nought, so a line never reopened stays as it was.
@@ -290,6 +296,7 @@ pub fn update(
                 back: None,
                 fixed: None,
                 closed: None,
+                rest: serde_json::Map::new(),
             });
         }
     }
@@ -479,6 +486,36 @@ pub(crate) mod tests {
             fs::read(unread_at(&path)).expect("the line set aside"),
             b"{\"key\":\"\xff\"}\n",
             "the line that isn't text wasn't set aside as it stood"
+        );
+    }
+
+    #[test]
+    fn a_field_this_cadence_doesnt_read_is_kept_as_it_stood() {
+        let folder = tempfile::tempdir().expect("a scratch folder");
+        let path = ledger_in(&folder);
+        let mut ledger = Vec::new();
+        update(
+            &mut ledger,
+            &day("d1", DAY),
+            &[found("crashes:tec")],
+            &owners(),
+        );
+        let mut line = serde_json::to_value(&ledger[0]).expect("an entry as JSON");
+        let newer = serde_json::json!(["WCJQSG:1"]);
+        line["asked_by_a_newer_cadence"] = newer.clone();
+        fs::write(&path, format!("{line}\n")).expect("a ledger a newer cadence kept");
+        let read_back = read(&path).expect("a ledger with a newer field reads");
+        assert!(
+            !unread_at(&path).exists(),
+            "a line with a field this cadence doesn't read was set aside"
+        );
+        keep(&path, &read_back).expect("the ledger kept");
+        let kept: serde_json::Value =
+            serde_json::from_str(fs::read_to_string(&path).expect("the kept ledger").trim())
+                .expect("the kept line is JSON");
+        assert_eq!(
+            kept["asked_by_a_newer_cadence"], newer,
+            "the keep dropped a field a newer cadence wrote"
         );
     }
 
