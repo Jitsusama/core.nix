@@ -38,7 +38,7 @@ WORK = "/home/alice/work"
 SWITCH = "/home/alice/.local/state/pi/agentic-harness.pi/park-workflow/switch"
 ROSTER = f"/home/alice/.local/state/pi/agentic-harness.pi/host-rosters/{KEY}.json"
 # What a ready host holding both says, as systemd's status and the journal show it, as a
-# pattern grep -E and Python read alike: it counts those it runs awake and parked apart, and
+# pattern for grep -E: it counts those it runs awake and parked apart, and
 # either may be awake after a start, so the two add up to both, with none dropped.
 HOLDING_BOTH = (
     r"ready: loaded (2, parked 0|1, parked 1|0, parked 2)"
@@ -98,7 +98,9 @@ class Host:
     def asked(self, request: dict[str, Any]) -> str:
         """Give the command that sends the host one request through its socket."""
         # A host answers a start asked again under its id with the first answer, and refuses
-        # an id used for another start, so each request has an id of its own.
+        # an id used for another start, so each command has an id of its own. Only starts are
+        # remembered by id, so a poll that runs one list command again and again is answered
+        # afresh each time.
         self.sent += 1
         sent = {"v": 1, "id": f"{request['op']}-{self.sent}", **request}
         return f"{self.asking} {shlex.quote(json.dumps(sent))}"
@@ -116,11 +118,17 @@ class Host:
 
     def until_serving_both(self, timeout: dt.timedelta = COMING_BACK) -> None:
         """Wait until the host is ready again, saying it holds both."""
-        self.until(
-            f"systemctl --user show -p StatusText --value {UNIT}"
-            f" | grep -qxE {shlex.quote(HOLDING_BOTH)}",
-            timeout,
-        )
+        try:
+            self.until(
+                f"systemctl --user show -p StatusText --value {UNIT}"
+                f" | grep -qxE {shlex.quote(HOLDING_BOTH)}",
+                timeout,
+            )
+        except Exception as error:
+            # A ready line in another wording would otherwise fail as a bare timeout, without
+            # saying what the host did say.
+            message = f"the host never said it holds both; it says {self.show('StatusText')!r}"
+            raise AssertionError(message) from error
 
     def until_started_again(self, killed: str) -> None:
         """Wait until a process other than the killed one runs the host and says it holds both."""

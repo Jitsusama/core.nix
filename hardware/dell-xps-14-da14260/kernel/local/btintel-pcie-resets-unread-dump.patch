@@ -27,7 +27,7 @@ Link: https://lore.kernel.org/linux-bluetooth/CAFC7XimOGvQUgXzg24vfDZ4q=9obX0yCY
 diff --git a/drivers/bluetooth/btintel_pcie.c b/drivers/bluetooth/btintel_pcie.c
 --- a/drivers/bluetooth/btintel_pcie.c
 +++ b/drivers/bluetooth/btintel_pcie.c
-@@ -1612,12 +1612,40 @@ exit_error:
+@@ -1296,11 +1296,39 @@ exit_error:
  	return ret;
  }
  
@@ -60,8 +60,7 @@ diff --git a/drivers/bluetooth/btintel_pcie.c b/drivers/bluetooth/btintel_pcie.c
 +
  static void btintel_pcie_read_hwexp(struct btintel_pcie_data *data)
  {
- 	int err, offset, pending;
- 	u32 len;
+ 	int len, err, offset, pending;
  	struct sk_buff *skb;
 -	u8 *buf, prefix[64];
 +	u8 *buf = NULL, prefix[64];
@@ -69,16 +68,16 @@ diff --git a/drivers/bluetooth/btintel_pcie.c b/drivers/bluetooth/btintel_pcie.c
  	u32 addr, val;
  	u16 pkt_len;
  
-@@ -1634,7 +1662,7 @@ static void btintel_pcie_read_hwexp(struct btintel_pcie_data *data)
+@@ -1317,7 +1345,7 @@ static void btintel_pcie_read_hwexp(struct btintel_pcie_data *data)
  	case BTINTEL_CNVI_BLAZARIW:
  		/* only from step B0 onwards */
  		if (INTEL_CNVX_TOP_STEP(data->dmp_hdr.cnvi_top) != 0x01)
 -			return;
 +			goto exit_on_error;
+ 		len = BTINTEL_PCIE_BLZR_HWEXP_SIZE; /* exception data length */
+ 		addr = BTINTEL_PCIE_BLZR_HWEXP_DMP_ADDR;
  		break;
- 	case BTINTEL_CNVI_SCP:
- 	case BTINTEL_CNVI_SCP2:
-@@ -1642,7 +1670,7 @@ static void btintel_pcie_read_hwexp(struct btintel_pcie_data *data)
+@@ -1332,7 +1360,7 @@ static void btintel_pcie_read_hwexp(struct btintel_pcie_data *data)
  		break;
  	default:
  		bt_dev_err(data->hdev, "Unsupported cnvi 0x%8.8x", data->dmp_hdr.cnvi_top);
@@ -86,17 +85,8 @@ diff --git a/drivers/bluetooth/btintel_pcie.c b/drivers/bluetooth/btintel_pcie.c
 +		goto exit_on_error;
  	}
  
- 	len = data->dump_info.exception_dump_len;
-@@ -1651,7 +1679,7 @@ static void btintel_pcie_read_hwexp(struct btintel_pcie_data *data)
- 	if (!addr || len < sizeof(__le32) || len > SZ_4K) {
- 		bt_dev_err(data->hdev, "Invalid exception address: 0x%8.8x or length: %u",
- 			   addr, len);
--		return;
-+		goto exit_on_error;
- 	}
- 
- 	/* Ensure size is 4-byte aligned; btintel_pcie_read_device_mem()
-@@ -1721,11 +1749,14 @@ static void btintel_pcie_read_hwexp(struct btintel_pcie_data *data)
+ 	buf = kzalloc(len, GFP_KERNEL);
+@@ -1397,11 +1425,14 @@ static void btintel_pcie_read_hwexp(struct btintel_pcie_data *data)
  		print_hex_dump(KERN_DEBUG, prefix, DUMP_PREFIX_OFFSET, 16, 1,
  			       tlv->val, pkt_len, false);
  

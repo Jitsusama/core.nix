@@ -353,6 +353,15 @@ holding a space, as one broken across two lines does, is counted too.
 - Over costs him: a loop that only counts shows the same red lines every hour for a week, and
   nothing he asked to get better does.
 
+## Causes Recurring
+
+- Measures: `causes-recurring`
+- Target: 0 classes of cause found on 3 or more changes in the last week.
+- Joel, 26 Nov 11:01: "we need to not have so many rounds ... tackle things at root causes ...
+  detect patterns of issues and just nip them in the bud."
+- Over costs him: the same fault comes back change after change, each paid for with another
+  review round, with nobody fixing its cause.
+
 ## Measures Undefined
 
 - Measures: `measures-undefined`

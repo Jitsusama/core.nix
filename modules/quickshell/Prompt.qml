@@ -194,13 +194,18 @@ Item {
         if (!drawerHere && QueryKeys.paged(mode))
             mode = "normal";
     }
-    // Whether Tab in normal goes into the selected row, asked only of Tab
+    // Whether Tab in a mode goes into the selected row, asked only of Tab
     // so the launcher can run a search held back first, and whether - goes
-    // up from where the rows stand (Launcher.qml's goesIn and canGoUp), so
-    // a key that only says it can't is read as acting on nothing
-    // (KeyActs.acts).
+    // up from where the rows stand (Launcher.qml's tabGoesIn and canGoUp),
+    // so a key that only says it can't is read as acting on nothing
+    // (KeyActs.acts), and the find's Tab going on to the next row as a
+    // move (KeyActs.moves).
     property var intoHere: () => true
     property bool upHere: true
+    // Whether Ctrl+Y's completion puts a command's start in the field out
+    // at the top, leaving a place (Launcher.qml's fill), asked only of
+    // Ctrl+Y, so it acts there (KeyActs.acts).
+    property var fillLeaves: () => false
     // The mode typing goes back to: the find, or insert on words.
     readonly property string typingMode: words ? "insert" : "find"
     // Words handed over or left go back to the find, never to an insert
@@ -225,11 +230,13 @@ Item {
     // key as its answer, Return doing it and any other letting it go
     // (Confirm.answer), so none reaches the line while it stands.
     property bool confirming: false
-    // Whether the ask standing takes a key as its answer, by its name,
-    // as it answers it (Launcher.qml's answerAsk, by Confirm.answer): one
-    // pressed before the ask is ready is let go doing nothing.
-    property var answerTaken: key => true
-    signal answered(string key)
+    // Whether the ask standing takes a key as its answer, by its name and
+    // when it came, as it answers it (Launcher.qml's answerAsk, by
+    // Confirm.answer): one pressed before the ask is ready is let go doing
+    // nothing. Both are told the same time, read once as the key comes, so
+    // a key on the ask's ready edge can't be timed idle and still answer.
+    property var answerTaken: (key, at) => true
+    signal answered(string key, real at)
     // How soon after visual's operator the same key again is taken with
     // it (Operators.takenWith), as his Neovim's timeoutlen
     // (modules/keys/language.toml); a sequence begun never times out.
@@ -731,17 +738,19 @@ Item {
         // step below reads it as it stands here.
         const after = visualOperated;
         const read = QueryKeys.read(standing, key, mode, editsWords);
-        const operated = Operators.takenWith(after, key, Date.now(), wait);
+        const now = Date.now();
+        const operated = Operators.takenWith(after, key, now, wait);
         keyActed = KeyActs.acts(read, {
             alone: keyAlone,
             registering: takesRegister(event, key),
             answering: confirming,
-            answerTaken: confirming && answerTaken(key),
+            answerTaken: confirming && answerTaken(key, now),
             repeated: event.isAutoRepeat,
             operated,
             commands: QueryKeys.opensCommands(key, mode, input.text),
             drawerHere,
             intoHere,
+            fillLeaves,
             upHere,
             reselectHere: KeyActs.reselectHere(mode, reselectable, lastChosen),
             mode,
@@ -758,7 +767,7 @@ Item {
         if (confirming) {
             event.accepted = true;
             if (!event.isAutoRepeat)
-                prompt.answered(key);
+                prompt.answered(key, now);
             return;
         }
         // The operator pressed again just after visual's is taken with it;
@@ -779,7 +788,7 @@ Item {
             prompt.commanded("");
             return;
         }
-        keyMoved = QueryKeys.repeats(read.act);
+        keyMoved = KeyActs.moves(read.act, { mode, intoHere });
         // A key held where nothing types repeats only a move, as Vim's
         // motions do: any other act, and a count or a sequence begun, is a
         // press's once, and Return is everywhere, so a key let go late by

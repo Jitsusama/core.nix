@@ -13,7 +13,8 @@
 //!
 //! This file reads the measures and runs the hour; `card` composes what it
 //! says and keeps, `good` holds each measure to the definition of good,
-//! `owing` files its drag with each owner, `put` asks each owner of it, `records` reads the queues'
+//! `owing` files its drag with each owner, `put` asks each owner of it,
+//! `net` reads the merge net's two files, `records` reads the queues'
 //! records, and `reviews` the harness's review records.
 //!
 //! Long because the run reads each record the measures need and keeps the
@@ -26,6 +27,7 @@ mod ledger;
 mod lines;
 mod measures;
 mod moved;
+mod net;
 mod owing;
 mod parted;
 mod put;
@@ -303,16 +305,9 @@ fn gather(
         measures::told_late(&asks, now, Tracking::Derived),
         measures::to_first_slice(&asks, now, Tracking::Derived),
         measures::undated(&quarantine, &today(now), NET_RULES),
-        measures::reverts(&text(&folder.join("reverted.json")), now, NET_RULES),
-        measures::broken(
-            &text(&state_home.join("net/results.jsonl")),
-            now,
-            NET,
-            &measures::Main::read(&core, &quarantine),
-            &measures::failed_in,
-        ),
         landed(&core_log, &harness_log, &machine_log, now),
     ];
+    all.extend(net::read_both(folder, state_home, &core, &quarantine, now));
     all.extend(measures::said_none(misses, now));
     all.push(measures::cited::read(
         state_home,
@@ -321,6 +316,10 @@ fn gather(
         orchestrator,
     ));
     all.push(measures::holds::read(state_home, &asks, now));
+    // Only the hour that files keeps what it read of the mesh; a look by
+    // hand names no orchestrator, and keeps nothing.
+    let keeps = orchestrator.is_some();
+    all.push(measures::causes::read(state_home, folder, now, keeps));
     all.extend(parted::dates_at_risk(state_home, &core, &asks, now));
     all.extend(found);
     let per_merge = rounds_per_merge(state_home, &core, &core_log, &harness_log, now);
@@ -328,17 +327,7 @@ fn gather(
     all.extend(measures::merge_to_on(&card_text, NET_RULES));
     let fetched = &mut kept.fetched;
     all.extend(measures::unlocked(&core, checkouts, now, BUMPS, fetched));
-    if let Some((median, target)) = measures::card_median(&card_text, "Last commit to merge") {
-        all.push(Measure {
-            key: "commit-to-merge".to_owned(),
-            class: Class::Ship,
-            says: "median minutes from last commit to merge".to_owned(),
-            now: median,
-            target: Some(target),
-            owner: NET_RULES.to_owned(),
-            behind: Vec::new(),
-        });
-    }
+    all.extend(measures::commit_to_merge(&card_text, NET_RULES));
     all.extend(measures::clean(&text(
         &state_home.join("code-health/hour.json"),
     )));

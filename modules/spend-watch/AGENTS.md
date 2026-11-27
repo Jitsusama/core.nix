@@ -289,7 +289,13 @@ feed speaks.
   40 seconds, 1.3 to 3.6 MB a second at the busy pace; the half second above
   is a pass whose hours are still in memory. The two-minute cap bounds how
   late a warning comes and keeps `budgets.json` within the eleven minutes
-  below, and a pass longer than it says so in the journal. The heartbeat
+  below, and a pass longer than it says so in the journal, with each of
+  its steps' time, the megabytes and page faults its thread waited on, and
+  the pages the service swapped in from the disk and from compressed
+  memory, so the step it waited in and what it waited for are named. The
+  megabytes count a page swapped in from the disk as well as a file's, and
+  the swap-ins are the whole service's, the only place the kernel splits
+  them. The heartbeat
   alone is written every 30 seconds between passes, so the shell can tell
   a stopped daemon from a quiet one; not during one, so a pass longer
   than the shell's two minutes of silence shows the watch as stopped
