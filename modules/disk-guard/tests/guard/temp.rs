@@ -74,10 +74,14 @@ fn each_top_entry_is_surveyed_with_what_lies_under_it() {
         ]
     );
     assert_eq!(found[0].size, 10_000);
-    assert!(!found[0].socket && !found[0].checkout);
-    assert!(found[1].checkout);
+    let build = &found[0];
+    assert!(
+        !build.socket && !build.checkout,
+        "the build has a socket or a .git: {build:?}"
+    );
+    assert!(found[1].checkout, "the clone has no .git: {:?}", found[1]);
     assert_eq!(found[2].size, 2);
-    assert!(found[3].socket);
+    assert!(found[3].socket, "the server has no socket: {:?}", found[3]);
     assert_eq!(found[0].uid, fs::metadata(temp.path()).unwrap().uid());
 }
 

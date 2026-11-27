@@ -34,13 +34,22 @@ fn a_run_is_due_weekly_or_monthly_after_one_that_freed_little() {
         freed,
     };
     assert!(due(None, now, every, total), "never run");
-    assert!(!due(Some(&ran(6.0, 50 * GIB)), now, every, total));
-    assert!(due(Some(&ran(8.0, 50 * GIB)), now, every, total));
+    assert!(
+        !due(Some(&ran(6.0, 50 * GIB)), now, every, total),
+        "within the week"
+    );
+    assert!(
+        due(Some(&ran(8.0, 50 * GIB)), now, every, total),
+        "over a week on"
+    );
     assert!(
         !due(Some(&ran(8.0, 9 * GIB)), now, every, total),
         "under 1% of the filesystem waits a month"
     );
-    assert!(due(Some(&ran(31.0, 9 * GIB)), now, every, total));
+    assert!(
+        due(Some(&ran(31.0, 9 * GIB)), now, every, total),
+        "over a month on, freeing little"
+    );
 }
 
 #[test]

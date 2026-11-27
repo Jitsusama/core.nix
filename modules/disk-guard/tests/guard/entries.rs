@@ -251,5 +251,8 @@ fn an_entry_outside_the_root_fails_untouched() {
         &mut || {},
     );
     assert!(matches!(outcome, Outcome::Failed(_)), "{outcome:?}");
-    assert!(elsewhere.path().join("keep").exists());
+    assert!(
+        elsewhere.path().join("keep").exists(),
+        "the entry outside the root is gone"
+    );
 }

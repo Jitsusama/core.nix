@@ -53,7 +53,8 @@ fn a_save_replaces_the_file_whole_and_leaves_nothing_beside_it() {
         fs::read_dir(dir.path().join(".writing")).unwrap().count(),
         0
     );
-    assert!(load::<Memory>(&path).unwrap().is_some());
+    let loaded = load::<Memory>(&path).unwrap();
+    assert!(loaded.is_some(), "the saved file isn't there");
 }
 
 // The machine's guard keeps its state in a folder any account may pass
@@ -178,5 +179,5 @@ fn a_damaged_file_is_an_error() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("memory.json");
     fs::write(&path, "{ \"version\": 1, \"learned\": ").unwrap();
-    assert!(load::<Memory>(&path).is_err());
+    load::<Memory>(&path).expect_err("a damaged file was read");
 }

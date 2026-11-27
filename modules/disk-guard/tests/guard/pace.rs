@@ -241,7 +241,7 @@ fn a_pacer_beats_while_it_waits_on_work_and_hands_back_its_answer() {
         42
     });
     assert_eq!(answer, Ok(42));
-    assert!(beats.get() > 0);
+    assert!(beats.get() > 0, "it never beat as it waited");
     crate::assert_exactly(pacer.rested(), 0.0);
 }
 
@@ -250,7 +250,7 @@ fn a_hurried_pacer_beats_while_it_waits_too() {
     let (mut pacer, _, beats) = hurried();
     let waited = pacer.waiting(|| std::thread::sleep(Duration::from_millis(50)));
     assert_eq!(waited, Ok(()));
-    assert!(beats.get() > 0);
+    assert!(beats.get() > 0, "it never beat as it waited");
 }
 
 /// A stop that comes while the guard waits on work, an answer from the

@@ -541,13 +541,22 @@ fn a_producer_runs_on_its_schedule_and_from_its_band_at_most_hourly() {
         "no band of its own"
     );
     let filling = Some(Band::Filling);
-    assert!(!runs(None, filling, f64::INFINITY, Band::Healthy));
-    assert!(runs(None, filling, 2.0 * HOUR, Band::Filling));
+    assert!(
+        !runs(None, filling, f64::INFINITY, Band::Healthy),
+        "before its band"
+    );
+    assert!(
+        runs(None, filling, 2.0 * HOUR, Band::Filling),
+        "in its band"
+    );
     assert!(
         !runs(None, filling, 0.5 * HOUR, Band::Filling),
         "ran within the hour"
     );
-    assert!(runs(None, filling, 2.0 * HOUR, Band::CriticallyFull));
+    assert!(
+        runs(None, filling, 2.0 * HOUR, Band::CriticallyFull),
+        "in a band past its own"
+    );
     assert!(
         runs(six, filling, 7.0 * HOUR, Band::Healthy),
         "either says when"
@@ -592,7 +601,10 @@ fn podman_prunes_its_cache_hourly_and_its_unused_images_daily_once_filling() {
         taken(&recent, Band::CriticallyFull).is_empty(),
         "at most hourly"
     );
-    assert!(dangling.command() && unused.command());
+    assert!(
+        dangling.command() && unused.command(),
+        "a prune isn't measured as a command"
+    );
 }
 
 #[test]

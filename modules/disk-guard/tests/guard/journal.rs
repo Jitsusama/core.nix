@@ -119,7 +119,8 @@ fn a_journal_past_its_limit_starts_again_keeping_one_before_it() {
     }
     let current = lines(&path);
     let previous = lines(&dir.path().join("journal.jsonl.1"));
-    assert!(fs::metadata(&path).unwrap().len() <= 500 + 200);
+    let size = fs::metadata(&path).unwrap().len();
+    assert!(size <= 500 + 200, "came to {size} bytes, over 700");
     assert_eq!(current.last().unwrap()["path"], "/home/u/29");
     // Whole lines only, and nothing lost between the two.
     let last_before = previous.last().unwrap()["path"]
@@ -299,7 +300,11 @@ fn the_journal_keeps_the_last_twenty_things_cleared_newest_first() {
     assert_eq!(cleared[19].path, PathBuf::from("/t/5"));
     assert_eq!(cleared[0].kind, "target");
     assert_eq!(cleared[0].bytes, 4096);
-    assert!((cleared[0].at - 1_760_000_000.0).abs() < 1e-6);
+    let at = cleared[0].at;
+    assert!(
+        (at - 1_760_000_000.0).abs() < 1e-6,
+        "came to {at}, not 1760000000"
+    );
 }
 
 #[test]

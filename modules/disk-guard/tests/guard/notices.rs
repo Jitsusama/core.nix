@@ -457,10 +457,10 @@ fn a_pass_left_short_says_what_to_do_and_who_is_filling_the_disk() {
         pid: 4242,
         rate: 120.0 * f64::from(1 << 20),
     });
+    let body = shown(change(&before, &short)).body;
     assert!(
-        shown(change(&before, &short))
-            .body
-            .ends_with(" cargo (pid 4242) is writing most, at 120.0 MiB a second."),
+        body.ends_with(" cargo (pid 4242) is writing most, at 120.0 MiB a second."),
+        "the writer isn't named: {body}"
     );
     let nearly = status(
         &[("/", Band::NearlyFull, 60)],

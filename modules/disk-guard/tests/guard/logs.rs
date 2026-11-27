@@ -111,8 +111,8 @@ fn a_log_is_never_trimmed_through_a_symlink() {
     symlink(elsewhere.path().join("far.log"), root.path().join("a.log")).unwrap();
     symlink(elsewhere.path(), root.path().join("away")).unwrap();
     let dir = Dir::open(root.path()).unwrap();
-    assert!(trim(&dir, Path::new("a.log"), 100).is_err());
-    assert!(trim(&dir, Path::new("away/far.log"), 100).is_err());
+    trim(&dir, Path::new("a.log"), 100).expect_err("trimmed through a file's link");
+    trim(&dir, Path::new("away/far.log"), 100).expect_err("trimmed through a folder's link");
     assert_eq!(
         fs::metadata(elsewhere.path().join("far.log"))
             .unwrap()

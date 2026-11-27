@@ -190,7 +190,10 @@ fn a_writer_and_its_descendants_are_frozen_in_a_scope_of_their_own() {
             format!("freeze {UNIT}")
         ]
     );
-    assert!(freezer.frozen(UNIT).unwrap());
+    assert!(
+        freezer.frozen(UNIT).unwrap(),
+        "the scope is neither frozen nor freezing"
+    );
     assert_eq!(freezer.ours().unwrap(), [UNIT]);
 }
 
@@ -201,8 +204,9 @@ fn thawing_all_thaws_every_scope_the_guard_made_and_says_which() {
     freezer.freeze(UNIT, &[10], "dd, filling /").unwrap();
     freezer.freeze(other, &[20], "cp, filling /").unwrap();
     assert_eq!(thaw_all(&freezer).unwrap(), [UNIT, other]);
-    assert!(told.calls().contains(&format!("thaw {UNIT}")));
-    assert!(told.calls().contains(&format!("thaw {other}")));
+    let calls = told.calls();
+    assert!(calls.contains(&format!("thaw {UNIT}")), "{calls:?}");
+    assert!(calls.contains(&format!("thaw {other}")), "{calls:?}");
 }
 
 #[test]
@@ -211,5 +215,8 @@ fn a_thawed_scope_runs_again() {
     freezer.freeze(UNIT, &[10], "dd, filling /").unwrap();
     freezer.thaw(UNIT).unwrap();
     assert_eq!(told.calls().last().unwrap(), &format!("thaw {UNIT}"));
-    assert!(!freezer.frozen(UNIT).unwrap());
+    assert!(
+        !freezer.frozen(UNIT).unwrap(),
+        "the thawed scope is frozen or freezing"
+    );
 }

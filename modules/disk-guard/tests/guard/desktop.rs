@@ -54,8 +54,8 @@ fn upower(profile: &'static str) -> Connection {
 
 #[test]
 fn saving_power_is_read_from_the_power_profile() {
-    assert!(saver(&upower("power-saver")));
-    assert!(!saver(&upower("balanced")));
+    assert!(saver(&upower("power-saver")), "power-saver saves nothing");
+    assert!(!saver(&upower("balanced")), "balanced saves power");
     let old = peer(|builder| {
         builder
             .serve_at("/net/hadess/PowerProfiles", OldProfiles("power-saver"))
@@ -71,7 +71,8 @@ fn a_desktop_that_never_answers_is_given_up_on() {
     let started = std::time::Instant::now();
     assert!(!saver(&silent), "no answer saves nothing");
     let mut notifier = Notifier::new(silent);
-    assert!(notifier.tell(&show("filling", Urgency::Normal)).is_err());
+    let told = notifier.tell(&show("filling", Urgency::Normal));
+    told.expect_err("a desktop that never answers was told");
     assert!(
         started.elapsed() < std::time::Duration::from_secs(10),
         "{:?}",

@@ -91,7 +91,7 @@ fn boot_entries_name_the_generations_they_boot() {
         BTreeSet::new(),
         "a loader of neither kind"
     );
-    assert!(entries(&empty.path().join("gone")).is_err());
+    entries(&empty.path().join("gone")).expect_err("a missing boot partition was read");
 }
 
 #[test]
@@ -123,7 +123,10 @@ fn an_unreadable_boot_partition_expires_nothing_of_the_system() {
     profile(dir.path(), "system", &[(1, 30.0), (2, 29.0), (3, 1.0)], 3);
     let system = &profiles(dir.path()).unwrap()[0];
     let (routine, pressed) = expired(system, &[], &Boot::Unreadable, 1, 7.0 * DAY, NOW);
-    assert!(routine.is_empty() && pressed.is_empty());
+    assert!(
+        routine.is_empty() && pressed.is_empty(),
+        "expired {routine:?} routinely and {pressed:?} filling"
+    );
     let (routine, _) = expired(system, &[], &Boot::NotBooted, 1, 7.0 * DAY, NOW);
     assert_eq!(routine, [1, 2], "a profile nothing boots needs no entries");
 }

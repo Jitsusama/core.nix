@@ -162,10 +162,11 @@ fn a_session_rustc_holds_is_busy() {
         .join(format!("{}.lock", name.rsplit_once('-').unwrap().0));
     let _rustc = posix_lock(&lock).unwrap();
     let dir = Dir::open(root.path()).unwrap();
-    assert!(matches!(
-        hold_session(&dir, OsStr::new(&name), now).unwrap(),
-        Hold::Busy(_)
-    ));
+    let hold = hold_session(&dir, OsStr::new(&name), now).unwrap();
+    assert!(
+        matches!(hold, Hold::Busy(_)),
+        "the guard held a session rustc holds"
+    );
 }
 
 #[test]
@@ -174,10 +175,11 @@ fn a_session_younger_than_ten_seconds_is_busy() {
     let now = SystemTime::now();
     let name = session(root.path(), now - Duration::from_secs(5));
     let dir = Dir::open(root.path()).unwrap();
-    assert!(matches!(
-        hold_session(&dir, OsStr::new(&name), now).unwrap(),
-        Hold::Busy(_)
-    ));
+    let hold = hold_session(&dir, OsStr::new(&name), now).unwrap();
+    assert!(
+        matches!(hold, Hold::Busy(_)),
+        "the guard held a session five seconds old"
+    );
 }
 
 #[test]
@@ -186,10 +188,11 @@ fn a_name_rustc_wouldnt_give_is_busy() {
     fs::create_dir(root.path().join("s-zz-x")).unwrap();
     let dir = Dir::open(root.path()).unwrap();
     let now = SystemTime::now();
-    assert!(matches!(
-        hold_session(&dir, OsStr::new("s-zz-x"), now).unwrap(),
-        Hold::Busy(_)
-    ));
+    let hold = hold_session(&dir, OsStr::new("s-zz-x"), now).unwrap();
+    assert!(
+        matches!(hold, Hold::Busy(_)),
+        "the guard held a session rustc wouldn't name so"
+    );
 }
 
 #[test]
@@ -203,8 +206,9 @@ fn a_lock_that_is_a_symlink_makes_the_target_busy() {
         target.join("debug/.cargo-lock"),
     )
     .unwrap();
-    assert!(matches!(
-        hold_cargo(&Dir::open(&target).unwrap()).unwrap(),
-        Hold::Busy(_)
-    ));
+    let hold = hold_cargo(&Dir::open(&target).unwrap()).unwrap();
+    assert!(
+        matches!(hold, Hold::Busy(_)),
+        "the guard held a target whose lock is a symlink"
+    );
 }

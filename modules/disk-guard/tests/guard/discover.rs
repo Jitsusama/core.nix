@@ -197,7 +197,10 @@ fn installs_are_found_beside_their_manifest_and_lockfile() {
         found,
         [install(venv), install(modules.parent().unwrap().to_owned())]
     );
-    assert!(!found.iter().any(|f| f.path == unlocked));
+    assert!(
+        !found.iter().any(|f| f.path == unlocked),
+        "a node_modules with no lockfile was found"
+    );
 }
 
 #[test]

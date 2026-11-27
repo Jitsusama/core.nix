@@ -69,8 +69,9 @@ fn a_build_any_nix_process_runs_is_held() {
             "{exe} didn't hold it"
         );
     }
-    assert!(orphaned(&build(None), &[running(42, "/usr/bin/vim")], BOOT));
-    assert!(orphaned(&build(None), &[], BOOT));
+    let vim = [running(42, "/usr/bin/vim")];
+    assert!(orphaned(&build(None), &vim, BOOT), "vim held it");
+    assert!(orphaned(&build(None), &[], BOOT), "nothing running held it");
 }
 
 #[test]

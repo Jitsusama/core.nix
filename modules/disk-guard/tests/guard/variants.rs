@@ -151,7 +151,10 @@ fn what_isnt_a_session_keeps_the_variants_directory() {
     let outcome = variant(&anchor, root.path(), &candidate(&app), SystemTime::now());
     assert_eq!(outcome, Outcome::Reclaimed);
     assert_eq!(names(&app), ["newcomer"]);
-    assert!(app.join("newcomer/inside").is_dir());
+    assert!(
+        app.join("newcomer/inside").is_dir(),
+        "the newcomer's insides are gone"
+    );
 }
 
 #[test]

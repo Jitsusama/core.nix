@@ -42,7 +42,7 @@ fn this_process_reads_as_itself() {
         .iter()
         .find(|p| p.pid == std::process::id())
         .expect("not among the processes");
-    assert!(me.readable);
+    assert!(me.readable, "its own files, cwd or maps couldn't be read");
     // Resolved, as libproc gives it, since TMPDIR lies under a link.
     let held_at = fs::canonicalize(mapped.path()).unwrap();
     assert!(me.files.contains(&held_at), "{:?}", me.files);
