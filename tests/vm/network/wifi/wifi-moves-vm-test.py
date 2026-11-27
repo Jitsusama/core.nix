@@ -386,8 +386,8 @@ def gives_way_as_it_loses(machine: BaseMachine, wifid: Wifid) -> None:
     machine.sleep(timedelta(seconds=10))
     # wifid gives way to none within 30 s of a move (fading::BETWEEN), and holding the card
     # back was one, so the loss waits out what's left of it.
-    settled = MOVE_SETTLES.total_seconds() - (time.monotonic() - held)
-    machine.sleep(timedelta(seconds=max(0.0, settled)))
+    left = MOVE_SETTLES - timedelta(seconds=time.monotonic() - held)
+    machine.sleep(max(timedelta(0), left))  # what's left of MOVE_SETTLES since the hold
     quiet = wifid.journal_now()
     answer = wifid.acting({"act": "calling", "on": True})
     assert answer == {"id": 1, "done": True}, answer
