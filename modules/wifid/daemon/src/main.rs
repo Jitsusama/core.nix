@@ -1618,9 +1618,10 @@ fn refused(failure: store::Failure) -> Refused {
 }
 
 /// What a move wpa_supplicant refused is answered with. One to a point it
-/// forgot is out of reach as one wifid doesn't hear is, so a chooser keeps
-/// it off as never reached rather than taking the move as never asked and
-/// asking again.
+/// forgot is out of reach as one wifid doesn't hear is, so the roam looks
+/// for it once (`acts::roam`), and one still forgotten after that is kept
+/// off by a chooser as never reached rather than taken as never asked and
+/// asked again.
 fn refused_move(card: &str, bssid: &str, error: &zbus::Error) -> Refused {
     let forgotten = matches!(
         error,

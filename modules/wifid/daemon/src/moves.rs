@@ -28,8 +28,8 @@ pub enum Back {
     /// The card's look ended in time for it to be chosen for again.
     Looked(String),
     /// The card's move to `to` began, or was refused as out of reach
-    /// (`Refused::NotNearby`): unheard even after a look, or forgotten by
-    /// wpa_supplicant as the move was asked. Its chooser follows the move
+    /// (`Refused::NotNearby`): unheard, or forgotten by wpa_supplicant as
+    /// the move was asked, even after a look. Its chooser follows the move
     /// as one that may never get there (`Chooser::answered`).
     Answered {
         card: String,

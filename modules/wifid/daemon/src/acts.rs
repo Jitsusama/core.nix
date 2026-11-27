@@ -15,8 +15,9 @@
 //! ```
 //!
 //! A roam readies the access point first, looking over its channel so the
-//! move needn't, and one wifid no longer hears looks for it once before
-//! refusing it as `NotNearby`.
+//! move needn't, and one wifid no longer hears, or that wpa_supplicant
+//! forgets as it's moved to, looks for it once before refusing it as
+//! `NotNearby`.
 //!
 //! What wifid won't do is an error coded `refused`, its `refused` the
 //! varlink interface's name for why, as `WrongPassword`. Each stage and
@@ -278,7 +279,11 @@ const CATCHING_UP: Duration = Duration::from_millis(200);
 ///
 /// One that's heard is readied first, its channel alone looked over for
 /// the kernel, which forgets a point sooner, and moved to `CATCHING_UP`
-/// after that look ends, or once `READYING` passes.
+/// after that look ends, or once `READYING` passes. wpa_supplicant may
+/// still forget it before the move is asked, and refuse the move as it
+/// would one to a point unheard, so it's looked for then as one unheard
+/// is: refused without a look, the chooser would keep it off an hour
+/// (`choose::SPURNED`) as out of reach when it was only forgotten.
 pub(crate) async fn roam(
     asks: &mpsc::Sender<Ask>,
     mut air: watch::Receiver<State>,
@@ -300,7 +305,10 @@ pub(crate) async fn roam(
                 Ok(false) => return Err(stopping()),
                 Err(_) => {}
             }
-            return once(asks, roaming).await;
+            match once(asks, roaming).await {
+                Err(Refused::NotNearby) => {}
+                moved => return moved,
+            }
         }
         Err(Refused::NotNearby) => {}
         Err(refused) => return Err(refused),
@@ -576,6 +584,16 @@ mod tests {
         near_after: Option<u32>,
         ending: bool,
     ) -> (Vec<Value>, Vec<&'static str>, Option<Duration>) {
+        roamed_forgetting(near_after, ending, false).await
+    }
+
+    /// The same, the first move refused as one to a point forgotten where
+    /// `forgetting`, however heard the point was as it was readied.
+    async fn roamed_forgetting(
+        near_after: Option<u32>,
+        ending: bool,
+        mut forgetting: bool,
+    ) -> (Vec<Value>, Vec<&'static str>, Option<Duration>) {
         let (asks, mut taken) = mpsc::channel(1);
         let (told, mut telling) = mpsc::channel(16);
         let (state, watching) = watch::channel(State::default());
@@ -610,7 +628,13 @@ mod tests {
                         assert_eq!(bssid, address, "written as wpa_supplicant writes it");
                         asked.push("roam");
                         waited = ended.map(|ended| ended.elapsed());
-                        done.send(near(looks)).expect("answered");
+                        let answer = if forgetting {
+                            Err(Refused::NotNearby)
+                        } else {
+                            near(looks)
+                        };
+                        forgetting = false;
+                        done.send(answer).expect("answered");
                     }
                     Ask::Scan { done } => {
                         looks += 1;
@@ -667,6 +691,21 @@ mod tests {
             asked,
             ["ready", "scan", "roam"],
             "one look everywhere asked for before moving"
+        );
+    }
+
+    #[tokio::test]
+    async fn roaming_to_an_access_point_forgotten_once_readied_looks_for_it_first() {
+        let (heard, asked, _) = roamed_forgetting(Some(0), true, true).await;
+        assert_eq!(
+            heard,
+            vec![json!({"id": 7, "done": true})],
+            "a point forgotten as it was moved to was refused with no look for it"
+        );
+        assert_eq!(
+            asked,
+            ["ready", "roam", "scan", "roam"],
+            "no look everywhere asked for before moving again"
         );
     }
 
