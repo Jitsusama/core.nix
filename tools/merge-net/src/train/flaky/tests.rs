@@ -80,6 +80,33 @@ fn a_failed_derivation_is_named_once_and_one_a_dependency_stopped_not_at_all() {
         None,
         "a derivation that failed some other way was passed over"
     );
+    let listed = "error: build of '/nix/store/aaaa-the-margin-cat-on-niri.drv^*', \
+                  '/nix/store/bbbb-home-manager-path.drv^*' failed\n";
+    assert_eq!(
+        failed_derivations(&(said.to_owned() + listed)),
+        Some(vec!["the-margin-cat-on-niri".to_owned()]),
+        "nix's closing list of builds each failing on a line of its own was refused"
+    );
+}
+
+/// nix exits 1 for a builder lost or a copy that failed as for a failed
+/// build, so a flake beside one would land a check that never ran.
+#[test]
+fn a_red_with_a_build_no_line_says_failed_is_never_judged() {
+    let flaky = words(&["a", "b"], &["a"]);
+    let unlisted = flaky.clone()
+        + "error: build of '/nix/store/aaaa-a.drv^*', '/nix/store/bbbb-b.drv^*' failed\n";
+    assert_eq!(
+        judged(&unlisted, &passes_at_base, &passes, 0),
+        None,
+        "a flake excused a red whose other failed build nothing said"
+    );
+    let lost = flaky + "error: unexpected end of file\n";
+    assert_eq!(
+        judged(&lost, &passes_at_base, &passes, 0),
+        None,
+        "a flake excused a red beside an error that wasn't a build's"
+    );
 }
 
 #[test]

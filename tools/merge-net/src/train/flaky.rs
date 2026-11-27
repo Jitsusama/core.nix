@@ -69,11 +69,32 @@ pub(super) struct Judging<'a> {
 /// failed". One that couldn't build for a dependency names no check of its
 /// own: its dependency's line does. None when one couldn't build for any
 /// other reason, a timeout or a hash that doesn't match, since what broke
-/// it can't then be told.
+/// it can't then be told; and None when nix said an error of another kind,
+/// a builder lost or a copy that failed, or its closing list names a build
+/// no line says failed, since a check may then never have been built.
 pub(super) fn failed_derivations(words: &str) -> Option<Vec<String>> {
     let mut failed = Vec::new();
+    let mut listed_failed = BTreeSet::new();
+    let mut said_failed = BTreeSet::new();
     let mut lines = words.lines().peekable();
     while let Some(line) = lines.next() {
+        if let Some(listed) = line.strip_prefix("error: build of ") {
+            listed_failed.extend(listed.split("'/nix/store/").skip(1).filter_map(|path| {
+                let (path, _) = path.split_once(".drv")?;
+                Some(
+                    path.split_once('-')
+                        .map_or(path, |(_, name)| name)
+                        .to_owned(),
+                )
+            }));
+            continue;
+        }
+        if line.starts_with("error: ")
+            && !line.starts_with("error: Cannot build '")
+            && line != "error: Build failed due to failed dependency"
+        {
+            return None;
+        }
         let Some(path) = line
             .split_once("Cannot build '/nix/store/")
             .and_then(|(_, rest)| rest.split_once(".drv'"))
@@ -83,6 +104,7 @@ pub(super) fn failed_derivations(words: &str) -> Option<Vec<String>> {
         };
         let reason = lines.peek().map_or("", |next| next.trim_start());
         let name = path.split_once('-').map_or(path, |(_, name)| name);
+        said_failed.insert(name.to_owned());
         if reason.starts_with("Reason: builder failed") {
             if !failed.iter().any(|known| known == name) {
                 failed.push(name.to_owned());
@@ -92,7 +114,7 @@ pub(super) fn failed_derivations(words: &str) -> Option<Vec<String>> {
             return None;
         }
     }
-    Some(failed)
+    listed_failed.is_subset(&said_failed).then_some(failed)
 }
 
 /// The most failed checks a red's judging builds again: past them the
