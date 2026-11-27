@@ -140,9 +140,10 @@ const FILLERS: [&str; 2] = ["shit", "crap"];
 /// filler is spared only in a message that asks, by one of these or a
 /// "?", since "text alignment and shit, constantly shifting around" asks
 /// for nothing and is a hurt; a pain sent is cheaper than one lost.
-const ASKING: [&str; 20] = [
+const ASKING: [&str; 30] = [
     "consider", "add", "include", "cover", "help", "see", "show", "tell", "explain", "list",
-    "update", "check", "look", "make", "give", "put", "use", "can", "could", "please",
+    "update", "check", "look", "make", "give", "put", "use", "can", "could", "please", "track",
+    "fix", "do", "build", "write", "find", "set", "try", "sort", "draft",
 ];
 
 /// The words a filler swear follows, read back to the "and" or "or"
@@ -785,34 +786,6 @@ mod tests {
                 "a filler's tail swore: {filler}"
             );
         }
-        // A filler in a message asking for nothing is a hurt, his own
-        // words of 25 October among them, with a comma or without.
-        for hurt in [
-            "text alignment and shit constantly shifting around",
-            "text alignment and shit, constantly shifting around",
-            "i lost my notes and shit in the rebase",
-            "it wiped my branch and shit",
-            "i merged it and shit, it wiped my branch",
-            "the brackets and shit",
-        ] {
-            assert!(
-                kinds(hurt, AT, &[]).contains(&"swore"),
-                "a filler in a message asking for nothing went unheard: {hurt}"
-            );
-        }
-        // Each word as he'd say it, so one dropped from its list is caught.
-        for word in [
-            "consider", "add", "include", "cover", "help", "see", "show", "tell", "explain",
-            "list", "update", "check", "look", "make", "give", "put", "use", "can", "could",
-            "please",
-        ] {
-            let filler = format!("the brackets and shit\n{word} them");
-            assert_eq!(
-                kinds(&filler, AT, &[]),
-                none,
-                "a filler in a message asking by its word swore: {filler}"
-            );
-        }
         // Each hurt below is said after an ask, so it is the filler's own
         // rules that hear it, not the ask's.
         for hurt in [
@@ -853,6 +826,10 @@ mod tests {
                 "a filler run on swore: {filler}"
             );
         }
+    }
+
+    #[test]
+    fn a_word_that_lists_nothing_opens_no_list() {
         for word in [
             "oh", "ah", "ugh", "well", "so", "yeah", "man", "god", "jeez", "ok", "okay", "hey",
             "hmm", "wow", "dude", "right", "wait", "huh", "oops", "uh", "um", "lol", "no", "yes",
@@ -863,6 +840,46 @@ mod tests {
                 "a word that lists nothing was taken for a list: {hurt}"
             );
         }
+    }
+
+    #[test]
+    fn a_filler_is_spared_only_in_a_message_that_asks() {
+        let none: Vec<&str> = Vec::new();
+        // A filler in a message asking for nothing is a hurt, his own
+        // words of 25 October among them, with a comma or without.
+        for hurt in [
+            "text alignment and shit constantly shifting around",
+            "text alignment and shit, constantly shifting around",
+            "i lost my notes and shit in the rebase",
+            "it wiped my branch and shit",
+            "i merged it and shit, it wiped my branch",
+            "the brackets and shit",
+        ] {
+            assert!(
+                kinds(hurt, AT, &[]).contains(&"swore"),
+                "a filler in a message asking for nothing went unheard: {hurt}"
+            );
+        }
+        // Each word as he'd say it, so one dropped from its list is caught.
+        for word in [
+            "consider", "add", "include", "cover", "help", "see", "show", "tell", "explain",
+            "list", "update", "check", "look", "make", "give", "put", "use", "can", "could",
+            "please", "track", "fix", "do", "build", "write", "find", "set", "try", "sort",
+            "draft",
+        ] {
+            let filler = format!("the brackets and shit\n{word} them");
+            assert_eq!(
+                kinds(&filler, AT, &[]),
+                none,
+                "a filler in a message asking by its word swore: {filler}"
+            );
+        }
+        // A hurt opening on a word that asks nothing stays one, so "keep"
+        // is no ask: he says it of a fault that won't stop.
+        assert!(
+            kinds("keep losing my notes and shit", AT, &[]).contains(&"swore"),
+            "a hurt opening on keep was taken for an ask"
+        );
     }
 
     #[test]
