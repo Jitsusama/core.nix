@@ -3616,16 +3616,7 @@ fn run(settings: &Settings) -> Result<(), String> {
         keeping: left_kept(settings.orchestrators.is_some(), &under, &windows),
         ..Ranks::default()
     };
-    let mut doorway = Doorway::new(settings.calls.as_deref());
-    doorway.elsewhere = settings
-        .calls_elsewhere
-        .as_ref()
-        .map(|(sockets, mycelium)| elsewhere::Elsewhere::follow(sockets, mycelium));
-    let processors = thread::available_parallelism().map_or(1, usize::from);
-    doorway.brake = brake::Brake::found(
-        |place| braked_cpu_max(place, &root),
-        brake::quota(processors),
-    );
+    let mut doorway = doorway_from(settings, &root);
     loop {
         match (&watch, &settings.background) {
             (Some(watch), Some(dir)) => {
@@ -3681,6 +3672,23 @@ fn run(settings: &Settings) -> Result<(), String> {
         pass = pass.wrapping_add(1);
         sorter.finish(&alive, now);
     }
+}
+
+/// The door as `run` starts it: hearing calls here and on the person's
+/// other machines, with the brake found where an earlier run left it
+/// under `root`, the account's manager's cgroup.
+fn doorway_from(settings: &Settings, root: &Path) -> Doorway {
+    let mut doorway = Doorway::new(settings.calls.as_deref());
+    doorway.elsewhere = settings
+        .calls_elsewhere
+        .as_ref()
+        .map(|(sockets, mycelium)| elsewhere::Elsewhere::follow(sockets, mycelium));
+    let processors = thread::available_parallelism().map_or(1, usize::from);
+    doorway.brake = brake::Brake::found(
+        |place| braked_cpu_max(place, root),
+        brake::quota(processors),
+    );
+    doorway
 }
 
 /// The door, and the calls it keeps more room through when it hears them.
