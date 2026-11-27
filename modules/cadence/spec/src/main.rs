@@ -219,7 +219,13 @@ fn took(kept: &mut Kept, made: Option<Made>, unread: impl FnOnce() -> Option<Val
 /// for it (`<place>:head`'s unread), as cadence says it; none where those
 /// words don't say one, as Spec's don't, or can't be read.
 fn unread_head(words: &Path, place: &str) -> Option<Value> {
-    let read: Value = serde_json::from_slice(&std::fs::read(words).ok()?).ok()?;
+    // Words that can't be read serve no unread headline, and the place keeps
+    // what it served, as one whose words say none does; the journal says why.
+    let read: Value = std::fs::read(words)
+        .map_err(|error| error.to_string())
+        .and_then(|bytes| serde_json::from_slice(&bytes).map_err(|error| error.to_string()))
+        .map_err(|why| eprintln!("cadence-spec: {}'s words: {why}", words.display()))
+        .ok()?;
     let id = format!("{place}:head");
     let thing = read["things"]
         .as_array()?
