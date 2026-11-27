@@ -42,17 +42,64 @@ function before(saw, held, seat) {
         ? saw : held;
 }
 
-// How long before niri last told of it a resize began on a workspace's
-// windows, in ms, the longest where several are under way, null for none:
-// niri's own word, as its tile_animation (modules/niri/tiled-positions.patch),
-// so a fall a window grows down over goes with that window's edge.
-function resizing(windows, workspaceId) {
+// How long before niri last told of it a motion of `kind` began on a
+// workspace's windows, in ms, the longest where several are under way, null
+// for none: niri's own word, as its tile_animation
+// (modules/niri/tiled-positions.patch), so a fall a window grows down over
+// goes with that window's edge ("Resize"), and a cat a scroll carries with
+// its window ("ViewMove").
+function animating(windows, workspaceId, kind) {
     const began = Object.values(windows)
         .filter(one => one.workspace_id === workspaceId
-            && one.layout?.tile_animation === "Resize"
+            && one.layout?.tile_animation === kind
             && typeof one.layout?.tile_animation_began_ms_ago === "number")
         .map(one => one.layout.tile_animation_began_ms_ago);
     return began.length ? Math.max(...began) : null;
+}
+
+// What niri last said of a motion of `kind` on a workspace's windows: each
+// window whose layout tells of one, how long before that layout went out
+// it began, in ms, and the layout that said it.
+function told(windows, workspaceId, kind) {
+    return Object.values(windows)
+        .filter(one => one.workspace_id === workspaceId && one.layout?.tile_animation === kind
+            && typeof one.layout?.tile_animation_began_ms_ago === "number")
+        .map(one => ({ id: one.id, ago: one.layout.tile_animation_began_ms_ago,
+            layout: one.layout }));
+}
+
+// When the latest motion `said` (told) began, on the clock `now` is read
+// from, null for none, with when each window's word of it began (`tiles`),
+// dated once, as it's first heard: `now` less how long before its layout
+// went out niri says it began. niri says a motion as it begins, never as
+// it ends (tiled-positions.patch), so a window keeps the word of its last
+// scroll until its next layout. Each word is dated by niri's begin, not by
+// when the shell heard it, so a scroll's word left on some windows as
+// another's layout comes, a column resized or a window closed, keeps its
+// old begin and reads as ended, and a layout sent again mid-scroll keeps
+// the scroll's own. A word is the one heard before only while its layout
+// is the very one that said it, since niri says each layout anew: a new
+// scroll said, as most are, 0 ms after it began, as the last was, is
+// dated anew.
+function hears(heard, said, now) {
+    const tiles = {};
+    let at = null;
+    for (const one of said) {
+        const was = heard?.tiles?.[one.id];
+        const same = was !== undefined && was.ago === one.ago && was.layout === one.layout;
+        const began = same ? was.at : now - one.ago;
+        tiles[one.id] = { ago: one.ago, at: began, layout: one.layout };
+        at = at === null ? began : Math.max(at, began);
+    }
+    return { tiles, at };
+}
+
+// Whether the motion `heard` tells of still runs `now`, begun less than
+// `lasts` ms ago, niri's spring's length; never for none, nor for one
+// begun after `now`, a clock stepped back, which would otherwise hold it
+// running until the clock came round again.
+function runs(heard, now, lasts) {
+    return heard !== null && heard.at !== null && now >= heard.at && now - heard.at < lasts;
 }
 
 // The tiles of a workspace's windows, each with its column and its row in

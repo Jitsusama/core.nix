@@ -46,7 +46,7 @@
           state=$XDG_RUNTIME_DIR/litra-state
           feed=$XDG_RUNTIME_DIR/litra-feed
           # Each change waits its turn, as litra's own does under a lock on
-          # the light's node (modules/litra/litra.rs): the shell sets
+          # the light's node (modules/litra/light.rs): the shell sets
           # brightness and warmth at once, and two changes read at the same
           # time would each write back the other's field as it was.
           if [ "$1" != watch ]; then

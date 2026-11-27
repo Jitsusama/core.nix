@@ -12,11 +12,16 @@
 # session he typed in, keeps each pain in its own state, and sends it as a
 # finding to the cell that was working on it through the machine's
 # mycelium socket alone (src/hear.rs says how), though a send's words sit
-# in mycelium's command line while it runs. It reads the asks and
-# misses ledgers, and writes into the misses ledger alone a line for each
-# pain it sent, with his words, kept until its fix runs; it never sends
-# to the void, and sends and writes nothing until routes.json, beside its
-# state, names who it sends as. It reads the mesh's messages for who took each pain up, and asks
+# in mycelium's command line while it runs. A pain no live cell of its own
+# takes, said to the void or in a session that has ended, goes with his
+# words to a live holder of its subject that the subject's hub names, and
+# only with no hub to take it to the fallback routes.json names. It reads
+# the asks and misses ledgers, and writes into the misses ledger a line for
+# each pain it sent, with his words, kept until its fix runs, and into the
+# harness's needs folder a need for each pain put to a hub, holding the
+# subject's words and never his; it never sends to the void, and sends
+# and writes nothing until routes.json, beside its state, names who it
+# sends as. It reads the mesh's messages for who took each pain up, and asks
 # git, of the core cadence keeps fetched, whether the landing that
 # answered one is in the core integration last switched to.
 {
@@ -28,9 +33,17 @@
 let
   package = pkgs.callPackage ./package.nix { };
   realm = config.home.sessionVariables.MYCELIUM_REALM or null;
+  # The harness's needs folder, under the state folder, where hear keeps
+  # each pain it put to a hub.
+  needs = "pi/agentic-harness.pi/mesh-workflow/needs";
 in
 {
   home.packages = [ package ];
+
+  # Made at login, so hear's first run can write there before any pi
+  # session has made it. Its lines say what each session needed of
+  # another, so only his account reads it.
+  systemd.user.tmpfiles.rules = [ "d ${config.xdg.stateHome}/${needs} 0700 - - -" ];
 
   systemd.user.services.pain-points = {
     Unit.Description = "Names the launcher's, pi's and Chrome's interactions that slowed Joel most today";
@@ -80,11 +93,14 @@ in
       # What it keeps holds his own words, so only his account reads it.
       StateDirectoryMode = "0700";
       ProtectHome = "read-only";
-      # The misses ledger's folder, where it writes each pain it sent; one
-      # not made yet leaves the unit starting, its write a trouble said.
+      # The misses ledger's folder, where it writes each pain it sent, and
+      # the harness's needs folder, where it keeps each pain it put to a
+      # hub. Login makes that one; should a run start before it is made,
+      # the unit still starts, its write a trouble said.
       ReadWritePaths = [
         "%S/pain-points"
         "-%S/mission"
+        "-%S/${needs}"
       ];
       # The mycelium's socket is a file under the runtime folder, which a
       # network namespace of its own leaves reachable while keeping it off
@@ -94,7 +110,11 @@ in
       # the kernel takes those pages back first.
       MemoryHigh = "256M";
       # A run ends in seconds; one held past this by a node that never
-      # answers is stopped before the next is due, five minutes on.
+      # answers is stopped before the next is due, five minutes on. The
+      # run ends its sends by SENDS_END and its asks of git by ASKS_END,
+      # three minutes and three and a half in, so it writes what it heard
+      # inside this. Those are fixed in the Rust, not read from here, so
+      # shortening this means shortening them too.
       TimeoutStartSec = "4min";
     };
   };

@@ -18,9 +18,10 @@ onLinux {
   # tests/margin-cat-rides.qml holds it, its way down a workspace as one
   # screen, as tests/margin-cat-one-screen.qml holds it, how it reads
   # niri's layout, as tests/margin-cat-tiles.qml holds it, how a walk says
-  # its frames were shown, as tests/margin-cat-shown.qml holds it, and the
-  # plays that move it, as tests/margin-cat-games.qml holds them, in Qt's
-  # own engine.
+  # its frames were shown, as tests/margin-cat-shown.qml holds it, the
+  # plays that move it, as tests/margin-cat-games.qml holds them, and the
+  # puppy's visit, as tests/margin-cat-puppy.qml holds it, in Qt's own
+  # engine.
   the-margin-cat-sits-above-its-column =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -34,17 +35,20 @@ onLinux {
           ./MarginCatLedges.js
           ./MarginCatPaths.js
           ./MarginCatPlays.js
+          ./MarginCatPuppy.js
           ./MarginCatRoutes.js
           ./MarginCatShown.js
           ./MarginCatStacked.js
           ./MarginCatTiles.js
           ./MarginCatWays.js
+          ./tests/Seated.js
           ./tests/margin-cat.qml
           ./tests/margin-cat-floats.qml
           ./tests/margin-cat-games.qml
           ./tests/margin-cat-journeys.qml
           ./tests/margin-cat-one-screen.qml
           ./tests/margin-cat-pets.qml
+          ./tests/margin-cat-puppy.qml
           ./tests/margin-cat-rides.qml
           ./tests/margin-cat-shown.qml
           ./tests/margin-cat-tiles.qml
@@ -53,7 +57,8 @@ onLinux {
       # The theme's drawings of the yarn, which margin-cat-games.qml draws
       # as the screen does, and of the cat sitting, leaning and batting, whose
       # cells margin-cat-pets.qml holds a lean and a swat either way to, and
-      # held by the scruff, which it holds whole.
+      # held by the scruff, which it holds whole; and the puppy's, each of
+      # which margin-cat-puppy.qml holds its visit to drawing.
       glyphs = import ../theme/glyphs.nix { inherit (pkgs) lib; };
       drawings = pkgs.writeText "MarginCatDrawings.js" ''
         .pragma library
@@ -70,6 +75,12 @@ onLinux {
               "batting"
               "leaning"
               "nothingHere"
+              "puppyBowing"
+              "puppySitting"
+              "puppyWalkingA"
+              "puppyWalkingB"
+              "puppyWalkingC"
+              "puppyWalkingD"
               "scruffed"
             ] (name: glyphs.${name}.pixels)
           )
@@ -77,7 +88,7 @@ onLinux {
       '';
     in
     pkgs.runCommandLocal "the-margin-cat-sits-above-its-column" { } ''
-      cp ${sources}/*.js ${sources}/tests/*.qml .
+      cp ${sources}/*.js ${sources}/tests/*.js ${sources}/tests/*.qml .
       cp ${drawings} MarginCatDrawings.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
       export FONTCONFIG_FILE=${pkgs.makeFontsConf { fontDirectories = [ ]; }}
@@ -85,6 +96,18 @@ onLinux {
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml $BASH ${./tests/runs-every-case.sh} ${qt}/bin/qml
       touch $out
     '';
+
+  # What the cat's case runner says of each way a case ends, past its own
+  # time, killed, hung, failed or unrun under a builder's hold, and
+  # of limits that aren't whole seconds, over stand-ins in about 20 s by the clock,
+  # most of it a hang's wait for its guard, as tests/runs-every-case-test.sh
+  # holds it.
+  the-cat-runner-names-how-each-case-ended =
+    pkgs.runCommandLocal "the-cat-runner-names-how-each-case-ended" { }
+      ''
+        CAPPED_MUST_RUN=1 $BASH ${./tests/runs-every-case-test.sh} ${./tests/runs-every-case.sh}
+        touch $out
+      '';
 
   # Every design Joel stated for the cat, under the guide's "Joel's Words",
   # is held by a phrase a case says, or owed with the date it was asked for,

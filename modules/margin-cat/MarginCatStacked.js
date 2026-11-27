@@ -23,6 +23,7 @@
 .import "MarginCatWays.js" as Ways
 .import "MarginCatFalls.js" as Falls
 .import "MarginCatFloats.js" as Floats
+.import "MarginCatLedges.js" as Ledges
 
 // How far above where it's first seen it drops from, in its heights, once
 // out of sight: so it comes in already falling, about a quarter of a
@@ -65,6 +66,20 @@ function risesFrom(place, at) {
     return { x: place.x, y: Math.min(place.y, at.height + DROPS_FROM * at.tall) };
 }
 
+// Where it comes to the floor from `place` with no window left under it:
+// carried off the screen's side, from the floor past that edge, head first,
+// to sit just inside it, never on a seat out of sight; otherwise straight
+// down where it is. `off` says which side it was off, 0 for none.
+function floorsFrom(place, at) {
+    const y = at.height - at.tall;
+    const off = place.x + at.wide <= 0 ? -1 : place.x >= at.across ? 1 : 0;
+    if (off === 0) {
+        return { off, from: place, to: { x: place.x, y } };
+    }
+    const edge = off < 0 ? { from: -at.wide, to: 0 } : { from: at.across, to: at.across - at.wide };
+    return { off, from: { x: edge.from, y }, to: { x: edge.to, y } };
+}
+
 // It comes onto the screen head first at `x`, from under it if it's going
 // `up`, else head down from the gap over it, hanging by a side on its
 // `side`: its ears and then its eyes come over the edge, its paws moving,
@@ -98,6 +113,136 @@ function risesOnto(place, at) {
     return Ways.timed(way);
 }
 
+// A walk from `from` to `to` over `at`'s columns, as MarginCatPaths.js's
+// walk(): from off the screen's side, where the window it sat on carried it
+// as niri scrolled the strip (MarginCatScreen.qml's carried), it comes back
+// in at that edge first (comesIn()).
+function walkAlong(from, to, at) {
+    const now = Paths.closing(at);
+    const coming = comesIn(from, now);
+    if (coming === null) {
+        return Paths.walk(from, to, at);
+    }
+    return Ways.timed(Paths.onward(coming.way, to, Object.assign({}, now,
+        { hurried: true, facing: coming.way.facing })));
+}
+
+// Its way back onto the screen from `from`, off its side: null where it's
+// on the screen, or where no screen is given. niri lays a workspace's
+// columns on one strip, so it comes in at the edge the strip carried it
+// off, as it would walk the strip were it all on the screen (Joel,
+// 2026-11-14 17:24: "focusing to a window off the left or right edge").
+// Out of sight, it comes in head first, as it does between workspaces: on
+// the top of the window past the edge, its head over the edge, its paws
+// moving, it peers and looks about (Joel, Sun 15 21:20: "poke its head up
+// and then come in"). Then it comes on facing the way in, leaping the gap
+// between that window and the one inside the edge, if there's one and
+// that window is all past the edge, and walks on from there without
+// thinking again. Partly on the screen, it walks on from where it's drawn.
+// It first `holds` that many ms out of sight where given, as niri slides
+// to another workspace under it (moves()).
+function comesIn(from, at, holds) {
+    if (at.across === undefined || Routes.onScreen(from.x, at)) {
+        return null;
+    }
+    const side = from.x < 0 ? -1 : 1;
+    const cols = at.cols ?? [];
+    const seen = side > 0 ? from.x < at.across : from.x + at.wide > 0;
+    const peeked = side > 0 ? at.across - PEEKS * at.cell : PEEKS * at.cell - at.wide;
+    // The window past the edge it comes in on, where niri lays one there: the
+    // nearest the edge, so a gap at the edge is peeked over from that
+    // window's top, never from the air where the cat was drawn.
+    const past = seen ? null : cols.filter(one => side > 0 ? one.right > at.across : one.left < 0)
+        .sort((one, other) => side > 0 ? one.left - other.left : other.right - one.right)[0]
+        ?? null;
+    const y = past ? Routes.stands(past.top, at) : from.y;
+    const way = Ways.begun(at, { x: seen ? from.x : side > 0 ? at.across : -at.wide, y });
+    way.facing = -side;
+    way.turn = 0;
+    if (seen) {
+        return { way, side };
+    }
+    if (holds) {
+        Ways.leg(way, "rides", way, { ms: holds, slide: () => 0, posed: () => null });
+    }
+    Ways.leg(way, "climbs", { x: peeked, y },
+        { name: "peeks", ms: (PEEKS * CREEPS * MarginCat.MS) / 60, bounds: PEEKS / 2 });
+    Ways.holds(way, "peers", PEERS);
+    Ways.holds(way, "looks", LOOKS);
+    // The window inside the edge, nearest it, and the gap to it, leapt
+    // only where the window it came in on is all past the edge: one partly
+    // on the screen is walked along to its gap, as any walk does.
+    const wholly = past !== null && (side > 0 ? past.left >= at.across : past.right <= 0);
+    const inside = !wholly ? null : cols.filter(one => side > 0
+        ? one.right <= past.left : one.left >= past.right)
+        .sort((one, other) => (other.right - one.right) * side)[0];
+    if (inside && (side > 0 ? past.left - inside.right : inside.left - past.right) > 0) {
+        const onto = { x: side > 0 ? inside.right - at.wide : inside.left,
+            y: Routes.stands(inside.top, at) };
+        Ways.holds(way, "crouches", MarginCat.CROUCHES);
+        Ways.across(way, onto, undefined, Ledges.ceiling(cols, way, onto, at.wide));
+        Ways.holds(way, "lands", MarginCat.LANDS);
+    }
+    return { way, side };
+}
+
+// A ride on niri's scroll to `to`, which niri set off at `told.at` on its
+// `told.spring`, from where the cat was drawn as niri set it off: at `place`, short
+// of it by what was left then of the ride `carry` under way, or by nothing
+// (MarginCatScreen.qml's rideTo). The scroll turned back mid-way carries
+// on from where the cat was as niri turned it, never from where it's drawn
+// now, which would count the time since twice and set it ahead of its
+// window.
+function rides(carry, place, to, told) {
+    const { at, spring } = told;
+    const left = carry === null ? { x: 0, y: 0 }
+        : MarginCat.lags(carry.from, Math.min(at - carry.at, carry.ends), carry.spring);
+    const from = { x: place.x + left.x - to.x, y: place.y + left.y - to.y };
+    return { from, at, ends: MarginCat.slides(spring), spring };
+}
+
+// The window whose scroll carries the cat as it waits for the keys to
+// rest (MarginCatScreen.qml's carried): the one it sat on, `sat`, or, let
+// go, the one it `landed` on (MarginCatGames.js's drop), and none on the
+// floor, where no scroll moves it.
+function carriedBy(landed, sat) {
+    return landed === null ? sat : landed.id ?? null;
+}
+
+// How the cat goes back to its seat `there` on the column it sat on, as
+// niri's layout has it, from its `place` (MarginCatScreen.qml's follow):
+// "stays" where it's there already, a ride under way running on as its
+// window's spring does, never set off again from a lag gone by, as the
+// keys come back to a column still in view; "rides" with its window from
+// where it's drawn while niri's spring slides the strip, a ride under way
+// (`at.riding`) or a scroll niri told of within its spring
+// (`at.scrolling`), or from wholly off the screen, where only a scroll
+// leaves it; and "sits" there at once otherwise, nowhere before or as a
+// floating window dragged carries it, which niri doesn't animate.
+function backOn(place, there, at) {
+    if (place === null) {
+        return "sits";
+    }
+    if (Math.abs(place.x - there.x) < 0.5 && Math.abs(place.y - there.y) < 0.5) {
+        return "stays";
+    }
+    const off = place.x + at.wide <= 0 || place.x >= at.across;
+    return at.riding || at.scrolling || off ? "rides" : "sits";
+}
+
+// Whether a cat drawn at `at`, `size` {wide, tall, air}, stands on the top
+// of `tile` (MarginCatTiles.js's of), its middle over it and its feet on
+// it, as a walk along that top has it; not mid-leap, on a side or on
+// another window's top. Only then can it ride that window and sit.
+function standsOnTop(at, tile, size) {
+    if (!at || !tile) {
+        return false;
+    }
+    const middle = at.x + size.wide / 2;
+    return middle >= tile.left && middle <= tile.left + tile.width
+        && Math.abs(at.y - Ledges.stands(tile.top, size)) < size.air / 2;
+}
+
 // A move between workspaces, `at.way` 1 to the one below and -1 to the
 // one above, from `from` on `at.was`'s tiles to its seat `to` on
 // `at.now`'s, as MarginCatPaths.js's moves() takes it. It's walked as
@@ -118,6 +263,19 @@ function moves(from, to, at) {
     // it 90 px into its window's face as niri's spring ran fastest.
     const told = { way: at.way, ahead: (at.ahead ?? 0) + (down ? at.frame ?? 0 : 0), from,
         stacked: { lift, spring } };
+    // Carried wholly off the screen's side as niri scrolled the strip
+    // (MarginCatScreen.qml's carried), it's out of sight as the workspace
+    // slides, so it holds there and then comes in at that edge head first
+    // over the new workspace's windows, as a walk does (comesIn()), never
+    // crossing them from where its old window went, thousands of pixels off.
+    if (to !== null && at.across !== undefined
+        && (from.x >= at.across || from.x + at.wide <= 0)) {
+        const now = Object.assign({}, at, { cols: Paths.columns(at.now, 0), hurried: true });
+        const coming = comesIn(from, now, MarginCat.slides(spring));
+        const way = Paths.onward(coming.way, to, Object.assign({}, now,
+            { facing: coming.way.facing }));
+        return Object.assign(Ways.timed(way), { way: at.way, ahead: told.ahead, from });
+    }
     if (to === null) {
         const way = Ways.begun(at, { x: from.x, y: from.y - lift });
         Ways.leg(way, "rides", way, { ms: MarginCat.slides(spring), slide: () => 0,

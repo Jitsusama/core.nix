@@ -5,17 +5,28 @@
 # conversation units in agents.slice, reading a call's options as
 # systemd-run's parser does by the table it's built from, which is held
 # to the wrapped systemd's own as it's built, and that the hold refuses a
-# table that isn't, and a systemd taking options the table can't say.
+# table that isn't, and a systemd taking options the table can't say, and
+# a wrapper's build over a systemd-run that can't list its options.
 # Usage:
-# systemd-run-test <wrapper> <options table> <the hold> <systemd's systemd-run>,
-# where the wrapper was built in front of a stand-in that echoes what it's
-# given and reads its caller's cgroup from ./cgroup.
+# systemd-run-test <wrapper> <options table> <the hold> <systemd's systemd-run>
+# <the mute build's log>, where the wrapper was built in front of a stand-in
+# that echoes what it's given and reads its caller's cgroup from ./cgroup,
+# and the log is of a hold's build failing over a mute systemd-run.
 set -euo pipefail
 run=$1
 table=$2
 hold=$3
 systemd_run=$4
+mute=$5
 rows=$(grep -v '^#' "${table}")
+
+# The hold failed a wrapper's build over a systemd-run that can't list its
+# options because it can't, not because something else broke first.
+if ! grep -q "can't list its options" "${mute}"; then
+  echo "the hold over a mute systemd-run failed, but not saying it can't list its options:"
+  cat "${mute}"
+  exit 1
+fi
 manager=0::/user.slice/user-1000.slice/user@1000.service
 
 # held <what it would refuse> <table> [systemd-run], and refused <what it

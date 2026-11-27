@@ -31,11 +31,20 @@ it("says a time's day only off the reading's own", () => {
     dayClock("2026-11-18T06:49:00", AT),
     dayClock("2026-11-20T06:49:00", AT),
     dayClock("2026-11-03T06:49:00", AT),
+    dayClock("2025-11-03T06:49:00", AT),
+    dayClock("2027-01-03T06:49:00", AT),
   ];
   assert.deepEqual(
     said,
-    ["06:49", "yesterday at 06:49", "tomorrow at 06:49", "3 Nov at 06:49"],
-    "a time should carry its day only when that isn't the reading's",
+    [
+      "06:49",
+      "yesterday at 06:49",
+      "tomorrow at 06:49",
+      "3 Nov at 06:49",
+      "3 Nov 2025 at 06:49",
+      "3 Jan 2027 at 06:49",
+    ],
+    "a time should carry its day only when that isn't the reading's, and its year likewise",
   );
 });
 
@@ -84,6 +93,9 @@ it("says how long a lease has left, and when it ends", () => {
     leftWords("2026-11-19T10:00:30", AT),
     leftWords("2026-11-19T09:00:00", AT),
     leftWords("not a time", AT),
+    leftWords("2026-11-21T09:59:00", AT),
+    leftWords("2026-11-21T10:00:00", AT),
+    leftWords("2027-12-19T10:00:00", AT),
   ];
   assert.deepEqual(
     said,
@@ -94,7 +106,10 @@ it("says how long a lease has left, and when it ends", () => {
       "0 min left, until 10:00",
       "its time is up",
       "its time is up",
+      "47 h 59 min left, until 21 Nov at 09:59",
+      "2 days left, until 21 Nov at 10:00",
+      "395 days left, until 19 Dec 2027 at 10:00",
     ],
-    "a lease should say hours and minutes left, or that its time is up",
+    "a lease should count hours up to two days and days past them, or say its time is up",
   );
 });

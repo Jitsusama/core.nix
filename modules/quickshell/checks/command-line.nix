@@ -2,7 +2,9 @@
 # take as Vim's, which the folder's checks.nix gathers with every other place's;
 # its opening comment says why each place keeps its own.
 {
+  account,
   copied,
+  graphical,
   noFonts,
   pkgs,
   shellFolderLint,
@@ -99,7 +101,8 @@
   # the launcher asks once, answered by Return as an armed row is; and
   # Changes.js to what u and Ctrl+R take back, with Search.js to how a page's
   # search matches; and launcher/Headings.js to how the rows' moves count past a
-  # list's headings, and to which lists rest on a whole row.
+  # list's headings, and to which lists rest on a whole row; and KeyActs.js to
+  # which keys act, the rest leaving the launcher's clock at the key before.
   the-query-field-takes-vi-modes =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -116,6 +119,7 @@
         "DrawerRun.js"
         "DrawerValue.js"
         "Editing.js"
+        "KeyActs.js"
         "KeyNames.js"
         "ListedKeys.js"
         "ModeMarks.js"
@@ -126,6 +130,61 @@
       export FONTCONFIG_FILE=${noFonts} QML_XHR_ALLOW_FILE_READ=1
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml query-keys.qml
+      touch $out
+    '';
+
+  # A modal Prompt.qml says a key acted exactly where its own handlers did
+  # something with it, keys sent through Qt as the launcher's field takes them
+  # (modules/quickshell/tests/prompt-keys.qml), and the command line names the
+  # key that let it go, which the launcher times as acting
+  # (modules/quickshell/tests/command-line-keys.qml), in Qt's test runner. The
+  # account's Theme.qml is made a plain singleton, as Quickshell's isn't
+  # there, Lights.qml a stand-in with caps lock off, and Quickshell a module
+  # outside the linted folder holding only a clipboard; the lint reads
+  # Quickshell's own types.
+  the-launchers-field-says-which-keys-acted =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+      theme = (account graphical).xdg.configFile."quickshell/Theme.qml".source;
+      lights = pkgs.writeText "Lights.qml" ''
+        pragma Singleton
+        import QtQuick
+        QtObject { property bool caps: false }
+      '';
+      clipboard = pkgs.writeText "Quickshell.qml" ''
+        pragma Singleton
+        import QtQuick
+        QtObject { property string clipboardText: "pasted\nnot this" }
+      '';
+      quickshell = pkgs.runCommandLocal "a-clipboard-quickshell" { } ''
+        mkdir -p $out/Quickshell
+        printf '%s\n' 'module Quickshell' 'singleton Quickshell 1.0 Quickshell.qml' \
+          > $out/Quickshell/qmldir
+        cp ${clipboard} $out/Quickshell/Quickshell.qml
+      '';
+    in
+    # Kept in Nix because each line copies, or names in a variable, a file
+    # Nix gives it, and the cases it runs are QML files of their own
+    # (modules/quickshell/tests/prompt-keys.qml and command-line-keys.qml).
+    pkgs.runCommandLocal "the-launchers-field-says-which-keys-acted" { } ''
+      cp ${../tests/prompt-keys.qml} prompt-keys.qml
+      cp ${../tests/command-line-keys.qml} command-line-keys.qml
+      ${copied [
+        "CommandLine.qml"
+        "Prompt.qml"
+        "TextMeasure.qml"
+      ]}
+      sed -e '/^import Quickshell$/d' -e 's/^Singleton {$/QtObject {/' ${theme} > Theme.qml
+      grep -q '^QtObject {$' Theme.qml || { echo "Theme.qml is no Singleton" >&2; exit 1; }
+      cp ${lights} Lights.qml
+      printf '%s\n' 'singleton Theme Theme.qml' 'singleton Lights Lights.qml' \
+        'CommandLine CommandLine.qml' 'Prompt Prompt.qml' 'TextMeasure TextMeasure.qml' > qmldir
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qmltestrunner -input prompt-keys.qml
+      QML_IMPORT_PATH=${quickshell}:${qt}/lib/qt-6/qml timeout 60 \
+        ${qt}/bin/qmltestrunner -input command-line-keys.qml
       touch $out
     '';
 

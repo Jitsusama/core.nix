@@ -3,6 +3,8 @@
 //! Nix renders one JSON file per daemon, and the build runs `check-config`
 //! over it, so a field this doesn't know, a path that isn't absolute or a
 //! source the scope doesn't own fails the build rather than the daemon.
+//! Long because it is that file's whole shape: every setting a machine
+//! can write is read and checked here, in one place.
 
 use crate::band::Band;
 use crate::hours::Hours;
@@ -659,6 +661,11 @@ pub struct Config {
     /// What the machine keeps, by path, each with its reason: never
     /// offered to clear, and never asked about.
     pub keep: BTreeMap<PathBuf, String>,
+    /// Marks another program leaves while the disk's writes must wait, as
+    /// while Joel is on a call: while any exists, the guard starts no
+    /// pass, listing or collection short of nearly full. Named apart from
+    /// `holders`, what fills a disk, and the processes holding the store.
+    pub writer_holds: Vec<PathBuf>,
 }
 
 /// Where the guard looks for what holds a disk, beside its sources.
@@ -698,6 +705,8 @@ struct Rendered {
     holders: Holders,
     #[serde(default)]
     keep: BTreeMap<PathBuf, String>,
+    #[serde(default)]
+    writer_holds: Vec<PathBuf>,
 }
 
 fn yes() -> bool {
@@ -761,10 +770,13 @@ impl Config {
             nix.profiles = Some(PathBuf::from("/nix/var/nix/profiles"));
         }
         let roots = &rendered.holders.roots;
+        // A writers' mark the guard can't find never holds it, so a
+        // mistyped one would pass unseen; it is refused here instead.
         for path in [&nix.bin, &nix.store]
             .into_iter()
             .chain(&nix.profiles)
             .chain(roots)
+            .chain(&rendered.writer_holds)
         {
             if !plain_absolute(path) {
                 return Err(format!("{} is not a plain absolute path", path.display()));
@@ -791,6 +803,7 @@ impl Config {
             budget: rendered.budget,
             holders: rendered.holders,
             keep: rendered.keep,
+            writer_holds: rendered.writer_holds,
         })
     }
 }

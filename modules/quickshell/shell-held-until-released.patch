@@ -10,10 +10,12 @@ window and serves each socket as it was asked to once SIGUSR1 releases
 it. So a new shell can load beside the one it replaces, which goes on
 drawing and answering until it's ended.
 
-A shell started held also asks polkit to take its agent again, every
-250 ms for 10 s, since the session's agent stays the old shell's until
-that one ends, and polkit refuses a second. Started without QS_HELD, a
-shell is as it was.
+A shell started held also asks polkit to take its agent again once it's
+released, then every 250 ms for 10 s, since the session's agent stays
+the old shell's until that one ends, just before the release, and polkit
+refuses a second. So however long a handover waits, as on the launcher
+being open, up to the reload's own timeout, the new shell holds the
+agent after it. Started without QS_HELD, a shell is as it was.
 
 ---
 diff -ru a/src/core/reload.cpp c/src/core/reload.cpp
@@ -205,7 +207,7 @@ diff -ru a/src/io/socket.cpp c/src/io/socket.cpp
 diff -ru a/src/services/polkit/agentimpl.cpp c/src/services/polkit/agentimpl.cpp
 --- a/src/services/polkit/agentimpl.cpp	2026-11-13 19:55:11.929997744 -0500
 +++ c/src/services/polkit/agentimpl.cpp	2026-11-13 21:18:50.561128903 -0500
-@@ -7,6 +7,8 @@
+@@ -7,10 +7,13 @@
  #include <qloggingcategory.h>
  #include <qobject.h>
  #include <qproperty.h>
@@ -214,7 +216,12 @@ diff -ru a/src/services/polkit/agentimpl.cpp c/src/services/polkit/agentimpl.cpp
  #include <qtmetamacros.h>
  
  #include "../../core/generation.hpp"
-@@ -99,8 +101,27 @@
+ #include "../../core/logcat.hpp"
++#include "../../core/reload.hpp"
+ #include "gobjectref.hpp"
+ #include "listener.hpp"
+ #include "qml.hpp"
+@@ -99,8 +102,36 @@
  }
  
  void PolkitAgentImpl::registerComplete(bool success) {
@@ -228,15 +235,24 @@ diff -ru a/src/services/polkit/agentimpl.cpp c/src/services/polkit/agentimpl.cpp
 +		return;
 +	}
 +
-+	// A shell started held loads while the one it replaces still holds the session's agent, so
-+	// it asks again until polkit has let that one go, for as long as a handover takes.
++	// A shell started held loads while the one it replaces still holds the session's agent,
++	// which polkit lets go only once that one has ended, just before this one is released. So
++	// while held it asks again once released, however long the handover waits, and then every
++	// 250 ms for 10 s while polkit lets the old one go.
 +	if (!qEnvironmentVariableIsEmpty("QS_HELD") && this->registerTries < 40) {
 +		this->registerTries += 1;
-+		QTimer::singleShot(250, this, [this]() {
++		auto again = [this]() {
 +			if (this->bIsRegistered.value()) return;
 +			auto utf8Path = this->path.toUtf8();
 +			qs_polkit_agent_register(this->listener.get(), utf8Path.constData());
-+		});
++		};
++		if (HeldUntilReleased::held()) {
++			// Asked once released, the tries since counted from there.
++			this->registerTries = 1;
++			HeldUntilReleased::onRelease(this, again);
++		} else {
++			QTimer::singleShot(250, this, again);
++		}
 +		return;
 +	}
 +

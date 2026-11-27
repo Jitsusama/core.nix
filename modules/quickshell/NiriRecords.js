@@ -105,7 +105,9 @@ function workspaceOf(record) {
 // stream to agree: pi-spawned or pi-session, bare or with a number, or a
 // hosted conversation's viewer, pi-hosted with its session's id of letters,
 // digits and dashes (Sessions.qml's viewerOf). A bare pi-hosted is a program
-// of its own.
+// of its own. Wider than the ids Sessions.qml's viewerNamed opens viewers
+// for, which never begin with a dash, as the daemon's is: it only says
+// which windows are kitty's, and one such window is kitty's all the same.
 const NUMBERED_SESSION = /^pi-(?:spawned|session)(?:\.[0-9]+)?$/;
 const HOSTED_VIEWER = /^pi-hosted\.[A-Za-z0-9-]+$/;
 function isSessionApp(app) {
@@ -153,6 +155,24 @@ function differs(was, now, fields) {
     return was === undefined || fields.some(field => was[field] !== now[field]);
 }
 
+// Gives each window taken anew into `into` the layout it had in `was`,
+// the very object, where it sits where it did and niri has said nothing
+// new of its tile, as take() keeps one said again: all taken anew after
+// niri's stream stood in (Niri.qml's retake), each layout would otherwise
+// read as a word niri had just said.
+function keepLayouts(was, into) {
+    for (const id of Object.keys(into.windows)) {
+        const before = was.windows[id];
+        const tile = `layout:${id}`;
+        if (before !== undefined
+            && !differs(was.records[`window:${id}`], into.records[`window:${id}`],
+                ["column", "down"])
+            && JSON.stringify(was.records[tile]) === JSON.stringify(into.records[tile])) {
+            into.windows[id].layout = before.layout;
+        }
+    }
+}
+
 // Takes what the daemon told, the records `changed` and the keys `gone`,
 // into `into` (held()), each window told of made again in place, as
 // niri's events changed them; workspaces and casts are new objects where
@@ -186,7 +206,16 @@ function take(into, changed, gone) {
         const was = into.records[record.key];
         into.records[record.key] = record;
         if (kind === "window") {
+            const before = into.windows[id];
             into.windows[id] = windowOf(record, into.focused, into.records[`layout:${id}`]);
+            // Said again where it was, as a window used or ringing is, it
+            // keeps the very layout niri last said of it, since its tile is
+            // that record still: a reader telling one of niri's words from
+            // the next by its layout (MarginCatTiles.js's hears) would read
+            // a window used long after a scroll as one just scrolled.
+            if (before !== undefined && !differs(was, record, ["column", "down"])) {
+                into.windows[id].layout = before.layout;
+            }
             if (differs(was, record, LISTED)) {
                 told.listed = true;
                 told.opened.push(into.windows[id]);

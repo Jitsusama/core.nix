@@ -63,7 +63,10 @@ Provider {
         const round = bare.replace(/-.*$/, "");
         return {
             id: bare,
-            key: record.key ?? `run:${id}`,
+            // Made a string, so a node's key of any other kind can't throw
+            // where the launcher reads a found row's key as one
+            // (Launcher.qml's startsWith on it).
+            key: String(record.key ?? `run:${id}`),
             kind: record["run.kind"]
                 ?? (id.startsWith("fleet.") ? "fleet" : kinds[round] ? round : "review"),
             about: record.about ?? "",
@@ -307,11 +310,18 @@ Provider {
         })] : []).concat(rows);
     }
 
+    // Typing on looks through only what the letters before matched
+    // (Provider.qml's poolFor), as Applications does: a day holds hundreds
+    // of runs, each matched by its name and by its id, and the first letters
+    // pass nearly every row's mask, so one letter's search of them took up
+    // to 62 ms on Joel's shell (2026-11-25). A run, a session or the
+    // screen's sharing changing makes `all` anew, but a finished run's row
+    // is kept (`kept`), so only the rows made again are looked at besides.
     function search(typed) {
         const words = Fuzzy.words(typed);
         const need = Fuzzy.letters(words);
         const found = [];
-        for (const row of all) {
+        for (const row of poolFor(all, typed)) {
             const byName = (row.prepared.mask & need) === need
                 ? Fuzzy.match(row.prepared, words, false) : { score: -1 };
             const byWord = (row.also.mask & need) === need
@@ -320,6 +330,7 @@ Provider {
             if (best.score >= 0)
                 found.push({ score: best.score, grade: best.grade, row: row });
         }
+        matchedIn(all, typed, found.map(f => f.row));
         const grade = Math.min(3, ...found.map(f => f.grade));
         const kept = Order.sorted(found.filter(f => f.grade === grade),
             (a, b) => Number(b.row.live) - Number(a.row.live) || b.score - a.score);

@@ -22,7 +22,7 @@
 // holds stand in waits.ts, which this imports as the modules they're built to.
 // A cell's link, and the cell a link or a hash names, are the kit's cell.ts,
 // the one way every site names a cell.
-import { addressIn, cellLink } from "../../local-sites/kit/cell.js";
+import { addressIn, cellLink, isNamed } from "../../local-sites/kit/cell.js";
 import { asksOrFinds, cellDoing as cellDoingAt, fedWords, groupDoing as groupDoingAt, sensesDoing, talkLineWords } from "./doing.js";
 import {
   contextWords,
@@ -71,11 +71,11 @@ import {
   sow as sowSeeds,
 } from "./layout.js";
 import { askedOf, cellActs } from "./acts.js";
-import { grownOf } from "./lineage.js";
+import { grewWords, grownOf, oneCopyEach, originsOf, splitSaid } from "./lineage.js";
 import { drawnWidth } from "./lines.js";
 import { durationOf, easedInOut, goneAndBack } from "./motion.js";
 import { shapeOf as shapeOfReading } from "./shape.js";
-import { FULL_WORDS, handedWords, isAddress, LONGEST_WORDS, NO_WORDS, sproutLink } from "./sprout.js";
+import { CLOUD, FULL_WORDS, handedWords, isAddress, isMachine, keptOnStands, LONGEST_WORDS, leftWords, onWords, sproutLink, unsprouted } from "./sprout.js";
 import { EVERY_TREE_STEP, hasKids as hangsAny, kidsOf, openedTo, rootsOf, rowsOf, rowWords, upOf, walked, worstFirst } from "./outline.js";
 import {
   allCells,
@@ -96,6 +96,8 @@ import {
   spends,
   spentOf,
   cellsOn as machineCells,
+  labelsApart,
+  toldApart,
   waitingWords,
 } from "./words.js";
 import { agoWords as agoWordsAt, atWords as atWordsAt, clock } from "./when.js";
@@ -160,14 +162,22 @@ import {
   const sproutFromLine = document.getElementById("sprout-from-line");
   const sproutFromBox = document.getElementById("sprout-from");
   const sproutFromWords = document.getElementById("sprout-from-words");
+  const sproutOnLine = document.getElementById("sprout-on-line");
+  const sproutOnBox = document.getElementById("sprout-on");
+  const sproutOnWords = document.getElementById("sprout-on-words");
   const sproutGo = document.getElementById("sprout-link");
   const sproutControl = document.getElementById("sprout-control");
   // The cell new work would start from, the one open as its line opened.
   let sproutFrom = null;
-  // The words last handed on and the cell they went from, kept to send
-  // again, and whether the line offers that cell now.
+  // The machine new work would start on, the one whose drawer opened it.
+  let sproutOn = null;
+  // The words last handed on, the cell they went from and the machine
+  // they went to, kept to send again, and whether the line offers that
+  // cell, and that machine, now: apart, since a cell can leave the map
+  // while the machine its words went on, or none, still stands.
   let sproutKept = null;
   let sproutKeptFromOffered = false;
+  let sproutKeptOnOffered = false;
   let sproutOpener = null;
   // The keys down now, by code, and those down as the line last opened,
   // closed or sent, whose repeats go nowhere until each comes up.
@@ -498,21 +508,21 @@ import {
         cells: [],
       });
     }
+    // No two networks read alike (words.ts), nor on the map, where a name
+    // is clipped and what told it apart could be cut off.
+    const named = [...hubs.values()].map(({ key, name, carries }) => ({ key, name, carries }));
+    const told = toldApart(named);
+    const labels = labelsApart(named, told, clipped, NAME_ROOM);
+    for (const h of hubs.values()) {
+      h.label = labels.get(h.key) ?? clipped(h.name);
+      h.name = told.get(h.key) ?? h.name;
+    }
     for (const h of hubs.values()) if (h.within) hubs.get(h.within)?.children.push(h);
     const depth = (h) => (h.within ? 1 + depth(hubs.get(h.within)) : 0);
     // A cell moving between machines can arrive from both for a while,
     // the one it left still listing it. It is one cell under one address,
-    // so the page keeps the copy started most recently, with the groups
-    // either copy names.
-    const once = new Map();
-    for (const c of now.cells) {
-      const had = once.get(c.name);
-      if (!had) once.set(c.name, c);
-      else {
-        const [keep, other] = (c.since || "") > (had.since || "") ? [c, had] : [had, c];
-        once.set(c.name, { ...keep, networks: [...new Set([...keep.networks, ...other.networks])] });
-      }
-    }
+    // so the page keeps one copy, as its starters and reach are read from.
+    const once = oneCopyEach(now.cells);
     // A network sits within another, so a cell on a quest that sits under
     // an orchestration works in that orchestration, even when the node
     // names only the quest: it is alone only in no orchestration at all.
@@ -525,7 +535,7 @@ import {
       }
       return null;
     };
-    const cells = [...once.values()].map((c) => {
+    const cells = once.map((c) => {
       const on = [...new Set(c.networks.map(orchestrationOf).filter(Boolean))];
       const own = on.find((h) => c.quest && c.quest.toLowerCase().endsWith(`-${h.key.split(".").pop()}`));
       const deepest = [...on].sort((a, b) => depth(b) - depth(a))[0];
@@ -589,20 +599,23 @@ import {
     // Where they run is said only to tell two such groups apart.
     if (loose.size === 1) for (const h of loose.values()) h.name = "Working alone";
     // A network the node sets within none grows out of the network whose
-    // cells started more of its cells than any other, as a hypha branches
-    // from another: who started each cell comes from its own record, else
-    // its forage, and which grows out of which is lineage.ts's to say. A
-    // starter is known only while it is drawn, since its network is where
-    // it is drawn.
+    // cells started or split more of its cells than any other, as a hypha
+    // branches from another: who started each cell comes from its own
+    // record, else its forage, and what it split from from its forage, each
+    // counting toward its own network, and which grows out of which is
+    // lineage.ts's to say. A starter is known only while it is drawn, since
+    // its network is where it is drawn.
     const startedBy = new Map(now.started.map((x) => [x.cell, x.by]));
+    const splitFrom = new Map((now.split || []).map((x) => [x.cell, x.from]));
     const cellNamed = new Map(cells.map((s) => [s.address, s]));
     const hubOf = new Map(cells.filter((s) => s.hub).map((s) => [s.address, s.hub.key]));
     const networks = [...hubs.values()].map((h) => ({ key: h.key, name: h.name, within: h.within, cells: h.cells.map((s) => s.address) }));
-    for (const [key, grown] of grownOf(networks, hubOf, now.started)) {
+    for (const [key, grown] of grownOf(networks, hubOf, originsOf(now.started, now.split || []))) {
       const h = hubs.get(key);
       const parent = hubs.get(grown.from);
       h.within = parent.key;
-      h.grown = { by: grown.by.map((a) => cellNamed.get(a)).sort((a, b) => collate(a.short, b.short)), cells: grown.cells };
+      const named = (addresses) => addresses.map((a) => cellNamed.get(a)).sort((a, b) => collate(a.short, b.short));
+      h.grown = { by: named(grown.by), cells: grown.cells, started: grown.started, split: grown.split ? { from: named(grown.split.from), cells: grown.split.cells } : null };
       parent.children.push(h);
     }
     for (const h of loose.values()) hubs.set(h.key, h);
@@ -611,6 +624,9 @@ import {
       outside.carries = `where ${senses.length > 1 ? `${senses.slice(0, -1).join(", ")} and ${senses.at(-1)}` : senses[0]} come in from outside, each listened to for the cells that read it`;
       hubs.set(OUTSIDE, outside);
     }
+    // The groups working alone and the outside joined the hubs after the
+    // networks were told apart, so they are labelled by their own name.
+    for (const h of hubs.values()) h.label ??= clipped(h.name);
     for (const h of hubs.values()) h.lead = cells.find((s) => s.leads.includes(h.key)) || null;
     // A hub is placed by the machine most of its cells run on. That is
     // where it sits on the map and in the tree, never what it belongs to:
@@ -643,7 +659,7 @@ import {
     // A feeding is drawn only where both its ends are, as a tie is.
     const fed = Array.isArray(now.fed) ? now.fed.filter((f) => byAddress.has(f.receptor) && byAddress.has(f.cell)) : null;
     const foraged = new Set(now.foraged || []);
-    return { at: now.at, hubs, cells, byAddress, byId, startedBy, foraged, shared, machines, builders: now.builders || [], standOf, messages: now.messages || [], judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, fed, repositories };
+    return { at: now.at, hubs, cells, byAddress, byId, startedBy, splitFrom, foraged, shared, machines, builders: now.builders || [], standOf, messages: now.messages || [], judged: Array.isArray(now.waits), balance: now.balance || null, ties: Array.isArray(now.ties) ? now.ties : null, fed, repositories };
   };
 
   // ---- Places that never move. ----
@@ -915,11 +931,12 @@ import {
   });
   // What one cell's marks are painted in, by its key, for the page's
   // checks: which kind of cell it reads as is in these inks and widths,
-  // which a cell keeps at every zoom.
+  // which a cell keeps at every zoom, and whether it steps back from what
+  // is open is in their alpha.
   groundEl.marksOf = (key) =>
     cellLayer.filter((p) => p.key === key).map((p) => {
       const ink = inkOf(p.tag, p.cls, p.parent);
-      return { cls: p.cls, fill: ink.fill, stroke: ink.stroke, width: ink.width };
+      return { cls: p.cls, fill: ink.fill, stroke: ink.stroke, width: ink.width, alpha: ink.alpha };
     });
   groundEl.dataset.lines = "";
   groundEl.lines = () => {
@@ -1505,7 +1522,7 @@ import {
       const n = countsOf(h.cells);
       const sub = [plural(h.cells.length, kindWord(h.cells)), ...["asks", "stuck"].filter((s) => n[s]).map((s) => `${n[s]} ${STANDING_WORD[s]}`)].join(" \u00b7 ");
       const busy = [n.asks, n.stuck, n.moving, h.cells.length];
-      out.push({ key: `h:${h.key}`, kind: "hub", rank: 1, busy, at: L.at.get(h.key), r: HUB_R, disc: L.disc.get(h.key), out: [Math.cos(a), Math.sin(a)], name: lines(clipped(h.name), 22), sub, far: near && !near.hubs.has(h.key) });
+      out.push({ key: `h:${h.key}`, kind: "hub", rank: 1, busy, at: L.at.get(h.key), r: HUB_R, disc: L.disc.get(h.key), out: [Math.cos(a), Math.sin(a)], name: lines(h.label, 22), sub, far: near && !near.hubs.has(h.key) });
     }
     // A knot is named by what its cells share, or by its quest's title.
     for (const n of m.shared) {
@@ -2241,10 +2258,11 @@ import {
   new ResizeObserver(() => {
     mapSize = null;
   }).observe(svg);
-  // Wide enough, the drawer lies over the map's right side, so the map
-  // keeps that side as a gutter: nothing is centred or fitted under it,
-  // and opening the drawer moves nothing. Narrower, the drawer covers
-  // the whole map and there is no gutter.
+  // Wide enough, the drawer lies over the map's right side, so while it's
+  // open the map keeps that side as a gutter: nothing is centred or fitted
+  // under it. Shut, the map takes the whole width, since a gutter kept
+  // for a drawer nobody opened left a laptop's right half empty.
+  // Narrower, the drawer covers the whole map and there is no gutter.
   const wide = matchMedia("(min-width: 60rem) and (min-height: 34rem)");
   wide.addEventListener("change", () => {
     mapSize = null;
@@ -2254,7 +2272,7 @@ import {
       const b = svg.getBoundingClientRect();
       mapSize = [b.width, b.height];
       // offsetWidth, since the drawer's slide is a transform.
-      gutter = wide.matches ? treeBox.offsetWidth : 0;
+      gutter = wide.matches && treeBox.classList.contains("open") ? treeBox.offsetWidth : 0;
     }
     return mapSize;
   };
@@ -2339,6 +2357,16 @@ import {
     const room = Math.max(0, seen()[1] - 2 * (FIT_PAD + 44));
     return Math.min(room / 2, Math.max(0, shownBuilders().length - 1) * FOOT_MARK);
   };
+  // Opens or shuts the drawer as what's chosen and Now ask, and says
+  // whether it changed: the room the map's views are made for changes
+  // with it, so the map's size is measured again.
+  const makeRoom = () => {
+    const open = !!chosen || nowOpen;
+    if (treeBox.classList.contains("open") === open) return false;
+    treeBox.classList.toggle("open", open);
+    mapSize = null;
+    return true;
+  };
   const fit = (animate = true) => {
     auto = true;
     if (!current) return;
@@ -2422,7 +2450,9 @@ import {
       // for when its cells say, else what it is made of.
       const said = networkPurpose(h);
       const branches = h.children.length ? `, ${plural(h.children.length, "branch", "branches")} among them` : "";
-      return [h.name, said === NO_PURPOSE ? `A network of ${plural(all.length, "cell")}${branches}.` : said, v, words];
+      // Its label, not its told name, which a clip could cut back to read
+      // like another's.
+      return [h.label, said === NO_PURPOSE ? `A network of ${plural(all.length, "cell")}${branches}.` : said, v, words];
     }
     const n = m.shared.find((x) => x.key === c.id);
     if (!n) return null;
@@ -2909,6 +2939,9 @@ import {
   const apply = (animate) => {
     const c = cellFor(standFor(fromHash()));
     chosen = knows(c) ? c : null;
+    // The drawer takes its room before the view is moved, so what's chosen
+    // is centred clear of it.
+    makeRoom();
     if (chosen?.kind === "machine" || chosen?.kind === "builder") machinesShown = true;
     const key = keyOf(chosen);
     if (key) {
@@ -3055,7 +3088,7 @@ import {
     const held = heldFirst(cells);
     const holding = holdingFirst(cells);
     return (
-      (held.length ? `<h3>Questions Waiting</h3><ul class="rows">${held.map(heldRow).join("")}</ul>` : "") +
+      (held.length ? `<h3>Answers Owed</h3><ul class="rows">${held.map(heldRow).join("")}</ul>` : "") +
       (holding.length ? `<h3>Holds Standing</h3><ul class="rows">${holding.map(holdRow).join("")}</ul>` : "")
     );
   };
@@ -3199,7 +3232,7 @@ import {
       (current?.fed ? `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-fed" d="M-12,-6Q0,12 12,-6"/></svg></dt><dd>Fed: a dot-and-dash arc from a receptor to the one cell it fed something from outside, such as a review asked of you or a call's summary, drawn for ten minutes</dd></div>` : "") +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-dormant" r="11"/></svg></dt><dd>Dormant: parked, its place kept</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-membrane m-asks" r="11"/><circle class="m-nucleus" r="6.5"/></svg></dt><dd>Needs you, or stuck: its ring says so, and its name shows as you come close</dd></div>` +
-      `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-waits" r="13"/><circle class="m-membrane" r="9"/><circle class="m-quiet" r="4.5"/></svg></dt><dd>A question waiting: a dashed ring round a cell asked something three minutes or more ago that ${m.judged ? "hasn't answered it yet" : "has said nothing since"}, wider the more questions and the older the first; a network holding any is ringed round its ground</dd></div>` +
+      `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><circle class="m-waits" r="13"/><circle class="m-membrane" r="9"/><circle class="m-quiet" r="4.5"/></svg></dt><dd>An answer owed: a dashed ring round a cell another cell asked something three minutes or more ago, which ${m.judged ? "hasn't answered it yet" : "has said nothing since"}, never one waiting on you; wider the more questions and the older the first; a network holding any is ringed round its ground</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-holds" d="M0,-14V14"/><circle class="m-membrane" r="9"/><circle class="m-quiet" r="4.5"/></svg></dt><dd>A hold standing: a wall drawn across a cell that asked the others to put something off until it says it's over</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><path class="m-cord" d="M-14,0H-9M9,0H14" style="--w:2px"/><rect class="m-box" x="-9" y="-6" width="18" height="12"/></svg></dt><dd>A machine: its name in a hairline box, its cords leaving the box's edge; the box is dashed while the machine is off</dd></div>` +
       `<div><dt><svg viewBox="-14 -14 28 28" aria-hidden="true"><rect class="m-box m-lent" x="-10" y="-7" width="20" height="14" style="stroke-dasharray:9 11 9 5;stroke-dashoffset:4.5"/></svg></dt><dd>A lent machine, here until its lease ends: only its box's corners</dd></div>` +
@@ -3251,10 +3284,11 @@ import {
     const health = pool
       ? pool.map((y) => machineHealth(y, { label: y.name, mono: true, lead: [plural(cells.filter((s) => s.host === y.name).length, "cell")] }) + machineShareRow(y, `${y.name}'s share`)).join("")
       : machineHealth(x) + machineShareRow(x);
+    const lent = sandboxWords(x);
     const says = pool
       ? `A basin, drawn as one machine: ${plural(pool.length, "machine")} borrowed from a pool in the cloud. A cord`
-      : isSandbox(x)
-        ? `A machine: ${sandboxWords(x)}. A cord`
+      : lent
+        ? `${lent[0].toUpperCase()}${lent.slice(1)}. A cord`
         : "A machine; a cord";
     const facts = [
       ["Made of", what],
@@ -3284,6 +3318,13 @@ import {
         `<ul class="rows health">${health}${healthRow(`Its ${plural(cells.length, "cell")}`, cells)}</ul>`,
       ) +
       faultLine(cells) +
+      // Its row in the Launcher's Machines is where Joel starts work on it.
+      // A basin's stand is named "<basin> basin", which no row is: the space
+      // in it is one no machine's name holds, so linkOf offers no link.
+      launcherLink("machine", name, "Open It in the Launcher") +
+      // New work starts on it, or on any of the cloud's for a basin's
+      // stand, from the Launcher's Start New Work as any new work does.
+      sproutOnButton(pool ? CLOUD : name, pool ? "Start New Work on the Cloud" : "Start New Work Here") +
       // Its home as a device is the network page, which knows it by name.
       // A sandbox or a basin isn't a device on the home network, so it has
       // no row there.
@@ -3297,21 +3338,24 @@ import {
 
   // Where Joel says something himself: a link the desktop hands the
   // launcher (modules/quickshell/mycelium-link), opening Agents' Talk to a
-  // cell or Networks on a network, so the page still writes nothing. The
-  // link names it and nothing more, in the letters mycelium-link lets
-  // through, so a name it would refuse is never offered as a link that
-  // does nothing. A cell's is the kit's cellLink, saying the machine it
+  // cell, Networks on a network or Machines on a machine, so the page still
+  // writes nothing. The link names it and nothing more, in the letters
+  // mycelium-link lets through, so a name it would refuse is never offered
+  // as a link that does nothing. A cell's is the kit's cellLink, saying the machine it
   // runs on (its host, never the basin it is drawn from) as a notice's
-  // link does; a network's name takes more letters.
-  const NETWORK_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+  // link does; a network's or a machine's name takes more letters, by the
+  // kit's one rule for a name a link carries.
   const linkOf = (kind, name, machine) => {
     if (kind === "cell") return cellLink(name || "", machine);
-    return NETWORK_NAME.test(name || "") ? `mycelium:network/${name}` : null;
+    return isNamed(name || "") ? `mycelium:${kind}/${name}` : null;
   };
   const launcherLink = (kind, name, words, machine) => {
     const href = linkOf(kind, name, machine);
     return href ? `<p class="led"><a class="inline" href="${esc(href)}">${esc(words)}</a></p>` : "";
   };
+  // A machine's name mycelium-link would refuse is never offered.
+  const sproutOnButton = (on, words) =>
+    isMachine(on) ? `<p class="led"><button type="button" class="inline" data-sprout-on="${esc(on)}">${esc(words)}</button></p>` : "";
 
   const backButton = (label) =>
     `<button type="button" class="back" data-back><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M7 1.5L3 5L7 8.5"/></svg>${esc(label)}</button>`;
@@ -3326,10 +3370,15 @@ import {
   const cellPanel = (s) => {
     const m = current;
     const u = s.usage || {};
+    const from = splitSaid(m.splitFrom.get(s.address), m.startedBy.get(s.address));
     const facts = [
       ["Repository", s.repo],
       // Who started it, as its record or forage says, by name where it is drawn.
       ["Started", [s.since ? atWords(s.since) : "", m.startedBy.has(s.address) ? `by ${m.byAddress.get(m.startedBy.get(s.address))?.short || m.startedBy.get(s.address)}` : ""].filter(Boolean).join(", ")],
+      // What its purpose split from, as its forage says, where it names a
+      // cell its start doesn't or says it once the start is let go: a split
+      // from the cell that started it is said once, as the network's drawer does.
+      ["Split from", from ? m.byAddress.get(from)?.short || from : ""],
       ["Last turn", u.last_turn ? agoWords(u.last_turn) : ""],
     ].filter(([, v]) => v);
     // Its machine as drawn, a basin for a basin's machine; and the machine
@@ -3503,15 +3552,18 @@ import {
     return `A network of ${plural(h.cells.length, "cell")}${branches}${fed}.`;
   };
   // A branch grown out of another network says which, and whose start in
-  // it grew it: the cells there that started its own, each one a button.
+  // it grew it: the cells there that started its own, each one a button,
+  // and apart from them the cells its own split from where nobody is said
+  // to have started them, since a split is not a start.
   // Each is a line of its own, as who leads is, since a name in a led line
   // is a whole target and a sentence wrapping round two reads as two.
   const grownWords = (h, up) => {
-    const named = h.grown.by.map((s) => `<button type="button" class="inline" data-go="cell=${esc(s.address)}">${esc(s.short)}</button>`);
-    const who = named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named.at(-1)}` : named[0];
-    const n = h.grown.cells;
-    const of = n === h.cells.length ? (n === 1 ? "its cell" : `all ${NUMBER.format(n)} of its cells`) : `${NUMBER.format(n)} of its ${plural(h.cells.length, "cell")}`;
-    return [`Grown out of <button type="button" class="inline" data-go="net=${esc(up.key)}">${esc(up.name)}</button>`, `Started by ${who}: ${of}`];
+    const whoOf = (cells) => {
+      const named = cells.map((s) => `<button type="button" class="inline" data-go="cell=${esc(s.address)}">${esc(s.short)}</button>`);
+      return named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named.at(-1)}` : named[0];
+    };
+    const outOf = `<button type="button" class="inline" data-go="net=${esc(up.key)}">${esc(up.name)}</button>`;
+    return [`Grown out of ${outOf}`, ...grewWords(h.grown, h.cells.length, whoOf)];
   };
   const networkPurpose = (h) => {
     if (h.alone) return "Each its own: these cells work alone, and each one's drawer says what it is for.";
@@ -3674,8 +3726,22 @@ import {
     // is there to see too.
     sproutFromLine.title = sproutFrom ? `${short} (${sproutFrom})` : "";
   };
-  // `named` is a drawer's button, which names its own cell.
-  const openSprout = (from, { named = false } = {}) => {
+  // The machine a drawer's Start New Work Here names, offered as the
+  // cell is, with a tick that lets go of it so the work starts where new
+  // work does when none is named.
+  const drawerOn = () => panelBody.querySelector("[data-sprout-on]")?.dataset.sproutOn ?? null;
+  // The machines the map has now, by name.
+  const mapMachines = () => current?.machines.map((x) => x.name) ?? [];
+  const offerOn = (on, { kept = false } = {}) => {
+    sproutOn = isMachine(on) && (kept || on === drawerOn()) ? on : null;
+    sproutOnLine.hidden = sproutOn === null;
+    sproutOnBox.checked = true;
+    sproutOnWords.textContent = sproutOn ? onWords(sproutOn) : "";
+    sproutOnLine.title = sproutOnWords.textContent;
+  };
+  // `named` is a drawer's button, which names its own cell, or its own
+  // machine as `on`.
+  const openSprout = (from, { named = false, on = null } = {}) => {
     // Asked again while open, it only takes the keys back, so a cleared
     // tick stays cleared, unless a drawer's button names another cell,
     // which it then offers, the keys going back to it on close.
@@ -3683,8 +3749,11 @@ import {
       if (named) {
         sproutOpener = document.activeElement;
         sproutKeptFromOffered = false;
+        sproutKeptOnOffered = false;
         if (from === sproutFrom) sproutFromBox.checked = true;
         else offerFrom(from);
+        if (on === sproutOn) sproutOnBox.checked = true;
+        else offerOn(on);
       }
       holdKeysDown();
       sproutInput.focus();
@@ -3693,12 +3762,20 @@ import {
     holdKeysDown();
     sproutOpener = document.activeElement;
     closeFind({ said: false });
-    // Words kept to send again go from the cell they went from while it
-    // is still on the map, unless a drawer's button names its own.
+    // Words kept for a machine that has left the map go with it. Others go
+    // on the machine they went to, or on none, unless a drawer's button
+    // names its own, and from the cell they went from while it is still on
+    // the map, else from the one open now. A cell that leaves never sends
+    // its words on the open drawer's machine, where they never went.
+    if (sproutKept && !keptOnStands(sproutKept.on, mapMachines())) {
+      sproutKept = null;
+      sproutInput.value = "";
+    }
     const kept = sproutKept?.from;
-    sproutKeptFromOffered =
-      sproutKept !== null && !named && (kept === null || !!current?.byAddress.has(kept));
+    sproutKeptOnOffered = sproutKept !== null && !named;
+    sproutKeptFromOffered = sproutKeptOnOffered && (kept === null || !!current?.byAddress.has(kept));
     offerFrom(sproutKeptFromOffered ? kept : from, { kept: sproutKeptFromOffered });
+    offerOn(sproutKeptOnOffered ? sproutKept.on : on, { kept: sproutKeptOnOffered });
     trail.inert = true;
     sproutLine.hidden = false;
     sproutControl.setAttribute("aria-expanded", "true");
@@ -3712,7 +3789,12 @@ import {
   // its place; else to the map.
   const sproutBack = () => {
     const address = sproutOpener?.dataset?.sproutFrom;
-    const again = address ? panelBody.querySelector(`[data-sprout-from="${CSS.escape(address)}"]`) : null;
+    const machine = sproutOpener?.dataset?.sproutOn;
+    const again = address
+      ? panelBody.querySelector(`[data-sprout-from="${CSS.escape(address)}"]`)
+      : machine
+        ? panelBody.querySelector(`[data-sprout-on="${CSS.escape(machine)}"]`)
+        : null;
     const stands = sproutOpener?.isConnected && sproutOpener !== document.body && sproutOpener.checkVisibility();
     (stands ? sproutOpener : again || view).focus({ preventScroll: true });
   };
@@ -3727,34 +3809,52 @@ import {
       sproutKept = null;
     }
     sproutKeptFromOffered = false;
+    sproutKeptOnOffered = false;
     sproutInput.setCustomValidity("");
     sproutLine.hidden = true;
     trail.inert = false;
     sproutFrom = null;
+    sproutOn = null;
     sproutControl.setAttribute("aria-expanded", "false");
     if (inLine) sproutBack();
     sproutOpener = null;
     if (said && view.contains(document.activeElement)) where.textContent = "New work closed; nothing was handed on.";
   }
-  const toggleSprout = () => (sproutLine.hidden ? openSprout(chosen?.kind === "cell" ? chosen.id : null) : closeSprout());
+  // The s key and the control open it from what is open now: the cell, or
+  // the machine whose drawer is.
+  const openSproutOnOpen = () => openSprout(chosen?.kind === "cell" ? chosen.id : null, { on: drawerOn() });
+  const toggleSprout = () => (sproutLine.hidden ? openSproutOnOpen() : closeSprout());
   sproutLine.addEventListener("submit", (e) => {
     e.preventDefault();
     const from = sproutFrom !== null && sproutFromBox.checked ? sproutFrom : null;
-    const link = sproutLink(sproutInput.value, from);
-    // No words is said where they go, in the field's own bubble, and once
-    // to a screen reader, until a word is typed.
+    const on = sproutOn !== null && sproutOnBox.checked ? sproutOn : null;
+    // A machine that left the map while the line was open is let go of
+    // and said, so the work never goes to a machine the map no longer
+    // has, and the next Return starts it where new work starts. The
+    // Return is held, so its repeat never sends before Joel has read why.
+    if (!keptOnStands(on, mapMachines())) {
+      holdKeysDown();
+      offerOn(null);
+      where.textContent = leftWords(on);
+      return;
+    }
+    const link = sproutLink(sproutInput.value, from, on);
+    // No words, or a machine no link can name, is said where the words go,
+    // in the field's own bubble, and once to a screen reader, until a word
+    // is typed.
     if (!link) {
-      sproutInput.setCustomValidity(NO_WORDS);
+      const why = unsprouted(sproutInput.value, on);
+      sproutInput.setCustomValidity(why);
       sproutInput.reportValidity();
-      where.textContent = NO_WORDS;
+      where.textContent = why;
       return;
     }
     sproutGo.href = link;
     sproutGo.click();
-    sproutKept = { words: sproutInput.value, from };
+    sproutKept = { words: sproutInput.value, from, on };
     const short = from === null ? null : current?.byAddress.get(from)?.short || from;
     closeSprout({ said: false, keep: true });
-    where.textContent = handedWords(short);
+    where.textContent = handedWords(short, on);
   });
   // The field leaves off what would take it past the cap by itself, so
   // that is said, only when something was left off.
@@ -3767,16 +3867,29 @@ import {
     if (sproutInput.value.length - replaced + adds.length > LONGEST_WORDS) where.textContent = FULL_WORDS;
   });
   // New words over kept ones are new work, so they go from the cell open
-  // now, as a fresh line's would; a tick Joel cleared stays cleared.
+  // now, as a fresh line's would; a tick Joel cleared stays cleared. Kept
+  // words offer their cell only when they offer their machine, so the
+  // machine's flag says whether anything kept is offered.
   sproutInput.addEventListener("input", () => {
     sproutInput.setCustomValidity("");
-    if (sproutKeptFromOffered && sproutInput.value !== sproutKept?.words) {
+    if (sproutKeptOnOffered && sproutInput.value !== sproutKept?.words) {
       sproutKeptFromOffered = false;
+      sproutKeptOnOffered = false;
       const ticked = sproutFromBox.checked;
+      const onTicked = sproutOnBox.checked;
       offerFrom(chosen?.kind === "cell" ? chosen.id : null);
+      offerOn(drawerOn());
       sproutFromBox.checked = ticked;
+      sproutOnBox.checked = onTicked;
     }
   });
+  // A tick changed changes what Return would send, so why it last sent
+  // nothing is said again only at the next Return. NO_MACHINE can't come
+  // from a tick, since the map offers only names isMachine passes; what
+  // this clears is NO_WORDS.
+  for (const box of [sproutFromBox, sproutOnBox]) {
+    box.addEventListener("change", () => sproutInput.setCustomValidity(""));
+  }
   // A key that opens, closes or sends the line does so once, whatever
   // opened it and wherever focus lands: the keys down as it does are
   // held, so a held s types nothing, a held Return sends once and never
@@ -3909,26 +4022,29 @@ import {
   });
 
   // The drawer is open while something is chosen, or while Now is asked
-  // for; otherwise the map's gutter is empty and quiet.
+  // for; otherwise the map has the whole width.
   let nowOpen = false;
   const nowControl = document.getElementById("now-control");
   const drawer = () => {
     const open = !!chosen || nowOpen;
-    treeBox.classList.toggle("open", open);
+    // A view following the whole map fits it again, clear of the drawer.
+    if (makeRoom() && auto) fit();
     nowControl.setAttribute("aria-expanded", String(!chosen && nowOpen));
     // Focus never stays in a drawer going out of reach: it goes to the map,
     // on the mark the keys were on.
     if (!open && treeBox.contains(document.activeElement)) view.focus({ preventScroll: true });
   };
   // Now opens over whatever is chosen, letting it go, and keeps the mark
-  // the keys are on clear of the drawer.
+  // the keys are on clear of the drawer. A view following the whole map
+  // has it fitted clear already, and moving it to the mark then would stop
+  // that fit's glide part way and leave the view no longer following.
   const openNow = () => {
     nowOpen = true;
     if (chosen) {
       history.replaceState(null, "", location.pathname);
       apply(false);
     } else drawer();
-    if (pointed) keepInView(pointed);
+    if (pointed && !auto) keepInView(pointed);
     where.textContent = "Now is open in the drawer.";
   };
   const closeNow = () => {
@@ -4036,6 +4152,11 @@ import {
     const sprout = e.target.closest("[data-sprout-from]");
     if (sprout) {
       openSprout(sprout.dataset.sproutFrom, { named: true });
+      return;
+    }
+    const sproutHere = e.target.closest("[data-sprout-on]");
+    if (sproutHere) {
+      openSprout(null, { named: true, on: sproutHere.dataset.sproutOn });
       return;
     }
     // The way back to the whole map is the way to Now, as it says.
@@ -4923,10 +5044,12 @@ import {
   window.addEventListener("pagehide", keepSeen);
 
   // A new size keeps what's in the middle in the middle, or the whole map
-  // whole if he hasn't moved it.
+  // whole if he hasn't moved it. The map's own size is the measure, not
+  // the part the drawer leaves, which a drawer opening changes with no
+  // resize to say so, and the next resize would move the view by half it.
   let was = null;
   new ResizeObserver(() => {
-    const [w, h] = seen();
+    const [w, h] = size();
     if (!current || !L) {
       was = [w, h];
       return;
@@ -5029,7 +5152,7 @@ import {
     keys: () => toggleKeys(),
     find: () => openFind(),
     "close-find": () => closeFind(),
-    sprout: () => openSprout(chosen?.kind === "cell" ? chosen.id : null),
+    sprout: openSproutOnOpen,
     "close-sprout": () => closeSprout(),
     "next-found": () => stepFound(1),
     "found-before": () => stepFound(-1),
@@ -5082,20 +5205,15 @@ import {
     e.preventDefault();
     view.focus();
   });
-  const taps = { "/": openFind, s: () => openSprout(chosen?.kind === "cell" ? chosen.id : null), ".": toggleNow, "?": toggleKeys };
+  const taps = { "/": openFind, s: openSproutOnOpen, ".": toggleNow, "?": toggleKeys };
+  // A keycap in the key line does what its key does under a pointer, as
+  // the Network's does. It isn't a control of its own: one showing only
+  // "/" and named "Find a cell" is named apart from what shows, a voice
+  // can't say a bare mark, and the keys are a press away for anyone who
+  // reaches it by keyboard, with New Work and Now in the map's controls.
   for (const kbd of document.querySelectorAll(".head .keys kbd")) {
     const act = taps[kbd.textContent];
-    if (!act) continue;
-    kbd.setAttribute("role", "button");
-    kbd.tabIndex = 0;
-    kbd.setAttribute("aria-label", { "/": "Find a cell", s: "Start new work", ".": "Now", "?": "Keys" }[kbd.textContent]);
-    kbd.addEventListener("click", act);
-    kbd.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        act();
-      }
-    });
+    if (act) kbd.addEventListener("click", act);
   }
 
   const store = {

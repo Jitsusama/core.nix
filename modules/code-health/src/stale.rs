@@ -102,12 +102,22 @@ fn comments(file: &File) -> Vec<(usize, &str)> {
     let mut docstring: Option<&str> = None;
     let mut string: Option<&str> = None;
     let mut block = false;
-    // Whether a statement starts on the next line of code, where alone a
-    // docstring stands: at a module's top, or past a line of code ending
-    // with a colon outside any string, as a def or a class does.
+    // Whether a docstring may stand on the next line of code: at a
+    // module's top, or first in a def's or a class's body, past the colon
+    // ending its header. Any other colon, as an if's or a dict key's, opens
+    // no docstring, so a string there is code.
     let mut starts = true;
+    // The logical line the code is in: the brackets it holds open, whether
+    // a backslash carries it on, and whether it opened as a header.
+    let mut logical = Logical::default();
     let mut lines = Vec::new();
     for (number, line) in file.text.lines().enumerate() {
+        // A byte-order mark opens a file as nothing at all.
+        let line = if number == 0 {
+            line.strip_prefix('\u{feff}').unwrap_or(line)
+        } else {
+            line
+        };
         let trimmed = line.trim_start();
         let comment = if let Some(quotes) = docstring {
             (docstring, string) = docstring_line(line, quotes);
@@ -116,7 +126,10 @@ fn comments(file: &File) -> Vec<(usize, &str)> {
         } else if let Some(quotes) = string {
             let scanned = scan(line, Some(quotes));
             string = scanned.open;
-            starts = string.is_none() && scanned.code.trim_end().ends_with(':');
+            // The brackets a line closes count though it leaves a string
+            // open, so the logical line is carried before asking for one.
+            let ends = logical.ends_a_header(&scanned);
+            starts = string.is_none() && ends;
             false
         } else if block {
             block = !line.contains("*/");
@@ -125,12 +138,14 @@ fn comments(file: &File) -> Vec<(usize, &str)> {
         {
             (docstring, string) = docstring_line(&trimmed[past..], quotes);
             starts = false;
+            logical = Logical::default();
             true
         } else if blocks && trimmed.starts_with("/*") {
             block = !trimmed[2..].contains("*/");
             true
         } else {
-            // Only a file's first line can be its shebang; past it, `#!` opens a comment.
+            // Only a file's first line can be its shebang; past it, `#!` is
+            // read as any line is.
             let shebang = number == 0 && line.starts_with("#!");
             let comment = (trimmed.starts_with(mark) && !shebang)
                 || (extension == "nix" && trimmed.starts_with('*'));
@@ -138,8 +153,10 @@ fn comments(file: &File) -> Vec<(usize, &str)> {
             // starts as it was.
             if extension == "py" && !comment && !trimmed.is_empty() && !shebang {
                 let scanned = scan(line, None);
+                logical.begin(scanned.code);
                 string = scanned.open;
-                starts = string.is_none() && scanned.code.trim_end().ends_with(':');
+                let ends = logical.ends_a_header(&scanned);
+                starts = string.is_none() && ends;
             }
             comment
         };
@@ -158,6 +175,43 @@ struct Scanned<'a> {
     open: Option<&'static str>,
     /// Whether the string the line starts inside closes on it.
     closed: bool,
+    /// The brackets the code opens, less those it closes, outside strings.
+    depth: isize,
+}
+
+/// A Python logical line, which brackets left open or a closing backslash
+/// carry across lines, as a header with its parameters on lines of their
+/// own is.
+#[derive(Default)]
+struct Logical {
+    depth: isize,
+    carried: bool,
+    header: bool,
+}
+
+impl Logical {
+    /// Notes whether a line of code outside any string, opening a logical
+    /// line rather than carrying one on, opens a def's or a class's
+    /// header.
+    fn begin(&mut self, code: &str) {
+        if self.depth == 0 && !self.carried {
+            let mut words = code.split_whitespace();
+            self.header = match words.next() {
+                Some("def" | "class") => true,
+                Some("async") => words.next() == Some("def"),
+                _ => false,
+            };
+        }
+    }
+
+    /// Carries the logical line past `scanned`, saying whether it ended
+    /// there as a header does, on its colon.
+    fn ends_a_header(&mut self, scanned: &Scanned) -> bool {
+        let code = scanned.code.trim_end();
+        self.depth = (self.depth + scanned.depth).max(0);
+        self.carried = scanned.open.is_none() && code.ends_with('\\');
+        self.depth == 0 && !self.carried && self.header && code.ends_with(':')
+    }
 }
 
 /// The docstring and the code string left open by a line read from inside
@@ -181,6 +235,7 @@ fn docstring_line(
 fn scan<'a>(line: &'a str, mut open: Option<&'static str>) -> Scanned<'a> {
     let started = open.is_some();
     let mut closed = false;
+    let mut depth = 0;
     let mut at = 0;
     while let Some(c) = line[at..].chars().next() {
         let rest = &line[at..];
@@ -200,7 +255,12 @@ fn scan<'a>(line: &'a str, mut open: Option<&'static str>) -> Scanned<'a> {
                 code: &line[..at],
                 open: None,
                 closed,
+                depth,
             };
+        } else if "([{".contains(c) {
+            depth += 1;
+        } else if ")]}".contains(c) {
+            depth -= 1;
         } else if let Some(quotes) = ["\"\"\"", "'''", "\"", "'"]
             .into_iter()
             .find(|quotes| rest.starts_with(quotes))
@@ -217,6 +277,7 @@ fn scan<'a>(line: &'a str, mut open: Option<&'static str>) -> Scanned<'a> {
         // ends it.
         open: open.filter(|quotes| quotes.len() == 3 || line.ends_with('\\')),
         closed,
+        depth,
     }
 }
 
@@ -526,8 +587,8 @@ mod tests {
                  \x20   closed\"\"\" + \"\"\"and a string opened\n\
                  # tests/kept/handed.nix, in that string\n\
                  \"\"\"\n\
-                 if x == \"\"\"a\n\
-                 b\"\"\":\n\
+                 def k(x=\"\"\"a\n\
+                 b\"\"\"):\n\
                  \x20   \"\"\"Naming tests/kept/colon.nix.\"\"\"\n",
             ),
             file("tests/kept/x.nix", "{ }\n"),
@@ -546,6 +607,117 @@ mod tests {
              a line past a string was read as if it began outside one, a backslash's \
              one-quote string was dropped, a string opened past a docstring's close was lost, \
              or a string closing on a colon hid the docstring after it"
+        );
+    }
+
+    #[test]
+    fn a_docstring_stands_only_under_a_def_or_a_class() {
+        let files = [
+            file(
+                "tests/h.py",
+                "if ready:\n\
+                 \x20   \"\"\"An if's string, naming tests/kept/if.nix.\"\"\"\n\
+                 FIXTURES = {\n\
+                 \x20   \"key\":\n\
+                 \x20   \"\"\"A value, naming tests/kept/value.nix.\"\"\",\n\
+                 }\n\
+                 def f(\n\
+                 \x20   a,\n\
+                 \x20   b: int = (1, 2),\n\
+                 \x20   c: str = \"(\",\n\
+                 ) -> dict[str, int]:\n\
+                 \x20   \"\"\"Naming tests/kept/wrapped.nix.\"\"\"\n\
+                 class K(A, \\\n\
+                 \x20       B):\n\
+                 \x20   \"\"\"Naming tests/kept/carried.nix.\"\"\"\n\
+                 async  def g():\n\
+                 \x20   \"\"\"Naming tests/kept/async.nix.\"\"\"\n\
+                 def m(x) \\\n\
+                 \x20       -> int:\n\
+                 \x20   \"\"\"Naming tests/kept/backslash.nix.\"\"\"\n\
+                 if call(f(\n\
+                 \x20   x)):\n\
+                 \x20   \"\"\"A wrapped if's string, naming tests/kept/call.nix.\"\"\"\n\
+                 classes = {1:\n\
+                 \x20   \"\"\"Naming tests/kept/classes.nix.\"\"\"}\n\
+                 def h(): x = {\n\
+                 \x20   2:\n\
+                 \x20   \"\"\"A body's string, naming tests/kept/body.nix.\"\"\"}\n\
+                 async with lock:\n\
+                 \x20   \"\"\"An async with's string, naming tests/kept/with.nix.\"\"\"\n\
+                 async for x in y:\n\
+                 \x20   \"\"\"An async for's string, naming tests/kept/for.nix.\"\"\"\n\
+                 d = {\"\"\"a\n\
+                 b\"\"\":\n\
+                 \x20   \"\"\"A string past a key's, naming tests/kept/key.nix.\"\"\"}\n",
+            ),
+            file("tests/kept/x.nix", "{ }\n"),
+        ];
+        assert_eq!(
+            stale(&paths(&files), &files),
+            [
+                "tests/h.py:12: tests/kept/wrapped.nix",
+                "tests/h.py:15: tests/kept/carried.nix",
+                "tests/h.py:17: tests/kept/async.nix",
+                "tests/h.py:20: tests/kept/backslash.nix"
+            ],
+            "a string past an if's, a dict key's, a wrapped if's, a body's, an async with's or \
+             for's, or a string key's colon was read as a docstring, or one past a header \
+             carried across lines by brackets or a backslash, or an async def's, was missed"
+        );
+    }
+
+    #[test]
+    fn a_bracket_closed_where_a_string_opens_still_closes() {
+        let files = [
+            file(
+                "tests/s.py",
+                "x = (1,\n\
+                 \x20    2) + \"\"\"a\n\
+                 b\"\"\"\n\
+                 def f():\n\
+                 \x20   \"\"\"Naming tests/kept/stuck.nix.\"\"\"\n\
+                 y = (1,\n\
+                 \x20    \"\"\"a\n\
+                 b\"\"\") + \"\"\"c\n\
+                 d\"\"\"\n\
+                 def g():\n\
+                 \x20   \"\"\"Naming tests/kept/inside.nix.\"\"\"\n",
+            ),
+            file("tests/kept/x.nix", "{ }\n"),
+        ];
+        assert_eq!(
+            stale(&paths(&files), &files),
+            [
+                "tests/s.py:5: tests/kept/stuck.nix",
+                "tests/s.py:11: tests/kept/inside.nix"
+            ],
+            "a bracket closed on a line leaving a string open, opened in code or past a \
+             string's close, was lost, so the logical line never ended and the def's \
+             docstring after it went unread"
+        );
+    }
+
+    #[test]
+    fn a_byte_order_mark_hides_neither_a_shebang_nor_a_docstring() {
+        let files = [
+            file(
+                "tests/b.py",
+                "\u{feff}#!/usr/bin/env python3\n\"\"\"Naming tests/kept/shebang.nix.\"\"\"\n",
+            ),
+            file(
+                "tests/d.py",
+                "\u{feff}\"\"\"Naming tests/kept/doc.nix.\"\"\"\n",
+            ),
+            file("tests/kept/x.nix", "{ }\n"),
+        ];
+        assert_eq!(
+            stale(&paths(&files), &files),
+            [
+                "tests/b.py:2: tests/kept/shebang.nix",
+                "tests/d.py:1: tests/kept/doc.nix"
+            ],
+            "a byte-order mark opening a file hid its shebang or its module's docstring"
         );
     }
 

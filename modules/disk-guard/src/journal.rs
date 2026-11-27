@@ -55,7 +55,9 @@ pub enum Line {
     /// told from one that kept all it judged; a reach that ended reached
     /// having judged none was at its target already. Every pass one survey
     /// served carries its seconds, so passes of one step at the same
-    /// seconds shared one walk.
+    /// seconds shared one walk. Each says too what it read from disk, and
+    /// what its survey did, where that can be told, so the walk that costs
+    /// the disk most is named.
     Pass {
         at: f64,
         band: Band,
@@ -66,6 +68,16 @@ pub enum Line {
         offered: usize,
         judged: usize,
         surveyed: Option<f64>,
+        read: Option<u64>,
+        survey_read: Option<u64>,
+    },
+    /// A walk no pass took, `step` naming it (what holds the disks, or the
+    /// builds' marks), how long it took and what it read from disk.
+    Walk {
+        at: f64,
+        step: &'static str,
+        seconds: f64,
+        read: Option<u64>,
     },
     /// How many replaced builds a pass took from one target, and their
     /// bytes, so how fast a build fills can be read beside what each
@@ -110,10 +122,20 @@ impl Line {
                 offered,
                 judged,
                 surveyed,
+                read,
+                survey_read,
             } => json!({
                 "event": "pass", "at": at, "band": band, "end": end, "freed": freed,
                 "seconds": seconds, "why": why, "offered": offered, "judged": judged,
-                "surveyed": surveyed,
+                "surveyed": surveyed, "read": read, "survey_read": survey_read,
+            }),
+            Line::Walk {
+                at,
+                step,
+                seconds,
+                read,
+            } => json!({
+                "event": "walk", "at": at, "step": step, "seconds": seconds, "read": read,
             }),
             Line::Begin { at, path, root } => {
                 json!({ "event": "begin", "at": at, "path": path, "root": root })
@@ -203,7 +225,7 @@ impl<R: Reclaimer> Reclaimer for Journaled<'_, R> {
                 root: root.clone(),
             });
             if let Err(error) = begun {
-                eprintln!(
+                say!(
                     "disk-guard: journalling {}: {error}",
                     candidate.path.display()
                 );
@@ -219,7 +241,7 @@ impl<R: Reclaimer> Reclaimer for Journaled<'_, R> {
             outcome: outcome.clone(),
         });
         if let Err(error) = done {
-            eprintln!(
+            say!(
                 "disk-guard: journalling {}: {error}",
                 candidate.path.display()
             );

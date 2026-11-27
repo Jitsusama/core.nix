@@ -210,10 +210,104 @@ holding a space, as one broken across two lines does, is counted too.
 
 - Measures: `slips`, `slips-derived`
 - Target: 0 dates that passed in the last day without landing, or passed since with no landing,
-  meeting or move from their owner, nor the ask put down.
+  meeting or move from their owner, nor the ask put down or parked on a ruling.
 - Joel, 11 Nov 16:4x: "i need for you to make faster progress. i don't understand why so much
   has not been completed."
 - Over costs him: a date he was given passed, and what was promised isn't there.
+
+## Dates at Risk
+
+- Measures: `dates-at-risk`, `dates-at-risk-derived`
+- Target: 0 dates still to come that wait on a merge whose change shares files with what main
+  has changed since the two parted, unless the change landed or its piece or ask was put down.
+  Only core.nix changes and the zone's branches are judged. A date whose change can't be read
+  is counted apart as unread, and with none at risk beside it the hour goes unjudged.
+- Joel, 14 Nov: "something constantly evaluating how we can ship more and faster"
+- Over costs him: a date is said to stand while its change will be refused or checked again,
+  so it slips with no warning.
+
+## Slips Parked
+
+- Measures: `slips-parked`, `slips-parked-derived`
+- Target: none, since an ask parked on a ruling waits on that ruling, not its owner, and each is
+  named by the ruling's message id so the parking itself is read.
+- Joel, 22 Nov 15:2x: "WE NEED TO FOCUS ON SPREADING LOAD NOW! WE NEED TO QUICKEN MOVING STUFF
+  INTO THE CLOUD!"
+- Over costs him: nothing judged. An ask parked and forgotten would never slip, so the count
+  by ruling stays on the card.
+
+## Dates Told Late
+
+- Measures: `dates-told-late`, `dates-told-late-derived`
+- Target: 0 dates moved later in the last day with 15 minutes or less left before them, unless
+  landed or met before the move, or parked on a ruling or put down. A date that passes before
+  it moves is a slip, counted there.
+- Joel, 22 Nov 18:10: "don't wait till monday to ask on shit."
+- Over costs him: whoever waits on a date learns it moved only once it was too late to plan
+  around.
+
+## The Sessions' Failed Model Calls
+
+- Measures: `calls:failed`
+- Target: 100 model calls the sessions made in the hour that stopped on an error.
+- Joel, 26 Nov 16:42: "we need some set of cells maintaining the health of mycelium at all
+  timees"
+- Over costs him: each one is a turn of his sessions that stalls and retries, whatever route it
+  took, as a third of them did on the evening of 26 November.
+
+## The Sessions' Failed Call Share
+
+- Measures: `calls:failed-share`
+- Target: 2 per cent of the sessions' model calls in the hour stopped on an error.
+- Joel, 26 Nov 16:42: "we need some set of cells maintaining the health of mycelium at all
+  timees"
+- Over costs him: a quiet hour hides failures in its count, so the share says when the way out
+  is failing whatever the load.
+
+## The Path to Each Origin
+
+- Measures: `path:tls:*`
+- Target: 1 second, the hour's median TLS setup to the origin.
+- Joel, 26 Nov 16:42: "we need some set of cells maintaining the health of mycelium at all
+  timees"
+- Over costs him: a slow path stalls every call and push his sessions make through it, and
+  names where the fault is when the calls fail.
+
+## The Model Relay's Origin Resets
+
+- Measures: `relay:origin-resets`
+- Target: 400 requests the origin reset in the hour.
+- Joel, 26 Nov 16:42: "we need some set of cells maintaining the health of mycelium at all
+  timees"
+- Over costs him: his sessions' model requests are cut and sent again, slowing every turn, and
+  each reset past a retry reaches him as an error.
+
+## The Model Relay Sending Pi Direct
+
+- Measures: `relay:goes-direct`
+- Target: 150 requests the relay gave back for pi to make itself in the hour.
+- Joel, 26 Nov 16:42: "we need some set of cells maintaining the health of mycelium at all
+  timees"
+- Over costs him: each one leaves the relay's shared connections, so his sessions open their
+  own and meet "other side closed" when the origin drops them.
+
+## The Model Relay's Reset Share
+
+- Measures: `relay:reset-share`
+- Target: 2 per cent of the requests asked of the relay in the hour reset by the origin.
+- Joel, 26 Nov 16:42: "we need some set of cells maintaining the health of mycelium at all
+  timees"
+- Over costs him: a busy hour hides resets in its count, so the share says when the origin is
+  failing whatever the load.
+
+## The Model Relay's 502s
+
+- Measures: `relay:answered-502`
+- Target: 50 requests the relay answered pi with a 502 in the hour.
+- Joel, 26 Nov 16:42: "we need some set of cells maintaining the health of mycelium at all
+  timees"
+- Over costs him: "502" on his own screen mid-turn, as he saw at 16:38 on 26 November before
+  anything else did.
 
 ## Broken on Main
 
@@ -235,6 +329,27 @@ holding a space, as one broken across two lines does, is counted too.
 - Target: 0 quarantined tests with no date to come back.
 - Joel, 14 Nov: "delivering insane quality, both functionally, and by maintaining clean zones"
 - Over costs him: a test switched off for good without anyone saying so.
+
+## Holds Undated
+
+- Measures: `holds-undated`
+- Target: 0 live holds on the mesh with no ask dating the fix that ends them.
+- Joel, 24 Nov: "I need my agents to be able to get work done, they can't be neutered."
+- Over costs him: agents stopped from working with nobody saying when they start again.
+
+## Lines Citing No Owner
+
+- Measures: `lines-uncited`
+- Target: 0 lines to him in the last day giving a live or switch time, or asking him to act or
+  decide, with no message from a cell other than the writer cited before them, and 0 items the
+  morning note puts to him naming no such message. A time counts as cited only when the message
+  cited says it, and a switch time only from the cell running the switches. A message sent more
+  than two days before backs nothing. A log, citation or message that can't be read leaves the
+  hour unjudged.
+- Joel, 25 Nov 09:04: "2 - you should not be presenting me with this, a cell concerned with
+  this should."
+- Over costs him: a time nobody running the work gave, or a decision nobody who owns it put to
+  him, which he acts on as if they had.
 
 ## Budgets Billed Under Logged
 
@@ -291,6 +406,15 @@ holding a space, as one broken across two lines does, is counted too.
 - Target: set where it's read: each measure's own, as code-health writes it in its hour.
 - Joel, 14 Nov: "delivering insane quality, both functionally, and by maintaining clean zones"
 - Over costs him: code that gets harder to change, so every later fix is slower to land.
+
+## Causes Recurring
+
+- Measures: `causes-recurring`
+- Target: 0 classes of cause found on 3 or more changes in the last week.
+- Joel, 26 Nov 11:01: "we need to not have so many rounds ... tackle things at root causes ...
+  detect patterns of issues and just nip them in the bud."
+- Over costs him: the same fault comes back change after change, each paid for with another
+  review round, with nobody fixing its cause.
 
 ## Measures Undefined
 

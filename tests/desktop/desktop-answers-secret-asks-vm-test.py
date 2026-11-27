@@ -39,6 +39,8 @@ RELEASED = "op://Keeping/Lighthouse Console/password"
 STAND_IN = "stand-in-password"
 # Where agents put their asks up, and the daemon its answers.
 ASKS = "$XDG_RUNTIME_DIR/secret-asks"
+# How long a yes may take to release and run on a quiet host, the fence and op's stand-in included.
+RELEASING = dt.timedelta(seconds=30)
 # The fence's list of what it hides, which the daemon reads at every ask and refuses every ask
 # without, from the harness's install, which no VM has.
 FENCE_LIST = (
@@ -123,12 +125,51 @@ def put_up(desktop: Desktop, ask: str, why: str) -> None:
     )
 
 
-def answered(desktop: Desktop, ask: str) -> dict[str, object]:
-    """Give an ask's answer, once the daemon has written it."""
+def answered(desktop: Desktop, ask: str, since: str) -> dict[str, object]:
+    """Give an ask's answer, once the daemon has written it, or say what the shell said of it.
+
+    `since` is a mark of the shell's journal from before the key that answers it, as say_yes
+    gives, so an answer that never comes names the shell's refusal after that key, as unread or
+    changed, rather than only the time it waited.
+    """
     path = f"{ASKS}/{ask}.answer.json"
-    desktop.machine.wait_until_succeeds(
-        desktop.in_session(f"test -e {path}"), timeout=dt.timedelta(seconds=30)
+    # The driver's wait is paced to the host already (vm_helpers.pace_the_driver), so a release
+    # slow on a busy builder isn't read as a yes that was lost. A yes the shell refused is never
+    # answered, so its refusal (Launcher.qml's takenBack, "not become <key>: <why>") ends the
+    # wait too, rather than the whole paced wait passing first. Only a refusal with its why
+    # ends it: the bare "not become <key>" says the answer is late, not refused, and a slow
+    # release must still be waited out.
+    refused = (
+        f"journalctl --user -u quickshell --no-pager -o cat --after-cursor={shlex.quote(since)}"
+        f" | grep -qF {shlex.quote(f'not become ask:{ask}: ')}"
     )
+    try:
+        desktop.machine.wait_until_succeeds(
+            desktop.in_session(f"test -e {path} || {refused}"), timeout=RELEASING
+        )
+        desktop.as_account(f"test -e {path}")
+    except AssertionError as unanswered:
+        # The wait ended early on a refusal, or ran out: said apart, so a refusal in about a
+        # second isn't read as a release too slow for the wait.
+        how = (
+            "was refused by the shell"
+            if desktop.machine.execute(desktop.in_session(refused))[0] == 0
+            else f"wasn't answered within {RELEASING.total_seconds():.0f} s, paced to the host"
+        )
+        # A diagnosis never raises, so a shell too hung to answer leaves this failure standing
+        # rather than a timeout of its own. The launcher's showings, each a whole state naming
+        # the ask, would bury the refusal, so they're left out; its other reports stay, since
+        # the refusal is one (Launcher.qml's becameNot says "not become ask:..."), and so does
+        # any error or warning, a throw in Asks among them. A journal that can't be read says
+        # so rather than reading as a shell that said nothing.
+        said = desktop.diagnosis(
+            "said=$(journalctl --user -u quickshell --no-pager -o cat"
+            f" --after-cursor={shlex.quote(since)}) || echo 'the journal could not be read'; "
+            "printf '%s\\n' \"$said\" | grep -avF 'report[showing '"
+            f" | grep -aE {shlex.quote(f'ask:{ask}|Error|WARN|warn')} || true"
+        )
+        message = f"the ask {how}; the shell said of it: {said.strip() or 'nothing'}"
+        raise AssertionError(message) from unanswered
     answer: dict[str, object] = json.loads(desktop.as_account(f"cat {path}"))
     return answer
 
@@ -160,13 +201,29 @@ def selected_or_told(desktop: Desktop, ask: str, why: str) -> None:
         raise AssertionError(message) from unselected
 
 
-def say_yes(desktop: Desktop) -> str:
+def say_yes(desktop: Desktop, *, unmoved: bool = False) -> str:
     """Press Return twice on the selected line, as Joel says yes: the first arms it.
 
-    Gives the shell's journal's mark from just before the second, the yes.
+    Gives the shell's journal's mark from just before the second, the yes. Unmoved, the first
+    Return is asserted to have left Asks' line untimed, so a refusal can't rest on a frame that
+    came too late to time it.
     """
+    taken = desktop.showing()["taken"]
     desktop.machine.send_key("ret")
-    desktop.launcher_until(lambda shown: shown["returned"].get("act") == "armed")
+    # The launcher arms as it takes the Return, and Asks reads it a turn
+    # later, so the wait holds until Asks has read it too. What the last
+    # Return did outlives its opening, and nothing was unread before this
+    # one, so the count taken is what says the state is this Return's.
+    desktop.launcher_until(
+        lambda shown: (
+            shown["taken"] > taken
+            and shown["returned"].get("act") == "armed"
+            and shown["asksUnread"] == 0
+        )
+    )
+    if unmoved:
+        armed = desktop.showing()["asksArmed"]
+        assert armed is False, f"a Return timed the line: asksArmed {armed!r}"
     time.sleep(PAST_THE_READING)
     since = desktop.mark()
     desktop.machine.send_key("ret")
@@ -220,13 +277,43 @@ def test_joels_yes_releases_the_value_into_the_one_command(desktop: Desktop) -> 
     asks_open_on(desktop, ask, why)
     # A move of his over the rows times the line, though there's nowhere to move to; on the
     # find, where the launcher opens, an arrow could be a terminal's.
+    # Asks reads keys only over passwords; elsewhere asksUnread is null, and the waits below
+    # would order nothing, so that's said here rather than left to a timeout.
+    assert isinstance(desktop.showing()["asksUnread"], int), "Asks isn't reading the keys"
+    before_escape = desktop.showing()["taken"]
     desktop.machine.send_key("esc")
-    desktop.launcher_until(lambda shown: shown["mode"] == "normal" and selects(shown, why))
-    # Nothing the launcher reports shows j taken, but a j not read leaves the line untimed and
-    # the yes refused, so the release below is what proves it.
+    # The Escape is seen read by Asks alone too, since read with the j it resets the line: taken,
+    # then read, as none is left unread only once it's been taken.
+    desktop.launcher_until(
+        lambda shown: (
+            shown["mode"] == "normal"
+            and selects(shown, why)
+            and shown["taken"] > before_escape
+            and shown["asksUnread"] == 0
+        )
+    )
+    # A j not read leaves the line untimed and the yes refused, so the release below is what
+    # proves it was. It's seen read by Asks before Return goes, since keys read in one turn are
+    # read together, and a move read with the Return after it times nothing
+    # (secret-asks/Shown.js's keyed): sent ten milliseconds apart, a busy shell read them so in
+    # 3 of 54 runs. Asks reads a key a turn after the launcher takes it, so the count taken
+    # alone would order the j before the Return only as Qt happens to order its events.
+    taken = desktop.showing()["taken"]
     desktop.machine.send_chars("j")
-    say_yes(desktop)
-    answer = answered(desktop, ask)
+    # And a frame has drawn the line it armed, from which its time runs: a yes before that
+    # frame is refused as unread too, as niri presents it a turn or more later.
+    desktop.launcher_until(
+        lambda shown: (
+            shown["taken"] > taken
+            and shown["asksUnread"] == 0
+            and shown["asksNoted"] is True
+            # Seen True once his move arms it, so the agents' case reading it False shows a
+            # field that can be either.
+            and shown["asksArmed"] is True
+        )
+    )
+    since = say_yes(desktop)
+    answer = answered(desktop, ask, since)
     assert (answer["state"], answer["exit"]) == ("ran", 0), answer
     given = desktop.as_account(f"cat {TREE}/released").split()[0]
     assert given == hashlib.sha256(STAND_IN.encode()).hexdigest(), "the command wasn't given it"
@@ -248,7 +335,7 @@ def test_an_asks_opened_from_outside_takes_no_yes_without_a_move(desktop: Deskto
     put_up(desktop, ask, why)
     asks_open_on(desktop, ask, why)
     time.sleep(PAST_THE_READING)
-    refused_unread(desktop, ask, say_yes(desktop))
+    refused_unread(desktop, ask, say_yes(desktop, unmoved=True))
 
 
 def test_r_refuses_an_ask(desktop: Desktop) -> None:
@@ -257,8 +344,9 @@ def test_r_refuses_an_ask(desktop: Desktop) -> None:
     why = "To glaze the pots."
     put_up(desktop, ask, why)
     asks_open_on(desktop, ask, why)
+    pressed = desktop.mark()
     refuse_on(desktop, why)
-    answer = answered(desktop, ask)
+    answer = answered(desktop, ask, pressed)
     assert (answer["state"], answer["why"]) == ("refused", "refused by Joel"), answer
     desktop.as_account(f"! test -e {TREE}/released")
     # Return on the line once answered only closes, as on any row that only says something,
@@ -352,18 +440,38 @@ def test_an_agents_ask_after_his_escape_leaves_his_move_untimed(desktop: Desktop
     put_up(desktop, beneath, f"To rake the ash, by {way}.")
     put_up(desktop, ask, why)
     asks_open_on(desktop, ask, why)
+    # As in the yes case, so a shell where Asks reads no keys fails by name, not by timeout.
+    assert isinstance(desktop.showing()["asksUnread"], int), "Asks isn't reading the keys"
+    before_escape = desktop.showing()["taken"]
     desktop.machine.send_key("esc")
-    desktop.launcher_until(lambda shown: shown["mode"] == "normal" and selects(shown, why))
+    # Read by Asks before the agent's opening, so the opening is what
+    # must reset his Escape, rather than coming first and leaving nothing
+    # for the reset to undo.
+    desktop.launcher_until(
+        lambda shown: (
+            shown["mode"] == "normal"
+            and selects(shown, why)
+            and shown["taken"] > before_escape
+            and shown["asksUnread"] == 0
+        )
+    )
     outside_onto_asks(desktop, way)
     # Still normal, so the j and k below move over the rows rather than type into the find.
     desktop.launcher_until(lambda shown: shown["mode"] == "normal" and selects(shown, why))
     desktop.machine.send_chars("j")
-    desktop.launcher_until(lambda shown: not selects(shown, why))
+    # Read by Asks before the k, so the two aren't read in one turn, where a move read with a
+    # key after it resets rather than arms.
+    desktop.launcher_until(lambda shown: not selects(shown, why) and shown["asksUnread"] == 0)
     desktop.machine.send_chars("k")
-    desktop.launcher_until(lambda shown: selects(shown, why))
+    # Read by Asks too, so the refusal below is for the agent's opening, not a k still unread.
+    desktop.launcher_until(lambda shown: selects(shown, why) and shown["asksUnread"] == 0)
     # Past the reading, so a move wrongly taken as his would have timed the line long enough.
     time.sleep(PAST_THE_READING)
-    refused_unread(desktop, ask, say_yes(desktop))
+    # Nothing armed: Asks arms as it reads a key, owing nothing to a frame, so a move wrongly
+    # taken as his fails here by its own name however late the screen draws, rather than
+    # passing below on a refusal its frame came too late to stop.
+    assert desktop.showing()["asksArmed"] is False, "the agent's opening let his move arm the line"
+    refused_unread(desktop, ask, say_yes(desktop, unmoved=True))
 
 
 def scene_warnings(desktop: Desktop) -> str:

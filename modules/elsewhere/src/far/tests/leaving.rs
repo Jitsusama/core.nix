@@ -1,9 +1,12 @@
 //! The near side leaving a job's files in the handover: which tracked
 //! names it takes, its archives, the list of them, and the bytes it says
-//! they take.
+//! they take; and the cache the far line finds that handover in.
 
-use super::scratch;
-use crate::far::{Folders, LARGEST_FILE, LEFT, TREE, archive, leave, left, tracked};
+use super::{kind, scratch};
+use crate::far::{
+    Folders, LARGEST_FILE, LEFT, MOST_BYTES, TREE, archive, gathered, leave, left, tracked,
+};
+use std::path::Path;
 
 #[test]
 fn a_name_is_the_tree_s_own_only_through_folders_never_through_a_link() {
@@ -122,6 +125,97 @@ fn what_is_left_holds_each_file_to_what_a_shared_file_may_be() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// A repository at `root` tracking `files`, each sparse at its size, so
+/// none takes room on the disk, and tracked without git reading it.
+fn tracking(root: &Path, files: &[(String, u64)]) {
+    let git = |words: &[&str]| {
+        let status = std::process::Command::new("git")
+            .args(words)
+            .current_dir(root)
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {words:?} failed");
+    };
+    git(&["init", "--quiet"]);
+    for (name, size) in files {
+        std::fs::File::create(root.join(name))
+            .unwrap()
+            .set_len(*size)
+            .unwrap();
+        // The empty file's blob, which nothing reads: only the names count.
+        let entry = format!("100644,e69de29bb2d1d6434b8b29ae775ad8c2e48c5391,{name}");
+        git(&["update-index", "--add", "--cacheinfo", &entry]);
+    }
+}
+
+#[test]
+fn a_file_is_gathered_while_its_archive_fits_a_shared_file_and_not_a_byte_past() {
+    // A file whose entry and close come to just the most a shared file
+    // may be, and one a byte larger, which takes another block.
+    let fits = LARGEST_FILE - archive::CLOSED - 512;
+    for (size, takes) in [(fits, true), (fits + 1, false)] {
+        let root = scratch("gathered-largest");
+        tracking(&root, &[("f".to_owned(), size)]);
+        let found = gathered(&root, &kind(""));
+        if takes {
+            assert_eq!(
+                found,
+                Ok(vec!["f".to_owned()]),
+                "a file that fits wasn't gathered"
+            );
+        } else {
+            assert!(
+                found
+                    .as_ref()
+                    .is_err_and(|error| error.starts_with("f is past the 64 MiB")),
+                "a file a byte past what fits was gathered: {found:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+#[test]
+fn files_are_gathered_while_their_archives_fit_a_shared_folder_and_not_a_byte_past() {
+    // Fifteen files each fill an archive's room, and a sixteenth takes
+    // what comes to just what a shared folder carries with the closes
+    // `archived` counts at worst, 33 for 16 rooms' worth, not the 16
+    // these files make; a byte more takes another block.
+    let full = LARGEST_FILE - archive::CLOSED - 512;
+    let last = LARGEST_FILE - 18 * archive::CLOSED - 512;
+    let count = 16;
+    let taken = 15 * archive::taken("00", full) + archive::taken("15", last);
+    assert_eq!(
+        archive::archived(taken, LARGEST_FILE),
+        MOST_BYTES,
+        "the files no longer come to just what a shared folder carries"
+    );
+    for (size, takes) in [(last, true), (last + 1, false)] {
+        let root = scratch("gathered-most");
+        let files: Vec<_> = (0..count)
+            .map(|at| (format!("{at:02}"), if at + 1 < count { full } else { size }))
+            .collect();
+        tracking(&root, &files);
+        let found = gathered(&root, &kind(""));
+        if takes {
+            assert_eq!(
+                found.map(|found| found.len()),
+                Ok(count),
+                "files within what a shared folder carries weren't all gathered"
+            );
+        } else {
+            let past = format!("past the {MOST_BYTES} a shared folder carries");
+            assert!(
+                found.as_ref().is_err_and(|error| {
+                    error.starts_with(&format!("its {count} files")) && error.ends_with(&past)
+                }),
+                "files past what a shared folder carries were gathered: {found:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
 #[test]
 fn what_is_left_over_several_archives_is_said_to_take_them_all() {
     let root = scratch("left-several");
@@ -152,4 +246,75 @@ fn what_is_left_over_several_archives_is_said_to_take_them_all() {
         "the archives weren't each listed at the size it was written at"
     );
     let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn both_sides_take_a_cache_or_home_that_isn_t_absolute_as_none() {
+    use crate::far::steps::{CACHE, cache};
+    use std::ffi::OsStr;
+    use std::path::PathBuf;
+    let line = format!("{CACHE}\nprintf %s \"$cache\"");
+    // The gate names dash, the strictest sh a far machine may have.
+    let sh = std::env::var("ELSEWHERE_FAR_SH").unwrap_or_else(|_| "sh".to_owned());
+    for (xdg, home, found) in [
+        (Some("rel/cache"), Some("/h"), "/h/.cache"),
+        (Some(""), Some("/h"), "/h/.cache"),
+        (None, Some("/h"), "/h/.cache"),
+        (Some("/c"), Some("/h"), "/c"),
+        (Some("/c"), None, "/c"),
+        (None, Some(""), ""),
+        (None, Some("rel"), ""),
+        (Some("rel/cache"), None, ""),
+    ] {
+        let mut far = std::process::Command::new(&sh);
+        far.args(["-c", &line]);
+        for (name, value) in [("XDG_CACHE_HOME", xdg), ("HOME", home)] {
+            match value {
+                Some(value) => far.env(name, value),
+                None => far.env_remove(name),
+            };
+        }
+        let said = far.output().unwrap().stdout;
+        let here = cache(xdg.map(OsStr::new), home.map(OsStr::new));
+        assert_eq!(
+            (String::from_utf8_lossy(&said).into_owned(), here),
+            (
+                found.to_owned(),
+                Some(found).filter(|it| !it.is_empty()).map(PathBuf::from)
+            ),
+            "a cache of {xdg:?} and a home of {home:?} weren't found where the line finds them"
+        );
+    }
+}
+
+#[test]
+fn a_far_machine_with_no_cache_leaves_the_job_untaken_as_its_own_fault() {
+    use crate::far::{Heard, UNTAKEN, script};
+    let command = ["true"].map(str::to_owned);
+    let line = script(
+        "QEST-20261115-ABC123",
+        "1",
+        0,
+        ".s",
+        Path::new(""),
+        &kind(""),
+        &command,
+    );
+    // The gate names dash, the strictest sh a far machine may have.
+    let sh = std::env::var("ELSEWHERE_FAR_SH").unwrap_or_else(|_| "sh".to_owned());
+    let far = std::process::Command::new(sh)
+        .args(["-c", &line])
+        .env("HOME", "rel")
+        .env_remove("XDG_CACHE_HOME")
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&far.stdout);
+    assert_eq!(
+        (
+            far.status.code(),
+            said.lines().any(|it| it == Heard::Untaken.line("1"))
+        ),
+        (Some(i32::from(UNTAKEN)), true),
+        "a far machine with no cache didn't leave the job untaken: {said}"
+    );
 }

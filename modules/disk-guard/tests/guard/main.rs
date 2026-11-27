@@ -44,6 +44,7 @@ mod locks;
 mod logs;
 #[cfg(target_os = "macos")]
 mod macos;
+mod memorystatus;
 mod nix_builds;
 #[cfg(target_os = "linux")]
 mod nix_database;
@@ -54,6 +55,7 @@ mod opens;
 mod pace;
 mod pass;
 mod pass_lines;
+mod pass_skips;
 mod plan;
 mod pmset;
 mod pool;
@@ -75,6 +77,7 @@ mod state;
 mod store_roots;
 mod survey;
 mod survey_trees;
+mod telling;
 mod temp;
 mod trash;
 mod trees;

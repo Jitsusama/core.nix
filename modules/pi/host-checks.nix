@@ -72,6 +72,9 @@ let
           node = "${macRuntime}/node";
           proof = macProof;
           path = [ "/first/bin" ];
+          # Conversations' own, which a Mac starts none of, so its host keeps
+          # V8's own growth.
+          conversationHeapGrowingPercent = 30;
           environment = {
             # A launchd start reads no specifier, so a % stays single.
             PROXY_ORIGIN = "https://proxy.example.com/a%40b";
@@ -298,82 +301,6 @@ in
         && lib.hasInfix "hosts.later.proof is version 2, not 1" refusals
       );
 
-  # A realm's own NODE_OPTIONS, or any other variable a host's unit clears
-  # since it would run code as the host, fails evaluation, naming the realm
-  # and each variable, rather than being dropped unseen.
-  pi-hosts-refuse-code-loading-variables =
-    let
-      runtime = "/nix/store/00000000000000000000000000000000-pi-host-runtime-1.5.0";
-      realm = environment: {
-        pi = "${runtime}/lib/node_modules/pi";
-        node = "${pkgs.emptyDirectory}/node";
-        proof = proofOf { inherit runtime; };
-        inherit environment;
-      };
-      # A realm giving each alone, named for it: node_options and so on.
-      realmOf = name: lib.toLower name;
-      checks =
-        (account (bareNixos [
-          self.nixosModules.workstation
-          {
-            home-manager.users.someone.jitsusama.pi.hosts =
-              lib.listToAttrs (
-                map (
-                  name:
-                  lib.nameValuePair (realmOf name) (realm {
-                    ${name} = "/x";
-                  })
-                ) loadsCode
-              )
-              // {
-                plain = realm { GREETING = "hi"; };
-                # Two, beside one that loads nothing, which the
-                # refusal leaves out.
-                both = realm {
-                  OPENSSL_CONF = "/x.cnf";
-                  LD_PRELOAD = "/x.so";
-                  GREETING = "hi";
-                };
-                three = realm {
-                  OPENSSL_MODULES = "/x";
-                  NODE_PATH = "/x";
-                  LD_AUDIT = "/x.so";
-                };
-              };
-          }
-        ])).assertions;
-      refusals = map (check: check.message) (lib.filter (check: !check.assertion) checks);
-      # The one refusal naming a realm, or none.
-      prefixOf = realm: "jitsusama.pi.hosts.${realm}.environment gives ";
-      refusalOf = realm: lib.findFirst (lib.hasPrefix (prefixOf realm)) null refusals;
-      # Whether a realm's refusal names just these variables, as written,
-      # and speaks of one as it and of several as each; then names each of
-      # loadsCode again where it says how they load code, and where a
-      # command gets one instead. How each loads code is the message's to
-      # word, so only its names are pinned.
-      names =
-        realm: named:
-        let
-          refused = refusalOf realm;
-          one = !(lib.hasInfix " and " named);
-          head = "${prefixOf realm}${named}, which a pi host's unit clears: ${if one then "it" else "each"} could make";
-          explained = lib.removePrefix head refused;
-        in
-        refused != null
-        && lib.hasPrefix head refused
-        && lib.all (name: lib.hasInfix " ${name}" explained) loadsCode
-        && lib.hasInfix (if one then " Drop it. " else " Drop each one. ") refused
-        && lib.hasSuffix " a command that needs one sets it itself." refused;
-    in
-    holds "pi-hosts-refuse-code-loading-variables"
-      "A realm giving NODE_OPTIONS, NODE_PATH, NODE_COMPILE_CACHE, LD_PRELOAD, LD_AUDIT, LD_LIBRARY_PATH, OPENSSL_CONF or OPENSSL_MODULES, which its pi host's unit clears, was taken unseen, or the refusal didn't name the realm and only the ones it gave, speaking of one as it and of several as each, then name each of the eight again where it says how they load code, and say that a command needing one sets it itself."
-      (
-        refusalOf "plain" == null
-        && lib.all (name: names (realmOf name) name) loadsCode
-        && names "both" "LD_PRELOAD and OPENSSL_CONF"
-        && names "three" "NODE_PATH, LD_AUDIT and OPENSSL_MODULES"
-      );
-
   # A Mac's hosts are launchd daemons run as its primary account, not agents,
   # since launchd ends an account's agents with its login session and every
   # conversation a host holds with them. Each starts at boot, again after it
@@ -401,6 +328,7 @@ in
           program = lib.head (lib.splitString " " (lib.removePrefix "  " last));
         in
         lib.hasSuffix "/scripts/pi-host.ts ${kind}" last
+        && !lib.hasInfix "--heap-growing-percent" start
         # Each kind writes its own log, and its own record of starts.
         && lib.hasInfix "/Users/someone/Library/Logs/pi-host-one-${kind}.log" start
         && daemon.Label or null == "org.jitsusama.pi-host-one-${kind}"
@@ -436,7 +364,7 @@ in
         && lib.hasSuffix "-pi-host/bin/pi-host" program;
     in
     holds "the-mac-pi-host-outlives-a-log-out"
-      "A Mac's pi host isn't a launchd daemon run as its primary account, so a log-out ends it, or isn't started as its own kind with a log of its own, or it isn't started at boot once the store is mounted, is restarted after a clean stop or not after a failure, has less than the 150 s it parks within or launchd's 256 open files, names a store path a switch would restart it for, has launchd open its log as root, runs node under a name mycelium doesn't tell as an agent's, the machine doesn't evaluate whole, or a Mac naming no realm gets one."
+      "A Mac's pi host isn't a launchd daemon run as its primary account, so a log-out ends it, or isn't started as its own kind with a log of its own, or it isn't started at boot once the store is mounted, is restarted after a clean stop or not after a failure, has less than the 150 s it parks within or launchd's 256 open files, names a store path a switch would restart it for, has launchd open its log as root, runs node under a name mycelium doesn't tell as an agent's, grows its heap other than V8's own because its realm names a percent for conversations, the machine doesn't evaluate whole, or a Mac naming no realm gets one."
       (
         builtins.seq mac.config.system.build.toplevel.drvPath true
         && outlives "attended"
@@ -778,6 +706,20 @@ in
         && lib.all (check: check.assertion) (naming bareNixos self.nixosModules.workstation).assertions
       );
 }
+# The refusal of a code-loading variable changes with its words alone, so its
+# check sits beside these.
+// import ./code-loading-checks.nix {
+  inherit
+    account
+    bareNixos
+    holds
+    lib
+    loadsCode
+    pkgs
+    proofOf
+    self
+    ;
+}
 # The conversations' own template changes with its unit alone, so its check
 # sits beside these.
 // onLinux (
@@ -789,6 +731,21 @@ in
       holds
       lib
       loadsCode
+      pkgs
+      proofOf
+      self
+      ;
+  }
+)
+# The state folders' subvolumes change with state-subvolumes/home.nix and the
+# hosts' names alone, so their check sits beside these.
+// onLinux (
+  import ./state-subvolumes/checks.nix {
+    inherit
+      account
+      bareNixos
+      holds
+      lib
       pkgs
       proofOf
       self

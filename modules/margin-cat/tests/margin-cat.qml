@@ -183,7 +183,7 @@ QtObject {
         };
         const long = beats => beats.reduce((all, beat) => all + (beat.ms ?? 0), 0);
         const inPlace = ["tailFlick", "batting", "stretch", "lookingAbout", "grooming"];
-        const moves = ["hop", "pounce", "wander", "yarn"];
+        const moves = ["hop", "pounce", "puppy", "wander", "yarn"];
         const chances = [0, 0.2, 0.4, 0.6, 0.8, 0.99];
 
         const typed = chances.map(chance => Plays.scene("typing", draws(chance), ""));
@@ -224,6 +224,9 @@ QtObject {
         expect("as a pounce is",
             moved.find(played => played.name === "pounce").beats.map(beat => beat.play ?? beat.to),
             ["pounce", "column"]);
+        expect("the puppy's visit a play, with no walk back, since the cat stays sat",
+            moved.find(played => played.name === "puppy").beats.map(beat => beat.play ?? beat.to),
+            ["puppy"]);
         expect("each thinking 150 to 450 ms first",
             [Plays.scene("idle", draws(0.8, 0.9, 0), "").beats[0].pause,
                 Plays.scene("idle", draws(0.8, 0.9, 1), "").beats[0].pause], [150, 450]);
@@ -253,7 +256,8 @@ QtObject {
         const asked = name => Plays.scene("idle", draws(0), "", { asked: name });
         expect("a play asked for comes next",
             [asked("hop").name, asked("wander").name, asked("yarn").name, asked("pounce").name,
-                asked("grooming").name], ["hop", "wander", "yarn", "pounce", "grooming"]);
+                asked("puppy").name, asked("grooming").name],
+            ["hop", "wander", "yarn", "pounce", "puppy", "grooming"]);
         expect("even just after the same one",
             Plays.scene("idle", draws(0), "hop", { asked: "hop" }).name, "hop");
         expect("but never a move while he reads",
@@ -261,7 +265,8 @@ QtObject {
         expect("nor anything while he types",
             Plays.scene("typing", draws(0), "", { asked: "wander" }).beats.length, 1);
         expect("and the yarn asked for comes however lately it played",
-            Plays.scene("idle", draws(0), "", { asked: "yarn", yarnIn: 60_000 }).name, "yarn");
+            Plays.scene("idle", draws(0), "", { asked: "yarn", restsIn: { yarn: 60_000 } }).name,
+            "yarn");
         // How often the yarn comes is margin-cat-games.qml's, beside the yarn.
     }
 

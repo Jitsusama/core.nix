@@ -94,7 +94,56 @@ QtObject {
             2: moving(windows[2], "Resize", 0.1), 3: moving(windows[3], "TileMove", 90),
             4: moving(windows[4], "Resize", 200) });
         expect("a resize under way says when it began, the longest ago on its workspace",
-            [Tiles.resizing(growing, 7), Tiles.resizing(windows, 7), Tiles.resizing(growing, 9)],
-            [4.5, null, null]);
+            [Tiles.animating(growing, 7, "Resize"), Tiles.animating(windows, 7, "Resize"),
+                Tiles.animating(growing, 9, "Resize")], [4.5, null, null]);
+        const scrolling = Object.assign({}, windows, { 1: moving(windows[1], "ViewMove", 30) });
+        expect("a scroll under way says when it began, as a resize does, and a tile's move its own",
+            [Tiles.animating(scrolling, 7, "ViewMove"), Tiles.animating(growing, 7, "TileMove"),
+                Tiles.animating(growing, 7, "ViewMove")], [30, 90, null]);
+        // niri puts a scroll's word on every tiled window of its workspace,
+        // never a floating one, as it begins and never as it ends, so it
+        // stays on a window until that window's next layout.
+        const viewing = Object.assign({}, windows, { 1: moving(windows[1], "ViewMove", 30),
+            2: moving(windows[2], "ViewMove", 30) });
+        expect("a scroll is told on each window that says it, by how long before it began",
+            [Tiles.told(viewing, 7, "ViewMove"), Tiles.told(viewing, 8, "ViewMove"),
+                Tiles.told(growing, 7, "ViewMove")]
+                .map(each => each.map(one => ({ id: one.id, ago: one.ago }))),
+            [[{ id: 1, ago: 30 }, { id: 2, ago: 30 }], [], []]);
+        const first = Tiles.hears(null, Tiles.told(viewing, 7, "ViewMove"), 1000);
+        expect("a scroll first heard is dated by niri's begin, not when it was heard",
+            first.at, 970);
+        // Its scroll long done, one window's layout comes again with no
+        // word, a retitle or a column resized: the word left on the other
+        // keeps its old begin, so no scroll runs.
+        const resized = Object.assign({}, viewing, { 2: moving(windows[2], "Resize", 0) });
+        const later = Tiles.hears(first, Tiles.told(resized, 7, "ViewMove"), 2000);
+        expect("a scroll's word left on a window as another's layout comes keeps its begin",
+            [later.at, Tiles.runs(later, 2000, 230)], [970, false]);
+        // Sent again mid-scroll, a window's layout says the same begin
+        // later on, which keeps the scroll's own.
+        const resent = Object.assign({}, viewing, { 1: moving(windows[1], "ViewMove", 130) });
+        expect("a layout sent again mid-scroll keeps the scroll's begin",
+            Tiles.hears(first, Tiles.told(resent, 7, "ViewMove"), 1100).at, 970);
+        const again = Object.assign({}, resized, { 1: moving(windows[1], "ViewMove", 5) });
+        expect("a new scroll on any window is dated by its own begin, the latest",
+            Tiles.hears(later, Tiles.told(again, 7, "ViewMove"), 3000).at, 2995);
+        // The old scroll's word still left on one window, the new one's on
+        // the other: the new begin is the scroll's, never the earliest.
+        const mixed = Object.assign({}, viewing, { 2: moving(windows[2], "ViewMove", 5) });
+        expect("a new scroll beside an old one's word left on another window is dated by the new",
+            Tiles.hears(first, Tiles.told(mixed, 7, "ViewMove"), 3000).at, 2995);
+        // A new scroll said 30 ms after it began, as the last was: niri's
+        // new layout says it, so it's dated anew, never taken for the old.
+        const twice = Object.assign({}, viewing, { 1: moving(windows[1], "ViewMove", 30) });
+        expect("a new scroll said as long after its begin as the last is dated by its own",
+            Tiles.hears(first, Tiles.told(twice, 7, "ViewMove"), 3000).at, 2970);
+        expect("a scroll runs for its spring's length after it began, and none runs untold",
+            [Tiles.runs(first, 1199, 230), Tiles.runs(first, 1200, 230),
+                Tiles.runs(Tiles.hears(first, [], 1000), 1000, 230),
+                Tiles.runs(null, 1000, 230)],
+            [true, false, false, false]);
+        expect("a clock stepped back to before a scroll began runs none",
+            Tiles.runs(first, 900, 230), false);
     }
 }

@@ -48,7 +48,6 @@ nodes=()
 paths=()
 unread=()
 unrecorded=()
-kept=no
 # Sorts a camera by what udev holds of it: a Brio held for a relay is to be
 # replayed, one udev can't say of may be the Brio held, and so may one it
 # holds no record of, which is either an add still queued, as at boot, or a
@@ -70,11 +69,10 @@ consider() {
   the_brio "$facts" || return 0
   grep -qx 'CAMERA_RELAYED=1' <<<"$facts" || return 0
   # A node udev holds for a relay but can't give the path of can't be
-  # replayed, so it stays kept, and the run can't say it gave the Brio back.
+  # replayed, so it stays kept.
   if ! path=$(udevadm info --query=path "$node"); then
     if [ -e "$node" ]; then
       unread+=("$node")
-      kept=yes
     fi
     return 0
   fi
@@ -113,7 +111,8 @@ if [ "${#unrecorded[@]}" -gt 0 ]; then
 fi
 if [ "${#unread[@]}" -gt 0 ]; then
   echo "<4>udev couldn't say how the cameras at ${unread[*]} stand, so an MX Brio" \
-    "among them may still be kept from the seat; udevadm's words above say why." >&2
+    "among them may still be kept from the seat; udevadm's words above say why, and" \
+    "once udev can say, systemctl restart mx-brio-seat looks again." >&2
 fi
 if [ "${#unrecorded[@]}" -gt 0 ]; then
   echo "<4>udev holds no record of the cameras at ${unrecorded[*]}, as after a removal" \
@@ -169,14 +168,18 @@ trap - EXIT
 if [ "$arrived" = no ]; then
   echo "<4>udev didn't finish the MX Brio's arrival in ${settling} s, so whether the" \
     "seat has it isn't known yet; udevadm info ${nodes[*]} says once udev has," \
-    "and systemctl restart mx-brio-seat replays it if it's still kept." >&2
+    "and systemctl restart mx-brio-seat looks again." >&2
   exit 0
 fi
 
 # udev's record of each node as the add left it, so a replay read under the
 # old rules says so rather than passing for one that worked.
+# A node udev couldn't say of, holds no record of or hasn't finished adding
+# may be the Brio still kept, so the run never says it gave the Brio back
+# while one is left so, beside the warning that says which.
 given=yes
-if [ "$kept" = yes ]; then
+if [ "${#unread[@]}" -gt 0 ] || [ "${#unrecorded[@]}" -gt 0 ] ||
+  [ "${#pending[@]}" -gt 0 ]; then
   given=no
 fi
 for node in "${nodes[@]}"; do
