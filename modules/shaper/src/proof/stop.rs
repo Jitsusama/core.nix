@@ -75,16 +75,20 @@ pub const STOPS: [libc::c_int; 4] = [libc::SIGTERM, libc::SIGINT, libc::SIGHUP, 
 /// the shaper back as it was and ends its load before it exits, where it
 /// would otherwise die with the shaper off and the uploads going on, or,
 /// at a Ctrl-Z, sleep while they go on. A signal already ignored, as
-/// nohup ignores SIGHUP, stays ignored. A SIGCONT is a stop too, as
-/// `resumed` says.
+/// nohup ignores SIGHUP, stays ignored, and is never heard: it is read
+/// before anything is set, so none comes between a handler and putting
+/// the ignore back (a height held in tests round 1's F19). A SIGCONT is
+/// a stop too, as `resumed` says.
 pub fn hear_stops() {
-    // SAFETY: the handlers only touch an atomic and call write(2) and
-    // kill(2), and a disposition put back as it was found is no change.
+    // SAFETY: sigaction(2) with no new action only reads one, and the
+    // handlers only touch an atomic and call write(2) and kill(2).
     unsafe {
         let handler = heard as *const () as libc::sighandler_t;
         for signal in STOPS {
-            if libc::signal(signal, handler) == libc::SIG_IGN {
-                libc::signal(signal, libc::SIG_IGN);
+            let mut was: libc::sigaction = std::mem::zeroed();
+            libc::sigaction(signal, std::ptr::null(), &raw mut was);
+            if was.sa_sigaction != libc::SIG_IGN {
+                libc::signal(signal, handler);
             }
         }
         libc::signal(libc::SIGCONT, resumed as *const () as libc::sighandler_t);
@@ -379,14 +383,46 @@ pub mod tests {
         }
     }
 
+    /// What `signal` is set to, read without changing it.
+    fn disposition(signal: libc::c_int) -> libc::sighandler_t {
+        // SAFETY: sigaction(2) with no new action only reads one.
+        unsafe {
+            let mut was: libc::sigaction = std::mem::zeroed();
+            libc::sigaction(signal, std::ptr::null(), &raw mut was);
+            was.sa_sigaction
+        }
+    }
+
     #[test]
     fn a_stop_signal_is_heard_as_a_stop() {
         let _signals = signals();
-        // Under nohup a SIGHUP is ignored, and stays so.
-        // SAFETY: setting a disposition, then raising what it ignores.
+        let handler = heard as *const () as libc::sighandler_t;
+        // Under nohup a SIGHUP is ignored, and stays so, while the same
+        // call hears every other stop. Each is read before SIGHUP is
+        // raised, so a kept ignore lost fails here rather than killing
+        // the tests (a height held in tests round 1's F11 and F13).
+        // SAFETY: setting dispositions.
         unsafe {
+            for signal in STOPS {
+                libc::signal(signal, libc::SIG_DFL);
+            }
             libc::signal(libc::SIGHUP, libc::SIG_IGN);
-            hear_stops();
+        }
+        hear_stops();
+        assert_eq!(
+            disposition(libc::SIGHUP),
+            libc::SIG_IGN,
+            "a SIGHUP nohup ignores isn't ignored still"
+        );
+        for signal in STOPS.into_iter().filter(|&s| s != libc::SIGHUP) {
+            assert_eq!(
+                disposition(signal),
+                handler,
+                "signal {signal} isn't heard beside an ignored SIGHUP"
+            );
+        }
+        // SAFETY: raising a signal just read as ignored.
+        unsafe {
             libc::raise(libc::SIGHUP);
         }
         assert!(
@@ -396,7 +432,7 @@ pub mod tests {
         // Every stop back to the default, so the stops below are heard:
         // a shell that isn't a terminal's starts its background commands
         // with SIGINT ignored, as nohup does SIGHUP, and `hear_stops`
-        // keeps it so.
+        // would keep that ignore as it keeps SIGHUP's above.
         // SAFETY: setting the default disposition.
         unsafe {
             for signal in STOPS {
@@ -406,14 +442,9 @@ pub mod tests {
         hear_stops();
         for signal in STOPS {
             // Asked first, since a Ctrl-Z unheard would stop the tests.
-            // SAFETY: sigaction(2) with no new action only reads one.
-            let set = unsafe {
-                let mut was: libc::sigaction = std::mem::zeroed();
-                libc::sigaction(signal, std::ptr::null(), &raw mut was);
-                was.sa_sigaction
-            };
             assert_eq!(
-                set, heard as *const () as libc::sighandler_t,
+                disposition(signal),
+                handler,
                 "signal {signal} isn't heard as a stop"
             );
             STOPPED.store(false, Ordering::Relaxed);
