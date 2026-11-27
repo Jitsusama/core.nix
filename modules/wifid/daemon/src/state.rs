@@ -653,7 +653,9 @@ impl State {
     pub fn warned_off(&mut self, card: &str, point: &str, (at, until): (Option<Instant>, Instant)) {
         let at = at.or_else(|| {
             let before = self.warned_off.get(card)?;
-            before.at.filter(|_| before.point.eq_ignore_ascii_case(point))
+            before
+                .at
+                .filter(|_| before.point.eq_ignore_ascii_case(point))
         });
         let warning = Warning {
             point: point.to_owned(),
