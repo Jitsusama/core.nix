@@ -131,7 +131,7 @@ def test_a_network_joined_from_the_launcher_keeps_the_card_until_it_goes(
     the same, and come on again once Lantern goes, so the card joins the Inn by itself.
     """
     since = wifid.journal_now()
-    assert wifid.hears("Roadside Inn")
+    assert wifid.hears("Roadside Inn"), machine.succeed("wpa_cli -i wlan2 scan_results")
     held = machine.succeed("wpa_cli -i wlan2 list_networks")
     inn = [line for line in held.splitlines() if "\tRoadside Inn\t" in line]
     assert inn, held

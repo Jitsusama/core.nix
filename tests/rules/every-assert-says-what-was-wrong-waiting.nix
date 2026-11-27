@@ -56,7 +56,6 @@
   "modules/disk-guard/tests/guard/entries.rs" = 1;
   "modules/disk-guard/tests/guard/finished.rs" = 10;
   "modules/disk-guard/tests/guard/freezer.rs" = 4;
-  "modules/disk-guard/tests/guard/garbage.rs" = 4;
   "modules/disk-guard/tests/guard/generations.rs" = 2;
   "modules/disk-guard/tests/guard/git.rs" = 7;
   "modules/disk-guard/tests/guard/holders.rs" = 12;
@@ -260,6 +259,5 @@
   "tests/vm/admin/niri-off-cpu-vm-test.py" = 1;
   "tests/vm/network/shaper-vm-test.py" = 3;
   "tests/vm/admin/update-to-main-vm-test.py" = 1;
-  "tests/vm/network/wifi/wifi-joins-when-asked-vm-test.py" = 1;
   "tools/merge-net/src/watch.rs" = 24;
 }
