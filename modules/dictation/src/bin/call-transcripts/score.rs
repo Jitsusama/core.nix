@@ -279,7 +279,14 @@ fn score_meeting(speech: &mut Parakeet, meeting: &Meeting) -> Result<(Scored, Ti
             taken.text
         );
     }
-    lab_kept(name, mine, reference, &lines, &word_times);
+    lab_kept(
+        name,
+        mine,
+        reference,
+        &lines,
+        &word_times,
+        &sounds[index(Side::Theirs)],
+    );
     let written = transcript::read(&markdown(&cut, "Me", None, None), "Me");
     for side in [Side::Mine, Side::Theirs] {
         let heard: Vec<String> = written
@@ -323,7 +330,16 @@ fn lab_kept(
     reference: &[Said],
     lines: &[Line],
     words: &HashMap<usize, Vec<Word>>,
+    their_sound: &[f32],
 ) {
+    let levels: HashMap<usize, f32> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| line.side == Side::Mine)
+        .filter_map(|(index, _)| words.get(&index))
+        .flatten()
+        .map(|word| (word.at, word.level))
+        .collect();
     let inside = |side: Side, t: f64, margin: f64| {
         reference
             .iter()
@@ -345,10 +361,37 @@ fn lab_kept(
         let key = format!("{whose} kept, {why}, below theirs {} voice {voice}", step(below));
         *counts.entry((key, why)).or_default() += 1;
         *counts.entry((format!("{whose} kept, {why}"), "")).or_default() += 1;
+        if let Some(&level) = levels.get(&at) {
+            let above = step(loudest_before(their_sound, at) - level);
+            let key = format!("{whose} kept, sound above {above}");
+            *counts.entry((key, "")).or_default() += 1;
+            let key = format!("{whose} kept, sound above {above} voice {voice}");
+            *counts.entry((key, "")).or_default() += 1;
+        }
     }
     for ((key, _), count) in counts {
         println!("{name} lab: {key}: {count}");
     }
+}
+
+/// Lab only: the loudest quarter second of `sound` starting from a
+/// second before `at` to three tenths after, in 50 ms steps, in dB of
+/// full scale, as `parakeet`'s word levels are measured.
+fn loudest_before(sound: &[f32], at: usize) -> f32 {
+    let quarter = RATE / 4;
+    let step = RATE / 20;
+    let mut loudest = -120.0_f32;
+    let mut from = at.saturating_sub(RATE);
+    while from <= at + RATE * 3 / 10 {
+        let span = sound
+            .get(from..(from + quarter).min(sound.len()))
+            .unwrap_or_default();
+        let energy: f32 = span.iter().map(|s| s * s).sum();
+        let power = energy / span.len().max(1) as f32;
+        loudest = loudest.max(10.0 * (power + 1e-12).log10());
+        from += step;
+    }
+    loudest
 }
 
 /// The meetings `sides` names in `set`, each refused when its line,
