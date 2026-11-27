@@ -138,6 +138,24 @@ impl Hold {
         at >= self.unheeded_until
     }
 
+    /// Whether the hold is let go at `at`: a wait at its least that no
+    /// cut lowered, climbing back by `RISE` and still heard, until it's
+    /// taken back or the let-go ends.
+    pub fn is_let_go(&self, at: f64) -> bool {
+        self.let_go.is_some() && at < self.unheeded_until
+    }
+
+    /// Lets the hold go at `at` as a wait at its least no cut lowered
+    /// would, its share climbed back whole and no wait high enough to
+    /// take it back, for a test of what the controller does beside it.
+    #[cfg(test)]
+    pub fn let_go_whole(&mut self, at: f64) {
+        self.let_go = Some((LEAST, f64::INFINITY));
+        self.share = 1.0;
+        self.unheeded_for = FAR_S;
+        self.unheeded_until = at + FAR_S;
+    }
+
     /// Steps the hold `dt` seconds on to `at`, with the VPN's wait past
     /// the line in ms when it's the tunnel's, or none, and the wait past
     /// which a queue counts as standing. A wait cuts the share every

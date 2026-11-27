@@ -1784,10 +1784,16 @@ impl Controller {
         // answered as before. They don't yield while the VPN's own hold
         // works, which given nothing would read the wait as drained and
         // let go, nor while the upload has no limit, whose lanes main
-        // doesn't hold.
+        // doesn't hold. Nor while the VPN's own hold is let go at its
+        // least: that wait no cut lowered is a far path's, and handed to
+        // agents once the hold climbed back whole it would saw their lane
+        // as it sawed the VPN's, while the VPN's hold, hearing nothing,
+        // could never be taken back (tunnel hold at its least round 3's
+        // F44 and F46).
         let yields = seen.up_ours.is_some_and(|ours| ours.agents_straight)
             && self.agents.heeding(at)
             && self.tunnel.share() >= 1.0
+            && !self.tunnel.is_let_go(at)
             && self.up.limit().is_some();
         self.agents
             .step(at, dt, far.filter(|_| yields), self.up.tuning.late_ms);
@@ -6171,6 +6177,62 @@ mod tests {
             );
             at += 0.1;
         }
+    }
+
+    // A wait the VPN's own hold let go at its least, the hold climbed back
+    // whole, isn't handed to agents straight: by air on 27 November it
+    // spiked to 100 to 230 ms every 6 to 10 s, which no hold lowers, and
+    // it would saw their lane as it sawed the VPN's (tunnel hold at its
+    // least round 3's F44 and F46). The VPN's hold still hears it. Not let
+    // go, the same wait does hold agents, so the case reaches them.
+    #[test]
+    fn agents_don_t_yield_to_a_wait_the_vpn_s_hold_let_go() {
+        let (let_go, at, lowest) = spiking_beside_agents(true);
+        assert!(
+            lowest >= 1.0,
+            "agents were held to {lowest:.2} for a wait the VPN's hold let go"
+        );
+        assert!(
+            let_go.tunnel.is_let_go(at),
+            "the case needs the VPN's hold still let go at {at:.1} s"
+        );
+        let (_, _, lowest) = spiking_beside_agents(false);
+        assert!(
+            lowest < 1.0,
+            "the case needs agents held for the wait while the VPN's hold heeds it"
+        );
+    }
+
+    /// Steps an anchored controller 90 s whose agents send straight beside
+    /// a VPN whose round trip spikes from 30 to 230 ms one second in eight
+    /// after the first 10 s, with the VPN's hold let go whole at 10 s when
+    /// `let_go`. Answers the controller, when it stopped, and the lowest
+    /// share agents were held to.
+    fn spiking_beside_agents(let_go: bool) -> (Controller, f64, f64) {
+        let mut c = anchored(12_000.0);
+        let (mut at, mut lowest) = (0.0, f64::INFINITY);
+        while at < 90.0 {
+            if let_go && (at - 10.0_f64).abs() < 0.05 {
+                c.tunnel.let_go_whole(at);
+            }
+            let spike = at >= 10.0 && at % 8.0 < 1.0;
+            c.step(&Seen {
+                at_s: at,
+                up_kbit: 5_000.0,
+                up_ours: Some(Ours {
+                    queued: true,
+                    vpn_queued: true,
+                    waiting: true,
+                    agents_straight: true,
+                    ..Ours::default()
+                }),
+                vpn_ms: Some(if spike { 230.0 } else { 30.0 }),
+                ..quiet(0.0, 300.0)(at)
+            });
+            lowest = lowest.min(c.agents_share());
+            at += 0.1;
+        }
+        (c, at, lowest)
     }
 
     // Agents who don't wait straight are never held, whatever the VPN
