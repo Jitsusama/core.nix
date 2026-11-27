@@ -238,9 +238,11 @@ this is for, which a quarter of main's merges change, and the net's
 `quarantine.json`, keyed by test, which each quarantine changes.
 Folders one check is built from together go the other way: once the
 change has a file in one, a file main moved in any counts as one it
-shares (`tools/merge-net/fates.txt`). Two changes in different files of the
-map, each within its budget's room alone, would otherwise merge as they
-stand and meet only on main.
+shares (`tools/merge-net/fates.txt`), as does a path either side renamed
+or deleted out of one. Two changes in different files of the map, each
+within its budget's room alone, would otherwise merge as they stand and
+meet only on main. A head whose base lacks main's newest fates is told to
+rebase, as for `must-run.txt`.
 When main moved some, `changed-checks` runs again at
 the rebased head, never a single check chosen by hand, since which checks
 read a file shows only in their derivations; Nix builds only what the

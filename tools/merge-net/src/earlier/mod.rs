@@ -108,7 +108,7 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
         let (at_base, checked) = (|f: &str| at(&base, f), |f: &str| at(candidate, f));
         shared.retain(|file| !ready::stands_apart(file, &rebased, &main_side, &at_base, &checked));
         let mut beside = crates.beside(&files, &since);
-        for fated in rules::fates::beside(&fates, &files, &since) {
+        for fated in rules::fates::beside(&fates, &branch, &main_side) {
             if !beside.contains(&fated) {
                 beside.push(fated);
             }

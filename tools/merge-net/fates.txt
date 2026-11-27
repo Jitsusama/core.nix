@@ -6,5 +6,8 @@
 # head. Two changes in different files of one folder, each passing alone,
 # otherwise merge as they stand and meet only on main.
 # The map's live test measures a page built from its folder, the sites'
-# kit, strip, build, server, feeds and tests, and the theme's web kit.
-the map's first visit: modules/mycelium/site/ modules/local-sites/ modules/theme/web/
+# kit, strip, build, server, feeds and tests, and the theme's web kit,
+# which the whole theme sets: its type, colours, space and palettes. The
+# fonts it serves come through flake.lock, out of any folder's reach, and
+# are left to the lock's own rule.
+the map's first visit: modules/mycelium/site/ modules/local-sites/ modules/theme/
