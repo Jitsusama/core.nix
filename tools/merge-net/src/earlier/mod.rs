@@ -71,8 +71,9 @@ pub fn judged(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Resul
     // read by, no run of an earlier base speaks for.
     let crates = Crates::at(Path::new("."), commit);
     // What main moved in a folder one check measures with the change's
-    // (`fates.txt`), which the change's own files never show.
-    let fates = rules::fates::fates();
+    // (`fates.txt`), which the change's own files never show, with those
+    // its merge base names, so it can't judge itself by fewer.
+    let fates = rules::fates::judging(&at(&branched, rules::fates::FATES_TXT))?;
     let branch = ready::Side {
         changed: &files,
         gone: &renamed,

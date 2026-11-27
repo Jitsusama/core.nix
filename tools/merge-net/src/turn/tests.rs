@@ -22,6 +22,20 @@ fn everyone(_: &Gate) -> bool {
     true
 }
 
+/// A side changing `changed` and renaming or deleting `gone`.
+fn side<'a>(changed: &'a [String], gone: &'a [String]) -> Side<'a> {
+    Side {
+        changed,
+        gone,
+        text: &nothing,
+    }
+}
+
+/// No file the two give apart.
+fn none_apart(_: &str) -> bool {
+    false
+}
+
 fn touching(files: &[&str]) -> impl Fn(&Gate) -> Option<Vec<String>> {
     let files = owned(files);
     move |_| Some(files.clone())
@@ -55,7 +69,15 @@ fn a_change_to_a_crate_reading_an_earlier_gates_crate_waits_behind_it() {
     );
     let theirs = owned(&["modules/terminal-kit/src/lib.rs"]);
     let ours = owned(&["modules/cadence/src/hour.rs", "modules/sun/src/main.rs"]);
-    let touch = |_: &Gate| Some(shares(theirs.clone(), &ours, &crates, &[]));
+    let touch = |_: &Gate| {
+        Some(shares(
+            &side(&theirs, &[]),
+            &none_apart,
+            &side(&ours, &[]),
+            &crates,
+            &[],
+        ))
+    };
     let gates = [gate(1, "/kit", 100)];
     let held = ahead(
         &gates,
@@ -177,7 +199,10 @@ fn a_change_in_an_earlier_gates_fate_waits_behind_it() {
     let theirs = owned(&["modules/mycelium/site/view.js"]);
     let ours = owned(&["modules/local-sites/kit/head.css", "docs/testing.md"]);
     let crates = Crates::of("");
-    let touch = |_: &Gate| Some(shares(theirs.clone(), &ours, &crates, &fates));
+    let touch = |_: &Gate| {
+        let (gate, merging) = (side(&theirs, &[]), side(&ours, &[]));
+        Some(shares(&gate, &none_apart, &merging, &crates, &fates))
+    };
     let gates = [gate(1, "/map", 100)];
     let held = ahead(
         &gates,
@@ -193,7 +218,10 @@ fn a_change_in_an_earlier_gates_fate_waits_behind_it() {
         "a change in the map's fate merged ahead of the map's earlier gate"
     );
     let apart = owned(&["modules/net/site/panel.ts"]);
-    let touch_apart = |_: &Gate| Some(shares(theirs.clone(), &apart, &crates, &fates));
+    let touch_apart = |_: &Gate| {
+        let (gate, merging) = (side(&theirs, &[]), side(&apart, &[]));
+        Some(shares(&gate, &none_apart, &merging, &crates, &fates))
+    };
     assert_eq!(
         ahead(
             &gates,
@@ -205,6 +233,67 @@ fn a_change_in_an_earlier_gates_fate_waits_behind_it() {
         ),
         None,
         "a change outside the map's fate waited behind its gate"
+    );
+}
+
+#[test]
+fn a_gate_whose_only_fated_file_stands_apart_still_holds_its_fate() {
+    // A pytest file the two give cases apart in won't make the gate's
+    // pass stale as a file, but the fate's one check still measures it
+    // beside ours, so the gate holds a change in the fate all the same.
+    let fates = fates::parse("the map: modules/mycelium/site/ modules/local-sites/")
+        .expect("the map's fate reads");
+    let theirs = owned(&["modules/mycelium/site/tests/map-reads-live-test.py"]);
+    let ours = owned(&["modules/local-sites/kit/head.css"]);
+    let crates = Crates::of("");
+    let apart = |file: &str| file.ends_with("-test.py");
+    let touch = |_: &Gate| {
+        let (gate, merging) = (side(&theirs, &[]), side(&ours, &[]));
+        Some(shares(&gate, &apart, &merging, &crates, &fates))
+    };
+    let gates = [gate(1, "/map", 100)];
+    let held = ahead(
+        &gates,
+        &asking(200, "/kit", &ours),
+        NOW,
+        &own,
+        &everyone,
+        &touch,
+    );
+    assert_eq!(
+        held.map(|held| held.shared),
+        Some(ours.clone()),
+        "a gate whose only file in the map's fate stands apart held nothing"
+    );
+}
+
+#[test]
+fn a_gate_renaming_a_file_out_of_a_fate_holds_a_change_in_it() {
+    // The fate measured the file the gate moved away, so a change in the
+    // fate merging first would leave that measure stale.
+    let fates = fates::parse("the map: modules/mycelium/site/ modules/local-sites/")
+        .expect("the map's fate reads");
+    let theirs = owned(&["modules/elsewhere/old-view.js"]);
+    let moved = owned(&["modules/mycelium/site/old-view.js"]);
+    let ours = owned(&["modules/local-sites/kit/head.css"]);
+    let crates = Crates::of("");
+    let touch = |_: &Gate| {
+        let (gate, merging) = (side(&theirs, &moved), side(&ours, &[]));
+        Some(shares(&gate, &none_apart, &merging, &crates, &fates))
+    };
+    let gates = [gate(1, "/moving", 100)];
+    let held = ahead(
+        &gates,
+        &asking(200, "/kit", &ours),
+        NOW,
+        &own,
+        &everyone,
+        &touch,
+    );
+    assert_eq!(
+        held.map(|held| held.shared),
+        Some(ours.clone()),
+        "a gate renaming a file out of the map's fate held nothing"
     );
 }
 

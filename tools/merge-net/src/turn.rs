@@ -300,7 +300,13 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
     };
     let place = |gate: &Gate| places.start(&gate.folder, gate.started, now);
     let crates = Crates::at(Path::new("."), commit);
-    let fates = fates::fates();
+    let fates = judged_by(commit);
+    let ours_gone = gone_since_main(Path::new("."), commit).unwrap_or_default();
+    let merging = Side {
+        changed: ours,
+        gone: &ours_gone,
+        text: &nothing,
+    };
     let mut gates = gates;
     gates.extend(finished(&heads(&places), now, &passed_at, &on_main));
     let queue = Queue::of(&here, patch.as_deref(), ours, &gates, &crates, now);
@@ -316,11 +322,14 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
             return Some(Vec::new());
         }
         let files = files_of(gate)?;
-        let apart = files
-            .into_iter()
-            .filter(|file| !will_stand_apart(gate, commit, file))
-            .collect();
-        Some(shares(apart, ours, &crates, &fates))
+        let gone = gone_since_main(&gate.folder, &gate.commit)?;
+        let theirs = Side {
+            changed: &files,
+            gone: &gone,
+            text: &nothing,
+        };
+        let apart = |file: &str| will_stand_apart(gate, commit, file);
+        Some(shares(&theirs, &apart, &merging, &crates, &fates))
     };
     let going = |gate: &Gate| gate.pid == 0 || alive(gate);
     let held = ahead(&gates, &asking, now, &place, &going, &touched)?;
@@ -331,6 +340,20 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
         "still runs"
     };
     let theirs = files_of(held.gate).unwrap_or_default();
+    let gone = gone_since_main(&held.gate.folder, &held.gate.commit).unwrap_or_default();
+    let gate = Side {
+        changed: &theirs,
+        gone: &gone,
+        text: &nothing,
+    };
+    let held_for_a_fate: Vec<(String, String)> = held
+        .shared
+        .iter()
+        .filter_map(|file| {
+            let fate = fates::sharing(&fates, &gate, file)?;
+            Some((file.clone(), fate.to_owned()))
+        })
+        .collect();
     let said = format!(
         "merge-net: the gate in {} at {}, which counts as started {} minutes before this \
          one's, as its tree's first gate did, {state} and {}; merging first \
@@ -340,7 +363,7 @@ pub fn waits(commit: &str, passes: &[&str], ours: &[String]) -> Option<(String, 
         held.gate.folder.display(),
         crate::state::short(&held.gate.commit),
         (asking.started - held.started) / 60,
-        crate::sharing::said(&theirs, &held.shared),
+        crate::sharing::said(&theirs, &held.shared, &held_for_a_fate),
         (PATIENCE.saturating_sub(now.saturating_sub(waits_from))).div_ceil(60)
     );
     Some((said, held.shared))
@@ -510,25 +533,75 @@ fn keep_held(patch: Option<&str>, tree: &Path, file: &Path, now: u64) {
     }
 }
 
-/// What a gate changing `theirs` shares with a change to `ours`: the files
-/// they both change, those of ours in a crate one of theirs is in, reads
-/// or is read by, and those of ours in a fate one of theirs is in
-/// (`fates.txt`), which `ready` counts as moved under the gate once ours
-/// merges, so its pass would go stale for them all the same.
-fn shares(theirs: Vec<String>, ours: &[String], crates: &Crates, fates: &[Fate]) -> Vec<String> {
-    let nothing = |_: &str| String::new();
-    let gate = Side {
-        changed: &theirs,
-        gone: &[],
-        text: &nothing,
-    };
-    let merging = Side {
-        changed: ours,
-        gone: &[],
-        text: &nothing,
-    };
-    let in_a_fate = fates::beside(fates, &gate, &merging);
-    let beside = crates.beside(&theirs, ours);
+/// No text, for a side whose files' text no rule here reads.
+fn nothing(_: &str) -> String {
+    String::new()
+}
+
+/// The fates the change at `commit` is judged by, as `ready` judges it:
+/// those built in with those its merge base's `fates.txt` names. A base
+/// whose list doesn't read leaves the built-in ones, said, since `ready`
+/// refuses that change anyway and the turn only orders gates.
+fn judged_by(commit: &str) -> Vec<Fate> {
+    let here = Path::new(".");
+    let based = git_in(here, &["merge-base", commit, "refs/remotes/origin/main"])
+        .and_then(|base| {
+            git_in(
+                here,
+                &["show", &format!("{}:{}", base.trim(), fates::FATES_TXT)],
+            )
+        })
+        .unwrap_or_default();
+    fates::judging(&based).unwrap_or_else(|why| {
+        eprintln!("merge-net: {why}; the turn reads the built-in fates alone");
+        fates::fates()
+    })
+}
+
+/// The paths the change at `commit` in `folder` renamed or deleted since
+/// it left origin's main, by their old names.
+fn gone_since_main(folder: &Path, commit: &str) -> Option<Vec<String>> {
+    let git = |arguments: &[&str]| git_in(folder, arguments);
+    let base = git(&["merge-base", commit, "refs/remotes/origin/main"])?;
+    let said = git(&[
+        "diff",
+        "--name-status",
+        "-M",
+        "--diff-filter=DR",
+        base.trim(),
+        commit,
+    ])?;
+    Some(
+        said.lines()
+            .filter_map(|line| line.split('\t').nth(1))
+            .map(str::to_owned)
+            .collect(),
+    )
+}
+
+/// What a `gate` shares with a change `merging`: the files they both
+/// change and those of ours in a crate one of theirs is in, reads or is
+/// read by, leaving out the gate's files `stands_apart` says the two give
+/// apart, and those of ours in a fate (`fates.txt`) any of theirs is in or
+/// was renamed or deleted from, whatever stands apart, since the fate's
+/// one check measures them together. `ready` counts each as moved under
+/// the gate once ours merges, so its pass would go stale for them all the
+/// same.
+fn shares(
+    gate: &Side,
+    stands_apart: &dyn Fn(&str) -> bool,
+    merging: &Side,
+    crates: &Crates,
+    fates: &[Fate],
+) -> Vec<String> {
+    let theirs: Vec<String> = gate
+        .changed
+        .iter()
+        .filter(|file| !stands_apart(file))
+        .cloned()
+        .collect();
+    let in_a_fate = fates::beside(fates, gate, merging);
+    let beside = crates.beside(&theirs, merging.changed);
     let shared: BTreeSet<String> = theirs.into_iter().chain(beside).chain(in_a_fate).collect();
     shared.into_iter().collect()
 }
@@ -693,11 +766,14 @@ fn files_of(gate: &Gate) -> Option<Vec<String>> {
     Some(files.lines().map(str::to_owned).collect())
 }
 
-/// What git says in `folder`, or nothing when it fails.
+/// What git says in `folder`, or nothing when it fails, its paths as they
+/// are named rather than C-quoted, so one in a fate's folder still starts
+/// with the folder.
 fn git_in(folder: &Path, arguments: &[&str]) -> Option<String> {
     let ran = Command::new("git")
         .arg("-C")
         .arg(folder)
+        .args(["-c", "core.quotePath=false"])
         .args(arguments)
         .output()
         .ok()?;
