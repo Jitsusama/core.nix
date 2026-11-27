@@ -99,9 +99,11 @@ QtObject {
         // The bands: a to-do needs Joel now, and a look or a thing to try
         // only while it blocks a session or is due within the day; the rest
         // stand in their kind's own row (VKCF3Z, 2026-11-09).
+        // The bands an item stands in, `all` aside, which holds what two of
+        // them do.
         const band = (kind, thing) => {
             const bands = ForYou.banded([{ kind, thing, name: "it" }], now);
-            return Object.keys(bands).filter(key => bands[key].length > 0);
+            return Object.keys(bands).filter(key => key !== "all" && bands[key].length > 0);
         };
         expect("a to-do needs him now", band("do", { kind: "todo" }), ["now"]);
         expect("a look that blocks a session is lifted", band("look",
@@ -120,10 +122,10 @@ QtObject {
             { kind: "look", since: now - hour }), ["try"]);
         expect("a kind with no row of its own needs him now", band("notice",
             { kind: "look" }), ["now"]);
-        // What agents ask stands together in Agents Asking, never loose
-        // among the to-dos, however it presses, once two ask (Joel,
-        // 2026-11-18 10:18); one alone stands as itself, so Super+O,
-        // Return, Return still reaches it (docs/design.md).
+        // What agents ask stands together in :filter's flat order, never
+        // loose among the to-dos, however it presses, once two ask (Joel,
+        // 2026-11-18 10:18); For You's own rows gather even one into Agents
+        // (ForYouCells.js, Joel 2026-11-25 21:52), as for-you-cells.qml holds.
         const asks = (...others) => ForYou.banded([
             { kind: "agent", thing: { kind: "todo", blocks: 1, since: now - hour }, name: "a" },
             { kind: "agent", thing: { kind: "todo", blocks: 1, since: now - 9 * hour,
@@ -131,7 +133,7 @@ QtObject {
         ].concat(others), now);
         const placed = bands => [bands.now.map(one => one.name), bands.agent.map(one =>
             one.name), bands.agentAt];
-        expect("two asks go in Agents Asking, even overdue, heaviest first",
+        expect("two asks go in Agents, even overdue, heaviest first",
             placed(asks()), [[], ["c", "a"], 0]);
         expect("one alone stands as itself", placed(ForYou.banded([{ kind: "agent",
             thing: { kind: "todo", blocks: 1 }, name: "a" }], now)), [["a"], [], 1]);
@@ -165,7 +167,12 @@ QtObject {
         expect("the rest in their own band", [looked.now.map(one => one.name),
             looked.try.length], [["f"], 0]);
         expect("no items, five empty bands", ForYou.banded(undefined, now),
-            { now: [], agent: [], agentAt: 0, look: [], try: [], read: [] });
+            { now: [], agent: [], agentAt: 0, all: [], look: [], try: [], read: [] });
+        // What needs him now and what agents ask, whoever is behind each, in
+        // one order for For You to lay out by whose it is (ForYouCells.js).
+        expect("what needs him now and what agents ask, together, heaviest first",
+            asks({ kind: "do", thing: { kind: "todo" }, name: "b" }).all.map(one => one.name),
+            ["c", "a", "b"]);
         // The next moment time alone lifts a row into what needs him now, as
         // its due comes within the day, so For You bands again then: banded
         // only as its items changed, a look due tomorrow stayed in To Look
@@ -176,7 +183,7 @@ QtObject {
             now + 48 * hour);
         const bandAt = (item, at) => {
             const bands = ForYou.banded([item], at);
-            return Object.keys(bands).filter(key => bands[key].length > 0);
+            return Object.keys(bands).filter(key => key !== "all" && bands[key].length > 0);
         };
         expect("banded a moment before, it still waits", bandAt(dueIn(72), now + 48 * hour - 1),
             ["look"]);
@@ -387,6 +394,15 @@ QtObject {
             "it touches the launcher\n\nMerge it, or say what to change.");
         expect("an older look's words, its why alone", read.waiting[1].words,
             "it touches the launcher");
+        const wordsOf = (fields, id) => Looks.looks([{ file: `${id}.json`,
+            text: lookOf(Object.assign({ id: id }, fields)) }], {}, now).waiting[0].words;
+        expect("a look's words, its ask padded or only spaces, trimmed",
+            [wordsOf({ ask: " Merge it? " }, "P"), wordsOf({ ask: "   " }, "W")],
+            ["it touches the launcher\n\nMerge it?", "it touches the launcher"]);
+        expect("a look's words, its why only spaces, or both, trimmed",
+            [wordsOf({ why: "   ", ask: "Merge it?" }, "Y"),
+                wordsOf({ why: " ", ask: " " }, "B")],
+            ["Merge it?", ""]);
 
         // A look's choices are offered on its row, each answered by a steer to
         // the session that left it, or its quest's once that's ended, and shown

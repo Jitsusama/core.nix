@@ -261,10 +261,12 @@ Singleton {
     // say it as a share (Shared.why), never show them while one goes on.
     function retake(): void {
         stoodIn = false;
+        const was = kept;
         kept = NiriRecords.held();
         const records = [windowsHeard, placesHeard, tilesHeard]
             .reduce((all, daemon) => all.concat(Object.values(daemon.held)), []);
         const told = NiriRecords.take(kept, records, []);
+        NiriRecords.keepLayouts(was, kept);
         told.listed = true;
         root.publish(told);
     }

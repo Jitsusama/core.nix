@@ -1,7 +1,6 @@
-// What the system page makes of the system daemon's records, told as the
-// daemon tells them: the summary, a part record each, a record per thing.
-// Then what it draws of them in the system's words, and that its own files
-// keep to those words.
+// What the system page makes of the system daemon's records, told as the daemon tells them: the
+// summary, a part record each, a record per thing. Then what it draws of them in the system's
+// words, and that its own files keep to those words.
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -132,29 +131,38 @@ it("a part's side and what it holds are read apart", () => {
 });
 
 it("a machine's looks are read with their whys, and none from a record listing none", () => {
-  const osprey = {
-    key: "machine:osprey",
-    kind: "machine",
-    name: "osprey",
-    health: "bad",
-    says: "is out of reach",
-    looks: [
-      { side: "out of reach", matters: "What runs there can't be read from here." },
-      { side: "code failing" },
-    ],
-  };
-  const looksOf = (record: Record<string, unknown>) => {
+  const named = { key: "machine:osprey", kind: "machine", name: "osprey", health: "bad" };
+  const reach = { side: "out of reach", matters: "What runs there can't be read from here." };
+  const side = ["out of reach", "code failing"];
+  const osprey = { ...named, side, looks: [reach, { side: "code failing" }] };
+  const ospreyAs = (record: Record<string, unknown>) => {
     const others = records.filter((each) => each.key !== "machine:osprey");
     const { summary, part, machine } = told([...others, record]);
-    return systemOf(summary, part, machine)?.parts[0]?.things.map((thing) => thing.looks);
+    return systemOf(summary, part, machine);
   };
-  const reach = { side: "out of reach", matters: osprey.looks[0]?.matters };
+  const looksOf = (record: Record<string, unknown>) =>
+    ospreyAs(record)?.parts[0]?.things.map((thing) => thing.looks);
   const looks = [reach, { side: "code failing", matters: "" }];
-  assert.deepEqual(looksOf(osprey), [undefined, looks], "a look without a why is kept with none");
-  for (const unread of [{ matters: "A why with no look." }, { side: "" }, "a bare string"]) {
-    const half = looksOf({ ...osprey, looks: [...osprey.looks, unread] });
-    const why = `${JSON.stringify(unread)} leaves it to the side`;
-    assert.deepEqual(half, [undefined, undefined], why);
+  for (const [record, listed, why] of [
+    [osprey, looks, "a list whose look without a why is kept with none"],
+    [{ ...osprey, looks: undefined }, undefined, "an old daemon's record, listing none"],
+    [{ ...osprey, health: "good", looks: [], side: [] }, [], "a fine machine's"],
+    [{ ...osprey, side: "out of reach" }, looks, "a side the page can't read beside a list"],
+  ] as const) {
+    assert.deepEqual(looksOf(record)?.[1], listed, `${why} is read from its list`);
+    assert.deepEqual(ospreyAs(record)?.unread, [], `${why} is said as read`);
+  }
+  const notRead = ["machine:osprey's looks, so the page goes by its side alone, with no whys"];
+  for (const [record, why] of [
+    [{ ...osprey, looks: [...osprey.looks, { matters: "A why." }] }, "a look with no side"],
+    [{ ...osprey, looks: [...osprey.looks, { side: "" }] }, "a look with an empty side"],
+    [{ ...osprey, looks: [...osprey.looks, "a bare string"] }, "a look that's a bare string"],
+    [{ ...osprey, looks: "a list" }, "a looks field that isn't a list"],
+    [{ ...osprey, looks: [], side: ["on battery at 9%"] }, "an empty list beside a side's look"],
+    [{ ...osprey, side: [] }, "a list beside a side naming none"],
+  ] as const) {
+    assert.deepEqual(looksOf(record), [undefined, undefined], `${why} leaves it to the side`);
+    assert.deepEqual(ospreyAs(record)?.unread, notRead, `${why} is said as not read`);
   }
 });
 
