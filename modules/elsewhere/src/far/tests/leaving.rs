@@ -286,3 +286,35 @@ fn both_sides_take_a_cache_or_home_that_isn_t_absolute_as_none() {
         );
     }
 }
+
+#[test]
+fn a_far_machine_with_no_cache_leaves_the_job_untaken_as_its_own_fault() {
+    use crate::far::{Heard, UNTAKEN, script};
+    let command = ["true"].map(str::to_owned);
+    let line = script(
+        "QEST-20261115-ABC123",
+        "1",
+        0,
+        ".s",
+        Path::new(""),
+        &kind(""),
+        &command,
+    );
+    // The gate names dash, the strictest sh a far machine may have.
+    let sh = std::env::var("ELSEWHERE_FAR_SH").unwrap_or_else(|_| "sh".to_owned());
+    let far = std::process::Command::new(sh)
+        .args(["-c", &line])
+        .env("HOME", "rel")
+        .env_remove("XDG_CACHE_HOME")
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&far.stdout);
+    assert_eq!(
+        (
+            far.status.code(),
+            said.lines().any(|it| it == Heard::Untaken.line("1"))
+        ),
+        (Some(i32::from(UNTAKEN)), true),
+        "a far machine with no cache didn't leave the job untaken: {said}"
+    );
+}

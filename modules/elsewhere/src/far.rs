@@ -302,9 +302,10 @@ mine= place= tab=$(printf '\t')
 {copying}
 # Each word for the near side on a line of its own, whatever came before.
 say() {{ printf '\n%s\n' "$1"; }}
-# With no cache found, no quest's scratch is either.
+# With no cache found, no quest's scratch is either. That is this
+# machine's fault, not the tree's, so the job is left untaken for another.
 [ -n "$cache" ] || {{ printf 'elsewhere: no cache is found here\n' >&2
-  say {refused}; exit {REFUSES}; }}
+  say {untaken}; exit {UNTAKEN}; }}
 {stopping}
 {sweeping}
 {waiting}
