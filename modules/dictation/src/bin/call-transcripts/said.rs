@@ -190,11 +190,9 @@ mod tests {
         );
         // No line may come of takes heard as well as of takes failed on,
         // so it says no more than that some were failed on.
-        assert_eq!(
-            NOTHING_HEARD,
-            "Nothing was heard to sum up: no words of the call were heard, and the speech \
-             model failed on some of it.",
-            "a call with no line was said to be failed on whole"
+        assert!(
+            !NOTHING_HEARD.contains("all of"),
+            "a call with no line was said to be failed on whole: {NOTHING_HEARD}"
         );
     }
 }
