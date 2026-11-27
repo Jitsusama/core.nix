@@ -33,7 +33,11 @@ pub struct Entry {
     pub key: String,
     /// The mesh address it was given to, or none when no owner matched.
     pub owner: Option<String>,
-    /// The date it first appeared, and the last one it was found on.
+    /// The date it first appeared, and the last one it was found on. A
+    /// drag reopened takes the day it reopened as its first, so "open
+    /// since" reads from then and the queue's once-a-day ask holds, and
+    /// `reopened` counts the times before; a finding of cadence's own
+    /// keeps its first day through a reopening.
     pub first: String,
     pub last: String,
     /// When the last day it was found on ended, in seconds since the epoch.

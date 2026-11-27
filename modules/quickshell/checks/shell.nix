@@ -411,7 +411,9 @@
       export PYTHON=${lib.getExe pkgs.python3} KINDS=${../tests/stand-ins/daemon-kinds.py}
       ${shellFolderLint}
       set -o pipefail
-      timeout 90 ${qs} -p shell.qml 2>&1 | tee log
+      # Well past the 110 s the cases end themselves at, counted from their file
+      # loading rather than the shell starting, so they say where they were.
+      timeout 150 ${qs} -p shell.qml 2>&1 | tee log
       # Said as information, since nothing went wrong: a warning here is one
       # a journal read for the shell's faults would find (Daemon.qml's gone).
       # Quickshell says a line's level before it, as INFO or WARN. Each is a

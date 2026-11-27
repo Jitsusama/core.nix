@@ -14,6 +14,7 @@ drawer is timed apart.
 
 from __future__ import annotations
 
+import itertools
 import re
 import time
 from typing import TYPE_CHECKING
@@ -28,6 +29,8 @@ if TYPE_CHECKING:
 # How many times a kind of key is pressed for one of them to be slow enough to be said: the
 # nested niri's software frames take longer than FELT_MS for nearly every key.
 TRIES = 6
+# How many openings an arrow is pressed in for down and up to be said: six that end on each.
+ARROW_TRIES = 2 * TRIES
 # How long a key's line has to reach the shell's log after its frame, in seconds.
 WRITTEN_WITHIN = 2.0
 # A lagging key's line, holding what it said of the key.
@@ -45,12 +48,15 @@ LATE = re.compile(r"launcher: .+? answered (.+?) \d+ ms after its key")
 # Words typed with nothing else named by them, so no line says them but by the letters.
 UNNAMED = "zygodactyl"
 # What a program's drawer line says of its row, keyed `program:<its desktop entry's id>`: the id,
-# shaped as an app's (Presented.js's appWord), so RTOIMQ can time Chrome's drawer apart from
+# shaped as an app's (KeysSaid.js's appWord), so RTOIMQ can time Chrome's drawer apart from
 # kitty's (2026-11-24), and never more of the key.
 PROGRAMS_DRAWER = re.compile(r'drawer for "program:([A-Za-z0-9][A-Za-z0-9.-]*)"')
 # Any program's drawer line, shaped as PROGRAMS_DRAWER or said by its kind alone, but not one of
 # another kind that begins with program's word.
 A_PROGRAMS_DRAWER = re.compile(r'drawer for "program[:"]')
+# How many of the launcher's newest lines a case that fails gives, since the check prints only
+# the shell log's tail, which a later case's lines fill (#6855's merge run, 2026-11-26).
+LINES_GIVEN = 30
 
 # The shell, started once for the file's cases.
 shell = launcher_on_niri.shell
@@ -62,16 +68,19 @@ def keys_said(shell: Shell, mark: int) -> list[str]:
 
 
 def said_by(
-    shell: Shell, press: Callable[[], None], enough: Callable[[list[str]], bool]
+    shell: Shell,
+    press: Callable[[], None],
+    enough: Callable[[list[str]], bool],
+    tries: int = TRIES,
 ) -> list[str]:
-    """Press as `press` does, TRIES times at most, until the keys said are `enough`.
+    """Press as `press` does, `tries` times at most, until the keys said are `enough`.
 
     Give every key said since the first press, which a case reads whole, so a key said wrongly
     fails it whichever try said it.
     """
     mark = shell.mark()
     said: list[str] = []
-    for _ in range(TRIES):
+    for _ in range(tries):
         press()
         deadline = time.monotonic() + WRITTEN_WITHIN
         while time.monotonic() < deadline:
@@ -82,19 +91,72 @@ def said_by(
     return said
 
 
-def test_an_arrow_is_said_whole(shell: Shell) -> None:
-    """An arrow is said as itself, since the launcher names it and nobody typed it."""
-    shell.as_account(shell.ipc("toggle"))
-    shell.launcher_ready()
+def where(shell: Shell) -> tuple[object, object, object]:
+    """Give the place the launcher has selected, its row's name, and how many it lists in all.
 
-    def down_and_up() -> None:
-        shell.send_key("down")
-        shell.send_key("up")
+    The count takes in any headings, which nearly no list has. A launcher that can't be read
+    gives why in place of the name, so the case's failure still says what it saw: a read that
+    throws in the shell answers what threw (Held.js's answered), not the launcher's fields.
+    """
+    try:
+        shown = shell.showing()
+    except (AssertionError, ValueError) as unread:
+        return None, f"unread: {unread}", None
+    if "threw" in shown:
+        return None, f"threw: {shown['threw']}", None
+    return shown.get("current"), (shown.get("selected") or {}).get("name"), shown.get("count")
 
-    said = said_by(shell, down_and_up, lambda keys: bool(ARROWS & set(keys)))
-    shell.close_launcher()
-    assert ARROWS & set(said), f"no arrow was said as itself: {said}"
+
+def test_down_and_up_are_each_said_whole(shell: Shell) -> None:
+    """Down and up are each said as themselves, since the launcher names them and nobody typed.
+
+    Only a key slower to its frame than FELT_MS is said, and a launcher done opening drew
+    every arrow sooner: pressed in one opening once its rows were in, twelve arrows each moved
+    the selection and none was said (2026-11-26). So each try opens the launcher, presses as
+    soon as it's ready, while its opening still draws, and closes it, as the step cases do. A
+    frame says only its newest key, so a try ends on the arrow it's for: down and up, then down,
+    up and down, from the first row the opening selects. No try is for its first key: the
+    launcher times a key from when its handler runs, not its press, so a first key heard late
+    after the opening can stay under the felt line and go unsaid (2026-11-27), until the took
+    line counts from the press (core.nix#7087). A try that fails leaves the launcher closed, as
+    every case starts, so the next case fails only for its own reasons. A failure, whether the
+    arrows went unsaid or a try raised, gives where the selection stood after each try's arrows,
+    and the launcher's own lines.
+    """
+    seen: list[tuple[object, object, object]] = []
+    tries = itertools.count()
+    mark = shell.mark()
+
+    def an_opening() -> None:
+        keys = ["down", "up"] if next(tries) % 2 == 0 else ["down", "up", "down"]
+        shell.as_account(shell.ipc("toggle"))
+        closed = False
+        try:
+            shell.launcher_ready()
+            for key in keys:
+                shell.send_key(key)
+            seen.append(where(shell))
+            shell.close_launcher()
+            closed = True
+        finally:
+            if not closed:
+                shell.launcher_left_closed()
+
+    def what_it_saw() -> str:
+        logged = launcher_on_niri.logged_since(shell, mark).splitlines()
+        lines = "\n".join([line for line in logged if "launcher: " in line][-LINES_GIVEN:])
+        return f"place, row and count after each try's arrows: {seen}\n{lines}"
+
+    try:
+        said = said_by(shell, an_opening, lambda keys: set(keys) >= ARROWS, ARROW_TRIES)
+    except AssertionError as failed:
+        message = f"{failed}\n{what_it_saw()}"
+        raise AssertionError(message) from failed
+    assert set(said) >= ARROWS, f"an arrow went unsaid as itself: {said}\n{what_it_saw()}"
     assert "1 letter" not in said, f"an arrow was counted as typed: {said}"
+    # How many openings both took, which a run read with -s shows, so up's margin of its six
+    # can be judged.
+    print(f"down and up were said within {len(seen)} of {ARROW_TRIES} openings")
 
 
 def test_a_step_in_and_out_says_its_arrow_and_the_places_key(shell: Shell) -> None:
