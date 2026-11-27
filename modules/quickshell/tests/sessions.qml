@@ -2653,7 +2653,9 @@ ShellRoot {
             Object.assign({}, Sessions.stillSaid[unansweredNamed], { at: gaveUpAt }) });
         const stillFrom = Niri.spawns.length;
         untell();
-        Sessions.goTo(unansweredRow);
+        // It went, as its window may yet come: false would have its caller
+        // open the launcher over the window Joel waits on.
+        const stillWent = Sessions.goTo(unansweredRow);
         const pressedStill = `${heard()} ${spawnsOf(unansweredNamed, stillFrom)}`;
         const stillTook = Sessions.goingTo?.app;
         const stillHad = Sessions.stillSaid[unansweredNamed];
@@ -2663,8 +2665,8 @@ ShellRoot {
         Sessions.goTo(unansweredRow);
         const pressedPast = `${heard()} ${spawnsOf(unansweredNamed, stillFrom)}`;
         expect("a press soon after its kitty didn't answer asks it nothing more, said may yet come",
-            pressedStill === "UNANSWERED stillComing x1 0" && pressedPast === "  x0 1",
-            `${pressedStill} / ${pressedPast}`);
+            stillWent === true && pressedStill === "UNANSWERED stillComing x1 0"
+            && pressedPast === "  x0 1", `${stillWent} ${pressedStill} / ${pressedPast}`);
         expect("and takes the focus, the give-up's time left as it was",
             stillTook === unansweredNamed && stillHad?.at === gaveUpAt,
             `${stillTook} ${stillHad?.at - gaveUpAt}`);
@@ -2682,6 +2684,27 @@ ShellRoot {
             !askedStill && askedStillSpawns === 0 && stillKept,
             `${askedStill} ${askedStillSpawns} ${stillKept}`);
         Sessions.forgetAsk(unansweredNamed);
+        // Nor does a wake, the walk's or Joel's, and either keeps where the
+        // session slept, as a refused one's wake does: let go, nothing would
+        // reopen it there once the hold lapses.
+        const sleptHeld = Object.assign({}, unansweredRow, { window: null, kitty: null,
+            held: null, presence: { hosted: true, session: "s-unanswered", state: "parked" } });
+        const keptBeforeHeld = Sessions.keptPlaces;
+        Sessions.keepPlaces(Object.assign({}, keptBeforeHeld, { "s-unanswered": { workspace: 5,
+            column: 2, at: 0, slept: true, asleep: true } }));
+        Sessions.goTo(unansweredRow);
+        Sessions.untaken(unansweredNamed, String(Date.now()), "unanswered");
+        const wokeFrom = Niri.spawns.length;
+        Sessions.wake(sleptHeld, true);
+        const wokeKept = Sessions.keptPlaces["s-unanswered"]?.slept === true;
+        untell();
+        Sessions.wake(sleptHeld);
+        const wokeHeld = `${heard()} ${spawnsOf(unansweredNamed, wokeFrom)} ${wokeKept} `
+            + `${Sessions.keptPlaces["s-unanswered"]?.slept === true}`;
+        Sessions.forgetAsk(unansweredNamed);
+        Sessions.keepPlaces(keptBeforeHeld);
+        expect("a wake while its kitty may yet draw the viewer asks none, keeping where it slept",
+            wokeHeld === "UNANSWERED stillComing x1 0 true true", wokeHeld);
         // Held as well where no press held the ask, as the walk's, viewKept's
         // or a wake's, so a press soon after asks nothing and is told the
         // window may yet come; the give-up itself tells nobody.
@@ -2694,9 +2717,15 @@ ShellRoot {
         Sessions.goTo(unansweredRow);
         const pressedAfterWalk = `${walkTold} / ${heard()} `
             + `${spawnsOf(unansweredNamed, walkFrom)}`;
+        // The press held is told once its window comes after all.
+        untell();
+        Sessions.windowHeard({ id: 136, pid: 4242, opened: unansweredNamed });
+        const heldCame = heard();
         Sessions.forgetAsk(unansweredNamed);
         expect("a viewer no press held, its kitty quiet moments ago, is asked for by no press",
             pressedAfterWalk === "  x0 / UNANSWERED stillComing x1 1", pressedAfterWalk);
+        expect("and the press it held is told its window came after all",
+            heldCame === "UNANSWERED cameAfterAll x1", heldCame);
         // Its window coming tells nobody, as nobody was told it may yet come.
         Sessions.viewWith(unansweredRow.attach, unansweredNamed, null, "walked");
         Sessions.untaken(unansweredNamed, String(Date.now()), "unanswered");
@@ -2735,6 +2764,12 @@ ShellRoot {
         Sessions.readKittyPid();
         Sessions.goTo(unansweredRow);
         Sessions.untaken(unansweredNamed, String(Date.now()), "unanswered");
+        // A press before any kitty's pid is read asks afresh too, rather
+        // than taking no pid for the kitty that didn't answer.
+        const blankFrom = Niri.spawns.length;
+        Sessions.goTo(unansweredRow);
+        const pressedBlank = spawnsOf(unansweredNamed, blankFrom);
+        Sessions.untaken(unansweredNamed, String(Date.now()), "unanswered");
         // Nor is it let go as a kitty starts, as no kitty was known to lose
         // it: comingPatience ends it.
         kittyPidFile.setText("7878\n");
@@ -2751,8 +2786,9 @@ ShellRoot {
         kittyPidFile.setText("4242\n");
         Sessions.readKittyPid();
         expect("a press is held only for a kitty known, the one that didn't answer",
-            pressedNewer === 1 && pressedUnknown === 1 && unknownKept === "  x0 true",
-            `${pressedNewer} ${pressedUnknown} ${unknownKept}`);
+            pressedNewer === 1 && pressedBlank === 1 && pressedUnknown === 1
+            && unknownKept === "  x0 true",
+            `${pressedNewer} ${pressedBlank} ${pressedUnknown} ${unknownKept}`);
         // A kept viewer whose kitty didn't answer is kept again under it
         // (keepAgain), so a kitty started since asks for it (viewKept): the
         // press holding it, which a held press took over, is told it was
@@ -2960,6 +2996,24 @@ ShellRoot {
         Sessions.forgetAsk(unansweredRefused);
         expect("a refusal no press was told of holds a press once its stray closes",
             pressedAfterStray === "REFUSEDLATE stillComing x1 0", pressedAfterStray);
+        // A kitty started under another pid ends the refusal kept on its
+        // give-up too: the kitty that may have drawn the refused window under
+        // a pid read wrong is gone, its windows with it, so the stray still
+        // listed is another program's, and a press opens its own beside it.
+        const restartedAt = refusedLateFor(135);
+        Sessions.untaken(unansweredRefused, restartedAt, "unanswered");
+        kittyPidFile.setText("8383\n");
+        Sessions.kittyStarted();
+        const restartedFrom = Niri.spawns.length;
+        untell();
+        Sessions.goTo(refusedRow);
+        const pressedAfterRestart = `${heard()} ${spawnsOf(unansweredRefused, restartedFrom)}`;
+        Sessions.forgetAsk(unansweredRefused);
+        kittyPidFile.setText("4242\n");
+        Sessions.readKittyPid();
+        Niri.windows = unforged;
+        expect("a refusal kept as its kitty didn't answer ends as another kitty starts",
+            pressedAfterRestart === "REFUSEDLATE unowned x1 1", pressedAfterRestart);
         // A kitty down as its kept viewer is asked, its pid written but
         // not yet listening when the script gave up on the socket, was never
         // asked: the place is kept under the pid before, so that kitty is
