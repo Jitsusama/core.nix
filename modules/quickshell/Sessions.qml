@@ -4088,8 +4088,9 @@ Singleton {
     // for every session, which with a hundred sessions made a hundred lists
     // a change; a retitle, or the focus moving, makes nothing again.
     property var niriWindows: ({ pids: {}, opened: {} })
-    // The records `niriWindows` was made from, by key.
-    property var windowsKept: ({})
+    // The records `niriWindows` was made from, by key, with no prototype,
+    // as the daemon holds them, so a key "constructor" is a record's.
+    property var windowsKept: Object.create(null)
     function windowsHeard(changed, gone) {
         let came = gone.length > 0;
         let moved = came;
@@ -4100,7 +4101,7 @@ Singleton {
         }
         if (!moved)
             return;
-        windowsKept = Object.assign({}, windowsDaemon.held);
+        windowsKept = Object.assign(Object.create(null), windowsDaemon.held);
         niriWindows = SessionWindows.indexed(Object.values(windowsKept));
         // A window that comes or goes can be a session's ending, or a
         // kitty's windows changing, the sessions' kitty started again among
