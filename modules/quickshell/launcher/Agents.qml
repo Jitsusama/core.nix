@@ -2047,11 +2047,14 @@ Provider {
         // (Cloud.asksNow), in case what held them passed, and is then
         // said as what is known: the why the last ask came back with, or,
         // with nothing heard yet, that they haven't come (Cloud.offeredNow).
-        // A daemon missing answers at once, so its why is said this Return.
-        if (Cloud.onOf(elsewhere)?.needs !== undefined)
-            provider.askOffers(true);
-        const offered = Cloud.offeredNow(provider.cloudOffersAt, provider.cloudOffers,
-            provider.cloudUnoffered);
+        // A daemon missing answers at once, so its why is said this Return
+        // (Cloud.returning).
+        const offersKept = () => ({ asking: provider.cloudAsking, at: provider.cloudOffersAt,
+            offers: provider.cloudOffers, unoffered: provider.cloudUnoffered });
+        const offered = Cloud.onOf(elsewhere)?.needs === undefined
+            ? Cloud.offeredNow(provider.cloudOffersAt, provider.cloudOffers,
+                provider.cloudUnoffered)
+            : Cloud.returning(offersKept, () => provider.askOffers(true), Date.now());
         const ask = elsewhere === "" ? Sprouting.ask(said, folder)
             : Cloud.ask(said, folder, elsewhere, offered);
         if (ask === null) {

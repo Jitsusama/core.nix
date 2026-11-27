@@ -24,7 +24,7 @@ its example error. What the daemon says of each refusal, and of a screen gone, i
 own tests (modules/windows, screens/acts.rs and screens/line.rs); here, only that niri's words
 reach the line.
 
-How many screens there are, which Screens says at its right inside Desktop, is the windows
+How many screens there are, which Screens says at its right inside Machine, is the windows
 daemon's summary, worded there and served beside its rows (modules/windows, screens.rs), so
 here it's the nested niri's one screen as the daemon counts it.
 """
@@ -181,11 +181,11 @@ def niri_asked(proxy: Proxy, mark: int, asked: bytes = b'"PowerOffMonitors"') ->
 
 
 def test_screens_says_how_many_screens_there_are_as_the_daemon_counts(shell: Shell) -> None:
-    """Inside Desktop, Screens says at its right how many screens there are, as served."""
+    """Inside Machine, Screens says at its right how many screens there are, as served."""
     shell.launcher_until(lambda shown: not shown["open"])
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
-    shell.down_to("Desktop")
+    shell.down_to("Machine")
     shell.step_in("ret")
     shell.launcher_until(lambda shown: "Screens" in shown["rows"])
     shell.down_to("Screens")

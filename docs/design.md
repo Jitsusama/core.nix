@@ -1424,7 +1424,7 @@ works the same way everywhere.
   their choices too, so "scale 1.5" finds 1.5× without a step in, the
   setting's name a hidden word on each of its choices.
   A part is found from the top by its name, three letters or more,
-  saying where it lives (Rotation, Desktop › Screens › Built-in screen;
+  saying where it lives (Rotation, Machine › Screens › Built-in screen;
   Health, Machine › Power › Battery), and Return goes there, the path
   filled, so - climbs back out. A part named as something
   asked whole at the top (the processor's Cores) is that answer instead.
@@ -1590,7 +1590,12 @@ works the same way everywhere.
   how the drawer lays out; where it still won't fit, it gives way before
   the value. It is no line for the cursor.
 - **Places are levels.** Desktop, Machine and Network gather what
-  they're about, and a place may hold a smaller one, as Machine holds
+  they're about, split as hardware and not (Joel, 2026-11-11: "we have
+  hardware, we have not hardware"): Machine holds the machine's parts
+  and how each is doing, its screens, sound, cameras and desk light
+  among them; Desktop holds what's on the screens and what's done there,
+  windows, tabs, what's copied or captured and what's playing; and
+  Network its connections. A place may hold a smaller one, as Machine holds
   Power (Battery, the power profile, Sleep, Lock, Log Out, Reboot and
   Power Off), with Keep Awake beside it rather than in it, one row of one
   name whatever its state. Each is a row found by its word, stepping in

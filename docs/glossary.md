@@ -258,7 +258,7 @@ be read, marked unread and archived.
 | join | going into a meeting's call, or a call another sends | | |
 | cancel | taking a meeting Joel holds off everyone's calendar, Google telling each guest | delete | |
 | Slack message | a message in Slack, found by searching Slack and opened in its conversation | | the Slack daemon's `slack-message` |
-| Media | the place holding every player and what each is playing, beside Sound, which holds the devices it plays through | | `program:media` |
+| Media | the place in Desktop holding every player and what each is playing, apart from Sound in Machine, which holds the devices it plays through | | `program:media` |
 | player | a program playing sound or video that the desktop can pause, skip and go to, such as Spotify or a browser's tab | | MPRIS, `Playing.qml` |
 | track | what a player is playing: one song, episode or video, with its artist and album | | MPRIS's `xesam` metadata |
 | link | the web address a track, a page or a message opens at, which Copy the Link copies | | MPRIS's `xesam:url` |
@@ -290,30 +290,21 @@ written to, called, met with and made a favourite.
 ## Desktop
 
 The screen and everything on it around the windows, the launcher among them.
-A window can be gone to, closed, floated or tiled, moved and sized; a screen's
-brightness, scale and rotation can be set; an item in a list, such as a notice
-or a copy, can be opened, copied or forgotten.
+A window can be gone to, closed, floated or tiled, moved and sized; an item in
+a list, such as a notice or a copy, can be opened, copied or forgotten. The
+screens themselves are the machine's, in Machine.
 
 | Word | Means | Not | In code |
 | ---- | ----- | --- | ------- |
 | desktop | the screen and everything on it around the windows: the launcher, notices, the margin and niri's workspaces | | niri, Quickshell |
-| screen | a monitor, built in or plugged in | display, monitor | niri's outputs |
 | screen sharing | the screen shown to others, in a call or a cast, which niri tells the desktop of | screencast | niri's casts |
-| screen mode | a size and refresh rate a screen can run at: the one it runs at now, and the ones it offers | | niri's `modes` |
-| colour depth | how many bits a screen gives each of its red, green and blue | | the EDID's bit depth |
-| colours | the range of colour a screen can show, said against sRGB's, apart from the theme's colour | | the EDID's gamut |
-| white point | the white a screen's panel gives of itself, in kelvin and where it sits, apart from warmth, the white the desktop sets it to | | the EDID's white |
-| primaries | where a screen's red, green and blue sit, the corners of its colours | | the EDID's primaries |
-| brightness | how bright a screen is, which follows the room's light | | the `backlight` program |
-| warmth | how warm a light's white is, in kelvin: a screen's, which follows the room's light or the night light, or the desk light's, apart from a panel's white point | | the `backlight` program's colour temperature |
-| night light | a screen warmed to a set white from sunset to sunrise, wherever the machine is, whatever the room's light | | the `backlight` program's night |
 | workspace | one of niri's rows of windows on a screen | | |
 | overview | niri's view of every workspace and its windows, on Super+A | | |
 | window | a program's rectangle on the screen | | |
 | This Window | the launcher's first row in Desktop: the window Joel is in | | |
 | wallpaper | the picture behind every window | painting | |
 | notice | what a program said, on the arrival line as it comes and after in Now's Desktop, but Slack's in Slack's row and only while Slack's daemon can't answer, and the shell's own for a to-do or pi in neither | notification | `Notifications.qml`, `org.freedesktop.Notifications` |
-| Now's Desktop | Lately's row, which reads "Desktop" on screen, for every notice but Slack's and the shell's own (a to-do's and pi's): those unread inside it and those read in its History; never home's Desktop, the place for the screens and windows | | `Lately.js`'s `desktop` |
+| Now's Desktop | Lately's row, which reads "Desktop" on screen, for every notice but Slack's and the shell's own (a to-do's and pi's): those unread inside it and those read in its History; never home's Desktop, the place for the windows and what's made or played on them | | `Lately.js`'s `desktop` |
 | arrival line | one line at the top of the screen, where the launcher stands, showing the notice that waits on Joel as it comes, without taking the keys | | `NoticeLine.qml` |
 | notice kind | what a notice is about, as its program files it, said in its drawer's eyebrow: message, mail, device, network, status or transfer, with failed or bounced after it when it went wrong | | `notices:kind`, the notification's `category` hint |
 | Do Not Disturb | the setting that holds notices back while it's on, and on by itself while the screen may be shared | dnd, quiet | `session:quiet` |
@@ -383,7 +374,8 @@ or a copy, can be opened, copied or forgotten.
 
 ## Machine
 
-The computer and its parts, its power and its sleep. A Bluetooth device is
+The computer and its parts, its screens, its power and its sleep. A screen's
+brightness, scale and rotation can be set. A Bluetooth device is
 paired, connected, disconnected and forgotten in Bluetooth, and used in its
 kind's place, such as a headset's volume in Sound; a setting can be set,
 raised and lowered; the machine can sleep, lock, log out, reboot and power
@@ -407,6 +399,15 @@ off.
 | NPU | the processor's part that runs models on the machine | | the `intel_vpu` driver |
 | media engine | the processor's part that encodes and decodes video | | |
 | display engine | the processor's part that sends each screen its picture | | |
+| screen | a monitor, built in or plugged in | display, monitor | niri's outputs |
+| screen mode | a size and refresh rate a screen can run at: the one it runs at now, and the ones it offers | | niri's `modes` |
+| colour depth | how many bits a screen gives each of its red, green and blue | | the EDID's bit depth |
+| colours | the range of colour a screen can show, said against sRGB's, apart from the theme's colour | | the EDID's gamut |
+| white point | the white a screen's panel gives of itself, in kelvin and where it sits, apart from warmth, the white the desktop sets it to | | the EDID's white |
+| primaries | where a screen's red, green and blue sit, the corners of its colours | | the EDID's primaries |
+| brightness | how bright a screen is, which follows the room's light, or how bright the desk light shines | | the `backlight` program; Litra's `brightness` |
+| warmth | how warm a light's white is, in kelvin: a screen's, which follows the room's light or the night light, or the desk light's, apart from a panel's white point | | the `backlight` program's colour temperature |
+| night light | a screen warmed to a set white from sunset to sunrise, wherever the machine is, whatever the room's light | | the `backlight` program's night |
 | chipset | the chip beside the processor that reaches the disk, USB and the rest | | the PCH |
 | power controller | the processor's part that sets its power and clocks | | |
 | held back | the processor kept below the speed it asked for, by a power or heat limit, and for how long, apart from what an update or a sleep is blocked by | | `HeldBack` |
@@ -480,7 +481,6 @@ off.
 | image processor | the part turning the built-in camera's raw picture into an image | ISP, IPU | |
 | IR camera | the infrared camera beside the built-in camera, for signing in by face | | `ir-camera`, Howdy |
 | desk light | the light on the screen, lit while a camera is in use | | Litra |
-| brightness | how bright the desk light shines, apart from a screen's brightness | | Litra's `brightness` |
 | console | the text screen the machine starts on, and the ones past Ctrl+Alt+F2 | | kmscon |
 | splash | the picture shown while the machine starts and stops | boot screen | Plymouth |
 | device check | the program that tells Joel a device stopped working | | `device-check`, smartd |
@@ -521,6 +521,7 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | firewall | what keeps others' connections out | | nftables |
 | shaper | the program that keeps the network's queue on the machine, sorted by slice, so a call stays quick | | `shaper`, CAKE |
 | house | of the shaper, another machine on the same line out, which says each second what it sends up; this machine keeps the most the two may send between them, and holds its own upload under what the other leaves of it | | `jitsusama.shaper.networks.<router>.house`, `house.rs` |
+| download line | of the shaper, what a network's connection carries down, as declared, or what one of this machine's links reaches it at, under which a call's download is held | | `jitsusama.shaper.networks.<router>.down`, `links.<link>.down`, `networks::Line`, `networks::line_of` |
 | home network | the network at home, the eero's, its nodes and the devices on them, and its place in the launcher | eero network, mesh network | `eero` |
 | node | one eero of the home network | satellite, extender | `eeros` |
 | gateway node | the node the internet comes in through | base station, primary node | `gateway` |

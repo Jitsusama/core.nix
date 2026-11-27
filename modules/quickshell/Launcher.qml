@@ -5066,7 +5066,9 @@ Scope {
     // level only stepped, as a board's lights, steps by it. The first word
     // it can't take says Vim's error and none of them changes. `sets` are
     // the options it sets, the machine's unless :setl gives each thing's.
-    function commandSet(arg, sets) {
+    // The line's key is timed as acting (`acting`) just before an option
+    // changes, since its source then changes; one only said changes none.
+    function commandSet(arg, sets, acting) {
         const unread = (Words.field.command ?? {}).unread ?? "";
         const planned = [];
         for (const options of sets ?? [setOptions]) {
@@ -5077,6 +5079,8 @@ Scope {
             }
             planned.push(plan);
         }
+        if (planned.some(plan => plan.steps.some(step => step.change.how !== "show")))
+            acting();
         const said = [];
         for (const { options, steps } of planned)
             said.push(...commandSetSteps(options, steps, unread));
@@ -5129,13 +5133,13 @@ Scope {
     // :setl's words, set on each thing the line's bound to, or on what the
     // cursor row is inside, as :set sets the machine's; one with no such
     // option says Vim's E518 and none changes.
-    function commandSetLocal(read, opened) {
+    function commandSetLocal(read, opened, acting) {
         const bound = commandBound(read, opened);
         if (bound.error !== undefined) {
             commandSay(bound.error, true);
             return;
         }
-        commandSet(read.arg, localOptions(bound.things));
+        commandSet(read.arg, localOptions(bound.things), acting);
     }
 
     // Return on the line: exactly what's typed, as Commands.ran read it.
@@ -5146,6 +5150,18 @@ Scope {
         // that one press, so it runs nothing; only a fresh Return does.
         if (commanding?.typed && Date.now() - linedAt < Options.keyTiming.wait)
             return;
+        // The command line's own Return, which the prompt never reads, runs
+        // what's typed, or says why not, as E492, closing the line either
+        // way. It's timed first as a move, as Down is, since closing the
+        // line, a row gone to, an error or :help changes no source: a
+        // share's change beside it is then no act of Joel's, and the
+        // Return after it is held where that change moved his step
+        // (Held.changeDoes). Just before it acts on a source, a player's
+        // time, an option set or a row's act, it's timed again as acting
+        // (`acting`), so the change it makes is his. An act that asks
+        // first is timed by the key that answers.
+        lineKeyActs(from, true);
+        const acting = () => lineKeyActs(from, false);
         const opened = commanding;
         commandEarlier = Commands.remembered(commandEarlier, read.typed ?? "");
         // What went wrong is said where the line was, over a viewer too,
@@ -5157,18 +5173,14 @@ Scope {
         else
             commandLeft(read.error ? "said" : "normal");
         if (drawn && read.error === undefined && read.go === undefined
-            && read.entry.kind === "quit") {
-            commandTimed(from, false);
+            && read.entry.kind === "quit")
             return;
-        }
-        // A line that only says what went wrong acts on nothing, as h and
-        // E21 do, so its Return isn't timed.
         if (read.error !== undefined) {
             commandSay(read.error, true);
             return;
         }
         if (read.go !== undefined && opened.go) {
-            commandTimed(from, true);
+            acting();
             opened.go(read.go);
             return;
         }
@@ -5179,21 +5191,11 @@ Scope {
             return;
         }
         if (read.go !== undefined) {
-            commandTimed(from, true);
             const last = matches.length - 1;
             arrowed(read.go === "$" ? last : Headings.nth(headingsAt, read.go, last), ":");
             return;
         }
         const entry = read.entry;
-        // Bound before it's timed, since an act with no rows it can take
-        // only says so; the kinds the switch runs take none.
-        const unbound = ["quit", "help", "set", "setlocal", "history"].includes(entry.kind);
-        const bound = unbound ? null : commandBound(read, opened);
-        if (!unbound && bound.error !== undefined) {
-            commandSay(bound.error, true);
-            return;
-        }
-        commandTimed(from, false);
         switch (entry.kind) {
         case "quit":
             open = false;
@@ -5202,22 +5204,28 @@ Scope {
             listing = true;
             return;
         case "set":
-            commandSet(read.arg);
+            commandSet(read.arg, undefined, acting);
             return;
         case "setlocal":
-            commandSetLocal(read, opened);
+            commandSetLocal(read, opened, acting);
             return;
         case "history":
             commandLine({ earlier: true });
             return;
         }
+        const bound = commandBound(read, opened);
+        if (bound.error !== undefined) {
+            commandSay(bound.error, true);
+            return;
+        }
         if (entry.kind === "surface") {
+            acting();
             entry.own.run({ name: entry.command, bang: read.bang, arg: read.arg,
                 things: bound.things, count: bound.things.length });
             return;
         }
         if (bound.things.length !== 1 || bound.things[0] !== opened.things[0]) {
-            commandAcross(entry, read, bound.things);
+            commandAcross(entry, read, bound.things, acting);
             return;
         }
         // An act that asks for a target or for words is stepped into, as
@@ -5231,10 +5239,22 @@ Scope {
         const inThing = !!top && !!thing && (top === thing || steadyId(top) === steadyId(thing));
         if ((act.targets || act.given) && act !== thing && (inThing || enter(thing))) {
             const step = held[held.length - 1];
+            acting();
             run(step.rows.find(one => one.key === act.key) ?? act, false);
             return;
         }
-        commandAsked(entry, [{ act, thing }], 1, read.bang);
+        commandAsked(entry, [{ act, thing }], 1, read.bang, acting);
+    }
+
+    // Times the command line's key, `from`, as keyActs does an outside
+    // key, saying whether it only `moved`. @: comes with no key of its own,
+    // since the prompt timed it as commandAgain, so for it only the move
+    // is said.
+    function lineKeyActs(from, moved) {
+        if (from !== "")
+            keyActs(from, moved);
+        else
+            keyHeardMoved = moved;
     }
 
     // Runs a line's acts on what it's bound to, `found` each act with its
@@ -5242,7 +5262,9 @@ Scope {
     // rule, through the one ask (askOnce), in d's words for one thing or
     // many (Confirm.question), the rows it covers tinted: Return runs them
     // past their own confirm, as a ! does; any other key leaves them be.
-    function commandAsked(entry, found, all, bang) {
+    // The line's key is timed as acting (`acting`) only where they run at
+    // once: a line that finds none, arms a row or asks changes no source.
+    function commandAsked(entry, found, all, bang, acting) {
         const words = Words.field.command ?? {};
         const acts = found.map(one => one.act);
         const asked = CommandBinding.asking(entry, acts, { all, bang }, Options.commands ?? {});
@@ -5284,6 +5306,7 @@ Scope {
                 .filter(at => at >= 0));
             return;
         }
+        acting();
         if (bang) {
             sure();
             return;
@@ -5321,15 +5344,6 @@ Scope {
         commandRan(Object.assign(Commands.ran(last, commanding.menu), { typed: last }), "");
     }
 
-    // Times the command line's own Return, which the prompt never reads,
-    // once what it ran is known to act: as a move where it only goes to a
-    // row, as Down does. @: comes with no key of its own (`from`), since the
-    // prompt timed it as commandAgain.
-    function commandTimed(from, moved) {
-        if (from !== "")
-            keyActs(from, moved);
-    }
-
     // The things a line acts on: those bound as : was pressed, or where a
     // range or :g is typed, the rows it names as they stood then
     // (CommandBinding.bound), so a row arriving after can't shift them.
@@ -5344,11 +5358,11 @@ Scope {
 
     // A line run on several things, or on one a range or :g found: each
     // thing's own act (CommandBinding.actFor), asked first where it asks.
-    function commandAcross(entry, read, things) {
+    function commandAcross(entry, read, things, acting) {
         const found = things.map(thing => ({ act: CommandBinding.actFor(entry, actsOf(thing),
             commandWords), thing }))
             .filter(one => one.act !== undefined);
-        commandAsked(entry, found, things.length, read.bang);
+        commandAsked(entry, found, things.length, read.bang, acting);
     }
 
     // Where the launcher is now, kept on a way back: the line a page offered keeps none of its
@@ -5578,7 +5592,8 @@ Scope {
             // password's, is timed as where it ends, its last step's parts
             // saying what it passed.
             if (walked !== undefined && !passing && stepTimed())
-                keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true, thread);
+                keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true, thread,
+                    row.key);
             return true;
         }
         // A step in that Joel's key made is a look, so an opening that
@@ -5619,7 +5634,7 @@ Scope {
                 pushed: at.pushed, opened: at.pushed, ended: Date.now() });
             if (timed)
                 keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true,
-                    thread);
+                    thread, row.key);
             return went();
         }
         if (steppedAsLed(row))
@@ -5677,7 +5692,8 @@ Scope {
         searchParts = trials.stepped(searchParts, { walked, began: stepAt, made, pushed, opened,
             ended: Date.now(), making: spent });
         if (timed)
-            keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true, thread);
+            keyTimed(`\u2192 ${row.name}`, began, heard, pressed, collected, true, thread,
+                row.key);
         return went();
     }
 
@@ -5732,7 +5748,7 @@ Scope {
         }
         if (held.length > 0 && stepTimed())
             keyTimed(`\u2192 ${held[held.length - 1].row.name}`, begun.began, begun.heard,
-                begun.pressed, begun.collected, true, begun.thread);
+                begun.pressed, begun.collected, true, begun.thread, held[held.length - 1].row.key);
     }
 
     // Whether a step taken now is timed as its own: not while an opening
@@ -6885,7 +6901,7 @@ Scope {
         let stepped = null;
         try {
             stepped = stepBack(left, steps, timed, { began, heard, pressed, collected, thread,
-                name: leaving.name });
+                name: leaving.name, stepKey: leaving.key });
         } finally {
             steppingOut = outer;
             stepFits = { keys: footFitted.keys - fits.keys,
@@ -6896,7 +6912,8 @@ Scope {
             return;
         searchParts = trials.stepped(searchParts, { began, made: began, pushed: stepped.pushed,
             opened: stepped.pushed, ended: Date.now(), making: {}, holding: stepped.holding });
-        keyTimed(`\u2190 ${leaving.name}`, began, heard, pressed, collected, true, thread);
+        keyTimed(`\u2190 ${leaving.name}`, began, heard, pressed, collected, true, thread,
+            leaving.key);
     }
 
     // back's step itself, from leaving `left`, `steps` back, to its rows
@@ -6934,7 +6951,8 @@ Scope {
         // rather than the words alone and timed only from the field.
         stepOut = stepTimed && wordsBack
             ? { text: `\u2190 ${key.name}`, began: key.began, heard: key.heard,
-                pressed: key.pressed, collected: key.collected, thread: key.thread } : null;
+                pressed: key.pressed, collected: key.collected, thread: key.thread,
+                stepKey: key.stepKey } : null;
         backTo = left;
         list.steppedLast = null;
         list.steppedKept = null;
@@ -7187,6 +7205,7 @@ Scope {
             searchParts = trials.stepped(searchParts, { began, made: at.made,
                 pushed: at.pushed, opened: at.pushed, ended: Date.now() });
             steppedByKey = named.name;
+            steppedByKeyInto = String(held[held.length - 1]?.row?.key ?? "");
             return;
         }
         const whole = category !== null ? askedWhole(letters) : "";
@@ -7470,10 +7489,13 @@ Scope {
     // which its line says whole, since nobody wrote it.
     // `thread` is the shell thread's clocks as the key began (threadNow), so
     // its line says what of its searching the thread ran, waited for a CPU
-    // and slept (launcher/Thread.js).
-    function keyTimed(typed, began, heard, pressed, collected, stepped, thread) {
+    // and slept (launcher/Thread.js). `stepKey` is the key of the row a
+    // step took, which its line says where it's the launcher's own place
+    // or a program (Presented.timedShown).
+    function keyTimed(typed, began, heard, pressed, collected, stepped, thread, stepKey) {
         keysDrawing = Pacing.refreshedActs(keysDrawing, [{ text: typed, began, collected,
             step: stepped === true ? typed : "", own: stepped === "own",
+            stepKey: stepped === true ? String(stepKey ?? "") : "",
             searched: Date.now() - began, thread: Thread.spent(thread, threadNow()),
             parts: searchParts, begun: null,
             rendered: null, pressed: pressed > 0 ? pressed : heard, stamped: pressed > 0,
@@ -7606,7 +7628,8 @@ Scope {
                 keyFrame: newest.frame ?? 0,
                 keyHeard: newest.heard,
                 timesOf: frame => surface.FramePresentation.timesOf(frame)
-            }, frameSplit(newest, shown)), newest.step ?? "", newest.own === true);
+            }, frameSplit(newest, shown)), newest.step ?? "", newest.own === true,
+            newest.stepKey ?? "");
         // Every key the frame drew keeps it as its own, and the list holds
         // one time a key.
         for (const key of drawnKeys) {
@@ -7781,10 +7804,8 @@ Scope {
     // A key while the ask stands, as Prompt.qml hands it over.
     function answerAsk(key) {
         const ask = asked;
-        if (ask === null)
-            return;
-        const said = Confirm.answer(ask, key, Date.now(), askReady.interval);
-        if (said === "early")
+        const said = askSaid(key);
+        if (ask === null || said === "early")
             return;
         asked = null;
         Report.say(`answered ${said}`);
@@ -7792,6 +7813,15 @@ Scope {
             ask.yes();
         else
             ask.no();
+    }
+
+    // What the ask standing makes of `key` (Confirm.answer), or "" with none
+    // standing: answerAsk answers by it, and the prompt times a key as
+    // acting by it (answerTaken). Each reads the clock, so only a key on
+    // the millisecond the guard runs out can be timed one way and
+    // answered the other.
+    function askSaid(key) {
+        return asked === null ? "" : Confirm.answer(asked, key, Date.now(), askReady.interval);
     }
 
     // When the ask can be answered, the same 300 ms as the key language's
@@ -8241,7 +8271,7 @@ Scope {
         // the field held before it (Awaited.before).
         keysDue = keysDue.concat([out ? { text, began: out.began, heard: out.heard,
             pressed: out.pressed, collected: out.collected, step: out.text,
-            thread: out.thread }
+            stepKey: out.stepKey ?? "", thread: out.thread }
             : { text, began, heard, pressed, collected: Heap.collected(), step: "",
                 thread: threadNow(), untimed: untimed === true }]);
         if (searchedThisTurn)
@@ -8288,9 +8318,12 @@ Scope {
         const listedAt = KeyTimes.now();
         const collected = Heap.collected();
         steppedByKey = "";
+        steppedByKeyInto = "";
         search(prompt.text);
         const into = steppedByKey;
+        const intoKey = steppedByKeyInto;
         steppedByKey = "";
+        steppedByKeyInto = "";
         // Its key's time holds the wait, said apart in the journal, with
         // what the time past its bound went on, and the frame's work not
         // yet noted (Awaited.frameOpen).
@@ -8313,9 +8346,10 @@ Scope {
         if (into !== "" && timed.length > 0)
             trials.wentIn(timed[timed.length - 1].pressed);
         timed.forEach((key, at) => {
-            const step = into !== "" && at === timed.length - 1 ? `\u2192 ${into}` : key.step;
+            const last = into !== "" && at === timed.length - 1;
+            const step = last ? `\u2192 ${into}` : key.step;
             keyTimed(step || key.text, key.began, key.heard, key.pressed, key.collected, !!step,
-                key.thread);
+                key.thread, last ? intoKey : key.stepKey);
         });
     }
     // The place a key's word and space stepped into as it was searched,
@@ -8323,6 +8357,9 @@ Scope {
     // the step emptied as another key, one step counted twice (a council,
     // 2026-11-17).
     property string steppedByKey: ""
+    // And its key, which the step's line says where it's the launcher's own
+    // (Presented.timedShown).
+    property string steppedByKeyInto: ""
 
     // How long a key's list waits for the sources whose search awaits a
     // daemon's answer (Provider's awaits), from when they're asked, so a
@@ -12841,11 +12878,12 @@ Scope {
     // of their own, 236 to 377 ms of it (cycle-r1, 2026-11-14). The heap
     // leaves room after every collection that ends later too, but no more
     // than twice the room past what its chunks held at the first ask since
-    // one ended (heap.h's leaveRoom), so one the shell starts while the
-    // launcher is shut can still leave less. Each closing's collection says
-    // how far the opening's chunks, and what's held outside the heap,
-    // reached against where the collector would start, weighed before it
-    // collects, so whether 32 is still ample is read there.
+    // one ended, and twice what its sweeps kept beyond what the last kept
+    // then (heap.h's leaveRoom), so one the shell starts while the launcher
+    // is shut can still leave less. Each closing's collection says how far
+    // the opening's chunks, and what's held outside the heap, reached
+    // against where the collector would start, weighed before it collects,
+    // so whether 32 is still ample is read there.
     readonly property real openingRoom: 32
     function collectClosed() {
         // A count or a weighing already due would land within a second of
@@ -14648,11 +14686,15 @@ Scope {
                         reselectable: root.lastVisual !== null
                         // Where Tab goes into the row and - goes up, so
                         // a key that only says it can't acts on nothing.
-                        intoHere: root.goesIn(root.matches[root.current] ?? null)
+                        // Tab is asked of the row it will find: a search
+                        // held back runs first, as onStepped runs it.
+                        intoHere: () => {
+                            root.searchNow();
+                            return root.goesIn(root.matches[root.current] ?? null);
+                        }
                         upHere: root.canGoUp
                         // The ask takes a key as answerAsk does.
-                        answerTaken: key => root.asked !== null && Confirm.answer(root.asked,
-                            key, Date.now(), askReady.interval) !== "early"
+                        answerTaken: key => !["", "early"].includes(root.askSaid(key))
                         // A search run in the drawer puts its cursor on
                         // the match.
                         onSought: (pattern, forward, count) => {
@@ -14830,10 +14872,17 @@ Scope {
                             // Let go from the drawer, the keys go back onto
                             // its page however it was let go, choosing
                             // nothing, as Vim's visual ends at its : line.
-                            onLetGo: how => root.commandLeft(
-                                QueryKeys.paged(root.commanding?.from ?? "") ? "page"
-                                : how === "dropped" ? root.commanding?.from ?? "normal"
-                                : "normal")
+                            // The key that let it go, which the prompt
+                            // never reads, closes the line, changing no
+                            // source, so it's timed as a move, as the
+                            // line's Return is until it acts.
+                            onLetGo: (how, key) => {
+                                root.keyActs(key, true);
+                                root.commandLeft(
+                                    QueryKeys.paged(root.commanding?.from ?? "") ? "page"
+                                    : how === "dropped" ? root.commanding?.from ?? "normal"
+                                    : "normal");
+                            }
                         }
                     }
 
