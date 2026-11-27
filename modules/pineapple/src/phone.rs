@@ -612,6 +612,8 @@ mod tests {
 
     #[test]
     fn the_gateways_own_word_just_after_an_escape_counts() {
+        // What judges a failing for one word.
+        type Judge = fn(&str) -> bool;
         let said = text(Alert {
             title: "A stop in owner/name",
             words: WORDS_NOT_TAKEN,
@@ -619,7 +621,7 @@ mod tests {
         });
         let json = serde_json::to_string(&said).expect("text as JSON");
         let quoted = |body: &str| serde_json::to_string(body).expect("a body as JSON");
-        let words: [(&str, fn(&str) -> bool); 4] = [
+        let words: [(&str, Judge); 4] = [
             ("\\nratelimited", spent),
             ("\\u201cratelimited\\u201d", spent),
             ("\\tinvalid_auth", refuses_the_sign_in),
