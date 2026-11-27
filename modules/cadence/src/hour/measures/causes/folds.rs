@@ -267,20 +267,28 @@ mod tests {
     /// the fold found each of the rest misfolded by a word inside another.
     #[test]
     fn a_word_inside_another_folds_nothing_and_an_unnamed_cause_shows_unfolded() {
-        for said in [
-            "after-check proves machine health, not the change",
-            "a walk that stops to give way when stopping frees nothing",
-            "a module left out of flake.nix",
-            "nix flake check skipped on darwin",
-            "the attestation step bypasses signing",
-            "uses the latest main without rebasing",
-            "a docker image built with another base",
-            "an awake host refuses a terror",
+        // Each wording beside the word it was folded by, found where no
+        // word starts, or as the start of a longer one where only a whole
+        // word counts. "flake" stood for a flaky check until it folded
+        // every word on flake.nix; "flaky" stands in its place.
+        for (said, inside) in [
+            ("after-check proves machine health, not the change", "mac "),
+            (
+                "a walk that stops to give way when stopping frees nothing",
+                "pin",
+            ),
+            ("a module left out of flake.nix", "flake"),
+            ("nix flake check skipped on darwin", "flake"),
+            ("the attestation step bypasses signing", "test"),
+            ("uses the latest main without rebasing", "test"),
+            ("a docker image says other than its base", "doc "),
+            ("the docs describe another base", "other"),
+            ("an awake host refuses a terror", "error"),
         ] {
             assert_eq!(
                 fold(said),
                 format!("{UNFOLDED}{said}"),
-                "{said:?} was folded by a word found inside another"
+                "{said:?} was folded by {inside:?}, found inside another word"
             );
         }
     }

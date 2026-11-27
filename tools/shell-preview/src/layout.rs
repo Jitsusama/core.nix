@@ -181,9 +181,9 @@ mod tests {
             copy.display()
         );
         let copied = fs::read_to_string(copy).expect("copied");
-        assert!(
-            copied.contains("accent"),
-            "the copy should hold what was built, not {copied:?}"
+        assert_eq!(
+            copied, "QtObject { property color accent }\n",
+            "the copy should hold what was built"
         );
     }
 
