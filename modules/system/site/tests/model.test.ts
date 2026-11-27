@@ -11,10 +11,7 @@ import { escaped, headlineOf, legend, partsOf, placesOf } from "../draw.ts";
 import { machineHeadline } from "../machine.ts";
 import { allTold, systemOf, thingsHeld } from "../model.ts";
 
-/**
- * The four watches, told `these` whole, each to its kind's; the machines'
- * and the builders' read as the things, as the page reads them.
- */
+/** The four watches told `these` whole, the machines' and builders' as one, as the page reads. */
 function told(these: readonly { readonly key: string; readonly kind: string }[]) {
   const [summary, part, machines, builders] = ["summary", "part", "machine", "builder"].map(
     (kind) => {
