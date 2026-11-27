@@ -697,8 +697,27 @@
   the-shell-stays-light-on-niri = launcherOnNiri {
     name = "the-shell-stays-light-on-niri";
     tests = ../tests/shell-stays-light-on-niri-test.py;
+    # What it lets the heap's resident climb by for pages the kernel took.
+    helpers = [ ../tests/resident_allowance.py ];
     given = [ "QS_GIVEN=--log-rules qt.qml.gc.allocatorStats.debug=true" ];
   };
+
+  # What the-shell-stays-light-on-niri lets the heap's resident climb by for
+  # pages the kernel took, worked out apart from any niri, since that check
+  # works it out only on one
+  # (modules/quickshell/tests/resident-allowance-test.py). Only the two files
+  # are copied, so a change to another case rebuilds none of this.
+  the-shell-stays-light-allowing-only-what-was-taken =
+    let
+      python = pkgs.python3.withPackages (python: [ python.pytest ]);
+    in
+    pkgs.runCommandLocal "the-shell-stays-light-allowing-only-what-was-taken" { } ''
+      cp ${../tests/resident_allowance.py} resident_allowance.py
+      cp ${../tests/resident-allowance-test.py} resident-allowance-test.py
+      PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 ${python}/bin/python -m pytest \
+        -p no:cacheprovider --import-mode=importlib --quiet resident-allowance-test.py
+      touch $out
+    '';
 
   # A meter's moment lasts from its first frame shown, or the last change once
   # seen, and at most so long unseen, as modules/quickshell/tests/meter-moment.qml

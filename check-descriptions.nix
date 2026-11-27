@@ -6168,6 +6168,13 @@
     the account's zsh starts only git-engine, its fifo and direnv, and each prompt after runs direnv
     alone
   '';
+  the-shell-stays-light-allowing-only-what-was-taken = ''
+    what the-shell-stays-light-on-niri lets the heap's resident climb by for pages the kernel
+    took is the lesser of what the machine took, by the page size given and a MB of 2**20 bytes,
+    and the most any closing held but hadn't resident, a closing of unknown resident skipped,
+    one with none resident counting all it held and one holding less than it has resident none,
+    and a round with no closing known allows nothing
+  '';
   the-shell-stays-light-on-niri = ''
     opening every place the desktop's chords open and typing at home, three rounds over, the
     third round keeps no more than a tenth more of the shell's JavaScript heap live than the
