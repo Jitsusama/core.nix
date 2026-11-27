@@ -117,16 +117,21 @@ impl Hubless {
 /// before carries from within the hour, as unkept needs are carried. A
 /// node out of reach costs nothing while no pain needs a hub, so it's a
 /// trouble only once one went to the fallback for it (#6774's round, F1
-/// and F8).
+/// and F8). This run's count adds to the one carried, so a second run
+/// sending some in the hour doesn't say fewer went than did (#7022's
+/// round, F4, F9 and F19). The trouble stays for the hour once hubs are
+/// named again, as unkept needs do, since the card reads the hour's
+/// troubles only once an hour and would otherwise never say it.
 pub fn hubless(state: &Path, at: i64, sent: usize, why: Option<&str>) -> Option<Hubless> {
+    let carried = within_the_hour(state, at, |before| before.hubless, |before| before.at);
     if let Some(why) = why.filter(|_| sent > 0) {
         return Some(Hubless {
             at,
-            sent,
+            sent: sent + carried.map_or(0, |before| before.sent),
             why: why.to_owned(),
         });
     }
-    within_the_hour(state, at, |before| before.hubless, |before| before.at)
+    carried
 }
 
 /// What `of` the run before carries, while `when` it ran is within the

@@ -294,6 +294,53 @@ fn a_node_that_couldnt_be_asked_for_hubs_is_named_by_its_socket() {
 }
 
 #[test]
+fn pains_sent_for_want_of_hubs_add_up_over_the_hour() {
+    let place = Place::new("hubless-adds");
+    place.routes();
+    a_day(&place);
+    let minute = 60_000;
+    // The run before, past a blink already, sent two there.
+    let before = Hour {
+        at: AT,
+        hubless_since: Some(AT - 15 * minute),
+        hubless: Some(Hubless {
+            at: AT,
+            sent: 2,
+            why: "connection refused".into(),
+        }),
+        ..Hour::default()
+    };
+    fs::write(
+        place.root.join("state/hour.json"),
+        serde_json::to_string(&before).expect("an hour"),
+    )
+    .expect("hour.json");
+    let ears = Ears {
+        at: AT + 5 * minute,
+        hubless: Some("connection refused".into()),
+        ..place.ears()
+    };
+    let mut to = Vec::new();
+    let hour = hear(&ears, CELLS, &mut |owner, text| {
+        if text.contains("why is the launcher so slow") && !text.contains(route::FOR_THE_KEEPER) {
+            to.push(owner.to_owned());
+        }
+        true
+    })
+    .expect("a run");
+    assert_eq!(to, ["ORCH01"], "the void's pain didn't go to the fallback");
+    assert_eq!(
+        hour.hubless.as_ref().map(|h| h.sent),
+        Some(3),
+        "this run's count replaced the hour's rather than adding to it: {hour:?}"
+    );
+    assert!(
+        hour.troubles.iter().any(|t| t.contains("3 pains")),
+        "the card didn't say the hour's count: {hour:?}"
+    );
+}
+
+#[test]
 fn an_earlier_run_dated_ahead_of_this_one_holds_no_outage_back() {
     let place = Place::new("future-hour");
     place.routes();
