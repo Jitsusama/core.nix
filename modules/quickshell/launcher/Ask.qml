@@ -203,6 +203,10 @@ Provider {
             // Its words go to the session as Joel's, so a walk is refused it.
             joelsOnly: true,
             run: () => {
+                // Held here as well as by the mark, since this talks to the node straight, so
+                // a mark lost can't let a walk talk as Joel (round 000011 on #6796, F101).
+                if (!agents.joelsOwn("talk"))
+                    return;
                 Sessions.talk(session.address, carried(question, answered));
                 // By the id the launcher holds it by, its session's.
                 launcher.goTo({ trail: ["collection:agents"].concat(row
