@@ -367,6 +367,47 @@ mod tests {
             took >= Duration::from_secs(2),
             "the one past {AT_ONCE} waited for the lot before it: {took:?}"
         );
+        // In smaller lots, or one by one, they'd take 3 seconds or more.
+        assert!(
+            took < Duration::from_secs(3),
+            "the first {AT_ONCE} ran as one lot: {took:?}"
+        );
+    }
+
+    #[test]
+    fn each_lot_is_given_its_own_limit() {
+        let mut system = System {
+            limit: Duration::from_millis(1500),
+        };
+        let each: Vec<Vec<String>> = (0..=AT_ONCE)
+            .map(|at| sh(&format!("sleep 1; echo {at}")))
+            .collect();
+        let runs: Vec<(&Path, &[String])> = each
+            .iter()
+            .map(|one| (Path::new("sh"), one.as_slice()))
+            .collect();
+        let answers = system.run_all(&runs);
+        // The last lot starts a second in, so a limit from the first
+        // lot's start would end it half a second before it answers.
+        assert_eq!(
+            answers.last(),
+            Some(&Ok(format!("{AT_ONCE}\n"))),
+            "the last lot had its limit from its own start: {answers:?}"
+        );
+    }
+
+    #[test]
+    fn one_ended_whose_output_is_held_briefly_is_waited_for_and_read() {
+        let mut system = System {
+            limit: Duration::from_secs(2),
+        };
+        let leaving = sh("(sleep 0.5; echo later) & echo now");
+        let answers = system.run_all(&[(Path::new("sh"), &leaving)]);
+        assert_eq!(
+            answers[0],
+            Ok("now\nlater\n".to_owned()),
+            "what its child printed after it ended is read: {answers:?}"
+        );
     }
 
     #[test]
