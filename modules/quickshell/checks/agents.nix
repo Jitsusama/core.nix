@@ -198,14 +198,14 @@
     '';
 
   # Agents holds to Joel's own Return the very asks the agents daemon does only
-  # as his, its asJoel naming each of main.rs's AS_JOEL and no other, as
+  # as his, its asJoel naming each of joels_acts.rs's AS_JOEL and no other, as
   # modules/quickshell/tests/as-joel-agrees.py holds the two copies to each
   # other.
   agents-asks-as-joel-are-the-daemons =
     pkgs.runCommandLocal "agents-asks-as-joel-are-the-daemons" { }
       ''
         ${lib.getExe pkgs.python3} ${../tests/as-joel-agrees.py} \
-          ${../../agents/src/main.rs} ${../launcher/Agents.qml}
+          ${../../agents/src/joels_acts.rs} ${../launcher/Agents.qml}
         touch $out
       '';
 
