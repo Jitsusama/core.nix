@@ -555,10 +555,9 @@ const timesEach = (texts: Iterable<string>): ReadonlyMap<string, number> => {
 };
 
 /**
- * Adds what `more` tells to each name that repeats, after `between`, and
- * says whether any did; a network `more` has nothing for keeps its name,
- * and a name that draws as nothing, alone or not, is its tell alone, with
- * no `between` to start on, since nothing else reads it.
+ * Adds what `more` tells to each name that repeats or draws as nothing,
+ * after `between`, and says whether any did; a network `more` has nothing
+ * for keeps its name, and a blank one is its tell alone.
  */
 const tell = (
   networks: readonly Named[],
