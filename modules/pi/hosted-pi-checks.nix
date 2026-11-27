@@ -25,9 +25,6 @@ in
     touch $out
   '';
 
-  # A hosted pi loads a linked extension through where its link points now,
-  # so once the link an extension is found through moves, a reload loads the
-  # new copy and its own helpers, whether the old copy is gone or not.
   # A hosted pi builds a turn's boundary context only when a handler reads
   # it, so observers no longer hold the main thread every conversation shares.
   pi-hosted-builds-boundary-context-when-read =
@@ -78,6 +75,9 @@ in
       touch $out
     '';
 
+  # A hosted pi loads a linked extension through where its link points now,
+  # so once the link an extension is found through moves, a reload loads the
+  # new copy and its own helpers, whether the old copy is gone or not.
   pi-hosted-loads-where-a-link-points =
     pkgs.runCommandLocal "pi-hosted-loads-where-a-link-points" { }
       ''
