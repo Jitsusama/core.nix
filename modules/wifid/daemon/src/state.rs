@@ -645,18 +645,10 @@ impl State {
     /// Keeps the access point that warned a card it drops it from the
     /// card's chooser until then, in place of any it was warned by
     /// before. `at` is when it warned, where its heed moves the card
-    /// (`Heed::moves`); none where it's left to wpa_supplicant. A point
-    /// warning again with a heed left to wpa_supplicant, as one warning
-    /// its whole network drops the card after one naming points, keeps
-    /// the heed of wifid's already moving the card off it, so a call waits
-    /// on that move rather than racing it.
+    /// (`Heed::moves`); none where it's left to wpa_supplicant, as one
+    /// whose look found none of the points it named is: nothing of
+    /// wifid's is under way then for a call to wait on.
     pub fn warned_off(&mut self, card: &str, point: &str, (at, until): (Option<Instant>, Instant)) {
-        let at = at.or_else(|| {
-            let before = self.warned_off.get(card)?;
-            before
-                .at
-                .filter(|_| before.point.eq_ignore_ascii_case(point))
-        });
         let warning = Warning {
             point: point.to_owned(),
             at,
@@ -665,6 +657,20 @@ impl State {
         };
         self.warned_off.insert(card.to_owned(), warning);
         self.settle_warnings();
+    }
+
+    /// Keeps the access point that warned a card again, with a heed left
+    /// to wpa_supplicant, while wifid's move off it for the warning before
+    /// is still under way, as one warning its whole network drops the card
+    /// after one naming points: that move's heed is kept, so a call waits
+    /// on the move rather than racing it.
+    pub fn warned_again(&mut self, card: &str, point: &str, until: Instant) {
+        let at = self
+            .warned_off
+            .get(card)
+            .filter(|before| before.point.eq_ignore_ascii_case(point))
+            .and_then(|before| before.at);
+        self.warned_off(card, point, (at, until));
     }
 
     /// Keeps the access point that warned a card before a restart from
@@ -1671,12 +1677,29 @@ mod tests {
         // Its whole network drops the card, said a second on, while the
         // move the first warning began is still under way.
         let again = now + Duration::from_secs(1);
-        state.warned_off("wlan2", &on, (None, lasts + Duration::from_secs(1)));
+        state.warned_again("wlan2", &on, lasts + Duration::from_secs(1));
 
         assert_eq!(
             state.warned_on("wlan2", again),
             Some(now),
             "a second warning from the point ended the wait on wifid's move off it"
+        );
+    }
+
+    #[test]
+    fn a_look_that_finds_none_of_the_points_named_leaves_no_heed_to_wait_on() {
+        let mut state = at_the_inn();
+        let on = state.point_of("wlan2").expect("on a point");
+        let now = Instant::now();
+        let lasts = now + Duration::from_secs(600);
+        // Looking first, then let go to wpa_supplicant as the look ends.
+        state.warned_off("wlan2", &on, (Some(now), lasts));
+        state.warned_off("wlan2", &on, (None, lasts));
+
+        assert_eq!(
+            state.warned_on("wlan2", now + Duration::from_secs(1)),
+            None,
+            "a let-go after a look kept the look's heed, so a call waited on nothing"
         );
     }
 
