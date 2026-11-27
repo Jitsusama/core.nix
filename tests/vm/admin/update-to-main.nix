@@ -8,7 +8,8 @@
 # folder of the repository, and builds only light pieces itself, having no
 # builders; following's flake has an input, core, that follows its own
 # signed main, whose file names the system; booting boots through a boot
-# loader, and main may give it another kernel. The tests are update-to-main-vm-test.py, which
+# loader, main may give it another kernel, and its boot check fails while
+# a test says so. The tests are update-to-main-vm-test.py, which
 # pytest runs inside the driver (tests/lib/vm_pytest.py).
 { self, pkgs }:
 let
@@ -20,6 +21,11 @@ let
       key = ./update-to-main-signer;
     }
   );
+  # booting's boot check, which fails while /run/boot-check-fails is there,
+  # so a test can leave a system unchecked.
+  bootCheck = pkgs.writeShellScript "boot-check" ''
+    [ ! -e /run/boot-check-fails ]
+  '';
   # Says in its home who asked for the token, and their groups, and gives
   # none while /etc/no-token is there.
   token = pkgs.writeShellScript "token" ''
@@ -129,6 +135,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
         jitsusama.update-to-main = {
           repository = "file:///srv/machines.git";
           signers.ssh = [ ''tester namespaces="git" ${signer}'' ];
+          bootCheck = [ "${bootCheck}" ];
         };
       })
     ];

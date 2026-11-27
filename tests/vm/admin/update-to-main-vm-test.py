@@ -9,7 +9,7 @@ and reads what the machine runs afterwards.
 
 booting boots from its disk through systemd-boot, so starting it again boots what the switch
 left for the next boot. Its specialisation kernel has another kernel and changes a service it
-runs.
+runs. Its boot check fails while /run/boot-check-fails is there.
 
 hosted trusts its repository's word for main rather than a signature, so its commits are
 unsigned, their flake in the repository's machine folder. Its objects are read from someone's
@@ -362,6 +362,51 @@ def test_a_switch_by_hand_brings_the_program_it_switched_to(on_first: Machine) -
     status, lines, said = on_first.ask()
     assert status == 0, said
     assert lines[-1]["commit"] == head
+
+
+def boot_default(machine: BaseMachine) -> str:
+    """Give the system the boot loader starts by default, as its entry's init names it."""
+    conf = machine.succeed("cat /boot/loader/loader.conf").split("\n")
+    entry = next(
+        line.split()[1]
+        for line in conf
+        if line.startswith(("preferred ", "default ")) and not line.endswith("*")
+    )
+    options = machine.succeed(f"grep '^options' /boot/loader/entries/{entry}").split()
+    init = next(word for word in options if word.startswith("init="))
+    return init.removeprefix("init=").removesuffix("/init")
+
+
+def test_going_back_unchecked_puts_back_the_boot_default(booting_: Machine) -> None:
+    """A switch that makes itself the boot default and fails leaves the boot loader as it was."""
+    machine = booting_.machine
+    kernel = machine.succeed(f"readlink -f {booting_.first}/specialisation/kernel").strip()
+    booting_.commit(booting_.switched)
+    status, _, said = booting_.ask()
+    assert status == 0, said
+    assert boot_default(machine) == booting_.switched, "a healthy switch wasn't the boot default"
+    # Another kernel whose boot check fails runs unchecked, the boot default left be.
+    machine.succeed("touch /run/boot-check-fails")
+    booting_.commit(kernel)
+    status, lines, said = booting_.ask()
+    machine.succeed("rm /run/boot-check-fails")
+    assert status == 0, said
+    assert lines[-1].get("boots"), f"the failed boot check went unsaid: {said}"
+    assert booting_.running() == kernel
+    # The booted kernel's unhealthy system switches as the boot default, then goes back.
+    booting_.commit(booting_.unhealthy)
+    status, lines, said = booting_.ask()
+    assert status == FAILED, said
+    assert "went back to what it ran" in lines[-1]["why"], said
+    assert booting_.running() == kernel
+    assert boot_default(machine) == booting_.switched, (
+        f"going back left the switch that failed what the machine boots: {said}"
+    )
+    # Back where the tests after this one start.
+    booting_.commit(booting_.first)
+    status, _, said = booting_.ask()
+    assert status == 0, said
+    assert boot_default(machine) == booting_.first, "the first system wasn't the boot default again"
 
 
 def test_a_new_kernels_userland_runs_now_and_its_kernel_from_the_next_boot(
