@@ -63,7 +63,9 @@ const TRAILING_STOP = /[,;:.]$/u;
 /**
  * How many characters of a murmur the lede quotes, and of its quest's name, before each is
  * trimmed: the most that keeps the whole lede inside the four lines its box holds on a phone,
- * so nothing in it is ever cut away. The murmur's row says both whole.
+ * so nothing in it is ever cut away. The murmur's row says both whole. It's sized for prose: a
+ * lede of wider letters, or a word too long to break, takes a line more, which the box grows to
+ * hold rather than cutting it, moving what's under it down a line as the lede draws.
  */
 const QUOTED = 84;
 const NAMED = 48;
@@ -161,6 +163,11 @@ function trimmed(words: string, most: number): string {
   return `${kept.replace(TRAILING_STOP, "")}...`;
 }
 
+/** `words` between a first-strong isolate and its pop, the plain text form of `<bdi>`. */
+function isolated(words: string): string {
+  return `\u2068${words}\u2069`;
+}
+
 /** The line under the sentence: the newest murmur still in the air, and who said it. */
 function lede(murmurs: readonly Murmur[]): string {
   if (murmurs.length === 0) {
@@ -170,8 +177,10 @@ function lede(murmurs: readonly Murmur[]): string {
   if (newest === undefined) {
     return "Every murmur has been settled; the newest says how on its row.";
   }
-  const quest = trimmed(newest.quest, NAMED);
-  return `Newest in the air, from ${quest}: ${trimmed(newest.words, QUOTED)}`;
+  // Each in an isolate, so a direction a cell's words set, or one a trim leaves open, runs no
+  // further than them.
+  const quest = isolated(trimmed(newest.quest, NAMED));
+  return `Newest in the air, from ${quest}: ${isolated(trimmed(newest.words, QUOTED))}`;
 }
 
 /** How long ago `at` was, from `now`, both in seconds, said short. */

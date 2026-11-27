@@ -7,6 +7,10 @@ import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
 import { ago, headline, lede, murmursOf, questsOf, trimmed } from "../model.ts";
 
+// The isolate the lede holds a quest's name and a murmur's words in, and its pop.
+const FSI = "\u2068";
+const PDI = "\u2069";
+
 /** A murmur record by `writer` at `at`, with `more` over its fields. */
 function murmur(writer: string, at: number, more: { readonly [field: string]: unknown } = {}) {
   return {
@@ -143,10 +147,10 @@ it("the lede quotes the newest still in the air, cut on a word", () => {
   );
   const line = lede(murmurs);
   assert.ok(
-    line.startsWith("Newest in the air, from Watch the osprey shore: gulls wheel"),
+    line.startsWith(`Newest in the air, from ${FSI}Watch the osprey shore${PDI}: ${FSI}gulls`),
     `the lede should quote osprey's murmur, not kestrel's settled one: ${line}`,
   );
-  assert.ok(line.endsWith("over the..."), `the quote should end on a whole word: ${line}`);
+  assert.ok(line.endsWith(`over the...${PDI}`), `the quote should end on a whole word: ${line}`);
 });
 
 it("the lede keeps room for the murmur however long its quest's name runs", () => {
@@ -157,13 +161,21 @@ it("the lede keeps room for the murmur however long its quest's name runs", () =
   const line = lede(murmurs);
   assert.ok(
     line.startsWith(
-      "Newest in the air, from the nightly audit, which found everything in...: gulls",
+      `Newest in the air, from ${FSI}the nightly audit, which found everything in...${PDI}: ${FSI}`,
     ),
     `the quest's name should be cut on a word before the murmur: ${line}`,
   );
-  // What four lines hold on a phone, which the page's live test measures.
-  const most = "Newest in the air, from : ".length + 48 + 84 + 2 * "...".length;
-  assert.ok([...line].length <= most, `the lede ran past what its box holds: ${line}`);
+});
+
+it("the lede holds a direction the murmur sets to the murmur, though a cut drops its end", () => {
+  // A right-to-left override opened in the quest's name and never closed, as a cut leaves it.
+  const purpose = `\u202e${"the nightly audit, which found everything in order ".repeat(2)}`;
+  const { murmurs } = murmursOf(holding([murmur("OSPREY", 200, { purpose, text: "Gulls." })]));
+  const line = lede(murmurs);
+  assert.ok(
+    line.includes(`...${PDI}: ${FSI}Gulls.${PDI}`),
+    `the name's isolate should close before the colon and the quote: ${line}`,
+  );
 });
 
 it("a murmur's words are cut on a word, without a stop before the ellipsis", () => {
