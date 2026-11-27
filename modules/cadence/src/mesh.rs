@@ -4,6 +4,7 @@
 //! them to know whether the session keeping the cycle fast is there and
 //! answering, and writes a question the way the harness's own folder
 //! transport does: one JSON file per message, renamed into place whole.
+//! Long because its tests write and read a mesh on disk beside the code.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -174,6 +175,23 @@ pub struct Message {
     pub pid: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub re: Option<String>,
+    /// The message this one replaces, as a hold replaced by another.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supersedes: Option<String>,
+    /// Whether this answer ends the hold it answers.
+    #[serde(
+        default,
+        rename = "endsHold",
+        skip_serializing_if = "std::ops::Not::not"
+    )]
+    pub ends_hold: bool,
+}
+
+/// A message as [`Mesh::senders`] finds it: who sent it and what it said.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Sent {
+    pub from: String,
+    pub text: String,
 }
 
 #[derive(Deserialize)]
@@ -336,6 +354,59 @@ impl Mesh {
     /// named on either side of midnight here.
     #[must_use]
     pub fn sent_since(&self, from_ms: i64) -> Vec<Message> {
+        self.files_since(from_ms)
+            .iter()
+            .filter_map(|p| read_json::<Message>(p))
+            .collect()
+    }
+
+    /// Who sent each message sent at `from_ms` or later whose short id,
+    /// the last part of its id, is among `ids`, and what it said, by that
+    /// short id. A file's name is its message's id, `<ms>-<from>-<pid>-<short
+    /// id>`, so only those messages are opened. One whose body names another
+    /// id or sender than its name says is no one's, and so is a short id two
+    /// different messages share. A message among `ids` that can't be read is said why.
+    pub fn senders(
+        &self,
+        from_ms: i64,
+        ids: &BTreeSet<String>,
+    ) -> Result<BTreeMap<String, Sent>, String> {
+        let mut found: BTreeMap<String, Option<Sent>> = BTreeMap::new();
+        for path in self.files_since(from_ms) {
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            let parts: Vec<&str> = stem.split('-').collect();
+            let [_, named, _, short] = parts.as_slice() else {
+                continue;
+            };
+            if !ids.contains(*short) {
+                continue;
+            }
+            let message = read_json::<Message>(&path)
+                .ok_or_else(|| format!("the message {short} cited can't be read"))?;
+            let sent = (message.id == stem && message.from == *named).then_some(Sent {
+                from: message.from,
+                text: message.text,
+            });
+            found
+                .entry((*short).to_owned())
+                .and_modify(|was| {
+                    if *was != sent {
+                        *was = None;
+                    }
+                })
+                .or_insert(sent);
+        }
+        Ok(found
+            .into_iter()
+            .filter_map(|(id, sent)| Some((id, sent?)))
+            .collect())
+    }
+
+    /// Every message's file whose id is stamped at `from_ms` or later, as
+    /// [`Mesh::sent_since`] reads them.
+    fn files_since(&self, from_ms: i64) -> Vec<PathBuf> {
         let earliest = jiff::Timestamp::from_millisecond(from_ms - 24 * 3600 * 1000)
             .map(|at| at.strftime("%Y-%m-%d").to_string())
             .unwrap_or_default();
@@ -347,7 +418,6 @@ impl Mesh {
                     .and_then(|n| stamped_at(&n.to_string_lossy()))
                     .is_some_and(|at| at >= from_ms)
             })
-            .filter_map(|p| read_json::<Message>(&p))
             .collect()
     }
 
@@ -519,6 +589,8 @@ mod tests {
             text: "a target slipped".into(),
             pid: 1,
             re: None,
+            supersedes: None,
+            ends_hold: false,
         }
     }
 

@@ -38,11 +38,14 @@ EOF
 
 zmodload zsh/zpty
 integer failed=0
-# What typing the words and Tab offers, one match to a line.
+# What typing the words and Tab offers, one match to a line. Each editor
+# gets the home, runtime and data folders of tuple-completes-in-zsh.sh's
+# folder of its own, so a daemon its tuple starts keeps everything where
+# that script's stop finds it.
 offered() {
   local line said
   zpty z env -i HOME=$here TERM=xterm ZDOTDIR=$here/dot PATH=$PATH \
-    XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR zsh -d -i
+    XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR XDG_DATA_HOME=$XDG_DATA_HOME zsh -d -i
   zpty -r z line '*ready*'
   zpty -w -n z "$1"$'\t'
   while zpty -r z line; do said+=$line; done
@@ -55,6 +58,9 @@ expect() {
   local typed=$1 wanted
   local -a got
   shift
+  # Named first, so a run cut off for time says which editor hung
+  # (tuple-completes-in-zsh.sh).
+  print -ru2 -- "typing \"$typed\""
   got=("${(@f)$(offered $typed)}")
   for wanted in "$@"; do
     if (( ! ${got[(Ie)$wanted]} )); then
@@ -66,10 +72,22 @@ expect() {
 }
 
 expect 'tuple ca' call capture
-expect 'tuple call ' join leave mute unmute start
+# Among these, every command core runs against it, and the flags
+# tuple-call and tuple-people pass as they follow it: --format before the
+# command, as they pass it, and --raw after state follow.
+expect 'tuple --' --format
+expect 'tuple call ' accept join leave mute unmute start
 expect 'tuple call l' leave list
 expect 'tuple cont' contacts
+expect 'tuple contacts ' favorite follow unfavorite
+# Tuple calls these two deprecated, so one failing may mean a build only
+# hides it from Tab, or that it's gone. Never try one by hand to tell:
+# new opens a call in Joel's room and share shares his screen.
+expect 'tuple ne' new
+expect 'tuple sh' share
 expect 'tuple st' start state stop
+expect 'tuple state ' follow
+expect 'tuple state follow --' --raw
 # Only v2026_11_19.0 on has webcam, so an older build installed fails here.
 expect 'tuple w' webcam whoami
 expect 'tuple webcam ' list start stop

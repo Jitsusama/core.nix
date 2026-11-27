@@ -1424,7 +1424,7 @@ works the same way everywhere.
   their choices too, so "scale 1.5" finds 1.5× without a step in, the
   setting's name a hidden word on each of its choices.
   A part is found from the top by its name, three letters or more,
-  saying where it lives (Rotation, Desktop › Screens › Built-in screen;
+  saying where it lives (Rotation, Machine › Screens › Built-in screen;
   Health, Machine › Power › Battery), and Return goes there, the path
   filled, so - climbs back out. A part named as something
   asked whole at the top (the processor's Cores) is that answer instead.
@@ -1590,7 +1590,12 @@ works the same way everywhere.
   how the drawer lays out; where it still won't fit, it gives way before
   the value. It is no line for the cursor.
 - **Places are levels.** Desktop, Machine and Network gather what
-  they're about, and a place may hold a smaller one, as Machine holds
+  they're about, split as hardware and not (Joel, 2026-11-11: "we have
+  hardware, we have not hardware"): Machine holds the machine's parts
+  and how each is doing, its screens, sound, cameras and desk light
+  among them; Desktop holds what's on the screens and what's done there,
+  windows, tabs, what's copied or captured and what's playing; and
+  Network its connections. A place may hold a smaller one, as Machine holds
   Power (Battery, the power profile, Sleep, Lock, Log Out, Reboot and
   Power Off), with Keep Awake beside it rather than in it, one row of one
   name whatever its state. Each is a row found by its word, stepping in
@@ -1651,7 +1656,10 @@ works the same way everywhere.
   the charger and the battery, since its own choice isn't a mode Joel
   left on). For You is a place, so Return steps into it whatever it
   holds, and Return on what's first goes where it's done; Super+O,
-  Return, Return reaches the pressing thing, each press foreseen. Every place
+  Return, Return reaches the pressing thing, each press foreseen, and
+  what sessions raise is one Return deeper, inside Agents, never at
+  For You's top (Joel, 2026-11-25 21:52: "it also makes no sense for
+  the agents to be top level"). Every place
   and list opens on its first row, Now and For You included, so the same
   keys land on the same row every time: what's pressing earns the top by
   order, never by the selection travelling to it (Joel, 2026-10-29:
@@ -1954,7 +1962,7 @@ works the same way everywhere.
   Put It Back leads
   what's inside, holding the zone it kept until the laptop is somewhere
   else. The time here holds the clock and never the date: its Zone, a
-  thing saying its offset, abbreviation, next change and tzdata's
+  thing saying its offset, abbreviation, next two changes and tzdata's
   version, then UTC, Unix time, TAI, GPS time and sidereal time, each to
   the second and counting while it's shown, then how the clock is kept.
   The date holds the calendar alone: the ISO date, ISO week date and

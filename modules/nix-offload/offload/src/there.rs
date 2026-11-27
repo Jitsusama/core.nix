@@ -3398,8 +3398,16 @@ fn far_within(command: &str, grace: &str, far: Far) -> String {
 /// November a Mac on 12 processors ran five at once, four of them sent
 /// by different runs, at load 75 to 94, and lost its DNS: Nix holds each
 /// client to its own `max-jobs`, and the Mac's load was read once for
-/// each run, before any of them had started.
-pub const NEARBY_AT_ONCE: u32 = 2;
+/// each run, before any of them had started. Two at once still took a
+/// Mac to 60 over five on 18 November, and velocity's ruling of 26
+/// November is one lent build at a time, whoever sends it. The turn is
+/// taken on the Mac itself, so two runs whose rooms were read at once
+/// still build there one after the other.
+pub const NEARBY_AT_ONCE: u32 = 1;
+
+/// How many turns a machine nearby's builds are counted in: the two a run
+/// took before 26 November, when [`NEARBY_AT_ONCE`] was 2.
+const TURNS_COUNTED: u32 = 2;
 
 /// What a shell runs to name the boot it runs in: Linux's boot id, or a
 /// Mac's boot session's. Both are fixed for the whole boot, where a Mac's
@@ -3447,17 +3455,24 @@ const TURNS_READ: &str = "turns=\"${NIX_OFFLOAD_TURNS:-$HOME/.cache/nix-offload/
 /// account in one pid namespace: two namespaces of one boot sharing a home
 /// read each other's turns as dead too, and nothing here tells them apart.
 pub fn in_turn_nearby(command: &str) -> String {
+    in_one_of_turns(command, NEARBY_AT_ONCE)
+}
+
+/// [`in_turn_nearby`], with `at_once` turns rather than
+/// [`NEARBY_AT_ONCE`], so its tests can show how a run passes over a
+/// turn it can't make for another.
+fn in_one_of_turns(command: &str, at_once: u32) -> String {
     format!(
         "{TURNS_READ} \
          boot=$({BOOT_READ}); mine=\"$$ $boot\"; \
          here=$(uname -n); turn=; waited=0; unmadebefore=; \
-         trap 'k=1; while [ \"$k\" -le {NEARBY_AT_ONCE} ]; do \
+         trap 'k=1; while [ \"$k\" -le {at_once} ]; do \
          if [ \"$(readlink \"$turns/$k\" 2>/dev/null)\" = \"$mine\" ]; then \
          rm -f \"$turns/$k\"; fi; \
          k=$((k + 1)); done' EXIT; \
          if [ -z \"$boot\" ]; then turn=none; fi; \
          while [ -z \"$turn\" ]; do mkdir -p \"$turns\" 2>/dev/null; n=1; unmade=0; holders=; \
-         while [ \"$n\" -le {NEARBY_AT_ONCE} ]; do \
+         while [ \"$n\" -le {at_once} ]; do \
          if [ -d \"$turns/$n\" ] && [ ! -L \"$turns/$n\" ]; then \
          unmade=$((unmade + 1)); n=$((n + 1)); continue; fi; \
          if ln -s \"$mine\" \"$turns/$n\" 2>/dev/null; then turn=\"$turns/$n\"; break; fi; \
@@ -3478,7 +3493,7 @@ pub fn in_turn_nearby(command: &str) -> String {
          if [ -n \"$taker\" ] && [ \"${{taker#* }}\" != \"$boot\" ]; then turn=shared; break; fi; \
          turn=; unmadebefore=; sleep \"${{NIX_OFFLOAD_TURN_LOOK:-1}}\" 2>/dev/null || sleep 1; \
          continue; fi; \
-         if [ \"$unmade\" -ge {NEARBY_AT_ONCE} ]; then \
+         if [ \"$unmade\" -ge {at_once} ]; then \
          if [ -n \"$unmadebefore\" ]; then turn=none; break; fi; \
          unmadebefore=1; sleep 1; continue; fi; \
          unmadebefore=; \
@@ -5478,13 +5493,62 @@ pub fn fetches(machine: &Nearby, asked: &Asked, scratch: &Path, ssh: &str) -> bo
 /// November the net's comparison went to a Mac at 35 over five, under its
 /// room, while a session's darwin build already ran there, and the two
 /// took it to 60. So it counts the runs sent to it that build there now
-/// too, by the turns they hold ([`in_turn_nearby`]).
+/// too, by the turns they hold ([`in_turn_nearby`]), and its memory
+/// ([`Memory`]), which a Mac asked by `nix-offload busy` doesn't say.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Load {
     pub minute: f64,
     pub five: f64,
     pub cores: u32,
     pub building: u32,
+    pub memory: Option<Memory>,
+}
+
+/// How much memory a Mac has to spare: the share its kernel says is
+/// free (`kern.memorystatus_level`), and the swap-outs `vm_stat` counted
+/// over the last `window` seconds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Memory {
+    pub free: u32,
+    pub swapped: u64,
+    pub window: u32,
+}
+
+/// The share of a Mac's memory free below which it has no room, by
+/// velocity's line for a start there: 35 until its ruling of 26
+/// November raised it to 40, read twice (`changed::mac::room_held`).
+const FREE_AT_LEAST: u32 = 40;
+
+impl Memory {
+    /// Whether the Mac is short of memory: under [`FREE_AT_LEAST`] free,
+    /// or swapping out within its window.
+    pub fn short(self) -> bool {
+        self.free < FREE_AT_LEAST || self.swapped > 0
+    }
+
+    /// The memory as a person reads it, as `41% free and 0 swap-outs over
+    /// 72 s`.
+    pub fn said(self) -> String {
+        format!(
+            "{}% free and {} swap-out{} over {} s",
+            self.free,
+            self.swapped,
+            if self.swapped == 1 { "" } else { "s" },
+            self.window
+        )
+    }
+
+    /// Read from [`MEMORY_READ`]'s line, as `41 0 72`, or none when it
+    /// says anything else.
+    fn parse(line: &str) -> Option<Memory> {
+        let mut words = line.split_whitespace();
+        let memory = Memory {
+            free: words.next()?.parse().ok().filter(|free| *free <= 100)?,
+            swapped: words.next()?.parse().ok()?,
+            window: words.next()?.parse().ok().filter(|window| *window > 0)?,
+        };
+        words.next().is_none().then_some(memory)
+    }
 }
 
 /// Runnable work for each processor past which a Mac has no room. On 16
@@ -5504,7 +5568,10 @@ impl Load {
     /// or one too many, or one that isn't a load, so it's never read from
     /// the wrong place. A line after the processors, as [`building_read`]
     /// says, is how many runs sent to it build there now, and none is read
-    /// as none, as a Mac's own `sysctl` says it to `nix-offload busy`.
+    /// as none, as a Mac's own `sysctl` says it to `nix-offload busy`. A
+    /// line after that is its memory ([`MEMORY_READ`]), read as none when
+    /// it says anything else, so a Mac whose `vm_stat` failed has a load
+    /// still, and no room.
     pub fn parse(said: &str) -> Option<Load> {
         let mut lines = said.lines();
         let averages = lines.next()?.trim();
@@ -5528,6 +5595,7 @@ impl Load {
             Some(line) => line.trim().parse::<u32>().ok()?,
             None => 0,
         };
+        let memory = lines.next().and_then(Memory::parse);
         if lines.next().is_some() {
             return None;
         }
@@ -5536,6 +5604,7 @@ impl Load {
             five,
             cores,
             building,
+            memory,
         })
     }
 
@@ -5557,14 +5626,16 @@ impl Load {
 }
 
 /// What a shell runs to say how many runs sent to its machine build there
-/// now: its [`NEARBY_AT_ONCE`] turns ([`in_turn_nearby`]) held by a shell
-/// alive in this boot, as a run waiting for a turn reads them. A machine
-/// with no folder builds none.
+/// now: its turns ([`in_turn_nearby`]) held by a shell alive in this
+/// boot, as a run waiting for a turn reads them. A machine with no folder
+/// builds none. It counts [`TURNS_COUNTED`] of them, past
+/// [`NEARBY_AT_ONCE`], since a run sent by an older nix-offload, from
+/// before 26 November, may hold a second.
 pub fn building_read() -> String {
     format!(
         "{TURNS_READ} \
          boot=$({BOOT_READ}); building=0; k=1; \
-         while [ \"$k\" -le {NEARBY_AT_ONCE} ]; do holder=$(readlink \"$turns/$k\" 2>/dev/null); \
+         while [ \"$k\" -le {TURNS_COUNTED} ]; do holder=$(readlink \"$turns/$k\" 2>/dev/null); \
          k=$((k + 1)); pid=${{holder%% *}}; \
          case \"$pid\" in ''|*[!0-9]*|0*|????????*) continue;; esac; \
          if [ -n \"$boot\" ] && [ \"${{holder#* }}\" = \"$boot\" ] && \
@@ -5573,11 +5644,53 @@ pub fn building_read() -> String {
     )
 }
 
+/// What a Mac runs to say its memory ([`Memory::parse`]): the share free,
+/// then the swap-outs since the newest reading it kept at least a minute
+/// and at most ten minutes ago, and how long ago that was. It keeps a
+/// reading at each ask, in `~/.cache/nix-offload/swapouts`, whoever asks.
+/// With none kept in that span it reads again ten seconds on, so a Mac
+/// asked rarely is judged on a shorter window rather than none. A reading
+/// past the newest count is an older boot's, which a restart reset. It
+/// says nothing when either figure can't be read. Each figure is matched
+/// as digits rather than tested with `-ge`, which zsh, a Mac's login
+/// shell, answers true for an empty string.
+const MEMORY_READ: &str = r#"free=$(sysctl -n kern.memorystatus_level 2>/dev/null)
+swaps() { vm_stat 2>/dev/null | awk '/^Swapouts:/ { gsub(/\./, "", $2); print $2 }'; }
+number() { case "$1" in ''|*[!0-9]*) return 1;; esac; }
+out=$(swaps)
+now=$(date +%s)
+kept="${HOME:-/tmp}/.cache/nix-offload/swapouts"
+if number "$free" && number "$out"; then
+  base=$(awk -v now="$now" -v out="$out" '
+    $1 <= now - 60 && $1 >= now - 600 && $2 <= out + 0 { at = $1; was = $2 }
+    END { if (at != "") print now - at, was }' "$kept" 2>/dev/null)
+  mkdir -p "${kept%/*}" && echo "$now $out" >> "$kept"
+  if [ -n "$base" ]; then
+    window=${base%% *}; was=${base#* }
+  else
+    was=$out; sleep 10; out=$(swaps); now=$((now + 10)); window=10
+    number "$out" && echo "$now $out" >> "$kept"
+  fi
+  tail -n 200 "$kept" > "$kept.$$" 2>/dev/null && mv "$kept.$$" "$kept"
+  number "$out" && number "$was" && [ "$out" -ge "$was" ] &&
+    echo "$free $((out - was)) $window"
+fi"#;
+
+/// [`MEMORY_READ`], for a test to run.
+#[cfg(test)]
+pub fn memory_read() -> &'static str {
+    MEMORY_READ
+}
+
 /// What a Mac runs to say its load ([`Load::parse`]): its load and
 /// processors, then the runs it builds ([`building_read`]), counted only
-/// once the load was said, so a Mac whose `sysctl` fails says nothing.
+/// once the load was said, so a Mac whose `sysctl` fails says nothing,
+/// then its memory ([`MEMORY_READ`]).
 pub fn load_read() -> String {
-    format!("sysctl -n vm.loadavg hw.ncpu && {{ {}; }}", building_read())
+    format!(
+        "sysctl -n vm.loadavg hw.ncpu && {{ {}; }} && {{ {MEMORY_READ}\n}}",
+        building_read()
+    )
 }
 
 /// A Mac nearby's load, `Err` saying why when it couldn't be asked here or
@@ -6023,6 +6136,27 @@ mod tests {
     use std::sync::mpsc;
     use std::time::Duration;
 
+    /// The turns these tests take on a machine nearby: two, rather than
+    /// the one [`super::NEARBY_AT_ONCE`] gives a run, so they can show a
+    /// run passing over one turn for another, and waiting on all of them.
+    const NEARBY_AT_ONCE: u32 = 2;
+
+    /// [`super::in_turn_nearby`], in one of this module's
+    /// [`NEARBY_AT_ONCE`] turns.
+    fn in_turn_nearby(command: &str) -> String {
+        in_one_of_turns(command, NEARBY_AT_ONCE)
+    }
+
+    #[test]
+    fn a_run_sent_nearby_takes_the_only_turn() {
+        // One lent build at a time, by velocity's ruling of 26 November.
+        assert_eq!(
+            super::in_turn_nearby("true"),
+            in_one_of_turns("true", 1),
+            "a run sent nearby may take more than one turn"
+        );
+    }
+
     #[test]
     fn a_macs_load_is_read_from_its_first_two_averages_or_not_at_all() {
         assert_eq!(
@@ -6032,9 +6166,34 @@ mod tests {
                 five: 88.31,
                 cores: 12,
                 building: 0,
+                memory: None,
             }),
             "a Mac's sysctl wasn't read as its minute's and five minutes' loads"
         );
+        assert_eq!(
+            Load::parse("{ 20.00 35.00 40.00 }\n12\n0\n41 3 72\n").and_then(|load| load.memory),
+            Some(Memory {
+                free: 41,
+                swapped: 3,
+                window: 72,
+            }),
+            "a Mac's memory wasn't read from the line after its builds"
+        );
+        for unread in [
+            "41 3",
+            "41 -3 72",
+            "141 0 72",
+            "41 0 0",
+            "41 0 72 9",
+            "free",
+        ] {
+            assert_eq!(
+                Load::parse(&format!("{{ 20.00 35.00 40.00 }}\n12\n0\n{unread}\n"))
+                    .map(|load| load.memory),
+                Some(None),
+                "{unread:?} was read as a Mac's memory, or lost its load"
+            );
+        }
         assert_eq!(
             Load::parse("{ 20.00 35.00 40.00 }\n12\n1\n").map(|load| load.building),
             Some(1),
@@ -6061,7 +6220,7 @@ mod tests {
             "{ 20.00 60.00 }\n12\n",
             "{ 20.00 60.00 80.00 90.00 }\n12\n",
             "{ 20.00 60.00 80.00 }\n12\nmany\n",
-            "{ 20.00 60.00 80.00 }\n12\n1\n2\n",
+            "{ 20.00 60.00 80.00 }\n12\n1\n41 0 60\n2\n",
         ] {
             assert_eq!(
                 Load::parse(unread),
@@ -6125,7 +6284,7 @@ mod tests {
                 ));
             }
             let _ = fs::remove_file(turns.join("1"));
-            let past = turns.join((NEARBY_AT_ONCE + 1).to_string());
+            let past = turns.join((TURNS_COUNTED + 1).to_string());
             std::os::unix::fs::symlink(format!("{pid} {boot}"), &past).unwrap();
             read.push((
                 counted(&turns),
@@ -6183,6 +6342,174 @@ mod tests {
         }
     }
 
+    /// A Mac's own `sysctl`, `vm_stat` and `sleep`, stood in for in a folder
+    /// of their own: its `sysctl` says the share free kept in `free`, its `vm_stat`
+    /// the swap-outs kept in `out`, failing with none, and its sleep takes
+    /// the count to `after`'s, as swapping in those ten seconds.
+    struct MacStandIn {
+        folder: tempfile::TempDir,
+        bin: PathBuf,
+        fake: PathBuf,
+        kept: PathBuf,
+    }
+
+    impl MacStandIn {
+        fn new() -> Self {
+            use std::os::unix::fs::PermissionsExt;
+            let folder = tempfile::tempdir().unwrap();
+            let (bin, fake) = (folder.path().join("bin"), folder.path().join("fake"));
+            fs::create_dir_all(&bin).unwrap();
+            fs::create_dir_all(&fake).unwrap();
+            for (name, script) in [
+                (
+                    "sysctl",
+                    "case \"$*\" in *memorystatus*) cat \"$FAKE/free\";; \
+                     *) printf '{ 20.00 35.00 30.00 }\\n12\\n';; esac",
+                ),
+                (
+                    "vm_stat",
+                    "[ -s \"$FAKE/out\" ] || exit 1; \
+                     printf 'Pages free: 9.\\nSwapouts: %s.\\n' \"$(cat \"$FAKE/out\")\"",
+                ),
+                (
+                    "sleep",
+                    "[ -f \"$FAKE/after\" ] && cp \"$FAKE/after\" \"$FAKE/out\"; :",
+                ),
+            ] {
+                let path = bin.join(name);
+                fs::write(&path, format!("#!/bin/sh\n{script}\n")).unwrap();
+                fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+            }
+            let kept = folder.path().join(".cache/nix-offload/swapouts");
+            Self {
+                folder,
+                bin,
+                fake,
+                kept,
+            }
+        }
+
+        /// What `script` says under `shell`, with these figures and these
+        /// readings kept.
+        fn read(&self, shell: &str, script: &str, figures: [&str; 3], history: &str) -> String {
+            let [free, out, after] = figures;
+            fs::create_dir_all(self.kept.parent().unwrap()).unwrap();
+            fs::write(&self.kept, history).unwrap();
+            fs::write(self.fake.join("free"), free).unwrap();
+            fs::write(self.fake.join("out"), out).unwrap();
+            fs::write(self.fake.join("after"), after).unwrap();
+            let said = Command::new(shell)
+                .args(["-c", &first_on_path(&self.bin, script)])
+                .env("FAKE", &self.fake)
+                .env("HOME", self.folder.path())
+                .env("NIX_OFFLOAD_TURNS", self.folder.path().join("none"))
+                .output()
+                .unwrap();
+            String::from_utf8(said.stdout).unwrap()
+        }
+    }
+
+    #[test]
+    fn a_macs_memory_is_read_over_a_minute_it_kept_or_ten_seconds_it_waits() {
+        let mac = MacStandIn::new();
+        let memory = |said: &str| Memory::parse(said.trim());
+        for shell in ["dash", "zsh"] {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+
+            let said = mac.read(shell, memory_read(), ["41", "100", "100"], "");
+            assert_eq!(
+                memory(&said),
+                Some(Memory {
+                    free: 41,
+                    swapped: 0,
+                    window: 10
+                }),
+                "{shell}: a Mac with no reading kept wasn't read over ten seconds: {said:?}"
+            );
+            let kept_lines = fs::read_to_string(&mac.kept).unwrap();
+            assert_eq!(
+                kept_lines.lines().count(),
+                2,
+                "{shell}: a Mac didn't keep its two readings: {kept_lines:?}"
+            );
+
+            // Kept as each ask appends them: past ten minutes, two in the
+            // span, the newer last, and one too new.
+            let minutes_ago = format!(
+                "{} 40\n{} 80\n{} 90\n{} 95\n",
+                now - 900,
+                now - 300,
+                now - 120,
+                now - 10
+            );
+            let said = mac.read(shell, memory_read(), ["41", "100", "200"], &minutes_ago);
+            let read_over = memory(&said);
+            assert!(
+                read_over.is_some_and(
+                    |memory| memory.swapped == 10 && (119..=125).contains(&memory.window)
+                ),
+                "{shell}: a Mac wasn't read from its newest reading a minute old: {said:?}"
+            );
+            assert!(
+                read_over.is_some_and(Memory::short),
+                "{shell}: a Mac swapping within its window had memory to spare"
+            );
+
+            let rebooted = format!("{} 5000\n", now - 120);
+            let said = mac.read(shell, memory_read(), ["41", "100", "103"], &rebooted);
+            assert_eq!(
+                memory(&said).map(|memory| (memory.swapped, memory.window)),
+                Some((3, 10)),
+                "{shell}: a reading from before a restart was read as a baseline: {said:?}"
+            );
+
+            let said = mac.read(shell, memory_read(), ["30", "100", "100"], "");
+            assert!(
+                memory(&said).is_some_and(|memory| memory.free == 30 && memory.short()),
+                "{shell}: a Mac 30% free had memory to spare: {said:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_mac_that_cant_say_its_memory_says_none_and_its_load_ends_with_it() {
+        // zsh, a Mac's login shell, takes an empty figure for 0 in `-ge`,
+        // which once read a failed vm_stat as no swapping.
+        let mac = MacStandIn::new();
+        for shell in ["dash", "zsh"] {
+            assert_eq!(
+                mac.read(shell, memory_read(), ["41", "", ""], ""),
+                "",
+                "{shell}: a Mac whose vm_stat failed said its memory"
+            );
+            // From 0, so zsh's empty-as-0 in `-ge` would pass it.
+            assert_eq!(
+                mac.read(shell, memory_read(), ["41", "0", ""], ""),
+                "",
+                "{shell}: a Mac whose vm_stat failed after its wait said its memory"
+            );
+            assert_eq!(
+                mac.read(shell, memory_read(), ["no", "100", "100"], ""),
+                "",
+                "{shell}: a Mac whose sysctl failed said its memory"
+            );
+
+            let said = mac.read(shell, &load_read(), ["41", "100", "100"], "");
+            assert_eq!(
+                Load::parse(&said).and_then(|load| load.memory),
+                Some(Memory {
+                    free: 41,
+                    swapped: 0,
+                    window: 10
+                }),
+                "{shell}: a Mac's whole answer didn't end with its memory: {said:?}"
+            );
+        }
+    }
+
     #[test]
     fn a_mac_has_no_room_once_either_load_is_past_three_a_processor() {
         let at = |minute: f64, five: f64| Load {
@@ -6190,6 +6517,7 @@ mod tests {
             five,
             cores: 12,
             building: 0,
+            memory: None,
         };
         assert!(
             at(20.0, 60.0).over(),
@@ -7580,6 +7908,14 @@ mod tests {
         std::os::unix::fs::symlink(holder, turns.join(n.to_string())).unwrap();
     }
 
+    /// The turns from `first` to the last, as a shell's list of words.
+    fn turns_from(first: u32) -> String {
+        (first..=NEARBY_AT_ONCE)
+            .map(|n| n.to_string())
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
     /// Who holds turn `n` in `turns`, if anyone does.
     fn turn_holder(turns: &Path, n: u32) -> Option<String> {
         fs::read_link(turns.join(n.to_string()))
@@ -7666,10 +8002,10 @@ mod tests {
         });
         let why = format!(
             "nix-offload: {} already runs as many builds sent to it as it takes at once, so \
-             this waits there for its turn, held in {} by shells {pid}, {pid}",
+             this waits there for its turn, held in {} by shells {}",
             this_machine(),
             turns.path().display(),
-            pid = std::process::id()
+            vec![std::process::id().to_string(); NEARBY_AT_ONCE as usize].join(", ")
         );
         for said in ["at once", "again a second on"] {
             let heard = told
@@ -7705,11 +8041,13 @@ mod tests {
             None,
             "{shell} kept its turn once it ended"
         );
-        assert_eq!(
-            turn_holder(turns.path(), 1),
-            Some(live),
-            "{shell} gave back a turn it never held"
-        );
+        for n in 1..NEARBY_AT_ONCE {
+            assert_eq!(
+                turn_holder(turns.path(), n),
+                Some(live.clone()),
+                "{shell} gave back turn {n}, which it never held"
+            );
+        }
     }
 
     #[test]
@@ -7762,7 +8100,9 @@ mod tests {
                     None,
                     "{shell} kept the turn {why} once it ended"
                 );
-                assert_eq!(turn_holder(turns.path(), 1), Some(live.clone()), "{shell}");
+                for n in 1..NEARBY_AT_ONCE {
+                    assert_eq!(turn_holder(turns.path(), n), Some(live.clone()), "{shell}");
+                }
             }
         }
     }
@@ -8264,15 +8604,14 @@ mod tests {
                 "#!/bin/sh\nt=\"$NIX_OFFLOAD_TURNS\"; looks=$(cat \"$t/looks\" 2>/dev/null); \
                  looks=$((${{looks:-0}} + 1)); echo \"$looks\" > \"$t/looks\"\n\
                  case $looks in\n\
-                 2) rmdir \"$t/1\" \"$t/2\"; \
-                 ln -s \"$LIVE\" \"$t/1\"; ln -s \"$LIVE\" \"$t/2\" ;;\n\
-                 3) rm \"$t/1\" \"$t/2\"; {mkdir} \"$t/1\" \"$t/2\" ;;\n\
-                 4) rmdir \"$t/1\" \"$t/2\" ;;\n\
+                 2) for n in {every}; do rmdir \"$t/$n\"; ln -s \"$LIVE\" \"$t/$n\"; done ;;\n\
+                 3) for n in {every}; do rm \"$t/$n\"; {mkdir} \"$t/$n\"; done ;;\n\
+                 4) for n in {every}; do rmdir \"$t/$n\"; done ;;\n\
                  esac\nexec {mkdir} \"$@\"\n",
+                every = turns_from(1),
                 mkdir = which("mkdir")
             ),
         );
-        assert_eq!(NEARBY_AT_ONCE, 2, "the stand-in mkdir makes two turns");
         let live = format!("{} {}", std::process::id(), this_boot());
         for shell in ["dash", "zsh"] {
             let turns = tempfile::tempdir().unwrap();
@@ -8456,17 +8795,19 @@ mod tests {
                 "#!/bin/sh\nt=\"$NIX_OFFLOAD_TURNS\"; looks=$(cat \"$t/looks\" 2>/dev/null); \
                  looks=$((${{looks:-0}} + 1)); echo \"$looks\" > \"$t/looks\"\n\
                  case $looks in\n\
-                 2) rmdir \"$t/1\" \"$t/2\"; ln -s \"$LIVE\" \"$t/2\"; \
+                 2) for n in {every}; do rmdir \"$t/$n\"; done; \
+                 for n in {past_the_first}; do ln -s \"$LIVE\" \"$t/$n\"; done; \
                  (w=0; until [ -L \"$t/1\" ] || [ \"$w\" -ge 400 ]; do \
                  sleep 0.05; w=$((w + 1)); done; \
                  rm -f \"$t/1\"; ln -s \"$LIVE\" \"$t/1\") & ;;\n\
-                 3) rm \"$t/1\" \"$t/2\"; {mkdir} \"$t/1\" \"$t/2\" ;;\n\
-                 4) rmdir \"$t/1\" \"$t/2\" ;;\n\
+                 3) for n in {every}; do rm \"$t/$n\"; {mkdir} \"$t/$n\"; done ;;\n\
+                 4) for n in {every}; do rmdir \"$t/$n\"; done ;;\n\
                  esac\nexec {mkdir} \"$@\"\n",
+                every = turns_from(1),
+                past_the_first = turns_from(2),
                 mkdir = which("mkdir")
             ),
         );
-        assert_eq!(NEARBY_AT_ONCE, 2, "the stand-in mkdir makes two turns");
         let live = format!("{} {}", std::process::id(), this_boot());
         for shell in ["dash", "zsh"] {
             let turns = tempfile::tempdir().unwrap();
@@ -8669,7 +9010,7 @@ mod tests {
         assert_eq!(ran.map(|ran| ran.status), Some(0));
         assert_eq!(
             fs::read_to_string(&sent).unwrap(),
-            far_saying_where(&in_turn_nearby(&asked.command())),
+            far_saying_where(&super::in_turn_nearby(&asked.command())),
             "a build sent nearby waits for a turn and says which machine it runs on"
         );
     }

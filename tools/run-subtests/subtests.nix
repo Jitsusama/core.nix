@@ -24,7 +24,14 @@ else
     buildCommand = ''
       mkdir -p $out
       export LOGFILE=/dev/null
+      # Past --, neither the check nor a word is read as an option.
       ${pkgs.lib.getExe run-subtests} --driver ${test.driver} --out $out \
-        ${pkgs.lib.escapeShellArgs ([ check ] ++ words)}
+        ${pkgs.lib.escapeShellArgs (
+          [
+            "--"
+            check
+          ]
+          ++ words
+        )}
     '';
   })

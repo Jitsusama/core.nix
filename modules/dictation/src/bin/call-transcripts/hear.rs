@@ -83,9 +83,11 @@ pub enum Job {
 /// say who the voices left numbered may be, once it's told apart; they
 /// aren't in its lines, so a restart loses them. Its first `read` lines
 /// were read back from its file, their echoes already left out. Its
-/// `told` are the echo cuts from Joel's words already journaled, by line
-/// and the sample the cut starts at, and `left` the lines of his already
-/// journaled as left out whole, by index.
+/// `told` are the echo cuts from Joel's words already journaled, by the
+/// sample the cut starts at, and `left` the lines of his already
+/// journaled as left out whole, by the sample each starts at: splitting
+/// their takes by voice moves his lines' indices on but never their
+/// times, so what's told stays told across a rejoin.
 #[derive(Default)]
 struct Writing {
     lines: Vec<Line>,
@@ -97,7 +99,7 @@ struct Writing {
     takes: usize,
     whole: bool,
     guesses: Option<String>,
-    told: HashSet<(usize, usize)>,
+    told: HashSet<usize>,
     left: HashSet<usize>,
 }
 
@@ -114,23 +116,21 @@ impl Writing {
     /// all that says where to listen for it.
     fn untold_cuts(&mut self) -> Vec<String> {
         let (cut, cuts) = echo::cut_echoes(&self.lines, &self.words, said::spoken);
-        let rate = isize::try_from(RATE).unwrap_or(isize::MAX);
         let mut untold: Vec<String> = cuts
             .into_iter()
-            .filter(|cut| self.told.insert((cut.line, cut.at)))
+            .filter(|cut| self.told.insert(cut.at))
             .map(|cut| {
                 format!(
-                    "call-transcripts: {} of Joel's words at {} cut as their echo, \
-                     {} ms after theirs",
+                    "call-transcripts: {} of Joel's words at {} cut as their echo, {}",
                     cut.text.split_whitespace().count(),
                     transcript::clock(cut.at),
-                    cut.after * 1000 / rate,
+                    cut.by(),
                 )
             })
             .collect();
         let mut left: Vec<usize> = split::echoing(&cut, &self.pieces, self.read)
             .into_iter()
-            .filter(|&index| !cut[index].text.is_empty() && self.left.insert(index))
+            .filter(|&index| self.left.insert(self.lines[index].start))
             .collect();
         left.sort_unstable();
         untold.extend(left.into_iter().map(|index| {

@@ -15,9 +15,9 @@
 //! on eero's list but stops answering, as Joel's Q70C does in standby, so
 //! a remembered TV's silence isn't the source failing either.
 //!
-//! Only that page is read, without pairing: sending it a key waits on
-//! Joel pressing Allow on the TV, and what it's playing, its volume and
-//! its input are said only through Samsung's cloud.
+//! Only that page is read here, without pairing: keys are pressed by
+//! the command (television/), and what it's playing, its volume and its
+//! input are said only through Samsung's cloud.
 
 use std::collections::BTreeMap;
 
@@ -284,6 +284,13 @@ pub fn read(asked: Vec<Asked>, now: u64) -> (Option<Source>, Vec<Found>) {
         reason: failing,
     };
     (Some(source), found)
+}
+
+/// Whether `answer` is a TV's saying it's on, as one woken from standby
+/// says once it's up.
+pub fn on_now(answer: &str) -> bool {
+    television(String::new(), answer)
+        .is_ok_and(|found| found.television.power.as_deref() == Some("on"))
 }
 
 /// One TV from its answer, kept whole in its own words but for its ids

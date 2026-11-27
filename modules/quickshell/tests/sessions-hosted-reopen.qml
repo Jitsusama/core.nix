@@ -104,8 +104,14 @@ ShellRoot {
             .map(act => act.OpenNextWindowOn);
     }
 
+    // The pid that drew a window: a viewer's, the one sessions' kitty's, as
+    // the check writes it beside its socket, so each is judged by it as on
+    // Joel's desktop; any other window, its own.
+    function drawnBy(id, opened) {
+        return String(opened).startsWith("pi-hosted.") ? 4242 : id * 10;
+    }
     function windowRecord(id, opened, workspace) {
-        return { key: `window:${id}`, id, pid: id * 10, opened, workspace, column: null,
+        return { key: `window:${id}`, id, pid: drawnBy(id, opened), opened, workspace, column: null,
             down: null, order: 0 };
     }
     function windowsTell(said) {
@@ -228,7 +234,9 @@ ShellRoot {
             JSON.stringify(opensOn("s-viewed")) === JSON.stringify([{
                 app_id: "pi-hosted.s-viewed", reference: { Id: 41 }, column: 1 }]),
             JSON.stringify(Niri.acts));
-        const window = { id: 50, pid: 500, workspace_id: 41, session: true,
+        Expect.expect("the sessions' kitty's pid is known, so its viewers are judged by it",
+            Sessions.sessionsKittyPid === "4242", Sessions.sessionsKittyPid);
+        const window = { id: 50, pid: 4242, workspace_id: 41, session: true,
             opened: "pi-hosted.s-viewed", layout: { pos_in_scrolling_layout: [1, 1] } };
         Niri.windows = Object.assign({}, Niri.windows, { "50": window });
         Niri.workspaces = Object.assign({}, Niri.workspaces, {
@@ -290,7 +298,7 @@ ShellRoot {
         Expect.expect("a viewer niri no longer lists, the index still naming it, opens again",
             viewerSpawns("s-viewed").length === 2, Niri.spawns.join("\n"));
         // It comes back as niri lists it, so it's coming no more.
-        const window = { id: 50, pid: 500, workspace_id: 41, session: true,
+        const window = { id: 50, pid: 4242, workspace_id: 41, session: true,
             opened: "pi-hosted.s-viewed", layout: { pos_in_scrolling_layout: [1, 1] } };
         Niri.windows = Object.assign({}, Niri.windows, { "50": window });
         Niri.revision += 1;
@@ -437,7 +445,8 @@ ShellRoot {
         const carried = Sessions.reopening?.waiting;
         const opens = root.openedFor[carried?.id] ?? 0;
         if (opens > 0 && carried.classed && carried.opened === null) {
-            const window = { id: opens, pid: opens * 10, workspace_id: 40, session: true,
+            const window = { id: opens, pid: drawnBy(opens, carried.classed), workspace_id: 40,
+                session: true,
                 opened: carried.classed, layout: { pos_in_scrolling_layout: [1, 1] } };
             Niri.windows = Object.assign({}, Niri.windows, { [opens]: window });
             Niri.revision += 1;
@@ -526,7 +535,7 @@ ShellRoot {
         const classed = Sessions.reopening?.waiting?.classed ?? "";
         if (classed !== "") {
             // Kept on a workspace of its own, it leaves the next its place.
-            const window = { id: 60, pid: 600, workspace_id: 41, session: true,
+            const window = { id: 60, pid: drawnBy(60, classed), workspace_id: 41, session: true,
                 opened: classed, layout: { pos_in_scrolling_layout: [1, 1] } };
             Niri.windows = Object.assign({}, Niri.windows, { "60": window });
             Niri.revision += 1;
@@ -579,7 +588,7 @@ ShellRoot {
             Niri.spawns.join("\n"));
         // niri opens it, and the place kept before is let go, so viewKept
         // never opens a second one by itself once its host serves it.
-        const window = { id: 61, pid: 610, workspace_id: on, session: true,
+        const window = { id: 61, pid: 4242, workspace_id: on, session: true,
             opened: "pi-hosted.s-waiting", layout: { pos_in_scrolling_layout: [1, 1] } };
         Niri.windows = Object.assign({}, Niri.windows, { "61": window });
         Niri.revision += 1;
@@ -615,7 +624,7 @@ ShellRoot {
             Date.now() - walkedAt < 10000, `${Date.now() - walkedAt} ms`);
         Expect.expect("nor is a place kept for it, for a second to open later",
             Sessions.keptPlaces["s-waiting"] === undefined, JSON.stringify(Sessions.keptPlaces));
-        const window = { id: 62, pid: 620, workspace_id: waitedOn, session: true,
+        const window = { id: 62, pid: 4242, workspace_id: waitedOn, session: true,
             opened: "pi-hosted.s-after", layout: { pos_in_scrolling_layout: [2, 1] } };
         Niri.windows = Object.assign({}, Niri.windows, { "62": window });
         Niri.revision += 1;
@@ -692,7 +701,7 @@ ShellRoot {
             Date.now() - walkedAt < 10000, `${Date.now() - walkedAt} ms`);
         // niri opens s-next's viewer, so the walk is done with it rather
         // than waiting out its patience behind the stages after.
-        const next = { id: 66, pid: 660, workspace_id: waitedOn, session: true,
+        const next = { id: 66, pid: 4242, workspace_id: waitedOn, session: true,
             opened: "pi-hosted.s-next", layout: { pos_in_scrolling_layout: [5, 1] } };
         Niri.windows = Object.assign({}, Niri.windows, { "66": next });
         Niri.revision += 1;
@@ -722,7 +731,7 @@ ShellRoot {
             `${JSON.stringify(Sessions.keptPlaces)} ${Niri.spawns.join("\n")}`);
         // A session its host serves whose viewer niri lists, as just after
         // a crash, before the windows daemon does.
-        const window = { id: 63, pid: 630, workspace_id: waitedOn, session: true,
+        const window = { id: 63, pid: 4242, workspace_id: waitedOn, session: true,
             opened: "pi-hosted.s-goto", layout: { pos_in_scrolling_layout: [3, 1] } };
         Niri.windows = Object.assign({}, Niri.windows, { "63": window });
         Niri.revision += 1;
@@ -747,7 +756,7 @@ ShellRoot {
         // that workspace holds a window now, and keeps an empty one after
         // it, as it always does, so a place kept elsewhere can't land on
         // the orchestrator's workspace by chance.
-        const window = { id: 65, pid: 650, workspace_id: waitedOn, session: true,
+        const window = { id: 65, pid: 4242, workspace_id: waitedOn, session: true,
             opened: "pi-hosted.s-chief", layout: { pos_in_scrolling_layout: [4, 1] } };
         Niri.windows = Object.assign({}, Niri.windows, { "65": window });
         Niri.workspaces = Object.assign({}, Niri.workspaces, {
@@ -803,7 +812,8 @@ ShellRoot {
     }
     // niri opens a window on the workspace given, and tells the shell.
     function opensOnly(window, classed, workspace) {
-        const opened = { id: window, pid: window * 10, workspace_id: workspace, session: true,
+        const opened = { id: window, pid: drawnBy(window, classed), workspace_id: workspace,
+            session: true,
             opened: classed, layout: { pos_in_scrolling_layout: [5, 1] } };
         Niri.windows = Object.assign({}, Niri.windows, { [window]: opened });
         Niri.workspaces = Object.assign({}, Niri.workspaces, { [workspace]:
@@ -927,7 +937,7 @@ ShellRoot {
                 active_window_id: 92 },
             "46": { id: 46, idx: 6, output: "DP-4", is_focused: false, active_window_id: null }
         });
-        Niri.windows = Object.assign({}, Niri.windows, { "92": { id: 92, pid: 920,
+        Niri.windows = Object.assign({}, Niri.windows, { "92": { id: 92, pid: 4242,
             workspace_id: 44, opened: "pi-hosted.s-lead",
             layout: { pos_in_scrolling_layout: [1, 1] } } });
         Niri.revision += 1;
@@ -961,11 +971,14 @@ ShellRoot {
         Expect.expect("and each is said, by why: no app id, no words, its viewer coming",
             JSON.stringify(root.unhostedSaid) === JSON.stringify(["s.unnamed unnamed",
                 "s-wordless hostless", "s-coming opening"]), JSON.stringify(root.unhostedSaid));
-        // What the held-back one left is put back, so no later stage takes
-        // a viewer as coming, nor a window as Go To's.
-        const attaching = Object.assign({}, Sessions.attaching);
-        delete attaching["pi-hosted.s-coming"];
-        Sessions.attaching = attaching;
+        // What the held-back one left is put back, its ask and the press it
+        // took over gone, so no later stage takes a viewer as coming, a
+        // give-up as said to a press, nor a window as Go To's.
+        Sessions.forgetAsk("pi-hosted.s-coming");
+        Expect.expect("and nothing of the held-back one's ask is left",
+            !Sessions.viewerComing("pi-hosted.s-coming")
+            && !("pi-hosted.s-coming" in Sessions.pressedFor),
+            `${JSON.stringify(Sessions.attaching)} ${JSON.stringify(Sessions.pressedFor)}`);
         Sessions.goingTo = goingTo;
     }
 
@@ -988,7 +1001,7 @@ ShellRoot {
             opens[0].reference?.Id === 44 && opens[0].column === 2, JSON.stringify(opens));
         Expect.expect("naming nothing, since one has the name",
             !Niri.acts.some(act => act.SetWorkspaceName), JSON.stringify(Niri.acts));
-        const window = { id: 93, pid: 930, workspace_id: 44, session: true,
+        const window = { id: 93, pid: 4242, workspace_id: 44, session: true,
             opened: "pi-hosted.s-kelp", layout: { pos_in_scrolling_layout: [2, 1] } };
         Niri.windows = Object.assign({}, Niri.windows, { "93": window });
         Niri.revision += 1;
@@ -1013,7 +1026,7 @@ ShellRoot {
             && Niri.workspaces[opens[0].reference?.Id]?.active_window_id === null,
             `${JSON.stringify(naming)} ${JSON.stringify(opens)}`);
         const reef = opens[0].reference?.Id;
-        const window = { id: 94, pid: 940, workspace_id: reef, session: true,
+        const window = { id: 94, pid: 4242, workspace_id: reef, session: true,
             opened: "pi-hosted.s-reef", layout: { pos_in_scrolling_layout: [1, 1] } };
         Niri.windows = Object.assign({}, Niri.windows, { "94": window });
         // It took a window, so niri keeps an empty workspace after it.

@@ -421,7 +421,7 @@ struct Read {
 
 /// A message file listed: where it is, its name, and when this machine
 /// wrote it, in ms.
-type Listed = (PathBuf, String, i64);
+pub(in crate::hour::measures) type Listed = (PathBuf, String, i64);
 
 /// The messages under `messages` of the last `WITHIN` before `now` that
 /// went to the group or answer or withdraw one that did, oldest first,
@@ -512,6 +512,16 @@ struct Opened {
     through_ms: i64,
 }
 
+/// The bytes of the mesh's file at `path`, as far as `FILE_AT_MOST`, so
+/// one file of any size costs no more than that to read.
+pub(in crate::hour::measures) fn opened_at_most(path: &Path) -> std::io::Result<Vec<u8>> {
+    let mut json = Vec::new();
+    std::fs::File::open(path)?
+        .take(FILE_AT_MOST)
+        .read_to_end(&mut json)?;
+    Ok(json)
+}
+
 /// The messages the files `listed` hold as of `now_ms`, after a reading
 /// that got as far as `mark`. A file that can't be read, or doesn't parse
 /// while it may still be being written, is counted and holds the next
@@ -528,10 +538,7 @@ fn opened(listed: Vec<Listed>, now_ms: i64, mark: i64) -> Opened {
     for (path, name, written) in listed {
         let at = written.min(now_ms);
         through_ms = through_ms.max(at);
-        let read = std::fs::File::open(&path).and_then(|file| {
-            let mut json = Vec::new();
-            file.take(FILE_AT_MOST).read_to_end(&mut json).map(|_| json)
-        });
+        let read = opened_at_most(&path);
         let parsed = match read {
             Ok(json) => serde_json::from_slice::<Posted>(&json)
                 .map_err(|error| (error.to_string(), now_ms - written >= TORN_FOR_MS)),
@@ -610,7 +617,7 @@ fn by_written(one: &Posted, other: &Posted) -> Ordering {
 /// is old, read already, or expired, and into a day's folder, which is
 /// gathered only once the folder itself is listed, so one moved meanwhile
 /// is listed there.
-fn listed(
+pub(in crate::hour::measures) fn listed(
     messages: &Path,
     from_ms: i64,
     since_ms: i64,

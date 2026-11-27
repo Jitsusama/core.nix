@@ -92,6 +92,17 @@ ShellRoot {
             expect("a short disk's drawer says its size and time, its room beside it",
                 short.side === "7 B free \u00b7 clearing old builds"
                 && facts.join("; ") === "Size=9 B; Full In=1 h", `${short.side}; ${facts}`);
+            // A writers' hold keeps the guard's passes off a filling disk, so
+            // its row says the guard waits, not that it clears; nothing left
+            // to clear is still true under one.
+            const held = machine.disked(guard, { path: "/", band: "filling", free: 7,
+                total: 9, waiting: true, says: "" }, { name: "/" });
+            expect("a held disk's row says the guard waits",
+                held.side === "7 B free \u00b7 waits out heavy writing", held.side);
+            const spent = machine.disked(guard, { path: "/", band: "filling", free: 7,
+                total: 9, waiting: true, exhausted: true, says: "" }, { name: "/" });
+            expect("a held disk with nothing left to clear says so",
+                spent.side === "7 B free \u00b7 nothing left to clear", spent.side);
             const healthy = machine.disked(guard, { path: "/", band: "healthy", free: 7,
                 total: 9 }, { name: "/" });
             expect("a healthy disk says its room beside it, with no drawer",

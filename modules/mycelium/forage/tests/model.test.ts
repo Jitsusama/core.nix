@@ -12,6 +12,7 @@ import {
   holds,
   keeps,
   lede,
+  standingLine,
   startedFrom,
   steps,
 } from "../model.ts";
@@ -183,22 +184,45 @@ it("what can't be read is said, and the rest still drawn", () => {
   assert.deepEqual(unread, ["forage:NONAME named no cell", "1 of KESTRL's documents had no id"]);
 });
 
-it("the headline says how many cells, and how many have no purpose written", () => {
+it("the headline says how many cells are on quests, and how many have no purpose", () => {
   const { forages } = foragesOf(told([forage("KESTRL"), forage("OSPREY", { purpose: "" })]));
   assert.deepEqual(headline(forages), {
     cells: 2,
     without: 1,
-    lead: "2 cells,",
+    lead: "2 cells on quests,",
     turn: "1 without purpose.",
   });
+  assert.equal(headline(forages.slice(0, 1)).lead, "One cell on a quest,");
   assert.equal(headline(forages.slice(0, 1)).turn, "with its purpose.");
+  assert.equal(headline(forages.slice(1)).lead, "One cell on a quest,");
   assert.equal(headline(forages.slice(1)).turn, "without purpose.");
+  const hollow = foragesOf(
+    told([forage("KESTRL", { purpose: "" }), forage("OSPREY", { purpose: "" })]),
+  ).forages;
+  assert.deepEqual(headline(hollow), {
+    cells: 2,
+    without: 2,
+    lead: "2 cells on quests,",
+    turn: "all without purpose.",
+  });
   assert.deepEqual(headline([]), {
     cells: 0,
     without: 0,
     lead: "No cells",
-    turn: "at work on a quest.",
+    turn: "on a quest.",
   });
+});
+
+/** A broken standing as the line says it, and what it couldn't read after it. */
+const BROKEN_SAID = /^Not live since \d\d:\d\d: the node is down\. This is how it stood then\./u;
+const UNREAD_SAID = / Couldn't read: forage:NONAME named no cell; a wait had no id\.$/u;
+
+it("the standing line says how the page stands, then what it couldn't read", () => {
+  assert.equal(standingLine(undefined, []), "Reaching the mycelium node.");
+  const broken = { state: "broken", since: 0, reason: "the node is down" } as const;
+  const line = standingLine(broken, ["forage:NONAME named no cell", "a wait had no id"]);
+  assert.match(line, BROKEN_SAID);
+  assert.match(line, UNREAD_SAID);
 });
 
 it("the headline sets a count's thousands apart", () => {
@@ -207,7 +231,7 @@ it("the headline sets a count's thousands apart", () => {
   );
   const { forages } = foragesOf(told(cells));
   const said = headline(forages);
-  assert.equal(`${said.lead} ${said.turn}`, "3,000 cells, 1,200 without purpose.");
+  assert.equal(`${said.lead} ${said.turn}`, "3,000 cells on quests, 1,200 without purpose.");
 });
 
 it("the lede names the cells with no purpose, then the plan furthest from done", () => {

@@ -787,18 +787,18 @@ fn built_nearby(
 }
 
 /// Whether `machine`, a Mac, has no room for more, saying the load it
-/// goes or waits at, by its load alone (`changed::mac::room`): a person's
-/// own part, which its turn there bounds beside another, never waits on
-/// another's build as a run for its system does (`held_for_a_mac`). A run
-/// whose caller asked already isn't asked again, nor is a machine that
-/// builds for no Mac.
+/// goes or waits at, by its load, its memory and the builds it runs, read
+/// twice a minute apart (`changed::mac::room_held`), as a run for its
+/// system is (`held_for_a_mac`). A run whose caller asked already isn't
+/// asked again, nor is a machine that builds for no Mac.
 fn held_nearby(machine: &there::Nearby, scratch: &Path) -> bool {
     use changed::mac;
     let asked_already = env::var_os(ROOM_ASKED.0).is_some_and(|value| value == ROOM_ASKED.1);
     if asked_already || !machine.systems.iter().any(|system| system == mac::SYSTEM) {
         return false;
     }
-    match mac::room(&machine.host, there::load_of(machine, scratch, "ssh")) {
+    let read = || there::load_of(machine, scratch, "ssh");
+    match mac::room_held(&machine.host, &read, mac::settle()) {
         Ok(room) => {
             eprintln!("nix-offload: {room}, so what it was to take goes to it");
             false
@@ -2005,7 +2005,7 @@ fn with_system(arguments: &[String]) -> Vec<String> {
 const ROOM_ASKED: (&str, &str) = ("NIX_OFFLOAD_MAC_ROOM_ASKED", "1");
 
 /// How a changed-checks run with `arguments` ends when it waits rather
-/// than go to a busy Mac nearby, as [`changed::mac::room_alone`] decides from
+/// than go to a busy Mac nearby, as [`changed::mac::room_held`] decides from
 /// the first that answers, or none when it goes. It ends as one nothing
 /// built, which its callers try again later and never run here, where it
 /// would build nothing.
@@ -2029,7 +2029,8 @@ fn held_for_a_mac(arguments: &[String]) -> Option<Failure> {
         .find(|machine| machines::nearby_answers(&machine.address, &machine.host))?;
     // A run that goes says the load it went at, so a busy Mac that was
     // sent one can be told from the gate that let it through.
-    match mac::room_alone(&mac.host, there::load_of(&mac, &scratch(), "ssh")) {
+    let read = || there::load_of(&mac, &scratch(), "ssh");
+    match mac::room_held(&mac.host, &read, mac::settle()) {
         Ok(room) => {
             eprintln!("nix-offload: {room}, so a run for its system goes");
             None
@@ -2154,7 +2155,8 @@ fn on_a_mac(arguments: &[String], folder: &Path, waiting: there::Waiting) -> OnA
     // the Mac has room.
     // One that says nothing a load reads from has none either, as a run
     // for a Mac's system takes it (`held_for_a_mac`).
-    let room = match mac::room_alone(&mac.host, there::load_of(mac, &scratch(), "ssh")) {
+    let load = || there::load_of(mac, &scratch(), "ssh");
+    let room = match mac::room_held(&mac.host, &load, mac::settle()) {
         Ok(room) => room,
         Err(why) => return skipped(why),
     };

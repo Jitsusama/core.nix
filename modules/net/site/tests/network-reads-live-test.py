@@ -10,8 +10,15 @@ Wi-Fi chose drawn as words, drop a device that goes with its link,
 say in a machine's panel what runs there as the node moves and link it to its
 place on the mycelium map, say broken when net stops and live again, its
 devices read again, when it's back, say stale when the server goes and keep
-what it drew, keep to its budget, and pass the web-design skill's page checks
-at a phone's width and a desk's in both looks.
+what it drew, draw every device and wire within a phone's width with its zoom
+buttons a finger's reach, stack a bigger house with switches and a full floor
+within a phone's width and a laptop's, draw the other way as a window narrows
+to a phone's and widens back, scroll the device the keys are on into view as
+the map narrows to a phone's and widens to a short desk's, stack in a window
+just too narrow for the map across once its floors' names are counted, keep to
+its budget,
+and pass the web-design skill's page checks at a phone's width and a desk's in
+both looks.
 Anything the page logs fails it, but for the browser's own lines once the test
 takes the server away. The server, the browser and the tab are
 modules/local-sites/tests/live_page.py's.
@@ -91,12 +98,34 @@ def says_it_stands(page: Page, state: str, timeout: int = PACE_MS) -> None:
     )
 
 
+def quoted(key: str) -> str:
+    """Return `key` as a CSS string, since an id read back from the page may hold any mark."""
+    return '"' + "".join(map(css_character, key)) + '"'
+
+
+# The last of the control characters a CSS string can't hold as written, and the one past them.
+LAST_C0 = 0x1F
+DELETE = 0x7F
+
+
+def css_character(each: str) -> str:
+    """Return `each` as a CSS string holds it: a quote or backslash escaped, a control by code.
+
+    Given a NUL, CSS reads its escape as U+FFFD, so no selector finds an id holding one.
+    """
+    if each in '\\"':
+        return "\\" + each
+    if ord(each) <= LAST_C0 or ord(each) == DELETE:
+        return f"\\{ord(each):x} "
+    return each
+
+
 def device(page: Page, key: str) -> Locator:
-    return page.locator(f'#tree [role=treeitem][data-id="{key}"]')
+    return page.locator(f"#tree [role=treeitem][data-id={quoted(key)}]")
 
 
 def placed(page: Page, key: str) -> Locator:
-    return page.locator(f'#map-draw [data-level=device][data-id="{key}"]')
+    return page.locator(f"#map-draw [data-level=device][data-id={quoted(key)}]")
 
 
 def every_device_drawn(page: Page) -> None:
@@ -107,7 +136,8 @@ def every_device_drawn(page: Page) -> None:
 
 def opened_on(page: Page, key: str) -> Locator:
     expect(device(page, key), f"the tree drew no {key} to open").to_have_count(1, timeout=PACE_MS)
-    device(page, key).locator(".ti").click()
+    # An eero's item holds its devices' items, each with a row of its own after the eero's.
+    device(page, key).locator(".ti").first.click()
     return page.locator("#panel-body")
 
 
@@ -187,6 +217,331 @@ def test_a_sites_server_that_goes_is_said_stale(
     says_it_stands(network_page, "stale")
 
 
+# How far right of the map's room, short of any scrollbar's gutter, each device's box reaches in
+# pixels, how far the room scrolls sideways, and how far left of the drawing's edge any wire runs
+# in its own units: all nothing once each floor stacks.
+PAST_THE_ROOM = """() => {
+  const view = document.querySelector("#map-view");
+  const right = view.getBoundingClientRect().left + view.clientLeft + view.clientWidth;
+  const boxes = [...document.querySelectorAll("#map-draw [data-level=device]")];
+  const reach = Math.max(...boxes.map((box) => box.getBoundingClientRect().right));
+  const wires = [...document.querySelectorAll("#map-draw .n-link")];
+  return {
+    boxes: reach - right,
+    scroll: view.scrollWidth - view.clientWidth,
+    wires: -Math.min(0, ...wires.map((wire) => wire.getBBox().x)),
+  };
+}"""
+
+# Each zoom button's width and height, and how far it reaches past the buttons' fieldset.
+ZOOM_BUTTONS = """() => {
+  const zoom = document.querySelector(".zoom").getBoundingClientRect();
+  return [...document.querySelectorAll(".zoom button")].map((button) => {
+    const at = button.getBoundingClientRect();
+    const past = Math.max(at.right - zoom.right, zoom.left - at.left);
+    return { wide: at.width, tall: at.height, past };
+  });
+}"""
+
+# A finger's reach, which each zoom button keeps.
+REACH_PX = 44
+
+# Whether the map is drawn across, the kestrel's row beside its eero rather than under it; null
+# while a redraw has either missing.
+DRAWN_ACROSS = """(kestrel) => {
+  const eero = document.querySelector('#map-draw [data-id="eero:1"]');
+  const row = document.querySelector(`#map-draw [data-id="${kestrel}"]`);
+  if (eero === null || row === null) {
+    return null;
+  }
+  return row.getBBox().x >= eero.getBBox().x + eero.getBBox().width;
+}"""
+
+
+def stands_within_the_room(page: Page, where: str) -> None:
+    past = page.evaluate(PAST_THE_ROOM)
+    assert past["boxes"] <= 0, f"a device reaches {past['boxes']} px past {where}'s map"
+    assert past["scroll"] <= 0, f"{where}'s map scrolls {past['scroll']} px sideways"
+    assert past["wires"] <= 0, f"a wire runs {past['wires']} units off {where}'s map"
+
+
+def test_a_phone_sees_every_device_without_scrolling_sideways(
+    browser: Browser, network_served: Served
+) -> None:
+    root, _ = network_served
+    opened = Opened(browser, f"{root}network/", SIZES[0], "dark")
+    try:
+        says_it_stands(opened.page, "live")
+        every_device_drawn(opened.page)
+        stands_within_the_room(opened.page, "a phone")
+        for button in opened.page.evaluate(ZOOM_BUTTONS):
+            assert button["wide"] >= REACH_PX, f"a zoom button is {button['wide']} px wide"
+            assert button["tall"] >= REACH_PX, f"a zoom button is {button['tall']} px tall"
+            assert button["past"] <= 0, f"a zoom button spills {button['past']} px past its set"
+    finally:
+        opened.close()
+
+
+def test_narrowing_a_desk_to_a_phone_draws_the_map_the_other_way(
+    browser: Browser, network_served: Served
+) -> None:
+    root, _ = network_served
+    desk, phone = SIZES[-1], SIZES[0]
+    opened = Opened(browser, f"{root}network/", desk, "dark")
+    try:
+        page = opened.page
+        says_it_stands(page, "live")
+        every_device_drawn(page)
+        assert page.evaluate(DRAWN_ACROSS, KESTREL), "a desk's map wasn't drawn across"
+        page.set_viewport_size({"width": phone[0], "height": phone[1]})
+        stacked = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === false"
+        page.wait_for_function(stacked, arg=KESTREL, timeout=PACE_MS)
+        every_device_drawn(page)
+        stands_within_the_room(page, "a narrowed window")
+        page.set_viewport_size({"width": desk[0], "height": desk[1]})
+        across = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === true"
+        page.wait_for_function(across, arg=KESTREL, timeout=PACE_MS)
+    finally:
+        opened.close()
+
+
+# The device net.json's worst concern is about, which the first fit brings into view: one that
+# isn't a ceiling's, as site.ts's fitFirst passes those over.
+FIRST_CONCERN = min(
+    (
+        concern
+        for concern in json.loads((HERE / "net.json").read_text())["kinds"]["concern"]
+        if concern["concern"] != "ceiling"
+    ),
+    key=lambda c: c["rank"],
+)["device"]
+# How far below `[keys, concern]`'s keys' device the concern's is drawn, top to top.
+BELOW = """([keys, concern]) => {
+  const top = (id) => document
+    .querySelector(`#map-draw [data-level=device][data-id="${CSS.escape(id)}"]`)
+    ?.getBoundingClientRect().top;
+  const [from, to] = [top(keys), top(concern)];
+  return from === undefined || to === undefined ? null : to - from;
+}"""
+# The device drawn farthest from `from`, centre to centre, so a view showing one can leave the
+# other out.
+FARTHEST = """(from) => {
+  const boxes = [...document.querySelectorAll("#map-draw [data-level=device]")];
+  const centre = (box) => {
+    const at = box.getBoundingClientRect();
+    return [at.left + at.width / 2, at.top + at.height / 2];
+  };
+  const origin = boxes.find((box) => box.dataset.id === from);
+  if (origin === undefined) return null;
+  const [x, y] = centre(origin);
+  const far = (box) => Math.hypot(centre(box)[0] - x, centre(box)[1] - y);
+  boxes.sort((a, b) => far(b) - far(a));
+  return boxes[0] === origin ? null : boxes[0].dataset.id;
+}"""
+# The view scrolled back to its top, keeping where it stands side to side, then just far enough to
+# show `id`, down or across, with none of a jump's padding.
+TO_SHOW = """(id) => {
+  const view = document.querySelector("#map-view");
+  view.scrollTo(view.scrollLeft, 0);
+  document.querySelector(`#map-draw [data-level=device][data-id="${CSS.escape(id)}"]`)
+    .scrollIntoView({ block: "nearest", inline: "nearest" });
+}"""
+# How far the device `id` (or, given none, the one the keys are on) stands outside the map's
+# room, inside its border and scrollbars as PAST_THE_ROOM measures it, and whether the map
+# overflows the room.
+PAST = """(id) => {
+  const view = document.querySelector("#map-view");
+  const which = id === null ? "[data-here]" : `[data-level=device][data-id="${CSS.escape(id)}"]`;
+  const here = document.querySelector(`#map-draw ${which}`);
+  if (view === null || here === null) return null;
+  const frame = view.getBoundingClientRect();
+  const left = frame.left + view.clientLeft;
+  const top = frame.top + view.clientTop;
+  const box = here.getBoundingClientRect();
+  return {
+    past: Math.max(top - box.top, box.bottom - top - view.clientHeight, left - box.left,
+      box.right - left - view.clientWidth),
+    overflows: view.scrollHeight > view.clientHeight || view.scrollWidth > view.clientWidth,
+  };
+}"""
+# The map's room and the drawing's height at zoom 1, as drawn across on the opening desk.
+ROOM_AND_DRAWN = """() => {
+  const view = document.querySelector("#map-view");
+  const box = document.querySelector("#map-draw").viewBox.baseVal;
+  return { room: view.clientHeight, drawn: box.height };
+}"""
+# The height site.css's desk and phone layouts meet at (34rem), which a desk's window must pass:
+# at it both match, and the map's room is a block the page scrolls past. And how much of the
+# drawing across, at the smallest zoom, a widened window leaves below its room's first sight.
+LEAST_DESK_HEIGHT = 34 * 16
+# Measured: net.json's house drawn across is 552 units tall, 509 px at the smallest zoom, and a
+# desk holds 142 px around the room, so a window just past 34rem leaves 107 px below sight.
+BELOW_SIGHT_PX = 96
+# A small phone's window (an iPhone SE's): the stacked map's room on the tall phone shows the
+# first concern and the farthest device at once, which would let a jump back to it pass.
+SMALL_PHONE = (375, 667)
+
+
+def short_desk(page: Page) -> tuple[int, int]:
+    """Read a desk window whose map's room leaves the drawing across past its first sight."""
+    width, height = SIZES[-1]
+    measured = page.evaluate(ROOM_AND_DRAWN)
+    around = height - measured["room"]
+    short = around + int(measured["drawn"] * SMALLEST_ZOOM) - BELOW_SIGHT_PX
+    assert short > LEAST_DESK_HEIGHT, (
+        f"a room short enough to leave the map {BELOW_SIGHT_PX} px past its sight needs a "
+        f"{short} px window, which the page lays out as a phone's: {measured}"
+    )
+    return width, short
+
+
+def the_keys_device_stands_in_view(page: Page, where: str) -> None:
+    here = page.evaluate(PAST, None)
+    assert here is not None, f"{where}'s map marks no device the keys are on"
+    assert here["overflows"], f"{where}'s map fits whole, so its view proves nothing"
+    assert here["past"] <= 1, f"the keys' device stands {here['past']} px out of {where}'s map"
+
+
+def the_first_concern_leaves_it_out(page: Page, keys_on: str, where: str) -> None:
+    """Show the first concern, as a jump back to it would, and check `keys_on` is then out."""
+    # TO_SHOW scrolls down from the top, across as the map stands, with no padding, so it loses
+    # the keys' device no more than a padded jump down to the concern would: lost to it, the
+    # device is lost to that jump too. A jump up to a concern drawn above it is another matter.
+    below = page.evaluate(BELOW, [keys_on, FIRST_CONCERN])
+    assert below is not None, f"{where}'s map drew no {keys_on} or {FIRST_CONCERN}"
+    assert below > 0, (
+        f"{where}'s map draws {FIRST_CONCERN} above {keys_on}, where TO_SHOW can't stand for a jump"
+    )
+    page.evaluate(TO_SHOW, FIRST_CONCERN)
+    past = page.evaluate(PAST, keys_on)
+    assert past is not None, f"{where}'s map drew no {keys_on}"
+    assert past["past"] > 1, (
+        f"with {FIRST_CONCERN} in view, {keys_on} stands in {where}'s map too, so a jump back "
+        "to the first concern would pass"
+    )
+
+
+def test_the_keys_device_stays_in_view_as_the_map_draws_the_other_way(
+    browser: Browser, network_served: Served
+) -> None:
+    root, _ = network_served
+    opened = Opened(browser, f"{root}network/", SIZES[-1], "dark")
+    try:
+        page = opened.page
+        says_it_stands(page, "live")
+        every_device_drawn(page)
+        desk_short = short_desk(page)
+        keys_on = page.evaluate(FARTHEST, FIRST_CONCERN)
+        assert keys_on is not None, f"the map drew no device but {FIRST_CONCERN}"
+        opened_on(page, keys_on)
+        expect(placed(page, keys_on), "opening a device put no keys on it").to_have_attribute(
+            "data-here", ""
+        )
+        # The short desk draws across still, and overflows, so the view can show the first
+        # concern without the keys' device, where each flip then starts.
+        page.set_viewport_size({"width": desk_short[0], "height": desk_short[1]})
+        the_first_concern_leaves_it_out(page, keys_on, "a short desk")
+        for where, size, across in [
+            ("a narrowed window", SMALL_PHONE, "false"),
+            ("a widened window", desk_short, "true"),
+        ]:
+            page.set_viewport_size({"width": size[0], "height": size[1]})
+            drawn = f"(kestrel) => ({DRAWN_ACROSS})(kestrel) === {across}"
+            page.wait_for_function(drawn, arg=KESTREL, timeout=PACE_MS)
+            the_keys_device_stands_in_view(page, where)
+            # A flip that jumped back to the first concern shows this, which loses the device.
+            the_first_concern_leaves_it_out(page, keys_on, where)
+    finally:
+        opened.close()
+
+
+# The room across takes at the smallest zoom, in units (grid.ts's ACROSS_LEAST, and the same
+# less its floors' names' column), and that zoom (view.ts's ZOOMS[0]). A window whose map's room
+# falls between the two must stack, or the names' column is left out of the measure again.
+ACROSS_LEAST = 924
+ACROSS_UNNAMED = 884
+SMALLEST_ZOOM = 12 / 13
+# A narrow window with no panel beside the map, whose room falls between those two.
+JUST_SHORT = (864, 700)
+ROOM = """() => document.querySelector("#map-view").clientWidth"""
+
+
+def test_a_window_just_short_of_the_map_across_stacks_it(
+    browser: Browser, network_served: Served
+) -> None:
+    root, _ = network_served
+    opened = Opened(browser, f"{root}network/", JUST_SHORT, "dark")
+    try:
+        page = opened.page
+        says_it_stands(page, "live")
+        every_device_drawn(page)
+        room = page.evaluate(ROOM)
+        least, unnamed = ACROSS_LEAST * SMALLEST_ZOOM, ACROSS_UNNAMED * SMALLEST_ZOOM
+        assert unnamed <= room < least, f"the map's room is {room} px, not in [{unnamed}, {least})"
+        assert page.evaluate(DRAWN_ACROSS, KESTREL) is False, "the map was drawn across"
+        stands_within_the_room(page, f"a {JUST_SHORT[0]} px window")
+    finally:
+        opened.close()
+
+
+# A bigger house than net.json's: an attic eero, a switch on each of two floors, and the basement
+# full past one column, so stacked it takes four lanes of wires, run closer to keep the map's
+# width, and across a second column.
+ATTIC = "eero:3"
+SWITCHES = {"switch:1": ["eero:1", "modem"], "switch:2": ["eero:2", "eero:1", "modem"]}
+CROWD = [f"mac:00:00:5e:00:53:4{n}" for n in range(6)]
+# A laptop's width, where the panel beside the map leaves it too little room to draw across.
+LAPTOP = (1024, 800)
+
+
+def a_bigger_house(net_daemon: StandIn) -> None:
+    def held(key: str, name: str, roles: list[str], through: list[str]) -> dict[str, object]:
+        named = {"key": f"device:{key}", "kind": "device", "id": key, "name": name}
+        read = {"roles": roles, "addresses": [], "macs": [], "source": "eero"}
+        return {**named, **read, "path": {"through": through}}
+
+    def tie(key: str, up: str, **how: object) -> dict[str, object]:
+        ends = {"a": {"device": key}, "b": {"device": up}}
+        return {"key": f"link:{up}|{key}", "kind": "link", **ends, "source": "eero", **how}
+
+    wifi = {"medium": "wifi", "speed_mbps": 144, "signal_dbm": -60, "crossings": 0}
+    cable = {"medium": "ethernet", "speed_mbps": 1000, "crossings": 0}
+    devices = [held(ATTIC, "Attic", ["access-point"], ["eero:2", "eero:1", "modem"])]
+    links = [tie(ATTIC, "eero:2", **wifi)]
+    for n, (switch, through) in enumerate(SWITCHES.items()):
+        devices.append(held(switch, f"Switch {n + 1}", ["switch"], through))
+        devices[-1]["ports"] = [{"name": "1", "kind": "ethernet", "link": "up"}]
+        links.append(tie(switch, through[0], **cable))
+    for n, phone in enumerate(CROWD):
+        devices.append(held(phone, f"Phone {n + 1}", ["client"], ["eero:1", "modem"]))
+        links.append(tie(phone, "eero:1", **wifi))
+    net_daemon.tell("device", devices)
+    net_daemon.tell("link", links)
+
+
+@pytest.mark.parametrize("size", [SIZES[0], LAPTOP])
+def test_a_bigger_house_stacks_within_the_room(
+    browser: Browser, network_served: Served, net_daemon: StandIn, size: tuple[int, int]
+) -> None:
+    root, _ = network_served
+    # Told before the page opens, so its first drawing holds the whole house.
+    a_bigger_house(net_daemon)
+    opened = Opened(browser, f"{root}network/", size, "dark")
+    try:
+        says_it_stands(opened.page, "live")
+        every_device_drawn(opened.page)
+        for key in [ATTIC, *SWITCHES, *CROWD]:
+            expect(placed(opened.page, key), f"the map drew no {key}").to_have_count(1)
+        # Links come over their own watch, so a house drawn before they arrive takes no lanes;
+        # measured once each switch and the attic is wired, the lanes are all there.
+        for key in [ATTIC, *SWITCHES]:
+            ends = f'#map-draw .n-link[data-from="{key}"], #map-draw .n-link[data-to="{key}"]'
+            expect(opened.page.locator(ends), f"the map drew no wire to {key}").not_to_have_count(0)
+        stands_within_the_room(opened.page, f"a {size[0]} px window")
+    finally:
+        opened.close()
+
+
 def test_the_network_page_keeps_to_its_budget(network_opened: Opened) -> None:
     says_it_stands(network_opened.page, "live")
     # Counted once every device the feeds hold is drawn, so the count is the page's whole and
@@ -194,6 +549,80 @@ def test_the_network_page_keeps_to_its_budget(network_opened: Opened) -> None:
     every_device_drawn(network_opened.page)
     network_opened.keeps_to(BUDGET)
     says_it_stands(network_opened.page, "live")
+
+
+# What the find's placeholder is drawn in, beside the muted it should be
+# drawn in, as the browser computes both.
+PLACEHOLDER = """() => {
+  const said = getComputedStyle(document.querySelector("#find"), "::placeholder");
+  const probe = document.createElement("span");
+  probe.style.color = "var(--muted)";
+  document.body.append(probe);
+  const muted = getComputedStyle(probe).color;
+  probe.remove();
+  return { colour: said.color, opacity: said.opacity, muted };
+}"""
+
+
+@pytest.mark.parametrize("look", LOOKS)
+def test_the_find_says_what_it_takes_in_words_that_read(
+    browser: Browser, network_served: Served, look: str
+) -> None:
+    root, _ = network_served
+    opened = Opened(browser, f"{root}network/", SIZES[0], look)
+    try:
+        says_it_stands(opened.page, "live")
+        said = opened.page.evaluate(PLACEHOLDER)
+        assert said["colour"] == said["muted"], (
+            f"the find's placeholder wasn't drawn in muted in the {look} look: {said}"
+        )
+        assert said["opacity"] == "1", (
+            f"the find's placeholder was faded below muted in the {look} look: {said}"
+        )
+    finally:
+        opened.close()
+
+
+# The find's placeholder beside the page's text and its typed words, as the
+# browser computes them once the reader has picked a look on the page.
+PLACEHOLDER_PICKED = """(look) => {
+  document.documentElement.dataset.theme = look;
+  const find = document.querySelector("#find");
+  const said = getComputedStyle(find, "::placeholder");
+  const probe = document.createElement("span");
+  probe.style.color = "var(--text)";
+  document.body.append(probe);
+  const text = getComputedStyle(probe).color;
+  probe.remove();
+  const typed = getComputedStyle(find).fontStyle;
+  return { colour: said.color, style: said.fontStyle, typed, text };
+}"""
+
+
+@pytest.mark.parametrize("look", LOOKS)
+def test_more_contrast_raises_the_finds_words_in_a_look_picked_on_the_page(
+    browser: Browser, network_served: Served, look: str
+) -> None:
+    """A reader asking for more contrast gets it in a look picked on the page too.
+
+    The theme's colours for a picked look stood above the kit's more-contrast
+    rule, so muted words stayed faint for whoever had chosen a look. Raised to
+    the text's colour, a placeholder is told from typed words by its slant.
+    """
+    root, _ = network_served
+    opened = Opened(browser, f"{root}network/", SIZES[0], look)
+    try:
+        says_it_stands(opened.page, "live")
+        opened.page.emulate_media(contrast="more")
+        said = opened.page.evaluate(PLACEHOLDER_PICKED, look)
+        assert said["colour"] == said["text"], (
+            f"more contrast left the find's placeholder muted in the picked {look} look: {said}"
+        )
+        assert said["style"] != said["typed"], (
+            f"more contrast drew the find's placeholder as typed words in the {look} look: {said}"
+        )
+    finally:
+        opened.close()
 
 
 @pytest.mark.parametrize("look", LOOKS)

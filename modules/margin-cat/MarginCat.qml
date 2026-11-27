@@ -90,9 +90,10 @@ Scope {
     property string posed: ""
     // The play under way or last played, so none comes twice running.
     property string played: ""
-    // When the yarn may next be drawn, by the wall clock, so it comes
-    // rarely (Plays.yarnRests); read only as a scene is drawn, so no timer.
-    property real yarnFrom: 0
+    // When each play that rests may next be drawn, by its name, on the
+    // wall clock, so the yarn and the puppy come rarely (Plays.restsFor);
+    // read only as a scene is drawn, so no timer.
+    property var restsUntil: ({})
     // What's left of the scene under way, each beat as Plays.scene says,
     // and the scene waiting comes to, or null where none comes.
     property var beats: []
@@ -119,19 +120,31 @@ Scope {
 
         // Asks that the next play be `play`, as a test watching it asks:
         // the scene waiting is drawn again with it, its rest left running.
+        // Only a shell that reports, as a test's does, takes it or says its
+        // level, so nothing else on his desktop steers his cat or reads from
+        // it how long he's been away.
         function next(play: string): void {
+            if (!Options.reports)
+                return;
             root.asked = play;
             root.refusedAt = null;
             if (root.coming !== null)
                 root.coming = Plays.scene(root.lively, Math.random, root.played,
                     root.drawsWith(play));
         }
+
+        // How lively it may be now, so a test leaving the keys asks for a
+        // play only once the shell has heard the key: a scene asked for
+        // while still idle can come up before, and the key cut it short.
+        function level(): string {
+            return Options.reports ? root.lively : "";
+        }
     }
 
     // What a scene is drawn with besides its level and last play: the play
-    // `asked` for, and how long the yarn rests yet.
+    // `asked` for, and how long each play that rests rests yet.
     function drawsWith(asked: string): var {
-        return { asked, yarnIn: yarnFrom - Date.now() };
+        return { asked, restsIn: Plays.restsLeft(restsUntil, Date.now()) };
     }
 
     // Each level a fresh rest, so a key ends whatever scene was under way,
@@ -183,16 +196,20 @@ Scope {
         beating.restart();
     }
 
-    // What handing out a beat leaves of the play asked for and the yarn's
-    // rest, as Plays.handed says, so a play a cat turned down is neither
-    // spent nor rested from.
+    // What handing out a beat leaves of the play asked for and the rests
+    // of the plays that rest, as Plays.handed says, so a play a cat turned
+    // down is neither spent nor rested from. An ask let go once its
+    // refusals outlast REFUSED_FOR is said, so a case waiting on it reads
+    // that it was dropped, not that the refusals cleared.
     function handed(beat: var, taken: bool): void {
         const left = Plays.handed({ answers, asked, refusedAt }, beat, taken, Date.now());
+        if (Options.reports && !taken && asked !== "" && left.asked === "")
+            Report.say(`let go cat ${JSON.stringify({ kind: asked })}`);
         answers = left.answers;
         asked = left.asked;
         refusedAt = left.refusedAt;
-        if (left.rests)
-            yarnFrom = Date.now() + Plays.yarnRests(Math.random());
+        if (left.rests !== "")
+            restsUntil = Plays.restStarted(restsUntil, left.rests, Date.now(), Math.random());
     }
 
     Daemon {

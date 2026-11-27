@@ -172,9 +172,29 @@ let
   # refuses, says nothing of a word, so it goes.
   asRead = words: builtins.fromJSON (builtins.unsafeDiscardStringContext (builtins.toJSON words));
   coreWords = asRead (import ../quickshell/launcher/words.nix).value;
-  machineWords = asRead (
-    config.jitsusama.quickshell.launcher.words or (import ../quickshell/launcher/words.nix).value
-  );
+  # The file Words.qml reads, as this machine writes it; none where it has
+  # no launcher, whose words are then no one's.
+  wordsFile = config.xdg.configFile."quickshell/launcher/words.json" or null;
+  # Whether the file is made from its text, as the launcher writes it: a
+  # source given in its place wins over the text, which then says words
+  # the launcher never reads. Such a source isn't read, since reading it
+  # would build it while the machine is evaluated, so it's refused below.
+  # Home-manager makes a text's source with writeTextFile, which carries the
+  # text; were it not to, every machine with the launcher's words would be
+  # refused, not let through, which local-sites-refuses-renamed-look-acts
+  # holds.
+  fromText =
+    wordsFile.text or null != null
+    && lib.isAttrs wordsFile.source
+    && (wordsFile.source.text or null) == wordsFile.text;
+  unreadWords = wordsFile != null && !fromText;
+  # The machine's words as the file holds them, even where a machine writes
+  # that text itself.
+  machineWords =
+    if fromText then
+      builtins.fromJSON (builtins.unsafeDiscardStringContext wordsFile.text)
+    else
+      coreWords;
   # A thing's id as Words.qml keys it, made a string: a list of one id is
   # that id; no act's id holds a comma or is empty, or reads as an object,
   # so no other id can be one.
@@ -413,14 +433,17 @@ in
       };
     };
     feeds = {
-      # The system daemon's summary, its parts and their things
-      # (modules/system), each told whole: a page shows all of each.
+      # The system daemon's summary, its parts and their things, the
+      # machines and the builders they send builds to (modules/system), each
+      # told whole: a page shows all of each. A kind the daemon keeps but
+      # this doesn't name never reaches a page.
       system = {
         socket = "daemons/system.sock";
         kinds = {
           summary = { };
           part = { };
           machine = { };
+          builder = { };
         };
       };
       # net's devices, the links between them, the sources it read them from,
@@ -581,10 +604,20 @@ in
 
   config.assertions = [
     # A machine renaming the launcher's acts on a look (renamedActs above).
+    # A words file local-sites can't read, as a source given in its text's
+    # place, could rename them unseen (fromText above).
+    {
+      assertion = !unreadWords;
+      message = lib.concatStrings [
+        "the launcher's words.json is given as a source, which local-sites can't read "
+        "to hold the launcher's acts on a look to core's names: write it as text"
+      ];
+    }
     {
       assertion = renamedActs == [ ];
       message = lib.concatStrings [
-        "jitsusama.quickshell.launcher.words renames the launcher's acts on a look ("
+        "the launcher's words.json, as jitsusama.quickshell.launcher.words or the machine "
+        "writes it, renames the launcher's acts on a look ("
         (lib.concatMapStringsSep ", " (
           id: "${id} from ${shownIn coreWords id} to ${shownIn machineWords id}"
         ) renamedActs)
