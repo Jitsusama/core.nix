@@ -209,6 +209,32 @@ fn one_message_or_one_hour_puts_only_so_many_classes_to_their_owners() {
     );
 }
 
+/// A burst of unfolded wordings, which any cell can make, can't push a
+/// vetted class out of those an hour names, though theirs sort first.
+#[test]
+fn a_vetted_class_is_named_ahead_of_unfolded_ones() {
+    let vetted = "a vetted class";
+    let mut cases: Vec<Case> = (0..=NAMED_AT_MOST)
+        .flat_map(|n| {
+            (1..=3).map(move |c| {
+                case(
+                    &format!("{}junk {n:02}", folds::UNFOLDED),
+                    &format!("r#{c}"),
+                    60,
+                )
+            })
+        })
+        .collect();
+    cases.extend((1..=3).map(|c| case(vetted, &format!("r#{c}"), 60)));
+    let m = recurring(&cases, NOW);
+    let named: Vec<&str> = m.behind.iter().map(|l| class_of(l)).collect();
+    assert!(
+        named.get(1) == Some(&vetted) && named.len() == NAMED_AT_MOST + 1,
+        "unfolded wordings pushed a vetted class out of those named, or past its place: {:?}",
+        m.behind
+    );
+}
+
 #[test]
 fn a_class_on_three_changes_in_a_week_is_over_and_names_its_owner() {
     let cases = [
@@ -519,6 +545,46 @@ fn a_withdrawal_is_kept_for_a_line_written_here_after_it() {
         later.now, 0.0,
         "a line written here after its withdrawal was let go counted: {:?}",
         later.behind
+    );
+}
+
+/// A sender whose clock runs fast still withdraws its line, though the
+/// withdrawal, stamped past the hour's slack, isn't kept.
+#[test]
+fn a_withdrawal_stamped_ahead_still_withdraws_its_line() {
+    let home = tempfile::tempdir().expect("a temporary home");
+    let folder = tempfile::tempdir().expect("a temporary folder");
+    let messages = home
+        .path()
+        .join("pi/agentic-harness.pi/mesh-workflow/messages");
+    fs::create_dir_all(&messages).expect("the messages folder");
+    let mut line = sent(
+        "cause: flaky gate | change: core.nix#1, #2, #3",
+        0,
+        "@1JQPPC",
+    );
+    line.id = format!("{}-SENDER-1-00000001", (NOW + DAY) * 1000);
+    write(&messages, &line, 600);
+    let look = read(home.path(), folder.path(), NOW, false);
+    assert_eq!(
+        look.now, 1.0,
+        "a line stamped ahead didn't count before its withdrawal: {:?}",
+        look.behind
+    );
+    let mut withdraws = sent("no cause here after all", 0, "@1JQPPC");
+    withdraws.id = format!("{}-SENDER-1-00000002", (NOW + DAY) * 1000);
+    withdraws.supersedes = Some(line.id.clone());
+    write(&messages, &withdraws, 300);
+    let hour = read(home.path(), folder.path(), NOW, true);
+    assert_eq!(
+        hour.now, 0.0,
+        "a line stamped ahead still counted once its sender withdrew it: {:?}",
+        hour.behind
+    );
+    let kept = fs::read_to_string(folder.path().join("causes.json")).expect("a kept reading");
+    assert!(
+        !kept.contains(&line.id),
+        "a withdrawal stamped past the slack was kept, or its line was: {kept}"
     );
 }
 

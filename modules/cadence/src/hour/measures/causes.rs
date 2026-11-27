@@ -238,7 +238,7 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
             genuine(&message, &name).then_some((message, written))
         })
         .collect();
-    let withdrawn = withdrawals(kept.withdrawn, &heard, now);
+    let withdrawn = withdrawals(kept.withdrawn, &heard);
     let mut cases: Vec<Case> = kept
         .cases
         .into_iter()
@@ -265,7 +265,7 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
                 v: VERSION,
                 through_ms: now * 1000,
                 cases: cases.clone(),
-                withdrawn: withdrawn.clone(),
+                withdrawn: kept_withdrawals(&withdrawn, now),
             };
             serde_json::to_string(&next)
                 .map_err(|error| error.to_string())
@@ -312,7 +312,8 @@ pub fn names_no_class(line: &str) -> bool {
 }
 
 /// The classes in `cases` found on `AT_LEAST` changes or more in the week
-/// before `now`, most changes first, each with its owner after ` · `, so
+/// before `now`, the vetted before the unfolded and most changes first,
+/// each with its owner after ` · `, so
 /// each is filed with its own. A class whose owner differs by repository
 /// has a line for each repository it was found in, named after the class,
 /// since the class recurs though one half of it may not.
@@ -329,7 +330,16 @@ pub fn recurring(cases: &[Case], now: i64) -> Measure {
         .into_iter()
         .filter(|(_, on)| on.len() >= AT_LEAST)
         .collect();
-    over.sort_by(|(a, on_a), (b, on_b)| on_b.len().cmp(&on_a.len()).then(a.cmp(b)));
+    // The vetted classes go before the unfolded, which any cell's wording
+    // can make, so a burst of those can't push one with an owner out of
+    // the named; then most changes first.
+    let unfolded = |class: &str| class.starts_with(folds::UNFOLDED);
+    over.sort_by(|(a, on_a), (b, on_b)| {
+        unfolded(a)
+            .cmp(&unfolded(b))
+            .then(on_b.len().cmp(&on_a.len()))
+            .then(a.cmp(b))
+    });
     // The count of those left unnamed goes first, so the card shows it
     // above the classes it names. While it stands, no ask open for a class
     // it leaves unnamed closes, since this hour can't say that one is back.
@@ -425,25 +435,37 @@ fn genuine(message: &Message, name: &str) -> bool {
         && sender_of(&message.id) == Some(message.from.as_str())
 }
 
-/// The lines withdrawn, as of `now` in seconds: those `kept` and those
-/// `heard` withdraw. Only a message from its line's own sender withdraws
-/// it, so another's word leaves it counted. That a message is from whom
-/// it says rests on the mesh, which signs nothing yet. A withdrawal is
-/// kept as long as the line it withdraws could be, since that may be
-/// written here later; no real one is stamped past now or runs long, so
-/// one that is would only grow the kept file every hour, and is let go.
-fn withdrawals(mut kept: BTreeSet<String>, heard: &[(Message, i64)], now: i64) -> BTreeSet<String> {
+/// The lines withdrawn: those `kept` and those `heard` withdraw, each
+/// applied whatever its stamp, since a sender's clock may run fast and
+/// its line counts all the same. Only a message from its line's own
+/// sender withdraws it, so another's word leaves it counted. That a
+/// message is from whom it says rests on the mesh, which signs nothing
+/// yet, so a forged withdrawal is kept as a real one is; clearing
+/// `withdrawn` in the kept file lets both go.
+fn withdrawals(mut kept: BTreeSet<String>, heard: &[(Message, i64)]) -> BTreeSet<String> {
     kept.extend(heard.iter().filter_map(|(m, _)| {
         m.supersedes
             .clone()
             .filter(|id| sender_of(id) == Some(m.from.as_str()))
     }));
-    kept.retain(|id| {
-        id.len() <= WITHDRAWAL_AT_MOST
-            && stamped_at(id)
-                .is_some_and(|ms| ms > (now - KEPT_FOR) * 1000 && ms <= now * 1000 + SLACK_MS)
-    });
     kept
+}
+
+/// Of those `withdrawn`, the ones kept for later hours, as of `now` in
+/// seconds: each as long as the line it withdraws could be, since that
+/// may be written here later. One stamped over an hour past now, or
+/// running long, would only grow the kept file every hour, so it is let
+/// go; it was applied to this hour's lines all the same.
+fn kept_withdrawals(withdrawn: &BTreeSet<String>, now: i64) -> BTreeSet<String> {
+    withdrawn
+        .iter()
+        .filter(|id| {
+            id.len() <= WITHDRAWAL_AT_MOST
+                && stamped_at(id)
+                    .is_some_and(|ms| ms > (now - KEPT_FOR) * 1000 && ms <= now * 1000 + SLACK_MS)
+        })
+        .cloned()
+        .collect()
 }
 
 /// Who sent the message `id` names, as `<ms>-<from>-<pid>-<short id>`.
