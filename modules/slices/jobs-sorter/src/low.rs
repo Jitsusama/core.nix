@@ -264,7 +264,7 @@ mod tests {
             assert!(
                 STARTING > AT,
                 "a starting pi's window weighs more than an app's"
-            )
+            );
         };
     }
 
