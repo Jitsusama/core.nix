@@ -13,6 +13,11 @@
 //! the alert's fixed form, [`text`]: who stopped what, the words said, and
 //! where. And it sends from the safe word's own reader, never from an
 //! agent or a tool.
+//!
+//! Long because how a failing from the gateway is read, with each way a
+//! writer may quote a name of Slack's back in it, is judged here and
+//! pinned by the cases beside it: split apart, the readings and the
+//! quotings they answer would drift.
 
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
@@ -257,15 +262,18 @@ pub fn tell_self(gateway: &mut Gateway, alert: Alert) -> Result<String, Missed> 
 /// that quotes a body already quoted as JSON inside its own.
 const ESCAPED_DEEPEST: usize = 3;
 
-/// Whether a failing says what `word` looks for in every reading of it,
-/// each without any line of `said` it quotes, as written or as JSON would
-/// write it: the title and where are still from Slack, so a name in them
-/// can't be read as the gateway's own word. A reading reads the failing's
-/// escapes back once to [`ESCAPED_DEEPEST`] times, taking the lines out
-/// only after or also before each, so a name holding a backslash of its
-/// own, or holding another line, is found whole in at least one, while
-/// the gateway's own word, outside any quote, is in them all: one just
-/// after an escape, as in `\nratelimited`, is whole once that is read.
+/// Whether a failing says what `word` looks for in every reading of it
+/// that holds it whole, each without any line of `said` it quotes, as
+/// written or as JSON would write it: the title and where are still from
+/// Slack, so a name in them can't be read as the gateway's own word. A
+/// reading reads the failing's escapes back once to [`ESCAPED_DEEPEST`]
+/// times, taking the lines out only after or also before each, so a name
+/// holding a backslash of its own, or holding another line, goes in at
+/// least one, while the gateway's own word, outside any quote, stays. Only
+/// a reading holding the word before any line goes out is asked, as one
+/// read back too few times or too many cuts it in two: `\nratelimited`
+/// quoted twice is whole only once read back twice, and `\\rate_limited`
+/// only before its `\r` is read as a carriage return.
 fn says(why: &str, said: &str, word: fn(&str) -> bool) -> bool {
     let lines: Vec<&str> = said
         .lines()
@@ -280,14 +288,19 @@ fn says(why: &str, said: &str, word: fn(&str) -> bool) -> bool {
         left
     };
     let (mut read, mut between) = (why.to_owned(), without(why.to_owned()));
+    let mut whole = false;
     for _ in 0..ESCAPED_DEEPEST {
         read = unescaped(&read);
         between = without(unescaped(&between));
+        if !word(&read) {
+            continue;
+        }
         if !word(&without(read.clone())) || !word(&between) {
             return false;
         }
+        whole = true;
     }
-    true
+    whole
 }
 
 /// `why` with each of JSON's escapes read back, from left to right: `\\`,
@@ -605,16 +618,25 @@ mod tests {
             link: "https://x.slack.com/archives/C1/p1",
         });
         let json = serde_json::to_string(&said).expect("text as JSON");
-        for word in [
-            "\\nratelimited",
-            "\\u201cratelimited\\u201d",
-            "\\tinvalid_auth",
-        ] {
-            let why = format!("{{\"message\":\"Slack said:{word}\"}}, for {json}");
-            assert!(
-                says(&why, &said, spent) || says(&why, &said, refuses_the_sign_in),
-                "read back, the gateway's word counts: {why}"
-            );
+        let quoted = |body: &str| serde_json::to_string(body).expect("a body as JSON");
+        let words: [(&str, fn(&str) -> bool); 4] = [
+            ("\\nratelimited", spent),
+            ("\\u201cratelimited\\u201d", spent),
+            ("\\tinvalid_auth", refuses_the_sign_in),
+            ("\\\\rate_limited", spent),
+        ];
+        for (word, judged) in words {
+            let body = format!("{{\"message\":\"Slack said:{word}\"}}");
+            // As the gateway says it, and quoted once more inside its own.
+            for why in [
+                format!("{body}, for {json}"),
+                format!("{{\"error\":{}}}, for {json}", quoted(&body)),
+            ] {
+                assert!(
+                    says(&why, &said, judged),
+                    "read back, the gateway's word counts: {why}"
+                );
+            }
         }
     }
 
@@ -626,15 +648,17 @@ mod tests {
             link: "https://x.slack.com/archives/C1/p1",
         });
         let escaped = as_python_writes(&serde_json::to_string(&said).expect("text as JSON"));
-        let why = format!("could not post {escaped}");
-        assert!(
-            refuses_the_sign_in(&why),
-            "quoted, the name reads as a refusal"
-        );
-        assert!(
-            !says(&why, &said, refuses_the_sign_in),
-            "left out, escaped as it was, it doesn't: {why}"
-        );
+        for quoted in [said.as_str(), escaped.as_str()] {
+            let why = format!("could not post {quoted}");
+            assert!(
+                refuses_the_sign_in(&why),
+                "quoted, the name reads as a refusal"
+            );
+            assert!(
+                !says(&why, &said, refuses_the_sign_in),
+                "left out, quoted as it was, it doesn't: {why}"
+            );
+        }
         assert!(
             says(
                 &format!("invalid_auth, for {escaped}"),
