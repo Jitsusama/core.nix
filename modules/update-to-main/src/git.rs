@@ -127,6 +127,16 @@ pub fn has(repo: &Repo, commit: &str) -> bool {
         .is_ok_and(|s| s.success())
 }
 
+/// Whether `commit`'s tree has a file at `path`, told apart from a
+/// commit git can't read by asking `has` first.
+pub fn holds_file(repo: &Repo, commit: &str, path: &str) -> bool {
+    git(repo)
+        .args(["cat-file", "-e", &format!("{commit}:{path}")])
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
 /// Fetches main into root's copy, whole, and gives its head.
 pub fn fetch(repo: &Repo) -> Result<String, Failure> {
     make_copy(repo)?;

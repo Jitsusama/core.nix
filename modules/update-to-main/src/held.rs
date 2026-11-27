@@ -206,14 +206,16 @@ pub fn stops(config: &Config, head: &str, followed: &Followed) -> Option<String>
         // A commit is one repository's, and a followed input's copy is
         // fetched before this asks, so a commit one of them has is judged
         // there alone. Main's host doesn't know another repository's
-        // commits, and asking it would refuse every head.
-        let theirs: Vec<(&String, &String)> = followed
+        // commits, and asking it would refuse every head. Every follow's
+        // copy is asked, not only those this build overrides: an input
+        // that moves only when asked is mostly left at its lock's pin, and
+        // a hold of its commit is still its repository's. That pin isn't
+        // read here, so such a hold can't be told, and stops the build.
+        let theirs: Vec<(&String, Option<&String>)> = config
+            .follows
             .iter()
-            .filter(|(name, _)| {
-                config.follows.get(*name).is_some_and(|follow| {
-                    git::has(&Repo::followed(config, name, follow), &hold.commit)
-                })
-            })
+            .filter(|(name, follow)| git::has(&Repo::followed(config, name, follow), &hold.commit))
+            .map(|(name, _)| (name, followed.get(name)))
             .collect();
         let mut unknown = None;
         let mut judged = |seen: Result<bool, Failure>| match seen {
@@ -230,6 +232,11 @@ pub fn stops(config: &Config, head: &str, followed: &Followed) -> Option<String>
                 None => git::descends(&Repo::main(config), &hold.commit, head),
             });
         let in_followed = theirs.into_iter().any(|(name, commit)| {
+            let Some(commit) = commit else {
+                return judged(Err(Failure::new(format!(
+                    "{name} builds at its lock's pin, which isn't read for holds"
+                ))));
+            };
             config.follows.get(name).is_some_and(|follow| {
                 judged(git::descends(
                     &Repo::followed(config, name, follow),

@@ -130,7 +130,8 @@ fn run(
         Err(failure) => return failed(last, failure),
     };
     let last_followed = follows::last(config);
-    let followed = match follows::heads(config, &head, &last_followed, at) {
+    let kept = kept_asks(config, &last_followed);
+    let followed = match follows::heads(config, &head, &kept, at) {
         Ok(Ok(followed)) => followed,
         Ok(Err(why)) => return Line::Refused { commit: last, why },
         Err(failure) => return failed(last, failure),
@@ -218,6 +219,23 @@ fn run(
 /// follower in if the asker died between them.
 fn paused(config: &Config, following: &dyn Fn() -> bool) -> Option<String> {
     held::paused(config).filter(|_| following())
+}
+
+/// What the machine last followed, with each asked input a build waiting
+/// for a hold was built at. An ask at an input that moves only when asked
+/// is one whose move most often waits for a hold, and its commit is
+/// remembered only once it switches: without this, the next update builds
+/// that input at its pin, and its switch, or a newer wait, spends the ask.
+fn kept_asks(config: &Config, last: &follows::Followed) -> follows::Followed {
+    let mut kept = last.clone();
+    if let Some(waiting) = waited(config) {
+        let asked = waiting
+            .followed
+            .into_iter()
+            .filter(|(name, _)| config.follows.get(name).is_some_and(|f| f.asked));
+        kept.extend(asked);
+    }
+    kept
 }
 
 /// A built system whose switch waits for a hold to be given.

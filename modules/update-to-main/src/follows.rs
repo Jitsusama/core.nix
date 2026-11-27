@@ -32,9 +32,10 @@ pub type Followed = BTreeMap<String, String>;
 /// Once asked, it stays at that commit while it is ahead of what its lock
 /// pins, since falling back to an older pin would undo what was asked
 /// for. Once the lock pins it, past it or off its line, the lock rules
-/// again, and so it does once the lock no longer has the input: holding an
-/// ask against a lock gone another way would refuse every update, and no
-/// ask could clear it.
+/// again: holding an ask against a lock gone another way would refuse
+/// every update, and no ask could clear it. A follow whose lock no longer
+/// has its input is left out, asked or not, since the build no longer
+/// reads it.
 pub fn heads(
     config: &Config,
     head: &str,
@@ -62,14 +63,16 @@ pub fn heads(
         git::keyring(&repo)?;
         let main = git::fetch(&repo)?;
         let Some((pinned, pins)) = pinned(config, &lock, name, &followed)? else {
-            // A lock that no longer has the input leaves an ask kept for it
-            // nothing to stand ahead of, so it's dropped rather than failing
-            // every update, which no ask could then clear.
-            if follow.asked && !at.contains_key(name) {
+            // A lock that no longer has the input builds without it, so
+            // there is nothing to override, nor for a kept ask to stand
+            // ahead of. Failing instead would fail every update, and the
+            // config that drops the follow comes only with a switch. An
+            // ask naming it is refused, since nothing would build it.
+            if !at.contains_key(name) {
                 continue;
             }
-            return Err(Failure::new(format!(
-                "{name} isn't in the lock the build reads it from, so nothing pins it"
+            return Ok(Err(format!(
+                "{name} isn't in the lock the build reads, so no ask may name a commit of it"
             )));
         };
         let commit = match at.get(name) {
@@ -143,8 +146,18 @@ fn pinned(
     if let Some((parent, own, commit, follow)) = nearest {
         let repo = Repo::followed(config, parent, follow);
         let at = git::short(commit);
-        let Some(text) = git::show(&repo, commit, "flake.lock") else {
+        // Only a lock read and found without the input lets go of a kept
+        // ask: a parent git can't read would otherwise drop it unasked.
+        if !git::has(&repo, commit) {
+            return Err(Failure::new(format!("{parent} at {at} can't be read")));
+        }
+        if !git::holds_file(&repo, commit, "flake.lock") {
             return Ok(None);
+        }
+        let Some(text) = git::show(&repo, commit, "flake.lock") else {
+            return Err(Failure::new(format!(
+                "{parent}'s flake.lock at {at} can't be read"
+            )));
         };
         let theirs: Value = serde_json::from_str(&text)
             .map_err(|e| Failure::new(format!("reading {parent}'s flake.lock at {at}: {e}")))?;
