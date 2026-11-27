@@ -250,9 +250,9 @@ mod tests {
         text.split_whitespace().map(str::to_owned).collect()
     }
 
-    /// A Mac with memory to spare: half free, swapping nothing.
+    /// A Mac with memory to spare: 70% free, swapping nothing.
     const SPARE: Option<Memory> = Some(Memory {
-        free: 50,
+        free: 70,
         swapped: 0,
         window: 60,
     });
@@ -286,7 +286,7 @@ mod tests {
         assert_eq!(
             room("skiff", at(36.0, 36.0)),
             Ok(
-                "skiff has room, at 50% free and 0 swap-outs over 60 s and load 36.0 \
+                "skiff has room, at 70% free and 0 swap-outs over 60 s and load 36.0 \
                  over a minute and 36.0 over five on 12 processors"
                     .into()
             ),
@@ -305,8 +305,8 @@ mod tests {
     }
 
     // From 10:30 to 11:25 on 25 November the net found a Mac swapping at
-    // loads of 35 to 262; velocity's line for a start there is 40% free
-    // and no swap-outs in the last minute.
+    // loads of 35 to 262; velocity's line for a start there is 55% free
+    // and no swap-outs in the last minute, raised from 40 on 27 November.
     #[test]
     fn a_run_for_a_mac_short_of_memory_waits_however_light_its_load() {
         let with = |memory: Option<Memory>| {
@@ -326,13 +326,13 @@ mod tests {
             })
         };
         assert_eq!(
-            room("skiff", with(memory(39, 0))),
+            room("skiff", with(memory(54, 0))),
             Err(
-                "skiff has no room, at 39% free and 0 swap-outs over 72 s and load 6.0 \
+                "skiff has no room, at 54% free and 0 swap-outs over 72 s and load 6.0 \
                  over a minute and 6.0 over five on 12 processors"
                     .to_owned()
             ),
-            "a run for a Mac just under 40% free went"
+            "a run for a Mac just under 55% free went"
         );
         assert_eq!(
             room("skiff", with(memory(80, 1))),
@@ -344,8 +344,8 @@ mod tests {
             "a run for a Mac that swapped out within its window went"
         );
         assert!(
-            room("skiff", with(memory(40, 0))).is_ok(),
-            "a run for a Mac at 40% free, swapping nothing, waited"
+            room("skiff", with(memory(55, 0))).is_ok(),
+            "a run for a Mac at 55% free, swapping nothing, waited"
         );
         assert_eq!(
             room("skiff", with(None)),
@@ -381,7 +381,7 @@ mod tests {
         assert_eq!(
             room("skiff", building(0)),
             Ok(
-                "skiff has room, at 50% free and 0 swap-outs over 60 s and load 20.0 \
+                "skiff has room, at 70% free and 0 swap-outs over 60 s and load 20.0 \
                  over a minute and 35.0 over five on 12 processors"
                     .to_owned()
             ),
@@ -436,7 +436,8 @@ mod tests {
     }
 
     // Velocity's ruling of 26 November: a build goes to a Mac only on two
-    // readings a minute apart, both at 40% free or more, swapping nothing.
+    // readings a minute apart, both at 55% free or more since its ruling of
+    // 27 November, swapping nothing.
     #[test]
     fn a_run_for_a_mac_goes_only_once_its_room_holds_on_a_second_reading() {
         let free = |free: u32| {
@@ -446,11 +447,11 @@ mod tests {
                 window: 60,
             })
         };
-        let (read, times) = reads_of(vec![free(50), free(45)]);
+        let (read, times) = reads_of(vec![free(70), free(60)]);
         assert_eq!(
             room_held("skiff", &read, Duration::ZERO),
             Ok(
-                "skiff has room, at 45% free and 0 swap-outs over 60 s and load 6.0 over a \
+                "skiff has room, at 60% free and 0 swap-outs over 60 s and load 6.0 over a \
                 minute and 6.0 over five on 12 processors, held over 0 seconds"
                     .to_owned()
             ),
@@ -462,7 +463,7 @@ mod tests {
             "a Mac's room was read {} times, not twice",
             times.get()
         );
-        let (read, _) = reads_of(vec![free(50), free(30)]);
+        let (read, _) = reads_of(vec![free(70), free(30)]);
         assert_eq!(
             room_held("skiff", &read, Duration::ZERO),
             Err(

@@ -5516,8 +5516,10 @@ pub struct Memory {
 
 /// The share of a Mac's memory free below which it has no room, by
 /// velocity's line for a start there: 35 until its ruling of 26
-/// November raised it to 40, read twice (`changed::mac::room_held`).
-const FREE_AT_LEAST: u32 = 40;
+/// November raised it to 40, and 55 from 27 November, when one lent run
+/// with a `cargo test` in it, sent at 51% free, took a Mac to 26% within
+/// a minute. It's read twice (`changed::mac::room_held`).
+const FREE_AT_LEAST: u32 = 55;
 
 impl Memory {
     /// Whether the Mac is short of memory: under [`FREE_AT_LEAST`] free,
