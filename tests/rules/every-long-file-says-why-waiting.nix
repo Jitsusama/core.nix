@@ -40,7 +40,6 @@
   "modules/slices/jobs-sorter/src/main.rs"
   "modules/spend-watch/src/collection.rs"
   "modules/spend-watch/src/daemon.rs"
-  "modules/spend-watch/src/detect.rs"
   "modules/spend-watch/src/history.rs"
   "modules/spend-watch/src/picture.rs"
   "modules/spend-watch/src/report.rs"
