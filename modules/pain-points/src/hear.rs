@@ -547,7 +547,9 @@ fn still_kept(heard_at: &Path, at: i64) -> Vec<Heard> {
 
 /// Hears what's new in each session log written since `since`, keeping
 /// each pain he said, takes up those its session's cell answered him on,
-/// and forgets the logs no longer there.
+/// and forgets the logs no longer there, but for the void's while its cell
+/// lives, so a void session quiet for a day still holds no other's pain
+/// (#7022's round, F18).
 fn hear_logs(
     ears: &Ears,
     following: &mut BTreeMap<String, Following>,
@@ -622,7 +624,9 @@ fn hear_logs(
             }
         }
     }
-    following.retain(|name, _| present.contains(name));
+    following.retain(|name, log| {
+        present.contains(name) || (log.void && cells.get(&log.session).is_some_and(|c| c.live))
+    });
 }
 
 /// Takes up each pain said in `session` before its cell, `by`, answered
