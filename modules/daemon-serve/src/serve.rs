@@ -205,7 +205,7 @@ pub struct Shared {
     /// The daemon's own asks answered each on a thread of its own.
     slow: OnceLock<&'static [&'static str]>,
     /// The daemon's own asks answered in turn, off their connection's
-    /// reading thread (in_turn.rs).
+    /// reading thread (`in_turn.rs`).
     in_turn: OnceLock<&'static [&'static str]>,
     /// The daemon's own asks answered knowing their connection, and what
     /// answers them.
