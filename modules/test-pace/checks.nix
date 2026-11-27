@@ -10,7 +10,7 @@
   # and the slack, a busy one stretches the bound by its ready tasks per
   # processor up to the most pace, a step begun on a busy host keeps that
   # pace, and a failure says the step's time against both bounds.
-  test-pace-stretches-a-bound-with-the-host = pkgs.callPackage ./package.nix { };
+  test-pace-stretches-a-bound-with-the-machine = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in test-pace, its tests included.
   test-pace-passes-clippy = passesClippy "test-pace-passes-clippy" (
     pkgs.callPackage ./package.nix { }

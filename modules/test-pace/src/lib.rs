@@ -84,7 +84,7 @@ impl Timed {
     #[must_use]
     pub fn said(&self, idle: Duration) -> String {
         format!(
-            "took {:?}, where {idle:?} is allowed at idle and {:?} on this host",
+            "took {:?}, where {idle:?} is allowed at idle and {:?} on this machine",
             self.elapsed(),
             self.allowed(idle)
         )

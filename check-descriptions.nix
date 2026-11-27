@@ -4734,9 +4734,9 @@
     clippy finds nothing in mycelium-link, which opens a mycelium: link in the launcher, or its
     tests
   '';
-  test-pace-stretches-a-bound-with-the-host = ''
-    a timed step of a test is allowed its idle bound and a slack on an idle host, the bound
-    stretched by the host's ready tasks per processor up to the most pace on a busy one, and a
+  test-pace-stretches-a-bound-with-the-machine = ''
+    a timed step of a test is allowed its idle bound and a slack on an idle machine, the bound
+    stretched by the machine's ready tasks per processor up to the most pace on a busy one, and a
     step begun busy keeps that pace; a failure says the time taken against both bounds
   '';
   test-pace-passes-clippy = ''

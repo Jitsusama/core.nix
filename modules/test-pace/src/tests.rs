@@ -103,5 +103,5 @@ fn what_a_failure_says_names_both_bounds() {
     let said = timed.said(Duration::from_secs(2));
 
     assert!(said.contains("where 2s is allowed at idle"), "{said}");
-    assert!(said.contains("on this host"), "{said}");
+    assert!(said.contains("on this machine"), "{said}");
 }

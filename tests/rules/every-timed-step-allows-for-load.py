@@ -35,18 +35,7 @@ RUST_PAST = re.compile(r"\bif\b.*\.elapsed\(\)\s*>")
 # Python: a clock read less a time it was read before, held under something.
 PYTHON_UNDER = re.compile(r"\b(monotonic|perf_counter)\(\)\s*-\s*[\w.]+\s*<")
 PYTHON_PACED = re.compile(r"\bpace\(")
-TEST_NAMES = ("-test.py", "_test.py")
-
-
-def is_test(path: Path) -> bool:
-    """Whether a file is a test: in a tests folder, or a Python script named as one."""
-    if path.suffix == ".rs":
-        return "tests" in path.parts[:-1]
-    return (
-        "tests" in path.parts[:-1]
-        or path.name.endswith(TEST_NAMES)
-        or path.name.startswith("test_")
-    )
+PYTHON_TEST_NAMES = ("-test.py", "_test.py")
 
 
 def rust_bounds(text: str) -> Iterator[int]:
@@ -65,20 +54,29 @@ def python_bounds(text: str) -> Iterator[int]:
             yield number
 
 
-READERS: dict[str, Callable[[str], Iterator[int]]] = {".rs": rust_bounds, ".py": python_bounds}
+def reader_for(path: Path) -> Callable[[str], Iterator[int]] | None:
+    """The reader for a file this check reads, or None: Rust in a tests folder, Python there or named as a test."""
+    if ".git" in path.parts:
+        return None
+    in_tests = "tests" in path.parts[:-1]
+    if path.suffix == ".rs":
+        return rust_bounds if in_tests else None
+    named = path.name.endswith(PYTHON_TEST_NAMES) or path.name.startswith("test_")
+    if path.suffix == ".py" and (in_tests or named):
+        return python_bounds
+    return None
 
 
 def bounds_at_idle(tree: Path) -> Iterator[tuple[str, int, str]]:
     """Give each bound in a test that doesn't allow for the host's pace: its file, line and code."""
     for path in sorted(tree.rglob("*")):
         relative = path.relative_to(tree)
-        if ".git" in relative.parts or path.suffix not in READERS or not is_test(relative):
-            continue
-        if not path.is_file():
+        reader = reader_for(relative)
+        if reader is None or not path.is_file():
             continue
         text = path.read_text(errors="replace")
         lines = text.splitlines()
-        for number in READERS[path.suffix](text):
+        for number in reader(text):
             yield relative.as_posix(), number, lines[number - 1].strip()
 
 
