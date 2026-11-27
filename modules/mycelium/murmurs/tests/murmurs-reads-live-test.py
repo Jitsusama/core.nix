@@ -434,6 +434,17 @@ QUIET_CODE = """() => [...document.querySelectorAll('#quiet code')].map((code) =
     line: getComputedStyle(code.parentElement).fontStyle,
 }))"""
 
+# How each upright face of the quiet code's own family stands. The head preloads the upright
+# file whatever the page draws, so a request for it proves nothing; a face is loaded only once
+# something is drawn in it.
+QUIET_FACES = """() => {
+    const code = document.querySelector('#quiet code');
+    const family = getComputedStyle(code).fontFamily.split(',')[0].trim().replace(/["']/gu, '');
+    return [...document.fonts]
+        .filter((face) => face.family.replace(/["']/gu, '') === family && face.style === 'normal')
+        .map((face) => ({ family, status: face.status }));
+}"""
+
 
 def test_a_quiet_day_sends_no_italic_code_face(
     browser: Browser, tmp_path: Path, quiet_node: StandIn
@@ -464,6 +475,10 @@ def test_a_quiet_day_sends_no_italic_code_face(
             assert any(url.endswith(UPRIGHT_CODE) for url in urls), (
                 f"the upright code face was never asked for, so its italic's absence says nothing: "
                 f"{urls}"
+            )
+            upright = opened.page.evaluate(QUIET_FACES)
+            assert any(face["status"] == "loaded" for face in upright), (
+                f"the quiet line's code drew in no upright code face of its own: {upright}"
             )
             faces = [url for url in urls if url.endswith(ITALIC_CODE)]
             assert faces == [], f"a quiet day's line sent the italic code face: {faces}"
