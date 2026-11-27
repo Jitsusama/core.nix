@@ -1,6 +1,6 @@
 # The XPS 14's kernel patches applied in this order, after the camera's
 # (../camera/camera.nix) and before next: the ones written here. The
-# camera's list holds three taken from elsewhere, which wait to be filed
+# camera's list holds two taken from elsewhere, which wait to be filed
 # into next/ at the stack's next regeneration, since filing them reorders
 # the patches; kernel/README names them.
 { lib, ... }:
@@ -67,8 +67,7 @@
       # couldn't read, so nothing reset it, and it stayed dead, mouse and
       # all, until a reboot. The driver now resets it as it would after a
       # dump it could read, within the same retry limit. Written here; the
-      # patch says why. Next's two Bluetooth patches take an offset after
-      # it, which patch allows.
+      # patch says why.
       name = "btintel-pcie-resets-unread-dump";
       patch = ./local/btintel-pcie-resets-unread-dump.patch;
     }

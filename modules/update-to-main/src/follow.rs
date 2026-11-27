@@ -273,7 +273,9 @@ impl Follower {
                 Line::Done {
                     commit, followed, ..
                 }
-                | Line::Unchanged { commit, followed },
+                | Line::Unchanged {
+                    commit, followed, ..
+                },
             ) = serde_json::from_str(ended.trim())
         {
             self.current = self.ran(heads, &commit, &followed);
@@ -424,7 +426,9 @@ impl Follower {
             Line::Done {
                 commit, followed, ..
             }
-            | Line::Unchanged { commit, followed } => {
+            | Line::Unchanged {
+                commit, followed, ..
+            } => {
                 self.current = self.ran(&heads, commit, followed);
                 self.failed = None;
                 self.dropped = 0;
@@ -654,6 +658,7 @@ pub(crate) mod tests {
         Line::Unchanged {
             commit: "c".to_owned(),
             followed: Followed::new(),
+            boots: None,
         }
     }
 
@@ -845,6 +850,7 @@ pub(crate) mod tests {
         Line::Unchanged {
             commit: commit.to_owned(),
             followed: Followed::new(),
+            boots: None,
         }
     }
 
@@ -983,6 +989,7 @@ pub(crate) mod tests {
         let ending = |core: &str| Line::Unchanged {
             commit: "mains-head".to_owned(),
             followed: Followed::from([("core".to_owned(), core.to_owned())]),
+            boots: None,
         };
         f.asked(heads.clone(), &ending("c1"), "", Some(system_n(1)), t);
         f.asked(
@@ -1164,6 +1171,7 @@ pub(crate) mod tests {
         let theirs = Line::Unchanged {
             commit: "mains-head".to_owned(),
             followed: Followed::from([("core".to_owned(), "c1".to_owned())]),
+            boots: None,
         };
         f.saw_ended(&heads, &ended_file(&theirs));
         assert_eq!(

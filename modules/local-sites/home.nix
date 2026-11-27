@@ -179,6 +179,10 @@ let
   # source given in its place wins over the text, which then says words
   # the launcher never reads. Such a source isn't read, since reading it
   # would build it while the machine is evaluated, so it's refused below.
+  # Home-manager makes a text's source with writeTextFile, which carries the
+  # text; were it not to, every machine with the launcher's words would be
+  # refused, not let through, which local-sites-refuses-renamed-look-acts
+  # holds.
   fromText =
     wordsFile.text or null != null
     && lib.isAttrs wordsFile.source
@@ -429,14 +433,17 @@ in
       };
     };
     feeds = {
-      # The system daemon's summary, its parts and their things
-      # (modules/system), each told whole: a page shows all of each.
+      # The system daemon's summary, its parts and their things, the
+      # machines and the builders they send builds to (modules/system), each
+      # told whole: a page shows all of each. A kind the daemon keeps but
+      # this doesn't name never reaches a page.
       system = {
         socket = "daemons/system.sock";
         kinds = {
           summary = { };
           part = { };
           machine = { };
+          builder = { };
         };
       };
       # net's devices, the links between them, the sources it read them from,
