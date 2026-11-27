@@ -235,7 +235,7 @@ fn within(command: &mut Command, deadline: Duration) -> Result<Vec<u8>, String> 
         .spawn()
         .map_err(|why| format!("{program} couldn't run: {why}"))?;
     let Some(mut out) = child.stdout.take() else {
-        stopped(&mut child);
+        let _ = stopped(&mut child);
         return Err("its output wasn't kept".to_owned());
     };
     let (sent, reading) = mpsc::channel();
