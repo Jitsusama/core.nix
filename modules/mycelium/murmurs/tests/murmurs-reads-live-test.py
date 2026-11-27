@@ -62,9 +62,9 @@ NEWEST = (
 # Every other headline and lede the page writes, made by its own model and markup, which must
 # take the lines the ones it opens on do. The headlines: a node never reached, and every count
 # said in words, any part of it settled, then counts past them in numerals. The ledes: a node
-# never reached, nothing said, all settled, and the longest the model writes, a quest's name in
-# Title Case or lower case cut at its whole 48 characters and a murmur's prose at its 84, which
-# must fit the four lines the lede's box holds.
+# never reached, nothing said, all settled, and the longest the model writes, a quest's name and
+# a murmur's prose both in Title Case or both in lower case, cut at their whole 48 and 84
+# characters, which must fit the four lines the lede's box holds.
 HEAD_FORMS = """async () => {
   const { headline, lede, UNHEARD } = await import("./model.js");
   const { escaped, headlineOf } = await import("./draw.js");
@@ -79,9 +79,9 @@ HEAD_FORMS = """async () => {
     }
   }
   const lower = "gulls are back on the breakwater, a week before the almanac said they " +
-    "would be, and they nest low on the seaward side.";
+    "would be, then they nest low on the seaward side.";
   const title = "Gulls Are Back On The Breakwater, A Week Before The Almanac Said They " +
-    "Would Be, And They Nest Low On The Seaward Side.";
+    "Would Be, Then They Nest Low On The Seaward Side.";
   return {
     headline: [
       escaped(UNHEARD.headline),
@@ -91,14 +91,16 @@ HEAD_FORMS = """async () => {
       UNHEARD.lede,
       ...[
         said(0, 0), said(3, 0),
-        said(1, 1, "Keep Mycelia Fast and Whole Through Every Switch Tonight Again", lower),
-        said(1, 1, "make the nightly audits find everything in order and keep it", title),
+        said(1, 1, "Keep Mycelia Fast and Whole Through Every Switch Tonight Again", title),
+        said(1, 1, "make the nightly audits find everything in order and keep it", lower),
       ].map(lede),
     ].map(escaped),
   };
 }"""
-# The lines the lede's box holds, which every lede the model writes fits.
+# The lines the lede's box holds, which every lede the model writes fits, within a pixel, since
+# the page rounds the height it lays out.
 LEDE_LINES = 4
+LAID_WITHIN = 1
 
 
 def murmur(writer: str, at: int, words: str, **more: object) -> dict[str, object]:
@@ -614,13 +616,18 @@ def test_the_head_keeps_the_lines_it_opens_on(
         forms = opened.page.evaluate(HEAD_FORMS)
         heights = opened.page.evaluate(HEAD_HEIGHTS, [["headline", "lede"], forms])
         for part, said in heights.items():
-            taken = [said["live"], *said["forms"]]
-            assert all(each == said["opening"] for each in taken), (
-                f"at {size} the {part} opens {said['opening']} px tall, then takes {taken}"
+            assert said["live"] == said["opening"], (
+                f"at {size} the live {part} is {said['live']} px, not {said['opening']}"
             )
-        box = round(LEDE_LINES * heights["lede"]["line"])
-        assert heights["lede"]["opening"] == box, (
-            f"at {size} the lede's box is {heights['lede']['opening']} px, not {LEDE_LINES} lines"
+            grew = {
+                words: px
+                for words, px in zip(forms[part], said["forms"], strict=True)
+                if px != said["opening"]
+            }
+            assert not grew, f"at {size} these {part} forms leave {said['opening']} px: {grew}"
+        lede = heights["lede"]
+        assert abs(lede["opening"] - LEDE_LINES * lede["line"]) < LAID_WITHIN, (
+            f"at {size} the lede's box is {lede['opening']} px, not {LEDE_LINES} lines"
         )
     finally:
         opened.close()
