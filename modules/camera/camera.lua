@@ -508,7 +508,7 @@ end
 
 -- A Z waits 300 ms, his Neovim's timeoutlen, for the second that closes,
 -- and alone does nothing; any other key lets it go. Each Z says in mpv's
--- log what became of it, so a ZZ that left the viewfinder open says
+-- log (camera.sh's log file) what became of it, so a ZZ that left the viewfinder open says
 -- whether it was heard as two lone Zs, as one, or not at all (the
 -- captures test's misses of 26 Nov).
 local first_z = nil

@@ -32,6 +32,8 @@ if TYPE_CHECKING:
 CAMERA = 'niri msg --json windows | grep -qF \'"app_id":"camera"\''
 # The keys that close the viewfinder, as they close Joel's other programs.
 ZZ = ("shift-z", "shift-z")
+# Where the viewfinder logs what became of each Z (camera.sh), written over each time it opens.
+VIEWFINDER_LOG = "/run/user/1000/camera-viewfinder.log"
 # Where the shell keeps the notices it holds.
 # How long a camera may take to wake, or a recording to start, stop or be saved.
 WAKING = timedelta(seconds=60)
@@ -671,8 +673,8 @@ class Camera:
 
         Each read goes through diagnosis, which never raises and is bounded, since a session
         gone bad is when these fail too, and their error would be reported in place of the
-        failure they explain. The journal is read for the viewfinder's lines on its keys
-        (camera.lua's z) as well as its last lines.
+        failure they explain. The viewfinder's log (camera.sh) is read for its lines on its
+        keys (camera.lua's z), and the journal for its last lines.
         """
         quick = timedelta(seconds=20)
         for command in (
@@ -680,7 +682,7 @@ class Camera:
             f"ls -la /run/user/1000 {self.videos}",
             "cat /run/user/1000/camera-recording.log",
             "timeout 10 pw-top -b -n 2",
-            "journalctl --user --no-pager -o cat -g 'viewfinder:' -n 40",
+            f"grep -a 'viewfinder:' {VIEWFINDER_LOG} | tail -n 40",
             "journalctl --user --no-pager -n 60 -o cat",
         ):
             print(self.desktop.diagnosis(command, quick))
@@ -750,9 +752,8 @@ def test_the_camera_takes_a_picture_and_a_video_by_the_keys(desktop: Desktop) ->
     camera.gone()
     assert machine.succeed(f"ls {camera.pictures} {camera.videos}") == kept
     # And said so where a miss's print reads it (Camera.said), so a miss says what its Zs did.
-    said = "journalctl --user --no-pager -o cat -g 'viewfinder: ZZ closes' || true"
-    closed = desktop.as_account(said)
-    assert closed.strip(), "the viewfinder's ZZ wasn't said in the journal"
+    closed = machine.succeed(f"grep -a 'viewfinder: ZZ closes' {VIEWFINDER_LOG} || true")
+    assert closed.strip(), "the viewfinder's ZZ wasn't said in its log"
 
     # A picture is kept as others see Joel, not mirrored as the viewfinder
     # shows him: it matches what the camera gives better than its mirror.
