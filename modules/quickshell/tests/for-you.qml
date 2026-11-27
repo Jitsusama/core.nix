@@ -585,6 +585,21 @@ QtObject {
                 LookForm.poses(`Talk\u2003${"x".repeat(19)}`, ["Talk"]),
                 LookForm.poses(`Talk ${"x".repeat(18)}\udb40\udc01`, ["Talk"])],
             [false, false, true, false, true, true, false, true, true, true, false]);
+        // Measured where it's drawn, never where it reads: what draws as
+        // nothing before or inside the act, or a stop or a dash after it
+        // that the cut strips, can't leave the long word after it unweighed;
+        // and an act in capitals weighs its capitals (#6562's tenth review).
+        expect("a one-word act's choice is measured from its face, its stops cut",
+            [LookForm.poses(`\u200bTalk ${"W".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Ta\u00adlk ${"W".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Talk\u200b ${"W".repeat(19)}`, ["Talk"]),
+                LookForm.poses(`Talk, ${"W".repeat(17)}`, ["Talk"]),
+                LookForm.poses(`Talk - ${"W".repeat(16)}`, ["Talk"]),
+                LookForm.poses(`Talk \u2013 ${"W".repeat(17)}`, ["Talk"]),
+                LookForm.poses(`ANSWER ${"X".repeat(11)}`, ["Answer"]),
+                LookForm.poses("Talk, now", ["Talk"]),
+                LookForm.poses("Talk - x", ["Talk"])],
+            [true, true, true, true, true, true, true, false, false]);
         // And a look's own act can't pass for a choice, nor a choice for it,
         // once either is cut short; a one-word choice its short act opens
         // with draws whole beside it, so both stay.

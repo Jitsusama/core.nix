@@ -289,6 +289,17 @@ const PLAIN =
   /^[\x20-\x7e\u00c0-\u00d6\u00d8-\u00f6\u00f8-\u017f\u2013\u2014\u2018\u2019\u201c\u201d]*$/u;
 const WIDEST = /[MWmw@%\u2014\u00c6\u00e6\u0152\u0153\u0174\u0175]/u;
 const SPACED = /[^\S \u00a0]/u;
+const DANGLING = /(?:[\s\u00b7,;:]|\s[-|\u2013])+$/u;
+
+/**
+ * How wide the act opening `face` draws, its first `length` characters, as
+ * LookForm.js's actWeighed: weighed, but for the first capital every act
+ * opens with.
+ */
+function actWeighed(face: string, length: number): number {
+  const act = face.slice(0, length);
+  return weighed(act.charAt(0).toLowerCase() + act.slice(1));
+}
 
 /**
  * How wide `text` draws, in small letters, as LookForm.js's weighed: each
@@ -356,7 +367,9 @@ function opensWith(read: string, each: string): boolean {
  * long enough to be cut short to it, past four words or 24 characters
  * read, or with the word after it past 24 drawn, its stops and capitals
  * weighed and an ellipsis after it where more follows, since the line is
- * cut at a word; or once what follows it isn't PLAIN or holds a SPACED.
+ * cut at a word and what DANGLING names goes from the cut's end; or once
+ * what follows it isn't PLAIN or holds a SPACED, or the face doesn't open
+ * with the act's own letters, since then the read's offsets miss it.
  */
 function poses(name: string, taken: readonly string[]): boolean {
   const read = readAs(name);
@@ -364,14 +377,21 @@ function poses(name: string, taken: readonly string[]): boolean {
   const cut = read.split(" ").length > ACT_WORDS || read.length > WHOLE_CHOICE;
   const face = name.replace(UNDRAWN, "").trim();
   const drawn = (each: string): number => {
-    const after = face.indexOf(" ", each.length + 1);
-    const end = after < 0 ? face.length : after;
-    const ellipsis = end < face.length ? 1 : 0;
-    return each.length + weighed(face.slice(each.length, end)) + ellipsis;
+    const uncut = actWeighed(face, each.length) + weighed(face.slice(each.length));
+    const words = face.split(" ");
+    for (let count = 1; uncut > WHOLE_CHOICE && count < words.length; count += 1) {
+      const cutTo = words.slice(0, count).join(" ").replace(DANGLING, "");
+      if (readAs(cutTo).length > each.length) {
+        return actWeighed(face, each.length) + weighed(cutTo.slice(each.length)) + 1;
+      }
+    }
+    return uncut;
   };
+  const plainly = (each: string): boolean => face.slice(0, each.length).toLowerCase() === each;
   const opened = (each: string): boolean =>
     each.includes(" ") ||
     cut ||
+    !plainly(each) ||
     !PLAIN.test(read.slice(each.length)) ||
     SPACED.test(face.slice(each.length)) ||
     drawn(each) > WHOLE_CHOICE;

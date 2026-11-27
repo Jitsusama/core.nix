@@ -290,6 +290,8 @@ const LOOKS: Record<string, object> = {
       "Talk\u009cX",
     ]),
   },
+  // Four to a look, since each side offers only a look's first four, so
+  // every label here reaches both copies' poses.
   "choices measured as drawn, wide, stopped or accented": {
     ...LOOK,
     choices: labelled([
@@ -297,16 +299,46 @@ const LOOKS: Record<string, object> = {
       `Talk x${"!".repeat(200)}`,
       "Open The Pull Request",
       "Open Jos\u00e9\u2019s PR",
+    ]),
+  },
+  "choices weighed by their capitals": {
+    ...LOOK,
+    choices: labelled([
       "Answer \u201cyes\u201d",
       "Talk With Mom Tomorrow",
       `Talk ${"X".repeat(13)}`,
       `Talk ${"X".repeat(12)}`,
+    ]),
+  },
+  "choices weighed by their widest letters": {
+    ...LOOK,
+    choices: labelled([
       `Talk ${"\u0141".repeat(13)}`,
       `Talk ${"m".repeat(10)}`,
       `Talk ${"\u0174".repeat(19)}`,
-      `Talk x\t${"y".repeat(15)}`,
-      `Talk\u2003${"x".repeat(19)}`,
       `Talk ${"x".repeat(18)}\u{e0001}`,
+    ]),
+  },
+  "choices spaced wider than one": {
+    ...LOOK,
+    choices: labelled([`Talk x\t${"y".repeat(15)}`, `Talk\u2003${"x".repeat(19)}`]),
+  },
+  "choices hiding nothing before or inside their act": {
+    ...LOOK,
+    choices: labelled([
+      `\u200bTalk ${"W".repeat(19)}`,
+      `Ta\u00adlk ${"W".repeat(19)}`,
+      `Talk\u200b ${"W".repeat(19)}`,
+      `ANSWER ${"X".repeat(11)}`,
+    ]),
+  },
+  "choices whose stop after the act the cut strips": {
+    ...LOOK,
+    choices: labelled([
+      `Talk, ${"W".repeat(17)}`,
+      `Talk - ${"W".repeat(16)}`,
+      `Talk \u2013 ${"W".repeat(17)}`,
+      "Talk, now",
     ]),
   },
   "an act whose stops draw past its room": { ...LOOK, act: `Talk x${"!".repeat(200)}` },

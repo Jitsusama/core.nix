@@ -51,6 +51,10 @@ const WIDEST = /[MWmw@%\u2014\u00c6\u00e6\u0152\u0153\u0174\u0175]/u;
 // A space PLAIN can't see, since the read makes every space one: a tab or
 // a wide space draws past its count, "Talk x\t" and 15 y's as Talk.
 const SPACED = /[^\S \u00a0]/u;
+// What a verb's line cut short strips from its end before its ellipsis,
+// as Reading.js's DANGLING, which draws the cut: a stop or a pause, or a
+// dash or a bar after a space, so "Talk - " and a long word draws as Talk.
+const DANGLING = /(?:[\s\u00b7,;:]|\s[-|\u2013])+$/u;
 // And the rest of what Unicode says may draw as nothing, some of it past
 // U+FFFF: selectors of a letter's variant (Mongolian's and Unicode's),
 // Khmer's inherent vowels, shorthand's and music's format controls, and
@@ -157,20 +161,43 @@ function poses(name, taken) {
     // ellipsis, or the whole of a choice of two words. Only where that
     // won't fit does the act show alone, so "Talk With Mom Tomorrow" is
     // offered and "Talk" and one long word isn't (round 9 on #6562, F130).
-    const least = each => {
-        const after = face.indexOf(" ", each.length + 1);
-        return after < 0 ? face.length : after;
-    };
+    // It's measured on the face as drawn, which the read's offsets match
+    // only where the face opens with the act's own letters (plainly): one
+    // where something that draws as nothing sits before or inside the act
+    // is refused rather than measured at the wrong place (round 10, F132,
+    // F139, F143). Drawn whole where it fits; else the least wordCuts
+    // gives that reads as more than the act, its words split at a space
+    // and what it strips as DANGLING gone, since "Talk, " or "Talk - " and a
+    // long word draws as Talk (F133, F135).
     const drawn = each => {
-        const end = least(each);
-        const ellipsis = end < face.length ? 1 : 0;
-        return each.length + weighed(face.slice(each.length, end)) + ellipsis;
+        const uncut = actWeighed(face, each.length) + weighed(face.slice(each.length));
+        const words = face.split(" ");
+        for (let count = 1; uncut > WHOLE_CHOICE && count < words.length; count += 1) {
+            const cutTo = words.slice(0, count).join(" ").replace(DANGLING, "");
+            // Read as it's read, so a cut of the act and what draws as
+            // nothing, "Talk\u200b", isn't taken for more than the act.
+            if (readAs(cutTo).length > each.length) {
+                return actWeighed(face, each.length) + weighed(cutTo.slice(each.length)) + 1;
+            }
+        }
+        return uncut;
     };
-    const opened = each => each.includes(" ") || cut || !PLAIN.test(read.slice(each.length))
-        || SPACED.test(face.slice(each.length)) || drawn(each) > WHOLE_CHOICE;
+    const plainly = each => face.slice(0, each.length).toLowerCase() === each;
+    const opened = each => each.includes(" ") || cut || !plainly(each)
+        || !PLAIN.test(read.slice(each.length)) || SPACED.test(face.slice(each.length))
+        || drawn(each) > WHOLE_CHOICE;
     return taken.length > 0 && (TURNS.test(String(name)) || VARIANTS.test(String(name))
         || taken.map(readAs).some(each => each !== "" && (each === read || each === head
             || (opensWith(read, each) && opened(each)))));
+}
+
+// How wide the act that opens `face` draws, its first `length` characters,
+// as weighed says but for its first capital, which every act opens with
+// and the room was set by: an act written in capitals is charged its
+// width, "ANSWER" three letters more than "Answer" (round 10, F140).
+function actWeighed(face, length) {
+    const act = face.slice(0, length);
+    return weighed(act.charAt(0).toLowerCase() + act.slice(1));
 }
 
 // How wide `text` draws, in small letters: each character one, a capital
