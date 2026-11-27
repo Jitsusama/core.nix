@@ -685,7 +685,6 @@ Singleton {
         if (stillHeld(named)) {
             console.info(`sessions: ${id} not asked for again, since the kitty that didn't `
                 + "answer for it may yet draw it");
-            goingTo = { app: named, at: Date.now(), from: Niri.focused };
             stillSaid = Object.assign({}, stillSaid,
                 { [named]: Object.assign({}, stillSaid[named], { said }) });
             unhosted(said, said?.startedInHost ? "startedStillComing" : "stillComing");
