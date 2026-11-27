@@ -44,6 +44,9 @@ pub struct Watch {
     /// Each watched directory, by its filesystem's id and file handle, the
     /// way events name it.
     dirs: Mutex<HashMap<Vec<u8>, PathBuf>>,
+    /// The folders forgotten since [`Watch::tidy`] last said which, so
+    /// what was heard of them can be forgotten too.
+    forgot: Mutex<Vec<PathBuf>>,
     me: i32,
 }
 
@@ -114,6 +117,7 @@ impl Watch {
         Ok(Watch {
             groups: Mutex::new(vec![Arc::new(Group::new(None)?)]),
             dirs: Mutex::new(HashMap::new()),
+            forgot: Mutex::new(Vec::new()),
             // The kernel reports pids as signed, and gives none past i32::MAX.
             me: std::process::id().cast_signed(),
         })
@@ -194,9 +198,33 @@ impl Watch {
     /// a daemon's life.
     fn give_back(&self, groups: &mut Vec<Arc<Group>>, gone: &[(Vec<u8>, PathBuf)]) {
         let mut dirs = self.dirs.lock().unwrap_or_else(PoisonError::into_inner);
-        dirs.retain(|key, dir| !gone.iter().any(|(went, at)| went == key && at == dir));
+        let mut forgot = self.forgot.lock().unwrap_or_else(PoisonError::into_inner);
+        dirs.retain(|key, dir| {
+            let went = gone.iter().any(|(went, at)| went == key && at == dir);
+            if went {
+                forgot.push(dir.clone());
+            }
+            !went
+        });
         let live: HashSet<&[u8]> = dirs.keys().filter_map(|key| key.get(..8)).collect();
         groups.retain(|group| group.fsid.get().is_none_or(|fsid| live.contains(&fsid[..])));
+    }
+
+    /// Gives back the groups of ids whose folders have all gone, and says
+    /// which folders were forgotten since it last said, here or as a new
+    /// id needed a group. Run with each walk that marks, so a group never
+    /// outlives its folders by more than that walk's hour: a work tree
+    /// removed as a subvolume drops no marks inside it, whose inodes could
+    /// keep its blocks from being freed. What was heard of a forgotten
+    /// folder is no longer heard, as its opens went unheard from then: one
+    /// missing for a moment, and so forgotten, is back at its path with
+    /// the same handle, and would pass as heard throughout.
+    pub fn tidy(&self) -> Vec<PathBuf> {
+        let gone = self.gone_now();
+        let mut groups = self.groups.lock().unwrap_or_else(PoisonError::into_inner);
+        self.give_back(&mut groups, &gone);
+        drop(groups);
+        std::mem::take(&mut *self.forgot.lock().unwrap_or_else(PoisonError::into_inner))
     }
 
     /// How many fanotify groups the watch holds.
@@ -469,6 +497,32 @@ mod tests {
             [&PathBuf::from("/w")],
             "a folder gone since it was marked was still watched"
         );
+        drop(dirs);
+        assert_eq!(
+            *watch.forgot.lock().unwrap(),
+            [PathBuf::from("/gone")],
+            "a folder given back as a new id needed a group went unsaid"
+        );
+    }
+
+    #[test]
+    fn a_tidy_gives_back_what_has_gone_and_says_once_which_folders_it_forgot() {
+        // A work tree removed as a subvolume drops no marks inside it, so
+        // only a tidy gives its group back when no new id comes.
+        let watch = watch();
+        let under = Arc::new(stand_in(Some(7_u64.to_ne_bytes())));
+        watch.groups.lock().unwrap().push(under);
+        assert_eq!(
+            watch.tidy(),
+            [PathBuf::from("/w")],
+            "a folder gone from its path wasn't said to be forgotten"
+        );
+        assert_eq!(
+            watch.groups(),
+            1,
+            "a group outlived every folder under its id"
+        );
+        assert!(watch.tidy().is_empty(), "a forgotten folder was said twice");
     }
 
     #[test]
@@ -514,6 +568,7 @@ mod tests {
         Watch {
             groups: Mutex::new(vec![Arc::new(stand_in(None))]),
             dirs: Mutex::new(HashMap::from([(key, PathBuf::from("/w"))])),
+            forgot: Mutex::new(Vec::new()),
             me: 0,
         }
     }

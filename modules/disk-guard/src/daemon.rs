@@ -1329,7 +1329,9 @@ impl Guard {
     /// A guard that no longer hears marks nothing, as nothing would come of
     /// it.
     fn mark(&mut self, tick: &Tick) {
-        let Some(watch) = &self.opens else { return };
+        let Some(watch) = self.opens.clone() else {
+            return;
+        };
         if !self.listening.load(Ordering::SeqCst) {
             return;
         }
@@ -1377,6 +1379,9 @@ impl Guard {
                 }
             }
         }
+        // After the walk, so a folder forgotten as it marked is forgotten
+        // below before what it marked again is dated.
+        let forgot = watch.tidy();
         self.journal_walk(tick.wall, "marks", walk.end());
         if let Some(why) = why {
             say!(
@@ -1404,7 +1409,7 @@ impl Guard {
         if !self.listening.load(Ordering::SeqCst) {
             return;
         }
-        for dir in &gone {
+        for dir in gone.iter().chain(&forgot) {
             uses.heard.remove(dir);
         }
         for (dir, at, handle) in marked {
