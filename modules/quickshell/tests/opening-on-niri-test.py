@@ -760,18 +760,21 @@ def test_a_chord_first_after_a_restart_searches_no_more_than_a_later_one(shell: 
     opened whole" is a home chord's), and makes no rows where its sources haven't changed
     since warming found it, but it always runs a search, which the launcher counts: the first
     chord's first try may run no more searches than a later chord into the same place, opened
-    once home is kept again. It's said as soon as home is kept, since a source's change, shut
-    or open, only shows what's there again, which the launcher never counts as a search. Its
-    rows aren't held, since a change a source says late makes its row on whichever chord
-    follows, as Spend's 1 row failed one (z6569, 2026-11-27), while with home found again put
-    back a check on other sources' rows passed (#6890's run, 2026-11-26).
+    once home is kept again. It's said once the screen reads unshared and home is kept, as
+    the other restart cases time a kept chord, since a source's change, shut or open, only
+    shows what's there again, which the launcher never counts as a search. Each chord is said
+    once, never tried again: its rows aren't held, since a change a source says late makes its
+    row on whichever chord follows, as Spend's 1 row failed one (z6569, 2026-11-27), while
+    with home found again put back a check on other sources' rows passed (#6890's run,
+    2026-11-26), and a closing's spots, which a try is made again for, search nothing.
     """
     shell.restart()
+    shell.unshared()
     shell.launcher_until(lambda shown: shown.get("kept"))
-    _, first, tries = opened_into(shell, "windows")
+    first = searched_into(shell, "windows")
     shell.close_launcher()
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
-    _, later, _ = opened_into(shell, "windows")
+    later = searched_into(shell, "windows")
     assert later >= 1, (
         f"a later chord into Windows searched {later} times, so searches can't show home found"
     )
@@ -779,10 +782,9 @@ def test_a_chord_first_after_a_restart_searches_no_more_than_a_later_one(shell: 
         f"a later chord into Windows searched {later} times, more than its fill's"
         f" {PLACE_SEARCHES}, so a first chord could find home again and search no more"
     )
-    tried = "1 try" if tries == 1 else f"{tries} tries"
     assert first <= later, (
-        f"first into Windows after a restart searched {first} times on its first try, a later"
-        f" chord {later}, as home found again would; it took {tried}"
+        f"first into Windows after a restart searched {first} times, a later chord {later},"
+        f" as home found again would:\n{shell.tail()}"
     )
 
 
@@ -1473,28 +1475,18 @@ def test_a_restart_after_a_switch_starts_from_files_compiled_before_it(shell: Sh
 
 
 def made_by_others(shell: Shell, place: str) -> dict[str, int]:
-    """Open into the place by its chord, and give the rows each other source made meanwhile."""
-    return opened_into(shell, place)[0]
-
-
-def opened_into(shell: Shell, place: str) -> tuple[dict[str, int], int, int]:
-    """Open into the place by its chord: the rows each other source made, searches and tries.
+    """Open into the place by its chord, and give the rows each other source made meanwhile.
 
     A try a closing's spots landed in counts nothing of the opening's rows, so it's closed, its
     own spots and home kept again waited for, and made again, since with home not yet kept the
-    chord opens the place whole rather than from what was kept; the rows are the last try's,
-    and the tries say how many it took. The searches are the first try's whatever follows,
-    since a closing's spots search nothing and only the first chord may find home again.
+    chord opens the place whole rather than from what was kept; the rows are the last try's.
+    The last try waits for nothing after its closing, since no try follows it.
     """
-    searches = 0
     for tries in range(1, REOPENINGS_TRIED + 1):
         began = shell.mark()
         before = json.loads(shell.as_account(shell.ipc("made")))["rows"]
-        searched = launcher_on_niri.searched(shell)
         shell.as_account(shell.ipc("collection", place))
         shell.launcher_ready()
-        if tries == 1:
-            searches = launcher_on_niri.searched(shell) - searched
         after = json.loads(shell.as_account(shell.ipc("made")))["rows"]
         said, _ = shell.said_since(began)
         if not any(line.startswith(SPOTS_MADE_SHUT) for line in said):
@@ -1502,15 +1494,23 @@ def opened_into(shell: Shell, place: str) -> tuple[dict[str, int], int, int]:
         closing = shell.mark()
         shell.close_launcher()
         shell.reported(SPOTS_MADE_SHUT[0], lambda _: True, closing)
-        shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+        if tries < REOPENINGS_TRIED:
+            shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
     else:
         pytest.fail(f"a closing's spots were made as each of {REOPENINGS_TRIED} tries opened")
-    made = {
+    return {
         name: rows - before.get(name, 0)
         for name, rows in after.items()
         if name != place and rows > before.get(name, 0)
     }
-    return made, searches, tries
+
+
+def searched_into(shell: Shell, place: str) -> int:
+    """Open into the place by its chord once, and give how many searches it ran."""
+    searched = launcher_on_niri.searched(shell)
+    shell.as_account(shell.ipc("collection", place))
+    shell.launcher_ready()
+    return launcher_on_niri.searched(shell) - searched
 
 
 def working_spent(opening: Json) -> None:
