@@ -193,7 +193,10 @@ fn a_child_holding_the_output_open_cant_hold_the_guard() {
     // Held short of the three seconds the left child holds the output, which
     // a guard reading it to its end waits out.
     let started = test_pace::Timed::start().short_of(Duration::from_secs(3));
-    let _ = run(&job).unwrap();
+    let ran = run(&job).unwrap();
+    // Finished once the shell's exit is GRACE old, not timed out: a guard
+    // that gave up on the held output at its time would be quick too.
+    assert!(matches!(ran, Ran::Finished(_)), "{ran:?}");
     assert!(
         started.within(Duration::from_secs(2)),
         "{}",

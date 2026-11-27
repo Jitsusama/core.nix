@@ -31,7 +31,10 @@ fn main() {
         said.read_line(&mut line).unwrap() > 0,
         "the guard never stepped"
     );
-    let told = test_pace::Timed::start();
+    // Held short of the five seconds the system's unit gives a stop before
+    // it kills the guard (nixos.nix's TimeoutStopSec), which a stop slower
+    // than that would never reach.
+    let told = test_pace::Timed::start().short_of(Duration::from_secs(5));
     let pid = libc::pid_t::try_from(child.id()).unwrap();
     // SAFETY: kill takes a pid and a signal and touches no memory.
     assert_eq!(
