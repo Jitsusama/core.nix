@@ -188,7 +188,11 @@ impl Cache {
         {
             return patterns.clone();
         }
-        let read = std::fs::read(path)
+        // Read only as a file, so a link to a device or a FIFO in its place
+        // reads as empty rather than without end or not at all.
+        let read = crate::regular_file::read(path)
+            .ok()
+            .flatten()
             .map(|text| parse_file(&text, true))
             .unwrap_or_default();
         // The same patterns read again are the same file, so what was
@@ -210,8 +214,11 @@ impl Cache {
         {
             return file.clone();
         }
+        // Read only as a file, as an ignore file is.
         let file = Arc::new(
-            std::fs::read(path)
+            crate::regular_file::read(path)
+                .ok()
+                .flatten()
                 .map(|text| attrs::File::parse(&text, macros))
                 .unwrap_or_default(),
         );
@@ -747,3 +754,6 @@ fn settle_verdict(
         }
     })
 }
+
+#[cfg(test)]
+mod tests;

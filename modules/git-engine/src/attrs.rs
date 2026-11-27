@@ -41,6 +41,13 @@ fn assignments<'a>(words: impl Iterator<Item = &'a str>) -> Assignments {
 }
 
 impl File {
+    /// Whether it holds no lines and no macros, as a file read as empty
+    /// does, for a test that can't see them.
+    #[cfg(test)]
+    pub fn is_empty(&self) -> bool {
+        self.lines.is_empty() && self.macros.is_empty()
+    }
+
     pub fn parse(text: &[u8], macros_allowed: bool) -> File {
         let mut file = File::default();
         for line in String::from_utf8_lossy(text).lines() {
