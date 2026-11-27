@@ -8,17 +8,17 @@ import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
 import { escaped, headlineOf, legend, partsOf, placesOf } from "../draw.ts";
 import { machineHeadline } from "../machine.ts";
-import { allTold, systemOf } from "../model.ts";
+import { allTold, systemOf, thingsHeld } from "../model.ts";
 
-/** The three watches, told `these` whole, each to its kind's. */
+/** The four watches told `these` whole, the machines' and builders' as one, as the page reads. */
 function told(these: readonly { readonly key: string; readonly kind: string }[]) {
-  const summary = new Held();
-  const part = new Held();
-  const machine = new Held();
-  summary.took({ records: these.filter((record) => record.kind === "summary") });
-  part.took({ records: these.filter((record) => record.kind === "part") });
-  machine.took({ records: these.filter((record) => record.kind === "machine") });
-  return { summary, part, machine };
+  const heldOf = (kind: string) => {
+    const held = new Held();
+    held.took({ records: these.filter((record) => record.kind === kind) });
+    return held;
+  };
+  const machine = thingsHeld(heldOf("machine"), heldOf("builder"));
+  return { summary: heldOf("summary"), part: heldOf("part"), machine };
 }
 
 const deeper = { command: "mycelium machines", site: "mycelium/", launcher: "Agents" };
@@ -132,7 +132,7 @@ it("a part's side and what it holds are read apart", () => {
 
 it("a machine's looks are read with their whys, and none from a record listing none", () => {
   const named = { key: "machine:osprey", kind: "machine", name: "osprey", health: "bad" };
-  const reach = { side: "out of reach", matters: "What runs there can't be read from here." };
+  const reach = { side: "out of reach", matters: "What can't be read from here.", health: "bad" };
   const side = ["out of reach", "code failing"];
   const osprey = { ...named, side, looks: [reach, { side: "code failing" }] };
   const ospreyAs = (record: Record<string, unknown>) => {

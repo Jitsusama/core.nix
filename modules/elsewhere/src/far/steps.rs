@@ -163,7 +163,7 @@ unlinked() {{
 }}
 stopped() {{
   trap '' HUP INT PIPE TERM
-  cd "$HOME" && {{ ! unlinked || cleared "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"; }} &&
+  cd / && {{ ! unlinked || cleared "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"; }} &&
     {{ [ -z "$mine" ] || {{ {{ copies || stays; }} &&
       cleared "$work.names" "$work.tar" "$work.back" "$work.back".* "$work" &&
         rm -f "$work{RUN}"
@@ -433,11 +433,8 @@ pub(super) fn copying() -> String {
     # each rename and on each side of each unpacking, the copy too, as
     # `copies` says, narrowing one to that span.
     [ -n "$held" ] || {{
-      # The copy lies in the same scratch, so it is a whole path too.
-      case $job in /*) ;; *) {{
-        printf "elsewhere: this machine's cache folder isn't a whole path\n" >&2
-        exit 2
-      }} ;; esac
+      # The job lies in the cache, which is a whole path or none, and
+      # with none the line has gone before this, so the copy is one too.
       top=$(cd -P "${{job%/*/*/*}}" && pwd -P) || exit 2
       [ ! -L "$job/{TREE}" ] && cd -P "$job/{TREE}" 2>/dev/null &&
         [ "$(pwd -P)" = "$top/{HANDOVER}/${{job##*/}}/{TREE}" ] || {{
@@ -535,7 +532,7 @@ if unlinked; then
 fi
 if [ -n "$stuck" ]; then
   printf 'elsewhere: %s, so nothing is brought back\n' "$stuck" >&2
-  cd "$HOME" && {{ copies || stays; }} &&
+  cd / && {{ copies || stays; }} &&
     cleared "$work.names" "$work.tar" "$work.back" "$work.back".* "$work" && rm -f "$work{RUN}"
   ! unlinked || {{
     cleared "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"
@@ -784,7 +781,7 @@ pub(super) fn freed() -> String {
 if unlinked; then handed=1; else
   printf "elsewhere: a link at the job's handover couldn't be cleared, so its tree stays\n" >&2
 fi
-cd "$HOME" && {{
+cd / && {{
   if ! copies; then
     stays
     [ -z "$handed" ] || cleared "$job/{TREE}"

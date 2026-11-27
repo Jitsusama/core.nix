@@ -174,8 +174,22 @@ fn an_untaken_gate_whose_words_name_a_failed_check_is_red() {
                 Gated::Red,
                 "a check that failed read as untaken with {code}: {words}"
             );
+            assert!(
+                !gated::ran_whole(Some(code)),
+                "a red with a part no builder took, exit {code}, read as built whole"
+            );
         }
     }
+    for code in [1, 100] {
+        assert!(
+            gated::ran_whole(Some(code)),
+            "a red whose builds ran, exit {code}, read as part-built"
+        );
+    }
+    assert!(
+        !gated::ran_whole(None),
+        "a gate a signal ended read as built whole"
+    );
 }
 
 /// A builder's words can hold any byte, and nix-offload sets aside a
