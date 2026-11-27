@@ -653,16 +653,25 @@ pub(crate) mod tests {
     fn a_refused_history_is_said_as_slack_refused_it() {
         let refused = |error: &str| unread(&json!({"ok": false, "error": error}), "", "U0", false);
         assert_eq!(refused("invalid_auth"), Err(Refused::SignedOut));
-        assert!(matches!(
-            refused("channel_not_found"),
-            Err(Refused::Unreachable(_))
-        ));
+        let gone = refused("channel_not_found");
+        assert!(
+            matches!(gone, Err(Refused::Unreachable(_))),
+            "a missing channel should be out of reach: {gone:?}"
+        );
     }
 
     #[test]
     fn a_timestamp_is_told_by_when_it_is_not_how_its_written() {
-        assert!(instant("1730300001.5") > instant("1730300001.000100"));
-        assert!(instant("999999999.000000") < instant("1000000000.000000"));
+        let (half, tenth) = (instant("1730300001.5"), instant("1730300001.000100"));
+        assert!(
+            half > tenth,
+            "a half second should come after a ten-thousandth: {half:?}, {tenth:?}"
+        );
+        let (nine, ten) = (instant("999999999.000000"), instant("1000000000.000000"));
+        assert!(
+            nine < ten,
+            "nine digits of seconds should come before ten: {nine:?}, {ten:?}"
+        );
         assert_eq!(instant("1730300001"), Some((1_730_300_001, 0)));
         assert_eq!(instant(""), None);
         assert_eq!(instant("1730300001.1234567"), None);
@@ -704,7 +713,11 @@ pub(crate) mod tests {
             Some(now)
         );
         settle(&mut held, &read, now + KEPT + 1);
-        assert!(!held.contains_key("slack-message:D1:1730300001.000100"));
+        assert!(
+            !held.contains_key("slack-message:D1:1730300001.000100"),
+            "a done message should go once kept long enough: {:?}",
+            held.keys().collect::<Vec<_>>()
+        );
         assert_eq!(held.len(), 2);
     }
 
