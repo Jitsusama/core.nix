@@ -51,18 +51,22 @@ check that doesn't evaluate there counts as failing. It judges on Linux
 alone, where core's checks run their tests. On 26 November the most
 common cause behind review findings, across 42 changes, was a test that
 passed with its fix undone. Tests are told from code by path: a `tests`,
-`test` or `checks` folder, a `checks.nix`, or a name starting `test_` or
-ending `_test`, `-test`, `.test`, `tests`, `_checks` or `-checks`, as
-`host-checks.nix`, though the root's `tests/lib` and `checks.nix` are
-harness, and count as code. It judges a
+`test` or `checks` folder, a `checks.nix`, or a stem of `test` or
+`tests`, starting `test_`, or ending `_test`, `-test`, `.test`, `_tests`,
+`-tests`, `.tests`, `_checks` or `-checks`, as `host-checks.nix`, while
+`subtests.rs` is code. The root's `checks.nix` and the helpers in
+`tests/lib` are harness, and count as code. It judges a
 change only when it can lay the change's whole test side over the base
 as the head has it, so a test file removed or moved, a new Rust test
 file only the change's code declares (one directly in a crate's `tests`
 folder, which cargo finds alone, is laid), a path git quotes, or a test
-added among code (a line starting `#[test]`, `#[tokio::test` or a
-`#[cfg(` naming `test` in Rust, or `def test_` in Python) is said, and
-the change isn't judged. So a new module's `tests.rs`, the usual home of
-a unit test, leaves its change unjudged, and a weak `holds` of the
+added or edited among code (a line starting `#[test]`, `#[tokio::test`
+or a `#[cfg(` naming `test` in Rust, or `def test_` in Python, or one at
+or past a `#[cfg(test)]` module written in the file or its first
+`def test_`) is said, and the change isn't judged. So a new module's
+`tests.rs`, the usual home of a unit test, leaves its change unjudged; a
+new test file a package's fileset names one by one isn't told apart, so
+a check built over the base without it may pass there; and a weak `holds` of the
 root's `checks.nix` goes unrefused, coming out over the base as at the
 head. It judges the commit the run evaluated. A change of tests alone,
 one only taking lines from its tests, a lint (`-passes-clippy`,
@@ -71,11 +75,14 @@ base as at the head, a check reading the whole tree,
 a check that isn't there over the base, checks that don't evaluate there
 at all, a build over the base that failed with no builder failing it, and
 red first itself failing are said rather than refused. A revert is
-excused, and so is the train's candidate, marked by
-`CHANGED_CHECKS_CANDIDATE=1`, whose riders were each judged at their own
-heads. Nix's log of the builds over the base is kept out of the run's,
-since one failing there as it should says nix's words for a failed build.
-A test that pins
+excused, and so is the train's candidate, whose riders were each judged
+at their own heads: the train is to mark it with
+`CHANGED_CHECKS_CANDIDATE=1`, and until then a change with no commit of
+its own besides merges is taken for one. A run on a person's machine
+whose own build went to the lent builder leaves red first to the gate,
+since the builds over the base would fall to the machine. Nix's log of
+the builds over the base is kept out of the run's, since one failing
+there as it should says nix's words for a failed build. A test that pins
 behaviour already right passes on the base by design: a commit saying
 `Red-first: none, <why>` excuses its change, and the run says so.
 

@@ -45,9 +45,18 @@ fn over_the_base(stand_in: &StandIn) -> String {
 /// only says so.
 const SAID_ONLY: &str = "red first only says so for now and passes the change";
 
-/// The verdict red first noted in the stand-in's one run.
+/// The verdict red first noted in the stand-in's one run, without how
+/// long it took.
 fn verdict(stand_in: &StandIn) -> serde_json::Value {
-    stand_in.runs()[0]["red_first"].clone()
+    let mut noted = stand_in.runs()[0]["red_first"].clone();
+    let took = noted
+        .as_object_mut()
+        .and_then(|noted| noted.remove("seconds"));
+    assert!(
+        took.is_some_and(|took| took.is_u64()),
+        "the verdict didn't note how long red first took: {noted}"
+    );
+    noted
 }
 
 #[test]
@@ -381,6 +390,53 @@ fn a_train_candidate_the_train_marks_is_not_judged_again() {
 }
 
 #[test]
+fn a_change_of_merges_alone_is_taken_for_the_trains_candidate_and_not_judged() {
+    let stand_in = committed("red-merges", CHANGE, "a3.drv");
+    fs::write(stand_in.path("log"), "").expect("written");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(
+        text(&ran.stderr).contains("every commit since the base merges another change"),
+        "{}",
+        text(&ran.stderr)
+    );
+    assert!(!stand_in.built().contains("?rev="), "{}", stand_in.built());
+    assert_eq!(
+        verdict(&stand_in)["why"],
+        "merges alone",
+        "{}",
+        verdict(&stand_in)
+    );
+}
+
+#[test]
+fn a_check_mains_quarantine_holds_is_not_asked_over_the_base() {
+    let stand_in = both_moved("red-quarantined");
+    let held = r#"[{"test": "b", "reason": "failed then passed at abc", "owner_pr": 7}]"#;
+    fs::write(stand_in.path("quarantine.json"), held).expect("written");
+    fs::write(stand_in.path("failing-over"), "b\n").expect("written");
+
+    let ran = stand_in.run(&["--system", "x86_64-linux"]);
+
+    assert!(ran.status.success(), "{}", text(&ran.stderr));
+    assert!(
+        !stand_in
+            .built()
+            .contains("a1a1a1a1a1a1a1a1a1a1#checks.x86_64-linux.b"),
+        "the quarantined check was built over the base: {}",
+        stand_in.built()
+    );
+    assert_eq!(
+        verdict(&stand_in)["checks"],
+        serde_json::json!(["a"]),
+        "a quarantined check failing over the base was taken as proof: {}",
+        verdict(&stand_in)
+    );
+}
+
+#[test]
 fn red_first_failing_for_its_own_reasons_is_said_and_refuses_nothing() {
     let stand_in = committed("red-unwritable", CHANGE, "a3.drv");
     fs::write(stand_in.path("unwritable"), "").expect("written");
@@ -470,6 +526,12 @@ fn a_test_added_among_code_is_said_since_no_path_tells_it_apart() {
         text(&ran.stderr)
     );
     assert!(!stand_in.built().contains("?rev="), "{}", stand_in.built());
+    assert_eq!(
+        verdict(&stand_in)["verdict"],
+        "apart",
+        "{}",
+        verdict(&stand_in)
+    );
 }
 
 #[test]
@@ -600,6 +662,12 @@ fn a_check_missing_over_the_base_beside_a_passing_one_refuses_nothing() {
         "{}",
         text(&ran.stderr)
     );
+    assert_eq!(
+        verdict(&stand_in)["why"],
+        "undefined",
+        "b was asked though a check that might run the tests isn't over the base: {}",
+        verdict(&stand_in)
+    );
 }
 
 #[test]
@@ -652,6 +720,15 @@ fn a_test_pinning_what_was_right_is_excused_by_its_trailer_and_said() {
         text(&ran.stderr)
     );
     assert!(!stand_in.built().contains("?rev="), "{}", stand_in.built());
+    assert_eq!(
+        (&verdict(&stand_in)["excuse"], &verdict(&stand_in)["why"]),
+        (
+            &serde_json::json!("pinned"),
+            &serde_json::json!("b was right before")
+        ),
+        "the run's line didn't note the excuse: {}",
+        verdict(&stand_in)
+    );
 }
 
 #[test]

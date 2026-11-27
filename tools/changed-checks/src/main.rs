@@ -72,8 +72,10 @@
 //! names subtests and its log names a failure outside them, or none.
 //!
 //! Once they pass, each check built whose tests a committed change adds or
-//! edits is built with those tests over the base's code, and one passing
-//! there fails the run, as its tests pass without the change (`red_first.rs`).
+//! edits is built with those tests over the base's code, and the run says,
+//! and notes in its line, when every one passes there, since its tests
+//! would pass without the change; for now that refuses nothing
+//! (`red_first.rs`).
 //!
 //! Each run that reaches its base adds a line to `changed-checks/runs.jsonl`
 //! under XDG's state folder, saying what each evaluation and the build took
@@ -611,7 +613,8 @@ fn compare(
     if build.as_ref().is_some_and(|build| !build.sent.passed) {
         return Ok(Compared::Failed);
     }
-    let at = red_first::At::of(root, base, commit.as_deref(), system);
+    let lent = env::var_os(HERE).is_none() && build.as_ref().is_some_and(|b| b.sent.there);
+    let at = red_first::At::of(root, base, commit.as_deref(), system).built_elsewhere(lent);
     let asked = options.build.then(|| unheld(&comparison, options.vm, held));
     red_first::judged(&at, asked, commit.is_some(), (&before, &after), noted);
     Ok(Compared::Passed)

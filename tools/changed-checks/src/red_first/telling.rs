@@ -2,7 +2,7 @@
 //! path, by the code that declares a new Rust test file, and by the lines
 //! a change adds to a code file.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 /// Whether a line a change adds to the code file `path` adds a test there:
@@ -25,19 +25,28 @@ fn adds_inline_test(path: &str, line: &str) -> bool {
     }
 }
 
-/// Whether a path is a test's, by the path alone.
+/// Whether a path is a test's, by the path alone. The root's `checks.nix`
+/// and the helpers in its `tests/lib` are the harness every test runs in,
+/// so code, though a file there named as a test tests the harness.
 pub fn is_test(path: &str) -> bool {
-    if path.starts_with("tests/lib/") || path == "checks.nix" {
+    let (folders, file) = path.rsplit_once('/').unwrap_or(("", path));
+    if path == "checks.nix" {
         return false;
     }
-    let (folders, file) = path.rsplit_once('/').unwrap_or(("", path));
-    if folders
+    if path.starts_with("tests/lib/") {
+        return named_as_test(file);
+    }
+    folders
         .split('/')
         .any(|folder| matches!(folder, "tests" | "test" | "checks"))
         || file == "checks.nix"
-    {
-        return true;
-    }
+        || named_as_test(file)
+}
+
+/// Whether a file's name marks it a test: a stem of `test` or `tests`, one
+/// starting `test_`, or one ending in a marker after a separator, so
+/// `subtests.rs` and `checks.rs` are code.
+fn named_as_test(file: &str) -> bool {
     let stem = file.rsplit_once('.').map_or(file, |(stem, _)| stem);
     let marked = [
         "_test", "-test", ".test", "_tests", "-tests", ".tests", "_checks", "-checks",
@@ -45,6 +54,27 @@ pub fn is_test(path: &str) -> bool {
     matches!(stem, "test" | "tests")
         || stem.starts_with("test_")
         || marked.iter().any(|end| stem.ends_with(end))
+}
+
+/// The `tests` folder outside a crate's sources that `path` lies below, a
+/// level or more down, as `tests/common/mod.rs` does: a module there is
+/// declared by the integration tests directly in that folder, each its own
+/// crate's root.
+fn below_integration_tests(path: &str) -> Option<&str> {
+    let (folders, _) = path.rsplit_once('/')?;
+    let mut at = 0;
+    let mut found = None;
+    for folder in folders.split('/') {
+        if folder == "src" {
+            return None;
+        }
+        let end = at + folder.len();
+        if folder == "tests" && end < folders.len() {
+            found = Some(&folders[..end]);
+        }
+        at = end + 1;
+    }
+    found
 }
 
 /// Whether a test file a change adds is one only the change's code can
@@ -176,9 +206,16 @@ impl Change {
         // may declare another.
         loop {
             let (laid, rest): (Vec<String>, Vec<String>) = declared.into_iter().partition(|file| {
+                let roots = below_integration_tests(file);
                 declarers(file)
                     .iter()
                     .any(|declarer| change.tests.contains(declarer))
+                    || change.tests.iter().any(|test| {
+                        test.rsplit_once('/').is_some_and(|(folder, name)| {
+                            Some(folder) == roots
+                                && Path::new(name).extension().is_some_and(|rust| rust == "rs")
+                        })
+                    })
             });
             declared = rest;
             if laid.is_empty() {
@@ -208,11 +245,40 @@ pub fn adding(said: &str) -> BTreeSet<String> {
         .collect()
 }
 
+/// The line a code file's inline tests begin at, as the head has it
+/// (`text`): a Rust `#[cfg(test)]` module written in the file, rather than
+/// declared from another, or Python's first test function. Inline tests
+/// end a file by custom, so a line added from there on may edit one.
+pub fn tests_begin(path: &str, text: &str) -> Option<usize> {
+    let lines: Vec<&str> = text.lines().map(str::trim).collect();
+    match Path::new(path)
+        .extension()
+        .and_then(std::ffi::OsStr::to_str)
+    {
+        Some("rs") => lines.iter().enumerate().find_map(|(at, line)| {
+            let marks = line.starts_with("#[cfg(") && line.contains("test");
+            let module = lines[at + 1..]
+                .iter()
+                .find(|next| !next.is_empty() && !next.starts_with("#["))?;
+            let module = module.strip_prefix("pub ").unwrap_or(module);
+            (marks && module.starts_with("mod ") && module.ends_with('{')).then_some(at + 1)
+        }),
+        Some("py") => lines
+            .iter()
+            .position(|line| line.starts_with("def test_") || line.starts_with("async def test_"))
+            .map(|at| at + 1),
+        _ => None,
+    }
+}
+
 /// The code files whose added lines, as `git diff -U0` gives them, add a
-/// test among their code.
-pub fn inline_tests(diff: &str) -> Vec<String> {
+/// test among their code, or edit one at or past the line `begins` says
+/// its inline tests begin at.
+pub fn inline_tests(diff: &str, begins: &BTreeMap<String, usize>) -> Vec<String> {
     let mut found = BTreeSet::new();
     let mut file = None;
+    // The line of the head's file the next added line is.
+    let mut next = 0;
     // A file's own `+++` line comes in its header, before its first hunk,
     // so an added line reading `++` is never taken for one.
     let mut header = false;
@@ -220,18 +286,29 @@ pub fn inline_tests(diff: &str) -> Vec<String> {
         if line.starts_with("diff --git ") {
             header = true;
             file = None;
-        } else if line.starts_with("@@") {
+        } else if let Some(hunk) = line.strip_prefix("@@") {
             header = false;
+            next = hunk_start(hunk).unwrap_or(0);
         } else if header {
             if let Some(path) = line.strip_prefix("+++ ") {
                 file = path.strip_prefix("b/");
             }
-        } else if let Some(path) = file.filter(|path| {
-            line.strip_prefix('+')
-                .is_some_and(|added| adds_inline_test(path, added))
-        }) {
-            found.insert(path.to_owned());
+        } else if let (Some(path), Some(added)) = (file, line.strip_prefix('+')) {
+            let within = begins.get(path).is_some_and(|begin| next >= *begin);
+            if within || adds_inline_test(path, added) {
+                found.insert(path.to_owned());
+            }
+            next += 1;
         }
     }
     found.into_iter().collect()
+}
+
+/// The line of the head's file a hunk's added lines start at, from the
+/// rest of its header, as ` -12,0 +13,2 @@`.
+fn hunk_start(hunk: &str) -> Option<usize> {
+    let added = hunk
+        .split_whitespace()
+        .find_map(|part| part.strip_prefix('+'))?;
+    added.split(',').next()?.parse().ok()
 }

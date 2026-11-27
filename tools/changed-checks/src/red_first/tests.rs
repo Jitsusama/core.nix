@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use super::telling::is_test;
 use super::*;
 
@@ -16,6 +18,7 @@ fn a_test_is_told_by_its_folder_or_its_name_alone() {
         "modules/backlight/saves-while-open-test.sh",
         "modules/sites/web/kit.test.ts",
         "scripts/test_reads.py",
+        "tests/lib/vm-helpers-test.py",
     ] {
         assert!(is_test(test), "{test} wasn't told as a test");
     }
@@ -28,6 +31,8 @@ fn a_test_is_told_by_its_folder_or_its_name_alone() {
         "check-descriptions.nix",
         "tests/lib/vm_helpers.py",
         "checks.nix",
+        "tools/merge-net/src/subtests.rs",
+        "tools/changed-checks/src/checks.rs",
     ] {
         assert!(!is_test(code), "{code} was told as a test");
     }
@@ -111,7 +116,9 @@ fn new_rust_test_files_are_laid_down_every_level_a_laid_one_declares() {
                 A\tmodules/a/src/x/tests/cases.rs\n\
                 A\tmodules/a/src/x/tests/cases/more.rs\n\
                 M\tmodules/b/src/tests/mod.rs\n\
-                A\tmodules/b/src/tests/helpers/mod.rs\n";
+                A\tmodules/b/src/tests/helpers/mod.rs\n\
+                M\tmodules/c/tests/reads.rs\n\
+                A\tmodules/c/tests/common/mod.rs\n";
 
     let change = Change::read(said);
 
@@ -122,7 +129,7 @@ fn new_rust_test_files_are_laid_down_every_level_a_laid_one_declares() {
     );
     assert_eq!(
         change.tests.len(),
-        5,
+        7,
         "not every test file was laid: {:?}",
         change.tests
     );
@@ -172,10 +179,53 @@ fn a_test_added_among_code_is_found_by_its_added_lines() {
                 +#[cfg(all(test, target_os = \"linux\"))]\n";
 
     assert_eq!(
-        inline_tests(diff),
+        inline_tests(diff, &BTreeMap::new()),
         ["c.py", "src/a.rs", "src/d.rs", "src/f.rs"],
         "a test added among code went unfound, one taken away or only quoted was found, or \
          a line reading ++ was taken for a file's"
+    );
+}
+
+#[test]
+fn a_line_added_where_a_code_file_s_inline_tests_begin_edits_one() {
+    let diff = "diff --git a/src/a.rs b/src/a.rs\n\
+                +++ b/src/a.rs\n\
+                @@ -3 +3 @@\n\
+                -    1\n\
+                +    2\n\
+                @@ -20,0 +21 @@\n\
+                +        assert_eq!(x, 2, \"x\");\n\
+                diff --git a/src/b.rs b/src/b.rs\n\
+                +++ b/src/b.rs\n\
+                @@ -3 +3 @@\n\
+                -    1\n\
+                +    2\n";
+    let begins = BTreeMap::from([("src/a.rs".to_owned(), 12), ("src/b.rs".to_owned(), 12)]);
+
+    assert_eq!(
+        inline_tests(diff, &begins),
+        ["src/a.rs"],
+        "an assert added in an inline test went unfound, or code above one was taken for it"
+    );
+}
+
+#[test]
+fn a_code_file_s_inline_tests_begin_at_its_test_module_or_first_test_function() {
+    let rust = "fn a() {}\n\n#[cfg(test)]\n#[expect(x, reason = \"y\")]\nmod tests {\n}\n";
+    let declared = "fn a() {}\n#[cfg(test)]\nmod tests;\n";
+    let python = "import x\n\nclass T:\n    def test_a(self):\n        pass\n";
+
+    let begins = [
+        tests_begin("src/a.rs", rust),
+        tests_begin("src/a.rs", declared),
+        tests_begin("a.py", python),
+        tests_begin("a.sh", rust),
+    ];
+
+    assert_eq!(
+        begins,
+        [Some(3), None, Some(4), None],
+        "inline tests weren't found where they begin, or a declared module was taken for them"
     );
 }
 
@@ -268,8 +318,19 @@ fn only_a_builder_failing_a_build_over_the_base_makes_it_red() {
     let failed = "error: Cannot build '/nix/store/x-a.drv'.\n       Reason: builder failed with \
                   exit code 1.\n";
     let lost = "error: unable to download 'https://cache/x.narinfo': Couldn't connect\n";
+    let quoted = "a> expect: builder failed with exit code 1\n\
+                  error: unable to download 'https://cache/x.narinfo'\n";
 
-    let ended = [built(true, ""), built(false, failed), built(false, lost)];
+    let ended = [
+        built(true, ""),
+        built(false, failed),
+        built(false, lost),
+        built(false, quoted),
+    ];
 
-    assert_eq!(ended, [Built::Passed, Built::Red, Built::Unbuilt]);
+    assert_eq!(
+        ended,
+        [Built::Passed, Built::Red, Built::Unbuilt, Built::Unbuilt],
+        "a build was told wrongly, or a builder's own words made a lost one red"
+    );
 }

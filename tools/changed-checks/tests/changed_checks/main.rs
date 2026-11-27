@@ -40,10 +40,12 @@ fn starting() -> MutexGuard<'static, ()> {
 /// is `diff`, and the base holds the paths `based` lists.
 ///
 /// Asked of the change as red first asks it, its commits and their
-/// Red-first trailers are `log`, its files with renames found are `diff.whole`, the
+/// Red-first trailers are `log` (one commit of its own with none, without
+/// it), its files with renames found are `diff.whole`, the
 /// lines each adds and takes are `diff.counted` (one added to each file
 /// asked, without it), and its added lines are `diff.lines`. Laying its tests
-/// over the base, each file it lists is a blob of the head's, what it indexes
+/// over the base, each file it lists, only as its literal path, is a blob
+/// of the head's, what it indexes
 /// is added to `indexed`, and each commit it makes is added to `commits`
 /// and is `a1a1` for the tests alone and `b0b0` with files nothing names.
 const GIT: &str = r#"#!/bin/sh
@@ -71,7 +73,7 @@ case "$1" in
           --find-renames) cat "$STAND_IN/diff.whole" 2>/dev/null || : ;;
           --numstat)
             if [ -e "$STAND_IN/diff.counted" ]; then cat "$STAND_IN/diff.counted"
-            else shift 7; for file in "$@"; do printf '1\t0\t%s\n' "$file"; done; fi ;;
+            else shift 9; for file in "$@"; do printf '1\t0\t%s\n' "$file"; done; fi ;;
           -U0) cat "$STAND_IN/diff.lines" 2>/dev/null || : ;;
           *)
             if [ -n "$7" ]; then cat "$STAND_IN/diff.between" 2>/dev/null
@@ -82,11 +84,13 @@ case "$1" in
           printf 'tree basetree\nauthor someone <a@b> 7 +0000\n'
           printf 'committer someone <a@b> 7 +0000\n\nbase\n'
         else grep -qxF "${5#*:}" "$STAND_IN/based" 2>/dev/null; fi ;;
-      log) cat "$STAND_IN/log" 2>/dev/null || : ;;
+      log) cat "$STAND_IN/log" 2>/dev/null || printf 'change\037\036' ;;
       read-tree|write-tree)
         if [ -e "$STAND_IN/unwritable" ]; then exit 1; fi
         echo laidtree ;;
-      ls-tree) shift 6; for file in "$@"; do printf '100644 blob 1111\t%s\0' "$file"; done ;;
+      ls-tree)
+        [ "$GIT_LITERAL_PATHSPECS" = 1 ] || exit 1
+        shift 6; for file in "$@"; do printf '100644 blob 1111\t%s\0' "$file"; done ;;
       update-index) tr '\0' '\n' >> "$STAND_IN/indexed" ;;
       hash-object)
         if [ "$4" = -t ]; then

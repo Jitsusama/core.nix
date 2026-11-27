@@ -13,11 +13,13 @@
 //! that of every one.
 //!
 //! Tests are told from code by their paths alone (`telling.rs`): a file in
-//! a `tests`, `test` or `checks` folder, a `checks.nix`, or one whose name
-//! starts `test_` or ends `_test`, `-test`, `.test`, `tests` or `checks`
-//! before its extension, as `host-checks.nix` does. The root's
-//! `tests/lib` folder and `checks.nix` are the harness every test runs
-//! in, with no test written in them, so they're code to red first. The
+//! a `tests`, `test` or `checks` folder, a `checks.nix`, or one whose stem
+//! is `test` or `tests`, starts `test_`, or ends `_test`, `-test`, `.test`,
+//! `_tests`, `-tests`, `.tests`, `_checks` or `-checks`, as
+//! `host-checks.nix` does, while `subtests.rs` is code. The root's
+//! `checks.nix` and the helpers in its `tests/lib` are the harness every
+//! test runs in, so they're code to red first, though a file there named
+//! as a test tests the harness. The
 //! change's added and edited test files are laid over the base's tree as
 //! a commit of their own, never checked out, and each check the gate built
 //! is evaluated there. Which checks those tests
@@ -63,15 +65,25 @@
 //! there. A test file removed or moved, a new Rust test file only the
 //! change's code declares (one a laid test file declares is laid with it;
 //! one directly in a crate's `tests` folder, which cargo finds alone, is
-//! laid too), a path git quotes, and a test added inside a Rust or Python
-//! code file, which no path tells apart, are each said, and such a change
-//! isn't judged. So a new module's `tests.rs`, the usual home of a unit
-//! test, leaves its change unjudged. A change of tests alone, or one only
-//! taking lines from its tests, is said and not built. A candidate of
-//! merge-net's train, which the train marks with
-//! `CHANGED_CHECKS_CANDIDATE=1`, all merges of changes judged at their own
-//! heads, isn't judged again. Red first judges the commit the run
-//! evaluated, not whatever `HEAD` is by the time it starts.
+//! laid too, as is a module below `tests` that a laid one there may
+//! declare), a path git quotes, and a test added or edited inside a Rust
+//! or Python code file, which no path tells apart, are each said, and such
+//! a change isn't judged. A line is taken for a test's when it starts with
+//! a test's mark, or lies at or past where the file's inline tests begin,
+//! a `#[cfg(test)]` module written in it or its first `def test_`, since
+//! they end a file by custom. So a new module's `tests.rs`, the usual home
+//! of a unit test, leaves its change unjudged. A new test file directly in
+//! `tests` that a package's fileset names one by one isn't told apart, so
+//! a check built over the base without it may pass there. A change of tests alone, or one
+//! only taking lines from its tests, is said and not built. A candidate of
+//! merge-net's train, all merges of changes judged at their own heads,
+//! isn't judged again: the train is to mark it with
+//! `CHANGED_CHECKS_CANDIDATE=1`, and until it does, a change with no commit
+//! of its own besides merges is taken for one. Red first judges the commit
+//! the run evaluated, not whatever `HEAD` is by the time it starts, and
+//! not at all on a person's machine whose run built the head's checks on
+//! the lent builder, which fetches only origin's commits, so the builds
+//! over the base would fall to the person's machine.
 //! Red first judges on Linux alone: a Mac's checks that a change's tests
 //! reach often only evaluate a system, while the check running them may
 //! be Linux's alone, so a Mac's run would refuse what Linux's proved.
@@ -90,7 +102,7 @@ use std::process::Stdio;
 
 use laying::{git, laid_over};
 use serde_json::json;
-pub use telling::{Apart, Change, adding, inline_tests};
+pub use telling::{Apart, Change, adding, inline_tests, tests_begin};
 
 use crate::building;
 use crate::checks::Derivations;
@@ -116,6 +128,9 @@ pub struct At<'a> {
     pub base: &'a str,
     pub head: &'a str,
     pub system: &'a str,
+    /// Whether the head's checks were built on the lent builder from a
+    /// person's machine, so building them over the base would fall to it.
+    pub lent: bool,
 }
 
 impl<'a> At<'a> {
@@ -128,7 +143,15 @@ impl<'a> At<'a> {
             base,
             head,
             system,
+            lent: false,
         }
+    }
+
+    /// The same, its head's checks built on the lent builder from a
+    /// person's machine or not.
+    #[must_use]
+    pub fn built_elsewhere(self, lent: bool) -> Self {
+        Self { lent, ..self }
     }
 }
 
@@ -145,10 +168,19 @@ pub enum Built {
 }
 
 /// How a build over the base that `passed` or not, saying `log`, ended.
+/// Only nix's own lines say a builder failed it, not a builder's, which
+/// `-L` gives as `name> ...` and a test may fill with any words.
 pub fn built(passed: bool, log: &str) -> Built {
+    let builders = |line: &str| {
+        line.split_once("> ")
+            .is_some_and(|(name, _)| !name.is_empty() && !name.contains(char::is_whitespace))
+    };
     if passed {
         Built::Passed
-    } else if log.contains("failed with exit code") {
+    } else if log
+        .lines()
+        .any(|line| !builders(line) && line.contains("failed with exit code"))
+    {
         Built::Red
     } else {
         Built::Unbuilt
@@ -240,6 +272,7 @@ pub fn judged(
     (before, after): (&Derivations, &Derivations),
     noted: &mut Run,
 ) {
+    let began = std::time::Instant::now();
     let verdict = match judging(at, asked, committed, (before, after), noted) {
         Ok(verdict) => verdict,
         Err(why) => {
@@ -256,7 +289,9 @@ pub fn judged(
              day of gated runs shows it refuses none wrongly"
         );
     }
-    noted.red_first(verdict.noted(at.head));
+    let mut line = verdict.noted(at.head);
+    line["seconds"] = json!(began.elapsed().as_secs());
+    noted.red_first(line);
 }
 
 /// What red first found of a change, as the run's line notes it.
@@ -264,10 +299,11 @@ pub fn judged(
 pub enum Verdict {
     /// It wasn't judged, and why, in a word or two.
     Unjudged(&'static str),
-    /// Its tests can't be laid over the base as its head has them.
-    Apart,
-    /// A commit excuses its tests, or it reverts.
-    Excused,
+    /// Its tests can't be laid over the base as its head has them, each
+    /// as it was said.
+    Apart(Vec<String>),
+    /// A commit excuses its tests, saying why, or it reverts.
+    Excused(Excused),
     /// This check fails with its tests laid over the base, as it should.
     Red { check: String, tests: Vec<String> },
     /// Each check built over the base passed, so its tests would pass
@@ -283,8 +319,13 @@ impl Verdict {
     pub fn noted(&self, head: &str) -> serde_json::Value {
         match self {
             Self::Unjudged(why) => json!({ "head": head, "verdict": "unjudged", "why": why }),
-            Self::Apart => json!({ "head": head, "verdict": "apart" }),
-            Self::Excused => json!({ "head": head, "verdict": "excused" }),
+            Self::Apart(said) => json!({ "head": head, "verdict": "apart", "apart": said }),
+            Self::Excused(Excused::Pinned(why)) => {
+                json!({ "head": head, "verdict": "excused", "excuse": "pinned", "why": why })
+            }
+            Self::Excused(Excused::Reverts) => {
+                json!({ "head": head, "verdict": "excused", "excuse": "reverts" })
+            }
             Self::Red { check, tests } => {
                 json!({ "head": head, "verdict": "red", "check": check, "tests": tests })
             }
@@ -322,7 +363,26 @@ fn judging(
         );
         return Ok(Verdict::Unjudged("not linux"));
     }
+    // The lent builder fetches only origin's commits, so building the
+    // laid one would fall to the person's machine, which a run sends its
+    // builds away to spare.
+    if at.lent {
+        eprintln!(
+            "changed-checks: the change's checks were built on the lent builder, so its tests \
+             are left to the gate to ask to fail on the base, rather than built here"
+        );
+        return Ok(Verdict::Unjudged("built elsewhere"));
+    }
     let built: Vec<String> = built.iter().map(|name| (*name).to_owned()).collect();
+    if let Some(spared) = sparing(at)? {
+        return Ok(spared);
+    }
+    judging_tests(at, built, (before, after), noted)
+}
+
+/// The verdict on a change its history spares from being judged: the
+/// train's candidate, or a change excused by its trailer or reverting.
+fn sparing(at: &At) -> Result<Option<Verdict>, String> {
     let range = format!("{}..{}", at.base, at.head);
     // merge-net's train cuts a candidate of merges alone, each of a change
     // whose own head was judged, so judging them as one would refuse a
@@ -333,12 +393,29 @@ fn judging(
             "changed-checks: the train's candidate merges changes each judged at its own \
              head, so its tests aren't asked to fail on the base again"
         );
-        return Ok(Verdict::Unjudged("train candidate"));
+        return Ok(Some(Verdict::Unjudged("train candidate")));
     }
     // Only the change's own commits speak for it, not a branch it merged.
     let format = format!("--format=%s%x1f%(trailers:key={TRAILER},valueonly)%x1e");
-    let trailers = ["log", "--first-parent", "--no-merges", &format, &range];
+    let trailers = [
+        "log",
+        "--first-parent",
+        "--no-merges",
+        "--no-show-signature",
+        &format,
+        &range,
+    ];
     let log = git(at.root, &trailers, None, &[])?;
+    // The train's candidate is merges alone, and the train doesn't yet say
+    // so where its gate runs, so one with no commit of its own is taken
+    // for one: a change of any other branch has a commit of its own.
+    if log.split('\x1e').all(|commit| commit.trim().is_empty()) {
+        eprintln!(
+            "changed-checks: every commit since the base merges another change, as the train's \
+             candidate does, so its tests aren't asked to fail on the base"
+        );
+        return Ok(Some(Verdict::Unjudged("merges alone")));
+    }
     let (excuse, unread) = excused(&log);
     for trailer in unread {
         eprintln!(
@@ -346,26 +423,32 @@ fn judging(
              right is excused by \"{TRAILER}: none, <why>\""
         );
     }
-    match excuse {
-        Some(Excused::Pinned(why)) => {
-            eprintln!(
-                "changed-checks: {TRAILER}: none, {why}; so no check's tests are asked to fail \
-                 on the base"
-            );
-            return Ok(Verdict::Excused);
-        }
-        Some(Excused::Reverts) => {
-            eprintln!(
-                "changed-checks: the change reverts, so its tests aren't asked to fail on the base"
-            );
-            return Ok(Verdict::Excused);
-        }
+    match &excuse {
+        Some(Excused::Pinned(why)) => eprintln!(
+            "changed-checks: {TRAILER}: none, {why}; so no check's tests are asked to fail on \
+             the base"
+        ),
+        Some(Excused::Reverts) => eprintln!(
+            "changed-checks: the change reverts, so its tests aren't asked to fail on the base"
+        ),
         None => {}
     }
+    Ok(excuse.map(Verdict::Excused))
+}
+
+/// Whether the tests of a change no history spares fail on the base,
+/// once they can be laid there as its head has them.
+fn judging_tests(
+    at: &At,
+    built: Vec<String>,
+    (before, after): (&Derivations, &Derivations),
+    noted: &mut Run,
+) -> Result<Verdict, String> {
     let asked = ["diff", "--find-renames", "--name-status", at.base, at.head];
     let change = Change::read(&git(at.root, &asked, None, &[])?);
-    if said_apart(at, &change)? {
-        return Ok(Verdict::Apart);
+    let apart = said_apart(at, &change)?;
+    if !apart.is_empty() {
+        return Ok(Verdict::Apart(apart));
     }
     if change.tests.is_empty() {
         return Ok(Verdict::Unjudged("no tests"));
@@ -373,7 +456,15 @@ fn judging(
     // Every test file is laid as the head has it, so a check reading only
     // tests comes out there as at the head; only one gaining lines adds a
     // test to ask. The paths are added or edited, so renames are off.
-    let mut counting = vec!["diff", "--numstat", "--no-renames", at.base, at.head, "--"];
+    let mut counting = vec![
+        "diff",
+        "--numstat",
+        "--no-renames",
+        "--no-textconv",
+        at.base,
+        at.head,
+        "--",
+    ];
     counting.extend(change.tests.iter().map(String::as_str));
     let added = adding(&git(at.root, &counting, None, &[])?);
     if !change.tests.iter().any(|test| added.contains(test)) {
@@ -578,7 +669,7 @@ fn say_refused(passing: &[&str], tests: &[String]) {
 /// alone would judge a check reading every test of a kind by a tree that
 /// is neither the base's nor the head's, and the tests set aside may be
 /// the ones that fail there, so such a change isn't judged.
-fn said_apart(at: &At, change: &Change) -> Result<bool, String> {
+fn said_apart(at: &At, change: &Change) -> Result<Vec<String>, String> {
     let mut apart: Vec<String> = change.apart.iter().map(Apart::said).collect();
     apart.extend(inline_in(at, change)?.into_iter().map(|file| {
         format!("{file} adds a test among its code, which no path tells apart from it")
@@ -592,20 +683,24 @@ fn said_apart(at: &At, change: &Change) -> Result<bool, String> {
              them, and none is asked to fail there"
         );
     }
-    Ok(!apart.is_empty())
+    Ok(apart)
 }
 
-/// The code files the change adds a test among the code of.
+/// The code files the change adds a test among the code of, or edits
+/// one in.
 fn inline_in(at: &At, change: &Change) -> Result<Vec<String>, String> {
     if change.code.is_empty() {
         return Ok(Vec::new());
     }
     // The prefixes are named, since a person's git may be set to leave
-    // them out, and the files are read from after them.
+    // them out, and the files are read from after them; and git is kept
+    // from handing the diff to a person's own tool or converting a file.
     let mut asked = vec![
         "diff",
         "-U0",
         "--no-color",
+        "--no-ext-diff",
+        "--no-textconv",
         "--src-prefix=a/",
         "--dst-prefix=b/",
         at.base,
@@ -613,7 +708,24 @@ fn inline_in(at: &At, change: &Change) -> Result<Vec<String>, String> {
         "--",
     ];
     asked.extend(change.code.iter().map(String::as_str));
-    Ok(inline_tests(&git(at.root, &asked, None, &[])?))
+    let diff = git(at.root, &asked, None, &[])?;
+    // A file the head doesn't hold, as one the change removes, has no
+    // tests there to begin.
+    let begins = change
+        .code
+        .iter()
+        .filter_map(|file| {
+            let text = git(
+                at.root,
+                &["show", &format!("{}:{file}", at.head)],
+                None,
+                &[],
+            )
+            .ok()?;
+            Some((file.clone(), tests_begin(file, &text)?))
+        })
+        .collect();
+    Ok(inline_tests(&diff, &begins))
 }
 
 /// Of `moved`, those that read the change's test files rather than the
