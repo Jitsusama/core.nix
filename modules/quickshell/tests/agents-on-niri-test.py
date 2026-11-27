@@ -469,9 +469,7 @@ def test_the_first_step_into_landed_after_a_start_makes_no_landings_row_anew(
     day = timedelta(days=1)
     lasts = sum(1 for one in LANDINGS if LANDED - datetime.fromisoformat(one["at"]) < day)
     launcher_on_niri.warmed(shell)
-    shell.reported(
-        "landings kept as the shell started: ", lambda rest: int(rest) == lasts, shell.launched
-    )
+    kept_all_lasts(shell, lasts)
     opened(shell)
     shell.launcher_until(lambda shown: "Landed" in shown["rows"])
     shell.down_to("Landed")
@@ -480,6 +478,20 @@ def test_the_first_step_into_landed_after_a_start_makes_no_landings_row_anew(
     shell.launcher_until(lambda shown: shown["rows"][:2] == [STOPPED, TRY_FIRST])
     made = [key for key in made_since(shell, before) if key.startswith("agents:landed:")]
     assert not made, f"the first step into Landed made {made}: {made_lately(shell)}"
+
+
+def kept_all_lasts(shell: Shell, lasts: int) -> None:
+    """Wait until the warm says it kept `lasts` landings, failing with every count it said."""
+    prefix = "landings kept as the shell started: "
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    counts: list[str] = []
+    while lasts not in [int(one) for one in counts if one.isdigit()]:
+        assert time.monotonic() < deadline, (
+            f"the warm said it kept {counts or 'nothing'}, never the last day's {lasts}"
+        )
+        time.sleep(launcher_on_niri.POLL)
+        said, _ = shell.said_since(shell.launched)
+        counts = [one[len(prefix) :] for one in said if one.startswith(prefix)]
 
 
 def test_a_listening_sessions_return_asks_what_to_say_and_its_acts_stay_inside(
