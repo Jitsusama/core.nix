@@ -34,7 +34,8 @@
 // records differ from what was held and those it dropped, so a rewatch
 // answered with the same records hears nothing, and lets go nothing
 // watched ahead, which it never names. Records keyed as names every
-// object inherits, "__proto__" among them, are held as any other. A handler of a told change
+// object inherits, "__proto__" among them, are held as any other, and
+// one never held is never said as let go. A handler of a told change
 // reads when its line was heard, and one of a watch's whole answer, or one
 // it puts off, reads none. Each daemon's lines and their length are
 // counted by its name, for the launcher's census, and begun again once
@@ -211,7 +212,13 @@ ShellRoot {
 
         socket: `${root.runtime}/daemons/kinds.sock`
         kind: "inherited"
+        onHeard: (changed, gone) => {
+            root.inheritedGone = root.inheritedGone.concat(gone);
+        }
     }
+    // What it said it let go: none, since its answer's gone "toString" was
+    // never held, though a map that inherits reads it as held.
+    property var inheritedGone: []
 
     // Answered whole and watching a key ahead that its kind's whole answer never names, as a
     // place's ready rows watch a drawer served apart: watched again, as each opening watches.
@@ -704,9 +711,13 @@ ShellRoot {
         },
         {
             what: "records keyed as names every object inherits are held as any other",
-            holds: () => Object.keys(inheriting.held).sort().join(" ") === "__proto__ constructor"
+            holds: () => Object.keys(inheriting.held).sort().join(" ")
+                === "__proto__ constructor"
                 && inheriting.held["__proto__"]?.heard === 1
                 && inheriting.held["constructor"]?.heard === 1
+                && !("toString" in inheriting.held) && root.inheritedGone.length === 0,
+            shows: () => `held ${Object.keys(inheriting.held).sort().join(" ")},`
+                + ` let go ${JSON.stringify(root.inheritedGone)}`
         },
         {
             what: "a handler of a change reads when its line was heard, one of a watch's"
@@ -849,7 +860,7 @@ ShellRoot {
                 root.left -= 1;
                 if (root.left === 0) {
                     stop();
-                    root.fail(now.what);
+                    root.fail(now.shows ? `${now.what} (${now.shows()})` : now.what);
                 }
             }
         }

@@ -16,7 +16,8 @@ as the node's whole answer is once one went in a gap. A watch of what lapses is 
 same way with an ask's row and an entry, and with neither after, as the passwords child answers
 once it starts again, its asks' rows whole and its entries not yet listed. One of verdicts is
 answered with none, and one of what's inherited with records keyed "__proto__" and "constructor",
-names every object inherits, so the test can tell a client holds them as any other. An ask of steps
+names every object inherits, and "toString" said gone, never held, so the test can tell a client
+holds them as any other and says no such key let go. An ask of steps
 is answered in three, as wifid answers a join: two saying they aren't done, then the last.
 An unwatch is answered as wifid answers one, and each record says how many watches ahead its
 connection has unwatched, so the test can tell an emptied watch ahead was let go.
@@ -47,11 +48,15 @@ LAPSING = {
 
 
 # What each kind answered the same every time holds: verdicts none, and what's inherited the
-# records keyed by names every object inherits.
+# records keyed by names every object inherits, with one such name said gone though never held.
 FIXED: dict[str, list[dict[str, object]]] = {
     "verdict": [],
     "inherited": [
-        {"key": key, "kind": "inherited", "heard": 1} for key in ("__proto__", "constructor")
+        *(
+            {"key": key, "kind": "inherited", "heard": 1}
+            for key in ("__proto__", "constructor")
+        ),
+        {"key": "toString", "kind": "inherited", "gone": True},
     ],
 }
 
