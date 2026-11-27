@@ -1635,6 +1635,12 @@
   formatting = ''
     everything is formatted and passes the linters
   '';
+  gate-probe-finds-a-pages-mark = ''
+    the web-design skill's gate, in headless Chromium over small pages of its own, finds a site's
+    mark drawn in the first header or in the one element just before it, and names the mark as
+    missing where only a skip link's icon, just before the head or further up, the theme switch's
+    icons or no header at all would stand in for it
+  '';
   gcloud-broker-asks-as-the-named-account = ''
     gcloud-broker is installed only where a machine names a service account, and asks only as it
   '';

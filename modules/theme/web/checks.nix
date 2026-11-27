@@ -42,6 +42,11 @@ let
   noFonts = pkgs.makeFontsConf { fontDirectories = [ ]; };
 in
 onLinux {
+  # The gate (gate-test.py), only where it finds a site's mark: in the
+  # first header or the one element just before it, never a skip link's
+  # icon or the switch's, each a miss of the live sites' heads in November
+  # 2026.
+  gate-probe-finds-a-pages-mark = probed "gate-probe-finds-a-pages-mark" ./gate-test.py { };
   # The homes probe (homes-test.py): a pattern's names learned from the
   # page's links on the sites alone, each row and record the system reader
   # drops named, a kind's first claim kept, and a shortened name's tail read

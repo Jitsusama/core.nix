@@ -47,7 +47,9 @@ body {
 /* The kit's head (head.css), laid as one bar over the map rather than its
    column, so the map keeps the screen: the eyebrow over the title on the
    left, the lede over the standing line beside them, and the quiet row at
-   the far edge. Where the bar is too narrow, its parts stack again. */
+   the far edge. Where the bar is too narrow, its parts stack again: below
+   60rem the title and the quiet row, each as wide as its words, would leave
+   the lede a sliver between them. */
 :root .head .page-head {
   display: grid;
   flex: 1;
@@ -80,7 +82,7 @@ body {
   flex-direction: row;
 }
 
-@media (max-width: 48rem) {
+@media (max-width: 60rem) {
   :root .head .page-head {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--tie);

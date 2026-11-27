@@ -9,7 +9,7 @@ light fallback in the dark look, at 1.45:1 there (1.16:1 in the case's own
 colours), and the gate passed it, since it measured no words inside a
 drawing. The probe's bar of 7:1 and its edge of 64 px for a drawing kept in
 an image are each pinned from both sides. The probe's path comes from
-WEB_SKILL, as the check running this sets it, and its browser from
+WEB_SKILL, as the check running this sets it, and its browser and tab from
 probe_browser.py, loaded as a plugin.
 """
 
@@ -17,12 +17,8 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import pytest
-
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
-    from playwright.sync_api import Browser, Page
+    from playwright.sync_api import Page
 
 PROBE = (Path(os.environ["WEB_SKILL"]) / "svgtext.js").read_text()
 ORIGIN = "http://svgtext.test/"
@@ -35,14 +31,6 @@ AT_THE_BAR, UNDER_THE_BAR = "#595959", "#5a5a5a"
 DRAWING = (
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 1"><rect width="4" height="1"/></svg>'
 )
-
-
-@pytest.fixture
-def tab(browser: Browser) -> Iterator[Page]:
-    """Open a fresh tab at a desk's width."""
-    opened = browser.new_page(viewport={"width": 1024, "height": 640})
-    yield opened
-    opened.close()
 
 
 def probed(tab: Page, drawing: str, style: str = "") -> list[str]:

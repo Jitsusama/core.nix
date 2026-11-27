@@ -47,7 +47,9 @@ body {
 
 /* ---- The head: the kit's (head.css), its lede the one sentence of how
    things stand, and its standing line and quiet row sharing one line under
-   it, so the map keeps the screen. The page's own ground, never a bar. */
+   it, so the map keeps the screen. The page's own ground, never a bar. The
+   quiet row takes at most half that line, since a column as wide as its key
+   line would leave the standing line none on a phone. */
 .head {
   display: flex;
   align-items: start;
@@ -58,7 +60,7 @@ body {
 :root .head .page-head {
   display: grid;
   flex: 1;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) fit-content(50%);
   gap: 0 var(--groups);
   align-items: center;
   margin: 0;
