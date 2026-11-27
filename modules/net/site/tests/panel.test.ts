@@ -5,13 +5,17 @@ import { test as it } from "node:test";
 import { KINDS, networkOf } from "../model.ts";
 import {
   type Context,
+  HELD,
   ledeOf,
   NAMELESS,
+  NOTHING,
   REACHING,
   standsNow,
+  toldOf,
   UNANSWERED,
   UNREACHED,
   unreadSaid,
+  worthSaid,
 } from "../panel.ts";
 import { study } from "../shape.ts";
 import { records, type Told, told } from "./house.ts";
@@ -74,6 +78,14 @@ it("the lede says nothing needs a look when only the internet's ceiling is told"
 it("the lede counts a concern it couldn't read as worth a look", () => {
   const unreadable: Told = { key: "concern:unreadable", kind: "concern" };
   assert.match(standsNow(contextOf([...calm, unreadable])), ONE_WORTH);
+});
+
+it("the lede counts a source it couldn't read as worth a look", () => {
+  const unreadable: Told = { key: "source:unreadable", kind: "source" };
+  const context = contextOf([...calm, unreadable]);
+  assert.ok(context.network.unread.includes("source source:unreadable"));
+  assert.match(standsNow(context), ONE_WORTH);
+  assert.deepEqual(worthSaid(context), [unreadSaid(1)]);
 });
 
 // A page joining a watch the server holds as broken is told every kind
@@ -157,4 +169,27 @@ it("the lede counts held records as net last told them until its feeds are live"
     );
     assert.doesNotMatch(ledeOf(worst, contextOf()), WORTH_A_LOOK, worst);
   }
+});
+
+it("the panel says nothing needs a look only while net's feeds are live", () => {
+  assert.deepEqual(worthSaid(contextOf(calm)), [NOTHING]);
+  for (const worst of ["broken", "stale", "connecting", undefined]) {
+    const live = toldOf(worst);
+    assert.deepEqual(worthSaid({ ...contextOf(calm), told: live }), [HELD], worst);
+  }
+  const held = toldOf("live", { fresh: false, unheard: 0 });
+  assert.deepEqual(
+    worthSaid({ ...contextOf(calm), told: held }),
+    [HELD],
+    "live, records not yet come",
+  );
+});
+
+// What it lists, and what it couldn't read, are still as net last told them.
+it("the panel says what's worth a look is as net last told it while its feeds aren't live", () => {
+  const unreadable: Told = { key: "concern:unreadable", kind: "concern" };
+  const context = { ...contextOf([...calm, unreadable]), told: false };
+  assert.deepEqual(worthSaid(context), [unreadSaid(1), HELD]);
+  assert.deepEqual(worthSaid({ ...contextOf(), told: false }), [HELD]);
+  assert.deepEqual(worthSaid({ ...contextOf(), told: true }), []);
 });

@@ -2,7 +2,8 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { Hearing } from "../hearing.ts";
+import { Held } from "../../../local-sites/kit/records.ts";
+import { type Heard, Hearing, heeding } from "../hearing.ts";
 
 const KINDS = ["device", "concern"];
 
@@ -79,4 +80,41 @@ it("keeps counting a line that may hide a record when a stray answer follows it"
   hearing.problem("concern", "the feed sent a line that isn't JSON");
   hearing.problem("concern", 'an answer to no ask of this page: {"id":9}');
   assert.equal(hearing.now().unheard, 1);
+});
+
+/** What the page heard each time a watch's heeding asked it to draw or say. */
+function heededBy(hearing: Hearing, kind: string) {
+  const asked: { said: string; told: number; heard: Heard }[] = [];
+  let told = 0;
+  const as = (said: string) => () => asked.push({ said, told, heard: hearing.now() });
+  const heed = heeding(hearing, kind, {
+    told: () => {
+      told += 1;
+    },
+    stood: () => undefined,
+    drawSoon: as("draw"),
+    sayStands: as("stands"),
+  });
+  return { heed, asked };
+}
+
+const HELD = new Held();
+const SINCE = 1_700_000_000_000;
+
+// The page draws and says from what the hearing holds, so each watch's
+// heeding tells the hearing first.
+it("tells the hearing what a watch heard before the page draws or says it", async () => {
+  const hearing = heardLive();
+  const { heed, asked } = heededBy(hearing, "concern");
+  heed.stands({ state: "connecting", since: SINCE });
+  heed.problem("the feed sent a line that isn't JSON");
+  await Promise.resolve();
+  heed.stands({ state: "live", since: SINCE });
+  heed.moved(HELD, { changed: [], gone: [], whole: true });
+  assert.deepEqual(asked, [
+    { said: "stands", told: 0, heard: { fresh: false, unheard: 0 } },
+    { said: "draw", told: 0, heard: { fresh: false, unheard: 1 } },
+    { said: "stands", told: 0, heard: { fresh: false, unheard: 1 } },
+    { said: "draw", told: 1, heard: { fresh: true, unheard: 0 } },
+  ]);
 });
