@@ -261,10 +261,11 @@ const ESCAPED_DEEPEST: usize = 3;
 /// each without any line of `said` it quotes, as written or as JSON would
 /// write it: the title and where are still from Slack, so a name in them
 /// can't be read as the gateway's own word. A reading reads the failing's
-/// escapes back up to [`ESCAPED_DEEPEST`] times, taking the lines out
-/// only after or also between, so a name holding a backslash of its own,
-/// or holding another line, is found whole in at least one, while the
-/// gateway's own word, outside any quote, is in them all.
+/// escapes back once to [`ESCAPED_DEEPEST`] times, taking the lines out
+/// only after or also before each, so a name holding a backslash of its
+/// own, or holding another line, is found whole in at least one, while
+/// the gateway's own word, outside any quote, is in them all: one just
+/// after an escape, as in `\nratelimited`, is whole once that is read.
 fn says(why: &str, said: &str, word: fn(&str) -> bool) -> bool {
     let lines: Vec<&str> = said
         .lines()
@@ -280,13 +281,13 @@ fn says(why: &str, said: &str, word: fn(&str) -> bool) -> bool {
     };
     let (mut read, mut between) = (why.to_owned(), without(why.to_owned()));
     for _ in 0..ESCAPED_DEEPEST {
+        read = unescaped(&read);
+        between = without(unescaped(&between));
         if !word(&without(read.clone())) || !word(&between) {
             return false;
         }
-        read = unescaped(&read);
-        between = without(unescaped(&between));
     }
-    word(&without(read)) && word(&between)
+    true
 }
 
 /// `why` with each of JSON's escapes read back, from left to right: `\\`,
@@ -594,6 +595,27 @@ mod tests {
             says(&format!("rate_limited, for {json}"), &said, spent),
             "the gateway's own word still counts"
         );
+    }
+
+    #[test]
+    fn the_gateways_own_word_just_after_an_escape_counts() {
+        let said = text(Alert {
+            title: "A stop in owner/name",
+            words: WORDS_NOT_TAKEN,
+            link: "https://x.slack.com/archives/C1/p1",
+        });
+        let json = serde_json::to_string(&said).expect("text as JSON");
+        for word in [
+            "\\nratelimited",
+            "\\u201cratelimited\\u201d",
+            "\\tinvalid_auth",
+        ] {
+            let why = format!("{{\"message\":\"Slack said:{word}\"}}, for {json}");
+            assert!(
+                says(&why, &said, spent) || says(&why, &said, refuses_the_sign_in),
+                "read back, the gateway's word counts: {why}"
+            );
+        }
     }
 
     #[test]
