@@ -61,6 +61,7 @@ mod supplicant;
 mod syntax;
 mod transition;
 mod vault;
+mod warned;
 mod words;
 
 use std::cell::RefCell;
@@ -73,6 +74,7 @@ use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use futures_util::StreamExt;
 use tokio::sync::{mpsc, watch};
@@ -105,9 +107,14 @@ use state::{Progress, Reach, State, Trouble};
 use store::{Saved, Store};
 use supplicant::{InterfaceProxy, JoinableProxy, Step, SupplicantProxy};
 use transition::{Heed, Request};
+use warned::Warned;
 
 /// Where wifid keeps what it must remember between starts.
 const STATE: &str = "/var/lib/wifid";
+
+/// Where wifid keeps what it must remember between starts but never past
+/// the machine's: its runtime folder, which systemd keeps as it restarts.
+const KEPT: &str = "/run/wifid/kept";
 
 /// What every card wpa_supplicant is given starts from.
 const CARD_SETTINGS: &str = "/etc/wpa_supplicant/interface.conf";
@@ -259,7 +266,20 @@ async fn serve(
     // Whether Joel's on a call, as his session tells the rows socket.
     let calling = watch::Sender::<calling::Calling>::default();
     let avoided = avoided();
-    let arrivals = RefCell::default();
+    let arrivals = RefCell::new(Arrivals::default());
+    // A switch restarts wifid, and the hand-over below would hold a card
+    // to the point it's on, so each warning still lasting is taken in
+    // first: one forgotten held the card to a point about to drop it.
+    let warned = RefCell::new(Warned::kept_in(&Path::new(KEPT).join("warned")));
+    for (card, point, until) in warned.borrow().lasting(Instant::now(), SystemTime::now()) {
+        arrivals.borrow_mut().warned(&card, &point, until);
+        change(&state, |state| state.kept_off(&card, &point, until));
+        let minutes = until
+            .saturating_duration_since(Instant::now())
+            .as_secs()
+            .div_ceil(60);
+        println!("<6>{card} keeps off {point} for {minutes} more minutes, as it warned before");
+    }
     let wifid = Wifid {
         bus: &bus,
         supplicant: &supplicant,
@@ -269,6 +289,7 @@ async fn serve(
         avoided: &avoided,
         seen,
         arrivals: &arrivals,
+        warned: &warned,
         state: &state,
         picked: RefCell::default(),
         held: RefCell::default(),
@@ -1840,6 +1861,8 @@ struct Wifid<'a> {
     seen: &'a RefCell<Seen>,
     /// The moves on their way, followed to where they end.
     arrivals: &'a RefCell<Arrivals>,
+    /// The warnings still keeping a point off, kept for the next wifid.
+    warned: &'a RefCell<Warned>,
     state: &'a watch::Sender<State>,
     /// The cards on a network Joel picked in the launcher, which keep
     /// their others off until they come off it.
@@ -2012,7 +2035,9 @@ impl Wifid<'_> {
     /// network elsewhere. A card let go of a point that warned it drops
     /// the card isn't held back to it, as `ready` holds none there: cards
     /// are handed over again as networks are saved, or networkd restarts,
-    /// and one held back would wait there until it's dropped.
+    /// and one held back would wait there until it's dropped. The same
+    /// holds as wifid starts again, as a switch restarts it, since each
+    /// warning still lasting is kept past it (warned.rs).
     async fn hold_where_it_is(
         &self,
         card: &str,
@@ -3664,17 +3689,23 @@ impl Wifid<'_> {
         let followed = request.heed(from.as_deref(), &heard, held, leaving, looked.over(), link);
         // Said once kept, so the line stands for what the chooser and the
         // moves now hold, not only for what was decided.
-        if let Some(lasts) = request.keeps_off(&followed)
-            && let Some(from) = from.as_deref()
-        {
-            let at = Instant::now();
-            let until = at + lasts;
-            self.arrivals.borrow_mut().warned(card, from, until);
-            change(self.state, |state| {
-                state.warned_off(card, from, (at, until));
-            });
-            let minutes = lasts.as_secs() / 60;
-            println!("<7>{card}'s chooser keeps off {from} for {minutes} minutes, as it warned");
+        if let Some(from) = from.as_deref() {
+            let lasts = request.keeps_off(&followed);
+            let now = (Instant::now(), SystemTime::now());
+            let until = lasts.map(|lasts| now.0 + lasts);
+            self.arrivals
+                .borrow_mut()
+                .heeded(card, from, &followed, until);
+            if let (Some(lasts), Some(until)) = (lasts, until) {
+                change(self.state, |state| state.warned_off(card, from, (now.0, until)));
+                if let Err(error) = self.warned.borrow_mut().warned(card, from, until, now) {
+                    eprintln!("<4>can't keep {from}'s warning to {card} past a restart: {error}");
+                }
+                let minutes = lasts.as_secs() / 60;
+                println!(
+                    "<7>{card}'s chooser keeps off {from} for {minutes} minutes, as it warned"
+                );
+            }
         }
         match followed {
             Heed::Stay => println!("<7>{card} stays where it is, as the ask warns nothing"),
@@ -3693,13 +3724,8 @@ impl Wifid<'_> {
                 println!(
                     "<6>{card} was warned unprotected on an open network, so may join any again"
                 );
-                // Nothing is kept off, but a move under way from the point
-                // is let join what it hears should it miss, as the card
-                // is: sent back, it would be held to the point it was
-                // just let go of.
-                if let Some(from) = from.as_deref() {
-                    self.arrivals.borrow_mut().wont_return(card, from);
-                }
+                // A move under way from the point won't go back there
+                // should it miss (`Arrivals::heeded`).
                 self.let_go(card, joining != Some(card)).await;
             }
             Heed::Move(bssid) => match self.roam_card(card, &bssid, joining, Missed::LetJoin).await

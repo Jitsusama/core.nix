@@ -59,9 +59,23 @@ pub struct State {
     /// The gateway each card's default route goes through, by link index.
     gateways: BTreeMap<i32, Ipv4Addr>,
     /// The access point that last warned each card it drops it, by the
-    /// card's name, when it warned, and until when the card's chooser
-    /// isn't told of it.
-    warned_off: BTreeMap<String, (String, Instant, Instant)>,
+    /// card's name.
+    warned_off: BTreeMap<String, Warning>,
+}
+
+/// An access point's warning that it drops a card, when it warned, and
+/// until when the card's chooser isn't told of the point.
+#[derive(Clone, Debug, PartialEq)]
+struct Warning {
+    point: String,
+    /// When it warned this wifid, so that its heed is under way; none
+    /// for one kept from before a restart, whose heed ended with it.
+    at: Option<Instant>,
+    until: Instant,
+    /// Whether the card has since been on another point, so that being on
+    /// this one again is a return rather than the stay the warning began
+    /// in.
+    left: bool,
 }
 
 /// A card on a network through an access point it hears, and the gateway
@@ -376,6 +390,7 @@ impl State {
             Some(heard) => self.heard.insert(path.into(), heard),
             None => self.heard.remove(path),
         };
+        self.settle_warnings();
     }
 
     /// Forgets every access point whose path starts so, as every one a card
@@ -467,6 +482,28 @@ impl State {
             Some(point) => self.at.insert(card.into(), point),
             None => self.at.remove(card),
         };
+        self.settle_warnings();
+    }
+
+    /// Forgets the warning of a point a card has left and come back to,
+    /// as being held there again shows the warning is over: kept, a later
+    /// trial from it couldn't go back to it until its long keep-off ran
+    /// out. A card between points, on none, hasn't left, since a move that
+    /// fails puts it back where it was warned.
+    fn settle_warnings(&mut self) {
+        let points: BTreeMap<String, Option<String>> = self
+            .warned_off
+            .keys()
+            .map(|card| (card.clone(), self.point_of(card)))
+            .collect();
+        self.warned_off.retain(|card, warning| {
+            let Some(Some(on)) = points.get(card) else {
+                return true;
+            };
+            let back = on.eq_ignore_ascii_case(&warning.point);
+            warning.left |= !back;
+            !(back && warning.left)
+        });
     }
 
     /// Lets go of every card's reading, as nobody asks any more.
@@ -536,7 +573,7 @@ impl State {
     /// the card, until `warned_off` says, unless the card is on it again.
     /// A point merely unheard isn't kept off: a move there looks for it.
     pub fn warned_from(&self, card: &str, now: Instant) -> Option<&str> {
-        let (point, _, until) = self.warned_off.get(card)?;
+        let Warning { point, until, .. } = self.warned_off.get(card)?;
         let away = self
             .point_of(card)
             .is_none_or(|on| !on.eq_ignore_ascii_case(point));
@@ -547,19 +584,42 @@ impl State {
     /// card's chooser from when it warned until then, in place of any it
     /// was warned by before.
     pub fn warned_off(&mut self, card: &str, point: &str, (at, until): (Instant, Instant)) {
-        self.warned_off
-            .insert(card.to_owned(), (point.to_owned(), at, until));
+        let warning = Warning {
+            point: point.to_owned(),
+            at: Some(at),
+            until,
+            left: false,
+        };
+        self.warned_off.insert(card.to_owned(), warning);
+        self.settle_warnings();
+    }
+
+    /// Keeps the access point that warned a card before a restart from
+    /// the card's chooser until then, as `warned_off` does for one heard
+    /// now, but with no heed under way: the wifid that heeded it is gone.
+    pub fn kept_off(&mut self, card: &str, point: &str, until: Instant) {
+        let warning = Warning {
+            point: point.to_owned(),
+            at: None,
+            until,
+            left: false,
+        };
+        self.warned_off.insert(card.to_owned(), warning);
+        self.settle_warnings();
     }
 
     /// When the access point a card is on warned it drops the card, if it
-    /// did and that's still kept to at `now`: the warning's own heed is
-    /// then moving the card off it, looking first or letting it go.
+    /// did since wifid began and that's still kept to at `now`: the
+    /// warning's own heed is then moving the card off it, looking first or
+    /// letting it go. One kept from before a restart has no heed left.
     pub fn warned_on(&self, card: &str, now: Instant) -> Option<Instant> {
-        let (point, at, until) = self.warned_off.get(card)?;
+        let Warning {
+            point, at, until, ..
+        } = self.warned_off.get(card)?;
         let on = self
             .point_of(card)
             .is_some_and(|on| on.eq_ignore_ascii_case(point));
-        (now < *until && on).then_some(*at)
+        at.filter(|_| now < *until && on)
     }
 
     /// The address of the access point the card is at, where it hears it,
@@ -1499,6 +1559,58 @@ mod tests {
             state.warned_from("wlan2", now),
             None,
             "a card back on the point that warned it was kept off it"
+        );
+    }
+
+    #[test]
+    fn a_warning_kept_from_before_a_restart_keeps_its_point_off_with_no_heed_under_way() {
+        let mut state = at_the_inn();
+        let warned = state.point_of("wlan2").expect("on a point");
+        let now = Instant::now();
+        state.kept_off("wlan2", &warned, now + Duration::from_secs(600));
+        assert_eq!(
+            state.warned_on("wlan2", now),
+            None,
+            "a warning from before a restart was said to have its heed under way"
+        );
+
+        state.at("wlan2", Some("/Interfaces/0/BSSs/1".into()));
+
+        assert_eq!(
+            state.warned_from("wlan2", now),
+            Some(&*warned),
+            "a warning from before a restart didn't keep its point off"
+        );
+    }
+
+    #[test]
+    fn a_warning_is_forgotten_once_its_card_has_left_its_point_and_come_back() {
+        let mut state = at_the_inn();
+        let warned = state.point_of("wlan2").expect("on a point");
+        let now = Instant::now();
+        let lasts = now + Duration::from_secs(3600);
+        state.warned_off("wlan2", &warned, (now, lasts));
+        state.at("wlan2", None);
+        state.at("wlan2", Some("/Interfaces/0/BSSs/1".into()));
+        state.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
+        assert_eq!(
+            state.warned_from("wlan2", now),
+            Some(&*warned),
+            "a move that failed back to the point that warned forgot its warning"
+        );
+
+        state.at("wlan2", Some("/Interfaces/0/BSSs/1".into()));
+        state.at("wlan2", Some("/Interfaces/0/BSSs/2".into()));
+
+        assert_eq!(
+            state.warned_from("wlan2", now),
+            None,
+            "a card held on the point that warned it again was kept off it once it left"
+        );
+        assert_eq!(
+            state.around_to_choose("wlan2", now).len(),
+            2,
+            "its chooser didn't hear the point it came back to and left"
         );
     }
 

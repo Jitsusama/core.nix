@@ -64,7 +64,7 @@ use crate::state::Security;
 /// protected request can say one: wpa_supplicant times it by the beacon
 /// interval its point's beacons last said (`wnm_sta.c`), and beacons go
 /// unprotected, so anyone in range can forge a longer one.
-const KEEPS_OFF_AT_MOST: Duration = Duration::from_hours(1);
+pub const KEEPS_OFF_AT_MOST: Duration = Duration::from_hours(1);
 
 /// One request, as wpa_supplicant said it.
 #[derive(Clone, Debug, PartialEq, Eq)]

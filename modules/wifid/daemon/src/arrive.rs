@@ -39,6 +39,8 @@ use std::collections::HashMap;
 
 use tokio::time::{Duration, Instant};
 
+use crate::transition::Heed;
+
 /// The steps wpa_supplicant says once a card has given up joining, for a
 /// move on its way to them that has failed.
 const GAVE_UP: [&str; 4] = ["disconnected", "inactive", "scanning", "interface_disabled"];
@@ -357,6 +359,20 @@ impl Arrivals {
         self.wont_return(card, from);
         let dropping = (from.to_owned(), until);
         self.dropping.insert(card.to_owned(), dropping);
+    }
+
+    /// Takes in how the card heeds a warning from the point it's on: kept
+    /// off `until` then, when the heed keeps the point off (`warned`).
+    /// One warned unprotected keeps nothing off, but a move under way
+    /// from the point still won't go back there should it miss
+    /// (`wont_return`), as the card is let go of it: sent back, it would
+    /// be held to the point it was just let go of.
+    pub fn heeded(&mut self, card: &str, from: &str, heed: &Heed, until: Option<Instant>) {
+        if let Some(until) = until {
+            self.warned(card, from, until);
+        } else if *heed == Heed::Unproven {
+            self.wont_return(card, from);
+        }
     }
 
     /// Whether the point a card would move from warned it drops the card,
@@ -1192,6 +1208,46 @@ mod tests {
             off.map(|off| off.returns),
             Some(false),
             "handed back as it falls off, with no way back"
+        );
+    }
+
+    #[test]
+    fn a_move_under_way_heeds_each_warning_as_its_heed_says() {
+        let now = Instant::now();
+        let under_way = || {
+            let mut arrivals = Arrivals::default();
+            arrivals.asked("wlan0", Some(DESK), FAR, now);
+            arrivals
+        };
+        let until = now + Duration::from_secs(600);
+
+        let mut unproven = under_way();
+        unproven.heeded("wlan0", DESK, &Heed::Unproven, None);
+        let mut kept = under_way();
+        kept.heeded("wlan0", DESK, &Heed::Move(HALL.into()), Some(until));
+        let mut plain = under_way();
+        plain.heeded("wlan0", DESK, &Heed::Stay, None);
+
+        assert!(
+            unproven.leaves_a_drop("wlan0") && !unproven.drops("wlan0", DESK, now),
+            "an unproven warning kept its point off, or left the move a way back to it"
+        );
+        assert_eq!(
+            unproven.busy("wlan0", false),
+            Some(Busy::LeavingADrop),
+            "a move leaving an unproven warner was let be asked over"
+        );
+        assert!(
+            kept.leaves_a_drop("wlan0") && kept.drops("wlan0", DESK, now),
+            "a warning kept off didn't keep the point off, or left the move a way back"
+        );
+        assert!(
+            !kept.drops("wlan0", DESK, until),
+            "a warning kept its point off past when it said"
+        );
+        assert!(
+            !plain.leaves_a_drop("wlan0") && !plain.drops("wlan0", DESK, now),
+            "an ask warning nothing took the move's way back"
         );
     }
 
