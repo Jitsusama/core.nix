@@ -2857,10 +2857,8 @@ impl Wifid<'_> {
                 self.picked.borrow_mut().remove(card);
                 // Forgotten before the join is answered, so whoever asked
                 // never reads the network as saved once it's told it failed.
-                if *new {
-                    if let Err(error) = self.store.forget(name) {
-                        eprintln!("<4>can't forget {name} again: {error:?}");
-                    }
+                if *new && let Err(error) = self.store.forget(name) {
+                    eprintln!("<4>can't forget {name} again: {error:?}");
                 }
                 let _ = joining.progress.send(Err(refused)).await;
                 if *new {
