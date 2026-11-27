@@ -25,6 +25,7 @@ pub const STALLED_AT: f64 = 10.0;
 /// seconds on 3 November.
 pub fn memory_stalled() -> bool {
     let read = match std::env::var_os(PRESSURE) {
+        // A reading that can't be had is no stall, as above.
         Some(file) => fs::read_to_string(file).into_iter().collect(),
         None => readings(Path::new("/proc"), Path::new("/sys/fs/cgroup")),
     };
