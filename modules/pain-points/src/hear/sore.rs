@@ -937,7 +937,9 @@ mod tests {
     /// How many times longer `kinds` takes to read `long(4)` than
     /// `long(1)`, the fastest of five reads of each: near four for a
     /// reading in linear time, and near sixteen for one in time growing
-    /// with its square, in a build of any speed.
+    /// with its square, in a build of any speed. A machine busy with other
+    /// work can slow one try, so it tries up to three times, and says the
+    /// least growth unless a try grows less than ten times.
     fn growth(long: impl Fn(usize) -> String) -> f64 {
         let fastest = |times| {
             let text = long(times);
@@ -951,14 +953,21 @@ mod tests {
                 .unwrap_or_default()
                 .as_secs_f64()
         };
-        fastest(4) / fastest(1).max(1e-9)
+        let mut least = f64::INFINITY;
+        for _ in 0..3 {
+            least = least.min(fastest(4) / fastest(1).max(1e-9));
+            if least < 10.0 {
+                break;
+            }
+        }
+        least
     }
 
     #[test]
     fn a_long_run_of_stops_with_no_space_is_read_in_linear_time() {
         // Each stop here is read back to its word; read back to the last
         // space, as before, the run took time growing with its square.
-        let run = |times: usize| "a.,".repeat(10_000 * times);
+        let run = |times: usize| "a.,".repeat(100_000 * times);
         assert!(
             kinds(&run(1), AT, &[]).is_empty(),
             "a run of stops and commas was heard as a pain"
@@ -994,9 +1003,9 @@ mod tests {
         // Each swear read back to its sentence's opening, as before, took
         // time growing with the square of a long pasted message.
         let longs: [fn(usize) -> String; 3] = [
-            |times| "yes ".repeat(3_750 * times) + &"and shit ".repeat(1_750 * times),
-            |times| "damn, ".repeat(5_000 * times),
-            |times| "the costs and shit ".repeat(2_000 * times),
+            |times| "yes ".repeat(37_500 * times) + &"and shit ".repeat(17_500 * times),
+            |times| "damn, ".repeat(50_000 * times),
+            |times| "the costs and shit ".repeat(20_000 * times),
         ];
         for long in longs {
             assert!(
