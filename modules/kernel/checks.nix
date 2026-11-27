@@ -54,13 +54,14 @@ let
   kernelSource =
     kernel: files:
     pkgs.runCommandLocal "patched-source" { nativeBuildInputs = [ pkgs.patchutils ]; } ''
-      ${lib.getExe pkgs.bash} ${./tests/patched-kernel-source.sh} ${kernel.src} ${
-        pkgs.writeText "patches" (
-          lib.concatMapStrings (patch: "${patch.patch}\n") (
-            lib.filter (patch: patch.patch != null) kernel.kernelPatches
+      ${lib.getExe pkgs.bash} ${./tests/patched-kernel-source.sh} \
+        ${./tests/kernel-source-files.sh} ${kernel.src} ${
+          pkgs.writeText "patches" (
+            lib.concatMapStrings (patch: "${patch.patch}\n") (
+              lib.filter (patch: patch.patch != null) kernel.kernelPatches
+            )
           )
-        )
-      } $out ${lib.escapeShellArgs files}
+        } $out ${lib.escapeShellArgs files}
     '';
 in
 {
@@ -103,6 +104,22 @@ in
       (follows "osaka-jade" && follows "flexoki-light" && !(bare ? DRM_PANIC_FOREGROUND_COLOR));
 }
 // onLinux {
+  # The checks reading a kernel's source take only a few of its files. A
+  # patch creating one a newer kernel has too fails the build, and failed
+  # the check only as patch's own refusal, which names no patch. So taking
+  # them names the patch, refuses a file no patch creates rather than let a
+  # check read nothing, and lets a file a patch creates be missing
+  # (tests/kernel-source-files.sh). A tiny source and a patch creating one
+  # file stand in for a kernel's, in a folder and in a tarball alike.
+  kernel-source-files-are-taken-as-built =
+    pkgs.runCommandLocal "kernel-source-files-are-taken-as-built"
+      { nativeBuildInputs = [ pkgs.patchutils ]; }
+      ''
+        ${lib.getExe pkgs.bash} ${./tests/kernel-source-files-cases.sh} \
+          ${./tests/kernel-source-files.sh}
+        touch $out
+      '';
+
   # A join through wpa_supplicant recorded the network's name only after
   # finding the access point's country, and one that names none ended the
   # join's last step first, so networkd couldn't match the network's file.

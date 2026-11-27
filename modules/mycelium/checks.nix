@@ -140,6 +140,11 @@ let
       outPath = ./tests/stale-mycelium + "/${name}";
       rev = "stand-in-${name}";
     };
+  # The lines of FILE in the locked mycelium's source, and what the items
+  # in them hold, read failing closed, so a check pins core's words to the
+  # types the lock reads them into.
+  lockedLines = file: lib.splitString "\n" (builtins.readFile "${self.inputs.mycelium}/src/${file}");
+  rust = import ./rust-items.nix { inherit lib; };
   # The stand-ins lacking a guard, by what the switch must say of each
   # file a guard is looked for in: that it has no line matching the
   # guard's pattern, named so the person can tell what form it takes, that
@@ -1530,12 +1535,39 @@ in
   # or strict fence names its system's launcher for an agent's run, which
   # runs pi's strict profile; whether every start goes through it is
   # mycelium's to keep, not this check's. An unfenced one says none, so mycelium
-  # refuses it.
+  # refuses it. A machine kept lively says its ceiling, which the locked
+  # mycelium reads as a Lively whose fields are pinned to the names and
+  # types written here, memory_full from the lock that first has it;
+  # nothing over Lively may refuse a field it doesn't know, or a node on a
+  # lock from before memory_full would drop the whole ceiling naming it.
   # One that declares nothing has no file, which mycelium reads as unknown.
   mycelium-declares-what-a-machine-says =
     holds "mycelium-declares-what-a-machine-says"
-      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on asked about that machine alone, a held session's outlives isn't each system's, a fence it doesn't say is written, whether pi fences itself isn't written only when a Mac says so beside its fences or isn't refused on Linux, doors it accepts for another machine aren't or take a machine no realm could name, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a machine of either system can't declare every fence, a machine kept lively doesn't say its ceiling or one not kept lively says one, or a machine declaring nothing gets a file anyway."
+      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on asked about that machine alone, a held session's outlives isn't each system's, a fence it doesn't say is written, whether pi fences itself isn't written only when a Mac says so beside its fences or isn't refused on Linux, doors it accepts for another machine aren't or take a machine no realm could name, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a machine of either system can't declare every fence, a machine kept lively doesn't say its ceiling, a memory_full of 0 included, or one not kept lively says one, the locked mycelium doesn't read the ceiling as kept_lively, an Option<Lively> of cpu as u32, memory_available as Option<u64> and, once it has it, memory_full as Option<u32>, read from a scan failing on any line it can't read, or something over Lively refuses fields it doesn't know, or a machine declaring nothing gets a file anyway."
       (
+        let
+          # The locked ceiling's fields, and the field Declared reads it
+          # from, read failing closed.
+          lively = rust.structIn (lockedLines "declared.rs") "Lively";
+          keptLively = lib.findFirst (field: field.name == "kept_lively") null (
+            (rust.structIn (lockedLines "declared.rs") "Declared").fields or [ ]
+          );
+          ceiling = map (field: { inherit (field) name type; }) (lively.fields or [ ]);
+          held = [
+            {
+              name = "cpu";
+              type = "u32";
+            }
+            {
+              name = "memory_available";
+              type = "Option<u64>";
+            }
+          ];
+          memoryFull = {
+            name = "memory_full";
+            type = "Option<u32>";
+          };
+        in
         declared linux == {
           reach = [ "internet" ];
           probes.home.connect = "192.0.2.1:53";
@@ -1588,6 +1620,27 @@ in
             memory_full = 3;
           }
         )
+        # A ceiling of no memory stall at all is written, not taken for none.
+        && (
+          (declaredAs {
+            keptLively = {
+              cpu = 28;
+              memoryAvailable = 1024;
+              memoryFull = 0;
+            };
+          }).kept_lively or null == {
+            cpu = 28;
+            memory_available = 1024;
+            memory_full = 0;
+          }
+        )
+        # The lock reads it as written: kept_lively an Option<Lively>, each
+        # field its name and type here, memory_full from the lock that first
+        # has it, and nothing over Lively refusing a field it doesn't know.
+        && keptLively.type or null == "Option<Lively>"
+        && lively != null
+        && !lib.any (lib.hasInfix "deny_unknown_fields") lively.over
+        && (ceiling == held || ceiling == held ++ [ memoryFull ])
         && !((launching mac everyKind) ? pi_fences_itself)
         && (saidBy (selfFenced mac)).pi_fences_itself or false
         && (saidBy (selfFenced mac)).fence.strict.runs or null == macLauncher
@@ -1685,16 +1738,12 @@ in
           taken =
             extra:
             (builtins.tryEval (builtins.deepSeq (declaredAs { needsIn = [ (rule // extra) ]; }) true)).success;
-          locked = "${self.inputs.mycelium}/src";
-          linesOf = file: lib.splitString "\n" (builtins.readFile "${locked}/${file}");
-          # What the locked source's items hold, read failing closed.
-          rust = import ./rust-items.nix { inherit lib; };
-          need = rust.enumIn (linesOf "placement.rs") "Need";
-          accelerators = rust.enumIn (linesOf "facts.rs") "AcceleratorKind";
-          declaration = rust.structIn (linesOf "declared.rs") "Declared";
+          need = rust.enumIn (lockedLines "placement.rs") "Need";
+          accelerators = rust.enumIn (lockedLines "facts.rs") "AcceleratorKind";
+          declaration = rust.structIn (lockedLines "declared.rs") "Declared";
           # needs_in's field, or null on a lock from before it.
           needsIn = lib.findFirst (field: field.name == "needs_in") null (declaration.fields or [ ]);
-          rule' = rust.structIn (linesOf "declared.rs") "NeedsIn";
+          rule' = rust.structIn (lockedLines "declared.rs") "NeedsIn";
           kinds = map (variant: variant.name) (need.variants or [ ]);
           # Rust's lines as a fixture gives them.
           fixture = text: lib.splitString "\n" text;
