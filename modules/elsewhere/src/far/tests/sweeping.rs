@@ -256,6 +256,48 @@ exec rm \"$@\""
     let _ = std::fs::remove_dir_all(&root);
 }
 
+#[test]
+fn a_link_at_the_copies_folder_that_wont_clear_stops_the_sweep_and_says_so() {
+    let root = scratch("far-swept-linked");
+    let runs = root.join("s");
+    let aside = root.join("aside");
+    // Two gone runs, so a sweep that went on past the link would say so
+    // again for the second.
+    let (job, next) = ("4242-1763912345678901234", "4243-1763912345678901234");
+    for id in [job, next] {
+        copy(&runs, id, &format!("{} {}", gone(), here()));
+    }
+    // Another job of the quest moving the copies' folder aside, with a
+    // link to it at its name, as the sweep's first head reads a gone
+    // run's file (the head after tr in its pipeline leaves it be), and an
+    // rm that can't clear that link.
+    let (r, a) = (runs.display(), aside.display());
+    let head = format!(
+        "PATH=${{PATH#*:}}
+[ \"$1\" != -c ] || [ -L '{r}' ] || {{ mv '{r}' '{a}' && ln -s '{a}' '{r}'; }}
+exec head \"$@\""
+    );
+    let rm = format!("case \"$*\" in *' {r}') exit 1 ;; esac\nPATH=${{PATH#*:}}\nexec rm \"$@\"");
+    let said = sweep_with(&runs.join("9"), &[("head", &head), ("rm", &rm)]);
+    assert_eq!(
+        said,
+        "elsewhere: a link at its copies' folder couldn't be cleared, so the sweep stops, and \
+         this run is untaken if it still stands once its files cross\n",
+        "the sweep didn't say why it stopped, once and alone"
+    );
+    assert_eq!(
+        left_in(&aside),
+        [
+            job.to_owned(),
+            format!("{job}{RUN}"),
+            next.to_owned(),
+            format!("{next}{RUN}")
+        ],
+        "the sweep cleared through the link it couldn't clear"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 /// An rm that can't clear the job's copy where an end frees it with the
 /// tree it was made from, passing all else to the machine's own.
 const STUCK_COPY: &str = "PATH=${PATH#*:}

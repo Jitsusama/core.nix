@@ -38,6 +38,7 @@ import "NeedsYou.js" as NeedsYou
 import "Here.js" as Here
 import "Keeping.js" as Keeping
 import "PlaceRow.js" as PlaceRow
+import "ActsSaid.js" as ActsSaid
 import "Presented.js" as Presented
 import "SessionRow.js" as SessionRow
 import "Sprouting.js" as Sprouting
@@ -1192,7 +1193,7 @@ Provider {
         // A look's file is named for what Joel wrote, and the daemon's words
         // may quote it, so they're said by letters and as errorShown says them.
         const why = answer?.error === undefined ? "not there to ask"
-            : Presented.errorShown(answer.error, Options.reports);
+            : ActsSaid.errorShown(answer.error, Options.reports);
         const named = Presented.typedShown(file, Options.reports);
         console.warn(`Now: the to-do daemon didn't settle ${named} (${why}),`
             + " so its look stands as it was");
@@ -1209,9 +1210,8 @@ Provider {
     // gone quiet there, whose file still says it waits. A terminal whose
     // session is gone opened nothing, so it stays as it was. Whether it
     // opened, so a caller settling it elsewhere settles only what opened.
-    // A session held whose window can't be raised or opened (Sessions.qml's
-    // unopened and unhosted) still counts as opened, until Sessions.goTo
-    // says whether it opened anything, by Mon 23 Nov 2026.
+    // Nor did one whose session's window can't be raised or opened
+    // (Sessions.goTo), which stays as it was too.
     function openLook(one) {
         if (one.kind === "terminal") {
             if (!goToCell(one))
@@ -1258,8 +1258,11 @@ Provider {
     // Over a launcher or a talk line Joel has up by then it says nothing
     // on screen, as toldGone never opens over what he's typing, and only
     // the journal says so. The journal names what the look led by, so a
-    // report reads why. Whether a session was held to go to: a parked one
-    // whose wake is refused says why on the foot, and still counts.
+    // report reads why. One held that can't be gone to, as one on another
+    // machine no holder keeps, opens the launcher to say why the same way
+    // (toldHere). Whether it went: a parked one whose wake is refused later
+    // says why on the foot, and still counts, since the wake was asked; one
+    // refused at once, by a node out of reach, didn't go (Sessions.wakeToGo).
     function goToCell(one) {
         const cell = lookCell(one);
         if (cell === null) {
@@ -1274,7 +1277,15 @@ Provider {
                 + ` ${moved ? "moved on" : "gone"}, ${told ? "told" : "not told, in use"}`);
             return false;
         }
-        Sessions.wakeToGo(Sessions.parkedAs(cell.address), cell);
+        if (!Sessions.wakeToGo(Sessions.parkedAs(cell.address), cell)) {
+            // Agents' refusedGoing has opened the launcher to say why already; this
+            // opens it for a refusal said no other way.
+            const told = provider.launcher?.toldHere() === true;
+            console.warn(`Now: look ${JSON.stringify(one.id)}'s session`
+                + ` ${JSON.stringify(cell.address ?? null)} couldn't be gone to,`
+                + ` ${told ? "told here" : "told already, or the launcher in use"}`);
+            return false;
+        }
         return true;
     }
 
@@ -2383,7 +2394,7 @@ Provider {
             make: () => provider.toReopen
         }]).concat((provider.source("agents") ? sessions : [])
         .map(session => ({
-            // Gathered in Agents Asking once two ask (ForYou.js).
+            // Gathered in Agents once two ask (ForYou.js).
             kind: "agent",
             thing: { kind: "todo", blocks: 1, since: session.presence?.wants?.since ?? null },
             cell: () => session,
@@ -2395,6 +2406,8 @@ Provider {
             }
         })).concat(WaitingOnYou.now.map(each => ({
             kind: "do",
+            // Home's Now row names it by its title where it leads.
+            toDo: each,
             thing: provider.itemThing(each),
             cell: () => WaitingOnYou.session(each),
             make: now => provider.item(each, now)
@@ -2522,21 +2535,25 @@ Provider {
         return band.map(one => one.make(now)).filter(row => row !== null);
     }
 
-    // What needs Joel now, under a heading for each cell behind it, the
-    // cells by their heaviest row and each one's rows by weight but for
-    // what it asks, which leads it as what holds it up, with what
-    // no session is behind under one heading of his own (ForYouCells.js's
-    // byCell; Joel, 2026-11-16: "one 'what needs me' view grouped by
-    // cell"). No heading while all of it is his own, and a group whose rows
-    // all went as they were made says nothing. `asked`, Agents Asking's row
-    // or none, stands first while headings show, else by `weight`, its
-    // heaviest, among the loose rows (ForYouCells.js's laidOut). What a
-    // cell asks is its want's row, or a to-do of its own it blocks on, as a
-    // session whose want is an action asks it (ForYou.js's blocked).
-    function cellRows(band, now, asked, weight) {
+    // What needs Joel now: his own rows loose, and what the sessions raised
+    // gathered into Agents, standing among his own by its heaviest,
+    // inside it a heading for each cell behind it and its rows, the cells by
+    // their heaviest row and each one's rows by weight but for what it asks,
+    // which leads it as what holds it up (ForYouCells.js's byCell and
+    // laidOut; Joel, 2026-11-16: "one 'what needs me' view grouped by
+    // cell", and 2026-11-25 21:52: "it also makes no sense for the agents
+    // to be top level"). What a cell asks is its want's row, or a to-do of
+    // its own it blocks on, as a session whose want is an action asks it
+    // (ForYou.js's blocked).
+    function cellRows(band, now) {
+        return Cells.laidOut(cellsOf(band),
+            items => bandRows(items, now), cellHeading,
+            inside => keptAlike(kindsKept, "agent", inside, () => madeKindRow("agent", inside)));
+    }
+
+    function cellsOf(band) {
         const asks = one => one.kind === "agent" || one.kind === "do" && one.thing.blocks > 0;
-        return Cells.laidOut(Cells.byCell(band, one => one.cell(), asks),
-            items => bandRows(items, now), cellHeading, { rows: asked, weight });
+        return Cells.byCell(band, one => one.cell(), asks);
     }
 
     // A cell's heading, its name and how it stands as the agents daemon
@@ -2565,7 +2582,7 @@ Provider {
     // otherwise. It moves as a session turns, working to listening and
     // back, which remakes For You while it's held, as a heading must to say
     // it true; shut, it's only these words made again.
-    readonly property string cellsTold: Cells.byCell(forYouBands.now, one => one.cell())
+    readonly property string cellsTold: Cells.byCell(forYouBands.all, one => one.cell())
         .map(group => cellSaid(group.cell)).join("\n")
 
     // A kind's own row, To Look At, To Try or To Read, holding what of that kind
@@ -2579,11 +2596,11 @@ Provider {
     // that holds more draws one, its name in text, so what needs him now
     // leads by its order (VKCF3Z, 2026-11-09).
     // Kept while it holds the same rows, each kept as it is (kindsKept).
-    // Agents Asking is such a row too, gathering what agents ask of Joel,
-    // though each needs him now, so it stands among what does where its
-    // heaviest weighs, its mark in the hue of what it holds rather than
-    // muted (Joel, 2026-11-18 10:18: "they are all loose amongst other
-    // things properly categorized").
+    // Agents is such a row too, gathering what the sessions raised
+    // for Joel under each one's heading (cellRows), though each needs him
+    // now, so it stands among what does where its heaviest weighs, its mark
+    // in the hue of what it holds rather than muted (Joel, 2026-11-18
+    // 10:18: "they are all loose amongst other things properly categorized").
     function kindRow(kind, rows) {
         if (rows.length === 0)
             return [];
@@ -2593,19 +2610,22 @@ Provider {
 
     function madeKindRow(kind, rows) {
         const id = `for-you:kind:${kind}`;
+        // Agents holds each cell's heading over its rows, which says
+        // whose they are but is none of them to count or weigh.
+        const things = rows.filter(one => one.heading !== true);
         const row = member({
             key: `on:waitingOnYou:kind:${kind}`,
             verb: "more",
             stays: true,
             name: Words.name(id),
             glyph: Words.glyph(id),
-            hue: kind === "agent" ? rows[0].hue ?? "" : "muted",
-            side: String(rows.length),
+            hue: kind === "agent" ? things[0]?.hue ?? "" : "muted",
+            side: String(things.length),
             nested: true,
             thing: true,
             drawer: () => ({
                 title: Words.name(id),
-                facts: [provider.fact("heaviest", rows[0].name)]
+                facts: [provider.fact("heaviest", things[0]?.name ?? "")]
             }),
             verbs: () => rows,
             targets: () => rows,
@@ -2638,11 +2658,11 @@ Provider {
         for (const address of Object.keys(wantsNow))
             delete wantsNow[address];
         lap("banding");
-        const asked = kindRow("agent", bandRows(bands.agent, now));
-        lap("agents asking");
         const lately = latelyRows(now).filter(latelyComingIn);
         lap("lately");
-        const cells = cellRows(bands.now, now, asked, bands.agent[0]?.weight ?? 0);
+        // What needs him now, Agents among it with each cell's rows
+        // inside, so the agents' rows are made as part of it (cellRows).
+        const cells = cellRows(bands.all, now);
         lap("cells");
         const lookRows = kindRow("look", bandRows(bands.look, now));
         const tryRows = kindRow("try", bandRows(bands.try, now));
@@ -2659,18 +2679,29 @@ Provider {
         return rows;
     }
 
-    // Every row For You's :filter narrows, each one by one, as its bands
-    // order them: a filter steps past the rows that hold a kind, so
+    // Every row For You's :filter narrows, each one by one, as For You
+    // orders them: a filter steps past the rows that hold a kind, so
     // :filter look holds what To Look At does, and any lifted (VKCF3Z,
-    // 2026-11-09).
+    // 2026-11-09). Agents is opened where it stands, its headings left
+    // out as a filter draws none, and each row it holds is told as an
+    // agent's too, beside its own kind, so :filter agent holds what Agents
+    // does (round 5, F26) and :filter do still holds a session's to-do
+    // (round 6).
     function filterable() {
         const now = Date.now();
         const bands = bandsAt(now);
+        const opened = row => row.key !== "on:waitingOnYou:kind:agent" ? [row]
+            : Array.from(row.targets()).filter(one => one.heading !== true).map(agentsOwn);
         return latelyRows(now).filter(latelyComingIn).concat(
-            bandRows(bands.now.slice(0, bands.agentAt), now),
-            bandRows(bands.agent, now), bandRows(bands.now.slice(bands.agentAt), now),
-            bandRows(bands.look, now),
-            bandRows(bands.try, now), bandRows(bands.read, now));
+            cellRows(bands.all, now).reduce((rows, row) => rows.concat(opened(row)), []),
+            bandRows(bands.look, now), bandRows(bands.try, now), bandRows(bands.read, now));
+    }
+    // A row inside Agents as :filter tells it, an agent's as well as its
+    // own kind, from where it came, kept while the row is.
+    function agentsOwn(row) {
+        return keptAlike(itemsKept, `agent:${row.key}`, [row], () => Object.assign({}, row,
+            { forYou: Object.assign({}, row.forYou, { also: "agent",
+                source: row.forYou?.source ?? "sessions" }) }));
     }
 
     // Whether one of Lately's rows stands in For You: only while its own
@@ -3412,14 +3443,19 @@ Provider {
         const held = leading === null ? [] : latelyCriticalHeld[leading] ?? [];
         const critical = leading === null ? ""
             : String(held[0]?.summary ?? "") || Words.name(`for-you:source:${leading}`);
-        const asked = sessions.length > 0 && critical === "";
-        const lead = sessions.length === 0 && critical === ""
-            ? WaitingOnYou.now[0] ?? null : null;
-        // A look or a landing lifted into what needs him now, where no
-        // session or to-do leads, says its own row's name.
-        const lifted = sessions.length > 0 || lead ? null : forYouBands.now[0] ?? null;
-        const title = critical !== "" ? critical : asked ? first : lead ? lead.title
-            : lifted?.make(Date.now())?.name ?? "";
+        // Else what leads what needs him now as For You lays it out
+        // (ForYouCells.js's leading): a session's ask, his to-do, or a look
+        // or a landing lifted, by its own row's name. Agents leading, it's
+        // the heaviest Agents holds, which Return, Return steps in to, a
+        // to-do of a session asking nothing among them (round 5, F43).
+        // Banded at this minute, as waitingRows is, since time alone moves a
+        // to-do's weight and forYouBands isn't banded again for it (round 6).
+        const led = critical === "" ? Cells.leading(cellsOf(bandsAt(Date.now()).all)) : null;
+        const asker = led?.item.kind === "agent" ? led.item.cell() : null;
+        const lead = led?.item.toDo ?? null;
+        const title = critical !== "" ? critical
+            : asker ? `${asker.title} ${Sessions.wanted(asker.presence?.wants?.kind)}`
+            : lead ? lead.title : led?.item.make(Date.now())?.name ?? "";
         if (title === "") {
             return [];
         }

@@ -30,8 +30,12 @@ const FLAGS: [&str; 7] = [
 
 /// How many connections it keeps to the origin unless told.
 const CONNECTIONS: usize = 4;
-/// The most it may be told to keep: past a handful, the flows share the
-/// uplink as thinly as the separate sessions did.
+/// The most it may be told to keep: still a handful beside the separate
+/// sessions' own connections it replaces, and each retired for a reset at
+/// most once a minute, so a run of resets retires no more than this many
+/// a minute. More than the default carries more at once over a lossy path:
+/// on 26 November bodies sharing four connections took 7 to 9 s, and ten
+/// took 3 to 4 s.
 const MOST_CONNECTIONS: usize = 16;
 
 /// The first descriptor systemd hands a service it starts for a socket.

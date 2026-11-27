@@ -146,7 +146,7 @@ pub const MEASURES: &[Measure] = &[
     measure(
         "health.memory.pi-conversation.copy-median-mib",
         "resources",
-        "what a typical hosted conversation's process held",
+        "what a typical hosted conversation's process held of its own and in swap",
         " MiB",
         Some(300.0),
         64.0,
@@ -154,7 +154,7 @@ pub const MEASURES: &[Measure] = &[
     measure(
         "health.memory.pi-conversation.copy-p95-mib",
         "resources",
-        "what a heavy hosted conversation's process held, one in twenty",
+        "what a heavy hosted conversation's process held of its own and in swap, one in twenty",
         " MiB",
         None,
         64.0,
@@ -170,7 +170,7 @@ pub const MEASURES: &[Measure] = &[
     measure(
         "health.memory.pi.copy-median-mib",
         "resources",
-        "what a typical pi in a window held",
+        "what a typical pi in a window held of its own and in swap",
         " MiB",
         None,
         64.0,

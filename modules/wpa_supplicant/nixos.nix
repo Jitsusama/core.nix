@@ -19,9 +19,14 @@
 let
   # After an access point doesn't answer, upstream's wpa_supplicant can pick
   # that same one again while still marked as joining it, do nothing, and
-  # then wait with no look asked for. The patch's header says how.
+  # then wait with no look asked for. And it tells nobody on the bus what an
+  # access point asking a card to move named, or that it warned it would
+  # drop the card, so wifid can't follow it. Each patch's header says how.
   wpa_supplicant = pkgs.wpa_supplicant.overrideAttrs (old: {
-    patches = (old.patches or [ ]) ++ [ ./retry-after-a-failed-join.patch ];
+    patches = (old.patches or [ ]) ++ [
+      ./retry-after-a-failed-join.patch
+      ./say-transition-requests.patch
+    ];
   });
 
   # Whether each card dozes, by the power it runs on (power-save.sh says why).

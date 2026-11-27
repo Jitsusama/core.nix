@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::Value;
 
-use super::{Class, DAY, Measure, count, first_owner, lines, parked, seconds, short};
+use super::{Class, DAY, Measure, asks, count, first_owner, lines, parked, seconds, short};
 use crate::tracking::{self, Tracking};
 
 /// The key of Joel's dates at risk; the list's own add their kind to it.
@@ -36,8 +36,10 @@ type Risk = (i64, String, String);
 /// confirmed waits on nothing. Each ask is read from its latest line, as
 /// the list writes an ask whole each time. A date whose changes couldn't
 /// be read, or whose `pr` names none that can be found, isn't counted,
-/// and the measure says how many; with none at risk beside them, it goes
-/// unjudged, so a read that fails never passes for none at risk.
+/// and the measure says how many, and the first and why, so a measure
+/// blind for hours shows what to mend on the card itself; with none at
+/// risk beside them, it goes unjudged, so a read that fails never passes
+/// for none at risk.
 #[must_use]
 pub fn at_risk(
     text: &str,
@@ -47,11 +49,12 @@ pub fn at_risk(
     world: &dyn Fn(&str) -> Shared,
 ) -> Measure {
     let mut latest: BTreeMap<[String; 2], Value> = BTreeMap::new();
-    for ask in lines(text) {
+    for ask in asks(text) {
         latest.insert([ask["at"].to_string(), ask["words"].to_string()], ask);
     }
     let mut risks: Vec<Risk> = Vec::new();
     let mut unread = 0;
+    let mut first_unread = None;
     for ask in latest.values().filter(|ask| open(ask, which)) {
         for piece in waiting(ask) {
             let Some(due) = seconds(&piece["expected"]).filter(|&due| due > now) else {
@@ -61,7 +64,16 @@ pub fn at_risk(
                 Ok(files) if files.is_empty() => {}
                 Ok(files) => risks.push(risk(ask, piece, (due, now), &files)),
                 Err(why) => {
+                    // The asks list and the gate's record are other
+                    // programs' text, so a newline in them can't write a
+                    // journal or card line that reads as cadence's own.
+                    let why = why.replace(char::is_control, "?");
                     eprintln!("cadence: at risk: {why}");
+                    first_unread.get_or_insert_with(|| {
+                        let what = piece["what"].as_str().or_else(|| ask["words"].as_str());
+                        let what = what.unwrap_or_default().replace(char::is_control, "?");
+                        format!("{}: {}", short(&what), short(&why))
+                    });
                     unread += 1;
                 }
             }
@@ -72,10 +84,9 @@ pub fn at_risk(
     Measure {
         key: which.key(KEY),
         class: Class::Slip,
-        says: if unread == 0 {
-            says.to_owned()
-        } else {
-            format!("{says} ({unread} unread)")
+        says: match first_unread {
+            Some(first) => format!("{says} ({unread} unread; the first, {first})"),
+            None => says.to_owned(),
         },
         now: count(risks.len()),
         target: (unread == 0 || !risks.is_empty()).then_some(0.0),
@@ -99,22 +110,28 @@ const AHEAD: i64 = 5 * 60;
 /// The files `branch` shares with main by the latest line for it in the
 /// zone gate's `refusals` at `now`, its hourly drift or a refusal,
 /// whichever came last: each line holds the branch, when it was `at` and
-/// the `overlap`. No record, no line for the branch, none in the last
-/// two hours, one dated ahead or one naming no overlap is unread, never
-/// none shared.
+/// the `overlap`. The gate adds its lines in the order it writes them, so
+/// the last for the branch is its latest, whatever its stamp says: an
+/// earlier line dated ahead hides none written after it, and a stamp
+/// older than one before it is no reason to read an older line. No
+/// record, no line for the branch, a latest line dated ahead or none in
+/// the last two hours, or one naming no overlap is unread, never none
+/// shared.
 pub fn drifted(refusals: Option<&str>, branch: &str, now: i64) -> Shared {
     let text = refusals.ok_or_else(|| "the zone's merge gate keeps no record yet".to_owned())?;
-    let line = lines(text)
+    let theirs: Vec<Value> = lines(text)
         .filter(|line| line["branch"].as_str() == Some(branch))
-        .max_by_key(|line| seconds(&line["at"]))
+        .collect();
+    let line = theirs
+        .last()
         .ok_or_else(|| format!("the zone's gate wrote no line for {branch}"))?;
     let at = seconds(&line["at"]).unwrap_or_default();
+    if at > now + AHEAD {
+        return Err(format!("its latest line for {branch} is dated ahead"));
+    }
     if at < now - DRIFT_LASTS {
         let hours = (now - at) / 3600;
         return Err(format!("its latest line for {branch} is {hours} h old"));
-    }
-    if at > now + AHEAD {
-        return Err(format!("its latest line for {branch} is dated ahead"));
     }
     let Some(overlap) = line["overlap"].as_array() else {
         return Err(format!("its latest line for {branch} names no overlap"));
@@ -127,12 +144,15 @@ pub fn drifted(refusals: Option<&str>, branch: &str, now: i64) -> Shared {
 }
 
 /// Whether `ask` is of the kind `which` and still waits on anything: not
-/// [`parked`] on a ruling, put down, closed or confirmed.
+/// [`parked`] on a ruling, put down, closed, confirmed or landed, as the
+/// slips, holds and parked measures read a landed ask too, whatever its
+/// pieces still say.
 fn open(ask: &Value, which: Tracking) -> bool {
     tracking::of(ask) == Some(which)
         && parked::ruling(ask).is_none()
         && unset(&ask["closed"])
         && unset(&ask["confirmed"])
+        && unset(&ask["landed"])
 }
 
 /// Whether a field is missing, null or empty.
@@ -149,6 +169,11 @@ fn shared(piece: &Value, core: &dyn Fn(u32) -> Shared, world: &dyn Fn(&str) -> S
     let named = changes(pr);
     if named.is_empty() {
         return Err(format!("{pr} names no change that can be found"));
+    }
+    // One part naming nothing leaves the piece unread, as it would alone,
+    // rather than judged on the parts that could be read.
+    if let Some(part) = unfound(pr) {
+        return Err(format!("{part} in {pr} names no change that can be found"));
     }
     let mut files = BTreeSet::new();
     let numbers = named.iter().filter(|(repo, _)| *repo == Repo::Core);
@@ -249,25 +274,43 @@ impl Repo {
 /// once.
 pub fn changes(pr: &str) -> Vec<(Repo, u32)> {
     let mut named = Vec::new();
-    let mut last = None;
-    for part in pr.split(',').map(str::trim) {
-        let (repo, number) = match part.split_once("/pull/") {
-            Some((repo, number)) => (Repo::named(repo), number),
-            None => match part.rsplit_once('#') {
-                Some(("", number)) => (last, number),
-                Some((repo, number)) => (Repo::named(repo), number),
-                None => (None, ""),
-            },
-        };
-        last = repo;
-        let number = number.split('/').next().and_then(|n| n.parse::<u32>().ok());
-        if let (Some(repo), Some(number)) = (repo, number)
-            && !named.contains(&(repo, number))
-        {
-            named.push((repo, number));
+    for change in parts(pr).into_iter().filter_map(|(_, change)| change) {
+        if !named.contains(&change) {
+            named.push(change);
         }
     }
     named
+}
+
+/// The first part of `pr` that names no change that can be found, as
+/// [`changes`] reads it.
+fn unfound(pr: &str) -> Option<&str> {
+    parts(pr)
+        .into_iter()
+        .find_map(|(part, change)| change.is_none().then_some(part))
+}
+
+/// Each part of `pr`, empty ones left out, with the change it names when
+/// it names one that can be found, as [`changes`] says.
+fn parts(pr: &str) -> Vec<(&str, Option<(Repo, u32)>)> {
+    let mut last = None;
+    pr.split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let (repo, number) = match part.split_once("/pull/") {
+                Some((repo, number)) => (Repo::named(repo), number),
+                None => match part.rsplit_once('#') {
+                    Some(("", number)) => (last, number),
+                    Some((repo, number)) => (Repo::named(repo), number),
+                    None => (None, ""),
+                },
+            };
+            last = repo;
+            let number = number.split('/').next().and_then(|n| n.parse::<u32>().ok());
+            (part, repo.zip(number))
+        })
+        .collect()
 }
 
 #[cfg(test)]

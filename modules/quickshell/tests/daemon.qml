@@ -11,8 +11,10 @@
 // once it's drawn; one whose pace is lifted, as the launcher opens, is
 // asked again once its frame is drawn; a search's answer is given to it and never held; one no
 // source knows any more is let go; the keys it watches ahead come to be
-// held, asked ahead; a get is answered by id, asked as a step-in; the
-// daemon stopping is said, keeping what was held and giving a get none,
+// held, asked ahead; a get is answered by id, asked as a step-in; one
+// the shell lets go with an ask in flight goes, its ask given none, and
+// says so as let go, read from the log; the daemon stopping is said,
+// keeping what was held and giving a get none,
 // unless the client is one that lets what it held go in a gap; and once
 // it starts again, the client connects again by itself, asks ahead
 // again, and the one that let go holds again. A client of a daemon
@@ -36,12 +38,11 @@
 // reads when its line was heard, and one of a watch's whole answer, or one
 // it puts off, reads none. Each daemon's lines and their length are
 // counted by its name, for the launcher's census, and begun again once
-// said. A going says the asks it left unanswered, apart where the shell
-// let the connection go itself, which a client let go with an ask in
-// flight says as let go, read from the log. A client
-// holding its wire watches neither its socket nor its folder. A socket that refuses is tried again twice as late
-// each time, a minute at most, counted again from its next answer. Each
-// step waits on what the client says, at most ten seconds.
+// said. A going says the asks it left unanswered, said as let go where the
+// shell let the connection go itself. A client holding its wire watches
+// neither its socket nor its folder. A socket that refuses is tried again
+// twice as late each time, a minute at most, counted again from its next
+// answer. Each step waits on what the client says, at most ten seconds.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 // Its stand-ins are in modules/quickshell/tests/stand-ins. Long because
 // its cases run in turn against one real people daemon and its stand-ins,
@@ -103,6 +104,10 @@ ShellRoot {
         kind: "person"
     }
     property bool letGo: false
+    // Whether the daemon's starting step has connected the let-go link again.
+    property bool relinked: false
+    // What its ask in flight was given as it went: undefined until then.
+    property var letGoGiven: undefined
 
     // Letting what it held go while the daemon isn't answering.
     Daemon {
@@ -436,8 +441,22 @@ ShellRoot {
             + `, kinds ${JSON.stringify(kinds.held)}`
             + `, lapsing ${wholeFor.state} ${root.heldLapsing} ${JSON.stringify(wholeFor.held)}`
             + `, answered ${JSON.stringify(root.answered)}`
+            + `, letting go ${lettingGo.state} ${root.letGo} ${JSON.stringify(root.letGoGiven)}`
+            + ` awaiting ${Object.keys(lettingGo.awaited).length}`
+            + `, relinked ${root.relinked}, backed off ${lettingGo.refusals} times`
+            + `, its last try ${root.failure(lettingGo.failedWith)}`
             + `, the census heard ${root.heardSaid} of ${root.heardLines.join(" and ")}`);
         Qt.exit(1);
+    }
+
+    // A link's last failure in words, by QLocalSocket's LocalSocketError, so a FAIL line read
+    // from any step says it without Qt's enum beside it.
+    function failure(code) {
+        if (code === null)
+            return "none failed since it last connected or was relinked, if it tried at all";
+        const named = { "-1": "unknown", 0: "refused", 1: "closed by the daemon",
+            2: "found nothing there", 3: "not allowed" }[code];
+        return `failed with ${code}${named === undefined ? "" : `, ${named}`}`;
     }
 
     function heldWay(key) {
@@ -455,7 +474,10 @@ ShellRoot {
     readonly property var steps: [
         {
             what: "no daemon is said as not answering",
+            // The let-go link's socket is a symlink to the daemon's, not there yet, so its
+            // first try says it found nothing, as its FAIL line's words would.
             holds: () => people.state === "not answering" && !none.answered
+                && lettingGo.failedWith === lettingGo.serverNotFound
         },
         {
             what: "a get with no daemon is given none at once",
@@ -469,7 +491,30 @@ ShellRoot {
             run: () => {
                 peopleRunning.running = true;
             },
-            holds: () => people.state === "answering" && "slack" in people.sources
+            // The let-go link shares this daemon's socket through a symlink,
+            // whose target appearing its file watch may not see, and its own
+            // tries end 14 s in, so a daemon slower than that to start on a
+            // busy builder could leave it unconnected. Once the daemon
+            // answers, the link is connected again here, once, and waited for
+            // as long as a restart's from then, rather than what's left of this
+            // step or inside the let-go step's ten seconds. Its tries count
+            // afresh, as the file watch's do, so a refused relink is tried again
+            // 2 s on rather than 16 s, and one finding no socket is tried again
+            // at all, 2, 6 and 14 s on, each inside the 20 s it's given. What
+            // its tries failed with counts afresh too, so a FAIL line names
+            // only the relink's, and it's said gone once the relink connects.
+            polls: 400,
+            holds: () => {
+                const answering = people.state === "answering" && "slack" in people.sources;
+                if (answering && lettingGo.wire === null && !root.relinked) {
+                    root.relinked = true;
+                    root.left = 400;
+                    lettingGo.refusals = 0;
+                    lettingGo.failedWith = null;
+                    lettingGo.connectAgain();
+                }
+                return answering && lettingGo.wire !== null && lettingGo.failedWith === null;
+            }
         },
         {
             what: "a watch narrowed to those listed holds them alone",
@@ -544,6 +589,33 @@ ShellRoot {
             },
             holds: () => root.answered?.records?.[0]?.key === root.grace
                 && root.heldWay(root.grace) === "step"
+        },
+        {
+            // The socket's own handler may say its going before
+            // onConnectsChanged does: a going read from who called it was
+            // said as one gone wrong (#6513's F1). Which runs first isn't
+            // pinned here, since connectAgain sets the loader's `active`,
+            // which drops its binding. This step only lets it go: what its
+            // going said, and at what level, checks/shell.nix reads from the
+            // log. It comes before the daemon stops, while the link holds
+            // the connection the daemon's start waited for: after the restart,
+            // when it connects again rests on its watch of a symlinked
+            // socket or on its tries, which no step waits on. It asks for
+            // Grace, whom the step before held as a step-in, since a get is
+            // a step-in told to the daemon at once, and one for Ada would
+            // turn the way she's held, which the next step reads.
+            what: "a connection the shell lets go with an ask in flight goes, its ask given none",
+            holds: () => {
+                if (!root.letGo && lettingGo.wire !== null) {
+                    lettingGo.get([root.grace], 5000, answer => {
+                        root.letGoGiven = answer;
+                    });
+                    lettingGo.connects = false;
+                    root.letGo = true;
+                }
+                return root.letGo && lettingGo.wire === null
+                    && Object.keys(lettingGo.awaited).length === 0 && root.letGoGiven === null;
+            }
         },
         {
             what: "the daemon stopping is said, and what was held stays unless let go",
@@ -868,8 +940,8 @@ ShellRoot {
             // once nothing needs it, was said as one gone wrong (#6287's
             // F31), so a journal read for a daemon's faults found ones
             // nobody had.
-            what: "a going says its asks unanswered, apart where the shell let the"
-                + " connection go, and nothing where none was",
+            what: "a going says its asks unanswered, as let go where the shell let"
+                + " the connection go, and nothing where none was",
             holds: () => {
                 const ids = Array.from({ length: 9 }, (_, at) => String(at + 1));
                 return Hearing.goneSaid("people", ["7"], false)
@@ -889,21 +961,6 @@ ShellRoot {
                 if (!watchesCounted.running)
                     watchesCounted.running = true;
                 return root.watches === 0;
-            }
-        },
-        {
-            // The loaders' bindings follow connects, so its socket may go
-            // and say so before onConnectsChanged runs: a going read from
-            // who called it was said as one gone wrong (#6513's F1).
-            what: "a connection the shell lets go with an ask in flight is said let go",
-            holds: () => {
-                if (!root.letGo && lettingGo.wire !== null) {
-                    lettingGo.get([root.ada], 5000, () => {});
-                    lettingGo.connects = false;
-                    root.letGo = true;
-                }
-                return root.letGo && lettingGo.wire === null
-                    && Object.keys(lettingGo.awaited).length === 0;
             }
         },
         {
@@ -948,6 +1005,19 @@ ShellRoot {
                     root.fail(now.what);
                 }
             }
+        }
+    }
+
+    // The whole run ends here, short of the check's 150 s timeout, so a run slowed past it
+    // fails with its FAIL line, naming the step it was on, rather than killed with none. This
+    // counts from the file loading, the timeout from the shell starting, so the 40 s between
+    // are the shell's own start as well as the FAIL line's.
+    Timer {
+        running: true
+        interval: 110000
+        onTriggered: {
+            waiting.stop();
+            root.fail(`${root.steps[root.step]?.what ?? "its end"}, still waiting at 110 s`);
         }
     }
 

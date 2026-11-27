@@ -1,7 +1,7 @@
-// The shapes and words by which Presented.js's keyShown, kindsLed, appShown and actShown tell how
-// much of a row's key a journal line may say with reports off: what the launcher and its daemons
-// write there, as against what someone else did. Data alone, kept apart from the code that reads
-// it, so Presented.js stays one file biome can hold to its length.
+// The shapes and words by which Presented.js's keyShown, kindsLed and appShown, and ActsSaid.js's
+// actShown, tell how much of a row's key a journal line may say with reports off: what the
+// launcher and its daemons write there, as against what someone else did. Data alone, kept apart
+// from the code that reads it, so Presented.js stays one file biome can hold to its length.
 .pragma library
 
 // The kinds of key the launcher gives its own rows, whose rest, where it has an id's shape
@@ -13,8 +13,10 @@ const keysOwn = ["place:", "category:", "collection:"];
 const ownLength = 64;
 // What follows an own kind as the launcher writes it, an id its Nix config names, as `emoji`
 // or `Asks`: a daemon's row keyed so may hold a name, a line break or a walk's forged steps
-// there, which no id holds, so such a key is said by its kind alone. A one-word name has an
-// id's shape, so a daemon's row keyed so is still said to 64 letters.
+// there, which no id holds, so such a key is said by its kind alone. This test can't tell an id
+// from a one-word name, so a served row's key never claims an own kind: ReadyRows.qml's, Emoji's,
+// Copies' and a network's parts' are made by Presented.js's keyMade, and Agents' are its daemon's
+// `agent:` and `agents:` keys.
 const ownId = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 
 // A kind's word, as the launcher and its daemons write one, at most 32 letters, and the keys

@@ -23,7 +23,9 @@
 //! those words in its field, as `qs ipc call launcher newWork` does, which
 //! the realm's map offers to start work from a cell: the words are decoded
 //! once and folded to one plain line, and the cell is kept only where it's
-//! an address. Nothing starts until Joel's own Return there.
+//! an address. With `&on=<machine>`, or `&on=cloud`, it asks `newWorkOn`
+//! instead, which offers that machine as the place to start it, the name
+//! refused where it isn't one. Nothing starts until Joel's own Return there.
 //!
 //! Any page can write such a link, so it's trusted with a name and one word
 //! more. Only the step after a cell's address is read, and only `go` means
@@ -85,22 +87,29 @@ const QS: &str = match option_env!("MYCELIUM_LINK_QS") {
 /// What a link names: a cell to talk to or to go to, by its session's
 /// address, or a network or a machine, by its name, each as the mesh says
 /// it.
-/// Or new work to start: the words a page offers, and the cell it came
-/// from where it names one by its address.
+/// Or new work to start: the words a page offers, the cell it came from
+/// where it names one by its address, and the machine it's to start on
+/// where it names one, `cloud` for any cloud machine.
 #[derive(Debug, PartialEq, Eq)]
 enum Link {
     Cell(String),
     GoTo(String),
     Network(String),
     Machine(String),
-    Sprout { words: String, from: Option<String> },
+    Sprout {
+        words: String,
+        from: Option<String>,
+        on: Option<String>,
+    },
     Repository(String),
 }
 
 impl Link {
     /// The launcher's ipc call opening what it names. New work's words and
     /// cell each go after a fixed word, so neither is ever a flag to `qs`,
-    /// whatever the page wrote, and no cell is still an argument.
+    /// whatever the page wrote, and no cell is still an argument. New work
+    /// on a named machine calls `newWorkOn`, its machine after a fixed word
+    /// too; new work naming none calls `newWork`, as it always has.
     fn call(&self) -> Vec<String> {
         let call = |function: &str, argument: &str| vec![function.to_owned(), argument.to_owned()];
         match self {
@@ -108,11 +117,20 @@ impl Link {
             Self::GoTo(address) => call("goTo", address),
             Self::Network(name) => call("network", name),
             Self::Machine(name) => call("machine", name),
-            Self::Sprout { words, from } => vec![
-                "newWork".to_owned(),
-                format!("{WORDS_SAID}{words}"),
-                format!("{FROM_SAID}{}", from.as_deref().unwrap_or("")),
-            ],
+            Self::Sprout { words, from, on } => {
+                let said = vec![
+                    format!("{WORDS_SAID}{words}"),
+                    format!("{FROM_SAID}{}", from.as_deref().unwrap_or("")),
+                ];
+                match on {
+                    Some(machine) => ["newWorkOn".to_owned()]
+                        .into_iter()
+                        .chain(said)
+                        .chain([format!("{ON_SAID}{machine}")])
+                        .collect(),
+                    None => ["newWork".to_owned()].into_iter().chain(said).collect(),
+                }
+            }
             Self::Repository(key) => call("code", key),
         }
     }
@@ -123,6 +141,9 @@ const WORDS_SAID: &str = "words:";
 
 /// The word before the cell new work came from in the launcher's call.
 const FROM_SAID: &str = "from:";
+
+/// The word before the machine new work starts on in the launcher's call.
+const ON_SAID: &str = "on:";
 
 /// The most characters new work's words run to: a few sentences, as Start
 /// New Work's field takes, so a page can't fill the launcher with a book.
@@ -256,11 +277,15 @@ fn query_of(rest: &str) -> &str {
 }
 
 /// New work a sprout link's query offers: its `words`, said once, decoded
-/// and folded to one plain line, and its `from`, kept only where it's an
-/// address. Anything else the query holds is let go.
+/// and folded to one plain line, its `from`, kept only where it's an
+/// address, and its `on`, the machine to start it on, said at most once
+/// and refused where it isn't a name, since work started anywhere else
+/// than where Joel asked is worse than none. An empty `on` names no
+/// machine. Anything else the query holds is let go.
 fn sprouted(query: &str) -> Result<Link, String> {
     let mut words = None;
     let mut from = None;
+    let mut on = None;
     for pair in query.split('&') {
         let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
         match key {
@@ -272,8 +297,17 @@ fn sprouted(query: &str) -> Result<Link, String> {
                 return Err("it names its cell more than once".to_owned());
             }
             "from" => from = Some(decoded(value).unwrap_or_default()),
+            "on" if on.is_some() => {
+                return Err("it names its machine more than once".to_owned());
+            }
+            // A misshaped escape here is the machine's fault, not the words'.
+            "on" => on = Some(decoded(value).map_err(|_| "its machine isn't a name".to_owned())?),
             _ => {}
         }
+    }
+    let on = on.filter(|machine| !machine.is_empty());
+    if on.as_deref().is_some_and(|machine| !named(machine)) {
+        return Err("its machine isn't a name".to_owned());
     }
     let words = plain(&words.ok_or("it offers no words")?);
     if words.is_empty() {
@@ -285,6 +319,7 @@ fn sprouted(query: &str) -> Result<Link, String> {
     Ok(Link::Sprout {
         words,
         from: from.filter(|from| addressed(from)),
+        on,
     })
 }
 
@@ -383,6 +418,10 @@ fn help() -> Help {
         "opens Start New Work with \"tidy the rows\" in its field, from DAHTNJ",
     )
     .example(
+        "mycelium-link 'mycelium:sprout?words=tidy%20the%20rows&on=cloud'",
+        "opens Start New Work with \"tidy the rows\" in its field, on a cloud machine",
+    )
+    .example(
         "mycelium-link mycelium:repository/github:someone/thing",
         "opens Code on someone's thing",
     )
@@ -390,11 +429,12 @@ fn help() -> Help {
         "<link>",
         "mycelium:cell/<ADDRESS>[@machine][/go][#anchor], mycelium:network/<name>, \
          mycelium:machine/<name>, mycelium:repository/<key> or \
-         mycelium:sprout?words=<words>[&from=<ADDRESS>]",
+         mycelium:sprout?words=<words>[&from=<ADDRESS>][&on=<machine>|cloud]",
     )
     .exit(
         Exit::Usage,
-        "the link names no cell, network, machine or repository, or offers no plain words",
+        "the link names no cell, network, machine or repository, or offers no plain words \
+         or a misshaped machine to start them on",
     )
     .exit(Exit::Failed, "qs couldn't be run")
 }
@@ -462,6 +502,26 @@ mod tests {
     #[test]
     fn an_address_is_judged_by_the_shared_cases() {
         judged_by_every_case(addressed);
+    }
+
+    // The cases the map's machine rule is held to too, read as the address
+    // cases are.
+    #[test]
+    fn a_machine_is_judged_by_the_shared_cases() {
+        let cases = cases_in(include_str!("../../../mycelium/site/tests/machines.txt"));
+        assert!(cases.len() > 20, "the shared machine cases are read");
+        // The cases hold the length bound's own edge in plain letters, so
+        // neither copy can move it and pass.
+        let plain_at = |at: usize, is: bool| {
+            cases.iter().any(|(said, text)| {
+                *said == is && text.len() == at && text.bytes().all(|b| b.is_ascii_alphanumeric())
+            })
+        };
+        assert!(plain_at(LONGEST, true), "no case is a name at the edge");
+        assert!(plain_at(LONGEST + 1, false), "no case is past the edge");
+        for (is, text) in cases {
+            assert_eq!(named(&text), is, "{text:?}");
+        }
     }
 
     #[test]
@@ -725,10 +785,63 @@ mod tests {
     }
 
     fn sprout(words: &str, from: Option<&str>) -> Link {
+        sprout_on(words, from, None)
+    }
+
+    fn sprout_on(words: &str, from: Option<&str>, on: Option<&str>) -> Link {
         Link::Sprout {
             words: words.to_owned(),
             from: from.map(str::to_owned),
+            on: on.map(str::to_owned),
         }
+    }
+
+    #[test]
+    fn a_sprout_link_naming_a_machine_starts_its_work_there() {
+        assert_eq!(
+            named_by("mycelium:sprout?words=tidy%20the%20rows&from=TERN02&on=osprey"),
+            Ok(sprout_on("tidy the rows", Some("TERN02"), Some("osprey")))
+        );
+        assert_eq!(
+            sprout_on("tidy the rows", Some("TERN02"), Some("osprey")).call(),
+            [
+                "newWorkOn",
+                "words:tidy the rows",
+                "from:TERN02",
+                "on:osprey"
+            ]
+        );
+        assert_eq!(
+            named_by("mycelium:sprout?on=cloud&words=tidy"),
+            Ok(sprout_on("tidy", None, Some("cloud")))
+        );
+        assert_eq!(
+            sprout_on("-rf", None, Some("cloud")).call(),
+            ["newWorkOn", "words:-rf", "from:", "on:cloud"]
+        );
+        // An empty machine names none, so the work starts as any does.
+        assert_eq!(
+            named_by("mycelium:sprout?words=tidy&on="),
+            Ok(sprout("tidy", None))
+        );
+    }
+
+    #[test]
+    fn a_sprout_link_naming_a_misshaped_machine_is_refused() {
+        let longer = "a".repeat(LONGEST + 1);
+        for on in ["-help", "os%20prey", "osprey%3Brm", "%zz", longer.as_str()] {
+            let link = format!("mycelium:sprout?words=tidy&on={on}");
+            assert!(read(&link).is_err(), "{link} was followed");
+        }
+        assert!(
+            read("mycelium:sprout?words=tidy&on=osprey&on=cloud").is_err(),
+            "a link naming two machines was followed"
+        );
+        assert_eq!(
+            sprouted("words=tidy&on=%zz"),
+            Err("its machine isn't a name".to_owned()),
+            "a misshaped escape in the machine blamed something else"
+        );
     }
 
     #[test]
@@ -844,14 +957,6 @@ mod tests {
         ] {
             assert!(read(&link).is_err(), "{link} was followed");
         }
-    }
-
-    #[test]
-    fn a_name_is_never_a_flag_to_qs() {
-        for name in ["-help", "--version", ".hidden", "_x"] {
-            assert!(!named(name), "{name} was taken for a name");
-        }
-        assert!(named("repo.core-nix"), "a network's name was refused");
     }
 
     fn stamp_in(test: &str) -> PathBuf {

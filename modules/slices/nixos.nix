@@ -128,21 +128,31 @@ let
   # measured: 5.8 GB/s of reads, but 403 MB/s of writes once its cache was
   # full. A machine names its measured disks, the one behind /home among
   # them, in jitsusama.slices.disks, and then sets no targets. The
-  # weights follow the CPU's: the compositor's ten times an app's, the work
-  # Joel starts a hundredth of one, timed and awaited work ahead of agents'
-  # within it, and the account ten times the system's other slices. Without
-  # io.cost they do nothing, so a machine that names no disk keeps targets.
+  # weights follow the CPU's: Joel's session and programs ten times agents'
+  # sessions, the work Joel starts a hundredth of one, timed and awaited
+  # work ahead of agents' within it, and the account ten times the system's
+  # other slices. Without io.cost they do nothing, so a machine that names
+  # no disk keeps targets.
   #
-  # Name a disk only once io.cost has been shown to beat the targets on it,
-  # with the same synced write beside the same writers. On the XPS 14's,
-  # which has no DRAM of its own, it didn't. Beside two buffered writers in
-  # jobs, an app's worst synced save in four runs took 55 to 170 ms under the
-  # targets, and 76 to 492 ms under every io.cost setting tried: its
-  # automatic one, a 5 or 10 ms latency goal, and a goal held to the model.
-  # io.cost let the writers run at two to two and a half times the model's
-  # write rate. The disk's cache taking them quickly, with a sync then
-  # waiting behind them, is the suspected cause, not yet measured. So that
-  # disk keeps its targets.
+  # Name a disk with a model measured on it, never the kernel's guess: in
+  # VM runs a model three times faster than the disk was the worst of
+  # every control tried, and io.cost at the disk's true rates gave the
+  # quickest first reads and synced saves. On 24 October, on the XPS 14's
+  # disk, which has no DRAM of its own, io.cost lost to the targets then
+  # set on Joel's own slices: beside two buffered writers in jobs, an
+  # app's worst synced save in four runs took 55 to 170 ms under them, and
+  # 76 to 492 ms under every io.cost setting tried, its automatic one, a 5
+  # or 10 ms latency goal, and a goal held to the model. io.cost let the
+  # writers run at two to two and a half times the model's write rate.
+  # Those targets are gone since, for the reason above, so on such a disk
+  # the choice is now io.cost against no order inside the account. Naming
+  # a disk drops user.slice's target over the system's builds too, where
+  # io.cost shares the disk by user.slice's weight of 1000 against the
+  # system's 100 instead. The VM runs measured a qos of 10 ms at the 95th
+  # percentile both ways, ranging from 50 to 150% of the model; a max of
+  # 100 alone was never measured, and would hold every read to the model.
+  # Whether it holds on a disk like that one is measured on the machine
+  # that names it.
   disks = config.jitsusama.slices.disks;
   latency = lib.optionalAttrs (disks == { }) { IODeviceLatencyTargetSec = "/home 1ms"; };
   settings = attrs: lib.concatStringsSep " " (lib.mapAttrsToList (k: v: "${k}=${toString v}") attrs);
@@ -255,6 +265,11 @@ let
   # floor inside its 42%, so a burst in any of them reclaims its own pages
   # first.
   agentsHigh = "42%";
+  # Where jobs' ceiling starts, and what jobs-sorter puts back as it stops.
+  jobsHigh = "26%";
+  # A percentage as an Exec line takes it: systemd reads a % there as the
+  # start of a specifier, even inside quotes.
+  unitPercent = lib.replaceStrings [ "%" ] [ "%%" ];
   account = "24%";
   above = "38%";
 
@@ -404,7 +419,10 @@ in
       The disks shared by the slices' weights, by their names under
       /sys/class/block, each with the model io.cost measured on it. Naming
       any drops user.slice's latency target, so the disk behind /home belongs here,
-      and only once io.cost has measured better than the targets on it.
+      with a model measured on it and the qos the VM runs measured: 10 ms at
+      the 95th percentile both ways, from 50 to 150% of the model. A virtual
+      disk's speed says nothing of a real one's, so that qos is a start to
+      measure from on the disk named, not a measure of it.
       The name is the kernel's, which follows the order disks are found in:
       on a machine with two of a kind, the model can land on the other one.
     '';
@@ -434,9 +452,11 @@ in
             default = { };
             example = {
               rpct = 95;
-              rlat = 5000;
+              rlat = 10000;
               wpct = 95;
-              wlat = 5000;
+              wlat = 10000;
+              min = 50;
+              max = 150;
             };
             description = "io.cost.qos's settings beside enable, the kernel's own where unset.";
           };
@@ -456,10 +476,11 @@ in
       default, 2 ms on a solid disk, set by hand; io.cost added to that disk
       later still stands it down, since disk-order turns it off as it
       starts. A name that reaches no throttle, such as a partition's, fails
-      its unit. The name is the kernel's, which follows the order disks are found in: on a machine
-      with two of a kind, the goal can land on the other one. A disk
-      io.cost shares, in jitsusama.slices.disks, is refused, since io.cost
-      already turns its throttle off and giving it back would turn it on.
+      its unit. The name is the kernel's, which follows the order disks are
+      found in: on a machine with two of a kind, the goal can land on the
+      other one. A disk io.cost shares, in jitsusama.slices.disks, is
+      refused, since io.cost already turns its throttle off and giving it
+      back would turn it on.
     '';
     default = { };
     example = {
@@ -529,11 +550,31 @@ in
     # it is, and warned of where it can't.
     environment.systemPackages = [ systemdRun ];
 
+    # What Joel's programs and the desktop swap out stays compressed in
+    # memory rather than going to disk, so a program he comes back to faults
+    # back from memory. On 2026-11-26, 22 hours after a boot, zswap had
+    # written 97% of what app.slice swapped on to the disk, and 97.5% of its
+    # swap-ins read the disk, against about a fifth for agents' sessions and
+    # for builds, which looks like zswap's shrinker reaching the pages idle
+    # longest first. Compressed, a page takes about a third of what it
+    # held, in zswap's pool, which holds at most a fifth of the memory. A
+    # page zswap turns away, as one that won't compress or that finds the
+    # pool full, stays in memory as it is rather than going to disk. While
+    # zswap is on, their pages leave the pool only as they come back or are
+    # freed, since zswap writes back only what the rest swapped, and a full
+    # pool takes nothing until it falls to the kernel's default nine tenths
+    # of its cap. With zswap off, as hibernation turns it for the image, the
+    # setting no longer holds: they swap to disk like the rest, and zswap's
+    # shrinker may write out what the pool holds of theirs, which stays on
+    # the disk until it's read. The kernel reads the setting up the tree, so
+    # it holds for every program's scope inside, whatever jobs-sorter gives
+    # back to a window's own.
     systemd.user.slices.session.sliceConfig = {
       CPUWeight = 1000;
       IOWeight = 1000;
       MemoryMin = session;
       MemoryLow = session;
+      MemoryZSwapWriteback = false;
     };
 
     # Ten times the weight of what sits beside it in the account, agents'
@@ -543,10 +584,18 @@ in
     # CPU wait fell from 3.6 ms a second to 1.1 at a load under 20, and
     # from 8.9 to 4.3 above it. A busy app takes only what it uses, so the
     # sessions lose little: his programs used 0.04 of a core of their 1.6.
+    # The disk's weight is ten times too, as session.slice's is, since
+    # io.cost on a measured disk shares it by weight: at systemd's 100 his
+    # programs would get no more of it than agents' sessions. The latency
+    # target a disk with no model keeps ignores it, and systemd scales it
+    # down for the BFQ scheduler, 1000 to 181 against 100 left at 100, so
+    # on a disk BFQ runs his programs get under twice agents' share.
     systemd.user.slices.app.sliceConfig = {
       CPUWeight = 1000;
+      IOWeight = 1000;
       MemoryMin = apps;
       MemoryLow = appsSoft;
+      MemoryZSwapWriteback = false;
     };
 
     # Agents' sessions, pi in a window of kitty's each, beside the apps
@@ -558,7 +607,8 @@ in
     # weight. Raising app.slice's weight to 500 changed nothing then, as it
     # can't reach what competes inside it. Beside it, the sessions meet
     # Joel's programs as one group, which his weight now puts first, and
-    # the sorter weighs the window he is at first among them. Whoever starts
+    # the sorter weighs the window he is at first among them, on the
+    # processor and the disk alike. Whoever starts
     # their terminal names this slice, and kitty puts each window's scope
     # in its own. Its floor is soft but for two parts, hard: the floor the
     # kitty drawing every session's window keeps for itself (Quickshell's
@@ -586,10 +636,12 @@ in
     # at the ceiling with up to 44 GiB swapped, they waited 0.024%, over 1% in
     # one. Jobs pays: it waited 12.7% of the time rather than 8.3%, its worst
     # minute at 55%, under the 80% for 30 s at which oomd ends it. MemoryHigh
-    # slows work past the ceiling and never ends it.
+    # slows work past the ceiling and never ends it. It's where the ceiling
+    # starts: jobs-sorter lifts it while nothing else waits on memory, and
+    # brings it back once anything does (jobs-sorter/src/ceiling.rs).
     systemd.user.slices.jobs.sliceConfig = {
       CPUWeight = "idle";
-      MemoryHigh = "26%";
+      MemoryHigh = jobsHigh;
       IOWeight = 1;
     };
     # The account's own daemons, 33 of them on 20 November (indexers, cadence,
@@ -1066,6 +1118,23 @@ in
             # call's end if later, and a switch never does.
             "--door"
             "jobs.slice"
+            # jobs' ceiling counts its page cache too: just after the boot
+            # of 25 November it sat there on 14.3 GB of cache, slowed
+            # 122,620 times in ten minutes and reading 19 GB back from the
+            # disk, while nothing else waited on memory and 26 GB was
+            # available. So it rises 2 GiB at a time while apps, sessions
+            # and agents have waited on memory under a tenth of a percent
+            # for 30 s, to half of memory at most, and falls back to its
+            # declared ceiling, 4 GiB a look, at the first wait, a call or
+            # memory short.
+            "--ceiling"
+            "jobs.slice=${unitPercent jobsHigh}"
+            "--spare"
+            "app.slice"
+            "--spare"
+            "session.slice"
+            "--spare"
+            "agents.slice"
             "--calls"
             (lib.getExe' pkgs.pipewire "pw-dump")
             # A call on another of Joel's machines, a meeting carried over
@@ -1109,12 +1178,30 @@ in
           );
         # A sorter stopping mid-call lets go of the brake it set, since a
         # sorter that isn't back before the call ends can't; a restart
-        # mid-call brakes again on its first look. Each is given 5 s, as the
-        # sorter's own sets are, so a stalled bus can't hold its stop.
+        # mid-call brakes again on its first look. It puts back jobs'
+        # declared ceiling too, since one it lifted would stay up with
+        # nothing to bring it down; an empty one would clear it. By hand,
+        # `systemctl --user set-property --runtime jobs.slice` with
+        # MemoryHigh=44%, then 38%, 32% and 26%, does the same. Each is
+        # given 5 s, as the sorter's own sets are, so a stalled bus can't
+        # hold its stop. The ceiling comes down from the sorter's top, 50%
+        # (TOP in jobs-sorter/src/ceiling.rs), a fall of about a sixteenth
+        # a write, as the sorter brings it down: the manager that writes
+        # memory.high reclaims what's past it itself, so one write from the
+        # top would have it reclaim a quarter of memory before it answers
+        # anything else. A step above where the ceiling stands only raises
+        # it for as long as the next write takes.
         ExecStopPost =
           let
+            declared = lib.toInt (lib.removeSuffix "%" jobsHigh);
+            fallTo = percent: "-${letGo "--user" "jobs.slice" "MemoryHigh=${toString percent}%%"}";
+            falls = builtins.filter (percent: percent > declared) [
+              44
+              38
+              32
+            ];
             letGo =
-              manager: slice:
+              manager: slice: property:
               lib.escapeShellArgs [
                 (lib.getExe' pkgs.coreutils "timeout")
                 "5"
@@ -1124,13 +1211,15 @@ in
                 "set-property"
                 "--runtime"
                 slice
-                "CPUQuota="
+                property
               ];
           in
           [
-            "-${letGo "--user" "jobs.slice"}"
-            "-${letGo "--system" "build.slice"}"
-          ];
+            "-${letGo "--user" "jobs.slice" "CPUQuota="}"
+            "-${letGo "--system" "build.slice" "CPUQuota="}"
+          ]
+          ++ map fallTo falls
+          ++ [ "-${letGo "--user" "jobs.slice" "MemoryHigh=${unitPercent jobsHigh}"}" ];
         Restart = "on-failure";
         RestartSec = 5;
       };
