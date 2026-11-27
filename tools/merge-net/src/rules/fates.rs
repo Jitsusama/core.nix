@@ -38,7 +38,7 @@ pub fn fates() -> Vec<Fate> {
 
 /// Read fates from lines of `name: folder/...`, skipping comments and
 /// blank lines, or say which line doesn't read. A folder ends in `/`, so
-/// `modules/mycelium/site/` never holds `modules/mycelium/site-old/`.
+/// it never holds a sibling whose name only begins with its own.
 pub fn parse(text: &str) -> Result<Vec<Fate>, String> {
     text.lines()
         .map(str::trim)
