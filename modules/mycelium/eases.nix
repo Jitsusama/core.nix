@@ -60,12 +60,13 @@ in
       default = [ ];
       example = [ "tern" ];
       description = ''
-        The workers the home realm's node may ease a session onto, by
-        their machine names, besides the peers it may always carry to. A
-        worker that says it takes carries is chosen only where it is named
-        here, since its word is only its own; it still has to have room,
-        and ground as firm as here's, as with any carry. Empty, the node
-        eases onto peers alone.
+        The machines lent for agents that the home realm's node may ease a
+        session onto, by name, besides the realm's own machines it may
+        always carry to. One lent for agents that says it takes carries is
+        chosen only where it is named here, since its word is only its own;
+        it still has to have room, and ground as firm as here's, as with
+        any carry. Empty, the node eases onto the realm's own machines
+        alone.
       '';
     };
   };
@@ -75,7 +76,7 @@ in
   # says so, and its source keeps the guards, it makes the carries it
   # chooses. Where the machine says so, it asks the harness to park the
   # idle sessions it would put to sleep, in the folder each session's
-  # harness reads. It names each worker it may ease onto whether or not it
+  # harness reads. It names each machine lent for agents it may ease onto whether or not it
   # carries, so the lines it writes say where it would have.
   args = [
     "--eases"
