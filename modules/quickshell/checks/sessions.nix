@@ -17,8 +17,8 @@
 let
   # Joel away, so what waits for him to go opens; a case sets it as it needs.
   away = singleton "Away.qml" "property bool now: true";
-  # What Reopen Them All's cases with the node and niri stood in run beside
-  # Sessions.qml, shared by the hosted viewer's and the twin screens'. niri
+  # What the cases with the node and niri stood in run beside Sessions.qml,
+  # shared by the hosted viewer's, the twin screens' and go-to's. niri
   # has Joel's window on the screen's first workspace, and the empty one it
   # keeps last; a test makes more as windows open there.
   reopenStandIns = {
@@ -425,21 +425,14 @@ in
   # niri stood in.
   go-to-brings-a-windowless-session-forward =
     let
-      niri = ../tests/stand-ins/hosted-reopen-niri.qml;
-      options = singleton "Options.qml" ''
-        readonly property var sounds: ({ wants: "", player: "" })
-      '';
-      quiet = singleton "Quiet.qml" ''
-        property bool on: false
-      '';
-      notices = singleton "Notices.qml" ''
-        property var live: ({})
-        function mark(id, read) {}
-      '';
-      waiting = singleton "WaitingOnYou.qml" ''
-        readonly property var standing: ({})
-      '';
-      report = singleton "Report.qml" "function say(text) {}";
+      inherit (reopenStandIns)
+        niri
+        options
+        quiet
+        notices
+        waiting
+        report
+        ;
     in
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what Quickshell runs them with.

@@ -6485,7 +6485,7 @@
     session's twin goes with it; gives windows no connector from sessions handed over outside a
     walk; keeps, for a walk joined after Joel's focus moved, the screen in use as it began; notes a
     window away from a screen named constructor or __proto__ as any other, without a throw; and
-    ends each walk, its session's folder found gone, before the next case begins
+    ends each walk before the next case begins, starting nothing for a session in a gone folder
   '';
   type-is-set-by-level = ''
     no QML file of the shell's sets a font's size, weight, axes, letter spacing or case other than

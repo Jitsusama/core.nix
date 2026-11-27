@@ -93,8 +93,8 @@ ShellRoot {
 
     // The walk places a session kept on the second twin on the first
     // connector found, so a window kept on the first twin goes to the
-    // other, and one kept on the session's own twin goes with it. It alone
-    // catches a reopenHere that drops the walk's store,
+    // other, and one kept on the session's own twin goes with it. It is the
+    // first to catch a reopenHere that drops the walk's store,
     // `puttingBack.given = placing.given`: chat then takes the first
     // connector found too.
     function sessionsGive() {
@@ -177,9 +177,11 @@ ShellRoot {
 
     // A walk joined while Joel's focus is on the other twin keeps the
     // screen in use as the walk began, so a window kept on a screen that's
-    // gone goes there, not after the focus. It alone catches a reopenHere
-    // whose store drops `!("inUse" in puttingBack)` from its guard: the walk
-    // joined then takes the other twin as the screen in use.
+    // gone goes there, not after the focus, which stays on the other twin
+    // as the window comes. It alone catches a reopenHere whose store drops
+    // `!("inUse" in puttingBack)` from its guard: the walk joined then
+    // takes the other twin as the screen in use. It alone catches one that
+    // stores no `puttingBack.inUse` too: the window then follows the focus.
     function rewalkedKeepsItsScreen() {
         root.puttingBack([{ app: "far", title: "far", screen: "Far Away", output: "Virtual-9",
             workspace: 1, column: 1, tile: 1 }]);
@@ -188,10 +190,10 @@ ShellRoot {
         root.focusOn(70);
         Sessions.reopenHere([], root.goneFrom, () => null, Sessions.carryOn, () => [], true,
             null);
-        root.focusOn(60);
         Sessions.putBack(root.opened(98, "far"));
         Expect.same("a window kept on a screen gone goes to the screen in use as the walk began",
             root.movedTo(98), [61]);
+        root.focusOn(60);
     }
 
     // Kept on screens named for a prototype's keys, gone now, each goes to
@@ -246,6 +248,8 @@ ShellRoot {
             root.stage = "rewalked";
         } else if (root.stage === "rewalked") {
             root.prototypesNoted();
+            Expect.same("no walk started anything, its sessions' folders gone", Niri.spawns,
+                []);
             root.stage = "done";
             steps.stop();
             deadline.stop();
