@@ -44,14 +44,27 @@ in
   example-laptop-kernel = pkgs.writeText "example-laptop-kernel" (
     builtins.unsafeDiscardStringContext exampleLaptop.config.boot.kernelPackages.kernel.drvPath
   );
-  example-laptop-qt = pkgs.writeText "example-laptop-qt" (
-    builtins.unsafeDiscardStringContext (
-      lib.concatMapStringsSep "\n" (qt: qt.drvPath) [
-        exampleLaptop.pkgs.qt6.qtbase
-        exampleLaptop.pkgs.qt6.qtdeclarative
-      ]
-    )
-  );
+  # The Qt is the shell's own, patched, which no cache holds, read from what
+  # its Quickshell is built with: nixpkgs' stock qt6 is cached, so watching
+  # it would miss every patch. Both are asserted found, so a Quickshell no
+  # longer naming them fails here rather than watching nothing.
+  example-laptop-qt =
+    let
+      shellQt = lib.filter (
+        input:
+        lib.elem (input.pname or "") [
+          "qtbase"
+          "qtdeclarative"
+        ]
+      ) exampleLaptop.pkgs.quickshell.buildInputs;
+      found = toString (lib.length shellQt);
+    in
+    assert lib.assertMsg (
+      lib.length shellQt == 2
+    ) "example-laptop-qt: Quickshell is built with ${found} of qtbase and qtdeclarative, not 2";
+    pkgs.writeText "example-laptop-qt" (
+      builtins.unsafeDiscardStringContext (lib.concatMapStringsSep "\n" (qt: qt.drvPath) shellQt)
+    );
 
   # A system account whose manager runs, as one lingering for a builder's
   # logins does, starts none of a person's services: their home is

@@ -550,6 +550,12 @@ fn by_change(commit: &str, main: &str, on_main: &dyn Fn(&str) -> bool) -> Result
                 eprintln!("merge-net: {said}");
                 return Ok(ExitCode::FAILURE);
             }
+            // Nor does one whose long build no system has paid for yet,
+            // since the train merges it as may_merge would.
+            if let Some(said) = long_builds_wait(commit, main, &[commit, &checked], &files) {
+                eprintln!("merge-net: {said}");
+                return Ok(ExitCode::FAILURE);
+            }
             // A head behind main boards the train as one on it does
             // (`boarding.rs`), and one that can't is told why.
             if behind {
