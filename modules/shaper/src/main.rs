@@ -1422,7 +1422,11 @@ fn run(options: &Options) -> Result<(), Failure> {
         });
         write_status(&options.runtime, &shaped, heard.as_ref());
         if let Some(second) = live.traced() {
-            traces.write(&traced(second, &shaped, &house));
+            let sending = (
+                up_tins.kbit().map(|k| k.bulk + k.best + k.video + k.voice),
+                &vpns.0,
+            );
+            traces.write(&traced(second, &shaped, &house, sending));
         }
         thread::sleep(STEP);
     }
@@ -2155,13 +2159,24 @@ fn traced(
     second: trace::Line,
     shaped: &BTreeMap<String, Shaped>,
     house: &HouseHolds,
+    (vpn_sent, vpns): (Option<u64>, &BTreeMap<String, Vpn>),
 ) -> trace::Line {
     let its = shaped.get(&second.link);
     let network = its.map(|s| s.network.clone());
     let mut line = second.held(its.map_or(trace::Held::WHOLE, Shaped::held));
     house_traced(&mut line, network.as_deref(), house);
     line.room = its.and_then(|s| s.room.held());
+    (line.vpn_sent, line.vpn_up) = vpn_traced(vpn_sent, vpns);
     line
+}
+
+/// What the VPNs' CAKEs sent up, `sent`, and the rates they were held
+/// to, summed, for a traced second: none while no VPN is held.
+fn vpn_traced(sent: Option<u64>, vpns: &BTreeMap<String, Vpn>) -> (Option<u64>, Option<u64>) {
+    if vpns.is_empty() {
+        return (None, None);
+    }
+    (sent, Some(vpns.values().map(|v| v.up).sum()))
 }
 
 /// Puts in the traced `line` what its link's house heard and held, when
@@ -3882,6 +3897,37 @@ mod tests {
         );
         house_traced(&mut line, None, &house);
         assert_eq!(line.house_sent, None, "a link not shaped");
+    }
+
+    // The trace says what the VPNs' CAKEs sent beside what they were held
+    // to, summed over them, and nothing of either while none is held.
+    #[test]
+    fn a_trace_says_what_the_vpns_sent_beside_their_hold() {
+        let held_at = |up: u64| Vpn {
+            up,
+            down: 0,
+            ifb: String::new(),
+            mark: None,
+        };
+        let vpns = BTreeMap::from([
+            ("wg0".to_string(), held_at(2_400)),
+            ("wg1".to_string(), held_at(600)),
+        ]);
+        assert_eq!(
+            vpn_traced(Some(2_900), &vpns),
+            (Some(2_900), Some(3_000)),
+            "what both sent, beside both holds"
+        );
+        assert_eq!(
+            vpn_traced(None, &vpns),
+            (None, Some(3_000)),
+            "a hold before a second's sending was read"
+        );
+        assert_eq!(
+            vpn_traced(Some(2_900), &BTreeMap::new()),
+            (None, None),
+            "no VPN held"
+        );
     }
 
     // A network's house holds its links only while the other machine has
