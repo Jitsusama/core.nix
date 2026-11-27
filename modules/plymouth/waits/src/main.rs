@@ -14,7 +14,10 @@
 //! It ends when Plymouth quits after a boot, and with everything else at a
 //! shutdown. Started while the system is up with no splash to tell, as
 //! switching to a new configuration starts what the boot wants, it ends at
-//! once. Nothing here is asked of systemd but at a job's few moments:
+//! once. A boot into rescue or emergency quits Plymouth from that target's
+//! own shell rather than plymouth-quit.service, so it watches on until the
+//! shutdown, whose splash it tells. Nothing here is asked of systemd but at
+//! a job's few moments:
 //! it sleeps on the socket until a signal comes, or a deadline it armed on
 //! one.
 //!
@@ -352,6 +355,9 @@ mod tests {
     fn a_long_update_is_cut_at_the_most_its_length_can_say() {
         // One-byte characters put a character's edge at every byte, so the
         // cut falls on the cap itself: 254, its length 255 with the zero.
+        // No status sent today comes near the cap; this guards one that
+        // will. The length byte saturates at 255, so a cap mistyped higher
+        // shows only in the message's length, which is asserted with it.
         let message = update(&"x".repeat(300));
         assert_eq!(
             (message[2], message.len()),
@@ -376,14 +382,8 @@ mod tests {
 
     #[test]
     fn only_a_running_or_degraded_system_reads_as_up() {
-        assert!(
-            up("running"),
-            "a running system should read as up, with nothing to tell"
-        );
-        assert!(
-            up("degraded"),
-            "a degraded system should read as up, with nothing to tell"
-        );
+        assert!(up("running"), "a running system should read as up");
+        assert!(up("degraded"), "a degraded system should read as up");
         for state in ["initializing", "starting", "stopping"] {
             assert!(
                 !up(state),
