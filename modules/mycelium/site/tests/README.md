@@ -4,7 +4,8 @@
 that the builders are read from their own records and never as cells, `basins.test.ts`
 that a basin's machines are drawn as one stand, `fed.test.ts` what the map keeps of
 a receptor feeding a cell something, and for how long, `lineage.test.ts` who started
-each cell, `reach.test.ts` how the map judges whether it reaches every cell, and
+each cell and what it split from, `branches.test.ts` which network grows out of
+which, `reach.test.ts` how the map judges whether it reaches every cell, and
 `keys.test.ts` what each key asks, `outline.test.ts` what hangs from what in the
 tree beside the map and where its keys go, `words.test.ts` what each cell,
 network and machine is in words, `labels.test.ts` that no two networks'
@@ -17,7 +18,8 @@ how wide a line is drawn at each zoom, `motion.test.ts` how the map's motion is
 timed, `layout.test.ts` where everything stands and that it stays there,
 `canvas.test.ts` what the ground layer says and which line a pointer touches,
 `shape.test.ts` when a reading draws the whole map again, and `sprout.test.ts`
-the link new work hands the Launcher, judging addresses by `addresses.txt`, and
+the link new work hands the Launcher, judging addresses by `addresses.txt` and
+machines' names by `machines.txt`, and
 `acts.test.ts` what a cell's drawer offers, Go to It first, and its question
 said whole; all twenty-two run as the site builds (`mycelium-site-holds`). `map-reads-live-test.py`
 proves the built page reads live through the sites' server in Chromium, from
@@ -76,3 +78,31 @@ three, and the next switch restarts the notices daemon, which is safe since
 the bus holds notices meanwhile. A bad line fails all three, so those
 machines' switches fail until it is reverted. The notes kept in this README
 spare the two Rust packages a rebuild, though not the map site.
+
+## The Machine Cases
+
+A machine's name, as a link may carry one, is up to 64 ASCII letters,
+digits, dots, hyphens and underscores, a letter or a digit first, so `qs`
+never takes it for a flag. `machines.txt` holds what is one and what isn't,
+written and read as the address cases are. `cloud` is one, though the map
+and the Launcher read it as any of the cloud's machines.
+
+The same rule names a network, and a cell link's `@machine`. Two copies
+read it in their tests: the sites' kit's `isNamed`
+(`modules/local-sites/kit/cell.ts`), which the map's `isMachine`
+(`../sprout.ts`), its network and machine links (`../view.js`) and cell
+links all use, tested here through `isMachine`; and mycelium-link's `named`
+(`modules/quickshell/mycelium-link/src/main.rs`), which takes in
+`cases_in` from `addresses.rs`. The Launcher's reading of a link's `on:`
+(`plain` in `modules/quickshell/launcher/Cloud.js`) doesn't read it; it is
+looser, taking every name these cases call one and some they don't, such
+as `_x` and 200 letters, so it refuses nothing a link carries. The notices
+daemon writes a cell link's `@machine` too, by its own `machine_shaped`
+(`modules/notices/src/notice.rs`), which doesn't read it either; it is
+stricter, a host name's label of 63 at most with no dots, so every machine
+it names, mycelium-link takes.
+
+Editing it, its notes included, rebuilds the map site and mycelium-link.
+mycelium-link holds it in its source and runs its tests as it builds, and
+only graphical NixOS machines build it, so a bad line fails those
+machines' switches until it is reverted, as well as the map site's build.

@@ -61,11 +61,11 @@ fn run() -> Help {
     )
     .exit(
         Exit::TryAgain,
-        "what it made didn't all cross home or found no room here, or under --there the far machine never received its files or couldn't copy them",
+        "what it made didn't all cross home or found no room here, or under --there the far machine never received its files, found no cache to take them into or couldn't copy them",
     )
     .exit(
         Exit::Config,
-        "its settings can't be read, or --there can't send it: no machine, no quest to carry it, or what it makes couldn't come home",
+        "its settings can't be read, or --there can't send it: no machine, no quest to carry it, no cache here to hand it over through, or what it makes couldn't come home",
     )
     .passes("the job's own code, when it fails, here or there")
 }

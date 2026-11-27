@@ -17,6 +17,7 @@ import {
   type System,
   type Thing,
   type ThingLook,
+  thingsOf,
 } from "./model.ts";
 
 /** The most looks listed, so a bad night keeps the list a glance. */
@@ -42,12 +43,15 @@ const KEPT = /^as read at /u;
 /** One thing worth a look: how bad, whose it is, what it is and where it leads. */
 interface Look {
   readonly health: Health;
-  /** The machine or part it is in, as the page names it. */
+  /** The machine, builder or part it is in, as the page names it. */
   readonly whose: string;
-  /** Whether `whose` is a machine's name, which no translator may change. */
-  readonly machine: boolean;
+  /** Whether `whose` is a thing's name, which no translator may change. */
+  readonly thing: boolean;
   readonly words: string;
-  /** Where it is seen whole: a machine's section here, or a part's own site. */
+  /**
+   * Where it is seen whole: a machine's section here, a builder on the map,
+   * or a part's own site.
+   */
   readonly href: string;
   /** The row's key, the same across redraws while the look stands. */
   readonly row: string;
@@ -131,17 +135,22 @@ function keptOf(system: System): string {
 }
 
 /**
- * Each machine's side, a look a word, leading to its section or the map;
- * one drawn whole is told by its place among those in reach, `drawn` of
+ * Each thing's side, a look a word, leading to its section or the map. A
+ * machine drawn whole is told by its place among those in reach, `drawn` of
  * them drawn. Those out of reach are one look between them, in the place
  * after those in reach, so many gone at once read as one thing to know and
  * leave room for the few that need Joel; anything else their sides say
- * stays a look of its own.
+ * stays a look of its own. A builder, which has no section here, leads to
+ * itself on the map, after the machines in reach.
  */
 function thingLooks(part: Part, drawn: number): readonly Look[] {
-  const reached = part.things.filter((thing) => thing.ties.reached);
-  const away = part.things.filter((thing) => !thing.ties.reached);
+  const machines = thingsOf(part, "machine");
+  const reached = machines.filter((thing) => thing.ties.reached);
+  const away = machines.filter((thing) => !thing.ties.reached);
   const hrefOf = (thing: Thing): string => {
+    if (thing.kind !== "machine") {
+      return `../mycelium/#${thing.kind}=${encodeURIComponent(thing.name)}`;
+    }
     const at = reached.indexOf(thing);
     if (at < 0) {
       return "#away";
@@ -153,15 +162,23 @@ function thingLooks(part: Part, drawn: number): readonly Look[] {
   const own = (thing: Thing): readonly Look[] => {
     const looks = lookedOf(thing);
     return keyed(looks.map((look) => look.side))
-      .map((keyedLook, at) => ({ ...keyedLook, matters: looks[at]?.matters ?? "" }))
+      .map((keyedLook, at) => ({
+        ...keyedLook,
+        matters: looks[at]?.matters ?? "",
+        health: looks[at]?.health ?? thing.health,
+      }))
       .filter(({ words }) => thing.ties.reached || words !== OUT_OF_REACH)
-      .map(({ words, key, matters }) => ({
-        health: thing.health,
+      .map(({ words, key, matters, health }) => ({
+        // Each look ranks by its own health, so a bad machine's lesser
+        // look stands with its peers rather than beside the fault.
+        health,
         whose: thing.name,
-        machine: true,
-        words: capital(words),
+        thing: true,
+        // A builder often bears a machine's name, so its look says what it
+        // is, or "osprey: Not answering" reads as the machine going down.
+        words: thing.kind === "machine" ? capital(words) : `${capital(thing.kind)} ${words}`,
         href: hrefOf(thing),
-        row: `look:machine:${encodeURIComponent(thing.name)}:${key}`,
+        row: `look:${thing.kind}:${encodeURIComponent(thing.name)}:${key}`,
         matters,
         act: thing.ties.acts.link,
       }));
@@ -169,6 +186,7 @@ function thingLooks(part: Part, drawn: number): readonly Look[] {
   // Those in reach first, so within a health the few that need Joel lead.
   return [
     ...reached.flatMap(own),
+    ...part.things.filter((thing) => thing.kind !== "machine").flatMap(own),
     ...(away.length === 0 ? [] : [awayLook(away)]),
     ...away.flatMap(own),
   ];
@@ -177,13 +195,10 @@ function thingLooks(part: Part, drawn: number): readonly Look[] {
 /**
  * A machine's looks, each with its why: every one the daemon judged, where
  * its record lists them, or its side's, cut to a few and saying no why, from
- * a daemon too old to list them.
+ * a daemon too old to list them or a list the page couldn't read (thingOf).
  */
 function lookedOf(thing: Thing): readonly ThingLook[] {
-  // An empty list beside a side that names looks is a record caught between
-  // its two fields, so the side says them rather than the machine saying none.
-  const told = thing.looks?.length === 0 && thing.side.length > 0 ? undefined : thing.looks;
-  return told ?? thing.side.map((side) => ({ side, matters: "" }));
+  return thing.looks ?? thing.side.map((side) => ({ side, matters: "" }));
 }
 
 /**
@@ -198,7 +213,7 @@ function awayLook(away: readonly Thing[]): Look {
     return {
       health: only.health,
       whose: only.name,
-      machine: true,
+      thing: true,
       words: capital(OUT_OF_REACH),
       href: "#away",
       row: "look:away",
@@ -215,7 +230,7 @@ function awayLook(away: readonly Thing[]): Look {
   return {
     health: worstOf(away),
     whose: `${capital(numbered(away.length))} machines`,
-    machine: false,
+    thing: false,
     words: `${capital(OUT_OF_REACH)}: ${listed}`,
     href: "#away",
     row: "look:away",
@@ -229,7 +244,7 @@ function lookOf(part: Part, health: Health, words: string, key: string): Look {
   return {
     health,
     whose: named(part.part),
-    machine: false,
+    thing: false,
     words: capital(words),
     href: siteOf(part),
     row: `look:part:${encodeURIComponent(part.part)}:${key}`,

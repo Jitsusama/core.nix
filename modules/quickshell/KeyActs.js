@@ -8,7 +8,8 @@
 
 // The line's own edits and caret moves, and Ctrl+Y's completion, which
 // change only what's typed and where its caret stands, as a letter typed
-// does.
+// does; but for Ctrl+Y on a command's row in a place, which puts its start
+// in the field out at the top (`fillLeaves`), leaving the place.
 const typing = ["caretLeft", "caretRight", "caretStart", "caretEnd", "deleteBack", "deleteWord",
     "deleteToStart", "complete"];
 
@@ -40,12 +41,23 @@ function reselectHere(mode, rows, chosen) {
 // each by the line's word for whether it has: Space or Ctrl+W l into the
 // drawer with none out, Tab in normal into a row with no parts, which only
 // says so (Launcher.qml's tabbedIn), - with nothing above, and gv on the
-// rows with no selection to take back.
+// rows with no selection to take back. Where Tab goes is asked of Tab
+// alone (`intoHere`), since the launcher runs a search held back first.
 function nowhere(act, line) {
     return (act === "drawer" && !line.drawerHere)
-        || (act === "into" && line.mode !== "find" && !line.intoHere)
+        || (act === "into" && line.mode !== "find" && !line.intoHere(line.mode))
         || (act === "out" && !line.upHere)
         || (act === "reselect" && !line.reselectHere);
+}
+
+// Whether a key that acted only moved through the rows, so the launcher
+// tells it apart (Prompt.qml's keyMoved): the table's moves, and the
+// find's Tab where it has no row to go into, which goes on to the next
+// row as Down does (Launcher.qml's tabbedIn), asked of Tab alone, in the
+// mode it came in (`intoHere`).
+function moves(act, line) {
+    return QueryKeys.repeats(act)
+        || (act === "into" && line.mode === "find" && !line.intoHere(line.mode));
 }
 
 // Whether a key acted, given what QueryKeys.read made of it (`read`) and
@@ -54,7 +66,8 @@ function nowhere(act, line) {
 // a register, or its letter, which types (`registering`), nor the operator
 // pressed again after visual's, which is swallowed (`operated`). A key
 // while an ask stands (`answering`) acts where the ask takes it as its
-// answer (`answerTaken`, Confirm.answer), and a colon opening the command
+// answer (`answerTaken`, Confirm.answer), never as it repeats, even
+// visual's operator again, and a colon opening the command
 // line (`commands`) acts. Otherwise a key the field types itself, as a
 // letter, Shift+Left or Alt+a, a count or a sequence begun, Escape at rest
 // and a key meaning nothing where it was pressed act on nothing; nor does
@@ -67,11 +80,17 @@ function nowhere(act, line) {
 // the command line's keys, which the line never reads, act after all: the
 // launcher times those itself (Launcher.qml's keyActs).
 function acts(read, line) {
-    if (line.alone || line.registering || line.operated) {
+    // In the order Prompt.qml's modalKey hands a key on: a register's key,
+    // then the ask, which never takes a held key's repeat (`repeated`),
+    // then visual's operator.
+    if (line.alone || line.registering) {
         return false;
     }
     if (line.answering) {
-        return line.answerTaken;
+        return !line.repeated && line.answerTaken;
+    }
+    if (line.operated) {
+        return false;
     }
     if (line.commands) {
         return true;
@@ -81,6 +100,9 @@ function acts(read, line) {
     }
     if (line.mode === "normal" && editing.includes(read.act)) {
         return false;
+    }
+    if (read.act === "complete" && line.fillLeaves()) {
+        return true;
     }
     const emptied = read.act === "deleteBack" && line.mode === "find" && line.text === "";
     return emptied || !typing.includes(read.act);

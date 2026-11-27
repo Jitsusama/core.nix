@@ -80,5 +80,13 @@ QtObject {
             Mending.deepOf(by, { key: "session:kestrel:two" }), ["presence"]);
         Expect.same("a kind offering nothing deep has nothing deep",
             Mending.deepOf(by, { key: "machine:tern" }), []);
+        Expect.same("a key naming what a plain object inherits has nothing deep",
+            ["constructor", "toString", "__proto__", "hasOwnProperty:kestrel"]
+                .map(key => Mending.deepOf(by, { key })),
+            [[], [], [], []]);
+        Expect.same("and a change to it is mended whole",
+            Mending.mended({ key: "constructor", step: 1 },
+                { key: "constructor", step: 2 }, Mending.deepOf(by, { key: "constructor" })),
+            { key: "constructor", step: 2 });
     }
 }
