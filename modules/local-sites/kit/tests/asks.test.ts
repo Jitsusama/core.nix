@@ -1,15 +1,16 @@
 // The asks a page draws from the to-do feed: only looks waiting on him, the
 // newest first, a cell's own by its address; every word a session wrote set
 // as text, never as markup; answers offered only while the feed is live and
-// until one is pressed; and what the server said of a press, said in the
-// row in plain words, with nothing posted for a look that no longer asks.
+// until one is pressed, and taken only once the page has been in view a
+// moment; and what the server said of a press, said in the row in plain
+// words, with nothing posted for a look that no longer asks.
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import type { Posted } from "../answer.ts";
 import { carry, ready } from "../answer.ts";
 import { asked } from "../ask.ts";
-import { drawAsk, followAsks, waiting } from "../asks.ts";
+import { drawAsk, followAsks, SETTLING, waiting } from "../asks.ts";
 import { asksOnceOneWaits } from "../waits.ts";
 import { Held } from "../records.ts";
 import { Hands } from "./hands.ts";
@@ -301,6 +302,7 @@ it("answers show only while the feed is live and go once one is pressed", async 
         return Promise.resolve({ status: 200, text: "{}" });
       },
       ready: takes,
+      arrived: () => 0,
     },
   });
   // The server says it takes the page's answers before the feed goes live.
@@ -330,12 +332,50 @@ it("answers show only while the feed is live and go once one is pressed", async 
   assert.deepEqual(counts.slice(-1), [1]);
 });
 
+it("a press is taken only once the page has been in view a moment", async () => {
+  const sockets: StandIn[] = [];
+  const near = reaching(sockets);
+  const posted: string[] = [];
+  let arrived = near.clock.now();
+  const holder = new Element("div");
+  followAsks({
+    holder,
+    make,
+    reaching: {
+      ...near,
+      arrived: () => arrived,
+      send: (body) => {
+        posted.push(body);
+        return Promise.resolve({ status: 200, text: "{}" });
+      },
+    },
+  });
+  await flush();
+  telling(sockets[0], look("l1", "abc"));
+  const pressYes = (): void => holder.all("button")[0]?.clicks[0]?.();
+  near.clock.pass(SETTLING - 1);
+  pressYes();
+  // Shown again, as another site can show it under a pointer.
+  near.clock.pass(1);
+  arrived = near.clock.now();
+  near.clock.pass(SETTLING - 1);
+  pressYes();
+  await flush();
+  assert.deepEqual(posted, [], "a press as the page came into view was sent");
+  assert.equal(holder.all("ask-answers")[0]?.getAttribute("hidden"), null, "answers went");
+  near.clock.pass(1);
+  pressYes();
+  await flush();
+  assert.equal(posted.length, 1, "a press once the page had settled wasn't sent");
+});
+
 /** The sockets a page opened, each a stand-in, in the order it opened them. */
 function reaching(sockets: StandIn[]): {
   page: string;
   clock: Hands;
   connect: (url: string) => StandIn;
   ready: () => Promise<Posted>;
+  arrived: () => number;
 } {
   const hands = new Hands();
   hands.at = NOW;
@@ -343,6 +383,7 @@ function reaching(sockets: StandIn[]): {
     page: "http://sites.localhost:8484/",
     clock: hands,
     ready: takes,
+    arrived: () => 0,
     connect: (url) => {
       const socket = new StandIn(url);
       sockets.push(socket);

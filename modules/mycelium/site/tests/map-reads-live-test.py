@@ -2946,6 +2946,8 @@ def test_the_asks_beside_the_drawer_follow_what_it_shows_and_are_answered_there(
         expect(rows, "let go, the asks didn't widen again").to_have_count(len(ASKING))
         page.evaluate(f"location.hash = '#cell={ASKING[0]}'")
         expect(part, "a cell's own ask wasn't shown beside its drawer").to_be_visible()
+        # A press is taken once the page has been in view half a second (kit/asks.ts SETTLING).
+        page.wait_for_function("performance.now() > 500")
         rows.get_by_role("button", name="Merge It").click()
         expect(rows.locator(".ask-told")).to_have_text(
             "Answered Merge It: sent to the session that asked."

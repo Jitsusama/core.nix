@@ -252,6 +252,8 @@ def test_a_look_waiting_is_drawn_and_answered_once_where_it_is_asked(
     expect(row, "the look waiting wasn't drawn").to_have_count(1)
     expect(row.locator("h3"), "the title's markup was read as markup").to_have_text(TITLE)
     expect(row.locator("h3 b"), "the title's markup became an element").to_have_count(0)
+    # A press is taken once the page has been in view half a second (kit/asks.ts SETTLING).
+    tab.wait_for_function("performance.now() > 500")
     row.get_by_role("button", name="Merge It").click()
     expect(row.locator(".ask-told"), "the press wasn't said").to_have_text(
         "Answered Merge It: sent to the session that asked."

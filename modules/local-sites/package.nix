@@ -29,6 +29,8 @@ rustPlatform.buildRustPackage rec {
       ../terminal-kit/src
       # The places agents' work runs in, which a press is judged by.
       ../ssh-tpm-agent/gate.conf
+      # The chains the gate is held to, which the places are judged by too.
+      ../ssh-tpm-agent/gate-cases.txt
     ];
   };
   sourceRoot = "${src.name}/local-sites";
