@@ -59,11 +59,8 @@ pub fn of(ask: &Value) -> Option<Tracking> {
 #[must_use]
 pub fn untwinned(lines: Vec<Value>) -> Vec<Value> {
     let marked = |ask: &Value| ask["id"].as_str().is_some_and(|id| id.contains('~'));
-    let copied: BTreeSet<[String; 2]> = lines
-        .iter()
-        .filter(|ask| !marked(ask))
-        .map(|ask| asked(ask))
-        .collect();
+    let copied: BTreeSet<[String; 2]> =
+        lines.iter().filter(|ask| !marked(ask)).map(asked).collect();
     lines
         .into_iter()
         .filter(|ask| !marked(ask) || !copied.contains(&asked(ask)))

@@ -88,8 +88,8 @@ fn asks(text: &str, now: i64) -> Vec<Ask> {
             let by = landed.unwrap_or(now);
             let missed = promised(&ask).iter().any(|p| {
                 p.expected < by
-                    && !p.met.is_some_and(|met| met <= p.expected)
-                    && !p.moved.is_some_and(|moved| moved < p.expected)
+                    && p.met.is_none_or(|met| met > p.expected)
+                    && p.moved.is_none_or(|moved| moved >= p.expected)
             });
             Some(Ask {
                 at: time(&ask["at"])?,
@@ -390,7 +390,7 @@ mod tests {
         let mut bytes = format!("{first}\n").into_bytes();
         bytes.extend_from_slice(b"{\"at\":\"2026-11-13T13:00:00-05:00\",\"owner\":\"\xff\"}\n");
         bytes.extend_from_slice(format!("{last}\n").as_bytes());
-        fs::write(home.path().join("mission/asks.jsonl"), &bytes).expect("the asks list");
+        fs::write(home.path().join("mission/asks.jsonl"), bytes).expect("the asks list");
         let (text, unread) = gather(home.path());
         let [middle, late] = readings(&text, unread.as_deref(), NOW).try_into().unwrap();
         let said = Some("the list of his asks is unread, as its line 2 isn't text");
