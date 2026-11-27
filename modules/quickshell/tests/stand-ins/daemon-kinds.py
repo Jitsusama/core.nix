@@ -52,10 +52,8 @@ LAPSING = {
 FIXED: dict[str, list[dict[str, object]]] = {
     "verdict": [],
     "inherited": [
-        *(
-            {"key": key, "kind": "inherited", "heard": 1}
-            for key in ("__proto__", "constructor")
-        ),
+        {"key": "__proto__", "kind": "inherited", "heard": 1},
+        {"key": "constructor", "kind": "inherited", "heard": 1},
         {"key": "toString", "kind": "inherited", "gone": True},
     ],
 }
