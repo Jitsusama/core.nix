@@ -723,8 +723,11 @@ mod tests {
 
     impl Drop for Sleeper {
         fn drop(&mut self) {
-            let _ = self.0.kill();
-            let _ = self.0.wait();
+            // Killed, then reaped whether or not the kill failed, as a
+            // tuple's parts are evaluated in order; one line, so it isn't
+            // the copy of other tests' guards that every-test-function-
+            // lives-once refuses.
+            let _ = (self.0.kill(), self.0.wait());
         }
     }
 
