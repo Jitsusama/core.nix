@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
 import { escaped, headlineOf, legend, partsOf, placesOf } from "../draw.ts";
+import { looksOf as listedOf } from "../looks.ts";
 import { machineHeadline } from "../machine.ts";
 import { allTold, systemOf, thingsHeld } from "../model.ts";
 
@@ -165,6 +166,44 @@ it("a machine's looks are read with their whys, and none from a record listing n
   ] as const) {
     assert.deepEqual(looksOf(record), [undefined, undefined], `${why} leaves it to the side`);
     assert.deepEqual(ospreyAs(record)?.unread, notRead, `${why} is said as not read`);
+  }
+});
+
+it("a look's own health is read only from a word the daemon says a health in", () => {
+  const ospreyLooking = (health: unknown) => {
+    const look = { side: "code failing", matters: "Builds there fail.", health };
+    const named = { key: "machine:osprey", kind: "machine", name: "osprey", health: "watch" };
+    const others = records.filter((each) => each.key !== named.key);
+    const osprey = { ...named, side: [look.side], looks: [look] };
+    const { summary, part, machine } = told([...others, osprey]);
+    const system = systemOf(summary, part, machine);
+    assert.ok(system, "the records whole drew no system");
+    const own = system.parts[0]?.things.find((thing) => thing.name === "osprey")?.looks?.[0];
+    const listed = listedOf(system, 8).looks.find((each) => each.whose === "osprey");
+    return { own, listed };
+  };
+  for (const [word, health] of [
+    ["good", "good"],
+    ["watch", "watch"],
+    ["bad", "bad"],
+    ["not read", "unread"],
+  ] as const) {
+    const { own, listed } = ospreyLooking(word);
+    assert.equal(own?.health, health, `a look said ${word} was read as ${own?.health}`);
+    assert.equal(listed?.health, health, `a look said ${word} was listed as ${listed?.health}`);
+  }
+  // Osprey itself is watch, so a look with no health of its own is listed as watch.
+  for (const [word, why] of [
+    ["odd", "a word the page doesn't know"],
+    ["unread", "the page's own word, which the daemon never says"],
+    ["", "an empty word"],
+    [7, "a number"],
+    [null, "null"],
+  ] as const) {
+    const { own, listed } = ospreyLooking(word);
+    assert.ok(own !== undefined, `a look whose health is ${why} wasn't read at all`);
+    assert.ok(!Object.hasOwn(own, "health"), `${why} gave a look the health ${own.health}`);
+    assert.equal(listed?.health, "watch", `${why} listed a look as ${listed?.health}, not watch`);
   }
 });
 
