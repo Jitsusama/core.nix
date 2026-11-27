@@ -137,6 +137,51 @@ struct Kept {
     withdrawn: BTreeSet<String>,
 }
 
+/// The harness's review causes at `at`, or why they couldn't be read. No
+/// record yet is no review causes; one that can't be read is unread, or
+/// the classes only it holds up would close and be asked again. A byte
+/// that isn't UTF-8, as a read inside an append can meet, costs only its
+/// own line.
+fn review_record(at: &Path) -> Result<String, String> {
+    match fs::read(at) {
+        Ok(bytes) => Ok(String::from_utf8_lossy(&bytes).into_owned()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(error) => Err(format!("{} couldn't be read ({error})", at.display())),
+    }
+}
+
+/// The reading kept at `at`, or why it couldn't be read. One that can't be
+/// read or doesn't parse is unread, as symbiosis's is: read as none, the
+/// cases only it holds, past the mesh's week, would be lost and their asks
+/// closed. None yet, or one of another version, reads the week anew.
+fn kept_reading(at: &Path) -> Result<Kept, String> {
+    let json = match fs::read(at) {
+        Ok(json) => json,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Kept::default()),
+        Err(error) => {
+            return Err(format!(
+                "the reading kept in {} can't be read ({error})",
+                at.display()
+            ));
+        }
+    };
+    match serde_json::from_slice::<Kept>(&json) {
+        Ok(kept) if kept.v == VERSION => Ok(kept),
+        Ok(kept) => {
+            eprintln!(
+                "cadence: {} is of version {}, so the mesh's week is read anew",
+                at.display(),
+                kept.v
+            );
+            Ok(Kept::default())
+        }
+        Err(error) => Err(format!(
+            "the reading kept in {} doesn't parse ({error})",
+            at.display()
+        )),
+    }
+}
+
 /// The measure at `now`, in seconds, from the mesh and the review folder
 /// under `state_home`'s harness folder, keeping what it read of the mesh in
 /// `folder` when `keeps`, as the hour that files does. A look by hand keeps
@@ -157,51 +202,14 @@ pub fn read(state_home: &Path, folder: &Path, now: i64, keeps: bool) -> Measure 
     if !messages.is_dir() {
         return unread("no mesh messages folder here");
     }
-    // No record yet is no review causes; one that can't be read is unread,
-    // or the classes only it holds up would close and be asked again. A
-    // byte that isn't UTF-8, as a read inside an append can meet, costs
-    // only its own line.
-    let review_at = root.join("review/causes.jsonl");
-    let review = match fs::read(&review_at) {
-        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
-        Err(error) => {
-            return unread(&format!(
-                "{} couldn't be read ({error})",
-                review_at.display()
-            ));
-        }
+    let review = match review_record(&root.join("review/causes.jsonl")) {
+        Ok(review) => review,
+        Err(why) => return unread(&why),
     };
-    // A kept reading that can't be read or doesn't parse is unread, as
-    // symbiosis's is: read as none, the cases only it holds, past the
-    // mesh's week, would be lost and their asks closed. One of another
-    // version reads the week anew.
     let kept_at = folder.join("causes.json");
-    let kept: Kept = match fs::read(&kept_at) {
-        Ok(json) => match serde_json::from_slice::<Kept>(&json) {
-            Ok(kept) if kept.v == VERSION => kept,
-            Ok(kept) => {
-                eprintln!(
-                    "cadence: {} is of version {}, so the mesh's week is read anew",
-                    kept_at.display(),
-                    kept.v
-                );
-                Kept::default()
-            }
-            Err(error) => {
-                return unread(&format!(
-                    "the reading kept in {} doesn't parse ({error})",
-                    kept_at.display()
-                ));
-            }
-        },
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Kept::default(),
-        Err(error) => {
-            return unread(&format!(
-                "the reading kept in {} can't be read ({error})",
-                kept_at.display()
-            ));
-        }
+    let kept = match kept_reading(&kept_at) {
+        Ok(kept) => kept,
+        Err(why) => return unread(&why),
     };
     let now_ms = now * 1000;
     // A mark past now says this machine's clock stepped back since it was

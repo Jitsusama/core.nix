@@ -178,8 +178,9 @@ fn a_class_is_written_plain_with_its_quotes_made_apostrophes() {
 #[test]
 fn one_message_or_one_hour_puts_only_so_many_classes_to_their_owners() {
     let text: String = (0..UNFOLDED_PER_MESSAGE + 3)
-        .map(|n| format!("cause: junk {n} | change: core.nix#1, #2, #3\n"))
-        .collect();
+        .map(|n| format!("cause: junk {n} | change: core.nix#1, #2, #3"))
+        .collect::<Vec<_>>()
+        .join("\n");
     let cases = said(&[heard(sent(&text, 60, "@1JQPPC"))]);
     let classes: BTreeSet<&str> = cases.iter().map(|c| c.class.as_str()).collect();
     assert_eq!(
