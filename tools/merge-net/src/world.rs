@@ -22,6 +22,7 @@ use crate::holds;
 use crate::running;
 use crate::state::{now, short};
 use crate::subtests;
+use crate::train::CHANGED_FAILED;
 use crate::watch::{
     Bad, Changed, DROPPED, MOVED, Merged, UNCHECKED, UNCOMPARED, UNREACHED, UNSENT, World, untaken,
 };
@@ -1052,17 +1053,16 @@ const NETWORK_ERRORS: [(&str, &str); 5] = [
     ("Build failed due to failed dependency", ""),
 ];
 
-/// What changed-checks says after any build that failed, a cache's too,
-/// when it builds a Mac's checks itself: what failed is in the errors
-/// above it, so it says nothing more of the change.
-const CHANGED_FAILED: &str = "\u{2715} a check the change touched failed";
-
 /// Whether a failed run's log says it failed on the network alone: some
 /// download failed with `NETWORK_WORDS`, every other error is one
 /// `NETWORK_ERRORS` names, every reason is that dependencies failed, and
-/// no other line says why, as one that a check no longer evaluates. An evaluation error, a builder that
-/// failed (which a fetch failing on the network prints too, so that stays
-/// a failure) or a check that failed beside a lookup error is a failure.
+/// no other line says why, as one that a check no longer evaluates.
+/// changed-checks' `CHANGED_FAILED` isn't one: it says it after any build
+/// that failed, a cache's too, when it builds a Mac's checks itself, so
+/// it says nothing more of the change than the errors above it. An
+/// evaluation error, a builder that failed (which a fetch failing on the
+/// network prints too, so that stays a failure) or a check that failed
+/// beside a lookup error is a failure.
 fn unresolved(words: &str) -> bool {
     let mut named = false;
     for line in words.lines().map(str::trim_start) {

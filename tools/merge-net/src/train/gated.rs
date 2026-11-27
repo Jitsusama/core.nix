@@ -47,9 +47,13 @@ const BUILD_FAILED: i32 = 100;
 /// or nix's for a build that ran and failed, which a lost builder never
 /// says.
 fn names_a_failure(words: &str) -> bool {
-    words.contains("\u{2715} a check the change touched failed")
-        || words.contains("Reason: builder failed with exit code")
+    words.contains(CHANGED_FAILED) || words.contains("Reason: builder failed with exit code")
 }
+
+/// What changed-checks says when the builds it ran ended and one failed:
+/// the one way it gives up for which each failure is a build's, so the
+/// errors above it say what failed and it says nothing more.
+pub const CHANGED_FAILED: &str = "\u{2715} a check the change touched failed";
 
 /// What nix-offload says when it sets aside a replay of the change onto a
 /// newer main that failed, since the failure may be main's, and runs the

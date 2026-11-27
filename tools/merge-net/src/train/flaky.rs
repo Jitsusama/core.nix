@@ -1,10 +1,10 @@
-//! A red candidate whose every failed check is no rider's lands rather
-//! than splits. On 26 November main's own formatting red (Presented.js,
-//! past biome's 500 lines after #6727) split candidate a8f33ede, and the
-//! train was stopped by hand so it wouldn't send riders back to run alone
-//! for it; on 26 November too #6524 touched no margin-cat file and its gate
-//! failed the-margin-cat-follows-the-keys-on-niri, a launcher check on a
-//! live compositor that had failed now and then on main.
+//! A red candidate whose every failed check is no rider's lands rather than
+//! splits. On 26 November main's own formatting red (Presented.js, past
+//! biome's 500 lines after #6727) split candidate a8f33ede, and the train
+//! was stopped by hand so it wouldn't send riders back to run alone for it;
+//! on 26 November too #6524 touched no margin-cat file and its gate failed
+//! the-margin-cat-follows-the-keys-on-niri, a launcher check on a live
+//! compositor that had failed now and then on main.
 //!
 //! Each check the gate's words say a builder failed is built once more, at
 //! the commit the candidate was cut on, on a lent builder, so like is
@@ -13,39 +13,40 @@
 //! fails there too, its builder saying nothing at the candidate it didn't
 //! say there, is main's own red, unless the riders moved what a rule runs
 //! (`moves_a_rule`), since the candidate builds its own copy of the rule.
-//! Only those: a check that stops at its
-//! first error says the same at both whatever the riders broke after it,
-//! so a rider's break would land hidden behind main's. So `formatting`,
-//! which began this, isn't one: treefmt stops at the first file no
-//! formatter reads, zsh-parses at the first file it can't parse, and the
-//! check diffs what the formatters rewrote only once all of them pass, so
-//! main's formatting red still splits. One that passes
-//! there is built once more at the candidate itself: passing
-//! at the same commit it failed at, it is a flake, whatever kind of check
-//! it is, and a second red there is the riders'. Which files a check reads
-//! isn't asked: the train's gate builds no VM tests, which are all that
-//! `owners` reads, and it counts a role's test against the role's folder
-//! alone, on purpose, so it can't say a check is untouched.
+//! Only those: a check that stops at its first error says the same at both
+//! whatever the riders broke after it, so a rider's break would land hidden
+//! behind main's. So `formatting`, which began this, isn't one: treefmt
+//! stops at the first file no formatter reads, zsh-parses at the first file
+//! it can't parse, and the check diffs what the formatters rewrote only
+//! once all of them pass, so main's formatting red still splits. One that
+//! passes there is built once more at the candidate itself: passing at the
+//! same commit it failed at, it is a flake, whatever kind of check it is,
+//! and a second red there is the riders'. Which files a check reads isn't
+//! asked: the train's gate builds no VM tests, which are all that `owners`
+//! reads, and it counts a role's test against the role's folder alone, on
+//! purpose, so it can't say a check is untouched.
 //!
-//! A red the gate didn't build whole, a part no builder took beside it,
-//! is never excused, nor one whose words say an error nix or changed-checks
+//! A red the gate didn't build whole, a part no builder took beside it, is
+//! never excused, nor one whose words say an error nix or changed-checks
 //! didn't explain as a failed build. Before one lands, every check the gate
 //! built but main's own reds is built once more together at the candidate,
 //! so each is known built: a nix killed mid-run says nothing of the checks
 //! it never reached, and a failed derivation named like a check may have
-//! been another's; the VM tests changed-checks lists but never builds
-//! for the gate are left to the net, as ever. Nor is a red excused whose
-//! gate ran again on its own base, whose words name a check with a dot,
-//! which Nix would read as another's path, or whose rule crashed, which
-//! said nothing of what it never reached. A derivation that failed for another reason than its
-//! builder or a dependency, one no check names, a check that no longer evaluates, a
+//! been another's; the VM tests changed-checks lists but never builds for
+//! the gate are left to the net, as ever. Nor is a red excused whose gate
+//! ran again on its own base, whose words name a check with anything but
+//! ASCII letters, digits, `-`, `_` and `'`, which could reach Nix as
+//! another's path, as a dot does, or splice an expression into its
+//! evaluation, or whose rule crashed, which said nothing of what it never
+//! reached. A derivation that failed for another reason than its builder or
+//! a dependency, one no check names, a check that no longer evaluates, a
 //! build no builder took, more failed checks than `MOST_REBUILT`, and a
-//! check excused as a flake twice already in the ride count as the
-//! riders', so the train splits on them as before, its log saying why of
-//! each, so a judging that couldn't finish reads apart from a rider's
-//! break. Each check excused is told to its owner as a finding naming the
-//! gate's log and the rebuild's, and each flake is a line in the train's
-//! log, naming the check and both commits, so flakes can be counted.
+//! check excused as a flake twice already in the ride count as the riders',
+//! so the train splits on them as before, its log saying why of each, so a
+//! judging that couldn't finish reads apart from a rider's break. Each
+//! check excused is told to its owner as a finding naming the gate's log
+//! and the rebuild's, and each flake is a line in the train's log, naming
+//! the check and both commits, so flakes can be counted.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -57,7 +58,7 @@ use serde_json::json;
 pub(super) use self::lent::{Lenders, Lent};
 use checks_said::{added, built, held_at, quarantined};
 
-use super::gated::{Gated, RUNS_AGAIN, gated};
+use super::gated::{CHANGED_FAILED, Gated, RUNS_AGAIN, gated};
 use crate::state::{State, now, short};
 
 /// Whose a failed check's red is. Only a flake's and main's land; each
@@ -245,10 +246,6 @@ pub(super) fn moves_a_rule(files: Option<&[String]>) -> bool {
 fn runs_a_rule(file: &str) -> bool {
     file.starts_with("tests/rules/") || ["flake.nix", "flake.lock", "checks.nix"].contains(&file)
 }
-
-/// What changed-checks says when the builds it ran ended and one failed:
-/// the one way it gives up for which each failure is a build's.
-const CHANGED_FAILED: &str = "\u{2715} a check the change touched failed";
 
 /// What changed-checks says when a check the riders touched no longer
 /// evaluates, which no derivation's failure names, so it is theirs.
@@ -449,7 +446,8 @@ pub(super) fn judge(
         return Err(Declined::NoVerdict);
     }
     let gate_built = built(words);
-    // A check named with a dot would reach Nix as another check's path.
+    // A name of more than ASCII letters, digits, `-`, `_` and `'` could
+    // reach Nix as another check's path, as a dot does, or as an expression.
     if !gate_built.iter().all(|check| plainly_named(check)) {
         return Err(Declined::NotPlain);
     }
@@ -778,3 +776,6 @@ mod checks_said_tests;
 #[cfg(test)]
 #[path = "flaky/tests.rs"]
 mod tests;
+#[cfg(test)]
+#[path = "flaky/whole_tests.rs"]
+mod whole_tests;

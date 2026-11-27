@@ -28,7 +28,7 @@ pub(super) fn words(built: &[&str], failed: &[&str]) -> String {
 }
 
 /// The words of a build at the base that fails `name` as the candidate did.
-fn as_before(name: &str) -> (Gated, String) {
+pub(super) fn as_before(name: &str) -> (Gated, String) {
     (Gated::Red, words(&[], &[name]))
 }
 
@@ -69,7 +69,7 @@ pub(super) fn judged_whole(
 }
 
 /// A check that reports every failure, so its red can be main's.
-const RULE: &str = "every-long-file-says-why";
+pub(super) const RULE: &str = "every-long-file-says-why";
 
 /// A build that passed.
 pub(super) fn passes(_: &str) -> Gated {
@@ -169,7 +169,7 @@ fn a_failed_derivation_is_placed_by_its_name_its_vm_run_or_what_nix_names_it() {
 }
 
 #[test]
-fn a_rider_whose_unrelated_check_fails_once_stays_and_one_whose_own_fails_is_split() {
+fn a_check_passing_when_built_again_is_a_flake_and_one_red_again_the_riders() {
     let said = words(&["the-margin-cat-on-niri"], &["the-margin-cat-on-niri"]);
     let unrelated = judged(&said, &passes_at_base, &passes, 0).unwrap();
     assert_eq!(
@@ -348,6 +348,10 @@ fn the_files_moved_between_two_commits_are_read_unquoted() {
     git(&repo, &["add", "-A"]).unwrap();
     git(&repo, &["commit", "-q", "-m", "moves"]).unwrap();
     let candidate = git(&repo, &["rev-parse", "HEAD"]).unwrap();
+    // `moved_between` runs under the caller's own git config, where a
+    // global `core.quotePath=false` would leave the name unquoted without
+    // `-z` too; the repository's own config outranks it, so git quotes it.
+    git(&repo, &["config", "core.quotePath", "true"]).unwrap();
     let moved = moved_between(&repo, &base, &candidate);
     assert_eq!(
         moved.as_deref(),
@@ -637,10 +641,10 @@ fn a_red_of_as_many_checks_as_are_rebuilt_is_judged_check_by_check() {
         asked.borrow_mut().push(check.to_owned());
         Gated::Passed
     };
-    let judged = judged(&words(&most, &most), &passes_at_base, &again, 0).unwrap();
+    let judged = judged(&words(&most, &most), &passes_at_base, &again, 0);
     assert!(
-        excused(&judged),
-        "a red of as many flakes as are rebuilt split the train"
+        judged.as_deref().is_ok_and(excused),
+        "a red of as many flakes as are rebuilt split the train: {judged:?}"
     );
     assert_eq!(
         *asked.borrow(),
@@ -671,17 +675,19 @@ fn words_naming_no_failed_derivation_say_nothing_of_whose_the_red_is() {
         Err(Declined::Unexplained)
     );
     let flaky = words(&["vm-pi"], &["vm-test-run-vm-pi"]);
+    // changed-checks builds nothing then, so judging reads it first.
     let unbuilt = words(&[], &[]) + "\u{2715} a check the change touched no longer evaluates\n";
     assert_eq!(
         judged(&unbuilt, &passes_at_base, &passes, 0),
         Err(Declined::NoLongerEvaluates),
         "changed-checks' own words that a check no longer evaluates were read as unexplained"
     );
+    // The words without the mark, beside a flake, are read so too.
     let unmarked = flaky + "a check the change touched no longer evaluates\n";
     assert_eq!(
         judged(&unmarked, &passes_at_base, &passes, 0),
         Err(Declined::NoLongerEvaluates),
-        "a check that no longer evaluates was passed over beside a flake"
+        "unmarked words that a check no longer evaluates were passed over beside a flake"
     );
 }
 

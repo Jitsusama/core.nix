@@ -79,6 +79,7 @@ mod landed;
 mod landing;
 mod pulls;
 mod splitting;
+pub use gated::CHANGED_FAILED;
 use gated::{Gated, gated, words_of};
 use hub::GitHub;
 pub use installed::install;
