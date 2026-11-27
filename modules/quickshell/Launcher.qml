@@ -12298,9 +12298,7 @@ Scope {
         fillUnpresented.stop();
         openFramesSized = 0;
         openFramesWaited = 0;
-        openFirstDrawn = -1;
-        openFirstSplit = null;
-        openFirstMade = null;
+        forgetFirstFrame();
         openAskedMade = tallies();
         openLap("tallying");
         // What the last closing left for later is put off, as the opening's
@@ -12365,6 +12363,16 @@ Scope {
     // last opening woke can answer after it closed.
     property var openFirstMade: null
     property var openAskedMade: null
+    // What an opening's first frame left is let go as it's begun, shut or
+    // said, so a whole opening after a kept one shut before its size
+    // (unopened) says its own drawing, not the kept one's frame's.
+    function forgetFirstFrame(): void {
+        openFirstDrawn = -1;
+        openFirstSplit = null;
+        openFirstMade = null;
+        openFirstWeighings = -1;
+        openFirstRedone = null;
+    }
     function drawnAsAsked() {
         const window = card.Window.window;
         return window !== null && Math.abs(window.width - surface.implicitWidth) < 1
@@ -12805,6 +12813,7 @@ Scope {
         openWorkedClocks = null;
         fillEarly = null;
         wokeEarly = null;
+        forgetFirstFrame();
         markOpen(false);
         afterFramesDue();
     }
