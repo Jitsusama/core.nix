@@ -1,0 +1,292 @@
+Say each BSS Transition Management request over D-Bus.
+
+An access point asks a station to move with an 802.11v BSS Transition
+Management request, naming candidate BSSes with a preference each, and
+can warn that it will disassociate the station after a timer. Upstream
+answers the request itself and tells a program on the bus only the
+status it answered with, as the BSSTMStatus property. The candidates go
+to the debug log alone, and the warning to the control socket.
+
+A program choosing access points itself, holding a card to one BSSID,
+then can't follow a warned request: with a fixed BSSID set, upstream
+rejects any request whose candidates it didn't hear in its last scan,
+and the access point drops the station when the timer runs out.
+
+This adds a signal on the Interface, BSSTransitionRequested, sent as
+each request is parsed and before it's answered, with one dictionary,
+since a signal's table holds three arguments at most: Disassociating
+(b), whether it warns of a disassociation from the BSS; LeavingNetwork
+(b), whether from the whole ESS, where no other BSS of it would keep the
+station; Protected (b), whether the association protects management
+frames, as upstream's ESS warning says too; DisassociationMs (u), in how
+long; ValidMs (u), how long its candidate list holds; and Candidates
+(a(aynu)), each as its BSSID, its preference, or -1 where the access
+point gave none, and the frequency of its channel in MHz, or 0 where its
+operating class and channel name none known, in the order given. The
+frequency lets the program look on the candidates' channels alone, in a
+fraction of a second, for one it hasn't heard lately.
+
+Protected is said of the link, not of the frame: it means the request
+can't be a forgery only where the kernel drops an unprotected robust
+action frame on such a link, as mac80211 does. How upstream answers the
+request is left as it was. Both times are worked out from beacon
+intervals in 64 bits: the access point sets the interval and the counts,
+and their product can pass a signed int. Each is then said in 32 bits,
+which only a beacon interval past 64000 TU, over a minute, could pass.
+diff -ru a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
+--- a/wpa_supplicant/dbus/dbus_new.c
++++ b/wpa_supplicant/dbus/dbus_new.c
+@@ -18,6 +18,7 @@
+ #include "../wpa_supplicant_i.h"
+ #include "../bss.h"
+ #include "../wpas_glue.h"
++#include "../wnm_sta.h"
+ #include "dbus_new_helpers.h"
+ #include "dbus_dict_helpers.h"
+ #include "dbus_new.h"
+@@ -1159,6 +1160,106 @@
+ }
+ 
+ 
++/**
++ * wpas_dbus_signal_bss_tm_request - Signals a BSS Transition Management
++ * request from the access point
++ * @wpa_s: %wpa_supplicant network interface data
++ * @disassociating: Whether the request warns the station is about to be
++ *	disassociated from this BSS
++ * @leaving_network: Whether it warns of a disassociation from the whole ESS
++ * @protected_frames: Whether the association protects management frames,
++ *	said of the link, not of the frame: only where the kernel drops an
++ *	unprotected robust action frame on such a link, as mac80211 does, can
++ *	the request not have been forged by another station
++ * @disassociation_ms: In how long, where it warns
++ * @valid_ms: How long the candidate list holds
++ * @candidates: The candidates, in the order the access point gave them
++ * @num_candidates: How many there are
++ *
++ * Said as one dictionary: Disassociating (b), LeavingNetwork (b),
++ * Protected (b), DisassociationMs (u), ValidMs (u) and Candidates
++ * (a(aynu)), each candidate its BSSID, its preference, or -1 where the
++ * access point gave none, and the frequency of its channel in MHz, or 0
++ * where its operating class and channel name none known here.
++ */
++void wpas_dbus_signal_bss_tm_request(struct wpa_supplicant *wpa_s,
++				     bool disassociating,
++				     bool leaving_network,
++				     bool protected_frames,
++				     unsigned int disassociation_ms,
++				     unsigned int valid_ms,
++				     const struct neighbor_report *candidates,
++				     unsigned int num_candidates)
++{
++	struct wpas_dbus_priv *iface;
++	DBusMessage *msg;
++	DBusMessageIter iter, dict, entry, value, array, candidate, bssid;
++	unsigned int i;
++
++	iface = wpa_s->global->dbus;
++
++	/* Do nothing if the control interface is not turned on */
++	if (!iface || !wpa_s->dbus_new_path)
++		return;
++
++	msg = dbus_message_new_signal(wpa_s->dbus_new_path,
++				      WPAS_DBUS_NEW_IFACE_INTERFACE,
++				      "BSSTransitionRequested");
++	if (!msg)
++		return;
++
++	dbus_message_iter_init_append(msg, &iter);
++	if (!wpa_dbus_dict_open_write(&iter, &dict) ||
++	    !wpa_dbus_dict_append_bool(&dict, "Disassociating",
++				       disassociating) ||
++	    !wpa_dbus_dict_append_bool(&dict, "LeavingNetwork",
++				       leaving_network) ||
++	    !wpa_dbus_dict_append_bool(&dict, "Protected",
++				       protected_frames) ||
++	    !wpa_dbus_dict_append_uint32(&dict, "DisassociationMs",
++					 disassociation_ms) ||
++	    !wpa_dbus_dict_append_uint32(&dict, "ValidMs", valid_ms) ||
++	    !wpa_dbus_dict_begin_array(&dict, "Candidates", "(aynu)",
++				       &entry, &value, &array))
++		goto fail;
++	for (i = 0; i < num_candidates; i++) {
++		const u8 *address = candidates[i].bssid;
++		dbus_int16_t preference = candidates[i].preference_present ?
++			candidates[i].preference : -1;
++		dbus_uint32_t frequency = candidates[i].freq > 0 ?
++			candidates[i].freq : 0;
++
++		if (!dbus_message_iter_open_container(&array, DBUS_TYPE_STRUCT,
++						      NULL, &candidate) ||
++		    !dbus_message_iter_open_container(&candidate,
++						      DBUS_TYPE_ARRAY,
++						      DBUS_TYPE_BYTE_AS_STRING,
++						      &bssid) ||
++		    !dbus_message_iter_append_fixed_array(&bssid, DBUS_TYPE_BYTE,
++							  &address,
++							  ETH_ALEN) ||
++		    !dbus_message_iter_close_container(&candidate, &bssid) ||
++		    !dbus_message_iter_append_basic(&candidate, DBUS_TYPE_INT16,
++						    &preference) ||
++		    !dbus_message_iter_append_basic(&candidate, DBUS_TYPE_UINT32,
++						    &frequency) ||
++		    !dbus_message_iter_close_container(&array, &candidate))
++			goto fail;
++	}
++	if (!wpa_dbus_dict_end_array(&dict, &entry, &value, &array) ||
++	    !wpa_dbus_dict_close_write(&iter, &dict))
++		goto fail;
++
++	dbus_connection_send(iface->con, msg, NULL);
++	dbus_message_unref(msg);
++	return;
++
++fail:
++	wpa_printf(MSG_ERROR, "dbus: Failed to construct signal");
++	dbus_message_unref(msg);
++}
++
++
+ void wpas_dbus_signal_sae_password_mismatch(struct wpa_supplicant *wpa_s)
+ {
+ 	struct wpas_dbus_priv *iface;
+@@ -4472,6 +4573,12 @@
+ 		  END_ARGS
+ 	  }
+ 	},
++	{ "BSSTransitionRequested", WPAS_DBUS_NEW_IFACE_INTERFACE,
++	  {
++		  { "args", "a{sv}", ARG_OUT },
++		  END_ARGS
++	  }
++	},
+ 	{ "StaAuthorized", WPAS_DBUS_NEW_IFACE_INTERFACE,
+ 	  {
+ 		  { "name", "s", ARG_OUT },
+diff -ru a/wpa_supplicant/dbus/dbus_new.h b/wpa_supplicant/dbus/dbus_new.h
+--- a/wpa_supplicant/dbus/dbus_new.h
++++ b/wpa_supplicant/dbus/dbus_new.h
+@@ -18,6 +18,7 @@
+ struct wpa_ssid;
+ struct wpa_cred;
+ struct wpa_bss;
++struct neighbor_report;
+ struct wps_event_m2d;
+ struct wps_event_fail;
+ struct wps_credential;
+@@ -258,6 +259,14 @@
+ void wpas_dbus_signal_eap_status(struct wpa_supplicant *wpa_s,
+ 				 const char *status, const char *parameter);
+ void wpas_dbus_signal_psk_mismatch(struct wpa_supplicant *wpa_s);
++void wpas_dbus_signal_bss_tm_request(struct wpa_supplicant *wpa_s,
++				     bool disassociating,
++				     bool leaving_network,
++				     bool protected_frames,
++				     unsigned int disassociation_ms,
++				     unsigned int valid_ms,
++				     const struct neighbor_report *candidates,
++				     unsigned int num_candidates);
+ void wpas_dbus_signal_sae_password_mismatch(struct wpa_supplicant *wpa_s);
+ void wpas_dbus_signal_sta_authorized(struct wpa_supplicant *wpa_s,
+ 				     const u8 *sta);
+@@ -621,6 +630,18 @@
+ {
+ }
+ 
++static inline void
++wpas_dbus_signal_bss_tm_request(struct wpa_supplicant *wpa_s,
++				bool disassociating,
++				bool leaving_network,
++				bool protected_frames,
++				unsigned int disassociation_ms,
++				unsigned int valid_ms,
++				const struct neighbor_report *candidates,
++				unsigned int num_candidates)
++{
++}
++
+ static inline void wpas_dbus_signal_psk_mismatch(struct wpa_supplicant *wpa_s)
+ {
+ }
+diff -ru a/wpa_supplicant/notify.c b/wpa_supplicant/notify.c
+--- a/wpa_supplicant/notify.c
++++ b/wpa_supplicant/notify.c
+@@ -944,6 +944,25 @@
+ }
+ 
+ 
++void wpas_notify_bss_tm_request(struct wpa_supplicant *wpa_s,
++				bool disassociating,
++				bool leaving_network,
++				bool protected_frames,
++				unsigned int disassociation_ms,
++				unsigned int valid_ms,
++				const struct neighbor_report *candidates,
++				unsigned int num_candidates)
++{
++	if (wpa_s->p2p_mgmt)
++		return;
++
++	wpas_dbus_signal_bss_tm_request(wpa_s, disassociating,
++					leaving_network, protected_frames,
++					disassociation_ms, valid_ms,
++					candidates, num_candidates);
++}
++
++
+ void wpas_notify_sae_password_mismatch(struct wpa_supplicant *wpa_s)
+ {
+ 	wpas_dbus_signal_sae_password_mismatch(wpa_s);
+diff -ru a/wpa_supplicant/notify.h b/wpa_supplicant/notify.h
+--- a/wpa_supplicant/notify.h
++++ b/wpa_supplicant/notify.h
+@@ -17,6 +17,7 @@
+ struct tls_cert_data;
+ struct wpa_cred;
+ struct rsn_pmksa_cache_entry;
++struct neighbor_report;
+ enum nan_de_reason;
+ enum nan_service_protocol_type;
+ struct nan_discovery_result;
+@@ -151,6 +152,14 @@
+ 			    const char *parameter);
+ void wpas_notify_eap_error(struct wpa_supplicant *wpa_s, int error_code);
+ void wpas_notify_psk_mismatch(struct wpa_supplicant *wpa_s);
++void wpas_notify_bss_tm_request(struct wpa_supplicant *wpa_s,
++				bool disassociating,
++				bool leaving_network,
++				bool protected_frames,
++				unsigned int disassociation_ms,
++				unsigned int valid_ms,
++				const struct neighbor_report *candidates,
++				unsigned int num_candidates);
+ void wpas_notify_sae_password_mismatch(struct wpa_supplicant *wpa_s);
+ void wpas_notify_network_bssid_set_changed(struct wpa_supplicant *wpa_s,
+ 					   struct wpa_ssid *ssid);
+diff -ru a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
+--- a/wpa_supplicant/wnm_sta.c
++++ b/wpa_supplicant/wnm_sta.c
+@@ -1656,6 +1656,22 @@
+ 				     &num_valid_candidates) < 0)
+ 		goto reset;
+ 
++	/*
++	 * Told before the request is answered or acted on, so a program
++	 * choosing access points itself can follow a warned one in time. A
++	 * request naming no candidate is told too, as one warning of a drop
++	 * can still be followed by letting the station join elsewhere.
++	 */
++	wpas_notify_bss_tm_request(
++		wpa_s,
++		disassoc_imminent,
++		!!(wpa_s->wnm_mode & WNM_BSS_TM_REQ_ESS_DISASSOC_IMMINENT),
++		wpa_sm_pmf_enabled(wpa_s->wpa),
++		(u64) wpa_s->wnm_disassoc_timer * beacon_int * 128 / 125,
++		(u64) valid_int * beacon_int * 128 / 125,
++		wpa_s->wnm_neighbor_report_elements,
++		wpa_s->wnm_num_neighbor_report);
++
+ 	if (wpa_s->wnm_mode & WNM_BSS_TM_REQ_PREF_CAND_LIST_INCLUDED) {
+ 		if (!wpa_s->wnm_num_neighbor_report) {
+ 			wpa_printf(MSG_DEBUG,

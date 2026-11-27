@@ -44,6 +44,7 @@ import "../Fuzzy.js" as Fuzzy
 import "../Places.js" as Places
 import "../SessionTalks.js" as Said
 import "../When.js" as When
+import "ActsSaid.js" as ActsSaid
 import "CarryBack.js" as CarryBack
 import "Cloud.js" as Cloud
 import "Landed.js" as Landed
@@ -51,7 +52,6 @@ import "Moment.js" as Moment
 import "Numbers.js" as Numbers
 import "Openings.js" as Openings
 import "Order.js" as Order
-import "Presented.js" as Presented
 import "ReopenTally.js" as ReopenTally
 import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
@@ -2047,11 +2047,14 @@ Provider {
         // (Cloud.asksNow), in case what held them passed, and is then
         // said as what is known: the why the last ask came back with, or,
         // with nothing heard yet, that they haven't come (Cloud.offeredNow).
-        // A daemon missing answers at once, so its why is said this Return.
-        if (Cloud.onOf(elsewhere)?.needs !== undefined)
-            provider.askOffers(true);
-        const offered = Cloud.offeredNow(provider.cloudOffersAt, provider.cloudOffers,
-            provider.cloudUnoffered);
+        // A daemon missing answers at once, so its why is said this Return
+        // (Cloud.returning).
+        const offersKept = () => ({ asking: provider.cloudAsking, at: provider.cloudOffersAt,
+            offers: provider.cloudOffers, unoffered: provider.cloudUnoffered });
+        const offered = Cloud.onOf(elsewhere)?.needs === undefined
+            ? Cloud.offeredNow(provider.cloudOffersAt, provider.cloudOffers,
+                provider.cloudUnoffered)
+            : Cloud.returning(offersKept, () => provider.askOffers(true), Date.now());
         const ask = elsewhere === "" ? Sprouting.ask(said, folder)
             : Cloud.ask(said, folder, elsewhere, offered);
         if (ask === null) {
@@ -2259,7 +2262,7 @@ Provider {
             // The daemon's words can name a session, so they're said as errorShown
             // says a daemon's error.
             const why = answer?.error === undefined ? "no daemon answered"
-                : Presented.errorShown(answer.error, Options.reports);
+                : ActsSaid.errorShown(answer.error, Options.reports);
             console.info(`launcher: a start's told wasn't taken: ${why}`);
             tokens.filter(token => sproutTokens[token] === "told").forEach(token => {
                 sproutTokens[token] = "ended";

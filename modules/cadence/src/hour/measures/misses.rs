@@ -18,7 +18,9 @@ use crate::{axes, command, write_whole};
 
 mod held;
 mod running;
-mod symbiosis;
+// The causes measure lists the mesh's files by when they were written
+// here, as this one does.
+pub(super) mod symbiosis;
 mod tested;
 
 pub use held::{BLIND, HELD, held};

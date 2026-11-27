@@ -158,8 +158,9 @@ onLinux {
       );
   # A machine naming a tool gateway hears Slack through it with a second
   # reader, started as Slack's is but only ever in shadow, keeping its
-  # own state and telling For You in a file there that nothing reads;
-  # and a machine naming none has no such reader.
+  # own state and telling For You in a file there that nothing reads,
+  # while the keyring's reader stays pineapple-slack; and a machine naming
+  # none has no such reader.
   pineapple-slack-hears-a-gateway-in-shadow =
     let
       withGateway =
@@ -180,9 +181,10 @@ onLinux {
       percent = (at "https://gateway.example.com/mcp?x=a%2Fb").systemd.user.services;
       encoded = lib.concatStringsSep " " (lib.toList percent.pineapple-slack-gateway.Service.ExecStart);
       refused = (at "http://gateway.example.com/mcp").assertions;
+      keyring = home.systemd.user.services.pineapple-slack;
     in
     holds "pineapple-slack-hears-a-gateway-in-shadow"
-      "The gateway's reader lacks its command, shadow or start, moves the state its sign-in reads, mangles a URL's %, takes plain http, or runs unnamed."
+      "The gateway's reader lacks its command, shadow or start, moves the state its sign-in reads, mangles a URL's %, takes plain http, runs unnamed, or takes the keyring's reader's place."
       (
         lib.hasInfix (
           "/bin/pineapple-slack pineapple-slack-gateway run"
@@ -198,6 +200,53 @@ onLinux {
         && unit.Service.Restart == "on-failure"
         && unit.Service.Slice == "background.slice"
         && !((withGateway null).systemd.user.services ? pineapple-slack-gateway)
+        && !(lib.hasInfix "--gateway" (lib.concatStringsSep " " (lib.toList keyring.Service.ExecStart)))
+        && lib.any (lib.hasPrefix "SIGN_IN_KEYRING=/nix/store/") (lib.toList keyring.Service.Environment)
+      );
+  # A machine saying its gateway's reader is live runs it as pineapple-slack
+  # in the keyring's reader's place: live, given the gateway and its
+  # sign-in, not the keyring, still handed and still taking away its row in
+  # For You; and no shadow runs beside it.
+  pineapple-slack-goes-live-through-a-gateway =
+    let
+      at =
+        url:
+        account (bareNixos [
+          {
+            home-manager.sharedModules = [
+              self.homeModules.pineapple
+              {
+                jitsusama.pineapple.gateway = {
+                  inherit url;
+                  signIn = pkgs.writeShellScript "stand-in-sign-in" "echo stand-in-token";
+                  live = true;
+                };
+              }
+            ];
+          }
+        ]);
+      home = at "https://gateway.example.com/mcp";
+      percent = (at "https://gateway.example.com/mcp?x=a%2Fb").systemd.user.services;
+      encoded = lib.concatStringsSep " " (lib.toList percent.pineapple-slack.Service.ExecStart);
+      services = home.systemd.user.services;
+      unit = services.pineapple-slack;
+      command = lib.concatStringsSep " " (lib.toList unit.Service.ExecStart);
+      environment = lib.toList unit.Service.Environment;
+      waiting = "${home.xdg.stateHome}/mission/waiting/pineapple.json";
+    in
+    holds "pineapple-slack-goes-live-through-a-gateway"
+      "pineapple-slack over a live gateway lacks --live, the gateway or its row, mangles a URL's %, is given more than its row, or runs beside a shadow."
+      (
+        lib.hasInfix (
+          "/bin/pineapple-slack pineapple-slack run --live"
+          + " --gateway https://gateway.example.com/mcp --gateway-sign-in /nix/store/"
+        ) command
+        && lib.hasInfix "mcp?x=a%%2Fb" encoded
+        && environment == [ ''"SAFE_WORD_WAITING=${waiting}"'' ]
+        && lib.hasInfix waiting unit.Service.ExecStopPost
+        && lib.hasSuffix ", through a tool gateway" unit.Unit.Description
+        && lib.elem "default.target" unit.Install.WantedBy
+        && !(services ? pineapple-slack-gateway)
       );
   # pineapple, the daemon showing stops in the launcher, is started at
   # login for its socket, which systemd holds where the launcher looks,
