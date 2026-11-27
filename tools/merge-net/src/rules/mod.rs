@@ -437,7 +437,10 @@ mod tests {
             found.system.is_empty(),
             "a kernel file that moved no kernel built a system first"
         );
-        assert!(parse("a: a/* => system").is_ok());
+        assert!(
+            parse("a: a/* => system").is_ok(),
+            "an area marked as building a system didn't parse"
+        );
     }
 
     #[test]
