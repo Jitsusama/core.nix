@@ -65,10 +65,20 @@ What holds it together:
   server beside a stand-in daemon. It holds a first visit to a number of
   files, kilobytes and elements, and a second to every file answered
   unchanged. A change worth more raises the budget in the same change.
-  The map, which many changes grow at once, holds room above what it last
-  measured, so most never touch its line; one that would pass it sets it
-  again to the gate's measure plus that room. The failure says which
-  measure passed its budget, and for elements, which tags grew.
+  Every run's summary says what each first visit cost, passed or not,
+  and a failure names each measure past its budget beside all three,
+  and for elements, which tags grew.
+- **The map holds room instead**, since many changes grow it at once:
+  its line is its cost when last set plus four files, 8 KB and 16
+  elements, so most changes never touch it. A change that grows the map
+  says what it cost in its commit, from the run's summary. One that
+  would pass the line sets it again to its cost plus the room. Two
+  changes that each fit can pass it together, since neither moves the
+  line's file and a merge sees only files, so before merging, a change
+  that grows the map counts every file of `modules/mycelium/site/` and
+  the kit main moved as its own, and runs the map's test again at its
+  head over main. If main still goes past, the change reverted for it
+  did nothing wrong alone: it sets the line again from a run over main.
 
 ## Adding a Live Page
 

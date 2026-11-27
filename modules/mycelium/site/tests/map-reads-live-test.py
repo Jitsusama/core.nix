@@ -66,13 +66,15 @@ REDRAWN_MS = 2500
 # What node.json's realm comes to on the map, every part of the count.
 COUNTED = "8 cells, 2 moving, 1 stuck"
 CELLS = 8
-# What a first visit to the map may cost, drawn from the stand-in's cells: what
-# it last measured (33 files, about 686.9 KB, at most 620 elements) with room
-# for four files, about 8 KB and 16 elements more, so most changes never touch
-# this line and parallel ones never clash on it. The room lets the map grow
-# that much unnoticed. A change that would pass it sets it again to what the
-# gate measures plus that room; why the map costs what it does is in each
-# change's commit.
+# What a first visit to the map may cost, drawn from the stand-in's cells: its
+# cost when this line was last set, plus room for four files, 8 KB and 16
+# elements, so most changes never touch the line and parallel ones never clash
+# on it. The room lets the map grow that much unnoticed. Every run's summary
+# says what the map cost, and a change that grows it says so in its commit. One
+# that would pass the line sets it again to that cost plus the room. Two that
+# each fit can pass it together, as neither moves this file, so a change that
+# grows the map runs this test again at its head over main once main has moved
+# the map or the kit since (local-sites/AGENTS.md).
 BUDGET = Budget(files=37, kilobytes=695, elements=636)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
