@@ -17,8 +17,11 @@ import signal
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Iterator
-from types import ModuleType
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+    from types import ModuleType
 
 # How long each read is given, in seconds, set on the copier check as its PATIENCE.
 PATIENCE = 2.0
@@ -126,7 +129,7 @@ def a_copier_never_ending_is_ended_after_patience() -> None:
 
 
 def each_refusal_names_what_was_wrong() -> None:
-    """refusal says a copier held on, ended well or said the wrong thing, and None if it didn't."""
+    """Check refusal says a copier held on, ended well or said the wrong thing, alone."""
     held = CHECK.refusal(None, "", WHY)
     assert held == "it held the clipboard", f"a copier holding on was said {held!r}"
     copied = CHECK.refusal(0, "", WHY)
@@ -139,7 +142,7 @@ def each_refusal_names_what_was_wrong() -> None:
 
 
 def a_reader_never_reading_is_fed_no_longer_than_patience() -> None:
-    """fed gives up on a reader that never reads within PATIENCE, saying what was left.
+    """Check fed gives up on a reader that never reads within PATIENCE, saying what's left.
 
     It waits on the reader rather than trying to write over and over, so it spends under
     half of PATIENCE on the processor meanwhile.
@@ -162,7 +165,7 @@ def a_reader_never_reading_is_fed_no_longer_than_patience() -> None:
 
 
 def a_reader_that_closed_is_fed_without_fault() -> None:
-    """fed answers None for a reader that closed its end, as it has read its last."""
+    """Check fed answers None for a reader that closed its end, as it has read its last."""
     reading, writing = os.pipe()
     os.close(reading)
     stalled = CHECK.fed(writing, DATA)
