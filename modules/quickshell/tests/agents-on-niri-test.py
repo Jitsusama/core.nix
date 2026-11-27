@@ -4353,9 +4353,6 @@ def test_carried_lists_each_carry_newest_first_and_carries_an_arrived_one_back_i
 # poll of Carried serving it, but a loaded builder can be slower than any one watch.
 FOR_YOU_STILL = 3
 FOR_YOU_MADE = 30
-# The row For You gathers what agents ask into once two ask (words/on.json's
-# for-you:kind:agent).
-ASKING = "Agents Asking"
 
 
 def for_you_made(shell: Shell) -> list[str]:
@@ -4851,21 +4848,10 @@ def asking_left_or_right(shell: Shell, address: str, title: str) -> tuple[str, P
 
 
 def to_asker(shell: Shell, title: str) -> list[str]:
-    """Step into For You where what `title` asks shows, and give the steps a walk takes there.
-
-    For You gathers what agents ask into Agents Asking once two ask (ForYou.js), and other
-    cases leave askers of their own, so the row is For You's or one step into Agents Asking.
-    """
-    in_for_you(shell)
-    shell.launcher_until(lambda shown: title in shown["rows"] or ASKING in shown["rows"])
-    rows = for_you_made(shell)
-    if title in rows:
-        return ["Now", "For You"]
-    assert ASKING in rows, rows
-    shell.down_to(ASKING)
-    shell.step_in()
+    """Step into For You's Agents where what `title` asks shows, and give a walk's steps there."""
+    in_for_yous_agents(shell)
     shell.launcher_until(lambda shown: title in shown["rows"])
-    return ["Now", "For You", ASKING]
+    return list(AGENTS_ASKING)
 
 
 def stepped_to(shell: Shell, name: str) -> None:
