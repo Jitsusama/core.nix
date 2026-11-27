@@ -1957,10 +1957,16 @@ fn step_links(
     // rates, the reason and the VPN's share judge the recorder's silence
     // alike.
     let now = SystemTime::now();
-    let (link, rates) = match live.poll(now) {
-        Some((link, rates)) => (Some(link.to_string()), rates),
-        None => (None, replay::Rates::default()),
-    };
+    let polled = live
+        .poll(now)
+        .map(|(link, rates)| (Some(link.to_string()), rates));
+    // Until a start has read the recorder's backlog, each link keeps the
+    // hold `start` gave it, rather than going at its whole rate while no
+    // link is named (a start hears its stop round 1's F7).
+    if !live.caught_up() {
+        return;
+    }
+    let (link, rates) = polled.unwrap_or((None, replay::Rates::default()));
     let why = live.why(now);
     let controller_ceiling = live.ceiling();
     let share = live.vpn_share(now);
