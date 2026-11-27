@@ -64,13 +64,17 @@ fn hosted(config: &str) -> Option<Hosted> {
 /// repository's mains, newest first as `%H %ct %s` lines, for `cadence
 /// hour`, which counts what each landed; read side by side, as the axes
 /// read them, from the same mirrors and the same kept log.
+///
+/// Only the logs are read: the looks at each main come from ten days of
+/// journal, and the hour counts what landed from the logs alone, so
+/// reading the journals too only charged their file pages to the hour's
+/// memory limit, where it was throttled for minutes.
 pub fn mains(folder: &Path, now: i64) -> [String; 3] {
-    let runtime = super::readings::runtime_dir();
     let kept = super::readings::cache_home().join("cadence/repository.json");
     std::thread::scope(|s| {
-        let core = s.spawn(|| landings::gather(folder, &runtime, now).main);
-        let harness = s.spawn(|| landings::gather_harness(now).main);
-        let machine = gather(now, &kept).main;
+        let core = s.spawn(|| landings::core_main(folder, now));
+        let harness = s.spawn(|| landings::harness_main(now));
+        let machine = main(now, &kept);
         [
             core.join().unwrap_or_default(),
             harness.join().unwrap_or_default(),
@@ -83,21 +87,11 @@ pub fn mains(folder: &Path, now: i64) -> [String; 3] {
 /// and update-to-main's looks at it, from the journal.
 #[must_use]
 pub fn gather(now: i64, kept: &Path) -> Sources {
-    let Some(at) = fs::read_to_string(CONFIG).ok().as_deref().and_then(hosted) else {
-        return Sources::default();
-    };
-    let Some(main) = fetched(&at) else {
+    let Some((at, main)) = located() else {
         return Sources::default();
     };
     let since = format!("--since=@{}", now - DAYS * DAY);
-    // Said, so a walk that fails every hour, and the kept walk shown in
-    // its place, can be seen in the journal rather than only as an old
-    // landing count.
-    let tried = |args: &[&str]| {
-        let mut all = vec!["-C", &at.checkout];
-        all.extend_from_slice(args);
-        command("git", &all).inspect_err(said).ok()
-    };
+    let tried = git_in(&at.checkout);
     let git = |args: &[&str]| tried(args).unwrap_or_default();
     let (log, journal) = std::thread::scope(|s| {
         let journal = s.spawn(|| {
@@ -138,6 +132,43 @@ pub fn gather(now: i64, kept: &Path) -> Sources {
         main: log.main,
         reverts: log.reverts,
         bills: String::new(),
+    }
+}
+
+/// The machine repository's main, lock moves and reverts left out, as
+/// `gather` reads it, with no journal read; nothing when update-to-main
+/// follows no hosted checkout.
+#[must_use]
+pub fn main(now: i64, kept: &Path) -> String {
+    let Some((at, main)) = located() else {
+        return String::new();
+    };
+    log_of(
+        &walked(&git_in(&at.checkout), kept, &main, &at.folder, now),
+        &at.folder,
+    )
+    .main
+}
+
+/// Where update-to-main's config says the machine repository is, and
+/// its main as last fetched there.
+fn located() -> Option<(Hosted, String)> {
+    let at = fs::read_to_string(CONFIG)
+        .ok()
+        .as_deref()
+        .and_then(hosted)?;
+    let main = fetched(&at)?;
+    Some((at, main))
+}
+
+/// git in `checkout`, its failures said, so a walk that fails every hour,
+/// and the kept walk shown in its place, can be seen in the journal
+/// rather than only as an old landing count.
+fn git_in(checkout: &str) -> impl Fn(&[&str]) -> Option<String> + Sync + '_ {
+    move |args: &[&str]| {
+        let mut all = vec!["-C", checkout];
+        all.extend_from_slice(args);
+        command("git", &all).inspect_err(said).ok()
     }
 }
 
