@@ -490,10 +490,12 @@ PanelWindow {
     // its spring's length ago, since niri never says one ended, so an old
     // scroll's word, still on its windows, isn't taken for a new one
     // (MarginCatTiles.js's hears). Heard again with each layout niri
-    // sends (onSettledChanged), and with each window niri says again
-    // whole, as a retitle mid-scroll does, layout and all, which only
-    // bumps Niri.revision, so each word is dated as near as it can be to
-    // when it came.
+    // sends (onSettledChanged), and with each window niri's own stream
+    // says again whole, as a retitle mid-scroll does, layout and all,
+    // which only bumps Niri.revision, so each word is dated as near as it
+    // can be to when it came. A window the daemon says again keeps its
+    // layout while its tile is unchanged (NiriRecords.js), so a window
+    // used after a scroll isn't heard as scrolling.
     function scrolling(): bool {
         const now = Date.now();
         scrollHeard = Tiles.hears(scrollHeard, Tiles.told(Niri.windows, space?.id, "ViewMove"),
