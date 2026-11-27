@@ -2296,45 +2296,93 @@ window.passHeld = () => {
 };
 """
 
-# A drawer that refuses its next `panelFails` writings, so a whole reading fails part way
-# through the first path, after it was read and sown, as no reading of nothing can.
-PANEL_FAILS = """
-window.panelFails = 0;
-const inner = Object.getOwnPropertyDescriptor(Element.prototype, "innerHTML");
-Object.defineProperty(Element.prototype, "innerHTML", {
-  ...inner,
-  set(html) {
-    if (this.id === "panel-body" && window.panelFails > 0) {
-      window.panelFails -= 1;
-      throw new Error("a drawer that can't be written");
-    }
-    inner.set.call(this, html);
-  },
-});
+# A look since the last that can't be judged for the next `judgingFails` readings, so a whole
+# reading fails at the first path's first step, before the address's cell is chosen or its
+# cells are heard, as no reading of nothing can. The last look is kept as one that throws
+# when read, so it throws from inside the judging rather than from what reads it for it.
+JUDGING_FAILS = """
+window.judgingFails = 0;
+localStorage.setItem("mycelium-seen", JSON.stringify({ "judging-fails": true }));
+const parse = JSON.parse;
+JSON.parse = function (text, ...rest) {
+  const parsed = parse.call(this, text, ...rest);
+  if (parsed === null || typeof parsed !== "object" || parsed["judging-fails"] !== true) {
+    return parsed;
+  }
+  return new Proxy(parsed, {
+    get(look, key) {
+      if (window.judgingFails > 0) {
+        window.judgingFails -= 1;
+        throw new Error("a look that can't be judged");
+      }
+      return look[key];
+    },
+  });
+};
 """
+
+
+def opened_failing_its_first_judging(browser: Browser, served: Served, fails: int) -> Opened:
+    """Open the map on the address's cell, its first two readings failing as they're judged.
+
+    Each reading is held back until passHeld lets it through, and the next `fails` judgings
+    fail, so more than two fail the steps of a first drawing past the first path too.
+    """
+    root, _ = served
+    address = f"{root}mycelium/#cell={SOUGHT}"
+    opened = Opened(browser, address, SIZES[-1], "dark", READINGS_HELD + JUDGING_FAILS)
+    page = opened.page
+    page.wait_for_function("window.held !== null", timeout=PACE_MS)
+    opened.expecting("mycelium: a reading failed to draw")
+    page.evaluate(f"window.judgingFails = {fails}; passHeld(); passHeld()")
+    the_map_stands(page, "broken")
+    return opened
+
+
+def the_address_cell_is_open(page: Page, why: str) -> None:
+    talk = page.locator(f'#panel-body a[href^="mycelium:cell/{SOUGHT}"]')
+    expect(talk.first, why).to_be_visible()
 
 
 def test_a_first_reading_that_fails_twice_still_opens_the_cell_the_address_names(
     browser: Browser, mycelium_served: Served
 ) -> None:
-    root, _ = mycelium_served
-    address = f"{root}mycelium/#cell={SOUGHT}"
-    opened = Opened(browser, address, SIZES[-1], "dark", READINGS_HELD + PANEL_FAILS)
+    opened = opened_failing_its_first_judging(browser, mycelium_served, 2)
     try:
         page = opened.page
-        page.wait_for_function("window.held !== null", timeout=PACE_MS)
-        # Two whole readings that fail inside the first path leave it to the ordinary one.
-        opened.expecting("mycelium: a reading failed to draw")
-        page.evaluate("window.panelFails = 2; passHeld(); passHeld()")
-        the_map_stands(page, "broken")
-        failed = page.evaluate("window.panelFails")
+        failed = page.evaluate("window.judgingFails")
         assert failed == 0, f"the first path wasn't failed twice, {failed} failings left"
         page.evaluate("letReadingsThrough()")
         # Its cells are heard as a first rather than compared with none, so it draws whole.
         the_map_counts(page, COUNTED, "the first reading drawn whole failed")
         the_map_stands(page, "live")
-        talk = page.locator(f'#panel-body a[href^="mycelium:cell/{SOUGHT}"]')
-        expect(talk.first, "the address's cell wasn't opened").to_be_visible()
+        the_address_cell_is_open(page, "the address's cell wasn't opened")
+    finally:
+        opened.close()
+
+
+# A step that always throws is tried on two readings by the first path, then alone on a third,
+# which draws the rest and says it couldn't draw, and is left to the ordinary path after that.
+def test_a_first_step_that_always_throws_is_said_until_the_ordinary_path_draws_whole(
+    browser: Browser, mycelium_served: Served
+) -> None:
+    opened = opened_failing_its_first_judging(browser, mycelium_served, 1_000_000)
+    try:
+        page = opened.page
+        opened.expecting("mycelium: couldn't judge what changed on the first drawing")
+        page.evaluate("passHeld()")
+        the_address_cell_is_open(page, "the address's cell wasn't opened past a step that threw")
+        the_map_counts(page, COUNTED, "the map drew less than the rest past a step that threw")
+        # The drawing said it couldn't draw in the same turn as it drew, so the line stands now.
+        the_map_stands(page, "broken")
+        expect(page.locator("#asof"), "the line said live over a part drawing").to_contain_text(
+            "The map couldn't draw: a look that can't be judged"
+        )
+        judged = [line for line in opened.logged if "couldn't judge what changed" in line]
+        assert judged, f"the step that threw wasn't said, the page logged {opened.logged}"
+        page.evaluate("passHeld()")
+        the_map_stands(page, "live")
+        the_address_cell_is_open(page, "the ordinary path dropped the address's cell")
     finally:
         opened.close()
 

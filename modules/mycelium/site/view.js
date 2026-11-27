@@ -4933,27 +4933,34 @@ import {
   let first = true;
   // How many readings the first path has been tried on.
   let firstTries = 0;
-  // Whether any reading has been drawn whole yet, by either path.
-  let drawnWhole = false;
-  // The address's cell, chosen on the first reading the ordinary path draws
-  // whole; one the address can't give is logged and the map drawn without
-  // it, so a step that always throws can't hold the line either.
+  // Whether a first reading has been drawn yet, by either path: whole by
+  // the first, or by the steps the first path gave up on, which leave the
+  // ordinary path to the next reading even where one of them threw.
+  let firstDrawn = false;
+  // The address's cell, chosen on the first reading the ordinary path
+  // draws; one that can't be opened is logged and the map drawn without
+  // it, so a step that always throws can't hold the line either. Answers
+  // what threw, if anything did.
   const chooseFromAddress = () => {
     try {
       apply(false);
+      return null;
     } catch (err) {
-      console.error("mycelium: the address named nothing to open", err?.stack || err);
+      console.error("mycelium: couldn't open the address's cell", err?.stack || err);
       chosen = null;
       draw();
+      return err;
     }
   };
   // One step of a first drawing the first path gave up on, logged when it
-  // throws rather than failing the reading.
+  // throws rather than failing the reading; answers what threw, if anything.
   const firstStep = (what, step) => {
     try {
       step();
+      return null;
     } catch (err) {
       console.error(`mycelium: couldn't ${what} on the first drawing`, err?.stack || err);
+      return err;
     }
   };
   const take = (now) => {
@@ -4965,6 +4972,8 @@ import {
       current = model(now);
       sow(current);
       if (!findLine.hidden) refind({ keep: true });
+      // What threw in a step of a first drawing drawn without it.
+      let unfinished = null;
       if (first) {
         // A first path that fails is tried whole once more, and then left to
         // the ordinary path, so a step that always throws can't hold the
@@ -4981,18 +4990,21 @@ import {
         // Only once the first reading is drawn whole, so one that fails part
         // way is drawn as a first again by the next, rather than left half set.
         first = false;
-      } else if (!drawnWhole) {
+      } else if (!firstDrawn) {
         // A first path given up on never judged what changed since the last
         // look, chose the address's cell or heard the node's messages as
         // already said, so the first reading drawn here does each, its cells
         // heard as a first. Each is tried alone, so one that always throws
-        // leaves the rest drawn and the ordinary path to the next reading.
+        // leaves the rest drawn and the ordinary path to the next reading,
+        // the line saying it couldn't draw until a reading is drawn whole.
         const was = spots;
-        firstStep("judge what changed", judgeChanged);
-        chooseFromAddress();
-        firstStep("hear its cells", () => noteLives(was));
-        firstStep("hear its messages as said", () => hear(false));
-        firstStep("write its drawer", panel);
+        unfinished = [
+          firstStep("judge what changed", judgeChanged),
+          chooseFromAddress(),
+          firstStep("hear its cells", () => noteLives(was)),
+          firstStep("hear its messages as said", () => hear(false)),
+          firstStep("write its drawer", panel),
+        ].find((err) => err !== null);
       } else {
         if (chosen && !knows(chosen)) chosen = null;
         const was = spots;
@@ -5002,9 +5014,14 @@ import {
         hear(true);
       }
       drawStatus();
-      drawnWhole = true;
+      firstDrawn = true;
       performance.clearMeasures("mycelium-redraw");
       performance.measure("mycelium-redraw", { start: started });
+      if (unfinished) {
+        // Drawn only in part, so the line never says live over it.
+        document.dispatchEvent(new CustomEvent("mycelium:undrawn", { detail: { why: `${unfinished.message || unfinished}` } }));
+        return;
+      }
       // What was made of the reading, once drawn whole, for reach.ts to
       // judge beside it; a reading that fails to draw says nothing.
       document.dispatchEvent(new CustomEvent("mycelium:modelled", { detail: { now, model: current } }));
