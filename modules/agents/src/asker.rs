@@ -453,17 +453,23 @@ pub fn journalled(why: &str) -> &str {
     }
 }
 
+/// What an act done as Joel may name it's for, the first it names said
+/// in its refusal's line: a steer's session, Forget's, feedback's
+/// landing, a told line's quest or window, and a read's keys.
+const FOR_WHAT: [&str; 6] = ["address", "session", "landing", "quest", "window", "keys"];
+
 /// The journal line of an act done as Joel that [`the_shell`] refused:
-/// the act and, where it names one, the session it was for, each
-/// [`named`]. Most acts name no session, so none is said rather than a
-/// null.
+/// the act and the first of [`FOR_WHAT`] it names, each [`named`], so
+/// an agent acting as Joel can be traced to what it asked. An act
+/// naming none, as a share's end, says none rather than a null (round
+/// 000056 on #6796, F19 and F32).
 #[must_use]
 pub fn refused_line(why: &str, said: &serde_json::Value) -> String {
-    let whose = if said["address"].is_null() {
-        String::new()
-    } else {
-        format!(" for {}", named(&said["address"]))
-    };
+    let whose = FOR_WHAT
+        .iter()
+        .map(|field| &said[field])
+        .find(|value| !value.is_null())
+        .map_or_else(String::new, |value| format!(" for {}", named(value)));
     format!(
         "agents: a {}{whose} wasn't taken: {}",
         named(&said["ask"]),
@@ -476,11 +482,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_refused_acts_line_names_a_session_only_where_it_names_one() {
+    fn a_refused_acts_line_names_what_it_was_for_only_where_it_names_one() {
         let said = serde_json::json!({"ask": "forget", "session": "s-1"});
         assert_eq!(
             refused_line(REFUSED, &said),
-            "agents: a \"forget\" wasn't taken: who asked isn't the shell"
+            "agents: a \"forget\" for \"s-1\" wasn't taken: who asked isn't the shell"
+        );
+        let said = serde_json::json!({"ask": "feedback", "landing": "landing:s-p:o#1"});
+        assert_eq!(
+            refused_line(REFUSED, &said),
+            "agents: a \"feedback\" for \"landing:s-p:o#1\" wasn't taken: who asked isn't the shell"
+        );
+        let said = serde_json::json!({"ask": "sharing", "sharing": false});
+        assert_eq!(
+            refused_line(REFUSED, &said),
+            "agents: a \"sharing\" wasn't taken: who asked isn't the shell"
         );
         let said = serde_json::json!({"ask": "talk", "address": "P9R1KI"});
         assert_eq!(
