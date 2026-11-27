@@ -6480,11 +6480,13 @@ LIMIT_STOPS = [f"row:power:limit:{stop}" for stop in STOPS]
 
 
 def charge_limit(name: str, *, settable: bool) -> list[Json]:
-    """Give Power's Charge Limit row named `name`, as power_rows.rs's limit serves it.
+    """Give Power's Charge Limit row named `name`, a holder or a figure as power_rows.rs's is.
 
-    Where Joel's account may set it, it's a holder with a choice inside for each stop, stepped
-    into by its more; otherwise it's a figure, the firmware's to set, with nothing inside, so a
-    step held into it offers nothing once it's served so.
+    Where Joel's account may set it, it's a holder with a row inside for each stop, stepped into
+    by its more; otherwise it's a figure with no acts and nothing inside, so a step held into it
+    offers nothing once it's served so. That much is chosen to force the step's leave, and is no
+    copy of the daemon's: its stops are choices keyed row:power:limit:stop:N, 60% to 100% in
+    fives, and its firmware figure carries a copy act and a note.
     """
     key = "row:power:limit"
     row: Json = {
@@ -6526,7 +6528,8 @@ def into_the_limit(shell: Shell, machine: StandIn, *, found: str = "") -> None:
     """Serve a settable Charge Limit and step through Machine into it, holding its stops.
 
     Into Battery by moving; then to the Charge Limit by moving too, or, `found` given, by typing
-    it into Battery's find, so the step is one entered from what was typed.
+    that into Battery's find and moving to it there, so the step is one entered from a find
+    that may hold other rows beside it.
     """
     machine.told(charge_limit("Charge Limit", settable=True), [])
     shell.as_account(shell.ipc("toggle"))
@@ -6539,9 +6542,8 @@ def into_the_limit(shell: Shell, machine: StandIn, *, found: str = "") -> None:
         shell.step_in()
         shell.launcher_until(holds(holding))
     if found:
-        shell.type_in(found, selecting="Charge Limit")
-    else:
-        shell.down_to("Charge Limit")
+        shell.type_in(found)
+    shell.down_to("Charge Limit")
     shell.step_in()
     shell.launcher_until(holds("80%"))
 
@@ -6553,9 +6555,34 @@ def launcher_said(shell: Shell, since: int) -> list[str]:
 
 
 # What the launcher's journal says of a step that closed under Joel by itself (Launcher.qml's
-# heldAgain), and of a Return it held for it (Launcher.qml's held Return).
+# heldAgain), and of a Return it held for it (Launcher.qml's heldUnder).
 LEFT_BY_ITSELF = "by itself, as what "
 RETURN_HELD = "launcher: Return held, as the step closed by itself under it"
+
+# What the foot says of a Return held so (launcher/words/frame.json's closedUnder, as heldUnder
+# says it), looked for in the foot alone.
+CLOSED_UNDER = "again acts here, as the step closed by itself"
+
+
+def told_past_the_last_key(machine: StandIn, changed: list[Json], gone: list[str]) -> None:
+    """Tell the launcher a change only once it can't be taken for the last key's act.
+
+    A change heard within Launcher.qml's keyedWithin (50 ms) of an acting key is that key's act
+    (Held.changeDoes), whoever made it, so its leave holds nothing whatever it lands on. The
+    last such key here is the Return that stepped in, and what's between is only a few looks at
+    the launcher, so the gap is made sure of rather than left to how quick they are.
+    """
+    # Twice keyedWithin past the stepping Return, so the change is the machine's alone.
+    time.sleep(0.1)
+    machine.told(changed, gone)
+
+
+def pressed_return(shell: Shell) -> Json:
+    """Press Return and give what the launcher says it did (`returned`), once it's said anew."""
+    before = shell.showing()["returned"].get("done")
+    shell.send_key("ret")
+    shell.launcher_until(lambda shown: shown["returned"].get("done") != before)
+    return cast("Json", shell.showing()["returned"])
 
 
 def test_a_step_whose_row_offers_nothing_now_closes_onto_its_row_holding_nothing(
@@ -6565,16 +6592,19 @@ def test_a_step_whose_row_offers_nothing_now_closes_onto_its_row_holding_nothing
 
     The Charge Limit served again as the firmware's offers no stops, so the step into it is left
     as a session's verbs are once it ends, rather than kept showing what it offered (Held.js's
-    remade). Entered by moving, it lands back on its own row, which Joel chose, so the next
-    Return isn't held (Held.landedAfter), and the journal says it closed and that nothing holds.
+    remade). Entered by moving, it lands back on its own row, which Joel chose, so nothing is
+    guessed (Held.landedAfter), the journal says it closed and that nothing holds, and the next
+    Return goes on through the field's own path rather than being held.
     """
     into_the_limit(shell, machine)
     depth = len(shell.showing()["held"])
     since = shell.mark()
-    machine.told(charge_limit("Charge Limit", settable=False), LIMIT_STOPS)
+    told_past_the_last_key(machine, charge_limit("Charge Limit", settable=False), LIMIT_STOPS)
     try:
         shell.launcher_until(lambda shown: len(shown["held"]) == depth - 1)
         shell.launcher_until(lambda shown: (shown["selected"] or {}).get("name") == "Charge Limit")
+        guessed = shell.showing()["guessed"]
+        returned = pressed_return(shell)
     except AssertionError as failed:
         message = f"{failed}\nthe launcher said: {launcher_said(shell, since)}"
         raise AssertionError(message) from failed
@@ -6582,39 +6612,52 @@ def test_a_step_whose_row_offers_nothing_now_closes_onto_its_row_holding_nothing
     shell.close_launcher()
     left = [line for line in said if LEFT_BY_ITSELF in line]
     assert len(left) == 1, f"the step never said once it closed by itself: {said}"
-    assert left[0].endswith("no key's act; nothing holds"), left[0]
+    assert left[0].endswith("; nothing holds"), left[0]
+    assert guessed["keys"] == -1, f"landing on its own row guessed one: {guessed}"
+    assert returned["act"] != "waited", f"the Return after was held: {returned}"
+    assert not any(RETURN_HELD in line for line in said), f"a Return was held: {said}"
 
 
 def test_return_is_held_once_a_step_entered_from_a_find_closes_off_its_row(
     shell: Shell, machine: StandIn
 ) -> None:
-    """A step entered from a find that closes by itself off its row holds the next Return.
+    """A step entered from a find that closes by itself off its row holds the next Return once.
 
-    Served again renamed and with no stops, the Charge Limit's step is left back to Battery's
-    find, which no longer finds it, so the selection stands on no row Joel chose: the Return he
-    pressed meaning the step that went holds, its foot saying why, rather than acting there
-    (Held.returnUnder).
+    Entered from Battery's find for "charge", which holds the Charge row beside it, and served
+    again renamed Limit with no stops, the Charge Limit's step is left back to that find, which
+    no longer finds it, so the selection stands on Charge, a row Joel never chose. The Return he
+    pressed meaning the step that went holds, its foot saying why, rather than acting on Charge
+    (Held.returnUnder). A Return past the key language's wait (300 ms) is no doubled press, so
+    it acts there, as the hold is for one Return only.
     """
-    into_the_limit(shell, machine, found="limit")
+    into_the_limit(shell, machine, found="charge")
     depth = len(shell.showing()["held"])
     since = shell.mark()
-    machine.told(charge_limit("Charge Stop", settable=False), LIMIT_STOPS)
+    told_past_the_last_key(machine, charge_limit("Limit", settable=False), LIMIT_STOPS)
     try:
         shell.launcher_until(lambda shown: len(shown["held"]) == depth - 1)
-        shell.send_key("ret")
-        shell.launcher_until(lambda shown: "as the step closed by itself" in json.dumps(shown))
+        landed = shell.showing()
+        returned = pressed_return(shell)
+        held = shell.showing()
+        # Past language.toml's wait of 300 ms, so the next Return is no doubled press.
+        time.sleep(1)
+        again = pressed_return(shell)
     except AssertionError as failed:
         message = f"{failed}\nthe launcher said: {launcher_said(shell, since)}"
         raise AssertionError(message) from failed
     said = launcher_said(shell, since)
-    held = shell.showing()
     shell.close_launcher()
     left = [line for line in said if LEFT_BY_ITSELF in line]
     assert len(left) == 1, f"the step never said once it closed by itself: {said}"
     assert left[0].endswith("no key's act; a Return next holds"), left[0]
+    chose = (landed["selected"] or {}).get("name")
+    assert chose == "Charge", f"the leave landed on {chose!r}, not the row beside it"
+    assert returned["act"] == "waited", f"the Return wasn't held: {returned}"
+    assert any(CLOSED_UNDER in key for key in held["saying"]), held["saying"]
     assert sum(RETURN_HELD in line for line in said) == 1, f"the Return wasn't held once: {said}"
     assert held["open"], "the held Return closed the launcher"
     assert len(held["held"]) == depth - 1, f"the held Return moved the launcher: {held}"
+    assert again["act"] != "waited", f"the Return after the held one was held too: {again}"
 
 
 def agent_window(address: str, window: Json, title: str) -> Json:
